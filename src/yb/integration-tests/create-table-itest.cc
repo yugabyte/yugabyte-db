@@ -55,6 +55,8 @@
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_util.h"
 
+#include "yb/tserver/tserver_service.pb.h"
+
 #include "yb/util/metrics.h"
 #include "yb/util/path_util.h"
 #include "yb/util/tsan_util.h"
@@ -101,6 +103,52 @@ class CreateTableITest : public ExternalMiniClusterITestBase {
         .table_type(table_type)
         .wait(true)
         .Create();
+  }
+
+  Result<bool> VerifyTServerTablets(int idx, int num_tablets, int num_leaders,
+                                    const std::string& table_name, bool verify_leaders) {
+    auto tablets = VERIFY_RESULT(cluster_->GetTablets(cluster_->tablet_server(idx)));
+
+    int leader_count = 0, tablet_count = 0;
+    for (const auto& tablet : tablets) {
+      if (tablet.table_name() != table_name) {
+        continue;
+      }
+      if (tablet.state() != tablet::RaftGroupStatePB::RUNNING) {
+        return false;
+      }
+      tablet_count++;
+      if (tablet.is_leader()) {
+        leader_count++;
+      }
+    }
+    LOG(INFO) << "For table " << table_name << ", on tserver " << idx << " number of leaders "
+              << leader_count << " number of tablets " << tablet_count;
+    if ((verify_leaders && leader_count != num_leaders) || tablet_count != num_tablets) {
+      return false;
+    }
+    return true;
+  }
+
+  void PreparePlacementInfo(const std::unordered_map<string, int>& zone_to_replica_count,
+                            int num_replicas, master::PlacementInfoPB* placement_info) {
+    placement_info->set_num_replicas(num_replicas);
+    for (const auto& zone_and_count : zone_to_replica_count) {
+      auto* pb = placement_info->add_placement_blocks();
+      pb->mutable_cloud_info()->set_placement_cloud("c");
+      pb->mutable_cloud_info()->set_placement_region("r");
+      pb->mutable_cloud_info()->set_placement_zone(zone_and_count.first);
+      pb->set_min_num_replicas(zone_and_count.second);
+    }
+  }
+
+  void AddTServerInZone(const string& zone) {
+    vector<std::string> flags = {
+      "--placement_cloud=c",
+      "--placement_region=r",
+      "--placement_zone=" + zone
+    };
+    ASSERT_OK(cluster_->AddTabletServer(true, flags));
   }
 };
 
@@ -686,6 +734,317 @@ TEST_F(CreateTableITest, TestNumTabletsFlags) {
       table_name3, -1, &tablets, /* partition_list_version =*/ nullptr,
       RequireTabletsRunning::kFalse));
   ASSERT_EQ(tablets.size(), 9);
+}
+
+TEST_F(CreateTableITest, OnlyMajorityReplicasWithoutPlacement) {
+  const int kNumTablets = 6;
+  const string kNamespaceName = "my_keyspace";
+  const YQLDatabase kNamespaceType = YQL_DATABASE_CQL;
+  const string kTableName = "test-table";
+  const string kTableName2 = "test-table2";
+  std::unordered_set<int> stopped_tservers;
+  int num_tservers = 3;
+  int num_alive_tservers = 0;
+
+  // Start an RF3.
+  vector<std::string> master_flags = {
+    "--tserver_unresponsive_timeout_ms=5000"
+  };
+  ASSERT_NO_FATALS(StartCluster({}, master_flags, num_tservers));
+  num_alive_tservers = 3;
+  LOG(INFO) << "Started an RF3 cluster with 3 tservers and 1 master";
+
+  // Stop a node.
+  ASSERT_OK(cluster_->tablet_server(2)->Pause());
+  LOG(INFO) << "Paused tserver index 2";
+
+  // Wait for the master leader to mark it dead.
+  ASSERT_OK(cluster_->WaitForMasterToMarkTSDead(2));
+  stopped_tservers.emplace(2);
+  --num_alive_tservers;
+  LOG(INFO) << "TServer index 2 is now marked DEAD by the leader master";
+
+  // Now issue a create table.
+  // Create a namespace.
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(kNamespaceName, kNamespaceType));
+  LOG(INFO) << "Created YQL Namespace " << kNamespaceName;
+
+  client::YBSchema client_schema(client::YBSchemaFromSchema(GetSimpleTestSchema()));
+
+  YBTableName table_name(kNamespaceType, kNamespaceName, kTableName);
+  std::unique_ptr<client::YBTableCreator> table_creator1(client_->NewTableCreator());
+  ASSERT_OK(table_creator1->table_name(table_name)
+                            .schema(&client_schema)
+                            .num_tablets(kNumTablets)
+                            .wait(true)
+                            .Create());
+  LOG(INFO) << "Created table " << kNamespaceName << "." << kTableName;
+
+  // Verify that each tserver contains kNumTablets with kNumTablets/2 leaders.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    for (int i = 0; i < num_tservers; i++) {
+      if (stopped_tservers.count(i)) {
+        continue;
+      }
+      if (!VERIFY_RESULT(VerifyTServerTablets(
+          i, kNumTablets, kNumTablets / num_alive_tservers, kTableName, true))) {
+        return false;
+      }
+    }
+    return true;
+  }, 120s * kTimeMultiplier, "Are tablets running", 1s));
+
+  // Stop another node. Create table should now fail.
+  ASSERT_OK(cluster_->tablet_server(1)->Pause());
+  LOG(INFO) << "Paused tserver index 1";
+
+  // Wait for the master leader to mark it dead.
+  ASSERT_OK(cluster_->WaitForMasterToMarkTSDead(1));
+  stopped_tservers.emplace(1);
+  --num_alive_tservers;
+  LOG(INFO) << "TServer index 1 is now marked DEAD by the leader master";
+
+  YBTableName table_name2(kNamespaceType, kNamespaceName, kTableName2);
+  std::unique_ptr<client::YBTableCreator> table_creator2(client_->NewTableCreator());
+  ASSERT_NOK(table_creator2->table_name(table_name2)
+                            .schema(&client_schema)
+                            .num_tablets(kNumTablets)
+                            .wait(true)
+                            .timeout(10s * kTimeMultiplier)
+                            .Create());
+
+  // Now resume the paused tservers.
+  ASSERT_OK(cluster_->tablet_server(2)->Resume());
+  ASSERT_OK(cluster_->tablet_server(1)->Resume());
+  stopped_tservers.erase(2);
+  stopped_tservers.erase(1);
+  ++num_alive_tservers;
+  ++num_alive_tservers;
+  LOG(INFO) << "Tablet Server 2 and 1 resumed";
+
+  // Verify each tserver getting kNumTablets with leadership of kNumTablets/3.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    for (int i = 0; i < num_tservers; i++) {
+      if (!VERIFY_RESULT(VerifyTServerTablets(
+          i, kNumTablets, kNumTablets / num_alive_tservers, kTableName, true))) {
+        return false;
+      }
+    }
+    return true;
+  }, 120s * kTimeMultiplier, "Are tablets running", 1s));
+}
+
+TEST_F(CreateTableITest, OnlyMajorityReplicasWithPlacement) {
+  const int kNumTablets = 6;
+  const string kNamespaceName = "my_keyspace";
+  const YQLDatabase kNamespaceType = YQL_DATABASE_CQL;
+  const string kTableName1 = "test-table1";
+  const string kTableName2 = "test-table2";
+  const string kTableName3 = "test-table3";
+  const string kTableName4 = "test-table4";
+  const string kTableName5 = "test-table5";
+  std::unordered_set<int> stopped_tservers;
+  int num_tservers = 3;
+  int num_alive_tservers = 0;
+
+  vector<std::string> master_flags = {
+    "--tserver_unresponsive_timeout_ms=5000"
+  };
+  vector<std::string> tserver_flags = {
+    "--placement_cloud=c",
+    "--placement_region=r",
+    "--placement_zone=z${index}"
+  };
+
+  // Test - 1.
+  // Placement Policy: c.r.z1:1, c.r.z2:1, c.r.z3:1 with num_replicas as 3.
+  // Available tservers: 1 in c.r.z1 and 1 in c.r.z2.
+  // Result: Create Table should succeed.
+
+  // Start an RF3 with tservers placed in "c.r.z0,c.r.z1,c.r.z2".
+  ASSERT_NO_FATALS(StartCluster(tserver_flags, master_flags, 3));
+  num_alive_tservers = 3;
+  LOG(INFO) << "Started an RF3 cluster with 3 tservers in c.r.z0,c.r.z1,c.r.z2 and 1 master";
+
+  // Modify placement info to contain at least one replica in each of the three zones.
+  master::ReplicationInfoPB replication_info;
+  auto* placement_info = replication_info.mutable_live_replicas();
+  PreparePlacementInfo({ {"z0", 1}, {"z1", 1}, {"z2", 1} }, 3, placement_info);
+
+  ASSERT_OK(client_->SetReplicationInfo(replication_info));
+  LOG(INFO) << "Set replication info to c.r.z0,c.r.z1,c.r.z2 with num_replicas as 3";
+
+  // Create a namespace.
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(kNamespaceName, kNamespaceType));
+  LOG(INFO) << "Created YQL Namespace " << kNamespaceName;
+
+  // Create a schema.
+  client::YBSchema client_schema(client::YBSchemaFromSchema(GetSimpleTestSchema()));
+  LOG(INFO) << "Created schema for tables";
+
+  // Bring down one tserver in z2.
+  ASSERT_OK(cluster_->tablet_server(2)->Pause());
+  LOG(INFO) << "Paused tserver with index 2";
+
+  // Wait for the master leader to mark them dead.
+  ASSERT_OK(cluster_->WaitForMasterToMarkTSDead(2));
+  stopped_tservers.emplace(2);
+  --num_alive_tservers;
+  LOG(INFO) << "Tserver index 2 is now marked DEAD by the leader master";
+
+  // Issue a create table request, it should succeed.
+  YBTableName table_name1(kNamespaceType, kNamespaceName, kTableName1);
+  std::unique_ptr<client::YBTableCreator> table_creator1(client_->NewTableCreator());
+  ASSERT_OK(table_creator1->table_name(table_name1)
+                            .schema(&client_schema)
+                            .num_tablets(kNumTablets)
+                            .wait(true)
+                            .Create());
+  LOG(INFO) << "Created table " << kNamespaceName << "." << kTableName1;
+
+  // Verify that each tserver contains kNumTablets with kNumTablets/2 leaders.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    for (int i = 0; i < num_tservers; i++) {
+      if (stopped_tservers.count(i)) {
+        continue;
+      }
+      if (!VERIFY_RESULT(VerifyTServerTablets(
+          i, kNumTablets, kNumTablets / num_alive_tservers, kTableName1, true))) {
+        return false;
+      }
+    }
+    return true;
+  }, 120s * kTimeMultiplier, "Are tablets running", 1s));
+
+  // Test - 2.
+  // Placement Policy: c.r.z1:1, c.r.z2:1, c.r.z3:1 with num_replicas as 3.
+  // Available tservers: 1 in c.r.z1.
+  // Result: CreateTable will fail because we don't have a raft quorum underneath.
+
+  // Bring down another tserver, create table should now fail.
+  ASSERT_OK(cluster_->tablet_server(1)->Pause());
+  LOG(INFO) << "Paused tserver with index 1";
+
+  // Wait for the master leader to mark them dead.
+  ASSERT_OK(cluster_->WaitForMasterToMarkTSDead(1));
+  stopped_tservers.emplace(1);
+  --num_alive_tservers;
+  LOG(INFO) << "Tserver index 1 is now marked DEAD by the leader master";
+
+  YBTableName table_name2(kNamespaceType, kNamespaceName, kTableName2);
+  std::unique_ptr<client::YBTableCreator> table_creator2(client_->NewTableCreator());
+  ASSERT_NOK(table_creator2->table_name(table_name2)
+                            .schema(&client_schema)
+                            .num_tablets(kNumTablets)
+                            .wait(true)
+                            .timeout(10s * kTimeMultiplier)
+                            .Create());
+
+  // Test - 3.
+  // Placement Policy: c.r.z1:1, c.r.z2:1, c.r.z3:1 with num_replicas as 3.
+  // Available tservers: 2 in c.r.z1.
+  // Result: Create Table will not succeed.
+
+  // Add another tserver in c.r.z0. Create table should still fail after adding.
+  AddTServerInZone("z0");
+  ASSERT_OK(cluster_->WaitForTabletServerCount(++num_tservers, MonoDelta::FromSeconds(20)));
+  ASSERT_OK(cluster_->WaitForMasterToMarkTSAlive(3));
+  ++num_alive_tservers;
+
+  YBTableName table_name3(kNamespaceType, kNamespaceName, kTableName3);
+  std::unique_ptr<client::YBTableCreator> table_creator3(client_->NewTableCreator());
+  ASSERT_NOK(table_creator3->table_name(table_name3)
+                            .schema(&client_schema)
+                            .num_tablets(kNumTablets)
+                            .wait(true)
+                            .timeout(10s * kTimeMultiplier)
+                            .Create());
+
+  // Test - 4.
+  // Placement Policy: c.r.z1:1, c.r.z2:1, c.r.z3:1 with num_replicas as 5.
+  // Available tservers: 2 in c.r.z1 and 1 in c.r.z2.
+  // Result: Create Table should succeed.
+
+  // Increase the number of replicas to 5 with the same placement config.
+  master::ReplicationInfoPB replication_info2;
+  auto* placement_info2 = replication_info2.mutable_live_replicas();
+  PreparePlacementInfo({ {"z0", 1}, {"z1", 1}, {"z2", 1} }, 5, placement_info2);
+
+  ASSERT_OK(client_->SetReplicationInfo(replication_info2));
+  LOG(INFO) << "Set replication info to c.r.z0,c.r.z1,c.r.z2 with num_replicas as 5";
+
+  // Now resume tserver 2 and wait for master to mark it alive.
+  ASSERT_OK(cluster_->tablet_server(2)->Resume());
+  ASSERT_OK(cluster_->WaitForMasterToMarkTSAlive(2));
+  ++num_alive_tservers;
+  LOG(INFO) << "Tablet Server index 2 resumed";
+
+  // Create table should now succeed.
+  YBTableName table_name4(kNamespaceType, kNamespaceName, kTableName4);
+  std::unique_ptr<client::YBTableCreator> table_creator4(client_->NewTableCreator());
+  ASSERT_OK(table_creator4->table_name(table_name4)
+                            .schema(&client_schema)
+                            .num_tablets(kNumTablets)
+                            .wait(true)
+                            .Create());
+  // Validate data.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    for (int i = 0; i < num_tservers; i++) {
+      if (stopped_tservers.count(i)) {
+        continue;
+      }
+      if (!VERIFY_RESULT(VerifyTServerTablets(
+          i, kNumTablets, kNumTablets / num_alive_tservers, kTableName4, true))) {
+        return false;
+      }
+    }
+    return true;
+  }, 120s * kTimeMultiplier, "Are tablets running", 1s));
+
+  // Test - 5.
+  // Placement Policy: c.r.z1:1, c.r.z2:1, c.r.z3:1 with num_replicas as 5 as live replicas
+  // and c.r.z4:1 with num_replicas as 1 as read_replica.
+  // Available tservers: 2 in c.r.z1 and 1 in c.r.z2.
+  // Result: Create Table should succeed despite having 0 read replica nodes.
+
+  // Modify Placement info to contain a read replica also.
+  master::ReplicationInfoPB replication_info3;
+  auto* placement_info3 = replication_info3.mutable_live_replicas();
+  PreparePlacementInfo({ {"z0", 1}, {"z1", 1}, {"z2", 1} }, 5, placement_info3);
+  auto* read_placement_info = replication_info3.add_read_replicas();
+  read_placement_info->set_placement_uuid("read-replica");
+  PreparePlacementInfo({ {"z4", 1} }, 1, read_placement_info);
+  ASSERT_OK(client_->SetReplicationInfo(replication_info3));
+  LOG(INFO) << "Set replication info to " << replication_info3.ShortDebugString();
+
+  // Try creating a table. It should succeed.
+  YBTableName table_name5(kNamespaceType, kNamespaceName, kTableName5);
+  std::unique_ptr<client::YBTableCreator> table_creator5(client_->NewTableCreator());
+  ASSERT_OK(table_creator1->table_name(table_name5)
+                            .schema(&client_schema)
+                            .num_tablets(kNumTablets)
+                            .wait(true)
+                            .Create());
+
+  // Resume tserver 1.
+  ASSERT_OK(cluster_->tablet_server(1)->Resume());
+  stopped_tservers.erase(1);
+  ++num_alive_tservers;
+  LOG(INFO) << "Tablet server index 1 resumed";
+
+  // LB should move data to this fourth server also.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    for (int i = 0; i < num_tservers; i++) {
+      if (stopped_tservers.count(i)) {
+        continue;
+      }
+      if (!VERIFY_RESULT(VerifyTServerTablets(
+          i, kNumTablets, kNumTablets / num_alive_tservers, kTableName4, false))) {
+        return false;
+      }
+    }
+    return true;
+  }, 120s * kTimeMultiplier, "Are tablets running", 1s));
 }
 
 }  // namespace yb

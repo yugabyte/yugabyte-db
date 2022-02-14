@@ -474,7 +474,8 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
     // Handle adding and moving replicas.
     for ( ; remaining_adds > 0; --remaining_adds) {
       if (state_->allow_only_leader_balancing_) {
-        LOG(INFO) << "Skipping Add replicas. Only leader balancing table " << table.first;
+        YB_LOG_EVERY_N_SECS(INFO, 30) << "Skipping Add replicas. Only leader balancing table "
+                                      << table.first;
         break;
       }
       auto handle_add = HandleAddReplicas(&out_tablet_id, &out_from_ts, &out_to_ts);
@@ -496,7 +497,8 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
     // Handle cleanup after over-replication.
     for ( ; remaining_removals > 0; --remaining_removals) {
       if (state_->allow_only_leader_balancing_) {
-        LOG(INFO) << "Skipping remove replicas. Only leader balancing table " << table.first;
+        YB_LOG_EVERY_N_SECS(INFO, 30) << "Skipping remove replicas. Only leader balancing table "
+                                      << table.first;
         break;
       }
       auto handle_remove = HandleRemoveReplicas(&out_tablet_id, &out_from_ts);
