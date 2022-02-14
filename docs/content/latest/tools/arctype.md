@@ -3,7 +3,6 @@ title: Use Arctype with YugabyteDB YSQL
 headerTitle: Arctype
 linkTitle: Arctype
 description: Use Arctype to work with distributed SQL databases in YugabyteDB.
-block_indexing: true
 menu:
   latest:
     identifier: arctype
