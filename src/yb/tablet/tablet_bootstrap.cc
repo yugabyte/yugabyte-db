@@ -130,6 +130,14 @@ DEFINE_uint64(transaction_status_tablet_log_segment_size_bytes, 4_MB,
 DEFINE_test_flag(int32, tablet_bootstrap_delay_ms, 0,
                  "Time (in ms) to delay tablet bootstrap by.");
 
+DEFINE_test_flag(bool, dump_docdb_before_tablet_bootstrap, false,
+                 "Dump the contents of DocDB before tablet bootstrap. Should only be used when "
+                 "data is small.")
+
+DEFINE_test_flag(bool, dump_docdb_after_tablet_bootstrap, false,
+                 "Dump the contents of DocDB after tablet bootstrap. Should only be used when "
+                 "data is small.")
+
 namespace yb {
 namespace tablet {
 
@@ -524,6 +532,11 @@ class TabletBootstrap {
 
     const bool has_blocks = VERIFY_RESULT(OpenTablet());
 
+    if (FLAGS_TEST_dump_docdb_before_tablet_bootstrap) {
+      LOG_WITH_PREFIX(INFO) << "DEBUG: DocDB dump before tablet bootstrap:";
+      tablet_->TEST_DocDBDumpToLog(IncludeIntents::kTrue);
+    }
+
     const auto needs_recovery = VERIFY_RESULT(PrepareToReplay());
     if (needs_recovery && !skip_wal_rewrite_) {
       RETURN_NOT_OK(OpenLogReader());
@@ -594,6 +607,11 @@ class TabletBootstrap {
       TabletPtr* rebuilt_tablet) {
     tablet_->MarkFinishedBootstrapping();
     listener_->StatusMessage(message);
+    if (FLAGS_TEST_dump_docdb_after_tablet_bootstrap) {
+      LOG_WITH_PREFIX(INFO) << "DEBUG: DocDB debug dump after tablet bootstrap:\n";
+      tablet_->TEST_DocDBDumpToLog(IncludeIntents::kTrue);
+    }
+
     *rebuilt_tablet = std::move(tablet_);
     RETURN_NOT_OK(log_->EnsureInitialNewSegmentAllocated());
     rebuilt_log->swap(log_);

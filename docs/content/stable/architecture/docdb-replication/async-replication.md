@@ -30,7 +30,7 @@ Asynchronous replication of data will work across all the APIs (YSQL, YCQL) sinc
 
 ### Active-Passive
 
-The replication could be unidirectional from a source cluster (aka the master cluster) to one or more sink clusters (aka slave clusters). The sink clusters, typically located in data centers or regions that are different from the source cluster, are passive because they do not not take writes from the higher layer services. Such deployments are typically used for serving low latency reads from the slave clusters as well as for disaster recovery purposes.
+The replication could be unidirectional from a source cluster (aka the master cluster) to one or more sink clusters (aka slave clusters). The sink clusters, typically located in data centers or regions that are different from the source cluster, are passive because they do not take writes from the higher layer services. Such deployments are typically used for serving low latency reads from the slave clusters as well as for disaster recovery purposes.
 
 The source-sink deployment architecture is shown in the diagram below:
 
@@ -42,7 +42,7 @@ The replication of data can be bi-directional between two clusters. In this case
 
 {{< note title="Note" >}}
 
-The multi-master deployment is built internally using two master-slave unidirectional replication streams as a building block. Special care is taken to ensure that the timestamps are assigned to ensure last writer wins semantics and the data arriving from the replication stream is not re-replicated. 
+The multi-master deployment is built internally using two master-slave unidirectional replication streams as a building block. Special care is taken to ensure that the timestamps are assigned to ensure last writer wins semantics and the data arriving from the replication stream is not re-replicated.
 
 {{</note >}}
 

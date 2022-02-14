@@ -186,7 +186,7 @@ try {
 
 [node-postgres module](../../../../reference/drivers/ysql-client-drivers/#node-postgres)
 
-[Explore additional applications](../../../cloud-develop)
+[Explore more applications](../../../cloud-develop)
 
 [Deploy clusters in Yugabyte Cloud](../../../cloud-basics)
 

@@ -183,7 +183,7 @@ export default class Replication extends Component {
                   <MetricsPanel
                     currentUser={currentUser}
                     metricKey={METRIC_NAME}
-                    metric={aggregatedMetrics}
+                    metric={JSON.parse(JSON.stringify(aggregatedMetrics))}
                     className={'metrics-panel-container'}
                     width={this.state.graphWidth}
                     height={540}

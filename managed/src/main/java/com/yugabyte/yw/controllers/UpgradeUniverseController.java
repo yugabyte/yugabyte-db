@@ -8,12 +8,13 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
+import com.yugabyte.yw.forms.PlatformResults.YBPTask;
+import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.SystemdUpgradeParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
-import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import java.util.UUID;
@@ -98,6 +99,18 @@ public class UpgradeUniverseController extends AuthenticatedController {
   public Result upgradeTls(UUID customerUuid, UUID universeUuid) {
     return requestHandler(
         upgradeUniverseHandler::toggleTls, TlsToggleParams.class, customerUuid, universeUuid);
+  }
+
+  /**
+   * API that resizes nodes in the universe. Supports only rolling upgrade.
+   *
+   * @param customerUuid ID of customer
+   * @param universeUuid ID of universe
+   * @return Result of update operation with task id
+   */
+  public Result resizeNode(UUID customerUuid, UUID universeUuid) {
+    return requestHandler(
+        upgradeUniverseHandler::resizeNode, ResizeNodeParams.class, customerUuid, universeUuid);
   }
 
   /**

@@ -25,13 +25,13 @@ You can create a universe that includes both a primary cluster and a [read repli
 
 ## Create the universe
 
-You start by navigating to **Dashboard** and clicking **Create Universe**. Use the **Primary Cluster > Cloud Configuration** page to enter the following values to create a primary cluster on [GCP](../../configure-yugabyte-platform/set-up-cloud-provider/gcp) provider: 
+You start by navigating to **Dashboard** and clicking **Create Universe**. Use the **Primary Cluster > Cloud Configuration** page to enter the following values to create a primary cluster on [GCP](../../configure-yugabyte-platform/set-up-cloud-provider/gcp) provider:
 
 - Enter a universe name as helloworld3.
 - Enter the set of regions as Oregon.
 - Set the replication factor to 3.
 - Set instance type to n1-standard-8
-- Add the configuration flag for YB-Master and YB-TServer as `leader_failure_max_missed_heartbeat_periods` 10. Since the the data is globally replicated, remote procedure call (RPC) latencies are higher. You can use this flag to increase the failure detection interval in such a high-RPC latency deployment.<br><br>
+- Add the configuration flag for YB-Master and YB-TServer as `leader_failure_max_missed_heartbeat_periods` 10. Since the data is globally replicated, remote procedure call (RPC) latencies are higher. You can use this flag to increase the failure detection interval in such a high-RPC latency deployment.<br><br>
 
   ![Create Primary Cluster on GCP](/images/ee/primary-cluster-creation.png)
 
@@ -42,7 +42,7 @@ The next step is to click **Configure Read Replica** and then specify the follow
 - Set the instance type to c4.large.
 
 Since you do not need to a establish a quorum for read replica clusters, the replication factor can be
-either even or odd. 
+either even or odd.
 
 To finish the process, click **Create**.
 
@@ -71,7 +71,7 @@ This confirms that you created a hybrid cloud deployment with the primary cluste
 ## Add, remove, edit a read replica cluster
 
 Yugabyte Platform allows you to dynamically add, modify, and remove a read replica cluster from an
-existing universe. 
+existing universe.
 
 Create a new universe called helloworld4 with a primary cluster identical to helloworld3 but without any read replica cluster. Click **Create** and wait for the universe to be ready. Once this is done,
 navigate to **Overview** and click **Actions > Edit Read Replica**.

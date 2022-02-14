@@ -24,7 +24,7 @@ The peering connection is created with a status of _Pending_. To complete the pe
 
 To complete a _Pending_ peering connection, you need to sign in to GCP and create a peering connection.
 
-You'll need the the **Project ID** and **VPC network name** of the Yugabyte Cloud VPC you are peering with. You can view and copy these details in the **VPC Details** sheet on the **VPCs** page or the **Peering Details** sheet on the **Peering Connections** page.
+You'll need the **Project ID** and **VPC network name** of the Yugabyte Cloud VPC you are peering with. You can view and copy these details in the **VPC Details** sheet on the **VPCs** page or the **Peering Details** sheet on the **Peering Connections** page.
 
 In the Google Cloud Console, do the following:
 

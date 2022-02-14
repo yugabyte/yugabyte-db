@@ -15,7 +15,9 @@ import org.apache.directory.api.ldap.model.exception.LdapAuthenticationException
 import org.apache.directory.api.ldap.model.exception.LdapException;
 import org.apache.directory.api.ldap.model.exception.LdapNoSuchObjectException;
 import org.apache.directory.api.ldap.model.message.SearchScope;
+import org.apache.directory.ldap.client.api.LdapConnectionConfig;
 import org.apache.directory.ldap.client.api.LdapNetworkConnection;
+import org.apache.directory.ldap.client.api.NoVerificationTrustManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -47,10 +49,23 @@ public class LdapUtil {
         runtimeConfigFactory.globalRuntimeConf().getString("yb.security.ldap.ldap_customeruuid");
     String ldapDnPrefix =
         runtimeConfigFactory.globalRuntimeConf().getString("yb.security.ldap.ldap_dn_prefix");
+    boolean ldapUseSsl =
+        runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.ldap.enable_ldaps");
+    boolean ldapUseTls =
+        runtimeConfigFactory
+            .globalRuntimeConf()
+            .getBoolean("yb.security.ldap.enable_ldap_start_tls");
 
     Users user =
         authViaLDAP(
-            data.getEmail(), data.getPassword(), ldapUrl, ldapPort, ldapBaseDN, ldapDnPrefix);
+            data.getEmail(),
+            data.getPassword(),
+            ldapUrl,
+            ldapPort,
+            ldapBaseDN,
+            ldapDnPrefix,
+            ldapUseSsl,
+            ldapUseTls);
     if (user == null) {
       return user;
     }
@@ -96,12 +111,26 @@ public class LdapUtil {
       String ldapUrl,
       Integer ldapPort,
       String ldapBaseDN,
-      String ldapDnPrefix)
+      String ldapDnPrefix,
+      boolean ldapUseSsl,
+      boolean ldapUseTls)
       throws LdapException {
     Users users = new Users();
     LdapNetworkConnection connection = null;
     try {
-      connection = new LdapNetworkConnection(ldapUrl, ldapPort);
+      LdapConnectionConfig config = new LdapConnectionConfig();
+      config.setLdapHost(ldapUrl);
+      config.setLdapPort(ldapPort);
+      if (ldapUseSsl || ldapUseTls) {
+        config.setTrustManagers(new NoVerificationTrustManager());
+        if (ldapUseSsl) {
+          config.setUseSsl(true);
+        } else {
+          config.setUseTls(true);
+        }
+      }
+
+      connection = new LdapNetworkConnection(config);
       String distinguishedName = ldapDnPrefix + email + ldapBaseDN;
       email = email.toLowerCase();
       try {
