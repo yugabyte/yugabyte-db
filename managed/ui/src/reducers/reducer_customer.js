@@ -48,6 +48,8 @@ import {
   FETCH_RUNTIME_CONFIGS_RESPONSE,
   SET_RUNTIME_CONFIG,
   SET_RUNTIME_CONFIG_RESPONSE,
+  DELETE_RUNTIME_CONFIG,
+  DELETE_RUNTIME_CONFIG_RESPONSE,
   GET_LOGS,
   GET_LOGS_SUCCESS,
   GET_LOGS_FAILURE,
@@ -394,6 +396,10 @@ export default function (state = INITIAL_STATE, action) {
       return setLoadingState(state, 'deleteConfig', {});
     case DELETE_CUSTOMER_CONFIG_RESPONSE:
       return setPromiseResponse(state, 'deleteConfig', action);
+    case DELETE_RUNTIME_CONFIG:
+      return setLoadingState(state, 'deleteRuntimeConfig', {});
+    case DELETE_RUNTIME_CONFIG_RESPONSE:
+      return setPromiseResponse(state, 'deleteRuntimeConfig', action);
 
     case LOGS_FETCHING:
     case GET_LOGS:
