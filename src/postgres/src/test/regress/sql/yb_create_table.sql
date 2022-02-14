@@ -549,3 +549,15 @@ RESET yb_enable_create_with_table_oid;
 BEGIN;
 CREATE TABLE tab_with_unique (i int, UNIQUE (i));
 COMMIT;
+
+-- Test temp table/view are automatically dropped.
+\c yugabyte
+create temporary table temp_tab(a int);
+create temporary view temp_view as select * from temp_tab;
+select count(*) from pg_class where relname = 'temp_tab';
+select count(*) from pg_class where relname = 'temp_view';
+\c yugabyte
+-- Wait some time for the last session to finish dropping temp table/view automatically.
+select pg_sleep(5);
+select count(*) from pg_class where relname = 'temp_tab';
+select count(*) from pg_class where relname = 'temp_view';
