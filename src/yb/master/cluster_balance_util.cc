@@ -152,17 +152,19 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
       if (!blacklisted_servers_.count(ts_uuid)) {
         if (GetAtomicFlag(&FLAGS_allow_leader_balancing_dead_node)) {
           allow_only_leader_balancing_ = true;
-          LOG(INFO) << strings::Substitute("Master leader not received "
-                "heartbeat from ts $0. Only performing leader balancing for tables with replicas"
-                " in this TS.", ts_uuid);
+          YB_LOG_EVERY_N_SECS(INFO, 30)
+              << strings::Substitute("Master leader not received heartbeat from ts $0. "
+                                     "Only performing leader balancing for tables with replicas"
+                                     " in this TS.", ts_uuid);
         } else {
           return STATUS_SUBSTITUTE(LeaderNotReadyToServe, "Master leader has not yet received "
               "heartbeat from ts $0. Aborting load balancing.", ts_uuid);
         }
       } else {
-        LOG(INFO) << strings::Substitute("Master leader not received heartbeat from ts $0"
-                              " but it is blacklisted. Continuing LB operations for tables"
-                              " with replicas in this TS.", ts_uuid);
+        YB_LOG_EVERY_N_SECS(INFO, 30)
+            << strings::Substitute("Master leader not received heartbeat from ts $0 but it is "
+                                   "blacklisted. Continuing LB operations for tables with replicas"
+                                   " in this TS.", ts_uuid);
       }
     }
 

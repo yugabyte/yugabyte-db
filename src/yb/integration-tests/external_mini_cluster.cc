@@ -1258,12 +1258,13 @@ Status ExternalMiniCluster::WaitForInitDb() {
   }
 }
 
-Result<bool> ExternalMiniCluster::is_ts_stale(int ts_idx) {
+Result<bool> ExternalMiniCluster::is_ts_stale(int ts_idx, MonoDelta deadline) {
   auto proxy = GetMasterProxy<master::MasterClusterProxy>();
   std::shared_ptr<rpc::RpcController> controller = std::make_shared<rpc::RpcController>();
   master::ListTabletServersRequestPB req;
   master::ListTabletServersResponsePB resp;
   controller->Reset();
+  controller->set_timeout(deadline);
 
   RETURN_NOT_OK(proxy.ListTabletServers(req, &resp, controller.get()));
 
@@ -1296,6 +1297,22 @@ Result<bool> ExternalMiniCluster::is_ts_stale(int ts_idx) {
     );
   }
   return is_stale;
+}
+
+CHECKED_STATUS ExternalMiniCluster::WaitForMasterToMarkTSAlive(int ts_idx, MonoDelta deadline) {
+  RETURN_NOT_OK(WaitFor([&]() -> Result<bool> {
+    return !VERIFY_RESULT(is_ts_stale(ts_idx));
+  }, deadline * kTimeMultiplier, "Is TS Alive", 1s));
+
+  return Status::OK();
+}
+
+CHECKED_STATUS ExternalMiniCluster::WaitForMasterToMarkTSDead(int ts_idx, MonoDelta deadline) {
+  RETURN_NOT_OK(WaitFor([&]() -> Result<bool> {
+    return is_ts_stale(ts_idx);
+  }, deadline * kTimeMultiplier, "Is TS dead", 1s));
+
+  return Status::OK();
 }
 
 string ExternalMiniCluster::GetBindIpForTabletServer(size_t index) const {

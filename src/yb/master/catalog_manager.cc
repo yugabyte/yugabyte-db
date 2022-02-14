@@ -3266,11 +3266,10 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   master_->ts_manager()->GetAllLiveDescriptors(&all_ts_descs);
   RETURN_NOT_OK(CheckNumReplicas(placement_info, all_ts_descs, partitions, resp));
 
+  ValidateReplicationInfoRequestPB validate_req;
+  validate_req.mutable_replication_info()->CopyFrom(replication_info);
   ValidateReplicationInfoResponsePB validate_resp;
-  s = CheckValidPlacementInfo(placement_info, all_ts_descs, &validate_resp);
-  if (!s.ok()) {
-    return SetupError(resp->mutable_error(), validate_resp.mutable_error()->code(), s);
-  }
+  RETURN_NOT_OK(ValidateReplicationInfo(&validate_req, &validate_resp));
 
   LOG(INFO) << "Set number of tablets: " << num_tablets;
   req.set_num_tablets(num_tablets);
@@ -3652,19 +3651,19 @@ Result<TabletInfos> CatalogManager::CreateTabletsFromTable(const vector<Partitio
 Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_info,
                                                const TSDescriptorVector& ts_descs,
                                                ValidateReplicationInfoResponsePB* resp) {
-  // Verify that the total number of tablets is reasonable, relative to the number
-  // of live tablet servers.
-  auto num_live_tservers = ts_descs.size();
-  auto num_replicas = GetNumReplicasFromPlacementInfo(placement_info);
+  size_t num_live_tservers = ts_descs.size();
+  size_t num_replicas = GetNumReplicasFromPlacementInfo(placement_info);
   Status s;
   string msg;
 
-  // Verify that the number of replicas isn't larger than the number of live tablet
-  // servers.
+  // Verify that the number of replicas isn't larger than the required number of live tservers.
+  // To ensure quorum, we need n/2 + 1 live tservers.
+  size_t replica_quorum_needed = num_replicas / 2 + 1;
   if (FLAGS_catalog_manager_check_ts_count_for_create_table &&
-      num_replicas > num_live_tservers) {
+      replica_quorum_needed > num_live_tservers) {
     msg = Substitute("Not enough live tablet servers to create table with replication factor $0. "
-                     "$1 tablet servers are alive.", num_replicas, num_live_tservers);
+                     "Need at least $1 tablet servers whereas $2 are alive.",
+                     num_replicas, replica_quorum_needed, num_live_tservers);
     LOG(WARNING) << msg
                  << ". Placement info: " << placement_info.ShortDebugString()
                  << ", replication factor flag: " << FLAGS_replication_factor;
@@ -3672,7 +3671,7 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
     return SetupError(resp->mutable_error(), MasterErrorPB::REPLICATION_FACTOR_TOO_HIGH, s);
   }
 
-  // Verify that placement requests are reasonable and we can satisfy the minimums.
+  // Verify that placement requests are reasonable.
   if (!placement_info.placement_blocks().empty()) {
     size_t minimum_sum = 0;
     for (const auto& pb : placement_info.placement_blocks()) {
@@ -3684,7 +3683,8 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
         return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
       }
     }
-
+    // Total replicas requested should be at least the sum of minimums
+    // requested in individual placement blocks.
     if (minimum_sum > num_replicas) {
       msg = Substitute("Sum of minimum replicas per placement ($0) is greater than num_replicas "
                        " ($1)", minimum_sum, num_replicas);
@@ -3694,15 +3694,60 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
     }
 
     if (!FLAGS_TEST_skip_placement_validation_createtable_api) {
-      // Loop through placements and verify that there are sufficient TServers to satisfy the
-      // minimum required replicas.
-      for (const auto& pb : placement_info.placement_blocks()) {
-        RETURN_NOT_OK(FindTServersForPlacementBlock(pb, ts_descs));
+      // Verify that there are enough TServers in the requested placements
+      // to match the total required replication factor.
+      auto allowed_ts = VERIFY_RESULT(FindTServersForPlacementInfo(placement_info, ts_descs));
+
+      // Fail if we don't have enough tablet servers in the areas requested.
+      // We need n/2 + 1 for quorum.
+      if (allowed_ts.size() < replica_quorum_needed) {
+        msg = Substitute("Not enough tablet servers in the requested placements. "
+                         "Need at least $0, have $1",
+                         replica_quorum_needed, allowed_ts.size());
+        s = STATUS(InvalidArgument, msg);
+        LOG(WARNING) << msg;
+        return SetupError(resp->mutable_error(), MasterErrorPB::REPLICATION_FACTOR_TOO_HIGH, s);
       }
 
-      // Verify that there are enough TServers to match the total required replication factor (which
-      // could be more than the sum of the minimums).
-      RETURN_NOT_OK(FindTServersForPlacementInfo(placement_info, ts_descs));
+      // Try allocating tservers for the replicas and see if we can place a quorum
+      // number of replicas.
+      // Essentially, the logic is:
+      // 1. We satisfy whatever we can from the minimums.
+      // 2. We then satisfy whatever we can from the slack.
+      //    Here it doesn't whether where we put the slack replicas as long as
+      //    the tservers are chosen from any of the valid placement blocks.
+      // Overall, if in this process we are able to place n/2 + 1 replicas
+      // then we succeed otherwise we fail.
+      size_t total_extra_replicas = num_replicas - minimum_sum;
+      size_t total_feasible_replicas = 0;
+      size_t total_extra_servers = 0;
+      for (const auto& pb : placement_info.placement_blocks()) {
+        auto allowed_ts = VERIFY_RESULT(FindTServersForPlacementBlock(pb, ts_descs));
+        size_t allowed_ts_size = allowed_ts.size();
+        size_t min_num_replicas = pb.min_num_replicas();
+        // For every placement block, we can only satisfy upto the number of
+        // tservers present in that particular placement block.
+        total_feasible_replicas += min(allowed_ts_size, min_num_replicas);
+        // Extra tablet servers beyond min_num_replicas will be used to place
+        // the extra replicas over and above the minimums.
+        if (allowed_ts_size > min_num_replicas) {
+          total_extra_servers += allowed_ts_size - min_num_replicas;
+        }
+      }
+      // The total number of extra replicas that we can put cannot be more than
+      // the total tablet servers that are extra.
+      total_feasible_replicas += min(total_extra_replicas, total_extra_servers);
+
+      // If we place the replicas in accordance with above, we should be able to place
+      // at least replica_quorum_needed otherwise we fail.
+      if (total_feasible_replicas < replica_quorum_needed) {
+        msg = Substitute("Not enough tablet servers in the requested placements. "
+                         "Can only find $0 tablet servers for the replicas but need at least "
+                         "$1.", total_feasible_replicas, replica_quorum_needed);
+        s = STATUS(InvalidArgument, msg);
+        LOG(WARNING) << msg;
+        return SetupError(resp->mutable_error(), MasterErrorPB::REPLICATION_FACTOR_TOO_HIGH, s);
+      }
     }
   }
 
@@ -9114,30 +9159,63 @@ Status CatalogManager::SelectReplicasForTablet(const TSDescriptorVector& ts_desc
   return Status::OK();
 }
 
+void CatalogManager::GetTsDescsFromPlacementInfo(const PlacementInfoPB& placement_info,
+                                                 const TSDescriptorVector& all_ts_descs,
+                                                 TSDescriptorVector* ts_descs) {
+  ts_descs->clear();
+  for (const auto& ts_desc : all_ts_descs) {
+    if (placement_info.has_placement_uuid()) {
+      string placement_uuid = placement_info.placement_uuid();
+      if (ts_desc->placement_uuid() == placement_uuid) {
+        ts_descs->push_back(ts_desc);
+      }
+    } else if (ts_desc->placement_uuid() == "") {
+      // Since the placement info has no placement id, we know it is live, so we add this ts.
+      ts_descs->push_back(ts_desc);
+    }
+  }
+}
+
 Status CatalogManager::HandlePlacementUsingReplicationInfo(
     const ReplicationInfoPB& replication_info,
     const TSDescriptorVector& all_ts_descs,
     consensus::RaftConfigPB* config) {
-  return HandlePlacementUsingPlacementInfo(replication_info.live_replicas(),
-                                           all_ts_descs, PeerMemberType::VOTER, config);
+  // Validate if we have enough tservers to put the replicas.
+  ValidateReplicationInfoRequestPB req;
+  req.mutable_replication_info()->CopyFrom(replication_info);
+  ValidateReplicationInfoResponsePB resp;
+  RETURN_NOT_OK(ValidateReplicationInfo(&req, &resp));
+
+  TSDescriptorVector ts_descs;
+  GetTsDescsFromPlacementInfo(replication_info.live_replicas(), all_ts_descs, &ts_descs);
+  RETURN_NOT_OK(HandlePlacementUsingPlacementInfo(replication_info.live_replicas(),
+                                                  ts_descs,
+                                                  PeerMemberType::VOTER, config));
+  for (int i = 0; i < replication_info.read_replicas_size(); i++) {
+    GetTsDescsFromPlacementInfo(replication_info.read_replicas(i), all_ts_descs, &ts_descs);
+    RETURN_NOT_OK(HandlePlacementUsingPlacementInfo(replication_info.read_replicas(i),
+                                                    ts_descs,
+                                                    PeerMemberType::OBSERVER,
+                                                    config));
+  }
+  return Status::OK();
 }
 
 Status CatalogManager::HandlePlacementUsingPlacementInfo(const PlacementInfoPB& placement_info,
                                                          const TSDescriptorVector& ts_descs,
                                                          PeerMemberType member_type,
                                                          consensus::RaftConfigPB* config) {
-  auto nreplicas = GetNumReplicasFromPlacementInfo(placement_info);
-  if (ts_descs.size() < nreplicas) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
-        "Not enough tablet servers in the requested placements. Need at least $0, have $1",
-        nreplicas, ts_descs.size());
-  }
+  size_t nreplicas = GetNumReplicasFromPlacementInfo(placement_info);
+  size_t ntservers = ts_descs.size();
+
   // Keep track of servers we've already selected, so that we don't attempt to
   // put two replicas on the same host.
   set<shared_ptr<TSDescriptor>> already_selected_ts;
   if (placement_info.placement_blocks().empty()) {
     // If we don't have placement info, just place the replicas as before, distributed across the
     // whole cluster.
+    // We cannot put more than ntservers replicas.
+    nreplicas = min(nreplicas, ntservers);
     SelectReplicas(ts_descs, nreplicas, config, &already_selected_ts, member_type);
   } else {
     // TODO(bogdan): move to separate function
@@ -9149,13 +9227,22 @@ Status CatalogManager::HandlePlacementUsingPlacementInfo(const PlacementInfoPB& 
     auto all_allowed_ts = VERIFY_RESULT(FindTServersForPlacementInfo(placement_info, ts_descs));
 
     // Loop through placements and assign to respective available TSs.
+    size_t min_replica_count_sum = 0;
     for (const auto& pb : placement_info.placement_blocks()) {
+      // This works because currently we don't allow placement blocks to overlap.
       auto available_ts_descs = VERIFY_RESULT(FindTServersForPlacementBlock(pb, ts_descs));
-      int num_replicas = pb.min_num_replicas();
+      size_t available_ts_descs_size = available_ts_descs.size();
+      size_t min_num_replicas = pb.min_num_replicas();
+      // We cannot put more than the available tablet servers in that placement block.
+      size_t num_replicas = min(min_num_replicas, available_ts_descs_size);
+      min_replica_count_sum += min_num_replicas;
       SelectReplicas(available_ts_descs, num_replicas, config, &already_selected_ts, member_type);
     }
 
-    ssize_t replicas_left = nreplicas - already_selected_ts.size();
+    size_t replicas_left = nreplicas - min_replica_count_sum;
+    size_t max_tservers_left = all_allowed_ts.size() - already_selected_ts.size();
+    // Upper bounded by the tservers left.
+    replicas_left = min(replicas_left, max_tservers_left);
     DCHECK_GE(replicas_left, 0);
     if (replicas_left > 0) {
       // No need to do an extra check here, as we checked early if we have enough to cover all
@@ -9181,14 +9268,6 @@ Result<vector<shared_ptr<TSDescriptor>>> CatalogManager::FindTServersForPlacemen
     }
   }
 
-  // Fail if we don't have enough tablet servers in the areas requested.
-  const size_t nreplicas = placement_info.num_replicas();
-  if (all_allowed_ts.size() < nreplicas) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
-        "Not enough tablet servers in the requested placements. Need at least $0, have $1",
-        nreplicas, all_allowed_ts.size());
-  }
-
   return all_allowed_ts;
 }
 
@@ -9204,15 +9283,7 @@ Result<vector<shared_ptr<TSDescriptor>>> CatalogManager::FindTServersForPlacemen
     }
   }
 
-  // Verify that there are sufficient TServers to satisfy min_num_replicas.
-  size_t num_replicas = placement_block.min_num_replicas();
-  if (allowed_ts.size() < num_replicas) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
-          "Not enough tablet servers in $0. Need at least $1 but only have $2.",
-          TSDescriptor::generate_placement_id(cloud_info), num_replicas, allowed_ts.size());
-  }
-
-return allowed_ts;
+  return allowed_ts;
 }
 
 Status CatalogManager::SendCreateTabletRequests(const vector<TabletInfo*>& tablets) {
@@ -9944,12 +10015,20 @@ Status CatalogManager::SetClusterConfig(
 Status CatalogManager::ValidateReplicationInfo(
     const ValidateReplicationInfoRequestPB* req, ValidateReplicationInfoResponsePB* resp) {
   TSDescriptorVector all_ts_descs;
-  master_->ts_manager()->GetAllLiveDescriptors(&all_ts_descs);
+  {
+    BlacklistSet blacklist = BlacklistSetFromPB();
+    master_->ts_manager()->GetAllLiveDescriptors(&all_ts_descs, blacklist);
+  }
+  // We don't need any validation checks for read replica placements
+  // because they aren't a part of any raft quorum underneath.
+  // Technically, it is ok to have even 0 read replica nodes for them upfront.
+  // We only need it for the primary cluster replicas.
+  TSDescriptorVector ts_descs;
+  GetTsDescsFromPlacementInfo(req->replication_info().live_replicas(), all_ts_descs, &ts_descs);
   Status s = CheckValidPlacementInfo(req->replication_info().live_replicas(), all_ts_descs, resp);
   if (!s.ok()) {
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO, s);
   }
-
   return Status::OK();
 }
 
