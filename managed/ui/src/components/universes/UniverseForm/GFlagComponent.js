@@ -70,7 +70,7 @@ const SERVER_LIST = [
 ];
 
 export default function GFlagComponent(props) {
-  const { fields, dbVersion, isReadOnly } = props;
+  const { fields, dbVersion, isReadOnly, editMode } = props;
   const [selectedProps, setSelectedProps] = useState(null);
   const [toggleModal, setToggleModal] = useState(false);
   const [validationError, setValidationError] = useState([]);
@@ -254,8 +254,7 @@ export default function GFlagComponent(props) {
       const checkFlagExistsOnOtherServer = (serverType) => {
         return (
           eInfo &&
-          eInfo[MASTER]?.exist === true &&
-          eInfo[TSERVER]?.exist === true &&
+          (eInfo[MASTER]?.exist === true || eInfo[TSERVER]?.exist === true) &&
           row?.hasOwnProperty(serverType === MASTER ? TSERVER : MASTER)
         );
       };
@@ -347,7 +346,8 @@ export default function GFlagComponent(props) {
       <div className={isReadOnly ? 'gflag-read-table' : 'gflag-edit-table'}>
         <BootstrapTable
           data={fields.getAll()}
-          maxHeight="400px"
+          height={editMode ? '420px' : 'auto'}
+          maxHeight="420px"
           tableStyle={{ overflow: 'scroll' }}
         >
           <TableHeaderColumn width="40%" dataField="Name" dataFormat={nameFormatter} isKey>
@@ -405,9 +405,17 @@ export default function GFlagComponent(props) {
         onHide={() => setToggleModal(false)}
         onFormSubmit={handleFormSubmit}
         render={(properties) => renderOption(properties)}
-        dialogClassName="gflag-modal"
-        headerClassName="pl-16"
+        dialogClassName={toggleModal ? 'gflag-modal modal-fade in' : 'modal-fade'}
+        headerClassName="add-flag-header"
+        showBackButton={true}
       />
+    );
+  };
+  const renderBanner = () => {
+    return (
+      <div className="gflag-empty-banner">
+        <span className="empty-text">There are no flags assigned to this universe </span>
+      </div>
     );
   };
 
@@ -445,6 +453,7 @@ export default function GFlagComponent(props) {
             );
           })}
       </FlexShrink>
+      {fields.length <= 0 && editMode && renderBanner()}
       {fields.length > 0 && renderTable()}
       {toggleModal && renderModal()}
     </FlexContainer>
