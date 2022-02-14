@@ -3,13 +3,12 @@ title: Use Arctype with YugabyteDB YSQL
 headerTitle: Arctype
 linkTitle: Arctype
 description: Use Arctype to work with distributed SQL databases in YugabyteDB.
-section: INTEGRATIONS
 block_indexing: true
 menu:
   latest:
     identifier: arctype
     parent: tools
-    weight: 3000
+    weight: 2710
 isTocNested: true
 showAsideToc: true
 ---
@@ -20,25 +19,33 @@ Arctype is a database client with a focus on speed and design. Arctype is free t
 
 ![Arctype application](/images/develop/tools/arctype/Arctype-YB-Image-2.png)
 
-
 ## Before you begin
 
-Your YugabyteDB cluster should be up and running. If you're new to YugabyteDB, create a local cluster in less than five minutes following the steps in [Quick Start](../../../quick-start/install). You can also get started with free tier of [YugabyteDB Fully-Managed Cloud](https://www.yugabyte.com/cloud/). You also need to install Arctype client on your computer. Arctype clients are available for Windows, Linux and Mac that can be downloaded from [Arctype](https://arctype.com/) website.
+Your YugabyteDB cluster should be up and running. If you're new to YugabyteDB, create a local cluster in less than five minutes following the steps in [Quick Start](../../quick-start/install). You can also get started with the free tier of [YugabyteDB Fully-Managed Cloud](https://www.yugabyte.com/cloud/). You also need to install the Arctype client on your computer. You can download clients are available for Windows, Linux, and Mac from the [Arctype](https://arctype.com/) website.
 
 ## Create a database connection
 
-After installing and launching Arctype client on your computer, follow the steps below to connect to YugabyteDB.
+Follow these steps to connect your Arctype desktop client to YugabyteDB:
 
-1. Create an Arctype account and login after launching the client.
-2. On 'Connect a Database' step, select PostgreSQL and click Continue.
-![Connect DB Step](/images/develop/tools/arctype/arctype-conect_step3.png)
-3. Enter YugabyteDB host and port information and click Continue.
-![Enter host and port](/images/develop/tools/arctype/arctype-connect-step4.png)
-4. Enter database, username, password, and nickname for this database and click Continue.
-![Enter host and port](/images/develop/tools/arctype/arctype-connect-step5.png)
-5. Enter a workspace name and click Continue.
+1. Launch the Arctype desktop client.
 
-You have successfully created a database connection to your YugabyteDB and you can now start querying and visualizing your DB using Arctype.
+1. Follow the in-app prompts to create and log into your Arctype account.
+
+1. On the "Connect a Database" step, select PostgreSQL, and click Continue.
+
+    ![Connect DB Step](/images/develop/tools/arctype/arctype-conect_step3.png)
+
+1. Enter your YugabyteDB host and port information, and click Continue.
+
+    ![Enter host and port](/images/develop/tools/arctype/arctype-connect-step4.png)
+
+1. Enter your database name, username, password, and nickname for this database, and click Continue.
+
+    ![Enter database connection details](/images/develop/tools/arctype/arctype-connect-step5.png)
+
+1. Enter a workspace name, and click Continue.
+
+You've successfully created a connection to your YugabyteDB database, and you can now start querying and visualizing your DB using Arctype.
 
 ## What's Next
 
