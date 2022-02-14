@@ -38,7 +38,7 @@ The Primary Key constraint is a means to identify a specific row in a table uniq
 
 - To run the examples below, follow these steps to create a local [cluster](/latest/quick-start/) or in [Yugabyte Cloud](/latest/yugabyte-cloud/cloud-connect/).
 
-- Use the [YSQL shell](/latest/admin/ysqlsh/) for local clusters, or [Connect using Cloud shell](/latest/yugabyte-cloud/cloud-connect/connect-cloud-shell/) for Yugabyte Cloud, to create a database and a table.
+- Use the [YSQL shell](/latest/admin/ysqlsh/) for local clusters, or [Connect using Cloud shell](/latest/yugabyte-cloud/cloud-connect/connect-cloud-shell/) for Yugabyte Cloud, and create the yb_demo [database](latest/yugabyte-cloud/cloud-quickstart/qs-data/#create-a-database).
 
 ### Primary key for a single column
 
@@ -53,7 +53,7 @@ CREATE TABLE (
 );
 ```
 
-The following example creates the `employee` table with `employee_no` as the primary key, which uniquely identifies an employee.
+The following example creates the `employee` table with `employee_no` as the primary key, which uniquely identifies an employee. Try the examples using the YSQL shell and
 
 ```sql
 CREATE TABLE employees (
@@ -123,33 +123,53 @@ CREATE TABLE employees (
 ALTER TABLE employees ADD PRIMARY KEY (employee_no);
 ```
 
-- The `ALTER TABLE` statement also allows you to add an auto-incremented primary key to an existing table by using the [SERIAL type](../../ysql-language-features/data-types/#serial-pseudotype), as per the following syntax:
+The following example allows you to add an auto-incremented primary key to a new column on an existing table using the `GENERATED ALWAYS AS IDENTITY` property.
 
 ```sql
-ALTER TABLE table_name ADD COLUMN ID SERIAL PRIMARY KEY;
+CREATE TABLE sample(c1 text, c2 text);
+ALTER TABLE sample ADD COLUMN ID INTEGER;
+ALTER TABLE sample ALTER COLUMN ID set NOT NULL;
+ALTER TABLE sample ALTER COLUMN ID ADD GENERATED ALWAYS AS IDENTITY;
+ALTER TABLE sample ADD CONSTRAINT sample_id_pk PRIMARY KEY (ID);
 ```
 
-The following example creates the `employee` table first and then alters it to add an auto-incremented primary key:
+Insert values into the `sample` table and check the contents.
 
 ```sql
-ALTER TABLE employee ADD COLUMN ID SERIAL PRIMARY KEY;
+yb_demo=# INSERT INTO sample(id, c1, c2)
+             VALUES (1, 'cat'  , 'kitten'),
+                    (2, 'dog'  , 'puppy'),
+                    (3, 'duck' , 'duckling');
+
+yb_demo=# SELECT * FROM sample;
 ```
 
-- You can remove a primary key constraint by using the `ALTER TABLE` statement, as demonstrated by the following syntax:
+```output
+   c1   |    c2     | id
+--------+-----------+----
+ cat    | kitten    |  1
+ dog    | puppy     |  2
+ duck   | duckling  |  3
+(3 rows)
+```
+
+Trying to insert values for `id` into the `sample` results in the following error as the auto-increment property is now set.
 
 ```sql
-ALTER TABLE table_name DROP CONSTRAINT primary_key_constraint;
+yb_demo=# INSERT INTO sample(id, c1, c2)
+             VALUES (4, 'cow' , 'calf'),
+                    (5, 'lion', 'cub');
 ```
 
-The following example shows how to remove the primary key constraint `employees_pkey` from the `employees` table:
-
-```sql
-ALTER TABLE employees DROP CONSTRAINT employees_pkey;
+```output
+ERROR:  cannot insert into column "id"
+DETAIL:  Column "id" is an identity column defined as GENERATED ALWAYS.
+HINT:  Use OVERRIDING SYSTEM VALUE to override.
 ```
 
-<!-- ## Primary Key recommended practices -->
+<!-- ## Primary Key recommended practices in future-->
 
-<!-- Add information here -->
+<!-- Add information here  -->
 
 ## Learn more
 

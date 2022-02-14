@@ -24,14 +24,15 @@ showAsideToc: true
   </li>
 </ul>
 
-Indexes usually are created based on the columns, but the expression indexes lets you create an index based on a generic expression(function or modification of data entered) involving the table columns.
+Indexes usually are created based on the columns, but the Expression Indexes(also called Function-based Indexes) let you create an index based on a generic expression(function or modification of data entered) involving the table columns.
 
 ## Syntax
 
 ```ysql
-CREATE INDEX index_name ON table_name(expression);
+CREATE INDEX index_name ON table_name( (expression) );
 ```
 
+The parenthesis around the expression can be omitted in cases where the expression involves a function.
 When the index is defined, it is used when the expression that defines the index is included in the `WHERE` or `ORDER BY` clause in the YSQL statement.
 
 ## Example
