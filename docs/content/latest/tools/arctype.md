@@ -23,7 +23,7 @@ Arctype is a database client with a focus on speed and design. Arctype is free t
 
 ## Before you begin
 
-Your YugabyteDB cluster should be up and running. If you're new to YugabyteDB, create a local cluster in less than five minutes following the steps in [Quick Start](../../../quick-start/install). You also need to install Arctype client on your computer. Arctype clients are available for Windows, Linux and Mac that can be downloaded from [Arctype](https://arctype.com/) website.
+Your YugabyteDB cluster should be up and running. If you're new to YugabyteDB, create a local cluster in less than five minutes following the steps in [Quick Start](../../../quick-start/install). You can also get started with free tier of [YugabyteDB Fully-Managed Cloud](https://www.yugabyte.com/cloud/). You also need to install Arctype client on your computer. Arctype clients are available for Windows, Linux and Mac that can be downloaded from [Arctype](https://arctype.com/) website.
 
 ## Create a database connection
 
@@ -37,3 +37,9 @@ After installing and launching Arctype client on your computer, follow the steps
 4. Enter database, username, password, and nickname for this database and click Continue.
 ![Enter host and port](/images/develop/tools/arctype/arctype-connect-step5.png)
 5. Enter a workspace name and click Continue.
+
+You have successfully created a database connection to your YugabyteDB and you can now start querying and visualizing your DB using Arctype.
+
+## What's Next
+
+Arctype is a feature rich database query and visualization tool for developers and administrators. To learn more about these features or for help using Arctype, see the [Arctype documentation](https://docs.arctype.com/).
