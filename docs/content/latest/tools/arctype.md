@@ -43,3 +43,5 @@ You have successfully created a database connection to your YugabyteDB and you c
 ## What's Next
 
 Arctype is a feature rich database query and visualization tool for developers and administrators. To learn more about these features or for help using Arctype, see the [Arctype documentation](https://docs.arctype.com/).
+
+Check out this [blog post](https://blog.yugabyte.com/yugabytedb-arctype-sql-integration/) to learn more about deep integration between YugabyteDB and Arctype.
