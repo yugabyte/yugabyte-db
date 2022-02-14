@@ -31,6 +31,12 @@ showAsideToc: true
 
 To back up data, use [**ycqlsh**](../../../admin/ycqlsh/) with the [DESCRIBE](../../../admin/ycqlsh/#describe) and [COPY TO](../../../admin/ycqlsh/#copy-to) commands.
 
+By default, ysqlsh connects to localhost at `127.0.0.1` and port `9042`. To connect to a different node, you can specify the host (and, optionally, port) after the command. For example:
+
+```sh
+$ ./bin/ycqlsh -e "DESC KEYSPACE myapp" > myapp_schema.cql 127.0.0.2
+```
+
 ## Schema backup using DESCRIBE
 
 You perform schema backups using the `DESCRIBE` command, which can be shortened to `DESC`.
@@ -92,14 +98,6 @@ To back up selected columns of the table, specify the column names in a list.
 ycqlsh -e "COPY <keyspace>.<table> (<column 1 name>, <column 2 name>, ...) TO 'data.csv' WITH HEADER = TRUE;"
 ```
 
-## Connect to a remote host and port
-
-The default host is `127.0.0.1` and the default port is `9042`. You can override these values as shown below.
-
-```sh
-ycqlsh -e <command> <host> [<port>]
-```
-
 ## Example
 
 This example assumes you have installed YugabyteDB and created a cluster. If not, follow the steps in [Quick start](../../../quick-start/).
@@ -132,7 +130,7 @@ CREATE TABLE myapp.stock_market (
     AND default_time_to_live = 0;
 ```
 
-### Back up all the columns of the table
+### Back up the table
 
 Run the following command to back up the data in the table `myapp.stock_market`.
 
@@ -156,7 +154,7 @@ GOOG,2017-10-26 09:00:00,972.56
 GOOG,2017-10-26 10:00:00,971.90997
 ```
 
-### Back up specific columns of a table
+### Back up specific table columns
 
 To back up a subset of columns, you can specify the columns in the backup command. The following example saves the `stock_symbol` and `ts` columns, but not the `current_price` column.
 

@@ -31,6 +31,12 @@ showAsideToc: true
 
 To restore data, use [**ycqlsh**](../../../admin/ycqlsh/) with the [SOURCE](../../../admin/ycqlsh/#source) and [COPY FROM](../../../admin/ycqlsh/#copy-from) commands.
 
+By default, ysqlsh connects to localhost at `127.0.0.1` and port `9042`. To connect to a different node, you can specify the host (and, optionally, port) after the command. For example:
+
+```sh
+$ ./bin/ycqlsh -f myapp_schema.cql 127.0.0.2
+```
+
 ## Schema restore using SOURCE
 
 To restore a schema, run the following command:
@@ -78,14 +84,6 @@ To restore selected columns of the table, specify the column names in a list.
 
 ```sh
 $ ycqlsh -e "COPY <keyspace>.<table> (<column 1 name>, <column 2 name>, ...) FROM 'data.csv' WITH HEADER = TRUE;"
-```
-
-## Connect to a remote host and port
-
-The default host is `127.0.0.1` and the default port is `9042`. You can override these values as shown below.
-
-```sh
-$ ycqlsh -e <command> <host> [<port>]
 ```
 
 ## Example
@@ -149,7 +147,7 @@ CREATE TABLE myapp.stock_market (
     AND default_time_to_live = 0;
 ```
 
-### Restore the data
+### Restore the table data
 
 The data backup file `myapp_data.csv` should appear as follows:
 
@@ -167,7 +165,7 @@ GOOG,2017-10-26 09:00:00,972.56
 GOOG,2017-10-26 10:00:00,971.90997
 ```
 
-To restore the data, do the following:
+To restore the table data, do the following:
 
 ```sh
 $ ./bin/ycqlsh -e "COPY myapp.stock_market FROM 'myapp_data.csv' WITH HEADER = TRUE ;"
