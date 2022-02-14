@@ -13,9 +13,9 @@ groups:
           severity: SEVERE
           threshold: 1
           universe_uuid: <universe_uuid>
-          universe_name: Test Universe
           source_uuid: <universe_uuid>
-          source_name: Test Universe
           source_type: universe
+          universe_name: Test Universe
+          source_name: Test Universe
         annotations:
           summary: "Average memory usage for universe 'Test Universe' is above 1%. Current value is {{ $value | printf \"%.0f\" }}%"

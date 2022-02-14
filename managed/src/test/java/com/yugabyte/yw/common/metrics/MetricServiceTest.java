@@ -4,15 +4,11 @@ package com.yugabyte.yw.common.metrics;
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 import static com.yugabyte.yw.models.helpers.CommonUtils.datePlus;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
-import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import com.google.common.collect.ImmutableList;
@@ -29,7 +25,6 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Date;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -78,10 +73,9 @@ public class MetricServiceTest extends FakeDBApplication {
 
   @Test
   public void testUpdateAndGetByKey() {
-    metricService.setStatusMetric(
+    metricService.setFailureStatusMetric(
         buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, universe)
-            .setKeyLabel(KnownAlertLabels.NODE_NAME, "node1"),
-        "Error");
+            .setKeyLabel(KnownAlertLabels.NODE_NAME, "node1"));
 
     metricService.setOkStatusMetric(
         buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, universe)
@@ -92,7 +86,7 @@ public class MetricServiceTest extends FakeDBApplication {
             .customerUuid(customer.getUuid())
             .name(PlatformMetrics.ALERT_MANAGER_STATUS.getMetricName())
             .targetUuid(universe.getUniverseUUID())
-            .sourceLabels("node_name:node1")
+            .sourceLabel("node_name", "node1")
             .build();
     Metric metric = metricService.get(key);
 
@@ -134,7 +128,6 @@ public class MetricServiceTest extends FakeDBApplication {
             buildMetricTemplate(PlatformMetrics.UNIVERSE_UPDATE_IN_PROGRESS, universe)
                 .setValue(1D));
     metricService.save(metrics);
-    metricService.flushMetricsToDb();
 
     List<Metric> updatedMetrics =
         ImmutableList.of(
@@ -146,10 +139,9 @@ public class MetricServiceTest extends FakeDBApplication {
                 .setLabel(KnownAlertLabels.NODE_NAME, "qwerty1"),
             buildMetricTemplate(PlatformMetrics.UNIVERSE_UPDATE_IN_PROGRESS, universe)
                 .setValue(0D)
-                .setLabels(Collections.emptyList()));
-    metricService.save(updatedMetrics);
+                .setLabels(Collections.emptyMap()));
 
-    Future<?> metricFlushFuture = executor.submit(() -> metricService.flushMetricsToDb());
+    Future<?> metricSaveFuture = executor.submit(() -> metricService.save(updatedMetrics));
     Future<?> customerRemovalFuture =
         executor.submit(
             () -> {
@@ -163,57 +155,20 @@ public class MetricServiceTest extends FakeDBApplication {
       fail("Exception occurred in customer removal worker: " + e);
     }
     try {
-      metricFlushFuture.get();
+      metricSaveFuture.get();
     } catch (ExecutionException e) {
-      log.info("Exception occurred in metric flush worker. Will retry:", e);
-      metricService.flushMetricsToDb();
-      log.info("Metrics saved successfully on retry.");
+      log.error("Exception occurred in metric save worker", e);
+      fail("Exception occurred in metric save worker: " + e);
     }
     executor.shutdown();
   }
 
   @Test
-  public void testMetricStorageInitialization() {
-    List<Metric> metrics =
-        ImmutableList.of(
-            buildMetricTemplate(PlatformMetrics.UNIVERSE_EXISTS, universe).setValue(1D),
-            buildMetricTemplate(PlatformMetrics.UNIVERSE_PAUSED, universe).setValue(1D),
-            buildMetricTemplate(PlatformMetrics.UNIVERSE_UPDATE_IN_PROGRESS, universe)
-                .setValue(1D));
-    metricService.save(metrics);
-
-    List<Metric> inMemoryMetrics = metricService.list(MetricFilter.builder().build());
-    assertThat(inMemoryMetrics, containsInAnyOrder(metrics.toArray(new Metric[0])));
-    List<Metric> persistedMetrics = metricService.list(MetricFilter.builder().build(), true);
-    assertThat(persistedMetrics, empty());
-
-    metricService.flushMetricsToDb();
-
-    inMemoryMetrics = metricService.list(MetricFilter.builder().build());
-    assertThat(inMemoryMetrics, containsInAnyOrder(metrics.toArray(new Metric[0])));
-    persistedMetrics = metricService.list(MetricFilter.builder().build(), true);
-    assertThat(persistedMetrics, containsInAnyOrder(metrics.toArray(new Metric[0])));
-
-    MetricStorage newStorage = new MetricStorage();
-    MetricService newService = new MetricService(newStorage);
-
-    inMemoryMetrics = newService.list(MetricFilter.builder().build());
-    assertThat(inMemoryMetrics, empty());
-
-    newService.initialize();
-
-    inMemoryMetrics = newService.list(MetricFilter.builder().build());
-    assertThat(inMemoryMetrics, hasSize(3));
-    assertThat(inMemoryMetrics, containsInAnyOrder(metrics.toArray(new Metric[0])));
-  }
-
-  @Test
   public void testDelete() {
-    metricService.setStatusMetric(
-        buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, universe), "Error");
+    metricService.setFailureStatusMetric(
+        buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, universe));
     metricService.setOkStatusMetric(
         buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_STATUS, universe));
-    metricService.flushMetricsToDb();
 
     MetricKey keyToDelete =
         MetricKey.builder()
@@ -238,22 +193,6 @@ public class MetricServiceTest extends FakeDBApplication {
 
     assertThat(deletedMetric, empty());
     assertThat(remainingMetric, hasSize(1));
-
-    List<Metric> deletedMetricInDb = metricService.list(filterToDelete, true);
-    List<Metric> remainingMetricInDb = metricService.list(filterRemaining, true);
-
-    // Both metrics are still in DB.
-    assertThat(deletedMetricInDb, hasSize(1));
-    assertThat(remainingMetricInDb, hasSize(1));
-
-    metricService.flushMetricsToDb();
-
-    deletedMetricInDb = metricService.list(filterToDelete, true);
-    remainingMetricInDb = metricService.list(filterRemaining, true);
-
-    // Only remaining metric left in DB.
-    assertThat(deletedMetricInDb, empty());
-    assertThat(remainingMetricInDb, hasSize(1));
   }
 
   @Test
@@ -303,29 +242,16 @@ public class MetricServiceTest extends FakeDBApplication {
 
     assertThat(updatedNode1Metric.getExpireTime(), equalTo(node1Metric.getExpireTime()));
     assertThat(updatedNode2Metric.getValue(), equalTo(3D));
-    assertThat(updatedNode2Metric.getExpireTime(), not(equalTo(node1Metric.getExpireTime())));
+    assertThat(updatedNode2Metric.getExpireTime(), equalTo(node2Metric.getExpireTime()));
     assertThat(updatedNode3Metric.getValue(), equalTo(3D));
-    assertThat(updatedNode3Metric.getExpireTime(), not(equalTo(node1Metric.getExpireTime())));
+    assertThat(updatedNode3Metric.getExpireTime(), equalTo(node3Metric.getExpireTime()));
     assertThat(updatedNode4Metric, nullValue());
   }
 
   private void assertMetric(Metric metric, double value) {
     assertThat(metric.getCreateTime(), notNullValue());
     assertThat(metric.getUpdateTime(), notNullValue());
-    assertFalse(
-        metric
-            .getExpireTime()
-            .before(
-                Date.from(
-                    testStart.plus(
-                        MetricService.DEFAULT_METRIC_EXPIRY_SEC - 1, ChronoUnit.SECONDS))));
-    assertTrue(
-        metric
-            .getExpireTime()
-            .before(
-                Date.from(
-                    testStart.plus(
-                        MetricService.DEFAULT_METRIC_EXPIRY_SEC + 10, ChronoUnit.SECONDS))));
+    assertThat(metric.getExpireTime(), notNullValue());
     assertThat(metric.getCustomerUUID(), equalTo(customer.getUuid()));
     assertThat(metric.getType(), equalTo(Metric.Type.GAUGE));
     assertThat(metric.getName(), equalTo(PlatformMetrics.ALERT_MANAGER_STATUS.getMetricName()));
@@ -339,6 +265,5 @@ public class MetricServiceTest extends FakeDBApplication {
     assertThat(
         metric.getLabelValue(KnownAlertLabels.UNIVERSE_UUID),
         equalTo(universe.getUniverseUUID().toString()));
-    assertThat(metric.getLabelValue(KnownAlertLabels.ERROR_MESSAGE), nullValue());
   }
 }

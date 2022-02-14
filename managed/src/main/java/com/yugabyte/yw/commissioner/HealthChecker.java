@@ -48,7 +48,6 @@ import com.yugabyte.yw.models.MetricSourceKey;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.filters.MetricFilter;
-import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -259,8 +258,7 @@ public class HealthChecker {
       healthJSON = Util.convertStringToJson(response);
     } catch (Exception e) {
       log.warn("Failed to convert health check response to JSON " + e.getMessage());
-      setHealthCheckFailedMetric(
-          c, u, "Error converting health check response to JSON: " + e.getMessage());
+      setHealthCheckFailedMetric(c, u);
       return false;
     }
 
@@ -351,9 +349,8 @@ public class HealthChecker {
             buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_NODE_METRICS_STATUS, u));
       } catch (Exception e) {
         log.warn("Failed to convert health check response to prometheus metrics", e);
-        metricService.setStatusMetric(
-            buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_NODE_METRICS_STATUS, u),
-            "Error converting health check response to prometheus metrics: " + e.getMessage());
+        metricService.setFailureStatusMetric(
+            buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_NODE_METRICS_STATUS, u));
       }
 
       if (!onlyMetrics
@@ -394,9 +391,8 @@ public class HealthChecker {
         emailHelper.sendEmail(c, subject, emailDestinations, smtpData, contentMap);
       } catch (MessagingException e) {
         log.warn("Health check had the following errors during mailing: " + e.getMessage());
-        metricService.setStatusMetric(
-            buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_NOTIFICATION_STATUS, u),
-            "Error sending Health check email: " + e.getMessage());
+        metricService.setFailureStatusMetric(
+            buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_NOTIFICATION_STATUS, u));
         return false;
       }
     }
@@ -561,10 +557,7 @@ public class HealthChecker {
                     universeName);
               } catch (Exception e) {
                 log.error("Error running health check for universe: {}", universeName, e);
-                setHealthCheckFailedMetric(
-                    params.customer,
-                    params.universe,
-                    "Error running health check: " + e.getMessage());
+                setHealthCheckFailedMetric(params.customer, params.universe);
               }
             },
             this.executor);
@@ -604,8 +597,7 @@ public class HealthChecker {
     UniverseDefinitionTaskParams details = params.universe.getUniverseDetails();
     if (details == null) {
       log.warn("Skipping universe " + params.universe.name + " due to invalid details json...");
-      setHealthCheckFailedMetric(
-          params.customer, params.universe, "Health check skipped due to invalid details json.");
+      setHealthCheckFailedMetric(params.customer, params.universe);
       return;
     }
     if (details.universePaused) {
@@ -648,8 +640,7 @@ public class HealthChecker {
                 + " due to invalid provider "
                 + cluster.userIntent.provider);
         invalidUniverseData = true;
-        setHealthCheckFailedMetric(
-            params.customer, params.universe, "Health check skipped due to invalid provider data.");
+        setHealthCheckFailedMetric(params.customer, params.universe);
 
         break;
       }
@@ -666,8 +657,7 @@ public class HealthChecker {
         if (!providerCode.equals(CloudType.kubernetes.toString())) {
           log.warn("Skipping universe " + params.universe.name + " due to invalid access key...");
           invalidUniverseData = true;
-          setHealthCheckFailedMetric(
-              params.customer, params.universe, "Health check skipped due to invalid access key.");
+          setHealthCheckFailedMetric(params.customer, params.universe);
 
           break;
         }
@@ -721,12 +711,7 @@ public class HealthChecker {
         log.warn(
             String.format(
                 "Universe %s has unprovisioned node %s.", params.universe.name, nd.nodeName));
-        setHealthCheckFailedMetric(
-            params.customer,
-            params.universe,
-            String.format(
-                "Can't run health check for the universe due to unprovisioned node%s.",
-                nd.nodeName == null ? "" : " " + nd.nodeName));
+        setHealthCheckFailedMetric(params.customer, params.universe);
         break;
       }
 
@@ -737,10 +722,7 @@ public class HealthChecker {
             String.format(
                 "Universe %s has node %s with invalid placement %s",
                 params.universe.name, nd.nodeName, nd.placementUuid));
-        String alertText =
-            String.format(
-                "Universe has node %s with invalid placement %s.", nd.nodeName, nd.placementUuid);
-        setHealthCheckFailedMetric(params.customer, params.universe, alertText);
+        setHealthCheckFailedMetric(params.customer, params.universe);
 
         break;
       }
@@ -828,21 +810,15 @@ public class HealthChecker {
           response.message,
           response.code,
           durationMs);
-      String alertText =
-          String.format(
-              "Health check script got error: %s code (%d) [ %d ms ]",
-              response.message, response.code, durationMs);
-      setHealthCheckFailedMetric(params.customer, params.universe, alertText);
+      setHealthCheckFailedMetric(params.customer, params.universe);
     }
   }
 
-  private void setHealthCheckFailedMetric(Customer customer, Universe universe, String message) {
+  private void setHealthCheckFailedMetric(Customer customer, Universe universe) {
     // Remove old metrics and create only health check failed.
     MetricFilter toClean = metricSourceKeysFilter(customer, universe, HEALTH_CHECK_METRICS);
     Metric healthCheckFailed =
-        buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_STATUS, universe)
-            .setLabel(KnownAlertLabels.ERROR_MESSAGE, message)
-            .setValue(0.0);
+        buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_STATUS, universe).setValue(0.0);
     metricService.cleanAndSave(Collections.singletonList(healthCheckFailed), toClean);
   }
 
