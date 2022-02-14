@@ -47,6 +47,8 @@ Use the `REFRESH MATERIALIZED VIEW` statement to replace the contents of a mater
 
 Replace the contents of a materialized view named *matview_name*. 
 
+The default mechanism for refreshing a matview is loading the updated contents in a new relation, and then swapping the matview's
+storage with that of the new relation's.
 ### WITH DATA
 If `WITH DATA` (default) is specified, the view's query is executed to obtain the new data and the materialized view's contents are updated.
 
@@ -54,9 +56,10 @@ If `WITH DATA` (default) is specified, the view's query is executed to obtain th
 If `WITH NO DATA` is specified, the old contents of the materialized view are discarded and the materialized view is left in an unscannable state.
 
 ### CONCURRENTLY
-Used to refresh the materialized view without locking out concurrent selects on the materialized view. 
+This option differs in the mechanism used to perform the refresh. When `CONCURRENTLY` is specified, a diff between the old data and the new data is computed, and the required updates are performed accordingly. 
 This option is only permitted when there is at least one UNIQUE index on the materialized view, and when the materialized view is populated.
 `CONCURRENTLY` AND `WITH NO DATA` may not be used together.
+Moreover, this option may also not be used when there are rows where _all_ the columns are null.
 
 ## Examples
 
