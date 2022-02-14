@@ -209,14 +209,16 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
       hitException = true;
       throw t;
     } finally {
-      // Reset the state, on any failure, so that the actions can be retried.
-      if (currentNode != null && hitException) {
-        setNodeState(taskParams().nodeName, currentNode.state);
+      try {
+        // Reset the state, on any failure, so that the actions can be retried.
+        if (currentNode != null && hitException) {
+          setNodeState(taskParams().nodeName, currentNode.state);
+        }
+      } finally {
+        // Mark the update of the universe as done. This will allow future edits/updates to the
+        // universe to happen.
+        unlockUniverseForUpdate();
       }
-
-      // Mark the update of the universe as done. This will allow future edits/updates to the
-      // universe to happen.
-      unlockUniverseForUpdate();
     }
     log.info("Finished {} task.", getName());
   }

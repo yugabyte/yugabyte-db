@@ -316,15 +316,17 @@ public class CreateBackup extends UniverseTaskBase {
         lockedUpdateBackupState(params().universeUUID, this, false);
       }
     } catch (Throwable t) {
-      log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
-
-      BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
-      metricService.setStatusMetric(
-          buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe), t.getMessage());
-      // Run an unlock in case the task failed before getting to the unlock. It is okay if it
-      // errors out.
-      if (isUniverseLocked) {
-        unlockUniverseForUpdate();
+      try {
+        log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+        BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+        metricService.setStatusMetric(
+            buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe), t.getMessage());
+      } finally {
+        // Run an unlock in case the task failed before getting to the unlock. It is okay if it
+        // errors out.
+        if (isUniverseLocked) {
+          unlockUniverseForUpdate();
+        }
       }
       throw t;
     }

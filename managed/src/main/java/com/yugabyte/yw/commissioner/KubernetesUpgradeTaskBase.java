@@ -70,14 +70,17 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
 
       throw t;
     } finally {
-      if (isBlacklistLeaders) {
-        subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
-        List<NodeDetails> tServerNodes = getUniverse().getTServers();
-        createModifyBlackListTask(tServerNodes, false /* isAdd */, true /* isLeaderBlacklist */)
-            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-        subTaskGroupQueue.run();
+      try {
+        if (isBlacklistLeaders) {
+          subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
+          List<NodeDetails> tServerNodes = getUniverse().getTServers();
+          createModifyBlackListTask(tServerNodes, false /* isAdd */, true /* isLeaderBlacklist */)
+              .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+          subTaskGroupQueue.run();
+        }
+      } finally {
+        unlockUniverseForUpdate();
       }
-      unlockUniverseForUpdate();
     }
 
     log.info("Finished {} task.", getName());
