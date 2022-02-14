@@ -12,6 +12,7 @@ import com.yugabyte.yw.commissioner.DefaultExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.ExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
+import com.yugabyte.yw.commissioner.SupportBundleCleanup;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.TaskGarbageCollector;
 import com.yugabyte.yw.common.AccessManager;
@@ -121,6 +122,7 @@ public class Module extends AbstractModule {
       bind(HealthChecker.class).asEagerSingleton();
       bind(TaskGarbageCollector.class).asEagerSingleton();
       bind(BackupGarbageCollector.class).asEagerSingleton();
+      bind(SupportBundleCleanup.class).asEagerSingleton();
       bind(EncryptionAtRestManager.class).asEagerSingleton();
       bind(EncryptionAtRestUniverseKeyCache.class).asEagerSingleton();
       bind(SetUniverseKey.class).asEagerSingleton();
