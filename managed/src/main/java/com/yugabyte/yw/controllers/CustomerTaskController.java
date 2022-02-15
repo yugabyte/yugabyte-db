@@ -4,7 +4,6 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -20,7 +19,6 @@ import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
-import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.Query;
@@ -29,6 +27,7 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -65,7 +64,7 @@ public class CustomerTaskController extends AuthenticatedController {
             .eq("parent_uuid", parentUUID)
             .in("task_state", TaskInfo.ERROR_STATES)
             .orderBy("position desc");
-    List<TaskInfo> result = new ArrayList<>(subTaskQuery.findList());
+    LinkedList<TaskInfo> result = new LinkedList<>(subTaskQuery.findList());
 
     if (TaskInfo.ERROR_STATES.contains(parentTask.getTaskState()) && result.isEmpty()) {
       JsonNode taskError = parentTask.getTaskDetails().get("errorString");
@@ -77,11 +76,11 @@ public class CustomerTaskController extends AuthenticatedController {
         if (parentTask.getSubTaskGroupType() == null) {
           parentTask.setSubTaskGroupType(SubTaskGroupType.Preparation);
         }
-        result.add(0, parentTask);
+        result.addFirst(parentTask);
       }
     }
 
-    List<SubTaskFormData> subTasks = new ArrayList<>();
+    List<SubTaskFormData> subTasks = new ArrayList<>(result.size());
     for (TaskInfo taskInfo : result) {
       SubTaskFormData subTaskData = new SubTaskFormData();
       subTaskData.subTaskUUID = taskInfo.getTaskUUID();
@@ -125,17 +124,12 @@ public class CustomerTaskController extends AuthenticatedController {
       }
       return taskData;
     } catch (RuntimeException e) {
-      LOG.error(
-          "Error fetching Task Progress for "
-              + task.getTaskUUID()
-              + ", TaskInfo with that taskUUID not found");
+      LOG.error("Error fetching task progress for {}. TaskInfo is not found", task.getTaskUUID());
       return null;
     }
   }
 
   private Map<UUID, List<CustomerTaskFormData>> fetchTasks(UUID customerUUID, UUID targetUUID) {
-    List<CustomerTask> customerTaskList;
-
     Query<CustomerTask> customerTaskQuery =
         CustomerTask.find
             .query()
@@ -147,7 +141,7 @@ public class CustomerTaskController extends AuthenticatedController {
       customerTaskQuery.where().eq("target_uuid", targetUUID);
     }
 
-    customerTaskList =
+    List<CustomerTask> customerTaskList =
         customerTaskQuery
             .setMaxRows(
                 runtimeConfigFactory.globalRuntimeConf().getInt(CUSTOMER_TASK_DB_QUERY_LIMIT))
@@ -164,28 +158,29 @@ public class CustomerTaskController extends AuthenticatedController {
             .stream()
             .collect(Collectors.toMap(TaskInfo::getTaskUUID, Function.identity()));
     for (CustomerTask task : customerTaskList) {
-      Optional<ObjectNode> optTaskProgress = commissioner.mayGetStatus(task.getTaskUUID());
+      Optional<ObjectNode> optTaskProgress =
+          commissioner.buildTaskStatus(task, taskInfoMap.get(task.getTaskUUID()));
       // If the task progress API returns error, we will log it and not add that task
       // to the task list for UI rendering.
-      if (optTaskProgress.isPresent()) {
-        ObjectNode taskProgress = optTaskProgress.get();
-        if (taskProgress.has("error")) {
-          LOG.error(
-              "Error fetching Task Progress for "
-                  + task.getTaskUUID()
-                  + ", Error: "
-                  + taskProgress.get("error"));
-        } else {
-          CustomerTaskFormData taskData =
-              buildCustomerTaskFromData(task, taskProgress, taskInfoMap.get(task.getTaskUUID()));
-          if (taskData != null) {
-            List<CustomerTaskFormData> taskList =
-                taskListMap.getOrDefault(task.getTargetUUID(), new ArrayList<>());
-            taskList.add(taskData);
-            taskListMap.putIfAbsent(task.getTargetUUID(), taskList);
-          }
-        }
-      }
+      optTaskProgress.ifPresent(
+          taskProgress -> {
+            if (taskProgress.has("error")) {
+              LOG.error(
+                  "Error fetching task progress for {}. Error: {}",
+                  task.getTaskUUID(),
+                  taskProgress.get("error"));
+            } else {
+              CustomerTaskFormData taskData =
+                  buildCustomerTaskFromData(
+                      task, taskProgress, taskInfoMap.get(task.getTaskUUID()));
+              if (taskData != null) {
+                List<CustomerTaskFormData> taskList =
+                    taskListMap.getOrDefault(task.getTargetUUID(), new ArrayList<>());
+                taskList.add(taskData);
+                taskListMap.putIfAbsent(task.getTargetUUID(), taskList);
+              }
+            }
+          });
     }
     return taskListMap;
   }
@@ -297,12 +292,10 @@ public class CustomerTaskController extends AuthenticatedController {
         customerTask.getType(),
         universe.name);
     LOG.info(
-        "Saved task uuid "
-            + newTaskUUID
-            + " in customer tasks table for universe "
-            + universe.universeUUID
-            + ":"
-            + universe.name);
+        "Saved task uuid {} in customer tasks table for universe {}:{}",
+        newTaskUUID,
+        universe.universeUUID,
+        universe.name);
     auditService().createAuditEntry(ctx(), request(), Json.toJson(taskParams), newTaskUUID);
     return PlatformResults.withData(new UniverseResp(universe, newTaskUUID));
   }

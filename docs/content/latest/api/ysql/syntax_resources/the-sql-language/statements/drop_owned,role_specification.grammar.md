@@ -1,4 +1,4 @@
-```
+```ebnf
 drop_owned ::= DROP OWNED BY role_specification [ , ... ] 
                [ CASCADE | RESTRICT ]
 

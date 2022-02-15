@@ -22,9 +22,11 @@ import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TransactionUtil;
+import io.ebean.Ebean;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.ebean.SqlQuery;
 import io.ebean.annotation.DbJson;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -289,6 +291,26 @@ public class Universe extends Model {
         .eq("name", universeName)
         .findOneOrEmpty()
         .map(Universe::fillUniverseDetails);
+  }
+
+  /**
+   * Find a single attribute from universe_details_json column of Universe.
+   *
+   * @param <T> the attribute type.
+   * @param universeUUID the universe UUID to be searched for.
+   * @param fieldName the name of the field.
+   * @return the attribute value.
+   */
+  public static <T> Optional<T> getUniverseDetailsField(
+      Class<T> clazz, UUID universeUUID, String fieldName) {
+    String query =
+        String.format(
+            "select universe_details_json::jsonb->>'%s' as field from universe"
+                + " where universe_uuid = :universeUUID",
+            fieldName);
+    SqlQuery sqlQuery = Ebean.createSqlQuery(query);
+    sqlQuery.setParameter("universeUUID", universeUUID);
+    return sqlQuery.findOneOrEmpty().map(row -> clazz.cast(row.get("field")));
   }
 
   /**
