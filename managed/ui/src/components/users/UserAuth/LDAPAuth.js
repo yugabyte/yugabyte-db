@@ -38,7 +38,7 @@ const SECURITY_OPTIONS = [
     value: 'enable_ldap_start_tls'
   },
   {
-    label: 'Unsecure',
+    label: 'None',
     value: 'unsecure'
   }
 ];
@@ -301,10 +301,11 @@ export const LDAPAuth = (props) => {
                     <Row className="ua-field-row">
                       <Col className="ua-label-c">
                         <div>
-                          Connection Security &nbsp;
+                          Security Protocol &nbsp;
                           <YBInfoTip
-                            title="Connection Security"
-                            content="Secure your LDAP connection"
+                            customClass="ldap-info-popover"
+                            title="Security Protocol"
+                            content="Configure the LDAP server connection to use LDAPS (SSL) or LDAP with StartTLS (TLS) encryption"
                           >
                             <i className="fa fa-info-circle" />
                           </YBInfoTip>
@@ -346,6 +347,7 @@ export const LDAPAuth = (props) => {
                           LDAP Base DN <br />
                           (Optional) &nbsp;
                           <YBInfoTip
+                            customClass="ldap-info-popover"
                             title="LDAP Base DN"
                             content="Base of the DN for LDAP queries. Will be appended to the user name at login time to query the LDAP server"
                           >
@@ -434,7 +436,11 @@ export const LDAPAuth = (props) => {
                       <Col className="ua-label-c">
                         <div>
                           Username (Optional) &nbsp;
-                          <YBInfoTip title="Username" content="Username of Service Account">
+                          <YBInfoTip
+                            customClass="ldap-info-popover"
+                            title="Username"
+                            content="If the service account is not configured and the user does not have permission to query the LDAP server, then the Yugabyte platform will default the user's role to ReadOnly"
+                          >
                             <i className="fa fa-info-circle" />
                           </YBInfoTip>
                         </div>
