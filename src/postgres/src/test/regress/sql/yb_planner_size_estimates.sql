@@ -13,11 +13,17 @@ LANGUAGE plpgsql
 AS $$
 BEGIN
     SET yb_non_ddl_txn_for_sys_tables_allowed=1;
-    UPDATE pg_class SET reltuples=t_10000_size WHERE relname='t_10000';
-    UPDATE pg_class SET reltuples=t_1000_size WHERE relname='t_1000';
-    UPDATE pg_class SET reltuples=t_100_size WHERE relname='t_100';
-    UPDATE pg_class SET reltuples=t_1000000_size WHERE relname='t_1000000';
-    UPDATE pg_yb_catalog_version SET current_version=current_version+1 WHERE db_oid=1;
+    BEGIN
+        UPDATE pg_class SET reltuples=t_10000_size WHERE relname='t_10000';
+        UPDATE pg_class SET reltuples=t_1000_size WHERE relname='t_1000';
+        UPDATE pg_class SET reltuples=t_100_size WHERE relname='t_100';
+        UPDATE pg_class SET reltuples=t_1000000_size WHERE relname='t_1000000';
+        UPDATE pg_yb_catalog_version SET current_version=current_version+1 WHERE db_oid=1;
+    EXCEPTION
+        -- Workaround for [#10405], exception clause makes buffers flushed
+        WHEN OTHERS THEN
+            SET yb_non_ddl_txn_for_sys_tables_allowed=0;
+    END;
     SET yb_non_ddl_txn_for_sys_tables_allowed=0;
 END;
 $$;

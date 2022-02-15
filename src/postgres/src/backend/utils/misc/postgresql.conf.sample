@@ -318,6 +318,7 @@
 #enable_parallel_hash = on
 #enable_partition_pruning = on
 #yb_enable_geolocation_costing = on
+#yb_enable_expression_pushdown = off
 
 # - Planner Cost Constants -
 
