@@ -288,7 +288,7 @@ public class CustomerTaskController extends AuthenticatedController {
         customer,
         universe.universeUUID,
         newTaskUUID,
-        CustomerTask.TargetType.Universe,
+        customerTask.getTarget(),
         customerTask.getType(),
         universe.name);
     LOG.info(
