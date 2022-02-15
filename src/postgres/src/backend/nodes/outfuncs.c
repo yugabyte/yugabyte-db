@@ -396,6 +396,8 @@ _outModifyTable(StringInfo str, const ModifyTable *node)
 	WRITE_UINT_FIELD(exclRelRTI);
 	WRITE_NODE_FIELD(exclRelTlist);
 	WRITE_NODE_FIELD(ybPushdownTlist);
+	WRITE_NODE_FIELD(ybReturningColumns);
+	WRITE_NODE_FIELD(ybColumnRefs);
 	WRITE_NODE_FIELD(no_update_index_list);
 	WRITE_BOOL_FIELD(no_row_trigger);
 }
@@ -3712,6 +3714,17 @@ _outPartitionRangeDatum(StringInfo str, const PartitionRangeDatum *node)
 	WRITE_LOCATION_FIELD(location);
 }
 
+static void
+_outYbExprParamDesc(StringInfo str, const YbExprParamDesc *node)
+{
+	WRITE_NODE_TYPE("YBEXPRPARAMDESC");
+
+	WRITE_INT_FIELD(attno);
+	WRITE_INT_FIELD(typid);
+	WRITE_INT_FIELD(typmod);
+	WRITE_INT_FIELD(collid);
+}
+
 /*
  * outNode -
  *	  converts a Node into ascii string and append it to 'str'
@@ -4368,6 +4381,9 @@ outNode(StringInfo str, const void *obj)
 				break;
 			case T_PartitionRangeDatum:
 				_outPartitionRangeDatum(str, obj);
+				break;
+			case T_YbExprParamDesc:
+				_outYbExprParamDesc(str, obj);
 				break;
 
 			default:

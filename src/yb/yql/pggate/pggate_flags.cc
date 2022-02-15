@@ -79,8 +79,7 @@ DEFINE_int32(ysql_output_buffer_size, 262144,
              "we're free to transparently restart operation in case of restart read error.");
 
 DEFINE_bool(ysql_enable_update_batching, true,
-            "Whether to enable batching of updates where possible. Currently update batching is "
-            "only supported for PGSQL procedures.");
+            "DEPRECATED. Feature has been removed");
 
 DEFINE_bool(ysql_suppress_unsupported_error, false,
             "Suppress ERROR on use of unsupported SQL statement and use WARNING instead");

@@ -592,15 +592,6 @@ typedef struct EState
 	YBCPgExecParameters yb_exec_params;
 
 	/*
-	 * Whether we can batch updates - note that enabling this will cause batched
-	 * updates to not return a correct rows_affected_count, thus cannot be used
-	 * for plpgsql (which uses this value for GET DIAGNOSTICS...ROW_COUNT and
-	 * FOUND).
-	 * Currently only enabled for PGSQL functions / procedures.
-	 */
-	bool yb_can_batch_updates;
-
-	/*
 	 *  The read hybrid time used for this query. This value is initialized
 	 *  to 0, and later updated by the first read operation initiated for this
 	 *  query. All later read operations are then ensured that they will never
@@ -678,6 +669,15 @@ typedef struct YbPgExecOutParam {
 	StringInfo status;
 	int64_t status_code;
 } YbPgExecOutParam;
+
+typedef struct YbExprParamDesc {
+	NodeTag type;
+
+	int32_t attno;
+	int32_t typid;
+	int32_t typmod;
+	int32_t collid;
+} YbExprParamDesc;
 
 
 /* ----------------------------------------------------------------
