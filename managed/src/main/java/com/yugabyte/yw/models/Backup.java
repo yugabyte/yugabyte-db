@@ -361,7 +361,7 @@ public class Backup extends Model {
       UUID customerUUID, UUID universeUUID) {
     return fetchByUniverseUUID(customerUUID, universeUUID)
         .stream()
-        .filter(b -> b.backupInfo.actionType == BackupTableParams.ActionType.CREATE)
+        .filter(b -> !Backup.IN_PROGRESS_STATES.contains(b.state))
         .collect(Collectors.toList());
   }
 
