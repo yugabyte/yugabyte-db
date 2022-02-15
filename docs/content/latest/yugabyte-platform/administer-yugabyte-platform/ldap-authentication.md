@@ -38,9 +38,9 @@ You can use the Yugabyte Platform UI console to enable LDAP authentication for Y
 
 ## Use the Yugabyte Platform API
 
-To enable LDAP authentication for Yugabyte Platform login, you perform a number of runtime configurations to specify the following:
+To enable LDAP authentication for Yugabyte Platform login, you can perform a number of runtime configurations to specify the following:
 
-- LDAP usage `yb.security.ldap.use_ldap` must be set to `true`, as follows:
+- LDAP usage `yb.security.ldap.use_ldap`, set to `true`, as follows:
 
   ```shell
   curl --location --request PUT 'https://10.9.140.199/api/v1/customers/f3a63f07-e3d6-4475-96e4-57a6453072e1/runtime_config/00000000-0000-0000-0000-000000000000/key/yb.security.ldap.use_ldap' \
@@ -51,7 +51,7 @@ To enable LDAP authentication for Yugabyte Platform login, you perform a number 
   ```
 
 
-- Your LDAP server endpoint `yb.security.ldap.ldap_url` must be set using the *0.0.0.0* format, as follows:
+- Your LDAP server endpoint `yb.security.ldap.ldap_url`, set using the *0.0.0.0* format, as follows:
 
   ```shell
   curl --location --request PUT 'https://10.9.140.199/api/v1/customers/f3a63f07-e3d6-4475-96e4-57a6453072e1/runtime_config/00000000-0000-0000-0000-000000000000/key/yb.security.ldap.ldap_url' \
@@ -60,7 +60,7 @@ To enable LDAP authentication for Yugabyte Platform login, you perform a number 
   --data-raw '10.9.140.199'
   ```
 
-- The LDAP port `yb.security.ldap.ldap_port` must be set using the *000* format, as follows:
+- The LDAP port `yb.security.ldap.ldap_port`, set using the *000* format, as follows:
 
   ```shell
   curl --location --request PUT 'https://10.9.140.199/api/v1/customers/f3a63f07-e3d6-4475-96e4-57a6453072e1/runtime_config/00000000-0000-0000-0000-000000000000/key/yb.security.ldap.ldap_port' \
@@ -142,9 +142,9 @@ To enable LDAP authentication for Yugabyte Platform login, you perform a number 
 
 When configured, Yugabyte Platform users are able to login by specifying the common name of the user and the password to bind to the LDAP server.
 
-For additional information, see [Update a configuration key](https://yugabyte.stoplight.io/docs/yugabyte-platform/b3A6MTg5NDc2OTY-update-a-configuration-key).
+For more information, see [Update a configuration key](https://yugabyte.stoplight.io/docs/yugabyte-platform/b3A6MTg5NDc2OTY-update-a-configuration-key).
 
-In addition to the preceding parameters, you may choose to specify parameters for the service account credentials. This would be helpful in certain scenarios. For example, Windows Active Directory (AD) server does not typically provide regular users with query permissions for the LDAP server. Setting service account credentials would enable these users to query the LDAP server ([the `yugabytePlatformRole` attribute](#define-the-yugabyte-platform-role) would be read and set it accordingly). The service account should have enough permissions to query the LDAP server, find users, and read the user attributes.
+In addition to the preceding parameters, you may choose to specify parameters for the service account credentials. This would be helpful in certain scenarios. For example, the Windows Active Directory (AD) server does not typically provide regular users with query permissions for the LDAP server. Setting service account credentials would enable these users to query the LDAP server ([the `yugabytePlatformRole` attribute](#define-the-yugabyte-platform-role) would be read and set accordingly). The service account should have enough permissions to query the LDAP server, find users, and read the user attributes.
 
 The following are the runtime configurations to specify:
 
