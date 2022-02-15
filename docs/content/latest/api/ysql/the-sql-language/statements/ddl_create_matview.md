@@ -54,7 +54,7 @@ Used to specify the tablespace for the materialized view.
 
 COLOCATED
 
-Specify `COLOCATED = true` for the materialized view to be colocated.
+Specify `COLOCATED = true` for the materialized view to be colocated. The default value of this option is false.
 
 ## Examples
 
