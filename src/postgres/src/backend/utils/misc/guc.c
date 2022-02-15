@@ -2044,6 +2044,16 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_enable_expression_pushdown", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Push supported expressions down to DocDB for evaluation."),
+			NULL
+		},
+		&yb_enable_expression_pushdown,
+		false,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL

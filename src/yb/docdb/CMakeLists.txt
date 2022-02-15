@@ -74,6 +74,7 @@ set(DOCDB_SRCS
         doc_reader_redis.cc
         docdb_rocksdb_util.cc
         doc_expr.cc
+        doc_pg_expr.cc
         doc_pgsql_scanspec.cc
         doc_ql_scanspec.cc
         doc_rowwise_iterator.cc

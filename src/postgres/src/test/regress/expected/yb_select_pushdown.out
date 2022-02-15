@@ -1,0 +1,383 @@
+-- Test expression pushdown in scans
+SET yb_enable_expression_pushdown to on;
+-- For environment independent output of timestamps
+SET timezone to 'UTC';
+CREATE TABLE pushdown_test(k int primary key, i1 int, t1 text, ts1 timestamp, ts2 timestamp with time zone, r1 numrange, a1 int[]);
+INSERT INTO pushdown_test VALUES (1, 1, 'value1', '2021-11-11 11:11:11', '2021-11-11 11:11:11+1', '[0, 0)', '{1, NULL, 42}');
+INSERT INTO pushdown_test VALUES (2, 202, 'value2', NULL, '2222-02-22 22:22:22-7', numrange(-1, NULL), '{-2, 2, 122, -122}');
+-- Simple expression (column = constant)
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE i1 = 1;
+        QUERY PLAN
+---------------------------
+ Seq Scan on pushdown_test
+   Remote Filter: (i1 = 1)
+(2 rows)
+
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE t1 LIKE 'val%';
+              QUERY PLAN
+---------------------------------------
+ Seq Scan on pushdown_test
+   Remote Filter: (t1 ~~ 'val%'::text)
+(2 rows)
+
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE ts1 < '2021-11-11 11:11:12';
+                                    QUERY PLAN
+----------------------------------------------------------------------------------
+ Seq Scan on pushdown_test
+   Remote Filter: (ts1 < 'Thu Nov 11 11:11:12 2021'::timestamp without time zone)
+(2 rows)
+
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE ts2 < '2021-11-11 11:11:10Z';
+                                    QUERY PLAN
+-----------------------------------------------------------------------------------
+ Seq Scan on pushdown_test
+   Remote Filter: (ts2 < 'Thu Nov 11 11:11:10 2021 UTC'::timestamp with time zone)
+(2 rows)
+
+SELECT * FROM pushdown_test WHERE i1 = 1;
+ k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1
+---+----+--------+--------------------------+------------------------------+-------+-------------
+ 1 |  1 | value1 | Thu Nov 11 11:11:11 2021 | Thu Nov 11 10:11:11 2021 UTC | empty | {1,NULL,42}
+(1 row)
+
+SELECT * FROM pushdown_test WHERE t1 LIKE 'val%';
+ k | i1  |   t1   |           ts1            |             ts2              |  r1   |       a1
+---+-----+--------+--------------------------+------------------------------+-------+-----------------
+ 1 |   1 | value1 | Thu Nov 11 11:11:11 2021 | Thu Nov 11 10:11:11 2021 UTC | empty | {1,NULL,42}
+ 2 | 202 | value2 |                          | Sat Feb 23 05:22:22 2222 UTC | [-1,) | {-2,2,122,-122}
+(2 rows)
+
+SELECT * FROM pushdown_test WHERE ts1 < '2021-11-11 11:11:12';
+ k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1
+---+----+--------+--------------------------+------------------------------+-------+-------------
+ 1 |  1 | value1 | Thu Nov 11 11:11:11 2021 | Thu Nov 11 10:11:11 2021 UTC | empty | {1,NULL,42}
+(1 row)
+
+SELECT * FROM pushdown_test WHERE ts2 < '2021-11-11 11:11:10Z';
+ k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1
+---+----+--------+--------------------------+------------------------------+-------+-------------
+ 1 |  1 | value1 | Thu Nov 11 11:11:11 2021 | Thu Nov 11 10:11:11 2021 UTC | empty | {1,NULL,42}
+(1 row)
+
+-- Simple function on one column
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE isfinite(ts1);
+           QUERY PLAN
+--------------------------------
+ Seq Scan on pushdown_test
+   Remote Filter: isfinite(ts1)
+(2 rows)
+
+SELECT * FROM pushdown_test WHERE isfinite(ts1);
+ k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1
+---+----+--------+--------------------------+------------------------------+-------+-------------
+ 1 |  1 | value1 | Thu Nov 11 11:11:11 2021 | Thu Nov 11 10:11:11 2021 UTC | empty | {1,NULL,42}
+(1 row)
+
+-- Simple function on multiple columns
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE left(t1, i1) = 'v';
+                  QUERY PLAN
+-----------------------------------------------
+ Seq Scan on pushdown_test
+   Remote Filter: ("left"(t1, i1) = 'v'::text)
+(2 rows)
+
+SELECT * FROM pushdown_test WHERE left(t1, i1) = 'v';
+ k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1
+---+----+--------+--------------------------+------------------------------+-------+-------------
+ 1 |  1 | value1 | Thu Nov 11 11:11:11 2021 | Thu Nov 11 10:11:11 2021 UTC | empty | {1,NULL,42}
+(1 row)
+
+-- Functions safe for pushdown (yb_safe_funcs_for_pushdown.c)
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE i1 < 10 + random() * 90;
+                                                 QUERY PLAN
+------------------------------------------------------------------------------------------------------------
+ Seq Scan on pushdown_test
+   Remote Filter: ((i1)::double precision < ('10'::double precision + (random() * '90'::double precision)))
+(2 rows)
+
+SELECT * FROM pushdown_test WHERE i1 < 10 + random() * 90;
+ k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1
+---+----+--------+--------------------------+------------------------------+-------+-------------
+ 1 |  1 | value1 | Thu Nov 11 11:11:11 2021 | Thu Nov 11 10:11:11 2021 UTC | empty | {1,NULL,42}
+(1 row)
+
+-- Null test
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE ts1 IS NULL;
+           QUERY PLAN
+--------------------------------
+ Seq Scan on pushdown_test
+   Remote Filter: (ts1 IS NULL)
+(2 rows)
+
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE ts1 IS NOT NULL;
+             QUERY PLAN
+------------------------------------
+ Seq Scan on pushdown_test
+   Remote Filter: (ts1 IS NOT NULL)
+(2 rows)
+
+SELECT * FROM pushdown_test WHERE ts1 IS NULL;
+ k | i1  |   t1   | ts1 |             ts2              |  r1   |       a1
+---+-----+--------+-----+------------------------------+-------+-----------------
+ 2 | 202 | value2 |     | Sat Feb 23 05:22:22 2222 UTC | [-1,) | {-2,2,122,-122}
+(1 row)
+
+SELECT * FROM pushdown_test WHERE ts1 IS NOT NULL;
+ k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1
+---+----+--------+--------------------------+------------------------------+-------+-------------
+ 1 |  1 | value1 | Thu Nov 11 11:11:11 2021 | Thu Nov 11 10:11:11 2021 UTC | empty | {1,NULL,42}
+(1 row)
+
+-- Boolean expression
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE i1 = 1 OR NOT isfinite(ts1) AND ts2 > '2001-01-01 01:01:01-7'::timestamptz;
+                                                        QUERY PLAN
+---------------------------------------------------------------------------------------------------------------------------
+ Seq Scan on pushdown_test
+   Remote Filter: ((i1 = 1) OR ((NOT isfinite(ts1)) AND (ts2 > 'Mon Jan 01 08:01:01 2001 UTC'::timestamp with time zone)))
+(2 rows)
+
+SELECT * FROM pushdown_test WHERE i1 = 1 OR NOT isfinite(ts1) AND ts2 > '2001-01-01 01:01:01-7'::timestamptz;
+ k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1
+---+----+--------+--------------------------+------------------------------+-------+-------------
+ 1 |  1 | value1 | Thu Nov 11 11:11:11 2021 | Thu Nov 11 10:11:11 2021 UTC | empty | {1,NULL,42}
+(1 row)
+
+-- Case expression
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE CASE WHEN i1 % 2 = 0 THEN ts1 < '2021-11-12' WHEN i1 % 2 = 1 THEN ts2 > '2022-01-01 00:00:00-7' END;
+                                                                                                           QUERY PLAN
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Seq Scan on pushdown_test
+   Remote Filter: CASE WHEN ((i1 % 2) = 0) THEN (ts1 < 'Fri Nov 12 00:00:00 2021'::timestamp without time zone) WHEN ((i1 % 2) = 1) THEN (ts2 > 'Sat Jan 01 07:00:00 2022 UTC'::timestamp with time zone) ELSE NULL::boolean END
+(2 rows)
+
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE CASE i1 % 2 WHEN 0 THEN ts1 < '2021-11-12' WHEN 1 THEN ts2 > '2022-01-01 00:00:00-7' END;
+                                                                                               QUERY PLAN
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Seq Scan on pushdown_test
+   Filter: CASE (i1 % 2) WHEN 0 THEN (ts1 < 'Fri Nov 12 00:00:00 2021'::timestamp without time zone) WHEN 1 THEN (ts2 > 'Sat Jan 01 07:00:00 2022 UTC'::timestamp with time zone) ELSE NULL::boolean END
+(2 rows)
+
+SELECT * FROM pushdown_test WHERE CASE WHEN i1 % 2 = 0 THEN ts1 < '2021-11-12' WHEN i1 % 2 = 1 THEN ts2 > '2022-01-01 00:00:00-7' END;
+ k | i1 | t1 | ts1 | ts2 | r1 | a1
+---+----+----+-----+-----+----+----
+(0 rows)
+
+-- Aggregates
+EXPLAIN (COSTS FALSE) SELECT count(*) FROM pushdown_test;
+           QUERY PLAN
+---------------------------------
+ Aggregate
+   ->  Seq Scan on pushdown_test
+(2 rows)
+
+EXPLAIN (COSTS FALSE) SELECT count(*) FROM pushdown_test WHERE i1 = 1;
+           QUERY PLAN
+---------------------------------
+ Aggregate
+   ->  Seq Scan on pushdown_test
+         Remote Filter: (i1 = 1)
+(3 rows)
+
+SELECT count(*) FROM pushdown_test;
+ count
+-------
+     2
+(1 row)
+
+SELECT count(*) FROM pushdown_test WHERE i1 = 1;
+ count
+-------
+     1
+(1 row)
+
+-- Parameter
+PREPARE s AS SELECT * FROM pushdown_test WHERE i1 = $1;
+EXPLAIN (COSTS FALSE) EXECUTE s(1);
+        QUERY PLAN
+---------------------------
+ Seq Scan on pushdown_test
+   Remote Filter: (i1 = 1)
+(2 rows)
+
+EXECUTE s(1);
+ k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1
+---+----+--------+--------------------------+------------------------------+-------+-------------
+ 1 |  1 | value1 | Thu Nov 11 11:11:11 2021 | Thu Nov 11 10:11:11 2021 UTC | empty | {1,NULL,42}
+(1 row)
+
+DEALLOCATE s;
+-- Join
+CREATE TABLE pushdown_lookup(k int primary key, tag text);
+INSERT INTO pushdown_lookup VALUES (1, 'foo'), (2, 'bar'), (3, 'baz');
+EXPLAIN (COSTS FALSE) SELECT t.t1 FROM pushdown_test t, pushdown_lookup l WHERE t.k = l.k AND l.tag = 'foo';
+                          QUERY PLAN
+--------------------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on pushdown_lookup l
+         Remote Filter: (tag = 'foo'::text)
+   ->  Index Scan using pushdown_test_pkey on pushdown_test t
+         Index Cond: (k = l.k)
+(5 rows)
+
+SELECT t.t1 FROM pushdown_test t, pushdown_lookup l WHERE t.k = l.k AND l.tag = 'foo';
+   t1
+--------
+ value1
+(1 row)
+
+-- Negative test cases (expressions should not be pushed down)
+-- Not immutable functions
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE t1 = concat('value', i1::text);
+                  QUERY PLAN
+----------------------------------------------
+ Seq Scan on pushdown_test
+   Filter: (t1 = concat('value', (i1)::text))
+(2 rows)
+
+SELECT * FROM pushdown_test WHERE t1 = concat('value', i1::text);
+ k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1
+---+----+--------+--------------------------+------------------------------+-------+-------------
+ 1 |  1 | value1 | Thu Nov 11 11:11:11 2021 | Thu Nov 11 10:11:11 2021 UTC | empty | {1,NULL,42}
+(1 row)
+
+-- Index scan
+CREATE INDEX pushdown_test_i1 ON pushdown_test(i1);
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE i1 = 1;
+                     QUERY PLAN
+----------------------------------------------------
+ Index Scan using pushdown_test_i1 on pushdown_test
+   Index Cond: (i1 = 1)
+(2 rows)
+
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE i1 = 1 AND t1 = 'value1';
+                     QUERY PLAN
+----------------------------------------------------
+ Index Scan using pushdown_test_i1 on pushdown_test
+   Index Cond: (i1 = 1)
+   Filter: (t1 = 'value1'::text)
+(3 rows)
+
+SELECT * FROM pushdown_test WHERE i1 = 1;
+ k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1
+---+----+--------+--------------------------+------------------------------+-------+-------------
+ 1 |  1 | value1 | Thu Nov 11 11:11:11 2021 | Thu Nov 11 10:11:11 2021 UTC | empty | {1,NULL,42}
+(1 row)
+
+SELECT * FROM pushdown_test WHERE i1 = 1 AND t1 = 'value1';
+ k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1
+---+----+--------+--------------------------+------------------------------+-------+-------------
+ 1 |  1 | value1 | Thu Nov 11 11:11:11 2021 | Thu Nov 11 10:11:11 2021 UTC | empty | {1,NULL,42}
+(1 row)
+
+-- Records, ranges, arrays
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE isempty(r1);
+        QUERY PLAN
+---------------------------
+ Seq Scan on pushdown_test
+   Filter: isempty(r1)
+(2 rows)
+
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE a1[2] = 2;
+        QUERY PLAN
+---------------------------
+ Seq Scan on pushdown_test
+   Filter: (a1[2] = 2)
+(2 rows)
+
+SELECT * FROM pushdown_test WHERE isempty(r1);
+ k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1
+---+----+--------+--------------------------+------------------------------+-------+-------------
+ 1 |  1 | value1 | Thu Nov 11 11:11:11 2021 | Thu Nov 11 10:11:11 2021 UTC | empty | {1,NULL,42}
+(1 row)
+
+SELECT * FROM pushdown_test WHERE a1[2] = 2;
+ k | i1  |   t1   | ts1 |             ts2              |  r1   |       a1
+---+-----+--------+-----+------------------------------+-------+-----------------
+ 2 | 202 | value2 |     | Sat Feb 23 05:22:22 2222 UTC | [-1,) | {-2,2,122,-122}
+(1 row)
+
+-- Pseudo types
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE num_nulls(variadic a1) > 0;
+               QUERY PLAN
+----------------------------------------
+ Seq Scan on pushdown_test
+   Filter: (num_nulls(VARIADIC a1) > 0)
+(2 rows)
+
+SELECT * FROM pushdown_test WHERE num_nulls(variadic a1) > 0;
+ k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1
+---+----+--------+--------------------------+------------------------------+-------+-------------
+ 1 |  1 | value1 | Thu Nov 11 11:11:11 2021 | Thu Nov 11 10:11:11 2021 UTC | empty | {1,NULL,42}
+(1 row)
+
+-- Composite datatype
+CREATE TYPE pair AS (first int, second int);
+CREATE TABLE pushdown_composite(k int primary key, v pair);
+INSERT INTO pushdown_composite VALUES (1, (2, 3));
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_composite WHERE (v).first = 2;
+           QUERY PLAN
+--------------------------------
+ Seq Scan on pushdown_composite
+   Filter: ((v).first = 2)
+(2 rows)
+
+SELECT * FROM pushdown_composite WHERE (v).first = 2;
+ k |   v
+---+-------
+ 1 | (2,3)
+(1 row)
+
+-- Enum datatype
+CREATE TYPE color AS ENUM('red', 'green', 'blue');
+CREATE TABLE pushdown_enum(k int, c color, x int);
+INSERT INTO pushdown_enum VALUES (1, 'red', 255);
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_enum WHERE c = 'red';
+          QUERY PLAN
+------------------------------
+ Seq Scan on pushdown_enum
+   Filter: (c = 'red'::color)
+(2 rows)
+
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_enum WHERE c::text = 'red';
+             QUERY PLAN
+-------------------------------------
+ Seq Scan on pushdown_enum
+   Filter: ((c)::text = 'red'::text)
+(2 rows)
+
+SELECT * FROM pushdown_enum WHERE c = 'red';
+ k |  c  |  x
+---+-----+-----
+ 1 | red | 255
+(1 row)
+
+SELECT * FROM pushdown_enum WHERE c::text = 'red';
+ k |  c  |  x
+---+-----+-----
+ 1 | red | 255
+(1 row)
+
+-- Collation
+CREATE TABLE pushdown_collation(k int primary key, v text COLLATE "ucs_basic");
+INSERT INTO pushdown_collation VALUES (1, 'foo');
+-- Do not pushdown operation on column with collation other than C
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_collation WHERE v = 'foo';
+             QUERY PLAN
+------------------------------------
+ Seq Scan on pushdown_collation
+   Remote Filter: (v = 'foo'::text)
+(2 rows)
+
+SELECT * FROM pushdown_collation WHERE v = 'foo';
+ k |  v
+---+-----
+ 1 | foo
+(1 row)
+
+DROP TABLE pushdown_test;
+DROP TABLE pushdown_lookup;
+DROP TABLE pushdown_composite;
+DROP TABLE pushdown_enum;
+DROP TABLE pushdown_collation;
+DROP TYPE pair;
+DROP TYPE color;
