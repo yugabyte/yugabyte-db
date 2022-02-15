@@ -119,7 +119,7 @@ For more advanced applications, including Spring and GraphQL examples, refer to 
       <div class="title">C#</div>
     </div>
     <div class="body">
-      C# application that connects to a YugabyteDB cluster using the libpqxx driver.
+      C# application that connects to a YugabyteDB cluster using the Npgsql driver.
     </div>
   </a>
   </div>
