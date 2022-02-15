@@ -56,8 +56,7 @@ If `WITH NO DATA` is specified, the old contents of the materialized view are di
 ### CONCURRENTLY
 This option may be faster in the cases where a small number of rows require updates. Without this option, a refresh that updates a large number of rows will tend to use fewer resources and complete quicker. 
 This option is only permitted when there is at least one UNIQUE index on the materialized view, and when the materialized view is populated.
-`CONCURRENTLY` AND `WITH NO DATA` may not be used together.
-Moreover, this option may also not be used when there are rows where _all_ the columns are null.
+`CONCURRENTLY` AND `WITH NO DATA` cannot be used together. Moreover, the `CONCURRENTLY` option can also not be used when there are rows where _all_ the columns are null. In both scenarios, refreshing the materialized view will raise an error.
 
 ## Examples
 
