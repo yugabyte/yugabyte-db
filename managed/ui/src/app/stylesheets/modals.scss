@@ -47,7 +47,8 @@
   background: #ffffff;
   flex-basis: 40%;
 
-  img, i {
+  img,
+  i {
     margin: 0 6px 0 0;
   }
   i {
@@ -67,7 +68,7 @@
 .modal-footer {
   background-color: #f5f4f0;
   border-radius: 0 0 5px 5px;
-  
+
   .btn {
     min-width: 100px;
     margin-left: 10px !important;
@@ -196,4 +197,11 @@
       }
     }
   }
+}
+
+.modal-back-btn {
+  padding: 0px !important;
+  border-radius: 100%;
+  margin-right: 16px;
+  border: none !important;
 }

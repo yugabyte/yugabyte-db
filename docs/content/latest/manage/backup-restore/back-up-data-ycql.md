@@ -87,7 +87,7 @@ The following table outlines some of the more commonly used options.
 All columns of the table are exported by default.
 
 ```sh
-cqlsh -e "COPY <keyspace>.<table> TO 'data.csv' WITH HEADER = TRUE;"
+$ ycqlsh -e "COPY <keyspace>.<table> TO 'data.csv' WITH HEADER = TRUE;"
 ```
 
 ### Back up specific columns of a table
@@ -95,7 +95,7 @@ cqlsh -e "COPY <keyspace>.<table> TO 'data.csv' WITH HEADER = TRUE;"
 To back up selected columns of the table, specify the column names in a list.
 
 ```sh
-ycqlsh -e "COPY <keyspace>.<table> (<column 1 name>, <column 2 name>, ...) TO 'data.csv' WITH HEADER = TRUE;"
+$ ycqlsh -e "COPY <keyspace>.<table> (<column 1 name>, <column 2 name>, ...) TO 'data.csv' WITH HEADER = TRUE;"
 ```
 
 ## Example
