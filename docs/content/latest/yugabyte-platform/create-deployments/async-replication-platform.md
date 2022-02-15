@@ -2,7 +2,8 @@
 title: Deploy to two data centers with asynchronous replication
 headerTitle: Asynchronous Replication
 linkTitle: Asynchronous replication
-description: Enable deployment using asynchronous replication between two data centers.
+description: Enable deployment using asynchronous replication between two data centers
+beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
     parent: create-deployments
