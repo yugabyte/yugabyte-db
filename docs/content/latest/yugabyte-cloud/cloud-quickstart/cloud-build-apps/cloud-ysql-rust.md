@@ -45,7 +45,7 @@ The application needs to establish a connection to the YugabyteDB cluster. To do
     - **PORT** - the port number that will be used by the driver (the default YugabyteDB YSQL port is 5433).
     - **DB_NAME** - the name of the database you are connecting to (the default database is named `yugabyte`).
     - **USER** and **PASSWORD** - the username and password for the YugabyteDB database. If you are using the credentials you created when deploying a cluster in Yugabyte Cloud, these can be found in the credentials file you downloaded.
-    - **SSL_MODE** - the SSL mode to use. Yugabyte Cloud [requires SSL connections](../../../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql); use `verify-full`.
+    - **SSL_MODE** - the SSL mode to use. Yugabyte Cloud [requires SSL connections](../../../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql); use `SslMode::Require`.
     - **SSL_ROOT_CERT** - the full path to the Yugabyte Cloud cluster CA certificate.
 
 3. Save the file.
