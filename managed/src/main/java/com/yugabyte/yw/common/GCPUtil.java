@@ -69,24 +69,13 @@ public class GCPUtil {
     }
   }
 
-  public static boolean canCredentialListObjects(JsonNode credentials) {
-    List<String> locations = null;
-    try {
-      locations = BackupUtil.getStorageLocationList(credentials);
-    } catch (PlatformServiceException e) {
-      log.error(e.getMessage());
-      return false;
-    }
-    return canCredentialListObjects(credentials, locations);
-  }
-
-  public static Boolean canCredentialListObjects(JsonNode credentials, List<String> locations) {
+  public static Boolean canCredentialListObjects(JsonNode configData, List<String> locations) {
     for (String configLocation : locations) {
       try {
         String[] splitLocation = getSplitLocationValue(configLocation);
         String bucketName = splitLocation.length > 0 ? splitLocation[0] : "";
         String prefix = splitLocation.length > 1 ? splitLocation[1] : "";
-        String gcpCredentials = credentials.get(GCS_CREDENTIALS_JSON_FIELDNAME).asText();
+        String gcpCredentials = configData.get(GCS_CREDENTIALS_JSON_FIELDNAME).asText();
         Storage storage = getStorageService(gcpCredentials);
         if (splitLocation.length == 1) {
           storage.list(bucketName);
@@ -101,7 +90,8 @@ public class GCPUtil {
         log.error(
             String.format(
                 "GCP Credential cannot list objects in the specified backup location %s",
-                configLocation));
+                configLocation),
+            e);
         return false;
       }
     }

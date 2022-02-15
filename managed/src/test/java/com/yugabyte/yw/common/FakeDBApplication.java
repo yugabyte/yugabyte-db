@@ -60,6 +60,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public TaskInfoManager mockTaskManager = mock(TaskInfoManager.class);
   public GFlagsValidation mockGFlagsValidation = mock(GFlagsValidation.class);
   public NodeManager mockNodeManager = mock(NodeManager.class);
+  public BackupUtil mockBackupUtil = mock(BackupUtil.class);
 
   public MetricService metricService;
   public AlertService alertService;
@@ -87,6 +88,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
                 .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
                 .overrides(bind(CallHome.class).toInstance(mockCallHome))
                 .overrides(bind(Executors.class).toInstance(mockExecutors))
+                .overrides(bind(BackupUtil.class).toInstance(mockBackupUtil))
                 .overrides(bind(EncryptionAtRestManager.class).toInstance(mockEARManager))
                 .overrides(bind(SetUniverseKey.class).toInstance(mockSetUniverseKey))
                 .overrides(bind(ShellKubernetesManager.class).toInstance(mockKubernetesManager))

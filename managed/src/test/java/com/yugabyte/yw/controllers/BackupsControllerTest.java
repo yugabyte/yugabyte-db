@@ -15,23 +15,37 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.mock;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.FORBIDDEN;
+import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
+import static play.test.Helpers.contextComponents;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.common.audit.AuditService;
+import com.yugabyte.yw.common.customer.config.CustomerConfigService;
+import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
@@ -40,12 +54,15 @@ import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
@@ -59,7 +76,9 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
+import play.data.FormFactory;
 import play.libs.Json;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @RunWith(JUnitParamsRunner.class)
@@ -80,7 +99,6 @@ public class BackupsControllerTest extends FakeDBApplication {
     defaultUser = ModelFactory.testUser(defaultCustomer);
     defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
     taskUUID = UUID.randomUUID();
-
     backupTableParams = new BackupTableParams();
     backupTableParams.universeUUID = defaultUniverse.universeUUID;
     customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST105");
@@ -171,6 +189,65 @@ public class BackupsControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateBackup() {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST21");
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("universeUUID", defaultUniverse.universeUUID.toString());
+    bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+    Result r = createBackupYb(bodyJson, null);
+    JsonNode resultJson = Json.parse(contentAsString(r));
+    assertValue(resultJson, "taskUUID", fakeTaskUUID.toString());
+    assertEquals(OK, r.status());
+    verify(mockCommissioner, times(1)).submit(any(), any());
+  }
+
+  @Test
+  public void testCreateScheduledBackupValidCron() {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST22");
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("universeUUID", defaultUniverse.universeUUID.toString());
+    bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+    bodyJson.put("cronExpression", "0 */2 * * *");
+    Result r = createBackupSchedule(bodyJson, null);
+    assertEquals(OK, r.status());
+  }
+
+  @Test
+  public void testCreateScheduledBackupInvalid() {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST24");
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("universeUUID", defaultUniverse.universeUUID.toString());
+    bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+    Result r = assertPlatformException(() -> createBackupSchedule(bodyJson, null));
+    JsonNode resultJson = Json.parse(contentAsString(r));
+    assertValue(resultJson, "error", "Provide Cron Expression or Scheduling frequency");
+    assertEquals(BAD_REQUEST, r.status());
+    verify(mockCommissioner, times(0)).submit(any(), any());
+  }
+
+  @Test
+  public void testCreateBackupValidationFailed() {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST25");
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    doThrow(new PlatformServiceException(BAD_REQUEST, "error"))
+        .when(mockBackupUtil)
+        .validateTables(any(), any(), any(), any());
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("universeUUID", defaultUniverse.universeUUID.toString());
+    bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+    Result r = assertPlatformException(() -> createBackupYb(bodyJson, null));
+    JsonNode resultJson = Json.parse(contentAsString(r));
+    assertValue(resultJson, "error", "error");
+    assertEquals(BAD_REQUEST, r.status());
+    verify(mockCommissioner, times(0)).submit(any(), any());
+  }
+
+  @Test
   public void testFetchBackupsByTaskUUIDWithMultipleEntries() {
     Backup backup2 = Backup.create(defaultCustomer.uuid, backupTableParams);
     backup2.setTaskUUID(taskUUID);
@@ -226,6 +303,20 @@ public class BackupsControllerTest extends FakeDBApplication {
     String authToken = user == null ? defaultUser.createAuthToken() : user.createAuthToken();
     String method = "DELETE";
     String url = "/api/customers/" + defaultCustomer.uuid + "/delete_backups";
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
+  }
+
+  private Result createBackupYb(ObjectNode bodyJson, Users user) {
+    String authToken = user == null ? defaultUser.createAuthToken() : user.createAuthToken();
+    String method = "POST";
+    String url = "/api/customers/" + defaultCustomer.uuid + "/backups";
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
+  }
+
+  private Result createBackupSchedule(ObjectNode bodyJson, Users user) {
+    String authToken = user == null ? defaultUser.createAuthToken() : user.createAuthToken();
+    String method = "POST";
+    String url = "/api/customers/" + defaultCustomer.uuid + "/create_backup_schedule";
     return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
   }
 

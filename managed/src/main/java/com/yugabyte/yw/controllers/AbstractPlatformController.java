@@ -84,6 +84,11 @@ public abstract class AbstractPlatformController extends Controller {
     this.auditService = auditService;
   }
 
+  @VisibleForTesting
+  public void setFormFactory(ValidatingFormFactory formFactory) {
+    this.formFactory = formFactory;
+  }
+
   protected <T> T parseJsonAndValidate(Class<T> expectedClass) {
     return formFactory.getFormDataOrBadRequest(request().body().asJson(), expectedClass);
   }

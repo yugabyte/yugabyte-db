@@ -2,12 +2,16 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
+
 import com.cronutils.model.Cron;
 import com.cronutils.model.definition.CronDefinitionBuilder;
 import com.cronutils.model.time.ExecutionTime;
 import com.cronutils.parser.CronParser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.collect.Sets;
+import com.google.inject.Singleton;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.BackupResp;
@@ -28,13 +32,32 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
+import java.util.Collections;
+import java.util.List;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
+import org.yb.CommonTypes.TableType;
+import org.yb.client.GetTableSchemaResponse;
+import org.yb.client.ListTablesResponse;
+import org.yb.client.YBClient;
+import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
+import org.yb.master.MasterTypes.RelationType;
+import org.apache.commons.collections.CollectionUtils;
+import javax.inject.Inject;
+import play.api.Play;
 
 import static com.cronutils.model.CronType.UNIX;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
+@Singleton
 public class BackupUtil {
+
+  @Inject YBClientService ybService;
 
   public static final Logger LOG = LoggerFactory.getLogger(BackupUtil.class);
 
@@ -167,7 +190,7 @@ public class BackupUtil {
     return builder.build();
   }
 
-  public static List<String> getStorageLocationList(JsonNode data) throws PlatformServiceException {
+  public List<String> getStorageLocationList(JsonNode data) throws PlatformServiceException {
     List<String> locations = new ArrayList<>();
     List<RegionLocations> regionsList = null;
     if (StringUtils.isNotBlank(data.get(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME).asText())) {
@@ -187,7 +210,7 @@ public class BackupUtil {
     return locations;
   }
 
-  public static List<RegionLocations> getRegionLocationsList(JsonNode data) {
+  public List<RegionLocations> getRegionLocationsList(JsonNode data) {
     List<RegionLocations> regionLocationsList = null;
     try {
       ObjectMapper mapper = new ObjectMapper();
@@ -200,8 +223,7 @@ public class BackupUtil {
     return regionLocationsList;
   }
 
-  public static void validateStorageConfigOnLocations(
-      CustomerConfig config, List<String> locations) {
+  public void validateStorageConfigOnLocations(CustomerConfig config, List<String> locations) {
     LOG.info(String.format("Validating storage config %s", config.configName));
     Boolean isValid = true;
     switch (config.name) {
@@ -230,32 +252,119 @@ public class BackupUtil {
     }
   }
 
-  public static void validateStorageConfig(CustomerConfig config) throws PlatformServiceException {
-    LOG.info(String.format("Validating storage config %s", config.configName));
-    Boolean isValid = true;
-    switch (config.name) {
-      case Util.AZ:
-        isValid = AZUtil.canCredentialListObjects(config.data);
-        break;
-      case Util.GCS:
-        isValid = GCPUtil.canCredentialListObjects(config.data);
-        break;
-      case Util.S3:
-        isValid = AWSUtil.canCredentialListObjects(config.data);
-        break;
-      case Util.NFS:
-        isValid = true;
-        break;
-      default:
-        throw new PlatformServiceException(
-            BAD_REQUEST, String.format("Invalid config type: %s", config.name));
+  public void validateStorageConfig(CustomerConfig config) throws PlatformServiceException {
+    List<String> locations = null;
+    locations = getStorageLocationList(config.getData());
+    validateStorageConfigOnLocations(config, locations);
+  }
+
+  public void validateRestoreOverwrites(
+      List<BackupStorageInfo> backupStorageInfos, Universe universe)
+      throws PlatformServiceException {
+    List<TableInfo> tableInfoList = getTableInfosOrEmpty(universe);
+    for (BackupStorageInfo backupInfo : backupStorageInfos) {
+      if (CollectionUtils.isNotEmpty(backupInfo.tableNameList)) {
+        List<TableInfo> tableInfos =
+            tableInfoList
+                .parallelStream()
+                .filter(tableInfo -> backupInfo.backupType.equals(tableInfo.getTableType()))
+                .filter(tableInfo -> backupInfo.keyspace.equals(tableInfo.getNamespace().getName()))
+                .filter(tableInfo -> backupInfo.tableNameList.contains(tableInfo.getName()))
+                .collect(Collectors.toList());
+        if (CollectionUtils.isNotEmpty(tableInfos)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              String.format(
+                  "Keyspace %s contains tables with same names, overwriting data is not allowed",
+                  backupInfo.keyspace));
+        }
+      } else {
+        List<TableInfo> tableInfos =
+            tableInfoList
+                .parallelStream()
+                .filter(tableInfo -> backupInfo.backupType.equals(tableInfo.getTableType()))
+                .filter(tableInfo -> backupInfo.keyspace.equals(tableInfo.getNamespace().getName()))
+                .collect(Collectors.toList());
+        if (CollectionUtils.isNotEmpty(tableInfos)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              String.format(
+                  "Keyspace %s already exists, overwriting data is not allowed",
+                  backupInfo.keyspace));
+        }
+      }
     }
-    if (!isValid) {
+  }
+
+  public void validateTables(
+      List<UUID> tableUuids, Universe universe, String keyspace, TableType tableType)
+      throws PlatformServiceException {
+
+    List<TableInfo> tableInfoList = getTableInfosOrEmpty(universe);
+    if (keyspace != null && tableUuids.isEmpty()) {
+      tableInfoList =
+          tableInfoList
+              .parallelStream()
+              .filter(tableInfo -> keyspace.equals(tableInfo.getNamespace().getName()))
+              .filter(tableInfo -> tableType.equals(tableInfo.getTableType()))
+              .collect(Collectors.toList());
+      if (tableInfoList.isEmpty()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Cannot initiate backup with empty Keyspace " + keyspace);
+      }
+      return;
+    }
+
+    if (keyspace == null) {
+      tableInfoList =
+          tableInfoList
+              .parallelStream()
+              .filter(tableInfo -> tableType.equals(tableInfo.getTableType()))
+              .collect(Collectors.toList());
+      if (tableInfoList.isEmpty()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "No tables to backup inside specified Universe "
+                + universe.universeUUID.toString()
+                + " and Table Type "
+                + tableType.name());
+      }
+      return;
+    }
+
+    // Match if the table is an index or ysql table.
+    for (TableInfo tableInfo : tableInfoList) {
+      if (tableUuids.contains(
+          getUUIDRepresentation(tableInfo.getId().toStringUtf8().replace("-", "")))) {
+        if (tableInfo.hasRelationType()
+            && tableInfo.getRelationType() == RelationType.INDEX_TABLE_RELATION) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "Cannot backup index table " + tableInfo.getName());
+        } else if (tableInfo.hasTableType()
+            && tableInfo.getTableType() == TableType.PGSQL_TABLE_TYPE) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "Cannot backup ysql table " + tableInfo.getName());
+        }
+      }
+    }
+  }
+
+  public List<TableInfo> getTableInfosOrEmpty(Universe universe) throws PlatformServiceException {
+    final String masterAddresses = universe.getMasterAddresses(true);
+    if (masterAddresses.isEmpty()) {
       throw new PlatformServiceException(
-          BAD_REQUEST,
-          String.format(
-              "Storage config %s cannot access location %s",
-              config.configName, config.data.get(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME)));
+          INTERNAL_SERVER_ERROR, "Masters are not currently queryable.");
+    }
+    YBClient client = null;
+    try {
+      String certificate = universe.getCertificateNodetoNode();
+      client = ybService.getClient(masterAddresses, certificate);
+      return client.getTablesList().getTableInfoList();
+    } catch (Exception e) {
+      LOG.warn(e.toString());
+      return Collections.emptyList();
+    } finally {
+      ybService.closeClient(client, masterAddresses);
     }
   }
 }

@@ -37,22 +37,11 @@ public class AWSUtil {
   private static final String AWS_PATH_STYLE_ACCESS = "PATH_STYLE_ACCESS";
   private static final String KEY_LOCATION_SUFFIX = Util.KEY_LOCATION_SUFFIX;
 
-  public static boolean canCredentialListObjects(JsonNode credentials) {
-    List<String> locations = null;
-    try {
-      locations = BackupUtil.getStorageLocationList(credentials);
-    } catch (PlatformServiceException e) {
-      log.error(e.getMessage());
-      return false;
-    }
-    return canCredentialListObjects(credentials, locations);
-  }
-
   // This method is a way to check if given S3 config can extract objects.
-  public static Boolean canCredentialListObjects(JsonNode credentials, List<String> locations) {
+  public static Boolean canCredentialListObjects(JsonNode configData, List<String> locations) {
     for (String location : locations) {
       try {
-        AmazonS3 s3Client = createS3Client(credentials);
+        AmazonS3 s3Client = createS3Client(configData);
         String[] bucketSplit = getSplitLocationValue(location);
         String bucketName = bucketSplit.length > 0 ? bucketSplit[0] : "";
         String prefix = bucketSplit.length > 1 ? bucketSplit[1] : "";
@@ -70,14 +59,15 @@ public class AWSUtil {
       } catch (Exception e) {
         log.error(
             String.format(
-                "Credential cannot list objects in the specified backup location %s", location));
+                "Credential cannot list objects in the specified backup location %s", location),
+            e);
         return false;
       }
     }
     return true;
   }
 
-  public static void deleteKeyIfExists(JsonNode credentials, String backupLocation)
+  public static void deleteKeyIfExists(JsonNode configData, String backupLocation)
       throws Exception {
     String[] splitLocation = getSplitLocationValue(backupLocation);
     String bucketName = splitLocation[0];
@@ -85,7 +75,7 @@ public class AWSUtil {
     String keyLocation =
         objectPrefix.substring(0, objectPrefix.lastIndexOf('/')) + KEY_LOCATION_SUFFIX;
     try {
-      AmazonS3 s3Client = createS3Client(credentials);
+      AmazonS3 s3Client = createS3Client(configData);
       ListObjectsV2Result listObjectsResult = s3Client.listObjectsV2(bucketName, keyLocation);
       if (listObjectsResult.getKeyCount() == 0) {
         log.info("Specified Location " + keyLocation + " does not contain objects");
@@ -138,11 +128,11 @@ public class AWSUtil {
     return client;
   }
 
-  public static void deleteStorage(JsonNode credentials, List<String> backupLocations)
+  public static void deleteStorage(JsonNode configData, List<String> backupLocations)
       throws Exception {
     for (String backupLocation : backupLocations) {
       try {
-        AmazonS3 s3Client = createS3Client(credentials);
+        AmazonS3 s3Client = createS3Client(configData);
         String[] splitLocation = getSplitLocationValue(backupLocation);
         String bucketName = splitLocation[0];
         String objectPrefix = splitLocation[1];

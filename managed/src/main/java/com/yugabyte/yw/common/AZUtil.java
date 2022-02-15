@@ -35,14 +35,14 @@ public class AZUtil {
     return split;
   }
 
-  public static void deleteKeyIfExists(JsonNode credentials, String backupLocation)
+  public static void deleteKeyIfExists(JsonNode configData, String backupLocation)
       throws Exception {
     String[] splitLocation = getSplitLocationValue(backupLocation, false);
     String azureUrl = "https://" + splitLocation[0];
     String container = splitLocation[1];
     String blob = splitLocation[2];
     String keyLocation = blob.substring(0, blob.lastIndexOf('/')) + KEY_LOCATION_SUFFIX;
-    String sasToken = credentials.get(AZURE_STORAGE_SAS_TOKEN_FIELDNAME).asText();
+    String sasToken = configData.get(AZURE_STORAGE_SAS_TOKEN_FIELDNAME).asText();
     try {
       BlobContainerClient blobContainerClient =
           createBlobContainerClient(azureUrl, sasToken, container);
@@ -62,23 +62,12 @@ public class AZUtil {
     }
   }
 
-  public static boolean canCredentialListObjects(JsonNode credentials) {
-    List<String> locations = null;
-    try {
-      locations = BackupUtil.getStorageLocationList(credentials);
-    } catch (PlatformServiceException e) {
-      log.error(e.getMessage());
-      return false;
-    }
-    return canCredentialListObjects(credentials, locations);
-  }
-
-  public static boolean canCredentialListObjects(JsonNode credentials, List<String> locations) {
+  public static boolean canCredentialListObjects(JsonNode configData, List<String> locations) {
     for (String configLocation : locations) {
       String[] splitLocation = getSplitLocationValue(configLocation, true);
       String azureUrl = "https://" + splitLocation[0];
       String container = splitLocation[1];
-      String sasToken = credentials.get(AZURE_STORAGE_SAS_TOKEN_FIELDNAME).asText();
+      String sasToken = configData.get(AZURE_STORAGE_SAS_TOKEN_FIELDNAME).asText();
       try {
         BlobContainerClient blobContainerClient =
             createBlobContainerClient(azureUrl, sasToken, container);
@@ -89,7 +78,8 @@ public class AZUtil {
         log.error(
             String.format(
                 "Credential cannot list objects in the specified backup location %s",
-                configLocation));
+                configLocation),
+            e);
         return false;
       }
     }
@@ -107,7 +97,7 @@ public class AZUtil {
     return blobContainerClient;
   }
 
-  public static void deleteStorage(JsonNode credentials, List<String> backupLocations)
+  public static void deleteStorage(JsonNode configData, List<String> backupLocations)
       throws Exception {
     for (String backupLocation : backupLocations) {
       try {
@@ -115,7 +105,7 @@ public class AZUtil {
         String azureUrl = "https://" + splitLocation[0];
         String container = splitLocation[1];
         String blob = splitLocation[2];
-        String sasToken = credentials.get(AZURE_STORAGE_SAS_TOKEN_FIELDNAME).asText();
+        String sasToken = configData.get(AZURE_STORAGE_SAS_TOKEN_FIELDNAME).asText();
         BlobContainerClient blobContainerClient =
             createBlobContainerClient(azureUrl, sasToken, container);
         ListBlobsOptions blobsOptions = new ListBlobsOptions().setPrefix(blob);
