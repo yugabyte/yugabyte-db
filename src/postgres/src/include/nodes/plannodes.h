@@ -240,8 +240,10 @@ typedef struct ModifyTable
 	Index		exclRelRTI;		/* RTI of the EXCLUDED pseudo relation */
 	List	   *exclRelTlist;	/* tlist of the EXCLUDED pseudo relation */
 
-	List	   *ybPushdownTlist; /* tlist for the pushed down SET expressions */
-	bool	   no_row_trigger; /* planner has checked no triggers apply */
+	List	   *ybPushdownTlist;	/* tlist for the pushdown SET expressions */
+	List	   *ybReturningColumns;	/* columns to fetch from DocDB */
+	List	   *ybColumnRefs;	/* colrefs to evaluate pushdown expressions */
+	bool		no_row_trigger; /* planner has checked no triggers apply */
 	List	   *no_update_index_list; /* OIDs of indexes to be aren't updated */
 } ModifyTable;
 

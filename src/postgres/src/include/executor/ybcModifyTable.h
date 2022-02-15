@@ -135,7 +135,8 @@ extern bool YBCExecuteUpdate(Relation rel,
 							 HeapTuple tuple,
 							 EState *estate,
 							 ModifyTableState *mtstate,
-							 Bitmapset *updatedCols);
+							 Bitmapset *updatedCols,
+							 bool canSetTag);
 
 /*
  * Replace a row in a YugaByte table by first deleting an existing row

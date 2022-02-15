@@ -34,7 +34,6 @@ DECLARE_int64(TEST_inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms);
 DECLARE_bool(TEST_index_read_multiple_partitions);
 DECLARE_int32(ysql_output_buffer_size);
 DECLARE_int32(ysql_select_parallelism);
-DECLARE_bool(ysql_enable_update_batching);
 DECLARE_int32(ysql_sequence_cache_minval);
 
 DECLARE_bool(ysql_suppress_unsupported_error);

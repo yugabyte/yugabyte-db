@@ -424,9 +424,13 @@ AllocSetContextCreateExtended(MemoryContext parent,
 	/*
 	 * Check whether the parameters match either available freelist.  We do
 	 * not need to demand a match of maxBlockSize.
+	 * Access to the freelist is not thread safe, so avoid it in multi-thread
+	 * mode.
 	 */
-	if (minContextSize == ALLOCSET_DEFAULT_MINSIZE &&
-		initBlockSize == ALLOCSET_DEFAULT_INITSIZE)
+	if (IsMultiThreadedMode())
+		freeListIndex = -1;
+	else if (minContextSize == ALLOCSET_DEFAULT_MINSIZE &&
+			 initBlockSize == ALLOCSET_DEFAULT_INITSIZE)
 		freeListIndex = 0;
 	else if (minContextSize == ALLOCSET_SMALL_MINSIZE &&
 			 initBlockSize == ALLOCSET_SMALL_INITSIZE)

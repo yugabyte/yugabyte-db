@@ -88,6 +88,28 @@ class PgColumn {
   bool is_primary() const;
   bool is_virtual_column() const;
 
+  void set_pg_type_info(int typid, int typmod, int collid) {
+    pg_typid_ = typid;
+    pg_typmod_ = typmod;
+    pg_collid_ = collid;
+  }
+
+  bool has_pg_type_info() const {
+    return pg_typid_ != 0;
+  }
+
+  int pg_typid() const {
+    return pg_typid_;
+  }
+
+  int pg_typmod() const {
+    return pg_typmod_;
+  }
+
+  int pg_collid() const {
+    return pg_collid_;
+  }
+
  private:
   const Schema& schema_;
   const size_t index_;
@@ -111,6 +133,12 @@ class PgColumn {
 
   // Wether or not this column will be written for the request.
   bool write_requested_ = false;
+
+  int pg_typid_ = 0;
+
+  int pg_typmod_ = -1;
+
+  int pg_collid_ = 0;
 };
 
 }  // namespace pggate

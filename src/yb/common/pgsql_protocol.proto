@@ -98,8 +98,23 @@ message PgsqlBatchArgumentPB {
 // Column messages.
 //--------------------------------------------------------------------------------------------------
 // ColumnRefs is a list of columns to be read by DocDB before a PGSQL request can be executed.
+// DEPRECATED, new code should use col_refs field of type PgsqlColRefPB instead
 message PgsqlColumnRefsPB {
   repeated int32 ids = 1;
+}
+
+// Represents a column referenced by a PGSQL request.
+// - column_id is a DocDB identifier of the column and used to locate a value within a row
+// - attno is a Postgres identifier, must be specified if column is referenced by a PG expression
+// - typid, typmod are needed to convert DocDB values to Postgres format (Datum and isnull pair).
+// They must be specified if used in an expression evaluated by PGgate.
+// - collid is for future collations support
+message PgsqlColRefPB {
+  optional int32 column_id = 1;
+  optional int32 attno = 2;
+  optional int32 typid = 3;
+  optional int32 typmod = 4;
+  optional int32 collid = 5;
 }
 
 // ColumnValue is a value to be assigned to a table column by DocDB while executing a PGSQL request.
@@ -217,6 +232,7 @@ message PgsqlWriteRequestPB {
 
   // Listing of all columns that this write operation is referencing.
   // TServers will need to read these columns when processing the write request.
+  // DEPRECATED in favor of col_refs;
   optional PgsqlColumnRefsPB column_refs = 15;
 
   // The version of the ysql system catalog this query was prepared against.
@@ -233,6 +249,12 @@ message PgsqlWriteRequestPB {
   // This is currently only used for DELETEs to the index when the index is getting created with
   // index backfill enabled.
   optional bool is_delete_persist_needed = 20 [default = false];
+
+  // Columns refereced by this write operation.
+  // Provides mapping between DocDB and Postgres identifiers, and provides Postgres type information
+  // to convert between DocDB and Postgres formats.
+  // One entry per column referenced.
+  repeated PgsqlColRefPB col_refs = 21;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -333,6 +355,7 @@ message PgsqlReadRequestPB {
   optional PgsqlReadRequestPB index_request = 21;
 
   // Where clause condition
+  // DEPRECATED in favor of where_clauses
   optional PgsqlExpressionPB where_expr = 8;
 
   // TODO(alex): This should be renamed to make it clear that it's ONLY related to range columns!
@@ -360,6 +383,7 @@ message PgsqlReadRequestPB {
   // Database Arguments - To be read from the DataBase.
   // Listing of all columns that this operation is referencing. TServers will need to read these
   // columns when processing this read request.
+  // DEPRECATED in favor of col_refs;
   optional PgsqlColumnRefsPB column_refs = 9;
 
   //------------------------------------------------------------------------------------------------
@@ -430,6 +454,17 @@ message PgsqlReadRequestPB {
   // the tablet server handling the PgsqlRead to terminate the scan and checkpoint the paging
   // state as desired.
   optional bytes backfill_spec = 31;
+
+  // Pushed down Postgres conditions. Like in Postgres, conditions are implicitly ANDed.
+  // Per scanned row, expressions are evaluated by PGgate one by one, and if any is evaluated to
+  // false the row is skipped.
+  repeated PgsqlExpressionPB where_clauses = 33;
+
+  // Columns refereced by this write operation.
+  // Provides mapping between DocDB and Postgres identifiers, and provides Postgres type information
+  // to convert between DocDB and Postgres formats.
+  // One entry per column referenced.
+  repeated PgsqlColRefPB col_refs = 34;
 }
 
 //--------------------------------------------------------------------------------------------------

@@ -3027,6 +3027,16 @@ _equalRowBounds(const RowBounds *a, const RowBounds *b)
 	return true;
 }
 
+static bool
+_equalYbExprParamDesc(const YbExprParamDesc *a, const YbExprParamDesc *b)
+{
+	COMPARE_SCALAR_FIELD(attno);
+	COMPARE_SCALAR_FIELD(typid);
+	COMPARE_SCALAR_FIELD(typmod);
+	COMPARE_SCALAR_FIELD(collid);
+	return true;
+}
+
 /*
  * equal
  *	  returns whether two nodes are equal
@@ -3768,6 +3778,10 @@ equal(const void *a, const void *b)
 			break;
 		case T_RowBounds:
 			retval = _equalRowBounds(a, b);
+			break;
+
+		case T_YbExprParamDesc:
+			retval = _equalYbExprParamDesc(a, b);
 			break;
 
 		default:

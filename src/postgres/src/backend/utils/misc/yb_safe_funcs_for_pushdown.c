@@ -1,6 +1,6 @@
 /*-------------------------------------------------------------------------
  *
- * yb_safe_funcs_for_modify_fast_path.c
+ * yb_safe_funcs_for_pushdown.c
  *    List of non-immutable functions that do not perform any accesses to
  *    the database.
  *
@@ -19,7 +19,7 @@
  * under the License.
  *
  * IDENTIFICATION
- *    src/backend/utils/misc/yb_safe_funcs_for_modify_fast_path.c
+ *    src/backend/utils/misc/yb_safe_funcs_for_pushdown.c
  *
  *-------------------------------------------------------------------------
  */
@@ -27,13 +27,10 @@
 #include "c.h"
 #include "utils/fmgroids.h"
 
-const uint32 yb_funcs_safe_for_modify_fast_path[] = {
-	F_DRANDOM,
-	F_NOW,
-	F_TIMESTAMPTZ_TIMESTAMP,
-	F_TIMESTAMP_TIMESTAMPTZ
+const uint32 yb_funcs_safe_for_pushdown[] = {
+	F_DRANDOM
 };
 
-const int yb_funcs_safe_for_modify_fast_path_count =
-  sizeof(yb_funcs_safe_for_modify_fast_path) /
-  sizeof(yb_funcs_safe_for_modify_fast_path[0]);
+const int yb_funcs_safe_for_pushdown_count =
+	sizeof(yb_funcs_safe_for_pushdown) /
+	sizeof(yb_funcs_safe_for_pushdown[0]);

@@ -403,6 +403,21 @@ InternalType PgExpr::internal_type() const {
       QLType::Create(static_cast<DataType>(type_entity_->yb_type)));
 }
 
+int PgExpr::get_pg_typid() const {
+  return type_entity_->type_oid;
+}
+
+int PgExpr::get_pg_typmod() const {
+  return type_attrs_.typmod;
+}
+
+int PgExpr::get_pg_collid() const {
+  // We do not support collations in DocDB, in future a field should be added to set, store and
+  // pass around a collation id. For now, return a dummy value.
+  // TODO
+  return 0;  /* InvalidOid */
+}
+
 void PgExpr::InitializeTranslateData() {
   switch (type_entity_->yb_type) {
     case YB_YQL_DATA_TYPE_INT8:

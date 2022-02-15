@@ -401,6 +401,12 @@ extern bool yb_enable_create_with_table_oid;
  */
 extern int yb_index_state_flags_update_delay;
 
+/*
+ * Enables expression pushdown.
+ * If true, planner sends supported expressions to DocDB for evaluation
+ */
+extern bool yb_enable_expression_pushdown;
+
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;
@@ -536,12 +542,12 @@ bool IsYbFdwUser(Oid member);
  * statement, they will not cause the actual modify statement to become a
  * cross shard operation.
  */
-extern const uint32 yb_funcs_safe_for_modify_fast_path[];
+extern const uint32 yb_funcs_safe_for_pushdown[];
 
 /*
  * Number of functions in 'yb_funcs_safe_for_modify_fast_path' above.
  */
-extern const int yb_funcs_safe_for_modify_fast_path_count;
+extern const int yb_funcs_safe_for_pushdown_count;
 
 /** 
  * Use the YB_PG_PDEATHSIG environment variable to set the signal to be sent to 

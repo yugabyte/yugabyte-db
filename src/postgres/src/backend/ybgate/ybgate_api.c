@@ -26,6 +26,7 @@
 #include "executor/executor.h"
 #include "nodes/execnodes.h"
 #include "nodes/makefuncs.h"
+#include "nodes/nodeFuncs.h"
 #include "nodes/primnodes.h"
 #include "utils/memutils.h"
 #include "utils/numeric.h"
@@ -35,6 +36,40 @@
 // Memory Context
 //-----------------------------------------------------------------------------
 
+
+YbgStatus YbgGetCurrentMemoryContext(YbgMemoryContext *memctx)
+{
+	PG_SETUP_ERROR_REPORTING();
+
+	*memctx = GetThreadLocalCurrentMemoryContext();
+
+	return PG_STATUS_OK;
+}
+
+YbgStatus YbgSetCurrentMemoryContext(YbgMemoryContext memctx,
+									 YbgMemoryContext *oldctx)
+{
+	PG_SETUP_ERROR_REPORTING();
+
+	YbgMemoryContext prev = SetThreadLocalCurrentMemoryContext(memctx);
+	if (oldctx != NULL)
+	{
+		*oldctx = prev;
+	}
+
+	return PG_STATUS_OK;
+}
+
+YbgStatus YbgCreateMemoryContext(YbgMemoryContext parent,
+								 const char *name,
+								 YbgMemoryContext *memctx)
+{
+	PG_SETUP_ERROR_REPORTING();
+
+	*memctx = CreateThreadLocalCurrentMemoryContext(parent, name);
+
+	return PG_STATUS_OK;
+}
 
 YbgStatus YbgPrepareMemoryContext()
 {
@@ -108,9 +143,10 @@ static Datum evalExpr(YbgExprContext ctx, Expr* expr, bool *is_null)
 		case T_FuncExpr:
 		case T_OpExpr:
 		{
-			Oid          funcid = InvalidOid;
-			List         *args = NULL;
-			ListCell     *lc = NULL;
+			Oid			funcid;
+			Oid			inputcollid;
+			List	   *args;
+			ListCell   *lc;
 
 			/* Get the (underlying) function info. */
 			if (IsA(expr, FuncExpr))
@@ -118,12 +154,14 @@ static Datum evalExpr(YbgExprContext ctx, Expr* expr, bool *is_null)
 				FuncExpr *func_expr = castNode(FuncExpr, expr);
 				args = func_expr->args;
 				funcid = func_expr->funcid;
+				inputcollid = func_expr->inputcollid;
 			}
-			else if (IsA(expr, OpExpr))
+			else /* (IsA(expr, OpExpr)) */
 			{
 				OpExpr *op_expr = castNode(OpExpr, expr);
 				args = op_expr->args;
 				funcid = op_expr->opfuncid;
+				inputcollid = op_expr->inputcollid;
 			}
 
 			FmgrInfo *flinfo = palloc0(sizeof(FmgrInfo));
@@ -131,11 +169,11 @@ static Datum evalExpr(YbgExprContext ctx, Expr* expr, bool *is_null)
 
 			fmgr_info(funcid, flinfo);
 			InitFunctionCallInfoData(fcinfo,
-			                         flinfo,
-			                         args->length,
-			                         InvalidOid,
-			                         NULL,
-			                         NULL);
+									 flinfo,
+									 list_length(args),
+									 inputcollid,
+									 NULL,
+									 NULL);
 			int i = 0;
 			foreach(lc, args)
 			{
@@ -159,6 +197,100 @@ static Datum evalExpr(YbgExprContext ctx, Expr* expr, bool *is_null)
 		{
 			RelabelType *rt = castNode(RelabelType, expr);
 			return evalExpr(ctx, rt->arg, is_null);
+		}
+		case T_NullTest:
+		{
+			NullTest   *nt = castNode(NullTest, expr);
+			bool		arg_is_null;
+			evalExpr(ctx, nt->arg, &arg_is_null);
+			*is_null = false;
+			return (Datum) (nt->nulltesttype == IS_NULL) == arg_is_null;
+		}
+		case T_BoolExpr:
+		{
+			BoolExpr   *be = castNode(BoolExpr, expr);
+			ListCell   *lc;
+			Expr	   *arg;
+			Datum		arg_value;
+			bool		arg_is_null;
+			switch (be->boolop)
+			{
+				case AND_EXPR:
+					*is_null = false;
+					foreach(lc, be->args)
+					{
+						arg = (Expr *) lfirst(lc);
+						arg_value = evalExpr(ctx, arg, &arg_is_null);
+						if (arg_is_null)
+						{
+							*is_null = true;
+						}
+						else if (!arg_value)
+						{
+							*is_null = false;
+							return (Datum) false;
+						}
+					}
+					return *is_null ? (Datum) 0 : (Datum) true;
+				case OR_EXPR:
+					*is_null = false;
+					foreach(lc, be->args)
+					{
+						arg = (Expr *) lfirst(lc);
+						arg_value = evalExpr(ctx, arg, &arg_is_null);
+						if (arg_is_null)
+						{
+							*is_null = true;
+						}
+						else if (arg_value)
+						{
+							*is_null = false;
+							return (Datum) true;
+						}
+					}
+					return *is_null ? (Datum) 0 : (Datum) false;
+				case NOT_EXPR:
+					arg = (Expr *) linitial(be->args);
+					arg_value = evalExpr(ctx, arg, is_null);
+					return *is_null ? (Datum) 0 : (Datum) (!arg_value);
+				default:
+					/* Planner should ensure we never get here. */
+					ereport(ERROR,
+						(errcode(ERRCODE_INTERNAL_ERROR), errmsg(
+						"Unsupported boolop received by DocDB")));
+					break;
+			}
+			return true;
+		}
+		case T_CaseExpr:
+		{
+			CaseExpr   *ce = castNode(CaseExpr, expr);
+			ListCell   *lc;
+			/*
+			 * Support for implicit equality comparison would require catalog
+			 * lookup to find equality operation for the argument data type.
+			 */
+			if (ce->arg)
+				ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR), errmsg(
+					"Unsupported CASE expression received by DocDB")));
+			/*
+			 * Evaluate WHEN clause expressions one by one, if any evaluation
+			 * result is true, evaluate and return respective result expression
+			 */
+			foreach(lc, ce->args)
+			{
+				CaseWhen *cw = castNode(CaseWhen, lfirst(lc));
+				bool arg_is_null;
+				if (evalExpr(ctx, cw->expr, &arg_is_null))
+					return evalExpr(ctx, cw->result, is_null);
+			}
+			/* None of the exprerssions was true, so evaluate the default. */
+			if (ce->defresult)
+				return evalExpr(ctx, ce->defresult, is_null);
+			/* If default is not specified, return NULL */
+			*is_null = true;
+			return (Datum) 0;
 		}
 		case T_Const:
 		{
@@ -199,6 +331,17 @@ YbgStatus YbgExprContextCreate(int32_t min_attno, int32_t max_attno, YbgExprCont
 	return PG_STATUS_OK;
 }
 
+YbgStatus YbgExprContextReset(YbgExprContext expr_ctx)
+{
+	PG_SETUP_ERROR_REPORTING();
+
+	int32_t num_attrs = expr_ctx->max_attno - expr_ctx->min_attno + 1;
+	memset(expr_ctx->attr_vals, 0, sizeof(Datum) * num_attrs);
+	expr_ctx->attr_nulls = NULL;
+
+	return PG_STATUS_OK;
+}
+
 YbgStatus YbgExprContextAddColValue(YbgExprContext expr_ctx,
                                     int32_t attno,
                                     uint64_t datum,
@@ -218,10 +361,37 @@ YbgStatus YbgExprContextAddColValue(YbgExprContext expr_ctx,
 	return PG_STATUS_OK;
 }
 
-YbgStatus YbgEvalExpr(char* expr_cstring, YbgExprContext expr_ctx, uint64_t *datum, bool *is_null)
+YbgStatus YbgPrepareExpr(char* expr_cstring, YbgPreparedExpr *expr)
 {
 	PG_SETUP_ERROR_REPORTING();
-	Expr *expr = (Expr *) stringToNode(expr_cstring);
+	*expr = (YbgPreparedExpr) stringToNode(expr_cstring);
+	return PG_STATUS_OK;
+}
+
+YbgStatus YbgExprType(const YbgPreparedExpr expr, int32_t *typid)
+{
+	PG_SETUP_ERROR_REPORTING();
+	*typid = exprType((Node *) expr);
+	return PG_STATUS_OK;
+}
+
+YbgStatus YbgExprTypmod(const YbgPreparedExpr expr, int32_t *typmod)
+{
+	PG_SETUP_ERROR_REPORTING();
+	*typmod = exprTypmod((Node *) expr);
+	return PG_STATUS_OK;
+}
+
+YbgStatus YbgExprCollation(const YbgPreparedExpr expr, int32_t *collid)
+{
+	PG_SETUP_ERROR_REPORTING();
+	*collid = exprCollation((Node *) expr);
+	return PG_STATUS_OK;
+}
+
+YbgStatus YbgEvalExpr(YbgPreparedExpr expr, YbgExprContext expr_ctx, uint64_t *datum, bool *is_null)
+{
+	PG_SETUP_ERROR_REPORTING();
 	*datum = (uint64_t) evalExpr(expr_ctx, expr, is_null);
 	return PG_STATUS_OK;
 }
@@ -267,7 +437,7 @@ struct YbgReservoirStateData {
 	ReservoirStateData rs;
 };
 
-YbgStatus YbgSamplerCreate(double rstate_w, uint64_t randstate, YbgReservoirState *yb_rs) 
+YbgStatus YbgSamplerCreate(double rstate_w, uint64_t randstate, YbgReservoirState *yb_rs)
 {
 	PG_SETUP_ERROR_REPORTING();
 	YbgReservoirState rstate = (YbgReservoirState) palloc0(sizeof(struct YbgReservoirStateData));

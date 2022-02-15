@@ -67,6 +67,15 @@ class PgDmlWrite : public PgDml {
   // Allocate target for selected or returned expressions.
   PgsqlExpressionPB *AllocTargetPB() override;
 
+  // Allocate protobuf for a qual in the write request's where_clauses list.
+  PgsqlExpressionPB *AllocQualPB() override;
+
+  // Allocate protobuf for a column reference in the write request's col_refs list.
+  PgsqlColRefPB *AllocColRefPB() override;
+
+  // Clear the write request's col_refs list.
+  void ClearColRefPBs() override;
+
   // Allocate column expression.
   PgsqlExpressionPB *AllocColumnAssignPB(PgColumn *col) override;
 

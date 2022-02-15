@@ -118,10 +118,14 @@ static SetOp *create_setop_plan(PlannerInfo *root, SetOpPath *best_path,
 static RecursiveUnion *create_recursiveunion_plan(PlannerInfo *root, RecursiveUnionPath *best_path);
 static LockRows *create_lockrows_plan(PlannerInfo *root, LockRowsPath *best_path,
 					 int flags);
-static bool yb_single_row_update_or_delete_path(PlannerInfo *root, ModifyTablePath *path,
-				List **result_tlist, List **modify_tlist,
-				bool *no_row_trigger,
-				List **no_update_index_list);
+static bool yb_single_row_update_or_delete_path(PlannerInfo *root,
+									ModifyTablePath *path,
+									List **modify_tlist,
+									List **column_refs,
+									List **result_tlist,
+									List **returning_cols,
+									bool *no_row_trigger,
+									List **no_update_index_list);
 static ModifyTable *create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path);
 static Limit *create_limit_plan(PlannerInfo *root, LimitPath *best_path,
 				  int flags);
@@ -2500,30 +2504,61 @@ static bool has_applicable_triggers(Relation rel, CmdType operation, Bitmapset *
 }
 
 /*
- * Returns whether a path can support a YB single row modify. This will be
- * non-transactional if execution time criteria are met, otherwise it just
- * avoids an unnecessary scan.
+ * yb_single_row_update_or_delete_path
  *
- * This is currently used for UPDATE/DELETE to determine whether to substitute
- * the index scan with a direct result node containing the primary key values
- * and any UPDATE SET values.
+ * Returns whether a path can support a YB single row modify. The advantage of
+ * a single row modify is that it takes only one RPC request/response cycle to
+ * update single row by primary key. Regular modify takes one RPC to retrieve
+ * the ybctid, and another to modify the row by ybctid. If the WHERE clause
+ * provides all the primary key values, the ybctid can be calculated without
+ * having to make RPC call. That is the main criteria, indicating that single
+ * row modify is possible.
  *
- * This also populates the tlist with the final target list for the result plan
- * (including primary key, SET (for UPDATE), and unspecified column values), and
- * populates update_attrs with the attribute numbers of the columns specified
- * in the UPDATE clause.
+ * There are a number of reasons why single row modify may not be possible.
+ * This function checks them, and if none of them applies, it returns true and
+ * populates var arguments along the way with the values necessary to setup the
+ * query plan nodes.
+ *
+ * Expressions in the SET clause of UPDATE play important role. DocDB has
+ * limited supports for Postgres expression evaluation, so we push supported
+ * set clause expressions down to DocDB if pushdown is enabled in GUC. Those
+ * expressions go to the modify_tlist. These may refer columns of the current
+ * rows, and these references go to the column_refs list as YbExprParamDesc
+ * nodes. DocDB uses it to convert values from native format to Postgres before
+ * evaluation.
+ *
+ * Not pushable expression can be evaluated in the context of the Result node
+ * if they refer no columns (constant expressions). Those expressions are
+ * returned in the result_tlist. If any SET clause expression is neither
+ * pushable nor constant, single row modify can not be performed.
+ * The result_tlist also contains the values for the primary key columns
+ * extracted from the WHERE clause. Primary key values in the result_tlist are
+ * defined in both UPDATE and DELETE cases.
+ *
+ * The returning_cols list contains YbExprParamDesc nodes that represent
+ * columns that need to be fetched from DocDB. The reason why we may need to
+ * fetch some values is that the tuple produced by the Result node is generally
+ * incomplete, it contains only the primary key values, and values from
+ * evaluation of SET clause expression that are not pushed down. If any other
+ * column value is needed for post-modify tasks like evaluate the RETURNING
+ * clause expressions it should be fetched. That is not a big deal, the RPC
+ * request that is sent anyway can carry data row, but we need make a list of
+ * the columns to request.
  */
 static bool
 yb_single_row_update_or_delete_path(PlannerInfo *root,
 									ModifyTablePath *path,
-									List **result_tlist,
 									List **modify_tlist,
+									List **column_refs,
+									List **result_tlist,
+									List **returning_cols,
 									bool *no_row_trigger,
 									List **no_update_index_list)
 {
 	RelOptInfo *relInfo = NULL;
 	Oid relid;
 	Relation relation;
+	TupleDesc tupDesc;
 	Path *subpath;
 	PlannerInfo *subroot;
 	IndexPath *index_path;
@@ -2531,14 +2566,11 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	ListCell *values;
 	ListCell *subpath_tlist_values;
 	List *subpath_tlist = NIL;
+	List *colrefs = NIL;
 	TargetEntry **indexquals = NULL;
 	int attr_num;
 	AttrNumber attr_offset;
-
-	*result_tlist = NIL;
 	Bitmapset *update_attrs = NULL;
-
-	/* For update, SET clause attrs whose RHS value to be evaluated by DocDB */
 	Bitmapset *pushdown_update_attrs = NULL;
 
 	/* Verify YB is enabled. */
@@ -2564,28 +2596,28 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	 */
 	for (int rti = 1; rti < root->simple_rel_array_size; ++rti)
 	{
-			RelOptInfo *rel = root->simple_rel_array[rti];
-			if (rel != NULL)
+		RelOptInfo *rel = root->simple_rel_array[rti];
+		if (rel != NULL)
+		{
+			if (relInfo == NULL)
 			{
-					if (relInfo == NULL)
-					{
-						/* Found the first non null RelOptInfo.
-						 * Set relInfo and relid.
-						 */
-						relInfo = rel;
-						relid = root->simple_rte_array[rti]->relid;
-					}
-					else
-					{
-							/*
-							 * There are multiple entries in simple_rel_array.
-							 * This implies that multiple relations are being
-							 * affected. Single row optimization is not
-							 * applicable here.
-							 */
-							return false;
-					}
+				/* Found the first non null RelOptInfo.
+				 * Set relInfo and relid.
+				 */
+				relInfo = rel;
+				relid = root->simple_rte_array[rti]->relid;
 			}
+			else
+			{
+				/*
+				 * There are multiple entries in simple_rel_array.
+				 * This implies that multiple relations are being
+				 * affected. Single row optimization is not
+				 * applicable here.
+				 */
+				return false;
+			}
+		}
 	}
 
 	/*
@@ -2593,7 +2625,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	 */
 	if (relInfo == NULL)
 	{
-			return false;
+		return false;
 	}
 
 	/* ON CONFLICT clause is not supported here yet. */
@@ -2614,6 +2646,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 
 	/* Ensure we close the relation before returning. */
 	relation = RelationIdGetRelation(relid);
+	tupDesc = RelationGetDescr(relation);
 	attr_offset = YBGetFirstLowInvalidAttributeNumber(relation);
 
 	subroot = linitial_node(PlannerInfo, path->subroots);
@@ -2641,7 +2674,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		index_path = (IndexPath *) projection_path->subpath;
 
 		Bitmapset *primary_key_attrs = YBGetTablePrimaryKeyBms(relation);
-		
+
 		/*
 		 * Iterate through projection_path tlist, identify true user write columns from unspecified
 		 * columns. If true user write expression is not a supported single row write expression
@@ -2649,9 +2682,8 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		 */
 		foreach(values, build_path_tlist(subroot, subpath))
 		{
-			TargetEntry *tle;
-
-			tle = lfirst_node(TargetEntry, values);
+			TargetEntry *tle = lfirst_node(TargetEntry, values);
+			int resno = tle->resno;
 
 			/* Ignore unspecified columns. */
 			if (IsA(tle->expr, Var))
@@ -2662,34 +2694,50 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 				 * (added for YB scan in rewrite handler).
 				 */
 				if (var->varattno == InvalidAttrNumber ||
-				    var->varattno == tle->resno ||
-				    (var->varattno == YBTupleIdAttributeNumber &&
-				        var->varcollid == InvalidOid))
+					var->varattno == resno ||
+					(var->varattno == YBTupleIdAttributeNumber &&
+						var->varcollid == InvalidOid))
 				{
 					continue;
 				}
 			}
 
-			/* Verify expression is supported. */
-			bool needs_pushdown = false;
-			if (!YBCIsSupportedSingleRowModifyAssignExpr(tle->expr, tle->resno, &needs_pushdown))
+			/*
+			 * Verify if the path target matches a table column.
+			 *
+			 * While resno is always expected to be greater than zero, it is
+			 * possible that planner adds extra expressions. In particular,
+			 * we've seen a RowExpr when a view was updated.
+			 *
+			 * We are not sure how to handle those, so we fallback to regular
+			 * update.
+			 *
+			 * Note, this check happens after the unspecified/pseudo-column
+			 * check, it is expected that pseudo-columns go after regular
+			 * tables columns listed in the tuple descriptor.
+			 */
+			if (resno <= 0 || resno > tupDesc->natts)
 			{
+				elog(DEBUG1, "Target expression out of range: %d", resno);
 				RelationClose(relation);
 				return false;
 			}
 
 			/* Updates involving primary key columns are not single-row. */
-			if (bms_is_member(tle->resno - attr_offset, primary_key_attrs))
+			if (bms_is_member(resno - attr_offset, primary_key_attrs))
 			{
 				RelationClose(relation);
 				return false;
 			}
 
-			int resno = tle->resno;
-			TupleDesc tupleDesc = RelationGetDescr(relation);
-			Oid target_collation_id = ybc_get_attcollation(tupleDesc, resno);
+			subpath_tlist = lappend(subpath_tlist, tle);
+			update_attrs = bms_add_member(update_attrs, resno - attr_offset);
 
 			/*
+			 * We can not push down an expression for a column with not null
+			 * constraint, since constraint checks happen before DocDB request
+			 * is sent, and actual value is needed to evaluate the constraint.
+			 *
 			 * Updates involving non-C collation columns cannot do pushdown.
 			 * If an indexed column id has a non-C collation and we have in an
 			 * UPDATE statement set id = id || 'a'. After evaluating id || 'a',
@@ -2699,21 +2747,34 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 			 * accessible in the tablet server. We can allow pushdown if we can
 			 * detect that column id is not a key-column. In that case we just
 			 * need to store the result itself with no collation-encoding.
+			 *
+			 * Naturally, expression can not be pushed down if there are
+			 * elements not supported by DocDB.
+			 *
+			 * However, if not pushable expression does not refer any target
+			 * table column, the Result node can evaluate it, and the statement
+			 * would still be one row.
 			 */
-			if (YBIsCollationValidNonC(target_collation_id))
+			if (TupleDescAttr(tupDesc, resno - 1)->attnotnull ||
+				YBIsCollationValidNonC(ybc_get_attcollation(tupDesc, resno)) ||
+				!YbCanPushdownExpr(tle->expr, &colrefs))
 			{
+				/*
+				 * If the expression is not pushable, it is still may be added
+				 * to a Result node for evaluation if it contains no Vars.
+				 */
+				List *vars = pull_vars_of_level((Node *) tle->expr, 0);
+				if (vars == NIL)
+					continue;
+
+				/* Otherwise we have to keep the scan */
+				list_free(vars);
 				RelationClose(relation);
 				return false;
 			}
 
-			if (needs_pushdown)
-			{
-				pushdown_update_attrs = bms_add_member(
-				    pushdown_update_attrs, tle->resno - attr_offset);
-			}
-
-			subpath_tlist = lappend(subpath_tlist, tle);
-			update_attrs = bms_add_member(update_attrs, tle->resno - attr_offset);
+			pushdown_update_attrs = bms_add_member(pushdown_update_attrs,
+												   resno - attr_offset);
 		}
 	}
 
@@ -2743,7 +2804,6 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	 * Cannot allow check constraints for single-row update as we will need
 	 * to ensure we read all columns they reference to check them correctly.
 	 */
-	TupleDesc tupDesc = RelationGetDescr(relation);
 	if (path->operation == CMD_UPDATE &&
 		tupDesc->constr &&
 		tupDesc->constr->num_check > 0)
@@ -2810,10 +2870,13 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	indexquals = (TargetEntry **) palloc0(relInfo->max_attr * sizeof(TargetEntry *));
 
 	/*
-	 * Add WHERE clauses from index scan quals to list, verify they are supported write exprs.
-	 * i.e. after fix_indexqual_references:
-	 * - LHS must be a (key) column
-	 * - RHS must be a "stable" expression (evaluate to constant)
+	 * Index qual can provide values to fill the primary key columns in the
+	 * Result's tuple. If the WHERE clause has a condition of form `pkey = expr`
+	 * we know that the value in the pkey column of the target row will be expr.
+	 * We just need to wrap the expr by a TargetEntry node and put into Result's
+	 * target list.
+	 * We have already checked that all index quals are OpExpr expressions and
+	 * fix_indexqual_references makes sure the expr is on the right hand side.
 	 */
 	foreach(values, fix_indexqual_references(subroot, index_path))
 	{
@@ -2823,23 +2886,8 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		TargetEntry *tle;
 
 		clause = (Expr *) lfirst(values);
-
-		/* Make sure we're an operator expression. */
-		if (!IsA(clause, OpExpr))
-		{
-			RelationClose(relation);
-			return false;
-		}
-
 		expr = (Expr *) get_rightop(clause);
 		var = castNode(Var, get_leftop(clause));
-
-		/* Verify expression is supported. */
-		if (!YBCIsSupportedSingleRowModifyWhereExpr(expr))
-		{
-			RelationClose(relation);
-			return false;
-		}
 
 		/*
 		 * If const expression has a different type than the column (var), wrap in a relabel
@@ -2864,46 +2912,6 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		tle->resorigcol = 0;
 		indexquals[tle->resno - 1] = tle;
 		primary_key_attrs = bms_add_member(primary_key_attrs, tle->resno - attr_offset);
-	}
-
-	/*
-	* Additional check for RETURNING.
-	* For UPDATE, verify RETURNING columns do not contain unsupported expressions.
-	* FOR DELETE, this check passes only when RETURNING column(s) only contain
-	* primary key column(s).
-	*/
-	if (path->operation == CMD_UPDATE && list_length(path->returningLists) > 0)
-	{
-		foreach(values, linitial(path->returningLists))
-		{
-			TargetEntry* tle = lfirst_node(TargetEntry, values);
-			int attr = tle->resorigcol;
-			/* 
-			 * When a RETURNING expression is not a projection of a base column,
-			 * its AttrNumber is InvalidAttrNumber.
-			 */
-			if (attr == InvalidAttrNumber && !YBCIsSupportedSingleRowModifyReturningExpr(tle->expr))
-			{
-				RelationClose(relation);
-				return false;
-			}
-		}
-	}
-	else 
-	{
-		if (list_length(path->returningLists) > 0)
-		{
-			foreach(values, linitial(path->returningLists))
-			{
-				int attr = lfirst_node(TargetEntry, values)->resorigcol - attr_offset;
-				if (!bms_is_member(attr, update_attrs) &&
-					!bms_is_member(attr, primary_key_attrs))
-				{
-					RelationClose(relation);
-					return false;
-				}
-			}
-		}
 	}
 
 	/*
@@ -2946,7 +2954,8 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		}
 		else if (subpath_tlist_values && subpath_tlist_tle->resno == attr_num)
 		{
-			if (bms_is_member(subpath_tlist_tle->resno  - attr_offset, pushdown_update_attrs))
+			if (bms_is_member(subpath_tlist_tle->resno - attr_offset,
+							  pushdown_update_attrs))
 			{
 				/*
 				 * If the expr needs pushdown bypass query-layer evaluation.
@@ -2961,8 +2970,8 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 			}
 			else
 			{
-			  /* Use the SET value from the projection target list. */
-			  *result_tlist = lappend(*result_tlist, subpath_tlist_tle);
+				/* Use the SET value from the projection target list. */
+				*result_tlist = lappend(*result_tlist, subpath_tlist_tle);
 			}
 
 			subpath_tlist_values = lnext(subpath_tlist_values);
@@ -2980,6 +2989,87 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		}
 	}
 
+	/*
+	 * The tuple produced by the Result node may already have all the columns
+	 * needed to evaluate the returning expressions. It does, if referenced
+	 * columns are the primary key columns, their values are extracted from
+	 * the condition, or SET columns, if their values are evaluated by the
+	 * Result (contrary to pushing expressions down). If the returning
+	 * expressions refer any column updated with a result of pushed down
+	 * expression or neither updated nor a part of the primary key, we need to
+	 * fetch the values from DocDB.
+	 * If DocDB tuple is fetched, it is replaces one produced by the Result,
+	 * there is no merge. So we iterate over the referenced columns and add them
+	 * all to the fetch list, which is discared, if we learn that we already
+	 * have all of them.
+	 */
+	if (path->returningLists)
+	{
+		bool retrieve = false;
+		List *references = NIL;
+		/*
+		 * Iterate over all variables referenced by the returning clause
+		 * expressions.
+		 */
+		List *vars = pull_vars_of_level((Node *) path->returningLists, 0);
+		foreach (lc, vars)
+		{
+			Var *var_expr = lfirst_node(Var, lc);
+			AttrNumber attno = var_expr->varattno;
+			YbExprParamDesc *reference;
+
+			/* DocDB does not store system attributes */
+			if (!AttrNumberIsForUserDefinedAttr(attno))
+			{
+				continue;
+			}
+
+			/*
+			 * If expression for the attribute is pushed down we will need to
+			 * fetch it. Also we need to fetch it if it is not provided by
+			 * constant SET clause expression nor by a WHERE condition.
+			 */
+			if (bms_is_member(attno - attr_offset, pushdown_update_attrs) ||
+				(!bms_is_member(attno - attr_offset, update_attrs) &&
+				 !bms_is_member(attno - attr_offset, primary_key_attrs)))
+			{
+				retrieve = true;
+			}
+
+			/*
+			 * Create column reference entry
+			 */
+			reference =  makeNode(YbExprParamDesc);
+			reference->attno = attno;
+			reference->typid = var_expr->vartype;
+			reference->typmod = var_expr->vartypmod;
+			reference->collid = var_expr->varcollid;
+			references = lappend(references, reference);
+		}
+
+		/* Cleanup */
+		list_free(vars);
+		if (retrieve)
+		{
+			/*
+			 * Found pushdown columns referenced from the returning clause,
+			 * return collected references.
+			 */
+			*returning_cols = references;
+		}
+		else
+		{
+			/*
+			 * No columns are referenced from the returning clause,
+			 * discard the list.
+			 */
+			list_free_deep(references);
+		}
+	}
+
+	/* Return column references collected before */
+	*column_refs = colrefs;
+
 	RelationClose(relation);
 	return true;
 }
@@ -2994,14 +3084,16 @@ static ModifyTable *
 create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 {
 	ModifyTable *plan;
-	List	    *subplans = NIL;
-	ListCell    *subpaths,
-	            *subroots;
+	List	   *subplans = NIL;
+	ListCell   *subpaths,
+			   *subroots;
 
-	List        *result_tlist = NIL;
-	List        *modify_tlist = NIL;
-	bool        no_row_trigger = false;
-	List        *no_update_index_list = NIL;
+	List	   *result_tlist = NIL;
+	List	   *modify_tlist = NIL;
+	List	   *returning_cols = NIL;
+	List	   *column_refs = NIL;
+	bool		no_row_trigger = false;
+	List	   *no_update_index_list = NIL;
 
 	/*
 	 * If we are a single row UPDATE/DELETE in a YB relation, add Result subplan
@@ -3009,10 +3101,11 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 	 * running outside of a transaction and thus cannot rely on the results from a
 	 * separately executed operation.
 	 */
-	if (yb_single_row_update_or_delete_path(root, best_path, &result_tlist,
-	                                        &modify_tlist, &no_row_trigger,
-	                                        best_path->operation == CMD_UPDATE ?
-	                                        &no_update_index_list : NULL))
+	if (yb_single_row_update_or_delete_path(root, best_path, &modify_tlist,
+											&column_refs, &result_tlist,
+											&returning_cols, &no_row_trigger,
+											best_path->operation == CMD_UPDATE ?
+												&no_update_index_list : NULL))
 	{
 		Plan *subplan = (Plan *) make_result(result_tlist, NULL, NULL);
 		copy_generic_path_info(subplan, linitial(best_path->subpaths));
@@ -3065,6 +3158,8 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 							best_path->epqParam);
 
 	plan->ybPushdownTlist = modify_tlist;
+	plan->ybReturningColumns = returning_cols;
+	plan->ybColumnRefs = column_refs;
 	plan->no_update_index_list = no_update_index_list;
 	plan->no_row_trigger = no_row_trigger;
 
@@ -7138,8 +7233,9 @@ make_modifytable(PlannerInfo *root,
 	node->fdwDirectModifyPlans = direct_modify_plans;
 
 	/* These are set separately only if needed. */
-	node->ybPushdownTlist = NULL;
-	node->no_update_index_list = NULL;
+	node->ybPushdownTlist = NIL;
+	node->ybReturningColumns = NIL;
+	node->no_update_index_list = NIL;
 	node->no_row_trigger = false;
 	return node;
 }

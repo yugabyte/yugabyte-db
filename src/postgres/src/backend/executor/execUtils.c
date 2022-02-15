@@ -184,7 +184,6 @@ CreateExecutorState(void)
 	estate->yb_exec_params.limit_offset = 0;
 	estate->yb_exec_params.limit_use_default = true;
 	estate->yb_exec_params.rowmark = -1;
-	estate->yb_can_batch_updates = false;
 	estate->yb_exec_params.is_index_backfill = false;
 	/*
 	 * Pointer to the query read hybrid time. This pointer is passed

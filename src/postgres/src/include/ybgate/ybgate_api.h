@@ -77,6 +77,21 @@ typedef struct YbgStatus YbgStatus;
 // Memory Context
 //-----------------------------------------------------------------------------
 
+#ifdef __cplusplus
+typedef void *YbgMemoryContext;
+#else
+typedef MemoryContext YbgMemoryContext;
+#endif
+
+YbgStatus YbgGetCurrentMemoryContext(YbgMemoryContext *memctx);
+
+YbgStatus YbgSetCurrentMemoryContext(YbgMemoryContext memctx,
+									 YbgMemoryContext *oldctx);
+
+YbgStatus YbgCreateMemoryContext(YbgMemoryContext parent,
+								 const char *name,
+								 YbgMemoryContext *memctx);
+
 YbgStatus YbgPrepareMemoryContext();
 
 YbgStatus YbgResetMemoryContext();
@@ -108,8 +123,10 @@ YbgStatus YbgGetTypeTable(const YBCPgTypeEntity **type_table, int *count);
 
 #ifdef __cplusplus
 typedef void* YbgExprContext;
+typedef void* YbgPreparedExpr;
 #else
 typedef struct YbgExprContextData* YbgExprContext;
+typedef struct Expr* YbgPreparedExpr;
 #endif
 
 /*
@@ -117,17 +134,27 @@ typedef struct YbgExprContextData* YbgExprContext;
  */
 YbgStatus YbgExprContextCreate(int32_t min_attno, int32_t max_attno, YbgExprContext *expr_ctx);
 
+YbgStatus YbgExprContextReset(YbgExprContext expr_ctx);
+
 /*
  * Add a column value from the table row.
  * Used by expression evaluation to resolve scan variables.
  */
 YbgStatus YbgExprContextAddColValue(YbgExprContext expr_ctx, int32_t attno, uint64_t datum, bool is_null);
 
+YbgStatus YbgPrepareExpr(char* expr_cstring, YbgPreparedExpr *expr);
+
+YbgStatus YbgExprType(const YbgPreparedExpr expr, int32_t *typid);
+
+YbgStatus YbgExprTypmod(const YbgPreparedExpr expr, int32_t *typmod);
+
+YbgStatus YbgExprCollation(const YbgPreparedExpr expr, int32_t *collid);
+
 /*
  * Evaluate an expression, using the expression context to resolve scan variables.
  * Will filling in datum and is_null with the result.
  */
-YbgStatus YbgEvalExpr(char* expr_cstring, YbgExprContext expr_ctx, uint64_t *datum, bool *is_null);
+YbgStatus YbgEvalExpr(YbgPreparedExpr expr, YbgExprContext expr_ctx, uint64_t *datum, bool *is_null);
 
 /*
  * Given a 'datum' of array type, split datum into individual elements of type 'type' and store

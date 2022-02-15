@@ -49,13 +49,19 @@ MemoryContext SetThreadLocalCurrentMemoryContext(MemoryContext memctx)
 	return (MemoryContext) YBCPgSetThreadLocalCurrentMemoryContext(memctx);
 }
 
+MemoryContext CreateThreadLocalCurrentMemoryContext(MemoryContext parent,
+													const char *name)
+{
+	return AllocSetContextCreateExtended(parent, name, ALLOCSET_START_SMALL_SIZES);
+}
+
 void PrepareThreadLocalCurrentMemoryContext()
 {
 	if (YBCPgGetThreadLocalCurrentMemoryContext() == NULL)
 	{
 		MemoryContext memctx = AllocSetContextCreate((MemoryContext) NULL,
-		                                             "DocDBExprMemoryContext",
-		                                             ALLOCSET_SMALL_SIZES);
+													 "DocDBExprMemoryContext",
+													 ALLOCSET_START_SMALL_SIZES);
 		YBCPgSetThreadLocalCurrentMemoryContext(memctx);
 	}
 }
@@ -293,14 +299,14 @@ MemoryContextDelete(MemoryContext context)
 	 */
 	context->ident = NULL;
 
-	context->methods->delete_context(context);
-
 	/*
 	 * Destroy YugaByte memory context.
 	 */
 	if (context->yb_memctx)
 		HandleYBStatus(YBCPgDestroyMemctx(context->yb_memctx));
 	context->yb_memctx = NULL;
+
+	context->methods->delete_context(context);
 
 	VALGRIND_DESTROY_MEMPOOL(context);
 }

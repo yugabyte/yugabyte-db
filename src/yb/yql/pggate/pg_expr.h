@@ -189,6 +189,11 @@ class PgExpr {
   // Get expression type.
   InternalType internal_type() const;
 
+  // Get Postgres data type information: type Oid, type mod and collation
+  int get_pg_typid() const;
+  int get_pg_typmod() const;
+  int get_pg_collid() const;
+
   // Find opcode.
   static CHECKED_STATUS CheckOperatorName(const char *name);
   static Opcode NameToOpcode(const char *name);

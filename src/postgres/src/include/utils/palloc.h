@@ -86,6 +86,9 @@ static inline MemoryContext GetCurrentMemoryContext() {
 	}
 }
 
+extern MemoryContext CreateThreadLocalCurrentMemoryContext(MemoryContext parent,
+														   const char *name);
+
 extern void PrepareThreadLocalCurrentMemoryContext();
 
 extern void ResetThreadLocalCurrentMemoryContext();

@@ -836,12 +836,6 @@ postquel_start(execution_state *es, SQLFunctionCachePtr fcache)
 		else
 			eflags = 0;			/* default run-to-completion flags */
 		ExecutorStart(es->qd, eflags);
-
-		/*
-		 * Since PGSQL functions don't require the row count from updates, we
-		 * can allow for batched updates.
-		 */
-		es->qd->estate->yb_can_batch_updates = true;
 	}
 
 	es->status = F_EXEC_RUN;

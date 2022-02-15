@@ -180,10 +180,6 @@ Status QLRocksDBStorage::GetIterator(const PgsqlReadRequestPB& request,
         request.is_forward_scan())));
   } else {
     // Construct the scan spec basing on the HASH condition.
-
-    SCHECK(!request.has_where_expr(),
-           InternalError,
-           "WHERE clause is not yet supported in docdb::pgsql");
     RETURN_NOT_OK(doc_iter->Init(DocPgsqlScanSpec(
         schema,
         request.stmt_id(),
