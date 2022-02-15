@@ -58,7 +58,7 @@ Build and run the application.
 $ cargo run
 ```
 
-The Rust-Postgres driver is installed automatically during the first execution of the command. The driver is listed in the dependencies list of the `Cargo.toml` file.
+The driver is included in the dependencies list of the `Cargo.toml` file and installed automatically the first time you run the application.
 
 You should see output similar to the following:
 
