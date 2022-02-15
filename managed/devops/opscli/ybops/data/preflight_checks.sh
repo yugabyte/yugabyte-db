@@ -107,7 +107,6 @@ preflight_configure_check() {
 
   # Check home directory exists.
   check_filepath "Home Directory" "$yb_home_dir" false
-  check_free_space "$yb_home_dir" $HOME_FREE_SPACE_MB
 }
 
 # Checks if given filepath is writable.
