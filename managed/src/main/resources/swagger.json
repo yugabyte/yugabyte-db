@@ -8441,7 +8441,7 @@
       },
       "post" : {
         "description" : "",
-        "operationId" : "createBackupV2",
+        "operationId" : "createbackup",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -8468,8 +8468,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Create a backup V2",
-        "tags" : [ "Table management" ]
+        "summary" : "Create a backup",
+        "tags" : [ "Backups" ]
       }
     },
     "/api/v1/customers/{cUUID}/backups/page" : {
@@ -9155,7 +9155,7 @@
     "/api/v1/customers/{cUUID}/create_backup_schedule" : {
       "post" : {
         "description" : "",
-        "operationId" : "createBackupScheduleV2",
+        "operationId" : "createbackupSchedule",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -9182,8 +9182,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Create Backup Schedule V2",
-        "tags" : [ "Table management" ]
+        "summary" : "Create Backup Schedule",
+        "tags" : [ "Backups" ]
       }
     },
     "/api/v1/customers/{cUUID}/delete_backups" : {
