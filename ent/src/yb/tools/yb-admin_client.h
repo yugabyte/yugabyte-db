@@ -85,7 +85,7 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
 
   CHECKED_STATUS CreateCDCStream(const TableId& table_id);
 
-  CHECKED_STATUS DeleteCDCStream(const std::string& stream_id);
+  CHECKED_STATUS DeleteCDCStream(const std::string& stream_id, bool force_delete = false);
 
   CHECKED_STATUS ListCDCStreams(const TableId& table_id);
 
@@ -94,7 +94,8 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
                                           const std::vector<TableId>& tables,
                                           const std::vector<std::string>& producer_bootstrap_ids);
 
-  CHECKED_STATUS DeleteUniverseReplication(const std::string& producer_id, bool force = false);
+  CHECKED_STATUS DeleteUniverseReplication(const std::string& producer_id,
+                                           bool ignore_errors = false);
 
   CHECKED_STATUS AlterUniverseReplication(
       const std::string& producer_uuid,

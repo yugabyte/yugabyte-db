@@ -107,7 +107,8 @@ message CreateCDCStreamResponsePB {
 
 message DeleteCDCStreamRequestPB {
   repeated bytes stream_id = 1;
-  optional bool force = 2 [default = false];
+  optional bool ignore_errors = 2 [default = false];
+  optional bool force_delete = 3 [default = false];
 }
 
 message DeleteCDCStreamResponsePB {

@@ -446,13 +446,17 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "delete_cdc_stream", " <stream_id>",
+      "delete_cdc_stream", " <stream_id> [force_delete]",
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 1) {
           return ClusterAdminCli::kInvalidArguments;
         }
         const string stream_id = args[0];
-        RETURN_NOT_OK_PREPEND(client->DeleteCDCStream(stream_id),
+        bool force_delete = false;
+        if (args.size() >= 2 && args[1] == "force_delete") {
+          force_delete = true;
+        }
+        RETURN_NOT_OK_PREPEND(client->DeleteCDCStream(stream_id, force_delete),
             Substitute("Unable to delete CDC stream id $0", stream_id));
         return Status::OK();
       });

@@ -534,11 +534,14 @@ class YBClient {
 
   // Delete multiple CDC streams.
   CHECKED_STATUS DeleteCDCStream(const vector<CDCStreamId>& streams,
-                                 bool force = false,
+                                 bool force_delete = false,
+                                 bool ignore_errors = false,
                                  master::DeleteCDCStreamResponsePB* resp = nullptr);
 
   // Delete a CDC stream.
-  CHECKED_STATUS DeleteCDCStream(const CDCStreamId& stream_id);
+  CHECKED_STATUS DeleteCDCStream(const CDCStreamId& stream_id,
+                                 bool force_delete = false,
+                                 bool ignore_errors = false);
 
   void DeleteCDCStream(const CDCStreamId& stream_id, StatusCallback callback);
 

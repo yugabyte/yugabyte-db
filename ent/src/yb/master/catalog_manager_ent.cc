@@ -2533,12 +2533,27 @@ Status CatalogManager::DeleteCDCStream(const DeleteCDCStreamRequestPB* req,
         resp->add_not_found_stream_ids(stream_id);
         LOG(WARNING) << "CDC stream does not exist: " << stream_id;
       } else {
+        auto ltm = stream->LockForRead();
+        bool active = (ltm->pb.state() == SysCDCStreamEntryPB::ACTIVE);
+        bool is_WAL = false;
+        for (const auto& option : ltm->pb.options()) {
+          if (option.key() == "record_format" && option.value() == "WAL") {
+            is_WAL = true;
+          }
+        }
+        if (!req->force_delete() && is_WAL && active) {
+          return STATUS(NotSupported,
+                        "Cannot delete an xCluster Stream in replication. "
+                        "Use 'force_delete' to override",
+                        req->ShortDebugString(),
+                        MasterError(MasterErrorPB::INVALID_REQUEST));
+        }
         streams.push_back(stream);
       }
     }
   }
 
-  if (!resp->not_found_stream_ids().empty() && !req->force()) {
+  if (!resp->not_found_stream_ids().empty() && !req->ignore_errors()) {
     string missing_streams = JoinElementsIterator(resp->not_found_stream_ids().begin(),
                                                   resp->not_found_stream_ids().end(),
                                                   ",");
@@ -3572,7 +3587,7 @@ Status ReturnErrorOrAddWarning(const Status& s,
                                const DeleteUniverseReplicationRequestPB* req,
                                DeleteUniverseReplicationResponsePB* resp) {
   if (!s.ok()) {
-    if (req->force()) {
+    if (req->ignore_errors()) {
       // Continue executing, save the status as a warning.
       AppStatusPB* warning = resp->add_warnings();
       StatusToPB(s, warning);
@@ -3640,7 +3655,11 @@ Status CatalogManager::DeleteUniverseReplication(const DeleteUniverseReplication
       }
 
       DeleteCDCStreamResponsePB delete_cdc_stream_resp;
-      auto s = cdc_rpc->client()->DeleteCDCStream(streams, req->force(), &delete_cdc_stream_resp);
+      // Set force_delete=true since we are deleting active xCluster streams.
+      auto s = cdc_rpc->client()->DeleteCDCStream(streams,
+                                                  true, /* force_delete */
+                                                  req->ignore_errors(),
+                                                  &delete_cdc_stream_resp);
 
       if (delete_cdc_stream_resp.not_found_stream_ids().size() > 0) {
         std::ostringstream missing_streams;
@@ -3916,7 +3935,8 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
         if (!result.ok()) {
           LOG(WARNING) << "Unable to create cdc rpc task. CDC streams won't be deleted: " << result;
         } else {
-          auto s = (*result)->client()->DeleteCDCStream(streams_to_remove);
+          auto s = (*result)->client()->DeleteCDCStream(streams_to_remove,
+                                                        true /* force_delete */);
           if (!s.ok()) {
             std::stringstream os;
             std::copy(streams_to_remove.begin(), streams_to_remove.end(),

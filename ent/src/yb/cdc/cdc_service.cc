@@ -224,7 +224,10 @@ void CDCServiceImpl::DeleteCDCStream(const DeleteCDCStreamRequestPB* req,
                              context);
 
   vector<CDCStreamId> streams(req->stream_id().begin(), req->stream_id().end());
-  Status s = async_client_init_->client()->DeleteCDCStream(streams);
+  Status s = async_client_init_->client()->DeleteCDCStream(
+        streams,
+        (req->has_force_delete() && req->force_delete()),
+        (req->has_ignore_errors() && req->ignore_errors()));
   RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
 
   context.RespondSuccess();
