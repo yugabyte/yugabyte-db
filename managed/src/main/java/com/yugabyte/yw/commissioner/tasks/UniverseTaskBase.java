@@ -31,6 +31,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateAlertDefinitions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DestroyEncryptionAtRest;
@@ -1484,6 +1485,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       params.backupUUID = backup.backupUUID;
       params.customerUUID = customerUUID;
       DeleteBackup task = createTask(DeleteBackup.class);
+      task.initialize(params);
+      subTaskGroup.addSubTask(task);
+    }
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  public SubTaskGroup createDeleteBackupYbTasks(List<Backup> backups, UUID customerUUID) {
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("DeleteBackupYb", executor);
+    for (Backup backup : backups) {
+      DeleteBackupYb.Params params = new DeleteBackupYb.Params();
+      params.backupUUID = backup.backupUUID;
+      params.customerUUID = customerUUID;
+      DeleteBackupYb task = createTask(DeleteBackupYb.class);
       task.initialize(params);
       subTaskGroup.addSubTask(task);
     }

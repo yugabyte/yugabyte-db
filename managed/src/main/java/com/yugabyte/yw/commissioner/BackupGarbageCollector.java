@@ -172,18 +172,21 @@ public class BackupGarbageCollector {
               AWSUtil.deleteKeyIfExists(customerConfig.data, backupLocations.get(0));
               AWSUtil.deleteStorage(customerConfig.data, backupLocations);
               backup.delete();
+              log.info("Backup {} is successfully deleted", backupUUID);
               break;
             case GCS:
               backupLocations = backupUtil.getBackupLocations(backup);
               GCPUtil.deleteKeyIfExists(customerConfig.data, backupLocations.get(0));
               GCPUtil.deleteStorage(customerConfig.data, backupLocations);
               backup.delete();
+              log.info("Backup {} is successfully deleted", backupUUID);
               break;
             case AZ:
               backupLocations = backupUtil.getBackupLocations(backup);
               AZUtil.deleteKeyIfExists(customerConfig.data, backupLocations.get(0));
               AZUtil.deleteStorage(customerConfig.data, backupLocations);
               backup.delete();
+              log.info("Backup {} is successfully deleted", backupUUID);
               break;
             case NFS:
               if (isUniversePresent(backup)) {
