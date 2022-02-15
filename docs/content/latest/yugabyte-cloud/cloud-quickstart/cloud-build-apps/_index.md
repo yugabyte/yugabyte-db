@@ -134,7 +134,7 @@ For more advanced applications, including Spring and GraphQL examples, refer to 
     </div>
     <div class="body">
       Ruby application that connects to a YugabyteDB cluster using the Ruby pg driver.
-   </a>
+  </a>
   </div>
 
 </div>
