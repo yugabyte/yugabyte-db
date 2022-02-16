@@ -30,19 +30,17 @@ Follow these steps to connect your Arctype desktop client to YugabyteDB:
 
 2. Follow the in-app prompts to create and log into your Arctype account.
 
-3. On the "Connect a Database" step, select YugabyteDB, and click 'Create Connection'.
+3. On the "Connect a Database" step, select YugabyteDB.
 
-    ![Connect DB Step](/images/develop/tools/arctype/arctype-connect_step3.png)
+    ![Connect DB](/images/develop/tools/arctype/arctype-connect_step3.png)
 
-4. Enter your YugabyteDB host and port information, and click Continue.
+4. Enter your YugabyteDB host, port, database, user and password information, and click 'Test Connection' and save if connection is successful.
 
     ![Enter host and port](/images/develop/tools/arctype/arctype-connect-step4.png)
 
-5. Enter your database name, username, password, and nickname for this database, and click Continue.
+5. You can see the schemas and tables availabe in the YugabyteDB in the navigation panel.
 
     ![Enter database connection details](/images/develop/tools/arctype/arctype-connect-step5.png)
-
-6. Enter a workspace name, and click Continue.
 
 You've successfully created a connection to your YugabyteDB database, and you can now start querying and visualizing your DB using Arctype.
 
