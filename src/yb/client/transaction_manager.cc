@@ -67,16 +67,6 @@ class TransactionTableState {
     callback(RandomElement(tablets));
   }
 
-  // Update transaction table versions hash and return true if changed.
-  bool UpdateTxnTableVersionsHash(uint64_t hash) EXCLUDES(mutex_) {
-    std::lock_guard<yb::RWMutex> lock(mutex_);
-    if (txn_table_versions_hash_ == hash) {
-      return false;
-    }
-    txn_table_versions_hash_ = hash;
-    return true;
-  }
-
   bool IsInitialized() {
     return initialized_.load();
   }
@@ -84,7 +74,7 @@ class TransactionTableState {
   void UpdateStatusTablets(uint64_t new_version,
                            TransactionStatusTablets&& tablets) EXCLUDES(mutex_) {
     std::lock_guard<yb::RWMutex> lock(mutex_);
-    if (status_tablets_version_ < new_version) {
+    if (!initialized_.load() || status_tablets_version_ < new_version) {
       tablets_ = std::move(tablets);
       has_placement_local_tablets_.store(!tablets_.placement_local_tablets.empty());
       status_tablets_version_ = new_version;
@@ -149,11 +139,10 @@ class TransactionTableState {
   // Set to true if there are any placement local transaction tablets.
   std::atomic<bool> has_placement_local_tablets_{false};
 
-  // Locks the hash/version/tablet lists. A read lock is acquired when picking
+  // Locks the version/tablet lists. A read lock is acquired when picking
   // tablets, and a write lock is acquired when updating tablet lists.
   RWMutex mutex_;
 
-  uint64_t txn_table_versions_hash_ GUARDED_BY(mutex_) = 0;
   uint64_t status_tablets_version_ GUARDED_BY(mutex_) = 0;
 
   TransactionStatusTablets tablets_ GUARDED_BY(mutex_);
@@ -256,12 +245,11 @@ class TransactionManager::Impl {
     Shutdown();
   }
 
-  void UpdateTxnTableVersionsHash(uint64_t hash) {
-    if (!table_state_.UpdateTxnTableVersionsHash(hash)) {
+  void UpdateTransactionTablesVersion(uint64_t version) {
+    if (table_state_.GetStatusTabletsVersion() >= version) {
       return;
     }
 
-    uint64_t version = ++status_tablets_version_;
     if (!tasks_pool_.Enqueue(&thread_pool_, client_, &table_state_, version)) {
       YB_LOG_EVERY_N_SECS(ERROR, 1) << "Update tasks overflow, number of tasks: "
                                     << tasks_pool_.size();
@@ -281,22 +269,8 @@ class TransactionManager::Impl {
       return;
     }
 
-    // Bump version up to be at least 1.
-    // The possible cases are:
-    // - status_tablets_version_ = 0, new transaction id request before initialization, bump to 1.
-    // - status_tablets_version_ = 1, new transaction id request before initialization but not the
-    //   first request, no need to bump version (no changes in transaction tables) but queue
-    //   anyways.
-    // - status_tablets_version_ > 1, was not initialized during above check, but became
-    //   initialized by heartbeat since then, do not set to 1 since status_tablets_version_ should
-    //   never decrease.
-    uint64_t expected_version = 0;
-    uint64_t new_version = 1;
-    status_tablets_version_.compare_exchange_strong(
-        expected_version, new_version, std::memory_order_acq_rel);
-
     if (!tasks_pool_.Enqueue(
-        &thread_pool_, client_, &table_state_, status_tablets_version_.load(), callback,
+        &thread_pool_, client_, &table_state_, 0 /* version */, callback,
         locality)) {
       callback(STATUS_FORMAT(ServiceUnavailable, "Tasks overflow, exists: $0", tasks_pool_.size()));
     }
@@ -345,11 +319,6 @@ class TransactionManager::Impl {
   TransactionTableState table_state_;
   std::atomic<bool> closed_{false};
 
-  // Version of set of transaction status tablets. Each time the transaction table versions
-  // hash changes, this is incremented. This version is internal and specific to the
-  // transaction manager, and may not be equal across multiple instances of transaction managers.
-  std::atomic<uint64_t> status_tablets_version_{0};
-
   yb::rpc::ThreadPool thread_pool_; // TODO async operations instead of pool
   yb::rpc::TasksPool<LoadStatusTabletsTask> tasks_pool_;
   yb::rpc::TasksPool<InvokeCallbackTask> invoke_callback_tasks_;
@@ -363,8 +332,8 @@ TransactionManager::TransactionManager(
 
 TransactionManager::~TransactionManager() = default;
 
-void TransactionManager::UpdateTxnTableVersionsHash(uint64_t hash) {
-  impl_->UpdateTxnTableVersionsHash(hash);
+void TransactionManager::UpdateTransactionTablesVersion(uint64_t version) {
+  impl_->UpdateTransactionTablesVersion(version);
 }
 
 void TransactionManager::PickStatusTablet(

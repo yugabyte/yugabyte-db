@@ -228,9 +228,9 @@ message TSHeartbeatResponsePB {
 
   optional int64 DEPRECATED_tablet_split_size_threshold_bytes = 14;
 
-  // Hash of transaction status table ids and versions, so that the TS knows when
+  // Version of transaction tables and their placements, so that the TS knows when
   // to update the cached list of status tablet ids in the transaction manager.
-  optional uint64 txn_table_versions_hash = 18;
+  optional uint64 transaction_tables_version = 18;
 }
 
 service MasterHeartbeat {

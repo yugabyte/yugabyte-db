@@ -188,8 +188,8 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
                    << s.ToUserMessage();
     }
 
-    uint64_t txn_table_versions_hash = server_->catalog_manager()->GetTxnTableVersionsHash();
-    resp->set_txn_table_versions_hash(txn_table_versions_hash);
+    uint64_t transaction_tables_version = server_->catalog_manager()->GetTransactionTablesVersion();
+    resp->set_transaction_tables_version(transaction_tables_version);
 
     rpc.RespondSuccess();
   }

@@ -833,8 +833,6 @@ Status CatalogManager::Init() {
     state_ = kRunning;
   }
 
-  RecomputeTxnTableVersionsHash();
-
   Started();
 
   return Status::OK();
@@ -1122,6 +1120,9 @@ Status CatalogManager::RunLoaders(int64_t term) {
   // Clear ysql catalog config.
   ysql_catalog_config_.reset();
 
+  // Clear transaction tables config.
+  transaction_tables_config_.reset();
+
   // Clear recent tasks.
   tasks_tracker_->Reset();
 
@@ -1272,6 +1273,23 @@ Status CatalogManager::PrepareDefaultSysConfig(int64_t term) {
 
     // Write to sys_catalog and in memory.
     RETURN_NOT_OK(sys_catalog_->Upsert(term, ysql_catalog_config_));
+    l.Commit();
+  }
+
+  if (!transaction_tables_config_) {
+    SysTransactionTablesConfigEntryPB transaction_tables_config;
+    transaction_tables_config.set_version(0);
+
+    // Create in memory objects.
+    transaction_tables_config_ = new SysConfigInfo(kTransactionTablesConfigType);
+
+    // Prepare write.
+    auto l = transaction_tables_config_->LockForWrite();
+    *l.mutable_data()->pb.mutable_transaction_tables_config() =
+        std::move(transaction_tables_config);
+
+    // Write to sys_catalog and in memory.
+    RETURN_NOT_OK(sys_catalog_->Upsert(term, transaction_tables_config_));
     l.Commit();
   }
 
@@ -2020,32 +2038,36 @@ bool CatalogManager::CheckTransactionStatusTablesWithMissingTablespaces(
   return false;
 }
 
-void CatalogManager::UpdateTransactionStatusTableTablespaces(
+Status CatalogManager::UpdateTransactionStatusTableTablespaces(
     const TablespaceIdToReplicationInfoMap& tablespace_info) {
   if (CheckTransactionStatusTablesWithMissingTablespaces(tablespace_info)) {
-    LockGuard lock(mutex_);
-    for (const auto& table_id : transaction_table_ids_set_) {
-      auto table = table_ids_map_->find(table_id);
-      if (table == table_ids_map_->end()) {
-        LOG(DFATAL) << "Table uuid " << table_id
-                    << " in transaction_table_ids_set_ but not in table_ids_map_";
-        continue;
-      }
-      auto tablespace_id = GetTransactionStatusTableTablespace(table->second);
-      if (tablespace_id) {
-        if (!tablespace_info.count(*tablespace_id)) {
-          // TODO: We should also delete the transaction table, see #11123.
-          LOG(INFO) << "Found transaction status table for tablespace id " << *tablespace_id
-                    << " which doesn't exist, clearing tablespace id";
-          ClearTransactionStatusTableTablespace(table->second);
+    {
+      LockGuard lock(mutex_);
+      for (const auto& table_id : transaction_table_ids_set_) {
+        auto table = table_ids_map_->find(table_id);
+        if (table == table_ids_map_->end()) {
+          LOG(DFATAL) << "Table uuid " << table_id
+                      << " in transaction_table_ids_set_ but not in table_ids_map_";
+          continue;
+        }
+        auto tablespace_id = GetTransactionStatusTableTablespace(table->second);
+        if (tablespace_id) {
+          if (!tablespace_info.count(*tablespace_id)) {
+            // TODO: We should also delete the transaction table, see #11123.
+            LOG(INFO) << "Found transaction status table for tablespace id " << *tablespace_id
+                      << " which doesn't exist, clearing tablespace id";
+            ClearTransactionStatusTableTablespace(table->second);
+          }
         }
       }
     }
 
     // A tablespace id has been cleared, meaning a transaction table's placement has changed,
-    // and thus the hash needs to be recomputed.
-    RecomputeTxnTableVersionsHashUnlocked();
+    // and thus the transaction tables version needs to be incremented.
+    RETURN_NOT_OK(IncrementTransactionTablesVersion());
   }
+
+  return Status::OK();
 }
 
 Result<shared_ptr<TableToTablespaceIdMap>> CatalogManager::GetYsqlTableToTablespaceMap(
@@ -2208,7 +2230,7 @@ Status CatalogManager::DoRefreshTablespaceInfo() {
   auto tablespace_info = VERIFY_RESULT(GetYsqlTablespaceInfo());
 
   // Clear tablespace ids for transaction tables mapped to missing tablespaces.
-  UpdateTransactionStatusTableTablespaces(*tablespace_info);
+  RETURN_NOT_OK(UpdateTransactionStatusTableTablespaces(*tablespace_info));
 
   shared_ptr<TableToTablespaceIdMap> table_to_tablespace_map = nullptr;
 
@@ -3552,9 +3574,9 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
   }
 
-  // Update transaction status hash if needed.
+  // Increment transaction status version if needed.
   if (is_transaction_status_table) {
-    RecomputeTxnTableVersionsHash();
+    RETURN_NOT_OK(IncrementTransactionTablesVersion());
   }
 
   DVLOG(3) << __PRETTY_FUNCTION__ << " Done.";
@@ -5555,9 +5577,9 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
 
   RETURN_NOT_OK(SendAlterTableRequest(table, req));
 
-  // Update transaction status hash if necessary.
+  // Increment transaction status version if needed.
   if (table->GetTableType() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
-    RecomputeTxnTableVersionsHash();
+    RETURN_NOT_OK(IncrementTransactionTablesVersion());
   }
 
   LOG(INFO) << "Successfully initiated ALTER TABLE (pending tablet schema updates) for "
@@ -8139,31 +8161,23 @@ Status CatalogManager::GetYsqlCatalogVersion(uint64_t* catalog_version,
   return Status::OK();
 }
 
-void CatalogManager::RecomputeTxnTableVersionsHash() {
-  SharedLock lock(mutex_);
-  RecomputeTxnTableVersionsHashUnlocked();
+Status CatalogManager::IncrementTransactionTablesVersion() {
+  auto l = CHECK_NOTNULL(transaction_tables_config_.get())->LockForWrite();
+  uint64_t new_version = l->pb.transaction_tables_config().version() + 1;
+  l.mutable_data()->pb.mutable_transaction_tables_config()->set_version(new_version);
+
+  // Write to sys_catalog and in memory.
+  RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), transaction_tables_config_));
+  l.Commit();
+
+  LOG(INFO) << "Set transaction tables version: " << new_version;
+
+  return Status::OK();
 }
 
-void CatalogManager::RecomputeTxnTableVersionsHashUnlocked() {
-  std::stringstream ss;
-  for (const auto& table_id : transaction_table_ids_set_) {
-    auto table = table_ids_map_->find(table_id);
-    if (table == table_ids_map_->end()) {
-      LOG(DFATAL) << "Table uuid " << table_id
-                  << " in transaction_table_ids_set_ but not in table_ids_map_";
-      continue;
-    }
-    auto& table_info = table->second;
-    auto l = table_info->LockForRead();
-    ss << table_info->id() << "," << l->pb.version() << ",";
-  }
-  std::string tables = ss.str();
-  uint64_t hash = HashUtil::MurmurHash2_64(tables.c_str(), tables.size(), 0 /* seed */);
-  txn_table_versions_hash_.store(hash, std::memory_order_release);
-}
-
-uint64_t CatalogManager::GetTxnTableVersionsHash() {
-  return txn_table_versions_hash_.load(std::memory_order_acquire);
+uint64_t CatalogManager::GetTransactionTablesVersion() {
+  auto l = CHECK_NOTNULL(transaction_tables_config_.get())->LockForRead();
+  return l->pb.transaction_tables_config().version();
 }
 
 Status CatalogManager::RegisterTsFromRaftConfig(const consensus::RaftPeerPB& peer) {

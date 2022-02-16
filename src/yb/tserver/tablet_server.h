@@ -184,7 +184,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     }
   }
 
-  void UpdateTxnTableVersionsHash(uint64_t new_hash);
+  void UpdateTransactionTablesVersion(uint64_t new_version);
 
   virtual Env* GetEnv();
 

@@ -482,13 +482,16 @@ Status SysConfigLoader::Visit(const string& config_type, const SysConfigEntryPB&
     auto l = config->LockForWrite();
     l.mutable_data()->pb.CopyFrom(metadata);
 
-    // For now we are only using this to store (ycql) security config or ysql catalog config.
     if (config_type == kSecurityConfigType) {
       catalog_manager_->permissions_manager()->SetSecurityConfigOnLoadUnlocked(config);
     } else if (config_type == kYsqlCatalogConfigType) {
       LOG_IF(WARNING, catalog_manager_->ysql_catalog_config_ != nullptr)
           << "Multiple sys config type " << config_type << " found";
       catalog_manager_->ysql_catalog_config_ = config;
+    } else if (config_type == kTransactionTablesConfigType) {
+      LOG_IF(WARNING, catalog_manager_->transaction_tables_config_ != nullptr)
+          << "Multiple sys config type " << config_type << " found";
+      catalog_manager_->transaction_tables_config_ = config;
     }
 
     l.Commit();
