@@ -217,14 +217,22 @@ pip3 install aiopg
 
 ### pg
 
-[`pg`](https://github.com/ged/ruby-pg) is the Ruby interface for PostgreSQL databases. `pg` is based on [`libpq`](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
+[`pg`](https://github.com/ged/ruby-pg) is the Ruby interface for PostgreSQL databases. `pg` is based on [`libpq`](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256). For details on `pg`, see [pg documentation](https://deveiate.org/code/pg/).
 
 For a tutorial on building a sample Ruby application with `pg`, see [Build a Ruby application](../../../quick-start/build-apps/ruby/ysql-pg).
 
 #### Install the pg driver
 
-To install the `pg` driver, run the following [`gem install`](https://guides.rubygems.org/command-reference/#gem-install) command:
+If you have installed YugabyteDB locally, run the following [gem install](https://guides.rubygems.org/command-reference/#gem-install) command to install the `pg` driver:
 
 ```sh
 $ gem install pg -- --with-pg-config=<yugabyte-install-dir>/postgres/bin/pg_config
 ```
+
+To install pg, run the following command:
+
+```sh
+gem install pg -- --with-pg-include=<path-to-libpq>/libpq/include --with-pg-lib=<path-to-libpq>/libpq/lib
+```
+
+Replace `<path-to-libpq>` with the path to the libpq installation; for example, `/usr/local/opt`.
