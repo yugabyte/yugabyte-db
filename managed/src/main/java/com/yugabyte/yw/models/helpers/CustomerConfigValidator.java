@@ -34,6 +34,8 @@ import com.google.cloud.storage.StorageOptions;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.BeanValidator;
+import com.yugabyte.yw.common.GCPUtil;
+import com.yugabyte.yw.common.AWSUtil;
 import com.yugabyte.yw.common.AZUtil;
 import com.yugabyte.yw.forms.PasswordPolicyFormData;
 import com.yugabyte.yw.models.Backup;
@@ -42,6 +44,7 @@ import com.yugabyte.yw.models.CustomerConfig.ConfigType;
 import com.yugabyte.yw.models.Schedule;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.net.UnknownHostException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -104,8 +107,6 @@ public class CustomerConfigValidator {
   public static final Integer HTTPS_PORT = 443;
 
   private final BeanValidator beanValidator;
-
-  @Inject AZUtil azUtil;
 
   @VisibleForTesting
   static String fieldFullName(String fieldName) {
@@ -460,8 +461,7 @@ public class CustomerConfigValidator {
             String exceptionMsg = "Invalid gsUriPath format: " + gsUriPath;
             throwBeanValidatorError(fieldName, exceptionMsg);
           } else {
-            gsUriPath = gsUriPath.substring(5);
-            String[] bucketSplit = gsUriPath.split("/", 2);
+            String[] bucketSplit = GCPUtil.getSplitLocationValue(gsUriPath);
             String bucketName = bucketSplit.length > 0 ? bucketSplit[0] : "";
             String prefix = bucketSplit.length > 1 ? bucketSplit[1] : "";
             try {
@@ -504,14 +504,14 @@ public class CustomerConfigValidator {
     @Override
     public void doValidate(int level, JsonNode data) {
       if (this.name.equals(NAME_AZURE)
-          && data.get(azUtil.AZURE_STORAGE_SAS_TOKEN_FIELDNAME) != null) {
+          && data.get(AZUtil.AZURE_STORAGE_SAS_TOKEN_FIELDNAME) != null) {
         // Get fields to check.
         List<Pair<String, String>> toCheck = getCheckedFields(data);
         if (toCheck.isEmpty()) {
           return;
         }
 
-        String azSasToken = data.get(azUtil.AZURE_STORAGE_SAS_TOKEN_FIELDNAME).asText();
+        String azSasToken = data.get(AZUtil.AZURE_STORAGE_SAS_TOKEN_FIELDNAME).asText();
         for (Pair<String, String> item : toCheck) {
           String fieldName = item.getFirst();
           String azUriPath = item.getSecond();
@@ -522,7 +522,7 @@ public class CustomerConfigValidator {
             exceptionMsg = "Invalid azUriPath format: " + azUriPath;
             throwBeanValidatorError(fieldName, exceptionMsg);
           } else {
-            String[] splitLocation = azUtil.getSplitLocationValue(azUriPath, false);
+            String[] splitLocation = AZUtil.getSplitLocationValue(azUriPath, false);
             int splitLength = splitLocation.length;
             if (splitLength < 2) {
               // azUrl and container should be there in backup location.
@@ -703,45 +703,17 @@ public class CustomerConfigValidator {
 
   // TODO: move this out to some common util file.
   protected AmazonS3 create(JsonNode data) {
-
-    String key = data.get(AWS_ACCESS_KEY_ID_FIELDNAME).asText();
-    String secret = data.get(AWS_SECRET_ACCESS_KEY_FIELDNAME).asText();
-    Boolean isPathStyleAccess =
-        data.has(AWS_PATH_STYLE_ACCESS) ? data.get(AWS_PATH_STYLE_ACCESS).asBoolean(false) : false;
-    String endpoint =
-        (data.get(AWS_HOST_BASE_FIELDNAME) != null
-                && !StringUtils.isBlank(data.get(AWS_HOST_BASE_FIELDNAME).textValue()))
-            ? data.get(AWS_HOST_BASE_FIELDNAME).textValue()
-            : null;
-    AWSCredentials credentials = new BasicAWSCredentials(key, secret);
-    if (!isPathStyleAccess || endpoint == null) {
-      AmazonS3Client client = new AmazonS3Client(credentials);
-      if (endpoint != null) {
-        client.setEndpoint(endpoint);
-      }
-      return client;
-    }
-    AWSCredentialsProvider creds = new AWSStaticCredentialsProvider(credentials);
-    EndpointConfiguration endpointConfiguration = new EndpointConfiguration(endpoint, null);
-    AmazonS3 client =
-        AmazonS3Client.builder()
-            .withCredentials(creds)
-            .withForceGlobalBucketAccessEnabled(true)
-            .withPathStyleAccessEnabled(true)
-            .withEndpointConfiguration(endpointConfiguration)
-            .build();
-    return client;
+    return AWSUtil.createS3Client(data);
   }
 
-  protected Storage createGcpStorage(String gcpCredentials) throws IOException {
-    Credentials credentials =
-        GoogleCredentials.fromStream(new ByteArrayInputStream(gcpCredentials.getBytes("UTF-8")));
-    return StorageOptions.newBuilder().setCredentials(credentials).build().getService();
+  protected Storage createGcpStorage(String gcpCredentials)
+      throws IOException, UnsupportedEncodingException {
+    return GCPUtil.getStorageService(gcpCredentials);
   }
 
   protected BlobContainerClient createBlobContainerClient(
       String azUrl, String azSasToken, String container) {
-    return azUtil.createBlobContainerClient(azUrl, azSasToken, container);
+    return AZUtil.createBlobContainerClient(azUrl, azSasToken, container);
   }
 
   private void throwBeanValidatorError(String fieldName, String exceptionMsg) {

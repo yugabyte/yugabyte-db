@@ -525,6 +525,7 @@ public class TablesController extends AuthenticatedController {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot create backup as config is queued for deletion.");
     }
+    BackupUtil.validateStorageConfig(customerConfig);
     if (universe.getUniverseDetails().updateInProgress
         || universe.getUniverseDetails().backupInProgress) {
       throw new PlatformServiceException(
@@ -668,6 +669,7 @@ public class TablesController extends AuthenticatedController {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot create backup as config is queued for deletion.");
     }
+    BackupUtil.validateStorageConfig(customerConfig);
     // Validate universe UUID
     Universe universe = Universe.getOrBadRequest(taskParams.universeUUID);
     taskParams.customerUUID = customerUUID;

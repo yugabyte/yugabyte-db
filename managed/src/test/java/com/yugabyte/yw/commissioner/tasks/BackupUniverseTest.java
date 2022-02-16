@@ -37,7 +37,6 @@ import org.yb.client.YBClient;
 public class BackupUniverseTest extends CommissionerBaseTest {
 
   private Universe defaultUniverse;
-  YBClient mockClient;
 
   @Override
   @Before
@@ -48,9 +47,6 @@ public class BackupUniverseTest extends CommissionerBaseTest {
     Map<String, String> config = new HashMap<>();
     config.put(Universe.TAKE_BACKUPS, "true");
     defaultUniverse.updateConfig(config);
-
-    mockClient = mock(YBClient.class);
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
   }
 
   private TaskInfo submitTask(BackupTableParams.ActionType actionType, boolean enableVerboseLogs) {
