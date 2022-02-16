@@ -20,7 +20,13 @@ The following tutorial shows a small [Ruby application](https://github.com/yugab
 - Ruby 3.1 or later.
 - OpenSSL 1.1.1 or later (used by libpq and pg to establish secure SSL connections).
 - [libpq](../../../../reference/drivers/ysql-client-drivers/#libpq). Homebrew users on macOS can install using `brew install libpq`. You can download the PostgreSQL binaries and source from [PostgreSQL Downloads](https://www.postgresql.org/download/).
-- [Ruby pg](../../../../reference/drivers/ysql-client-drivers/#pg).
+- [Ruby pg](../../../../reference/drivers/ysql-client-drivers/#pg). To install Ruby pg, run the following command:
+
+    ```sh
+    gem install pg -- --with-pg-include=<path-to-libpq>/libpq/include --with-pg-lib=<path-to-libpq>/libpq/lib
+    ```
+
+    Replace `<path-to-libpq>` with the path to the libpq installation; for example, `/usr/local/opt`.
 
 ### Yugabyte Cloud
 
@@ -55,15 +61,7 @@ The application needs to establish a connection to the YugabyteDB cluster. To do
 
 ## Build and run the application
 
-Install Ruby pg.
-
-```sh
-gem install pg -- --with-pg-include=<path-to-libpq>/libpq/include --with-pg-lib=<path-to-libpq>/libpq/lib
-```
-
-Replace `<path-to-libpq>` with the path to the libpq installation; for example, `/usr/local/opt`.
-
-Make the application file executable:
+Make the application file executable.
 
 ```sh
 chmod +x sample-app.rb
