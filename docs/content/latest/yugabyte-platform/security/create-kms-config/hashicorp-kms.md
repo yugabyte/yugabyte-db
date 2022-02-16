@@ -23,13 +23,6 @@ showAsideToc: true
   </li>
 
   <li >
-    <a href="{{< relref "./equinix-smartkey.md" >}}" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      Equinix SmartKey
-    </a>
-  </li>
-
-  <li >
     <a href="{{< relref "./hashicorp-kms.md" >}}" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       HashiCorp Vault
@@ -117,7 +110,7 @@ You need to configure HashiCorp Vault in order to use it with Yugabyte Platform,
   vault token create -no-default-policy -policy=trx
   ```
 
-  <br>You may also specify the following for you token: 
+  <br>You may also specify the following for your token: 
 
   - `ttl` — Time to live (TTL). If not specified, the default TTL of 32 days is used, which means that the generated token will expire after 32 days.
 
@@ -127,7 +120,7 @@ You need to configure HashiCorp Vault in order to use it with Yugabyte Platform,
 
 You can create a new KMS configuration that uses HashiCorp Vault as follows:
 
-1. Open the Yugabyte Platform console and navigate to **Configs > Security > Encryption At Rest**. A list of existing configurations appears.
+1. Using the Yugabyte Platform UI, navigate to **Configs > Security > Encryption At Rest** to open a list of existing configurations.
 
 2. Click **Create New Config**.
 
@@ -150,7 +143,7 @@ You can create a new KMS configuration that uses HashiCorp Vault as follows:
 
 You can modify an existing KMS configuration as follows:
 
-1. Open the Yugabyte Platform console and navigate to **Configs > Security > Encryption At Rest**. A list of existing configurations appears.
+1. Using the Yugabyte Platform UI, navigate to **Configs > Security > Encryption At Rest** to open a list of existing configurations.
 
 2. Find the configuration you want to modify and click its corresponding **Actions > Edit Configuration**.
 
