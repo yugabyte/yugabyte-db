@@ -26,6 +26,8 @@
 
 #include "yb/master/master_util.h"
 
+#include "yb/rocksdb/db.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 

@@ -62,10 +62,10 @@ struct Entry {
 
 struct TestHandler : public WriteBatch::Handler {
   std::map<uint32_t, std::vector<Entry>> seen;
-  Status PutCF(uint32_t column_family_id, const Slice& key, const Slice& value) override {
+  Status PutCF(uint32_t column_family_id, const SliceParts& key, const SliceParts& value) override {
     Entry e;
-    e.key = key.ToBuffer();
-    e.value = value.ToBuffer();
+    e.key = key.TheOnlyPart().ToBuffer();
+    e.value = value.TheOnlyPart().ToBuffer();
     e.type = kPutRecord;
     seen[column_family_id].push_back(e);
     return Status::OK();
