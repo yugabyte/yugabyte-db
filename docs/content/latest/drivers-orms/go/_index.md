@@ -29,23 +29,22 @@ section.
 
 ### Install Go
 
-Make sure that your system has Go 1.16 or later installed. Run `go --version` in a terminal to check
-your version of Go. To install the Go, see the [installation page](https://golang.org/dl/).
+It is recommended to have the latest Go (1.16 or later) installed on your system.
+<br/> Run `go --version` in a terminal to check your version of Go. To install the Go, see its
+[installation page](https://golang.org/dl/).
 
 ### Create a Go Project
 
-We recommend using an integrated development environment (IDE) such as Intellij IDEA for developing
-your Go project.
-
-TODO Provide links, if any.
+We recommend using an integrated development environment (IDE) such as Intellij IDEA or
+Visual Studio Code for developing your Go project.
 
 ### Create a YugabyteDB Cluster
 
-Set up a Free tier Cluster on [Yugabyte Cloud](https://cloud.yugabyte.com/signup). The free cluster
-provides a fully functioning YugabyteDB cluster deployed to the cloud region of your choice. The
-cluster is free forever and includes enough resources to explore the core features available for
-developing the Go Applications with YugabyteDB database. Complete the steps for
-[creating a free tier cluster](latest/yugabyte-cloud/cloud-quickstart/qs-add/).
+Set up a Free-tier cluster on [Yugabyte Cloud](https://cloud.yugabyte.com/signup). The free-tier
+cluster provides a fully functioning YugabyteDB cluster deployed to the cloud region of your choice.
+<br/> The cluster is free forever and includes enough resources to explore the core features available for
+developing the Go Applications with YugabyteDB database.
+<br/> Complete the steps for [creating a free tier cluster](latest/yugabyte-cloud/cloud-quickstart/qs-add/).
 
 Alternatively, You can also set up a standalone YugabyteDB cluster by following the
 [YugabyteDB installation steps](/latest/quick-start/install/macos).
@@ -53,18 +52,17 @@ Alternatively, You can also set up a standalone YugabyteDB cluster by following 
 ## Usage Examples
 
 For fully runnable code snippets and explanation for common operations, see the specific Go driver
-and ORM section. The table below provides quick links for navigating to the specific documentation
+and ORM section.<br/>
+The table below provides quick links for navigating to the specific documentation
 and also the usage examples.
 
 | Project | Type | Usage Examples |
 | :------ | :--- | :------------- |
-| [PGX Driver](/latest/reference/drivers/java/yugabyte-jdbc-reference/) | Go Driver | [Hello World](/latest/quick-start/build-apps/java/ysql-yb-jdbc) <br />[CRUD App](pgx) |
-| [PQ Driver](/latest/reference/drivers/java/postgres-jdbc-reference/) | Go Driver | [Hello World](/latest/quick-start/build-apps/java/ysql-jdbc) <br />[CRUD App](pq) |
-| [GORM](gorm) | ORM |  [Hello World](/latest/quick-start/build-apps/java/ysql-jdbc) <br />[CRUD App](gorm) |
-| [GO-PG](go-pg) | ORM |  [Hello World](/latest/quick-start/build-apps/java/ysql-jdbc) <br />[CRUD App](go-pg) |
-
-TODO update links
+| [PGX Driver](/latest/reference/drivers/go/pgx-reference/) | Go Driver | [Hello World](/latest/quick-start/build-apps/go/ysql-pgx) <br />[CRUD App](pgx) |
+| [PQ Driver](/latest/reference/drivers/go/pq-reference/) | Go Driver | [Hello World](/latest/quick-start/build-apps/go/ysql-pq) <br />[CRUD App](pq) |
+| [GORM](/latest/integrations/gorm/) | ORM |  [Hello World](/latest/quick-start/build-apps/go/ysql-gorm) <br />[CRUD App](gorm) |
+| [GO-PG](go-pg) | ORM |  [Hello World](/latest/quick-start/build-apps/go/ysql-pg) <br />[CRUD App](go-pg) |
 
 ## Next Steps
 
-- Learn how to read and modify data using the PGX driver in our [CRUD Opertions guide](pgx).
+- Start with the PGX Driver to learn how to read and modify data in YugabyteDB in our [CRUD Opertions guide](pgx).

@@ -32,14 +32,18 @@ showAsideToc: true
 
 </ul>
 
+The [go-pg](https://github.com/go-pg/pg) lib is "Golang ORM with focus on PostgreSQL features and performance". 
 
 ## Quick Start
 
 Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using
-the steps on the [Build an application](/latest/quick-start/build-apps/go/ysql-pg) page under the
+the steps in the [Build an application](/latest/quick-start/build-apps/go/ysql-pg) page under the
 Quick start section.
 
-## Import the Driver Package
+Let us break down the quick start example and understand how to perform the common tasks required
+for Go App development using the GO-PG ORM tool.
+
+## Step 1: Import the Driver Package
 
 You can import the PG packages by adding the following import statement in your Go code.
 
@@ -52,11 +56,7 @@ import (
 )
 ```
 
-## Fundamentals
-
-Let us learn how to perform the common tasks required for Go App development using the GO-PG ORM tool.
-
-### Connect to YugabyteDB Database
+## Step 2: Connect to YugabyteDB Database
 
 Go Apps can connect to the YugabyteDB database using the `pg.Connect()` function.
 
@@ -83,9 +83,9 @@ Code snippet for connecting to YugabyteDB:
 | host  | hostname of the YugabyteDB instance | localhost
 | port |  Listen port for YSQL | 5433
 | dbname | database name | yugabyte
-| sslMode | SSL mode | TODO
+| sslMode | SSL mode | 
 
-### Create Table
+## Step 3: Create Table
 
 Define a struct which maps to the table schema and use `AutoMigrate()` to create the table.
 
@@ -108,9 +108,9 @@ type Employee struct {
 
 Read more on designing [Database schemas and tables](../../../../explore/ysql-language-features/databases-schemas-tables/).
 
-### Read and Write Data
+## Step 4: Read and Write Data
 
-#### Insert Data
+### Insert Data
 
 In order to write data into YugabyteDB, use the `Insert()` functions.
 
@@ -128,7 +128,7 @@ In order to write data into YugabyteDB, use the `Insert()` functions.
 ```
 
 
-#### Query Data
+### Query Data
 
 In order to query data from YugabyteDB tables, execute the `Select()` function.
 

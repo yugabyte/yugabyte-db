@@ -36,17 +36,20 @@ API. YugabyteDB supports [PGX Driver](https://github.com/jackc/pgx) and the
 </ul>
 
 The [PQ driver](https://github.com/lib/pq/) is a popular driver for PostgreSQL which can used for
-connecting to YugabyteDB YSQL as well.
+connecting to YugabyteDB YSQL as well.<br/>
 This driver allows Go programmers to connect to YugabyteDB database to execute DMLs and DDLs using
 the standard `database/sql` package.
 
 ## Quick Start
 
 Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using
-the steps on the [Build an application](/latest/quick-start/build-apps/go/ysql-pq) page under the
+the steps in the [Build an application](/latest/quick-start/build-apps/go/ysql-pq) page under the
 Quick start section.
 
-## Import the Driver Package
+Let us break down the quick start example and understand how to perform the common tasks required
+for Go App development using the PQ driver.
+
+## Step 1: Import the Driver Package
 
 You can import the PQ driver package by adding the following import statement in your Go code.
 
@@ -58,14 +61,10 @@ import (
 )
 ```
 
-## Fundamentals
-
-Let us learn how to perform the common tasks required for Go App development using the PQ driver.
-
-### Connect to YugabyteDB
+## Step 2: Connect to YugabyteDB
 
 Go Apps can connect to the YugabyteDB database using the `sql.Open()` function.
-All the functions or structs required for working with YugabyteDB database will be part of `sql` package.
+All the functions or structs required for working with YugabyteDB database are part of `sql` package.
 
 Use the `sql.Open()` function for getting connection object for the YugabyteDB database which can be
 used for performing DDLs and DMLs against the database.
@@ -98,12 +97,12 @@ Code snippet for connecting to YugabyteDB:
 | password | password for connecting to the database | yugabyte
 | dbname | database name | yugabyte
 
-### Create Table
+## Step 3: Create Table
 
 Execute an SQL statement like the DDL `CREATE TABLE ...` using the `Exec()` function on the `db`
 instance.
 
-DDL statement:
+The CREATE DDL statement:
 
 ```sql
 CREATE TABLE employee (id int PRIMARY KEY, name varchar, age int, language varchar)
@@ -126,14 +125,14 @@ your code.
 
 Read more on designing [Database schemas and tables](../../../../explore/ysql-language-features/databases-schemas-tables/).
 
-### Read and Write Data
+## Step 4: Read and Write Data
 
-#### Insert Data
+### Insert Data
 
 In order to write data into YugabyteDB, execute the `INSERT` statement using the same `db.Exec()`
 function.
 
-INSERT DML:
+The INSERT DML statement:
 
 ```java
 INSERT INTO employee(id, name, age, language) VALUES (1, 'John', 35, 'Go')
@@ -149,24 +148,21 @@ Code snippet:
     }
 ```
 
-TODO (Other functions?)
-
-```golang
-// TODO
-```
-
-#### Query Data
+### Query Data
 
 In order to query data from YugabyteDB tables, execute the `SELECT` statement using the function
 `Query()` on `db` instance.
-TODO
-Query results are returned using `java.sql.ResultSet` interface which can be iterated using `resultSet.next()` method for reading the data. Read more on [ResultSet](https://docs.oracle.com/javase/7/docs/api/java/sql/ResultSet.html).
 
-For example
+Query results are returned as `rows` which can be iterated using `rows.next()` method.
+Use `rows.Scan()` for reading the data.
+
+The SELECT DML statement:
 
 ```sql
 SELECT * from employee;
 ```
+
+Code snippet:
 
 ```golang
     var name string
@@ -190,3 +186,5 @@ SELECT * from employee;
         log.Fatal(err)
     }
 ```
+
+See this page - [PQ Driver](/latest/reference/drivers/go/pq-reference/) - for more details.

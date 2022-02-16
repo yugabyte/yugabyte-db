@@ -35,16 +35,19 @@ API. YugabyteDB supports [PGX Driver](https://github.com/jackc/pgx) and the
 
 </ul>
 
-The [PGX driver](https://github.com/jackc/pgx/) is the most popular and actively maintained driver
-for PostgreSQL which can used for connecting to YugabyteDB YSQL as well.
+The [PGX driver](https://github.com/jackc/pgx/) is one of the most popular and actively maintained
+drivers for PostgreSQL which can be used for connecting to YugabyteDB YSQL as well.<br/>
 This driver allows Go programmers to connect to YugabyteDB database to execute DMLs and DDLs using
 the PGX APIs. It also supports the standard `database/sql` package.
 
 ## Quick Start
 
 Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using
-the steps on the [Build an application](/latest/quick-start/build-apps/go/ysql-pgx) page under the
+the steps in the [Build an application](/latest/quick-start/build-apps/go/ysql-pgx) page under the
 Quick start section.
+
+Let us break down the quick start example and understand how to perform the common tasks required
+for Go App development using the PGX driver.
 
 ## Step 1: Import the Driver Package
 
@@ -58,17 +61,13 @@ import (
 )
 ```
 
-## Fundamentals
-
-Let us learn how to perform the common tasks required for Go App development using the PGX driver.
-
 ## Step 2: Connect to YugabyteDB
 
 Go Apps can connect to the YugabyteDB database using the `pgx.Connect()` function.
-All the functions or structs required for working with YugabyteDB database will be part of `pgx` package.
+All the common functions or structs required for working with YugabyteDB database is part of `pgx` package.
 
-Use the `pgx.Connect()` method for getting connection object for the YugabyteDB database which can be
-used for performing DDLs and DMLs against the database.
+Use the `pgx.Connect()` method for getting connection object for the YugabyteDB database which can
+be used for performing DDLs and DMLs against the database.
 
 PGX Connection url is in the format given below:
 
@@ -92,12 +91,12 @@ conn, err := pgx.Connect(context.Background(), url)
 | port |  Listen port for YSQL | 5433
 | dbname | database name | yugabyte
 
-### Create Table
+## Step 3: Create Table
 
 Execute an SQL statement like the DDL `CREATE TABLE ...` using the `Exec()` function on the `conn`
 instance.
 
-DDL statement:
+The CREATE DDL statement:
 
 ```sql
 CREATE TABLE employee (id int PRIMARY KEY, name varchar, age int, language varchar)
@@ -114,19 +113,19 @@ if err != nil {
 }
 ```
 
-The `conn.Exec()` function also returns an `error` object which, if not `nil`, needs to handled in
-your code.
+The `conn.Exec()` function also returns an `error` object which, if not `nil`, needs to be handled
+in your code.
 
 Read more on designing [Database schemas and tables](../../../../explore/ysql-language-features/databases-schemas-tables/).
 
-## Step 3:  Read and Write Data
+## Step 4:  Read and Write Data
 
-#### Insert Data
+### Insert Data
 
 In order to write data into YugabyteDB, execute the `INSERT` statement using the same `conn.Exec()`
 function.
 
-INSERT DML:
+The INSERT DML statement:
 
 ```java
 INSERT INTO employee(id, name, age, language) VALUES (1, 'John', 35, 'Go')
@@ -143,23 +142,24 @@ if err != nil {
 }
 ```
 
-TODO prepared statement?
+The pgx driver automatically prepares and caches statements by default, so that the developer does
+not have to. 
 
-```golang
-// TODO
-```
 
-#### Query Data
+### Query Data
 
 In order to query data from YugabyteDB tables, execute the `SELECT` statement using the function
-`Query()` on `conn` instance.
-Query results are returned using `java.sql.ResultSet` interface which can be iterated using `resultSet.next()` method for reading the data. Read more on [ResultSet](https://docs.oracle.com/javase/7/docs/api/java/sql/ResultSet.html).
+`conn.Query()`.
+Query results are returned in `pgx.Rows` which can be iterated using `pgx.Rows.next()` method.
+Then read the data using `pgx.rows.Scan()`.
 
-For example
+The SELECT DML statement:
 
 ```sql
 SELECT * from employee;
 ```
+
+Code snippet:
 
 ```golang
 var name string
@@ -187,5 +187,4 @@ if err != nil {
 }
 ```
 
-TODO (More features?)
-
+See this page - [PGX Driver](/latest/reference/drivers/go/pgx-reference/) - for more details.
