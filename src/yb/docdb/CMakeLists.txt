@@ -28,16 +28,16 @@ ADD_YB_LIBRARY(docdb_proto
         NONLINK_DEPS ${DOCDB_PROTO_TGTS})
 
 set(DOCDB_ENCODING_SRCS
-        doc_key.cc
-        doc_kv_util.cc
-        doc_path.cc
-        key_bounds.cc
-        key_bytes.cc
-        primitive_value.cc
-        primitive_value_util.cc
-        intent.cc
-        doc_scanspec_util.cc
-        )
+    doc_key.cc
+    doc_kv_util.cc
+    doc_path.cc
+    key_bounds.cc
+    key_bytes.cc
+    primitive_value.cc
+    primitive_value_util.cc
+    intent.cc
+    doc_scanspec_util.cc
+    )
 
 set(DOCDB_ENCODING_DEPS
         docdb_proto
@@ -87,6 +87,7 @@ set(DOCDB_SRCS
         ql_rocksdb_storage.cc
         ql_rowwise_iterator_interface.cc
         redis_operation.cc
+        rocksdb_writer.cc
         shared_lock_manager.cc
         subdocument.cc
         subdoc_reader.cc
