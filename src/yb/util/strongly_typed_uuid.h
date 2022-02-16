@@ -25,6 +25,7 @@
 
 #include "yb/gutil/endian.h"
 
+#include "yb/util/random_util.h"
 #include "yb/util/result.h"
 
 // A "strongly-typed UUID" tool. This is needed to prevent passing the wrong UUID as a
@@ -118,7 +119,7 @@ class StronglyTypedUuid {
 
   // Generate a random StronglyTypedUuid.
   static StronglyTypedUuid<Tag> GenerateRandom() {
-    return StronglyTypedUuid(boost::uuids::random_generator()());
+    return GenerateRandom(&ThreadLocalRandom());
   }
 
   static StronglyTypedUuid<Tag> GenerateRandom(std::mt19937_64* rng) {
