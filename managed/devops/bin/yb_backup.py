@@ -2027,9 +2027,11 @@ class YBBackup:
             for snapshot_dir in snapshot_dirs:
                 suffix_match = SNAPSHOT_DIR_SUFFIX_RE.match(snapshot_dir)
                 if not suffix_match:
-                    raise BackupException(
+                    logging.warning(
                         ("Could not parse tablet id and snapshot id out of snapshot "
                          "directory: '{}'").format(snapshot_dir))
+                    continue
+
                 if snapshot_id != suffix_match.group(2):
                     raise BackupException(
                         "Snapshot directory does not end with snapshot id: '{}'".format(
