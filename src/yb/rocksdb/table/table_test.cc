@@ -434,7 +434,9 @@ class MemTableConstructor: public Constructor {
     memtable_->Ref();
     int seq = 1;
     for (const auto& kv : kv_map) {
-      memtable_->Add(seq, kTypeValue, kv.first, kv.second);
+      Slice key(kv.first);
+      Slice value(kv.second);
+      memtable_->Add(seq, kTypeValue, SliceParts(&key, 1), SliceParts(&value, 1));
       seq++;
     }
     return Status::OK();
