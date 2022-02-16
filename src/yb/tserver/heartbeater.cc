@@ -546,8 +546,8 @@ Status Heartbeater::Thread::TryHeartbeat() {
 
   RETURN_NOT_OK(server_->tablet_manager()->UpdateSnapshotsInfo(last_hb_response_.snapshots_info()));
 
-  if (last_hb_response_.has_txn_table_versions_hash()) {
-    server_->UpdateTxnTableVersionsHash(last_hb_response_.txn_table_versions_hash());
+  if (last_hb_response_.has_transaction_tables_version()) {
+    server_->UpdateTransactionTablesVersion(last_hb_response_.transaction_tables_version());
   }
 
   // Update the live tserver list.
