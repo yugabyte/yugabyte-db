@@ -11,8 +11,6 @@
 
 package com.yugabyte.yw.common.certmgmt.providers;
 
-import static play.mvc.Http.Status.BAD_REQUEST;
-
 import java.security.KeyPair;
 import java.security.PrivateKey;
 import java.security.cert.X509Certificate;
@@ -25,21 +23,15 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 import com.google.api.client.util.Strings;
-import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateDetails;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
-import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultAccessor;
 import com.yugabyte.yw.models.CertificateInfo;
-import com.yugabyte.yw.models.helpers.CommonUtils;
-import org.bouncycastle.asn1.x509.GeneralName;
-import org.bouncycastle.asn1.x509.GeneralNames;
 
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
-import org.apache.commons.validator.routines.InetAddressValidator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -123,7 +115,7 @@ public class VaultPKI extends CertificateProviderBase {
   public static VaultPKI getVaultPKIInstance(CertificateInfo caCertConfigInfo) throws Exception {
     // LOG.info("Called from: {}", CommonUtils.getStackTraceHere());
 
-    HashicorpVaultConfigParams hcConfigInfo = caCertConfigInfo.getCustomHCPKICertInfo();
+    HashicorpVaultConfigParams hcConfigInfo = caCertConfigInfo.getCustomHCPKICertInfoInternal();
     return getVaultPKIInstance(caCertConfigInfo.uuid, hcConfigInfo);
   }
 
@@ -154,6 +146,10 @@ public class VaultPKI extends CertificateProviderBase {
       LOG.warn("IP Sans are not allowed with this role {}", params.role);
   }
 
+  public List<Object> getTTL() throws Exception {
+    return vAccessor.getTokenExpiryFromVault();
+  }
+
   @Override
   public X509Certificate generateCACertificate(String certLabel, KeyPair keyPair) throws Exception {
     return getCACertificateFromVault();
@@ -170,7 +166,6 @@ public class VaultPKI extends CertificateProviderBase {
       Map<String, Integer> subjectAltNames) {
     LOG.info("Creating certificate for {}, CA:", username, caCertUUID.toString());
 
-    InetAddressValidator ipAddressValidator = InetAddressValidator.getInstance();
     final Map<String, Object> input = new HashMap<>();
 
     input.put("common_name", username);
