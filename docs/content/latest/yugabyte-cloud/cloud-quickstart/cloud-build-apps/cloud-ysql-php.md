@@ -17,12 +17,11 @@ The following tutorial shows a small [PHP application](https://github.com/yugaby
 
 ## Prerequisites
 
-- [PHP runtime](https://www.php.net/manual/en/pgsql.setup.php). The sample application was created using PHP 8.1 but should work with earlier and later versions.
-
-  - Homebrew users on macOS can install using `brew install php`.
-  - Homebrew users of earlier PHP versions can install using the `brew install phpXX-pdo-pgsql` command, where XX is the PHP version.
-  - Ubuntu users can install using the `sudo apt-get install php-pgsql` command.
-  - CentOS users can install using the `sudo yum install php-pgsql` command.
+- PHP runtime. The sample application was created using PHP 8.1 but should work with earlier and later versions. Homebrew users on macOS can install PHP using `brew install php`; the php-pgsql driver is installed automatically.
+- [php-pgsql driver](https://www.php.net/manual/en/pgsql.setup.php).
+  - Homebrew users of earlier PHP versions can install the driver using the `brew install phpXX-pdo-pgsql` command, where XX is the PHP version.
+  - Ubuntu users can install the driver using the `sudo apt-get install php-pgsql` command.
+  - CentOS users can install the driver using the `sudo yum install php-pgsql` command.
 
 ### Yugabyte Cloud
 

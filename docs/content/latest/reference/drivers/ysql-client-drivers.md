@@ -175,11 +175,19 @@ $ npm install pg
 
 The [php-pgsql](https://www.php.net/manual/en/book.pgsql.php) driver is a collection of the official PostgreSQL module for PHP. php-pgsql is based on [libpq](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For a tutorial on building a sample Node.js application with php-pgsql, see [Build a Node.js application](../../../quick-start/build-apps/php/ysql/).
+For details on installing and using php-pgsql, see the [php-pgsql documentation](https://www.php.net/manual/en/book.pgsql.php).
+
+For a tutorial on building a sample PHP application with php-pgsql, see [Build a PHP application](../../../quick-start/build-apps/php/ysql/).
 
 #### Install the php-pgsql driver
 
 To enable PostgreSQL support using php-pgsql, see [Installing/Configuring](https://www.php.net/manual/en/pgsql.setup.php) in the PHP documentation.
+
+Homebrew users on macOS can install PHP using `brew install php`; the php-pgsql driver is installed automatically. Homebrew users of earlier PHP versions can install the driver using the `brew install phpXX-pdo-pgsql` command, where XX is the PHP version.
+
+Ubuntu users can install the driver using the `sudo apt-get install php-pgsql` command.
+
+CentOS users can install the driver using the `sudo yum install php-pgsql` command.
 
 ## Python
 
