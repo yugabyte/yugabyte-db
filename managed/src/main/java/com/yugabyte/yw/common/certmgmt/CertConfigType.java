@@ -11,9 +11,6 @@
 
 package com.yugabyte.yw.common.certmgmt;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import io.ebean.annotation.EnumValue;
 
 /*
