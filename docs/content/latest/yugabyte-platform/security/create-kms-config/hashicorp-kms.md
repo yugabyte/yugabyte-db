@@ -41,7 +41,7 @@ Before you can start configuring HashiCorp Vault, install it on a virtual machin
 - Its seal and unseal mechanism is secure and repeatable.
 - Its token creation mechanism is repeatable.
 
-You need to configure HashiCorp Vault in order to use it with Yugabyte Platform, as follow: 
+You need to configure HashiCorp Vault in order to use it with Yugabyte Platform, as follows: 
 
 - Create a vault configuration file that references your nodes and specifies the address, as follows:
 
