@@ -3005,11 +3005,13 @@ CopyFrom(CopyState cstate)
 						}
 						else if (resultRelInfo->ri_FdwRoutine != NULL)
 						{
+							MemoryContext saved_context;
+							saved_context = MemoryContextSwitchTo(estate->es_query_cxt);
 							slot = resultRelInfo->ri_FdwRoutine->ExecForeignInsert(estate,
 																				   resultRelInfo,
 																				   slot,
 																				   NULL);
-
+							MemoryContextSwitchTo(saved_context);
 							if (slot == NULL)	/* "do nothing" */
 								goto next_tuple;
 
