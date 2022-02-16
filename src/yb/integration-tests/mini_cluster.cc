@@ -103,6 +103,7 @@ DECLARE_int32(replication_factor);
 DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
 DECLARE_string(use_private_ip);
 DECLARE_int32(load_balancer_initial_delay_secs);
+DECLARE_int32(transaction_table_num_tablets);
 
 namespace yb {
 
@@ -184,6 +185,10 @@ Status MiniCluster::Start(const std::vector<tserver::TabletServerOptions>& extra
   FLAGS_ts_admin_svc_num_threads = 2;
   FLAGS_ts_consensus_svc_num_threads = 8;
   FLAGS_ts_remote_bootstrap_svc_num_threads = 2;
+
+  // Limit number of transaction table tablets to help avoid timeouts.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_num_tablets) =
+      NumTabletsPerTransactionTable(options_);
 
   // We are testing public/private IPs using mini cluster. So set mode to 'cloud'.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_private_ip) = "cloud";

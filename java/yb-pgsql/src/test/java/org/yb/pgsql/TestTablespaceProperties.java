@@ -57,8 +57,6 @@ public class TestTablespaceProperties extends BasePgSQLTest {
 
   private static final int MASTER_LOAD_BALANCER_WAIT_TIME_MS = 60 * 1000;
 
-  private static final int TRANSACTION_TABLE_NUM_TABLETS = 4;
-
   private static final int LOAD_BALANCER_MAX_CONCURRENT = 10;
 
   private static final String tablespaceName = "testTablespace";
@@ -91,11 +89,6 @@ public class TestTablespaceProperties extends BasePgSQLTest {
                           Integer.toString(MASTER_REFRESH_TABLESPACE_INFO_SECS));
     builder.addMasterFlag("auto_create_local_transaction_tables", "true");
     builder.addMasterFlag("TEST_name_transaction_tables_with_tablespace_id", "true");
-
-    // Default behavior is to scale based on number of CPU cores, which will make
-    // load balancing transaction tables too much time and time out tests.
-    builder.addMasterFlag("transaction_table_num_tablets",
-                          Integer.toString(TRANSACTION_TABLE_NUM_TABLETS));
 
     // We wait for the load balancer whenever it gets triggered anyways, so there's
     // no concerns about the load balancer taking too many resources.
