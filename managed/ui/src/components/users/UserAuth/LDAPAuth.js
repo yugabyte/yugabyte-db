@@ -439,7 +439,7 @@ export const LDAPAuth = (props) => {
                           <YBInfoTip
                             customClass="ldap-info-popover"
                             title="Username"
-                            content="If the service account is not configured and the user does not have permission to query the LDAP server, then the Yugabyte platform will default the user's role to ReadOnly"
+                            content="If the service account is not configured and if a user does not have permission to query the LDAP server, then the user's role is set to ReadOnly"
                           >
                             <i className="fa fa-info-circle" />
                           </YBInfoTip>
