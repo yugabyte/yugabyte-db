@@ -20,7 +20,6 @@ custom: false
 code: false
 filters:
   - '(?:\w*\.?)yugabyte\.com'
-  - '`.*?`'
 ignore:
   - Yugabyte/spelling-exceptions.txt
   - Yugabyte/spelling-names.txt
