@@ -74,9 +74,6 @@ namespace docdb {
 // Infer the key type from the given slice, given whether this is regular or intents RocksDB.
 KeyType GetKeyType(const Slice& slice, StorageDbType db_type);
 
-constexpr size_t kMaxWordsPerEncodedHybridTimeWithValueType =
-    ((kMaxBytesPerEncodedHybridTime + 1) + sizeof(size_t) - 1) / sizeof(size_t);
-
 } // namespace docdb
 } // namespace yb
 

@@ -261,10 +261,10 @@ TEST_F(DBTestXactLogIterator, TransactionLogIteratorBlobs) {
   auto res = OpenTransactionLogIter(0)->GetBatch();
   struct Handler : public WriteBatch::Handler {
     std::string seen;
-    virtual Status PutCF(uint32_t cf, const Slice& key,
-                         const Slice& value) override {
-      seen += "Put(" + ToString(cf) + ", " + key.ToString() + ", " +
-              ToString(value.size()) + ")";
+    virtual Status PutCF(uint32_t cf, const SliceParts& key,
+                         const SliceParts& value) override {
+      seen += "Put(" + ToString(cf) + ", " + key.TheOnlyPart().ToString() + ", " +
+              ToString(value.TheOnlyPart().size()) + ")";
       return Status::OK();
     }
     virtual Status MergeCF(uint32_t cf, const Slice& key,

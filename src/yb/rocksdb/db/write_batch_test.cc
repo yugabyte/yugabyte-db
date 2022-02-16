@@ -208,13 +208,14 @@ namespace {
 
 struct TestHandler : public WriteBatch::Handler {
   std::string seen;
-  virtual Status PutCF(uint32_t column_family_id, const Slice& key,
-                       const Slice& value) override {
+  virtual Status PutCF(uint32_t column_family_id, const SliceParts& key,
+                       const SliceParts& value) override {
     if (column_family_id == 0) {
-      seen += "Put(" + key.ToDebugString() + ", " + value.ToDebugString() + ")";
+      seen += "Put(" + key.TheOnlyPart().ToDebugString() + ", " +
+              value.TheOnlyPart().ToDebugString() + ")";
     } else {
       seen += "PutCF(" + ToString(column_family_id) + ", " +
-              key.ToDebugString() + ", " + value.ToDebugString() + ")";
+              key.TheOnlyPart().ToDebugString() + ", " + value.TheOnlyPart().ToDebugString() + ")";
     }
     return Status::OK();
   }
@@ -354,14 +355,14 @@ TEST_F(WriteBatchTest, DISABLED_ManyUpdates) {
   struct NoopHandler : public WriteBatch::Handler {
     uint32_t num_seen = 0;
     char expected_char = 'A';
-    virtual Status PutCF(uint32_t column_family_id, const Slice& key,
-                         const Slice& value) override {
-      EXPECT_EQ(kKeyValueSize, key.size());
-      EXPECT_EQ(kKeyValueSize, value.size());
-      EXPECT_EQ(expected_char, key[0]);
-      EXPECT_EQ(expected_char, value[0]);
-      EXPECT_EQ(expected_char, key[kKeyValueSize - 1]);
-      EXPECT_EQ(expected_char, value[kKeyValueSize - 1]);
+    virtual Status PutCF(uint32_t column_family_id, const SliceParts& key,
+                         const SliceParts& value) override {
+      EXPECT_EQ(kKeyValueSize, key.TheOnlyPart().size());
+      EXPECT_EQ(kKeyValueSize, value.TheOnlyPart().size());
+      EXPECT_EQ(expected_char, key.TheOnlyPart()[0]);
+      EXPECT_EQ(expected_char, value.TheOnlyPart()[0]);
+      EXPECT_EQ(expected_char, key.TheOnlyPart()[kKeyValueSize - 1]);
+      EXPECT_EQ(expected_char, value.TheOnlyPart()[kKeyValueSize - 1]);
       expected_char++;
       if (expected_char > 'Z') {
         expected_char = 'A';
@@ -409,14 +410,14 @@ TEST_F(WriteBatchTest, DISABLED_LargeKeyValue) {
 
   struct NoopHandler : public WriteBatch::Handler {
     int num_seen = 0;
-    virtual Status PutCF(uint32_t column_family_id, const Slice& key,
-                         const Slice& value) override {
-      EXPECT_EQ(kKeyValueSize, key.size());
-      EXPECT_EQ(kKeyValueSize, value.size());
-      EXPECT_EQ('A' + num_seen, key[0]);
-      EXPECT_EQ('A' + num_seen, value[0]);
-      EXPECT_EQ('A' - num_seen, key[kKeyValueSize - 1]);
-      EXPECT_EQ('A' - num_seen, value[kKeyValueSize - 1]);
+    virtual Status PutCF(uint32_t column_family_id, const SliceParts& key,
+                         const SliceParts& value) override {
+      EXPECT_EQ(kKeyValueSize, key.TheOnlyPart().size());
+      EXPECT_EQ(kKeyValueSize, value.TheOnlyPart().size());
+      EXPECT_EQ('A' + num_seen, key.TheOnlyPart()[0]);
+      EXPECT_EQ('A' + num_seen, value.TheOnlyPart()[0]);
+      EXPECT_EQ('A' - num_seen, key.TheOnlyPart()[kKeyValueSize - 1]);
+      EXPECT_EQ('A' - num_seen, value.TheOnlyPart()[kKeyValueSize - 1]);
       ++num_seen;
       return Status::OK();
     }
@@ -448,8 +449,8 @@ TEST_F(WriteBatchTest, Continue) {
 
   struct Handler : public TestHandler {
     int num_seen = 0;
-    virtual Status PutCF(uint32_t column_family_id, const Slice& key,
-                         const Slice& value) override {
+    virtual Status PutCF(uint32_t column_family_id, const SliceParts& key,
+                         const SliceParts& value) override {
       ++num_seen;
       return TestHandler::PutCF(column_family_id, key, value);
     }

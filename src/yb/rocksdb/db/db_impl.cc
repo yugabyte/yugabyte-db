@@ -5207,6 +5207,9 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
           // in case the write callback returned a non-ok status.
           status = w.FinalStatus();
         }
+        for (const auto& writer : write_group) {
+          last_sequence += writer->batch->DirectEntries();
+        }
 
       } else {
         WriteThread::ParallelGroup pg;

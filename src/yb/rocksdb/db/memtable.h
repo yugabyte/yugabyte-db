@@ -84,6 +84,12 @@ struct MemTableOptions {
 
 YB_DEFINE_ENUM(FlushState, (kNotRequested)(kRequested)(kScheduled));
 
+struct PreparedAdd {
+  SequenceNumber min_seq_no = 0;
+  size_t total_encoded_len = 0;
+  size_t num_deletes = 0;
+};
+
 // Note:  Many of the methods in this class have comments indicating that
 // external synchromization is required as these methods are not thread-safe.
 // It is up to higher layers of code to decide how to prevent concurrent
@@ -186,8 +192,16 @@ class MemTable {
   //
   // REQUIRES: if allow_concurrent = false, external synchronization to prevent
   // simultaneous operations on the same MemTable.
-  void Add(SequenceNumber seq, ValueType type, const Slice& key,
-           const Slice& value, bool allow_concurrent = false);
+  void Add(SequenceNumber seq, ValueType type, const SliceParts& key,
+           const SliceParts& value, bool allow_concurrent = false);
+
+  KeyHandle PrepareAdd(
+      SequenceNumber s, ValueType type, const SliceParts& key, const SliceParts& value,
+      PreparedAdd* prepared_add);
+
+  void ApplyPreparedAdd(
+      const KeyHandle* handle, size_t count, const PreparedAdd& prepared_add,
+      bool allow_concurrent);
 
   // If memtable contains a value for key, store it in *value and return true.
   // If memtable contains a deletion for key, store a NotFound() error

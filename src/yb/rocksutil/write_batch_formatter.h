@@ -46,8 +46,8 @@ class WriteBatchFormatter : public rocksdb::WriteBatch::Handler {
 
   virtual CHECKED_STATUS PutCF(
       uint32_t column_family_id,
-      const rocksdb::Slice& key,
-      const rocksdb::Slice& value) override;
+      const rocksdb::SliceParts& key,
+      const rocksdb::SliceParts& value) override;
 
   virtual CHECKED_STATUS DeleteCF(
       uint32_t column_family_id,

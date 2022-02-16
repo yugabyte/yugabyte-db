@@ -387,16 +387,24 @@ uint64_t MemTable::ApproximateSize(const Slice& start_ikey,
   return entry_count * (data_size / n);
 }
 
-void MemTable::Add(SequenceNumber s, ValueType type,
-                   const Slice& key, /* user key */
-                   const Slice& value, bool allow_concurrent) {
+void MemTable::Add(SequenceNumber seq, ValueType type, const SliceParts& key,
+                   const SliceParts& value, bool allow_concurrent) {
+  PreparedAdd prepared_add;
+  auto handle = PrepareAdd(seq, type, key, value, &prepared_add);
+  ApplyPreparedAdd(&handle, 1, prepared_add, allow_concurrent);
+}
+
+KeyHandle MemTable::PrepareAdd(SequenceNumber s, ValueType type,
+                               const SliceParts& key,
+                               const SliceParts& value,
+                               PreparedAdd* prepared_add) {
   // Format of an entry is concatenation of:
   //  key_size     : varint32 of internal_key.size()
   //  key bytes    : char[internal_key.size()]
   //  value_size   : varint32 of value.size()
   //  value bytes  : char[value.size()]
-  uint32_t key_size = static_cast<uint32_t>(key.size());
-  uint32_t val_size = static_cast<uint32_t>(value.size());
+  uint32_t key_size = static_cast<uint32_t>(key.SumSizes());
+  uint32_t val_size = static_cast<uint32_t>(value.SumSizes());
   uint32_t internal_key_size = key_size + 8;
   const uint32_t encoded_len = VarintLength(internal_key_size) +
                                internal_key_size + VarintLength(val_size) +
@@ -405,39 +413,56 @@ void MemTable::Add(SequenceNumber s, ValueType type,
   KeyHandle handle = table_->Allocate(encoded_len, &buf);
 
   char* p = EncodeVarint32(buf, internal_key_size);
-  memcpy(p, key.data(), key_size);
-  p += key_size;
+  p = key.CopyAllTo(p);
   uint64_t packed = PackSequenceAndType(s, type);
   EncodeFixed64(p, packed);
   p += 8;
   p = EncodeVarint32(p, val_size);
-  memcpy(p, value.data(), val_size);
-  assert((unsigned)(p + val_size - buf) == (unsigned)encoded_len);
+  p = value.CopyAllTo(p);
+  assert((unsigned)(p - buf) == (unsigned)encoded_len);
+
+  if (prefix_bloom_) {
+    assert(prefix_extractor_);
+    prefix_bloom_->Add(prefix_extractor_->Transform(key.TheOnlyPart()));
+  }
+
+  if (!prepared_add->min_seq_no) {
+    prepared_add->min_seq_no = s;
+  }
+  prepared_add->total_encoded_len += encoded_len;
+  if (type == ValueType::kTypeDeletion) {
+    ++prepared_add->num_deletes;
+  }
+  return handle;
+}
+
+void MemTable::ApplyPreparedAdd(
+    const KeyHandle* handle, size_t count, const PreparedAdd& prepared_add, bool allow_concurrent) {
   if (!allow_concurrent) {
-    table_->Insert(handle);
+    for (const auto* end = handle + count; handle != end; ++handle) {
+      table_->Insert(*handle);
+    }
 
     // this is a bit ugly, but is the way to avoid locked instructions
     // when incrementing an atomic
-    num_entries_.store(num_entries_.load(std::memory_order_relaxed) + 1,
+    num_entries_.store(num_entries_.load(std::memory_order_relaxed) + count,
                        std::memory_order_relaxed);
-    data_size_.store(data_size_.load(std::memory_order_relaxed) + encoded_len,
+    data_size_.store(data_size_.load(std::memory_order_relaxed) + prepared_add.total_encoded_len,
                      std::memory_order_relaxed);
-    if (type == kTypeDeletion) {
-      num_deletes_.store(num_deletes_.load(std::memory_order_relaxed) + 1,
+    if (prepared_add.num_deletes) {
+      num_deletes_.store(num_deletes_.load(std::memory_order_relaxed) + prepared_add.num_deletes,
                          std::memory_order_relaxed);
-    }
-
-    if (prefix_bloom_) {
-      assert(prefix_extractor_);
-      prefix_bloom_->Add(prefix_extractor_->Transform(key));
     }
 
     // The first sequence number inserted into the memtable.
     // Multiple occurences of the same sequence number in the write batch are allowed
     // as long as they touch different keys.
-    assert(first_seqno_ == 0 || s >= first_seqno_);
+    DCHECK(first_seqno_ == 0 || prepared_add.min_seq_no >= first_seqno_)
+        << "first_seqno_: " << first_seqno_ << ", prepared_add.min_seq_no: "
+        << prepared_add.min_seq_no;
+
     if (first_seqno_ == 0) {
-      first_seqno_.store(s, std::memory_order_relaxed);
+      first_seqno_.store(prepared_add.min_seq_no, std::memory_order_relaxed);
 
       if (earliest_seqno_ == kMaxSequenceNumber) {
         earliest_seqno_.store(GetFirstSequenceNumber(),
@@ -446,29 +471,27 @@ void MemTable::Add(SequenceNumber s, ValueType type,
       DCHECK_GE(first_seqno_.load(), earliest_seqno_.load());
     }
   } else {
-    table_->InsertConcurrently(handle);
-
-    num_entries_.fetch_add(1, std::memory_order_relaxed);
-    data_size_.fetch_add(encoded_len, std::memory_order_relaxed);
-    if (type == kTypeDeletion) {
-      num_deletes_.fetch_add(1, std::memory_order_relaxed);
+    for (const auto* end = handle + count; handle != end; ++handle) {
+      table_->InsertConcurrently(*handle);
     }
 
-    if (prefix_bloom_) {
-      assert(prefix_extractor_);
-      prefix_bloom_->AddConcurrently(prefix_extractor_->Transform(key));
+    num_entries_.fetch_add(count, std::memory_order_relaxed);
+    data_size_.fetch_add(prepared_add.total_encoded_len, std::memory_order_relaxed);
+    if (prepared_add.num_deletes) {
+      num_deletes_.fetch_add(prepared_add.num_deletes, std::memory_order_relaxed);
     }
 
     // atomically update first_seqno_ and earliest_seqno_.
     uint64_t cur_seq_num = first_seqno_.load(std::memory_order_relaxed);
-    while ((cur_seq_num == 0 || s < cur_seq_num) &&
-           !first_seqno_.compare_exchange_weak(cur_seq_num, s)) {
+    while ((cur_seq_num == 0 || prepared_add.min_seq_no < cur_seq_num) &&
+           !first_seqno_.compare_exchange_weak(cur_seq_num, prepared_add.min_seq_no)) {
     }
     uint64_t cur_earliest_seqno =
         earliest_seqno_.load(std::memory_order_relaxed);
     while (
-        (cur_earliest_seqno == kMaxSequenceNumber || s < cur_earliest_seqno) &&
-        !first_seqno_.compare_exchange_weak(cur_earliest_seqno, s)) {
+        (cur_earliest_seqno == kMaxSequenceNumber ||
+             prepared_add.min_seq_no < cur_earliest_seqno) &&
+        !first_seqno_.compare_exchange_weak(cur_earliest_seqno, prepared_add.min_seq_no)) {
     }
   }
 
@@ -601,11 +624,10 @@ static bool SaveValue(void* arg, const char* entry) {
   if (s->mem->GetInternalKeyComparator().user_comparator()->Equal(
           Slice(key_ptr, key_length - 8), s->key->user_key())) {
     // Correct user key
-    const uint64_t tag = DecodeFixed64(key_ptr + key_length - 8);
-    ValueType type;
-    UnPackSequenceAndType(tag, &s->seq, &type);
+    auto seq_and_type = UnPackSequenceAndTypeFromEnd(key_ptr + key_length);
+    s->seq = seq_and_type.sequence;
 
-    switch (type) {
+    switch (seq_and_type.type) {
       case kTypeValue: {
         if (s->inplace_update_support) {
           s->mem->GetLock(s->key->user_key())->ReadLock();
@@ -767,11 +789,8 @@ void MemTable::Update(SequenceNumber seq,
     if (comparator_.comparator.user_comparator()->Equal(
             Slice(key_ptr, key_length - 8), lkey.user_key())) {
       // Correct user key
-      const uint64_t tag = DecodeFixed64(key_ptr + key_length - 8);
-      ValueType type;
-      SequenceNumber unused;
-      UnPackSequenceAndType(tag, &unused, &type);
-      switch (type) {
+      auto seq_and_type = UnPackSequenceAndTypeFromEnd(key_ptr + key_length);
+      switch (seq_and_type.type) {
         case kTypeValue: {
           Slice prev_value = GetLengthPrefixedSlice(key_ptr + key_length);
           uint32_t prev_size = static_cast<uint32_t>(prev_value.size());
@@ -795,14 +814,14 @@ void MemTable::Update(SequenceNumber seq,
         default:
           // If the latest value is kTypeDeletion, kTypeMerge or kTypeLogData
           // we don't have enough space for update inplace
-            Add(seq, kTypeValue, key, value);
+            Add(seq, kTypeValue, SliceParts(&key, 1), SliceParts(&value, 1));
             return;
       }
     }
   }
 
   // key doesn't exist
-  Add(seq, kTypeValue, key, value);
+  Add(seq, kTypeValue, SliceParts(&key, 1), SliceParts(&value, 1));
 }
 
 bool MemTable::UpdateCallback(SequenceNumber seq,
@@ -831,11 +850,7 @@ bool MemTable::UpdateCallback(SequenceNumber seq,
     if (comparator_.comparator.user_comparator()->Equal(
             Slice(key_ptr, key_length - 8), lkey.user_key())) {
       // Correct user key
-      const uint64_t tag = DecodeFixed64(key_ptr + key_length - 8);
-      ValueType type;
-      uint64_t unused;
-      UnPackSequenceAndType(tag, &unused, &type);
-      switch (type) {
+      switch (UnPackSequenceAndTypeFromEnd(key_ptr + key_length).type) {
         case kTypeValue: {
           Slice prev_value = GetLengthPrefixedSlice(key_ptr + key_length);
           uint32_t prev_size = static_cast<uint32_t>(prev_value.size());
@@ -863,7 +878,8 @@ bool MemTable::UpdateCallback(SequenceNumber seq,
             UpdateFlushState();
             return true;
           } else if (status == UpdateStatus::UPDATED) {
-            Add(seq, kTypeValue, key, Slice(str_value));
+            Slice value(str_value);
+            Add(seq, kTypeValue, SliceParts(&key, 1), SliceParts(&value, 1));
             RecordTick(moptions_.statistics, NUMBER_KEYS_WRITTEN);
             UpdateFlushState();
             return true;
@@ -905,11 +921,7 @@ size_t MemTable::CountSuccessiveMergeEntries(const LookupKey& key) {
       break;
     }
 
-    const uint64_t tag = DecodeFixed64(iter_key_ptr + key_length - 8);
-    ValueType type;
-    uint64_t unused;
-    UnPackSequenceAndType(tag, &unused, &type);
-    if (type != kTypeMerge) {
+    if (UnPackSequenceAndTypeFromEnd(iter_key_ptr + key_length).type != kTypeMerge) {
       break;
     }
 

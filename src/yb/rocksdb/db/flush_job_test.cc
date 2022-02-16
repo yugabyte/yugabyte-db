@@ -142,7 +142,10 @@ TEST_F(FlushJobTest, NonEmpty) {
   for (int i = 1; i < 10000; ++i) {
     std::string key(ToString((i + 1000) % 10000));
     std::string value("value" + key);
-    new_mem->Add(SequenceNumber(i), kTypeValue, key, value);
+    Slice key_slice(key);
+    Slice value_slice(value);
+    new_mem->Add(
+        SequenceNumber(i), kTypeValue, SliceParts(&key_slice, 1), SliceParts(&value_slice, 1));
     InternalKey internal_key(key, SequenceNumber(i), kTypeValue);
     inserted_keys.emplace(internal_key.Encode().ToBuffer(), value);
     values.Feed(key);
@@ -202,11 +205,14 @@ TEST_F(FlushJobTest, Snapshots) {
   auto inserted_keys = mock::MakeMockFile();
   for (int i = 1; i < keys; ++i) {
     std::string key(ToString(i));
+    Slice key_slice(key);
     int insertions = rnd.Uniform(max_inserts_per_keys);
     for (int j = 0; j < insertions; ++j) {
       std::string value(test::RandomHumanReadableString(&rnd, 10));
+      Slice value_slice(value);
       auto seqno = ++current_seqno;
-      new_mem->Add(SequenceNumber(seqno), kTypeValue, key, value);
+      new_mem->Add(SequenceNumber(seqno), kTypeValue, SliceParts(&key_slice, 1),
+                   SliceParts(&value_slice, 1));
       // a key is visible only if:
       // 1. it's the last one written (j == insertions - 1)
       // 2. there's a snapshot pointing at it

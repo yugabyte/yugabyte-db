@@ -27,12 +27,12 @@ namespace yb {
 
 rocksdb::Status WriteBatchFormatter::PutCF(
     uint32_t column_family_id,
-    const Slice& key,
-    const Slice& value) {
+    const SliceParts& key,
+    const SliceParts& value) {
   StartOutputLine(__FUNCTION__);
-  OutputKey(key);
+  OutputKey(key.TheOnlyPart());
   AddSeparator();
-  OutputValue(key, value);
+  OutputValue(key.TheOnlyPart(), value.TheOnlyPart());
   FinishOutputLine();
   return Status::OK();
 }
