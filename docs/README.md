@@ -61,7 +61,7 @@ Follow these steps if this is the first time you are setting up to work on the d
 > _"With any major or semi-major [MacOS] update you'll need to update the command line tools in order to get them functioning properly again. Check Xcode with any update."_
 >
 > The (re)installation of Xcode from the referenced  [tools for Apple Developers](https://developer.apple.com/download/more/) site is a bit different for Big Sur than it is for Catalina. The downloaded file is a `.xip` — an Apple proprietary compressed file, digitally signed for integrity. `Xcode_12.2.xip` is 11.43 GB and can take quite long to download. (Your mileage might vary.)  Then it must be expanded—and that takes time too. This simply leaves you with `Xcode.app` in your "downloads" folder. It's about 30 MB (so who knows why the `.xip` is so ginormous). Anyway, drop it into the `/applications` folder. But even this is not enough.
-> 
+>
 > Then you need to do this:
 
    ```
@@ -131,7 +131,7 @@ It's recommended that you routinely check that you have the current latest "Xcod
 ```
 brew update
 brew upgrade hugo
-npm ci   
+npm ci
 ```
 You _must_ do this if ever you drop your local `git` (for example after a successful `git push` and subsequent merge) and re-do the `git clone` step.
 
@@ -252,7 +252,7 @@ The nature of your documentation change will determine which selection of the fo
 
 Very occasionally, you might want to reorganize the hierarchical structure of a part of the overall documentation as the user sees it. (This is the hierarchy that you see and navigate in the left-hand navigation panel.) Such changes involve moving existing  [_humanly typed documentation source_](#humanly-typed-documentation-source) file(s) within the directory tree that starts at the [_content directory_](#content-directory). If you do this, then you must use your favorite editor (a generic plain text editor is best for this purpose) to do manually driven global search and replace to update URL references to moved files at their old locations. However, because you will do this only within the scope of the files that you worked on (most likely, the `/latest/` subtree), you must also establish URL redirects in each moved file to avoid breaking links in other Yugabyte Internet properties, or in third party sites. The _frontmatter_ allows this easily. Here is an example.
 
-```
+```yaml
 title: SELECT statement [YSQL]
 headerTitle: SELECT
 linkTitle: SELECT
@@ -266,15 +266,16 @@ aliases:
 isTocNested: true
 showAsideToc: true
 ```
+
 The `aliases` page property allows a list of many URLs. Notice that these are _relative_ to the [_content directory_](#content-directory). The `.md` file in this example used to be here:
 
-```
+```output
 <your path>/yugabyte-db/docs/content/latest/api/ysql/commands/dml_select.md
 ```
 
 It was moved to here:
 
-```
+```output
 <your path>/yugabyte-db/docs/content/latest/api/ysql/the-sql-language/statements/dml_select.md
 ```
 
@@ -282,8 +283,8 @@ Your specific documentation enhancement will determine if you need only to chang
 
 Follow this general flow on each local editing cycle.
 
-1. Modify content pages, or If necessary create new ones.
-1. If necessary, edit the the [_diagram definition file_](#diagram-definition-file).
+1. Modify content pages, or if necessary create new ones.
+1. If necessary, edit the [_diagram definition file_](#diagram-definition-file).
 1. If necessary, create one or more new [_free-standing generated grammar-diagram pairs_](#free-standing-generated-grammar-diagram-pair), using `touch`, on the appropriate directories in the [_syntax resources directory_](#syntax-resources-directory) tree.
 1. If necessary, [_run the generator_](#run-the-generator).
 1. If necessary, add [_diagram inclusion HTML_](#diagram-inclusion-HTML) to one or more of the content files that you modified.
@@ -301,7 +302,7 @@ The ordering of the glossary terms is insignificant. There’s a fair amount of 
 
 > **Note:** The account that follows distinguishes between _directory_ and _file_ in the usual way: a _directory_ contains _files_ and/or _directories_. And a _file_ has actual content.
 >
-> **Note:** the two terms, “grammar” and “syntax”, mean pretty much the same as each other. But one, or the other, of these is used by convention in the spellings and definitions of the terms of art that this glossary defines.
+> **Note:** the two terms, “grammar” and “syntax”, mean pretty much the same as each other. But one or the other of these is used by convention in the spellings and definitions of the terms of art that this glossary defines.
 >
 > **Note:** Users of the Internet-facing YugabyteDB documentation typically access the sub-corpus that starts here:
 >
@@ -319,7 +320,7 @@ Sometimes, the grammar of an entire SQL statement can be comfortably described b
 
 A [_syntax rule_](#syntax-rule) is specified using EBNF notation. EBNF stands for “extended Backus–Naur form”. See this [Wikipedia article](https://en.wikipedia.org/wiki/Extended_Backus–Naur_form). Here is an example for the [`PREPARE`](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/perf_prepare/#syntax) statement:
 
-```
+```ebnf
 prepare_statement ::= 'PREPARE' name [ '(' data_type { ',' data_type } ')' ] 'AS' statement ;
 ```
 
@@ -366,6 +367,7 @@ The [Syntax section](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/
 ```
 cd <your path>/yugabyte-db/docs
 ```
+
 You install the [_diagram generator_](#diagram-generator) here. And you stand here when you [_run the generator_](#run-the-generator). You also typically stand here when you start "hugo"; and when you prepare for, and then do, a `git push` to your personal GitHub fork.
 
 ### content directory
@@ -377,6 +379,7 @@ In other words, it holds the entire [_humanly typed documentation source_](#huma
 ```
 cd <your path>/yugabyte-db/docs/content
 ```
+
 "hugo" uses the tree starting at the [_content directory_](#content-directory) to generate the documentation site (under the influence of the [_supporting doc infrastructure_](#supporting-doc-infrastructure)) as a set of static files.
 
 Notice that, when your current directory is the [_docs directory_](#docs-directory), `git status` shows the paths of what it reports starting with the [_content directory_](#content-directory) like this:
@@ -450,7 +453,7 @@ Always found in the [_grammar diagrams file_](#grammar-diagrams-file-here) (but,
 - **Such a pair requests the [_diagram generator_](#diagram-generator) to populate them automatically with respectively the "grammar" and the "diagram" presentations of the set of [_syntax rules_](#syntax-rule) that each asks for**.
 
   They are defined by a pair of `.md` files with names that follow a purpose-designed syntax:
-  
+
 ```
 <rule-name>[, <rule-name>, ...].grammar.md
                ~               .diagram.md
@@ -495,7 +498,7 @@ Consider this example:
 
 You must include this boilerplate text in `wants-to-include.md` at the location in this file where you want the [_syntax diagram_](#syntax-diagram) to be seen:
 
-```
+```html
 <ul class=“nav nav-tabs nav-tabs-yb”>
   <li >
     <a href=“#grammar” class=“nav-link active” id=“grammar-tab” data-toggle=“tab” role=“tab” aria-controls=“grammar” aria-selected=“true”>
@@ -558,10 +561,9 @@ Use `ls rrdiagram.jar` to check that it is now present. (It isn't shown by "git 
 
 Specifically:
 
-```
+```sh
 cd <your path>/yugabyte-db/docs
-java -jar rrdiagram.jar content/latest/api/ysql/syntax_resources/ysql_grammar.ebnf \
-  content/latest/api/ysql/syntax_resources/
+java -jar rrdiagram.jar content/latest/api/ysql/syntax_resources/ysql_grammar.ebnf content/latest/api/ysql/syntax_resources/
 ```
 
 This will (re)generate _all_ of the files that it ought to. You can run this at any time. In the worst case, a typing error somewhere, especially in the [_diagram inclusion HTML_](#diagram-inclusion-HTML), can crash "hugo", resulting in the notorious blanked out screen in the browser.
@@ -578,7 +580,7 @@ And while the rules do give `a/b - c` an unambiguous meaning (advertised by the 
 
 In EBNF, `( ... )` plays a similar role as it does in algebra. In some situations, just which subset of items is grouped changes the meaning. But in some situations (like `a + b + c` in algebra) the use of `( ... )` conveys no semantics. Look for this at the end of the [_diagram definition file_](#diagram-definition-file):
 
-```
+```ebnf
 (*
   Notice that the "demo-2" rule uses ( ... ) redundantly.
   The two rules are semantically identical but they produce the different diagrams.

@@ -14,3 +14,7 @@ swap:
   '(?:yugabyte|[yY]ugaByte)': Yugabyte
   YugaByteDB: YugabyteDB
   '[Yy]ugaware': Yugabyte Platform
+  pg: PostgreSQL
+  '[Pp]ostgres$': PostgreSQL
+  '[Pp]ost[Gg]re[Ss]{1,2}[Qq][Ll]': PostgreSQL
+
