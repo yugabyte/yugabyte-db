@@ -91,6 +91,7 @@ DECLARE_int64(global_memstore_size_mb_max);
 DECLARE_bool(TEST_allow_stop_writes);
 DECLARE_int32(yb_num_shards_per_tserver);
 DECLARE_int32(ysql_num_shards_per_tserver);
+DECLARE_int32(transaction_table_num_tablets);
 DECLARE_int32(transaction_table_num_tablets_per_tserver);
 DECLARE_int32(TEST_tablet_inject_latency_on_apply_write_txn_ms);
 DECLARE_bool(TEST_log_cache_skip_eviction);
@@ -590,6 +591,7 @@ TEST_F(QLTabletTest, VerifyIndexRangeWithInconsistentTable) {
 TEST_F(QLTabletTest, TransactionsTableTablets) {
   FLAGS_yb_num_shards_per_tserver = 1;
   FLAGS_ysql_num_shards_per_tserver = 2;
+  FLAGS_transaction_table_num_tablets = 0;
   FLAGS_transaction_table_num_tablets_per_tserver = 4;
 
   YBSchemaBuilder builder;
