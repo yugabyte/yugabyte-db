@@ -48,7 +48,7 @@ The application needs to establish a connection to the YugabyteDB cluster. To do
 
 1. Open the `sample-app.rb` file.
 
-2. Set the following configuration-related macros:
+2. Set the following configuration-related parameters:
 
     - **host** - the host name of your YugabyteDB cluster. To obtain a Yugabyte Cloud cluster host name, sign in to Yugabyte Cloud, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Network Access**.
     - **port** - the port number that will be used by the driver (the default YugabyteDB YSQL port is 5433).
