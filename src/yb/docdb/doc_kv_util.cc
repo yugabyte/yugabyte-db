@@ -14,7 +14,7 @@
 #include "yb/docdb/doc_kv_util.h"
 
 #include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/docdb-internal.h"
+#include "yb/docdb/docdb.h"
 #include "yb/docdb/value_type.h"
 
 #include "yb/util/bytes_formatter.h"
@@ -196,12 +196,9 @@ Result<DocHybridTime> DecodeInvertedDocHt(Slice key_slice) {
         "Invalid doc hybrid time in reverse intent record suffix: $0",
         key_slice.ToDebugHexString());
   }
-  size_t doc_ht_buffer[kMaxWordsPerEncodedHybridTimeWithValueType];
-  memcpy(doc_ht_buffer, key_slice.data(), key_slice.size());
-  for (size_t i = 0; i != kMaxWordsPerEncodedHybridTimeWithValueType; ++i) {
-    doc_ht_buffer[i] = ~doc_ht_buffer[i];
-  }
-  key_slice = Slice(pointer_cast<char*>(doc_ht_buffer), key_slice.size());
+
+  DocHybridTimeWordBuffer doc_ht_buffer;
+  key_slice = InvertEncodedDocHT(key_slice, &doc_ht_buffer);
 
   if (static_cast<ValueType>(key_slice[0]) != ValueType::kHybridTime) {
     return STATUS_FORMAT(
@@ -213,6 +210,14 @@ Result<DocHybridTime> DecodeInvertedDocHt(Slice key_slice) {
   DocHybridTime doc_ht;
   RETURN_NOT_OK(doc_ht.DecodeFrom(&key_slice));
   return doc_ht;
+}
+
+Slice InvertEncodedDocHT(const Slice& input, DocHybridTimeWordBuffer* buffer) {
+  memcpy(buffer->data(), input.data(), input.size());
+  for (size_t i = 0; i != kMaxWordsPerEncodedHybridTimeWithValueType; ++i) {
+    (*buffer)[i] = ~(*buffer)[i];
+  }
+  return {pointer_cast<char*>(buffer->data()), input.size()};
 }
 
 }  // namespace docdb

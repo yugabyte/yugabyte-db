@@ -88,6 +88,15 @@ class PgDmlRead : public PgDml {
   // Allocate protobuf for target.
   PgsqlExpressionPB *AllocTargetPB() override;
 
+  // Allocate protobuf for a qual in the read request's where_clauses list.
+  PgsqlExpressionPB *AllocQualPB() override;
+
+  // Allocate protobuf for a column reference in the read request's col_refs list.
+  PgsqlColRefPB *AllocColRefPB() override;
+
+  // Clear the read request's col_refs list.
+  void ClearColRefPBs() override;
+
   // Allocate column expression.
   PgsqlExpressionPB *AllocColumnAssignPB(PgColumn *col) override;
 

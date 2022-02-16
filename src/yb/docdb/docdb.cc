@@ -30,11 +30,13 @@
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/docdb_debug.h"
+#include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/intent.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/pgsql_operation.h"
+#include "yb/docdb/rocksdb_writer.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/transaction_dump.h"
 #include "yb/docdb/value.h"
@@ -77,10 +79,6 @@ using strings::Substitute;
 
 using namespace std::placeholders;
 
-DEFINE_test_flag(bool, docdb_sort_weak_intents, false,
-                "Sort weak intents to make their order deterministic.");
-DEFINE_bool(enable_transaction_sealing, false,
-            "Whether transaction sealing is enabled.");
 DEFINE_test_flag(bool, fail_on_replicated_batch_idx_set_in_txn_record, false,
                  "Fail when a set of replicated batch indexes is found in txn record.");
 DEFINE_int32(txn_max_apply_batch_records, 100000,
@@ -92,60 +90,6 @@ namespace yb {
 namespace docdb {
 
 namespace {
-
-// Slice parts with the number of slices fixed at compile time.
-template <int N>
-struct FixedSliceParts {
-  FixedSliceParts(const std::array<Slice, N>& input) : parts(input.data()) { // NOLINT
-  }
-
-  operator SliceParts() const {
-    return SliceParts(parts, N);
-  }
-
-  const Slice* parts;
-};
-
-Slice InvertedDocHt(const Slice& input, size_t* buffer) {
-  memcpy(buffer, input.data(), input.size());
-  for (size_t i = 0; i != kMaxWordsPerEncodedHybridTimeWithValueType; ++i) {
-    buffer[i] = ~buffer[i];
-  }
-  return {pointer_cast<char*>(buffer), input.size()};
-}
-
-// Main intent data::
-// Prefix + DocPath + IntentType + DocHybridTime -> TxnId + value of the intent
-// Reverse index by txn id:
-// Prefix + TxnId + DocHybridTime -> Main intent data key
-//
-// Expects that last entry of key is DocHybridTime.
-template <int N>
-void AddIntent(
-    const TransactionId& transaction_id,
-    const FixedSliceParts<N>& key,
-    const SliceParts& value,
-    rocksdb::WriteBatch* rocksdb_write_batch,
-    Slice reverse_value_prefix = Slice()) {
-  char reverse_key_prefix[1] = { ValueTypeAsChar::kTransactionId };
-  size_t doc_ht_buffer[kMaxWordsPerEncodedHybridTimeWithValueType];
-  auto doc_ht_slice = InvertedDocHt(key.parts[N - 1], doc_ht_buffer);
-
-  std::array<Slice, 3> reverse_key = {{
-      Slice(reverse_key_prefix, sizeof(reverse_key_prefix)),
-      transaction_id.AsSlice(),
-      doc_ht_slice,
-  }};
-  rocksdb_write_batch->Put(key, value);
-  if (reverse_value_prefix.empty()) {
-    rocksdb_write_batch->Put(reverse_key, key);
-  } else {
-    std::array<Slice, N + 1> reverse_value;
-    reverse_value[0] = reverse_value_prefix;
-    memcpy(&reverse_value[1], key.parts, sizeof(*key.parts) * N);
-    rocksdb_write_batch->Put(reverse_key, reverse_value);
-  }
-}
 
 // key should be valid prefix of doc key, ending with some complete pritimive value or group end.
 CHECKED_STATUS ApplyIntent(RefCntPrefix key,
@@ -294,25 +238,6 @@ void FilterKeysToLock(LockBatchEntries *keys_locked) {
   ++w;
   keys_locked->erase(w, keys_locked->end());
 }
-
-// Buffer for encoding DocHybridTime
-class DocHybridTimeBuffer {
- public:
-  DocHybridTimeBuffer() {
-    buffer_[0] = ValueTypeAsChar::kHybridTime;
-  }
-
-  Slice EncodeWithValueType(const DocHybridTime& doc_ht) {
-    auto end = doc_ht.EncodedInDocDbFormat(buffer_.data() + 1);
-    return Slice(buffer_.data(), end);
-  }
-
-  Slice EncodeWithValueType(HybridTime ht, IntraTxnWriteId write_id) {
-    return EncodeWithValueType(DocHybridTime(ht, write_id));
-  }
- private:
-  std::array<char, 1 + kMaxBytesPerEncodedHybridTime> buffer_;
-};
 
 }  // namespace
 
@@ -534,7 +459,7 @@ ExternalTxnApplyState ProcessApplyExternalTransactions(const KeyValueWriteBatchP
 
 } // namespace
 
-void AddPairToWriteBatch(
+bool AddExternalPairToWriteBatch(
     const KeyValuePairPB& kv_pair,
     HybridTime hybrid_time,
     int write_id,
@@ -542,24 +467,14 @@ void AddPairToWriteBatch(
     rocksdb::WriteBatch* regular_write_batch,
     rocksdb::WriteBatch* intents_write_batch) {
   DocHybridTimeBuffer doc_ht_buffer;
-  size_t inverted_doc_ht_buffer[kMaxWordsPerEncodedHybridTimeWithValueType];
+  DocHybridTimeWordBuffer inverted_doc_ht_buffer;
 
   CHECK(!kv_pair.key().empty());
   CHECK(!kv_pair.value().empty());
 
-  bool regular_entry = kv_pair.key()[0] != ValueTypeAsChar::kExternalTransactionId;
-
-#ifndef NDEBUG
-  // Debug-only: ensure all keys we get in Raft replication can be decoded.
-  if (regular_entry) {
-    SubDocKey subdoc_key;
-    Status s = subdoc_key.FullyDecodeFromKeyWithOptionalHybridTime(kv_pair.key());
-    CHECK(s.ok())
-        << "Failed decoding key: " << s.ToString() << "; "
-        << "Problematic key: " << BestEffortDocDBKeyToStr(KeyBytes(kv_pair.key())) << "\n"
-        << "value: " << FormatBytesAsStr(kv_pair.value());
+  if (kv_pair.key()[0] != ValueTypeAsChar::kExternalTransactionId) {
+    return true;
   }
-#endif
 
   // We replicate encoded SubDocKeys without a HybridTime at the end, and only append it here.
   // The reason for this is that the HybridTime timestamp is only picked at the time of
@@ -578,26 +493,22 @@ void AddPairToWriteBatch(
       doc_ht_buffer.EncodeWithValueType(hybrid_time, write_id),
   }};
   Slice key_value = kv_pair.value();
-  rocksdb::WriteBatch* batch;
-  if (regular_entry) {
-    batch = regular_write_batch;
-  } else {
-    // This entry contains external intents.
-    Slice key = kv_pair.key();
-    key.consume_byte();
-    auto txn_id = CHECK_RESULT(DecodeTransactionId(&key));
-    auto it = apply_external_transactions->find(txn_id);
-    if (it != apply_external_transactions->end()) {
-      // The same write operation could contain external intents and instruct us to apply them.
-      CHECK_OK(PrepareApplyExternalIntentsBatch(
-          it->second.commit_ht, key_value, regular_write_batch, &it->second.write_id));
-      return;
-    }
-    batch = intents_write_batch;
-    key_parts[1] = InvertedDocHt(key_parts[1], inverted_doc_ht_buffer);
+  // This entry contains external intents.
+  Slice key = kv_pair.key();
+  key.consume_byte();
+  auto txn_id = CHECK_RESULT(DecodeTransactionId(&key));
+  auto it = apply_external_transactions->find(txn_id);
+  if (it != apply_external_transactions->end()) {
+    // The same write operation could contain external intents and instruct us to apply them.
+    CHECK_OK(PrepareApplyExternalIntentsBatch(
+        it->second.commit_ht, key_value, regular_write_batch, &it->second.write_id));
+    return false;
   }
+  key_parts[1] = InvertEncodedDocHT(key_parts[1], &inverted_doc_ht_buffer);
   constexpr size_t kNumValueParts = 1;
-  batch->Put(key_parts, { &key_value, kNumValueParts });
+  intents_write_batch->Put(key_parts, { &key_value, kNumValueParts });
+
+  return false;
 }
 
 // Usually put_batch contains only records that should be applied to regular DB.
@@ -617,7 +528,7 @@ void AddPairToWriteBatch(
 //   But if apply_external_transactions contains transaction for those external intents, then
 //   those intents will be applied directly to regular DB, avoiding unnecessary write to intents DB.
 //   This case is very common for short running transactions.
-void PrepareNonTransactionWriteBatch(
+bool PrepareExternalWriteBatch(
     const KeyValueWriteBatchPB& put_batch,
     HybridTime hybrid_time,
     rocksdb::DB* intents_db,
@@ -630,11 +541,13 @@ void PrepareNonTransactionWriteBatch(
   CHECK_OK(PrepareApplyExternalIntents(
       &apply_external_transactions, regular_write_batch, intents_db, intents_write_batch));
 
+  bool has_non_external_kvs = false;
   for (int write_id = 0; write_id < put_batch.write_pairs_size(); ++write_id) {
-    AddPairToWriteBatch(
+    has_non_external_kvs = AddExternalPairToWriteBatch(
         put_batch.write_pairs(write_id), hybrid_time, write_id, &apply_external_transactions,
-        regular_write_batch, intents_write_batch);
+        regular_write_batch, intents_write_batch) || has_non_external_kvs;
   }
+  return has_non_external_kvs;
 }
 
 namespace {
@@ -829,207 +742,6 @@ Status EnumerateIntents(
   }
 
   return Status::OK();
-}
-
-class PrepareTransactionWriteBatchHelper {
- public:
-  PrepareTransactionWriteBatchHelper(const PrepareTransactionWriteBatchHelper&) = delete;
-  void operator=(const PrepareTransactionWriteBatchHelper&) = delete;
-
-  // `rocksdb_write_batch` - in-out parameter is filled by this prepare.
-  PrepareTransactionWriteBatchHelper(HybridTime hybrid_time,
-                                     rocksdb::WriteBatch* rocksdb_write_batch,
-                                     const TransactionId& transaction_id,
-                                     const SubTransactionId subtransaction_id,
-                                     const Slice& replicated_batches_state,
-                                     IntraTxnWriteId* intra_txn_write_id)
-      : hybrid_time_(hybrid_time),
-        rocksdb_write_batch_(rocksdb_write_batch),
-        transaction_id_(transaction_id),
-        subtransaction_id_(subtransaction_id),
-        replicated_batches_state_(replicated_batches_state),
-        intra_txn_write_id_(intra_txn_write_id) {
-  }
-
-  void Setup(
-      IsolationLevel isolation_level,
-      OperationKind kind,
-      RowMarkType row_mark) {
-    row_mark_ = row_mark;
-    strong_intent_types_ = GetStrongIntentTypeSet(isolation_level, kind, row_mark);
-  }
-
-  // Using operator() to pass this object conveniently to EnumerateIntents.
-  CHECKED_STATUS operator()(IntentStrength intent_strength, FullDocKey, Slice value_slice,
-                            KeyBytes* key, LastKey last_key) {
-    if (intent_strength == IntentStrength::kWeak) {
-      weak_intents_[key->data()] |= StrongToWeak(strong_intent_types_);
-      return Status::OK();
-    }
-
-    const auto transaction_value_type = ValueTypeAsChar::kTransactionId;
-    const auto write_id_value_type = ValueTypeAsChar::kWriteId;
-    const auto row_lock_value_type = ValueTypeAsChar::kRowLock;
-    IntraTxnWriteId big_endian_write_id = BigEndian::FromHost32(*intra_txn_write_id_);
-
-    const auto subtransaction_value_type = ValueTypeAsChar::kSubTransactionId;
-    SubTransactionId big_endian_subtxn_id;
-    Slice subtransaction_marker;
-    Slice subtransaction_id;
-    if (subtransaction_id_ > kMinSubTransactionId) {
-      subtransaction_marker = Slice(&subtransaction_value_type, 1);
-      big_endian_subtxn_id = BigEndian::FromHost32(subtransaction_id_);
-      subtransaction_id = Slice::FromPod(&big_endian_subtxn_id);
-    } else {
-      DCHECK_EQ(subtransaction_id_, kMinSubTransactionId);
-    }
-
-    std::array<Slice, 7> value = {{
-        Slice(&transaction_value_type, 1),
-        transaction_id_.AsSlice(),
-        subtransaction_marker,
-        subtransaction_id,
-        Slice(&write_id_value_type, 1),
-        Slice::FromPod(&big_endian_write_id),
-        value_slice,
-    }};
-    // Store a row lock indicator rather than data (in value_slice) for row lock intents.
-    if (IsValidRowMarkType(row_mark_)) {
-      value.back() = Slice(&row_lock_value_type, 1);
-    }
-
-    ++*intra_txn_write_id_;
-
-    char intent_type[2] = { ValueTypeAsChar::kIntentTypeSet,
-                            static_cast<char>(strong_intent_types_.ToUIntPtr()) };
-
-    DocHybridTimeBuffer doc_ht_buffer;
-
-    constexpr size_t kNumKeyParts = 3;
-    std::array<Slice, kNumKeyParts> key_parts = {{
-        key->AsSlice(),
-        Slice(intent_type, 2),
-        doc_ht_buffer.EncodeWithValueType(hybrid_time_, write_id_++),
-    }};
-
-    Slice reverse_value_prefix;
-    if (last_key && FLAGS_enable_transaction_sealing) {
-      reverse_value_prefix = replicated_batches_state_;
-    }
-    AddIntent<kNumKeyParts>(
-        transaction_id_, key_parts, value, rocksdb_write_batch_, reverse_value_prefix);
-
-    return Status::OK();
-  }
-
-  void Finish() {
-    char transaction_id_value_type = ValueTypeAsChar::kTransactionId;
-
-    DocHybridTimeBuffer doc_ht_buffer;
-
-    std::array<Slice, 2> value = {{
-        Slice(&transaction_id_value_type, 1),
-        transaction_id_.AsSlice(),
-    }};
-
-    if (PREDICT_FALSE(FLAGS_TEST_docdb_sort_weak_intents)) {
-      // This is done in tests when deterministic DocDB state is required.
-      std::vector<std::pair<KeyBuffer, IntentTypeSet>> intents_and_types(
-          weak_intents_.begin(), weak_intents_.end());
-      sort(intents_and_types.begin(), intents_and_types.end());
-      for (const auto& intent_and_types : intents_and_types) {
-        AddWeakIntent(intent_and_types, value, &doc_ht_buffer);
-      }
-      return;
-    }
-
-    for (const auto& intent_and_types : weak_intents_) {
-      AddWeakIntent(intent_and_types, value, &doc_ht_buffer);
-    }
-  }
-
- private:
-  void AddWeakIntent(
-      const std::pair<KeyBuffer, IntentTypeSet>& intent_and_types,
-      const std::array<Slice, 2>& value,
-      DocHybridTimeBuffer* doc_ht_buffer) {
-    char intent_type[2] = { ValueTypeAsChar::kIntentTypeSet,
-                            static_cast<char>(intent_and_types.second.ToUIntPtr()) };
-    constexpr size_t kNumKeyParts = 3;
-    std::array<Slice, kNumKeyParts> key = {{
-        intent_and_types.first.AsSlice(),
-        Slice(intent_type, 2),
-        doc_ht_buffer->EncodeWithValueType(hybrid_time_, write_id_++),
-    }};
-
-    AddIntent<kNumKeyParts>(transaction_id_, key, value, rocksdb_write_batch_);
-  }
-
-  // TODO(dtxn) weak & strong intent in one batch.
-  // TODO(dtxn) extract part of code knowning about intents structure to lower level.
-  RowMarkType row_mark_;
-  HybridTime hybrid_time_;
-  rocksdb::WriteBatch* rocksdb_write_batch_;
-  const TransactionId& transaction_id_;
-  const SubTransactionId subtransaction_id_;
-  Slice replicated_batches_state_;
-  IntentTypeSet strong_intent_types_;
-  std::unordered_map<KeyBuffer, IntentTypeSet, ByteBufferHash> weak_intents_;
-  IntraTxnWriteId write_id_ = 0;
-  IntraTxnWriteId* intra_txn_write_id_;
-};
-
-// We have the following distinct types of data in this "intent store":
-// Main intent data:
-//   Prefix + SubDocKey (no HybridTime) + IntentType + HybridTime -> TxnId + value of the intent
-// Transaction metadata
-//   TxnId -> status tablet id + isolation level
-// Reverse index by txn id
-//   TxnId + HybridTime -> Main intent data key
-//
-// Where prefix is just a single byte prefix. TxnId, IntentType, HybridTime all prefixed with
-// appropriate value type.
-void PrepareTransactionWriteBatch(
-    const KeyValueWriteBatchPB& put_batch,
-    HybridTime hybrid_time,
-    rocksdb::WriteBatch* rocksdb_write_batch,
-    const TransactionId& transaction_id,
-    IsolationLevel isolation_level,
-    PartialRangeKeyIntents partial_range_key_intents,
-    const Slice& replicated_batches_state,
-    IntraTxnWriteId* write_id) {
-  VLOG(4) << "PrepareTransactionWriteBatch(), write_id = " << *write_id;
-
-  RowMarkType row_mark = GetRowMarkTypeFromPB(put_batch);
-
-  auto subtransaction_id = put_batch.has_subtransaction()
-      ? put_batch.subtransaction().subtransaction_id()
-      : kMinSubTransactionId;
-
-  PrepareTransactionWriteBatchHelper helper(
-      hybrid_time, rocksdb_write_batch, transaction_id, subtransaction_id, replicated_batches_state,
-      write_id);
-
-  if (!put_batch.write_pairs().empty()) {
-    if (IsValidRowMarkType(row_mark)) {
-      LOG(WARNING) << "Performing a write with row lock "
-                   << RowMarkType_Name(row_mark)
-                   << " when only reads are expected";
-    }
-    helper.Setup(isolation_level, OperationKind::kWrite, row_mark);
-
-    // We cannot recover from failures here, because it means that we cannot apply replicated
-    // operation.
-    CHECK_OK(EnumerateIntents(put_batch.write_pairs(), std::ref(helper),
-             partial_range_key_intents));
-  }
-
-  if (!put_batch.read_pairs().empty()) {
-    helper.Setup(isolation_level, OperationKind::kRead, row_mark);
-    CHECK_OK(EnumerateIntents(put_batch.read_pairs(), std::ref(helper), partial_range_key_intents));
-  }
-
-  helper.Finish();
 }
 
 // ------------------------------------------------------------------------------------------------
