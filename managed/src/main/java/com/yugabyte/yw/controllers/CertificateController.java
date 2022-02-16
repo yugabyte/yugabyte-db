@@ -267,7 +267,7 @@ public class CertificateController extends AuthenticatedController {
           BAD_REQUEST, "Certificate Config does not support Edit option");
     } else {
       HashicorpVaultConfigParams formParams = formData.get().hcVaultCertParams;
-      HashicorpVaultConfigParams configParams = info.getCustomHCPKICertInfo();
+      HashicorpVaultConfigParams configParams = info.getCustomHCPKICertInfoInternal();
 
       if (Strings.isNullOrEmpty(formParams.vaultToken)) {
         throw new PlatformServiceException(BAD_REQUEST, "Certificate Config not changed");

@@ -2758,7 +2758,7 @@
           "format" : "int64",
           "type" : "integer"
         },
-        "ttl_expiry" : {
+        "ttlExpiry" : {
           "format" : "int64",
           "type" : "integer"
         },

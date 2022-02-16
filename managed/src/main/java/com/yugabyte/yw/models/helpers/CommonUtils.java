@@ -84,7 +84,8 @@ public class CommonUtils {
         || ucFieldname.contains("CREDENTIALS")
         || ucFieldname.contains("API")
         || ucFieldname.contains("POLICY")
-        || ucFieldname.contains("HC_VAULT_TOKEN");
+        || ucFieldname.contains("HC_VAULT_TOKEN")
+        || ucFieldname.contains("vaultToken");
   }
 
   /**
