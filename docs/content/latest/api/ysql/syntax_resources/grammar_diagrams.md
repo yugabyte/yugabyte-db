@@ -788,7 +788,7 @@ index_elem ::= { column_name | ( expression ) }
 <svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="740" height="100" viewbox="0 0 740 100"><path class="connector" d="M0 22h35m106 0h67m-188 0q5 0 5 5v20q0 5 5 5h5m25 0h10m83 0h10m25 0h5q5 0 5-5v-20q0-5 5-5m5 0h30m148 0h20m-183 0q5 0 5 5v8q0 5 5 5h158q5 0 5-5v-8q0-5 5-5m5 0h30m54 0h20m-84 25q0 5 5 5h5m44 0h15q5 0 5-5m-74 30q0 5 5 5h5m53 0h6q5 0 5-5m-79-55q5 0 5 5v63q0 5 5 5h64q5 0 5-5v-63q0-5 5-5m5 0h30m60 0h30m55 0h20m-90 0q5 0 5 5v20q0 5 5 5h5m50 0h10q5 0 5-5v-20q0-5 5-5m5 0h20m-200 0q5 0 5 5v38q0 5 5 5h175q5 0 5-5v-38q0-5 5-5m5 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><a xlink:href="../grammar_diagrams#column-name"><rect class="rule" x="35" y="5" width="106" height="25"/><text class="text" x="45" y="22">column_name</text></a><rect class="literal" x="35" y="35" width="25" height="25" rx="7"/><text class="text" x="45" y="52">(</text><a xlink:href="../grammar_diagrams#expression"><rect class="rule" x="70" y="35" width="83" height="25"/><text class="text" x="80" y="52">expression</text></a><rect class="literal" x="163" y="35" width="25" height="25" rx="7"/><text class="text" x="173" y="52">)</text><a xlink:href="../grammar_diagrams#operator-class-name"><rect class="rule" x="238" y="5" width="148" height="25"/><text class="text" x="248" y="22">operator_class_name</text></a><rect class="literal" x="436" y="5" width="54" height="25" rx="7"/><text class="text" x="446" y="22">HASH</text><rect class="literal" x="436" y="35" width="44" height="25" rx="7"/><text class="text" x="446" y="52">ASC</text><rect class="literal" x="436" y="65" width="53" height="25" rx="7"/><text class="text" x="446" y="82">DESC</text><rect class="literal" x="540" y="5" width="60" height="25" rx="7"/><text class="text" x="550" y="22">NULLS</text><rect class="literal" x="630" y="5" width="55" height="25" rx="7"/><text class="text" x="640" y="22">FIRST</text><rect class="literal" x="630" y="35" width="50" height="25" rx="7"/><text class="text" x="640" y="52">LAST</text><polygon points="736,29 740,29 740,15 736,15" style="fill:black;stroke-width:0"/></svg>
 
 ### create_matview
-```
+```ebnf
 create_matview ::= CREATE MATERIALIZED VIEW [ IF NOT EXISTS ]  
                    matview_name [ ( column_name [ , ... ] ) ]  
                    [ WITH ( storage_parameters ) ]  
@@ -1346,7 +1346,7 @@ drop_group ::= DROP GROUP [ IF EXISTS ] role_name [ , ... ]
 <svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="445" height="80" viewbox="0 0 445 80"><path class="connector" d="M0 52h15m53 0h10m62 0h30m32 0h10m64 0h20m-141 0q5 0 5 5v8q0 5 5 5h116q5 0 5-5v-8q0-5 5-5m5 0h30m-5 0q-5 0-5-5v-20q0-5 5-5h35m24 0h35q5 0 5 5v20q0 5-5 5m-5 0h35"/><polygon points="0,59 5,52 0,45" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="35" width="53" height="25" rx="7"/><text class="text" x="25" y="52">DROP</text><rect class="literal" x="78" y="35" width="62" height="25" rx="7"/><text class="text" x="88" y="52">GROUP</text><rect class="literal" x="170" y="35" width="32" height="25" rx="7"/><text class="text" x="180" y="52">IF</text><rect class="literal" x="212" y="35" width="64" height="25" rx="7"/><text class="text" x="222" y="52">EXISTS</text><rect class="literal" x="356" y="5" width="24" height="25" rx="7"/><text class="text" x="366" y="22">,</text><a xlink:href="../grammar_diagrams#role-name"><rect class="rule" x="326" y="35" width="84" height="25"/><text class="text" x="336" y="52">role_name</text></a><polygon points="441,59 445,59 445,45 441,45" style="fill:black;stroke-width:0"/></svg>
 
 ### drop_matview
-```
+```ebnf
 drop_matview ::= DROP MATERIALIZED VIEW [ IF EXISTS ] matview_name  
                  [ CASCADE | RESTRICT ]
 ```
@@ -1632,7 +1632,7 @@ reassign_owned ::= REASSIGN OWNED BY role_specification [ , ... ] TO
 <svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="585" height="65" viewbox="0 0 585 65"><path class="connector" d="M0 52h15m83 0h10m67 0h10m35 0h30m-5 0q-5 0-5-5v-20q0-5 5-5h54m24 0h54q5 0 5 5v20q0 5-5 5m-5 0h30m36 0h10m122 0h15"/><polygon points="0,59 5,52 0,45" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="35" width="83" height="25" rx="7"/><text class="text" x="25" y="52">REASSIGN</text><rect class="literal" x="108" y="35" width="67" height="25" rx="7"/><text class="text" x="118" y="52">OWNED</text><rect class="literal" x="185" y="35" width="35" height="25" rx="7"/><text class="text" x="195" y="52">BY</text><rect class="literal" x="299" y="5" width="24" height="25" rx="7"/><text class="text" x="309" y="22">,</text><a xlink:href="../grammar_diagrams#role-specification"><rect class="rule" x="250" y="35" width="122" height="25"/><text class="text" x="260" y="52">role_specification</text></a><rect class="literal" x="402" y="35" width="36" height="25" rx="7"/><text class="text" x="412" y="52">TO</text><a xlink:href="../grammar_diagrams#role-specification"><rect class="rule" x="448" y="35" width="122" height="25"/><text class="text" x="458" y="52">role_specification</text></a><polygon points="581,59 585,59 585,45 581,45" style="fill:black;stroke-width:0"/></svg>
 
 ### refresh_matview
-```
+```ebnf
 refresh_matview ::= REFRESH MATERIALIZED VIEW [ CONCURRENTLY ]  
                     matview_name [ WITH [ NO ] DATA ]
 ```
@@ -2660,7 +2660,7 @@ extension_name ::= name
 <svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="84" height="35" viewbox="0 0 84 35"><path class="connector" d="M0 22h15m54 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><a xlink:href="../grammar_diagrams#name"><rect class="rule" x="15" y="5" width="54" height="25"/><text class="text" x="25" y="22">name</text></a><polygon points="80,29 84,29 84,15 80,15" style="fill:black;stroke-width:0"/></svg>
 
 ### matview_name
-```
+```ebnf
 matview_name ::= qualified_name
 ```
 <svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="141" height="35" viewbox="0 0 141 35"><path class="connector" d="M0 22h15m111 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><a xlink:href="../grammar_diagrams#qualified-name"><rect class="rule" x="15" y="5" width="111" height="25"/><text class="text" x="25" y="22">qualified_name</text></a><polygon points="137,29 141,29 141,15 137,15" style="fill:black;stroke-width:0"/></svg>
