@@ -5,6 +5,7 @@ package com.yugabyte.yw.common;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import java.util.List;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
@@ -30,16 +31,15 @@ import java.io.IOException;
 public class GCPUtil {
 
   private static final String GCS_CREDENTIALS_JSON_FIELDNAME = "GCS_CREDENTIALS_JSON";
-  private static final String GCS_BACKUP_LOCATION_FIELDNAME = "BACKUP_LOCATION";
   private static final String KEY_LOCATION_SUFFIX = Util.KEY_LOCATION_SUFFIX;
 
-  private static String[] getSplitLocationValue(String location) {
+  public static String[] getSplitLocationValue(String location) {
     location = location.substring(5);
     String[] split = location.split("/", 2);
     return split;
   }
 
-  private static Storage getStorageService(String gcpCredentials)
+  public static Storage getStorageService(String gcpCredentials)
       throws IOException, UnsupportedEncodingException {
     Credentials credentials =
         GoogleCredentials.fromStream(new ByteArrayInputStream(gcpCredentials.getBytes("UTF-8")));
@@ -69,26 +69,41 @@ public class GCPUtil {
     }
   }
 
-  public static Boolean canCredentialListObjects(JsonNode credentials) {
+  public static boolean canCredentialListObjects(JsonNode credentials) {
+    List<String> locations = null;
     try {
-      String configLocation = credentials.get(GCS_BACKUP_LOCATION_FIELDNAME).asText();
-      String[] splitLocation = getSplitLocationValue(configLocation);
-      String bucketName = splitLocation.length > 0 ? splitLocation[0] : "";
-      String prefix = splitLocation.length > 1 ? splitLocation[1] : "";
-      String gcpCredentials = credentials.get(GCS_CREDENTIALS_JSON_FIELDNAME).asText();
-      Storage storage = getStorageService(gcpCredentials);
-      if (splitLocation.length == 1) {
-        storage.list(bucketName);
-      } else {
-        Page<Blob> blobs =
-            storage.list(
-                bucketName,
-                Storage.BlobListOption.prefix(prefix),
-                Storage.BlobListOption.currentDirectory());
-      }
-    } catch (Exception e) {
-      log.error("GCP Credential cannot list objects to delete");
+      locations = BackupUtil.getStorageLocationList(credentials);
+    } catch (PlatformServiceException e) {
+      log.error(e.getMessage());
       return false;
+    }
+    return canCredentialListObjects(credentials, locations);
+  }
+
+  public static Boolean canCredentialListObjects(JsonNode credentials, List<String> locations) {
+    for (String configLocation : locations) {
+      try {
+        String[] splitLocation = getSplitLocationValue(configLocation);
+        String bucketName = splitLocation.length > 0 ? splitLocation[0] : "";
+        String prefix = splitLocation.length > 1 ? splitLocation[1] : "";
+        String gcpCredentials = credentials.get(GCS_CREDENTIALS_JSON_FIELDNAME).asText();
+        Storage storage = getStorageService(gcpCredentials);
+        if (splitLocation.length == 1) {
+          storage.list(bucketName);
+        } else {
+          Page<Blob> blobs =
+              storage.list(
+                  bucketName,
+                  Storage.BlobListOption.prefix(prefix),
+                  Storage.BlobListOption.currentDirectory());
+        }
+      } catch (Exception e) {
+        log.error(
+            String.format(
+                "GCP Credential cannot list objects in the specified backup location %s",
+                configLocation));
+        return false;
+      }
     }
     return true;
   }

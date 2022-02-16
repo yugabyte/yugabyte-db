@@ -1272,6 +1272,10 @@
     "BackupRequestParams" : {
       "description" : "Backup table parameters",
       "properties" : {
+        "alterLoadBalancer" : {
+          "description" : "Alter load balancer state",
+          "type" : "boolean"
+        },
         "backupType" : {
           "description" : "Backup type",
           "enum" : [ "YQL_TABLE_TYPE", "REDIS_TABLE_TYPE", "PGSQL_TABLE_TYPE", "TRANSACTION_STATUS_TABLE_TYPE" ],
@@ -1530,6 +1534,10 @@
           "description" : "Action type",
           "enum" : [ "CREATE", "RESTORE", "RESTORE_KEYS", "DELETE" ],
           "type" : "string"
+        },
+        "alterLoadBalancer" : {
+          "description" : "Alter load balancer state",
+          "type" : "boolean"
         },
         "backupList" : {
           "description" : "Backups",
@@ -3588,6 +3596,10 @@
           "enum" : [ "CREATE", "RESTORE", "RESTORE_KEYS", "DELETE" ],
           "type" : "string"
         },
+        "alterLoadBalancer" : {
+          "description" : "Alter load balancer state",
+          "type" : "boolean"
+        },
         "backupList" : {
           "description" : "Backups",
           "items" : {
@@ -4778,6 +4790,10 @@
           "description" : "Action type",
           "enum" : [ "RESTORE", "RESTORE_KEYS" ],
           "type" : "string"
+        },
+        "alterLoadBalancer" : {
+          "description" : "Alter load balancer state",
+          "type" : "boolean"
         },
         "backupStorageInfoList" : {
           "description" : "Backup's storage info to restore",
