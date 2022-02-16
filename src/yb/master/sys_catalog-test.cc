@@ -827,6 +827,7 @@ TEST_F(SysCatalogTest, TestSysCatalogSysConfigOperations) {
   //   a. "security-config" entry is set up with roles_version = 0.
   //   b. "ysql-catalog-configuration" entry is set up with version = 0 and the transactional YSQL
   //      sys catalog flag is set to true.
+  //   c. "transaction-tables-config" entry is set up with version = 0.
   scoped_refptr<SysConfigInfo> security_config = new SysConfigInfo(kSecurityConfigType);
   {
     auto l = security_config->LockForWrite();
@@ -841,11 +842,20 @@ TEST_F(SysCatalogTest, TestSysCatalogSysConfigOperations) {
     ysql_catalog_config_pb.set_transactional_sys_catalog_enabled(true);
     l.Commit();
   }
+  scoped_refptr<SysConfigInfo> transaction_tables_config =
+      new SysConfigInfo(kTransactionTablesConfigType);
+  {
+    auto l = transaction_tables_config->LockForWrite();
+    auto& transaction_tables_config_pb = *l.mutable_data()->pb.mutable_transaction_tables_config();
+    transaction_tables_config_pb.set_version(0);
+    l.Commit();
+  }
   unique_ptr<TestSysConfigLoader> loader(new TestSysConfigLoader());
   ASSERT_OK(sys_catalog->Visit(loader.get()));
-  ASSERT_EQ(2, loader->sys_configs.size());
+  ASSERT_EQ(3, loader->sys_configs.size());
   ASSERT_METADATA_EQ(security_config.get(), loader->sys_configs[0]);
-  ASSERT_METADATA_EQ(ysql_catalog_config.get(), loader->sys_configs[1]);
+  ASSERT_METADATA_EQ(transaction_tables_config.get(), loader->sys_configs[1]);
+  ASSERT_METADATA_EQ(ysql_catalog_config.get(), loader->sys_configs[2]);
 
   // 2. Add a new SysConfigEntryPB and verify it shows up.
   scoped_refptr<SysConfigInfo> test_config = new SysConfigInfo("test-security-configuration");
@@ -859,18 +869,20 @@ TEST_F(SysCatalogTest, TestSysCatalogSysConfigOperations) {
   }
   loader->Reset();
   ASSERT_OK(sys_catalog->Visit(loader.get()));
-  ASSERT_EQ(3, loader->sys_configs.size());
+  ASSERT_EQ(4, loader->sys_configs.size());
   ASSERT_METADATA_EQ(security_config.get(), loader->sys_configs[0]);
   ASSERT_METADATA_EQ(test_config.get(), loader->sys_configs[1]);
-  ASSERT_METADATA_EQ(ysql_catalog_config.get(), loader->sys_configs[2]);
+  ASSERT_METADATA_EQ(transaction_tables_config.get(), loader->sys_configs[2]);
+  ASSERT_METADATA_EQ(ysql_catalog_config.get(), loader->sys_configs[3]);
 
   // 2. Remove the SysConfigEntry and verify that it got removed.
   ASSERT_OK(sys_catalog->Delete(kLeaderTerm, test_config));
   loader->Reset();
   ASSERT_OK(sys_catalog->Visit(loader.get()));
-  ASSERT_EQ(2, loader->sys_configs.size());
+  ASSERT_EQ(3, loader->sys_configs.size());
   ASSERT_METADATA_EQ(security_config.get(), loader->sys_configs[0]);
-  ASSERT_METADATA_EQ(ysql_catalog_config.get(), loader->sys_configs[1]);
+  ASSERT_METADATA_EQ(transaction_tables_config.get(), loader->sys_configs[1]);
+  ASSERT_METADATA_EQ(ysql_catalog_config.get(), loader->sys_configs[2]);
 }
 
 class TestRoleLoader : public Visitor<PersistentRoleInfo> {
