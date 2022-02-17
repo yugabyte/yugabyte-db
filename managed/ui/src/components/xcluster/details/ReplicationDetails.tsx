@@ -161,7 +161,7 @@ export function ReplicationDetails({ params }: Props) {
           <Row className="replication-status">
             <Col lg={4}>Replication Status {getReplicationStatus(replication.status)}</Col>
             <Col lg={8} className="lag-status-graph">
-              <div>
+              <div className="lag-stats">
                 <Row>
                   <Col lg={6}>Current Lag</Col>
                   <Col lg={6}>
