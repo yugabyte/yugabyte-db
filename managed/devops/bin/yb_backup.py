@@ -380,14 +380,23 @@ class AzBackupStorage(AbstractBackupStorage):
     def _command_list_prefix(self):
         return "azcopy"
 
-    def upload_file_cmd(self, src, dest):
-        dest = dest + os.getenv('AZURE_STORAGE_SAS_TOKEN')
-        return [self._command_list_prefix(), "cp", src, dest]
+    def upload_file_cmd(self, src, dest, local=False):
+        if local is True:
+            dest = dest + os.getenv('AZURE_STORAGE_SAS_TOKEN')
+            return [self._command_list_prefix(), "cp", src, dest]
+        src = "'{}'".format(src)
+        dest = "'{}'".format(dest + os.getenv('AZURE_STORAGE_SAS_TOKEN'))
+        return ["{} {} {} {}".format(self._command_list_prefix(), "cp", src, dest)]
 
-    def download_file_cmd(self, src, dest):
-        src = src + os.getenv('AZURE_STORAGE_SAS_TOKEN')
-        return [self._command_list_prefix(), "cp", src,
-                dest, "--recursive"]
+    def download_file_cmd(self, src, dest, local=False):
+        if local is True:
+            src = src + os.getenv('AZURE_STORAGE_SAS_TOKEN')
+            return [self._command_list_prefix(), "cp", src,
+                    dest, "--recursive"]
+        src = "'{}'".format(src + os.getenv('AZURE_STORAGE_SAS_TOKEN'))
+        dest = "'{}'".format(dest)
+        return ["{} {} {} {} {}".format(self._command_list_prefix(), "cp", src,
+                dest, "--recursive")]
 
     def upload_dir_cmd(self, src, dest):
         # azcopy will download the top-level directory as well as the contents without "/*".
@@ -1770,15 +1779,26 @@ class YBBackup:
     def upload_encryption_key_file(self):
         key_file = os.path.basename(self.args.backup_keys_source)
         key_file_dest = os.path.join("/".join(self.args.backup_location.split("/")[:-1]), key_file)
-        self.run_program(self.storage.upload_file_cmd(self.args.backup_keys_source, key_file_dest))
+        if self.is_az():
+            self.run_program(self.storage.upload_file_cmd(self.args.backup_keys_source,
+                             key_file_dest, True))
+        else:
+            self.run_program(self.storage.upload_file_cmd(self.args.backup_keys_source,
+                             key_file_dest))
         self.run_program(["rm", self.args.backup_keys_source])
 
     def download_encryption_key_file(self):
         key_file = os.path.basename(self.args.restore_keys_destination)
         key_file_src = os.path.join("/".join(self.args.backup_location.split("/")[:-1]), key_file)
-        self.run_program(
-            self.storage.download_file_cmd(key_file_src, self.args.restore_keys_destination)
-        )
+        if self.is_az():
+            self.run_program(
+                self.storage.download_file_cmd(key_file_src, self.args.restore_keys_destination,
+                                               True)
+            )
+        else:
+            self.run_program(
+                self.storage.download_file_cmd(key_file_src, self.args.restore_keys_destination)
+            )
 
     def delete_bucket_obj(self):
         del_cmd = self.storage.delete_obj_cmd(self.args.backup_location)
