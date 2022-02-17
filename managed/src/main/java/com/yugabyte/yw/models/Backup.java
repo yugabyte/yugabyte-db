@@ -416,13 +416,18 @@ public class Backup extends Model {
     return ret;
   }
 
-  public void transitionState(BackupState newState) {
+  public synchronized void transitionState(BackupState newState) {
+    // Need updated backup state as multiple threads can access backup object.
+    this.refresh();
+
     if (this.state == newState) {
       LOG.error("Skipping state transition as no change in previous and new state");
     } else if ((this.state == BackupState.InProgress || newState == BackupState.QueuedForDeletion)
         || (this.state == BackupState.QueuedForDeletion && newState == BackupState.DeleteInProgress)
         || (this.state == BackupState.QueuedForDeletion && newState == BackupState.FailedToDelete)
-        || (this.state == BackupState.DeleteInProgress && newState == BackupState.FailedToDelete)) {
+        || (this.state == BackupState.DeleteInProgress && newState == BackupState.FailedToDelete)
+        || (this.state == BackupState.Completed && newState == BackupState.Stopped)
+        || (this.state == BackupState.Failed && newState == BackupState.Stopped)) {
       LOG.debug("New Backup API: transitioned from {} to {}", this.state, newState);
       this.state = newState;
       save();

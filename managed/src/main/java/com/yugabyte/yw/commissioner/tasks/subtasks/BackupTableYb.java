@@ -15,18 +15,9 @@ import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.TableManagerYb;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Universe;
-import play.libs.Json;
-
-import com.fasterxml.jackson.databind.ObjectWriter;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
-import javax.inject.Inject;
-
-import java.util.List;
 import java.util.Map;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;

@@ -209,8 +209,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       // request will succeeded.
       try {
         TaskInfo taskInfo = TaskInfo.get(taskUUID);
-        if (taskInfo.getTaskState() == TaskInfo.State.Success
-            || taskInfo.getTaskState() == TaskInfo.State.Failure) {
+        if (TaskInfo.COMPLETED_STATES.contains(taskInfo.getTaskState())) {
           // Also, ensure task details are set before returning.
           if (taskInfo.getTaskDetails() != null) {
             return taskInfo;

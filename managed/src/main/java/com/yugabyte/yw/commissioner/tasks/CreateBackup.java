@@ -34,6 +34,7 @@ import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
+import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Backup.BackupVersion;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
@@ -51,6 +52,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CancellationException;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
@@ -311,6 +313,11 @@ public class CreateBackup extends UniverseTaskBase {
         metricService.setOkStatusMetric(
             buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
 
+      } catch (CancellationException ce) {
+        log.error("Aborting backups for task: {}", userTaskUUID);
+        Backup.fetchAllBackupsByTaskUUID(userTaskUUID)
+            .forEach((backup) -> backup.transitionState(BackupState.Stopped));
+        throw ce;
       } catch (Throwable t) {
         throw t;
       } finally {

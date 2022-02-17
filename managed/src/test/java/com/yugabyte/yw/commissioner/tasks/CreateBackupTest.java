@@ -8,6 +8,7 @@ import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -20,10 +21,12 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -295,5 +298,19 @@ public class CreateBackupTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(TableType.YQL_TABLE_TYPE);
     verify(mockTableManagerYb, times(0)).createBackup(any());
     assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testAbortBackup() {
+    Map<String, String> config = new HashMap<>();
+    config.put(Universe.TAKE_BACKUPS, "true");
+    defaultUniverse.updateConfig(config);
+    ShellResponse shellResponse = new ShellResponse();
+    shellResponse.code = ShellResponse.ERROR_CODE_EXECUTION_CANCELLED;
+    when(mockTableManagerYb.createBackup(any())).thenReturn(shellResponse);
+    TaskInfo taskInfo = submitTask(TableType.YQL_TABLE_TYPE);
+    List<Backup> backupList = Backup.fetchAllBackupsByTaskUUID(taskInfo.getTaskUUID());
+    assertNotEquals(0, backupList.size());
+    backupList.forEach((backup -> assertEquals(BackupState.Stopped, backup.state)));
   }
 }
