@@ -130,6 +130,7 @@ DELETE  /customers/:cUUID/releases/:name                                       c
 
 # Certificate API
 POST    /customers/:cUUID/certificates                                         com.yugabyte.yw.controllers.CertificateController.upload(cUUID: java.util.UUID)
+POST    /customers/:cUUID/certificates/create_self_signed_cert          com.yugabyte.yw.controllers.CertificateController.createSelfSignedCert(cUUID: java.util.UUID)
 GET     /customers/:cUUID/certificates                                         com.yugabyte.yw.controllers.CertificateController.list(cUUID: java.util.UUID)
 DELETE  /customers/:cUUID/certificates/:rUUID                                  com.yugabyte.yw.controllers.CertificateController.delete(cUUID: java.util.UUID, rUUID: java.util.UUID)
 GET     /customers/:cUUID/certificates/:name                                   com.yugabyte.yw.controllers.CertificateController.get(cUUID: java.util.UUID, name: String)

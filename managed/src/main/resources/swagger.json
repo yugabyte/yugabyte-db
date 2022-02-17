@@ -7117,6 +7117,41 @@
         "tags" : [ "Certificate Info" ]
       }
     },
+    "/api/v1/customers/{cUUID}/certificates/create_self_signed_cert" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "createSelfSignedCert",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "description" : "certificate label",
+          "in" : "body",
+          "name" : "label",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Create a self signed certificate",
+        "tags" : [ "Certificate Info" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/certificates/{name}" : {
       "get" : {
         "description" : "",
