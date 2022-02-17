@@ -33,6 +33,8 @@ Follow these steps to connect your Arctype desktop client to YugabyteDB:
 3. On the "Connect a Database" step, select YugabyteDB.
 
     ![Connect DB](/images/develop/tools/arctype/arctype-connect_step3.png)
+    
+    Note: If you're using YugabyteDB Cloud, you need to add your computer to the cluster IP allow list. Refer to [Assign IP Allow Lists](https://docs.yugabyte.com/latest/yugabyte-cloud/cloud-secure-clusters/add-connections/). You also need to download and install CA Cert root.crt certificate on your computer from YugabyteDB Cloud console for TLS encryption.
 
 4. Enter your YugabyteDB host, port, database, user and password information, and click 'Test Connection' and save if connection is successful.
 
