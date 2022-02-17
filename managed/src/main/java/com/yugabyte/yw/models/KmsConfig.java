@@ -103,6 +103,10 @@ public class KmsConfig extends Model {
         .findList();
   }
 
+  public static List<KmsConfig> listAllKMSConfigs() {
+    return KmsConfig.find.query().where().eq("version", SCHEMA_VERSION).findList();
+  }
+
   public static KmsConfig updateKMSConfig(UUID configUUID, ObjectNode updatedConfig) {
     KmsConfig existingConfig = get(configUUID);
     if (existingConfig == null) return null;
