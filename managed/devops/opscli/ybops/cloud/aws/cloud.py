@@ -378,10 +378,10 @@ class AwsCloud(AbstractCloud):
         return results
 
     def get_device_names(self, args):
-        if has_ephemerals(args.instance_type):
+        if has_ephemerals(args.instance_type, args.region):
             return []
         else:
-            return get_device_names(args.instance_type, args.num_volumes)
+            return get_device_names(args.instance_type, args.num_volumes, args.region)
 
     def get_subnet_cidr(self, args, subnet_id):
         ec2 = boto3.resource('ec2', args.region)
