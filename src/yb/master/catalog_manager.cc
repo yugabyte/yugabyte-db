@@ -1153,6 +1153,10 @@ Status CatalogManager::RunLoaders(int64_t term) {
   RETURN_NOT_OK(Load<ClusterConfigLoader>("cluster configuration", term));
   RETURN_NOT_OK(Load<RedisConfigLoader>("Redis config", term));
 
+  if (!transaction_tables_config_) {
+    RETURN_NOT_OK(InitializeTransactionTablesConfig(term));
+  }
+
   return Status::OK();
 }
 
@@ -1277,20 +1281,7 @@ Status CatalogManager::PrepareDefaultSysConfig(int64_t term) {
   }
 
   if (!transaction_tables_config_) {
-    SysTransactionTablesConfigEntryPB transaction_tables_config;
-    transaction_tables_config.set_version(0);
-
-    // Create in memory objects.
-    transaction_tables_config_ = new SysConfigInfo(kTransactionTablesConfigType);
-
-    // Prepare write.
-    auto l = transaction_tables_config_->LockForWrite();
-    *l.mutable_data()->pb.mutable_transaction_tables_config() =
-        std::move(transaction_tables_config);
-
-    // Write to sys_catalog and in memory.
-    RETURN_NOT_OK(sys_catalog_->Upsert(term, transaction_tables_config_));
-    l.Commit();
+    RETURN_NOT_OK(InitializeTransactionTablesConfig(term));
   }
 
   return Status::OK();
@@ -8158,6 +8149,24 @@ Status CatalogManager::GetYsqlCatalogVersion(uint64_t* catalog_version,
   if (last_breaking_version) {
     *last_breaking_version = l->pb.ysql_catalog_config().version();
   }
+  return Status::OK();
+}
+
+Status CatalogManager::InitializeTransactionTablesConfig(int64_t term) {
+  SysTransactionTablesConfigEntryPB transaction_tables_config;
+  transaction_tables_config.set_version(0);
+
+  // Create in memory objects.
+  transaction_tables_config_ = new SysConfigInfo(kTransactionTablesConfigType);
+
+  // Prepare write.
+  auto l = transaction_tables_config_->LockForWrite();
+  *l.mutable_data()->pb.mutable_transaction_tables_config() = std::move(transaction_tables_config);
+
+  // Write to sys_catalog and in memory.
+  RETURN_NOT_OK(sys_catalog_->Upsert(term, transaction_tables_config_));
+  l.Commit();
+
   return Status::OK();
 }
 

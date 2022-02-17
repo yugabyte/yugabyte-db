@@ -503,6 +503,8 @@ class CatalogManager :
   CHECKED_STATUS GetYsqlCatalogVersion(
       uint64_t* catalog_version, uint64_t* last_breaking_version) override;
 
+  CHECKED_STATUS InitializeTransactionTablesConfig(int64_t term);
+
   CHECKED_STATUS IncrementTransactionTablesVersion();
 
   uint64_t GetTransactionTablesVersion() override;
