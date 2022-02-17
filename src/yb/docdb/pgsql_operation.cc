@@ -38,10 +38,22 @@
 
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
+using namespace std::literals;
+
 DECLARE_bool(ysql_disable_index_backfill);
 
 DEFINE_double(ysql_scan_timeout_multiplier, 0.5,
-              "YSQL read scan timeout multipler of retryable_rpc_single_call_timeout_ms.");
+              "DEPRECATED. Has no affect, use ysql_scan_deadline_margin_ms to control the client "
+              "timeout");
+
+DEFINE_uint64(ysql_scan_deadline_margin_ms, 1000,
+              "Scan deadline is calculated by adding client timeout to the time when the request "
+              "was received. It defines the moment in time when client has definitely timed out "
+              "and if the request is yet in processing after the deadline, it can be canceled. "
+              "Therefore to prevent client timeout, the request handler should return partial "
+              "result and paging information some time before the deadline. That's what the "
+              "ysql_scan_deadline_margin_ms is for. It should account for network and processing "
+              "delays.");
 
 DEFINE_bool(pgsql_consistent_transactional_paging, true,
             "Whether to enforce consistency of data returned for second page and beyond for YSQL "
@@ -724,10 +736,11 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const common::YQLStorageIf& ql_
     scan_schema = &schema;
   }
 
-  VTRACE(1, "Initialized iterator");
+  VLOG(1) << "Started iterator";
 
   // Set scan start time.
   bool scan_time_exceeded = false;
+  CoarseTimePoint stop_scan = deadline - FLAGS_ysql_scan_deadline_margin_ms * 1ms;
 
   // Fetching data.
   int match_count = 0;
@@ -770,11 +783,13 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const common::YQLStorageIf& ql_
       }
     }
 
-    // Check every row_count_limit matches whether we've exceeded our scan time.
-    if (match_count % row_count_limit == 0) {
-      scan_time_exceeded = CoarseMonoClock::now() >= deadline;
-    }
+    // Check if we are running out of time
+    scan_time_exceeded = CoarseMonoClock::now() >= stop_scan;
   }
+
+  VLOG(1) << "Stopped iterator after " << match_count << " matches, "
+          << fetched_rows << " rows fetched";
+  VLOG(1) << "Deadline is " << (scan_time_exceeded ? "" : "not ") << "exceeded";
 
   if (request_.is_aggregate() && match_count > 0) {
     RETURN_NOT_OK(PopulateAggregate(row, result_buffer));
