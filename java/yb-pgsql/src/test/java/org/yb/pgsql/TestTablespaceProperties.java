@@ -271,11 +271,11 @@ public class TestTablespaceProperties extends BasePgSQLTest {
       setupStatement.execute("CREATE TABLE negativeTestTable (a int)");
     }
 
-    final String not_enough_tservers_in_zone_msg = "Not enough tablet servers in " +
-                                                   "cloud3:region1:zone1";
-    final String not_enough_tservers_for_rf_msg = "Not enough live tablet servers to create " +
-                                                  "table with replication factor 5. 3 tablet " +
-                                                  "servers are alive";
+    final String not_enough_tservers_in_zone_msg =
+        "Not enough tablet servers in the requested placements. Need at least 2, have 1";
+
+    final String not_enough_tservers_for_rf_msg =
+        "Not enough tablet servers in the requested placements. Need at least 3, have 2";
 
     // Test creation of table in invalid tablespace.
     executeAndAssertErrorThrown(

@@ -3281,10 +3281,12 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   master_->ts_manager()->GetAllLiveDescriptors(&all_ts_descs);
   RETURN_NOT_OK(CheckNumReplicas(placement_info, all_ts_descs, partitions, resp));
 
-  ValidateReplicationInfoRequestPB validate_req;
-  validate_req.mutable_replication_info()->CopyFrom(replication_info);
-  ValidateReplicationInfoResponsePB validate_resp;
-  RETURN_NOT_OK(ValidateReplicationInfo(&validate_req, &validate_resp));
+  if (!FLAGS_TEST_skip_placement_validation_createtable_api) {
+    ValidateReplicationInfoRequestPB validate_req;
+    validate_req.mutable_replication_info()->CopyFrom(replication_info);
+    ValidateReplicationInfoResponsePB validate_resp;
+    RETURN_NOT_OK(ValidateReplicationInfo(&validate_req, &validate_resp));
+  }
 
   LOG(INFO) << "Set number of tablets: " << num_tablets;
   req.set_num_tablets(num_tablets);
@@ -3708,61 +3710,59 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
       return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
     }
 
-    if (!FLAGS_TEST_skip_placement_validation_createtable_api) {
-      // Verify that there are enough TServers in the requested placements
-      // to match the total required replication factor.
-      auto allowed_ts = VERIFY_RESULT(FindTServersForPlacementInfo(placement_info, ts_descs));
+    // Verify that there are enough TServers in the requested placements
+    // to match the total required replication factor.
+    auto allowed_ts = VERIFY_RESULT(FindTServersForPlacementInfo(placement_info, ts_descs));
 
-      // Fail if we don't have enough tablet servers in the areas requested.
-      // We need n/2 + 1 for quorum.
-      if (allowed_ts.size() < replica_quorum_needed) {
-        msg = Substitute("Not enough tablet servers in the requested placements. "
-                         "Need at least $0, have $1",
-                         replica_quorum_needed, allowed_ts.size());
-        s = STATUS(InvalidArgument, msg);
-        LOG(WARNING) << msg;
-        return SetupError(resp->mutable_error(), MasterErrorPB::REPLICATION_FACTOR_TOO_HIGH, s);
-      }
+    // Fail if we don't have enough tablet servers in the areas requested.
+    // We need n/2 + 1 for quorum.
+    if (allowed_ts.size() < replica_quorum_needed) {
+      msg = Substitute("Not enough tablet servers in the requested placements. "
+                        "Need at least $0, have $1",
+                        replica_quorum_needed, allowed_ts.size());
+      s = STATUS(InvalidArgument, msg);
+      LOG(WARNING) << msg;
+      return SetupError(resp->mutable_error(), MasterErrorPB::REPLICATION_FACTOR_TOO_HIGH, s);
+    }
 
-      // Try allocating tservers for the replicas and see if we can place a quorum
-      // number of replicas.
-      // Essentially, the logic is:
-      // 1. We satisfy whatever we can from the minimums.
-      // 2. We then satisfy whatever we can from the slack.
-      //    Here it doesn't whether where we put the slack replicas as long as
-      //    the tservers are chosen from any of the valid placement blocks.
-      // Overall, if in this process we are able to place n/2 + 1 replicas
-      // then we succeed otherwise we fail.
-      size_t total_extra_replicas = num_replicas - minimum_sum;
-      size_t total_feasible_replicas = 0;
-      size_t total_extra_servers = 0;
-      for (const auto& pb : placement_info.placement_blocks()) {
-        auto allowed_ts = VERIFY_RESULT(FindTServersForPlacementBlock(pb, ts_descs));
-        size_t allowed_ts_size = allowed_ts.size();
-        size_t min_num_replicas = pb.min_num_replicas();
-        // For every placement block, we can only satisfy upto the number of
-        // tservers present in that particular placement block.
-        total_feasible_replicas += min(allowed_ts_size, min_num_replicas);
-        // Extra tablet servers beyond min_num_replicas will be used to place
-        // the extra replicas over and above the minimums.
-        if (allowed_ts_size > min_num_replicas) {
-          total_extra_servers += allowed_ts_size - min_num_replicas;
-        }
+    // Try allocating tservers for the replicas and see if we can place a quorum
+    // number of replicas.
+    // Essentially, the logic is:
+    // 1. We satisfy whatever we can from the minimums.
+    // 2. We then satisfy whatever we can from the slack.
+    //    Here it doesn't whether where we put the slack replicas as long as
+    //    the tservers are chosen from any of the valid placement blocks.
+    // Overall, if in this process we are able to place n/2 + 1 replicas
+    // then we succeed otherwise we fail.
+    size_t total_extra_replicas = num_replicas - minimum_sum;
+    size_t total_feasible_replicas = 0;
+    size_t total_extra_servers = 0;
+    for (const auto& pb : placement_info.placement_blocks()) {
+      auto allowed_ts = VERIFY_RESULT(FindTServersForPlacementBlock(pb, ts_descs));
+      size_t allowed_ts_size = allowed_ts.size();
+      size_t min_num_replicas = pb.min_num_replicas();
+      // For every placement block, we can only satisfy upto the number of
+      // tservers present in that particular placement block.
+      total_feasible_replicas += min(allowed_ts_size, min_num_replicas);
+      // Extra tablet servers beyond min_num_replicas will be used to place
+      // the extra replicas over and above the minimums.
+      if (allowed_ts_size > min_num_replicas) {
+        total_extra_servers += allowed_ts_size - min_num_replicas;
       }
-      // The total number of extra replicas that we can put cannot be more than
-      // the total tablet servers that are extra.
-      total_feasible_replicas += min(total_extra_replicas, total_extra_servers);
+    }
+    // The total number of extra replicas that we can put cannot be more than
+    // the total tablet servers that are extra.
+    total_feasible_replicas += min(total_extra_replicas, total_extra_servers);
 
-      // If we place the replicas in accordance with above, we should be able to place
-      // at least replica_quorum_needed otherwise we fail.
-      if (total_feasible_replicas < replica_quorum_needed) {
-        msg = Substitute("Not enough tablet servers in the requested placements. "
-                         "Can only find $0 tablet servers for the replicas but need at least "
-                         "$1.", total_feasible_replicas, replica_quorum_needed);
-        s = STATUS(InvalidArgument, msg);
-        LOG(WARNING) << msg;
-        return SetupError(resp->mutable_error(), MasterErrorPB::REPLICATION_FACTOR_TOO_HIGH, s);
-      }
+    // If we place the replicas in accordance with above, we should be able to place
+    // at least replica_quorum_needed otherwise we fail.
+    if (total_feasible_replicas < replica_quorum_needed) {
+      msg = Substitute("Not enough tablet servers in the requested placements. "
+                        "Can only find $0 tablet servers for the replicas but need at least "
+                        "$1.", total_feasible_replicas, replica_quorum_needed);
+      s = STATUS(InvalidArgument, msg);
+      LOG(WARNING) << msg;
+      return SetupError(resp->mutable_error(), MasterErrorPB::REPLICATION_FACTOR_TOO_HIGH, s);
     }
   }
 
