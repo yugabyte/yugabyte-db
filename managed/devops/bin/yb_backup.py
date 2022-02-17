@@ -399,14 +399,23 @@ class AzBackupStorage(AbstractBackupStorage):
     def _command_list_prefix(self):
         return "azcopy"
 
-    def upload_file_cmd(self, src, dest):
-        dest = dest + os.getenv('AZURE_STORAGE_SAS_TOKEN')
-        return [self._command_list_prefix(), "cp", src, dest]
+    def upload_file_cmd(self, src, dest, local=False):
+        if local is True:
+            dest = dest + os.getenv('AZURE_STORAGE_SAS_TOKEN')
+            return [self._command_list_prefix(), "cp", src, dest]
+        src = "'{}'".format(src)
+        dest = "'{}'".format(dest + os.getenv('AZURE_STORAGE_SAS_TOKEN'))
+        return ["{} {} {} {}".format(self._command_list_prefix(), "cp", src, dest)]
 
-    def download_file_cmd(self, src, dest):
-        src = src + os.getenv('AZURE_STORAGE_SAS_TOKEN')
-        return [self._command_list_prefix(), "cp", src,
-                dest, "--recursive"]
+    def download_file_cmd(self, src, dest, local=False):
+        if local is True:
+            src = src + os.getenv('AZURE_STORAGE_SAS_TOKEN')
+            return [self._command_list_prefix(), "cp", src,
+                    dest, "--recursive"]
+        src = "'{}'".format(src + os.getenv('AZURE_STORAGE_SAS_TOKEN'))
+        dest = "'{}'".format(dest)
+        return ["{} {} {} {} {}".format(self._command_list_prefix(), "cp", src,
+                dest, "--recursive")]
 
     def upload_dir_cmd(self, src, dest):
         # azcopy will download the top-level directory as well as the contents without "/*".
@@ -1841,6 +1850,9 @@ class YBBackup:
             if self.args.verbose:
                 logging.info("Uploading {} to server {} done: {}".format(
                     self.args.backup_keys_source, self.get_main_host_ip(), output))
+        elif self.is_az():
+            self.run_program(self.storage.upload_file_cmd(self.args.backup_keys_source,
+                             key_file_dest, True))
         else:
             self.run_program(self.storage.upload_file_cmd(self.args.backup_keys_source,
                              key_file_dest))
@@ -1857,6 +1869,11 @@ class YBBackup:
             if self.args.verbose:
                 logging.info("Downloading {} to local done: {}".format(
                     self.args.restore_keys_destination, output))
+        elif self.is_az():
+            self.run_program(
+                self.storage.download_file_cmd(key_file_src, self.args.restore_keys_destination,
+                                               True)
+            )
         else:
             self.run_program(
                 self.storage.download_file_cmd(key_file_src, self.args.restore_keys_destination)
