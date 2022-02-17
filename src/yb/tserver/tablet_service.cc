@@ -133,6 +133,13 @@ DEFINE_bool(parallelize_read_ops, true,
 TAG_FLAG(parallelize_read_ops, advanced);
 TAG_FLAG(parallelize_read_ops, runtime);
 
+DEFINE_bool(ysql_follower_reads_avoid_waiting_for_safe_time, true,
+            "Controls whether ysql follower reads that specify a not-yet-safe read time "
+            "should be rejected. This will force them to go to the leader, which will likely be "
+            "faster than waiting for safe time to catch up.");
+TAG_FLAG(ysql_follower_reads_avoid_waiting_for_safe_time, advanced);
+TAG_FLAG(ysql_follower_reads_avoid_waiting_for_safe_time, runtime);
+
 // Fault injection flags.
 DEFINE_test_flag(int32, scanner_inject_latency_on_each_batch_ms, 0,
                  "If set, the scanner will pause the specified number of milliesconds "
@@ -1835,6 +1842,18 @@ bool TabletServiceImpl::GetTabletOrRespond(
   return DoGetTabletOrRespond(req, resp, context, tablet, tablet_peer);
 }
 
+template <class Req>
+bool ShouldRejectPgsqlFollowerReadIfNotCaughtUp(const Req* req, HybridTime ht_safe) {
+  return false;
+}
+
+template <>
+bool ShouldRejectPgsqlFollowerReadIfNotCaughtUp(const ReadRequestPB* req, HybridTime ht_safe) {
+  return (GetAtomicFlag(&FLAGS_ysql_follower_reads_avoid_waiting_for_safe_time) &&
+          req->consistency_level() == YBConsistencyLevel::CONSISTENT_PREFIX &&
+          !req->pgsql_batch().empty() && ht_safe < HybridTime(req->read_time().read_ht()));
+}
+
 template <class Req, class Resp>
 bool TabletServiceImpl::DoGetTabletOrRespond(
     const Req* req, Resp* resp, rpc::RpcContext* context,
@@ -1883,6 +1902,13 @@ bool TabletServiceImpl::DoGetTabletOrRespond(
       return false;
     }
   } else {
+    if (req->consistency_level() == YBConsistencyLevel::CONSISTENT_PREFIX) {
+      auto tablet = down_cast<Tablet*>(tablet_ptr.get());
+      if (tablet) {
+        tablet->metrics()->consistent_prefix_read_requests->Increment();
+      }
+    }
+
     s = CheckPeerIsLeader(*tablet_peer.get());
 
     // Peer is not the leader, so check that the time since it last heard from the leader is less
@@ -1891,10 +1917,22 @@ bool TabletServiceImpl::DoGetTabletOrRespond(
       if (FLAGS_max_stale_read_bound_time_ms > 0) {
         shared_ptr <consensus::Consensus> consensus = tablet_peer->shared_consensus();
         // TODO(hector): This safe time could be reused by the read operation.
-        auto safe_time_micros = tablet_peer->tablet()->mvcc_manager()->SafeTimeForFollower(
-            HybridTime::kMin, CoarseTimePoint::min()).GetPhysicalValueMicros();
+        auto safe_time_ht = tablet_peer->tablet()->mvcc_manager()->SafeTimeForFollower(
+            HybridTime::kMin, CoarseTimePoint::min());
+        auto safe_time_micros = safe_time_ht.GetPhysicalValueMicros();
         auto now_micros = server_->Clock()->Now().GetPhysicalValueMicros();
         auto follower_staleness_ms = (now_micros - safe_time_micros) / 1000;
+        // We are given a read time. However, for Follower reads, it may be better
+        // to redirect the query to the Leader instead of waiting on it.
+        if (ShouldRejectPgsqlFollowerReadIfNotCaughtUp(req, safe_time_ht)) {
+          VLOG(1) << "Rejecting follower read since safe-time hasn't caught up "
+                  << " follower staleness : " << follower_staleness_ms << " ms.";
+          SetupErrorAndRespond(resp->mutable_error(),
+                               STATUS(IllegalState,
+                                      "Requested read time is not safe at this follower."),
+                               TabletServerErrorPB::STALE_FOLLOWER, context);
+          return false;
+        }
         if (follower_staleness_ms > FLAGS_max_stale_read_bound_time_ms) {
           VLOG(1) << "Rejecting stale read with staleness "
                      << follower_staleness_ms << " ms";
@@ -2280,13 +2318,6 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
         this, leader_peer.peer, std::move(read_context)));
     leader_peer.peer->WriteAsync(std::move(query));
     return;
-  }
-
-  if (req->consistency_level() == YBConsistencyLevel::CONSISTENT_PREFIX) {
-    auto tablet = down_cast<Tablet*>(read_context->tablet.get());
-    if (tablet) {
-      tablet->metrics()->consistent_prefix_read_requests->Increment();
-    }
   }
 
   CompleteRead(read_context.get());
