@@ -1182,6 +1182,90 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlDropCheckConstraint)
   ASSERT_EQ(result_status.ok(), false);
 }
 
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSequenceDelete),
+          YbAdminSnapshotScheduleTestWithYsql) {
+  auto schedule_id = ASSERT_RESULT(PreparePg());
+
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+  LOG(INFO) << "Create table 'test_table'";
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value INT)"));
+  LOG(INFO) << "Create Sequence 'value_data'";
+  ASSERT_OK(conn.Execute("CREATE SEQUENCE value_data INCREMENT 5 OWNED BY test_table.value"));
+  LOG(INFO) << "Insert some rows to 'test_table'";
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, nextval('value_data'))"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, nextval('value_data'))"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (3, nextval('value_data'))"));
+  LOG(INFO) << "Reading Rows";
+  auto res = ASSERT_RESULT(conn.FetchValue<int32_t>("SELECT value FROM test_table where key=3"));
+  LOG(INFO) << "Select result " << res;
+  ASSERT_EQ(res, 11);
+
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+
+  LOG(INFO) << "Time to restore back " << time;
+  LOG(INFO) << "Deleting last row";
+  ASSERT_OK(conn.Execute("DELETE FROM test_table where key=3"));
+
+  auto restore_status = RestoreSnapshotSchedule(schedule_id, time);
+  ASSERT_OK(restore_status);
+
+  LOG(INFO) << "Select data from 'test_table' after restore";
+  res = ASSERT_RESULT(conn.FetchValue<int32_t>("SELECT value FROM test_table where key=3"));
+  LOG(INFO) << "Select result " << res;
+  ASSERT_EQ(res, 11);
+  LOG(INFO) << "Insert a row into 'test_table' and validate";
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (4, nextval('value_data'))"));
+  res = ASSERT_RESULT(conn.FetchValue<int32_t>("SELECT value FROM test_table where key=4"));
+  LOG(INFO) << "Select result " << res;
+  ASSERT_EQ(res, 16);
+}
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSequenceInsert),
+          YbAdminSnapshotScheduleTestWithYsql) {
+  auto schedule_id = ASSERT_RESULT(PreparePg());
+
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+  LOG(INFO) << "Create table 'test_table'";
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value INT)"));
+  LOG(INFO) << "Create Sequence 'value_data'";
+  ASSERT_OK(conn.Execute("CREATE SEQUENCE value_data INCREMENT 5 OWNED BY test_table.value"));
+  LOG(INFO) << "Insert some rows to 'test_table'";
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, nextval('value_data'))"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, nextval('value_data'))"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (3, nextval('value_data'))"));
+  LOG(INFO) << "Reading Rows";
+  auto res = ASSERT_RESULT(conn.FetchValue<int32_t>("SELECT value FROM test_table where key=3"));
+  LOG(INFO) << "Select result " << res;
+  ASSERT_EQ(res, 11);
+
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+
+  LOG(INFO) << "Time to restore back " << time;
+  LOG(INFO) << "Inserting new row in 'test_table'";
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (4, nextval('value_data'))"));
+  LOG(INFO) << "Reading Rows from 'test_table'";
+  res = ASSERT_RESULT(conn.FetchValue<int32_t>("SELECT value FROM test_table where key=4"));
+  LOG(INFO) << "Select result " << res;
+  ASSERT_EQ(res, 16);
+
+  auto restore_status = RestoreSnapshotSchedule(schedule_id, time);
+  ASSERT_OK(restore_status);
+
+  LOG(INFO) << "Select row from 'test_table' after restore";
+  auto result_status = conn.FetchValue<int32_t>("SELECT value FROM test_table where key=4");
+  ASSERT_EQ(result_status.ok(), false);
+
+  res = ASSERT_RESULT(conn.FetchValue<int32_t>("SELECT value FROM test_table where key=3"));
+  LOG(INFO) << "Select result " << res;
+  ASSERT_EQ(res, 11);
+  LOG(INFO) << "Insert a row into 'test_table' and validate";
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (4, nextval('value_data'))"));
+  // Here value should be 21 instead of 16 as previous insert has value 16
+  res = ASSERT_RESULT(conn.FetchValue<int32_t>("SELECT value FROM test_table where key=4"));
+  LOG(INFO) << "Select result " << res;
+  ASSERT_EQ(res, 21);
+}
+
 TEST_F(YbAdminSnapshotScheduleTest, UndeleteIndex) {
   auto schedule_id = ASSERT_RESULT(PrepareCql());
 
