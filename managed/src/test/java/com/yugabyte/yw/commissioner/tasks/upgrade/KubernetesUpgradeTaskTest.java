@@ -7,6 +7,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import org.junit.Before;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -37,8 +38,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+
 import org.yb.client.IsServerReadyResponse;
+import org.yb.client.ChangeMasterClusterConfigResponse;
+import org.yb.client.GetLoadMovePercentResponse;
+import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.YBClient;
+import org.yb.master.CatalogEntityInfo;
 
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodList;
@@ -73,6 +79,16 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
     defaultUniverse.updateConfig(
         ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
 
+    CatalogEntityInfo.SysClusterConfigEntryPB.Builder configBuilder =
+        CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder().setVersion(1);
+
+    GetMasterClusterConfigResponse mockConfigResponse =
+        new GetMasterClusterConfigResponse(0, "", configBuilder.build(), null);
+    ChangeMasterClusterConfigResponse mockMasterChangeConfigResponse =
+        new ChangeMasterClusterConfigResponse(0, "", null);
+    GetLoadMovePercentResponse mockGetLoadMovePercentResponse =
+        new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null);
+
     try {
       String statusString = "{ \"phase\": \"Running\", \"conditions\": [{\"status\": \"True\"}]}";
       PodStatus status = TestUtils.deserialize(statusString, PodStatus.class);
@@ -92,6 +108,10 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
       IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
       when(mockClient.isServerReady(any(), anyBoolean())).thenReturn(okReadyResp);
       when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+      when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+      when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
+      when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockMasterChangeConfigResponse);
+      when(mockClient.getLeaderBlacklistCompletion()).thenReturn(mockGetLoadMovePercentResponse);
     } catch (Exception ignored) {
     }
   }
@@ -191,7 +211,9 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
     int position = 0;
     for (TaskType task : expectedTaskSequence) {
       List<TaskInfo> tasks = subTasksByPosition.get(position);
-      assertEquals(1, tasks.size());
+      // Leader blacklisting adds the ModifyBlackList task at taskInfo[0].
+      int numTasksToAssert = position == 0 ? 2 : 1;
+      assertEquals(numTasksToAssert, tasks.size());
       assertEquals(task, tasks.get(0).getTaskType());
       JsonNode expectedResults = expectedResultsList.get(position);
       List<JsonNode> taskDetails =

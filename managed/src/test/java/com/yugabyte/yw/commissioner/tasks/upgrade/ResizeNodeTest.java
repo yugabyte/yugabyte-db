@@ -48,6 +48,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.ChangeConfigResponse;
+import org.yb.client.YBClient;
 
 @RunWith(MockitoJUnitRunner.class)
 @Slf4j
@@ -59,9 +60,23 @@ public class ResizeNodeTest extends UpgradeTaskTest {
   private static final int DEFAULT_VOLUME_SIZE = 100;
   private static final int NEW_VOLUME_SIZE = 200;
 
-  private static final int PLACEHOLDER_INDEX = 1;
+  // Tasks for RF1 configuration do not create sub-tasks for
+  // leader blacklisting. So create two PLACEHOLDER indexes
+  // as well as two separate base task sequences
+  private static final int PLACEHOLDER_INDEX = 3;
+
+  private static final int PLACEHOLDER_INDEX_RF1 = 1;
 
   private static final List<TaskType> TASK_SEQUENCE =
+      ImmutableList.of(
+          TaskType.SetNodeState,
+          TaskType.ModifyBlackList,
+          TaskType.WaitForLeaderBlacklistCompletion,
+          TaskType.WaitForEncryptionKeyInMemory,
+          TaskType.ModifyBlackList,
+          TaskType.SetNodeState);
+
+  private static final List<TaskType> TASK_SEQUENCE_RF1 =
       ImmutableList.of(
           TaskType.SetNodeState, TaskType.WaitForEncryptionKeyInMemory, TaskType.SetNodeState);
 
@@ -93,10 +108,9 @@ public class ResizeNodeTest extends UpgradeTaskTest {
               userIntent.deviceInfo.volumeSize = DEFAULT_VOLUME_SIZE;
               userIntent.instanceType = DEFAULT_INSTANCE_TYPE;
             });
+
     try {
       when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
-      when(mockClient.changeMasterConfig(anyString(), anyInt(), anyBoolean(), anyBoolean()))
-          .thenReturn(Mockito.mock(ChangeConfigResponse.class));
     } catch (Exception ignored) {
     }
   }
@@ -179,7 +193,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     taskParams.getPrimaryCluster().userIntent.deviceInfo.volumeSize = NEW_VOLUME_SIZE;
     TaskInfo taskInfo = submitTask(taskParams);
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
-    assertTasksSequence(0, subTasks, true, false, false);
+    assertTasksSequence(0, subTasks, true, false, false, true);
     assertEquals(Success, taskInfo.getTaskState());
     assertUniverseData(true, false);
   }
@@ -247,7 +261,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     assertEquals(1, updateMounts.size());
     assertEquals(nodeName.get(), updateMounts.get(0).getTaskDetails().get("nodeName").textValue());
     assertEquals(0, updateMounts.get(0).getPosition());
-    assertTasksSequence(1, subTasks, true, true, true);
+    assertTasksSequence(1, subTasks, true, true, true, false);
     assertEquals(Success, taskInfo.getTaskState());
     assertUniverseData(true, true);
   }
@@ -280,7 +294,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
   private void assertTasksSequence(
       List<TaskInfo> subTasks, boolean increaseVolume, boolean changeInstance) {
-    assertTasksSequence(0, subTasks, increaseVolume, changeInstance, true);
+    assertTasksSequence(0, subTasks, increaseVolume, changeInstance, true, false);
   }
 
   private void assertTasksSequence(
@@ -288,12 +302,15 @@ public class ResizeNodeTest extends UpgradeTaskTest {
       List<TaskInfo> subTasks,
       boolean increaseVolume,
       boolean changeInstance,
-      boolean waitForMasterLeader) {
+      boolean waitForMasterLeader,
+      boolean is_rf1) {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertEquals(subTasks.size(), subTasksByPosition.size());
+
+    assertEquals(subTasks.size(), subTasksByPosition.size() + 1);
     int position = startPosition;
-    assertTaskType(subTasksByPosition.get(position++), TaskType.LoadBalancerStateChange);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.ModifyBlackList);
+
     position =
         assertTasksSequence(
             subTasksByPosition,
@@ -301,14 +318,14 @@ public class ResizeNodeTest extends UpgradeTaskTest {
             position,
             increaseVolume,
             changeInstance,
-            waitForMasterLeader);
+            waitForMasterLeader,
+            is_rf1);
     position =
         assertTasksSequence(
-            subTasksByPosition, TSERVER, position, increaseVolume, changeInstance, false);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.LoadBalancerStateChange);
+            subTasksByPosition, TSERVER, position, increaseVolume, changeInstance, false, is_rf1);
     assertTaskType(subTasksByPosition.get(position++), TaskType.PersistResizeNode);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UniverseUpdateSucceeded);
-    assertEquals(position, subTasks.size());
+    assertEquals(position, subTasks.size() - 1);
   }
 
   private int assertTasksSequence(
@@ -317,21 +334,24 @@ public class ResizeNodeTest extends UpgradeTaskTest {
       int position,
       boolean increaseVolume,
       boolean changeInstance,
-      boolean waitForMasterLeader) {
+      boolean waitForMasterLeader,
+      boolean is_rf1) {
     List<Integer> nodeIndexes =
         serverType == EITHER ? Arrays.asList(1, 3, 2) : Collections.singletonList(4);
 
     for (Integer nodeIndex : nodeIndexes) {
       String nodeName = String.format("host-n%d", nodeIndex);
       Map<Integer, Map<String, Object>> paramsForTask = new HashMap<>();
-      List<TaskType> taskTypesSequence = new ArrayList<>(TASK_SEQUENCE);
+      List<TaskType> taskTypesSequence =
+          is_rf1 ? new ArrayList<>(TASK_SEQUENCE_RF1) : new ArrayList<>(TASK_SEQUENCE);
       createTasksTypesForNode(
           serverType != EITHER,
           increaseVolume,
           changeInstance,
           taskTypesSequence,
           paramsForTask,
-          waitForMasterLeader);
+          waitForMasterLeader,
+          is_rf1);
 
       int idx = 0;
       log.debug(nodeName + " :" + taskTypesSequence);
@@ -366,7 +386,8 @@ public class ResizeNodeTest extends UpgradeTaskTest {
       boolean changeInstance,
       List<TaskType> taskTypesSequence,
       Map<Integer, Map<String, Object>> paramsForTask,
-      boolean waitForMasterLeader) {
+      boolean waitForMasterLeader,
+      boolean is_rf1) {
     List<TaskType> nodeUpgradeTasks = new ArrayList<>();
     if (increaseVolume) {
       nodeUpgradeTasks.addAll(RESIZE_VOLUME_SEQ);
@@ -377,7 +398,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     List<UniverseDefinitionTaskBase.ServerType> processTypes =
         onlyTserver ? ImmutableList.of(TSERVER) : ImmutableList.of(MASTER, TSERVER);
 
-    int index = PLACEHOLDER_INDEX;
+    int index = is_rf1 ? PLACEHOLDER_INDEX_RF1 : PLACEHOLDER_INDEX;
     for (ServerType processType : processTypes) {
       paramsForTask.put(
           index, ImmutableMap.of("process", processType.name().toLowerCase(), "command", "stop"));
@@ -410,7 +431,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         taskTypesSequence.add(index++, taskType);
       }
     }
-    index++;
+    index = is_rf1 ? index + 1 : index + 2;
     for (ServerType processType : processTypes) {
       taskTypesSequence.add(index++, TaskType.WaitForFollowerLag);
     }

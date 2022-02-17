@@ -64,7 +64,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
 
   @InjectMocks private TlsToggle tlsToggle;
 
-  private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE =
+  private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE_MASTER =
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.AnsibleConfigureServers,
@@ -73,6 +73,21 @@ public class TlsToggleTest extends UpgradeTaskTest {
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
           TaskType.WaitForEncryptionKeyInMemory,
+          TaskType.WaitForFollowerLag,
+          TaskType.SetNodeState);
+
+  private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE_TSERVER =
+      ImmutableList.of(
+          TaskType.SetNodeState,
+          TaskType.AnsibleConfigureServers,
+          TaskType.ModifyBlackList,
+          TaskType.WaitForLeaderBlacklistCompletion,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.WaitForServer,
+          TaskType.WaitForServerReady,
+          TaskType.WaitForEncryptionKeyInMemory,
+          TaskType.ModifyBlackList,
           TaskType.WaitForFollowerLag,
           TaskType.SetNodeState);
 
@@ -98,6 +113,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
     super.setUp();
 
     MockitoAnnotations.initMocks(this);
+
     try {
       when(mockClient.setFlag(any(HostAndPort.class), anyString(), anyString(), anyBoolean()))
           .thenReturn(true);
@@ -117,9 +133,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
       boolean isMetadataUpdateStep) {
     int position = startPosition;
     List<TaskType> commonNodeTasks = new ArrayList<>();
-    if (upgradeOption == UpgradeOption.ROLLING_UPGRADE) {
-      commonNodeTasks.add(TaskType.LoadBalancerStateChange);
-    }
+
     if (isMetadataUpdateStep) {
       commonNodeTasks.addAll(ImmutableList.of(TaskType.UniverseSetTlsParams));
     }
@@ -139,7 +153,10 @@ public class TlsToggleTest extends UpgradeTaskTest {
       UpgradeOption option) {
     int position = startPosition;
     if (option == UpgradeOption.ROLLING_UPGRADE) {
-      List<TaskType> taskSequence = ROLLING_UPGRADE_TASK_SEQUENCE;
+      List<TaskType> taskSequence =
+          serverType == MASTER
+              ? ROLLING_UPGRADE_TASK_SEQUENCE_MASTER
+              : ROLLING_UPGRADE_TASK_SEQUENCE_TSERVER;
       List<Integer> nodeOrder = getRollingUpgradeNodeOrder(serverType);
 
       for (int nodeIdx : nodeOrder) {
@@ -147,7 +164,9 @@ public class TlsToggleTest extends UpgradeTaskTest {
         for (TaskType type : taskSequence) {
           List<TaskInfo> tasks = subTasksByPosition.get(position);
           TaskType taskType = tasks.get(0).getTaskType();
-          assertEquals(1, tasks.size());
+          // Leader blacklisting adds a ModifyBlackList task at position 0.
+          int numTasksToAssert = position == 0 ? 2 : 1;
+          assertEquals(numTasksToAssert, tasks.size());
           assertEquals(type, taskType);
           if (!NON_NODE_TASKS.contains(taskType)) {
             Map<String, Object> assertValues =
@@ -178,6 +197,12 @@ public class TlsToggleTest extends UpgradeTaskTest {
           if (taskType.equals(TaskType.AnsibleConfigureServers)) {
             assertValues.putAll(ImmutableMap.of("processType", serverType.toString()));
           }
+          // Remove ModifyBlackList task from tasks.
+          tasks =
+              tasks
+                  .stream()
+                  .filter(t -> t.getTaskType() != TaskType.ModifyBlackList)
+                  .collect(Collectors.toList());
           assertEquals(3, tasks.size());
           assertNodeSubTask(tasks, assertValues);
         }
@@ -201,7 +226,9 @@ public class TlsToggleTest extends UpgradeTaskTest {
           if (taskType.equals(TaskType.AnsibleConfigureServers)) {
             assertValues.putAll(ImmutableMap.of("processType", serverType.toString()));
           }
-          assertEquals(3, tasks.size());
+          // The task at postion 0 adds a ModifyBlacklist sub-task.
+          int numTasksToAssert = position == 0 ? 4 : 3;
+          assertEquals(numTasksToAssert, tasks.size());
           assertNodeSubTask(tasks, assertValues);
         }
         position++;
@@ -318,10 +345,10 @@ public class TlsToggleTest extends UpgradeTaskTest {
 
     if (taskParams.upgradeOption == UpgradeOption.ROLLING_UPGRADE) {
       if (nodeToNodeChange != 0) {
-        expectedPosition += 64;
+        expectedPosition += 72;
         expectedNumberOfInvocations += 24;
       } else {
-        expectedPosition += 56;
+        expectedPosition += 64;
         expectedNumberOfInvocations += 18;
       }
     } else {
@@ -361,7 +388,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
     defaultUniverse.refresh();
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
     assertEquals(Failure, taskInfo.getTaskState());
-    assertEquals(0, taskInfo.getSubTasks().size());
+    assertEquals(1, taskInfo.getSubTasks().size());
   }
 
   @Test
@@ -375,7 +402,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
     defaultUniverse.refresh();
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
     assertEquals(Failure, taskInfo.getTaskState());
-    assertEquals(0, taskInfo.getSubTasks().size());
+    assertEquals(1, taskInfo.getSubTasks().size());
   }
 
   @Test
@@ -390,7 +417,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
     defaultUniverse.refresh();
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
     assertEquals(Failure, taskInfo.getTaskState());
-    assertEquals(0, taskInfo.getSubTasks().size());
+    assertEquals(1, taskInfo.getSubTasks().size());
   }
 
   @Test
@@ -487,7 +514,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
       // Cert update tasks will be non rolling
       List<TaskInfo> certUpdateTasks = subTasksByPosition.get(position++);
       assertTaskType(certUpdateTasks, TaskType.AnsibleConfigureServers);
-      assertEquals(3, certUpdateTasks.size());
+      assertEquals(4, certUpdateTasks.size());
     }
     // First round gflag update tasks
     position = assertSequence(subTasksByPosition, MASTER, position, upgrade.getFirst());
@@ -620,19 +647,24 @@ public class TlsToggleTest extends UpgradeTaskTest {
       // Cert update tasks will be non rolling
       List<TaskInfo> certUpdateTasks = subTasksByPosition.get(position++);
       assertTaskType(certUpdateTasks, TaskType.AnsibleConfigureServers);
-      assertEquals(3, certUpdateTasks.size());
+      assertEquals(4, certUpdateTasks.size());
     }
     // First round gflag update tasks
     position = assertSequence(subTasksByPosition, MASTER, position, upgrade.getFirst());
-    position = assertCommonTasks(subTasksByPosition, position, upgrade.getFirst(), false);
+    // Assert for ModifyBlackListTask before TSERVER rolling upgrade.
+    if (upgrade.getFirst() == UpgradeOption.ROLLING_UPGRADE) {
+      assertTaskType(subTasksByPosition.get(position++), TaskType.ModifyBlackList);
+    }
     position = assertSequence(subTasksByPosition, TSERVER, position, upgrade.getFirst());
     position = assertCommonTasks(subTasksByPosition, position, upgrade.getFirst(), true);
     if (nodeToNodeChange != 0) {
       // Second round gflag update tasks
       position = assertSequence(subTasksByPosition, MASTER, position, upgrade.getSecond());
-      position = assertCommonTasks(subTasksByPosition, position, upgrade.getSecond(), false);
+      // Assert for ModifyBlackListTask before TSERVER rolling upgrade.
+      if (upgrade.getSecond() == UpgradeOption.ROLLING_UPGRADE) {
+        assertTaskType(subTasksByPosition.get(position++), TaskType.ModifyBlackList);
+      }
       position = assertSequence(subTasksByPosition, TSERVER, position, upgrade.getSecond());
-      position = assertCommonTasks(subTasksByPosition, position, upgrade.getSecond(), false);
     }
 
     assertEquals((int) expectedValues.getFirst(), position);
