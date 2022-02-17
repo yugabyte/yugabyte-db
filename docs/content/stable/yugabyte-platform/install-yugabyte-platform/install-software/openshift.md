@@ -303,7 +303,7 @@ To create a Yugabyte Platform instance, perform the following:
 
   ```output
   NAME                 CHART VERSION  APP VERSION  DESCRIPTION
-  yugabytedb/yugaware  2.8.2          2.8.2.0-b47  YugaWare is YugaByte Database's Orchestration a...
+  yugabytedb/yugaware  2.8.2          2.8.2.0-b51  YugaWare is YugaByte Database's Orchestration a...
   ```
 
 - Verify the StorageClass setting for your cluster by executing the following command as admin user:
