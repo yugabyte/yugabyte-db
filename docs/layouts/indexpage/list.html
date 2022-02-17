@@ -15,19 +15,20 @@
 
 {{ partialCached "header" . }}
 
-<div class="container indexpage">
-		<div id="particles-js"></div>
-		<div class="row justify-content-center hero-wrapper">
-			<div class="col-12 col-lg-12 col-xl-12">
-				<article class="article">
-					<div class="wrapper">
-						{{ .Content }}
-					</div>
-				</article>
-			</div>
+<div class="container-fluid indexpage">
+	<main class="main">
+		<div class="drawer">
+			{{ partial "drawer" (dict "context" . "menu" .Site.Menus.latest) }}
 		</div>
+		<article class="article">
+			<div class="wrapper">
+				{{ .Content }}
+			</div>
+		</article>
+		
+	</main>
 </div>
 
 {{ partialCached "footer" . }}
-{{ partial "indexpage_js" . }}
 {{ partialCached "footer_js" . }}
+
