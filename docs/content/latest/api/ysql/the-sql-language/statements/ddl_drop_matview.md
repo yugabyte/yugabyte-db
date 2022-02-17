@@ -77,4 +77,4 @@ yugabyte=# DROP MATERIALIZED VIEW m1 CASCADE; -- succeeds
 ## See also
 
 - [`CREATE MATERIALIZED VIEW`](../ddl_create_matview)
-- [`REFRESH MATERIALIZED VIEW`](../refresh_matview)
+- [`REFRESH MATERIALIZED VIEW`](../ddl_refresh_matview)
