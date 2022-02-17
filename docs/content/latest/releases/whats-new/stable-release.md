@@ -35,13 +35,20 @@ For an RSS feed of the release notes for the latest and stable releases, point y
     <i class="fab fa-linux"></i><span class="download-text">Linux x86</span>
   </button>
 </a>
+<!-- aarch64 REMOVED FOR 2.8.2.0 due to a build bug -->
+<!--
 &nbsp; &nbsp; &nbsp;
 <a class="download-binary-link" href="https://downloads.yugabyte.com/releases/2.8.2.0/yugabyte-2.8.2.0-b51-el8-aarch64.tar.gz">
   <button>
     <i class="fab fa-linux"></i><span class="download-text">Linux ARM</span>
   </button>
 </a>
+-->
 <br />
+
+{{< note title="No ARM build in 2.8.2.0" >}}
+Due to build system issues, there is no `aarch64` Linux build available for release 2.8.2.0.
+{{< /note >}}
 
 ### Docker
 
