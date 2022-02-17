@@ -13,6 +13,8 @@ import static org.junit.Assert.assertTrue;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
+import static play.test.Helpers.route;
+import static play.test.Helpers.fakeRequest;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -45,6 +47,7 @@ import org.mockito.Mock;
 import org.mockito.runners.MockitoJUnitRunner;
 import play.libs.Json;
 import play.mvc.Result;
+import play.mvc.Http;
 
 @RunWith(MockitoJUnitRunner.class)
 public class CertificateControllerTest extends FakeDBApplication {
@@ -108,6 +111,12 @@ public class CertificateControllerTest extends FakeDBApplication {
   private Result getRootCertificate(UUID customerUUID, UUID rootUUID) {
     String uri = "/api/customers/" + customerUUID + "/certificates/" + rootUUID + "/download";
     return FakeApiHelper.doRequestWithAuthToken("GET", uri, user.createAuthToken());
+  }
+
+  private Result createSelfSignedCertificate(UUID customerUUID, ObjectNode bodyJson) {
+    String uri = "/api/customers/" + customerUUID + "/certificates/create_self_signed_cert";
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(
+        "POST", uri, user.createAuthToken(), bodyJson);
   }
 
   @Test
@@ -355,6 +364,21 @@ public class CertificateControllerTest extends FakeDBApplication {
     assertEquals(OK, result.status());
     String rootCert = json.get("root.crt").asText();
     assertNotNull(rootCert);
+    assertAuditEntry(1, customer.uuid);
+  }
+
+  @Test
+  public void testCreateSelfSignedCertificate() {
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("label", "create_self_signed_cert_test");
+    Result result = createSelfSignedCertificate(customer.uuid, bodyJson);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals(OK, result.status());
+    UUID certUUID = UUID.fromString(json.asText());
+    CertificateInfo ci = CertificateInfo.get(certUUID);
+    System.out.println(ci.label);
+    assertEquals(ci.label, "create_self_signed_cert_test");
+    assertEquals(ci.certType, CertificateInfo.Type.SelfSigned);
     assertAuditEntry(1, customer.uuid);
   }
 }
