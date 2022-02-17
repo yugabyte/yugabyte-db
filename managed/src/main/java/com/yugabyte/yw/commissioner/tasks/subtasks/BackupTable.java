@@ -78,6 +78,7 @@ public class BackupTable extends AbstractTaskBase {
           backup.transitionState(Backup.BackupState.Completed);
         } else {
           ShellResponse response = tableManager.createBackup(taskParams());
+          processShellResponse(response);
           JsonNode jsonNode = null;
           try {
             jsonNode = Json.parse(response.message);
