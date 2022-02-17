@@ -1,5 +1,6 @@
 package com.yugabyte.yw.controllers;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.api.client.util.Strings;
 import com.google.inject.Inject;
@@ -36,8 +37,12 @@ import play.mvc.Result;
     value = "Certificate Info",
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class CertificateController extends AuthenticatedController {
+
   public static final Logger LOG = LoggerFactory.getLogger(CertificateController.class);
+
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
+
+  @Inject private play.Configuration appConfig;
 
   @ApiOperation(value = "Restore a certificate from backup", response = UUID.class)
   @ApiImplicitParams(
@@ -136,6 +141,29 @@ public class CertificateController extends AuthenticatedController {
             customCertInfo,
             customServerCertData);
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+    return PlatformResults.withData(certUUID);
+  }
+
+  @ApiOperation(value = "Create a self signed certificate", response = UUID.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "label",
+          value = "certificate label",
+          paramType = "body",
+          dataType = "java.lang.String",
+          required = true))
+  public Result createSelfSignedCert(UUID customerUUID) {
+    ObjectNode formData = (ObjectNode) request().body().asJson();
+    JsonNode jsonData = formData.get("label");
+    if (jsonData == null) {
+      throw new PlatformServiceException(BAD_REQUEST, "Certificate label can't be null");
+    }
+    String certLabel = jsonData.asText();
+    LOG.info("CertificateController: creating self signed certificate with label {}", certLabel);
+    UUID certUUID =
+        CertificateHelper.createRootCA(
+            certLabel, customerUUID, appConfig.getString("yb.storage.path"));
+    auditService().createAuditEntry(ctx(), request());
     return PlatformResults.withData(certUUID);
   }
 
