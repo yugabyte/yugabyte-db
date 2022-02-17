@@ -19,7 +19,6 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.CustomerTask.TargetType;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -33,6 +32,7 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -160,51 +160,56 @@ public class Commissioner {
             () -> new PlatformServiceException(BAD_REQUEST, "Not able to find task " + taskUUID));
   }
 
-  public Optional<ObjectNode> mayGetStatus(UUID taskUUID) {
-    ObjectNode responseJson = Json.newObject();
-
-    // Check if the task is in the DB
-    TaskInfo taskInfo = TaskInfo.get(taskUUID);
-    CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", taskUUID).findOne();
-    if (taskInfo != null && task != null) {
-      // Add some generic information about the task
-      responseJson.put("title", task.getFriendlyDescription());
-      responseJson.put("createTime", task.getCreateTime().toString());
-      responseJson.put("target", task.getTargetName());
-      responseJson.put("targetUUID", task.getTargetUUID().toString());
-      responseJson.put("type", task.getType().name());
-      // Find out the state of the task.
-      responseJson.put("status", taskInfo.getTaskState().toString());
-      // Get the percentage of subtasks that ran and completed
-      responseJson.put("percent", taskInfo.getPercentCompleted());
-      // Get subtask groups
-      UserTaskDetails userTaskDetails = taskInfo.getUserTaskDetails();
-      responseJson.set("details", Json.toJson(userTaskDetails));
-      // Set abortable if eligible.
-      responseJson.put("abortable", false);
-      if (taskExecutor.isTaskRunning(taskUUID)) {
-        // Task is abortable only when it is running.
-        responseJson.put("abortable", isTaskAbortable(taskInfo.getTaskType()));
-      }
-      // Set retryable if eligible.
-      responseJson.put("retryable", false);
-      if (isTaskRetryable(taskInfo.getTaskType())
-          && (task.getTarget() == TargetType.Universe || task.getTarget() == TargetType.Cluster)
-          && TaskInfo.ERROR_STATES.contains(taskInfo.getTaskState())) {
-        // Retryable depends on the updating task UUID in the Universe.
-        Universe.maybeGet(task.getTargetUUID())
-            .ifPresent(
-                u ->
-                    responseJson.put(
-                        "retryable", taskUUID.equals(u.getUniverseDetails().updatingTaskUUID)));
-      }
-      return Optional.of(responseJson);
+  public Optional<ObjectNode> buildTaskStatus(CustomerTask task, TaskInfo taskInfo) {
+    if (task == null || taskInfo == null) {
+      return Optional.empty();
     }
+    ObjectNode responseJson = Json.newObject();
+    // Add some generic information about the task
+    responseJson.put("title", task.getFriendlyDescription());
+    responseJson.put("createTime", task.getCreateTime().toString());
+    responseJson.put("target", task.getTargetName());
+    responseJson.put("targetUUID", task.getTargetUUID().toString());
+    responseJson.put("type", task.getType().name());
+    // Find out the state of the task.
+    responseJson.put("status", taskInfo.getTaskState().toString());
+    // Get the percentage of subtasks that ran and completed
+    responseJson.put("percent", taskInfo.getPercentCompleted());
+    // Get subtask groups
+    UserTaskDetails userTaskDetails = taskInfo.getUserTaskDetails();
+    responseJson.set("details", Json.toJson(userTaskDetails));
+    // Set abortable if eligible.
+    responseJson.put("abortable", false);
+    if (taskExecutor.isTaskRunning(task.getTaskUUID())) {
+      // Task is abortable only when it is running.
+      responseJson.put("abortable", isTaskAbortable(taskInfo.getTaskType()));
+    }
+    // Set retryable if eligible.
+    responseJson.put("retryable", false);
+    if (isTaskRetryable(taskInfo.getTaskType())
+        && task.getTarget().isUniverseTarget()
+        && TaskInfo.ERROR_STATES.contains(taskInfo.getTaskState())) {
+      // Retryable depends on the updating task UUID in the Universe.
+      Universe.getUniverseDetailsField(String.class, task.getTargetUUID(), "updatingTaskUUID")
+          .ifPresent(
+              updatingTaskUUID -> {
+                responseJson.put(
+                    "retryable", taskInfo.getTaskUUID().equals(UUID.fromString(updatingTaskUUID)));
+              });
+    }
+    return Optional.of(responseJson);
+  }
 
-    // We are not able to find the task. Report an error.
-    LOG.error(
-        "Error fetching Task Progress for " + taskUUID + ", TaskInfo with that taskUUID not found");
-    return Optional.empty();
+  public Optional<ObjectNode> mayGetStatus(UUID taskUUID) {
+    CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", taskUUID).findOne();
+    // Check if the task is in the DB.
+    TaskInfo taskInfo = TaskInfo.get(taskUUID);
+    if (task == null || taskInfo == null) {
+      // We are not able to find the task. Report an error.
+      LOG.error("Error fetching task progress for {}. TaskInfo is not found", taskUUID);
+      return Optional.empty();
+    }
+    return buildTaskStatus(task, taskInfo);
   }
 
   public JsonNode getTaskDetails(UUID taskUUID) {
@@ -262,11 +267,22 @@ public class Commissioner {
         log.info(YB_COMMISSIONER_PROGRESS_CHECK_INTERVAL + " set to 0.");
         log.warn("!!! TASK GC DISABLED !!!");
       } else {
+        AtomicBoolean isRunning = new AtomicBoolean();
         log.info("Scheduling Progress Check every " + checkInterval);
         scheduler.schedule(
             Duration.ZERO, // InitialDelay
             checkInterval,
-            () -> scheduleRunner(runningTasks),
+            () -> {
+              if (isRunning.compareAndSet(false, true)) {
+                try {
+                  scheduleRunner(runningTasks);
+                } finally {
+                  isRunning.set(false);
+                }
+              } else {
+                LOG.warn("Skipping task heartbeating as it is running.");
+              }
+            },
             this.executionContext);
       }
     }
@@ -283,11 +299,11 @@ public class Commissioner {
           if (taskRunnable.isTaskRunning()) {
             taskRunnable.doHeartbeat();
           } else if (taskRunnable.hasTaskSucceeded()) {
-            LOG.info("Task " + taskRunnable.toString() + " has succeeded.");
+            LOG.info("Task {} has succeeded.", taskRunnable.toString());
             // Remove task from the set of live tasks.
             iter.remove();
           } else if (taskRunnable.hasTaskFailed()) {
-            LOG.info("Task " + taskRunnable.toString() + " has failed.");
+            LOG.info("Task {} has failed.", taskRunnable.toString());
             // Remove task from the set of live tasks.
             iter.remove();
           }
