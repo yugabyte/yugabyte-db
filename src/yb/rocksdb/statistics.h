@@ -400,6 +400,10 @@ class Statistics {
   virtual void measureTime(uint32_t histogramType, uint64_t time) = 0;
   virtual void resetTickersForTest() = 0;
 
+  virtual const char* GetTickerName(uint32_t ticker_type) const {
+    return "tickerName(): not implemented";
+  }
+
   // String representation of the statistic object.
   virtual std::string ToString() const {
     // Do nothing by default
