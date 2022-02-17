@@ -268,23 +268,32 @@ public class InstanceType extends Model {
   /** Delete Instance Types corresponding to given provider */
   public static void deleteInstanceTypesForProvider(
       Provider provider, Config config, ConfigHelper configHelper) {
-    for (InstanceType instanceType : findByProvider(provider, config, configHelper)) {
+    for (InstanceType instanceType : findByProvider(provider, config, configHelper, true)) {
       instanceType.delete();
     }
   }
 
-  private static Predicate<InstanceType> supportedInstanceTypes(List<String> supportedPrefixes) {
+  private static Predicate<InstanceType> supportedInstanceTypes(
+      List<String> supportedPrefixes, boolean ignoreSupported) {
+    if (ignoreSupported) {
+      return p -> true;
+    }
     return p ->
         supportedPrefixes.stream().anyMatch(prefix -> p.getInstanceTypeCode().startsWith(prefix));
   }
 
   private static List<InstanceType> populateDefaultsIfEmpty(
-      List<InstanceType> entries, Config config, ConfigHelper configHelper) {
+      List<InstanceType> entries,
+      Config config,
+      ConfigHelper configHelper,
+      boolean ignoreSupported) {
     // For AWS, we would filter and show only supported instance prefixes
     entries =
         entries
             .stream()
-            .filter(supportedInstanceTypes(configHelper.getAWSInstancePrefixesSupported()))
+            .filter(
+                supportedInstanceTypes(
+                    configHelper.getAWSInstancePrefixesSupported(), ignoreSupported))
             .collect(Collectors.toList());
     for (InstanceType instanceType : entries) {
       JsonNode parsedJson = Json.parse(instanceType.instanceTypeDetailsJson);
@@ -306,6 +315,12 @@ public class InstanceType extends Model {
   /** Query Helper to find supported instance types for a given cloud provider. */
   public static List<InstanceType> findByProvider(
       Provider provider, Config config, ConfigHelper configHelper) {
+    return findByProvider(provider, config, configHelper, false);
+  }
+
+  /** Query Helper to find supported instance types for a given cloud provider. */
+  public static List<InstanceType> findByProvider(
+      Provider provider, Config config, ConfigHelper configHelper, boolean ignoreSupported) {
     List<InstanceType> entries =
         InstanceType.find
             .query()
@@ -314,7 +329,7 @@ public class InstanceType extends Model {
             .eq("active", true)
             .findList();
     if (provider.code.equals("aws")) {
-      return populateDefaultsIfEmpty(entries, config, configHelper);
+      return populateDefaultsIfEmpty(entries, config, configHelper, ignoreSupported);
     } else {
       return entries
           .stream()
