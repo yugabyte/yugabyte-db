@@ -45,7 +45,8 @@ import static org.yb.AssertionWrappers.*;
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestPgSelect extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgSelect.class);
-  private static int kMaxClockSkewMs = 500;
+  private static int kMaxClockSkewMs = 100;
+  private static int kRaftHeartbeatIntervalMs = 500;
 
   /**
    * @return flags shared between tablet server and initdb
@@ -54,6 +55,7 @@ public class TestPgSelect extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("max_clock_skew_usec", "" + kMaxClockSkewMs * 1000);
+    flagMap.put("raft_heartbeat_interval_ms", "" + kRaftHeartbeatIntervalMs);
     return flagMap;
   }
 
@@ -536,6 +538,52 @@ public class TestPgSelect extends BasePgSQLTest {
       assertEquals(count_rows, 1);
       count_rows = getCountForTable("pgsql_consistent_prefix_read_rows", "idx");
       assertEquals(count_rows, 1);
+    }
+  }
+
+  @Test
+  public void testFollowerReadsRedirected() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE t(a int primary key) SPLIT INTO 9 TABLETS");
+      LOG.info("Start writing");
+      final int kRows = 100;
+      statement.execute(String.format("INSERT INTO t SELECT generate_series(1, %d)", kRows));
+      LOG.info("Done writing");
+
+      final long kFollowerReadStalenessLargeMs = 30000;
+
+      statement.execute("SET yb_debug_log_docdb_requests = true;");
+      statement.execute("SET yb_read_from_followers = true;");
+      statement.execute("SET default_transaction_read_only = true;");
+
+      statement.execute("SET yb_follower_read_staleness_ms = " + kFollowerReadStalenessLargeMs);
+      final int kNumLoops = 100;
+      final int kJitterMs = 3 * kRaftHeartbeatIntervalMs / kNumLoops;
+      long count_reqs0 = getCountForTable("consistent_prefix_read_requests", "t");
+      for (int i = 0; i < kNumLoops; i++) {
+        statement.executeQuery(String.format("SELECT * from t where a = %d", 1 + (i % kRows)));
+        Thread.sleep(kJitterMs);
+      }
+      long count_reqs1 = getCountForTable("consistent_prefix_read_requests", "t");
+      LOG.info("Reading " + kNumLoops + " rows with large staleness. Had "
+               + (count_reqs1 - count_reqs0) + " requests.");
+      assertEquals(count_reqs1 - count_reqs0, kNumLoops);
+
+      final int kFollowerReadStalenessSmallMs = 300;
+      assertLessThan(kFollowerReadStalenessSmallMs, kRaftHeartbeatIntervalMs);
+      assertGreaterThan(kFollowerReadStalenessSmallMs, 2 * kMaxClockSkewMs);
+      statement.execute("SET yb_follower_read_staleness_ms = " + kFollowerReadStalenessSmallMs);
+      for (int i = 0; i < kNumLoops; i++) {
+        statement.executeQuery(String.format("SELECT * from t where a = %d", 1 + (i % kRows)));
+        Thread.sleep(kJitterMs);
+      }
+      long count_reqs2 = getCountForTable("consistent_prefix_read_requests", "t");
+      LOG.info("Reading " + kNumLoops + " rows with small staleness. Had "
+               + (count_reqs1 - count_reqs0) + " requests.");
+      assertGreaterThan(count_reqs2 - count_reqs1, (long)kNumLoops);
+
+      // required to clean up the table.
+      statement.execute("SET default_transaction_read_only = false;");
     }
   }
 

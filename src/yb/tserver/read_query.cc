@@ -59,6 +59,13 @@ DEFINE_bool(parallelize_read_ops, true,
 TAG_FLAG(parallelize_read_ops, advanced);
 TAG_FLAG(parallelize_read_ops, runtime);
 
+DEFINE_bool(ysql_follower_reads_avoid_waiting_for_safe_time, true,
+            "Controls whether ysql follower reads that specify a not-yet-safe read time "
+            "should be rejected. This will force them to go to the leader, which will likely be "
+            "faster than waiting for safe time to catch up.");
+TAG_FLAG(ysql_follower_reads_avoid_waiting_for_safe_time, advanced);
+TAG_FLAG(ysql_follower_reads_avoid_waiting_for_safe_time, runtime);
+
 namespace yb {
 namespace tserver {
 
@@ -114,6 +121,7 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
   CHECKED_STATUS PickReadTime(server::Clock* clock);
 
   bool IsForBackfill() const;
+  bool IsPgsqlFollowerReadAtAFollower() const;
 
   // Read implementation. If restart is required returns restart time, in case of success
   // returns invalid ReadHybridTime. Otherwise returns error status.
@@ -155,6 +163,7 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
   tablet::RequireLease require_lease_ = tablet::RequireLease::kFalse;
   HostPortPB host_port_pb_;
   bool allow_retry_ = false;
+  bool reading_from_non_leader_ = false;
   RequestScope request_scope_;
   std::shared_ptr<ReadQuery> retained_self_;
 };
@@ -287,18 +296,26 @@ CHECKED_STATUS ReadQuery::DoPerform() {
     leader_peer.leader_term = OpId::kUnknownTerm;
   }
 
+  if (req_->consistency_level() == YBConsistencyLevel::CONSISTENT_PREFIX) {
+    if (abstract_tablet_) {
+      tablet()->metrics()->consistent_prefix_read_requests->Increment();
+    }
+  }
+
+  tablet::TabletPeerPtr tablet_peer;
+  auto tablet_peer_status =
+      server_.tablet_peer_lookup()->GetTabletPeer(req_->tablet_id(), &tablet_peer);
+  // For virtual tables held at master the tablet peer may not be found.
+  reading_from_non_leader_ = tablet_peer_status.ok() && !CheckPeerIsLeader(*tablet_peer).ok();
   if (PREDICT_FALSE(FLAGS_TEST_assert_reads_served_by_follower)) {
-    if (req_->consistency_level() == YBConsistencyLevel::STRONG) {
-      LOG(FATAL) << "--TEST_assert_reads_served_by_follower is true but consistency level is "
-                    "invalid: YBConsistencyLevel::STRONG";
-    }
-    tablet::TabletPeerPtr tablet_peer;
-    RETURN_NOT_OK(server_.tablet_peer_lookup()->GetTabletPeer(req_->tablet_id(), &tablet_peer));
-    if (CheckPeerIsLeader(*tablet_peer).ok()) {
-      LOG(FATAL) << "--TEST_assert_reads_served_by_follower is true but read is being served by "
-                 << " peer " << tablet_peer->permanent_uuid()
-                 << " which is the leader for tablet " << req_->tablet_id();
-    }
+    CHECK_NE(req_->consistency_level(), YBConsistencyLevel::STRONG)
+        << "--TEST_assert_reads_served_by_follower is true but consistency level is "
+           "invalid: YBConsistencyLevel::STRONG";
+    RETURN_NOT_OK(tablet_peer_status);
+    CHECK(reading_from_non_leader_)
+        << "--TEST_assert_reads_served_by_follower is true but read is being served by "
+        << " peer " << tablet_peer->permanent_uuid() << " which is the leader for tablet "
+        << req_->tablet_id();
   }
 
   if (!abstract_tablet_->system() && tablet()->metadata()->hidden()) {
@@ -379,12 +396,6 @@ CHECKED_STATUS ReadQuery::DoPerform() {
     return Status::OK();
   }
 
-  if (req_->consistency_level() == YBConsistencyLevel::CONSISTENT_PREFIX) {
-    if (abstract_tablet_) {
-      tablet()->metrics()->consistent_prefix_read_requests->Increment();
-    }
-  }
-
   return Complete();
 }
 
@@ -404,10 +415,30 @@ CHECKED_STATUS ReadQuery::DoPickReadTime(server::Clock* clock) {
       read_time_.global_limit = read_time_.read;
     }
   } else {
-    safe_ht_to_read_ = VERIFY_RESULT(abstract_tablet_->SafeTime(
-        require_lease_, read_time_.read, context_.GetClientDeadline()));
+    HybridTime current_safe_time = HybridTime::kMin;
+    if (IsPgsqlFollowerReadAtAFollower()) {
+      auto current_safe_time = VERIFY_RESULT(abstract_tablet_->SafeTime(
+          require_lease_, HybridTime::kMin, context_.GetClientDeadline()));
+      if (GetAtomicFlag(&FLAGS_ysql_follower_reads_avoid_waiting_for_safe_time) &&
+          current_safe_time < read_time_.read) {
+        // We are given a read time. However, for Follower reads, it may be better
+        // to redirect the query to the Leader instead of waiting on it.
+        return STATUS(IllegalState, "Requested read time is not safe at this follower.");
+      }
+    }
+    safe_ht_to_read_ =
+        (current_safe_time > read_time_.read
+             ? current_safe_time
+             : VERIFY_RESULT(abstract_tablet_->SafeTime(
+                   require_lease_, read_time_.read, context_.GetClientDeadline())));
   }
   return Status::OK();
+}
+
+bool ReadQuery::IsPgsqlFollowerReadAtAFollower() const {
+  return reading_from_non_leader_ &&
+         (!req_->pgsql_batch().empty() &&
+          req_->consistency_level() == YBConsistencyLevel::CONSISTENT_PREFIX);
 }
 
 CHECKED_STATUS ReadQuery::Complete() {
