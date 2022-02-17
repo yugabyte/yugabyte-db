@@ -36,7 +36,7 @@
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/value.h"
 
-#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/rocksdb_fwd.h"
 
 #include "yb/util/result.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -146,7 +146,9 @@ struct ExternalTxnApplyStateData {
 
 using ExternalTxnApplyState = std::map<TransactionId, ExternalTxnApplyStateData>;
 
-void AddPairToWriteBatch(
+// Adds external pair to write batch.
+// Returns true if add was skipped because pair is a regular (non external) record.
+bool AddExternalPairToWriteBatch(
     const KeyValuePairPB& kv_pair,
     HybridTime hybrid_time,
     int write_id,
@@ -154,10 +156,12 @@ void AddPairToWriteBatch(
     rocksdb::WriteBatch* regular_write_batch,
     rocksdb::WriteBatch* intents_write_batch);
 
-// Prepares non transaction write batch.
+// Prepares external part of non transaction write batch.
 // Batch could contain intents for external transactions, in this case those intents
 // will be added to intents_write_batch.
-void PrepareNonTransactionWriteBatch(
+//
+// Returns true if batch contains regular entries.
+bool PrepareExternalWriteBatch(
     const docdb::KeyValueWriteBatchPB& put_batch,
     HybridTime hybrid_time,
     rocksdb::DB* intents_db,
@@ -197,18 +201,6 @@ CHECKED_STATUS EnumerateIntents(
     Slice key, const Slice& intent_value, const EnumerateIntentsCallback& functor,
     KeyBytes* encoded_key_buffer, PartialRangeKeyIntents partial_range_key_intents,
     LastKey last_key = LastKey::kFalse);
-
-// replicated_batches_state format does not matter at this point, because it is just
-// appended to appropriate value.
-void PrepareTransactionWriteBatch(
-    const docdb::KeyValueWriteBatchPB& put_batch,
-    HybridTime hybrid_time,
-    rocksdb::WriteBatch* rocksdb_write_batch,
-    const TransactionId& transaction_id,
-    IsolationLevel isolation_level,
-    PartialRangeKeyIntents partial_range_key_intents,
-    const Slice& replicated_batches_state,
-    IntraTxnWriteId* write_id);
 
 // See ApplyTransactionStatePB for details.
 struct ApplyTransactionState {

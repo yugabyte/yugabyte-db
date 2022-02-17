@@ -2296,44 +2296,6 @@ void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
   // TODO: dump snapshots
 }
 
-
-Status CatalogManager::HandlePlacementUsingReplicationInfo(
-    const ReplicationInfoPB& replication_info,
-    const TSDescriptorVector& all_ts_descs,
-    consensus::RaftConfigPB* config) {
-  TSDescriptorVector ts_descs;
-  GetTsDescsFromPlacementInfo(replication_info.live_replicas(), all_ts_descs, &ts_descs);
-  RETURN_NOT_OK(super::HandlePlacementUsingPlacementInfo(replication_info.live_replicas(),
-                                                      ts_descs,
-                                                      consensus::PeerMemberType::VOTER, config));
-  for (int i = 0; i < replication_info.read_replicas_size(); i++) {
-    GetTsDescsFromPlacementInfo(replication_info.read_replicas(i), all_ts_descs, &ts_descs);
-    RETURN_NOT_OK(super::HandlePlacementUsingPlacementInfo(replication_info.read_replicas(i),
-                                                           ts_descs,
-                                                           consensus::PeerMemberType::OBSERVER,
-                                                           config));
-  }
-  return Status::OK();
-}
-
-void CatalogManager::GetTsDescsFromPlacementInfo(const PlacementInfoPB& placement_info,
-                                                 const TSDescriptorVector& all_ts_descs,
-                                                 TSDescriptorVector* ts_descs) {
-  ts_descs->clear();
-  for (const auto& ts_desc : all_ts_descs) {
-    TSDescriptor* ts_desc_ent = down_cast<TSDescriptor*>(ts_desc.get());
-    if (placement_info.has_placement_uuid()) {
-      string placement_uuid = placement_info.placement_uuid();
-      if (ts_desc_ent->placement_uuid() == placement_uuid) {
-        ts_descs->push_back(ts_desc);
-      }
-    } else if (ts_desc_ent->placement_uuid() == "") {
-      // Since the placement info has no placement id, we know it is live, so we add this ts.
-      ts_descs->push_back(ts_desc);
-    }
-  }
-}
-
 template <typename Registry, typename Mutex>
 bool ShouldResendRegistry(
     const std::string& ts_uuid, bool has_registration, Registry* registry, Mutex* mutex) {
@@ -3577,10 +3539,8 @@ void CatalogManager::GetCDCStreamCallback(
         }
         new_entry.set_state(master::SysCDCStreamEntryPB::ACTIVE);
 
-        auto s = cdc_rpc->client()->UpdateCDCStream(bootstrap_id, new_entry);
-        if (!s.ok()) {
-          LOG(WARNING) << "Unable to update CDC stream options " << s;
-        }
+        WARN_NOT_OK(cdc_rpc->client()->UpdateCDCStream(bootstrap_id, new_entry),
+                  "Unable to update CDC stream options");
       });
   }
 }
@@ -3639,18 +3599,27 @@ void CatalogManager::AddCDCStreamToUniverseAndInitConsumer(
       std::vector<HostPort> hp;
       HostPortsFromPBs(l->pb.producer_master_addresses(), &hp);
 
-      Status s = InitCDCConsumer(consumer_info, HostPort::ToCommaSeparatedString(hp),
-          l->pb.producer_id());
-      if (!s.ok()) {
-        LOG(ERROR) << "Error registering subscriber: " << s;
+      auto cdc_rpc_tasks_result =
+          universe->GetOrCreateCDCRpcTasks(l->pb.producer_master_addresses());
+      if (!cdc_rpc_tasks_result.ok()) {
+        LOG(WARNING) << "CDC streams won't be created: " << cdc_rpc_tasks_result;
         l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::FAILED);
       } else {
-        GStringPiece original_producer_id(universe->id());
-        if (original_producer_id.ends_with(".ALTER")) {
-          // Don't enable ALTER universes, merge them into the main universe instead.
-          merge_alter = true;
+        auto cdc_rpc_tasks = *cdc_rpc_tasks_result;
+        Status s = InitCDCConsumer(
+            consumer_info, HostPort::ToCommaSeparatedString(hp), l->pb.producer_id(),
+            cdc_rpc_tasks);
+        if (!s.ok()) {
+          LOG(ERROR) << "Error registering subscriber: " << s;
+          l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::FAILED);
         } else {
-          l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::ACTIVE);
+          GStringPiece original_producer_id(universe->id());
+          if (original_producer_id.ends_with(".ALTER")) {
+            // Don't enable ALTER universes, merge them into the main universe instead.
+            merge_alter = true;
+          } else {
+            l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::ACTIVE);
+          }
         }
       }
     }
@@ -3775,7 +3744,8 @@ Status CatalogManager::UpdateXClusterProducerOnTabletSplit(
 Status CatalogManager::InitCDCConsumer(
     const std::vector<CDCConsumerStreamInfo>& consumer_info,
     const std::string& master_addrs,
-    const std::string& producer_universe_uuid) {
+    const std::string& producer_universe_uuid,
+    std::shared_ptr<CDCRpcTasks> cdc_rpc_tasks) {
 
   std::unordered_set<HostPort, HostPortHash> tserver_addrs;
   // Get the tablets in the consumer table.
@@ -3788,11 +3758,12 @@ Status CatalogManager::InitCDCConsumer(
     table_identifer.set_table_id(stream_info.consumer_table_id);
     *(consumer_table_req.mutable_table()) = table_identifer;
     RETURN_NOT_OK(GetTableLocations(&consumer_table_req, &consumer_table_resp));
+
     cdc::StreamEntryPB stream_entry;
     // Get producer tablets and map them to the consumer tablets
     RETURN_NOT_OK(CreateTabletMapping(
         stream_info.producer_table_id, stream_info.consumer_table_id, producer_universe_uuid,
-        master_addrs, consumer_table_resp, &tserver_addrs, &stream_entry));
+        master_addrs, consumer_table_resp, &tserver_addrs, &stream_entry, cdc_rpc_tasks));
     (*producer_entry.mutable_stream_map())[stream_info.stream_id] = std::move(stream_entry);
   }
 

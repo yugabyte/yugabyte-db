@@ -84,8 +84,7 @@ void DocDBDebugDump(rocksdb::DB* rocksdb, ostream& out, StorageDbType db_type,
   DocDBDebugDump(rocksdb, db_type, include_binary, std::bind(&AppendLineToStream, _1, &out));
 }
 
-std::string DocDBDebugDumpToStr(
-    DocDB docdb, IncludeBinary include_binary) {
+std::string DocDBDebugDumpToStr(DocDB docdb, IncludeBinary include_binary) {
   std::stringstream ss;
   DocDBDebugDump(docdb.regular, ss, StorageDbType::kRegular, include_binary);
   if (docdb.intents) {

@@ -69,6 +69,7 @@
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/ql_rocksdb_storage.h"
 #include "yb/docdb/redis_operation.h"
+#include "yb/docdb/rocksdb_writer.h"
 
 #include "yb/gutil/casts.h"
 
@@ -1154,21 +1155,23 @@ Status Tablet::ApplyOperation(
       batch_idx, write_batch, frontiers_ptr, hybrid_time, already_applied_to_regular_db);
 }
 
-Status Tablet::PrepareTransactionWriteBatch(
+Status Tablet::WriteTransactionalBatch(
     int64_t batch_idx,
     const KeyValueWriteBatchPB& put_batch,
     HybridTime hybrid_time,
-    rocksdb::WriteBatch* rocksdb_write_batch) {
+    const rocksdb::UserFrontiers* frontiers) {
   auto transaction_id = CHECK_RESULT(
       FullyDecodeTransactionId(put_batch.transaction().transaction_id()));
+
+  bool store_metadata = false;
   if (put_batch.transaction().has_isolation()) {
     // Store transaction metadata (status tablet, isolation level etc.)
-    if (!transaction_participant()->Add(put_batch.transaction(), rocksdb_write_batch)) {
-      auto status = STATUS_EC_FORMAT(
-          TryAgain, PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE),
-          "Transaction was recently aborted: $0", transaction_id);
-      return status.CloneAndAddErrorCode(TransactionError(TransactionErrorCode::kAborted));
+    auto metadata = VERIFY_RESULT(TransactionMetadata::FromPB(put_batch.transaction()));
+    auto add_result = transaction_participant()->Add(metadata);
+    if (!add_result.ok()) {
+      return add_result.status();
     }
+    store_metadata = add_result.get();
   }
   boost::container::small_vector<uint8_t, 16> encoded_replicated_batch_idx_set;
   auto prepare_batch_data = transaction_participant()->PrepareBatchData(
@@ -1184,12 +1187,23 @@ Status Tablet::PrepareTransactionWriteBatch(
 
   auto isolation_level = prepare_batch_data->first;
   auto& last_batch_data = prepare_batch_data->second;
-  yb::docdb::PrepareTransactionWriteBatch(
-      put_batch, hybrid_time, rocksdb_write_batch, transaction_id, isolation_level,
+
+  docdb::TransactionalWriter writer(
+      put_batch, hybrid_time, transaction_id, isolation_level,
       docdb::PartialRangeKeyIntents(metadata_->UsePartialRangeKeyIntents()),
       Slice(encoded_replicated_batch_idx_set.data(), encoded_replicated_batch_idx_set.size()),
-      &last_batch_data.next_write_id);
+      last_batch_data.next_write_id);
+  if (store_metadata) {
+    writer.SetMetadataToStore(&put_batch.transaction());
+  }
+  rocksdb::WriteBatch write_batch;
+  write_batch.SetDirectWriter(&writer);
+  RequestScope request_scope(transaction_participant_.get());
+
+  WriteToRocksDB(frontiers, &write_batch, StorageDbType::kIntents);
+
   last_batch_data.hybrid_time = hybrid_time;
+  last_batch_data.next_write_id = writer.intra_txn_write_id();
   transaction_participant()->BatchReplicated(transaction_id, last_batch_data);
 
   return Status::OK();
@@ -1211,26 +1225,29 @@ Status Tablet::ApplyKeyValueRowOperations(
   // In all other cases we should crash instead of skipping apply.
 
   if (put_batch.has_transaction()) {
-    rocksdb::WriteBatch write_batch;
-    RequestScope request_scope(transaction_participant_.get());
-    RETURN_NOT_OK(PrepareTransactionWriteBatch(batch_idx, put_batch, hybrid_time, &write_batch));
-    WriteToRocksDB(frontiers, &write_batch, StorageDbType::kIntents);
+    RETURN_NOT_OK(WriteTransactionalBatch(batch_idx, put_batch, hybrid_time, frontiers));
   } else {
     rocksdb::WriteBatch regular_write_batch;
     auto* regular_write_batch_ptr = !already_applied_to_regular_db ? &regular_write_batch : nullptr;
-    // See comments for PrepareNonTransactionWriteBatch.
+
+    // See comments for PrepareExternalWriteBatch.
     rocksdb::WriteBatch intents_write_batch;
-    PrepareNonTransactionWriteBatch(
+    bool has_non_exteranl_records = PrepareExternalWriteBatch(
         put_batch, hybrid_time, intents_db_.get(), regular_write_batch_ptr, &intents_write_batch);
 
-    if (regular_write_batch.Count() != 0) {
-      WriteToRocksDB(frontiers, regular_write_batch_ptr, StorageDbType::kRegular);
-    }
     if (intents_write_batch.Count() != 0) {
       if (!metadata_->is_under_twodc_replication()) {
         RETURN_NOT_OK(metadata_->SetIsUnderTwodcReplicationAndFlush(true));
       }
       WriteToRocksDB(frontiers, &intents_write_batch, StorageDbType::kIntents);
+    }
+
+    docdb::NonTransactionalWriter writer(put_batch, hybrid_time);
+    if (!already_applied_to_regular_db && has_non_exteranl_records) {
+      regular_write_batch.SetDirectWriter(&writer);
+    }
+    if (regular_write_batch.Count() != 0 || regular_write_batch.HasDirectWriter()) {
+      WriteToRocksDB(frontiers, &regular_write_batch, StorageDbType::kRegular);
     }
 
     if (snapshot_coordinator_) {
@@ -1248,9 +1265,6 @@ void Tablet::WriteToRocksDB(
     const rocksdb::UserFrontiers* frontiers,
     rocksdb::WriteBatch* write_batch,
     docdb::StorageDbType storage_db_type) {
-  if (write_batch->Count() == 0) {
-    return;
-  }
   rocksdb::DB* dest_db = nullptr;
   switch (storage_db_type) {
     case StorageDbType::kRegular: dest_db = regular_db_.get(); break;

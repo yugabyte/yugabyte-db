@@ -503,10 +503,9 @@ class CatalogManager :
   CHECKED_STATUS GetYsqlCatalogVersion(
       uint64_t* catalog_version, uint64_t* last_breaking_version) override;
 
-  void RecomputeTxnTableVersionsHash() EXCLUDES(mutex_);
-  void RecomputeTxnTableVersionsHashUnlocked() REQUIRES_SHARED(mutex_);
+  CHECKED_STATUS IncrementTransactionTablesVersion();
 
-  uint64_t GetTxnTableVersionsHash() override;
+  uint64_t GetTransactionTablesVersion() override;
 
   virtual CHECKED_STATUS FillHeartbeatResponse(const TSHeartbeatRequestPB* req,
                                                TSHeartbeatResponsePB* resp);
@@ -626,7 +625,7 @@ class CatalogManager :
 
   // Loops through the table's placement infos and populates the corresponding config from
   // each placement.
-  virtual CHECKED_STATUS HandlePlacementUsingReplicationInfo(
+  CHECKED_STATUS HandlePlacementUsingReplicationInfo(
       const ReplicationInfoPB& replication_info,
       const TSDescriptorVector& all_ts_descs,
       consensus::RaftConfigPB* config);
@@ -636,6 +635,11 @@ class CatalogManager :
                                                    const TSDescriptorVector& ts_descs,
                                                    consensus::PeerMemberType member_type,
                                                    consensus::RaftConfigPB* config);
+
+  // Populates ts_descs with all tservers belonging to a certain placement.
+  void GetTsDescsFromPlacementInfo(const PlacementInfoPB& placement_info,
+                                   const TSDescriptorVector& all_ts_descs,
+                                   TSDescriptorVector* ts_descs);
 
     // Set the current committed config.
   CHECKED_STATUS GetCurrentConfig(consensus::ConsensusStatePB *cpb) const override;
@@ -1421,6 +1425,10 @@ class CatalogManager :
   // YSQL Catalog information.
   scoped_refptr<SysConfigInfo> ysql_catalog_config_ = nullptr; // No GUARD, only write on Load.
 
+  // Transaction tables information.
+  scoped_refptr<SysConfigInfo> transaction_tables_config_ =
+      nullptr; // No GUARD, only write on Load.
+
   Master *master_;
   Atomic32 closing_;
 
@@ -1608,7 +1616,7 @@ class CatalogManager :
       const TablespaceIdToReplicationInfoMap& tablespace_info) EXCLUDES(mutex_);
 
   // Updates transaction tables' tablespace ids for tablespaces that don't exist.
-  void UpdateTransactionStatusTableTablespaces(
+  CHECKED_STATUS UpdateTransactionStatusTableTablespaces(
       const TablespaceIdToReplicationInfoMap& tablespace_info) EXCLUDES(mutex_);
 
   // Return the tablespaces in the system and their associated replication info from
@@ -1663,9 +1671,6 @@ class CatalogManager :
 
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
-
-  // Hash of transaction status table ids and versions.
-  std::atomic<uint64_t> txn_table_versions_hash_{0};
 
   rpc::ScheduledTaskTracker refresh_yql_partitions_task_;
 

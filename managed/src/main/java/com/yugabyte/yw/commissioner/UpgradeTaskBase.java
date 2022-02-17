@@ -100,14 +100,17 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
 
       throw t;
     } finally {
-      if (isBlacklistLeaders) {
-        subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
-        List<NodeDetails> tServerNodes = fetchTServerNodes(taskParams().upgradeOption);
-        createModifyBlackListTask(tServerNodes, false /* isAdd */, true /* isLeaderBlacklist */)
-            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-        subTaskGroupQueue.run();
+      try {
+        if (isBlacklistLeaders) {
+          subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
+          List<NodeDetails> tServerNodes = fetchTServerNodes(taskParams().upgradeOption);
+          createModifyBlackListTask(tServerNodes, false /* isAdd */, true /* isLeaderBlacklist */)
+              .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+          subTaskGroupQueue.run();
+        }
+      } finally {
+        unlockUniverseForUpdate();
       }
-      unlockUniverseForUpdate();
     }
     log.info("Finished {} task.", getName());
   }

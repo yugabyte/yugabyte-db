@@ -26,31 +26,31 @@ If you encounter an issue or have an enhancement request, [file a GitHub issue](
 
 ### libpq
 
-[`libpq`](https://www.postgresql.org/docs/11/libpq.html) is the C client library for connecting to and interacting with PostgreSQL databases. `libpq` is also the underlying engine used in other PostgreSQL application interfaces. The `libpq` client library supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
+[libpq](https://www.postgresql.org/docs/11/libpq.html) is the C client library for connecting to and interacting with PostgreSQL databases. libpq is also the underlying engine used in other PostgreSQL application interfaces. The libpq client library supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For details and documentation, refer to [`libpq - C Library`](https://www.postgresql.org/docs/11/libpq.html) for PostgreSQL 11 (on which YugabyteDB is based).
+For details and documentation, refer to [libpq - C Library](https://www.postgresql.org/docs/11/libpq.html) for PostgreSQL 11 (on which YugabyteDB is based).
 
-For a tutorial on building a sample C application with `libpq`, refer to [Build a C application](../../../quick-start/build-apps/c/ysql/).
+For a tutorial on building a sample C application with libpq, refer to [Build a C application](../../../quick-start/build-apps/c/ysql/).
 
 #### Install the libpq client library
 
-The `libpq` C driver is included in the YugabyteDB installation. You can use it by setting the `LD_LIBRARY_PATH` as follows:
+The libpq C driver is included in the YugabyteDB installation. You can use it by setting the `LD_LIBRARY_PATH` as follows:
 
 ```sh
 $ export LD_LIBRARY_PATH=<yugabyte-install-dir>/postgres/lib
 ```
 
-Homebrew users on macOS can install `libpq` using `brew install libpq`. You can download the PostgreSQL binaries and source from the [PostgreSQL Downloads](https://www.postgresql.org/download/) page.
+Homebrew users on macOS can install libpq using `brew install libpq`. You can download the PostgreSQL binaries and source from the [PostgreSQL Downloads](https://www.postgresql.org/download/) page.
 
 ## C++
 
 ### libpqxx
 
-The [libpqxx](http://pqxx.org/development/libpqxx/) driver is the official C++ client API for PostgreSQL. `libpqxx` is based on [`libpq`](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
+The [libpqxx](http://pqxx.org/development/libpqxx/) driver is the official C++ client API for PostgreSQL. libpqxx is based on [libpq](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
 For details and documentation, refer to the [libpqxx README](https://github.com/jtv/libpqxx#readme) and [libpqxx documentation](https://libpqxx.readthedocs.io/en/latest/).
 
-For a tutorial on building a sample C++ application with `libpqxx`, refer to [Build a C++ application](../../../quick-start/build-apps/cpp/ysql/).
+For a tutorial on building a sample C++ application with libpqxx, refer to [Build a C++ application](../../../quick-start/build-apps/cpp/ysql/).
 
 #### Install the libpqxx driver
 
@@ -79,7 +79,7 @@ $ make install
 
 ### Npgsql
 
-[Npgsql](https://www.npgsql.org/) is an open source ADO.NET Data Provider for PostgreSQL that enables C# applications to connect and interact with PostgreSQL databases. Npgsql is based on [`libpq`](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
+[Npgsql](https://www.npgsql.org/) is an open source ADO.NET Data Provider for PostgreSQL that enables C# applications to connect and interact with PostgreSQL databases. Npgsql is based on [libpq](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
 For details on Npgsql, refer to the [Npgsql documentation](https://www.npgsql.org/doc/).
 
@@ -99,7 +99,7 @@ If you are using Visual Studio, add Npgsql to your project as follows:
 
 2. Right-click on **Packages** and click **Add Packages**.
 
-3. Search for `Npgsql` and click **Add Package**.
+3. Search for Npgsql and click **Add Package**.
 
 {{< warning title="Warning" >}}
 
@@ -115,9 +115,9 @@ connStringBuilder.ServerCompatibilityMode = ServerCompatibilityMode.NoTypeLoadin
 
 ### Go PostgreSQL driver (pq)
 
-The [Go PostgreSQL driver package (`pq`)](https://pkg.go.dev/github.com/lib/pq?tab=doc) is a Go PostgreSQL driver for the `database/sql` package.  `pq` is not based on the [`libpq`](#libpq) client library, but supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
+The [Go PostgreSQL driver package (pq)](https://pkg.go.dev/github.com/lib/pq?tab=doc) is a Go PostgreSQL driver for the `database/sql` package. pq is not based on [libpq](#libpq), but supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For a tutorial on building a sample Go application with `pq`, see [Build a Go application](../../../quick-start/build-apps/go/ysql-pq).
+For a tutorial on building a sample Go application with pq, see [Build a Go application](../../../quick-start/build-apps/go/ysql-pq).
 
 #### Install the pq driver
 
@@ -127,7 +127,7 @@ To install the package locally, run the following [`go get`](https://golang.org/
 $ go get github.com/lib/pq
 ```
 
-The `pq` driver is ready for building Go applications that connect to and interact with YugabyteDB.
+The pq driver is ready for building Go applications that connect to and interact with YugabyteDB.
 
 ## Java
 
@@ -141,7 +141,7 @@ For a tutorial on building a sample Java application with the Yugabyte JDBC driv
 
 ### PostgreSQL JDBC driver (PgJDBC)
 
-The [PostgreSQL JDBC driver](https://jdbc.postgresql.org/) is the official JDBC driver for PostgreSQL. PgJDBC is not based on [`libpq`](#libpq), but supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
+The [PostgreSQL JDBC driver](https://jdbc.postgresql.org/) is the official JDBC driver for PostgreSQL. PgJDBC is not based on [libpq](#libpq), but supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
 For a tutorial on building a sample Java application with the PostgreSQL JDBC Driver, see [Build a Java application](../../../quick-start/build-apps/java/ysql-jdbc/).
 
@@ -155,15 +155,15 @@ To get the latest versions for projects using [Apache Maven](https://maven.apach
 
 ### node-postgres
 
-[`node-postgres`](https://node-postgres.com/) is a collection of Node.js modules for interacting with PostgreSQL databases. `node-postgres` optionally uses [`libpq`](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
+[node-postgres](https://node-postgres.com/) is a collection of Node.js modules for interacting with PostgreSQL databases. node-postgres optionally uses [libpq](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
 For details on installing and using node-postgres, see the [node-postgres documentation](https://node-postgres.com/).
 
-For a tutorial on building a sample Node.js application with `node-postgres`, see [Build a Node.js application](../../../quick-start/build-apps/nodejs/ysql-pg/).
+For a tutorial on building a sample Node.js application with node-postgres, see [Build a Node.js application](../../../quick-start/build-apps/nodejs/ysql-pg/).
 
 #### Install the node-postgres (pg) driver
 
-To install `node-postgres` and any packages it depends on, run the following [`npm install`](https://docs.npmjs.com/cli/install.html) command:
+To install node-postgres and any packages it depends on, run the following [`npm install`](https://docs.npmjs.com/cli/install.html) command:
 
 ```sh
 $ npm install pg
@@ -173,27 +173,27 @@ $ npm install pg
 
 ### php-pgsql
 
-The [`php-pgsql`](https://www.php.net/manual/en/book.pgsql.php) driver is a collection of the official PostgreSQL module for PHP. `php-pgsql` is based on [`libpq`](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
+The [php-pgsql](https://www.php.net/manual/en/book.pgsql.php) driver is a collection of the official PostgreSQL module for PHP. php-pgsql is based on [libpq](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For a tutorial on building a sample Node.js application with `php-pgsql`, see [Build a Node.js application](../../../quick-start/build-apps/php/ysql/).
+For a tutorial on building a sample Node.js application with php-pgsql, see [Build a Node.js application](../../../quick-start/build-apps/php/ysql/).
 
 #### Install the php-pgsql driver
 
-To enable PostgreSQL support using `php-pgsql`, see [Installing/Configuring](https://www.php.net/manual/en/pgsql.setup.php) in the PHP documentation.
+To enable PostgreSQL support using php-pgsql, see [Installing/Configuring](https://www.php.net/manual/en/pgsql.setup.php) in the PHP documentation.
 
 ## Python
 
 ### psycopg2
 
-[Psycopg](https://www.psycopg.org/) is the popular PostgreSQL database adapter for the Python programming language. `psycopg2` is based on [`libpq`](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
+[Psycopg](https://www.psycopg.org/) is the popular PostgreSQL database adapter for the Python programming language. psycopg2 is based on [libpq](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For details on using `psycopg2`, see [Psycopg documentation](https://www.psycopg.org/docs/).
+For details on using psycopg2, see [Psycopg documentation](https://www.psycopg.org/docs/).
 
-For a tutorial on building a sample Python application that uses `psycopg2`, see [Build a Python application](../../../quick-start/build-apps/python/ysql-psycopg2).
+For a tutorial on building a sample Python application that uses psycopg2, see [Build a Python application](../../../quick-start/build-apps/python/ysql-psycopg2).
 
 #### Install the psycopg2 binary
 
-To install the `psycopg2` binary package, run the following `pip3 install` command:
+To install the psycopg2 binary package, run the following `pip3 install` command:
 
 ```sh
 $ pip3 install psycopg2-binary
@@ -201,13 +201,13 @@ $ pip3 install psycopg2-binary
 
 ### aiopg
 
-[aiopg](https://aiopg.readthedocs.io/en/stable/) is a library for accessing a PostgreSQL database using the asyncio (PEP-3156/tulip) framework. It wraps asynchronous features of the [Psycopg](https://www.psycopg.org/) database driver. For details on using `aiopg`, see [aiopg documentation](https://aiopg.readthedocs.io/en/stable/).
+[aiopg](https://aiopg.readthedocs.io/en/stable/) is a library for accessing a PostgreSQL database using the asyncio (PEP-3156/tulip) framework. It wraps asynchronous features of the [Psycopg](https://www.psycopg.org/) database driver. For details on using aiopg, see [aiopg documentation](https://aiopg.readthedocs.io/en/stable/).
 
-For a tutorial on building a sample Python application that uses `aiopg`, see [Build a Python application](../../../quick-start/build-apps/python/ysql-aiopg).
+For a tutorial on building a sample Python application that uses aiopg, see [Build a Python application](../../../quick-start/build-apps/python/ysql-aiopg).
 
 #### Install
 
-To install the `aiopg` package, run the following `pip3 install` command:
+To install the aiopg package, run the following `pip3 install` command:
 
 ```sh
 pip3 install aiopg
@@ -217,14 +217,40 @@ pip3 install aiopg
 
 ### pg
 
-[`pg`](https://github.com/ged/ruby-pg) is the Ruby interface for PostgreSQL databases. `pg` is based on [`libpq`](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
+[pg](https://github.com/ged/ruby-pg) is the Ruby interface for PostgreSQL databases. pg is based on [libpq](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For a tutorial on building a sample Ruby application with `pg`, see [Build a Ruby application](../../../quick-start/build-apps/ruby/ysql-pg).
+For a tutorial on building a sample Ruby application with pg, see [Build a Ruby application](../../../quick-start/build-apps/ruby/ysql-pg).
 
 #### Install the pg driver
 
-To install the `pg` driver, run the following [`gem install`](https://guides.rubygems.org/command-reference/#gem-install) command:
+If you have installed YugabyteDB locally, run the following [gem install](https://guides.rubygems.org/command-reference/#gem-install) command to install the pg driver:
 
 ```sh
 $ gem install pg -- --with-pg-config=<yugabyte-install-dir>/postgres/bin/pg_config
+```
+
+Otherwise, to install pg, run the following command:
+
+```sh
+gem install pg -- --with-pg-include=<path-to-libpq>/libpq/include --with-pg-lib=<path-to-libpq>/libpq/lib
+```
+
+Replace `<path-to-libpq>` with the path to the libpq installation; for example, `/usr/local/opt`.
+
+## Rust
+
+### Rust-Postgres
+
+[Rust-Postgres](https://github.com/sfackler/rust-postgres) is the Rust interface for PostgreSQL databases. Rust-Postgres is not based on libpq, but supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
+
+For a tutorial on building a sample Ruby application with Rust-Postgres, see [Build a Rust application](../../../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-rust).
+
+#### Install the Rust-Postgres driver
+
+To include the Rust-Postgres driver with your application, add the following dependencies to your `cargo.toml` file:
+
+```sh
+postgres = "0.19.2"
+openssl = "0.10.38"
+postgres-openssl = "0.5.0"
 ```

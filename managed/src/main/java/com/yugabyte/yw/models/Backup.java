@@ -658,6 +658,7 @@ public class Backup extends Model {
             .expiryTime(backup.getExpiry())
             .onDemand(onDemand)
             .universeName(backup.universeName)
+            .backupUUID(backup.backupUUID)
             .scheduleUUID(backup.scheduleUUID)
             .customerUUID(backup.customerUUID)
             .universeUUID(backup.universeUUID)
