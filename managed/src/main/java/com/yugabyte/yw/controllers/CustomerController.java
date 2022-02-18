@@ -43,6 +43,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -339,6 +340,12 @@ public class CustomerController extends AuthenticatedController {
     }
     if (params.containsKey("tableName")) {
       filterJson.put("table_name", params.remove("tableName"));
+    }
+    if (params.containsKey("xClusterConfigUuid")) {
+      XClusterConfig xClusterConfig =
+          XClusterConfig.getOrBadRequest(UUID.fromString(params.remove("xClusterConfigUuid")));
+      String tableIdRegex = String.join("|", xClusterConfig.getTables());
+      filterJson.put("table_id", tableIdRegex);
     }
     params.put("filters", Json.stringify(filterJson));
     JsonNode response =
