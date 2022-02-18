@@ -18,7 +18,7 @@ The following tutorial shows a small [Python application](https://github.com/yug
 
 ## Prerequisites
 
-In addition to Python 3.6 or later (Python 3.9.7 or later if running macOS on Apple silicon), this tutorial requires the following.
+- Python 3.6 or later (Python 3.9.7 or later if running macOS on Apple silicon).
 
 ### Yugabyte Cloud
 

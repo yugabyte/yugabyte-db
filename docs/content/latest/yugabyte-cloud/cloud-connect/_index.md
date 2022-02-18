@@ -30,7 +30,7 @@ Once you have connected to the database, you can add database users for other te
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="connect-cloud-shell/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/explore/cloud_native.png" aria-hidden="true" />
         <div class="title">Cloud shell</div>
       </div>
       <div class="body">
@@ -42,7 +42,7 @@ Once you have connected to the database, you can add database users for other te
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="connect-client-shell/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/index/develop.png" aria-hidden="true" />
         <div class="title">Client shell</div>
       </div>
       <div class="body">
