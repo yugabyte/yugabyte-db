@@ -26,6 +26,8 @@ import {
   ADD_TLS_CERT,
   ADD_TLS_CERT_RESPONSE,
   ADD_TLS_CERT_RESET,
+  UPDATE_CERT,
+  UPDATE_CERT_RESPONSE,
   FETCH_HOST_INFO,
   FETCH_HOST_INFO_SUCCESS,
   FETCH_HOST_INFO_FAILURE,
@@ -237,6 +239,10 @@ export default function (state = INITIAL_STATE, action) {
       return setPromiseResponse(state, 'addCertificate', action);
     case ADD_TLS_CERT_RESET:
       return setLoadingState(state, 'addCertificate', getInitialState({}));
+    case UPDATE_CERT:
+      return setLoadingState(state, 'updateCert', {});
+    case UPDATE_CERT_RESPONSE:
+      return setLoadingState(state, 'updateCert', action);
     case FETCH_HOST_INFO:
       return { ...state, hostInfo: null };
     case FETCH_HOST_INFO_SUCCESS:
