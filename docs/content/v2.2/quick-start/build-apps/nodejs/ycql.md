@@ -94,7 +94,7 @@ async.series([
   },
   function insert(next) {
     // Create a variable with the insert statement.
-    const insert = "INSERT INTO ybdemo.employee (id, name, age, language) " +
+    const insert = "INSERT INTO ybdemo.employee (id, name, age, language, location) " +
                                         "VALUES (1, 'John', 35, 'NodeJS', '{ \"city\": \"San Francisco\", \"state\": \"California\", \"lat\": 37.77, \"long\": 122.42 }');";
     // Insert a row with the employee data.
     console.log('Inserting row with: %s', insert)
