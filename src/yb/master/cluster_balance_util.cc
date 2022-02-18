@@ -413,8 +413,8 @@ Result<bool> PerTableLoadState::CanAddTabletToTabletServer(
   }
   // If we ask to use placement information, check against it.
   if (placement_info && !GetValidPlacement(to_ts, placement_info).has_value()) {
-    LOG(INFO) << "tablet server " << to_ts << " has invalid placement info. "
-              << "Not allowing it to take more tablets.";
+    YB_LOG_EVERY_N_SECS(INFO, 30) << "tablet server " << to_ts << " has invalid placement info. "
+                                  << "Not allowing it to take more tablets.";
     return false;
   }
   // If this server has a pending tablet delete, don't use it.
