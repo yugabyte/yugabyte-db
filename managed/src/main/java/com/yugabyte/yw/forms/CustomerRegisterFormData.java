@@ -3,6 +3,7 @@
 package com.yugabyte.yw.forms;
 
 import com.yugabyte.yw.common.alerts.SmtpData;
+import io.swagger.annotations.ApiModelProperty;
 import java.util.Map;
 import play.data.validation.Constraints;
 
@@ -14,14 +15,16 @@ public class CustomerRegisterFormData {
 
   @Constraints.Required() @Constraints.Email private String email;
 
-  private String password;
+  @Constraints.Required() private String password;
 
+  @ApiModelProperty(value = "UI_ONLY", hidden = true)
   private String confirmPassword;
 
   @Constraints.Required()
   @Constraints.MinLength(3)
   private String name;
 
+  @ApiModelProperty(value = "UI_ONLY", hidden = true)
   private Map features;
 
   public String getCode() {
@@ -112,12 +115,18 @@ public class CustomerRegisterFormData {
     public long activeAlertNotificationIntervalMs = 0;
   }
 
+  // TODO: Remove usages in UI and purge the field
+  @ApiModelProperty(value = "UNUSED", hidden = true)
   public AlertingData alertingData;
 
+  // TODO: Remove usages in UI and purge the field
+  @ApiModelProperty(value = "UNUSED", hidden = true)
   public SmtpData smtpData;
 
   @Constraints.Pattern(
       message = "Must be one of NONE, LOW, MEDIUM, HIGH",
       value = "\\b(?:NONE|LOW|MEDIUM|HIGH)\\b")
+  // TODO: Remove usages in UI and purge the field
+  @ApiModelProperty(value = "UNUSED", hidden = true)
   public String callhomeLevel = "MEDIUM";
 }
