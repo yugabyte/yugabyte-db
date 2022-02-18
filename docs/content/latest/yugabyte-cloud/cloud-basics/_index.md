@@ -29,7 +29,7 @@ Before deploying a cluster, you need to decide on the following:
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="create-clusters-overview/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/quick_start/create_cluster.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/introduction/benefits.png" aria-hidden="true" />
         <div class="title">Plan your cluster</div>
       </div>
       <div class="body">

@@ -152,4 +152,18 @@ For more advanced applications, including Spring and GraphQL examples, refer to 
   </a>
   </div>
 
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+  <a class="section-link icon-offset" href="cloud-ysql-php/">
+    <div class="head">
+      <div class="icon">
+        <i class="icon-php"></i>
+      </div>
+      <div class="title">PHP</div>
+    </div>
+    <div class="body">
+      PHP application that connects to a YugabyteDB cluster using the php-pgsql driver.
+    </div>
+  </a>
+  </div>
+
 </div>
