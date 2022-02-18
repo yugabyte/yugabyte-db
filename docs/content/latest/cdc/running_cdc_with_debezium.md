@@ -93,32 +93,27 @@ Alternatively, if you want to build the connector yourself, follow these steps:
     ```bash
     mvn clean verify -Dquick
     ```
-5. Now you need to copy a few jar files to the `custom-connector` directory you created:
+5. You now need to copy the jar file for the Debezium connector
     ```bash
-    cp debezium-core/target/debezium-core-1.7.0-SNAPSHOT.jar ~/custom-connector/
-    cp debezium-api/target/debezium-api-1.7.0-SNAPSHOT.jar ~/custom-connector/
-    cp debezium-connector-yugabytedb2/target/debezium-connector-yugabytedb2-1.7.0-SNAPSHOT.jar ~/custom-conector/
-    ```
-    You also need to get the Kafka Connect JDBC jar inside the custom-connector:
-    ```bash
-    # Navigate to custom-connector
-    cd ~/custom-connector
+    cp debezium-connector-yugabytedb2/target/debezium-connector-yugabytedb2-1.7.0-SNAPSHOT-jar-with-dependencies.jar ~/custom-connector/
     
-    wget https://packages.confluent.io/maven/io/confluent/kafka-connect-jdbc/10.2.5/kafka-connect-jdbc-10.2.5.jar
+    # Navigate to custom-connector directory
+    cd ~/custom-connector
     ```
 6. Create a `Dockerfile` with the following contents:
     ```Dockerfile
     FROM debezium/connect:1.6
     ENV KAFKA_CONNECT_YB_DIR=$KAFKA_CONNECT_PLUGINS_DIR/debezium-connector-yugabytedb
-    
+
     # Deploy Kafka Connect yugabytedb
     RUN mkdir $KAFKA_CONNECT_YB_DIR && cd $KAFKA_CONNECT_YB_DIR
 
-    COPY debezium-connector-yugabytedb2-1.7.0-SNAPSHOT.jar $KAFKA_CONNECT_PLUGINS_DIR/debezium-connector-yugabytedb/
-    COPY debezium-core-1.7.0-SNAPSHOT.jar $KAFKA_CONNECT_PLUGINS_DIR/debezium-connector-yugabytedb/
-    COPY debezium-api-1.7.0-SNAPSHOT.jar $KAFKA_CONNECT_PLUGINS_DIR/debezium-connector-yugabytedb/
-    COPY yb-client-0.8.15-SNAPSHOT-jar-with-dependencies.jar $KAFKA_CONNECT_PLUGINS_DIR/debezium-connector-yugabytedb/
-    COPY kafka-connect-jdbc-10.2.5.jar $KAFKA_CONNECT_PLUGINS_DIR/debezium-connector-yugabytedb/
+    COPY debezium-connector-yugabytedb2-1.7.0-SNAPSHOT-jar-with-dependencies.jar \
+    $KAFKA_CONNECT_PLUGINS_DIR/debezium-connector-yugabytedb/
+
+    ADD https://packages.confluent.io/maven/io/confluent/kafka-connect-jdbc/10.2.5/kafka-connect-jdbc-10.2.5.jar \ 
+    $KAFKA_CONNECT_PLUGINS_DIR/debezium-connector-yugabytedb
+
     ```
 7. Build the connector:
     ```bash
