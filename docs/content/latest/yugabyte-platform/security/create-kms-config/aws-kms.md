@@ -24,13 +24,6 @@ showAsideToc: true
   </li>
 
   <li >
-    <a href="{{< relref "./equinix-smartkey.md" >}}" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      Equinix SmartKey
-    </a>
-  </li>
-
-  <li >
     <a href="{{< relref "./hashicorp-kms.md" >}}" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       HashiCorp Vault
@@ -56,7 +49,7 @@ The AWS user associated with a KMS configuration requires the following minimum 
 
 You can create a KMS configuration that uses AWS KMS as follows:
 
-1. Open the Yugabyte Platform console and navigate to **Configs > Security > Encryption At Rest**. A list of existing configurations appears.
+1. Use the Yugabyte Platform UI to navigate to **Configs > Security > Encryption At Rest** to access the list of existing configurations.
 
 2. Click **Create New Config**.
 
