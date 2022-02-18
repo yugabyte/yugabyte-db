@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "yb/consensus/consensus_fwd.h"
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/ts_descriptor.h"
 
@@ -28,6 +29,8 @@ namespace yb {
 namespace master {
 
 using ZoneToDescMap = std::unordered_map<string, TSDescriptorVector>;
+
+struct Comparator;
 
 class CatalogManagerUtil {
  public:
@@ -99,10 +102,67 @@ class CatalogManagerUtil {
   // Validate placement information if passed.
   static CHECKED_STATUS IsPlacementInfoValid(const PlacementInfoPB& placement_info);
 
+  template<class LoadState>
+  static void FillTableLoadState(const scoped_refptr<TableInfo>& table_info, LoadState* state) {
+    auto tablets = table_info->GetTablets(IncludeInactive::kTrue);
+
+    for (const auto& tablet : tablets) {
+      // Ignore if tablet is not running.
+      {
+        auto tablet_lock = tablet->LockForRead();
+        if (!tablet_lock->is_running()) {
+          continue;
+        }
+      }
+      auto replica_locs = tablet->GetReplicaLocations();
+
+      for (const auto& loc : *replica_locs) {
+        // Ignore replica if not present in the tserver list passed.
+        if (state->per_ts_load_.count(loc.first) == 0) {
+          continue;
+        }
+        // Account for this load.
+        state->per_ts_load_[loc.first]++;
+      }
+    }
+  }
+
  private:
   CatalogManagerUtil();
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManagerUtil);
+};
+
+class CMGlobalLoadState {
+ public:
+  uint32_t GetGlobalLoad(const TabletServerId& id) {
+    return per_ts_load_[id];
+  }
+  std::unordered_map<TabletServerId, uint32_t> per_ts_load_;
+};
+
+class CMPerTableLoadState {
+ public:
+  explicit CMPerTableLoadState(CMGlobalLoadState* global_state)
+    : global_load_state_(global_state) {}
+
+  bool CompareLoads(const TabletServerId& ts1, const TabletServerId& ts2);
+
+  void SortLoad();
+
+  std::vector<TabletServerId> sorted_load_;
+  std::unordered_map<TabletServerId, uint32_t> per_ts_load_;
+  CMGlobalLoadState* global_load_state_;
+};
+
+struct Comparator {
+  explicit Comparator(CMPerTableLoadState* state) : state_(state) {}
+
+  bool operator()(const TabletServerId& id1, const TabletServerId& id2) {
+    return state_->CompareLoads(id1, id2);
+  }
+
+  CMPerTableLoadState* state_;
 };
 
 } // namespace master
