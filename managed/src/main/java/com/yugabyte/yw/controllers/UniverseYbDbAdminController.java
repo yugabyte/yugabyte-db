@@ -19,18 +19,18 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.controllers.handlers.UniverseYbDbAdminHandler;
 import com.yugabyte.yw.forms.DatabaseSecurityFormData;
 import com.yugabyte.yw.forms.DatabaseUserFormData;
-import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import play.data.Form;
 import play.libs.Json;
 import play.mvc.Result;
@@ -39,8 +39,6 @@ import play.mvc.Result;
     value = "Universe database management",
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class UniverseYbDbAdminController extends AuthenticatedController {
-  private static final Logger LOG = LoggerFactory.getLogger(UniverseYbDbAdminController.class);
-
   @Inject private UniverseYbDbAdminHandler universeYbDbAdminHandler;
 
   @ApiOperation(
@@ -94,6 +92,12 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
       notes = "Runs a YSQL query. Only valid when the platform is running in `OSS` mode.",
       nickname = "runYsqlQueryUniverse",
       response = Object.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "RunQueryFormData",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.RunQueryFormData",
+          required = true))
   public Result runQuery(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);

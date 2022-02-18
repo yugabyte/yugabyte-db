@@ -2528,6 +2528,24 @@
       "required" : [ "code", "name" ],
       "type" : "object"
     },
+    "CustomerRegisterFormData" : {
+      "properties" : {
+        "code" : {
+          "type" : "string"
+        },
+        "email" : {
+          "type" : "string"
+        },
+        "name" : {
+          "type" : "string"
+        },
+        "password" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "code", "email", "name", "password" ],
+      "type" : "object"
+    },
     "CustomerTaskData" : {
       "description" : "Customer task data",
       "properties" : {
@@ -4286,6 +4304,22 @@
         }
       },
       "required" : [ "universeUUID" ],
+      "type" : "object"
+    },
+    "RunQueryFormData" : {
+      "properties" : {
+        "db_name" : {
+          "type" : "string"
+        },
+        "query" : {
+          "type" : "string"
+        },
+        "tableType" : {
+          "enum" : [ "YQL_TABLE_TYPE", "REDIS_TABLE_TYPE", "PGSQL_TABLE_TYPE", "TRANSACTION_STATUS_TABLE_TYPE" ],
+          "type" : "string"
+        }
+      },
+      "required" : [ "db_name", "query", "tableType" ],
       "type" : "object"
     },
     "RuntimeConfigData" : {
@@ -10721,6 +10755,13 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "body",
+          "name" : "RunQueryFormData",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/RunQueryFormData"
+          }
         } ],
         "responses" : {
           "200" : {
@@ -12323,6 +12364,30 @@
         } ],
         "summary" : "Get Prometheus metrics",
         "tags" : [ "Metrics" ]
+      }
+    },
+    "/api/v1/register" : {
+      "post" : {
+        "description" : "Creates new customer and user",
+        "operationId" : "registerCustomer",
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "CustomerRegisterFormData",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/CustomerRegisterFormData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/SessionInfo"
+            }
+          }
+        },
+        "summary" : "Register a customer",
+        "tags" : [ "Session management" ]
       }
     },
     "/api/v1/runtime_config/mutable_keys" : {
