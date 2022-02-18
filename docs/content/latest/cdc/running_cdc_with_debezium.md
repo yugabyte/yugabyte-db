@@ -83,6 +83,9 @@ Alternatively, if you want to build the connector yourself, follow these steps:
     ```bash
     git clone git@github.com:yugabyte/debezium.git
     
+    # Checkout to the branch having the connector
+    git checkout final-connector-ybdb
+    
     # Navigate to the debezium repo
     cd debezium
     ```
