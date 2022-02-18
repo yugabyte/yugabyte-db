@@ -322,8 +322,8 @@ public class MultiTableBackup extends UniverseTaskBase {
 
       if (params().actionType == ActionType.CREATE) {
         BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
-        metricService.setStatusMetric(
-            buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe), t.getMessage());
+        metricService.setFailureStatusMetric(
+            buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
       }
       // Run an unlock in case the task failed before getting to the unlock. It is okay if it
       // errors out.
