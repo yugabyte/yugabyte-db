@@ -13,11 +13,13 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Applications connect to and interact with YugabyteDB using API client libraries, also called client drivers. Before you can connect an application, you need to install the correct driver. For information on available drivers, refer to [Build an application](../../../quick-start/build-apps).
+Applications connect to and interact with YugabyteDB using API client libraries, also called client drivers. Before you can connect an application, you need to install the correct driver.
+
+Yugabyte Cloud clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters.
+
+For examples of applications that connect to Yugabyte Cloud using common drivers, refer to [Build an application](../../cloud-quickstart/cloud-build-apps).
 
 For examples of connecting applications to Yugabyte Cloud, refer to [Develop](../../cloud-develop/).
-
-Clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters.
 
 {{< note title="Note" >}}
 
@@ -104,7 +106,7 @@ To run the sample application:
 1. Run the command in docker from your computer, replacing `<path to CA cert>`, `<db user>`, and `<db password>` with the path to the CA certificate for the cluster and your database credentials.
 -->
 
-## Next steps
+## Learn more
 
 - [Add database users](../../cloud-secure-clusters/add-users/)
-- [Develop applications](../../../develop/)
+- [Build an application](../../cloud-quickstart/cloud-build-apps)

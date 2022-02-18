@@ -183,7 +183,7 @@ For a tutorial on building a sample PHP application with php-pgsql, see [Build a
 
 To enable PostgreSQL support using php-pgsql, see [Installing/Configuring](https://www.php.net/manual/en/pgsql.setup.php) in the PHP documentation.
 
-Homebrew users on macOS can install PHP using `brew install php`; the php-pgsql driver is installed automatically. Homebrew users of earlier PHP versions can install the driver using the `brew install phpXX-pdo-pgsql` command, where XX is the PHP version.
+Homebrew users on macOS can install PHP using `brew install php`; the php-pgsql driver is installed automatically.
 
 Ubuntu users can install the driver using the `sudo apt-get install php-pgsql` command.
 

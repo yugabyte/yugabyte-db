@@ -17,9 +17,9 @@ The following tutorial shows a small [PHP application](https://github.com/yugaby
 
 ## Prerequisites
 
-- PHP runtime. The sample application was created using PHP 8.1 but should work with earlier and later versions. Homebrew users on macOS can install PHP using `brew install php`; the php-pgsql driver is installed automatically.
-- [php-pgsql driver](https://www.php.net/manual/en/pgsql.setup.php).
-  - Homebrew users of earlier PHP versions can install the driver using the `brew install phpXX-pdo-pgsql` command, where XX is the PHP version.
+- PHP runtime. The sample application was created using PHP 8.1 but should work with earlier and later versions. Homebrew users on macOS can install PHP using `brew install php`.
+- [php-pgsql driver](../../../../reference/drivers/ysql-client-drivers/#php-pgsql).
+  - On macOS, Homebrew automatically installs the driver with `brew install php`.
   - Ubuntu users can install the driver using the `sudo apt-get install php-pgsql` command.
   - CentOS users can install the driver using the `sudo yum install php-pgsql` command.
 
@@ -43,16 +43,16 @@ The application needs to establish a connection to the YugabyteDB cluster. To do
 
 1. Open the `sample-app.php` file.
 
-2. Set the following configuration-related constants:
+1. Set the following configuration-related constants:
 
     - **HOST** - the host name of your YugabyteDB cluster. To obtain a Yugabyte Cloud cluster host name, sign in to Yugabyte Cloud, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Network Access**.
-    - **PORT** - the port number that will be used by the driver (the default YugabyteDB YSQL port is 5433).
-    - **DB_NAME** - the name of the database you are connecting to (the default database is named `yugabyte`).
+    - **PORT** - the port number for the driver to use; this is already set to the default YugabyteDB YSQL port (5433).
+    - **DB_NAME** - the name of the database to connect to (the default database is named `yugabyte`).
     - **USER** and **PASSWORD** - the username and password for the YugabyteDB database. If you are using the credentials you created when deploying a cluster in Yugabyte Cloud, these can be found in the credentials file you downloaded.
     - **SSL_MODE** - the SSL mode to use. Yugabyte Cloud [requires SSL connections](../../../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql); use `verify-full`.
     - **SSL_ROOT_CERT** - the full path to the Yugabyte Cloud cluster CA certificate.
 
-3. Save the file.
+1. Save the file.
 
 ## Run the application
 
@@ -133,15 +133,10 @@ The `transfer_money_between_accounts` method updates your data consistently with
 ```php
 try {
     $conn->beginTransaction();
-
     $conn->exec("UPDATE DemoAccount SET balance = balance - " . $amount . " WHERE name = 'Jessica'");
-    
     $conn->exec("UPDATE DemoAccount SET balance = balance + " . $amount . " WHERE name = 'John'");
-
     $conn->commit();
-
     print ">>>> Transferred " . $amount . " between accounts\n";
-
 } catch (PDOException $e) {
     if ($e->getCode() == '40001') {
         print "The operation is aborted due to a concurrent transaction that is modifying the same set of rows.
