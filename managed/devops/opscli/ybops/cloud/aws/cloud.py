@@ -433,7 +433,8 @@ class AwsCloud(AbstractCloud):
         create_instance(args)
 
     def delete_instance(self, region, instance_id, has_elastic_ip=False):
-        logging.info("Deleting AWS instance {} in region {}".format(instance_id, region))
+        logging.info("[app] Deleting AWS instance {} in region {}".format(
+            instance_id, region))
         ec2 = boto3.resource('ec2', region)
         instance = ec2.Instance(instance_id)
         if has_elastic_ip:
@@ -449,7 +450,8 @@ class AwsCloud(AbstractCloud):
                     AllocationId=elastic_ip["AllocationId"]
                 )
             logging.info(
-                "Deleted elastic ip at {} from VM {}".format(elastic_ip["PublicIp"], instance_id))
+                "[app] Deleted elastic ip at {} from VM {}".format(
+                    elastic_ip["PublicIp"], instance_id))
         instance.terminate()
         instance.wait_until_terminated()
 

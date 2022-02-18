@@ -54,6 +54,7 @@ class AbstractMethod(object):
         self.parser = base_command.parser
         # Set this to False if the respective method does not need credential validation.
         self.need_validation = True
+        self.error_handler = None
 
     def prepare(self):
         """Hook for setting up parser options.
