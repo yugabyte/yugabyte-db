@@ -6,6 +6,7 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.Universe;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Date;
@@ -31,11 +32,15 @@ class UniverseLogsComponent implements SupportBundleComponent {
       throws IOException {
     List<NodeDetails> nodes = universe.getNodes().stream().collect(Collectors.toList());
 
+    String destDir = bundlePath.toString() + "/" + "universe_logs";
+    Path destPath = Paths.get(destDir);
+    Files.createDirectories(destPath);
+
     // Downloads the master/logs and tserver/logs from each node in the universe into the bundle
     // path
     for (NodeDetails node : nodes) {
       String nodeName = node.getNodeName();
-      Path nodeTargetFile = Paths.get(bundlePath.toString() + "/" + nodeName + ".tar.gz");
+      Path nodeTargetFile = Paths.get(destDir, nodeName + ".tar.gz");
       log.debug("Creating node target file {}", nodeTargetFile.toString());
       Path targetFile =
           universeInfoHandler.downloadNodeLogs(customer, universe, node, nodeTargetFile);
@@ -47,5 +52,6 @@ class UniverseLogsComponent implements SupportBundleComponent {
       Customer customer, Universe universe, Path bundlePath, Date startDate, Date endDate)
       throws IOException, ParseException {
     // To fill
+    this.downloadComponent(customer, universe, bundlePath);
   }
 }

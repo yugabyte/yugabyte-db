@@ -16,6 +16,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
@@ -72,7 +73,7 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     try {
       certInfo =
           ModelFactory.createCertificateInfo(
-              defaultCustomer.getUuid(), caFile, CertificateInfo.Type.SelfSigned);
+              defaultCustomer.getUuid(), caFile, CertConfigType.SelfSigned);
     } catch (Exception e) {
 
     }

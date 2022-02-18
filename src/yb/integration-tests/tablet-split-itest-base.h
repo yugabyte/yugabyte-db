@@ -79,7 +79,12 @@ class TabletSplitITestBase : public client::TransactionTestBase<MiniClusterType>
   // Writes `num_rows` rows into the specified table using `CreateInsertRequest`.
   // Returns a pair with min and max hash code written.
   Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>> WriteRows(
-      client::TableHandle* table, uint32_t num_rows = 2000, int32_t start_key = 1);
+      client::TableHandle* table, uint32_t num_rows, int32_t start_key, int32_t start_value);
+
+  Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>> WriteRows(
+      client::TableHandle* table, uint32_t num_rows = 2000, int32_t start_key = 1) {
+    return WriteRows(table, num_rows, start_key, start_key);
+  }
 
   Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>> WriteRows(
       uint32_t num_rows = 2000, int32_t start_key = 1) {

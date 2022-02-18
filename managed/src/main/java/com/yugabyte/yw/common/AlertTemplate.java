@@ -639,6 +639,23 @@ public enum AlertTemplate {
           .defaultThresholdCondition(Condition.LESS_THAN)
           .build()),
 
+  ENCRYPTION_AT_REST_CONFIG_EXPIRY(
+      "Encryption At Rest config expiry",
+      "Encryption At Rest config expires soon",
+      "ybp_universe_encryption_key_expiry_days"
+          + "{universe_uuid=\"__universeUuid__\"} "
+          + "{{ query_condition }} {{ query_threshold }}",
+      "Encryption At Rest config for universe '{{ $labels.source_name }}'"
+          + " will expire in {{ $value | printf \\\"%.0f\\\" }} days.",
+      15,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      TargetType.UNIVERSE,
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, "yb.alert.max_enc_at_rest_config_expiry_days_severe")
+          .defaultThresholdUnit(DAY)
+          .defaultThresholdCondition(Condition.LESS_THAN)
+          .build()),
+
   YSQL_OP_AVG_LATENCY(
       "YSQL average latency is high",
       "Average latency of YSQL operations is above threshold",
