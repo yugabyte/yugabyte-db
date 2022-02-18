@@ -81,9 +81,9 @@ DEFINE_uint64(rocksdb_universal_compaction_always_include_size_threshold, 64_MB,
              "Always include files of smaller or equal size in a compaction.");
 DEFINE_int32(rocksdb_universal_compaction_min_merge_width, 4,
              "The minimum number of files in a single compaction run.");
-DEFINE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec, 256_MB,
+DEFINE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec, 1_GB,
              "Use to control write rate of flush and compaction.");
-DEFINE_string(rocksdb_compact_flush_rate_limit_sharing_mode, "none",
+DEFINE_string(rocksdb_compact_flush_rate_limit_sharing_mode, "tserver",
               "Allows to control rate limit sharing/calculation across RocksDB instances\n"
               "  tserver - rate limit is shared across all RocksDB instances"
               " at tabset server level\n"
