@@ -59,7 +59,7 @@ The following is an architecture diagram:
 This topology involves 1 source cluster sending data to many sink clusters. This is currently not officially supported (TBD GH issue).
 
 ### Consolidation
-This topology involves many source clusters sending data to one central sink cluster. THis is currently not officially supported (TBD GH issue).
+This topology involves many source clusters sending data to one central sink cluster. This is currently not officially supported (TBD GH issue).
 
 ### More complex topologies
 Outside of our traditional 1:1 topology and the above 1:N and N:1, there are many other sensible configurations one might want to setup this replication feature with. However, none of these are currently officially supported. Some examples
@@ -112,7 +112,8 @@ Since 2DC replication is done asynchronously and by replicating the WAL (and the
 - When bootstrapping sink clusters, tables should be added in batches, until [#10065](https://github.com/yugabyte/yugabyte-db/issues/10065) is resolved.
 
 #### Kubernetes
-- Technically replication can be setup with kubernetes deployed universes. However, the source and sink must be able to communicate by directly referencing the pods in the other universe. In practice, this either means that the two universes must be part of the same kubernetes cluster, or that two kubernetes clusters must have DNS and routing properly setup amongst themselves. (TBH GH issue with more details?)
+- Technically replication can be setup with kubernetes deployed universes. However, the source and sink must be able to communicate by directly referencing the pods in the other universe. In practice, this either means that the two universes must be part of the same kubernetes cluster, or that two kubernetes clusters must have DNS and routing properly setup amongst themselves.
+- Being able to have two YugabyteDB clusters, each in their own standalone kubernetes cluster, talking to eachother via a LoadBalancer, is not yet supported [#2422](https://github.com/yugabyte/yugabyte-db/issues/2422).
 
 ### Cross-feature interactions
 
@@ -121,7 +122,7 @@ Since 2DC replication is done asynchronously and by replicating the WAL (and the
 - RPC compression is supported. Note, both clusters must be on a version that supports compression, before a compression algorithm is turned on.
 - Encryption at rest is supported. Note, the clusters can technically use different KMS configurations. However, for bootstrapping a sink cluster, we rely on the backup/restore flow. As such, we inherit a limiation from that, which requires that the universe being restored has at least access to the same KMS as the one in which the backup was taken. This means both the source and the sink must have access to the same KMS configurations.
 - YSQL colocation is supported.
-- YSQL geo-partitioning is supposed. Note, you must configure replication on all new partitions manually, as we do not replicate DDL changes automatically.
+- YSQL geo-partitioning is supported. Note, you must configure replication on all new partitions manually, as we do not replicate DDL changes automatically.
 
 #### Not (yet) supported
 - Tablegroups are not yet supported [#11157](https://github.com/yugabyte/yugabyte-db/issues/11157).
