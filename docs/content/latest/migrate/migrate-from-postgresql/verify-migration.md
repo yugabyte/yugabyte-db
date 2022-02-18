@@ -12,7 +12,6 @@ isTocNested: true
 showAsideToc: true
 ---
 
-
 Here are some things that can be verified to ensure that the migration was successful.
 
 ## Verify database objects
@@ -22,12 +21,12 @@ Here are some things that can be verified to ensure that the migration was succe
 
 ## Verify row counts for tables
 
-For tables with 1 million rows or less, run a `COUNT(*)` command to verify that the total number of rows match between the source database and YugabyteDB. This can be done as shown below using a PLPGSQL function.
+Run a `COUNT(*)` command to verify that the total number of rows match between the source database and YugabyteDB. This can be done as shown below using a PLPGSQL function.
 
-**Step 1.** First create the following function to print out the number of rows in a single table.
+**Step 1.** Create the following function to print the number of rows in a single table.
 
 ```sql
-create function 
+create function
 cnt_rows(schema text, tablename text) returns integer
 as
 $body$
@@ -43,28 +42,24 @@ $body$
 language plpgsql;
 ```
 
-**Step 2:** Run the following command to print sizes of all tables in the database.
+**Step 2.** Run the following command to print the sizes of all tables in the database.
 
 ```sql
 SELECT cnt_rows(table_schema, table_name)
     FROM information_schema.tables
-    WHERE table_schema NOT IN ('pg_catalog', 'information_schema') 
+    WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
     AND table_type='BASE TABLE'
     ORDER BY 3 DESC;
 ```
-
-{{< note title="Note" >}}
-It is currently not recommended to run a `COUNT(*)` query on large tables with more than 1 million rows. In such cases, it is recommended to use the ysql_dump tool to export the rows of the table.
-{{< /note >}}
 
 ### Example
 
 Below is an example illustrating the output of running the above on the Northwind database.
 
-```
+```output
 example=# SELECT cnt_rows(table_schema, table_name)
     FROM information_schema.tables
-    WHERE table_schema NOT IN ('pg_catalog', 'information_schema') 
+    WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
     AND table_type='BASE TABLE'
     ORDER BY 3 DESC;
 
@@ -86,5 +81,3 @@ example=# SELECT cnt_rows(table_schema, table_name)
  public       | customer_demographics  |        0
 (14 rows)
 ```
-
-
