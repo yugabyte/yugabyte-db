@@ -901,19 +901,17 @@ class Schema {
     return Equals(other, ColumnSchema::CompareByDefault);
   }
 
-  // Return true if the schemas have exactly the same set of columns
-  // and respective types, and equivalent properties.
-  // For example, one table property could have different property
-  // retain_delete_markers_ but still be equivalent.
-  bool EquivalentForDataCopy(const Schema& other) const {
-    if (this == &other) return true;
-    if (this->num_key_columns_ != other.num_key_columns_) return false;
-    if (!this->table_properties_.Equivalent(other.table_properties_)) return false;
-    if (this->cols_.size() != other.cols_.size()) return false;
+  // Return true if this schema has exactly the same set of columns and respective types, and
+  // equivalent properties as the source.  The source must be an equivalent subset of this object.
+  bool EquivalentForDataCopy(const Schema& source) const {
+    if (this == &source) return true;
+    if (this->num_key_columns_ != source.num_key_columns_) return false;
+    if (!this->table_properties_.Equivalent(source.table_properties_)) return false;
+    if (this->cols_.size() < source.cols_.size()) return false;
 
-    for (size_t i = 0; i < other.cols_.size(); i++) {
-      if (!this->cols_[i].Equals(other.cols_[i])) return false;
-      if (this->column_id(i) != other.column_id(i)) return false;
+    for (size_t i = 0; i < source.cols_.size(); i++) {
+      if (!this->cols_[i].Equals(source.cols_[i])) return false;
+      if (this->column_id(i) != source.column_id(i)) return false;
     }
 
     return true;

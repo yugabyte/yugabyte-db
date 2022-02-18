@@ -22,6 +22,7 @@ import "yb/common/wire_protocol.proto";
 import "yb/master/catalog_entity_info.proto";
 import "yb/master/master_types.proto";
 import "yb/rpc/service.proto";
+import "yb/tablet/operations.proto";
 
 message CDCStreamInfoPB {
   optional bytes stream_id = 1;
@@ -279,6 +280,18 @@ message SetupNSUniverseReplicationResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message UpdateConsumerOnProducerMetadataRequestPB {
+  optional string producer_id = 1;
+  optional string stream_id = 2;
+  optional string consumer_tablet_id = 3;
+  optional tablet.ChangeMetadataRequestPB producer_change_metadata_request = 4;
+}
+
+message UpdateConsumerOnProducerMetadataResponsePB {
+  optional MasterErrorPB error = 1;
+  optional bool should_wait = 2 [default = true];
+}
+
 service MasterReplication {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -316,5 +329,7 @@ service MasterReplication {
 
   rpc UpdateConsumerOnProducerSplit(UpdateConsumerOnProducerSplitRequestPB)
       returns (UpdateConsumerOnProducerSplitResponsePB);
+  rpc UpdateConsumerOnProducerMetadata(UpdateConsumerOnProducerMetadataRequestPB)
+      returns (UpdateConsumerOnProducerMetadataResponsePB);
 
 }
