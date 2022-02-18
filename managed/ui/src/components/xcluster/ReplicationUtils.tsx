@@ -171,7 +171,7 @@ export const getMasterNodeAddress = (nodeDetailsSet: Array<any>) => {
 };
 
 export const convertToLocalTime = (time:string, timezone:string) => {
-  return (timezone ?  (moment.utc(time) as any).tz(timezone): moment.utc(time)).format('YYYY-MM-DD H:mm:ss')
+  return (timezone ?  (moment.utc(time) as any).tz(timezone): moment.utc(time).local()).format('YYYY-MM-DD H:mm:ss')
 }
 
 export const formatBytes = function (sizeInBytes:any) {
