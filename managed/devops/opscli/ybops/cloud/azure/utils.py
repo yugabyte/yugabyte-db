@@ -445,60 +445,102 @@ class AzureCloudAdmin():
 
         return creation_result.result().id
 
-    def destroy_instance(self, vm_name, host_info):
-        if not host_info:
-            try:
-                logging.info("Could not find VM {}. Deleting network interface and public IP."
-                             .format(vm_name))
-                nic_name = self.get_nic_name(vm_name)
-                ip_name = self.get_public_ip_name(vm_name)
-                nicdel = self.network_client.network_interfaces.delete(RESOURCE_GROUP, nic_name)
-                nicdel.wait()
-                ipdel = self.network_client.public_ip_addresses.delete(RESOURCE_GROUP, ip_name)
-                ipdel.wait()
-                logging.info("Sucessfully deleted related resources from {}".format(vm_name))
-                return
-            except CloudError:
-                logging.error("Error deleting Network Interface or Public IP when {} not found"
-                              .format(vm_name))
+    # The method is idempotent. Any failure raises exception such that it can be retried.
+    def destroy_orphaned_resources(self, vm_name, node_uuid):
+        if not node_uuid or not vm_name:
+            logging.error("[app] Params vm_name and node_uuid must be passed")
+            return
+        logging.info("[app] Destroying orphaned resources for {}".format(vm_name))
 
-        # Since we have host_info, we know the virtual machine exists
+        disk_dels = {}
+        # TODO: filter does not work.
+        disk_filter_param = "substringof('{}', name)".format(vm_name)
+        disk_list = self.compute_client.disks.list_by_resource_group(
+            RESOURCE_GROUP, filter=disk_filter_param)
+        if disk_list:
+            for disk in disk_list:
+                if (disk.name.startswith(vm_name) and disk.tags
+                        and disk.tags.get('node-uuid') == node_uuid):
+                    logging.info("[app] Deleting disk {}".format(disk.name))
+                    disk_del = self.compute_client.disks.delete(RESOURCE_GROUP, disk.name)
+                    disk_dels[disk.name] = disk_del
+
+        nic_name = self.get_nic_name(vm_name)
+        ip_name = self.get_public_ip_name(vm_name)
+        try:
+            nic_info = self.network_client.network_interfaces.get(RESOURCE_GROUP, nic_name)
+            if nic_info.tags and nic_info.tags.get('node-uuid') == node_uuid:
+                logging.info("[app] Deleted nic {}".format(nic_name))
+                nic_del = self.network_client.network_interfaces.delete(RESOURCE_GROUP, nic_name)
+                nic_del.wait()
+                logging.info("[app] Deleted nic {}".format(nic_name))
+        except CloudError as e:
+            if e.error and e.error.error == 'ResourceNotFound':
+                logging.info("[app] Resource nic {} is not found".format(nic_name))
+            else:
+                raise e
+        try:
+            ip_addr = self.network_client.public_ip_addresses.get(RESOURCE_GROUP, ip_name)
+            if ip_addr and ip_addr.tags and ip_addr.tags.get('node-uuid') == node_uuid:
+                logging.info("[app] Deleting ip {}".format(ip_name))
+                ip_del = self.network_client.public_ip_addresses.delete(RESOURCE_GROUP, ip_name)
+                ip_del.wait()
+                logging.info("[app] Deleted ip {}".format(ip_name))
+        except CloudError as e:
+            if e.error and e.error.error == 'ResourceNotFound':
+                logging.info("[app] Resource ip {} is not found".format(ip_addr))
+            else:
+                raise e
+
+        for disk_name, disk_del in disk_dels.items():
+            disk_del.wait()
+            logging.info("[app] Deleted disk {}".format(disk_name))
+
+        logging.info("[app] Sucessfully destroyed orphaned resources for {}".format(vm_name))
+
+    # The method is idempotent. Any failure raises exception such that it can be retried.
+    def destroy_instance(self, vm_name, node_uuid):
         vm = self.compute_client.virtual_machines.get(RESOURCE_GROUP, vm_name)
+        if not vm:
+            logging.info("[app] VM {} is not found".format(vm_name))
+            self.destroy_orphaned_resources(vm_name, node_uuid)
+            return
+        # Delete the VM first. Any subsequent failure will invoke the orphaned
+        # resource deletion.
+        logging.info("[app] Deleting vm {}".format(vm_name))
+        vmdel = self.compute_client.virtual_machines.delete(RESOURCE_GROUP, vm_name)
+        vmdel.wait()
+        logging.info("[app] Deleted vm {}".format(vm_name))
 
-        nic_name = host_info.get("nic", None)
-        public_ip_name = host_info.get("ip_name", None)
+        disk_dels = {}
         os_disk_name = vm.storage_profile.os_disk.name
         data_disks = vm.storage_profile.data_disks
-
-        logging.debug("About to delete vm {}".format(vm_name))
-        delete_op1 = self.compute_client.virtual_machines.delete(RESOURCE_GROUP, vm_name)
-        delete_op1.wait()
-
-        diskdels = []
         for disk in data_disks:
-            logging.debug("About to delete disk {}".format(disk.name))
-            disk_delop = self.compute_client.disks.delete(RESOURCE_GROUP, disk.name)
-            diskdels.append(disk_delop)
+            logging.info("[app] Deleting disk {}".format(disk.name))
+            disk_del = self.compute_client.disks.delete(RESOURCE_GROUP, disk.name)
+            disk_dels[disk.name] = disk_del
 
-        logging.debug("About to delete os disk {}".format(os_disk_name))
-        disk_delop = self.compute_client.disks.delete(RESOURCE_GROUP, os_disk_name)
-        diskdels.append(disk_delop)
+        logging.info("[app] Deleting os disk {}".format(os_disk_name))
+        disk_del = self.compute_client.disks.delete(RESOURCE_GROUP, os_disk_name)
+        disk_dels[os_disk_name] = disk_del
 
-        logging.debug("About to delete network interface {}".format(nic_name))
-        delete_op2 = self.network_client.network_interfaces.delete(RESOURCE_GROUP, nic_name)
-        delete_op2.wait()
+        nic_name = self.get_nic_name(vm_name)
+        ip_name = self.get_public_ip_name(vm_name)
+        logging.info("[app] Deleting nic {}".format(nic_name))
+        nic_del = self.network_client.network_interfaces.delete(RESOURCE_GROUP, nic_name)
+        nic_del.wait()
+        logging.info("[app] Deleted nic {}".format(nic_name))
 
-        logging.debug("About to delete public ip {}".format(public_ip_name))
-        if (public_ip_name):
-            delete_op3 = self.network_client.public_ip_addresses.delete(RESOURCE_GROUP,
-                                                                        public_ip_name)
-            delete_op3.wait()
+        logging.info("[app] Deleting ip {}".format(ip_name))
+        ip_del = self.network_client.public_ip_addresses.delete(RESOURCE_GROUP, ip_name)
+        ip_del.wait()
+        logging.info("[app] Deleted ip {}".format(ip_name))
 
-        for diskdel in diskdels:
-            diskdel.wait()
+        for disk_name, disk_del in disk_dels.items():
+            disk_del.wait()
+            logging.info("[app] Deleted disk {}".format(disk_name))
 
-        logging.info("Sucessfully deleted {} and all related resources".format(vm_name))
-        return
+        logging.info("[app] Sucessfully destroyed instance {}".format(vm_name))
 
     def get_subnet_id(self, vnet, subnet):
         return SUBNET_ID_FORMAT_STRING.format(
