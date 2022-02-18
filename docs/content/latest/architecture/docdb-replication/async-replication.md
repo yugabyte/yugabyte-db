@@ -56,17 +56,17 @@ The following is an architecture diagram:
 ## Not (yet) supported deployment scenarios
 
 ### Broadcast
-This topology involves 1 source cluster sending data to many sink clusters. This is currently not officially supported (TBD GH issue).
+This topology involves 1 source cluster sending data to many sink clusters. This is currently not officially supported [#11535](https://github.com/yugabyte/yugabyte-db/issues/11535).
 
 ### Consolidation
-This topology involves many source clusters sending data to one central sink cluster. This is currently not officially supported (TBD GH issue).
+This topology involves many source clusters sending data to one central sink cluster. This is currently not officially supported [#11535](https://github.com/yugabyte/yugabyte-db/issues/11535).
 
 ### More complex topologies
 Outside of our traditional 1:1 topology and the above 1:N and N:1, there are many other sensible configurations one might want to setup this replication feature with. However, none of these are currently officially supported. Some examples
 - Daisy chaining -- connecting a series of clusters, as both source and target, eg: `A<>B<>C`
 - Ring -- connecting a series of clusters, in a loop, eg: `A<>B<>C<>A`
 
-Note, some of these might get naturally unblocked, as soon as we unblock both Broadcast and Consolidation usecases, thus allowing a cluster to simultaneously be both a source and a sink to several other clusters.
+Note, some of these might get naturally unblocked, as soon as we unblock both Broadcast and Consolidation usecases, thus allowing a cluster to simultaneously be both a source and a sink to several other clusters. These are tracked in [#11535](https://github.com/yugabyte/yugabyte-db/issues/11535).
 
 ## Features and limitations
 
@@ -94,18 +94,18 @@ Since 2DC replication is done asynchronously and by replicating the WAL (and the
 - Transactions from the source might not respect global ordering on the target. While transactions affecting the same shards, are guaranteed to be timeline consistent even on the target, transactions affecting different shards might end up being visible on the target in a different order than they were committed on the source.
 
 #### Bootstrapping sink clusters
-- Currently, it is the responsibility of the end user to ensure that a sink cluster has sufficiently recent updates so that replication can safely resume. In the future, bootstrapping the sink cluster can be automated. (TBD GH issue?)
-- Bootstrap currently relies on the underlying backup and restore (BAR) mechanics of YugabyteDB. This means it also inherits all of the limitations of BAR. For YSQL, currently the scope of BAR is at a database level, while the scope of replication is at table level. This implies that when bootstrapping a sink cluster, you will automatically bring in any tables from source database, in the sink database, even ones you might not plan to actually configure replication on. (TBD GH issue?)
+- Currently, it is the responsibility of the end user to ensure that a sink cluster has sufficiently recent updates so that replication can safely resume. In the future, bootstrapping the sink cluster can be automated [#11538](https://github.com/yugabyte/yugabyte-db/issues/11538).
+- Bootstrap currently relies on the underlying backup and restore (BAR) mechanics of YugabyteDB. This means it also inherits all of the limitations of BAR. For YSQL, currently the scope of BAR is at a database level, while the scope of replication is at table level. This implies that when bootstrapping a sink cluster, you will automatically bring in any tables from source database, in the sink database, even ones you might not plan to actually configure replication on. This is tracked in [#11536](https://github.com/yugabyte/yugabyte-db/issues/11536).
 
 #### DDL changes
 - Currently, DDL changes are not automatically replicated. Applying commands such as CREATE TABLE, ALTER TABLE, CREATE INDEX to the sink clusters is the responsibility of the user.
 - DROP TABLE is not supported. The user must first disable replication for this table.
 - TRUNCATE TABLE is not supported. This is an underlying limitation, due to the level at which the two features operate, ie: replication is implemented on top of raft WAL files, while truncate is implemented on top of rocksdb SST files.
-- In the future, we will be able to propagate DDL changes safely to other clusters (TBD GH issue?).
+- In the future, we will be able to propagate DDL changes safely to other clusters [#11537](https://github.com/yugabyte/yugabyte-db/issues/11537).
 
 #### Safety of DDL and DML in active-active
 - Currently, certain potentially unsafe combinations of DDL/DML are allowed. For example, in having a unique key constraint on a column in an active-active last writer wins mode is unsafe since a violation could easily be introduced by inserting different values on the two clusters - each of these operations is legal in itself. The ensuing replication can, however, violate the unique key constraint. This will cause the two clusters to permanently diverge and the replication to fail.
-- In the future, allowing detection of such unsafe combinations and warn the user. Such combinations should possibly be disallowed by default. (TBD GH issue?)
+- In the future, allowing detection of such unsafe combinations and warn the user. Such combinations should possibly be disallowed by default [#11539](https://github.com/yugabyte/yugabyte-db/issues/11539).
 
 #### Scalability
 - When setting up replication, tables should be added in batches, until [#10611](https://github.com/yugabyte/yugabyte-db/issues/10611) is resolved.
