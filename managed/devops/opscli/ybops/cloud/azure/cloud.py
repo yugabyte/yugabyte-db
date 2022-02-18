@@ -117,6 +117,7 @@ class AzureCloud(AbstractCloud):
         host_info = self.get_host_info(args)
         if host_info is None:
             logging.error("Host {} does not exist.".format(args.search_pattern))
+            self.get_admin().destroy_orphaned_resources(args.search_pattern, args.node_uuid)
             return
         if args.node_ip is None:
             if args.node_uuid is None or host_info['node_uuid'] != args.node_uuid:
@@ -125,7 +126,7 @@ class AzureCloud(AbstractCloud):
         elif host_info['private_ip'] != args.node_ip:
             logging.error("Host {} IP does not match.".format(args.search_pattern))
             return
-        self.get_admin().destroy_instance(args.search_pattern, host_info)
+        self.get_admin().destroy_instance(args.search_pattern, args.node_uuid)
 
     def query_vpc(self, args):
         result = {}
