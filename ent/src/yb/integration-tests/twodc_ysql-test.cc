@@ -52,6 +52,7 @@
 #include "yb/integration-tests/twodc_test_base.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
+#include "yb/master/catalog_manager_if.h"
 #include "yb/master/cdc_consumer_registry_service.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/master_client.pb.h"
@@ -104,6 +105,7 @@ DECLARE_bool(check_bootstrap_required);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_uint64(ysql_packed_row_size_limit);
+DECLARE_bool(xcluster_wait_on_ddl_alter);
 
 namespace yb {
 
@@ -753,6 +755,260 @@ TEST_P(TwoDCYsqlTest, SimpleReplication) {
       [&]() { return data_replicated_correctly(kNumRecords + 15); }, MonoDelta::FromSeconds(20),
       "IsDataReplicatedCorrectly"));
 }
+
+TEST_P(TwoDCYsqlTest, ReplicationWithBasicDDL) {
+  YB_SKIP_TEST_IN_TSAN();
+  FLAGS_xcluster_wait_on_ddl_alter = true;
+  string new_column = "contact_name";
+
+  constexpr auto kRecordBatch = 5;
+  auto count = 0;
+  constexpr int kNTabletsPerTable = 4;
+  std::vector<uint32_t> tables_vector = {kNTabletsPerTable};
+  auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
+  const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
+
+  // Tables contains both producer and consumer universe tables (alternately).
+  ASSERT_EQ(tables.size(), 2);
+  std::shared_ptr<client::YBTable> producer_table(tables[0]), consumer_table(tables[1]);
+
+  /***************************/
+  /********   SETUP   ********/
+  /***************************/
+  // 1. Write some data.
+  LOG(INFO) << "Writing records for table " << producer_table->name().ToString();
+  WriteWorkload(count, count + kRecordBatch, &producer_cluster_, producer_table->name());
+  count += kRecordBatch;
+
+  // 2. Setup replication.
+  ASSERT_OK(SetupUniverseReplication(producer_cluster(), consumer_cluster(), consumer_client(),
+      kUniverseId, {producer_table}));
+
+  // 3. Verify everything is setup correctly.
+  master::GetUniverseReplicationResponsePB get_universe_replication_resp;
+  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId,
+      &get_universe_replication_resp));
+  ASSERT_OK(CorrectlyPollingAllTablets(
+      consumer_cluster(), narrow_cast<uint32_t>(tables_vector.size() * kNTabletsPerTable)));
+
+  auto data_replicated_correctly = [&](int num_results) -> Result<bool> {
+    LOG(INFO) << "Checking records for table " << consumer_table->name().ToString();
+    auto consumer_results = ScanToStrings(consumer_table->name(), &consumer_cluster_);
+    auto consumer_results_size = PQntuples(consumer_results.get());
+    LOG(INFO) << "data_replicated_correctly Found = " << consumer_results_size;
+    if (num_results != consumer_results_size) {
+      return false;
+    }
+    int result;
+    for (int i = 0; i < num_results; ++i) {
+      result = VERIFY_RESULT(GetInt32(consumer_results.get(), i, 0));
+      if (i != result) {
+        return false;
+      }
+    }
+    return true;
+  };
+  ASSERT_OK(WaitFor([&]() -> Result<bool> { return data_replicated_correctly(count); },
+      MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
+
+  // 4. Write more data.
+  WriteWorkload(count, count + kRecordBatch, &producer_cluster_, producer_table->name());
+  count += kRecordBatch;
+
+  // 5. Make sure this data is also replicated now.
+  ASSERT_OK(WaitFor([&]() { return data_replicated_correctly(count); },
+      MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
+
+  /***************************/
+  /******* ADD COLUMN ********/
+  /***************************/
+
+  // Pause Replication so we can batch up the below GetChanges information.
+  ASSERT_OK(ToggleUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, false));
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 0));
+
+  // Write some new data to the producer.
+  WriteWorkload(count, count + kRecordBatch, &producer_cluster_, producer_table->name());
+  count += kRecordBatch;
+
+  // 1. ALTER Table on the Producer.
+  {
+    auto tbl = producer_table->name();
+    auto conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(tbl.namespace_name()));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN $1 VARCHAR",
+                                 tbl.table_name(), new_column));
+  }
+
+  // 2. Write more data so we have some entries with the new schema.
+  WriteWorkload(count, count + kRecordBatch, &producer_cluster_, producer_table->name());
+
+  // Resume Replication.
+  ASSERT_OK(ToggleUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, true));
+
+  // 3. Verify ALTER was parsed by Consumer, which stopped replication and hasn't read the new data.
+  auto is_consumer_halted_on_ddl = [&]() -> Status {
+    return WaitFor(
+        [&]() -> Result<bool> {
+          master::SysClusterConfigEntryPB cluster_info;
+          auto& cm = VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->catalog_manager();
+          RETURN_NOT_OK(cm.GetClusterConfig(&cluster_info));
+          auto& producer_map = cluster_info.consumer_registry().producer_map();
+          auto producer_entry = FindOrNull(producer_map, kUniverseId);
+          if (producer_entry) {
+            CHECK_EQ(producer_entry->stream_map().size(), 1);
+            auto& stream_entry = producer_entry->stream_map().begin()->second;
+            return stream_entry.has_producer_schema() &&
+                   stream_entry.producer_schema().has_pending_schema();
+          }
+          return false;
+        },
+        MonoDelta::FromSeconds(20), "IsConsumerHaltedOnDDL");
+  };
+  ASSERT_OK(is_consumer_halted_on_ddl());
+
+  // We read the first batch of writes with the old schema, but not the new schema writes.
+  LOG(INFO) << "Consumer count after Producer ALTER halted polling = "
+            << EXPECT_RESULT(data_replicated_correctly(count));
+
+  // 4. ALTER Table on the Consumer.
+  {
+    // Mismatching schema to producer should fail.
+    auto tbl = consumer_table->name();
+    auto conn = EXPECT_RESULT(consumer_cluster_.ConnectToDB(tbl.namespace_name()));
+    ASSERT_NOK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN BAD_$1 VARCHAR",
+                                  tbl.table_name(), new_column));
+  }
+  {
+    // Matching schema to producer should succeed.
+    auto tbl = consumer_table->name();
+    auto conn = EXPECT_RESULT(consumer_cluster_.ConnectToDB(tbl.namespace_name()));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN $1 VARCHAR",
+                                 tbl.table_name(), new_column));
+  }
+
+  // 5. Verify Replication continued and new schema Producer entries are added to Consumer.
+  count += kRecordBatch;
+  ASSERT_OK(WaitFor([&]() { return data_replicated_correctly(count); },
+            MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
+
+  /***************************/
+  /****** RENAME COLUMN ******/
+  /***************************/
+
+  // 1. ALTER Table to Remove the Column on Producer.
+  {
+    auto tbl = producer_table->name();
+    auto conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(tbl.namespace_name()));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 RENAME COLUMN $1 TO $2_new",
+                                 tbl.table_name(), new_column, new_column));
+  }
+
+  // 2. Write more data so we have some entries with the new schema.
+  WriteWorkload(count, count + kRecordBatch, &producer_cluster_, producer_table->name());
+
+  // 3. Verify ALTER was parsed by Consumer, which stopped replication and hasn't read the new data.
+  ASSERT_OK(is_consumer_halted_on_ddl());
+  LOG(INFO) << "Consumer count after Producer ALTER halted polling = "
+            << EXPECT_RESULT(data_replicated_correctly(count));
+
+  // 4. ALTER Table on the Consumer.
+  {
+    auto tbl = consumer_table->name();
+    auto conn = EXPECT_RESULT(consumer_cluster_.ConnectToDB(tbl.namespace_name()));
+    // Mismatching schema to producer should fail.
+    ASSERT_NOK(conn.ExecuteFormat("ALTER TABLE $0 RENAME COLUMN $1 TO $2_BAD",
+                                  tbl.table_name(), new_column, new_column));
+    // Matching schema to producer should succeed.
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 RENAME COLUMN $1 TO $2_new",
+                                 tbl.table_name(), new_column, new_column));
+  }
+
+  // 5. Verify Replication continued and new schema Producer entries are added to Consumer.
+  count += kRecordBatch;
+  ASSERT_OK(WaitFor([&]() { return data_replicated_correctly(count); },
+            MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
+
+  new_column = new_column + "_new";
+
+  /***************************/
+  /****** BATCH ADD COLS *****/
+  /***************************/
+  // 1. ALTER Table on the Producer.
+  {
+    auto tbl = producer_table->name();
+    auto conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(tbl.namespace_name()));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN BATCH_1 VARCHAR, "
+                                                "ADD COLUMN BATCH_2 VARCHAR, "
+                                                "ADD COLUMN BATCH_3 INT", tbl.table_name()));
+  }
+
+  // 2. Write more data so we have some entries with the new schema.
+  WriteWorkload(count, count + kRecordBatch, &producer_cluster_, producer_table->name());
+
+  // 3. Verify ALTER was parsed by Consumer, which stopped replication and hasn't read the new data.
+  ASSERT_OK(is_consumer_halted_on_ddl());
+  LOG(INFO) << "Consumer count after Producer ALTER halted polling = "
+            << EXPECT_RESULT(data_replicated_correctly(count));
+
+  // 4. ALTER Table on the Consumer.
+  {
+    auto tbl = consumer_table->name();
+    auto conn = EXPECT_RESULT(consumer_cluster_.ConnectToDB(tbl.namespace_name()));
+    // Out-of-order Schema Application in comparison to producer should fail.
+    ASSERT_NOK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN BATCH_2 VARCHAR", tbl.table_name()));
+    // Matching subset of producer should succeed, but not be sufficient to resume replication.
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN BATCH_1 VARCHAR, "
+                                                "ADD COLUMN BATCH_2 VARCHAR", tbl.table_name()));
+    // TODO: Remove below line when we add atomic DDL apply between XClusters, currently race-y.
+    ASSERT_OK(is_consumer_halted_on_ddl());
+    // Mismatching schema to producer should fail.
+    ASSERT_NOK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN BATCH_N VARCHAR", tbl.table_name()));
+    // Subsequent Matching schema to producer should succeed.
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN BATCH_3 INT", tbl.table_name()));
+  }
+
+  // 5. Verify Replication continued and new schema Producer entries are added to Consumer.
+  count += kRecordBatch;
+  ASSERT_OK(WaitFor([&]() { return data_replicated_correctly(count); },
+      MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
+
+  /***************************/
+  /**** DROP/RE-ADD COLUMN ***/
+  /***************************/
+  // Test Details:
+
+  //  1. Run on Producer: DROP NewCol, Add Data,
+  //                      ADD NewCol again (New ID), Add Data.
+  {
+    auto tbl = producer_table->name();
+    auto tname = tbl.table_name();
+    auto conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(tbl.namespace_name()));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN $1", tname, new_column));
+    WriteWorkload(count, count + kRecordBatch, &producer_cluster_, producer_table->name());
+    count += kRecordBatch;
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN $1 VARCHAR", tname, new_column));
+    WriteWorkload(count, count + kRecordBatch, &producer_cluster_, producer_table->name());
+  }
+
+  //  2. Expectations: Replication should add Data 1x, then block because IDs don't match.
+  //                   DROP is non-blocking,
+  //                   re-ADD blocks until IDs match even though the  Name & Type match.
+  ASSERT_OK(is_consumer_halted_on_ddl());
+  LOG(INFO) << "Consumer count after Producer ALTER halted polling = "
+            << EXPECT_RESULT(data_replicated_correctly(count));
+  {
+    auto tbl = consumer_table->name();
+    auto tname = tbl.table_name();
+    auto conn = EXPECT_RESULT(consumer_cluster_.ConnectToDB(tbl.namespace_name()));
+    ASSERT_NOK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN $1 VARCHAR", tname, new_column));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN $1", tname, new_column));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN $1 VARCHAR", tname, new_column));
+  }
+  count += kRecordBatch;
+  ASSERT_OK(WaitFor([&]() { return data_replicated_correctly(count); },
+            MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
+}
+
 
 TEST_P(TwoDCYsqlTest, SetupUniverseReplicationWithProducerBootstrapId) {
   YB_SKIP_TEST_IN_TSAN();

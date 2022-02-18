@@ -213,6 +213,7 @@ message CDCRecordPB {
     DELETE = 2;
     APPLY = 3;
     SPLIT_OP = 4;
+    CHANGE_METADATA = 5;
   }
   optional uint64 time = 1;
   optional OperationType operation = 2;
@@ -233,6 +234,9 @@ message CDCRecordPB {
 
   // If operation type is a SPLIT_OP, then include the split request.
   optional tablet.SplitTabletRequestPB split_tablet_request = 10;
+
+  // If operation type is a CHANGE_METADATA_OP, then include the tablet payload for it.
+  optional tablet.ChangeMetadataRequestPB change_metadata_request = 11;
 }
 
 // CDCSDK: Column information used in case of DDL, as part of schema info
@@ -371,7 +375,7 @@ message GetChangesResponsePB {
   repeated CDCRecordPB records = 4;
 
   // Checkpoint that consumers can send back in GetChanges RPC
-  // to mark CDC records until this checkpoint as committed.
+  // to mark all CDC records in this GetChanges batch as committed.
   optional CDCCheckpointPB checkpoint = 5;
 
   // In case the tablet is no longer hosted on this tserver, provide the list of tservers holding

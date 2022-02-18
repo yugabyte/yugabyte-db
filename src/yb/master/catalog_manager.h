@@ -1450,6 +1450,20 @@ class CatalogManager :
     return false;
   }
 
+  virtual bool IsTableCdcConsumer(const TableInfo& table_info) const REQUIRES_SHARED(mutex_) {
+    // Default value.
+    return false;
+  }
+
+  virtual Status ValidateNewSchemaWithCdc(const TableInfo& table_info, const Schema& new_schema)
+      const {
+    return Status::OK();
+  }
+
+  virtual Status ResumeCdcAfterNewSchema(const TableInfo& table_info) {
+    return Status::OK();
+  }
+
   virtual Result<SnapshotSchedulesToObjectIdsMap> MakeSnapshotSchedulesToObjectIdsMap(
       SysRowEntryType type) {
     return SnapshotSchedulesToObjectIdsMap();

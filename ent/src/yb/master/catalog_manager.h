@@ -201,6 +201,11 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                                UpdateConsumerOnProducerSplitResponsePB* resp,
                                                rpc::RpcContext* rpc);
 
+  // On a producer side metadata change, halts replication until Consumer applies the Meta change.
+  Status UpdateConsumerOnProducerMetadata(const UpdateConsumerOnProducerMetadataRequestPB* req,
+                                          UpdateConsumerOnProducerMetadataResponsePB* resp,
+                                          rpc::RpcContext* rpc);
+  //
   // Wait for replication to drain on CDC streams.
   typedef std::pair<CDCStreamId, TabletId> StreamTabletIdPair;
   typedef boost::hash<StreamTabletIdPair> StreamTabletIdHash;
@@ -248,6 +253,11 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   bool IsCdcEnabled(const TableInfo& table_info) const override;
 
   bool IsTablePartOfBootstrappingCdcStream(const TableInfo& table_info) const override;
+
+  Status ValidateNewSchemaWithCdc(const TableInfo& table_info, const Schema& new_schema)
+      const override;
+
+  Status ResumeCdcAfterNewSchema(const TableInfo& table_info) override;
 
   tablet::SnapshotCoordinator& snapshot_coordinator() override {
     return snapshot_coordinator_;
@@ -527,7 +537,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   bool IsTableCdcProducer(const TableInfo& table_info) const override REQUIRES_SHARED(mutex_);
 
   // Checks if the table is a consumer in an xCluster replication universe.
-  bool IsTableCdcConsumer(const TableInfo& table_info) const REQUIRES_SHARED(mutex_);
+  bool IsTableCdcConsumer(const TableInfo& table_info) const override REQUIRES_SHARED(mutex_);
 
   // Maps producer universe id to the corresponding cdc stream for that table.
   typedef std::unordered_map<std::string, CDCStreamId> XClusterConsumerTableStreamInfoMap;

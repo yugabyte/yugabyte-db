@@ -133,6 +133,8 @@ TAG_FLAG(enable_transaction_snapshots, runtime);
 DEFINE_test_flag(bool, disable_cdc_state_insert_on_setup, false,
                  "Disable inserting new entries into cdc state as part of the setup flow.");
 
+DECLARE_bool(xcluster_wait_on_ddl_alter);
+
 DEFINE_bool(allow_consecutive_restore, true,
             "Is it allowed to restore to a time before the last restoration was done.");
 TAG_FLAG(allow_consecutive_restore, runtime);
@@ -4550,9 +4552,8 @@ Status CatalogManager::ValidateTableSchema(
 
   list_req.set_name_filter(info->table_name.table_name());
   Status status = ListTables(&list_req, &list_resp);
-  if (!status.ok() || list_resp.has_error()) {
-    return STATUS(NotFound, Substitute("Error while listing table: $0", status.ToString()));
-  }
+  SCHECK(status.ok() && !list_resp.has_error(), NotFound,
+         Substitute("Error while listing table: $0", status.ToString()));
 
   const auto& source_schema = client::internal::GetSchema(info->schema);
   bool is_ysql_table = info->table_type == client::YBTableType::PGSQL_TABLE_TYPE;
@@ -4573,10 +4574,8 @@ Status CatalogManager::ValidateTableSchema(
     // Get the table schema.
     table->set_table_id(t.id());
     status = GetTableSchema(&req, resp);
-    if (!status.ok() || resp->has_error()) {
-      return STATUS(NotFound,
-          Substitute("Error while getting table schema: $0", status.ToString()));
-    }
+    SCHECK(status.ok() && !resp->has_error(), NotFound,
+           Substitute("Error while getting table schema: $0", status.ToString()));
 
     // Double-check schema name here if the previous check was skipped.
     if (is_ysql_table && !t.has_pgschema_name()) {
@@ -4596,22 +4595,20 @@ Status CatalogManager::ValidateTableSchema(
           info->table_name.ToString());
     }
 
+    Schema consumer_schema;
+    auto result = SchemaFromPB(resp->schema(), &consumer_schema);
+
     // We now have a table match. Validate the schema.
-    auto result = info->schema.EquivalentForDataCopy(resp->schema());
-    if (!result.ok() || !*result) {
-      return STATUS(IllegalState,
-          Substitute("Source and target schemas don't match: "
-                     "Source: $0, Target: $1, Source schema: $2, Target schema: $3",
-                     info->table_id, resp->identifier().table_id(),
-                     info->schema.ToString(), resp->schema().DebugString()));
-    }
+    SCHECK(result.ok() && consumer_schema.EquivalentForDataCopy(source_schema), IllegalState,
+           Substitute("Source and target schemas don't match: "
+                      "Source: $0, Target: $1, Source schema: $2, Target schema: $3",
+               info->table_id, resp->identifier().table_id(),
+               info->schema.ToString(), resp->schema().DebugString()));
     break;
   }
 
-  if (!table->has_table_id()) {
-    return STATUS(NotFound,
-        Substitute("Could not find matching table for $0", info->table_name.ToString()));
-  }
+  SCHECK(table->has_table_id(), NotFound,
+         Substitute("Could not find matching table for $0", info->table_name.ToString()));
 
   // Still need to make map of table id to resp table id (to add to validated map)
   // For colocated tables, only add the parent table since we only added the parent table to the
@@ -4627,12 +4624,10 @@ Status CatalogManager::ValidateTableSchema(
                           resp->schema().colocated_table_id().has_colocation_id())
         ? resp->schema().colocated_table_id().colocation_id()
         : CHECK_RESULT(GetPgsqlTableOid(resp->identifier().table_id()));
-    if (source_clc_id != target_clc_id) {
-      return STATUS(IllegalState,
-          Substitute("Source and target colocation IDs don't match for colocated table: "
-                     "Source: $0, Target: $1, Source colocation ID: $2, Target colocation ID: $3",
-                     info->table_id, resp->identifier().table_id(), source_clc_id, target_clc_id));
-    }
+    SCHECK(source_clc_id == target_clc_id, IllegalState,
+           Substitute("Source and target colocation IDs don't match for colocated table: "
+                      "Source: $0, Target: $1, Source colocation ID: $2, Target colocation ID: $3",
+                      info->table_id, resp->identifier().table_id(), source_clc_id, target_clc_id));
   }
 
   return Status::OK();
@@ -6317,6 +6312,105 @@ Status CatalogManager::UpdateConsumerOnProducerSplit(
   return Status::OK();
 }
 
+// Related function: PlayChangeMetadataRequest() in tablet_bootstrap.cc.
+Status CatalogManager::UpdateConsumerOnProducerMetadata(
+    const UpdateConsumerOnProducerMetadataRequestPB* req,
+    UpdateConsumerOnProducerMetadataResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  LOG_WITH_FUNC(INFO) << " from " << RequestorString(rpc) << ": " << req->DebugString();
+
+  if (!FLAGS_xcluster_wait_on_ddl_alter) {
+    resp->set_should_wait(false);
+    return Status::OK();
+  }
+
+  auto& producer_meta_pb = req->producer_change_metadata_request();
+  auto& producer_schema_pb = producer_meta_pb.schema();
+  auto u_id = req->producer_id();
+  auto stream_id = req->stream_id();
+
+  // Get corresponding local data for this stream.
+  std::string consumer_table_id;
+  scoped_refptr<TableInfo> table;
+  {
+    SharedLock lock(mutex_);
+    auto producer_stream_id = req->stream_id();
+    auto iter = std::find_if(xcluster_consumer_tables_to_stream_map_.begin(),
+        xcluster_consumer_tables_to_stream_map_.end(),
+        [&u_id, &producer_stream_id](auto& id_map){
+          auto consumer_stream_id = id_map.second.find(u_id);
+          return (consumer_stream_id != id_map.second.end() &&
+                 (*consumer_stream_id).second == producer_stream_id);
+        });
+    SCHECK(iter != xcluster_consumer_tables_to_stream_map_.end(),
+           NotFound, Substitute("Unable to find the stream id $0", stream_id));
+    consumer_table_id = iter->first;
+
+    // The destination table should be found or created by now.
+    table = FindPtrOrNull(*table_ids_map_, consumer_table_id);
+  }
+  SCHECK(table, NotFound, Substitute("Missing table id $0", consumer_table_id));
+
+  {
+    // Use the stream ID to find ClusterConfig entry.
+    auto cluster_config = ClusterConfig();
+    auto l = cluster_config->LockForWrite();
+    auto producer_map = l.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
+    auto producer_entry = FindOrNull(*producer_map, u_id);
+    SCHECK(producer_entry, NotFound, Substitute("Missing universe $0", u_id));
+    auto stream_entry = FindOrNull(*producer_entry->mutable_stream_map(), stream_id);
+    SCHECK(stream_entry, NotFound, Substitute("Missing universe $0, stream $1", u_id, stream_id));
+
+    auto schema_cached = stream_entry->mutable_producer_schema();
+    auto version_validated = schema_cached->validated_schema_version();
+
+    // Grab the local Consumer schema and compare it to the Producer's schema.
+    Schema consumer_schema, producer_schema;
+    RETURN_NOT_OK(SchemaFromPB(producer_schema_pb, &producer_schema));
+    auto version_received =  producer_meta_pb.schema_version();
+
+    if (version_validated > 0 && version_received <= version_validated) {
+      LOG(INFO) << "Received known schema (v" << version_received << "). Continuing Replication.";
+      resp->set_should_wait(false);
+      return Status::OK();
+    }
+    RETURN_NOT_OK(table->GetSchema(&consumer_schema));
+
+    if (consumer_schema.EquivalentForDataCopy(producer_schema)) {
+      resp->set_should_wait(false);
+      LOG(INFO) << "Received Compatible Producer schema version: " << version_received;
+      // Update the schema version if we're functionally equivalent.
+      if (version_received > version_validated) {
+        DCHECK(!schema_cached->has_pending_schema());
+        schema_cached->set_validated_schema_version(version_received);
+      } else {
+        // Nothing to modify.  Don't write to sys catalog.
+        return Status::OK();
+      }
+    } else {
+      LOG(WARNING) << Format("XCluster Schema mismatch $0 \n Consumer={$1} \n Producer={$2}",
+          consumer_table_id, consumer_schema.ToString(), producer_schema.ToString());
+
+      // Incompatible schema: store, wait for all tablet reports, then make the DDL change.
+      auto producer_schema = stream_entry->mutable_producer_schema();
+      if (!producer_schema->has_pending_schema()) {
+        // Copy the schema.
+        producer_schema->mutable_pending_schema()->CopyFrom(producer_schema_pb);
+        producer_schema->set_pending_schema_version(version_received);
+      } else {
+        // Why would we be getting different schema versions across tablets? Partial apply?
+        DCHECK_EQ(version_received, producer_schema->pending_schema_version());
+      }
+    }
+
+    RETURN_NOT_OK(CheckStatus(sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()),
+        "Updating cluster config in sys-catalog"));
+    l.Commit();
+  }
+
+  return Status::OK();
+}
+
 Status CatalogManager::WaitForReplicationDrain(const WaitForReplicationDrainRequestPB *req,
                                                WaitForReplicationDrainResponsePB *resp,
                                                rpc::RpcContext *rpc) {
@@ -6463,6 +6557,7 @@ Status CatalogManager::WaitForReplicationDrain(const WaitForReplicationDrainRequ
     }
     SleepFor(timeout);
   }
+
   return Status::OK();
 }
 
@@ -6661,6 +6756,112 @@ bool CatalogManager::IsTablePartOfBootstrappingCdcStream(const TableInfo& table_
     }
   }
   return false;
+}
+
+Status CatalogManager::ValidateNewSchemaWithCdc(const TableInfo& table_info,
+                                                const Schema& consumer_schema) const {
+  // Check if this table is consuming a stream.
+  XClusterConsumerTableStreamInfoMap stream_infos =
+      GetXClusterStreamInfoForConsumerTable(table_info.id());
+  if (stream_infos.empty()) {
+    return Status::OK();
+  }
+
+  auto cluster_config = ClusterConfig();
+  auto l = cluster_config->LockForRead();
+  for (const auto& stream_info : stream_infos) {
+    std::string universe_id = stream_info.first;
+    CDCStreamId stream_id = stream_info.second;
+    // Fetch the stream entry to get Schema information.
+    auto& producer_map = l.data().pb.consumer_registry().producer_map();
+    auto producer_entry = FindOrNull(producer_map, universe_id);
+    SCHECK(producer_entry, NotFound, Substitute("Missing universe $0", universe_id));
+    auto stream_entry = FindOrNull(producer_entry->stream_map(), stream_id);
+    SCHECK(stream_entry, NotFound, Substitute("Missing stream $0:$1", universe_id, stream_id));
+
+    auto& producer_schema_pb = stream_entry->producer_schema();
+    if (producer_schema_pb.has_pending_schema()) {
+      // Compare the local Consumer schema to the Producer's schema.
+      Schema producer_schema;
+      RETURN_NOT_OK(SchemaFromPB(producer_schema_pb.pending_schema(), &producer_schema));
+
+      // This new schema update should either make the data source copy equivalent
+      // OR be copy equivalent to the data source (meaning it's a subset of the changes we need).
+      bool can_apply = consumer_schema.EquivalentForDataCopy(producer_schema) ||
+                       producer_schema.EquivalentForDataCopy(consumer_schema);
+      SCHECK(can_apply, IllegalState, Substitute(
+             "New Schema not compatible with XCluster Producer Schema:\n new={$0}\n producer={$1}",
+             consumer_schema.ToString(), producer_schema.ToString()));
+    }
+  }
+
+  return Status::OK();
+}
+
+Status CatalogManager::ResumeCdcAfterNewSchema(const TableInfo& table_info) {
+  if (PREDICT_FALSE(!FLAGS_xcluster_wait_on_ddl_alter)) {
+    return Status::OK();
+  }
+
+  // Verify that this table is consuming a stream.
+  XClusterConsumerTableStreamInfoMap stream_infos =
+      GetXClusterStreamInfoForConsumerTable(table_info.id());
+  if (stream_infos.empty()) {
+    return Status::OK();
+  }
+
+  bool found_schema = false, resuming_replication =  false;
+
+  // Now that we've applied the new schema: find pending replication, clear state, resume.
+  auto cluster_config = ClusterConfig();
+  auto l = cluster_config->LockForWrite();
+  for (const auto& stream_info : stream_infos) {
+    std::string u_id = stream_info.first;
+    CDCStreamId stream_id = stream_info.second;
+    // Fetch the stream entry to get Schema information.
+    auto producer_map = l.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
+    auto producer_entry = FindOrNull(*producer_map, u_id);
+    if (!producer_entry) {
+      continue;
+    }
+    auto stream_entry = FindOrNull(*producer_entry->mutable_stream_map(), stream_id);
+    if (!stream_entry) {
+      continue;
+    }
+
+    auto producer_schema_pb = stream_entry->mutable_producer_schema();
+    if (producer_schema_pb->has_pending_schema()) {
+      found_schema = true;
+      Schema consumer_schema, producer_schema;
+      RETURN_NOT_OK(table_info.GetSchema(&consumer_schema));
+      RETURN_NOT_OK(SchemaFromPB(producer_schema_pb->pending_schema(), &producer_schema));
+      if (consumer_schema.EquivalentForDataCopy(producer_schema)) {
+        resuming_replication = true;
+        auto pending_version = producer_schema_pb->pending_schema_version();
+        LOG(INFO) << "Consumer schema now data copy compatible with Producer: "
+                  << stream_id << " @ schema version " << pending_version;
+        // Clear meta we use to track progress on receiving all WAL entries with old schema.
+        producer_schema_pb->set_validated_schema_version(
+            std::max(producer_schema_pb->validated_schema_version(), pending_version));
+        producer_schema_pb->clear_pending_schema();
+        // Bump the ClusterConfig version so we'll broadcast new schema version & resume operation.
+        l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
+      }  else  {
+        LOG(INFO) << "Consumer schema not compatible for data copy of next Producer schema.";
+      }
+    }
+  }
+
+  if (resuming_replication) {
+    RETURN_NOT_OK(CheckStatus(sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()),
+                              "updating cluster config after Schema for CDC"));
+    l.Commit();
+    LOG(INFO) << "Resuming Replication on " << table_info.id() << " after Consumer ALTER.";
+  } else if (!found_schema) {
+    LOG(INFO) << "Schema changed on Consumer without receiving a Producer change.";
+  }
+
+  return Status::OK();
 }
 
 void CatalogManager::Started() {
