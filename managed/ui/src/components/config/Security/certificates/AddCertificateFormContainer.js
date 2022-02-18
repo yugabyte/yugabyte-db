@@ -8,7 +8,9 @@ import {
   addCertificateResponse,
   getTlsCertificates,
   getTlsCertificatesResponse,
-  addCertificateReset
+  addCertificateReset,
+  updateCertificate,
+  updateCertificateResponse
 } from '../../../../actions/customers';
 import { closeDialog } from '../../../../actions/modal';
 import { toast } from 'react-toastify';
@@ -29,6 +31,23 @@ const mapDispatchToProps = (dispatch) => {
         } else {
           const errorMessage = response.payload?.response?.data?.error || response.payload.message;
           toast.error(`Certificate adding has been failed:  ${errorMessage}`);
+        }
+      });
+    },
+    updateCertificate: (certID, certificate, setSubmitting) => {
+      dispatch(updateCertificate(certID, certificate)).then((response) => {
+        dispatch(updateCertificateResponse(response.payload));
+        setSubmitting(false);
+        if (!response.error) {
+          dispatch(closeDialog());
+          // fetch new certificates list
+
+          dispatch(getTlsCertificates()).then((response) => {
+            dispatch(getTlsCertificatesResponse(response.payload));
+          });
+        } else {
+          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
+          toast.error(`Certificate updation failed:  ${errorMessage}`);
         }
       });
     },
