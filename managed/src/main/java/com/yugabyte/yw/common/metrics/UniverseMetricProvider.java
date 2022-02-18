@@ -17,8 +17,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
-import com.yugabyte.yw.common.kms.util.HashicorpEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
+import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.KmsHistory;
@@ -207,11 +207,11 @@ public class UniverseMetricProvider implements MetricsProvider {
       return null;
     }
     ObjectNode credentials = EncryptionAtRestUtil.getAuthConfig(kmsConfig);
-    JsonNode keyTtlNode = credentials.get(HashicorpEARServiceUtil.HC_VAULT_TTL);
+    JsonNode keyTtlNode = credentials.get(HashicorpVaultConfigParams.HC_VAULT_TTL);
     if (keyTtlNode == null || keyTtlNode.asLong() == 0) {
       return null;
     }
-    JsonNode keyTtlExpiryNode = credentials.get(HashicorpEARServiceUtil.HC_VAULT_TTL_EXPIRY);
+    JsonNode keyTtlExpiryNode = credentials.get(HashicorpVaultConfigParams.HC_VAULT_TTL_EXPIRY);
     if (keyTtlExpiryNode == null) {
       return null;
     }
