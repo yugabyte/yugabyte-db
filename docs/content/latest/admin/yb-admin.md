@@ -1515,6 +1515,38 @@ yb-admin \
     list_cdc_streams
 ```
 
+#### delete_cdc_stream <stream_id> [force_delete]
+
+Deletes underlying CDC stream for the specified YB-Master servers.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    delete_cdc_stream <stream_id [force_delete]>
+```
+
+* _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *stream_id*: The ID of the CDC stream.
+* `force_delete`: (Optional) Force the delete operation.
+
+#### bootstrap_cdc_producer <comma_separated_list_of_table_ids>
+
+Mark a set of tables in preparation for setting up universe level replication.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    bootstrap_cdc_producer <comma_separated_list_of_table_ids>
+```
+
+* _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *comma_separated_list_of_table_ids*: Comma-separated list of table identifiers (`table_id`).
+
+
 ---
 
 ### Decommissioning commands
