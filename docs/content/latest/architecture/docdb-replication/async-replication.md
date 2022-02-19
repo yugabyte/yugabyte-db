@@ -132,7 +132,7 @@ Since 2DC replication is done asynchronously and by replicating the WAL (and the
 
 ### Atomicity of transactions
 
-This implies one can never read a partial result of a transaction on the sink cluster. (TBD is this true, given #10976 ?)
+This implies one can never read a partial result of a transaction on the sink cluster.
 
 ### Not globally ordered
 
