@@ -43,10 +43,10 @@ static bool extended_string = false;
 
 static YY_BUFFER_STATE scanbufhandle;
 
-#define SET_YYLLOC()  (orafce_sql_yylval.val.lloc = yytext - scanbuf)                                                                                              
-                                                                                                                                               
-/* Handles to the buffer that the lexer uses internally */                                                                                     
-static char *scanbuf;       
+#define SET_YYLLOC()  (orafce_sql_yylval.val.lloc = yytext - scanbuf)
+
+/* Handles to the buffer that the lexer uses internally */
+static char *scanbuf;
 
 /* flex 2.5.4 doesn't bother with a decl for this */
 
@@ -1054,5 +1054,3 @@ unescape_single_char(unsigned char c)
 			return c;
 	}
 }
-
-

@@ -232,7 +232,6 @@ plvlex_tokens(PG_FUNCTION_ARGS)
 		MemoryContextSwitchTo (oldcontext);
 	}
 
-
 	funcctx = SRF_PERCALL_SETUP ();
 	fctx = (tokensFctx*) funcctx->user_fctx;
 
