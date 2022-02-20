@@ -42,18 +42,6 @@ extern void orafce_sql_scanner_finish(void);
 
 static orafce_lexnode *__node;
 
-static char *__result;
-static int __len;
-
-#define CSTRING(txt) \
-	( \
-    __len = VARSIZE(txt) - VARHDRSZ, \
-    __result = palloc(__len + 1), \
-    memcpy(__result, VARDATA(txt), __len), \
-    __result[__len] = '\0', \
-    __result)
-
-
 #define COPY_TO_S(src,dest,col)	(dest->col = (src->col ? pstrdup(src->col) : NULL))
 #define COPY_TO(src,dest,col)	(dest->col = src->col)
 
@@ -197,7 +185,7 @@ plvlex_tokens(PG_FUNCTION_ARGS)
 		bool skip_spaces = PG_GETARG_BOOL(1);
 		bool qnames = PG_GETARG_BOOL(2);
 
-		orafce_sql_scanner_init(CSTRING(src));
+		orafce_sql_scanner_init(text_to_cstring(src));
 		if (orafce_sql_yyparse(&lexems) != 0)
 			orafce_sql_yyerror(NULL, "bogus input");
 
