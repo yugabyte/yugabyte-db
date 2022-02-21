@@ -61,6 +61,7 @@ public class Universe extends Model {
   public static final String DISABLE_ALERTS_UNTIL = "disableAlertsUntilSecs";
   public static final String TAKE_BACKUPS = "takeBackups";
   public static final String HELM2_LEGACY = "helm2Legacy";
+  public static final String DUAL_NET_LEGACY = "dualNetLegacy";
 
   // This is a key lock for Universe by UUID.
   public static final KeyLock<UUID> UNIVERSE_KEY_LOCK = new KeyLock<UUID>();
@@ -662,8 +663,13 @@ public class Universe extends Model {
       List<NodeDetails> serverNodes, ServerType type, PortType portType, boolean getSecondary) {
     StringBuilder servers = new StringBuilder();
     for (NodeDetails node : serverNodes) {
+      // Only get secondary if dual net legacy is false.
+      boolean shouldGetSecondary =
+          this.getConfig().getOrDefault(DUAL_NET_LEGACY, "true").equals("false")
+              ? getSecondary
+              : false;
       String nodeIp =
-          getSecondary ? node.cloudInfo.secondary_private_ip : node.cloudInfo.private_ip;
+          shouldGetSecondary ? node.cloudInfo.secondary_private_ip : node.cloudInfo.private_ip;
       // In case the secondary IP is null, just re-assign to primary.
       if (nodeIp == null || nodeIp.equals("null")) {
         nodeIp = node.cloudInfo.private_ip;
