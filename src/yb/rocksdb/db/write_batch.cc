@@ -108,11 +108,20 @@ class DirectWriteHandlerImpl : public DirectWriteHandler {
       : mem_table_(mem_table), seq_(seq) {}
 
   void Put(const SliceParts& key, const SliceParts& value) override {
-    keys_.push_back(
-        mem_table_->PrepareAdd(seq_++, ValueType::kTypeValue, key, value, &prepared_add_));
+    Add(ValueType::kTypeValue, key, value);
+  }
+
+  void SingleDelete(const Slice& key) override {
+    if (mem_table_->Erase(key)) {
+      return;
+    }
+    Add(ValueType::kTypeSingleDeletion, SliceParts(&key, 1), SliceParts());
   }
 
   size_t Complete() {
+    if (keys_.empty()) {
+      return 0;
+    }
     auto compare =
         [comparator = &mem_table_->GetInternalKeyComparator()](KeyHandle lhs, KeyHandle rhs) {
       auto lhs_slice = GetLengthPrefixedSlice(static_cast<const char*>(lhs));
@@ -125,6 +134,11 @@ class DirectWriteHandlerImpl : public DirectWriteHandler {
   }
 
  private:
+  void Add(ValueType value_type, const SliceParts& key, const SliceParts& value) {
+    keys_.push_back(
+        mem_table_->PrepareAdd(seq_++, value_type, key, value, &prepared_add_));
+  }
+
   MemTable* mem_table_;
   SequenceNumber seq_;
   PreparedAdd prepared_add_;
