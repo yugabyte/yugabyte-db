@@ -99,6 +99,9 @@ Alternatively, if you want to build the connector yourself, follow these steps:
     
     # Navigate to custom-connector directory
     cd ~/custom-connector
+    
+    # Download the Kafka JDBC connector
+    wget https://packages.confluent.io/maven/io/confluent/kafka-connect-jdbc/10.2.5/kafka-connect-jdbc-10.2.5.jar
     ```
 6. Create a `Dockerfile` with the following contents:
     ```Dockerfile
@@ -111,8 +114,7 @@ Alternatively, if you want to build the connector yourself, follow these steps:
     COPY debezium-connector-yugabytedb2-1.7.0-SNAPSHOT-jar-with-dependencies.jar \
     $KAFKA_CONNECT_PLUGINS_DIR/debezium-connector-yugabytedb/
 
-    ADD https://packages.confluent.io/maven/io/confluent/kafka-connect-jdbc/10.2.5/kafka-connect-jdbc-10.2.5.jar \ 
-    $KAFKA_CONNECT_PLUGINS_DIR/debezium-connector-yugabytedb
+    COPY kafka-connect-jdbc-10.2.5.jar $KAFKA_CONNECT_PLUGINS_DIR/debezium-connector-yugabytedb
 
     ```
 7. Build the connector:
