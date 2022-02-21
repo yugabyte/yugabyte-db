@@ -11,6 +11,7 @@ aliases:
   - /latest/introduction/core-features/
   - /latest/introduction/
   - /latest/faq/architecture/
+  - /latest/faq
 menu:
   latest:
     identifier: faq-general
@@ -249,7 +250,7 @@ Yes, both YugabyteDB APIs are production ready. [YCQL](https://blog.yugabyte.com
 
 ## Which companies are currently using YugabyteDB in production?
 
-Reference deployments are listed [here](https://www.yugabyte.com/all-resources/resource-parent/case-studies/).
+Reference deployments are listed [here](https://www.yugabyte.com/success-stories/).
 
 ## What is the definition of the "Beta" feature tag?
 

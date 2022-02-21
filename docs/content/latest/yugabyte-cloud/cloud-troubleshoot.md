@@ -69,7 +69,7 @@ The database admin credentials are separate from your Yugabyte Cloud credentials
 
 If you are a database user who was added to the database by an administrator, ask them to either re-send your credentials or reset your database password.
 
-If you are the database admin and are unable to locate your database admin credentials file, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
+If you are the database admin and are unable to locate your database admin credentials file, contact {{<support-cloud>}}.
 
 ### VPC networking
 
@@ -77,7 +77,7 @@ If you have set up a VPC network and are unable to connect, verify the following
 
 #### VPC status is Failed
 
-If you are unable to successfully create the VPC, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
+If you are unable to successfully create the VPC, contact {{<support-cloud>}}.
 
 #### Peering connection status is Pending
 
@@ -94,3 +94,22 @@ Select the peering request to display the **Peering Details** sheet and check th
 #### VPC and peering connection are active but your application cannot connect to the cluster
 
 Add the application VPC CIDR address to the [cluster IP allow list](../cloud-secure-clusters/add-connections/). Even with connectivity established between VPCs, the cluster cannot accept connections until the application VPC IP addresses are added to the IP allow list.
+
+## Database management
+
+### Permission denied, must be superuser
+
+If you execute a YSQL command and receive the following error:
+
+```output
+ERROR:  permission denied to [...]
+HINT:  Must be superuser to [...].
+```
+
+For security reasons, the database admin user is not a superuser. The admin user is a member of yb_superuser, which does allow most operations. For more information on database roles and privileges in Yugabyte Cloud, refer to [Database authorization in Yugabyte Cloud clusters](../cloud-secure-clusters/cloud-users/). If you need to perform an operation that requires superuser privileges, contact {{<support-cloud>}}.
+
+## Cluster management
+
+### You are editing your cluster infrastructure and are unable to reduce disk size per node
+
+50GB of disk space per vCPU is included in the base price for standard clusters. If you increased the disk size per node for your cluster, you cannot reduce it. If you need to reduce the disk size for your cluster, contact {{<support-cloud>}}.

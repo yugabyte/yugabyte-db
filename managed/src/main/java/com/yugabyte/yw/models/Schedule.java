@@ -4,14 +4,25 @@ package com.yugabyte.yw.models;
 
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
+import static com.yugabyte.yw.models.helpers.CommonUtils.performPagedQuery;
+import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.models.filters.ScheduleFilter;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.paging.PagedQuery;
+import com.yugabyte.yw.models.paging.SchedulePagedQuery;
+import com.yugabyte.yw.models.paging.SchedulePagedResponse;
+import com.yugabyte.yw.models.paging.PagedQuery.SortByIF;
+import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.ebean.Query;
+import io.ebean.PersistenceContextScope;
+import io.ebean.ExpressionList;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.EnumValue;
 import io.swagger.annotations.ApiModel;
@@ -44,6 +55,26 @@ public class Schedule extends Model {
 
     @EnumValue("Stopped")
     Stopped,
+  }
+
+  public enum SortBy implements PagedQuery.SortByIF {
+    taskType("taskType"),
+    scheduleUUID("scheduleUUID");
+
+    private final String sortField;
+
+    SortBy(String sortField) {
+      this.sortField = sortField;
+    }
+
+    public String getSortField() {
+      return sortField;
+    }
+
+    @Override
+    public SortByIF getOrderField() {
+      return SortBy.scheduleUUID;
+    }
   }
 
   private static final int MAX_FAIL_COUNT = 3;
@@ -84,10 +115,6 @@ public class Schedule extends Model {
     this.frequency = frequency;
   }
 
-  @ApiModelProperty(
-      value = "Schedule task parameters",
-      accessMode = READ_WRITE,
-      dataType = "com.yugabyte.yw.commissioner.tasks.MultiTableBackup$Params")
   @Column(nullable = false, columnDefinition = "TEXT")
   @DbJson
   private JsonNode taskParams;
@@ -96,10 +123,7 @@ public class Schedule extends Model {
     return taskParams;
   }
 
-  @ApiModelProperty(
-      value =
-          "Type of task to be scheduled. This can be either a multi-table backup, or a full-universe backup.",
-      accessMode = READ_WRITE)
+  @ApiModelProperty(value = "Type of task to be scheduled.", accessMode = READ_WRITE)
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
   private TaskType taskType;
@@ -165,6 +189,19 @@ public class Schedule extends Model {
     this.cronExpression = cronExpression;
     this.frequency = 0L;
     resetSchedule();
+  }
+
+  @Column(nullable = false)
+  @ApiModelProperty(value = "Running state of the schedule")
+  private boolean runningState = false;
+
+  public boolean getRunningState() {
+    return this.runningState;
+  }
+
+  public void setRunningState(boolean state) {
+    this.runningState = state;
+    save();
   }
 
   public static final Finder<UUID, Schedule> find = new Finder<UUID, Schedule>(Schedule.class) {};
@@ -259,5 +296,26 @@ public class Schedule extends Model {
                         .equals(customerConfigUUID.toString()))
             .collect(Collectors.toList());
     return scheduleList;
+  }
+
+  public static SchedulePagedResponse pagedList(SchedulePagedQuery pagedQuery) {
+    if (pagedQuery.getSortBy() == null) {
+      pagedQuery.setSortBy(SortBy.taskType);
+      pagedQuery.setDirection(SortDirection.DESC);
+    }
+    Query<Schedule> query = createQueryByFilter(pagedQuery.getFilter()).query();
+    SchedulePagedResponse response =
+        performPagedQuery(query, pagedQuery, SchedulePagedResponse.class);
+    return response;
+  }
+
+  public static ExpressionList<Schedule> createQueryByFilter(ScheduleFilter filter) {
+    ExpressionList<Schedule> query =
+        find.query().setPersistenceContextScope(PersistenceContextScope.QUERY).where();
+    query.eq("customer_uuid", filter.getCustomerUUID());
+
+    appendInClause(query, "status", filter.getStatus());
+    appendInClause(query, "task_type", filter.getTaskTypes());
+    return query;
   }
 }

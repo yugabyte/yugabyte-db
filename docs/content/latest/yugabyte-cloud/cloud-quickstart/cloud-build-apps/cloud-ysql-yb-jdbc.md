@@ -49,7 +49,7 @@ The application needs to establish a connection to the YugabyteDB cluster. To do
 
     - **host** - the host name of your YugabyteDB cluster. To obtain a Yugabyte Cloud cluster host name, sign in to Yugabyte Cloud, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Network Access**.
     - **port** - the port number that will be used by the JDBC driver (the default YugabyteDB YSQL port is 5433).
-    - **dbUser** and **dbPassword** - the username and password for the YugabyteDB database. If you are using the default database you created when deploying a cluster in Yugabyte Cloud, these can be found in the credentials file you downloaded.
+    - **dbUser** and **dbPassword** - the username and password for the YugabyteDB database. If you are using the credentials you created when deploying a cluster in Yugabyte Cloud, these can be found in the credentials file you downloaded.
     - **sslMode** - the SSL mode to use. Yugabyte Cloud [requires SSL connections](../../../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql); use `verify-full`.
     - **sslRootCert** - the full path to the Yugabyte Cloud cluster CA certificate.
 
@@ -175,7 +175,7 @@ try {
 
 [Yugabyte JDBC driver](../../../../integrations/jdbc-driver/)
 
-[Explore additional applications](../../../cloud-develop)
+[Explore more applications](../../../cloud-develop)
 
 [Sample Java application demonstrating load balancing](../../../../quick-start/build-apps/java/ysql-yb-jdbc/)
 

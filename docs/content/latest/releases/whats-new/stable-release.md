@@ -18,6 +18,165 @@ Included here are the release notes for all releases in the v2.8 stable release 
 
 For an RSS feed of the release notes for the latest and stable releases, point your feed reader to [https://docs.yugabyte.com/latest/releases/whats-new/index.xml](../index.xml).
 
+## v2.8.2.0 - February 16, 2022 {#v2.8.2.0}
+
+**Build:** `2.8.2.0-b51`
+
+### Downloads
+
+<a class="download-binary-link" href="https://downloads.yugabyte.com/releases/2.8.2.0/yugabyte-2.8.2.0-b51-darwin-x86_64.tar.gz">
+  <button>
+    <i class="fab fa-apple"></i><span class="download-text">macOS</span>
+  </button>
+</a>
+&nbsp; &nbsp; &nbsp;
+<a class="download-binary-link" href="https://downloads.yugabyte.com/releases/2.8.2.0/yugabyte-2.8.2.0-b51-linux-x86_64.tar.gz">
+  <button>
+    <i class="fab fa-linux"></i><span class="download-text">Linux x86</span>
+  </button>
+</a>
+<!-- aarch64 REMOVED FOR 2.8.2.0 due to a build bug -->
+<!--
+&nbsp; &nbsp; &nbsp;
+<a class="download-binary-link" href="https://downloads.yugabyte.com/releases/2.8.2.0/yugabyte-2.8.2.0-b51-el8-aarch64.tar.gz">
+  <button>
+    <i class="fab fa-linux"></i><span class="download-text">Linux ARM</span>
+  </button>
+</a>
+-->
+<br />
+
+{{< note title="No ARM build in 2.8.2.0" >}}
+Due to build system issues, there is no `aarch64` Linux build available for release 2.8.2.0.
+{{< /note >}}
+
+### Docker
+
+```sh
+docker pull yugabytedb/yugabyte:2.8.2.0-b51
+```
+
+### New features
+
+#### Yugabyte Platform
+
+* [PLAT-580] Add API to sync platform XClusterConfig state with universe
+* [PLAT-2719] Allow path style access for non-standard endpoints in S3 backup configurations
+* LDAP integration:
+  * [PLAT-2927] LDAP integration with Platform
+  * [PLAT-2928] UTs for LDAP
+  * [PLAT-2929] Make LDAP User Non-Primary
+  * [PLAT-2930] Persistent local role for LDAP user
+
+#### Database
+
+N/A
+
+### Improvements
+
+#### Yugabyte Platform
+
+* [PLAT-2613] Adding a runtime configuration flag to retain shell process cmdOutputLogs.
+* [PLAT-2647] Add HTTP_PROXY environment variable to replicated.yml
+
+#### Database
+
+* [[8023](https://github.com/yugabyte/yugabyte-db/issues/8023)] [[11142](https://github.com/yugabyte/yugabyte-db/issues/11142)] [YQL] Enable DocDB to process lookups on a subset of the range key
+* [[8730](https://github.com/yugabyte/yugabyte-db/issues/8730)] [DST] Enable compaction and flush of sys catalog tablet from admin CLI.
+* [[10513](https://github.com/yugabyte/yugabyte-db/issues/10513)] [DocDB] Adding file deletion option to universal compaction picker (TTL expiry)
+* [[10571](https://github.com/yugabyte/yugabyte-db/issues/10571)] A separate flag to check for large clock skew on hybrid clock reads
+
+### Bug fixes
+
+#### Yugabyte Platform
+
+* [PLAT-580] Fix sync API bug with previously-existing xcluster configs
+* [PLAT-2108] NFS backup fails in KMS enabled universes
+* [PLAT-2241] [Backups] Fix for the error: `'ascii' codec can't encode character`
+* [PLAT-2241] Replace non-unicode symbols in a tool output decode
+* [PLAT-2241] Replace non-unicode symbols on traceback output decode
+* [PLAT-2270] Non-transactional backup with list of tables in YCQL fails
+* [PLAT-2497] Disable cert checking when using s3client for backups
+* [PLAT-2518] Fixing ulimits for systemd universes
+* [PLAT-2558] [UI] Edit Read Replica Button failing
+* [PLAT-2585] Fix the metrics inconsistency
+* [PLAT-2633] Fix backup deletion issue during destroy universe
+* [PLAT-2634] Fix xcluster APIs for HA-enabled platform deployments
+* [PLAT-2665] Azure YW provider does not allow port customization
+* [PLAT-2673] Validating custom keypair with AWS
+* [PLAT-2690] Run upgrade_ysql during universe upgrade
+* [PLAT-2705] Platform restart can leave some tasks in incomplete stuck state
+* [PLAT-2760] Wrap JSON response from yb_backup in try-catch
+* [PLAT-2765] Redact GCP credentials in provider creation audit log
+* [PLAT-2931] Platform LDAP Fixes
+* [PLAT-2932] Delete LDAP User when User does not exist on Windows AD server
+* [PLAT-2988] Universe upgrade failed due to "Error running upgrade_ysql"
+
+### Database
+
+* [[2266](https://github.com/yugabyte/yugabyte-db/issues/2266)] [YSQL] Fix YSQL PG crypto function crash issue
+* [[6149](https://github.com/yugabyte/yugabyte-db/issues/6149)] [[10587](https://github.com/yugabyte/yugabyte-db/issues/10587)] [YSQL] Partitioned table primary key is not correctly inherited by partitions
+* [[10347](https://github.com/yugabyte/yugabyte-db/issues/10347)] [DocDB] Only call ShouldSplitValidCandidate for automatic splits.
+* [[10547](https://github.com/yugabyte/yugabyte-db/issues/10547)] [YBASE] [DocDB] Avoid unnecessary GetTransactionStatus calls during follower reads #10547
+* [[10589](https://github.com/yugabyte/yugabyte-db/issues/10589)] [YSQL] ysql_dump duplicates primary key for partition table
+* [[10818](https://github.com/yugabyte/yugabyte-db/issues/10818)] [DocDB] Fix max metrics aggregation metadata to match the entry with the max value
+* [[10900](https://github.com/yugabyte/yugabyte-db/issues/10900)] [YBase] Allow the user to specify the UUID for master removal
+* [[10912](https://github.com/yugabyte/yugabyte-db/issues/10912)] [YSQL] Send truncate colocated requests for the indexes associated with the table
+* [[10995](https://github.com/yugabyte/yugabyte-db/issues/10995)] Release the memtable mutex before going to sleep.
+* [[11038](https://github.com/yugabyte/yugabyte-db/issues/11038)] [YSQL] Check return status for PG gate functions
+* [[11044](https://github.com/yugabyte/yugabyte-db/issues/11044)] [DST] Drop outstanding_tablet_split_limit to 1
+* [[11047](https://github.com/yugabyte/yugabyte-db/issues/11047)] [[11072](https://github.com/yugabyte/yugabyte-db/issues/11072)] [YSQL] Fix two issues with large OID
+* [[11054](https://github.com/yugabyte/yugabyte-db/issues/11054)] [ycql] Aggregate updates to JSONB column before inserting Subdoc
+* [[11090](https://github.com/yugabyte/yugabyte-db/issues/11090)] [YSQL] Fix incorrect scan result due to scan key pushdown
+* [[11167](https://github.com/yugabyte/yugabyte-db/issues/11167)] [YSQL] Release resources on YbScanDesc freeing
+* [[11195](https://github.com/yugabyte/yugabyte-db/issues/11195)] [DST] Disallow consecutive restores guarded by a flag
+* [[11198](https://github.com/yugabyte/yugabyte-db/issues/11198)] [DocDB] Restores should not fail if tablet is moved/deleted off a TServer
+* [[11206](https://github.com/yugabyte/yugabyte-db/issues/11206)] [YSQL] [Upgrade] Make YSQL upgrade do nothing when YSQL is not enabled
+* [[11230](https://github.com/yugabyte/yugabyte-db/issues/11230)] [YSQL] Block planner peeking at YB indexes
+* [[11335](https://github.com/yugabyte/yugabyte-db/issues/11335)] [DocDB] Restore should return an error if it hits max number of retries
+* [[11346](https://github.com/yugabyte/yugabyte-db/issues/11346)] [YSQL] Fix bug in YBCIsSingleRowUpdateOrDelete
+
+## v2.8.1.1 - February 2, 2022 {#v2.8.1.1}
+
+**Build:** `2.8.1.1-b5`
+
+### Downloads
+
+<a class="download-binary-link" href="https://downloads.yugabyte.com/releases/2.8.1.1/yugabyte-2.8.1.1-b5-darwin-x86_64.tar.gz">
+  <button>
+    <i class="fab fa-apple"></i><span class="download-text">macOS</span>
+  </button>
+</a>
+&nbsp; &nbsp; &nbsp;
+<a class="download-binary-link" href="https://downloads.yugabyte.com/releases/2.8.1.1/yugabyte-2.8.1.1-b5-linux-x86_64.tar.gz">
+  <button>
+    <i class="fab fa-linux"></i><span class="download-text">Linux x86</span>
+  </button>
+</a>
+&nbsp; &nbsp; &nbsp;
+<a class="download-binary-link" href="https://downloads.yugabyte.com/releases/2.8.1.1/yugabyte-2.8.1.1-b5-el8-aarch64.tar.gz">
+  <button>
+    <i class="fab fa-linux"></i><span class="download-text">Linux ARM</span>
+  </button>
+</a>
+<br />
+
+### Docker
+
+```sh
+docker pull yugabytedb/yugabyte:2.8.1.1-b5
+```
+
+### Bug fixes
+
+This release is a bugfix-only release.
+
+#### Yugabyte Platform
+
+* [[10804](https://github.com/yugabyte/yugabyte-db/issues/10804)] Allow specifying `loadBalancerIP` during helm install to get static IP address
+* [PLAT-2647] Add HTTP_PROXY environment variable to `replicated.yml`
+* [PLAT-2673] Validating custom key-pair with AWS
+
 ## v2.8.1.0 - January 4, 2022 {#v2.8.1.0}
 
 **Build:** `2.8.1.0-b37`
@@ -206,7 +365,6 @@ For an overview of the 2.8.0.0 release's notable new features, check out the [re
 * [PLAT-1747] supporting n2 instance types for GCP internally
 * [PLAT-1766] [Alerts] [UI] Cleanup
 * [PLAT-1774] Add a customer ID field in Customer Profile page
-* [Plat-1777] Add basic filtering and sorting
 * [PLAT-1793] DB Error logs alert
 * [Plat-1797] Create a pagination component
 * [PLAT-1808] [Alert UI] cleanup tasks

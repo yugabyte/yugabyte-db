@@ -15,14 +15,13 @@ showAsideToc: true
 
 After [creating a free cluster](../qs-add/), the easiest way to connect to it is to use the cloud shell.
 
-The cloud shell allows you to connect to and interact with your Yugabyte Cloud cluster from your browser. You have the option of using the following CLIs in the cloud shell:
+Using the cloud shell, you can connect to your Yugabyte Cloud cluster from your browser, and interact with it using distributed SQL.
 
-- [ysqlsh](../../../admin/ysqlsh/) - YSQL shell for interacting with YugabyteDB using the [YSQL API](../../../api/ysql) 
-- [ycqlsh](../../../admin/ycqlsh/) - YCQL shell, which uses the [YCQL API](../../../api/ycql)
+Cloud shell has a 15 minute connection limit. If your session expires, close your browser tab and connect again.
 
 ## Connect to your cluster using the cloud shell
 
-To use `ysqlsh` to create and manage YugabyteDB databases and tables in your Yugabyte Cloud cluster, do the following:
+To connect to your cluster, do the following:
 
 1. On the **Clusters** page, ensure your cluster is selected.
 
@@ -30,33 +29,37 @@ To use `ysqlsh` to create and manage YugabyteDB databases and tables in your Yug
 
 1. Under **Cloud Shell**, click **Launch Cloud Shell**.
 
-1. Enter the database name (`yugabyte`), the user name (`admin`), select the YSQL API and click **Confirm**.
+1. Enter the database name (`yugabyte`), the user name (`admin`), select the YSQL API type, and click **Confirm**.
 
-    The cloud shell opens in a separate browser window. Cloud shell can take up to 30 seconds to be ready.
+    Cloud shell opens in a separate browser window. Cloud shell can take up to 30 seconds to be ready.
 
     ```output
     Password for user admin: 
     ```
 
-1. Enter the password for the admin user that you saved when you created the cluster.
+1. Enter the password for the admin user credentials that you saved when you created the cluster.\
+\
+    The shell prompt appears and is ready to use.
 
-The `ysqlsh` shell prompt appears and is ready to use.
+    ```output
+    ysqlsh (11.2-YB-2.2.0.0-b0)
+    SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
+    Type "help" for help.
 
-```output
-ysqlsh (11.2-YB-2.2.0.0-b0)
-SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
-Type "help" for help.
+    yugabyte=#
+    ```
 
-yugabyte=#
-```
+The command line interface (CLI) being used is called ysqlsh. ysqlsh is the CLI for interacting with YugabyteDB using the PostgreSQL-compatible YSQL API.
+
+Cloud shell also supports ycqlsh, a CLI for the YCQL API.
 
 ### Learn more
 
-For information on other ways to connect to your cluster, refer to [Connect to clusters](../../cloud-connect).
-
-For more information on the `ysqlsh` and `ycqlsh` shells, refer to [ysqlsh](../../../admin/ysqlsh/) and [ycqlsh](../../../admin/ycqlsh/).
+For more information on the ysqlsh and ycqlsh CLIs, refer to [ysqlsh](../../../admin/ysqlsh/) and [ycqlsh](../../../admin/ycqlsh/).
 
 For more information on the YSQL and YCQL APIs, refer to [YSQL API](../../../api/ysql/) and [YCQL API](../../../api/ycql/).
+
+For information on other ways to connect to your cluster, refer to [Connect to clusters](../../cloud-connect).
 
 ## Next step
 

@@ -63,6 +63,32 @@ preflight_provision_check() {
   ulimit_filepath="/etc/security/limits.conf"
   check_filepath "PAM Limits" $ulimit_filepath true
 
+  # Check NTP synchronization
+  ntp_status=$(timedatectl status)
+  ntp_check=true
+  enabled_regex='(NTP enabled: |NTP service: |Network time on: |systemd-timesyncd\.service active: )([^'$'\n'']*)'
+  if [[ $ntp_status =~ $enabled_regex ]]; then
+    enabled_status="${BASH_REMATCH[2]}"
+    if [[ "$enabled_status" != "yes" ]] && [[ "$enabled_status" != "active" ]]; then
+      # Oracle8 has the line NTP service: n/a instead. Don't fail if this line exists
+      if [[ ! ("${BASH_REMATCH[1]}" == "NTP service: " && "${BASH_REMATCH[2]}" == "n/a") ]]; then
+        ntp_check=false
+      fi
+    fi
+  else
+    ntp_check=false
+  fi
+  synchro_regex='(NTP synchronized: |System clock synchronized: )([^'$'\n'']*)'
+  if [[ $ntp_status =~ $synchro_regex ]]; then
+    synchro_status="${BASH_REMATCH[2]}"
+    if [[ "$synchro_status" != "yes" ]]; then
+      ntp_check=false
+    fi
+  else
+    ntp_check=false
+  fi
+  update_result_json "NTP time synchronization set up" "$ntp_check"
+
   # Check mount points are writeable.
   IFS="," read -ra mount_points_arr <<< "$mount_points"
   for path in "${mount_points_arr[@]}"; do
@@ -107,7 +133,6 @@ preflight_configure_check() {
 
   # Check home directory exists.
   check_filepath "Home Directory" "$yb_home_dir" false
-  check_free_space "$yb_home_dir" $HOME_FREE_SPACE_MB
 }
 
 # Checks if given filepath is writable.

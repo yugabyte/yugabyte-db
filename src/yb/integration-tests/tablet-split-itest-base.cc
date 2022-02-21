@@ -145,9 +145,13 @@ Status DoSplitTablet(master::CatalogManagerIf* catalog_mgr, const tablet::Tablet
   LOG(INFO) << "DB properties: " << properties;
 
   const auto encoded_split_key = VERIFY_RESULT(tablet.GetEncodedMiddleSplitKey());
-  const auto doc_key_hash = VERIFY_RESULT(docdb::DecodeDocKeyHash(encoded_split_key)).value();
-  LOG(INFO) << "Middle hash key: " << doc_key_hash;
-  const auto partition_split_key = PartitionSchema::EncodeMultiColumnHashValue(doc_key_hash);
+  std::string partition_split_key = encoded_split_key;
+  if (tablet.metadata()->partition_schema()->IsHashPartitioning()) {
+    const auto doc_key_hash = VERIFY_RESULT(docdb::DecodeDocKeyHash(encoded_split_key)).value();
+    LOG(INFO) << "Middle hash key: " << doc_key_hash;
+    partition_split_key = PartitionSchema::EncodeMultiColumnHashValue(doc_key_hash);
+  }
+  LOG(INFO) << "Partition split key: " << Slice(partition_split_key).ToDebugHexString();
 
   return catalog_mgr->TEST_SplitTablet(tablet_id, encoded_split_key, partition_split_key);
 }
@@ -219,17 +223,24 @@ tserver::WriteRequestPB TabletSplitITestBase<MiniClusterType>::CreateInsertReque
 template <class MiniClusterType>
 Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>>
     TabletSplitITestBase<MiniClusterType>::WriteRows(
-        const int32_t num_rows, const int32_t start_key) {
+        client::TableHandle* table, const uint32_t num_rows,
+        const int32_t start_key, const int32_t start_value) {
   auto min_hash_code = std::numeric_limits<docdb::DocKeyHash>::max();
   auto max_hash_code = std::numeric_limits<docdb::DocKeyHash>::min();
 
   LOG(INFO) << "Writing " << num_rows << " rows...";
 
   auto txn = this->CreateTransaction();
-  auto session = this->CreateSession();
-  for (auto i = start_key; i < start_key + num_rows; ++i) {
+  auto session = this->CreateSession(txn);
+  for (int32_t i = start_key, v = start_value;
+       i < start_key + static_cast<int32_t>(num_rows);
+       ++i, ++v) {
     client::YBqlWriteOpPtr op = VERIFY_RESULT(
-        this->WriteRow(session, i /* key */, i /* value */, client::WriteOpType::INSERT));
+        client::kv_table_test::WriteRow(table,
+                                        session,
+                                        i /* key */,
+                                        v /* value */,
+                                        client::WriteOpType::INSERT));
     const auto hash_code = op->GetHashCode();
     min_hash_code = std::min(min_hash_code, hash_code);
     max_hash_code = std::max(max_hash_code, hash_code);
@@ -383,35 +394,35 @@ Status TabletSplitITest::WaitForTabletSplitCompletion(
 
   std::vector<tablet::TabletPeerPtr> peers;
   auto s = WaitFor([&] {
-      peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
-      size_t num_peers_running = 0;
-      size_t num_peers_split = 0;
-      size_t num_peers_leader_ready = 0;
-      for (const auto& peer : peers) {
-        const auto tablet = peer->shared_tablet();
-        const auto consensus = peer->shared_consensus();
-        if (!tablet || !consensus) {
-          break;
-        }
-        if (tablet->metadata()->table_name() != table.table_name() ||
-            tablet->table_type() == TRANSACTION_STATUS_TABLE_TYPE) {
-          continue;
-        }
-        const auto raft_group_state = peer->state();
-        const auto tablet_data_state = tablet->metadata()->tablet_data_state();
-        const auto leader_status = consensus->GetLeaderStatus(/* allow_stale =*/true);
-        if (raft_group_state == tablet::RaftGroupStatePB::RUNNING) {
-          ++num_peers_running;
-        } else {
-          return false;
-        }
-        num_peers_leader_ready += leader_status == consensus::LeaderStatus::LEADER_AND_READY;
-        num_peers_split +=
-            tablet_data_state == tablet::TabletDataState::TABLET_DATA_SPLIT_COMPLETED;
+    peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+    size_t num_peers_running = 0;
+    size_t num_peers_split = 0;
+    size_t num_peers_leader_ready = 0;
+    for (const auto& peer : peers) {
+      const auto tablet = peer->shared_tablet();
+      const auto consensus = peer->shared_consensus();
+      if (!tablet || !consensus) {
+        break;
       }
-      VLOG(1) << "num_peers_running: " << num_peers_running;
-      VLOG(1) << "num_peers_split: " << num_peers_split;
-      VLOG(1) << "num_peers_leader_ready: " << num_peers_leader_ready;
+      if (tablet->metadata()->table_name() != table.table_name() ||
+          tablet->table_type() == TRANSACTION_STATUS_TABLE_TYPE) {
+        continue;
+      }
+      const auto raft_group_state = peer->state();
+      const auto tablet_data_state = tablet->metadata()->tablet_data_state();
+      const auto leader_status = consensus->GetLeaderStatus(/* allow_stale =*/true);
+      if (raft_group_state == tablet::RaftGroupStatePB::RUNNING) {
+        ++num_peers_running;
+      } else {
+        return false;
+      }
+      num_peers_leader_ready += leader_status == consensus::LeaderStatus::LEADER_AND_READY;
+      num_peers_split +=
+          tablet_data_state == tablet::TabletDataState::TABLET_DATA_SPLIT_COMPLETED;
+    }
+    VLOG(1) << "num_peers_running: " << num_peers_running;
+    VLOG(1) << "num_peers_split: " << num_peers_split;
+    VLOG(1) << "num_peers_leader_ready: " << num_peers_leader_ready;
 
     return num_peers_running == num_replicas_online * expected_total_tablets &&
            num_peers_split == num_replicas_online * expected_split_tablets &&
@@ -750,7 +761,6 @@ void TabletSplitExternalMiniClusterITest::SetFlags() {
   TabletSplitITestBase<ExternalMiniCluster>::SetFlags();
   for (const auto& master_flag : {
             "--enable_automatic_tablet_splitting=false",
-            "--TEST_disable_split_tablet_candidate_processing=true",
             "--tablet_split_low_phase_shard_count_per_node=-1",
             "--tablet_split_high_phase_shard_count_per_node=-1",
             "--tablet_split_low_phase_size_threshold_bytes=-1",

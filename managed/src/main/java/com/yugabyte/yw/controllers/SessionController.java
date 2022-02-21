@@ -45,22 +45,25 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
+import io.ebean.annotation.Transactional;
 import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-import io.ebean.DuplicateKeyException;
-import io.ebean.annotation.Transactional;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.CompletionStage;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -69,14 +72,7 @@ import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.input.ReversedLinesFileReader;
-import org.apache.directory.api.ldap.model.cursor.EntryCursor;
-import org.apache.directory.api.ldap.model.entry.Attribute;
-import org.apache.directory.api.ldap.model.entry.Entry;
-import org.apache.directory.api.ldap.model.exception.LdapAuthenticationException;
 import org.apache.directory.api.ldap.model.exception.LdapException;
-import org.apache.directory.api.ldap.model.exception.LdapNoSuchObjectException;
-import org.apache.directory.api.ldap.model.message.SearchScope;
-import org.apache.directory.ldap.client.api.LdapNetworkConnection;
 import org.pac4j.core.profile.CommonProfile;
 import org.pac4j.core.profile.ProfileManager;
 import org.pac4j.play.PlayWebContext;
@@ -88,7 +84,6 @@ import play.Configuration;
 import play.Environment;
 import play.data.Form;
 import play.libs.Json;
-import play.libs.concurrent.HttpExecutionContext;
 import play.libs.ws.WSClient;
 import play.libs.ws.WSRequest;
 import play.mvc.Http;
@@ -126,8 +121,6 @@ public class SessionController extends AbstractPlatformController {
   @Inject private AlertDestinationService alertDestinationService;
 
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
-
-  @Inject private HttpExecutionContext ec;
 
   @Inject private SessionHandler sessionHandler;
 
@@ -471,7 +464,17 @@ public class SessionController extends AbstractPlatformController {
     return withData(sessionInfo);
   }
 
-  @ApiOperation(value = "UI_ONLY", hidden = true, response = SessionInfo.class)
+  @ApiOperation(
+      value = "Register a customer",
+      notes = "Creates new customer and user",
+      nickname = "registerCustomer",
+      response = SessionInfo.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "CustomerRegisterFormData",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.CustomerRegisterFormData",
+          required = true))
   @Transactional
   public Result register() {
     CustomerRegisterFormData data =

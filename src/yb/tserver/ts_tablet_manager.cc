@@ -184,6 +184,10 @@ DEFINE_int32(verify_tablet_data_interval_sec, 0,
              "The tick interval time for the tablet data integrity verification background task. "
              "This defaults to 0, which means disable the background task.");
 
+DEFINE_int32(cleanup_metrics_interval_sec, 60,
+             "The tick interval time for the metrics cleanup background task. "
+             "If set to 0, it disables the background task.");
+
 DEFINE_bool(skip_tablet_data_verification, false,
             "Skip checking tablet data for corruption.");
 
@@ -321,6 +325,11 @@ void TSTabletManager::VerifyTabletData() {
   }
 }
 
+void TSTabletManager::CleanupOldMetrics() {
+  VLOG(2) << "Cleaning up old metrics";
+  metric_registry_->RetireOldMetrics();
+}
+
 TSTabletManager::TSTabletManager(FsManager* fs_manager,
                                  TabletServer* server,
                                  MetricRegistry* metric_registry)
@@ -333,6 +342,7 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
       METRIC_op_apply_queue_time.Instantiate(server_->metric_entity()),
       METRIC_op_apply_run_time.Instantiate(server_->metric_entity())
   };
+  tablet_options_.ServerMetricEntity = server_->metric_entity();
   CHECK_OK(ThreadPoolBuilder("apply")
                .set_metrics(std::move(metrics))
                .Build(&apply_pool_));
@@ -510,6 +520,9 @@ Status TSTabletManager::Init() {
   verify_tablet_data_poller_ = std::make_unique<rpc::Poller>(
       LogPrefix(), std::bind(&TSTabletManager::VerifyTabletData, this));
 
+  metrics_cleaner_ = std::make_unique<rpc::Poller>(
+      LogPrefix(), std::bind(&TSTabletManager::CleanupOldMetrics, this));
+
   return Status::OK();
 }
 
@@ -560,6 +573,14 @@ Status TSTabletManager::Start() {
   } else {
     LOG(INFO)
         << "Tablet data verification is disabled by verify_tablet_data_interval_sec flag set to 0";
+  }
+  if (FLAGS_cleanup_metrics_interval_sec > 0) {
+    metrics_cleaner_->Start(
+        &server_->messenger()->scheduler(), FLAGS_cleanup_metrics_interval_sec * 1s);
+    LOG(INFO) << "Old metrics cleanup task started...";
+  } else {
+    LOG(INFO)
+        << "Old metrics cleanup is disabled by cleanup_metrics_interval_sec flag set to 0";
   }
 
   return Status::OK();
@@ -1495,6 +1516,8 @@ void TSTabletManager::StartShutdown() {
   tablets_cleaner_->Shutdown();
 
   verify_tablet_data_poller_->Shutdown();
+
+  metrics_cleaner_->Shutdown();
 
   async_client_init_->Shutdown();
 

@@ -199,15 +199,20 @@ size_t SliceParts::SumSizes() const {
   return result;
 }
 
-void SliceParts::CopyAllTo(void* out) const {
-  char* buf = static_cast<char*>(out);
+char* SliceParts::CopyAllTo(char* out) const {
   for (int i = 0; i != num_parts; ++i) {
     if (!parts[i].size()) {
       continue;
     }
-    memcpy(buf, parts[i].data(), parts[i].size());
-    buf += parts[i].size();
+    memcpy(out, parts[i].data(), parts[i].size());
+    out += parts[i].size();
   }
+  return out;
+}
+
+Slice SliceParts::TheOnlyPart() const {
+  CHECK_EQ(num_parts, 1);
+  return parts[0];
 }
 
 }  // namespace yb

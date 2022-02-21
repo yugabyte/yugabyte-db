@@ -5,11 +5,9 @@ import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
-import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
-import io.ebean.annotation.Transactional;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -20,6 +18,7 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.cdc.CdcConsumer;
 import org.yb.cdc.CdcConsumer.ProducerEntryPB;
+import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
 
@@ -46,10 +45,17 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
     YBClient client = ybService.getClient(targetUniverseMasterAddresses, targetUniverseCertificate);
 
     try {
-      CatalogEntityInfo.SysClusterConfigEntryPB config =
-          client.getMasterClusterConfig().getConfig();
+      GetMasterClusterConfigResponse resp = client.getMasterClusterConfig();
+      if (resp.hasError()) {
+        String errMsg =
+            String.format(
+                "Failed to sync XClusterConfigs for Universe(%s): "
+                    + "Failed to get cluster config: %s",
+                targetUniverse.universeUUID, resp.errorMessage());
+        throw new RuntimeException(errMsg);
+      }
 
-      syncXClusterConfigs(config, targetUniverse.universeUUID);
+      syncXClusterConfigs(resp.getConfig(), targetUniverse.universeUUID);
 
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());

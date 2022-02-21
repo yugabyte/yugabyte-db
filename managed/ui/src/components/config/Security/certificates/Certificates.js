@@ -238,15 +238,20 @@ class Certificates extends Component {
     const {
       customer: { currentCustomer, userCertificates },
       modal: { showModal, visibleModal },
-      showAddCertificateModal
+      showAddCertificateModal,
+      featureFlags
     } = this.props;
 
     const { showSubmitting, associatedUniverses, isVisibleModal } = this.state;
 
+    //feature flagging
+    const isHCVaultEnabled =
+      featureFlags.test.enableHCVaultEAT || featureFlags.released.enableHCVaultEAT;
+
     const certificateArray = getPromiseState(userCertificates).isSuccess()
       ? userCertificates.data
-          .map((cert) => {
-            return {
+          .reduce((allCerts, cert) => {
+            const certInfo = {
               type: cert.certType,
               uuid: cert.uuid,
               name: cert.label,
@@ -256,9 +261,17 @@ class Certificates extends Component {
               privateKey: cert.privateKey,
               customCertInfo: cert.customCertInfo,
               inUse: cert.inUse,
-              universeDetails: cert.universeDetails
+              universeDetails: cert.universeDetails,
+              hcVaultCertParams: cert.hcVaultCertParams
             };
-          })
+
+            const isVaultCert = cert.certType === 'HashicorpVault';
+            if (isVaultCert) {
+              isHCVaultEnabled && allCerts.push(certInfo);
+            } else allCerts.push(certInfo);
+
+            return allCerts;
+          }, [])
           .sort((a, b) => new Date(b.creationTime) - new Date(a.creationTime))
       : [];
 
@@ -337,6 +350,7 @@ class Certificates extends Component {
                 visible={showModal && visibleModal === 'addCertificateModal'}
                 onHide={this.props.closeModal}
                 fetchCustomerCertificates={this.props.fetchCustomerCertificates}
+                isHCVaultEnabled={isHCVaultEnabled}
               />
               <CertificateDetails
                 visible={showModal && visibleModal === 'certificateDetailsModal'}

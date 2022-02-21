@@ -25,6 +25,7 @@ import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.BackupUniverse;
+import com.yugabyte.yw.commissioner.tasks.CreateBackup;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunExternalScript;
@@ -87,6 +88,18 @@ public class Scheduler {
             this.executionContext);
   }
 
+  /** Resets every schedule's running state to false in case of platform restart. */
+  public void resetRunningStatus() {
+    Schedule.getAll()
+        .forEach(
+            (schedule) -> {
+              if (schedule.getRunningState()) {
+                schedule.setRunningState(false);
+                log.debug("Updated scheduler {} running state to false", schedule.scheduleUUID);
+              }
+            });
+  }
+
   /** Iterates through all the schedule entries and runs the tasks that are due to be scheduled. */
   @VisibleForTesting
   void scheduleRunner() {
@@ -111,73 +124,83 @@ public class Scheduler {
               "Scheduled task does not have a recurrence specified {}", schedule.getScheduleUUID());
           continue;
         }
-        TaskType taskType = schedule.getTaskType();
-        // TODO: Come back and maybe address if using relations between schedule and
-        //  schedule_task is
-        // a better approach.
-        ScheduleTask lastTask = ScheduleTask.getLastTask(schedule.getScheduleUUID());
-        Date lastScheduledTime = null;
-        Date lastCompletedTime = null;
-        if (lastTask != null) {
-          lastScheduledTime = lastTask.getScheduledTime();
-          lastCompletedTime = lastTask.getCompletedTime();
-        }
-        boolean shouldRunTask = false;
-        boolean alreadyRunning = false;
-        long diff = 0;
-
-        // Check if task needs to be scheduled again.
-        if (lastScheduledTime != null) {
-          diff = Math.abs(currentTime.getTime() - lastScheduledTime.getTime());
-          if (lastCompletedTime == null) {
-            alreadyRunning = true;
+        try {
+          schedule.setRunningState(true);
+          TaskType taskType = schedule.getTaskType();
+          // TODO: Come back and maybe address if using relations between schedule and
+          //  schedule_task is
+          // a better approach.
+          ScheduleTask lastTask = ScheduleTask.getLastTask(schedule.getScheduleUUID());
+          Date lastScheduledTime = null;
+          Date lastCompletedTime = null;
+          if (lastTask != null) {
+            lastScheduledTime = lastTask.getScheduledTime();
+            lastCompletedTime = lastTask.getCompletedTime();
           }
-        } else {
-          diff = Long.MAX_VALUE;
-        }
-        // If frequency if specified, check if the task needs to be scheduled.
-        // The check sees the difference between the last scheduled task and the current
-        // time. If the diff is greater than the frequency, means we need to run the task
-        // again.
-        if (frequency != 0L && diff > frequency) {
-          shouldRunTask = true;
-        }
-        // In the case frequency is not defined and we have a cron expression, we compute
-        // solely in accordance to the cron execution time. If the execution time is within the
-        // scheduler interval, we run the task.
-        else if (cronExpression != null) {
-          CronParser unixCronParser =
-              new CronParser(CronDefinitionBuilder.instanceDefinitionFor(UNIX));
-          Cron parsedUnixCronExpression = unixCronParser.parse(cronExpression);
-          Instant now = Instant.now();
-          // LocalDateTime now = LocalDateTime.ofInstant(Instant.now(), ZoneId.of("UTC"));
-          ZonedDateTime utcNow = now.atZone(ZoneId.of("UTC"));
-          ExecutionTime executionTime = ExecutionTime.forCron(parsedUnixCronExpression);
-          long timeFromLastExecution =
-              executionTime.timeFromLastExecution(utcNow).get().getSeconds();
-          if (timeFromLastExecution < YB_SCHEDULER_INTERVAL * MIN_TO_SEC) {
-            // In case the last task was completed, or the last task was never even scheduled,
-            // we run the task. If the task was scheduled, but didn't complete, we skip this
-            // iteration completely.
+          boolean shouldRunTask = false;
+          boolean alreadyRunning = false;
+          long diff = 0;
+
+          // Check if task needs to be scheduled again.
+          if (lastScheduledTime != null) {
+            diff = Math.abs(currentTime.getTime() - lastScheduledTime.getTime());
+            if (lastCompletedTime == null) {
+              alreadyRunning = true;
+            }
+          } else {
+            diff = Long.MAX_VALUE;
+          }
+          // If frequency if specified, check if the task needs to be scheduled.
+          // The check sees the difference between the last scheduled task and the current
+          // time. If the diff is greater than the frequency, means we need to run the task
+          // again.
+          if (frequency != 0L && diff > frequency) {
             shouldRunTask = true;
-            if (lastScheduledTime != null && lastCompletedTime == null) {
-              log.warn(
-                  "Previous scheduled task still running, skipping this iteration's task. "
-                      + "Will try again next at {}.",
-                  executionTime.nextExecution(utcNow).get());
+          }
+          // In the case frequency is not defined and we have a cron expression, we compute
+          // solely in accordance to the cron execution time. If the execution time is within the
+          // scheduler interval, we run the task.
+          else if (cronExpression != null) {
+            CronParser unixCronParser =
+                new CronParser(CronDefinitionBuilder.instanceDefinitionFor(UNIX));
+            Cron parsedUnixCronExpression = unixCronParser.parse(cronExpression);
+            Instant now = Instant.now();
+            // LocalDateTime now = LocalDateTime.ofInstant(Instant.now(), ZoneId.of("UTC"));
+            ZonedDateTime utcNow = now.atZone(ZoneId.of("UTC"));
+            ExecutionTime executionTime = ExecutionTime.forCron(parsedUnixCronExpression);
+            long timeFromLastExecution =
+                executionTime.timeFromLastExecution(utcNow).get().getSeconds();
+            if (timeFromLastExecution < YB_SCHEDULER_INTERVAL * MIN_TO_SEC) {
+              // In case the last task was completed, or the last task was never even scheduled,
+              // we run the task. If the task was scheduled, but didn't complete, we skip this
+              // iteration completely.
+              shouldRunTask = true;
+              if (lastScheduledTime != null && lastCompletedTime == null) {
+                log.warn(
+                    "Previous scheduled task still running, skipping this iteration's task. "
+                        + "Will try again next at {}.",
+                    executionTime.nextExecution(utcNow).get());
+              }
             }
           }
-        }
-        if (shouldRunTask) {
-          if (taskType == TaskType.BackupUniverse) {
-            this.runBackupTask(schedule, alreadyRunning);
+          if (shouldRunTask) {
+            if (taskType == TaskType.BackupUniverse) {
+              this.runBackupTask(schedule, alreadyRunning);
+            }
+            if (taskType == TaskType.MultiTableBackup) {
+              this.runMultiTableBackupsTask(schedule, alreadyRunning);
+            }
+            if (taskType == TaskType.ExternalScript && !alreadyRunning) {
+              this.runExternalScriptTask(schedule);
+            }
+            if (taskType == TaskType.CreateBackup) {
+              this.runCreateBackupTask(schedule, alreadyRunning);
+            }
           }
-          if (taskType == TaskType.MultiTableBackup) {
-            this.runMultiTableBackupsTask(schedule, alreadyRunning);
-          }
-          if (taskType == TaskType.ExternalScript && !alreadyRunning) {
-            this.runExternalScriptTask(schedule);
-          }
+        } catch (Exception e) {
+          log.error("Error runnning schedule {} ", schedule.scheduleUUID, e);
+        } finally {
+          schedule.setRunningState(false);
         }
       }
       Map<Customer, List<Backup>> expiredBackups = Backup.getExpiredBackups();
@@ -252,6 +275,11 @@ public class Scheduler {
   private void runMultiTableBackupsTask(Schedule schedule, boolean alreadyRunning) {
     MultiTableBackup multiTableBackup = AbstractTaskBase.createTask(MultiTableBackup.class);
     multiTableBackup.runScheduledBackup(schedule, commissioner, alreadyRunning);
+  }
+
+  private void runCreateBackupTask(Schedule schedule, boolean alreadyRunning) {
+    CreateBackup createBackup = AbstractTaskBase.createTask(CreateBackup.class);
+    createBackup.runScheduledBackup(schedule, commissioner, alreadyRunning);
   }
 
   private void runDeleteBackupTask(Customer customer, Backup backup) {

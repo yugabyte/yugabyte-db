@@ -115,6 +115,9 @@ export const FETCH_RUNTIME_CONFIGS_RESPONSE = 'FETCH_RUNTIME_CONFIGS_RESPONSE';
 export const SET_RUNTIME_CONFIG = 'SET_RUNTIME_CONFIG';
 export const SET_RUNTIME_CONFIG_RESPONSE = 'SET_RUNTIME_CONFIG_RESPONSE';
 
+export const DELETE_RUNTIME_CONFIG = 'DELETE_RUNTIME_CONFIG';
+export const DELETE_RUNTIME_CONFIG_RESPONSE = 'DELETE_RUNTIME_CONFIG_RESPONSE';
+
 export const INVALID_CUSTOMER_TOKEN = 'INVALID_CUSTOMER_TOKEN';
 export const RESET_TOKEN_ERROR = 'RESET_TOKEN_ERROR';
 
@@ -536,6 +539,32 @@ export function getAlerts() {
   };
 }
 
+export function getAlertsCountForUniverse(universeUUID) {
+  const cUUID = localStorage.getItem('customerId');
+  return axios.post(`${ROOT_URL}/customers/${cUUID}/alerts/count`, {
+    states: ['ACTIVE'],
+    sourceUUIDs: [universeUUID],
+    configurationTypes: ['UNIVERSE'],
+    severities: ['SEVERE', 'WARNING']
+  });
+}
+
+export function getAlertsForUniverse(universeUUID, limit) {
+  const cUUID = localStorage.getItem('customerId');
+  return axios.post(`${ROOT_URL}/customers/${cUUID}/alerts/page`, {
+    sortBy: 'name',
+    direction: 'ASC',
+    needTotalCount: true,
+    filter: {
+      states: ['ACTIVE'],
+
+      sourceUUIDs: [universeUUID]
+    },
+    offset: 0,
+    limit
+  });
+}
+
 export function createAlertChannel(payload) {
   const cUUID = localStorage.getItem('customerId');
   const request = axios.post(`${ROOT_URL}/customers/${cUUID}/alert_channels`, payload);
@@ -878,6 +907,22 @@ export function setRunTimeConfig({ key, value, scope = '00000000-0000-0000-0000-
 export function setRunTimeConfigResponse(response) {
   return {
     type: SET_RUNTIME_CONFIG_RESPONSE,
+    payload: response
+  };
+}
+
+export function deleteRunTimeConfig({ key, scope = '00000000-0000-0000-0000-000000000000' }) {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.delete(`${ROOT_URL}/customers/${cUUID}/runtime_config/${scope}/key/${key}`);
+  return {
+    type: DELETE_RUNTIME_CONFIG,
+    payload: request
+  };
+}
+
+export function deleteRunTimeConfigResponse(response) {
+  return {
+    type: DELETE_RUNTIME_CONFIG_RESPONSE,
     payload: response
   };
 }

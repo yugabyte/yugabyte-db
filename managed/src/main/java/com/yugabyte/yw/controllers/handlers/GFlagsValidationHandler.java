@@ -2,9 +2,11 @@
 
 package com.yugabyte.yw.controllers.handlers;
 
+import static java.util.regex.Pattern.CASE_INSENSITIVE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.common.GFlagDetails;
@@ -18,6 +20,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -32,12 +35,20 @@ public class GFlagsValidationHandler {
 
   public static final Logger LOG = LoggerFactory.getLogger(GFlagsValidationHandler.class);
 
+  public static final Set<String> GFLAGS_FILTER_TAGS = ImmutableSet.of("experimental", "hidden");
+
+  public static final Set<Pattern> GFLAGS_FILTER_PATTERN =
+      ImmutableSet.of(
+          Pattern.compile("^.*_test.*$", CASE_INSENSITIVE),
+          Pattern.compile("^.*test_.*$", CASE_INSENSITIVE));
+
   public List<GFlagDetails> listGFlags(
       String version, String gflag, String serverType, Boolean mostUsedGFlags) throws IOException {
     validateServerType(serverType);
     validateVersionFormat(version);
     List<GFlagDetails> gflagsList =
         gflagsValidation.extractGFlags(version, serverType, mostUsedGFlags);
+    gflagsList = filterGFlagsList(gflagsList);
     if (StringUtils.isEmpty(gflag)) {
       return gflagsList;
     }
@@ -87,12 +98,13 @@ public class GFlagsValidationHandler {
     validateServerType(serverType);
     validateVersionFormat(version);
     List<GFlagDetails> gflagsList = gflagsValidation.extractGFlags(version, serverType, false);
-    for (GFlagDetails flag : gflagsList) {
-      if (flag.name.equals(gflag)) {
-        return flag;
-      }
-    }
-    throw new PlatformServiceException(BAD_REQUEST, gflag + " is not present in metadata.");
+    return gflagsList
+        .stream()
+        .filter(flag -> flag.name.equals(gflag))
+        .findFirst()
+        .orElseThrow(
+            () ->
+                new PlatformServiceException(BAD_REQUEST, gflag + " is not present in metadata."));
   }
 
   private GFlagValidationDetails checkGflags(
@@ -170,5 +182,23 @@ public class GFlagsValidationHandler {
         .contains(serverType)) {
       throw new PlatformServiceException(BAD_REQUEST, "Given server type is not valid");
     }
+  }
+
+  private List<GFlagDetails> filterGFlagsList(List<GFlagDetails> gflagsList) {
+    return gflagsList
+        .stream()
+        .filter(
+            flag ->
+                !GFLAGS_FILTER_PATTERN
+                        .stream()
+                        .anyMatch(
+                            regexMatcher ->
+                                !StringUtils.isEmpty(flag.name)
+                                    && regexMatcher.matcher(flag.name).find())
+                    && !GFLAGS_FILTER_TAGS
+                        .stream()
+                        .anyMatch(
+                            tags -> !StringUtils.isEmpty(flag.tags) && flag.tags.contains(tags)))
+        .collect(Collectors.toList());
   }
 }

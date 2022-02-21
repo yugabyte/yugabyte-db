@@ -1,13 +1,13 @@
 ---
-title: Overview
+title: Yugabyte Cloud
 linkTitle: Overview
-description: Yugabyte Cloud overview.
-headcontent:
+description: Fully managed YugabyteDB-as-a-Service.
+headcontent: Fully managed YugabyteDB-as-a-Service
 image: /images/section_icons/index/quick_start.png
-type: page
 section: YUGABYTE CLOUD
 aliases:
   - /latest/yugabyte-cloud/
+  - /latest/deploy/yugabyte-cloud/
 menu:
   latest:
     identifier: cloud-overview
@@ -22,7 +22,7 @@ To begin using Yugabyte Cloud, go to [Quick start](cloud-quickstart).
 
 ## Cluster basics
 
-Learn about the basics of using YugabyteDB clusters in Yugabyte Cloud.
+Learn the basics of using YugabyteDB clusters in Yugabyte Cloud.
 
 [Deploy](../cloud-basics/)
 : Create single region clusters that can be deployed across multiple and single availability zones. (To deploy multi-region clusters, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).)

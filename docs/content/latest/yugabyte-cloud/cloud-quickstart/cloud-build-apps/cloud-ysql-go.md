@@ -43,8 +43,9 @@ The application needs to establish a connection to the YugabyteDB cluster. To do
 2. Set the following configuration parameter constants:
 
     - **host** - the host name of your YugabyteDB cluster. To obtain a Yugabyte Cloud cluster host name, sign in to Yugabyte Cloud, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Network Access**.
-    - **port** - the port number that will be used by the JDBC driver (the default YugabyteDB YSQL port is 5433).
-    - **dbUser** and **dbPassword** - the username and password for the YugabyteDB database. If you are using the default database you created when deploying a cluster in Yugabyte Cloud, these can be found in the credentials file you downloaded.
+    - **port** - the port number that will be used by the driver (the default YugabyteDB YSQL port is 5433).
+    - **dbName** - the name of the database you are connecting to (the default database is named `yugabyte`).
+    - **dbUser** and **dbPassword** - the username and password for the YugabyteDB database. If you are using the credentials you created when deploying a cluster in Yugabyte Cloud, these can be found in the credentials file you downloaded.
     - **sslMode** - the SSL mode to use. Yugabyte Cloud [requires SSL connections](../../../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql); use `verify-full`.
     - **sslRootCert** - the full path to the Yugabyte Cloud cluster CA certificate.
 
@@ -187,7 +188,7 @@ if checkIfTxAborted(err) {
 
 [Go PostgreSQL driver](../../../../reference/drivers/ysql-client-drivers/#go-postgresql-driver-pq)
 
-[Explore additional applications](../../../cloud-develop)
+[Explore more applications](../../../cloud-develop)
 
 [Deploy clusters in Yugabyte Cloud](../../../cloud-basics)
 

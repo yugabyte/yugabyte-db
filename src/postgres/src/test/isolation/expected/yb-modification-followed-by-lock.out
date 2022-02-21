@@ -1,0 +1,20 @@
+Parsed test spec with 2 sessions
+
+starting permutation: s1a s2a s1b s1c s2b s2c
+step s1a: SELECT * FROM queue; -- this is just to ensure we have picked the read point
+id             data           status
+
+1              foo            NEW
+2              bar            NEW
+step s2a: SELECT * FROM queue; -- this is just to ensure we have picked the read point
+id             data           status
+
+1              foo            NEW
+2              bar            NEW
+step s1b: SELECT * FROM queue ORDER BY id FOR UPDATE LIMIT 1;
+id             data           status         
+
+1              foo            NEW            
+step s1c: COMMIT;
+step s2b: UPDATE queue set status='OLD' WHERE id=1;
+step s2c: COMMIT;

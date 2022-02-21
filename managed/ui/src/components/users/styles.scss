@@ -92,10 +92,19 @@
     border: 1px solid $YB_BG_WHITE_4;
   }
 
-  .ua-field-row {
+  .ua-field-row-c {
     display: flex;
     align-items: center;
     padding: 5px 0px;
+    margin: 0px;
+    max-width: 700px;
+  }
+
+  .ua-field-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    width: 100%;
   }
 
   .ua-label-c {
@@ -108,6 +117,7 @@
   .ua-title-c {
     padding-left: 0;
     padding-right: 0;
+    padding-bottom: 0px;
   }
 
   .ua-toggle-label-c {
@@ -118,19 +128,48 @@
     padding-right: 15px;
   }
 
-  .ua-form-field {
-    max-width: 500px;
+  .ua-radio-field-c {
+    padding-right: 10px !important;
+    display: flex;
+    width: 100%;
+  }
+
+  .ua-radio-c {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    padding-bottom: 10px;
+  }
+
+  .ua-radio-field {
+    flex: 1;
+  }
+
+  .ua-field {
+    padding-right: 0px;
+    display: flex;
+    width: 100%;
+  }
+
+  .ua-field {
+    .form-group,
+    .yb-field-group {
+      display: flex;
+      width: 100%;
+      flex-direction: column;
+    }
   }
 
   .ua-action-c {
-    max-width: 528px;
+    justify-content: flex-end;
   }
 
   .ua-toggle-c {
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    max-width: 520px;
+    width: 100%;
+    padding-right: 5px !important;
   }
 }
 
@@ -170,4 +209,29 @@
 .ldap-modal-c-content {
   flex-grow: 1;
   font-size: 14px;
+}
+
+#ldap-toggle-tooltip .tooltip-inner {
+  width: 260px;
+  max-width: 260px;
+  padding: 8px;
+  text-align: left;
+}
+
+.footer-msg {
+  width: 100%;
+  height: fit-content;
+  display: inline-flex;
+  align-items: flex-start;
+  border: 1px solid $YB_LIGHT_GRAY_BORDER;
+  background: $YB_LIGHT_BLUE_BACKGROUND;
+  border-radius: 8px;
+  padding: 12px;
+  font-weight: normal;
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+
+.ldap-info-popover {
+  max-width: 650px;
 }

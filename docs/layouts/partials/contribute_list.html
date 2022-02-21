@@ -1,0 +1,20 @@
+<div class="dropdown" id="contribute-list">
+    <button class="btn btn-secondary dropdown-toggle" type="button" id="dropdownContributeButton" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false"><strong>
+        Contribute</strong>
+    </button>
+
+    <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+        <a class="dropdown-item" href="https://github.com/yugabyte/yugabyte-db/issues/new?title=[docs]+{{ $.Page.Title }}&labels=area/documentation&body={{ .Permalink }}%0A%0A%23%23%20Issue%20description%0A%0A%23%23%20Suggested%20resolution">
+            <strong>Report a doc issue</strong>
+        </a>
+        <a class="dropdown-item" href="https://github.com/yugabyte/yugabyte-db/issues/new?title=[docs]+New+docs+proposal&labels=area/documentation,community/request&body={{ .Permalink }}%0A%0A%23%23%20Issue%20description%0A%0A%23%23%20Suggested%20improvement">
+            <strong>Suggest new content</strong>
+        </a>
+        <!-- Uncomment this one when we can enforce forks/branches -->
+        <!--
+        <a class="dropdown-item" href="https://github.com/yugabyte/yugabyte-db/edit/master/docs/content/{{ .File.Path }}?message=[docs]%20describe%20your%20update&description=Please%20do%20not%20commit%20directly%20to%20master">
+            <strong>Edit this page</strong>
+        </a>
+        -->
+    </div>
+</div>

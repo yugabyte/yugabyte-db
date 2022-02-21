@@ -391,14 +391,10 @@
 .g-flag-search {
   width: 100%;
 }
-.g-flag-modal {
-  width: '1100px';
-  height: '600px';
-}
 
 .add-gflag-container {
   display: flex;
-  height: 600px;
+  height: 610px;
   width: 100%;
   flex-direction: row;
   border: 1px solid $YB_LIGHT_GRAY_BORDER;
@@ -747,27 +743,36 @@
   width: 1100px;
 }
 
+.modal-fade.in {
+  opacity: 1 !important;
+}
+
+.modal-fade {
+  opacity: 0 !important;
+  transition: opacity 0.15s linear !important;
+}
+
 .button-container {
   margin-top: -2px;
   padding-bottom: 8px;
   border-bottom: 1px solid $YB_LIGHT_GRAY_BORDER;
 }
 
-.gflag-modal-body,
-.gflag-modal-header {
-  padding: 16px;
-}
-
 .mt-16 {
   margin-top: 16px;
 }
 
-.pl-16 {
-  margin-left: 16px;
+.add-flag-header {
+  padding: 8px 16px;
+  height: 66px;
+  .close {
+    padding-top: 8px;
+  }
 }
 
 .display-inline-flex {
   display: inline-flex;
+  align-items: center;
 }
 
 .gflag-button {
@@ -786,6 +791,7 @@
 .gflag-editor-container {
   flex-direction: column;
   padding: 0px 8px;
+  height: 610px;
 }
 
 .muted-text-2 {
@@ -794,4 +800,20 @@
 
 .bold-600 {
   font-weight: 600;
+}
+
+.gflag-empty-banner {
+  height: 440px;
+  width: 100%;
+  display: flex;
+  border: 1px solid $YB_LIGHT_GRAY_BORDER;
+  background: $YB_BG_WHITE_3;
+  border-radius: 8px;
+  margin-top: 10px;
+  justify-content: center;
+
+  .empty-text {
+    color: $YB_DARKER_GRAY;
+    margin-top: 56px;
+  }
 }

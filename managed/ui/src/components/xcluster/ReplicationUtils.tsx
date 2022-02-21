@@ -7,6 +7,7 @@ import {
   queryLagMetricsForUniverse
 } from '../../actions/xClusterReplication';
 import { IReplicationStatus } from './IClusterReplication';
+import moment from 'moment';
 
 import './ReplicationUtils.scss';
 
@@ -122,7 +123,7 @@ export const GetCurrentLag = ({
   }
   let maxAcceptableLag = configuredThreshold?.[0]?.thresholds?.SEVERE.threshold || 0;
 
-  const latestLag = metricsData.data.tserver_async_replication_lag_micros.data[1]?.y.pop();
+  const latestLag = metricsData.data.tserver_async_replication_lag_micros.data[0]?.y.pop();
   return <span className={`replication-lag-value ${maxAcceptableLag < latestLag ? 'above-threshold' : 'below-threshold'}`}>{latestLag || '-'}</span>;
 };
 
@@ -167,4 +168,24 @@ export const getMasterNodeAddress = (nodeDetailsSet: Array<any>) => {
     return master.cloudInfo.private_ip + ':' + master.masterRpcPort;
   }
   return '';
+};
+
+export const convertToLocalTime = (time:string, timezone:string) => {
+  return (timezone ?  (moment.utc(time) as any).tz(timezone): moment.utc(time).local()).format('YYYY-MM-DD H:mm:ss')
+}
+
+export const formatBytes = function (sizeInBytes:any) {
+  if (Number.isInteger(sizeInBytes)) {
+    const bytes = sizeInBytes;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB'];
+    const k = 1024;
+    if (bytes <= 0) {
+      return bytes + ' ' + sizes[0];
+    }
+
+    const sizeIndex = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, sizeIndex)).toFixed(2)) + ' ' + sizes[sizeIndex];
+  } else {
+    return '-';
+  }
 };

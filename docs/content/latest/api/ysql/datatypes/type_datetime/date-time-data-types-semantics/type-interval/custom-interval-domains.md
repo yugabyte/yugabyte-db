@@ -1117,7 +1117,7 @@ begin
     declare
       i       constant interval_seconds_t not null := interval_seconds(ts_5, ts_min);
       ts_new  constant timestamptz        not null := ts_min + i;
-      ts_tol  constant double precision   not null := 0.000001;
+      ts_tol  constant double precision   not null := 0.0005;
     begin
       -- date_trunc('milliseconds', t) is too blunt an instrument.
       assert

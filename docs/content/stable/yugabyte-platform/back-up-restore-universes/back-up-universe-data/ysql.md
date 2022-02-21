@@ -30,7 +30,7 @@ showAsideToc: true
 
 </ul>
 
-Use Yugabyte Platform to back up your YugabyteDB universe YSQL data. 
+Use Yugabyte Platform to back up your YugabyteDB universe YSQL data.
 
 To schedule backups for a later time, or as a recurring task, see [Schedule universe YSQL data backups](../../schedule-data-backups/ysql).
 
@@ -63,3 +63,4 @@ To allow Yugabyte Platform to back up your data with user authentication enabled
 Versions of Yugabyte Platform prior to 2.8.2.0 do not support backups of YSQL databases that use `enum` types. To mitigate the issue, it is recommended that you use the `ysql_dump` utility in combination with the `/COPY` action as a workaround.
 
 {{< /note >}}
+<!-- The preceding note should say 2.8.2.0. Careful with search and replace on version numbers! -->

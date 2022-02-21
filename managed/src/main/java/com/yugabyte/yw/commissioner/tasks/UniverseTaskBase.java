@@ -68,7 +68,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServerReady;
 import com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess;
-import com.yugabyte.yw.common.CertificateHelper;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellResponse;
@@ -521,6 +521,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // Universe version in master does not need to be updated as this does not change
     // the Universe state. It simply sets updateInProgress flag to false.
     universe = Universe.saveDetails(universeUUID, updater, false);
+    universeLocked = false;
     log.trace("Unlocked universe {} for updates.", universeUUID);
     return universe;
   }
@@ -603,12 +604,19 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   /** Create a task to persist changes by ResizeNode task */
   public SubTaskGroup createPersistResizeNodeTask(String instanceType, Integer volumeSize) {
+    return createPersistResizeNodeTask(instanceType, volumeSize, null);
+  }
+
+  /** Create a task to persist changes by ResizeNode task for specific clusters */
+  public SubTaskGroup createPersistResizeNodeTask(
+      String instanceType, Integer volumeSize, List<UUID> clusterIds) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("PersistResizeNode", executor);
     PersistResizeNode.Params params = new PersistResizeNode.Params();
 
     params.universeUUID = taskParams().universeUUID;
     params.instanceType = instanceType;
     params.volumeSize = volumeSize;
+    params.clusters = clusterIds;
     PersistResizeNode task = createTask(PersistResizeNode.class);
     task.initialize(params);
     task.setUserTaskUUID(userTaskUUID);
@@ -1604,7 +1612,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @return the created task group.
    */
   public SubTaskGroup createModifyBlackListTask(
-      List<NodeDetails> nodes, boolean isAdd, boolean isLeaderBlacklist) {
+      Collection<NodeDetails> nodes, boolean isAdd, boolean isLeaderBlacklist) {
     if (isAdd) {
       return createModifyBlackListTask(nodes, null, isLeaderBlacklist);
     }

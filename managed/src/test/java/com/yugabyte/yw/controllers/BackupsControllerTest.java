@@ -259,6 +259,7 @@ public class BackupsControllerTest extends FakeDBApplication {
   public void testRestoreBackupWithInvalidParams() {
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = UUID.randomUUID();
+    bp.universeUUID = UUID.randomUUID();
     Backup.create(defaultCustomer.uuid, bp);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("actionType", "RESTORE");
@@ -275,6 +276,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST2");
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = UUID.randomUUID();
     Backup.create(defaultCustomer.uuid, bp);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("keyspace", "mock_ks");
@@ -293,6 +295,7 @@ public class BackupsControllerTest extends FakeDBApplication {
   public void testRestoreBackupWithInvalidStorageUUID() {
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = UUID.randomUUID();
+    bp.universeUUID = UUID.randomUUID();
     Backup b = Backup.create(defaultCustomer.uuid, bp);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("keyspace", "mock_ks");
@@ -313,6 +316,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     Users user = ModelFactory.testUser(defaultCustomer, "tc@test.com", Users.Role.ReadOnly);
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = UUID.randomUUID();
+    bp.universeUUID = UUID.randomUUID();
     Backup b = Backup.create(defaultCustomer.uuid, bp);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("keyspace", "mock_ks");
@@ -331,6 +335,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST3");
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = defaultUniverse.universeUUID;
     Backup b = Backup.create(defaultCustomer.uuid, bp);
     ObjectNode bodyJson = Json.newObject();
 
@@ -376,6 +381,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST5");
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = UUID.randomUUID();
     Backup.create(defaultCustomer.uuid, bp);
     ObjectNode bodyJson = Json.newObject();
 
@@ -396,6 +402,98 @@ public class BackupsControllerTest extends FakeDBApplication {
     Result result = restoreBackup(defaultUniverse.universeUUID, bodyJson, null);
     assertEquals(413, result.status());
     verify(mockCommissioner, never()).submit(any(), any());
+  }
+
+  @Test
+  public void testRestoreBackupWithInvalidOwner() {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST5");
+    BackupTableParams bp = new BackupTableParams();
+    bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = defaultUniverse.universeUUID;
+    Backup.create(defaultCustomer.uuid, bp);
+    ObjectNode bodyJson = Json.newObject();
+
+    bodyJson.put("keyspace", "keyspace");
+    bodyJson.put("actionType", "RESTORE");
+    bodyJson.put("storageConfigUUID", bp.storageConfigUUID.toString());
+    bodyJson.put("storageLocation", "s3://foo/bar");
+    bodyJson.put("newOwner", "asgjf;jdsnc");
+
+    Result result =
+        assertPlatformException(() -> restoreBackup(defaultUniverse.universeUUID, bodyJson, null));
+    assertEquals(BAD_REQUEST, result.status());
+    verify(mockCommissioner, never()).submit(any(), any());
+
+    bodyJson.put("newOwner", "$jdsnc");
+    result =
+        assertPlatformException(() -> restoreBackup(defaultUniverse.universeUUID, bodyJson, null));
+    assertEquals(BAD_REQUEST, result.status());
+    verify(mockCommissioner, never()).submit(any(), any());
+
+    bodyJson.put("newOwner", "jdsn$c");
+    result =
+        assertPlatformException(() -> restoreBackup(defaultUniverse.universeUUID, bodyJson, null));
+    assertEquals(BAD_REQUEST, result.status());
+    verify(mockCommissioner, never()).submit(any(), any());
+
+    bodyJson.put("newOwner", "jdsnc*");
+    result =
+        assertPlatformException(() -> restoreBackup(defaultUniverse.universeUUID, bodyJson, null));
+    assertEquals(BAD_REQUEST, result.status());
+    verify(mockCommissioner, never()).submit(any(), any());
+
+    bodyJson.put("newOwner", "&");
+    result =
+        assertPlatformException(() -> restoreBackup(defaultUniverse.universeUUID, bodyJson, null));
+    assertEquals(BAD_REQUEST, result.status());
+    verify(mockCommissioner, never()).submit(any(), any());
+
+    bodyJson.put("newOwner", "sjdachk|dkjsbfc");
+    result =
+        assertPlatformException(() -> restoreBackup(defaultUniverse.universeUUID, bodyJson, null));
+    assertEquals(BAD_REQUEST, result.status());
+    verify(mockCommissioner, never()).submit(any(), any());
+
+    bodyJson.put("newOwner", "sjdachk dkjsbfc");
+    result =
+        assertPlatformException(() -> restoreBackup(defaultUniverse.universeUUID, bodyJson, null));
+    assertEquals(BAD_REQUEST, result.status());
+    verify(mockCommissioner, never()).submit(any(), any());
+
+    bodyJson.put("newOwner", "sjdachk\ndkjsbfc");
+    result =
+        assertPlatformException(() -> restoreBackup(defaultUniverse.universeUUID, bodyJson, null));
+    assertEquals(BAD_REQUEST, result.status());
+    verify(mockCommissioner, never()).submit(any(), any());
+
+    bodyJson.put("newOwner", "sjdachk\tdkjsbfc");
+    result =
+        assertPlatformException(() -> restoreBackup(defaultUniverse.universeUUID, bodyJson, null));
+    assertEquals(BAD_REQUEST, result.status());
+    verify(mockCommissioner, never()).submit(any(), any());
+
+    bodyJson.put("newOwner", "sjdachk\tdkjsbfc");
+    result =
+        assertPlatformException(() -> restoreBackup(defaultUniverse.universeUUID, bodyJson, null));
+    assertEquals(BAD_REQUEST, result.status());
+    verify(mockCommissioner, never()).submit(any(), any());
+
+    ArgumentCaptor<TaskType> taskType = ArgumentCaptor.forClass(TaskType.class);
+    ArgumentCaptor<BackupTableParams> taskParams = ArgumentCaptor.forClass(BackupTableParams.class);
+
+    bodyJson.put("newOwner", "yugabyte");
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    result = restoreBackup(defaultUniverse.universeUUID, bodyJson, null);
+    verify(mockCommissioner, times(1)).submit(taskType.capture(), taskParams.capture());
+    assertEquals(TaskType.BackupUniverse, taskType.getValue());
+    assertOk(result);
+    JsonNode resultJson = Json.parse(contentAsString(result));
+    assertValue(resultJson, "taskUUID", fakeTaskUUID.toString());
+    CustomerTask ct = CustomerTask.findByTaskUUID(fakeTaskUUID);
+    assertNotNull(ct);
+    assertEquals(Restore, ct.getType());
+    assertAuditEntry(1, defaultCustomer.uuid);
   }
 
   @Test
@@ -461,6 +559,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST6");
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = UUID.randomUUID();
     Backup backup = Backup.create(defaultCustomer.uuid, bp);
     backup.transitionState(state);
     List<String> backupUUIDList = new ArrayList<>();
@@ -490,6 +589,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST6");
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = UUID.randomUUID();
     Backup backup = Backup.create(defaultCustomer.uuid, bp);
     backup.transitionState(state);
     List<String> backupUUIDList = new ArrayList<>();
@@ -512,6 +612,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     UUID invalidStorageConfigUUID = UUID.randomUUID();
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = invalidStorageConfigUUID;
+    bp.universeUUID = UUID.randomUUID();
     Backup backup = Backup.create(defaultCustomer.uuid, bp);
     backup.transitionState(BackupState.Completed);
     List<String> backupUUIDList = new ArrayList<>();

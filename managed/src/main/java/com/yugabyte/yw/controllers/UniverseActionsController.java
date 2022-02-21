@@ -14,6 +14,7 @@ import static com.yugabyte.yw.forms.PlatformResults.YBPSuccess.empty;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.controllers.handlers.UniverseActionsHandler;
 import com.yugabyte.yw.forms.AlertConfigFormData;
@@ -113,7 +114,6 @@ public class UniverseActionsController extends AuthenticatedController {
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUuid, customer);
     ObjectNode formData = (ObjectNode) request().body().asJson();
     ToggleTlsParams requestParams = ToggleTlsParams.bindFromFormData(formData);
-
     UUID taskUUID = universeActionsHandler.toggleTls(customer, universe, requestParams);
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData), taskUUID);
     return PlatformResults.withData(

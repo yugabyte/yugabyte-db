@@ -72,14 +72,21 @@ export const LagGraph: FC<LagGraphProps> = ({ replicationUUID, sourceUniverseUUI
 
   replicationNodeMetrics.forEach((nodeMetric: any) => {
     nodeMetric.x.forEach((xAxis: any, index: number) => {
-      const parsedY = parseFloat(nodeMetric.y[index]);
+      const parsedY = parseFloat(nodeMetric.y[index]) || 0;
       if (parsedY > maxLagInMetric) {
         maxLagInMetric = parsedY;
       }
-      graphData.push({
-        x: (moment(xAxis) as any).tz(currentUserTimezone).format('HH:mm'),
-        max_lag: parsedY
-      });
+      const momentObj = currentUserTimezone
+        ? (moment(xAxis) as any).tz(currentUserTimezone)
+        : moment(xAxis);
+      graphData[index] = {
+        x: momentObj.format('HH:mm'),
+        max_lag: graphData[index]
+          ? graphData[index].max_lag > parsedY
+            ? graphData[index].max_lag
+            : parsedY
+          : parsedY
+      };
     });
   });
 

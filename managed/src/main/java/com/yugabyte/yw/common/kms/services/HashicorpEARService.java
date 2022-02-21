@@ -14,6 +14,7 @@ package com.yugabyte.yw.common.kms.services;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import com.yugabyte.yw.common.kms.algorithms.HashicorpVaultAlgorithm;
+import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.common.kms.util.HashicorpEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultSecretEngineBase;
@@ -60,8 +61,8 @@ public class HashicorpEARService extends EncryptionAtRestService<HashicorpVaultA
           "Updating HC_VAULT_TTL_EXPIRY for createAuthConfigWithService with {} and {}",
           ttlInfo.get(0),
           ttlInfo.get(1));
-      result.put(HashicorpEARServiceUtil.HC_VAULT_TTL, (long) ttlInfo.get(0));
-      result.put(HashicorpEARServiceUtil.HC_VAULT_TTL_EXPIRY, (long) ttlInfo.get(1));
+      result.put(HashicorpVaultConfigParams.HC_VAULT_TTL, (long) ttlInfo.get(0));
+      result.put(HashicorpVaultConfigParams.HC_VAULT_TTL_EXPIRY, (long) ttlInfo.get(1));
 
     } catch (Exception e) {
       final String errMsg =
@@ -198,11 +199,5 @@ public class HashicorpEARService extends EncryptionAtRestService<HashicorpVaultA
 
   protected void cleanupWithService(UUID universeUUID, UUID configUUID) {
     LOG.info("cleanupWithService called: {}, {}", universeUUID, configUUID);
-    try {
-      // final ObjectNode authConfig = getAuthConfig(configUUID);
-      // HashicorpEARServiceUtil.deleteVaultKey(universeUUID, configUUID, authConfig);
-    } catch (Exception e) {
-      LOG.error("Failed to CleanupWithService", e);
-    }
   }
 }

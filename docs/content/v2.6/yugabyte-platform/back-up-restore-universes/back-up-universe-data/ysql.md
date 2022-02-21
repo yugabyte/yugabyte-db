@@ -60,3 +60,4 @@ To allow Yugabyte Platform to back up your data with user authentication enabled
 Versions of Yugabyte Platform prior to 2.6.11.0 do not support backups of YSQL databases that use `enum` types. To mitigate the issue, it is recommended that you use the `ysql_dump` utility in combination with the `/COPY` action as a workaround.
 
 {{< /note >}}
+<!-- The preceding note should say 2.6.11.0. Careful with search and replace on version numbers! -->

@@ -1,16 +1,17 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
-import { Alert, Tabs, Tab } from 'react-bootstrap';
+import React, { Component, Fragment } from 'react';
 import PropTypes from 'prop-types';
 import moment from 'moment';
+import MomentLocaleUtils, { formatDate, parseDate } from 'react-day-picker/moment';
+import { Field } from 'formik';
+import { Alert, Tabs, Tab, Row, Col } from 'react-bootstrap';
 import { YBFormInput, YBFormDatePicker, YBFormDropZone } from '../../../common/forms/fields';
 import { getPromiseState } from '../../../../utils/PromiseUtils';
 import { YBModalForm } from '../../../common/forms';
 import { isDefinedNotNull, isNonEmptyObject } from '../../../../utils/ObjectUtils';
-import { Field } from 'formik';
+import YBInfoTip from '../../../common/descriptors/YBInfoTip';
 
-import MomentLocaleUtils, { formatDate, parseDate } from 'react-day-picker/moment';
 import './AddCertificateForm.scss';
 
 const initialValues = {
@@ -22,7 +23,7 @@ const initialValues = {
   nodeCertPath: '',
   nodeCertPrivate: '',
   clientCertPath: '',
-  clientKeyPath: '',
+  clientKeyPath: ''
 };
 
 // react-day-picker lib requires this to be class component
@@ -128,6 +129,20 @@ export default class AddCertificateForm extends Component {
           console.warn(`File Upload gone wrong. ${err}`);
           setSubmitting(false);
         });
+    } else if (this.state.tab === 'hashicorp') {
+      const formValues = {
+        label: vals.certName,
+        certType: 'HashicorpVault',
+        hcVaultCertParams: {
+          vaultAddr: vals.vaultAddr,
+          vaultToken: vals.vaultToken,
+          mountPath: vals.mountPath ?? 'pki/',
+          role: vals.role,
+          engine: 'pki'
+        },
+        certContent: 'pki'
+      };
+      self.props.addCertificate(formValues, setSubmitting);
     }
   };
 
@@ -136,19 +151,24 @@ export default class AddCertificateForm extends Component {
     if (!values.certName) {
       errors.certName = 'Certificate name is required';
     }
-    if (!values.certExpiry) {
-      if (this.state.tab !== 'caSigned') {
-        errors.certExpiry = 'Expiration date is required';
+
+    if (this.state.tab !== 'hashicorp') {
+      if (!values.certExpiry) {
+        if (this.state.tab !== 'caSigned') {
+          errors.certExpiry = 'Expiration date is required';
+        }
+      } else {
+        const timestamp = Date.parse(values.certExpiry);
+        if (isNaN(timestamp) || timestamp < Date.now()) {
+          errors.certExpiry = 'Set a valid expiration date';
+        }
       }
-    } else {
-      const timestamp = Date.parse(values.certExpiry);
-      if (isNaN(timestamp) || timestamp < Date.now()) {
-        errors.certExpiry = 'Set a valid expiration date';
+
+      if (!values.certContent) {
+        errors.certContent = 'Certificate file is required';
       }
     }
-    if (!values.certContent) {
-      errors.certContent = 'Certificate file is required';
-    }
+
     if (this.state.tab === 'selfSigned') {
       if (!values.keyContent) {
         errors.keyContent = 'Key file is required';
@@ -163,8 +183,23 @@ export default class AddCertificateForm extends Component {
       if (!values.nodeCertPrivate) {
         errors.nodeCertPrivate = 'Database node certificate private key is required';
       }
-    }
+    } else if (this.state.tab === 'hashicorp') {
+      if (!values.vaultToken) {
+        errors.vaultToken = 'Secret Token is Required';
+      }
 
+      if (!values.role) {
+        errors.role = 'Role is Required';
+      }
+
+      if (!values.vaultAddr) {
+        errors.vaultAddr = 'Vault Address is Required';
+      } else {
+        const exp = new RegExp(/^(?:http(s)?:\/\/)?[\w.-]+(?:[\w-]+)+:\d{1,5}$/);
+        if (!exp.test(values.vaultAddr))
+          errors.vaultAddr = 'Vault Address must be a valid URL with port number';
+      }
+    }
     return errors;
   };
 
@@ -227,9 +262,9 @@ export default class AddCertificateForm extends Component {
     const { setFieldValue } = formikProps;
     const value = event.target.value;
     const name = event.target.name;
-    var regex = new RegExp('^' + value, 'i');
+    const regex = new RegExp('^' + value, 'i');
     const term = this.placeholderObject[name];
-    if( event.key === 'ArrowRight' && this.state.suggestionText[name]) {
+    if (event.key === 'ArrowRight' && this.state.suggestionText[name]) {
       setFieldValue(name, term);
       this.setState({
         ...this.state,
@@ -237,7 +272,7 @@ export default class AddCertificateForm extends Component {
           [name]: ''
         }
       });
-      return false
+      return false;
     }
     if (regex.test(term) && value) {
       this.setState({
@@ -256,9 +291,86 @@ export default class AddCertificateForm extends Component {
     });
   };
 
+  getHCVaultForm = () => {
+    return (
+      <Fragment>
+        <Row className="hc-field-c">
+          <Col className="hc-label-c">
+            <div>Config Name</div>
+          </Col>
+          <Col>
+            <Field name="certName" component={YBFormInput} />
+          </Col>
+        </Row>
+
+        <Row className="hc-field-c">
+          <Col className="hc-label-c">
+            <div>
+              Vault Address&nbsp;
+              <YBInfoTip
+                title="Vault Address"
+                content="Vault Address must be a valid URL with port number, Ex:- http://0.0.0.0:0000"
+              >
+                <i className="fa fa-info-circle" />
+              </YBInfoTip>
+            </div>
+          </Col>
+          <Col>
+            <Field name={'vaultAddr'} component={YBFormInput} />
+          </Col>
+        </Row>
+
+        <Row className="hc-field-c">
+          <Col className="hc-label-c">
+            <div>Secret Token</div>
+          </Col>
+          <Col>
+            <Field name={'vaultToken'} component={YBFormInput} />
+          </Col>
+        </Row>
+
+        <Row className="hc-field-c">
+          <Col className="hc-label-c">
+            <div>Secret Engine</div>
+          </Col>
+          <Col>
+            <Field name={'v_secret_engine'} value="pki" disabled={true} component={YBFormInput} />
+          </Col>
+        </Row>
+
+        <Row className="hc-field-c">
+          <Col className="hc-label-c">
+            <div>Role</div>
+          </Col>
+          <Col>
+            <Field name={'role'} component={YBFormInput} />
+          </Col>
+        </Row>
+
+        <Row className="hc-field-c">
+          <Col className="hc-label-c">
+            <div>
+              Mount Path&nbsp;
+              <YBInfoTip
+                title="Mount Path"
+                content="Enter the mount path. If mount path is not specified, path will be auto set to 'pki/'"
+              >
+                <i className="fa fa-info-circle" />
+              </YBInfoTip>
+            </div>
+          </Col>
+          <Col>
+            <Field name={'mountPath'} placeholder={'pki/'} component={YBFormInput} />
+          </Col>
+        </Row>
+      </Fragment>
+    );
+  };
+
   render() {
     const {
-      customer: { addCertificate }
+      customer: { addCertificate },
+      isHCVaultEnabled
     } = this.props;
 
     return (
@@ -425,6 +537,12 @@ export default class AddCertificateForm extends Component {
                       </Alert>
                     )}
                 </Tab>
+
+                {isHCVaultEnabled && (
+                  <Tab eventKey="hashicorp" title="Hashicorp">
+                    {this.getHCVaultForm()}
+                  </Tab>
+                )}
               </Tabs>
             );
           }}

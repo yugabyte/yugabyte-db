@@ -16,6 +16,14 @@ class KubernetesClient:
         return ['kubectl', 'exec', '-n', self.namespace, '-c',
                 'yb-master' if self.is_master else 'yb-tserver', self.node_name, '--'] + cmd
 
+    def get_file(self, source_file_path, target_local_file_path):
+        cmd = [
+            'kubectl',
+            'cp',
+            self.namespace + "/" + self.node_name + ":" + source_file_path,
+            target_local_file_path]
+        return subprocess.call(cmd)
+
     def get_command_output(self, cmd, stdout=None):
         cmd = self.wrap_command(cmd)
         return subprocess.call(cmd, stdout=stdout)
@@ -23,6 +31,25 @@ class KubernetesClient:
     def exec_command(self, cmd):
         cmd = self.wrap_command(cmd)
         return subprocess.check_output(cmd).decode()
+
+    def exec_script(self, local_script_name, params):
+        '''
+        Function to execute a local bash script on the k8s cluster.
+        Parameters:
+        local_script_name : Path to the shell script on local machine
+        params: List of arguments to be provided to the shell script
+        '''
+        if not isinstance(params, str):
+            params = ' '.join(params)
+
+        with open(local_script_name, "r") as f:
+            local_script = f.read()
+
+        # Heredoc syntax for input redirection from a local shell script
+        command = f"/bin/bash -s {params} <<'EOF'\n{local_script}\nEOF"
+        output = self.client.exec_command(command)
+
+        return output
 
 
 class SshParamikoClient:
@@ -58,6 +85,30 @@ class SshParamikoClient:
         else:
             command = ' '.join(cmd)
         stdin, stdout, stderr = self.client.exec_command(command)
+        return_code = stdout.channel.recv_exit_status()
+        if return_code != 0:
+            error = stderr.read().decode()
+            raise RuntimeError('Command returned error code {}: {}'.format(command, error))
+        output = stdout.read().decode()
+        return output
+
+    def exec_script(self, local_script_name, params):
+        '''
+        Function to execute a local bash script on the remote ssh server.
+        Parameters:
+        local_script_name : Path to the shell script on local machine
+        params: List of arguments to be provided to the shell script
+        '''
+        if not isinstance(params, str):
+            params = ' '.join(params)
+
+        with open(local_script_name, "r") as f:
+            local_script = f.read()
+
+        # Heredoc syntax for input redirection from a local shell script
+        command = f"/bin/bash -s {params} <<'EOF'\n{local_script}\nEOF"
+        stdin, stdout, stderr = self.client.exec_command(command)
+
         return_code = stdout.channel.recv_exit_status()
         if return_code != 0:
             error = stderr.read().decode()

@@ -14,37 +14,17 @@
 #ifndef YB_MASTER_TABLET_SPLIT_MANAGER_H
 #define YB_MASTER_TABLET_SPLIT_MANAGER_H
 
-#include <stdint.h>
+#include <unordered_set>
 
-#include <chrono>
-#include <deque>
-#include <functional>
-#include <mutex>
-#include <set>
-#include <string>
-#include <type_traits>
-#include <utility>
-
-#include <boost/version.hpp>
-#include <gflags/gflags_declare.h>
-
-#include "yb/common/entity_ids.h"
-
-#include "yb/gutil/integral_types.h"
-#include "yb/gutil/thread_annotations.h"
-
+#include "yb/master/master_fwd.h"
 #include "yb/master/tablet_split_candidate_filter.h"
 #include "yb/master/tablet_split_complete_handler.h"
 #include "yb/master/tablet_split_driver.h"
-#include "yb/master/ts_manager.h"
-
-#include "yb/util/background_task.h"
-#include "yb/util/capabilities.h"
-#include "yb/util/shared_lock.h"
-#include "yb/util/threadpool.h"
 
 namespace yb {
 namespace master {
+
+using std::unordered_set;
 
 class TabletSplitManager : public TabletSplitCompleteHandlerIf {
  public:
@@ -52,34 +32,29 @@ class TabletSplitManager : public TabletSplitCompleteHandlerIf {
                      TabletSplitDriverIf* driver,
                      XClusterSplitDriverIf* xcluster_split_driver);
 
-  CHECKED_STATUS ProcessLiveTablet(
-      const TabletInfo& tablet_info, const TabletServerId& drive_info_ts_uuid,
-      const TabletReplicaDriveInfo& drive_info);
-
-  CHECKED_STATUS Init();
-
-  void Shutdown();
-
-  void RemoveFailedProcessingTabletSplit(const TabletId& tablet_id);
+  // Perform one round of tablet splitting. This method is not thread-safe.
+  void MaybeDoSplitting(const TableInfoMap& table_info_map);
 
   void ProcessSplitTabletResult(const Status& status,
                                 const TableId& split_table_id,
                                 const SplitTabletIds& split_tablet_ids);
 
+  CHECKED_STATUS ValidateSplitCandidateTable(const TableInfo& table);
+
+  static CHECKED_STATUS ValidateSplitCandidateTablet(const TabletInfo& tablet);
+
  private:
-  void ProcessQueuedSplitItems();
+  bool ShouldSplitTablet(const TabletInfo& tablet);
+
+  void ScheduleSplits(const unordered_set<TabletId>& splits_to_schedule);
+
+  void DoSplitting(const TableInfoMap& table_info_map);
 
   TabletSplitCandidateFilterIf* filter_;
   TabletSplitDriverIf* driver_;
   XClusterSplitDriverIf* xcluster_split_driver_;
 
-  std::mutex mutex_;
-  // Use a map to keep track of parent tablets we are currently splitting. We remove a parent
-  // tablet once both of its children have been created and compacted, so the value is used to keep
-  // track of which children are done so far (value starts empty).
-  std::unordered_map<TabletId, TabletId> processing_tablets_to_split_children_ GUARDED_BY(mutex_);
-  std::deque<TabletId> candidates_ GUARDED_BY(mutex_);
-  std::unique_ptr<BackgroundTask> process_tablet_candidates_task_;
+  CoarseTimePoint last_run_time_;
 };
 
 }  // namespace master

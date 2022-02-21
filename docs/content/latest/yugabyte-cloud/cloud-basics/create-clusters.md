@@ -1,7 +1,7 @@
 ---
-title: Create a cluster
-linkTitle: Create a cluster
-description: Create clusters in Yugabyte Cloud.
+title: Create a standard cluster
+linkTitle: Create a standard cluster
+description: Deploy production clusters in Yugabyte Cloud.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 aliases:
@@ -16,17 +16,30 @@ isTocNested: true
 showAsideToc: true
 ---
 
+Standard clusters support multi-node and highly available deployments and are suitable for production deployments.
+
+## Features
+
+Standard clusters include the following features:
+
+- No limit on cluster size - choose any cluster size based on your use case.
+- Multi node [replication factor](../../../architecture/docdb-replication/replication/) (RF) of 3 clusters with availability zone and node level fault tolerance. To deploy multi-region clusters, contact {{<support-cloud>}}.
+- Horizontal and vertical scaling - add or remove nodes and vCPUs, and add storage to suit your production loads.
+- VPC networking support.
+- Automated and on-demand backups.
+- Create as many as you need.
+- Provisioned with a [stable release](../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) of YugabyteDB. You can choose to provision with an edge release. Before deploying a production cluster on an edge release, contact {{<support-cloud>}}.
+- Available in all [regions](../../release-notes#cloud-provider-regions).
+- Enterprise support.
+
+## Prerequisites
+
+- You need to create a billing profile and add a payment method before you can create a standard cluster. Refer to [Manage your billing profile and payment method](../../cloud-admin/cloud-billing-profile/).
+- If you want to use dedicated VPCs for network isolation and security, you need to create the VPC before you create your cluster. Yugabyte Cloud supports AWC and GCP for peering. Refer to [VPC networking](../../cloud-secure-clusters/cloud-vpcs/).
+
+## Create a cluster
+
 To create a cluster, on the **Clusters** page, click **Add Cluster** to start the **Create Cluster** wizard.
-
-{{< note title="Note" >}}
-
-Before creating a cluster, create a billing profile and add a payment method. Refer to [Manage your billing profile and payment method](../../cloud-admin/cloud-billing-profile/). You don't need a billing profile to create your free cluster.
-
-If you want to use dedicated VPCs for network isolation and security, you need to create the VPC before you create your cluster. Yugabyte Cloud supports AWC and GCP for peering. Refer to [VPC networking](../../cloud-secure-clusters/cloud-vpcs/).
-
-{{< /note >}}
-
-## Create Cluster Wizard
 
 The **Create Cluster** wizard has the following three pages:
 
@@ -36,25 +49,9 @@ The **Create Cluster** wizard has the following three pages:
 
 ### Select Cluster Type
 
-Use a free cluster to get started with YugabyteDB. Although not suitable for production workloads, a free cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB, including:
+![Add Cluster Wizard - Select Type](/images/yb-cloud/cloud-addcluster-paid1.png)
 
-- Single node
-- Up to 2 vCPUs and 10 GB of storage, depending on the cloud provider
-- Limit of one free cluster per account
-
-Standard clusters support multi-node and highly available deployments and include the following features:
-
-- No limit on cluster size - choose any cluster size based on your use case
-- Horizontal and vertical scaling - add or remove nodes and add storage to suit your production loads
-- VPC peering support
-- Automated and on-demand backups
-- Create as many as you need
-
-If you haven't already provided payment information, you'll need to add it before you can create a standard cluster.
-
-![Add Cluster Wizard - Select Type](/images/yb-cloud/cloud-addcluster1-type.png)
-
-Select **Yugabyte Cloud Free** or **Yugabyte Cloud** and click **Next** to display the **Cluster Settings** page.
+Select **Yugabyte Cloud** and click **Next** to display the **Cluster Settings** page.
 
 ### Cluster Settings
 
@@ -64,9 +61,7 @@ Set the following options:
 
 - **Provider**: Choose a cloud provider - AWS or GCP. (For Azure, contact {{<support-cloud>}}.)
 - **Cluster Name**: Enter a name for the cluster.
-- **Region**: Choose the Region where the cluster will be located.
-
-If you are creating a standard cluster, set the following additional options:
+- **Region**: Choose the [region](../../release-notes#cloud-provider-regions) where the cluster will be located.
 
 - **Fault Tolerance** determines how resilient the cluster is to node and cloud zone failures:
 
@@ -82,7 +77,7 @@ If you are creating a standard cluster, set the following additional options:
 
 - **Network Access**: If you want to use a VPC for network isolation and security, select **Deploy this cluster in a dedicated VPC**, then select the VPC. Only VPCs using the selected cloud provider are listed. The VPC must be created before deploying the cluster. Refer to [VPC networking](../../cloud-secure-clusters/cloud-vpcs/).
 
-<!-- **Database Version**: By default, clusters are deployed using a [stable release](../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on). Free clusters are always deployed with an [edge release](../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on). If you want to use an edge release for a standard cluster, click **Advanced** and choose a release. If you have arranged a custom build with Yugabyte, it will also be listed here.-->
+- **Database Version**: By default, clusters are deployed using a [stable release](../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on). If you want to use an [edge release](../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) for a standard cluster, click **Advanced Settings** and choose a release. Before deploying a production cluster using an edge release, contact {{<support-cloud>}}. If you have arranged a custom build with Yugabyte, it will also be listed here.
 
 Cluster costs are estimated automatically under **Cost**. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
 
@@ -90,17 +85,21 @@ Standard clusters support both horizontal and vertical scaling; you can change t
 
 ### Database Admin Credentials
 
-The admin credentials are required to connect to the YugabyteDB database that is installed on the cluster. (You can [add additional users](../../cloud-secure-clusters/add-users/) after the cluster is provisioned.)
-
-![Add Cluster Wizard - Admin Settings](/images/yb-cloud/cloud-addcluster-admin.png)
+The admin credentials are required to connect to the YugabyteDB database that is installed on the cluster.
 
 You can use the default credentials generated by Yugabyte Cloud, or add your own.
+
+For security reasons, the admin user does not have YSQL superuser privileges, but does have sufficient privileges for most tasks. For more information on database roles and privileges in Yugabyte Cloud, refer to [Database authorization in Yugabyte Cloud clusters](../../cloud-secure-clusters/cloud-users/).
+
+After the cluster is provisioned, you can [add more users](../../cloud-secure-clusters/add-users/).
+
+![Add Cluster Wizard - Admin Settings](/images/yb-cloud/cloud-addcluster-admin.png)
 
 Download the credentials, and click **Create Cluster**.
 
 {{< warning title="Important" >}}
 
-Save your database credentials in a safe place. If you lose these credentials, you won't be able to use the database.
+Save your database credentials. If you lose them, you won't be able to use the database.
 
 {{< /warning >}}
 

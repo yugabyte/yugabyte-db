@@ -21,6 +21,8 @@ import { useWhenMounted } from '../../../redesign/helpers/hooks';
 //Icons
 import Edit from '../images/edit_pen.svg';
 import Close from '../images/close.svg';
+import Plus from '../images/plus.svg';
+import MoreIcon from '../images/ellipsis.svg';
 
 //server
 const MASTER = 'MASTER';
@@ -68,7 +70,7 @@ const SERVER_LIST = [
 ];
 
 export default function GFlagComponent(props) {
-  const { fields, dbVersion, isReadOnly } = props;
+  const { fields, dbVersion, isReadOnly, editMode } = props;
   const [selectedProps, setSelectedProps] = useState(null);
   const [toggleModal, setToggleModal] = useState(false);
   const [validationError, setValidationError] = useState([]);
@@ -207,7 +209,7 @@ export default function GFlagComponent(props) {
               }
             >
               <Button bsClass="flag-icon-button mb-2" onClick={() => fields.remove(index)}>
-                <img alt="--" src={Close} width="22" />
+                <img alt="Remove" src={Close} width="22" />
               </Button>
             </OverlayTrigger>
             &nbsp;
@@ -252,8 +254,7 @@ export default function GFlagComponent(props) {
       const checkFlagExistsOnOtherServer = (serverType) => {
         return (
           eInfo &&
-          eInfo[MASTER]?.exist === true &&
-          eInfo[TSERVER]?.exist === true &&
+          (eInfo[MASTER]?.exist === true || eInfo[TSERVER]?.exist === true) &&
           row?.hasOwnProperty(serverType === MASTER ? TSERVER : MASTER)
         );
       };
@@ -263,8 +264,11 @@ export default function GFlagComponent(props) {
           <div className="cell-font">{`${cell}`}</div>
           <div className="icons">
             <div className="more-icon">
-              <Button bsClass="flag-icon-button" onClick={() => handleSelectedOption(modalProps)}>
-                <i className="fa fa-ellipsis-h"></i>
+              <Button
+                bsClass="flag-icon-button mb-2"
+                onClick={() => handleSelectedOption(modalProps)}
+              >
+                <img alt="More" src={MoreIcon} width="20" />
               </Button>
             </div>
             <div className="flag-icons">
@@ -281,7 +285,7 @@ export default function GFlagComponent(props) {
                     bsClass="flag-icon-button mr-10 mb-2"
                     onClick={() => handleSelectedOption(modalProps)}
                   >
-                    <img alt="--" src={Edit} width="20" />
+                    <img alt="Edit" src={Edit} width="20" />
                   </Button>
                 </OverlayTrigger>
               )}
@@ -300,7 +304,7 @@ export default function GFlagComponent(props) {
                     handleRemoveFlag(row, index, server, checkFlagExistsOnOtherServer(server))
                   }
                 >
-                  <img alt="--" src={Close} width="22" />
+                  <img alt="Remove" src={Close} width="22" />
                 </Button>
               </OverlayTrigger>
             </div>
@@ -324,10 +328,10 @@ export default function GFlagComponent(props) {
         <div className="table-val-column">
           {isFlagExist && (
             <Button
-              bsClass="flag-icon-button display-inline-flex"
+              bsClass="flag-icon-button display-inline-flex mb-2"
               onClick={() => handleSelectedOption(modalProps)}
             >
-              <i className="fa fa-plus"></i>
+              <img alt="Add" src={Plus} width="20" />
               <span className="add-label">Add value</span>
             </Button>
           )}
@@ -340,7 +344,12 @@ export default function GFlagComponent(props) {
   const renderTable = () => {
     return (
       <div className={isReadOnly ? 'gflag-read-table' : 'gflag-edit-table'}>
-        <BootstrapTable data={fields.getAll()}>
+        <BootstrapTable
+          data={fields.getAll()}
+          height={editMode ? '420px' : 'auto'}
+          maxHeight="420px"
+          tableStyle={{ overflow: 'scroll' }}
+        >
           <TableHeaderColumn width="40%" dataField="Name" dataFormat={nameFormatter} isKey>
             <span className="header-title">FLAG NAME</span>
           </TableHeaderColumn>
@@ -396,9 +405,17 @@ export default function GFlagComponent(props) {
         onHide={() => setToggleModal(false)}
         onFormSubmit={handleFormSubmit}
         render={(properties) => renderOption(properties)}
-        dialogClassName="gflag-modal"
-        headerClassName="pl-16"
+        dialogClassName={toggleModal ? 'gflag-modal modal-fade in' : 'modal-fade'}
+        headerClassName="add-flag-header"
+        showBackButton={true}
       />
+    );
+  };
+  const renderBanner = () => {
+    return (
+      <div className="gflag-empty-banner">
+        <span className="empty-text">There are no flags assigned to this universe </span>
+      </div>
     );
   };
 
@@ -436,6 +453,7 @@ export default function GFlagComponent(props) {
             );
           })}
       </FlexShrink>
+      {fields.length <= 0 && editMode && renderBanner()}
       {fields.length > 0 && renderTable()}
       {toggleModal && renderModal()}
     </FlexContainer>

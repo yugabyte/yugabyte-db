@@ -51,6 +51,7 @@ import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -227,7 +228,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
     when(mockClient.waitForServer(any(HostAndPort.class), anyLong())).thenReturn(true);
     when(mockClient.getLeaderMasterHostAndPort())
-        .thenReturn(HostAndPort.fromString("host-n2").withDefaultPort(11));
+        .thenReturn(HostAndPort.fromString("10.0.0.2").withDefaultPort(7000));
     IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
     try {
       when(mockClient.isServerReady(any(HostAndPort.class), anyBoolean())).thenReturn(okReadyResp);
@@ -1798,6 +1799,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     customCertInfo.nodeCertPath = "nodeCertPath1";
     customCertInfo.nodeKeyPath = "nodeKeyPath1";
     createTempFile("upgrade_universe_test_ca2.crt", CERT_1_CONTENTS);
+
     try {
       CertificateInfo.create(
           certUUID,
@@ -1934,7 +1936,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
         new Date(),
         "privateKey",
         TestHelper.TMP_PATH + "/upgrade_universe_test_ca.crt",
-        CertificateInfo.Type.SelfSigned);
+        CertConfigType.SelfSigned);
 
     if (!rootAndClientRootCASame && !rootCA.equals(clientRootCA)) {
       CertificateInfo.create(
@@ -1945,7 +1947,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           new Date(),
           "privateKey",
           TestHelper.TMP_PATH + "/upgrade_universe_test_ca.crt",
-          CertificateInfo.Type.SelfSigned);
+          CertConfigType.SelfSigned);
     }
 
     defaultUniverse =

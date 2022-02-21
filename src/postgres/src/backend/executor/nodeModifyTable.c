@@ -1453,8 +1453,13 @@ ExecUpdate(ModifyTableState *mtstate,
 		}
 		else
 		{
-			row_found = YBCExecuteUpdate(
-				resultRelationDesc, planSlot, tuple, estate, mtstate, actualUpdatedCols);
+			row_found = YBCExecuteUpdate(resultRelationDesc,
+										 planSlot,
+										 tuple,
+										 estate,
+										 mtstate,
+										 actualUpdatedCols,
+										 canSetTag);
 		}
 
 		bms_free(extraUpdatedCols);
