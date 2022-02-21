@@ -378,7 +378,7 @@ public class CertificateControllerTest extends FakeDBApplication {
     CertificateInfo ci = CertificateInfo.get(certUUID);
     System.out.println(ci.label);
     assertEquals(ci.label, "create_self_signed_cert_test");
-    assertEquals(ci.certType, CertificateInfo.Type.SelfSigned);
+    assertEquals(ci.certType, CertConfigType.SelfSigned);
     assertAuditEntry(1, customer.uuid);
   }
 }

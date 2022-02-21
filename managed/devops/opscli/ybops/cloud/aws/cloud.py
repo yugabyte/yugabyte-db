@@ -439,19 +439,22 @@ class AwsCloud(AbstractCloud):
         instance = ec2.Instance(instance_id)
         if has_elastic_ip:
             client = boto3.client('ec2', region)
-            elastic_ip_list = client.describe_addresses(
-                Filters=[{'Name': 'public-ip', 'Values': [instance.public_ip_address]}]
-            )["Addresses"]
-            for elastic_ip in elastic_ip_list:
-                client.disassociate_address(
-                    AssociationId=elastic_ip["AssociationId"]
-                )
-                client.release_address(
-                    AllocationId=elastic_ip["AllocationId"]
-                )
-            logging.info(
-                "[app] Deleted elastic ip at {} from VM {}".format(
-                    elastic_ip["PublicIp"], instance_id))
+            for network_interfaces in instance.network_interfaces_attribute:
+                if 'Association' not in network_interfaces:
+                    continue
+                public_ip_address = network_interfaces['Association'].get('PublicIp')
+                if public_ip_address:
+                    elastic_ip_list = client.describe_addresses(
+                        Filters=[{'Name': 'public-ip', 'Values': [public_ip_address]}]
+                    )["Addresses"]
+                    for elastic_ip in elastic_ip_list:
+                        client.disassociate_address(
+                            AssociationId=elastic_ip["AssociationId"]
+                        )
+                        client.release_address(
+                            AllocationId=elastic_ip["AllocationId"]
+                        )
+                logging.info("[app] Deleted elastic ip {}".format(public_ip_address))
         instance.terminate()
         instance.wait_until_terminated()
 

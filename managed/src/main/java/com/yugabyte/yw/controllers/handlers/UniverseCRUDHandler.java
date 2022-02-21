@@ -467,6 +467,16 @@ public class UniverseCRUDHandler {
     }
 
     universe.updateConfig(ImmutableMap.of(Universe.TAKE_BACKUPS, "true"));
+    // If cloud enabled and deployment AZs have two subnets, mark the cluster as a
+    // non legacy cluster for proper operations.
+    if (runtimeConfigFactory.staticApplicationConf().getBoolean("yb.cloud.enabled")) {
+      Provider provider =
+          Provider.getOrBadRequest(UUID.fromString(primaryCluster.userIntent.provider));
+      AvailabilityZone zone = provider.regions.get(0).zones.get(0);
+      if (zone.secondarySubnet != null) {
+        universe.updateConfig(ImmutableMap.of(Universe.DUAL_NET_LEGACY, "false"));
+      }
+    }
 
     // Submit the task to create the universe.
     UUID taskUUID = commissioner.submit(taskType, taskParams);

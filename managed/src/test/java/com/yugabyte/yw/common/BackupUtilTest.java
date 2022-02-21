@@ -6,13 +6,12 @@ import junitparams.JUnitParamsRunner;
 import org.junit.runner.RunWith;
 import org.junit.Test;
 import junitparams.Parameters;
-import org.junit.Before;
 
 @RunWith(JUnitParamsRunner.class)
 public class BackupUtilTest extends FakeDBApplication {
 
   @Test(expected = Test.None.class)
-  @Parameters({"0 */2 * * *", "0 */3 * * *", "0 */1 * * *", "5 */1 * * *", "* * * * 1"})
+  @Parameters({"0 */2 * * *", "0 */3 * * *", "0 */1 * * *", "5 */1 * * *", "* * * * 2"})
   public void testBackupCronExpressionValid(String cronExpression) {
     BackupUtil.validateBackupCronExpression(cronExpression);
   }

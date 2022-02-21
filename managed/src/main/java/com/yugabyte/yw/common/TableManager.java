@@ -94,8 +94,11 @@ public class TableManager extends DevopsBase {
 
     List<NodeDetails> tservers = universe.getTServers();
     // Verify if secondary IPs exist. If so, create map.
+    boolean legacyNet =
+        universe.getConfig().getOrDefault(Universe.DUAL_NET_LEGACY, "true").equals("true");
     if (tservers.get(0).cloudInfo.secondary_private_ip != null
-        && !tservers.get(0).cloudInfo.secondary_private_ip.equals("null")) {
+        && !tservers.get(0).cloudInfo.secondary_private_ip.equals("null")
+        && !legacyNet) {
       secondaryToPrimaryIP =
           tservers
               .stream()
