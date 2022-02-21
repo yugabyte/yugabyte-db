@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
-import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.EITHER;
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.MASTER;
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.TSERVER;
@@ -19,6 +18,7 @@ import static org.mockito.Mockito.when;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.ResizeNodeParams;
@@ -101,6 +101,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     }
   }
 
+  @Override
   protected PlacementInfo createPlacementInfo() {
     PlacementInfo placementInfo = new PlacementInfo();
     PlacementInfoUtil.addPlacementZone(az1.uuid, placementInfo, 1, 1, false);
@@ -171,7 +172,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     defaultUniverse =
         Universe.saveDetails(
             defaultUniverse.universeUUID,
-            (univ) -> {
+            univ -> {
               univ.getUniverseDetails().getPrimaryCluster().userIntent.replicationFactor = 1;
             });
     ResizeNodeParams taskParams = createResizeParams();
@@ -227,7 +228,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     defaultUniverse =
         Universe.saveDetails(
             defaultUniverse.universeUUID,
-            (univ) -> {
+            univ -> {
               NodeDetails node = univ.getUniverseDetails().nodeDetailsSet.iterator().next();
               node.disksAreMountedByUUID = false;
               nodeName.set(node.getNodeName());
@@ -291,6 +292,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
       boolean waitForMasterLeader) {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+
     assertEquals(subTasks.size(), subTasksByPosition.size());
     int position = startPosition;
     assertTaskType(subTasksByPosition.get(position++), TaskType.LoadBalancerStateChange);

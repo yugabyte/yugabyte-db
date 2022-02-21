@@ -60,8 +60,8 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleClusterServerCtl,
           TaskType.AnsibleClusterServerCtl,
-          TaskType.SetNodeState,
-          TaskType.WaitForServer);
+          TaskType.WaitForServer,
+          TaskType.SetNodeState);
 
   private static final List<TaskType> NON_RESTART_UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
