@@ -9,7 +9,7 @@
  */
 package com.yugabyte.yw.common.alerts;
 
-import com.yugabyte.yw.forms.AlertingFormData.AlertingData;
+import com.yugabyte.yw.forms.AlertingData;
 import java.util.Map;
 import java.util.UUID;
 import lombok.Builder;
