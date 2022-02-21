@@ -16,8 +16,8 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -77,7 +77,11 @@ public class ResizeNode extends UpgradeTaskBase {
               (nodez, processTypes) ->
                   createResizeNodeTasks(nodez, universe, instanceTypeIsChanging),
               nodes,
-              new UpgradeContext(userIntent.replicationFactor > 1, false));
+              UpgradeContext.builder()
+                  .reconfigureMaster(userIntent.replicationFactor > 1)
+                  .runBeforeStopping(false)
+                  .processInactiveMaster(false)
+                  .build());
 
           Integer newDiskSize = null;
           if (taskParams().getPrimaryCluster().userIntent.deviceInfo != null) {

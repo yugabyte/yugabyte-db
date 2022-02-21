@@ -4,7 +4,6 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
@@ -181,8 +180,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
     int position = 0;
     List<TaskInfo> createRootVolumeTasks = subTasksByPosition.get(position++);
     assertTaskType(createRootVolumeTasks, TaskType.CreateRootVolumes);
-    // ModifyBlackListy task is added to the TaskInfo as position 0.
-    assertEquals(expectedRootVolumeCreationTasks + 1, createRootVolumeTasks.size());
+    assertEquals(expectedRootVolumeCreationTasks, createRootVolumeTasks.size());
 
     /*
      * Leader blacklisting may add ModifyBlackList task to subTasks.
