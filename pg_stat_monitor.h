@@ -87,9 +87,8 @@
 #define MAX_QUERY_BUF						(PGSM_QUERY_SHARED_BUFFER * 1024 * 1024)
 #define MAX_BUCKETS_MEM 					(PGSM_MAX * 1024 * 1024)
 #define BUCKETS_MEM_OVERFLOW() 				((hash_get_num_entries(pgss_hash) * sizeof(pgssEntry)) >= MAX_BUCKETS_MEM)
-#define MAX_QUERY_BUFFER_BUCKET			    MAX_QUERY_BUF / PGSM_MAX_BUCKETS
 #define MAX_BUCKET_ENTRIES 					(MAX_BUCKETS_MEM / sizeof(pgssEntry))
-#define QUERY_BUFFER_OVERFLOW(x,y)  		((x + y + sizeof(uint64) + sizeof(uint64)) > MAX_QUERY_BUFFER_BUCKET)
+#define QUERY_BUFFER_OVERFLOW(x,y)  		((x + y + sizeof(uint64) + sizeof(uint64)) > MAX_QUERY_BUF)
 #define QUERY_MARGIN 						100
 #define MIN_QUERY_LEN						10
 #define SQLCODE_LEN                         20
@@ -161,7 +160,7 @@ typedef enum AGG_KEY
 
 #define MAX_QUERY_LEN 1024
 
-/* shared nenory storage for the query */
+/* shared memory storage for the query */
 typedef struct CallTime
 {
 	double		total_time;					/* total execution time, in msec */
@@ -171,27 +170,26 @@ typedef struct CallTime
 	double		sum_var_time;				/* sum of variances in execution time in msec */
 } CallTime;
 
-typedef struct pgssQueryHashKey
-{
-	uint64		bucket_id;		/* bucket number */
-	uint64		queryid;		/* query identifier */
-	uint64		userid;			/* user OID */
-	uint64		dbid;			/* database OID */
-	uint64		ip;				/* client ip address */
-	uint64		appid;			/* hash of application name */
-} pgssQueryHashKey;
-
+/*
+ * Entry type for queries hash table (query ID).
+ *
+ * We use a hash table to keep track of query IDs that have their
+ * corresponding query text added to the query buffer (pgsm_query_shared_buffer).
+ *
+ * This allow us to avoid adding duplicated queries to the buffer, therefore
+ * leaving more space for other queries and saving some CPU.
+ */
 typedef struct pgssQueryEntry
 {
-	pgssQueryHashKey    key;		/* hash key of entry - MUST BE FIRST */
-	uint64              pos;		/* bucket number */
-	uint64              state;
+	uint64		queryid;    /* query identifier, also the key. */
+	size_t		query_pos;  /* query location within query buffer */
 } pgssQueryEntry;
 
 typedef struct PlanInfo
 {
 	uint64		planid;						/* plan identifier */
 	char 		plan_text[PLAN_TEXT_LEN];	/* plan text */
+	size_t		plan_len;                   /* strlen(plan_text) */
 } PlanInfo;
 
 typedef struct pgssHashKey
@@ -208,10 +206,6 @@ typedef struct pgssHashKey
 
 typedef struct QueryInfo
 {
-	uint64		queryid;					/* query identifier */
-	Oid			userid;						/* user OID */
-	Oid			dbid;						/* database OID */
-	uint		host;						/* client IP */
 	uint64		parentid;					/* parent queryid of current query*/
 	int64       type; 						/* type of query, options are query, info, warning, error, fatal */
 	char		application_name[APPLICATIONNAME_LEN];
@@ -311,8 +305,22 @@ typedef struct pgssSharedState
 	pg_atomic_uint64	current_wbucket;
 	pg_atomic_uint64	prev_bucket_usec;
 	uint64				bucket_entry[MAX_BUCKETS];
-	int64				query_buf_size_bucket;
 	char				bucket_start_time[MAX_BUCKETS][60];   	/* start time of the bucket */
+	LWLock				*errors_lock;		/* protects errors hashtable search/modification */
+	/*
+	 * These variables are used when pgsm_overflow_target is ON.
+	 *
+	 * overflow is set to true when the query buffer overflows.
+	 *
+	 * n_bucket_cycles counts the number of times we changed bucket
+	 * since the query buffer overflowed. When it reaches pgsm_max_buckets
+	 * we remove the dump file, also reset the counter.
+	 *
+	 * This allows us to avoid having a large file on disk that would also
+	 * slowdown queries to the pg_stat_monitor view.
+	 */
+	bool				overflow;
+	size_t				n_bucket_cycles;
 } pgssSharedState;
 
 #define ResetSharedState(x) \
@@ -382,21 +390,20 @@ int pgsm_get_bucket_size(void);
 pgssSharedState* pgsm_get_ss(void);
 HTAB *pgsm_get_plan_hash(void);
 HTAB *pgsm_get_hash(void);
+HTAB *pgsm_get_query_hash(void);
 HTAB *pgsm_get_plan_hash(void);
 void hash_entry_reset(void);
 void hash_query_entryies_reset(void);
 void hash_query_entries();
 void hash_query_entry_dealloc(int new_bucket_id, int old_bucket_id, unsigned char *query_buffer[]);
-void hash_entry_dealloc(int new_bucket_id, int old_bucket_id, unsigned char *query_buffer[]);
+void hash_entry_dealloc(int new_bucket_id, int old_bucket_id, unsigned char *query_buffer);
 pgssEntry* hash_entry_alloc(pgssSharedState *pgss, pgssHashKey *key, int encoding);
 Size hash_memsize(void);
 
 int read_query_buffer(int bucket_id, uint64 queryid, char *query_txt, size_t pos);
 uint64 read_query(unsigned char *buf, uint64 queryid, char * query, size_t pos);
-pgssQueryEntry* hash_find_query_entry(uint64 bucket_id, uint64 queryid, uint64 dbid, uint64 userid, uint64 ip, uint64 appid);
-pgssQueryEntry* hash_create_query_entry(uint64 bucket_id, uint64 queryid, uint64 dbid, uint64 userid, uint64 ip, uint64 appid);
 void pgss_startup(void);
-void set_qbuf(int i, unsigned char *);
+void set_qbuf(unsigned char *);
 
 /* hash_query.c */
 void pgss_startup(void);

@@ -128,9 +128,6 @@ get_sources(){
     fi
     REVISION=$(git rev-parse --short HEAD)
     echo "REVISION=${REVISION}" >> ${WORKDIR}/pg-stat-monitor.properties
-    rm -rf rpm debian
-    cp -r percona-packaging/rpm ./
-    cp -r percona-packaging/debian ./
 
     EDITFILES="debian/control debian/control.in debian/rules rpm/pg-stat-monitor.spec"
     for file in $EDITFILES; do
@@ -193,9 +190,10 @@ install_deps() {
             percona-release enable ppg-12 release
         fi
         yum -y install git wget
+        PKGLIST="percona-postgresql-common percona-postgresql${PG_RELEASE}-devel"
         PKGLIST+=" clang-devel git clang llvm-devel rpmdevtools vim wget"
         PKGLIST+=" perl binutils gcc gcc-c++"
-        PKGLIST+=" percona-postgresql-common clang-devel llvm-devel percona-postgresql${PG_RELEASE}-devel git rpm-build rpmdevtools wget gcc make autoconf"
+        PKGLIST+=" clang-devel llvm-devel git rpm-build rpmdevtools wget gcc make autoconf"
         if [[ "${RHEL}" -eq 8 ]]; then 
             dnf -y module disable postgresql
         elif [[ "${RHEL}" -eq 7 ]]; then
@@ -225,6 +223,15 @@ install_deps() {
         elif [[ "${PG_RELEASE}" == "12" ]]; then
             percona-release enable ppg-12 release
         fi
+
+
+        PKGLIST="percona-postgresql-${PG_RELEASE} percona-postgresql-common percona-postgresql-server-dev-all"
+
+        # ---- using a community version of postgresql
+        #wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+        #echo "deb http://apt.postgresql.org/pub/repos/apt/ ${PG_RELEASE}"-pgdg main | sudo tee  /etc/apt/sources.list.d/pgdg.list
+        #PKGLIST="postgresql-${PG_RELEASE} postgresql-common postgresql-server-dev-all"
+
         apt-get update
 
         if [[ "${OS_NAME}" != "focal" ]]; then
@@ -237,8 +244,9 @@ install_deps() {
             fi
         fi
 
-        PKGLIST+=" percona-postgresql-${PG_RELEASE} debconf debhelper clang-7 devscripts dh-exec dh-systemd git wget libkrb5-dev libssl-dev percona-postgresql-common percona-postgresql-server-dev-all"
-        PKGLIST+=" build-essential debconf debhelper devscripts dh-exec dh-systemd git wget libxml-checker-perl libxml-libxml-perl libio-socket-ssl-perl libperl-dev libssl-dev libxml2-dev txt2man zlib1g-dev libpq-dev"
+        PKGLIST+=" debconf debhelper clang-7 devscripts dh-exec dh-systemd git wget libkrb5-dev libssl-dev"
+        PKGLIST+=" build-essential debconf debhelper devscripts dh-exec dh-systemd git wget libxml-checker-perl"
+        PKGLIST+=" libxml-libxml-perl libio-socket-ssl-perl libperl-dev libssl-dev libxml2-dev txt2man zlib1g-dev libpq-dev"
 
         until DEBIAN_FRONTEND=noninteractive apt-get -y install ${PKGLIST}; do
             sleep 1
@@ -402,6 +410,7 @@ build_source_deb(){
     cd ${BUILDDIR}
 
     dch -D unstable --force-distribution -v "${VERSION}-${DEB_RELEASE}" "Update to new percona-pg-stat-monitor${PG_RELEASE} version ${VERSION}"
+    pg_buildext updatecontrol
     dpkg-buildpackage -S
     cd ../
     mkdir -p $WORKDIR/source_deb
@@ -444,6 +453,7 @@ build_deb(){
     dpkg-source -x ${DSC}
     #
     cd percona-pg-stat-monitor-${VERSION}
+    sed -i "s:\. :${WORKDIR}/percona-pg-stat-monitor-${VERSION} :g" debian/rules
     dch -m -D "${OS_NAME}" --force-distribution -v "1:${VERSION}-${DEB_RELEASE}.${OS_NAME}" 'Update distribution'
     unset $(locale|cut -d= -f1)
     dpkg-buildpackage -rfakeroot -us -uc -b

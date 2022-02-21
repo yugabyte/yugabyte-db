@@ -28,12 +28,12 @@ SELECT * FROM t3,t4 WHERE t3.c = t4.d;
 
 \c contrib_regression
 SELECT datname, query FROM pg_stat_monitor ORDER BY query COLLATE "C";
-      datname       |                                 query                                  
---------------------+------------------------------------------------------------------------
- db1                | SELECT * FROM t1,t2 WHERE t1.a = t2.b;
- db2                | SELECT * FROM t3,t4 WHERE t3.c = t4.d;
- contrib_regression | SELECT datname, query FROM pg_stat_monitor ORDER BY query COLLATE "C";
- contrib_regression | SELECT pg_stat_monitor_reset();
+      datname       |                                 query                                 
+--------------------+-----------------------------------------------------------------------
+ db1                | SELECT * FROM t1,t2 WHERE t1.a = t2.b
+ db2                | SELECT * FROM t3,t4 WHERE t3.c = t4.d
+ contrib_regression | SELECT datname, query FROM pg_stat_monitor ORDER BY query COLLATE "C"
+ contrib_regression | SELECT pg_stat_monitor_reset()
 (4 rows)
 
 SELECT pg_stat_monitor_reset();

@@ -8541,14 +8541,14 @@ SELECt * FROM t2  WHERE b % 2 = 0;
 (2500 rows)
 
 SELECT query, rows_retrieved FROM pg_stat_monitor ORDER BY query COLLATE "C";
-                                     query                                     | rows_retrieved 
--------------------------------------------------------------------------------+----------------
- SELECT * FROM t1 LIMIT $1                                                     |             10
- SELECT * FROM t1;                                                             |           1000
- SELECT * FROM t2;                                                             |           5000
- SELECT pg_stat_monitor_reset();                                               |              1
- SELECT query, rows_retrieved FROM pg_stat_monitor ORDER BY query COLLATE "C"; |              0
- SELECt * FROM t2  WHERE b % $1 = $2                                           |           2500
+                                    query                                     | rows_retrieved 
+------------------------------------------------------------------------------+----------------
+ SELECT * FROM t1                                                             |           1000
+ SELECT * FROM t1 LIMIT $1                                                    |             10
+ SELECT * FROM t2                                                             |           5000
+ SELECT pg_stat_monitor_reset()                                               |              1
+ SELECT query, rows_retrieved FROM pg_stat_monitor ORDER BY query COLLATE "C" |              0
+ SELECt * FROM t2  WHERE b % $1 = $2                                          |           2500
 (6 rows)
 
 SELECT pg_stat_monitor_reset();
