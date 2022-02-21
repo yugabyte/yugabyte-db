@@ -28,7 +28,7 @@ The YCQL shell was previously named `cqlsh`. Although the `cqlsh` binary is avai
 
 ## Download
 
-`ycqlsh` is installed as part of YugabyteDB and is located in the `bin` directory of YugabyteDB home. It is also available for download and install from YugabyteDB's [GitHub repository](https://github.com/yugabyte/cqlsh/releases).
+`ycqlsh` is installed as part of YugabyteDB and is located in the `bin` directory of YugabyteDB home. You can also download it from the [cqlsh GitHub repository](https://github.com/yugabyte/cqlsh/releases).
 
 ## Example
 
@@ -134,7 +134,7 @@ ycqlsh> SOURCE '/home/yugabyte/commands.cql'
 
 ### CAPTURE
 
-Begins capturing command output and appending it to a specified file. Output will not be shown at the console while it is captured.
+Captures command output and appends it to the specified file. Output is not shown at the console while it is captured.
 
 ```sh
 CAPTURE '<file>'
@@ -242,7 +242,7 @@ Copies data from a table to a CSV file.
 COPY <table name> [(<column>, ...)] TO <file name> WITH <copy flag> [AND <copy flag> ...]
 ```
 
-If no columns are specified, all columns from the table are copied to the CSV file. Specify a subset of columns to copy by adding a comma-separated list of column names enclosed in parenthesis after the table name.
+By default, copies all columns from the table to the CSV file. To copy a subset of columns, add a comma-separated list of column names enclosed in parentheses after the table name.
 
 The `file name` should be a string literal (with single quotes) representing a path to the destination file. You can also use the special value `STDOUT` (without single quotes) to print the CSV to stdout.
 
@@ -278,9 +278,9 @@ Copies data from a CSV file to table.
 COPY <table name> [(<column>, ...)] FROM <file name> WITH <copy flag> [AND <copy flag> ...]
 ```
 
-If no columns are specified, all columns from the CSV file are copied to the table. Specify a subset of columns to copy by adding a comma-separated list of column names enclosed in parenthesis after the table name.
+By default, copies all columns from the CSV file to the table. To copy a subset of columns, add a comma-separated list of column names enclosed in parentheses after the table name.
 
-The `file name` should be a string literal (with single quotes) representing a path to the source file. You can also use the special value `STDIN` (without single quotes) to read the CSV data from stdin.
+The `file name` should be a string literal (with single quotes) representing a path to the source file. Use the special value `STDIN` (without single quotes) to read the CSV data from stdin.
 
 | Flags             | Default | Description                                                  |
 | ----------------- | ------- | ------------------------------------------------------------ |
@@ -290,7 +290,7 @@ The `file name` should be a string literal (with single quotes) representing a p
 | `SKIPCOLS`        |         | A comma-separated list of column names to ignore. By default, no columns are skipped. |
 | `MAXPARSEERRORS`  | -1      | The maximum global number of parsing errors to ignore. -1 means unlimited. |
 | `MAXINSERTERRORS` | 1000    | The maximum global number of insert errors to ignore. -1 means unlimited. |
-| `ERRFILE=`        |         | A file to store all rows that could not be imported, by default this is `import_<ks>_<table>.err` where `<ks>` is your keyspace and `<table>` is your table name. |
+| `ERRFILE=`        |         | A file to store all rows that could not be imported; by default this is `import_<ks>_<table>.err` where `<ks>` is the keyspace and `<table>` is the table name. |
 | `MAXBATCHSIZE`    | 20      | The max number of rows inserted in a single batch.           |
 | `MINBATCHSIZE`    | 2       | The min number of rows inserted in a single batch.           |
 | `CHUNKSIZE`       | 1000    | The number of rows that are passed to child worker processes from the main process at a time. |
