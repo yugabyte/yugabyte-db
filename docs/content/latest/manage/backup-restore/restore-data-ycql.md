@@ -37,7 +37,7 @@ By default, ysqlsh connects to localhost at `127.0.0.1` and port `9042`. To conn
 $ ./bin/ycqlsh -f myapp_schema.cql 127.0.0.2
 ```
 
-## Schema restore using SOURCE
+## Restore the schema using SOURCE
 
 To restore a schema, run the following command:
 
@@ -45,7 +45,7 @@ To restore a schema, run the following command:
 $ ycqlsh -e "SOURCE 'schema.cql'"
 ```
 
-## Data restore using COPY FROM
+## Restore data using COPY FROM
 
 Use the `COPY FROM` command to restore the data from a file in CSV (comma separated value) format. `COPY FROM` copies each line in the file to a separate row in the table, with column values separated by the delimiter.
 

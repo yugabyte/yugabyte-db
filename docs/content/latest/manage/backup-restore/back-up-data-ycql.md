@@ -37,7 +37,7 @@ By default, ysqlsh connects to localhost at `127.0.0.1` and port `9042`. To conn
 $ ./bin/ycqlsh -e "DESC KEYSPACE myapp" > myapp_schema.cql 127.0.0.2
 ```
 
-## Schema backup using DESCRIBE
+## Back up the schema using DESCRIBE
 
 You perform schema backups using the `DESCRIBE` command, which can be shortened to `DESC`.
 
@@ -57,7 +57,7 @@ To back up the schema for all tables across all keyspaces, run the following com
 $ ycqlsh -e "DESC SCHEMA" > schema.cql
 ```
 
-## Data backup using COPY TO
+## Back up data using COPY TO
 
 Use the `COPY TO` command to export the data from a table in CSV (comma separated value) format to a specified output file. `COPY TO` writes each row in the table to a separate line in the file, with column values separated by the delimiter.
 
