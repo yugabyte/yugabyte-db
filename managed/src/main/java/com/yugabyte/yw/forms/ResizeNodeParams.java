@@ -17,12 +17,14 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
 import play.api.Play;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonDeserialize(converter = ResizeNodeParams.Converter.class)
 @Data
+@EqualsAndHashCode(callSuper = true)
 @Slf4j
 public class ResizeNodeParams extends UpgradeTaskParams {
 

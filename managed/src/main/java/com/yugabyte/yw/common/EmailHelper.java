@@ -7,7 +7,7 @@ import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.alerts.SmtpData;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.forms.CustomerRegisterFormData;
+import com.yugabyte.yw.forms.AlertingData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import java.util.ArrayList;
@@ -195,8 +195,7 @@ public class EmailHelper {
     String ybEmail = getYbEmail(customer);
     CustomerConfig config = CustomerConfig.getAlertConfig(customer.uuid);
     if (config != null) {
-      CustomerRegisterFormData.AlertingData alertingData =
-          Json.fromJson(config.data, CustomerRegisterFormData.AlertingData.class);
+      AlertingData alertingData = Json.fromJson(config.data, AlertingData.class);
       if (alertingData.sendAlertsToYb && !StringUtils.isEmpty(ybEmail)) {
         destinations.add(ybEmail);
       }

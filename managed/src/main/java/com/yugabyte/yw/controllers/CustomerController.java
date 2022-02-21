@@ -32,7 +32,7 @@ import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.forms.AlertingFormData;
-import com.yugabyte.yw.forms.AlertingFormData.AlertingData;
+import com.yugabyte.yw.forms.AlertingData;
 import com.yugabyte.yw.forms.CustomerDetailsData;
 import com.yugabyte.yw.forms.FeatureUpdateFormData;
 import com.yugabyte.yw.forms.MetricQueryParams;

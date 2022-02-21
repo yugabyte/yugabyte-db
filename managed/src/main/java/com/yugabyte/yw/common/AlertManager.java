@@ -26,7 +26,7 @@ import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.alerts.AlertUtils;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.metrics.MetricService;
-import com.yugabyte.yw.forms.AlertingFormData;
+import com.yugabyte.yw.forms.AlertingData;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.AlertChannel;
@@ -165,7 +165,7 @@ public class AlertManager {
       } else {
 
         long notificationIntervalMs = 0;
-        AlertingFormData.AlertingData alertingData =
+        AlertingData alertingData =
             context.getAlertingConfigByCustomer().get(alert.getCustomerUUID());
         if (alertingData != null) {
           notificationIntervalMs = alertingData.activeAlertNotificationIntervalMs;
@@ -215,15 +215,14 @@ public class AlertManager {
 
     Set<UUID> customerUuids =
         toNotify.stream().map(Alert::getCustomerUUID).collect(Collectors.toSet());
-    Map<UUID, AlertingFormData.AlertingData> alertingConfigByCustomer =
+    Map<UUID, AlertingData> alertingConfigByCustomer =
         CustomerConfig.getAlertConfigs(customerUuids)
             .stream()
             .filter(config -> config.getData() != null)
             .collect(
                 Collectors.toMap(
                     CustomerConfig::getCustomerUUID,
-                    config ->
-                        Json.fromJson(config.getData(), AlertingFormData.AlertingData.class)));
+                    config -> Json.fromJson(config.getData(), AlertingData.class)));
     AlertNotificationContext context =
         AlertNotificationContext.builder()
             .alertingConfigByCustomer(alertingConfigByCustomer)

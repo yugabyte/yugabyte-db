@@ -40,7 +40,7 @@ import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.forms.AlertingFormData.AlertingData;
+import com.yugabyte.yw.forms.AlertingData;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Alert.State;
