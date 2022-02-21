@@ -10,7 +10,6 @@ import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
@@ -76,8 +75,8 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleClusterServerCtl,
           TaskType.AnsibleClusterServerCtl,
-          TaskType.SetNodeState,
-          TaskType.WaitForServer);
+          TaskType.WaitForServer,
+          TaskType.SetNodeState);
 
   private static final List<TaskType> NON_RESTART_UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
@@ -160,9 +159,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
           for (TaskType type : taskSequence) {
             List<TaskInfo> tasks = subTasksByPosition.get(position);
             TaskType taskType = tasks.get(0).getTaskType();
-            // Leader blacklisting adds a ModifyBlackList task at position 0.
-            int numTasksToAssert = position == 0 ? 2 : 1;
-            assertEquals(numTasksToAssert, tasks.size());
+            assertEquals(1, tasks.size());
             assertEquals(type, taskType);
             if (!NON_NODE_TASKS.contains(taskType)) {
               Map<String, Object> assertValues =
@@ -208,9 +205,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
               }
               assertValues.put("processType", serverType.toString());
             }
-            // The task at postion 0 adds a ModifyBlacklist sub-task.
-            int numTasksToAssert = position == 0 ? 4 : 3;
-            assertEquals(numTasksToAssert, tasks.size());
+            assertEquals(3, tasks.size());
             assertNodeSubTask(tasks, assertValues);
           }
           position++;

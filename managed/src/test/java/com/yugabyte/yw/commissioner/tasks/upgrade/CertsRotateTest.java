@@ -13,12 +13,12 @@ import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -47,7 +47,6 @@ import org.mockito.InjectMocks;
 import org.mockito.MockitoAnnotations;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
-import com.yugabyte.yw.common.certmgmt.CertConfigType;
 
 @RunWith(JUnitParamsRunner.class)
 public class CertsRotateTest extends UpgradeTaskTest {
@@ -86,8 +85,8 @@ public class CertsRotateTest extends UpgradeTaskTest {
           TaskType.SetNodeState,
           TaskType.AnsibleClusterServerCtl,
           TaskType.AnsibleClusterServerCtl,
-          TaskType.SetNodeState,
-          TaskType.WaitForServer);
+          TaskType.WaitForServer,
+          TaskType.SetNodeState);
 
   @Override
   @Before
@@ -166,11 +165,9 @@ public class CertsRotateTest extends UpgradeTaskTest {
         assertTaskType(subTasksByPosition.get(position++), TaskType.UniverseSetTlsParams);
       }
     } else {
-      // Non-root CA updates require a ModifyBlackList task at position 0.
-      int numTasksToAssert = position == 0 ? 4 : 3;
       List<TaskInfo> certUpdateTasks = subTasksByPosition.get(position++);
       assertTaskType(certUpdateTasks, TaskType.AnsibleConfigureServers);
-      assertEquals(numTasksToAssert, certUpdateTasks.size());
+      assertEquals(3, certUpdateTasks.size());
     }
     return position;
   }
