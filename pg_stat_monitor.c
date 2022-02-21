@@ -2089,7 +2089,7 @@ get_next_wbucket(pgssSharedState *pgss)
 	 * definitely make the while condition to fail, we can stop the loop as another
 	 * thread has already updated prev_bucket_usec.
 	 */
-	while ((current_usec - current_bucket_usec) > (PGSM_BUCKET_TIME * 1000 * 1000))
+	while ((current_usec - current_bucket_usec) > ((uint64)PGSM_BUCKET_TIME * 1000LU * 1000LU))
 	{
 		if (pg_atomic_compare_exchange_u64(&pgss->prev_bucket_usec, &current_bucket_usec, current_usec))
 		{
