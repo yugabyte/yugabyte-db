@@ -161,9 +161,9 @@ try {
             "COMMIT;"
     );
 } catch (SQLException e) {
-    if (e.getErrorCode() == 40001) {
-        // The operation aborted due to a concurrent transaction trying to modify the same set of rows.
-        // Consider adding retry logic for production-grade applications.
+    if (e.getSQLState().equals("40001")) {
+        System.err.println("The operation is aborted due to a concurrent transaction that is" +
+            " modifying the same set of rows. Consider adding retry logic for production-grade applications.");
         e.printStackTrace();
     } else {
         throw e;
