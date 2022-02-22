@@ -10,9 +10,9 @@ import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_LOCATIO
 import static com.yugabyte.yw.models.helpers.CustomerConfigValidator.AWS_ACCESS_KEY_ID_FIELDNAME;
 import static com.yugabyte.yw.models.helpers.CustomerConfigValidator.AWS_SECRET_ACCESS_KEY_FIELDNAME;
 import static com.yugabyte.yw.models.helpers.CustomerConfigValidator.GCS_CREDENTIALS_JSON_FIELDNAME;
+import static com.yugabyte.yw.models.helpers.CustomerConfigValidator.NAME_AZURE;
 import static com.yugabyte.yw.models.helpers.CustomerConfigValidator.NAME_GCS;
 import static com.yugabyte.yw.models.helpers.CustomerConfigValidator.NAME_S3;
-import static com.yugabyte.yw.models.helpers.CustomerConfigValidator.NAME_AZURE;
 import static com.yugabyte.yw.models.helpers.CustomerConfigValidator.fieldFullName;
 import static org.junit.Assert.assertThat;
 import static org.mockito.ArgumentMatchers.any;
