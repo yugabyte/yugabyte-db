@@ -338,7 +338,6 @@ TEST_P(TwoDCTest, SetupUniverseReplication) {
   }
 
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
-  Destroy();
 }
 
 TEST_P(TwoDCTest, SetupUniverseReplicationErrorChecking) {
@@ -638,7 +637,6 @@ TEST_P(TwoDCTest, SetupUniverseReplicationMultipleTables) {
   }
 
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
-  Destroy();
 }
 
 TEST_P(TwoDCTest, SetupUniverseReplicationLargeTableCount) {
@@ -705,8 +703,6 @@ TEST_P(TwoDCTest, SetupUniverseReplicationLargeTableCount) {
   }
 
   ASSERT_TRUE(passed_test);
-
-  Destroy();
 }
 
 TEST_P(TwoDCTest, BootstrapAndSetupLargeTableCount) {
@@ -830,8 +826,6 @@ TEST_P(TwoDCTest, BootstrapAndSetupLargeTableCount) {
     passed_test = (setup_latency[1] < setup_latency[0] * 3);
   }
   ASSERT_TRUE(passed_test);
-
-  Destroy();
 }
 
 TEST_P(TwoDCTest, PollWithConsumerRestart) {
@@ -866,7 +860,6 @@ TEST_P(TwoDCTest, PollWithConsumerRestart) {
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 4));
 
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
-  Destroy();
 }
 
 TEST_P(TwoDCTest, PollWithProducerNodesRestart) {
@@ -912,7 +905,6 @@ TEST_P(TwoDCTest, PollWithProducerNodesRestart) {
 
   // Cleanup.
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
-  Destroy();
 }
 
 TEST_P(TwoDCTest, PollWithProducerClusterRestart) {
@@ -940,7 +932,6 @@ TEST_P(TwoDCTest, PollWithProducerClusterRestart) {
 
   // Cleanup.
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
-  Destroy();
 }
 
 
@@ -1063,7 +1054,6 @@ TEST_P(TwoDCTest, PollAndObserveIdleDampening) {
 
   // Cleanup.
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
-  Destroy();
 }
 
 TEST_P(TwoDCTest, ApplyOperations) {
@@ -1091,7 +1081,6 @@ TEST_P(TwoDCTest, ApplyOperations) {
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
 
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
-  Destroy();
 }
 
 TEST_P(TwoDCTest, ApplyOperationsWithTransactions) {
@@ -1122,7 +1111,6 @@ TEST_P(TwoDCTest, ApplyOperationsWithTransactions) {
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
 
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
-  Destroy();
 }
 
 class TwoDCTestWithEnableIntentsReplication : public TwoDCTest {
@@ -1167,7 +1155,6 @@ TEST_P(TwoDCTestWithEnableIntentsReplication, UpdateWithinTransaction) {
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), kNumTablets));
 
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
-  Destroy();
 }
 
 TEST_P(TwoDCTestWithEnableIntentsReplication, TransactionsWithRestart) {
@@ -1203,7 +1190,6 @@ TEST_P(TwoDCTestWithEnableIntentsReplication, TransactionsWithRestart) {
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
 
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
-  Destroy();
 }
 
 TEST_P(TwoDCTestWithEnableIntentsReplication, MultipleTransactions) {
@@ -1384,7 +1370,6 @@ TEST_P(TwoDCTest, TestExternalWriteHybridTime) {
   ASSERT_OK(VerifyNumRecords(tables[1]->name(), consumer_client(), 1));
 
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
-  Destroy();
 }
 
 TEST_P(TwoDCTestWithEnableIntentsReplication, BiDirectionalWrites) {
@@ -1434,7 +1419,6 @@ TEST_P(TwoDCTestWithEnableIntentsReplication, BiDirectionalWrites) {
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
 
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
-  Destroy();
 }
 
 TEST_P(TwoDCTest, AlterUniverseReplicationMasters) {
@@ -1529,7 +1513,6 @@ TEST_P(TwoDCTest, AlterUniverseReplicationMasters) {
   }
 
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
-  Destroy();
 }
 
 TEST_P(TwoDCTest, AlterUniverseReplicationTables) {
@@ -1609,7 +1592,6 @@ TEST_P(TwoDCTest, AlterUniverseReplicationTables) {
   LOG(INFO) << "All alter tests passed.  Tearing down...";
 
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
-  Destroy();
 }
 
 TEST_P(TwoDCTest, ToggleReplicationEnabled) {
@@ -1638,8 +1620,6 @@ TEST_P(TwoDCTest, ToggleReplicationEnabled) {
   // Enable replication and ensure that all the tablets start being polled again
   ASSERT_OK(ToggleUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, true));
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 2));
-
-  Destroy();
 }
 
 TEST_P(TwoDCTest, TestDeleteUniverse) {
@@ -1663,8 +1643,6 @@ TEST_P(TwoDCTest, TestDeleteUniverse) {
       FLAGS_cdc_read_rpc_timeout_ms * 2));
 
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 0));
-
-  Destroy();
 }
 
 TEST_P(TwoDCTest, TestWalRetentionSet) {
@@ -1705,8 +1683,6 @@ TEST_P(TwoDCTest, TestWalRetentionSet) {
   ASSERT_OK(producer_client()->GetTableSchema(table_name, &schema, &partition_schema));
 
   ASSERT_NE(static_cast<int>(Schema::kColumnNotFound), schema.FindColumn("new_col"));
-
-  Destroy();
 }
 
 TEST_P(TwoDCTest, TestProducerUniverseExpansion) {
@@ -1742,8 +1718,6 @@ TEST_P(TwoDCTest, TestProducerUniverseExpansion) {
 
   // Verify that both clusters have the same records.
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
-
-  Destroy();
 }
 
 TEST_P(TwoDCTest, ApplyOperationsRandomFailures) {
@@ -1787,7 +1761,6 @@ TEST_P(TwoDCTest, ApplyOperationsRandomFailures) {
 
   // Stop replication on producer
   ASSERT_OK(DeleteUniverseReplication(kUniverseId, producer_client(), producer_cluster()));
-  Destroy();
 }
 
 TEST_P(TwoDCTest, TestInsertDeleteWorkloadWithRestart) {
@@ -1832,8 +1805,6 @@ TEST_P(TwoDCTest, TestInsertDeleteWorkloadWithRestart) {
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
   // Stop replication on consumer.
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
-
-  Destroy();
 }
 
 TEST_P(TwoDCTest, TestDeleteCDCStreamWithMissingStreams) {
@@ -1904,8 +1875,6 @@ TEST_P(TwoDCTest, TestDeleteCDCStreamWithMissingStreams) {
       FLAGS_cdc_read_rpc_timeout_ms * 2));
 
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 0));
-
-  Destroy();
 }
 
 TEST_P(TwoDCTest, TestAlterWhenProducerIsInaccessible) {
@@ -1936,8 +1905,6 @@ TEST_P(TwoDCTest, TestAlterWhenProducerIsInaccessible) {
   // Ensure that we just return an error and don't have a fatal.
   ASSERT_OK(master_proxy->AlterUniverseReplication(alter_req, &alter_resp, &rpc));
   ASSERT_TRUE(alter_resp.has_error());
-
-  Destroy();
 }
 
 } // namespace enterprise

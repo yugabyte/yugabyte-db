@@ -82,7 +82,7 @@ class TwoDCTestBase : public YBTest {
     FLAGS_flush_rocksdb_on_shutdown = false;
   }
 
-  void Destroy();
+  void TearDown() override;
 
   CHECKED_STATUS SetupUniverseReplication(
       MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
