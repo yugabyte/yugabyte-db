@@ -154,7 +154,7 @@ The data is now arranged as follows:
 
 {{< tip title="Region-local transaction table" >}}
 
-When we create tables using a tablespace with a placement set, YugabyteDB automatically creates a transaction table under the tablespace if one does not yet exist, with a name like `system.transactions_90141438-f42c-4a39-8a12-4072c1216d46`.
+When you create tables using a tablespace with a placement set, YugabyteDB automatically creates a transaction table under the tablespace if one doesn't yet exist, with a name like `system.transactions_90141438-f42c-4a39-8a12-4072c1216d46`.
 
 {{</ tip >}}
 
@@ -381,7 +381,7 @@ INSERT INTO bank_transactions VALUES (100, 10002, 'EU', 'checking', 400.00, 'deb
 ERROR:  Illegal state: Nonlocal tablet accessed in local transaction: tablet c5a611afd571455e80450bd553a24a64: . Errors from tablet servers: [Illegal state (yb/client/transaction.cc:284): Nonlocal tablet accessed in local transaction: tablet c5a611afd571455e80450bd553a24a64]
 ```
 
-Because we have a tablespace with placement set to the us-west-2 region, YugabyteDB assumes by default that we want to run a transaction local to that region (using the transaction status table automatically created for the `us_west_2_tablespace` created in Step 1), but such a transaction cannot modify data outside of us-west-2.
+Because we have a tablespace with placement set to the us-west-2 region, YugabyteDB assumes by default that we want to run a transaction local to that region (using the automatically-generated transaction status table for the `us_west_2_tablespace` created in Step 1), but such a transaction cannot modify data outside of us-west-2.
 
 However, if we instead connect to a node in eu-central-1 and run the exact same transaction, we are now able to finish and commit the transaction without error:
 
