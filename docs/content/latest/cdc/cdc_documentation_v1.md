@@ -15,16 +15,8 @@ description: CDC or Change Data Capture is a process to capture changes made to 
 
 ### Use cases
 
-  Many applications benefit from capturing changes to items stored in a YugabyteDB table, at the point in time when such changes occur. The following are some example use cases:
-  * **Sensors** in transportation vehicles and industrial equipment send data to a YugabyteDB table. Different applications monitor performance and send messaging alerts when a problem is detected, predict any potential defects by applying machine learning algorithms, and compress and archive data to low-cost storage.
-  * **Analytics dashboards**: A popular mobile app modifies data in a YugabyteDB table, at the rate of thousands of updates per second. Another application captures and stores data about these updates, providing near-real-time usage metrics for the mobile app.
-  * **CQRS model updates**: A financial application modifies stock market data in a YugabyteDB table. Different applications running in parallel track these changes in real time, compute value-at-risk, and automatically rebalance portfolios based on stock price movements.
-  * A new customer adds data to a YugabyteDB table. This event invokes another application that sends a welcome email to the new customer.
-Data replication: CDC can be used for data replication to multiple databases, data lakes, or data warehouses, to ensure each resource has the latest version of the data. 
-  * **Auditing and compliance**: Facing today's strict data compliance requirements, and heavy penalties for noncompliance, it is essential to save a history of changes made to your data. 
-  * **Cache invalidation**: CDC can be used for cache invalidation, to ensure outdated entries in a cache are replaced or removed in order to display the latest version of a web page.
-  * **Full-text search**: CDC can be used to automatically keep a full-text search index in sync with the database.
-
+  Many applications benefit from capturing changes to items stored in a YugabyteDB table, at the point in time when such changes occur. The following are some example use cases such as triggering alerts and notifications in IoT use cases, sending real time updates to analytics pipelines and applications, auditing and compliance, cache invalidation, etc.
+  
 ### Process Architecture
 
 ### CDC Streams
