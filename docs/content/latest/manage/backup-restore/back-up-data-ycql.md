@@ -29,9 +29,17 @@ showAsideToc: true
   </li>
 </ul>
 
-## Schema backup
+To back up data, use [**ycqlsh**](../../../admin/ycqlsh/) with the [DESCRIBE](../../../admin/ycqlsh/#describe) and [COPY TO](../../../admin/ycqlsh/#copy-to) commands.
 
-You perform schema backups using the `DESC` command.
+By default, ycqlsh connects to localhost at `127.0.0.1` and port `9042`. To connect to a different node, you can specify the host (and, optionally, port) after the command. For example:
+
+```sh
+$ ./bin/ycqlsh -e "DESC KEYSPACE myapp" > myapp_schema.cql 127.0.0.2
+```
+
+## Back up the schema using DESCRIBE
+
+You perform schema backups using the `DESCRIBE` command, which can be shortened to `DESC`.
 
 ### Back up the schema for one keyspace
 
@@ -49,39 +57,11 @@ To back up the schema for all tables across all keyspaces, run the following com
 $ ycqlsh -e "DESC SCHEMA" > schema.cql
 ```
 
-## Data backup
+## Back up data using COPY TO
 
 Use the `COPY TO` command to export the data from a table in CSV (comma separated value) format to a specified output file. `COPY TO` writes each row in the table to a separate line in the file, with column values separated by the delimiter.
 
-### Back up all columns of a table
-
-All columns of the table are exported by default.
-
-```sh
-$ ycqlsh -e "COPY <keyspace>.<table> TO 'data.csv' WITH HEADER = TRUE;"
-```
-
-### Back up specific columns of a table
-
-To back up selected columns of the table, specify the column names in a list.
-
-```sh
-$ ycqlsh -e "COPY <keyspace>.<table> (<column 1 name>, <column 2 name>, ...) TO 'data.csv' WITH HEADER = TRUE;"
-```
-
-## Options
-
-### Connect to a specific remote host and port
-
-The default host is `127.0.0.1` and the default port is `9042`. You can override these values as shown below.
-
-```sh
-$ ycqlsh -e <command> <host> [<port>]
-```
-
-### Copy options
-
-The `COPY TO` command provides a number of options to help perform backups.
+`COPY TO` provides a number of options to help perform backups.
 
 The syntax to specify options when using `COPY TO` is shown below.
 
@@ -101,6 +81,22 @@ The following table outlines some of the more commonly used options.
 | PAGETIMEOUT | Page timeout for fetching results. | 10 |
 | MAXREQUESTS | Maximum number of requests each worker can process in parallel. | 6 |
 | MAXOUTPUTSIZE | Maximum size of the output file, measured in number of lines. When set, the output file is split into segments when the value is exceeded. Use `-1` for no maximum. | -1 |
+
+### Back up all columns of a table
+
+All columns of the table are exported by default.
+
+```sh
+$ ycqlsh -e "COPY <keyspace>.<table> TO 'data.csv' WITH HEADER = TRUE;"
+```
+
+### Back up specific columns of a table
+
+To back up selected columns of the table, specify the column names in a list.
+
+```sh
+$ ycqlsh -e "COPY <keyspace>.<table> (<column 1 name>, <column 2 name>, ...) TO 'data.csv' WITH HEADER = TRUE;"
+```
 
 ## Example
 
@@ -134,7 +130,7 @@ CREATE TABLE myapp.stock_market (
     AND default_time_to_live = 0;
 ```
 
-### Back up all the columns of the table
+### Back up the table
 
 Run the following command to back up the data in the table `myapp.stock_market`.
 
@@ -158,7 +154,7 @@ GOOG,2017-10-26 09:00:00,972.56
 GOOG,2017-10-26 10:00:00,971.90997
 ```
 
-### Back up specific columns of a table
+### Back up specific table columns
 
 To back up a subset of columns, you can specify the columns in the backup command. The following example saves the `stock_symbol` and `ts` columns, but not the `current_price` column.
 
