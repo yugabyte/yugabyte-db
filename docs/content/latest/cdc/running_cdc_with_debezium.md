@@ -1,3 +1,10 @@
+---
+title: Debezium and CDC in YugabyteDB
+headerTitle: Running Debezium with YugabyteDB
+linkTitle: Debezium Connector for YugabyteDB
+description: Debezium is an open source distributed platform used to capture the changes in a database.
+---
+
 # Running CDC with Debezium locally
 
 ### 1. Start Zookeeper
