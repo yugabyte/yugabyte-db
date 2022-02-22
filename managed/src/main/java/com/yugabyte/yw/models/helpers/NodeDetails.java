@@ -66,8 +66,8 @@ public class NodeDetails {
     // the existing cluster.
     ToJoinCluster(REMOVE),
     // Set after the node (without any configuration) is created using the IaaS provider at the
-    // end of the provision step.
-    Provisioned(),
+    // end of the provision step before it is set up and configured.
+    Provisioned(DELETE),
     // Set after the YB software installed and some basic configuration done on a provisioned node.
     SoftwareInstalled(START, DELETE),
     // Set after the YB software is upgraded via Rolling Restart.
@@ -276,6 +276,7 @@ public class NodeDetails {
     return state == NodeState.ToBeAdded
         || state == NodeState.Adding
         || state == NodeState.InstanceCreated
+        || state == NodeState.Provisioned
         || state == NodeState.ServerSetup
         || state == NodeState.SoftwareInstalled
         || state == NodeState.Decommissioned;

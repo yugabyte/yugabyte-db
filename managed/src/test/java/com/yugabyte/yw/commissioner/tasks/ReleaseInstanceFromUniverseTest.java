@@ -124,6 +124,7 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
           TaskType.SetNodeState,
           TaskType.WaitForMasterLeader,
           TaskType.ModifyBlackList,
+          TaskType.SetNodeState,
           TaskType.AnsibleDestroyServer,
           TaskType.SetNodeState,
           TaskType.SwamperTargetsFileUpdate,
@@ -132,6 +133,7 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
   private static final List<JsonNode> RELEASE_INSTANCE_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
           Json.toJson(ImmutableMap.of("state", "BeingDecommissioned")),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),

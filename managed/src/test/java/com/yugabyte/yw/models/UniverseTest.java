@@ -755,6 +755,8 @@ public class UniverseTest extends FakeDBApplication {
             assertEquals(
                 ImmutableSet.of(NodeActionType.ADD, NodeActionType.DELETE), allowedActions);
           }
+        } else if (nodeState == NodeDetails.NodeState.Provisioned) {
+          assertEquals(ImmutableSet.of(NodeActionType.DELETE), allowedActions);
         } else {
           assertTrue(allowedActions.isEmpty());
         }

@@ -399,6 +399,9 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
     // Finally send destroy to the old set of nodes and remove them from this universe.
     if (!nodesToBeRemoved.isEmpty()) {
+      // Set the node states to Removing.
+      createSetNodeStateTasks(nodesToBeRemoved, NodeDetails.NodeState.Removing)
+          .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
       createDestroyServerTasks(nodesToBeRemoved, false /* isForceDelete */, true /* deleteNode */)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
     }
