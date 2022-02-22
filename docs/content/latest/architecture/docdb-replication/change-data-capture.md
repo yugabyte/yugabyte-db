@@ -38,8 +38,6 @@ Maintaining multiple data centers enables enterprises to provide:
 - High availability (HA) — Redundant systems help ensure that your operations virtually never fail.
 - Geo-redundancy — Geographically dispersed servers provide resiliency against catastrophic events and natural disasters.
 
-Two data center (2DC), or dual data center, deployments are a common use of CDC that allows efficient management of two YugabyteDB universes that are geographically separated. For more information, see [Two data center (2DC) deployments](../async-replication) and [Replicate between two data centers](../../../deploy/multi-dc/async-replication)
-
 ### Compliance and auditing
 
 Auditing and compliance requirements can require you to use CDC to maintain records of data changes.
@@ -51,8 +49,8 @@ In the sections below, the terms "data center", "cluster", and "universe" are us
 {{< /note >}}
 
 ## Process architecture
-
-![CDC process architecture](/images/architecture/cdc-2dc/process-architecture.png)
+To be updated: new Architecture 
+<!--- ![CDC process architecture](/images/architecture/cdc-2dc/process-architecture.png) --->
 
 ### CDC streams
 
