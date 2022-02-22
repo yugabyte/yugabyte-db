@@ -12,30 +12,40 @@
   }
 
   .article {
-    flex: 1;
-    .wrapper {
-      padding-top: 36px !important;
-      padding-bottom: 50px !important;
-      padding-left: 48px;
-      padding-right: 24px;
+    .flex-wrapper {
+      width: 1080px;
+      // height: 1415px;
+      flex: 1;
+      // flex-basis: 1080;
+      align-items: center;
+      // align-content: center;
+      border: 1px dashed #000000;
+      box-sizing: border-box;
       background-color: #fff;
-      border-radius: 7px;
-      margin-bottom: 25px;
-      box-shadow: 0 0.12em 2px rgba($YB_DARK_GRAY_2, 0.05), 0 0.5em 10px rgba($YB_DARK_GRAY_2, 0.07);
-      z-index: 2;
-      position: relative;
-  
-      @media only screen and (max-width: 991px) {
-        padding-top: 22px !important;
-        padding-bottom: 30px !important;
-        padding-left: 30px;
-        padding-right: 30px;
-        margin-bottom: 25px;
-      }
-      @media screen and (max-width: 767px) {
-        border-radius: 0;
-      }
     }
+    // .wrapper {
+    //   padding-top: 36px !important;
+    //   padding-bottom: 50px !important;
+    //   padding-left: 48px;
+    //   padding-right: 24px;
+    //   background-color: #fff;
+    //   border-radius: 7px;
+    //   margin-bottom: 25px;
+    //   box-shadow: 0 0.12em 2px rgba($YB_DARK_GRAY_2, 0.05), 0 0.5em 10px rgba($YB_DARK_GRAY_2, 0.07);
+    //   z-index: 2;
+    //   position: relative;
+  
+    //   @media only screen and (max-width: 991px) {
+    //     padding-top: 22px !important;
+    //     padding-bottom: 30px !important;
+    //     padding-left: 30px;
+    //     padding-right: 30px;
+    //     margin-bottom: 25px;
+    //   }
+    //   @media screen and (max-width: 767px) {
+    //     border-radius: 0;
+    //   }
+    // }
     h2 {
       font-weight: 600;
       font-size: 32;
@@ -122,6 +132,17 @@
       max-height: 182px;
     }
 
+    .heading-container-test {
+      border: 1px solid #D7DEE4;
+      box-sizing: border-box;
+      border-radius: 8px;
+      margin-right: 30px;
+      max-width: 100%;
+      // max-height: 182px;
+      position: relative;
+      overflow:hidden
+    }
+
     .section-col {
       display: flex;
       flex-direction: column;
@@ -172,6 +193,19 @@
       color: #4E5F6D;
     }
 
+    .tile-sentence-test{
+      margin-left: 12px;
+      margin-top: 12px;
+      width: 230px;
+      max-height: 48px;
+      font-size: 14px;
+      line-height: 21px;
+      color: #4E5F6D;
+      @media only screen and (min-width: 1940px) {
+        width: fit-content;
+      }
+    }
+
     .tile-link {
       margin-left: 12px;
       margin-top: 24px;
@@ -188,6 +222,15 @@
       margin-left: 248px;
       width: 160px;
       height: 180px;
+      background: #F0F4F7;
+    }
+
+    .tile-image-box-test {
+      margin-left: auto;
+      position: relative;
+      width: 160px;
+      height: 180px;
+      align-content: stretch;
       background: #F0F4F7;
     }
 
@@ -216,6 +259,21 @@
       }
     }
 
+
+    .example-container-test {
+      max-width: 100%;
+      position: relative;
+      height: 280px;
+      background: #FFFFFF;
+      border: 1px solid #D7DDE1;
+      box-sizing: border-box;
+      border-radius: 8px;
+      margin-right: 26px;
+      @media only screen and (min-width: 767px) {
+        margin-bottom: 26px;
+      }
+    }
+
     .resources-container {
       width: 275px;
       height: 150px;
@@ -228,6 +286,12 @@
 
     .example-image-box {
       width: 275px;
+      height: 120px;
+      background: #F0F4F7;
+      border-radius: 8px;
+    }
+
+    .example-image-box-test {
       height: 120px;
       background: #F0F4F7;
       border-radius: 8px;
@@ -251,6 +315,19 @@
       line-height: 24px;
       height: 24px;
       color: #000000;
+    }
+
+    .example-title-test {
+      margin-top:14px;
+      margin-left: 12px;
+      font-style: normal;
+      font-weight: 600;
+      font-size: 15px;
+      line-height: 24px;
+      height: 24px;
+      color: #000000;
+      text-overflow: ellipsis;
+      overflow: hidden;
     }
 
     .resources-title {
@@ -285,6 +362,25 @@
       height: 38px;
       width: 235px;
       color: #4E5F6D;
+    }
+
+    .example-description-test {
+      margin-top: 5px;
+      margin-left: 12px;
+      font-style: normal;
+      font-weight: normal;
+      font-size: 14px;
+      line-height: 19px;
+      height: 38px;
+      width: fit-content;
+      color: #4E5F6D;
+      text-overflow: ellipsis;
+      overflow: hidden;
+      // @media only screen and (min-width: 767px) {
+      //   text-overflow: ellipsis;
+      //   overflow: hidden;
+      //   white-space: nowrap;
+      // }
     }
 
     .example-link {
