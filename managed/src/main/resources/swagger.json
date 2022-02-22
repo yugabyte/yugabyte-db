@@ -1220,26 +1220,6 @@
       "required" : [ "dateRangeEnd", "dateRangeStart", "keyspaceList", "scheduleUUIDList", "states", "storageConfigUUIDList", "universeNameList", "universeUUIDList" ],
       "type" : "object"
     },
-    "BackupData" : {
-      "description" : "Backup Info for doing restore operation",
-      "properties" : {
-        "backupUUID" : {
-          "description" : "Backup UUID",
-          "format" : "uuid",
-          "type" : "string"
-        },
-        "sse" : {
-          "description" : "Is SSE",
-          "type" : "boolean"
-        },
-        "storageConfigUUID" : {
-          "description" : "Storage config uuid",
-          "format" : "uuid",
-          "type" : "string"
-        }
-      },
-      "type" : "object"
-    },
     "BackupPagedApiQuery" : {
       "properties" : {
         "direction" : {
@@ -1523,11 +1503,6 @@
           "description" : "Is SSE",
           "type" : "boolean"
         },
-        "storageConfigUUID" : {
-          "description" : "Storage config uuid",
-          "format" : "uuid",
-          "type" : "string"
-        },
         "storageLocation" : {
           "description" : "Storage location",
           "type" : "string"
@@ -1535,14 +1510,6 @@
         "tableNameList" : {
           "description" : "Tables",
           "items" : {
-            "type" : "string"
-          },
-          "type" : "array"
-        },
-        "tableUUIDList" : {
-          "description" : "Table UUIDs",
-          "items" : {
-            "format" : "uuid",
             "type" : "string"
           },
           "type" : "array"
@@ -4231,10 +4198,6 @@
           "enum" : [ "RESTORE", "RESTORE_KEYS" ],
           "type" : "string"
         },
-        "backupData" : {
-          "$ref" : "#/definitions/BackupData",
-          "description" : "Data of the backup to be restored"
-        },
         "backupStorageInfoList" : {
           "description" : "Backup's storage info to restore",
           "items" : {
@@ -4331,6 +4294,11 @@
           },
           "readOnly" : true,
           "type" : "array"
+        },
+        "storageConfigUUID" : {
+          "description" : "Storage config uuid",
+          "format" : "uuid",
+          "type" : "string"
         },
         "targetXClusterConfigs" : {
           "description" : "The target universe's xcluster replication relationships",

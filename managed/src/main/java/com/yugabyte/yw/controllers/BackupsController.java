@@ -48,6 +48,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import javax.inject.Inject;
+import org.apache.commons.collections.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
@@ -181,15 +182,12 @@ public class BackupsController extends AuthenticatedController {
 
     UUID universeUUID = taskParams.universeUUID;
     Universe.getOrBadRequest(universeUUID);
-    if (taskParams.backupData == null
-        && (taskParams.backupStorageInfoList == null
-            || taskParams.backupStorageInfoList.isEmpty())) {
+    if (CollectionUtils.isEmpty(taskParams.backupStorageInfoList)) {
       throw new PlatformServiceException(BAD_REQUEST, "Backup information not provided");
     }
 
     CustomerConfig customerConfig =
-        customerConfigService.getOrBadRequest(
-            customerUUID, taskParams.backupData.storageConfigUUID);
+        customerConfigService.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
     if (!customerConfig.getState().equals(ConfigState.Active)) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot restore backup as config is queued for deletion.");
