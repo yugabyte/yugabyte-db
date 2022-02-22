@@ -2,7 +2,7 @@
 
 ### What is CDC?
 
-  Change Data Capture (CDC) is a mechanism/tool to stream changes in a database, these changes can then be used by external applications in order to perform analytics or other operations. <br/>
+  Change Data Capture (CDC) is a process to capture changes made to data in the database and stream those changes to external processes, applications or other databases. <br/>
 
  The core primitive of CDC is the ‘stream’. Streams can be enabled/disabled on databases. Every change to a watched database table is emitted as a record in a configurable format to a configurable sink. Streams scale to any YugabyteDB cluster independent of its size and are designed to impact production traffic as little as possible.
 
