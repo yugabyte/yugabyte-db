@@ -158,7 +158,8 @@ class PgDocResult {
 //        pgsql_ops_[0] = template_op_
 //    - CreateRequests()
 //    - ClonePgsqlOps() Clone template_op_ into one or more ops.
-//    - PopulateParallelSelectCountOps() Parallel processing SELECT COUNT.
+//    - PopulateParallelSelectOps() Parallel processing of aggregate requests or requests with
+//      WHERE expressions filtering rows in DocDB.
 //      The same requests are constructed for each tablet server.
 //    - PopulateNextHashPermutationOps() Parallel processing SELECT by hash conditions.
 //      Hash permutations will be group into different request based on their hash_codes.
@@ -269,7 +270,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   //   * If (partition_count > 1), each operator is used for a specific partition range.
   //   * This optimization is used by
   //       PopulateDmlByYbctidOps()
-  //       PopulateParallelSelectCountOps()
+  //       PopulateParallelSelectOps()
   // - When parallelism by arguments is applied, each operator has only one argument.
   //   When tablet server will run the requests in parallel as it assigned one thread per request.
   //       PopulateNextHashPermutationOps()
@@ -438,9 +439,8 @@ class PgDocReadOp : public PgDocOp {
   CHECKED_STATUS InitializeHashPermutationStates();
 
   // Create operators by partitions.
-  // - Optimization for statement:
-  //     Create parallel request for SELECT COUNT().
-  CHECKED_STATUS PopulateParallelSelectCountOps();
+  // - Optimization for aggregating or filtering requests.
+  CHECKED_STATUS PopulateParallelSelectOps();
 
   // Create one sampling operator per partition and arrange their execution in random order
   CHECKED_STATUS PopulateSamplingOps();

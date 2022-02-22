@@ -99,4 +99,42 @@ public class TestPgParallelSelect extends BasePgSQLTest {
           statement, "SELECT COUNT(n), COUNT(d) FROM aggtest2", true);
     }
   }
+
+  @Test
+  public void testParallelWherePushdowns() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      // wheretest(h bigint, r float, vi int, vs text)
+      String loadTemplate = "INSERT INTO wheretest(h, r, vi, vs) " +
+                            "SELECT s, s::float * 1.5, s %% 100, 'value ' || s::text " +
+                            "FROM generate_series(1, %d) s";
+      String query = "SELECT * FROM wheretest WHERE vi = 0";
+      // prepare iteration
+      int table_rows = 10000;
+      int query_rows = table_rows / 100;
+      long timing;
+
+      // Create and populate test table
+      createSimpleTable(statement, "wheretest");
+      statement.execute(String.format(loadTemplate, table_rows));
+      LOG.info("Table wheretest has been populated with " + table_rows + " rows");
+
+      // Disable expression pushdown
+      statement.execute("SET yb_enable_expression_pushdown to off");
+      // Measure how long it takes to select 100 of 10000 rows
+      timing = timeQueryWithRowCount(statement, query, query_rows, 5);
+
+      // Enable expression pushdown
+      statement.execute("SET yb_enable_expression_pushdown to on");
+      // The where expression should be pushed down now and requests to
+      // different tablets should be sent in parallel.
+      // Perallelism is set to 3 * kNumShardsPerTserver, and ideally the query
+      // should run that many times faster now. However the test is typically
+      // run on a single host with who-knows-how-few CPU cores, and some things
+      // are not paralelized: query planning, set up of parallel requests,
+      // combining of their results, etc.
+      // So expect humble 2 times improvement. If the feature does not work for
+      // any reason query tyme will be about the same.
+      assertQueryRuntimeWithRowCount(statement, query, query_rows, 5, timing / 2);
+    }
+  }
 }
