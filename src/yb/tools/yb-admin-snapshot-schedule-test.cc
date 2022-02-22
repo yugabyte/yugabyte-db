@@ -795,7 +795,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlRenameColumn
   ASSERT_OK(conn.Execute("INSERT INTO test_table(key, value) VALUES (2, 'new_value')"));
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlSetDefault),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSetDefault),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -832,7 +832,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlSetDefault),
   ASSERT_EQ(result_status.ok(), false);
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlDropDefault),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropDefault),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -875,7 +875,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlDropDefault),
   ASSERT_EQ(result_status.ok(), false);
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlSetNotNull),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSetNotNull),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -906,7 +906,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlSetNotNull),
   ASSERT_EQ(res3, "");
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlDropNotNull),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropNotNull),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -937,7 +937,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlDropNotNull),
   ASSERT_NOK(conn.Execute("INSERT INTO test_table VALUES (3)"));
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlAlterTableAddPK),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAlterTableAddPK),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -969,7 +969,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlAlterTableAddPK),
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'AfterPKRemoval')"));
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlAlterTableAddFK),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAlterTableAddFK),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -999,7 +999,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlAlterTableAddFK),
   ASSERT_OK(conn.Execute("DROP TABLE test_table"));
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlAlterTableSetOwner),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAlterTableSetOwner),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -1050,7 +1050,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlAlterTableSetOwner),
   ASSERT_OK(conn.Execute("ALTER TABLE test_table RENAME key TO key_new3"));
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlAddUniqueConstraint),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAddUniqueConstraint),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -1078,7 +1078,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlAddUniqueConstraint)
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, 'ABC')"));
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlDropUniqueConstraint),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropUniqueConstraint),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -1119,7 +1119,8 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlDropUniqueConstraint
   ASSERT_EQ(result_status.ok(), false);
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlAddCheckConstraint),
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAddCheckConstraint),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -1147,7 +1148,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlAddCheckConstraint),
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, 'PQR')"));
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlDropCheckConstraint),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropCheckConstraint),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
