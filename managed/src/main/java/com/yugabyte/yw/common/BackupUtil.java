@@ -23,11 +23,23 @@ public class BackupUtil {
 
   public static final Logger LOG = LoggerFactory.getLogger(BackupUtil.class);
 
+  public static final int EMR_MULTIPLE = 8;
+  public static final int BACKUP_PREFIX_LENGTH = 8;
+  public static final int TS_FMT_LENGTH = 19;
+  public static final int UNIV_PREFIX_LENGTH = 6;
+  public static final int UUID_LENGTH = 36;
   public static final long MIN_SCHEDULE_DURATION_IN_SECS = 3600L;
   public static final long MIN_SCHEDULE_DURATION_IN_MILLIS = MIN_SCHEDULE_DURATION_IN_SECS * 1000L;
   public static final Set<ActionType> OMIT_ACTION_TYPES =
       Sets.immutableEnumSet(ActionType.DELETE, ActionType.RESTORE, ActionType.RESTORE_KEYS);
   public static final String BACKUP_SIZE_FIELD = "backup_size_in_bytes";
+
+  public static final String YB_CLOUD_COMMAND_TYPE = "table";
+  public static final String K8S_CERT_PATH = "/opt/certs/yugabyte/";
+  public static final String VM_CERT_DIR = "/yugabyte-tls-config/";
+  public static final String BACKUP_SCRIPT = "bin/yb_backup.py";
+  public static final String REGION_LOCATIONS = "REGION_LOCATIONS";
+  public static final String REGION_NAME = "REGION";
 
   public static void validateBackupCronExpression(String cronExpression)
       throws PlatformServiceException {

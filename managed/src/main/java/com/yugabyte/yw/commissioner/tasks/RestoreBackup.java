@@ -44,38 +44,7 @@ public class RestoreBackup extends UniverseTaskBase {
       }
 
       UserTaskDetails.SubTaskGroupType groupType = UserTaskDetails.SubTaskGroupType.RestoringBackup;
-
-      if (taskParams().backupData != null) {
-        Backup backup =
-            Backup.getOrBadRequest(taskParams().customerUUID, taskParams().backupData.backupUUID);
-        BackupTableParams backupParams = backup.getBackupInfo();
-        if (backupParams.backupList != null) {
-          for (BackupTableParams params : backupParams.backupList) {
-
-            if (KmsConfig.get(taskParams().kmsConfigUUID) != null) {
-              RestoreBackupParams restoreParams =
-                  createParamsBody(taskParams(), params, ActionType.RESTORE_KEYS);
-              createRestoreBackupTask(restoreParams).setSubTaskGroupType(groupType);
-              createEncryptedUniverseKeyRestoreTaskYb(restoreParams).setSubTaskGroupType(groupType);
-            }
-
-            RestoreBackupParams restoreParams =
-                createParamsBody(taskParams(), params, ActionType.RESTORE);
-            createRestoreBackupTask(restoreParams).setSubTaskGroupType(groupType);
-          }
-        } else {
-          if (KmsConfig.get(taskParams().kmsConfigUUID) != null) {
-            RestoreBackupParams restoreParams =
-                createParamsBody(taskParams(), backupParams, ActionType.RESTORE_KEYS);
-            createRestoreBackupTask(restoreParams).setSubTaskGroupType(groupType);
-            createEncryptedUniverseKeyRestoreTaskYb(restoreParams).setSubTaskGroupType(groupType);
-          }
-
-          RestoreBackupParams restoreParams =
-              createParamsBody(taskParams(), backupParams, ActionType.RESTORE);
-          createRestoreBackupTask(restoreParams).setSubTaskGroupType(groupType);
-        }
-      } else if (taskParams().backupStorageInfoList != null) {
+      if (taskParams().backupStorageInfoList != null) {
         for (BackupStorageInfo backupStorageInfo : taskParams().backupStorageInfoList) {
           if (KmsConfig.get(taskParams().kmsConfigUUID) != null) {
             RestoreBackupParams restoreParams =
@@ -107,29 +76,6 @@ public class RestoreBackup extends UniverseTaskBase {
     }
 
     log.info("Finished {} task.", getName());
-  }
-
-  private RestoreBackupParams createParamsBody(
-      RestoreBackupParams params, BackupTableParams backupParams, ActionType actionType) {
-    RestoreBackupParams restoreParams = new RestoreBackupParams();
-    restoreParams.customerUUID = params.customerUUID;
-    restoreParams.universeUUID = params.universeUUID;
-    restoreParams.restoreTimeStamp = params.restoreTimeStamp;
-    restoreParams.kmsConfigUUID = params.kmsConfigUUID;
-    restoreParams.backupStorageInfoList = new ArrayList<>();
-    restoreParams.actionType = actionType;
-
-    BackupStorageInfo backupStorageInfo = new BackupStorageInfo();
-    restoreParams.backupStorageInfoList.add(backupStorageInfo);
-    backupStorageInfo.backupType = backupParams.backupType;
-    backupStorageInfo.storageLocation = backupParams.storageLocation;
-    backupStorageInfo.storageConfigUUID = backupParams.storageConfigUUID;
-    backupStorageInfo.keyspace = backupParams.getKeyspace();
-    backupStorageInfo.sse = backupParams.sse;
-    backupStorageInfo.tableNameList = backupParams.tableNameList;
-    backupStorageInfo.tableUUIDList = backupParams.tableUUIDList;
-
-    return restoreParams;
   }
 
   private RestoreBackupParams createParamsBody(
