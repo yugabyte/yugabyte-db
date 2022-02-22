@@ -165,7 +165,7 @@ DELETE FROM employees_view
 
 ## Materialized Views
 
-Materialized views are relations that persist the results of a query. They can be created using the `CREATE MATERIALIZED VIEW` comamnd, and their contents can be updated using the `REFRESH MATERIALIZED VIEW` command.
+Materialized views are relations that persist the results of a query. They can be created using the `CREATE MATERIALIZED VIEW` command, and their contents can be updated using the `REFRESH MATERIALIZED VIEW` command.
 
 The following very simplified example creates a materialized view based on only one table and selects two of its columns:
 
