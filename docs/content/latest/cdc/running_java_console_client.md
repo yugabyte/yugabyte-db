@@ -1,3 +1,10 @@
+---
+title: Java console client for CDC
+headerTitle: Using Java console client for testing CDC locally
+linkTitle: Java console client for CDC
+description: Use the CDC console client to get an idea about how CDC works.
+---
+
 # Running CDC with the Java console client
 We have one Java console client which will take the changes and just print it to the console. Do note that this client is strictly meant for testing purposes only.
 
@@ -81,7 +88,6 @@ We have one Java console client which will take the changes and just print it to
 | --master_address          |             | A list of comma separated values of master nodes in the form host:port                                                                                                                                                                                                                                              |
 | --table_name              |             | This can be used to pass the table name. It can take two formats:<br/><br/>  `<namespace-name>.<table-name>` this format will assume that the schema of the table is public. <br/><br/>  `<namespace-name>.<schema-name>.<table-name>` this format takes into consideration if the table is under any other schema. |
 | --stream_id               |             | The stream ID created using yb-admin can also be passed via this option.                                                                                                                                                                                                                                            |
-| --format                  |    proto    | The format of the change records. We have 2 formats supported - `proto` and `json`                                                                                                                                                                                                                                  |
 | --disable_snapshot        |             | This flag does not take any argument with it. If this flag is there, it will disable taking the snapshot of the table. By default, the console client will always take a snapshot of the table                                                                                                                      |
 | --ssl_cert_file           |             | The root certificate against which the server is to be validated.                                                                                                                                                                                                                                                   |
 | --ssl_client_cert         |             | Path to client certificate file.                                                                                                                                                                                                                                                                                    |
