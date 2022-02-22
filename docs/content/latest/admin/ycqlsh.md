@@ -26,23 +26,11 @@ The YCQL shell was previously named `cqlsh`. Although the `cqlsh` binary is avai
 
 {{< /note >}}
 
-## Download
+### Installation
 
 `ycqlsh` is installed as part of YugabyteDB and is located in the `bin` directory of YugabyteDB home. You can also download it from the [cqlsh GitHub repository](https://github.com/yugabyte/cqlsh/releases).
 
-## Example
-
-```sh
-$ ./bin/ycqlsh --execute "select cluster_name, data_center, rack from system.local" 127.0.0.1
-```
-
-```output
- cluster_name  | data_center | rack
----------------+-------------+-------
- local cluster | datacenter1 | rack1
-```
-
-## Online help
+### Online help
 
 Run `ycqlsh --help` to display the online help.
 
@@ -57,7 +45,21 @@ Where
 - `host` is the IP address of the host on which [YB-TServer](../../architecture/concepts/universe/#yb-tserver-process) is run. The default is local host at `127.0.0.1`.
 - `port` is the TCP port at which YB-TServer listens for YCQL connections. The default is `9042`.
 
-| Flags               | Short Form | Default | Description                                                  |
+### Example
+
+```sh
+$ ./bin/ycqlsh --execute "select cluster_name, data_center, rack from system.local" 127.0.0.1
+```
+
+```output
+ cluster_name  | data_center | rack
+---------------+-------------+-------
+ local cluster | datacenter1 | rack1
+```
+
+### Flags
+
+| Flag               | Short Form | Default | Description                                                  |
 | ------------------- | ---------- | ------- | ------------------------------------------------------------ |
 | `--color`           | `-C`       |         | Force color output.                                          |
 | `--no-color`        |            |         | Disable color output.                                        |
@@ -74,6 +76,16 @@ Where
 | `--connect-timeout` |            | 2       | Specify the connection timeout in seconds.                   |
 | `--request-timeout` |            | 10      | Specify the request timeout in seconds.                      |
 | `--tty`             | `-t`       |         | Force tty mode (command prompt).                             |
+
+### Save YCQL output to a file
+
+To save output from a YCQL statement to a file, run the statement using the --execute flag, and redirect the output to a file.
+
+For example, to save the output of a `SELECT` statement:
+
+```sh
+$ ./bin/ycqlsh -e "SELECT * FROM mytable" > output.txt
+```
 
 ## Special commands
 
