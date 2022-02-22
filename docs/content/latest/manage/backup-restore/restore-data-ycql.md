@@ -31,7 +31,7 @@ showAsideToc: true
 
 To restore data, use [**ycqlsh**](../../../admin/ycqlsh/) with the [SOURCE](../../../admin/ycqlsh/#source) and [COPY FROM](../../../admin/ycqlsh/#copy-from) commands.
 
-By default, ysqlsh connects to localhost at `127.0.0.1` and port `9042`. To connect to a different node, you can specify the host (and, optionally, port) after the command. For example:
+By default, ycqlsh connects to localhost at `127.0.0.1` and port `9042`. To connect to a different node, you can specify the host (and, optionally, port) after the command. For example:
 
 ```sh
 $ ./bin/ycqlsh -f myapp_schema.cql 127.0.0.2

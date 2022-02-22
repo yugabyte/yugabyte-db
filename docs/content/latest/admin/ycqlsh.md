@@ -254,7 +254,7 @@ Copies data from a table to a CSV file.
 COPY <table name> [(<column>, ...)] TO <file name> WITH <copy flag> [AND <copy flag> ...]
 ```
 
-By default, copies all columns from the table to the CSV file. To copy a subset of columns, add a comma-separated list of column names enclosed in parentheses after the table name.
+By default, `COPY TO` copies all columns from the table to the CSV file. To copy a subset of columns, add a comma-separated list of column names enclosed in parentheses after the table name.
 
 The `file name` should be a string literal (with single quotes) representing a path to the destination file. You can also use the special value `STDOUT` (without single quotes) to print the CSV to stdout.
 
@@ -290,7 +290,7 @@ Copies data from a CSV file to table.
 COPY <table name> [(<column>, ...)] FROM <file name> WITH <copy flag> [AND <copy flag> ...]
 ```
 
-By default, copies all columns from the CSV file to the table. To copy a subset of columns, add a comma-separated list of column names enclosed in parentheses after the table name.
+By default, `COPY FROM` copies all columns from the CSV file to the table. To copy a subset of columns, add a comma-separated list of column names enclosed in parentheses after the table name.
 
 The `file name` should be a string literal (with single quotes) representing a path to the source file. Use the special value `STDIN` (without single quotes) to read the CSV data from stdin.
 
