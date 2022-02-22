@@ -22,7 +22,7 @@ Data replication: CDC can be used for data replication to multiple databases, da
 
 ### CDC Streams
 
-  CDC Streams will be a user’s point of contact for fetching the changes from a database. Streams can be enabled or disabled. Every change to a database table (for which the data is being streamed) is emitted as a record to the stream, to be then propagated further ahead, in our case to Debezium and then ultimately to Kafka.
+  Streams are the YugabyteDB endpoints for fetching DB changes by applications, processes and systems. Streams can be enabled or disabled [on a per table basis]. Every change to a database table (for which the data is being streamed) is emitted as a record to the stream, which is then propagated further for consumption by applications, in our case to Debezium and then ultimately to Kafka.
 
   #### DB Stream
   In order to facilitate the streaming of data, we have to create a DB Stream, this stream is created on the database level and can be used to access the data out of all the tables under a particular database.
