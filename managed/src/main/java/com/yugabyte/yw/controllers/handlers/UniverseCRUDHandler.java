@@ -10,13 +10,11 @@
 
 package com.yugabyte.yw.controllers.handlers;
 
-import static org.mockito.ArgumentMatchers.nullable;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
-import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
@@ -25,7 +23,10 @@ import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.certmgmt.providers.VaultPKI;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
@@ -48,13 +49,10 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.common.certmgmt.CertConfigType;
-import com.yugabyte.yw.common.certmgmt.providers.VaultPKI;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -64,7 +62,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.mvc.Http;
 import play.mvc.Http.Status;
-import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 
 public class UniverseCRUDHandler {
 
@@ -940,18 +937,7 @@ public class UniverseCRUDHandler {
               "VM image upgrade is only supported for AWS / GCP, got: " + provider.toString());
         }
 
-        boolean hasEphemeralStorage = false;
-        if (provider == Common.CloudType.gcp) {
-          if (primaryIntent.deviceInfo.storageType == PublicCloudConstants.StorageType.Scratch) {
-            hasEphemeralStorage = true;
-          }
-        } else {
-          if (taskParams.getPrimaryCluster().isAwsClusterWithEphemeralStorage()) {
-            hasEphemeralStorage = true;
-          }
-        }
-
-        if (hasEphemeralStorage) {
+        if (UniverseDefinitionTaskParams.hasEphemeralStorage(primaryIntent)) {
           throw new PlatformServiceException(
               BAD_REQUEST, "Cannot upgrade a universe with ephemeral storage");
         }
@@ -1115,16 +1101,12 @@ public class UniverseCRUDHandler {
     if (taskParams.size == 0) {
       throw new PlatformServiceException(BAD_REQUEST, "Size cannot be 0.");
     }
-
     UniverseDefinitionTaskParams.UserIntent primaryIntent =
         taskParams.getPrimaryCluster().userIntent;
     if (taskParams.size <= primaryIntent.deviceInfo.volumeSize) {
       throw new PlatformServiceException(BAD_REQUEST, "Size can only be increased.");
     }
-    if (primaryIntent.deviceInfo.storageType == PublicCloudConstants.StorageType.Scratch) {
-      throw new PlatformServiceException(BAD_REQUEST, "Scratch type disk cannot be modified.");
-    }
-    if (taskParams.getPrimaryCluster().isAwsClusterWithEphemeralStorage()) {
+    if (UniverseDefinitionTaskParams.hasEphemeralStorage(primaryIntent)) {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot modify instance volumes.");
     }
 

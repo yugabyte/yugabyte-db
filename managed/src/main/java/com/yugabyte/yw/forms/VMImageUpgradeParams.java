@@ -7,7 +7,6 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
-import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -52,18 +51,7 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
           Status.BAD_REQUEST,
           "VM image upgrade is only supported for AWS / GCP, got: " + provider.toString());
     }
-
-    boolean hasEphemeralStorage = false;
-    if (provider == CloudType.gcp) {
-      if (userIntent.deviceInfo.storageType == PublicCloudConstants.StorageType.Scratch) {
-        hasEphemeralStorage = true;
-      }
-    } else {
-      if (universe.getUniverseDetails().getPrimaryCluster().isAwsClusterWithEphemeralStorage()) {
-        hasEphemeralStorage = true;
-      }
-    }
-    if (hasEphemeralStorage) {
+    if (UniverseDefinitionTaskParams.hasEphemeralStorage(userIntent)) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST, "Cannot upgrade a universe with ephemeral storage.");
     }
