@@ -5,18 +5,16 @@ linkTitle: Change Data Capture (CDC)
 description: CDC or Change Data Capture is a process to capture changes made to data in the database.
 ---
 
-# CDC Documentation
+## What is CDC?
 
-### What is CDC?
-
-  Change Data Capture (CDC) is a process to capture changes made to data in the database and stream those changes to external processes, applications or other databases. <br/>
+Change Data Capture (CDC) is a process to capture changes made to data in the database and stream those changes to external processes, applications or other databases. <br/>
 
  The core primitive of CDC is the ‘stream’. Streams can be enabled/disabled on databases. Every change to a watched database table is emitted as a record in a configurable format to a configurable sink. Streams scale to any YugabyteDB cluster independent of its size and are designed to impact production traffic as little as possible.
 
-### Use cases
+## Use cases
 
   Many applications benefit from capturing changes to items stored in a YugabyteDB table, at the point in time when such changes occur. The following are some example use cases such as triggering alerts and notifications in IoT use cases, sending real time updates to analytics pipelines and applications, auditing and compliance, cache invalidation, etc.
-  
+
 ### Process Architecture
 
 ### CDC Streams
@@ -25,7 +23,7 @@ description: CDC or Change Data Capture is a process to capture changes made to 
 
   #### DB Stream
   In order to facilitate the streaming of data, we have to create a DB Stream, this stream is created on the database level and can be used to access the data out of all the tables under a particular database.
-  
+
 ### Consistency Semantics
   * #### Per-Tablet Ordered Delivery Guarantee
     All changes for a row (or rows in the same tablet) will be received in the order in which they happened. However, due to the distributed nature of the problem, there is no guarantee of the order across tablets.
@@ -56,7 +54,7 @@ description: CDC or Change Data Capture is a process to capture changes made to 
     $ ./yb-admin create_change_data_stream ysql.yugabyte
     CDC Stream ID: d540f5e4890c4d3b812933cbfd703ed3
     ```
-  
+
   * #### list_change_data_stream
     This command lists all the stream IDs present in the Yugabyte cluster pertaining to Change Data Capture.
     ```bash
@@ -138,7 +136,7 @@ description: CDC or Change Data Capture is a process to capture changes made to 
     CDC DB Stream Info:
     namespace_id: "000033e1000030008000000000000000"
     ```
-  
+
   * #### delete_change_data_stream
     This command is used to delete a DB Stream ID.
     ```bash
@@ -157,7 +155,7 @@ description: CDC or Change Data Capture is a process to capture changes made to 
   Note that the snapshot feature uses a GFlag cdc_snapshot_batch size, the default value for which is 250 i.e. the number of records that would be there in one batch when an internal call would be placed to get the snapshot, so if the table consists of a huge amount of data, you might need to change this value otherwise the streaming of the complete snapshot would take some time.
 
 ### GFlags affecting Change Data Capture
-  
+
   | **GFlag**                                         | **Default Value** | **Description**                                                                                                                                                                                                                                                                                                                                                                                                                    |
 |---------------------------------------------------|-------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | cdc_max_stream_intent_records                     | 1000              | This is the maximum number of intent records allowed in a single CDC batch.                                                                                                                                                                                                                                                                                                                                                        |
@@ -170,11 +168,11 @@ description: CDC or Change Data Capture is a process to capture changes made to 
 | enable_log_retention_by_op_idx                    | true              | If true, logs will be retained based on an op id passed by the cdc service.                                                                                                                                                                                                                                                                                                                                                        |
 | log_max_seconds_to_retain                         | 86400             | Log files that are older will be deleted even if they contain cdc unreplicated entries. If 0, this flag will be ignored. This flag is ignored if a log segment contains entries that haven't been flushed to RocksDB.                                                                                                                                                                                                              |
 | log_stop_retaining_min_disk_mb                    | 102400            | Stop retaining logs if the space available for the logs falls below this limit. This flag is ignored if a log segment contains unflushed entries.                                                                                                                                                                                                                                                                                  |
-  
+
 ### Running the Debezium connector
-  
+
   Head over to the [Debezium connector](https://github.com/vaibhav-yb/cdc-docs/blob/main/running_cdc_with_debezium.md) doc for the steps on how to run with Debezium connector.
-  
+
 ### Limitations
   * YCQL tables are not supported currently - [GitHub #11320](https://github.com/yugabyte/yugabyte-db/issues/11320)
   * DROP and TRUNCATE commands are not supported. If a user tries to issue these commands on a table while a stream ID is there for the table, the server might crash, the behaviour is unstable - TRUNCATE [GitHub #10010](https://github.com/yugabyte/yugabyte-db/issues/10010) / DROP [GitHub #10069](https://github.com/yugabyte/yugabyte-db/issues/10069)
