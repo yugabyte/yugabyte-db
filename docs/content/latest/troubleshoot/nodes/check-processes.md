@@ -84,7 +84,7 @@ Starting yugabyted...
 / Running system checks...Failed to bind to address:  0.0.0.0:7000
 ```
 
-The workaround is to turn AirPlay receiving off, then start YugabyteDB, and then (optionally) turn AirPlay receiving back on.Alternatively(recommended), you can change the default port number using the `--master_webserver_port` flag when you start the cluster as follows:
+The workaround is to turn AirPlay receiving off, then start YugabyteDB, and then (optionally) turn AirPlay receiving back on. Alternatively(recommended), you can change the default port number using the `--master_webserver_port` flag when you start the cluster as follows:
 
 ```sh
 $ ./bin/yugabyted start --master_webserver_port=9999
