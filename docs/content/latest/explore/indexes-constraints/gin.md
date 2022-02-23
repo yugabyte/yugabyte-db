@@ -1,6 +1,6 @@
 ---
 title: Generalized inverted indexes
-linkTitle: Generalized inverted indexes
+linkTitle: Generalized Inverted Indexes
 description: Generalized inverted indexes in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
