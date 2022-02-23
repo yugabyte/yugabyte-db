@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Use the `DROP MATERIALIZED VIEW` statement to create a materialized view.
+Use the `DROP MATERIALIZED VIEW` statement to drop a materialized view.
 
 ## Syntax
 
