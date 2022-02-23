@@ -1211,13 +1211,19 @@ yb-admin \
     setup_universe_replication \
     <source_universe_uuid> \
     <source_master_addresses> \
-    <comma_separated_list_of_table_ids>
+    <comma_separated_list_of_table_ids> \
+    [comma_separated_list_of_producer_bootstrap_ids]
 ```
 
 * _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *source_universe_uuid*: The UUID of the source universe.
 * *source_master_addresses*: Comma-separated list of the source master addresses.
 * *comma_separated_list_of_table_ids*: Comma-separated list of table identifiers (`table_id`).
+* *comma_separated_list_of_producer_bootstrap_ids*: Comma-separated list of bootstrap identifiers (`bootstrap_id`). These are obtained from using [`bootstrap_cdc_producer`](#bootstrap-cdc-producer).
+
+{{< note title="Note" >}}
+It is important that the bootstrap_ids are in the same order as their corresponding table_ids!
+{{< /note >}}
 
 {{< note title="Tip" >}}
 
@@ -1256,26 +1262,40 @@ yb-admin -master_addresses <master-addresses> \
     set_master_addresses <source_master_addresses>
 ```
 
+* _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *source_universe_uuid*: The UUID of the source universe.
+* *source_master_addresses*: Comma-separated list of the source master addresses.
+
 Use the `add_table` subcommand to add one or more tables to the existing list:
 
 ```sh
 yb-admin -master_addresses <master-addresses> \
     alter_universe_replication <source_universe_uuid> \
-    add_table <table_id>[, <table_id>...]
+    add_table [comma_separated_list_of_table_ids] \
+    [comma_separated_list_of_producer_bootstrap_ids]
 ```
+
+* _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *source_universe_uuid*: The UUID of the source universe.
+* *comma_separated_list_of_table_ids*: Comma-separated list of table identifiers (`table_id`).
+* *comma_separated_list_of_producer_bootstrap_ids*: Comma-separated list of bootstrap identifiers (`bootstrap_id`). These are obtained from using [`bootstrap_cdc_producer`](#bootstrap-cdc-producer).
+
+{{< note title="Note" >}}
+It is important that the bootstrap_ids are in the same order as their corresponding table_ids!
+{{< /note >}}
+
 
 Use the `remove_table` subcommand to remove one or more tables from the existing list:
 
 ```sh
 yb-admin -master_addresses <master-addresses> \
     alter_universe_replication <source_universe_uuid> \
-    remove_table <table_id>[, <table_id>...]
+    remove_table [comma_separated_list_of_table_ids]
 ```
 
 * _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * _source_universe_uuid_: The UUID of the source universe.
-* _source_master_addresses_: Comma-separated list of the new source master addresses.
-* _table_id_: The identifier (ID) of the table.
+* *comma_separated_list_of_table_ids*: Comma-separated list of table identifiers (`table_id`).
 
 #### delete_universe_replication <source_universe_uuid>
 
@@ -1455,7 +1475,7 @@ The new key ID (`<key_id_2>`) should be different from the previous one (`<key_i
 **Example**
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     is_encryption_enabled
 ```
@@ -1514,6 +1534,57 @@ yb-admin \
     -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
     list_cdc_streams
 ```
+
+#### delete_cdc_stream <stream_id> [force_delete]
+
+Deletes underlying CDC stream for the specified YB-Master servers.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    delete_cdc_stream <stream_id [force_delete]>
+```
+
+* _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *stream_id*: The ID of the CDC stream.
+* `force_delete`: (Optional) Force the delete operation.
+
+{{< note title="Note" >}}
+This command should only be needed for advanced operations, such as doing manual cleanup of old bootstrapped streams that were never fully initialized, or otherwise failed replication streams.
+For normal xcluster replication cleanup, please use [`delete_universe_replication`](#delete-universe-replication).
+{{< /note >}}
+
+#### bootstrap_cdc_producer <comma_separated_list_of_table_ids>
+
+Mark a set of tables in preparation for setting up universe level replication.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    bootstrap_cdc_producer <comma_separated_list_of_table_ids>
+```
+
+* _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *comma_separated_list_of_table_ids*: Comma-separated list of table identifiers (`table_id`).
+
+**Example**
+```sh
+./bin/yb-admin \
+    -master_addresses 172.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
+    bootstrap_cdc_producer 000030ad000030008000000000004000
+```
+
+```output
+table id: 000030ad000030008000000000004000, CDC bootstrap id: dd5ea73b5d384b2c9ebd6c7b6d05972c
+```
+
+{{< note title="Note" >}}
+The CDC bootstrap ids are the ones that should be used with [`setup_universe_replication`](#setup-universe-replication) and [`alter_universe_replication`](#alter-universe-replication).
+{{< /note >}}
 
 ---
 
