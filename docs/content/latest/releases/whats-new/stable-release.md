@@ -96,7 +96,7 @@ docker pull yugabytedb/yugabyte:2.12.1.0-b41
 * [PLAT-2794] Move OIDC to runtime config
 * [PLAT-2917] Preflight checks for Azure backup config creation
 * [PLAT-2982] [PLAT-2963] Filter gflags in add gflag dropdown.
-* [PLAT-3002] [PLAT-3048] feat: Deprecate Equinix KMS support in Platform
+* [PLAT-3002] [PLAT-3048] Deprecate Equinix KMS support in Platform
 * [PLAT-3036] Improvement - Improve task listing API performance
 * [PLAT-3042] [PLAT-3043] [PLAT-3044] [PLAT-3045] [PLAT-3076] feat: gflag ui enhancements and fix usability issues.
 * [PLAT-3090] Improvement - Universe is in locked state after GFlagsUpgrade fails in ModifyBlackListTask subtask
@@ -105,6 +105,10 @@ docker pull yugabytedb/yugabyte:2.12.1.0-b41
 * [PLAT-3101] [PLAT-3102] [PLAT-3103] [PLAT-3104] [PLAT-3105] [PLAT-3123] Xcluster UI Improvements
 * [PLAT-3112] Improvement - Wrong Task Type on UI for add read replica retry after an abort
 * [Platform] Updated the azcopy and node-exporter version (#11449)
+
+{{< tip title="Equinix KMS deprecated" >}}
+Support for the Equinix KMS has been deprecated as of this release.
+{{< /tip >}}
 
 #### Database
 
