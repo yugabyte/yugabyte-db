@@ -1,7 +1,7 @@
 ---
-title: Column-Level Encryption
-headerTitle: Column-Level Encryption
-linkTitle: Column-Level Encryption
+title: Column-level encryption
+headerTitle: Column-level encryption
+linkTitle: Column-level encryption
 description: Using column-level encryption in a YugabyteDB cluster.
 headcontent: Enable encryption at rest with a user-generated key
 image: /images/section_icons/secure/prepare-nodes.png
@@ -123,11 +123,11 @@ select PGP_SYM_DECRYPT(account_number::bytea, 'AES_KEY') as AccountNumber
 
 Asymmetric Encryption, also known as Public-Key cryptography can be used with YugabyteDB for enabling column-level encryption. YugabyteDB can be configured with generated public/private keys or corporate GPG keys for encrypting column data.
 
-The example below walks through configuring YugabyteDB cluster with a new set of keys (public and private)
+The example below walks through configuring YugabyteDB cluster with a new set of keys (public and private).
 
 ### Step 1. Generate an RSA key pair
 
-* Start by generating a new public and private RSA key pair using the `gpg` key generator
+* Start by generating a new public and private RSA key pair using the `gpg` key generator:
 
     ```sh
     $ gpg --gen-key
@@ -140,7 +140,7 @@ The example below walks through configuring YugabyteDB cluster with a new set of
 
     pub   rsa2048 2020-11-09 [SC] [expires: 2022-11-09]
           043E14210E7628F93383D78EA2969FF91871CE06
-    uid                      ybadmin <ybadmin@yugabyte.com>
+    uid   ybadmin <ybadmin@yugabyte.com>
     sub   rsa2048 2020-11-09 [E] [expires: 2022-11-09]
     ```
 
@@ -149,8 +149,8 @@ The example below walks through configuring YugabyteDB cluster with a new set of
   * Private Key
 
     ```sh
-      $ gpg --export-secret-keys \
-            --armor 043E14210E7628F93383D78EA2969FF91871CE06 > ./private_key.txt
+    $ gpg --export-secret-keys \
+          --armor 043E14210E7628F93383D78EA2969FF91871CE06 > ./private_key.txt
     ```
 
   * Public Key
@@ -177,13 +177,13 @@ The example below walks through configuring YugabyteDB cluster with a new set of
 
 ### Step 3. Insert data using pgp_pub_encrypt
 
-Create the `employees` table and insert data into the table using generated Public key for encrypting column data
+Create the `employees` table and insert data into the table using the generated public key for encrypting column data
 
 ```sql
 create table employees ( empno int, ename text, address text, salary int, account_number text );
 ```
 
-In this example, account numbers of `employees` table will be encrypted using `pgp_pub_encrypt` function and the generated Public key,
+In this example, account numbers of `employees` table are encrypted using the `pgp_pub_encrypt` function and the generated Public key.
 
 ```sql
 insert into employees values (1, 'joe', '56 grove st',  20000, PGP_PUB_ENCRYPT('AC-22001', dearmor('-----BEGIN PGP PUBLIC KEY BLOCK----- XXXX  -----END PGP PUBLIC KEY BLOCK-----')));
@@ -214,7 +214,7 @@ select ename, account_number from employees limit 1;
 
 ### Step 5. Query using pgp_pub_decrypt
 
-Use `pgp_pub_decrypt` and private key for decrypting column data. In order to retrieve the encrypted column data, use `pgp_pub_decrypt` function to decrypt the data and wrap the pgp private key with the `dearmor` function to convert the private key into PGP ASCII-armor format. The Decryption function needs to be used in both SELECT and WHERE clause depending on the query.
+Use `pgp_pub_decrypt` and the private key to decrypt column data. To retrieve the encrypted column data, use the `pgp_pub_decrypt` function to decrypt the data and wrap the PGP private key with the `dearmor` function to convert the private key into PGP ASCII-armor format. The Decryption function needs to be used in both SELECT and WHERE clauses, depending on the query.
 
 To allow the decryption, the field name is also cast to the binary data type with the syntax: `account_number::bytea`.
 
