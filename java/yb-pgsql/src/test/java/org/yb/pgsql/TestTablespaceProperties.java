@@ -16,6 +16,7 @@ package org.yb.pgsql;
 import static org.yb.AssertionWrappers.*;
 
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
@@ -56,7 +57,11 @@ public class TestTablespaceProperties extends BasePgSQLTest {
 
   private static final int MASTER_LOAD_BALANCER_WAIT_TIME_MS = 60 * 1000;
 
-  private List<Map<String, String>> perTserverZonePlacementFlags = Arrays.asList(
+  private static final int LOAD_BALANCER_MAX_CONCURRENT = 10;
+
+  private static final String tablespaceName = "testTablespace";
+
+  private static final List<Map<String, String>> perTserverZonePlacementFlags = Arrays.asList(
       ImmutableMap.of(
           "placement_cloud", "cloud1",
           "placement_region", "region1",
@@ -69,6 +74,7 @@ public class TestTablespaceProperties extends BasePgSQLTest {
           "placement_cloud", "cloud3",
           "placement_region", "region3",
           "placement_zone", "zone3"));
+
   @Override
   public int getTestMethodTimeoutSec() {
     return getPerfMaxRuntime(1500, 1700, 2000, 2000, 2000);
@@ -81,14 +87,33 @@ public class TestTablespaceProperties extends BasePgSQLTest {
     builder.addMasterFlag("vmodule", "sys_catalog=5,cluster_balance=1");
     builder.addMasterFlag("ysql_tablespace_info_refresh_secs",
                           Integer.toString(MASTER_REFRESH_TABLESPACE_INFO_SECS));
+    builder.addMasterFlag("auto_create_local_transaction_tables", "true");
+    builder.addMasterFlag("TEST_name_transaction_tables_with_tablespace_id", "true");
+
+    // We wait for the load balancer whenever it gets triggered anyways, so there's
+    // no concerns about the load balancer taking too many resources.
+    builder.addMasterFlag("load_balancer_max_concurrent_tablet_remote_bootstraps",
+                          Integer.toString(LOAD_BALANCER_MAX_CONCURRENT));
+    builder.addMasterFlag("load_balancer_max_concurrent_tablet_remote_bootstraps_per_table",
+                          Integer.toString(LOAD_BALANCER_MAX_CONCURRENT));
+    builder.addMasterFlag("load_balancer_max_concurrent_adds",
+                          Integer.toString(LOAD_BALANCER_MAX_CONCURRENT));
+    builder.addMasterFlag("load_balancer_max_concurrent_removals",
+                          Integer.toString(LOAD_BALANCER_MAX_CONCURRENT));
+    builder.addMasterFlag("load_balancer_max_concurrent_moves",
+                          Integer.toString(LOAD_BALANCER_MAX_CONCURRENT));
+    builder.addMasterFlag("load_balancer_max_concurrent_moves_per_table",
+                          Integer.toString(LOAD_BALANCER_MAX_CONCURRENT));
+
     builder.perTServerFlags(perTserverZonePlacementFlags);
   }
 
   @Before
   public void setupTablespaces() throws Exception {
     try (Statement setupStatement = connection.createStatement()) {
+      setupStatement.execute("DROP TABLESPACE IF EXISTS " + tablespaceName);
       setupStatement.execute(
-          " CREATE TABLESPACE testTablespace " +
+          " CREATE TABLESPACE " + tablespaceName +
           "  WITH (replica_placement=" +
           "'{\"num_replicas\":2, \"placement_blocks\":" +
           "[{\"cloud\":\"cloud1\",\"region\":\"region1\",\"zone\":\"zone1\"," +
@@ -141,10 +166,11 @@ public class TestTablespaceProperties extends BasePgSQLTest {
       setupStatement.execute(
         "CREATE TABLE " +  tableInCustomTablegroup + "(a SERIAL) TABLEGROUP " + customTablegroup);
     }
+    String transactionTableName = getTablespaceTransactionTableName();
     tablesWithDefaultPlacement.addAll(Arrays.asList(defaultTable, defaultIndex,
           defaultIndexCustomTable, tableInDefaultTablegroup));
     tablesWithCustomPlacement.addAll(Arrays.asList(customTable, customIndex,
-          customIndexCustomTable, tableInCustomTablegroup));
+          customIndexCustomTable, tableInCustomTablegroup, transactionTableName));
   }
 
   private void addTserversAndWaitForLB() throws Exception {
@@ -174,6 +200,36 @@ public class TestTablespaceProperties extends BasePgSQLTest {
     // tables are placed incorrectly at creation time.
     LOG.info("Run load balancer tablespace placement tests");
     testLBTablespacePlacement();
+  }
+
+  @Test
+  public void testTablesOptOutOfColocation() throws Exception {
+    final String dbname = "testdatabase";
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute(String.format("CREATE DATABASE %s COLOCATED=TRUE", dbname));
+    }
+    final String colocatedTableName = "colocated_table";
+    final String nonColocatedTable = "colocation_opt_out_table";
+    try (Connection connection2 = getConnectionBuilder().withDatabase(dbname).connect();
+         Statement stmt = connection2.createStatement()) {
+      stmt.execute(String.format("CREATE TABLE %s (h INT PRIMARY KEY, a INT, b FLOAT) " +
+                                 "WITH (colocated = false) TABLESPACE testTablespace",
+                                 nonColocatedTable));
+      stmt.execute(String.format("CREATE TABLE %s (h INT PRIMARY KEY, a INT, b FLOAT)",
+                                 colocatedTableName));
+    }
+    verifyDefaultPlacement(colocatedTableName);
+    verifyCustomPlacement(nonColocatedTable);
+
+    // Wait for tablespace info to be refreshed in load balancer.
+    Thread.sleep(5 * MASTER_REFRESH_TABLESPACE_INFO_SECS);
+
+    // Verify that load balancer is indeed idle.
+    assertTrue(miniCluster.getClient().waitForLoadBalancerIdle(
+               MASTER_LOAD_BALANCER_WAIT_TIME_MS));
+
+    verifyDefaultPlacement(colocatedTableName);
+    verifyCustomPlacement(nonColocatedTable);
   }
 
   public void executeAndAssertErrorThrown(String statement, String err_msg) throws Exception{
@@ -215,11 +271,11 @@ public class TestTablespaceProperties extends BasePgSQLTest {
       setupStatement.execute("CREATE TABLE negativeTestTable (a int)");
     }
 
-    final String not_enough_tservers_in_zone_msg = "Not enough tablet servers in " +
-                                                   "cloud3:region1:zone1";
-    final String not_enough_tservers_for_rf_msg = "Not enough live tablet servers to create " +
-                                                  "table with replication factor 5. 3 tablet " +
-                                                  "servers are alive";
+    final String not_enough_tservers_in_zone_msg =
+        "Not enough tablet servers in the requested placements. Need at least 2, have 1";
+
+    final String not_enough_tservers_for_rf_msg =
+        "Not enough tablet servers in the requested placements. Need at least 3, have 2";
 
     // Test creation of table in invalid tablespace.
     executeAndAssertErrorThrown(
@@ -231,9 +287,19 @@ public class TestTablespaceProperties extends BasePgSQLTest {
       "CREATE INDEX invalidPlacementIdx ON negativeTestTable(a) TABLESPACE invalid_tblspc",
       not_enough_tservers_in_zone_msg);
 
+    // Test creation of tablegroup in invalid tablespace.
+    executeAndAssertErrorThrown(
+      "CREATE TABLEGROUP invalidPlacementTablegroup TABLESPACE invalid_tblspc",
+      not_enough_tservers_in_zone_msg);
+
     // Test creation of table when the replication factor cannot be satisfied.
     executeAndAssertErrorThrown(
-      "CREATE TABLE insufficent_rf_tbl (a int) TABLESPACE insufficient_rf_tblspc",
+      "CREATE TABLE insufficentRfTable (a int) TABLESPACE insufficient_rf_tblspc",
+      not_enough_tservers_for_rf_msg);
+
+    // Test creation of tablegroup when the replication factor cannot be satisfied.
+    executeAndAssertErrorThrown(
+      "CREATE TABLEGROUP insufficientRfTablegroup TABLESPACE insufficient_rf_tblspc",
       not_enough_tservers_for_rf_msg);
   }
 
@@ -509,6 +575,16 @@ public class TestTablespaceProperties extends BasePgSQLTest {
         assertTrue(cloudInfo.getPlacementRegion().equals("region3"));
         assertTrue(cloudInfo.getPlacementZone().equals("zone3"));
       }
+    }
+  }
+
+  public String getTablespaceTransactionTableName() throws Exception {
+    try (Statement setupStatement = connection.createStatement()) {
+      ResultSet s = setupStatement.executeQuery(
+          "SELECT oid FROM pg_catalog.pg_tablespace " +
+          "WHERE UPPER(spcname) = UPPER('" + tablespaceName + "')");
+      assertTrue(s.next());
+      return "transactions_" + s.getInt(1);
     }
   }
 

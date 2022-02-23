@@ -283,10 +283,12 @@ YBCStatus YBCPgInvalidateTableCacheByTableId(const char *table_id) {
 YBCStatus YBCPgNewCreateTablegroup(const char *database_name,
                                    YBCPgOid database_oid,
                                    YBCPgOid tablegroup_oid,
+                                   YBCPgOid tablespace_oid,
                                    YBCPgStatement *handle) {
   return ToYBCStatus(pgapi->NewCreateTablegroup(database_name,
                                                 database_oid,
                                                 tablegroup_oid,
+                                                tablespace_oid,
                                                 handle));
 }
 
@@ -574,6 +576,14 @@ YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target) {
   return ToYBCStatus(pgapi->DmlAppendTarget(handle, target));
 }
 
+YBCStatus YbPgDmlAppendQual(YBCPgStatement handle, YBCPgExpr qual) {
+  return ToYBCStatus(pgapi->DmlAppendQual(handle, qual));
+}
+
+YBCStatus YbPgDmlAppendColumnRef(YBCPgStatement handle, YBCPgExpr colref) {
+  return ToYBCStatus(pgapi->DmlAppendColumnRef(handle, colref));
+}
+
 YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value) {
   return ToYBCStatus(pgapi->DmlBindColumn(handle, attr_num, attr_value));
 }
@@ -710,10 +720,6 @@ YBCStatus YBCPgNewUpdate(const YBCPgOid database_oid,
 
 YBCStatus YBCPgExecUpdate(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecUpdate(handle));
-}
-
-bool YBCGetEnableUpdateBatching() {
-  return FLAGS_ysql_enable_update_batching;
 }
 
 // DELETE Operations -------------------------------------------------------------------------------

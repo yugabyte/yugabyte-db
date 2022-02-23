@@ -13,27 +13,43 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Yugabyte Cloud suppports both horizontal and vertical scaling of clusters. If your workloads have increased, you can dynamically add nodes to a running cluster to improve latency, throughput, and memory. Likewise, if your cluster is over-scaled, you can reduce nodes to reduce costs.
+Yugabyte Cloud supports both horizontal and vertical scaling of clusters. If your workloads have increased, you can dynamically add nodes to a running cluster to improve latency, throughput, and memory. Likewise, if your cluster is over-scaled, you can reduce nodes to reduce costs.
 
-The **Infrastructure** section on the cluster **Settings** tab summarizes the cluster setup, including the region, number of nodes and vCPUs, the disk size, and fault tolerance.
+You can scale the following cluster properties:
 
-You scale clusters using the **Edit Infrastructure** option, which is located on the **Settings** tab and in the **Quick Links** menu.
+- Number of nodes (horizontal).
+- Number of vCPUs per node (vertical).
+- Disk size per node.
 
-You can modify the number of nodes and vCPUs per node, and increase the disk size of clusters. The scaling operation is performed without any downtime, with a rolling restart of the underlying nodes.
+For clusters with Node level and Availability zone level fault tolerance, the scaling operation is performed without any downtime, with a rolling restart of the underlying nodes.
 
-{{< note title="Note" >}}
+The **Infrastructure** section on the cluster **Settings** tab summarizes the cluster configuration, including the region, number of nodes and vCPUs, total disk size, and fault tolerance.
 
-You cannot change the fault tolerance of a cluster once it is created. You cannot reduce disk size. You cannot scale Free clusters.
+## Recommendations
 
-{{< /note >}}
+- Most production applications require 4 to 8 vCPUs per node. Scale up smaller instance sizes; when the total number of vCPUs for your cluster exceeds 16, consider scaling out. For example, if you have a 3-node cluster with 2 vCPUs per node, scale up to 8 vCPUs per node before adding nodes.
 
-## Scaling clusters
+- Adding or removing nodes incurs a load on the cluster. Perform scaling operations when the cluster isn't experiencing heavy traffic. Scaling during times of heavy traffic can temporarily degrade application performance and increase the length of time of the scaling operation.
 
-You cannot change the number of nodes or vCPUs per node in clusters with a fault tolerance of None. You can horizontally scale nodes in clusters with Node Level fault tolerance in increments of 1. Nodes in clusters with Availability Zone fault tolerance must be scaled in increments of 3.
+- Before removing nodes from a cluster, make sure the reduced disk space will be sufficient for the existing and anticipated data.
 
-Clusters include a minimum of 50GB of storage per vCPU. Disk size per node is adjusted automatically when you change the number of vCPUs. You can add additional storage by changing the disk size per node. To have more than 16 vCPUs per node, send your request to [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
+## Limitations
 
-To scale the cluster:
+- You can horizontally scale nodes in clusters with Node level fault tolerance in increments of 1. Nodes in clusters with Availability zone level fault tolerance are scaled in increments of 3.
+
+- You can configure up to 16 vCPUs per node. To have more than 16 vCPUs per node, send your request to {{<support-cloud>}}.
+
+- To avoid data loss, you can only increase disk size per node; once increased, you can't reduce it.
+
+- You can't change the fault tolerance of a cluster after it is created.
+
+- You can't scale single node clusters (fault tolerance none), you can only increase disk size.
+
+- You can't scale free clusters.
+
+## Scale a cluster
+
+To scale a cluster:
 
 1. On the **Clusters** page, select your cluster.
 1. On the **Settings** tab or under **Quick Links**, choose **Edit Infrastructure** to display the **Edit Infrastructure** dialog.

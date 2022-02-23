@@ -223,6 +223,7 @@ class PgApiImpl {
   CHECKED_STATUS NewCreateTablegroup(const char *database_name,
                                      const PgOid database_oid,
                                      const PgOid tablegroup_oid,
+                                     const PgOid tablespace_oid,
                                      PgStatement **handle);
 
   CHECKED_STATUS ExecCreateTablegroup(PgStatement *handle);
@@ -331,6 +332,10 @@ class PgApiImpl {
   //------------------------------------------------------------------------------------------------
   // All DML statements
   CHECKED_STATUS DmlAppendTarget(PgStatement *handle, PgExpr *expr);
+
+  CHECKED_STATUS DmlAppendQual(PgStatement *handle, PgExpr *expr);
+
+  CHECKED_STATUS DmlAppendColumnRef(PgStatement *handle, PgExpr *colref);
 
   // Binding Columns: Bind column with a value (expression) in a statement.
   // + This API is used to identify the rows you want to operate on. If binding columns are not

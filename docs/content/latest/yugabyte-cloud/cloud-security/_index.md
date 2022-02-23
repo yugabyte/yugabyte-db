@@ -14,7 +14,13 @@ weight: 800
 
 Yugabyte Cloud is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on public cloud providers such as Google Cloud Platform (GCP) and Amazon Web Services (AWS).
 
-The Yugabyte Cloud architecture is secure by default, using encryption in transit, encryption at rest, limited network exposure, authentication, and role-based access control for authorization to protect clusters and communication between clients and databases.
+The Yugabyte Cloud architecture is secure by default, and uses the following features to protect clusters and communication between clients and databases:
+
+- encryption in transit
+- encryption at rest
+- limited network exposure
+- authentication
+- role-based access control for authorization
 
 Yugabyte Cloud uses a shared responsibility model, where security and compliance is a shared responsibility between public cloud providers, Yugabyte, and Yugabyte Cloud customers.
 

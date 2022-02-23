@@ -173,6 +173,10 @@ message SysTablesEntryPB {
   repeated BackfillJobPB backfill_jobs = 32;
 
   optional HideState hide_state = 33;
+
+  // Tablespace ID for use with transaction tables only. Normal YSQL tables do not set this field,
+  // and tablespace information for such tables are instead fetched by scanning the pg catalog.
+  optional bytes transaction_table_tablespace_id = 34;
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for
@@ -225,7 +229,8 @@ message SysTabletsEntryPB {
   // the DocKey for the next row to be backfilled.
   map<string, bytes> backfilled_until = 12;
 
-  // Tablet IDs for this tablet split if they have been registered in master.
+  // Tablet IDs for the children of this tablet after splitting, if they have been registered in
+  // master.
   repeated bytes split_tablet_ids = 14;
 
   // Time when tablet was hidden.
@@ -357,11 +362,19 @@ message SysYSQLCatalogConfigEntryPB {
   optional bool transactional_sys_catalog_enabled = 6;
 }
 
+// Metadata about the current state of transaction tables.
+message SysTransactionTablesConfigEntryPB {
+  // Transaction status tables version. Every time a transaction table is added or has its placement
+  // changed, this version gets incremented.
+  optional uint64 version = 1;
+}
+
 // Various cluster configuration.
 message SysConfigEntryPB {
   oneof config {
     SysSecurityConfigEntryPB security_config = 1;
     SysYSQLCatalogConfigEntryPB ysql_catalog_config = 2;
+    SysTransactionTablesConfigEntryPB transaction_tables_config = 3;
   }
 }
 
@@ -420,9 +433,10 @@ message SysCDCStreamEntryPB {
     // Currently DELETED is not being used because we delete streams entries from sys catalog.
     DELETED = 2;
   }
-  optional string table_id = 1;
+  repeated string table_id = 1;
   repeated CDCStreamOptionsPB options = 2;
   optional State state = 3 [default = ACTIVE];
+  optional string namespace_id = 4;
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for snapshots entries.

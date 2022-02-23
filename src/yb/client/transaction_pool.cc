@@ -276,7 +276,7 @@ class TransactionPool::Impl {
   YBTransactionPtr Take(ForceGlobalTransaction force_global_transaction) EXCLUDES(mutex_) {
     const auto is_global = force_global_transaction ||
                            FLAGS_force_global_transactions ||
-                           !manager_->LocalTransactionsPossible();
+                           !manager_->PlacementLocalTransactionsPossible();
     auto transaction = (is_global ? &global_pool_ : &local_pool_)->Take();
     if (FLAGS_TEST_track_last_transaction) {
       std::lock_guard<std::mutex> lock(mutex_);

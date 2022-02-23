@@ -133,6 +133,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   @ApiModelProperty public String remotePackagePath = "";
 
+  // EDIT mode: Set to true if nodes could be resized without full move.
+  @ApiModelProperty public boolean nodesResizeAvailable = false;
+
   /** Allowed states for an imported universe. */
   public enum ImportedState {
     NONE, // Default, and for non-imported universes.
@@ -404,12 +407,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     @ApiModelProperty() public boolean useSystemd = false;
 
-    // When this is set to true, CreateUniverse is expected to be called with a provider which has
-    // been configured to use an AMI ID which has required package installations,
-    // Yugabyte release package, etc built in, as Ansible tasks corresponding to
-    // these would be skipped.
-    @ApiModelProperty() public boolean ybPrebuiltAmi = false;
-
     // Info of all the gflags that the user would like to save to the universe. These will be
     // used during edit universe, for example, to set the flags on new nodes to match
     // existing nodes' settings.
@@ -466,7 +463,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.numNodes = numNodes;
       newUserIntent.ybSoftwareVersion = ybSoftwareVersion;
       newUserIntent.useSystemd = useSystemd;
-      newUserIntent.ybPrebuiltAmi = ybPrebuiltAmi;
       newUserIntent.accessKeyCode = accessKeyCode;
       newUserIntent.assignPublicIP = assignPublicIP;
       newUserIntent.assignStaticPublicIP = assignStaticPublicIP;
@@ -501,8 +497,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           && assignPublicIP == other.assignPublicIP
           && assignStaticPublicIP == other.assignStaticPublicIP
           && useTimeSync == other.useTimeSync
-          && useSystemd == other.useSystemd
-          && ybPrebuiltAmi == other.ybPrebuiltAmi) {
+          && useSystemd == other.useSystemd) {
         return true;
       }
       return false;

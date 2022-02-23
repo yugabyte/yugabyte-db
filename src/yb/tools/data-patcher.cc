@@ -13,10 +13,6 @@
 #include <iostream>
 #include <regex>
 
-#include <boost/algorithm/string/classification.hpp>
-#include <boost/algorithm/string/predicate.hpp>
-#include <boost/algorithm/string/split.hpp>
-
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/transaction.h"
 
@@ -26,7 +22,11 @@
 
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/docdb_types.h"
 #include "yb/docdb/value_type.h"
+#include "yb/docdb/kv_debug.h"
+#include "yb/docdb/docdb-internal.h"
+#include "yb/docdb/value.h"
 
 #include "yb/fs/fs_manager.h"
 
@@ -44,6 +44,7 @@
 
 #include "yb/tools/tool_arguments.h"
 
+#include "yb/util/bytes_formatter.h"
 #include "yb/util/date_time.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
@@ -58,6 +59,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/tostring.h"
+#include "yb/util/string_util.h"
 
 using namespace std::placeholders;
 namespace po = boost::program_options;
@@ -75,16 +77,23 @@ const std::regex kTabletDbRegex(".*/tablet-[0-9a-f]{32}(?:\\.intents)?");
 const std::regex kManifestRegex("MANIFEST-[0-9]{6}");
 const std::string kTmpExtension = ".tmp";
 const std::string kPatchedExtension = ".patched";
-const std::string kBakExtension = ".bak";
+const std::string kBackupExtension = ".apply-patch-backup";
 const std::string kIntentsExtension = ".intents";
 const std::string kToolName = "Data Patcher";
 const std::string kLogPrefix = kToolName + ": ";
 
+using docdb::StorageDbType;
+
 #define DATA_PATCHER_ACTIONS (Help)(AddTime)(SubTime)(ApplyPatch)
 
 YB_DEFINE_ENUM(DataPatcherAction, DATA_PATCHER_ACTIONS);
+YB_DEFINE_ENUM(FileType, (kSST)(kWAL));
 
 const std::string kHelpDescription = "Show help on command";
+
+// ------------------------------------------------------------------------------------------------
+// Help command
+// ------------------------------------------------------------------------------------------------
 
 struct HelpArguments {
   std::string command;
@@ -108,13 +117,29 @@ CHECKED_STATUS HelpExecute(const HelpArguments& args) {
   return Status::OK();
 }
 
+// ------------------------------------------------------------------------------------------------
+// Utility functions used add/subtract commands as well as in the apply patch command
+// ------------------------------------------------------------------------------------------------
+
+// ------------------------------------------------------------------------------------------------
+// Common implementation for "add time" and "subtract time" commands
+// ------------------------------------------------------------------------------------------------
+
 struct ChangeTimeArguments {
   std::string delta;
   std::string bound_time;
   std::vector<std::string> data_dirs;
   std::vector<std::string> wal_dirs;
   // When concurrency is positive, limit number of concurrent jobs to it.
-  int concurrency;
+  // For zero, do not limit the number of concurrent jobs.
+  int concurrency = 0;
+  size_t max_num_old_wal_entries = 0;
+  bool debug = false;
+
+  std::string ToString() {
+    return YB_STRUCT_TO_STRING(
+        delta, bound_time, data_dirs, wal_dirs, concurrency, max_num_old_wal_entries, debug);
+  }
 };
 
 std::unique_ptr<OptionsDescription> ChangeTimeOptions(const std::string& caption) {
@@ -131,7 +156,13 @@ std::unique_ptr<OptionsDescription> ChangeTimeOptions(const std::string& caption
        "TServer WAL dirs. Not recommended to use while node process is running.")
       ("concurrency", po::value(&args.concurrency)->default_value(-1),
        "Max number of concurrent jobs, if this number is less or equals to 0 then number of "
-           "concurrent jobs is unlimited.");
+           "concurrent jobs is unlimited.")
+      ("max-num-old-wal-entries",
+       po::value(&args.max_num_old_wal_entries)->default_value(1000000000L),
+       "Maximum number of WAL entries allowed with timestamps that cannot be shifted by the delta, "
+       "and therefore have to be re-mapped differently.")
+      ("debug", po::bool_switch(&args.debug),
+       "Output detailed debug information. Only practical for a small amount of data.");
   return result;
 }
 
@@ -209,109 +240,111 @@ class RocksDBHelper {
 struct DeltaData {
   MonoDelta delta;
   HybridTime bound_time;
-  std::vector<MicrosTime> early_times;
+  size_t max_num_old_wal_entries = 0;
 
-  void HandleTime(HybridTime time) {
+  std::vector<MicrosTime> early_times;
+  MicrosTime min_micros_to_keep = 0;
+  MicrosTime base_micros = 0;
+  bool time_map_ready = false;
+
+  DeltaData(MonoDelta delta_, HybridTime bound_time_, size_t max_num_old_wal_entries_)
+      : delta(delta_),
+        bound_time(bound_time_),
+        max_num_old_wal_entries(max_num_old_wal_entries_) {
+    CHECK_GE(max_num_old_wal_entries, 0);
+  }
+
+  void AddEarlyTime(HybridTime time) {
+    CHECK(!time_map_ready);
     if (time <= bound_time) {
       early_times.push_back(time.GetPhysicalValueMicros());
     }
   }
 
-  void CompleteTime() {
+  void FinalizeTimeMap() {
     std::sort(early_times.begin(), early_times.end());
     Unique(&early_times);
+
+    // All old WAL timestamps will be mapped to
+    // [base_micros, bound_time.GetPhysicalValueMicros()), assuming there are no more
+    // than max_num_old_wal_entries of them.
+    //
+    // Old SST timestamps will be left as is if their microsecond component is min_micros_to_keep
+    // or less, or mapped to the range [base_micros - early_times.size(), base_micros - 1]
+    // otherwise, based on their relative position in the early_times array.
+
+    base_micros = bound_time.GetPhysicalValueMicros() - max_num_old_wal_entries;
+    min_micros_to_keep = base_micros - early_times.size() - 1;
+    time_map_ready = true;
   }
 
-  MicrosTime NewEarlyTime(MicrosTime microseconds, bool sst) const {
-    auto it = std::lower_bound(early_times.begin(), early_times.end(), microseconds);
-    CHECK_EQ(*it, microseconds);
-    // We expect that number of entries before bound time in WAL logs would be less than 1e9.
-    auto base_micros = bound_time.GetPhysicalValueMicros() + delta.ToMicroseconds() - 1000000000L;
-    if (sst) {
-      return base_micros - (early_times.end() - it);
-    } else {
-      return base_micros + (it - early_times.begin());
+  HybridTime NewEarlyTime(HybridTime ht, FileType file_type) const {
+    CHECK(time_map_ready);
+    if (ht.GetPhysicalValueMicros() <= min_micros_to_keep)
+      return ht;
+
+    const auto micros = ht.GetPhysicalValueMicros();
+    auto it = std::lower_bound(early_times.begin(), early_times.end(), micros);
+    CHECK_EQ(*it, micros);
+    switch (file_type) {
+      case FileType::kSST: {
+        auto distance_from_end = early_times.end() - it;
+        auto new_micros = base_micros - distance_from_end;
+        CHECK_LT(new_micros, base_micros);
+        return HybridTime(new_micros, ht.GetLogicalValue());
+      }
+      case FileType::kWAL: {
+        auto distance_from_start = it - early_times.begin();
+        auto new_micros = base_micros + distance_from_start;
+        CHECK_GE(new_micros, base_micros);
+        CHECK_LE(new_micros, bound_time.GetPhysicalValueMicros());
+        return HybridTime(new_micros, ht.GetLogicalValue());
+      }
     }
+    FATAL_INVALID_ENUM_VALUE(FileType, file_type);
   }
-};
 
-Result<HybridTime> AddDelta(HybridTime ht, const DeltaData& delta_data, bool sst) {
-  int64_t microseconds = ht.GetPhysicalValueMicros();
-  int64_t bound_microseconds = delta_data.bound_time.GetPhysicalValueMicros();
-  if (microseconds <= bound_microseconds) {
-    microseconds = delta_data.NewEarlyTime(microseconds, sst);
-  } else {
-    int64_t delta_microseconds = delta_data.delta.ToMicroseconds();
+  Result<HybridTime> AddDelta(HybridTime ht, FileType file_type) const {
+    int64_t microseconds = ht.GetPhysicalValueMicros();
+    int64_t bound_microseconds = bound_time.GetPhysicalValueMicros();
+    if (microseconds <= bound_microseconds) {
+      return NewEarlyTime(ht, file_type);
+    }
+
+    int64_t delta_microseconds = delta.ToMicroseconds();
     SCHECK_GE(static_cast<int64_t>(microseconds - kYugaByteMicrosecondEpoch), -delta_microseconds,
-              InvalidArgument, Format("Hybrid time underflow: $0 + $1", ht, delta_data.delta));
+              InvalidArgument, Format("Hybrid time underflow: $0 + $1", ht, delta));
     int64_t kMaxMilliseconds = HybridTime::kMax.GetPhysicalValueMicros();
     SCHECK_GT(kMaxMilliseconds - microseconds, delta_microseconds, InvalidArgument,
-              Format("Hybrid time overflow: $0 + $1", ht, delta_data.delta));
+              Format("Hybrid time overflow: $0 + $1", ht, delta));
     microseconds += delta_microseconds;
-  }
-  return HybridTime::FromMicrosecondsAndLogicalValue(microseconds, ht.GetLogicalValue());
-}
-
-Result<DocHybridTime> AddDelta(DocHybridTime doc_ht, const DeltaData& delta_data, bool sst) {
-  return DocHybridTime(
-      VERIFY_RESULT(AddDelta(doc_ht.hybrid_time(), delta_data, sst)), doc_ht.write_id());
-}
-
-Result<char*> AddDeltaToKey(Slice key, const DeltaData& delta_data, std::vector<char>* buffer) {
-  auto doc_ht = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(&key));
-  buffer->resize(std::max(buffer->size(), key.size() + kMaxBytesPerEncodedHybridTime));
-  memcpy(buffer->data(), key.data(), key.size());
-  auto new_doc_ht = VERIFY_RESULT(AddDelta(doc_ht, delta_data, /* sst= */ true));
-  return new_doc_ht.EncodedInDocDbFormat(buffer->data() + key.size());
-}
-
-std::mutex stream_synchronization_mutex;
-
-class SynchronizedCOutWrapper {
- public:
-  SynchronizedCOutWrapper() = default;
-
-  ~SynchronizedCOutWrapper() {
-    if (!moved_) {
-      std::lock_guard<std::mutex> lock(stream_synchronization_mutex);
-      std::cout << stream_.str() << std::endl;
-    }
+    return HybridTime::FromMicrosecondsAndLogicalValue(microseconds, ht.GetLogicalValue());
   }
 
-  SynchronizedCOutWrapper(const SynchronizedCOutWrapper&) = delete;
-  void operator=(const SynchronizedCOutWrapper&) = delete;
-
-  SynchronizedCOutWrapper(SynchronizedCOutWrapper&& rhs) : stream_(std::move(rhs.stream_)) {
-    rhs.moved_ = true;
+  Result<DocHybridTime> AddDelta(DocHybridTime doc_ht, FileType file_type) const {
+    return DocHybridTime(
+        VERIFY_RESULT(AddDelta(doc_ht.hybrid_time(), file_type)), doc_ht.write_id());
   }
 
-  void operator=(SynchronizedCOutWrapper&& rhs) = delete;
-
-  std::ostream& stream() {
-    return stream_;
+  Result<char*> AddDeltaToSstKey(Slice key, std::vector<char>* buffer) const {
+    auto doc_ht = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(&key));
+    buffer->resize(std::max(buffer->size(), key.size() + kMaxBytesPerEncodedHybridTime));
+    memcpy(buffer->data(), key.data(), key.size());
+    auto new_doc_ht = VERIFY_RESULT(AddDelta(doc_ht, FileType::kSST));
+    return new_doc_ht.EncodedInDocDbFormat(buffer->data() + key.size());
   }
 
- private:
-  std::ostringstream stream_;
-  bool moved_ = false;
 };
 
-SynchronizedCOutWrapper sync_cout() {
-  return SynchronizedCOutWrapper();
-}
-
-template <class T>
-SynchronizedCOutWrapper&& operator<<(SynchronizedCOutWrapper&& out, T&& t) {
-  out.stream() << std::forward<T>(t);
-  return std::move(out);
-}
-
 CHECKED_STATUS AddDeltaToSstFile(
-    const std::string& fname, MonoDelta delta, HybridTime bound_time, RocksDBHelper* helper) {
-  sync_cout() << "Patching: " << fname << ", " << static_cast<const void*>(&fname);
+    const std::string& fname, MonoDelta delta, HybridTime bound_time,
+    size_t max_num_old_wal_entries, bool debug, RocksDBHelper* helper) {
+  LOG(INFO) << "Patching: " << fname << ", " << static_cast<const void*>(&fname);
 
   constexpr size_t kKeySuffixLen = 8;
-  bool intents_db = boost::ends_with(DirName(fname), kIntentsExtension);
+  const auto storage_db_type =
+      boost::ends_with(DirName(fname), kIntentsExtension) ? StorageDbType::kIntents
+                                                          : StorageDbType::kRegular;
 
   auto table_reader = VERIFY_RESULT(helper->NewTableReader(fname));
 
@@ -323,17 +356,35 @@ CHECKED_STATUS AddDeltaToSstFile(
   auto& env = *Env::Default();
   RETURN_NOT_OK(env.CreateDirs(out_dir));
 
-  auto new_fname = JoinPathSegments(out_dir, BaseName(fname));
-  auto new_data_fname = rocksdb::TableBaseToDataFileName(new_fname);
-  auto tmp_fname = new_fname + kTmpExtension;
-  auto tmp_data_fname = new_data_fname + kTmpExtension;
+  const auto new_fname = JoinPathSegments(out_dir, BaseName(fname));
+  const auto new_data_fname = rocksdb::TableBaseToDataFileName(new_fname);
+  const auto tmp_fname = new_fname + kTmpExtension;
+  const auto tmp_data_fname = new_data_fname + kTmpExtension;
   size_t num_entries = 0;
   size_t total_file_size = 0;
+
   {
     auto base_file_writer = VERIFY_RESULT(helper->NewFileWriter(tmp_fname));
     auto data_file_writer = VERIFY_RESULT(helper->NewFileWriter(tmp_data_fname));
 
     auto builder = helper->NewTableBuilder(base_file_writer.get(), data_file_writer.get());
+    const auto add_kv = [&builder, debug, storage_db_type](const Slice& k, const Slice& v) {
+      if (debug) {
+        const Slice user_key(k.data(), k.size() - kKeySuffixLen);
+        auto key_type = docdb::GetKeyType(user_key, storage_db_type);
+        auto rocksdb_value_type = static_cast<rocksdb::ValueType>(*(k.end() - kKeySuffixLen));
+        LOG(INFO) << "DEBUG: output KV pair "
+                  << "(db_type=" << storage_db_type
+                  << ", key_type=" << key_type
+                  << ", rocksdb_value_type=" << static_cast<uint64_t>(rocksdb_value_type)
+                  << "): "
+                  << docdb::DocDBKeyToDebugStr(user_key, storage_db_type)
+                  << " => "
+                  << docdb::DocDBValueToDebugStr(key_type, user_key, v);
+      }
+      builder->Add(k, v);
+    };
+
     bool done = false;
     auto se = ScopeExit([&builder, &done] {
       if (!done) {
@@ -341,80 +392,136 @@ CHECKED_STATUS AddDeltaToSstFile(
       }
     });
 
-    DeltaData delta_data = {
-      .delta = delta,
-      .bound_time = bound_time,
-    };
+    DeltaData delta_data(delta, bound_time, max_num_old_wal_entries);
     std::vector<char> buffer(0x100);
-    for (int step = bound_time ? 0 : 1; step != 2; ++step) {
+    faststring txn_metadata_buffer;
+
+    std::string value_buffer;
+
+    for (int is_final_pass = bound_time ? 0 : 1; is_final_pass != 2; ++is_final_pass) {
+      LOG(INFO) << "Performing the " << (is_final_pass ? "final" : "initial") << " pass for "
+                << "file " << fname;
       for (iterator->SeekToFirst(); iterator->Valid(); iterator->Next()) {
-        Slice key = iterator->key();
-        auto value_type = static_cast<rocksdb::ValueType>(*(key.end() - kKeySuffixLen));
-        if (intents_db && key[0] == docdb::ValueTypeAsChar::kTransactionId) {
-          if (key.size() == 1 + TransactionId::StaticSize() + kKeySuffixLen ||
-              value_type != rocksdb::ValueType::kTypeValue) {
-            if (step) {
-              builder->Add(key, iterator->value());
-            }
-          } else {
-            if (step) {
-              // Update reverse index entry.
-              auto end = VERIFY_RESULT_PREPEND(
-                  AddDeltaToKey(iterator->value(), delta_data, &buffer),
-                  Format("Intent key $0, value: $1, filename: $2",
-                         iterator->key().ToDebugHexString(), iterator->value().ToDebugHexString(),
-                         fname));
-              builder->Add(key, Slice(buffer.data(), end));
-            } else {
-              auto value = iterator->value();
-              auto doc_ht = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(&value));
-              delta_data.HandleTime(doc_ht.hybrid_time());
+        const Slice key = iterator->key();
+        const auto rocksdb_value_type =
+            static_cast<rocksdb::ValueType>(*(key.end() - kKeySuffixLen));
+        if (storage_db_type == StorageDbType::kRegular ||
+            key[0] != docdb::ValueTypeAsChar::kTransactionId) {
+          // Regular DB entry, or a normal intent entry (not txn metadata or reverse index).
+          // Update the timestamp at the end of the key.
+          const auto key_without_suffix = key.WithoutSuffix(kKeySuffixLen);
+
+          bool value_updated = false;
+          if (storage_db_type == StorageDbType::kRegular) {
+            docdb::Value docdb_value;
+            RETURN_NOT_OK(docdb_value.Decode(iterator->value()));
+            if (docdb_value.intent_doc_ht().is_valid()) {
+              auto intent_ht = docdb_value.intent_doc_ht().hybrid_time();
+              if (is_final_pass) {
+                DocHybridTime new_intent_doc_ht(
+                    VERIFY_RESULT(delta_data.AddDelta(intent_ht, FileType::kSST)),
+                    docdb_value.intent_doc_ht().write_id());
+                docdb_value.set_intent_doc_ht(new_intent_doc_ht);
+                value_buffer.clear();
+                docdb_value.EncodeAndAppend(&value_buffer);
+                value_updated = true;
+              } else {
+                delta_data.AddEarlyTime(intent_ht);
+              }
             }
           }
-        } else {
-          key.remove_suffix(kKeySuffixLen);
-          if (step) {
-            // Update intent or regular db entry.
-            auto end = VERIFY_RESULT(AddDeltaToKey(key, delta_data, &buffer));
-            memcpy(end, key.end(), kKeySuffixLen);
+
+          if (is_final_pass) {
+            auto end = VERIFY_RESULT(delta_data.AddDeltaToSstKey(key_without_suffix, &buffer));
+            memcpy(end, key_without_suffix.end(), kKeySuffixLen);
             end += kKeySuffixLen;
-            builder->Add(Slice(buffer.data(), end), iterator->value());
+            add_kv(Slice(buffer.data(), end), value_updated ? value_buffer : iterator->value());
           } else {
-            auto doc_ht = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(&key));
-            delta_data.HandleTime(doc_ht.hybrid_time());
+            Slice key_without_suffix_copy = key_without_suffix;
+            auto doc_ht = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(&key_without_suffix_copy));
+            delta_data.AddEarlyTime(doc_ht.hybrid_time());
           }
+          continue;
+        }
+
+        // Now we know this is the intents DB and the key starts with a transaction id.
+        // In this case, we only modify the value, and never modify the key.
+
+        if (rocksdb_value_type != rocksdb::ValueType::kTypeValue) {
+          if (is_final_pass) {
+            add_kv(key, iterator->value());
+          }
+          continue;
+        }
+
+        // Transaction metadata record.
+        if (key.size() == 1 + TransactionId::StaticSize() + kKeySuffixLen) {
+          // We do not modify the key in this case, only the value.
+
+          // Modify transaction start time stored in metadata.
+          TransactionMetadataPB metadata_pb;
+          const auto v = iterator->value();
+          if (!metadata_pb.ParseFromArray(v.data(), narrow_cast<int>(v.size()))) {
+            return STATUS_FORMAT(Corruption, "Bad txn metadata: $0", v.ToDebugHexString());
+          }
+
+          if (is_final_pass) {
+            const auto new_start_ht = VERIFY_RESULT(delta_data.AddDelta(
+                HybridTime(metadata_pb.start_hybrid_time()), FileType::kSST));
+            metadata_pb.set_start_hybrid_time(new_start_ht.ToUint64());
+            txn_metadata_buffer.clear();
+            pb_util::SerializeToString(metadata_pb, &txn_metadata_buffer);
+            add_kv(key, txn_metadata_buffer);
+          } else {
+            delta_data.AddEarlyTime(HybridTime(metadata_pb.start_hybrid_time()));
+          }
+          continue;
+        }
+
+        // Transaction reverse index. We do not modify the timestamp at the end of the key because
+        // it does not matter if it is shifted, only the relative order of those timestamps matters.
+        // We do modify the timestamp stored at the end of the encoded value, because the value is
+        // the intent key.
+        if (is_final_pass) {
+          auto value_end = VERIFY_RESULT_PREPEND(
+              delta_data.AddDeltaToSstKey(iterator->value(), &buffer),
+              Format("Intent key $0, value: $1, filename: $2",
+                      iterator->key().ToDebugHexString(), iterator->value().ToDebugHexString(),
+                      fname));
+          add_kv(iterator->key(), Slice(buffer.data(), value_end));
+        } else {
+          auto value = iterator->value();
+          auto doc_ht_result = DocHybridTime::DecodeFromEnd(&value);
+          if (!doc_ht_result.ok()) {
+            LOG(INFO)
+                << "Failed to decode hybrid time from the end of value for "
+                << "key " << key.ToDebugHexString() << " (" << FormatSliceAsStr(key) << "), "
+                << "value " << value.ToDebugHexString() << " (" << FormatSliceAsStr(value) << "), "
+                << "decoded value " << DocDBValueToDebugStr(
+                    docdb::KeyType::kReverseTxnKey, iterator->key(), iterator->value());
+            return doc_ht_result.status();
+          }
+          delta_data.AddEarlyTime(doc_ht_result->hybrid_time());
         }
       }
 
-      if (step) {
+      if (is_final_pass) {
         done = true;
         RETURN_NOT_OK(builder->Finish());
         num_entries = builder->NumEntries();
         total_file_size = builder->TotalFileSize();
       } else {
-        delta_data.CompleteTime();
+        delta_data.FinalizeTimeMap();
       }
     }
   }
 
   RETURN_NOT_OK(env.RenameFile(tmp_data_fname, new_data_fname));
   RETURN_NOT_OK(env.RenameFile(tmp_fname, new_fname));
-  sync_cout() << "Generated: " << new_fname << ", with: " << num_entries
-              << " entries and size: " << HumanizeBytes(total_file_size);
+  LOG(INFO) << "Generated: " << new_fname << ", with: " << num_entries
+            << " entries and size: " << HumanizeBytes(total_file_size);
 
   return Status::OK();
-}
-
-// Takes a list of lists of directories represented as comma-separated strings, and returns the
-// combined list of all directories.
-std::vector<std::string> PrepareDirs(const std::vector<std::string>& input) {
-  std::vector<std::string> dirs;
-  for (const auto& dir : input) {
-    std::vector<std::string> temp;
-    boost::split(temp, dir, boost::is_any_of(","));
-    dirs.insert(dirs.end(), temp.begin(), temp.end());
-  }
-  return dirs;
 }
 
 // Checks if the given file in the given directory is an SSTable file that we need to process.
@@ -435,8 +542,8 @@ void CheckDataFile(
 }
 
 CHECKED_STATUS ChangeTimeInDataFiles(
-    MonoDelta delta, HybridTime bound_time, const std::vector<std::string>& dirs,
-    TaskRunner* runner) {
+    MonoDelta delta, HybridTime bound_time, size_t max_num_old_wal_entries,
+    const std::vector<std::string>& dirs, bool debug, TaskRunner* runner) {
   std::vector<std::string> files_to_process;
   Env* env = Env::Default();
   auto callback = [&files_to_process, env](
@@ -454,16 +561,19 @@ CHECKED_STATUS ChangeTimeInDataFiles(
   for (const auto& dir : dirs) {
     RETURN_NOT_OK(env->Walk(dir, Env::DirectoryOrder::POST_ORDER, callback));
   }
+  std::random_shuffle(files_to_process.begin(), files_to_process.end());
   for (const auto& fname : files_to_process) {
-    runner->Submit([fname, delta, bound_time]() {
+    runner->Submit([fname, delta, bound_time, max_num_old_wal_entries, debug]() {
       RocksDBHelper helper;
-      return AddDeltaToSstFile(fname, delta, bound_time, &helper);
+      return AddDeltaToSstFile(fname, delta, bound_time, max_num_old_wal_entries, debug, &helper);
     });
   }
   return Status::OK();
 }
 
-CHECKED_STATUS ChangeTimeInWalDir(MonoDelta delta, HybridTime bound_time, const std::string& dir) {
+CHECKED_STATUS ChangeTimeInWalDir(
+    MonoDelta delta, HybridTime bound_time, size_t max_num_old_wal_entries,
+    const std::string& dir) {
   auto env = Env::Default();
   auto log_index = make_scoped_refptr<log::LogIndex>(dir);
   std::unique_ptr<log::LogReader> log_reader;
@@ -500,53 +610,30 @@ CHECKED_STATUS ChangeTimeInWalDir(MonoDelta delta, HybridTime bound_time, const 
   int64_t max_replicate_index = std::numeric_limits<int64_t>::min();
 
   faststring buffer;
-  DeltaData delta_data {
-    .delta = delta,
-    .bound_time = bound_time,
-  };
+  DeltaData delta_data(delta, bound_time, max_num_old_wal_entries);
   auto add_delta = [&delta_data](HybridTime ht) -> Result<uint64_t> {
-    return VERIFY_RESULT(AddDelta(ht, delta_data, /* sst= */ false)).ToUint64();
+    return VERIFY_RESULT(delta_data.AddDelta(ht, FileType::kWAL)).ToUint64();
   };
-  for (int step = bound_time ? 0 : 1; step != 2; ++step) {
+
+  for (int is_final_step = bound_time ? 0 : 1; is_final_step != 2; ++is_final_step) {
     for (const auto& segment : segments) {
+      // Read entry batches of a WAL segment, and write as few entry batches as possible, but still
+      // make sure that we don't create consecutive entries in the same write batch where the Raft
+      // index does not strictly increase. We have a check in log_reader.cc for that.
+      // batch only increasing Raft operation indexes.
       auto read_result = segment->ReadEntries();
       log::LogEntryBatchPB batch;
-      for (auto& entry : read_result.entries) {
-        auto& replicate = *entry->mutable_replicate();
-        auto replicate_ht = HybridTime(replicate.hybrid_time());
-        if (step) {
-          replicate.set_hybrid_time(VERIFY_RESULT(add_delta(replicate_ht)));
-        } else {
-          delta_data.HandleTime(replicate_ht);
+      OpId committed_op_id;
+      int64_t last_index = -1;
+
+      auto write_entry_batch = [
+          &batch, &buffer, &num_entries, &new_segment, &read_result, &committed_op_id](
+              bool last_batch_of_segment) -> Status {
+        if (last_batch_of_segment) {
+          read_result.committed_op_id.ToPB(batch.mutable_committed_op_id());
+        } else if (committed_op_id.valid()) {
+          committed_op_id.ToPB(batch.mutable_committed_op_id());
         }
-        if (replicate.has_transaction_state()) {
-          auto& state = *replicate.mutable_transaction_state();
-          if (state.status() == TransactionStatus::APPLYING) {
-            auto commit_ht = HybridTime(state.commit_hybrid_time());
-            if (step) {
-              state.set_commit_hybrid_time(VERIFY_RESULT(add_delta(commit_ht)));
-            } else {
-              delta_data.HandleTime(commit_ht);
-            }
-          }
-        } else if (replicate.has_history_cutoff()) {
-          auto& state = *replicate.mutable_history_cutoff();
-          auto history_cutoff_ht = HybridTime(state.history_cutoff());
-          if (step) {
-            state.set_history_cutoff(VERIFY_RESULT(add_delta(history_cutoff_ht)));
-          } else {
-            delta_data.HandleTime(history_cutoff_ht);
-          }
-        }
-        if (step) {
-          auto index = entry->replicate().id().index();
-          min_replicate_index = std::min(min_replicate_index, index);
-          max_replicate_index = std::max(max_replicate_index, index);
-          batch.mutable_entry()->AddAllocated(entry.release());
-        }
-      }
-      if (step) {
-        read_result.committed_op_id.ToPB(batch.mutable_committed_op_id());
         if (!read_result.entry_metadata.empty()) {
           batch.set_mono_time(read_result.entry_metadata.back().entry_time.ToUInt64());
         }
@@ -554,12 +641,67 @@ CHECKED_STATUS ChangeTimeInWalDir(MonoDelta delta, HybridTime bound_time, const 
         pb_util::AppendToString(batch, &buffer);
         num_entries += batch.entry().size();
         RETURN_NOT_OK(new_segment.WriteEntryBatch(Slice(buffer)));
+        batch.clear_entry();
+        return Status::OK();
+      };
+
+      auto add_entry = [&write_entry_batch, &batch, &last_index, &committed_op_id](
+          std::unique_ptr<log::LogEntryPB> entry) -> Status {
+        if (entry->has_replicate() && entry->replicate().id().index() <= last_index) {
+          RETURN_NOT_OK(write_entry_batch(/* last_batch_of_segment= */ false));
+        }
+        last_index = entry->replicate().id().index();
+        if (entry->has_replicate() &&
+            entry->replicate().has_committed_op_id()) {
+          committed_op_id = OpId::FromPB(entry->replicate().committed_op_id());
+        }
+        batch.mutable_entry()->AddAllocated(entry.release());
+        return Status::OK();
+      };
+
+      for (auto& entry : read_result.entries) {
+        auto& replicate = *entry->mutable_replicate();
+        auto replicate_ht = HybridTime(replicate.hybrid_time());
+        if (is_final_step) {
+          replicate.set_hybrid_time(VERIFY_RESULT(add_delta(replicate_ht)));
+        } else {
+          delta_data.AddEarlyTime(replicate_ht);
+        }
+        if (replicate.has_transaction_state()) {
+          auto& state = *replicate.mutable_transaction_state();
+          if (state.status() == TransactionStatus::APPLYING) {
+            auto commit_ht = HybridTime(state.commit_hybrid_time());
+            if (is_final_step) {
+              state.set_commit_hybrid_time(VERIFY_RESULT(add_delta(commit_ht)));
+            } else {
+              delta_data.AddEarlyTime(commit_ht);
+            }
+          }
+        } else if (replicate.has_history_cutoff()) {
+          auto& state = *replicate.mutable_history_cutoff();
+          auto history_cutoff_ht = HybridTime(state.history_cutoff());
+          if (is_final_step) {
+            state.set_history_cutoff(VERIFY_RESULT(add_delta(history_cutoff_ht)));
+          } else {
+            delta_data.AddEarlyTime(history_cutoff_ht);
+          }
+        }
+        if (is_final_step) {
+          auto index = entry->replicate().id().index();
+          min_replicate_index = std::min(min_replicate_index, index);
+          max_replicate_index = std::max(max_replicate_index, index);
+          RETURN_NOT_OK(add_entry(std::move(entry)));
+        }
       }
-      sync_cout() << "Step " << step << " processed " << batch.entry().size() << " entries in "
-                  << segment->path();
+
+      if (is_final_step) {
+        RETURN_NOT_OK(write_entry_batch(/* last_batch_of_segment= */ true));
+      }
+      LOG(INFO) << "Step " << is_final_step << " processed " << batch.entry().size()
+                << " entries in " << segment->path();
     }
-    if (!step) {
-      delta_data.CompleteTime();
+    if (!is_final_step) {
+      delta_data.FinalizeTimeMap();
     }
   }
 
@@ -575,8 +717,8 @@ CHECKED_STATUS ChangeTimeInWalDir(MonoDelta delta, HybridTime bound_time, const 
 }
 
 CHECKED_STATUS ChangeTimeInWalDirs(
-    MonoDelta delta, HybridTime bound_time, const std::vector<std::string>& dirs,
-    TaskRunner* runner) {
+    MonoDelta delta, HybridTime bound_time, size_t max_num_old_wal_entries,
+    const std::vector<std::string>& dirs, TaskRunner* runner) {
   Env* env = Env::Default();
   std::vector<std::string> wal_dirs;
   auto callback = [&wal_dirs](
@@ -594,17 +736,18 @@ CHECKED_STATUS ChangeTimeInWalDirs(
   for (const auto& dir : dirs) {
     RETURN_NOT_OK(env->Walk(dir, Env::DirectoryOrder::POST_ORDER, callback));
   }
+  std::random_shuffle(wal_dirs.begin(), wal_dirs.end());
   for (const auto& dir : wal_dirs) {
-    runner->Submit([delta, bound_time, dir] {
-      return ChangeTimeInWalDir(delta, bound_time, dir);
+    runner->Submit([delta, bound_time, max_num_old_wal_entries, dir] {
+      return ChangeTimeInWalDir(delta, bound_time, max_num_old_wal_entries, dir);
     });
   }
   return Status::OK();
 }
 
-CHECKED_STATUS ChangeTimeExecute(const ChangeTimeArguments& args, bool sub) {
+CHECKED_STATUS ChangeTimeExecute(const ChangeTimeArguments& args, bool subtract) {
   auto delta = VERIFY_RESULT(DateTime::IntervalFromString(args.delta));
-  if (sub) {
+  if (subtract) {
     delta = -delta;
   }
   HybridTime bound_time;
@@ -614,14 +757,21 @@ CHECKED_STATUS ChangeTimeExecute(const ChangeTimeArguments& args, bool sub) {
       return STATUS_FORMAT(
           InvalidArgument, "Wrong bound-time and delta combination: $0", bound_time);
     }
-    sync_cout() << "Bound time before adding delta: " << bound_time.ToString();
+    LOG(INFO) << "Bound time before adding delta: " << bound_time.ToString();
   }
   TaskRunner runner;
   RETURN_NOT_OK(runner.Init(args.concurrency));
-  RETURN_NOT_OK(ChangeTimeInDataFiles(delta, bound_time, PrepareDirs(args.data_dirs), &runner));
-  RETURN_NOT_OK(ChangeTimeInWalDirs(delta, bound_time, PrepareDirs(args.wal_dirs), &runner));
+  RETURN_NOT_OK(ChangeTimeInDataFiles(
+      delta, bound_time, args.max_num_old_wal_entries, SplitAndFlatten(args.data_dirs), args.debug,
+      &runner));
+  RETURN_NOT_OK(ChangeTimeInWalDirs(
+      delta, bound_time, args.max_num_old_wal_entries, SplitAndFlatten(args.wal_dirs), &runner));
   return runner.Wait();
 }
+
+// ------------------------------------------------------------------------------------------------
+// Add time command
+// ------------------------------------------------------------------------------------------------
 
 const std::string kAddTimeDescription = "Add time delta to physical time in SST files";
 
@@ -632,8 +782,12 @@ std::unique_ptr<OptionsDescription> AddTimeOptions() {
 }
 
 CHECKED_STATUS AddTimeExecute(const AddTimeArguments& args) {
-  return ChangeTimeExecute(args, /* sub= */ false);
+  return ChangeTimeExecute(args, /* subtract= */ false);
 }
+
+// ------------------------------------------------------------------------------------------------
+// Subtract time command
+// ------------------------------------------------------------------------------------------------
 
 const std::string kSubTimeDescription = "Subtract time delta from physical time in SST files";
 
@@ -644,35 +798,55 @@ std::unique_ptr<OptionsDescription> SubTimeOptions() {
 }
 
 CHECKED_STATUS SubTimeExecute(const SubTimeArguments& args) {
-  return ChangeTimeExecute(args, /* sub= */ true);
+  return ChangeTimeExecute(args, /* subtract= */ true);
 }
+
+// ------------------------------------------------------------------------------------------------
+// Apply patch
+// ------------------------------------------------------------------------------------------------
 
 const std::string kApplyPatchDescription = "Apply prepared SST files patch";
 
 struct ApplyPatchArguments {
   std::vector<std::string> data_dirs;
   std::vector<std::string> wal_dirs;
+  bool dry_run = false;
+  bool revert = false;
 };
 
 std::unique_ptr<OptionsDescription> ApplyPatchOptions() {
   auto result = std::make_unique<OptionsDescriptionImpl<ApplyPatchArguments>>(
       kApplyPatchDescription);
+  auto& args = result->args;
   result->desc.add_options()
-      ("data-dirs", po::value(&result->args.data_dirs)->required(), "TServer data dirs")
-      ("wal-dirs", po::value(&result->args.wal_dirs)->required(), "TServer WAL dirs");
+      ("data-dirs", po::value(&args.data_dirs)->required(), "TServer data dirs")
+      ("wal-dirs", po::value(&args.wal_dirs)->required(), "TServer WAL dirs")
+      ("dry-run", po::bool_switch(&args.dry_run),
+       "Do not make any changes to live data, only check that apply-patch would work. "
+       "This might still involve making changes to files in .patched directories.")
+      ("revert", po::bool_switch(&args.revert),
+       "Revert a previous apply-patch operation. This will move backup RocksDB and WAL "
+       "directories back to their live locations, and the live locations to .patched locations.");
   return result;
 }
 
 class ApplyPatch {
  public:
   CHECKED_STATUS Execute(const ApplyPatchArguments& args) {
-    for (const auto& dir : PrepareDirs(args.data_dirs)) {
+    dry_run_ = args.dry_run;
+    revert_ = args.revert;
+    LOG(INFO) << "Running the ApplyPatch command";
+    LOG(INFO) << "    data_dirs=" << yb::ToString(args.data_dirs);
+    LOG(INFO) << "    wal_dirs=" << yb::ToString(args.data_dirs);
+    LOG(INFO) << "    dry_run=" << args.dry_run;
+    LOG(INFO) << "    revert=" << args.revert;
+    for (const auto& dir : SplitAndFlatten(args.data_dirs)) {
       RETURN_NOT_OK(env_->Walk(
           dir, Env::DirectoryOrder::POST_ORDER,
           std::bind(&ApplyPatch::WalkDataCallback, this, _1, _2, _3)));
     }
 
-    for (const auto& dir : PrepareDirs(args.wal_dirs)) {
+    for (const auto& dir : SplitAndFlatten(args.wal_dirs)) {
       RETURN_NOT_OK(env_->Walk(
           dir, Env::DirectoryOrder::POST_ORDER,
           std::bind(&ApplyPatch::WalkWalCallback, this, _1, _2, _3)));
@@ -681,39 +855,96 @@ class ApplyPatch {
     RocksDBHelper helper;
     auto options = helper.options();
     options.skip_stats_update_on_db_open = true;
+
+    int num_revert_errors = 0;
+
+    int num_dirs_handled = 0;
     for (const auto* dirs : {&data_dirs_, &wal_dirs_}) {
       for (const auto& dir : *dirs) {
-        auto bak_path = dir + kBakExtension;
+        auto backup_path = dir + kBackupExtension;
         auto patched_path = dir + kPatchedExtension;
-        if (dirs == &data_dirs_) {
-          docdb::RocksDBPatcher patcher(patched_path, options);
-          RETURN_NOT_OK(patcher.Load());
-          RETURN_NOT_OK(patcher.UpdateFileSizes());
-          docdb::ConsensusFrontier frontier;
-          frontier.set_hybrid_time(HybridTime::kMin);
-          frontier.set_history_cutoff(HybridTime::FromMicros(kYugaByteMicrosecondEpoch));
-          RETURN_NOT_OK(patcher.ModifyFlushedFrontier(frontier));
+
+        if (revert_) {
+          bool backup_dir_exists = env_->FileExists(backup_path);
+          bool patched_path_exists = env_->FileExists(patched_path);
+          if (backup_dir_exists && !patched_path_exists) {
+            auto rename_status = ChainRename(backup_path, dir, patched_path);
+            if (!rename_status.ok()) {
+              LOG(INFO) << "Error during revert: " << rename_status;
+              num_revert_errors++;
+            }
+          } else {
+            LOG(INFO)
+                << "Not attempting to restore " << backup_path << " to " << dir
+                << " after moving " << dir << " back to " << patched_path
+                << ": "
+                << (backup_dir_exists ? "" : "backup path does not exist; ")
+                << (patched_path_exists ? "patched path already exists" : "");
+            num_revert_errors++;
+          }
+          continue;
         }
-        RETURN_NOT_OK(env_->RenameFile(dir, bak_path));
-        RETURN_NOT_OK(env_->RenameFile(patched_path, dir));
-        sync_cout() << "Applied patch for: " << dir;
+
+        if (dirs == &data_dirs_) {
+          if (valid_rocksdb_dirs_.count(dir)) {
+            LOG(INFO) << "Patching non-live RocksDB metadata in " << patched_path;
+            docdb::RocksDBPatcher patcher(patched_path, options);
+            RETURN_NOT_OK(patcher.Load());
+            RETURN_NOT_OK(patcher.UpdateFileSizes());
+            docdb::ConsensusFrontier frontier;
+            frontier.set_hybrid_time(HybridTime::kMin);
+            frontier.set_history_cutoff(HybridTime::FromMicros(kYugaByteMicrosecondEpoch));
+            RETURN_NOT_OK(patcher.ModifyFlushedFrontier(frontier));
+          } else {
+            LOG(INFO) << "We did not see RocksDB CURRENT or MANIFEST-... files in "
+                       << dir << ", skipping applying " << patched_path;
+            continue;
+          }
+        }
+
+        RETURN_NOT_OK(ChainRename(patched_path, dir, backup_path));
+        num_dirs_handled++;
       }
     }
 
+    LOG(INFO) << "Processed " << num_dirs_handled << " directories (two renames per each)";
+    if (num_revert_errors) {
+      return STATUS_FORMAT(
+          IOError,
+          "Encountered $0 errors when trying to revert an applied patch. "
+          "Check the log above for details.",
+          num_revert_errors);
+    }
     return Status::OK();
   }
 
  private:
+
+  // ----------------------------------------------------------------------------------------------
+  // Functions for traversing RocksDB data directories
+  // ----------------------------------------------------------------------------------------------
+
   CHECKED_STATUS WalkDataCallback(
       Env::FileType type, const std::string& dirname, const std::string& fname) {
-    if (type == Env::FileType::FILE_TYPE) {
-      return CheckDataFile(dirname, fname);
-    } else {
-      return CheckDataDirectory(dirname, fname);
+    switch (type) {
+      case Env::FileType::FILE_TYPE:
+        return HandleDataFile(dirname, fname);
+      case Env::FileType::DIRECTORY_TYPE:
+        CheckDirectory(dirname, fname, &data_dirs_);
+        return Status::OK();
     }
+    FATAL_INVALID_ENUM_VALUE(Env::FileType, type);
   }
 
-  CHECKED_STATUS CheckDataFile(const std::string& dirname, const std::string& fname) {
+  // Handles a file found during walking through the a data (RocksDB) directory tree. Looks for
+  // CURRENT and MANIFEST files and copies them to the corresponding .patched directory. Does not
+  // modify live data of the cluster.
+  CHECKED_STATUS HandleDataFile(const std::string& dirname, const std::string& fname) {
+    if (revert_) {
+      // We don't look at any of the manifest files during the revert operation.
+      return Status::OK();
+    }
+
     if (!regex_match(dirname, kTabletDbRegex)) {
       return Status::OK();
     }
@@ -722,43 +953,102 @@ class ApplyPatch {
     }
     auto patched_dirname = dirname + kPatchedExtension;
     if (env_->DirExists(patched_dirname)) {
-      auto full_path = JoinPathSegments(dirname, fname);
-      sync_cout() << "Copy to patched: " << full_path;
-      return env_util::CopyFile(
-          env_, full_path, JoinPathSegments(patched_dirname, fname));
+      valid_rocksdb_dirs_.insert(dirname);
+      auto full_src_path = JoinPathSegments(dirname, fname);
+      auto full_dst_path = JoinPathSegments(patched_dirname, fname);
+      LOG(INFO) << "Copying file " << full_src_path << " to " << full_dst_path;
+      Status copy_status = env_util::CopyFile(env_, full_src_path, full_dst_path);
+      if (!copy_status.ok()) {
+        LOG(INFO) << "Error copying file " << full_src_path << " to " << full_dst_path << ": "
+                    << copy_status;
+      }
+      return copy_status;
     }
+
+    LOG(INFO) << "Directory " << patched_dirname << " does not exist, not copying "
+                << "the file " << fname << " there (this is not an error)";
     return Status::OK();
   }
 
-  CHECKED_STATUS CheckDataDirectory(const std::string& dirname, const std::string& fname) {
-    return CheckDirectory(dirname, fname, &data_dirs_);
-  }
+  // ----------------------------------------------------------------------------------------------
+  // Traversing WAL directories
+  // ----------------------------------------------------------------------------------------------
 
   CHECKED_STATUS WalkWalCallback(
       Env::FileType type, const std::string& dirname, const std::string& fname) {
     if (type != Env::FileType::DIRECTORY_TYPE) {
       return Status::OK();
     }
-    return CheckDirectory(dirname, fname, &wal_dirs_);
+    CheckDirectory(dirname, fname, &wal_dirs_);
+    return Status::OK();
   }
 
-  CHECKED_STATUS CheckDirectory(
+  // ----------------------------------------------------------------------------------------------
+  // Functions used for both RocksDB data and WALs
+  // ----------------------------------------------------------------------------------------------
+
+  // Look at the given directory, and if it is a patched directory (or a backup directory if we are
+  // doing a revert operation), strip off the suffix and add the corresponding live directory to
+  // the given vector.
+  void CheckDirectory(
       const std::string& dirname, const std::string& fname, std::vector<std::string>* dirs) {
-    if (!boost::ends_with(fname, kPatchedExtension)) {
-      return Status::OK();
+    const std::string& needed_extension = revert_ ? kBackupExtension : kPatchedExtension;
+    if (!boost::ends_with(fname, needed_extension)) {
+      return;
     }
     auto patched_path = JoinPathSegments(dirname, fname);
-    auto full_path = patched_path.substr(0, patched_path.size() - kPatchedExtension.size());
+    auto full_path = patched_path.substr(0, patched_path.size() - needed_extension.size());
     if (!regex_match(full_path, kTabletDbRegex)) {
-      return Status::OK();
+      return;
     }
     dirs->push_back(full_path);
-    return Status::OK();
+    return;
+  }
+
+  // Renames dir1 -> dir2 -> dir3, starting from the end of the chain.
+  CHECKED_STATUS ChainRename(
+      const std::string& dir1, const std::string& dir2, const std::string& dir3) {
+    RETURN_NOT_OK(SafeRename(dir2, dir3, /* check_dst_collision= */ true));
+
+    // Don't check that dir2 does not exist, because we haven't actually moved dir2 to dir3 in the
+    // dry run mode.
+    return SafeRename(dir1, dir2, /* check_dst_collision= */ false);
+  }
+
+  // A logging wrapper over directory renaming. In dry-run mode, checks for some errors, but
+  // check_dst_collision=false allows to skip ensuring that the destination does not exist.
+  CHECKED_STATUS SafeRename(
+      const std::string& src, const std::string& dst, bool check_dst_collision) {
+    if (dry_run_) {
+      if (!env_->FileExists(src)) {
+        return STATUS_FORMAT(
+            IOError, "Would fail to rename $0 to $1, source does not exist", src, dst);
+      }
+      if (check_dst_collision && env_->FileExists(dst)) {
+        return STATUS_FORMAT(
+            IOError, "Would fail to rename $0 to $1, destination already exists", src, dst);
+      }
+      LOG(INFO) << "Would rename " << src << " to " << dst;
+      return Status::OK();
+    }
+    LOG(INFO) << "Renaming " << src << " to " << dst;
+    Status s = env_->RenameFile(src, dst);
+    if (!s.ok()) {
+      LOG(ERROR) << "Error renaming " << src << " to " << dst << ": " << s;
+    }
+    return s;
   }
 
   Env* env_ = Env::Default();
   std::vector<std::string> data_dirs_;
   std::vector<std::string> wal_dirs_;
+
+  // The set of tablet RocksDB directories where we found CURRENT and MANIFEST-... files, indicating
+  // that there is a valid RocksDB database present.
+  std::set<std::string> valid_rocksdb_dirs_;
+
+  bool dry_run_ = false;
+  bool revert_ = false;
 };
 
 CHECKED_STATUS ApplyPatchExecute(const ApplyPatchArguments& args) {

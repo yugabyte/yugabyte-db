@@ -2,15 +2,14 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static org.mockito.Mockito.mock;
 import static play.inject.Bindings.bind;
 
-import com.google.common.collect.Maps;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
-import com.yugabyte.yw.common.TaskInfoManager;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
@@ -18,7 +17,6 @@ import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
-import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.scheduler.Scheduler;
 import java.util.HashMap;
 import java.util.Map;
@@ -35,13 +33,12 @@ import play.inject.guice.GuiceApplicationBuilder;
 import play.modules.swagger.SwaggerModule;
 import play.mvc.Http;
 import play.mvc.Result;
-import play.test.Helpers;
 
 public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public Commissioner mockCommissioner = mock(Commissioner.class);
   public CallHome mockCallHome = mock(CallHome.class);
   public ApiHelper mockApiHelper = mock(ApiHelper.class);
-  public KubernetesManager mockKubernetesManager = mock(KubernetesManager.class);
+  public ShellKubernetesManager mockKubernetesManager = mock(ShellKubernetesManager.class);
   public EncryptionAtRestManager mockEARManager = mock(EncryptionAtRestManager.class);
   public SetUniverseKey mockSetUniverseKey = mock(SetUniverseKey.class);
   public CallbackController mockCallbackController = mock(CallbackController.class);
@@ -59,6 +56,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public Executors mockExecutors = mock(Executors.class);
   public ShellProcessHandler mockShellProcessHandler = mock(ShellProcessHandler.class);
   public TableManager mockTableManager = mock(TableManager.class);
+  public TableManagerYb mockTableManagerYb = mock(TableManagerYb.class);
   public TaskInfoManager mockTaskManager = mock(TaskInfoManager.class);
   public GFlagsValidation mockGFlagsValidation = mock(GFlagsValidation.class);
   public NodeManager mockNodeManager = mock(NodeManager.class);
@@ -84,14 +82,14 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
     return configureApplication(
             guiceApplicationBuilder
                 .configure(additionalConfiguration)
-                .configure(Maps.newHashMap(Helpers.inMemoryDatabase()))
+                .configure(testDatabase())
                 .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
                 .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
                 .overrides(bind(CallHome.class).toInstance(mockCallHome))
                 .overrides(bind(Executors.class).toInstance(mockExecutors))
                 .overrides(bind(EncryptionAtRestManager.class).toInstance(mockEARManager))
                 .overrides(bind(SetUniverseKey.class).toInstance(mockSetUniverseKey))
-                .overrides(bind(KubernetesManager.class).toInstance(mockKubernetesManager))
+                .overrides(bind(ShellKubernetesManager.class).toInstance(mockKubernetesManager))
                 .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
                 .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
                 .overrides(bind(AccessManager.class).toInstance(mockAccessManager))
@@ -107,6 +105,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
                 .overrides(bind(Scheduler.class).toInstance(mock(Scheduler.class)))
                 .overrides(bind(ShellProcessHandler.class).toInstance(mockShellProcessHandler))
                 .overrides(bind(TableManager.class).toInstance(mockTableManager))
+                .overrides(bind(TableManagerYb.class).toInstance(mockTableManagerYb))
                 .overrides(bind(TaskInfoManager.class).toInstance(mockTaskManager))
                 .overrides(bind(GFlagsValidation.class).toInstance(mockGFlagsValidation))
                 .overrides(bind(NodeManager.class).toInstance(mockNodeManager)))

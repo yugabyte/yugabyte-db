@@ -2,6 +2,9 @@ package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
+import static com.yugabyte.yw.controllers.handlers.GFlagsValidationHandler.GFLAGS_FILTER_TAGS;
+import static com.yugabyte.yw.controllers.handlers.GFlagsValidationHandler.GFLAGS_FILTER_PATTERN;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static play.test.Helpers.contentAsString;
@@ -276,5 +279,63 @@ public class GFlagsValidationUiOnlyControllerTest extends FakeDBApplication {
     AssertHelper.assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     assertNotNull(json);
+  }
+
+  @Test
+  public void testGFlagsFilteredTags() throws IOException {
+    GFlagDetails flag1 = new GFlagDetails();
+    flag1.name = "hidden_tag_gflag";
+    flag1.tags = "hidden";
+    GFlagDetails flag2 = new GFlagDetails();
+    flag2.name = "stable_tag_gflag";
+    flag2.tags = "stable";
+    GFlagDetails flag3 = new GFlagDetails();
+    flag3.name = "experimental_tag_gflag";
+    flag3.tags = "experimental";
+    List<GFlagDetails> gflagList = new ArrayList<>(Arrays.asList(flag1, flag2, flag3));
+    when(mockGFlagsValidation.extractGFlags(any(), any(), anyBoolean())).thenReturn(gflagList);
+    String url =
+        "/api/v1/metadata"
+            + "/version/1.1.1.1-b78"
+            + "/list_gflags?server=MASTER"
+            + "&mostUsedGFlag=false";
+    Result result = FakeApiHelper.doRequestWithAuthToken("GET", url, defaultUser.createAuthToken());
+    AssertHelper.assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertNotNull(json);
+    for (JsonNode flag : json) {
+      assertNotEquals(
+          true,
+          GFLAGS_FILTER_TAGS.stream().anyMatch(tag -> flag.get("tags").asText().contains(tag)));
+    }
+  }
+
+  @Test
+  public void testGFlagsFilteredRegex() throws IOException {
+    GFlagDetails flag1 = new GFlagDetails();
+    flag1.name = "test_gflag";
+    GFlagDetails flag2 = new GFlagDetails();
+    flag2.name = "gflag_test";
+    GFlagDetails flag3 = new GFlagDetails();
+    flag3.name = "experimental_tag_gflag";
+    flag3.tags = "experimental";
+    List<GFlagDetails> gflagList = new ArrayList<>(Arrays.asList(flag1, flag2, flag3));
+    when(mockGFlagsValidation.extractGFlags(any(), any(), anyBoolean())).thenReturn(gflagList);
+    String url =
+        "/api/v1/metadata"
+            + "/version/1.1.1.1-b78"
+            + "/list_gflags?server=MASTER"
+            + "&mostUsedGFlag=false";
+    Result result = FakeApiHelper.doRequestWithAuthToken("GET", url, defaultUser.createAuthToken());
+    AssertHelper.assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertNotNull(json);
+    for (JsonNode flag : json) {
+      assertNotEquals(
+          true,
+          !GFLAGS_FILTER_PATTERN
+              .stream()
+              .anyMatch(regexMatcher -> regexMatcher.matcher(flag.get("name").asText()).find()));
+    }
   }
 }

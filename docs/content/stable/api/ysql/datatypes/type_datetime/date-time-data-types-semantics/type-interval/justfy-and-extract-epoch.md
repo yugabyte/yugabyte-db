@@ -63,7 +63,7 @@ with
     select
       '2021-03-13 19:00:00 America/Los_Angeles'::timestamptz as d,
       '25 hours'::interval                                   as i)
-select 
+select
   d +               i  as "d + i",
   d + justify_hours(i) as "d + justify_hours(i)"
 from c;
@@ -72,7 +72,7 @@ from c;
 This is the result:
 
 ```output
-         d + i          |  d + justify_hours(i)  
+         d + i          |  d + justify_hours(i)
 ------------------------+------------------------
  2021-03-14 21:00:00-07 | 2021-03-14 20:00:00-07
 ```
@@ -104,7 +104,7 @@ with
     select
       '2021-02-20 12:00:00'::timestamp as d,
       '33 days'::interval              as i)
-select 
+select
   d +              i  as "d + i",
   d + justify_days(i) as "d + justify_days(i)"
 from c;
@@ -113,7 +113,7 @@ from c;
 This is the result:
 
 ```output
-        d + i        | d + justify_days(i) 
+        d + i        | d + justify_days(i)
 ---------------------+---------------------
  2021-03-25 12:00:00 | 2021-03-23 12:00:00
 ```
@@ -191,7 +191,7 @@ This is the result:
 
 #### function justify_outcomes()
 
-Demonstrate the outcomes of _justify_hours()_, _justify_days()_, and _justify_interval()_. And test the fact the effect of _justify_interval()_ is the same as the effect of _justify_hours()_ followed by _justify_days()_—and different from the effect of of _justify_days()_ followed by _justify_hours()_.
+Demonstrate the outcomes of _justify_hours()_, _justify_days()_, and _justify_interval()_. And test the fact the effect of _justify_interval()_ is the same as the effect of _justify_hours()_ followed by _justify_days()_—and different from the effect of _justify_days()_ followed by _justify_hours()_.
 
 ```plpgsql
 drop function if exists justify_outcomes() cascade;
@@ -503,7 +503,7 @@ from c;
 This is the result:
 
 ```output
- justified_seconds() | extracted epoch 
+ justified_seconds() | extracted epoch
 ---------------------+-----------------
           2636744400 |      2673939600
 ```

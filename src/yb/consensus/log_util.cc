@@ -33,6 +33,7 @@
 #include "yb/consensus/log_util.h"
 
 #include <algorithm>
+#include <array>
 #include <limits>
 #include <utility>
 
@@ -879,12 +880,14 @@ Status WritableLogSegment::WriteEntryBatch(const Slice& data) {
   uint32_t header_crc = crc::Crc32c(&header_buf, 8);
   InlineEncodeFixed32(&header_buf[8], header_crc);
 
-  // Write the header to the file, followed by the batch data itself.
-  RETURN_NOT_OK(writable_file_->Append(Slice(header_buf, sizeof(header_buf))));
-  written_offset_ += sizeof(header_buf);
+  std::array<Slice, 2> slices = {
+      Slice(header_buf, sizeof(header_buf)),
+      Slice(data),
+  };
 
-  RETURN_NOT_OK(writable_file_->Append(data));
-  written_offset_ += data.size();
+  // Write the header to the file, followed by the batch data itself.
+  RETURN_NOT_OK(writable_file_->AppendSlices(slices.data(), slices.size()));
+  written_offset_ += sizeof(header_buf) + data.size();
 
   return Status::OK();
 }

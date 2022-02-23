@@ -79,8 +79,13 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
   // add Postgres tables to the name map as the table name is not unique in a namespace.
   auto table_ids_map_checkout = catalog_manager_->table_ids_map_.CheckOut();
   (*table_ids_map_checkout)[table->id()] = table;
-  if (l->table_type() != PGSQL_TABLE_TYPE && !l->started_deleting() && !l->started_hiding()) {
-    catalog_manager_->table_names_map_[{l->namespace_id(), l->name()}] = table;
+  if (!l->started_deleting() && !l->started_hiding()) {
+    if (l->table_type() != PGSQL_TABLE_TYPE) {
+      catalog_manager_->table_names_map_[{l->namespace_id(), l->name()}] = table;
+    }
+    if (l->table_type() == TRANSACTION_STATUS_TABLE_TYPE) {
+      catalog_manager_->transaction_table_ids_set_.insert(table_id);
+    }
   }
 
   l.Commit();
@@ -477,13 +482,16 @@ Status SysConfigLoader::Visit(const string& config_type, const SysConfigEntryPB&
     auto l = config->LockForWrite();
     l.mutable_data()->pb.CopyFrom(metadata);
 
-    // For now we are only using this to store (ycql) security config or ysql catalog config.
     if (config_type == kSecurityConfigType) {
       catalog_manager_->permissions_manager()->SetSecurityConfigOnLoadUnlocked(config);
     } else if (config_type == kYsqlCatalogConfigType) {
       LOG_IF(WARNING, catalog_manager_->ysql_catalog_config_ != nullptr)
           << "Multiple sys config type " << config_type << " found";
       catalog_manager_->ysql_catalog_config_ = config;
+    } else if (config_type == kTransactionTablesConfigType) {
+      LOG_IF(WARNING, catalog_manager_->transaction_tables_config_ != nullptr)
+          << "Multiple sys config type " << config_type << " found";
+      catalog_manager_->transaction_tables_config_ = config;
     }
 
     l.Commit();

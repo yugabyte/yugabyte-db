@@ -7,9 +7,8 @@ import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingService
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
-import com.yugabyte.yw.common.KubernetesManager;
+import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -23,12 +22,10 @@ import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.mvc.Controller;
@@ -41,7 +38,7 @@ public class MetaMasterController extends Controller {
 
   public static final Logger LOG = LoggerFactory.getLogger(MetaMasterController.class);
 
-  @Inject KubernetesManager kubernetesManager;
+  @Inject KubernetesManagerFactory kubernetesManagerFactory;
 
   @ApiOperation(
       value = "List a universe's master nodes",
@@ -157,16 +154,14 @@ public class MetaMasterController extends Controller {
             PlacementInfoUtil.getKubernetesNamespace(
                 isMultiAz, universeDetails.nodePrefix, azName, config);
 
-        ShellResponse r =
-            kubernetesManager.getServiceIPs(config, namespace, type == ServerType.MASTER);
-        if (r.code != 0 || r.message == null) {
-          LOG.warn("Kubernetes getServiceIPs api failed! {}", r.message);
+        String ip =
+            kubernetesManagerFactory
+                .getManager()
+                .getPreferredServiceIP(config, namespace, type == ServerType.MASTER);
+        if (ip == null) {
           return null;
         }
-        List<String> ips =
-            Arrays.stream(r.message.split("\\|"))
-                .filter((ip) -> !ip.trim().isEmpty())
-                .collect(Collectors.toList());
+
         int rpcPort;
         switch (type) {
           case MASTER:
@@ -184,7 +179,7 @@ public class MetaMasterController extends Controller {
           default:
             throw new IllegalArgumentException("Unexpected type " + type);
         }
-        allIPs.add(String.format("%s:%d", ips.get(ips.size() - 1), rpcPort));
+        allIPs.add(String.format("%s:%d", ip, rpcPort));
       }
       return String.join(",", allIPs);
     }

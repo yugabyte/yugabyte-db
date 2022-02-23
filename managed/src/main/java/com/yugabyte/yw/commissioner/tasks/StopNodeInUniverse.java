@@ -151,20 +151,24 @@ public class StopNodeInUniverse extends UniverseTaskBase {
       hitException = true;
       throw t;
     } finally {
-      // Reset the state, on any failure, so that the actions can be retried.
-      if (currentNode != null && hitException) {
-        setNodeState(taskParams().nodeName, currentNode.state);
-      }
+      try {
+        // Reset the state, on any failure, so that the actions can be retried.
+        if (currentNode != null && hitException) {
+          setNodeState(taskParams().nodeName, currentNode.state);
+        }
 
-      // remove leader blacklist for current node if task failed and leader blacklist is not removed
-      if (isBlacklistLeaders) {
-        subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
-        createModifyBlackListTask(
-                Arrays.asList(currentNode), false /* isAdd */, true /* isLeaderBlacklist */)
-            .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-        subTaskGroupQueue.run();
+        // remove leader blacklist for current node if task failed and leader blacklist is not
+        // removed
+        if (isBlacklistLeaders) {
+          subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
+          createModifyBlackListTask(
+                  Arrays.asList(currentNode), false /* isAdd */, true /* isLeaderBlacklist */)
+              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+          subTaskGroupQueue.run();
+        }
+      } finally {
+        unlockUniverseForUpdate();
       }
-      unlockUniverseForUpdate();
     }
 
     log.info("Finished {} task.", getName());

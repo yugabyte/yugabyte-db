@@ -280,6 +280,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE(ValidateReplicationInfo);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, CreateTransactionStatusTable);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetTableLocations);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetTabletLocations);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetTransactionStatusTablets);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetYsqlCatalogConfig);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, RedisConfigGet);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, RedisConfigSet);
@@ -297,6 +298,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Dcl, GrantRevokePermission);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Dcl, GrantRevokeRole);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, CreateCDCStream);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, DeleteCDCStream);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetCDCDBStreamInfo);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetCDCStream);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, ListCDCStreams);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, UpdateCDCStream);
@@ -1213,6 +1215,9 @@ Status CreateTableInfoFromTableSchemaResp(const GetTableSchemaResponsePB& resp, 
   if (resp.has_replication_info()) {
     info->replication_info.emplace(resp.replication_info());
   }
+  if (resp.has_wal_retention_secs()) {
+    info->wal_retention_secs = resp.wal_retention_secs();
+  }
   SCHECK_GT(info->table_id.size(), 0U, IllegalState, "Running against a too-old master");
   info->colocated = resp.colocated();
 
@@ -1455,12 +1460,70 @@ void DeleteCDCStreamRpc::ProcessResponse(const Status& status) {
   user_cb_.Run(status);
 }
 
+class GetCDCDBStreamInfoRpc : public ClientMasterRpc<GetCDCDBStreamInfoRequestPB,
+                                                     GetCDCDBStreamInfoResponsePB> {
+ public:
+  GetCDCDBStreamInfoRpc(YBClient* client,
+                  StdStatusCallback user_cb,
+                  const std::string& db_stream_id,
+                  std::vector<pair<std::string, std::string>>* db_stream_info,
+                  CoarseTimePoint deadline);
+
+  std::string ToString() const override;
+
+  virtual ~GetCDCDBStreamInfoRpc() = default;
+
+ private:
+  void CallRemoteMethod() override;
+  void ProcessResponse(const Status& status) override;
+
+  StdStatusCallback user_cb_;
+  std::string db_stream_id_;
+  std::vector<pair<std::string, std::string>>* db_stream_info_;
+};
+
+GetCDCDBStreamInfoRpc::GetCDCDBStreamInfoRpc(YBClient *client,
+  StdStatusCallback user_cb,
+  const std::string &db_stream_id,
+  std::vector<pair<std::string, std::string>> *db_stream_info,
+  CoarseTimePoint deadline)
+  : ClientMasterRpc(client, deadline),
+    user_cb_(std::move(user_cb)),
+    db_stream_id_(db_stream_id),
+    db_stream_info_(DCHECK_NOTNULL(db_stream_info)) {
+  req_.set_db_stream_id(db_stream_id_);
+}
+
+void GetCDCDBStreamInfoRpc::CallRemoteMethod() {
+  master_replication_proxy()->GetCDCDBStreamInfoAsync(
+      req_, &resp_, mutable_retrier()->mutable_controller(),
+      std::bind(&GetCDCDBStreamInfoRpc::Finished, this, Status::OK()));
+}
+
+string GetCDCDBStreamInfoRpc::ToString() const {
+  return Substitute("GetCDCDBStreamInfo(db_stream_id: $0, num_attempts: $1)",
+                    db_stream_id_, num_attempts());
+}
+
+void GetCDCDBStreamInfoRpc::ProcessResponse(const Status& status) {
+  if (!status.ok()) {
+    LOG(WARNING) << ToString() << " failed: " << status.ToString();
+  } else {
+    db_stream_info_->clear();
+    db_stream_info_->reserve(resp_.table_info_size());
+    for (const auto& table_info : resp_.table_info()) {
+      db_stream_info_->push_back(std::make_pair(table_info.stream_id(), table_info.table_id()));
+    }
+  }
+  user_cb_(status);
+}
+
 class GetCDCStreamRpc : public ClientMasterRpc<GetCDCStreamRequestPB, GetCDCStreamResponsePB> {
  public:
   GetCDCStreamRpc(YBClient* client,
                   StdStatusCallback user_cb,
                   const CDCStreamId& stream_id,
-                  TableId* table_id,
+                  ObjectId* object_id,
                   std::unordered_map<std::string, std::string>* options,
                   CoarseTimePoint deadline);
 
@@ -1474,20 +1537,20 @@ class GetCDCStreamRpc : public ClientMasterRpc<GetCDCStreamRequestPB, GetCDCStre
 
   StdStatusCallback user_cb_;
   std::string stream_id_;
-  TableId* table_id_;
+  ObjectId* object_id_;
   std::unordered_map<std::string, std::string>* options_;
 };
 
 GetCDCStreamRpc::GetCDCStreamRpc(YBClient* client,
                                  StdStatusCallback user_cb,
                                  const CDCStreamId& stream_id,
-                                 TableId* table_id,
+                                 TableId* object_id,
                                  std::unordered_map<std::string, std::string>* options,
                                  CoarseTimePoint deadline)
     : ClientMasterRpc(client, deadline),
       user_cb_(std::move(user_cb)),
       stream_id_(stream_id),
-      table_id_(DCHECK_NOTNULL(table_id)),
+      object_id_(DCHECK_NOTNULL(object_id)),
       options_(DCHECK_NOTNULL(options)) {
   req_.set_stream_id(stream_id_);
 }
@@ -1510,7 +1573,11 @@ void GetCDCStreamRpc::ProcessResponse(const Status& status) {
   if (!status.ok()) {
     LOG(WARNING) << ToString() << " failed: " << status.ToString();
   } else {
-    *table_id_ = resp_.stream().table_id();
+    if (resp_.stream().has_namespace_id()) {
+      *object_id_ = resp_.stream().namespace_id();
+    } else {
+      *object_id_ = resp_.stream().table_id().Get(0);
+    }
 
     options_->clear();
     options_->reserve(resp_.stream().options_size());
@@ -1813,10 +1880,20 @@ void YBClient::Data::DeleteCDCStream(YBClient* client,
       client, callback, stream_id, deadline);
 }
 
+void YBClient::Data::GetCDCDBStreamInfo(
+    YBClient* client,
+    const std::string& db_stream_id,
+    std::shared_ptr<std::vector<pair<std::string, std::string>>> db_stream_info,
+    CoarseTimePoint deadline,
+    StdStatusCallback callback) {
+  auto rpc = StartRpc<internal::GetCDCDBStreamInfoRpc>(
+      client, callback, db_stream_id, db_stream_info.get(), deadline);
+}
+
 void YBClient::Data::GetCDCStream(
     YBClient* client,
     const CDCStreamId& stream_id,
-    std::shared_ptr<TableId> table_id,
+    std::shared_ptr<ObjectId> object_id,
     std::shared_ptr<std::unordered_map<std::string, std::string>> options,
     CoarseTimePoint deadline,
     StdStatusCallback callback) {
@@ -1824,7 +1901,7 @@ void YBClient::Data::GetCDCStream(
       client,
       callback,
       stream_id,
-      table_id.get(),
+      object_id.get(),
       options.get(),
       deadline);
 }

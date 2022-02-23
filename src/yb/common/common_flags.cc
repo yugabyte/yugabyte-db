@@ -47,6 +47,7 @@ DEFINE_bool(enable_automatic_tablet_splitting, true,
 
 DEFINE_bool(log_ysql_catalog_versions, false,
             "Log YSQL catalog events. For debugging purposes.");
+TAG_FLAG(log_ysql_catalog_versions, hidden);
 
 namespace yb {
 

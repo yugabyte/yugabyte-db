@@ -26,6 +26,8 @@ import {
   ADD_TLS_CERT,
   ADD_TLS_CERT_RESPONSE,
   ADD_TLS_CERT_RESET,
+  UPDATE_CERT,
+  UPDATE_CERT_RESPONSE,
   FETCH_HOST_INFO,
   FETCH_HOST_INFO_SUCCESS,
   FETCH_HOST_INFO_FAILURE,
@@ -40,6 +42,12 @@ import {
   SET_INITIAL_VALUES,
   EDIT_CUSTOMER_CONFIG,
   EDIT_CUSTOMER_CONFIG_RESPONSE,
+  FETCH_RUNTIME_CONFIGS,
+  FETCH_RUNTIME_CONFIGS_RESPONSE,
+  SET_RUNTIME_CONFIG,
+  SET_RUNTIME_CONFIG_RESPONSE,
+  DELETE_RUNTIME_CONFIG,
+  DELETE_RUNTIME_CONFIG_RESPONSE,
   FETCH_CUSTOMER_CONFIGS,
   FETCH_CUSTOMER_CONFIGS_RESPONSE,
   DELETE_CUSTOMER_CONFIG,
@@ -231,6 +239,10 @@ export default function (state = INITIAL_STATE, action) {
       return setPromiseResponse(state, 'addCertificate', action);
     case ADD_TLS_CERT_RESET:
       return setLoadingState(state, 'addCertificate', getInitialState({}));
+    case UPDATE_CERT:
+      return setLoadingState(state, 'updateCert', {});
+    case UPDATE_CERT_RESPONSE:
+      return setLoadingState(state, 'updateCert', action);
     case FETCH_HOST_INFO:
       return { ...state, hostInfo: null };
     case FETCH_HOST_INFO_SUCCESS:
@@ -378,6 +390,18 @@ export default function (state = INITIAL_STATE, action) {
       return setLoadingState(state, 'configs', []);
     case FETCH_CUSTOMER_CONFIGS_RESPONSE:
       return setPromiseResponse(state, 'configs', action);
+    case FETCH_RUNTIME_CONFIGS:
+      return setLoadingState(state, 'runtimeConfigs', []);
+    case FETCH_RUNTIME_CONFIGS_RESPONSE:
+      return setPromiseResponse(state, 'runtimeConfigs', action);
+    case SET_RUNTIME_CONFIG:
+      return setLoadingState(state, 'updateRuntimeConfig', {});
+    case SET_RUNTIME_CONFIG_RESPONSE:
+      return setPromiseResponse(state, 'updateRuntimeConfig', action);
+    case DELETE_RUNTIME_CONFIG:
+      return setLoadingState(state, 'deleteRuntimeConfig', {});
+    case DELETE_RUNTIME_CONFIG_RESPONSE:
+      return setPromiseResponse(state, 'deleteRuntimeConfig', action);
     case DELETE_CUSTOMER_CONFIG:
       return setLoadingState(state, 'deleteConfig', {});
     case DELETE_CUSTOMER_CONFIG_RESPONSE:

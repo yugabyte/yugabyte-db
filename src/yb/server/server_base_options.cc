@@ -325,6 +325,14 @@ std::string MasterAddressesToString(const MasterAddresses& addresses) {
   return result;
 }
 
+CloudInfoPB GetPlacementFromGFlags() {
+  CloudInfoPB result;
+  result.set_placement_cloud(FLAGS_placement_cloud);
+  result.set_placement_region(FLAGS_placement_region);
+  result.set_placement_zone(FLAGS_placement_zone);
+  return result;
+}
+
 CloudInfoPB ServerBaseOptions::MakeCloudInfoPB() const {
   CloudInfoPB result;
   result.set_placement_cloud(placement_cloud());

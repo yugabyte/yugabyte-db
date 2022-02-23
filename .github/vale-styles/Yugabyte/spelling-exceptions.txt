@@ -254,6 +254,7 @@ Haml
 hardcode
 hardcoded
 hardcodes
+Hashicorp
 Haswell
 heatmap
 heatmaps
@@ -436,7 +437,6 @@ polyfills
 pooler
 postfixed
 postgres.ai
-PostgreSQL
 precompile
 precompiled
 preconfigure
@@ -469,6 +469,7 @@ proxying
 pseudocode
 pseudonymized
 pseudonymizer
+psql
 Puma
 pytest
 Python
@@ -824,6 +825,8 @@ Worldline
 Xcode
 Xeon
 YouTrack
+ycqlsh
+ysqlsh
 ytt
 Yubico
 Yugabyte

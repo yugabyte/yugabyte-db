@@ -86,10 +86,14 @@ class DocDBCompactionFilter : public rocksdb::CompactionFilter {
   // ConsensusFrontier, so that it can be persisted in RocksDB metadata and recovered on bootstrap.
   rocksdb::UserFrontierPtr GetLargestUserFrontier() const override;
 
-  // Returns known post-split boundaries of the tablet's key space, if applicable, and boost::none
-  // otherwise.
-  Slice DropKeysLessThan() const override;
-  Slice DropKeysGreaterOrEqual() const override;
+  // Returns an empty list when key_ranges_ is not set, denoting that the whole key range of the
+  // tablet should be considered live.
+  //
+  // When key_ranges_ is set, returns two live ranges:
+  // (1) A range covering any ApplyTransactionState records which may have been written
+  // (2) A range covering all valid keys in key_ranges_, i.e. all user data this tablet is
+  //     responsible for.
+  std::vector<std::pair<Slice, Slice>> GetLiveRanges() const override;
 
  private:
   // Assigns prev_subdoc_key_ from memory addressed by data. The length of key is taken from

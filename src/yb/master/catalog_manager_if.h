@@ -201,6 +201,9 @@ class CatalogManagerIf {
   virtual CHECKED_STATUS ListCDCStreams(
       const ListCDCStreamsRequestPB* req, ListCDCStreamsResponsePB* resp) = 0;
 
+  virtual CHECKED_STATUS GetCDCDBStreamInfo(
+    const GetCDCDBStreamInfoRequestPB* req, GetCDCDBStreamInfoResponsePB* resp) = 0;
+
   virtual Result<scoped_refptr<TableInfo>> FindTable(
       const TableIdentifierPB& table_identifier) const = 0;
 
@@ -213,7 +216,9 @@ class CatalogManagerIf {
 
   virtual scoped_refptr<TableInfo> NewTableInfo(TableId id) = 0;
 
-  virtual CHECKED_STATUS SplitTablet(const TabletId& tablet_id) = 0;
+  // If select_all_tablets_for_split is true, we will not call ShouldSplitValidCandidate.
+  virtual CHECKED_STATUS SplitTablet(
+      const TabletId& tablet_id, bool select_all_tablets_for_split) = 0;
 
   virtual CHECKED_STATUS TEST_SplitTablet(
       const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code) = 0;
@@ -222,7 +227,7 @@ class CatalogManagerIf {
       const TabletId& tablet_id, const std::string& split_encoded_key,
       const std::string& split_partition_key) = 0;
 
-  virtual uint64_t GetTxnTableVersionsHash() = 0;
+  virtual uint64_t GetTransactionTablesVersion() = 0;
 
   virtual Result<scoped_refptr<TableInfo>> FindTableById(const TableId& table_id) const = 0;
 
@@ -233,6 +238,8 @@ class CatalogManagerIf {
   virtual int64_t leader_ready_term() = 0;
 
   virtual ClusterLoadBalancer* load_balancer() = 0;
+
+  virtual TabletSplitManager* tablet_split_manager() = 0;
 
   virtual std::shared_ptr<tablet::TabletPeer> tablet_peer() const = 0;
 

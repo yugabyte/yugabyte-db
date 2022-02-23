@@ -321,7 +321,7 @@ class AwsCloud(AbstractCloud):
         return self.get_host_info_specific_args(region, search_pattern, get_all, private_ip)
 
     def get_host_info_specific_args(self, region, search_pattern, get_all=False,
-                                    private_ip=None, filters=None):
+                                    private_ip=None, filters=None, node_uuid=None):
         if not filters:
             filters = [
                 {
@@ -341,7 +341,11 @@ class AwsCloud(AbstractCloud):
                 "Name": "tag:Name",
                 "Values": [search_pattern]
             })
-
+        if node_uuid:
+            filters.append({
+                "Name": "tag:node-uuid",
+                "Values": [node_uuid]
+            })
         instances = []
         for _, client in self._get_clients(region=region).items():
             instances.extend(list(client.instances.filter(Filters=filters)))
@@ -408,10 +412,10 @@ class AwsCloud(AbstractCloud):
         return results
 
     def get_device_names(self, args):
-        if has_ephemerals(args.instance_type):
+        if has_ephemerals(args.instance_type, args.region):
             return []
         else:
-            return get_device_names(args.instance_type, args.num_volumes)
+            return get_device_names(args.instance_type, args.num_volumes, args.region)
 
     def get_subnet_cidr(self, args, subnet_id):
         ec2 = boto3.resource('ec2', args.region)
@@ -429,23 +433,28 @@ class AwsCloud(AbstractCloud):
         create_instance(args)
 
     def delete_instance(self, region, instance_id, has_elastic_ip=False):
-        logging.info("Deleting AWS instance {} in region {}".format(instance_id, region))
+        logging.info("[app] Deleting AWS instance {} in region {}".format(
+            instance_id, region))
         ec2 = boto3.resource('ec2', region)
         instance = ec2.Instance(instance_id)
         if has_elastic_ip:
             client = boto3.client('ec2', region)
-            elastic_ip_list = client.describe_addresses(
-                Filters=[{'Name': 'public-ip', 'Values': [instance.public_ip_address]}]
-            )["Addresses"]
-            for elastic_ip in elastic_ip_list:
-                client.disassociate_address(
-                    AssociationId=elastic_ip["AssociationId"]
-                )
-                client.release_address(
-                    AllocationId=elastic_ip["AllocationId"]
-                )
-            logging.info(
-                "Deleted elastic ip at {} from VM {}".format(elastic_ip["PublicIp"], instance_id))
+            for network_interfaces in instance.network_interfaces_attribute:
+                if 'Association' not in network_interfaces:
+                    continue
+                public_ip_address = network_interfaces['Association'].get('PublicIp')
+                if public_ip_address:
+                    elastic_ip_list = client.describe_addresses(
+                        Filters=[{'Name': 'public-ip', 'Values': [public_ip_address]}]
+                    )["Addresses"]
+                    for elastic_ip in elastic_ip_list:
+                        client.disassociate_address(
+                            AssociationId=elastic_ip["AssociationId"]
+                        )
+                        client.release_address(
+                            AllocationId=elastic_ip["AllocationId"]
+                        )
+                logging.info("[app] Deleted elastic ip {}".format(public_ip_address))
         instance.terminate()
         instance.wait_until_terminated()
 

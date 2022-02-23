@@ -76,7 +76,14 @@ public class SetUniverseKey {
   }
 
   private void setKeyInMaster(Universe u, HostAndPort masterAddr, byte[] keyRef, byte[] keyVal) {
+
     YBClient client = null;
+
+    if (u.getUniverseDetails().universePaused) {
+      log.info("Skipping setting universe keys as {} is paused", u.universeUUID.toString());
+      return;
+    }
+
     String hostPorts = u.getMasterAddresses();
     String certificate = u.getCertificateNodetoNode();
     try {

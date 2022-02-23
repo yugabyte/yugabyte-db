@@ -128,13 +128,13 @@ YBCReserveOids(Oid dboid, Oid next_oid, uint32 count, Oid *begin_oid, Oid *end_o
 /* ------------------------------------------------------------------------- */
 /*  Tablegroup Functions. */
 void
-YBCCreateTablegroup(Oid grpoid)
+YBCCreateTablegroup(Oid grp_oid, Oid tablespace_oid)
 {
 	YBCPgStatement handle;
 	char *db_name = get_database_name(MyDatabaseId);
 
 	HandleYBStatus(YBCPgNewCreateTablegroup(db_name, MyDatabaseId,
-											grpoid, &handle));
+											grp_oid, tablespace_oid, &handle));
 	HandleYBStatus(YBCPgExecCreateTablegroup(handle));
 }
 

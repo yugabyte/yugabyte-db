@@ -80,8 +80,8 @@ def test_add_fail_tags_success(mocked_post_processor: Postprocessor,
 
 
 def test_processing_errors(mocked_post_processor: Postprocessor,
-                           mocked_test_kvs_success: Dict[str, Any]) -> None:
-    test_kvs = mocked_test_kvs_success
+                           mocked_test_kvs_failure: Dict[str, Any]) -> None:
+    test_kvs = mocked_test_kvs_failure
     mocked_post_processor.test_log_path = '/not/a/real/file.log'
     mocked_post_processor.set_fail_tags(test_kvs)
     assert 'processing_errors' in test_kvs
@@ -102,7 +102,22 @@ def test_add_fail_tag_failures(mocked_post_processor: Postprocessor,
     mocked_post_processor.test_log_path = test_log.strpath
     mocked_post_processor.set_fail_tags(test_kvs)
     assert 'fail_tags' in test_kvs
+    assert len(test_kvs['fail_tags']) == 1
     if expected_tag.startswith('signal_'):
         assert test_kvs['fail_tags'] == [expected_tag.format(error_text)]
     else:
         assert test_kvs['fail_tags'] == [expected_tag]
+
+
+def test_add_fail_tag_multiline(mocked_post_processor: Postprocessor,
+                                mocked_test_kvs_failure: Dict[str, Any],
+                                tmpdir: py.path.local) -> None:
+    test_kvs = mocked_test_kvs_failure
+    test_log = tmpdir / 'failed_test.log'
+    test_log.write_text(LOG_CONTENTS + 'SIGINT\n'*2 + 'SIGKILL\n'*3 + 'SIGSEGV\n'*4,
+                        encoding='utf-8')
+    mocked_post_processor.test_log_path = test_log.strpath
+    mocked_post_processor.set_fail_tags(test_kvs)
+    assert 'fail_tags' in test_kvs
+    assert len(test_kvs['fail_tags']) == 3
+    assert test_kvs['fail_tags'] == ['signal_SIGINT', 'signal_SIGKILL', 'signal_SIGSEGV']

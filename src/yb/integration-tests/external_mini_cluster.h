@@ -64,6 +64,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/status.h"
+#include "yb/util/tsan_util.h"
 
 namespace yb {
 
@@ -450,7 +451,14 @@ class ExternalMiniCluster : public MiniClusterBase {
   string data_root() const { return data_root_; }
 
   // Return true if the tserver has been marked as DEAD by master leader.
-  Result<bool> is_ts_stale(int ts_idx);
+  Result<bool> is_ts_stale(
+      int ts_idx, MonoDelta deadline = MonoDelta::FromSeconds(120) * kTimeMultiplier);
+
+  CHECKED_STATUS WaitForMasterToMarkTSAlive(
+      int ts_idx, MonoDelta deadline = MonoDelta::FromSeconds(120) * kTimeMultiplier);
+
+  CHECKED_STATUS WaitForMasterToMarkTSDead(
+      int ts_idx, MonoDelta deadline = MonoDelta::FromSeconds(120) * kTimeMultiplier);
 
  protected:
   FRIEND_TEST(MasterFailoverTest, TestKillAnyMaster);

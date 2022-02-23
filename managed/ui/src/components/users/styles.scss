@@ -1,5 +1,7 @@
+@import '../../_style/colors.scss';
+
 .user-tab-logo {
-  fill: #333333;
+  fill: $YB_TEXT_BLACK;
   margin-right: 5px;
   font-size: medium;
   vertical-align: middle;
@@ -42,4 +44,194 @@
   .justify-end {
     justify-content: flex-end;
   }
+}
+
+.user-auth-container {
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  height: 100%;
+  margin-top: 30px;
+}
+
+.user-auth-container {
+  .ua-tab-container {
+    display: flex;
+    flex-shrink: 1;
+    flex-direction: column;
+    margin-top: 5px;
+  }
+
+  .ua-form-container {
+    display: flex;
+    flex-grow: 1;
+    flex-direction: column;
+    padding: 0px 0px 0px 50px;
+  }
+
+  .ua-sec-divider {
+    display: flex;
+    opacity: 0.1;
+    border: 1px solid $YB_TEXT_BLACK;
+  }
+
+  .ua-tab-item {
+    display: flex;
+    width: 220px;
+    height: 40px;
+    background: $YB_WHITE;
+    box-sizing: border-box;
+    border-radius: 8px;
+    margin: 5px 20px 5px 10px;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+
+  .ua-active-tab {
+    border: 1px solid $YB_BG_WHITE_4;
+  }
+
+  .ua-field-row-c {
+    display: flex;
+    align-items: center;
+    padding: 5px 0px;
+    margin: 0px;
+    max-width: 700px;
+  }
+
+  .ua-field-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    width: 100%;
+  }
+
+  .ua-label-c {
+    padding-left: 0;
+    padding-bottom: 10px;
+    min-width: 160px;
+    width: 160px;
+  }
+
+  .ua-title-c {
+    padding-left: 0;
+    padding-right: 0;
+    padding-bottom: 0px;
+  }
+
+  .ua-toggle-label-c {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding-bottom: 10px;
+    padding-right: 15px;
+  }
+
+  .ua-radio-field-c {
+    padding-right: 10px !important;
+    display: flex;
+    width: 100%;
+  }
+
+  .ua-radio-c {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    padding-bottom: 10px;
+  }
+
+  .ua-radio-field {
+    flex: 1;
+  }
+
+  .ua-field {
+    padding-right: 0px;
+    display: flex;
+    width: 100%;
+  }
+
+  .ua-field {
+    .form-group,
+    .yb-field-group {
+      display: flex;
+      width: 100%;
+      flex-direction: column;
+    }
+  }
+
+  .ua-action-c {
+    justify-content: flex-end;
+  }
+
+  .ua-toggle-c {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    width: 100%;
+    padding-right: 5px !important;
+  }
+}
+
+#user-management-tab-panel-tab-user-auth {
+  pointer-events: all !important;
+}
+
+.pl-15 {
+  padding-left: 15px !important;
+}
+
+.ldap-cancel-btn {
+  background: $YB_WHITE;
+  border: 1px solid $YB_BLACK;
+  border-radius: 8px;
+  font-size: 16px;
+  color: $YB_TEXT_BLACK_2;
+  font-weight: 500;
+}
+
+.ldap-cancel-btn:hover {
+  border: 1px solid $YB_BLACK;
+}
+
+.ldap-modal-c {
+  display: flex;
+  min-height: 100px;
+  flex-direction: row;
+  align-items: flex-start;
+}
+
+.ldap-modal-c-icon {
+  flex-shrink: 1;
+  margin-right: 15px;
+}
+
+.ldap-modal-c-content {
+  flex-grow: 1;
+  font-size: 14px;
+}
+
+#ldap-toggle-tooltip .tooltip-inner {
+  width: 260px;
+  max-width: 260px;
+  padding: 8px;
+  text-align: left;
+}
+
+.footer-msg {
+  width: 100%;
+  height: fit-content;
+  display: inline-flex;
+  align-items: flex-start;
+  border: 1px solid $YB_LIGHT_GRAY_BORDER;
+  background: $YB_LIGHT_BLUE_BACKGROUND;
+  border-radius: 8px;
+  padding: 12px;
+  font-weight: normal;
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+
+.ldap-info-popover {
+  max-width: 650px;
 }

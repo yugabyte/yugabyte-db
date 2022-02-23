@@ -127,6 +127,9 @@ public class BaseMiniClusterTest extends BaseYBTest {
 
     flagMap.put("durable_wal_write", "false");
 
+    // Limit number of transaction table tablets to help avoid timeouts.
+    flagMap.put("transaction_table_num_tablets", Integer.toString(NUM_TABLET_SERVERS));
+
     // For sanitizer builds, it is easy to overload the master, leading to quorum changes.
     // This could end up breaking ever trivial DDLs like creating an initial table in the cluster.
     if (BuildTypeUtil.isSanitizerBuild()) {
@@ -138,7 +141,7 @@ public class BaseMiniClusterTest extends BaseYBTest {
 
   /** To customize, override and use {@code super} call. */
   protected Map<String, String> getTServerFlags() {
-    return new TreeMap<String, String>();
+    return new TreeMap<>();
   }
 
   /** Reset per-test settings to their default values, can be overridden to customize values. */

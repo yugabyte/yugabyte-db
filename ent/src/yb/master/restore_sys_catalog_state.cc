@@ -26,6 +26,7 @@
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/pgsql_operation.h"
+#include "yb/docdb/rocksdb_writer.h"
 
 #include "yb/master/catalog_loaders.h"
 #include "yb/master/master_backup.pb.h"
@@ -445,9 +446,9 @@ void RestoreSysCatalogState::WriteToRocksDB(
   docdb::KeyValueWriteBatchPB kv_write_batch;
   write_batch->MoveToWriteBatchPB(&kv_write_batch);
 
+  docdb::NonTransactionalWriter writer(kv_write_batch, write_time);
   rocksdb::WriteBatch rocksdb_write_batch;
-  PrepareNonTransactionWriteBatch(
-      kv_write_batch, write_time, nullptr, &rocksdb_write_batch, nullptr);
+  rocksdb_write_batch.SetDirectWriter(&writer);
   docdb::ConsensusFrontiers frontiers;
   set_op_id(op_id, &frontiers);
   set_hybrid_time(write_time, &frontiers);
@@ -682,8 +683,8 @@ Status RestoreSysCatalogState::ProcessPgCatalogRestores(
       RETURN_NOT_OK(existing_state.Next());
     }
 
-    if (num_updates + num_inserts + num_deletes != 0) {
-      LOG(INFO) << "PITR: Pg system table: " << *table.name << ", updates: " << num_updates
+    if (num_updates + num_inserts + num_deletes != 0 || VLOG_IS_ON(3)) {
+      LOG(INFO) << "PITR: Pg system table: " << AsString(table.name) << ", updates: " << num_updates
                 << ", inserts: " << num_inserts << ", deletes: " << num_deletes;
     }
   }

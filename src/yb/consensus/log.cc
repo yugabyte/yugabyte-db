@@ -170,6 +170,12 @@ DEFINE_test_flag(int64, log_fault_after_segment_allocation_min_replicate_index, 
                  "Fault of segment allocation when min replicate index is at least specified. "
                  "0 to disable.");
 
+DEFINE_int64(time_based_wal_gc_clock_delta_usec, 0,
+             "A delta in microseconds to add to the clock value used to determine if a WAL "
+             "segment is safe to be garbage collected. This is needed for clusters running with a "
+             "skewed hybrid clock, because the clock used for time-based WAL GC is the wall clock, "
+             "not hybrid clock.");
+
 // Validate that log_min_segments_to_retain >= 1
 static bool ValidateLogsToRetain(const char* flagname, int value) {
   if (value >= 1) {
@@ -643,7 +649,18 @@ Status Log::CloseCurrentSegment() {
   VLOG_WITH_PREFIX(2) << "Segment footer for " << active_segment_->path()
                       << ": " << footer_builder_.ShortDebugString();
 
-  footer_builder_.set_close_timestamp_micros(GetCurrentTimeMicros());
+  auto close_timestamp_micros = GetCurrentTimeMicros();
+
+  if (FLAGS_time_based_wal_gc_clock_delta_usec != 0) {
+    auto unadjusted_close_timestamp_micros = close_timestamp_micros;
+    close_timestamp_micros += FLAGS_time_based_wal_gc_clock_delta_usec;
+    LOG_WITH_PREFIX(INFO)
+        << "Adjusting log segment closing timestamp by "
+        << FLAGS_time_based_wal_gc_clock_delta_usec << " usec from "
+        << unadjusted_close_timestamp_micros << " usec to " << close_timestamp_micros << " usec";
+  }
+
+  footer_builder_.set_close_timestamp_micros(close_timestamp_micros);
 
   auto status = active_segment_->WriteFooterAndClose(footer_builder_);
 
@@ -787,9 +804,9 @@ Status Log::DoAppend(LogEntryBatch* entry_batch,
 
     // If the size of this entry overflows the current segment, get a new one.
     if (allocation_state() == SegmentAllocationState::kAllocationNotStarted) {
-      if ((active_segment_->Size() + entry_batch_bytes + 4) > cur_max_segment_size_) {
+      if (active_segment_->Size() + entry_batch_bytes + kEntryHeaderSize > cur_max_segment_size_) {
         LOG_WITH_PREFIX(INFO) << "Max segment size " << cur_max_segment_size_ << " reached. "
-                              << "Starting new segment allocation. ";
+                              << "Starting new segment allocation.";
         RETURN_NOT_OK(AsyncAllocateSegment());
         if (!options_.async_preallocate_segments) {
           RETURN_NOT_OK(RollOver());
@@ -812,7 +829,7 @@ Status Log::DoAppend(LogEntryBatch* entry_batch,
     }
 
     if (metrics_) {
-      metrics_->bytes_logged->IncrementBy(entry_batch_bytes);
+      metrics_->bytes_logged->IncrementBy(active_segment_->written_offset() - start_offset);
     }
 
     // Populate the offset and sequence number for the entry batch if we did a WAL write.
@@ -982,7 +999,8 @@ Status Log::GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segment
   }
 
   // Don't GC segments that are newer than the configured time-based retention.
-  int64_t now = GetCurrentTimeMicros();
+  int64_t now = GetCurrentTimeMicros() + FLAGS_time_based_wal_gc_clock_delta_usec;
+
   for (size_t i = 0; i < segments_to_gc->size(); i++) {
     const scoped_refptr<ReadableLogSegment>& segment = (*segments_to_gc)[i];
 

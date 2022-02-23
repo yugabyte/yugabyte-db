@@ -15,6 +15,8 @@
 
 #include <google/protobuf/descriptor.h>
 
+#include "yb/gen_yrpc/model.h"
+
 namespace yb {
 namespace gen_yrpc {
 
@@ -66,7 +68,8 @@ void GenerateMetricDefines(
   }
 }
 
-void GenerateHandlerAssignment(YBPrinter printer) {
+void GenerateHandlerAssignment(
+    YBPrinter printer, const google::protobuf::MethodDescriptor* method) {
   printer(".handler = [this](::yb::rpc::InboundCallPtr call) {\n");
   ScopedIndent handler_indent(printer);
   printer(
@@ -74,8 +77,16 @@ void GenerateHandlerAssignment(YBPrinter printer) {
           "static_cast<size_t>($service_method_enum$::$metric_enum_key$)].metrics);\n"
       "::yb::rpc::HandleCall<::yb::rpc::$params$Impl<$request$, $response$>>(\n"
       "    std::move(call), [this](const $request$* req, $response$* resp, "
-          "::yb::rpc::RpcContext rpc_context) {\n"
-      "  $rpc_name$(req, resp, std::move(rpc_context));\n"
+          "::yb::rpc::RpcContext rpc_context) {\n");
+  if (IsTrivialMethod(method)) {
+    printer(
+        "  auto result = $rpc_name$(*req, rpc_context.GetClientDeadline());\n"
+        "  rpc_context.RespondTrivial(&result, resp);\n"
+    );
+  } else {
+    printer("  $rpc_name$(req, resp, std::move(rpc_context));\n");
+  }
+  printer(
       "});\n"
   );
   handler_indent.Reset("},\n");
@@ -83,18 +94,19 @@ void GenerateHandlerAssignment(YBPrinter printer) {
 
 void GenerateMethodAssignments(
     YBPrinter printer, const google::protobuf::ServiceDescriptor* service,
-    const std::string &mutable_metric_fmt, bool method,
+    const std::string &mutable_metric_fmt, bool service_side,
     const std::vector<MetricDescriptor>& metric_descriptors) {
   ScopedIndent indent(printer);
 
   for (int method_idx = 0; method_idx < service->method_count(); ++method_idx) {
-    ScopedSubstituter method_subs(printer, service->method(method_idx), rpc::RpcSides::SERVICE);
+    auto* method = service->method(method_idx);
+    ScopedSubstituter method_subs(printer, method, rpc::RpcSides::SERVICE);
 
     printer(mutable_metric_fmt + " = {\n");
-    if (method) {
+    if (service_side) {
       ScopedIndent method_indent(printer);
       printer(".method = ::yb::rpc::RemoteMethod(\"$full_service_name$\", \"$rpc_name$\"),\n");
-      GenerateHandlerAssignment(printer);
+      GenerateHandlerAssignment(printer, method);
       printer(".metrics = ::yb::rpc::RpcMethodMetrics(\n");
     }
     bool first = true;
@@ -105,13 +117,13 @@ void GenerateMethodAssignments(
         printer(",\n");
       }
       ScopedSubstituter metric_subs(printer, desc.CreateSubstitutions());
-      if (method) {
+      if (service_side) {
         printer("  ");
       }
       printer(
           "    METRIC_$metric_prefix$$metric_name$_$rpc_full_name_plainchars$.Instantiate(entity)");
     }
-    printer((method ? ")" : std::string()) + "\n};\n\n");
+    printer((service_side ? ")" : std::string()) + "\n};\n\n");
   }
 }
 

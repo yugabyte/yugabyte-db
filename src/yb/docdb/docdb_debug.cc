@@ -84,8 +84,7 @@ void DocDBDebugDump(rocksdb::DB* rocksdb, ostream& out, StorageDbType db_type,
   DocDBDebugDump(rocksdb, db_type, include_binary, std::bind(&AppendLineToStream, _1, &out));
 }
 
-std::string DocDBDebugDumpToStr(
-    DocDB docdb, IncludeBinary include_binary) {
+std::string DocDBDebugDumpToStr(DocDB docdb, IncludeBinary include_binary) {
   std::stringstream ss;
   DocDBDebugDump(docdb.regular, ss, StorageDbType::kRegular, include_binary);
   if (docdb.intents) {
@@ -123,12 +122,12 @@ void DocDBDebugDumpToContainer(DocDB docdb, std::unordered_set<std::string>* out
   }
 }
 
-void DumpRocksDBToLog(rocksdb::DB* rocksdb, StorageDbType db_type) {
+void DumpRocksDBToLog(rocksdb::DB* rocksdb, StorageDbType db_type, const std::string& log_prefix) {
   std::vector<std::string> lines;
   DocDBDebugDumpToContainer(rocksdb, &lines, db_type);
-  LOG(INFO) << AsString(db_type) << " DB dump:";
+  LOG(INFO) << log_prefix << AsString(db_type) << " DB dump:";
   for (const auto& line : lines) {
-    LOG(INFO) << "  " << line;
+    LOG(INFO) << log_prefix << "  " << line;
   }
 }
 

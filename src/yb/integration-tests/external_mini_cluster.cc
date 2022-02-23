@@ -1168,9 +1168,12 @@ Status ExternalMiniCluster::StartMasters() {
   }
   string peer_addrs_str = JoinStrings(peer_addrs, ",");
   vector<string> flags = opts_.extra_master_flags;
-  // Disable fsync for tests
+  // Disable WAL fsync for tests
   flags.push_back("--durable_wal_write=false");
   flags.push_back("--enable_leader_failure_detection=true");
+  // Limit number of transaction table tablets to help avoid timeouts.
+  int num_transaction_table_tablets = NumTabletsPerTransactionTable(opts_);
+  flags.push_back(Substitute("--transaction_table_num_tablets=$0", num_transaction_table_tablets));
   // For sanitizer builds, it is easy to overload the master, leading to quorum changes.
   // This could end up breaking ever trivial DDLs like creating an initial table in the cluster.
   if (IsSanitizer()) {
@@ -1258,12 +1261,13 @@ Status ExternalMiniCluster::WaitForInitDb() {
   }
 }
 
-Result<bool> ExternalMiniCluster::is_ts_stale(int ts_idx) {
+Result<bool> ExternalMiniCluster::is_ts_stale(int ts_idx, MonoDelta deadline) {
   auto proxy = GetMasterProxy<master::MasterClusterProxy>();
   std::shared_ptr<rpc::RpcController> controller = std::make_shared<rpc::RpcController>();
   master::ListTabletServersRequestPB req;
   master::ListTabletServersResponsePB resp;
   controller->Reset();
+  controller->set_timeout(deadline);
 
   RETURN_NOT_OK(proxy.ListTabletServers(req, &resp, controller.get()));
 
@@ -1296,6 +1300,22 @@ Result<bool> ExternalMiniCluster::is_ts_stale(int ts_idx) {
     );
   }
   return is_stale;
+}
+
+CHECKED_STATUS ExternalMiniCluster::WaitForMasterToMarkTSAlive(int ts_idx, MonoDelta deadline) {
+  RETURN_NOT_OK(WaitFor([&]() -> Result<bool> {
+    return !VERIFY_RESULT(is_ts_stale(ts_idx));
+  }, deadline * kTimeMultiplier, "Is TS Alive", 1s));
+
+  return Status::OK();
+}
+
+CHECKED_STATUS ExternalMiniCluster::WaitForMasterToMarkTSDead(int ts_idx, MonoDelta deadline) {
+  RETURN_NOT_OK(WaitFor([&]() -> Result<bool> {
+    return is_ts_stale(ts_idx);
+  }, deadline * kTimeMultiplier, "Is TS dead", 1s));
+
+  return Status::OK();
 }
 
 string ExternalMiniCluster::GetBindIpForTabletServer(size_t index) const {

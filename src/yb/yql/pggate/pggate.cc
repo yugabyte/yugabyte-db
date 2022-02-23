@@ -532,9 +532,10 @@ void PgApiImpl::InvalidateTableCache(const PgObjectId& table_id) {
 Status PgApiImpl::NewCreateTablegroup(const char *database_name,
                                       const PgOid database_oid,
                                       const PgOid tablegroup_oid,
+                                      const PgOid tablespace_oid,
                                       PgStatement **handle) {
   auto stmt = std::make_unique<PgCreateTablegroup>(pg_session_, database_name,
-                                                   database_oid, tablegroup_oid);
+                                                   database_oid, tablegroup_oid, tablespace_oid);
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
 }
@@ -888,6 +889,14 @@ Status PgApiImpl::BackfillIndex(const PgObjectId& table_id) {
 
 Status PgApiImpl::DmlAppendTarget(PgStatement *handle, PgExpr *target) {
   return down_cast<PgDml*>(handle)->AppendTarget(target);
+}
+
+Status PgApiImpl::DmlAppendQual(PgStatement *handle, PgExpr *qual) {
+  return down_cast<PgDml*>(handle)->AppendQual(qual);
+}
+
+Status PgApiImpl::DmlAppendColumnRef(PgStatement *handle, PgExpr *colref) {
+  return down_cast<PgDml*>(handle)->AppendColumnRef(colref);
 }
 
 Status PgApiImpl::DmlBindColumn(PgStatement *handle, int attr_num, PgExpr *attr_value) {

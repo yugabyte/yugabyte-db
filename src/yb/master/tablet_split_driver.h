@@ -27,7 +27,8 @@ namespace master {
 class TabletSplitDriverIf {
  public:
   virtual ~TabletSplitDriverIf() {}
-  virtual CHECKED_STATUS SplitTablet(const TabletId& tablet_id) = 0;
+  virtual CHECKED_STATUS SplitTablet(
+      const TabletId& tablet_id, bool select_all_tablets_for_split) = 0;
 };
 
 }  // namespace master

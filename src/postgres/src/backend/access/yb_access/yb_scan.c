@@ -663,12 +663,11 @@ ShouldPushdownScanKey(Relation relation, YbScanPlan scan_plan, AttrNumber attnum
 		if (IsSearchArray(key->sk_flags))
 		{
 			/*
-			 * Expect equal strategy here (i.e. IN .. or = ANY(..) conditions,
+			 * Only allow equal strategy here (i.e. IN .. or = ANY(..) conditions,
 			 * NOT IN will generate <> which is not a supported LSM/BTREE
 			 * operator, so it should not get to this point.
 			 */
-			Assert(key->sk_strategy == BTEqualStrategyNumber);
-			return is_primary_key;
+			return key->sk_strategy == BTEqualStrategyNumber && is_primary_key;
 		}
 		/* No other operators are supported. */
 		return false;
@@ -736,6 +735,97 @@ ybcSetupScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 	}
 }
 
+/* Return true if typid is one of the Object Identifier Types */
+static bool YbIsOidType(Oid typid) {
+	switch (typid)
+	{
+		case OIDOID:
+		case REGPROCOID:
+		case REGPROCEDUREOID:
+		case REGOPEROID:
+		case REGOPERATOROID:
+		case REGCLASSOID:
+		case REGTYPEOID:
+		case REGROLEOID:
+		case REGNAMESPACEOID:
+		case REGCONFIGOID:
+		case REGDICTIONARYOID:
+			return true;
+		default:
+			return false;
+	}
+}
+
+/*
+ * Return true if a scan key column type is compatible with value type. 'equal_strategy' is true
+ * for BTEqualStrategyNumber.
+ */
+static bool YbIsScanCompatible(Oid column_typid, Oid value_typid, bool equal_strategy) {
+	if (column_typid == value_typid)
+		return true;
+
+	switch (column_typid)
+	{
+		case INT2OID:
+			/*
+			 * If column c0 has INT2OID type and value type is INT4OID, the value may overflow
+			 * INT2OID. For example, where clause condition "c0 = 65539" would become "c0 = 3"
+			 * and will unnecessarily fetch a row with key of 3. This will not affect correctness
+			 * because at upper Postgres layer "c0 = 65539" will be applied again to filter out
+			 * this row. We prefer to bind scan key c0 to account for the common case where INT4OID
+			 * value does not overflow INT2OID, which happens in some system relation scan queries.
+			 */
+			return equal_strategy ? (value_typid == INT4OID || value_typid == INT8OID) : false;
+		case INT4OID:
+			return equal_strategy ? (value_typid == INT2OID || value_typid == INT8OID) :
+									value_typid == INT2OID;
+		case INT8OID:
+			return value_typid == INT2OID || value_typid == INT4OID;
+
+		case TEXTOID:
+		case BPCHAROID:
+		case VARCHAROID:
+			return value_typid == TEXTOID || value_typid == BPCHAROID || value_typid == VARCHAROID;
+
+		default:
+			if (YbIsOidType(column_typid) && YbIsOidType(value_typid))
+				return true;
+			/* Conservatively return false. */
+			return false;
+	}
+}
+
+/*
+ * We require compatible column type and value type to avoid misinterpreting the value Datum
+ * using a column type that can cause wrong scan results. Returns true if the column type
+ * and value type are compatible.
+ */
+static bool YbCheckScanTypes(YbScanDesc ybScan, YbScanPlan scan_plan, int i, bool is_hashed) {
+	/* We treat the hash code column as a special column with INT4 type */
+	Oid	atttypid = is_hashed ? INT4OID :
+		ybc_get_atttypid(scan_plan->bind_desc, scan_plan->bind_key_attnums[i]);
+	Assert(OidIsValid(atttypid));
+	Oid valtypid = ybScan->key[i].sk_subtype;
+	/*
+	 * Example: CREATE TABLE t1(c0 REAL, c1 TEXT, PRIMARY KEY(c0 asc));
+	 *          INSERT INTO t1(c0, c1) VALUES(0.4, 'SHOULD BE IN RESULT');
+	 *          SELECT ALL t1.c1 FROM t1 WHERE ((0.6)>(t1.c0));
+	 * Internally, c0 has float4 type, 0.6 has float8 type. If we bind 0.6 directly with
+	 * column c0, float8 0.6 will be misinterpreted as float4. However, casting to float4
+	 * may lose precision. Here we simply do not bind a key when there is a type mismatch
+	 * by leaving start_valid[idx] and end_valid[idx] as false. For the following cases
+	 * we assume that Postgres ensures there is no concern for type mismatch.
+	 * (1) value type is not a valid type id
+	 * (2) InvalidStrategy (for IS NULL)
+	 * (3) value type is a polymorphic pseudotype
+	 */
+	return !OidIsValid(valtypid) ||
+			ybScan->key[i].sk_strategy == InvalidStrategy ||
+			YbIsScanCompatible(atttypid, valtypid,
+				ybScan->key[i].sk_strategy == BTEqualStrategyNumber) ||
+			IsPolymorphicType(valtypid);
+}
+
 /* Use the scan-descriptor and scan-plan to setup binds for the queryplan */
 static void
 ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
@@ -756,6 +846,8 @@ ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 			if (is_hashed || bms_is_member(idx, scan_plan->sk_cols))
 			{
 				bool is_null = (ybScan->key[i].sk_flags & SK_ISNULL) == SK_ISNULL;
+
+				Assert(YbCheckScanTypes(ybScan, scan_plan, i, is_hashed));
 
 				ybcBindColumn(ybScan, scan_plan->bind_desc, scan_plan->bind_key_attnums[i],
 							  ybScan->key[i].sk_argument, is_null, is_hashed);
@@ -898,6 +990,9 @@ ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 		if (is_column_bound[idx])
 			continue;
 
+		if (!YbCheckScanTypes(ybScan, scan_plan, i, is_hashed))
+			continue;
+
 		switch (ybScan->key[i].sk_strategy)
 		{
 			case InvalidStrategy: /* fallthrough, c IS NULL -> c = NULL (checked above) */
@@ -934,6 +1029,7 @@ ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 						* workspace context.
 						*/
 					arrayval = DatumGetArrayTypeP(cur->sk_argument);
+					Assert(ybScan->key[i].sk_subtype == ARR_ELEMTYPE(arrayval));
 					/* We could cache this data, but not clear it's worth it */
 					get_typlenbyvalalign(ARR_ELEMTYPE(arrayval), &elmlen,
 											&elmbyval, &elmalign);

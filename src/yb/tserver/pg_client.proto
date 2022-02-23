@@ -175,6 +175,7 @@ message PgCreateTablegroupRequestPB {
 
   string database_name = 2;
   PgObjectIdPB tablegroup_id = 3;
+  PgObjectIdPB tablespace_id = 4;
 }
 
 message PgCreateTablegroupResponsePB {

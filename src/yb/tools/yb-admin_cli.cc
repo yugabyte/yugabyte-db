@@ -178,7 +178,7 @@ Result<pair<int, bool>> GetTimeoutAndAddIndexesFlag(
   return std::make_pair(temp_pair.first, temp_pair.second.Test(AddIndexes::ADD_INDEXES));
 }
 
-YB_DEFINE_ENUM(ListTabletsFlags, (JSON));
+YB_DEFINE_ENUM(ListTabletsFlags, (JSON)(INCLUDE_FOLLOWERS));
 
 } // namespace
 
@@ -375,7 +375,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
 
   Register(
       "list_tablets",
-      " <table> [max_tablets] (default 10, set 0 for max) [JSON]",
+      " <table> [max_tablets] (default 10, set 0 for max) [JSON] [include_followers]",
       [client](const CLIArguments& args) -> Status {
         std::pair<int, EnumBitSet<ListTabletsFlags>> arguments;
         const auto table_name  = VERIFY_RESULT(ResolveSingleTableName(
@@ -386,7 +386,8 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
             }));
         RETURN_NOT_OK_PREPEND(
             client->ListTablets(
-                table_name, arguments.first, arguments.second.Test(ListTabletsFlags::JSON)),
+                table_name, arguments.first, arguments.second.Test(ListTabletsFlags::JSON),
+                arguments.second.Test(ListTabletsFlags::INCLUDE_FOLLOWERS)),
             Format("Unable to list tablets of table $0", table_name));
         return Status::OK();
       });
@@ -873,6 +874,45 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
                               "Unable to upgrade YSQL cluster");
         return Status::OK();
       });
+
+  Register(
+      // Today we have a weird pattern recognization for table name.
+      // The expected input argument for the <table> is:
+      // <db type>.<namespace> <table name>
+      // (with a space in between).
+      // So the expected arguement size is 3 (= 2 for the table name + 1 for the retention time).
+      "set_wal_retention_secs", " <table> <seconds>", [client](const CLIArguments& args) -> Status {
+        RETURN_NOT_OK(CheckArgumentsCount(args.size(), 3, 3));
+
+        uint32_t wal_ret_secs = 0;
+        const auto table_name = VERIFY_RESULT(
+            ResolveSingleTableName(client, args.begin(), args.end(),
+            [&wal_ret_secs] (auto i, const auto& end) -> Status {
+              if (PREDICT_FALSE(i == end)) {
+                return STATUS(InvalidArgument, "Table name not found in the command");
+              }
+
+              const auto raw_time = VERIFY_RESULT(CheckedStoi(*i));
+              if (raw_time < 0) {
+                return STATUS(
+                    InvalidArgument, "WAL retention time must be non-negative integer in seconds");
+              }
+              wal_ret_secs = static_cast<uint32_t>(raw_time);
+              return Status::OK();
+            }
+            ));
+        RETURN_NOT_OK_PREPEND(
+            client->SetWalRetentionSecs(table_name, wal_ret_secs),
+            "Unable to set WAL retention time (sec) for the cluster");
+        return Status::OK();
+      });
+
+  Register("get_wal_retention_secs", " <table>", [client](const CLIArguments& args) -> Status {
+    RETURN_NOT_OK(CheckArgumentsCount(args.size(), 2, 2));
+    const auto table_name = VERIFY_RESULT(ResolveSingleTableName(client, args.begin(), args.end()));
+    RETURN_NOT_OK(client->GetWalRetentionSecs(table_name));
+    return Status::OK();
+  });
 } // NOLINT, prevents long function message
 
 Result<std::vector<client::YBTableName>> ResolveTableNames(

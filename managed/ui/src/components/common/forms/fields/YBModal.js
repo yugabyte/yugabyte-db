@@ -52,7 +52,8 @@ export default class YBModal extends Component {
       normalizeFooter,
       disableSubmit,
       customHeader,
-      formClassName
+      formClassName,
+      cancelBtnProps = {}
     } = this.props;
     let btnDisabled = false;
     if (submitting || asyncValidating || disableSubmit) {
@@ -96,7 +97,12 @@ export default class YBModal extends Component {
                   />
                 )}
                 {showCancelButton && (
-                  <YBButton btnClass="btn" btnText={cancelLabel} onClick={onHide} />
+                  <YBButton
+                    btnClass="btn"
+                    btnText={cancelLabel}
+                    onClick={onHide}
+                    {...cancelBtnProps}
+                  />
                 )}
                 {footerAccessory && (
                   <div className="pull-left modal-accessory">{footerAccessory}</div>

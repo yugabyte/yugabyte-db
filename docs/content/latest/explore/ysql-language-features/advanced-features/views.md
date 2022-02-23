@@ -18,7 +18,7 @@ This document describes how to create, use, and manage views in YSQL.
 
 ## Overview
 
-Views allow you to present data in YugabyteDB tables by using a different variety of named queries. In essence, a view is a proxy for a complex query to which you assign a name. In YSQL, views do not store data.
+Regular views allow you to present data in YugabyteDB tables by using a different variety of named queries. In essence, a view is a proxy for a complex query to which you assign a name. In YSQL, views do not store data. However, YSQL also supports materialized views which _do_ store the results of the query.
 
 ## Creating Views
 
@@ -156,10 +156,68 @@ An updatable view can contain a combination of updatable and non-updatable colum
 
 To be able to update a view, you need to have the required privilege on this view (but not necessarily on the base table).
 
-The following example shows how use the the `employees_view` to delete the row that has been added to the  `employees` table:
+The following example shows how use the `employees_view` to delete the row that has been added to the  `employees` table:
 
 ```sql
 DELETE FROM employees_view
   WHERE employee_no = 1227;
 ```
 
+## Materialized Views
+
+Materialized views are relations that persist the results of a query. They can be created using the `CREATE MATERIALIZED VIEW` command, and their contents can be updated using the `REFRESH MATERIALIZED VIEW` command.
+
+The following very simplified example creates a materialized view based on only one table and selects two of its columns:
+
+```sql
+CREATE MATERIALIZED VIEW employees_mview AS 
+  SELECT employee_no, name FROM employees;
+```
+
+The following example shows how to query `employees_mview`:
+
+```sql
+SELECT * FROM employees_mview;
+```
+
+The preceding query produces the following output:
+
+```
+employee_no | name
+------------+---------------------------
+1223        | Lucille Ball
+1224        | John Zimmerman
+1221        | John Smith
+1222        | Bette Davis
+```
+
+```sql
+INSERT INTO employees VALUES 
+  (1225, 'Jane Doe', '4 Fifth Street', 'Accounting');
+```
+
+After inserting values into the base relation (`employees`), we will have to `REFRESH` the materialized view to update its contents.
+
+```sql
+REFRESH MATERIALIZED VIEW employees;
+```
+```sql
+SELECT * FROM employees_mview;
+```
+
+The preceding query produces the following output:
+
+```
+employee_no | name
+------------+---------------------------
+1223        | Lucille Ball
+1224        | John Zimmerman
+1221        | John Smith
+1222        | Bette Davis
+```
+
+
+For detailed documentation on materialized views please refer to the following links:
+- [`CREATE MATERIALIZED VIEW`](../../api/ysql/the-sql-language/statements/ddl_create_matview)
+- [`REFRESH MATERIALIZED VIEW`](../../api/ysql/the-sql-language/statements/ddl_refresh_matview)
+- [`DROP MATERIALIZED VIEW`](../../api/ysql/the-sql-language/statements/ddl_drop_matview)

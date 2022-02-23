@@ -7,7 +7,7 @@ import { YBTabsPanel, YBTabsWithLinksPanel } from '../components/panels';
 import { isAvailable, showOrRedirect } from '../utils/LayoutUtils';
 import { HAInstances, HAReplication } from '../components/ha';
 import { AlertConfigurationContainer } from '../components/alerts';
-import { UserManagement } from '../components/users/';
+import { UserManagementContainer } from '../components/users';
 import './Administration.scss';
 
 // very basic redux store definition, just enough to compile without ts errors
@@ -130,7 +130,7 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
     const { id, title, defaultTab } = USER_MANAGAEMENT_TAB;
     return (
       <Tab eventKey={id} title={title} key={id}>
-        <UserManagement
+        <UserManagementContainer
           defaultTab={defaultTab}
           activeTab={params.section}
           routePrefix={`/admin/${id}/`}

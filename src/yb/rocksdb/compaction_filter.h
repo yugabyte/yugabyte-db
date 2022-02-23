@@ -149,12 +149,10 @@ class CompactionFilter {
   // The name will be printed to LOG file on start up for diagnosis.
   virtual const char* Name() const = 0;
 
-  // These methods specify any known lower or upper bounds on the tablet's active keyspace. By
-  // overriding these methods, a compaction filter implementation is instructing the compaction job
-  // that it can assume these bounds to be accurate for the sake of optimizing I/O during
-  // compaction.
-  virtual Slice DropKeysLessThan() const { return Slice(); }
-  virtual Slice DropKeysGreaterOrEqual() const { return Slice(); }
+  // Returns a list of the ranges which should be considered "live" on this tablet. Returns an empty
+  // list if the whole key range of the tablet should be considered live. Returned ranges are
+  // represented as pairs of Slices denoting the beginning and end of the range in user space.
+  virtual std::vector<std::pair<Slice, Slice>> GetLiveRanges() const { return {}; }
 };
 
 // Each compaction will create a new CompactionFilter allowing the

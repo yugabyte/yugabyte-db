@@ -1,3 +1,3 @@
-import { UserManagement } from './UserManagement';
+import UserManagementContainer from './UserManagementContainer';
 
-export { UserManagement };
+export { UserManagementContainer };

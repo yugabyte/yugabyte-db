@@ -10,15 +10,17 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
-import com.yugabyte.yw.common.KubernetesManager;
-import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.models.Provider;
+
+import io.fabric8.kubernetes.api.model.Pod;
+
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -36,13 +38,14 @@ public class KubernetesCheckNumPod extends AbstractTaskBase {
     }
   }
 
-  private final KubernetesManager kubernetesManager;
+  private final KubernetesManagerFactory kubernetesManagerFactory;
 
   @Inject
   protected KubernetesCheckNumPod(
-      BaseTaskDependencies baseTaskDependencies, KubernetesManager kubernetesManager) {
+      BaseTaskDependencies baseTaskDependencies,
+      KubernetesManagerFactory kubernetesManagerFactory) {
     super(baseTaskDependencies);
-    this.kubernetesManager = kubernetesManager;
+    this.kubernetesManagerFactory = kubernetesManagerFactory;
   }
 
   // Number of iterations to wait for the pod to come up.
@@ -99,10 +102,11 @@ public class KubernetesCheckNumPod extends AbstractTaskBase {
     if (taskParams().config == null) {
       config = Provider.get(taskParams().providerUUID).getUnmaskedConfig();
     }
-    ShellResponse podResponse =
-        kubernetesManager.getPodInfos(config, taskParams().nodePrefix, taskParams().namespace);
-    JsonNode podInfos = parseShellResponseAsJson(podResponse);
-    if (podInfos.path("items").size() == taskParams().podNum) {
+    List<Pod> pods =
+        kubernetesManagerFactory
+            .getManager()
+            .getPodInfos(config, taskParams().nodePrefix, taskParams().namespace);
+    if (pods.size() == taskParams().podNum) {
       return true;
     } else {
       return false;

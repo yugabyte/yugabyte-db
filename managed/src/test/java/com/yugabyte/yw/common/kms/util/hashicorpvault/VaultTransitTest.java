@@ -118,7 +118,7 @@ public class VaultTransitTest extends FakeDBApplication {
   public void testCreateAndDeleteNewKey() throws Exception {
     UUID universeUUID = UUID.randomUUID();
     UUID configUUID = UUID.randomUUID();
-    String keyName = "key_" + configUUID.toString() + "_" + universeUUID.toString();
+    String keyName = "key_yugabyte"; // HC_VAULT_EKE_NAME
 
     VaultAccessor vAccessor;
     VaultTransit transitEngine;

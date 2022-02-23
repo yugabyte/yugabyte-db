@@ -147,6 +147,10 @@ service CalculatorService {
   rpc Lightweight(LightweightRequestPB) returns (LightweightResponsePB) {
     option (yb.rpc.lightweight_method).sides = SERVICE;
   };
+
+  rpc Trivial(TrivialRequestPB) returns (TrivialResponsePB) {
+    option (yb.rpc.trivial) = true;
+  };
 }
 
 message ConcatRequestPB {
@@ -256,4 +260,17 @@ message LightweightResponsePB {
   map<string, int64> map = 25;
 
   optional string short_debug_string = 100;
+}
+
+message TrivialRequestPB {
+  optional int32 value = 1;
+}
+
+message TrivialErrorPB {
+  optional int32 code = 1;
+}
+
+message TrivialResponsePB {
+  optional TrivialErrorPB error = 1;
+  optional int32 value = 2;
 }

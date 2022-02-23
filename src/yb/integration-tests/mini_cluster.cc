@@ -103,6 +103,7 @@ DECLARE_int32(replication_factor);
 DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
 DECLARE_string(use_private_ip);
 DECLARE_int32(load_balancer_initial_delay_secs);
+DECLARE_int32(transaction_table_num_tablets);
 
 namespace yb {
 
@@ -184,6 +185,10 @@ Status MiniCluster::Start(const std::vector<tserver::TabletServerOptions>& extra
   FLAGS_ts_admin_svc_num_threads = 2;
   FLAGS_ts_consensus_svc_num_threads = 8;
   FLAGS_ts_remote_bootstrap_svc_num_threads = 2;
+
+  // Limit number of transaction table tablets to help avoid timeouts.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_num_tablets) =
+      NumTabletsPerTransactionTable(options_);
 
   // We are testing public/private IPs using mini cluster. So set mode to 'cloud'.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_private_ip) = "cloud";
@@ -855,6 +860,20 @@ std::vector<tablet::TabletPeerPtr> ListTableInactiveSplitTabletPeers(
     }
   }
   return result;
+}
+
+Result<std::vector<tablet::TabletPeerPtr>> WaitForTableActiveTabletLeadersPeers(
+    MiniCluster* cluster, const TableId& table_id,
+    const size_t num_active_leaders, const MonoDelta timeout) {
+  SCHECK_NOTNULL(cluster);
+
+  std::vector<tablet::TabletPeerPtr> active_leaders_peers;
+  RETURN_NOT_OK(LoggedWaitFor([&] {
+    active_leaders_peers = ListTableActiveTabletLeadersPeers(cluster, table_id);
+    LOG(INFO) << "active_leader_peers.size(): " << active_leaders_peers.size();
+    return active_leaders_peers.size() == num_active_leaders;
+  }, timeout, "Waiting for leaders ..."));
+  return active_leaders_peers;
 }
 
 Status WaitUntilTabletHasLeader(

@@ -32,7 +32,7 @@ $body$;
 
 ## regr_avgy(), regr_avgx()
 
-**Purpose:** `regr_avgy()` returns the average of the first argument for those rows where both arguments are `NOT NULL`. `regr_avgx()` returns the average of the second argument for those rows where both arguments are `NOT NULL`.  
+**Purpose:** `regr_avgy()` returns the average of the first argument for those rows where both arguments are `NOT NULL`. `regr_avgx()` returns the average of the second argument for those rows where both arguments are `NOT NULL`.
 
 ## regr_count()
 
@@ -74,7 +74,7 @@ select * from test;
 This is the result:
 
 ```
- r_avgy = avgy | r_avgx = avgx | r_count = county | r_count = countx 
+ r_avgy = avgy | r_avgx = avgx | r_count = county | r_count = countx
 ---------------+---------------+------------------+------------------
  true          | true          | true             | true
 ```
@@ -107,7 +107,7 @@ from t;
 This is a typical result:
 
 ```
- noise-free slope | noise-free intercept | noisy slope | noisy intercept 
+ noise-free slope | noise-free intercept | noisy slope | noisy intercept
 ------------------+----------------------+-------------+-----------------
   5.00000000      |  3.00000000          |  4.99778685 |  3.70820546
 ```
@@ -127,7 +127,7 @@ call populate_t(
 
 The results from `regr_slope()` and `regr_intercept()` line up well with what you'd expect.
 
-The section [Scatter-plot for synthetic data](../../../covid-data-case-study/analyze-the-covidcast-data/scatter-plot-for-2020-10-21/#scatter-plot-for-synthetic-data) shows a scatter plot of the data in table _"t"_ (created with actual arguments for procedure _"populate_t()"_ that that section specifies) with the straight line whose slope and y-axis intercept, as returned by `regr_slope()` and `regr_intercept()`, superimposed.
+The section [Scatter-plot for synthetic data](../../../covid-data-case-study/analyze-the-covidcast-data/scatter-plot-for-2020-10-21/#scatter-plot-for-synthetic-data) shows a scatter plot of the data in table _"t"_ (created with actual arguments for procedure _"populate_t()"_ which that section specifies) with the straight line whose slope and y-axis intercept, as returned by `regr_slope()` and `regr_intercept()`, superimposed.
 
 ## regr_r2()
 
@@ -145,7 +145,7 @@ from t;
 This is the result:
 
 ```
- test for noise-free data | test for noisy data 
+ test for noise-free data | test for noisy data
 --------------------------+---------------------
  true                     | true
 ```
@@ -187,7 +187,7 @@ select * from test;
 This is the result:
 
 ```
- regr_syy() test | regr_sxx() test | regr_sxy() test 
+ regr_syy() test | regr_sxx() test | regr_sxy() test
 -----------------+-----------------+-----------------
  true            | true            | true
 ```
@@ -200,7 +200,7 @@ select * from test;
 ```
 The result is the same as the result for the noise-free data.
 
-## Checking the formulas for regr_syy(), regr_sxx(), regr_sxy() 
+## Checking the formulas for regr_syy(), regr_sxx(), regr_sxy()
 
 Now try this:
 
@@ -263,13 +263,13 @@ select t as "noisy data" from f();
 This is a typical result:
 
 ```
-       noise-free data        
+       noise-free data
 ------------------------------
  regr_syy:   2083125.00000000
  regr_sxx:     83325.00000000
  regr_sxy:    416625.00000000
 
-          noisy data          
+          noisy data
 ------------------------------
  regr_syy:   2121737.65951556
  regr_sxx:     83325.00000000

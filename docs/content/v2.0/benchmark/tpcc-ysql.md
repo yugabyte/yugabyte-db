@@ -24,7 +24,7 @@ isTocNested: true
 
 </ul>
 
-Follow the steps below to to run TPC-C benchmarks against YugabyteDB for YSQL. [TPC-C](http://www.tpc.org/tpcc/) is a popular online transaction processing benchmark that provides metrics you can use to evaluate the performance of YugabyteDB for concurrent transactions of different types and complexity that are either either executed online or queued for deferred execution.
+Follow the steps below to to run TPC-C benchmarks against YugabyteDB for YSQL. [TPC-C](http://www.tpc.org/tpcc/) is a popular online transaction processing benchmark that provides metrics you can use to evaluate the performance of YugabyteDB for concurrent transactions of different types and complexity that are either executed online or queued for deferred execution.
 
 ## Step 1. Download the TPC-C binaries
 

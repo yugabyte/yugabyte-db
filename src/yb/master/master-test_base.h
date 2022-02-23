@@ -185,7 +185,8 @@ class MasterTestBase : public YBTest {
 
   Status CreateTablegroup(const TablegroupId& tablegroup_id,
                           const NamespaceId& namespace_id,
-                          const NamespaceName& namespace_name);
+                          const NamespaceName& namespace_name,
+                          const TablespaceId& tablespace_id);
 
   Status DeleteTablegroup(const TablegroupId& tablegroup_id,
                           const NamespaceId& namespace_id);

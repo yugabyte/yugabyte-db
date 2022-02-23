@@ -203,7 +203,6 @@ static Status DoSync(int fd, const string& filename) {
   if (FLAGS_never_fsync) {
     return Status::OK();
   }
-  LOG(FATAL) << "FLAGS_never_fsync should be set in tests";
   if (FLAGS_writable_file_use_fsync) {
     if (fsync(fd) < 0) {
       return STATUS_IO_ERROR(filename, errno);
@@ -401,7 +400,6 @@ class PosixWritableFile : public WritableFile {
     if (FLAGS_never_fsync) {
       return Status::OK();
     }
-    LOG(FATAL) << "FLAGS_never_fsync should be set in tests";
 #if defined(__linux__)
     int flags = SYNC_FILE_RANGE_WRITE;
     if (mode == FLUSH_SYNC) {
@@ -807,7 +805,6 @@ class PosixRWFile final : public RWFile {
     if (FLAGS_never_fsync) {
       return Status::OK();
     }
-    LOG(FATAL) << "FLAGS_never_fsync should be set in tests";
 #if defined(__linux__)
     int flags = SYNC_FILE_RANGE_WRITE;
     if (mode == FLUSH_SYNC) {
@@ -1048,7 +1045,6 @@ class PosixEnv : public Env {
     TRACE_EVENT1("io", "SyncDir", "path", dirname);
     ThreadRestrictions::AssertIOAllowed();
     if (FLAGS_never_fsync) return Status::OK();
-    LOG(FATAL) << "FLAGS_never_fsync should be set in tests";
     int dir_fd;
     if ((dir_fd = open(dirname.c_str(), O_DIRECTORY|O_RDONLY)) == -1) {
       return STATUS_IO_ERROR(dirname, errno);

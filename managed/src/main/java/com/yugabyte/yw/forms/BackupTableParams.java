@@ -90,9 +90,6 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "Backup UUID")
   public UUID backupUuid = null;
 
-  @ApiModelProperty(value = "Controller type")
-  public String controller = null;
-
   @ApiModelProperty(value = "Should table backup errors be ignored")
   public Boolean ignoreErrors = false;
 
@@ -101,6 +98,12 @@ public class BackupTableParams extends TableManagerParams {
 
   @ApiModelProperty(value = "Is tablespaces information included")
   public Boolean useTablespaces = false;
+
+  @ApiModelProperty(value = "User name of the current tables owner")
+  public String oldOwner = "yugabyte";
+
+  @ApiModelProperty(value = "User name of the new tables owner")
+  public String newOwner = null;
 
   @JsonIgnore
   public Set<String> getTableNames() {

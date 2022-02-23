@@ -256,7 +256,7 @@ void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
   // proxy.
   should_use_local_node_proxy_ = ShouldUseNodeLocalForwardProxy();
 
-  VLOG(2) << "Tablet " << tablet_id_ << ": Writing batch to replica "
+  VLOG(2) << "Tablet " << tablet_id_ << ": Sending " << command_->ToString() << " to replica "
           << current_ts_->ToString() << " using local node forward proxy "
           << should_use_local_node_proxy_;
 
@@ -495,7 +495,8 @@ std::shared_ptr<tserver::TabletServerServiceProxy> TabletInvoker::proxy() const 
 }
 
 void TabletInvoker::LookupTabletCb(const Result<RemoteTabletPtr>& result) {
-  VLOG(1) << "LookupTabletCb(" << yb::ToString(result) << ")";
+  VLOG_WITH_FUNC(1) << AsString(result) << ", command: " << command_->ToString()
+                    << ", retrier: " << retrier_->ToString();
 
   if (result.ok()) {
 #ifndef DEBUG

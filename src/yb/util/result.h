@@ -360,6 +360,9 @@ struct IsNonConstResultRvalue<Result<T>&&> : std::true_type {};
 #define VERIFY_RESULT(expr) \
   RESULT_CHECKER_HELPER(expr, RETURN_NOT_OK(__result))
 
+// Returns if result is not ok, extracts result value in case of success.
+#define VERIFY_RESULT_OR_SET_CODE(expr, code) \
+  RESULT_CHECKER_HELPER(expr, RETURN_NOT_OK_SET_CODE(__result, code))
 
 // Helper version of VERIFY_RESULT which returns reference instead of std::reference_wrapper.
 #define VERIFY_RESULT_REF(expr) \

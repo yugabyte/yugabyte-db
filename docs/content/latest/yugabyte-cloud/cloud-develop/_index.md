@@ -13,9 +13,15 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Applications connect to and interact with YugabyteDB using API client libraries, also called client drivers. Before you can connect an application, you need to install the correct driver. Yugabyte Cloud clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters. For information on available drivers, refer to [Build an application](../../quick-start/build-apps).
+Applications connect to and interact with YugabyteDB using API client libraries, also called client drivers. Before you can connect an application, you need to install the correct driver. Because the YugabyteDB YSQL API is PostgreSQL-compatible, and the YCQL API has roots in the Apache Cassandra CQL, YugabyteDB supports many third-party drivers.
 
-Use the examples in this section to learn how to connect your applications to Yugabyte Cloud.
+- Use the examples in this section to learn how to connect applications to Yugabyte Cloud.
+
+- To get started building applications for Yugabyte Cloud, refer to [Build an application](../cloud-quickstart/cloud-build-apps/).
+
+- For information on available drivers, refer to [Drivers](../../reference/drivers/).
+
+Yugabyte Cloud clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters.
 
 <div class="row">
 

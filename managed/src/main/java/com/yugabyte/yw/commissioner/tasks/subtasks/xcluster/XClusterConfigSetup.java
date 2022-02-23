@@ -44,7 +44,12 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
           client.setupUniverseReplication(
               xClusterConfig.getReplicationGroupName(),
               taskParams().createFormData.tables,
-              new HashSet<>(NetUtil.parseStringsAsPB(sourceUniverse.getMasterAddresses())));
+              // For dual NIC, the universes will be able to communicate over the secondary
+              // addresses.
+              new HashSet<>(
+                  NetUtil.parseStringsAsPB(
+                      sourceUniverse.getMasterAddresses(
+                          false /* mastersQueryable */, true /* getSecondary */))));
       if (resp.hasError()) {
         throw new RuntimeException(
             String.format(

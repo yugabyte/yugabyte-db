@@ -71,10 +71,8 @@ DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
 DECLARE_int64(tablet_split_high_phase_size_threshold_bytes);
 DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
 DECLARE_int64(tablet_split_high_phase_shard_count_per_node);
-DECLARE_uint64(max_queued_split_candidates);
 
 DECLARE_int32(heartbeat_interval_ms);
-DECLARE_int32(process_split_tablet_candidates_interval_msec);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(TEST_txn_participant_inject_latency_on_apply_update_txn_ms);
 
@@ -439,6 +437,16 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
 
   auto value = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM t WHERE key = 1"));
   ASSERT_EQ(value, "hello");
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(RowLockWithoutTransaction)) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  auto status = conn.Execute(
+      "SELECT tmplinline FROM pg_catalog.pg_pltemplate WHERE tmplname !~ tmplhandler FOR SHARE");
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.message().ToBuffer(),
+                      "Read request with row mark types must be part of a transaction");
 }
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(WriteRetry)) {
@@ -2120,7 +2128,6 @@ class PgMiniTabletSplitTest : public PgMiniTest {
     FLAGS_yb_num_shards_per_tserver = 1;
     FLAGS_tablet_split_low_phase_size_threshold_bytes = 0;
     FLAGS_tablet_split_high_phase_size_threshold_bytes = 0;
-    FLAGS_max_queued_split_candidates = 10;
     FLAGS_tablet_split_low_phase_shard_count_per_node = 0;
     FLAGS_tablet_split_high_phase_shard_count_per_node = 0;
     FLAGS_tablet_force_split_threshold_bytes = 30_KB;
@@ -2130,7 +2137,6 @@ class PgMiniTabletSplitTest : public PgMiniTest {
     FLAGS_db_index_block_size_bytes = 2_KB;
     FLAGS_heartbeat_interval_ms = 1000;
     FLAGS_tserver_heartbeat_metrics_interval_ms = 1000;
-    FLAGS_process_split_tablet_candidates_interval_msec = 1000;
     FLAGS_TEST_inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms = 4000;
     FLAGS_ysql_prefetch_limit = 32;
     PgMiniTest::SetUp();

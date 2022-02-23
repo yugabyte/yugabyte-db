@@ -9,8 +9,8 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.net.HostAndPort;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.PortType;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.common.password.RedactingService;
@@ -22,9 +22,11 @@ import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TransactionUtil;
+import io.ebean.Ebean;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.ebean.SqlQuery;
 import io.ebean.annotation.DbJson;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -59,6 +61,7 @@ public class Universe extends Model {
   public static final String DISABLE_ALERTS_UNTIL = "disableAlertsUntilSecs";
   public static final String TAKE_BACKUPS = "takeBackups";
   public static final String HELM2_LEGACY = "helm2Legacy";
+  public static final String DUAL_NET_LEGACY = "dualNetLegacy";
 
   // This is a key lock for Universe by UUID.
   public static final KeyLock<UUID> UNIVERSE_KEY_LOCK = new KeyLock<UUID>();
@@ -135,6 +138,7 @@ public class Universe extends Model {
   @Transient private UniverseDefinitionTaskParams universeDetails;
 
   public void setUniverseDetails(UniverseDefinitionTaskParams details) {
+    universeDetailsJson = Json.stringify(Json.toJson(details));
     universeDetails = details;
   }
 
@@ -288,6 +292,26 @@ public class Universe extends Model {
         .eq("name", universeName)
         .findOneOrEmpty()
         .map(Universe::fillUniverseDetails);
+  }
+
+  /**
+   * Find a single attribute from universe_details_json column of Universe.
+   *
+   * @param <T> the attribute type.
+   * @param universeUUID the universe UUID to be searched for.
+   * @param fieldName the name of the field.
+   * @return the attribute value.
+   */
+  public static <T> Optional<T> getUniverseDetailsField(
+      Class<T> clazz, UUID universeUUID, String fieldName) {
+    String query =
+        String.format(
+            "select universe_details_json::jsonb->>'%s' as field from universe"
+                + " where universe_uuid = :universeUUID",
+            fieldName);
+    SqlQuery sqlQuery = Ebean.createSqlQuery(query);
+    sqlQuery.setParameter("universeUUID", universeUUID);
+    return sqlQuery.findOneOrEmpty().map(row -> clazz.cast(row.get("field")));
   }
 
   /**
@@ -521,6 +545,10 @@ public class Universe extends Model {
     return getMasterAddresses(false);
   }
 
+  public String getMasterAddresses(boolean mastersQueryable) {
+    return getMasterAddresses(mastersQueryable, false);
+  }
+
   /**
    * Returns a comma separated list of <privateIp:masterRpcPort> for all nodes that have the
    * isMaster flag set to true in this cluster.
@@ -529,12 +557,12 @@ public class Universe extends Model {
    * @return a comma separated string of master 'host:port' or, if masters are not queryable, an
    *     empty string.
    */
-  public String getMasterAddresses(boolean mastersQueryable) {
+  public String getMasterAddresses(boolean mastersQueryable, boolean getSecondary) {
     List<NodeDetails> masters = getMasters();
     if (mastersQueryable && !verifyMastersAreQueryable(masters)) {
       return "";
     }
-    return getHostPortsString(masters, ServerType.MASTER, PortType.RPC);
+    return getHostPortsString(masters, ServerType.MASTER, PortType.RPC, getSecondary);
   }
 
   /**
@@ -625,12 +653,28 @@ public class Universe extends Model {
     return port;
   }
 
-  // Helper API to create the based on the server type.
   private String getHostPortsString(
       List<NodeDetails> serverNodes, ServerType type, PortType portType) {
+    return getHostPortsString(serverNodes, type, portType, false);
+  }
+
+  // Helper API to create the based on the server type.
+  private String getHostPortsString(
+      List<NodeDetails> serverNodes, ServerType type, PortType portType, boolean getSecondary) {
     StringBuilder servers = new StringBuilder();
     for (NodeDetails node : serverNodes) {
-      if (node.cloudInfo.private_ip != null) {
+      // Only get secondary if dual net legacy is false.
+      boolean shouldGetSecondary =
+          this.getConfig().getOrDefault(DUAL_NET_LEGACY, "true").equals("false")
+              ? getSecondary
+              : false;
+      String nodeIp =
+          shouldGetSecondary ? node.cloudInfo.secondary_private_ip : node.cloudInfo.private_ip;
+      // In case the secondary IP is null, just re-assign to primary.
+      if (nodeIp == null || nodeIp.equals("null")) {
+        nodeIp = node.cloudInfo.private_ip;
+      }
+      if (nodeIp != null) {
         int port = 0;
         switch (type) {
           case YQLSERVER:
@@ -665,7 +709,7 @@ public class Universe extends Model {
         if (servers.length() != 0) {
           servers.append(",");
         }
-        servers.append(node.cloudInfo.private_ip).append(":").append(port);
+        servers.append(nodeIp).append(":").append(port);
       }
     }
     return servers.toString();
@@ -678,7 +722,8 @@ public class Universe extends Model {
    */
   public void save(boolean incrementVersion) {
     // Update the universe details json.
-    this.universeDetailsJson = Json.stringify(Json.toJson(universeDetails));
+    this.universeDetailsJson =
+        Json.stringify(RedactingService.filterSecretFields(Json.toJson(universeDetails)));
     this.version = incrementVersion ? this.version + 1 : this.version;
     super.save();
   }

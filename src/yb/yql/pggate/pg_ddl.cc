@@ -133,10 +133,12 @@ void PgAlterDatabase::RenameDatabase(const char *newname) {
 PgCreateTablegroup::PgCreateTablegroup(PgSession::ScopedRefPtr pg_session,
                                        const char *database_name,
                                        const PgOid database_oid,
-                                       const PgOid tablegroup_oid)
+                                       const PgOid tablegroup_oid,
+                                       const PgOid tablespace_oid)
     : PgDdl(pg_session) {
   req_.set_database_name(database_name);
   PgObjectId(database_oid, tablegroup_oid).ToPB(req_.mutable_tablegroup_id());
+  PgObjectId(database_oid, tablespace_oid).ToPB(req_.mutable_tablespace_id());
 }
 
 PgCreateTablegroup::~PgCreateTablegroup() {

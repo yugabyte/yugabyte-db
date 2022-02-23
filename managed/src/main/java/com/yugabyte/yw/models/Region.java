@@ -79,6 +79,12 @@ public class Region extends Model {
       accessMode = READ_WRITE)
   public String ybImage;
 
+  @ApiModelProperty(
+      value = "Indicates whether to use YB Prebuilt AMI flow or not for the supplied AMI ID",
+      accessMode = READ_WRITE)
+  @Column(nullable = false, columnDefinition = "boolean default false")
+  public boolean ybPrebuiltAmi = false;
+
   @Column(columnDefinition = "float")
   @ApiModelProperty(value = "The region's longitude", example = "-120.01", accessMode = READ_ONLY)
   @Constraints.Min(-180)

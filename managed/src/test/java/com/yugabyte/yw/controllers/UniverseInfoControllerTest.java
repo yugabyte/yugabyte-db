@@ -139,7 +139,7 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
   @Test
   public void testDownloadNodeLogs() throws IOException {
     Path logPath =
-        Paths.get(mockAppConfig.getString("yb.storage.path") + "/" + "host-n1-logs.tar.gz");
+        Paths.get(mockAppConfig.getString("yb.storage.path") + "/" + "10.0.0.1-logs.tar.gz");
     byte[] fakeLog = createFakeLog(logPath);
     when(mockShellProcessHandler.run(anyList(), anyMap(), eq(true)))
         .thenReturn(new ShellResponse());

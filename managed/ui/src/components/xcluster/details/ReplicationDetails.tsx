@@ -17,10 +17,12 @@ import {
 import { YBButton } from '../../common/forms/fields';
 import { YBLoading } from '../../common/indicators';
 import { YBTabsPanel } from '../../panels';
+import { ReplicationContainer } from '../../tables';
 import { IReplication } from '../IClusterReplication';
 import { GetConfiguredThreshold, GetCurrentLag, getReplicationStatus } from '../ReplicationUtils';
 import { AddTablesToClusterModal } from './AddTablesToClusterModal';
 import { EditReplicationDetails } from './EditReplicationDetails';
+import { LagGraph } from './LagGraph';
 
 import './ReplicationDetails.scss';
 import { ReplicationDetailsTable } from './ReplicationDetailsTable';
@@ -158,29 +160,39 @@ export function ReplicationDetails({ params }: Props) {
           </Row>
           <Row className="replication-status">
             <Col lg={4}>Replication Status {getReplicationStatus(replication.status)}</Col>
-            <Col lg={8}>
-              <Row>
-                <Col lg={2}>Current Lag</Col>
-                <Col lg={6}>
-                  <span className="lag-text">
-                    <GetCurrentLag
-                      replicationUUID={replication.uuid}
-                      sourceUniverseUUID={replication.sourceUniverseUUID}
-                    />
-                  </span>
-                  <span> ms</span>
-                </Col>
-              </Row>
-              <div className="replication-divider" />
-              <Row>
-                <Col lg={2}>Max acceptable lag</Col>
-                <Col lg={6}>
-                  <span className="lag-value">
-                    <GetConfiguredThreshold currentUniverseUUID={replication.sourceUniverseUUID} />
-                  </span>{' '}
-                  ms
-                </Col>
-              </Row>
+            <Col lg={8} className="lag-status-graph">
+              <div className="lag-stats">
+                <Row>
+                  <Col lg={6}>Current Lag</Col>
+                  <Col lg={6}>
+                    <span className="lag-text">
+                      <GetCurrentLag
+                        replicationUUID={replication.uuid}
+                        sourceUniverseUUID={replication.sourceUniverseUUID}
+                      />
+                    </span>
+                    <span> ms</span>
+                  </Col>
+                </Row>
+                <div className="replication-divider" />
+                <Row>
+                  <Col lg={6}>Max acceptable lag</Col>
+                  <Col lg={6}>
+                    <span className="lag-value">
+                      <GetConfiguredThreshold
+                        currentUniverseUUID={replication.sourceUniverseUUID}
+                      />
+                    </span>{' '}
+                    ms
+                  </Col>
+                </Row>
+              </div>
+              <div>
+                <LagGraph
+                  replicationUUID={replication.uuid}
+                  sourceUniverseUUID={replication.sourceUniverseUUID}
+                />
+              </div>
             </Col>
           </Row>
           <Row className="replication-details-panel noPadding">
@@ -194,6 +206,12 @@ export function ReplicationDetails({ params }: Props) {
                 </Tab>
                 <Tab eventKey={'tables'} title={'Tables'}>
                   <ReplicationDetailsTable replication={replication} />
+                </Tab>
+                <Tab eventKey={'metrics'} title="Metrics" id="universe-tab-panel">
+                  <ReplicationContainer
+                    sourceUniverseUUID={replication.sourceUniverseUUID}
+                    hideHeader={true}
+                  />
                 </Tab>
               </YBTabsPanel>
             </Col>

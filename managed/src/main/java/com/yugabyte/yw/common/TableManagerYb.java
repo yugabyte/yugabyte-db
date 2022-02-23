@@ -21,12 +21,14 @@ import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import org.yb.CommonTypes.TableType;
 import play.libs.Json;
 
@@ -68,6 +70,7 @@ public class TableManagerYb extends DevopsBase {
     List<String> commandArgs = new ArrayList<>();
     Map<String, String> extraVars = region.provider.getUnmaskedConfig();
     Map<String, String> namespaceToConfig = new HashMap<>();
+    Map<String, String> secondaryToPrimaryIP = new HashMap<>();
 
     boolean nodeToNodeTlsEnabled = userIntent.enableNodeToNodeEncrypt;
 
@@ -76,6 +79,21 @@ public class TableManagerYb extends DevopsBase {
       namespaceToConfig =
           PlacementInfoUtil.getConfigPerNamespace(
               pi, universe.getUniverseDetails().nodePrefix, provider);
+    }
+
+    List<NodeDetails> tservers = universe.getTServers();
+    // Verify if secondary IPs exist. If so, create map.
+    boolean legacyNet =
+        universe.getConfig().getOrDefault(Universe.DUAL_NET_LEGACY, "true").equals("true");
+    if (tservers.get(0).cloudInfo.secondary_private_ip != null
+        && !tservers.get(0).cloudInfo.secondary_private_ip.equals("null")
+        && !legacyNet) {
+      secondaryToPrimaryIP =
+          tservers
+              .stream()
+              .collect(
+                  Collectors.toMap(
+                      t -> t.cloudInfo.secondary_private_ip, t -> t.cloudInfo.private_ip));
     }
 
     commandArgs.add(PY_WRAPPER);
@@ -91,7 +109,8 @@ public class TableManagerYb extends DevopsBase {
     switch (subType) {
       case BACKUP:
         backupTableParams = (BackupTableParams) taskParams;
-        addAdditionalCommands(commandArgs, backupTableParams, userIntent, universe);
+        addAdditionalCommands(
+            commandArgs, backupTableParams, userIntent, universe, secondaryToPrimaryIP);
         if (backupTableParams.tableUUIDList != null && !backupTableParams.tableUUIDList.isEmpty()) {
           for (int listIndex = 0; listIndex < backupTableParams.tableNameList.size(); listIndex++) {
             commandArgs.add("--table");
@@ -239,7 +258,8 @@ public class TableManagerYb extends DevopsBase {
       List<String> commandArgs,
       BackupTableParams backupTableParams,
       UniverseDefinitionTaskParams.UserIntent userIntent,
-      Universe universe) {
+      Universe universe,
+      Map<String, String> secondaryToPrimaryIP) {
     commandArgs.add("--ts_web_hosts_ports");
     commandArgs.add(universe.getTserverHTTPAddresses());
     commandArgs.add("--parallelism");
@@ -247,6 +267,10 @@ public class TableManagerYb extends DevopsBase {
     if (userIntent.enableYSQLAuth
         || userIntent.tserverGFlags.getOrDefault("ysql_enable_auth", "false").equals("true")) {
       commandArgs.add("--ysql_enable_auth");
+    }
+    if (!secondaryToPrimaryIP.isEmpty()) {
+      commandArgs.add("--ts_secondary_ip_map");
+      commandArgs.add(Json.stringify(Json.toJson(secondaryToPrimaryIP)));
     }
     commandArgs.add("--ysql_port");
     commandArgs.add(

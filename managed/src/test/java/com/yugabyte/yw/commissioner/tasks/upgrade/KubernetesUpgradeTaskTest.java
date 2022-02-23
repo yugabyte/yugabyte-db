@@ -22,6 +22,7 @@ import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -38,6 +39,10 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import org.yb.client.IsServerReadyResponse;
 import org.yb.client.YBClient;
+
+import io.fabric8.kubernetes.api.model.Pod;
+import io.fabric8.kubernetes.api.model.PodList;
+import io.fabric8.kubernetes.api.model.PodStatus;
 
 public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
 
@@ -68,15 +73,10 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
     defaultUniverse.updateConfig(
         ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
 
-    ShellResponse responseEmpty = new ShellResponse();
-    ShellResponse responsePod = new ShellResponse();
-    when(mockKubernetesManager.helmUpgrade(any(), any(), any(), any(), any()))
-        .thenReturn(responseEmpty);
-
     try {
-      responsePod.message =
-          "{\"status\": { \"phase\": \"Running\", \"conditions\": [{\"status\": \"True\"}]}}";
-      when(mockKubernetesManager.getPodStatus(any(), any(), any())).thenReturn(responsePod);
+      String statusString = "{ \"phase\": \"Running\", \"conditions\": [{\"status\": \"True\"}]}";
+      PodStatus status = TestUtils.deserialize(statusString, PodStatus.class);
+      when(mockKubernetesManager.getPodStatus(any(), any(), any())).thenReturn(status);
       YBClient mockClient = mock(YBClient.class);
       when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
 
@@ -106,8 +106,7 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
     PlacementInfo placementInfo = new PlacementInfo();
     PlacementInfoUtil.addPlacementZone(az1.uuid, placementInfo, 3, 3, true);
     setupUniverse(setMasters, userIntent, placementInfo, mockGetLeaderMaster);
-    ShellResponse responsePods = new ShellResponse();
-    responsePods.message =
+    String podsString =
         "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
             + "\"podIP\": \"1.2.3.1\"}, \"spec\": {\"hostname\": \"yb-master-0\"},"
             + " \"metadata\": {\"namespace\": \""
@@ -138,7 +137,8 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
             + " \"metadata\": {\"namespace\": \""
             + NODE_PREFIX
             + "\"}}]}";
-    when(mockKubernetesManager.getPodInfos(any(), any(), any())).thenReturn(responsePods);
+    List<Pod> pods = TestUtils.deserialize(podsString, PodList.class).getItems();
+    when(mockKubernetesManager.getPodInfos(any(), any(), any())).thenReturn(pods);
   }
 
   protected void setupUniverseMultiAZ(boolean setMasters, boolean mockGetLeaderMaster) {
@@ -167,18 +167,21 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
             + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
             + "\"podIP\": \"1.2.3.2\"}, \"spec\": {\"hostname\": \"yb-tserver-0\"},"
             + " \"metadata\": {\"namespace\": \"%1$s\"}}]}";
-    ShellResponse shellResponse1 =
-        ShellResponse.create(0, String.format(podInfosMessage, nodePrefix1));
+    List<Pod> pods1 =
+        TestUtils.deserialize(String.format(podInfosMessage, nodePrefix1), PodList.class)
+            .getItems();
     when(mockKubernetesManager.getPodInfos(any(), eq(nodePrefix1), eq(nodePrefix1)))
-        .thenReturn(shellResponse1);
-    ShellResponse shellResponse2 =
-        ShellResponse.create(0, String.format(podInfosMessage, nodePrefix2));
+        .thenReturn(pods1);
+    List<Pod> pods2 =
+        TestUtils.deserialize(String.format(podInfosMessage, nodePrefix2), PodList.class)
+            .getItems();
     when(mockKubernetesManager.getPodInfos(any(), eq(nodePrefix2), eq(nodePrefix2)))
-        .thenReturn(shellResponse2);
-    ShellResponse shellResponse3 =
-        ShellResponse.create(0, String.format(podInfosMessage, nodePrefix3));
+        .thenReturn(pods2);
+    List<Pod> pods3 =
+        TestUtils.deserialize(String.format(podInfosMessage, nodePrefix3), PodList.class)
+            .getItems();
     when(mockKubernetesManager.getPodInfos(any(), eq(nodePrefix3), eq(nodePrefix3)))
-        .thenReturn(shellResponse3);
+        .thenReturn(pods3);
   }
 
   protected void assertTaskSequence(

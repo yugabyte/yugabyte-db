@@ -14,6 +14,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
 import com.yugabyte.yw.common.alerts.AlertChannelParams;
 import com.yugabyte.yw.common.alerts.AlertChannelSlackParams;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
@@ -237,6 +238,19 @@ public class ModelFactory {
                 + "\", \"name\": \"GCS\","
                 + " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\": \"gs://foo\","
                 + " \"GCS_CREDENTIALS_JSON\": \"G-CREDS\"}}");
+    return CustomerConfig.createWithFormData(customer.uuid, formData);
+  }
+
+  public static CustomerConfig createAZStorageConfig(Customer customer, String configName) {
+    JsonNode formData =
+        Json.parse(
+            "{\"configName\": \""
+                + configName
+                + "\", \"name\": \"AZ\","
+                + " \"type\": \"STORAGE\","
+                + " \"data\":"
+                + " {\"BACKUP_LOCATION\": \"https://foo.blob.core.windows.net/azurecontainer\","
+                + " \"AZURE_STORAGE_SAS_TOKEN\": \"AZ-TOKEN\"}}");
     return CustomerConfig.createWithFormData(customer.uuid, formData);
   }
 
@@ -522,7 +536,7 @@ public class ModelFactory {
    * CertificateInfo creation helpers.
    */
   public static CertificateInfo createCertificateInfo(
-      UUID customerUUID, String certificate, CertificateInfo.Type certType)
+      UUID customerUUID, String certificate, CertConfigType certType)
       throws IOException, NoSuchAlgorithmException {
     return CertificateInfo.create(
         UUID.randomUUID(), customerUUID, "test", new Date(), new Date(), "", certificate, certType);

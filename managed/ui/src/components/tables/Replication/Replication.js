@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import moment from 'moment';
-import _ from 'lodash';
+import _, { isEmpty } from 'lodash';
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBPanelItem } from '../../panels';
@@ -22,7 +22,8 @@ export default class Replication extends Component {
   constructor(props) {
     super(props);
     this.state = {
-      graphWidth: 840
+      graphWidth: props.hideHeader ? window.innerWidth - 300 : 840,
+      intervalId: null
     };
   }
 
@@ -31,15 +32,27 @@ export default class Replication extends Component {
   };
 
   componentDidMount() {
-    const { graph } = this.props;
-    this.queryMetrics(graph.graphFilter);
+    const {  sourceUniverseUUID } = this.props;
+    if (sourceUniverseUUID) {
+      this.props.fetchCurrentUniverse(sourceUniverseUUID).then(() => {
+        this.queryMetrics();
+      })
+    }
+    else {
+      this.queryMetrics();
+    }
+    const intervalId = setInterval(() => { this.queryMetrics() }, 10 * 2000);
+    this.setState({
+      intervalId
+    })
   }
 
   componentWillUnmount() {
     this.props.resetMasterLeader();
+    clearInterval(this.state.intervalId)
   }
 
-  queryMetrics = (graphFilter) => {
+  queryMetrics = () => {
     const {
       universe: { currentUniverse }
     } = this.props;
@@ -48,8 +61,8 @@ export default class Replication extends Component {
       : 'all';
     const params = {
       metrics: [METRIC_NAME],
-      start: graphFilter.startMoment.format('X'),
-      end: graphFilter.endMoment.format('X'),
+      start: moment().utc().subtract('1', 'hour').format('X'),
+      end: moment().utc().format('X'),
       nodePrefix: universeDetails.nodePrefix
     };
     this.props.queryMetrics(params, GRAPH_TYPE);
@@ -59,9 +72,12 @@ export default class Replication extends Component {
     const {
       universe: { currentUniverse },
       graph: { metrics, prometheusQueryEnabled },
-      customer: { currentUser }
+      customer: { currentUser },
+      hideHeader
     } = this.props;
-
+    if (isEmpty(currentUniverse.data)) {
+      return <YBLoading />
+    }
     const universeDetails = currentUniverse.data.universeDetails;
     const nodeDetails = universeDetails.nodeDetailsSet;
     const universePaused = currentUniverse?.data?.universeDetails?.universePaused;
@@ -155,7 +171,7 @@ export default class Replication extends Component {
           header={
             <div className="replication-header">
               <h2>Replication</h2>
-              {!universePaused && (
+              {!universePaused && !hideHeader && (
                 <ReplicationAlertModalBtn
                   universeUUID={currentUniverse.data.universeUUID}
                   disabled={!showMetrics}
@@ -165,15 +181,15 @@ export default class Replication extends Component {
           }
           body={
             <div className="replication-content">
-              {infoBlock}
-              <div className="replication-content-stats">{recentStatBlock}</div>
+              {!hideHeader && infoBlock}
+              {!hideHeader && <div className="replication-content-stats">{recentStatBlock}</div>}
               {!showMetrics && <div className="no-data">No data to display.</div>}
               {showMetrics && metrics[GRAPH_TYPE] && (
                 <div className="graph-container">
                   <MetricsPanel
                     currentUser={currentUser}
                     metricKey={METRIC_NAME}
-                    metric={aggregatedMetrics}
+                    metric={JSON.parse(JSON.stringify(aggregatedMetrics))}
                     className={'metrics-panel-container'}
                     width={this.state.graphWidth}
                     height={540}

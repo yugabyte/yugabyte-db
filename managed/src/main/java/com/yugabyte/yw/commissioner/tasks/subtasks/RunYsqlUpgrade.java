@@ -10,6 +10,8 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_SUCCESS;
+
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.NodeUniverseManager;
@@ -28,6 +30,9 @@ public class RunYsqlUpgrade extends AbstractTaskBase {
 
   private static final String MIN_YSQL_UPGRADE_RELEASE = "2.8.0.0";
   private static final long TIMEOUT_SEC = TimeUnit.MINUTES.toSeconds(3);
+
+  private static final int MAX_ATTEMPTS = 10;
+  private static final int DELAY_BETWEEN_ATTEMPTS_SEC = 60;
 
   private final NodeUniverseManager nodeUniverseManager;
 
@@ -64,25 +69,49 @@ public class RunYsqlUpgrade extends AbstractTaskBase {
       return;
     }
 
-    final String leaderMasterAddress = universe.getMasterLeaderHostText();
-    NodeDetails leaderMasterNode =
-        universe
-            .getUniverseDetails()
-            .getNodesInCluster(primaryCluster.uuid)
-            .stream()
-            .filter(nodeDetails -> nodeDetails.isMaster)
-            .filter(nodeDetails -> leaderMasterAddress.equals(nodeDetails.cloudInfo.private_ip))
-            .findFirst()
-            .orElseThrow(
-                () ->
-                    new IllegalStateException(
-                        "Failed to find leader master node " + leaderMasterAddress));
+    try {
+      int numAttempts = 0;
+      long timeout = TIMEOUT_SEC;
+      while (numAttempts < MAX_ATTEMPTS) {
+        numAttempts++;
+        final String leaderMasterAddress = universe.getMasterLeaderHostText();
+        NodeDetails leaderMasterNode =
+            universe
+                .getUniverseDetails()
+                .getNodesInCluster(primaryCluster.uuid)
+                .stream()
+                .filter(nodeDetails -> nodeDetails.isMaster)
+                .filter(nodeDetails -> leaderMasterAddress.equals(nodeDetails.cloudInfo.private_ip))
+                .findFirst()
+                .orElseThrow(
+                    () ->
+                        new IllegalStateException(
+                            "Failed to find leader master node " + leaderMasterAddress));
 
-    ShellResponse response =
-        nodeUniverseManager.runYbAdminCommand(
-            leaderMasterNode, universe, "upgrade_ysql", TIMEOUT_SEC);
-    processShellResponse(response);
+        ShellResponse response =
+            nodeUniverseManager.runYbAdminCommand(
+                leaderMasterNode, universe, "upgrade_ysql", timeout);
 
-    log.info("Successfully performed YSQL upgrade");
+        if (numAttempts == MAX_ATTEMPTS) {
+          processShellResponse(response);
+        } else {
+          if (response.code == ERROR_CODE_SUCCESS) {
+            log.info("Successfully performed YSQL upgrade");
+            break;
+          }
+          log.debug(
+              "Failed to perform YSQL upgrade. Will retry in {} seconds. Attempt {}, error '{}'",
+              DELAY_BETWEEN_ATTEMPTS_SEC,
+              numAttempts,
+              (response.message != null) ? response.message : "error");
+          Thread.sleep(DELAY_BETWEEN_ATTEMPTS_SEC * 1000);
+          timeout *= 1.2;
+        }
+      }
+
+    } catch (Exception e) {
+      log.error("{} hit error : {}", getName(), e.getMessage());
+      throw new RuntimeException(e);
+    }
   }
 }

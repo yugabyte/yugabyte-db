@@ -56,7 +56,7 @@ pkill yb-master
 cd /home/yugabyte/softwareyb-$VER/
 ```
 
-- Start the the newer version of the yb-master process.
+- Start the newer version of the yb-master process.
 
 - Verify in `http://<any-yb-master>:7000/` that all masters are alive.
 
@@ -76,7 +76,7 @@ pkill yb-tserver
 cd /home/yugabyte/softwareyb-$VER/
 ```
 
-- Start the the newer version of the yb-tserver process.
+- Start the newer version of the yb-tserver process.
 
 - Verify in `http://<any-yb-master>:7000/tablet-servers` to see if the new YB-TServer is alive and heart beating.
 
@@ -87,6 +87,7 @@ cd /home/yugabyte/softwareyb-$VER/
 Similar to PostgreSQL, YugabyteDB YSQL stores the system metadata, (also referred to as system catalog) which includes information about tables, columns, functions, users, and so on in special tables separately, for each database in the cluster.
 
 YSQL system catalog comes as an additional layer to store metadata on top of YugabyteDB software itself. It is accessible through YSQL API and is crucial for the YSQL functionality.
+YSQL system catalog upgrades are not required for clusters where YSQL is not enabled. Learn more about configuring YSQL flags [here](../../reference/configuration/yb-tserver/#ysql-flags).
 
 {{< note title="Note" >}}
 YSQL system catalog upgrades are applicable for clusters with YugabyteDB version 2.8 or higher.

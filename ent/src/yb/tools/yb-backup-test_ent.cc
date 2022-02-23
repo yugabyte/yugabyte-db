@@ -962,7 +962,6 @@ class YBBackupTestNumTablets : public YBBackupTest {
     // For convenience, rather than create a subclass for tablet splitting tests, add tablet split
     // flags here since they shouldn't really affect non-tablet splitting tests.
     options->extra_master_flags.push_back("--enable_automatic_tablet_splitting=false");
-    options->extra_master_flags.push_back("--TEST_select_all_tablets_for_split=true");
     options->extra_tserver_flags.push_back("--db_block_size_bytes=1024");
     options->extra_tserver_flags.push_back("--ycql_num_tablets=3");
     options->extra_tserver_flags.push_back("--ysql_num_tablets=3");
@@ -1252,6 +1251,29 @@ TEST_F_EX(YBBackupTest,
     {"--backup_location", backup_dir, "--keyspace", "new_" + keyspace, "restore"});
   ASSERT_NOK(s);
   ASSERT_STR_CONTAINS(s.message().ToBuffer(), ", restoring failed!");
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYCQLKeyspaceBackupWithLB)) {
+  // Create table with a lot of tablets.
+  client::kv_table_test::CreateTable(
+      client::Transactional::kFalse, CalcNumTablets(20), client_.get(), &table_);
+  const string& keyspace = table_.name().namespace_name();
+
+  const string backup_dir = GetTempDir("backup");
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", keyspace, "create"}));
+
+  // Add in a new tserver to trigger the load balancer.
+  ASSERT_OK(cluster_->AddTabletServer());
+
+  // Start running the restore while the load balancer is balancing the load.
+  // Use the --TEST_sleep_during_download_dir param to inject a sleep before the rsync calls.
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "new_" + keyspace,
+       "--TEST_sleep_during_download_dir", "restore"}));
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }

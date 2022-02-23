@@ -16,7 +16,7 @@ This section describes these aggregate functions for linear regression analysis:
 
 - [`covar_pop()`](./#covar-pop-covar-samp), [`covar_samp()`](./#covar-pop-covar-samp), [`corr()`](./#corr)
 
-Make sure that you have read the [Functions for linear regression analysis](../../linear-regression/) parent section before reading this section. You will need the same data that the parent section shows you how to create. 
+Make sure that you have read the [Functions for linear regression analysis](../../linear-regression/) parent section before reading this section. You will need the same data that the parent section shows you how to create.
 
 ## covar_pop(), covar_samp()
 
@@ -38,7 +38,7 @@ from t;
 This is a typical result:
 
 ```
- covar_pop(y, x) | covar_pop((y + delta), x) 
+ covar_pop(y, x) | covar_pop((y + delta), x)
 -----------------+---------------------------
   4166.2500      |  4164.4059
 ```
@@ -69,7 +69,7 @@ from t;
 This is a typical result:
 
 ```
- corr(y, x) | corr((y + delta), x) 
+ corr(y, x) | corr((y + delta), x)
 ------------+----------------------
    1.0000   |   0.9904
 ```
@@ -131,7 +131,7 @@ end;
 $body$;
 ```
 
-The calculations differ only in that the divisor is _"N"_ (the number of values) for the "population" variant and is is _"(N - 1)"_ for the "sample" variant—symmetrically with the way that [`var_pop()`](../../variance-stddev/#var-pop) and [`stddev_pop()`](../../variance-stddev/#stddev-pop) differ from [`var_samp()`](../../variance-stddev/#var-samp) and [`stddev_samp()`](../../variance-stddev/#stddev-samp).
+The calculations differ only in that the divisor is _"N"_ (the number of values) for the "population" variant and is _"(N - 1)"_ for the "sample" variant—symmetrically with the way that [`var_pop()`](../../variance-stddev/#var-pop) and [`stddev_pop()`](../../variance-stddev/#stddev-pop) differ from [`var_samp()`](../../variance-stddev/#var-samp) and [`stddev_samp()`](../../variance-stddev/#stddev-samp).
 
 Next, create the function _"corr_formula_y_x()"_ to the effect of this aggregate function:
 
@@ -241,13 +241,13 @@ select t as "noisy data" from f();
 This is a typical result:
 
 ```
-         noise-free data         
+         noise-free data
 ---------------------------------
  covar_pop_y_x:    4166.25000000
  covar_samp_y_x:   4208.33333333
  corr_y_x:            1.00000000
 
-           noisy data            
+           noisy data
 ---------------------------------
  covar_pop_y_x:    4164.40589549
  covar_samp_y_x:   4206.47060150

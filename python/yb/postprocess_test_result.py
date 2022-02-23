@@ -242,21 +242,28 @@ class Postprocessor:
             test_kvs["extra_error_log_path"] = self.rel_extra_error_log_path
 
     def set_fail_tags(self, test_kvs: Dict[str, Any]) -> None:
-        if test_kvs.get('num_errors', 0) > 0 or test_kvs.get('num_failures', 1):
+        if test_kvs.get('num_errors', 0) > 0 or test_kvs.get('num_failures', 0) > 0:
             # Parse for fail tags
             for tag, pattern in FAIL_TAG_AND_PATTERN.items():
                 # When using zgrep, given files are uncompressed if necessary and fed to grep
                 grep_command = subprocess.run(['zgrep', '-Eoh', pattern, self.test_log_path],
                                               capture_output=True)
                 if grep_command.returncode == 0:
+                    # When grep-ing for a signal, there can be multiple matches.
+                    # Filter stdout to get unique, non-empty matches and append a tag for each.
+                    grep_stdout = sorted(set(grep_command.stdout.decode('utf-8').split('\n')))
+                    grep_stdout = [match for match in grep_stdout if match != '']
+
                     if tag == SIGNAL_FORMAT_STRING:
-                        # Get the matching signal from stdout
-                        fail_tag = tag.format(grep_command.stdout.decode('utf-8').strip())
+                        # Get the matching signals from stdout
+                        fail_tags = [tag.format(match) for match in grep_stdout]
                     else:
-                        fail_tag = tag
-                    test_kvs['fail_tags'] = test_kvs.get('fail_tags', []) + [fail_tag]
+                        fail_tags = [tag]
+
+                    test_kvs['fail_tags'] = test_kvs.get('fail_tags', []) + fail_tags
+
                 elif grep_command.returncode > 1:
-                    logging.warning("Error running {}: \n{}".format(
+                    logging.warning("Error running '{}': \n{}".format(
                         ' '.join(grep_command.args), grep_command.stderr.decode('utf-8'))
                     )
                     test_kvs['processing_errors'] = grep_command.stderr.decode('utf-8').split()

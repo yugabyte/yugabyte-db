@@ -154,6 +154,7 @@ YBCStatus YBCPgInvalidateTableCacheByTableId(const char *table_id);
 YBCStatus YBCPgNewCreateTablegroup(const char *database_name,
                                    YBCPgOid database_oid,
                                    YBCPgOid tablegroup_oid,
+                                   YBCPgOid tablespace_oid,
                                    YBCPgStatement *handle);
 YBCStatus YBCPgExecCreateTablegroup(YBCPgStatement handle);
 
@@ -289,6 +290,23 @@ YBCStatus YBCPgBackfillIndex(
 // - INSERT / UPDATE / DELETE ... RETURNING target_expr1, target_expr2, ...
 YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target);
 
+// Add a WHERE clause condition to the statement.
+// Currently only SELECT statement supports WHERE clause conditions.
+// Only serialized Postgres expressions are allowed.
+// Multiple quals added to the same statement are implicitly AND'ed.
+YBCStatus YbPgDmlAppendQual(YBCPgStatement handle, YBCPgExpr qual);
+
+// Add column reference needed to evaluate serialized Postgres expression.
+// PgExpr's other than serialized Postgres expressions are inspected and if they contain any
+// column references, they are added automatically io the DocDB request. We do not do that
+// for serialized postgres expression because it may be expensive to deserialize and analyze
+// potentially complex expressions. While expressions are deserialized anyway by DocDB, the
+// concern about cost of analysis still stands.
+// While optional in regular column refenence expressions, column references needed to evaluate
+// serialized Postgres expression must contain Postgres data type information. DocDB needs to know
+// how to convert values from the DocDB formats to use them to evaluate Postgres expressions.
+YBCStatus YbPgDmlAppendColumnRef(YBCPgStatement handle, YBCPgExpr colref);
+
 // Binding Columns: Bind column with a value (expression) in a statement.
 // + This API is used to identify the rows you want to operate on. If binding columns are not
 //   there, that means you want to operate on all rows (full scan). You can view this as a
@@ -395,9 +413,6 @@ YBCStatus YBCPgNewUpdate(YBCPgOid database_oid,
                          YBCPgStatement *handle);
 
 YBCStatus YBCPgExecUpdate(YBCPgStatement handle);
-
-// Retrieve value of ysql_enable_update_batching gflag.
-bool YBCGetEnableUpdateBatching();
 
 // DELETE ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewDelete(YBCPgOid database_oid,

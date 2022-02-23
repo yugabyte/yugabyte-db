@@ -258,6 +258,7 @@ Status FsManager::Open() {
       create_roots = true;
       continue;
     }
+    RETURN_NOT_OK(read_result);
     if (!metadata_) {
       metadata_.reset(pb.release());
     } else if (pb->uuid() != metadata_->uuid()) {

@@ -665,7 +665,7 @@ Status QLWriteOperation::ApplyForJsonOperators(
 
   // Deserialize the rhs.
   Jsonb rhs(std::move(column_value.expr().value().jsonb_value()));
-  rapidjson::Document rhs_doc;
+  rapidjson::Document rhs_doc(&iter->second.GetAllocator());
   RETURN_NOT_OK(rhs.ToRapidJson(&rhs_doc));
 
   // Update the json value.

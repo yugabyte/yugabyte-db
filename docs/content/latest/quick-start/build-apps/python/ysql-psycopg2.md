@@ -44,6 +44,12 @@ showAsideToc: true
       YCQL
     </a>
   </li>
+  <li>
+    <a href="{{< relref "./ysql-django.md" >}}" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - Django
+    </a>
+  </li>
 </ul>
 
 {{< tip title="Yugabyte Cloud requires SSL" >}}
@@ -175,24 +181,24 @@ Create a file `yb-ysql-helloworld-ssl.py` and copy the following content to it, 
 
 ```python
 import psycopg2
- 
+
 # Create the database connection.
- 
+
 conn = psycopg2.connect("host=<hostname> port=5433 dbname=yugabyte user=<username> password=<password> sslmode=verify-full sslrootcert=<path>")
- 
+
 # Open a cursor to perform database operations.
 # The default mode for psycopg2 is "autocommit=false".
- 
+
 conn.set_session(autocommit=True)
 cur = conn.cursor()
- 
+
 # Create the table. (It might preexist.)
- 
+
 cur.execute(
  """
  DROP TABLE IF EXISTS employee
  """)
- 
+
 cur.execute(
  """
  CREATE TABLE employee (id int PRIMARY KEY,
@@ -202,26 +208,26 @@ cur.execute(
  """)
 print("Created table employee")
 cur.close()
- 
+
 # Take advantage of ordinary, transactional behavior for DMLs.
- 
+
 conn.set_session(autocommit=False)
 cur = conn.cursor()
- 
+
 # Insert a row.
- 
+
 cur.execute("INSERT INTO employee (id, name, age, language) VALUES (%s, %s, %s, %s)",
            (1, 'John', 35, 'Python + SSL'))
 print("Inserted (id, name, age, language) = (1, 'John', 35, 'Python + SSL')")
- 
+
 # Query the row.
- 
+
 cur.execute("SELECT name, age, language FROM employee WHERE id = 1")
 row = cur.fetchone()
 print("Query returned: %s, %s, %s" % (row[0], row[1], row[2]))
- 
+
 # Commit and close down.
- 
+
 conn.commit()
 cur.close()
 conn.close()

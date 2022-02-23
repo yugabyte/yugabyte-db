@@ -76,7 +76,7 @@ enum ContentFlags : uint32_t {
 struct BatchContentClassifier : public WriteBatch::Handler {
   uint32_t content_flags = 0;
 
-  CHECKED_STATUS PutCF(uint32_t, const Slice&, const Slice&) override {
+  CHECKED_STATUS PutCF(uint32_t, const SliceParts&, const SliceParts&) override {
     content_flags |= ContentFlags::HAS_PUT;
     return Status::OK();
   }
@@ -100,6 +100,49 @@ struct BatchContentClassifier : public WriteBatch::Handler {
     content_flags |= ContentFlags::HAS_FRONTIERS;
     return Status::OK();
   }
+};
+
+class DirectWriteHandlerImpl : public DirectWriteHandler {
+ public:
+  explicit DirectWriteHandlerImpl(MemTable* mem_table, SequenceNumber seq)
+      : mem_table_(mem_table), seq_(seq) {}
+
+  void Put(const SliceParts& key, const SliceParts& value) override {
+    Add(ValueType::kTypeValue, key, value);
+  }
+
+  void SingleDelete(const Slice& key) override {
+    if (mem_table_->Erase(key)) {
+      return;
+    }
+    Add(ValueType::kTypeSingleDeletion, SliceParts(&key, 1), SliceParts());
+  }
+
+  size_t Complete() {
+    if (keys_.empty()) {
+      return 0;
+    }
+    auto compare =
+        [comparator = &mem_table_->GetInternalKeyComparator()](KeyHandle lhs, KeyHandle rhs) {
+      auto lhs_slice = GetLengthPrefixedSlice(static_cast<const char*>(lhs));
+      auto rhs_slice = GetLengthPrefixedSlice(static_cast<const char*>(rhs));
+      return comparator->Compare(lhs_slice, rhs_slice) < 0;
+    };
+    std::sort(keys_.begin(), keys_.end(), compare);
+    mem_table_->ApplyPreparedAdd(keys_.data(), keys_.size(), prepared_add_, false);
+    return keys_.size();
+  }
+
+ private:
+  void Add(ValueType value_type, const SliceParts& key, const SliceParts& value) {
+    keys_.push_back(
+        mem_table_->PrepareAdd(seq_++, value_type, key, value, &prepared_add_));
+  }
+
+  MemTable* mem_table_;
+  SequenceNumber seq_;
+  PreparedAdd prepared_add_;
+  boost::container::small_vector<KeyHandle, 128> keys_;
 };
 
 }  // anon namespace
@@ -278,6 +321,8 @@ Status ReadRecordFromWriteBatch(Slice* input, char* tag,
   return Status::OK();
 }
 
+Result<size_t> DirectInsert(WriteBatch::Handler* handler, DirectWriter* writer);
+
 Status WriteBatch::Iterate(Handler* handler) const {
   Slice input(rep_);
   if (input.size() < kHeader) {
@@ -291,6 +336,14 @@ Status WriteBatch::Iterate(Handler* handler) const {
 
   if (frontiers_) {
     s = handler->Frontiers(*frontiers_);
+  }
+  if (s.ok() && direct_writer_) {
+    auto result = DirectInsert(handler, direct_writer_);
+    if (result.ok()) {
+      direct_entries_ = *result;
+    } else {
+      s = result.status();
+    }
   }
   while (s.ok() && !input.empty() && handler->Continue()) {
     char tag = 0;
@@ -307,7 +360,7 @@ Status WriteBatch::Iterate(Handler* handler) const {
       case kTypeValue:
         assert(content_flags_.load(std::memory_order_relaxed) &
                (ContentFlags::DEFERRED | ContentFlags::HAS_PUT));
-        s = handler->PutCF(column_family, key, value);
+        s = handler->PutCF(column_family, SliceParts(&key, 1), SliceParts(&value, 1));
         found++;
         break;
       case kTypeColumnFamilyDeletion:
@@ -633,8 +686,8 @@ class MemTableInserter : public WriteBatch::Handler {
     return true;
   }
 
-  virtual CHECKED_STATUS PutCF(uint32_t column_family_id, const Slice& key,
-                               const Slice& value) override {
+  CHECKED_STATUS PutCF(
+      uint32_t column_family_id, const SliceParts& key, const SliceParts& value) override {
     Status seek_status;
     if (!SeekToColumnFamily(column_family_id, &seek_status)) {
       ++sequence_;
@@ -647,12 +700,12 @@ class MemTableInserter : public WriteBatch::Handler {
                insert_flags_.Test(InsertFlag::kConcurrentMemtableWrites));
     } else if (moptions->inplace_callback == nullptr) {
       assert(!insert_flags_.Test(InsertFlag::kConcurrentMemtableWrites));
-      mem->Update(CurrentSequenceNumber(), key, value);
+      mem->Update(CurrentSequenceNumber(), key.TheOnlyPart(), value.TheOnlyPart());
       RecordTick(moptions->statistics, NUMBER_KEYS_UPDATED);
     } else {
       assert(!insert_flags_.Test(InsertFlag::kConcurrentMemtableWrites));
       SequenceNumber current_seq = CurrentSequenceNumber();
-      if (mem->UpdateCallback(current_seq, key, value)) {
+      if (mem->UpdateCallback(current_seq, key.TheOnlyPart(), value.TheOnlyPart())) {
       } else {
         // key not found in memtable. Do sst get, update, add
         SnapshotImpl read_from_snapshot;
@@ -667,20 +720,22 @@ class MemTableInserter : public WriteBatch::Handler {
         if (cf_handle == nullptr) {
           cf_handle = db_->DefaultColumnFamily();
         }
-        Status s = db_->Get(ropts, cf_handle, key, &prev_value);
+        Status s = db_->Get(ropts, cf_handle, key.TheOnlyPart(), &prev_value);
 
         char* prev_buffer = const_cast<char*>(prev_value.c_str());
         uint32_t prev_size = static_cast<uint32_t>(prev_value.size());
         auto status = moptions->inplace_callback(s.ok() ? prev_buffer : nullptr,
                                                  s.ok() ? &prev_size : nullptr,
-                                                 value, &merged_value);
+                                                 value.TheOnlyPart(), &merged_value);
         if (status == UpdateStatus::UPDATED_INPLACE) {
           // prev_value is updated in-place with final value.
-          mem->Add(current_seq, kTypeValue, key, Slice(prev_buffer, prev_size));
+          Slice new_value(prev_buffer, prev_size);
+          mem->Add(current_seq, kTypeValue, key, SliceParts(&new_value, 1));
           RecordTick(moptions->statistics, NUMBER_KEYS_WRITTEN);
         } else if (status == UpdateStatus::UPDATED) {
           // merged_value contains the final value.
-          mem->Add(current_seq, kTypeValue, key, Slice(merged_value));
+          Slice new_value(merged_value);
+          mem->Add(current_seq, kTypeValue, key, SliceParts(&new_value, 1));
           RecordTick(moptions->statistics, NUMBER_KEYS_WRITTEN);
         }
       }
@@ -723,7 +778,7 @@ class MemTableInserter : public WriteBatch::Handler {
         return Status::OK();
       }
     }
-    mem->Add(CurrentSequenceNumber(), delete_type, key, Slice(),
+    mem->Add(CurrentSequenceNumber(), delete_type, SliceParts(&key, 1), SliceParts(),
              insert_flags_.Test(InsertFlag::kConcurrentMemtableWrites));
     sequence_++;
     CheckMemtableFull();
@@ -808,13 +863,14 @@ class MemTableInserter : public WriteBatch::Handler {
         perform_merge = false;
       } else {
         // 3) Add value to memtable
-        mem->Add(current_seq, kTypeValue, key, new_value);
+        Slice value_slice(new_value);
+        mem->Add(current_seq, kTypeValue, SliceParts(&key, 1), SliceParts(&value_slice, 1));
       }
     }
 
     if (!perform_merge) {
       // Add merge operator to memtable
-      mem->Add(current_seq, kTypeMerge, key, value);
+      mem->Add(current_seq, kTypeMerge, SliceParts(&key, 1), SliceParts(&value, 1));
     }
 
     sequence_++;
@@ -912,6 +968,22 @@ size_t WriteBatchInternal::AppendedByteSize(size_t leftByteSize,
   } else {
     return leftByteSize + rightByteSize - kHeader;
   }
+}
+
+Result<size_t> DirectInsert(WriteBatch::Handler* handler, DirectWriter* writer) {
+  auto mem_table_inserter = down_cast<MemTableInserter*>(handler);
+  auto* mems = mem_table_inserter->cf_mems_;
+  auto current = mems->current();
+  if (!current) {
+    mems->Seek(0);
+    current = mems->current();
+  }
+  DirectWriteHandlerImpl direct_write_handler(
+      current->mem(), mem_table_inserter->sequence_);
+  RETURN_NOT_OK(writer->Apply(&direct_write_handler));
+  auto result = direct_write_handler.Complete();
+  mem_table_inserter->CheckMemtableFull();
+  return result;
 }
 
 }  // namespace rocksdb

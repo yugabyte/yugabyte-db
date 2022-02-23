@@ -188,7 +188,7 @@ TEST_F(MasterTestEnt, TestCreateCDCStream) {
 
   GetCDCStreamResponsePB resp;
   ASSERT_OK(GetCDCStream(stream_id, &resp));
-  ASSERT_EQ(resp.stream().table_id(), table_id);
+  ASSERT_EQ(resp.stream().table_id().Get(0), table_id);
 }
 
 TEST_F(MasterTestEnt, TestDeleteCDCStream) {
@@ -201,7 +201,7 @@ TEST_F(MasterTestEnt, TestDeleteCDCStream) {
 
   GetCDCStreamResponsePB resp;
   ASSERT_OK(GetCDCStream(stream_id, &resp));
-  ASSERT_EQ(resp.stream().table_id(), table_id);
+  ASSERT_EQ(resp.stream().table_id().Get(0), table_id);
 
   ASSERT_OK(DeleteCDCStream(stream_id));
 
@@ -221,15 +221,13 @@ TEST_F(MasterTestEnt, TestDeleteTableWithCDCStream) {
 
   GetCDCStreamResponsePB resp;
   ASSERT_OK(GetCDCStream(stream_id, &resp));
-  ASSERT_EQ(resp.stream().table_id(), table_id);
+  ASSERT_EQ(resp.stream().table_id().Get(0), table_id);
 
-  // Delete the table
+  // Deleting the table will fail since it has a CDC stream attached.
   TableId id;
-  ASSERT_OK(DeleteTableSync(default_namespace_name, kTableName, &id));
+  ASSERT_NOK(DeleteTableSync(default_namespace_name, kTableName, &id));
 
-  ASSERT_NOK(GetCDCStream(stream_id, &resp));
-  ASSERT_TRUE(resp.has_error());
-  ASSERT_EQ(MasterErrorPB::OBJECT_NOT_FOUND, resp.error().code());
+  ASSERT_OK(GetCDCStream(stream_id, &resp));
 }
 
 TEST_F(MasterTestEnt, TestListCDCStreams) {

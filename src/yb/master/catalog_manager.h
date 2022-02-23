@@ -58,6 +58,7 @@
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/catalog_manager_util.h"
 #include "yb/master/master_dcl.fwd.h"
 #include "yb/master/master_encryption.fwd.h"
 #include "yb/master/master_defaults.h"
@@ -121,6 +122,8 @@ struct DeferredAssignmentActions;
 using PlacementId = std::string;
 
 typedef std::unordered_map<TabletId, TabletServerId> TabletToTabletServerMap;
+
+typedef std::unordered_set<TableId> TableIdSet;
 
 typedef std::unordered_map<TablespaceId, boost::optional<ReplicationInfoPB>>
   TablespaceIdToReplicationInfoMap;
@@ -198,13 +201,45 @@ class CatalogManager :
                                               rpc::RpcContext *rpc);
 
   // Create a transaction status table with the given name.
-  CHECKED_STATUS CreateTransactionStatusTableInternal(rpc::RpcContext *rpc,
-                                                      const string& table_name);
+  CHECKED_STATUS CreateTransactionStatusTableInternal(rpc::RpcContext* rpc,
+                                                      const string& table_name,
+                                                      const TablespaceId* tablespace_id);
+
+  // Check if there is a transaction table whose tablespace id matches the given tablespace id.
+  bool DoesTransactionTableExistForTablespace(
+      const TablespaceId& tablespace_id) EXCLUDES(mutex_);
+
+  // Create a local transaction status table for a tablespace if needed
+  // (i.e. if it does not exist already).
+  //
+  // This is called during CreateTable if the table has transactions enabled and is part
+  // of a tablespace with a placement set.
+  CHECKED_STATUS CreateLocalTransactionStatusTableIfNeeded(
+      rpc::RpcContext *rpc, const TablespaceId& tablespace_id) EXCLUDES(mutex_);
 
   // Create the global transaction status table if needed (i.e. if it does not exist already).
   //
   // This is called at the end of CreateTable if the table has transactions enabled.
   CHECKED_STATUS CreateGlobalTransactionStatusTableIfNeeded(rpc::RpcContext *rpc);
+
+  // Get tablet ids of the global transaction status table.
+  CHECKED_STATUS GetGlobalTransactionStatusTablets(
+      GetTransactionStatusTabletsResponsePB* resp) EXCLUDES(mutex_);
+
+  // Get ids of transaction status tables matching a given placement.
+  Result<std::vector<TableId>> GetPlacementLocalTransactionStatusTables(
+      const CloudInfoPB& placement) EXCLUDES(mutex_);
+
+  // Get tablet ids of local transaction status tables matching a given placement.
+  CHECKED_STATUS GetPlacementLocalTransactionStatusTablets(
+      const CloudInfoPB& placement,
+      GetTransactionStatusTabletsResponsePB* resp) EXCLUDES(mutex_);
+
+  // Get tablet ids of the global transaction status table and local transaction status tables
+  // matching a given placement.
+  CHECKED_STATUS GetTransactionStatusTablets(const GetTransactionStatusTabletsRequestPB* req,
+                                             GetTransactionStatusTabletsResponsePB* resp,
+                                             rpc::RpcContext *rpc) EXCLUDES(mutex_);
 
   // Create the metrics snapshots table if needed (i.e. if it does not exist already).
   //
@@ -469,9 +504,11 @@ class CatalogManager :
   CHECKED_STATUS GetYsqlCatalogVersion(
       uint64_t* catalog_version, uint64_t* last_breaking_version) override;
 
-  void RecomputeTxnTableVersionsHash() EXCLUDES(mutex_);
+  CHECKED_STATUS InitializeTransactionTablesConfig(int64_t term);
 
-  uint64_t GetTxnTableVersionsHash() override;
+  CHECKED_STATUS IncrementTransactionTablesVersion();
+
+  uint64_t GetTransactionTablesVersion() override;
 
   virtual CHECKED_STATUS FillHeartbeatResponse(const TSHeartbeatRequestPB* req,
                                                TSHeartbeatResponsePB* resp);
@@ -482,6 +519,8 @@ class CatalogManager :
   std::shared_ptr<tablet::TabletPeer> tablet_peer() const override;
 
   ClusterLoadBalancer* load_balancer() override { return load_balance_policy_.get(); }
+
+  TabletSplitManager* tablet_split_manager() override { return &tablet_split_manager_; }
 
   // Dump all of the current state about tables and tablets to the
   // given output stream. This is verbose, meant for debugging.
@@ -589,16 +628,25 @@ class CatalogManager :
 
   // Loops through the table's placement infos and populates the corresponding config from
   // each placement.
-  virtual CHECKED_STATUS HandlePlacementUsingReplicationInfo(
+  CHECKED_STATUS HandlePlacementUsingReplicationInfo(
       const ReplicationInfoPB& replication_info,
       const TSDescriptorVector& all_ts_descs,
-      consensus::RaftConfigPB* config);
+      consensus::RaftConfigPB* config,
+      CMPerTableLoadState* per_table_state,
+      CMGlobalLoadState* global_state);
 
   // Handles the config creation for a given placement.
   CHECKED_STATUS HandlePlacementUsingPlacementInfo(const PlacementInfoPB& placement_info,
                                                    const TSDescriptorVector& ts_descs,
                                                    consensus::PeerMemberType member_type,
-                                                   consensus::RaftConfigPB* config);
+                                                   consensus::RaftConfigPB* config,
+                                                   CMPerTableLoadState* per_table_state,
+                                                   CMGlobalLoadState* global_state);
+
+  // Populates ts_descs with all tservers belonging to a certain placement.
+  void GetTsDescsFromPlacementInfo(const PlacementInfoPB& placement_info,
+                                   const TSDescriptorVector& all_ts_descs,
+                                   TSDescriptorVector* ts_descs);
 
     // Set the current committed config.
   CHECKED_STATUS GetCurrentConfig(consensus::ConsensusStatePB *cpb) const override;
@@ -765,7 +813,7 @@ class CatalogManager :
                                    CompactSysCatalogResponsePB* resp,
                                    rpc::RpcContext* rpc);
 
-  CHECKED_STATUS SplitTablet(const TabletId& tablet_id) override;
+  CHECKED_STATUS SplitTablet(const TabletId& tablet_id, bool select_all_tablets_for_split) override;
 
   // Splits tablet specified in the request using middle of the partition as a split point.
   CHECKED_STATUS SplitTablet(
@@ -822,8 +870,6 @@ class CatalogManager :
       const TabletDriveStorageMetadataPB& storage_metadata);
 
   void CheckTableDeleted(const TableInfoPtr& table) override;
-
-  CHECKED_STATUS ValidateSplitCandidate(const TabletInfo& tablet_info) override;
 
   bool ShouldSplitValidCandidate(
       const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const override;
@@ -1057,26 +1103,26 @@ class CatalogManager :
 
   // Task that takes care of the tablet assignments/creations.
   // Loops through the "not created" tablets and sends a CreateTablet() request.
-  CHECKED_STATUS ProcessPendingAssignments(const TabletInfos& tablets);
-
-  // Given 'two_choices', which should be a vector of exactly two elements, select which
-  // one is the better choice for a new replica.
-  std::shared_ptr<TSDescriptor> PickBetterReplicaLocation(const TSDescriptorVector& two_choices);
+  CHECKED_STATUS ProcessPendingAssignmentsPerTable(
+      const TableId& table_id, const TabletInfos& tablets, CMGlobalLoadState* global_load_state);
 
   // Select a tablet server from 'ts_descs' on which to place a new replica.
   // Any tablet servers in 'excluded' are not considered.
   // REQUIRES: 'ts_descs' must include at least one non-excluded server.
   std::shared_ptr<TSDescriptor> SelectReplica(
       const TSDescriptorVector& ts_descs,
-      const std::set<std::shared_ptr<TSDescriptor>>& excluded);
+      std::set<TabletServerId>* excluded,
+      CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state);
 
   // Select N Replicas from online tablet servers (as specified by
   // 'ts_descs') for the specified tablet and populate the consensus configuration
   // object. If 'ts_descs' does not specify enough online tablet
   // servers to select the N replicas, return Status::InvalidArgument.
   //
-  // This method is called by "ProcessPendingAssignments()".
-  CHECKED_STATUS SelectReplicasForTablet(const TSDescriptorVector& ts_descs, TabletInfo* tablet);
+  // This method is called by "ProcessPendingAssignmentsPerTable()".
+  CHECKED_STATUS SelectReplicasForTablet(
+      const TSDescriptorVector& ts_descs, TabletInfo* tablet,
+      CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state);
 
   // Select N Replicas from the online tablet servers that have been chosen to respect the
   // placement information provided. Populate the consensus configuration object with choices and
@@ -1087,8 +1133,10 @@ class CatalogManager :
   void SelectReplicas(
       const TSDescriptorVector& ts_descs,
       size_t nreplicas, consensus::RaftConfigPB* config,
-      std::set<std::shared_ptr<TSDescriptor>>* already_selected_ts,
-      consensus::PeerMemberType member_type);
+      std::set<TabletServerId>* already_selected_ts,
+      consensus::PeerMemberType member_type,
+      CMPerTableLoadState* per_table_state,
+      CMGlobalLoadState* global_state);
 
   void HandleAssignPreparingTablet(TabletInfo* tablet,
                                    DeferredAssignmentActions* deferred);
@@ -1110,7 +1158,7 @@ class CatalogManager :
   // after the timeout, we regenerate a new one and proceed with a new
   // assignment/creation.
   //
-  // This method is part of the "ProcessPendingAssignments()"
+  // This method is part of the "ProcessPendingAssignmentsPerTable()"
   //
   // This must be called after persisting the tablet state as
   // CREATING to ensure coherent state after Master failover.
@@ -1272,11 +1320,12 @@ class CatalogManager :
 
   CHECKED_STATUS DoSplitTablet(
       const scoped_refptr<TabletInfo>& source_tablet_info, std::string split_encoded_key,
-      std::string split_partition_key);
+      std::string split_partition_key, bool select_all_tablets_for_split);
 
   // Splits tablet using specified split_hash_code as a split point.
   CHECKED_STATUS DoSplitTablet(
-      const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code);
+      const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code,
+      bool select_all_tablets_for_split);
 
   // Calculate the total number of replicas which are being handled by servers in state.
   int64_t GetNumRelevantReplicas(const BlacklistPB& state, bool leaders_only);
@@ -1311,12 +1360,12 @@ class CatalogManager :
   // the cluster config affinity specification.
   CHECKED_STATUS SysCatalogRespectLeaderAffinity();
 
-  virtual Result<bool> IsTablePartOfSomeSnapshotSchedule(const TableInfo& table_info) {
+  virtual Result<bool> IsTablePartOfSomeSnapshotSchedule(const TableInfo& table_info) override {
     // Default value.
     return false;
   }
 
-  virtual bool IsCdcEnabled(const TableInfo& table_info) const {
+  virtual bool IsCdcEnabled(const TableInfo& table_info) const override {
     // Default value.
     return false;
   }
@@ -1356,6 +1405,11 @@ class CatalogManager :
   // Note that this map isn't used for YSQL tables.
   TableInfoByNameMap table_names_map_ GUARDED_BY(mutex_);
 
+  // Set of table ids that are transaction status tables.
+  // Don't have to use VersionTracker for it, since table_ids_map_ already updated at the same time.
+  TableIdSet transaction_table_ids_set_ GUARDED_BY(mutex_);
+
+  // Don't have to use VersionTracker for it, since table_ids_map_ already updated at the same time.
   // Tablet maps: tablet-id -> TabletInfo
   VersionTracker<TabletInfoMap> tablet_map_ GUARDED_BY(mutex_);
 
@@ -1380,11 +1434,12 @@ class CatalogManager :
   // YSQL Catalog information.
   scoped_refptr<SysConfigInfo> ysql_catalog_config_ = nullptr; // No GUARD, only write on Load.
 
+  // Transaction tables information.
+  scoped_refptr<SysConfigInfo> transaction_tables_config_ =
+      nullptr; // No GUARD, only write on Load.
+
   Master *master_;
   Atomic32 closing_;
-
-  // Random number generator used for selecting replica locations.
-  ThreadSafeRandom rng_;
 
   std::unique_ptr<SysCatalogTable> sys_catalog_;
 
@@ -1507,6 +1562,8 @@ class CatalogManager :
 
   std::unique_ptr<client::YBClient> cdc_state_client_;
 
+  // Mutex to avoid simultaneous creation of transaction tables for a tablespace.
+  std::mutex tablespace_transaction_table_creation_mutex_;
 
   void StartElectionIfReady(
       const consensus::ConsensusStatePB& cstate, TabletInfo* tablet);
@@ -1528,7 +1585,7 @@ class CatalogManager :
 
   void SplitTabletWithKey(
       const scoped_refptr<TabletInfo>& tablet, const std::string& split_encoded_key,
-      const std::string& split_partition_key);
+      const std::string& split_partition_key, bool select_all_tablets_for_split);
 
   // From the list of TServers in 'ts_descs', return the ones that match any placement policy
   // in 'placement_info'. Returns error if there are insufficient TServers to match the
@@ -1550,12 +1607,31 @@ class CatalogManager :
 
   CHECKED_STATUS ValidateTableReplicationInfo(const ReplicationInfoPB& replication_info);
 
+  // Return the id of the tablespace associated with a transaction status table, if any.
+  boost::optional<TablespaceId> GetTransactionStatusTableTablespace(
+      const scoped_refptr<TableInfo>& table) REQUIRES_SHARED(mutex_);
+
+  // Clears tablespace id for a transaction status table, reverting it back to cluster default
+  // if no placement has been set explicitly.
+  void ClearTransactionStatusTableTablespace(
+      const scoped_refptr<TableInfo>& table) REQUIRES(mutex_);
+
+  // Checks if there are any transaction tables with tablespace id set for a tablespace not in
+  // the given tablespace info map.
+  bool CheckTransactionStatusTablesWithMissingTablespaces(
+      const TablespaceIdToReplicationInfoMap& tablespace_info) EXCLUDES(mutex_);
+
+  // Updates transaction tables' tablespace ids for tablespaces that don't exist.
+  CHECKED_STATUS UpdateTransactionStatusTableTablespaces(
+      const TablespaceIdToReplicationInfoMap& tablespace_info) EXCLUDES(mutex_);
+
   // Return the tablespaces in the system and their associated replication info from
   // pg catalog tables.
   Result<std::shared_ptr<TablespaceIdToReplicationInfoMap>> GetYsqlTablespaceInfo();
 
   // Return the table->tablespace mapping by reading the pg catalog tables.
-  Result<std::shared_ptr<TableToTablespaceIdMap>> GetYsqlTableToTablespaceMap();
+  Result<std::shared_ptr<TableToTablespaceIdMap>> GetYsqlTableToTablespaceMap(
+      const TablespaceIdToReplicationInfoMap& tablespace_info) EXCLUDES(mutex_);
 
   // Background task that refreshes the in-memory state for YSQL tables with their associated
   // tablespace info.
@@ -1597,13 +1673,18 @@ class CatalogManager :
 
   size_t GetNumLiveTServersForPlacement(const PlacementId& placement_id);
 
+  TSDescriptorVector GetAllLiveNotBlacklistedTServers() const;
+
   const YQLPartitionsVTable& GetYqlPartitionsVtable() const;
+
+  void InitializeTableLoadState(
+      const TableId& table_id, TSDescriptorVector ts_descs, CMPerTableLoadState* state);
+
+  void InitializeGlobalLoadState(
+      TSDescriptorVector ts_descs, CMGlobalLoadState* state);
 
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
-
-  // Hash of transaction status table ids and versions.
-  std::atomic<uint64_t> txn_table_versions_hash_{0};
 
   rpc::ScheduledTaskTracker refresh_yql_partitions_task_;
 

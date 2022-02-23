@@ -66,6 +66,14 @@ namespace kv_table_test {
 constexpr const auto kKeyColumn = "key";
 constexpr const auto kValueColumn = "value";
 
+YB_DEFINE_ENUM(Partitioning, (kHash)(kRange))
+
+void BuildSchema(Partitioning partitioning, Schema* schema);
+
+CHECKED_STATUS CreateTable(
+    const Schema& schema, int num_tablets, YBClient* client,
+    TableHandle* table, const YBTableName& table_name = kTableName);
+
 void CreateTable(
     Transactional transactional, int num_tablets, YBClient* client, TableHandle* table,
     const YBTableName& table_name = kTableName);
@@ -108,6 +116,8 @@ template <class MiniClusterType>
 class KeyValueTableTest : public QLDmlTestBase<MiniClusterType> {
  protected:
   void CreateTable(Transactional transactional);
+
+  CHECKED_STATUS CreateTable(const Schema& schema);
 
   void CreateIndex(Transactional transactional,
                    int indexed_column_index = 1,

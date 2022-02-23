@@ -15,7 +15,9 @@ import org.apache.directory.api.ldap.model.exception.LdapAuthenticationException
 import org.apache.directory.api.ldap.model.exception.LdapException;
 import org.apache.directory.api.ldap.model.exception.LdapNoSuchObjectException;
 import org.apache.directory.api.ldap.model.message.SearchScope;
+import org.apache.directory.ldap.client.api.LdapConnectionConfig;
 import org.apache.directory.ldap.client.api.LdapNetworkConnection;
+import org.apache.directory.ldap.client.api.NoVerificationTrustManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,6 +33,7 @@ import static play.mvc.Http.Status.*;
 public class LdapUtil {
 
   public static final Logger LOG = LoggerFactory.getLogger(SessionController.class);
+  public static final String windowsAdUserDoesNotExistErrorCode = "data 2030";
 
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
 
@@ -46,10 +49,23 @@ public class LdapUtil {
         runtimeConfigFactory.globalRuntimeConf().getString("yb.security.ldap.ldap_customeruuid");
     String ldapDnPrefix =
         runtimeConfigFactory.globalRuntimeConf().getString("yb.security.ldap.ldap_dn_prefix");
+    boolean ldapUseSsl =
+        runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.ldap.enable_ldaps");
+    boolean ldapUseTls =
+        runtimeConfigFactory
+            .globalRuntimeConf()
+            .getBoolean("yb.security.ldap.enable_ldap_start_tls");
 
     Users user =
         authViaLDAP(
-            data.getEmail(), data.getPassword(), ldapUrl, ldapPort, ldapBaseDN, ldapDnPrefix);
+            data.getEmail(),
+            data.getPassword(),
+            ldapUrl,
+            ldapPort,
+            ldapBaseDN,
+            ldapDnPrefix,
+            ldapUseSsl,
+            ldapUseTls);
     if (user == null) {
       return user;
     }
@@ -83,29 +99,75 @@ public class LdapUtil {
     return user;
   }
 
+  private void deleteUserAndThrowException(String email) {
+    Users.deleteUser(email);
+    String errorMessage = "LDAP user " + email + " does not exist on the LDAP server";
+    throw new PlatformServiceException(UNAUTHORIZED, errorMessage);
+  }
+
   private Users authViaLDAP(
       String email,
       String password,
       String ldapUrl,
       Integer ldapPort,
       String ldapBaseDN,
-      String ldapDnPrefix)
+      String ldapDnPrefix,
+      boolean ldapUseSsl,
+      boolean ldapUseTls)
       throws LdapException {
     Users users = new Users();
     LdapNetworkConnection connection = null;
     try {
-      connection = new LdapNetworkConnection(ldapUrl, ldapPort);
+      LdapConnectionConfig config = new LdapConnectionConfig();
+      config.setLdapHost(ldapUrl);
+      config.setLdapPort(ldapPort);
+      if (ldapUseSsl || ldapUseTls) {
+        config.setTrustManagers(new NoVerificationTrustManager());
+        if (ldapUseSsl) {
+          config.setUseSsl(true);
+        } else {
+          config.setUseTls(true);
+        }
+      }
+
+      connection = new LdapNetworkConnection(config);
       String distinguishedName = ldapDnPrefix + email + ldapBaseDN;
       email = email.toLowerCase();
       try {
         connection.bind(distinguishedName, password);
       } catch (LdapNoSuchObjectException e) {
-        Users.deleteUser(email);
-        String errorMessage = "LDAP user " + email + " does not exist on the LDAP server";
-        throw new PlatformServiceException(UNAUTHORIZED, errorMessage);
+        log.error(e.getMessage());
+        deleteUserAndThrowException(email);
       } catch (LdapAuthenticationException e) {
+        log.error(e.getMessage());
+        if (e.getMessage().contains(windowsAdUserDoesNotExistErrorCode)) {
+          deleteUserAndThrowException(email);
+        }
         String errorMessage = "Failed with " + e.getMessage();
         throw new PlatformServiceException(UNAUTHORIZED, errorMessage);
+      }
+
+      String serviceAccountUserName =
+          runtimeConfigFactory
+              .globalRuntimeConf()
+              .getString("yb.security.ldap.ldap_service_account_username");
+      String serviceAccountPassword =
+          runtimeConfigFactory
+              .globalRuntimeConf()
+              .getString("yb.security.ldap.ldap_service_account_password");
+
+      if (!serviceAccountUserName.isEmpty() && !serviceAccountPassword.isEmpty()) {
+        connection.unBind();
+        String serviceAccountDistinguishedName = ldapDnPrefix + serviceAccountUserName + ldapBaseDN;
+        try {
+          connection.bind(serviceAccountDistinguishedName, serviceAccountPassword);
+        } catch (LdapAuthenticationException e) {
+          String errorMessage =
+              "Service Account bind failed. Defaulting to current user connection with LDAP Server."
+                  + e.getMessage();
+          log.error(errorMessage);
+          connection.bind(distinguishedName, password);
+        }
       }
       String role = "";
       try {
@@ -119,7 +181,7 @@ public class LdapUtil {
       } catch (Exception e) {
         log.debug(
             String.format(
-                "LDAP query failed with {} Defaulting to ReadOnly role.", e.getMessage()));
+                "LDAP query failed with {} Defaulting to ReadOnly role. %s", e.getMessage()));
       }
       Users.Role roleToAssign;
       users.setLdapSpecifiedRole(true);

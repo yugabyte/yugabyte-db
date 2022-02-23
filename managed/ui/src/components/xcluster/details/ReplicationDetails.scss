@@ -11,7 +11,11 @@
       }
     }
   }
-
+  .graph-container {
+    .plot-container.plotly {
+      background: $YB_BG_WHITE_3;
+    }
+  }
   .replication-label {
     opacity: 0.5;
     color: black;
@@ -61,6 +65,20 @@
         padding: 20px 5px;
         background: $YB_WHITE;
         border: 1px solid #e8e8e8;
+      }
+    }
+
+    .lag-status-graph {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      white-space: nowrap;
+      .lag-text,
+      .lag-value {
+        margin-left: 10px;
+      }
+      .lag-stats {
+        min-width: 300px;
       }
     }
   }

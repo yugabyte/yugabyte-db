@@ -13,6 +13,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertUnauthorized;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.FakeApiHelper.routeWithYWErrHandler;
+import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static com.yugabyte.yw.models.Users.Role;
 import static com.yugabyte.yw.models.Users.UserType;
 import static org.hamcrest.CoreMatchers.allOf;
@@ -98,7 +99,7 @@ public class SessionControllerTest {
         new GuiceApplicationBuilder()
             .disable(SwaggerModule.class)
             .disable(GuiceModule.class)
-            .configure((Map) Helpers.inMemoryDatabase())
+            .configure(testDatabase())
             .configure(ImmutableMap.of("yb.multiTenant", isMultiTenant))
             .overrides(bind(Scheduler.class).toInstance(mockScheduler))
             .overrides(bind(HealthChecker.class).toInstance(mockHealthChecker))
@@ -751,7 +752,15 @@ public class SessionControllerTest {
     Universe.saveDetails(
         universe.universeUUID, ApiUtils.mockUniverseUpdater(userIntent, "test-prefix"));
     universe = Universe.getOrBadRequest(universe.universeUUID);
-    NodeDetails node = universe.getUniverseDetails().nodeDetailsSet.stream().findFirst().get();
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    NodeDetails node = details.nodeDetailsSet.stream().findFirst().get();
+
+    // Set to an invalid IP
+    node.cloudInfo.private_ip = "host-n1";
+    universe.setUniverseDetails(details);
+    universe.update();
+    universe = Universe.getOrBadRequest(universe.universeUUID);
+
     String nodeAddr = node.cloudInfo.private_ip + ":" + node.masterHttpPort;
     Http.RequestBuilder request =
         fakeRequest("GET", "/universes/" + universe.universeUUID + "/proxy/" + nodeAddr + "/")

@@ -316,6 +316,27 @@ void InitGoogleLoggingSafeBasic(const char* arg) {
   logging_initialized = true;
 }
 
+void InitGoogleLoggingSafeBasicSuppressNonNativePostgresLogs(const char* arg) {
+  SpinLockHolder l(&logging_mutex);
+  if (logging_initialized) return;
+
+  InitializeGoogleLogging(arg);
+
+  // This also disables file-based logging.
+  google::LogToStderr();
+
+  // File logging: off.
+  // Stderr logging threshold: NUM_SEVERITIES;
+  // Sink logging: off.
+  // Since Postgres logging collector collects logs from stderr, we never log to stderr.
+  FLAGS_stderrthreshold = google::NUM_SEVERITIES;
+  initial_stderr_severity = google::NUM_SEVERITIES;
+
+  ApplyFlagsInternal();
+
+  logging_initialized = true;
+}
+
 bool IsLoggingInitialized() {
   SpinLockHolder l(&logging_mutex);
   return logging_initialized;

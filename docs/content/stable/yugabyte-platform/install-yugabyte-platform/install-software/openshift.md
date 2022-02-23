@@ -238,7 +238,7 @@ ybplatform-sample-yugaware-0  5/5   Running            0     93s
 
 ## Helm-Based Installation
 
-In addition to meeting the requirements described in  [Prepare the OpenShift Environment](../../../install-yugabyte-platform/prepare-environment/openshift/), you need to perform the following steps before attempting to install Yugbyte Platform using Helm:
+In addition to meeting the requirements described in  [Prepare the OpenShift Environment](../../../install-yugabyte-platform/prepare-environment/openshift/), you need to perform the following steps before attempting to install Yugabyte Platform using Helm:
 
 - Verify that the OpenShift cluster is configured with Helm 3.4 or later by executing the following command:
 
@@ -303,7 +303,7 @@ To create a Yugabyte Platform instance, perform the following:
 
   ```output
   NAME                 CHART VERSION  APP VERSION  DESCRIPTION
-  yugabytedb/yugaware  2.8.1          2.8.1.0-b37  YugaWare is YugaByte Database's Orchestration a...
+  yugabytedb/yugaware  2.8.2          2.8.2.0-b51  YugaWare is YugaByte Database's Orchestration a...
   ```
 
 - Verify the StorageClass setting for your cluster by executing the following command as admin user:

@@ -10,7 +10,7 @@
 bin_path: "/usr/local/bin"
 
 # azcopy variables
-azcopy_package: "azcopy_linux_amd64_10.4.0.tar.gz"
+azcopy_package: "azcopy_linux_amd64_10.13.0.tar.gz"
 
 # gsutil variables
 gsutil_package_name: "gsutil"

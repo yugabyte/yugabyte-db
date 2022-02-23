@@ -517,7 +517,8 @@ typedef enum NodeTag
 	 */
 	T_YbPgExecOutParam,
 	T_YbBackfillInfo,
-	T_PartitionPruneStepFuncOp
+	T_PartitionPruneStepFuncOp,
+	T_YbExprParamDesc
 
 } NodeTag;
 

@@ -24,6 +24,7 @@
 #include "yb/rpc/rpc_context.h"
 #include "yb/server/clock.h"
 
+#include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/tablet_peer_lookup.h"
@@ -133,35 +134,9 @@ struct TabletPeerTablet {
 // resp->mutable_error() to indicate the failure reason.
 //
 // Returns true if successful.
-inline Result<TabletPeerTablet> LookupTabletPeer(
+Result<TabletPeerTablet> LookupTabletPeer(
     TabletPeerLookupIf* tablet_manager,
-    const string& tablet_id) {
-  TabletPeerTablet result;
-  Status status = tablet_manager->GetTabletPeer(tablet_id, &result.tablet_peer);
-  if (PREDICT_FALSE(!status.ok())) {
-    TabletServerErrorPB::Code code = status.IsServiceUnavailable() ?
-                                     TabletServerErrorPB::UNKNOWN_ERROR :
-                                     TabletServerErrorPB::TABLET_NOT_FOUND;
-    return status.CloneAndAddErrorCode(TabletServerError(code));
-  }
-
-  // Check RUNNING state.
-  tablet::RaftGroupStatePB state = result.tablet_peer->state();
-  if (PREDICT_FALSE(state != tablet::RUNNING)) {
-    Status s = STATUS(IllegalState, "Tablet not RUNNING", tablet::RaftGroupStateError(state))
-        .CloneAndAddErrorCode(TabletServerError(TabletServerErrorPB::TABLET_NOT_RUNNING));
-    return s;
-  }
-
-  result.tablet = result.tablet_peer->shared_tablet();
-  if (!result.tablet) {
-    Status s = STATUS(IllegalState,
-                      "Tablet not running",
-                      TabletServerError(TabletServerErrorPB::TABLET_NOT_RUNNING));
-    return s;
-  }
-  return result;
-}
+    const TabletId& tablet_id);
 
 template<class RespClass>
 Result<TabletPeerTablet> LookupTabletPeerOrRespond(
@@ -204,9 +179,14 @@ struct LeaderTabletPeer {
     return !peer;
   }
 
-  bool FillTerm(TabletServerErrorPB* error, rpc::RpcContext* context);
+  CHECKED_STATUS FillTerm();
   void FillTabletPeer(TabletPeerTablet source);
 };
+
+Result<LeaderTabletPeer> LookupLeaderTablet(
+    TabletPeerLookupIf* tablet_manager,
+    const std::string& tablet_id,
+    TabletPeerTablet peer = TabletPeerTablet());
 
 // The "peer" argument could be provided by the caller in case the caller has already performed
 // the LookupTabletPeerOrRespond call, and we only need to fill the leader term.
@@ -217,28 +197,30 @@ LeaderTabletPeer LookupLeaderTabletOrRespond(
     RespClass* resp,
     rpc::RpcContext* context,
     TabletPeerTablet peer = TabletPeerTablet()) {
-  if (peer.tablet_peer) {
-    LOG_IF(DFATAL, peer.tablet_peer->tablet_id() != tablet_id)
-        << "Mismatching table ids: peer " << peer.tablet_peer->tablet_id()
-        << " vs " << tablet_id;
-    LOG_IF(DFATAL, !peer.tablet) << "Empty tablet pointer for tablet id : " << tablet_id;
-  } else {
-    auto peer_result = LookupTabletPeerOrRespond(tablet_manager, tablet_id, resp, context);
-    if (!peer_result.ok()) {
-      return LeaderTabletPeer();
-    }
-    peer = std::move(*peer_result);
-  }
-  LeaderTabletPeer result;
-  result.FillTabletPeer(std::move(peer));
-
-  if (!result.FillTerm(resp->mutable_error(), context)) {
+  auto result = LookupLeaderTablet(tablet_manager, tablet_id, std::move(peer));
+  if (!result.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), result.status(), context);
     return LeaderTabletPeer();
   }
-  resp->clear_error();
 
-  return result;
+  resp->clear_error();
+  return *result;
 }
+
+CHECKED_STATUS CheckPeerIsLeader(const tablet::TabletPeer& tablet_peer);
+
+// Checks if the peer is ready for servicing IOs.
+// allow_split_tablet specifies whether to reject requests to tablets which have been already
+// split.
+CHECKED_STATUS CheckPeerIsReady(
+    const tablet::TabletPeer& tablet_peer, AllowSplitTablet allow_split_tablet);
+
+Result<std::shared_ptr<tablet::AbstractTablet>> GetTablet(
+    TabletPeerLookupIf* tablet_manager, const TabletId& tablet_id,
+    tablet::TabletPeerPtr tablet_peer, YBConsistencyLevel consistency_level,
+    AllowSplitTablet allow_split_tablet);
+
+CHECKED_STATUS CheckWriteThrottling(double score, tablet::TabletPeer* tablet_peer);
 
 }  // namespace tserver
 }  // namespace yb

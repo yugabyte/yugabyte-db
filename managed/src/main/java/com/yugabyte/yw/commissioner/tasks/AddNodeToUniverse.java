@@ -17,6 +17,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -110,7 +111,14 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       String preflightStatus = null;
       // Perform preflight check for onprem cluster
       if (cluster.userIntent.providerType == CloudType.onprem) {
-        preflightStatus = performPreflightCheck(cluster, currentNode);
+        preflightStatus =
+            performPreflightCheck(
+                cluster,
+                currentNode,
+                EncryptionInTransitUtil.isRootCARequired(taskParams()) ? taskParams().rootCA : null,
+                EncryptionInTransitUtil.isClientRootCARequired(taskParams())
+                    ? taskParams().clientRootCA
+                    : null);
       }
 
       if (preflightStatus != null) {

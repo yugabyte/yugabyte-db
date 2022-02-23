@@ -12,7 +12,7 @@ import {
 } from '../../../actions/xClusterReplication';
 import { YBButton } from '../../common/forms/fields';
 import { IReplication, IReplicationTable } from '../IClusterReplication';
-import { GetCurrentLagForTable, YSQL_TABLE_TYPE } from '../ReplicationUtils';
+import { formatBytes, GetCurrentLagForTable, YSQL_TABLE_TYPE } from '../ReplicationUtils';
 import DeleteReplicactionTableModal from './DeleteReplicactionTableModal';
 
 import './ReplicationDetailsTable.scss';
@@ -118,7 +118,11 @@ export function ReplicationDetailsTable({ replication }: props) {
               <TableHeaderColumn dataField="keySpace" width="20%">
                 Keyspace
               </TableHeaderColumn>
-              <TableHeaderColumn dataField="sizeBytes" width="10%">
+              <TableHeaderColumn
+                dataField="sizeBytes"
+                width="10%"
+                dataFormat={(cell) => formatBytes(cell)}
+              >
                 Size
               </TableHeaderColumn>
               <TableHeaderColumn

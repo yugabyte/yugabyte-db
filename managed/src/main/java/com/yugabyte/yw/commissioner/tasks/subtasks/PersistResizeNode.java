@@ -11,6 +11,9 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import java.util.List;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,6 +28,7 @@ public class PersistResizeNode extends UniverseTaskBase {
   public static class Params extends UniverseTaskParams {
     public String instanceType;
     public Integer volumeSize;
+    public List<UUID> clusters;
   }
 
   protected PersistResizeNode.Params taskParams() {
@@ -56,19 +60,12 @@ public class PersistResizeNode extends UniverseTaskBase {
             @Override
             public void run(Universe universe) {
               UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-              UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
 
-              // Update primary cluster
-              userIntent.instanceType = taskParams().instanceType;
-              if (taskParams().volumeSize != null) {
-                userIntent.deviceInfo.volumeSize = taskParams().volumeSize;
-              }
-
-              // Update readOnly clusters
-              for (Cluster cluster : universeDetails.getReadOnlyClusters()) {
-                cluster.userIntent.instanceType = taskParams().instanceType;
+              for (Cluster cluster : getClustersToUpdate(universeDetails)) {
+                UserIntent userIntent = cluster.userIntent;
+                userIntent.instanceType = taskParams().instanceType;
                 if (taskParams().volumeSize != null) {
-                  cluster.userIntent.deviceInfo.volumeSize = taskParams().volumeSize;
+                  userIntent.deviceInfo.volumeSize = taskParams().volumeSize;
                 }
               }
 
@@ -84,5 +81,17 @@ public class PersistResizeNode extends UniverseTaskBase {
       LOG.warn(msg, e.getMessage());
       throw new RuntimeException(msg, e);
     }
+  }
+
+  private List<Cluster> getClustersToUpdate(UniverseDefinitionTaskParams universeDetails) {
+    List<UUID> paramsClusters = taskParams().clusters;
+    if (paramsClusters == null || paramsClusters.isEmpty()) {
+      return universeDetails.clusters;
+    }
+    return universeDetails
+        .clusters
+        .stream()
+        .filter(c -> paramsClusters.contains(c.uuid))
+        .collect(Collectors.toList());
   }
 }

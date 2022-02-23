@@ -76,7 +76,7 @@ bool SnapshotScheduleState::deleted() const {
 
 void SnapshotScheduleState::PrepareOperations(
     HybridTime last_snapshot_time, HybridTime now, SnapshotScheduleOperations* operations) {
-  if (creating_snapshot_id_) {
+  if (creating_snapshot_data_.snapshot_id) {
     return;
   }
   auto delete_time = HybridTime::FromPB(options_.delete_time());
@@ -105,12 +105,13 @@ void SnapshotScheduleState::PrepareOperations(
 
 SnapshotScheduleOperation SnapshotScheduleState::MakeCreateSnapshotOperation(
     HybridTime last_snapshot_time) {
-  creating_snapshot_id_ = TxnSnapshotId::GenerateRandom();
-  VLOG_WITH_PREFIX_AND_FUNC(4) << creating_snapshot_id_;
+  creating_snapshot_data_.snapshot_id = TxnSnapshotId::GenerateRandom();
+  creating_snapshot_data_.start_time = CoarseMonoClock::now();
+  VLOG_WITH_PREFIX_AND_FUNC(4) << creating_snapshot_data_.snapshot_id;
   return SnapshotScheduleOperation {
     .type = SnapshotScheduleOperationType::kCreateSnapshot,
     .schedule_id = id_,
-    .snapshot_id = creating_snapshot_id_,
+    .snapshot_id = creating_snapshot_data_.snapshot_id,
     .filter = options_.filter(),
     .previous_snapshot_hybrid_time = last_snapshot_time,
   };
@@ -118,20 +119,22 @@ SnapshotScheduleOperation SnapshotScheduleState::MakeCreateSnapshotOperation(
 
 Result<SnapshotScheduleOperation> SnapshotScheduleState::ForceCreateSnapshot(
     HybridTime last_snapshot_time) {
-  if (creating_snapshot_id_) {
+  if (creating_snapshot_data_.snapshot_id) {
+    auto passed = CoarseMonoClock::now() - creating_snapshot_data_.start_time;
     return STATUS_EC_FORMAT(
         IllegalState, MasterError(MasterErrorPB::PARALLEL_SNAPSHOT_OPERATION),
-        "Creating snapshot in progress: $0", creating_snapshot_id_);
+        "Creating snapshot in progress: $0 (passed $1)",
+        creating_snapshot_data_.snapshot_id, passed);
   }
   return MakeCreateSnapshotOperation(last_snapshot_time);
 }
 
 void SnapshotScheduleState::SnapshotFinished(
     const TxnSnapshotId& snapshot_id, const Status& status) {
-  if (creating_snapshot_id_ != snapshot_id) {
+  if (creating_snapshot_data_.snapshot_id != snapshot_id) {
     return;
   }
-  creating_snapshot_id_ = TxnSnapshotId::Nil();
+  creating_snapshot_data_.snapshot_id = TxnSnapshotId::Nil();
 }
 
 std::string SnapshotScheduleState::LogPrefix() const {

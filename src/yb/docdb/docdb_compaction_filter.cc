@@ -84,11 +84,11 @@ Result<FilterDecision> DocDBCompactionFilter::DoFilter(
     filter_usage_logged_ = true;
   }
 
-  // Remove regular keys which are not related to this RocksDB anymore (due to split of the tablet).
-  if (!IsWithinBounds(key_bounds_, key)) {
-    // Given the addition of logic in the compaction iterator which looks at DropKeysLessThan()
-    // and DropKeysGreaterOrEqual(), we expect the compaction iterator to never pass this component
-    // a key in that range. If this invariant is violated, we LOG(DFATAL)
+  if (!IsWithinBounds(key_bounds_, key) &&
+      DecodeValueType(key) != ValueType::kTransactionApplyState) {
+    // If we reach this point, then we're processing a record which should have been excluded by
+    // proper use of GetLiveRanges(). We include this as a sanity check, but we should never get
+    // here.
     LOG(DFATAL) << "Unexpectedly filtered out-of-bounds key during compaction: "
         << SubDocKey::DebugSliceToString(key)
         << " with bounds: " << key_bounds_->ToString();
@@ -337,12 +337,20 @@ const char* DocDBCompactionFilter::Name() const {
   return "DocDBCompactionFilter";
 }
 
-Slice DocDBCompactionFilter::DropKeysLessThan() const {
-  return key_bounds_ ? key_bounds_->lower.AsSlice() : Slice();
-}
+std::vector<std::pair<Slice, Slice>> DocDBCompactionFilter::GetLiveRanges() const {
+  static constexpr char kApplyStateEndChar = ValueTypeAsChar::kTransactionApplyState + 1;
+  if (!key_bounds_ || (key_bounds_->lower.empty() && key_bounds_->upper.empty())) {
+    return {};
+  }
+  auto end_apply_state_region = Slice(&kApplyStateEndChar, 1);
+  auto first_range = std::make_pair(Slice(), end_apply_state_region);
+  auto second_range = std::make_pair(
+    key_bounds_->lower.AsSlice().Less(end_apply_state_region)
+        ? end_apply_state_region
+        : key_bounds_->lower.AsSlice(),
+    key_bounds_->upper.AsSlice());
 
-Slice DocDBCompactionFilter::DropKeysGreaterOrEqual() const {
-  return key_bounds_ ? key_bounds_->upper.AsSlice() : Slice();
+  return {first_range, second_range};
 }
 
 // ------------------------------------------------------------------------------------------------

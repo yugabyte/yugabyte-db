@@ -22,7 +22,7 @@ showAsideToc: true
 
 ## Synopsis
 
-A multidimensional array lets you store a large composite value in a single field (row-column intersection) in a table; and it lets you assign such a value to a PL/pgSQL variable, or pass it via a procedure's, or a function's, formal parameter. 
+A multidimensional array lets you store a large composite value in a single field (row-column intersection) in a table; and it lets you assign such a value to a PL/pgSQL variable, or pass it via a procedure's, or a function's, formal parameter.
 
 You can see from the declarations below that every value in an array is non-negotiably of the same data type—either a primitive data type like `text` or `numeric`, or a user-defined scalar or composite data type (like a _"row"_ type).
 
@@ -91,7 +91,7 @@ create table t2(
 ```
 Notice that it appears, optionally, to let you specify how many values each dimension holds. (The Standard syntax allows the specification of the length of just one dimension.) However, these apparent declarations of intent, too, are silently ignored. Moreover, even the _dimensionality_ is ignored. The value, in a particular row, in a table column with an array data type (or its cousin, a variable in a PL/pgSQL program) can hold an array value of _any_ dimensionality. This is demonstrated by example in [Multidimensional array of `int` values](./literals/array-of-primitive-values/#multidimensional-array-of-int-values). This means that declaring an array using the reserved word `array`, which apparently lets you define only a one-dimensional array, and declaring an array using `[]`, which apparently lets you define array of any dimensionality, where one, some, or all of the dimensions are nominally constrained, are entirely equivalent.
 
-The possibility that that different rows in the same table column can hold array values of different dimensionality is explained by picturing the implementation. Array values are held, in an opaque internal representation, as a linear "ribbon" of suitably delimited values of the array's data type. The array's actual dimensionality, and the upper and lower bound of the index along each dimension, is suitably represented in a header. This information is used, in a trivial arithmetic formula, to translate an address specification like `arr[13][7][5][17]` into the position of the value, as a single integer, along the ribbon of values. Understanding this explains why, except for the special case of a one-dimensional array, the dimensionality and the bounds of an array value are fixed at creation time. It also explains why a few of the array functions are supported only for one-dimensional arrays.
+The possibility that different rows in the same table column can hold array values of different dimensionality is explained by picturing the implementation. Array values are held, in an opaque internal representation, as a linear "ribbon" of suitably delimited values of the array's data type. The array's actual dimensionality, and the upper and lower bound of the index along each dimension, is suitably represented in a header. This information is used, in a trivial arithmetic formula, to translate an address specification like `arr[13][7][5][17]` into the position of the value, as a single integer, along the ribbon of values. Understanding this explains why, except for the special case of a one-dimensional array, the dimensionality and the bounds of an array value are fixed at creation time. It also explains why a few of the array functions are supported only for one-dimensional arrays.
 
 Yugabyte recommends that, for uniformity, you choose to declare arrays only with this syntax:
 
@@ -117,7 +117,7 @@ select k, v, array_dims(v) as dims from t order by k;
 It shows this:
 
 ```
- k |     v     |   dims    
+ k |     v     |   dims
 ---+-----------+-----------
  1 | <is null> | <is null>
  2 | {NULL}    | [1:1]
@@ -131,7 +131,7 @@ select k, v, array_dims(v) as dims from t where k = 2;
 The `||` operator is explained in [Array concatenation functions and operators](./functions-operators/concatenation/#the-160-160-160-160-operator). The query shows this:
 
 ```
- k |      v      | dims  
+ k |      v      | dims
 ---+-------------+-------
  2 | {NULL,NULL} | [1:2]
 ```
@@ -142,7 +142,7 @@ select k, v, array_dims(v) as dims from t where k = 2;
 ```
 It shows this:
 ```
- k |             v             | dims  
+ k |             v             | dims
 ---+---------------------------+-------
  2 | [0:3]={17,NULL,NULL,NULL} | [0:3]
 ```
@@ -153,7 +153,7 @@ select k, v, array_dims(v) as dims from t where k = 1;
 ```
 It shows this:
 ```
- k |  v   | dims  
+ k |  v   | dims
 ---+------+-------
  1 | {42} | [1:1]
 ```
@@ -202,7 +202,7 @@ select v::text from t where k = 1;
 ```
 It shows this:
 ```
-            v            
+            v
 -------------------------
  {{11,12,13},{21,22,23}}
 ```
@@ -219,7 +219,7 @@ from t where k = 1;
 ```
 It shows this:
 ```
-  array_ndims | array_length | array_length | array_dims 
+  array_ndims | array_length | array_length | array_dims
 -------------+--------------+--------------+------------
            2 |            2 |            3 | [1:2][1:3]
 ```
@@ -306,7 +306,7 @@ from v;
 ```
 In this syntax, `[2:4]` says that the index runs from 2 through 4 on the first dimension; and `[5:8]` says that runs from 5 through 8 on the second dimension. The values have been chosen to illustrate this. Of course, you must provide the right number of values for each dimension. The query produces this result:
 ```
-  [0][0]   | [2][5] | [2][8] | [4][5] | [4][8] |  [9][9]   
+  [0][0]   | [2][5] | [2][8] | [4][5] | [4][8] |  [9][9]
 -----------+--------+--------+--------+--------+-----------
  <is null> |     25 |     28 |     45 |     48 | <is null>
 ```
@@ -332,7 +332,7 @@ Amateur cyclists like to record their trips using a GPS device and then to uploa
 
 The GPS device lets the cyclist split the trip into successive intervals, usually called laps, so that they can later focus their review attention on particular laps of interest like, for example, a notorious steep hill. So each trip has one or many laps. A lap is typically no more than about 100 km—and often more like 5-10 km. But it could be as large as, say, 300 km. The resolution of modern devices is typically just a few paces under good conditions—say 3m. So a lap could have as many as 100,000 GPS data points, each of which records the timestamp, position, and no end of other associated instantaneous values of facts like, for example, heart rate.
 
-This sounds like a classic three table design, with foreign key constraints to capture the notion that a GPS data point belongs to a lap and that a lap belongs to a trip. The array data type allows all of the GPS data points that belong to a lap to be recorded in a single row in the _"laps"_ table—in other words as a multivalued field, thus: 
+This sounds like a classic three table design, with foreign key constraints to capture the notion that a GPS data point belongs to a lap and that a lap belongs to a trip. The array data type allows all of the GPS data points that belong to a lap to be recorded in a single row in the _"laps"_ table—in other words as a multivalued field, thus:
 
 ```plpgsql
 create type gps_data_point_t as (

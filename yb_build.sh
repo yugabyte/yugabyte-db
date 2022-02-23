@@ -1466,6 +1466,8 @@ if "$build_cxx" || "$force_run_cmake" || "$cmake_only"; then
   run_cxx_build
 fi
 
+export YB_JAVA_TEST_OFFLINE_MODE=0
+
 # Check if the Java build is needed, and skip Java unit test runs if requested.
 if "$build_java"; then
   # We'll need this for running Java tests.

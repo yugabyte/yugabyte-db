@@ -161,6 +161,8 @@ public enum TaskType {
 
   DeleteCustomerConfig("DeleteCustomerConfig"),
 
+  DeleteCustomerStorageConfig("DeleteCustomerStorageConfig"),
+
   UpdateNodeProcess("subtasks.nodes.UpdateNodeProcess"),
 
   DeleteTableFromUniverse("subtasks.DeleteTableFromUniverse"),
@@ -296,7 +298,9 @@ public enum TaskType {
 
   PreflightNodeCheck("subtasks.PreflightNodeCheck"),
 
-  RunYsqlUpgrade("subtasks.RunYsqlUpgrade");
+  RunYsqlUpgrade("subtasks.RunYsqlUpgrade"),
+
+  ResizeNode("upgrade.ResizeNode");
 
   private String relativeClassPath;
 

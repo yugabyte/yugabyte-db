@@ -5,13 +5,17 @@ package com.yugabyte.yw.common;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Maps;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.slf4j.LoggerFactory;
+import play.test.Helpers;
 
 public class TestHelper {
   public static String TMP_PATH = "/tmp/yugaware_tests";
@@ -53,5 +57,12 @@ public class TestHelper {
     listAppender.start();
     prmLogger.addAppender(listAppender);
     return listAppender.list;
+  }
+
+  public static Map<String, Object> testDatabase() {
+    return Maps.newHashMap(
+        // Needed because we're using 'value' as column name. This makes H2 be happy with that./
+        // PostgreSQL works fine with 'value' column as is.
+        Helpers.inMemoryDatabase("default", ImmutableMap.of("NON_KEYWORDS", "VALUE")));
   }
 }

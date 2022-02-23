@@ -84,7 +84,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   CHECKED_STATUS InitCDCConsumer(const std::vector<CDCConsumerStreamInfo>& consumer_info,
                                  const std::string& master_addrs,
-                                 const std::string& producer_universe_uuid);
+                                 const std::string& producer_universe_uuid,
+                                 std::shared_ptr<CDCRpcTasks> cdc_rpc_tasks);
 
   void HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool error) override;
 
@@ -94,15 +95,6 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
       const SnapshotId& snapshot_id, TabletInfo *tablet, bool error) override;
 
   void DumpState(std::ostream* out, bool on_disk_dump = false) const override;
-
-  CHECKED_STATUS HandlePlacementUsingReplicationInfo(const ReplicationInfoPB& replication_info,
-                                                     const TSDescriptorVector& all_ts_descs,
-                                                     consensus::RaftConfigPB* config) override;
-
-  // Populates ts_descs with all tservers belonging to a certain placement.
-  void GetTsDescsFromPlacementInfo(const PlacementInfoPB& placement_info,
-                                   const TSDescriptorVector& all_ts_descs,
-                                   TSDescriptorVector* ts_descs);
 
   // Fills the heartbeat response with the decrypted universe key registry.
   CHECKED_STATUS FillHeartbeatResponse(const TSHeartbeatRequestPB* req,
@@ -118,13 +110,17 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                  rpc::RpcContext* rpc);
 
   // Delete the specified CDCStream.
-  CHECKED_STATUS DeleteCDCStream(const DeleteCDCStreamRequestPB* req,
+      CHECKED_STATUS DeleteCDCStream(const DeleteCDCStreamRequestPB* req,
                                  DeleteCDCStreamResponsePB* resp,
                                  rpc::RpcContext* rpc);
 
   // List CDC streams (optionally, for a given table).
   CHECKED_STATUS ListCDCStreams(const ListCDCStreamsRequestPB* req,
                                 ListCDCStreamsResponsePB* resp) override;
+
+  // Fetch CDC stream info corresponding to a db stream id
+  CHECKED_STATUS GetCDCDBStreamInfo(const GetCDCDBStreamInfoRequestPB* req,
+                                    GetCDCDBStreamInfoResponsePB* resp) override;
 
   // Get CDC stream.
   CHECKED_STATUS GetCDCStream(const GetCDCStreamRequestPB* req,
@@ -333,7 +329,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   CHECKED_STATUS MarkCDCStreamsAsDeleting(const std::vector<scoped_refptr<CDCStreamInfo>>& streams);
 
   // Find CDC streams for a table.
-  std::vector<scoped_refptr<CDCStreamInfo>> FindCDCStreamsForTable(const TableId& table_id);
+  std::vector<scoped_refptr<CDCStreamInfo>> FindCDCStreamsForTable(const TableId& table_id) const;
 
   bool CDCStreamExistsUnlocked(const CDCStreamId& stream_id) override REQUIRES_SHARED(mutex_);
 

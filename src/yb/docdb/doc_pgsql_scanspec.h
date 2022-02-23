@@ -85,6 +85,14 @@ class DocPgsqlScanSpec : public PgsqlScanSpec {
     return range_options_;
   }
 
+  const std::vector<ColumnId> range_options_indexes() const {
+    return range_options_indexes_;
+  }
+
+  const std::vector<ColumnId> range_bounds_indexes() const {
+    return range_bounds_indexes_;
+  }
+
  private:
   static const DocKey& DefaultStartDocKey();
 
@@ -97,6 +105,9 @@ class DocPgsqlScanSpec : public PgsqlScanSpec {
   // The scan range within the hash key when a WHERE condition is specified.
   const std::unique_ptr<const QLScanRange> range_bounds_;
 
+  // Indexes of columns that have range bounds such as c2 < 4 AND c2 >= 1
+  std::vector<ColumnId> range_bounds_indexes_;
+
   // Initialize range_options_ if hashed_components_ in set and all range columns have one or more
   // options (i.e. using EQ/IN conditions). Otherwise range_options_ will stay null and we will
   // only use the range_bounds for scanning.
@@ -104,6 +115,10 @@ class DocPgsqlScanSpec : public PgsqlScanSpec {
 
   // The range value options if set. (possibly more than one due to IN conditions).
   std::shared_ptr<std::vector<std::vector<PrimitiveValue>>> range_options_;
+
+  // Indexes of columns that have range option filters such as
+  // c2 IN (1, 5, 6, 9)
+  std::vector<ColumnId> range_options_indexes_;
 
   // Schema of the columns to scan.
   const Schema& schema_;

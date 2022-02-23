@@ -16,6 +16,7 @@ import { AlertsList } from './AlertsList';
 import CreateAlert from './CreateAlert';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { AlertDestinationChannels } from './AlertDestinationChannels';
+import { MaintenanceWindow } from '../MaintenanceWindow';
 
 export const AlertConfiguration = (props) => {
   const [listView, setListView] = useState(false);
@@ -155,6 +156,17 @@ export const AlertConfiguration = (props) => {
             apiToken={apiToken}
             {...props}
           />
+        </Tab>
+        <Tab
+          eventKey="maintenanceWindow"
+          title={
+            <span>
+              <i className="fa fa-cog tab-logo" aria-hidden="true"></i> Maintenance Windows
+            </span>
+          }
+          unmountOnExit
+        >
+          <MaintenanceWindow />
         </Tab>
       </YBTabsPanel>
     </div>
