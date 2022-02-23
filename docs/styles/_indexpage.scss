@@ -11,30 +11,22 @@
     padding: 0 40px;
   }
 
-  .article {
+  .doc-article {
+    display: flex;
+    flex-flow: column nowrap;
+    align-items: center;
+    justify-content: flex-start;
+    flex-grow: 1;
+    overflow-y: hidden;
+
     .flex-wrapper {
-      width: 1080px;
-      // height: 1415px;
+      width: 100%;
+      max-width: 1080px;
+      height: 1405px;
       flex: 1;
-      // flex-basis: 1080;
-      align-items: center;
-      // align-content: center;
-      border: 1px dashed #000000;
       box-sizing: border-box;
       background-color: #fff;
-    }
-    // .wrapper {
-    //   padding-top: 36px !important;
-    //   padding-bottom: 50px !important;
-    //   padding-left: 48px;
-    //   padding-right: 24px;
-    //   background-color: #fff;
-    //   border-radius: 7px;
-    //   margin-bottom: 25px;
-    //   box-shadow: 0 0.12em 2px rgba($YB_DARK_GRAY_2, 0.05), 0 0.5em 10px rgba($YB_DARK_GRAY_2, 0.07);
-    //   z-index: 2;
-    //   position: relative;
-  
+      z-index: 2;
     //   @media only screen and (max-width: 991px) {
     //     padding-top: 22px !important;
     //     padding-bottom: 30px !important;
@@ -45,15 +37,19 @@
     //   @media screen and (max-width: 767px) {
     //     border-radius: 0;
     //   }
-    // }
+    }
+
     h2 {
       font-weight: 600;
-      font-size: 32;
+      font-style: normal;
+      font-size: 32px;
       line-height: 38px;
+      height: 38px;
       padding-top: 0 !important;
       color: #0B1117;
       position: static;
       margin-top: 39px;
+      align-items: center;
       @media only screen and (max-width: 767px) {
         font-size: 20px;
       }
@@ -80,6 +76,7 @@
       line-height: 28px;
       height: 56px;
       margin-top: 24px;
+      font-style: normal;
       font-weight: normal;
       color: #4E5F6D;
     }
@@ -88,7 +85,11 @@
       display: flex;
       flex-direction: row;
       flex-wrap: wrap;
-      margin-right: 25px;
+    }
+
+    .main-container {
+      // margin-left: 10px;
+      // margin-right: 10px;
     }
 
     .explore-heading {
@@ -120,33 +121,64 @@
     }
 
     .top-area {
-      margin-top: 48px
+      margin-top: 48px;
+      display: flex;
+      flex-direction: row;
+      min-height: 203px;
+      align-items: center;
+      @media only screen and (max-width: 1199px) {
+        display: block;
+      }
+    }
+
+    .example-top-area {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      @media only screen and (max-width: 1199px) {
+        display: block;
+      }
+    }
+
+    #second-tile {
+      margin-left: 30px;
+      @media only screen and (max-width: 1199px) {
+        margin-left: 0px;
+      }
+    }
+
+    #example-third-tile, #example-second-tile {
+      margin-left: 46px;
+      @media only screen and (max-width: 1199px) {
+        margin-left: 0px;
+      }
     }
 
     .heading-container {
       border: 1px solid #D7DEE4;
-      box-sizing: border-box;
       border-radius: 8px;
-      margin-right: 30px;
-      max-width: 425px;
-      max-height: 182px;
+      width: 525px;
+      @media only screen and (max-width: 1199px) {
+        margin-bottom: 26px;
+      }
     }
 
-    .heading-container-test {
-      border: 1px solid #D7DEE4;
+    .example-container {
+      width: 330px;
+      height: 325px;
+      background: #FFFFFF;
+      border: 1px solid #D7DDE1;
       box-sizing: border-box;
       border-radius: 8px;
-      margin-right: 30px;
-      max-width: 100%;
-      // max-height: 182px;
-      position: relative;
-      overflow:hidden
+      
+      @media only screen and (max-width: 1199px) {
+        margin-bottom: 26px;
+      }
     }
 
     .section-col {
       display: flex;
       flex-direction: column;
-      position: absolute;
     }
 
     .section-row {
@@ -154,62 +186,55 @@
       flex-direction: row;
     }
 
-    .getting-started-tile1{
+    .getting-started-blue {
       margin-top: 15px;
       margin-left: 12px;
       max-height: 36px;
       border-radius: 8px;
       background: linear-gradient(94.6deg, #5D5FEF 5.1%, #8DABF0 98.55%);
-      max-width: 93px;
+      max-width: 103px;
       padding: 6px 10px;
     }
 
-    .getting-started-tile2{
+    .getting-started-orange{
       margin-top: 15px;
       margin-left: 12px;
       max-height: 36px;
       border-radius: 8px;
       background: linear-gradient(96.37deg, #FF460E 0%, #FE6B3E 100%);
-      max-width: 93px;
+      max-width: 103px;
       padding: 6px 10px;
     }
 
     .getting-started-text {
       color: #FFFFFF;
       align-items: center;
-      line-height: 20px;
+      line-height: 24px;
       font-size: 15px;
       font-style: normal;
-      font-weight: 500;
+      font-weight: 600;
     }
 
     .tile-sentence {
       margin-left: 12px;
       margin-top: 12px;
-      max-width: 230px;
+      width: 260px;
       max-height: 48px;
+      align-items: center;
       font-size: 14px;
+      font-style: normal;
+      font-weight: normal;
       line-height: 21px;
       color: #4E5F6D;
-    }
-
-    .tile-sentence-test{
-      margin-left: 12px;
-      margin-top: 12px;
-      width: 230px;
-      max-height: 48px;
-      font-size: 14px;
-      line-height: 21px;
-      color: #4E5F6D;
-      @media only screen and (min-width: 1940px) {
-        width: fit-content;
+      @media only screen and (max-width: 1199px) {
+        width: 330px;
       }
     }
 
     .tile-link {
       margin-left: 12px;
       margin-top: 24px;
-      max-width: 68px;
+      max-width: 76px;
       height: 17px;
       font-style: normal;
       font-weight: normal;
@@ -219,7 +244,7 @@
     }
 
     .tile-image-box {
-      margin-left: 248px;
+      margin-left: auto;
       width: 160px;
       height: 180px;
       background: #F0F4F7;
@@ -235,7 +260,6 @@
     }
 
     .tile-topic {
-      width: 150px;
       height: 24px;
       font-style: normal;
       font-weight: normal;
@@ -244,34 +268,6 @@
       color: #0B1117;
       margin-top: 22px;
       margin-left: 15px;
-    }
-
-    .example-container {
-      width: 275px;
-      height: 280px;
-      background: #FFFFFF;
-      border: 1px solid #D7DDE1;
-      box-sizing: border-box;
-      border-radius: 8px;
-      margin-right: 26px;
-      @media only screen and (max-width: 767px) {
-        margin-bottom: 26px;
-      }
-    }
-
-
-    .example-container-test {
-      max-width: 100%;
-      position: relative;
-      height: 280px;
-      background: #FFFFFF;
-      border: 1px solid #D7DDE1;
-      box-sizing: border-box;
-      border-radius: 8px;
-      margin-right: 26px;
-      @media only screen and (min-width: 767px) {
-        margin-bottom: 26px;
-      }
     }
 
     .resources-container {
@@ -285,17 +281,12 @@
     }
 
     .example-image-box {
-      width: 275px;
-      height: 120px;
+      max-width: 330px;
+      height: 150px;
       background: #F0F4F7;
       border-radius: 8px;
     }
-
-    .example-image-box-test {
-      height: 120px;
-      background: #F0F4F7;
-      border-radius: 8px;
-    }
+    
 
     .resources-image-box {
       width: 48px;
@@ -307,7 +298,8 @@
     }
 
     .example-title {
-      margin-top:14px;
+      max-width: 265px;
+      margin-top: 14px;
       margin-left: 12px;
       font-style: normal;
       font-weight: 600;
@@ -315,19 +307,6 @@
       line-height: 24px;
       height: 24px;
       color: #000000;
-    }
-
-    .example-title-test {
-      margin-top:14px;
-      margin-left: 12px;
-      font-style: normal;
-      font-weight: 600;
-      font-size: 15px;
-      line-height: 24px;
-      height: 24px;
-      color: #000000;
-      text-overflow: ellipsis;
-      overflow: hidden;
     }
 
     .resources-title {
@@ -342,6 +321,7 @@
     }
 
     .example-heading {
+      width: 103px;
       font-style: normal;
       margin-top: 8px;
       margin-left: 12px;
@@ -360,33 +340,14 @@
       font-size: 14px;
       line-height: 19px;
       height: 38px;
-      width: 235px;
+      max-width: 301px;
       color: #4E5F6D;
-    }
-
-    .example-description-test {
-      margin-top: 5px;
-      margin-left: 12px;
-      font-style: normal;
-      font-weight: normal;
-      font-size: 14px;
-      line-height: 19px;
-      height: 38px;
-      width: fit-content;
-      color: #4E5F6D;
-      text-overflow: ellipsis;
-      overflow: hidden;
-      // @media only screen and (min-width: 767px) {
-      //   text-overflow: ellipsis;
-      //   overflow: hidden;
-      //   white-space: nowrap;
-      // }
     }
 
     .example-link {
       margin-left: 12px;
       margin-top: 10px;
-      width: 68px;
+      width: 76px;
       height: 17px;
       font-style: normal;
       font-weight: normal;
