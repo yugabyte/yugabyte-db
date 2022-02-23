@@ -11,6 +11,9 @@
 
 package com.yugabyte.yw.common.kms.util.hashicorpvault;
 
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
+import java.util.HashMap;
 import java.util.Map;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -18,11 +21,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import io.swagger.annotations.ApiModelProperty;
 
 /** Represents params for Hashicorp Vault config (EncryptionAtTransit) */
 public class HashicorpVaultConfigParams {
@@ -50,7 +52,7 @@ public class HashicorpVaultConfigParams {
   public long ttl;
 
   @ApiModelProperty(required = false)
-  public long ttl_expiry;
+  public long ttlExpiry;
 
   public HashicorpVaultConfigParams() {}
 
@@ -61,7 +63,7 @@ public class HashicorpVaultConfigParams {
     mountPath = p2.mountPath;
     role = p2.role;
     ttl = p2.ttl;
-    ttl_expiry = p2.ttl_expiry;
+    ttlExpiry = p2.ttlExpiry;
   }
 
   public HashicorpVaultConfigParams(JsonNode node) {
@@ -78,29 +80,42 @@ public class HashicorpVaultConfigParams {
 
   public String toString() {
     String result = "";
+
     result += String.format(" Vault Address:%s", vaultAddr);
     result += String.format(" Vault token:%s", CommonUtils.getMaskedValue("TOKEN", vaultToken));
     result += String.format(" Vault Engine:%s", engine);
     result += String.format(" Vault path:%s", mountPath);
     result += String.format(" Vault role:%s", role);
+    result += String.format(" ttl:%s", ttl);
+
+    if (ttl == 0) result += "ttlExpiry: never";
+    else {
+      Calendar ttlExpiryDate = Calendar.getInstance();
+      ttlExpiryDate.setTimeInMillis(ttlExpiry);
+      String dateStr =
+          new SimpleDateFormat("yyyy/MM/dd HH:mm:ss.SSS").format(ttlExpiryDate.getTime());
+      result += String.format("ttlExpiry: %s", dateStr);
+    }
     return result;
   }
 
-  public String toJsonString() {
-    String result = "{";
-    result += String.format("\"%s\":\"%s\",", HC_VAULT_ADDRESS, vaultAddr);
-    result += String.format("\"%s\":\"%s\",", HC_VAULT_TOKEN, vaultToken);
-    result += String.format("\"%s\":\"%s\",", HC_VAULT_ENGINE, engine);
-    result += String.format("\"%s\":\"%s\",", HC_VAULT_MOUNT_PATH, mountPath);
-    result += String.format("\"%s\":\"%s\"", HC_VAULT_PKI_ROLE, role);
-    result += "}";
-    return result;
+  public Map<String, String> toMap() {
+    Map<String, String> map = new HashMap<>();
+    map.put(HC_VAULT_ADDRESS, vaultAddr);
+    map.put(HC_VAULT_TOKEN, vaultToken);
+    map.put(HC_VAULT_ENGINE, engine);
+    map.put(HC_VAULT_MOUNT_PATH, mountPath);
+    map.put(HC_VAULT_PKI_ROLE, role);
+    map.put(HC_VAULT_TTL, String.valueOf(ttl));
+    map.put(HC_VAULT_TTL_EXPIRY, String.valueOf(ttlExpiry));
+    return map;
   }
 
   public JsonNode toJsonNode() {
     try {
       ObjectMapper mapper = new ObjectMapper();
-      JsonNode obj = mapper.readTree(toJsonString());
+      JsonNode obj = mapper.valueToTree(toMap());
+
       return obj;
     } catch (Exception e) {
       LOG.error("Error occured while preparing updated HashicorpVaultConfigParams");

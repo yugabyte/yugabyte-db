@@ -74,7 +74,7 @@ Once connected, Yugabyte Cloud adds one or more entries for the cloud shell sess
 
 ## ysqlsh meta-commands in cloud shell
 
-Cloud shell supports the use of ysqlsh [meta-commands](../../../admin/ysqlsh/#meta-commands). However, for security reasons, some commands are not available. With the exception of read-only access to the `/share` directory to load the sample datasets, commands that access the filesystem do not work in cloud shell.
+Cloud shell supports the use of ysqlsh [meta-commands](../../../admin/ysqlsh/#meta-commands). However, for security reasons, some commands are not available. With the exception of read-only access to the `/share` directory to load the [sample datasets](../../../sample-data/), commands that access the filesystem do not work in cloud shell.
 
 The following table lists common meta-commands that can be used in cloud shell.
 

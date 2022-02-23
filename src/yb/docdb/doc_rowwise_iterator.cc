@@ -401,7 +401,7 @@ class HybridScanChoices : public ScanChoices {
             // To enforce this, we create a range bound (kHighest, kLowest)
             range_cols_scan_options_lower_[idx
               - num_hash_cols].push_back(PrimitiveValue(ValueType::kHighest));
-            range_cols_scan_options_lower_[idx
+            range_cols_scan_options_upper_[idx
               - num_hash_cols].push_back(PrimitiveValue(ValueType::kLowest));
           }
 
