@@ -1221,6 +1221,10 @@ yb-admin \
 * *comma_separated_list_of_table_ids*: Comma-separated list of table identifiers (`table_id`).
 * *comma_separated_list_of_producer_bootstrap_ids*: Comma-separated list of bootstrap identifiers (`bootstrap_id`). These are obtained from using [`bootstrap_cdc_producer`](#bootstrap-cdc-producer).
 
+{{< note title="Note" >}}
+It is important that the bootstrap_ids are in the same order as their corresponding table_ids!
+{{< /note >}}
+
 {{< note title="Tip" >}}
 
 To display a list of tables and their UUID (`table_id`) values, open the **YB-Master UI** (`<master_host>:7000/`) and click **Tables** in the navigation bar.
