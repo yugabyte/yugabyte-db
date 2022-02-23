@@ -36,7 +36,7 @@ To add your computer to the cluster IP allow list:
 1. Click **Detect and add my IP to this list** to add your own IP address.
 1. Click **Save**.
 
-The allow list takes up to 30 seconds to become active
+The allow list takes up to 30 seconds to become active.
 
 ## Learn more
 
