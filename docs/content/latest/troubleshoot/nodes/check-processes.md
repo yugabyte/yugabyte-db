@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## 1. Are the YugabyteDB servers running?
 
-Connect to the local node where YugabyteDB is running. 
+Connect to the local node where YugabyteDB is running.
 
 On the local setup, this is your local machine (or a Docker instance running on your local machine). On a multi-node cluster, you may need to `ssh` into the machines where the YugabyteDB nodes are running.
 
@@ -72,4 +72,20 @@ sudo firewall-cmd --zone=public --add-port=12000/tcp;
 sudo firewall-cmd --zone=public --add-port=9300/tcp;
 sudo firewall-cmd --zone=public --add-port=9042/tcp;
 sudo firewall-cmd --zone=public --add-port=6379/tcp;
+```
+
+### Ports already in use
+
+- macOS Monterey turns on AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail.
+
+```output
+$ ./bin/yugabyted start
+Starting yugabyted...
+/ Running system checks...Failed to bind to address:  0.0.0.0:7000
+```
+
+The workaround is to turn AirPlay receiving off, then start YugabyteDB, and then (optionally) turn AirPlay receiving back on. Alternatively(recommended), you can change the default port number using the `--master_webserver_port` flag when you start the cluster as follows:
+
+```sh
+$ ./bin/yugabyted start --master_webserver_port=9999
 ```
