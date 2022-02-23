@@ -1849,6 +1849,19 @@
       "required" : [ "s3Bucket" ],
       "type" : "object"
     },
+    "BundleDetails" : {
+      "properties" : {
+        "components" : {
+          "items" : {
+            "enum" : [ "UniverseLogs", "ApplicationLogs", "OutputFiles", "ErrorFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta" ],
+            "type" : "string"
+          },
+          "type" : "array"
+        }
+      },
+      "required" : [ "components" ],
+      "type" : "object"
+    },
     "CertificateDetails" : {
       "properties" : {
         "yugabytedb.crt" : {
@@ -4555,6 +4568,38 @@
           "type" : "boolean"
         }
       },
+      "type" : "object"
+    },
+    "SupportBundle" : {
+      "properties" : {
+        "bundleDetails" : {
+          "$ref" : "#/definitions/BundleDetails"
+        },
+        "bundleUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "endDate" : {
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "path" : {
+          "type" : "string"
+        },
+        "scopeUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "startDate" : {
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "status" : {
+          "enum" : [ "Running", "Success", "Failed" ],
+          "type" : "string"
+        }
+      },
+      "required" : [ "bundleDetails", "bundleUUID", "endDate", "path", "scopeUUID", "startDate", "status" ],
       "type" : "object"
     },
     "TableDefinitionTaskParams" : {
@@ -11029,6 +11074,39 @@
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/support_bundle" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "listSupportBundle",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "uniUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/SupportBundle"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List all support bundles from a universe",
+        "tags" : [ "Support Bundle management" ]
+      },
       "post" : {
         "description" : "",
         "operationId" : "createSupportBundle",
@@ -11064,6 +11142,44 @@
       "get" : {
         "description" : "",
         "operationId" : "getSupportBundle",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "uniUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "sbUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/SupportBundle"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Get a support bundle from a universe",
+        "tags" : [ "Support Bundle management" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/support_bundle/{sbUUID}/download" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "downloadSupportBundle",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
