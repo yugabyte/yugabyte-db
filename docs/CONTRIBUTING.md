@@ -16,7 +16,7 @@
 
 All documentation pages must start with front matter as shown below.
 
-```
+```yaml
 ---
 title: SEO-Title-Browser-Tab-Title
 headerTitle: Doc-Page-Title
@@ -75,7 +75,7 @@ A note box gives some important information that is often not optional. It looks
 
 Hugo shortcode to add a note box:
 
-```
+```md
 {{< note title="Note" >}}
 
 This is a note with a [link](https://www.yugabyte.com).
@@ -90,7 +90,7 @@ A tip box gives a hint or other useful but optional piece of information. It loo
 
 Hugo shortcode to add a tip box:
 
-```
+```md
 {{< tip title="Tip" >}}
 
 This is a tip with a [link](https://www.yugabyte.com).
@@ -105,7 +105,7 @@ A warning box informs the user about a potential issue or something to watch out
 
 Hugo shortcode to add a warning box:
 
-```
+```md
 {{< warning title="Warning" >}}
 
 This is a warning with a [link](https://www.yugabyte.com).
@@ -121,7 +121,7 @@ An inline section switcher lets you switch between content sections **without a 
 
 The corresponding code for this widget is shown below. Note that the actual content must be placed in a file with the `.md` extension inside a subdirectory whose name is easy to associate with the switcher title.
 
-```
+```html
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="#macos" class="nav-link active" id="macos-tab" data-toggle="tab"
@@ -131,7 +131,7 @@ The corresponding code for this widget is shown below. Note that the actual cont
     </a>
   </li>
   <li>
-    <a href="#linux" class="nav-link" id="linux-tab" data-toggle="tab" 
+    <a href="#linux" class="nav-link" id="linux-tab" data-toggle="tab"
        role="tab" aria-controls="linux" aria-selected="false">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
