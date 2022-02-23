@@ -391,7 +391,7 @@ create_database_options =  [ 'WITH' ] [ 'OWNER' [ '=' ] user_name ]  \
                              [ 'LC_COLLATE' [ '=' ] lc_collate ]  \
                              [ 'LC_CTYPE' [ '=' ] lc_ctype ]  \
                              [ 'ALLOW_CONNECTIONS' [ '=' ] allowconn ]  \
-                             [ 'CONNECTION' 'LIMIT' [ '=' ] connlimit ]  \
+                             [ 'CONNECTION_LIMIT' [ '=' ] connlimit ]  \
                              [ 'IS_TEMPLATE' [ '=' ] istemplate ] \
                              [ 'COLOCATED' [ '=' ] ('true' | 'false') ] ;
 
@@ -427,8 +427,8 @@ function_attribute =  ( 'WINDOW'
                       | 'TRANSFORM' ( 'FOR' 'TYPE' type_name ) { ',' ( 'FOR' 'TYPE' type_name ) }
                       | 'SET' configuration_parameter ( 'TO' value | '=' value | 'FROM' 'CURRENT' )
                       | [ 'EXTERNAL' ] 'SECURITY' security_kind
-                      | 'LANGUAGE' lang_name 
-                      | 'AS' implementation_definition 
+                      | 'LANGUAGE' lang_name
+                      | 'AS' implementation_definition
                       ) ;
 
 security_kind = 'INVOKER' | 'DEFINER' ;
@@ -496,14 +496,14 @@ create_policy = 'CREATE' 'POLICY' name 'ON' table_name
 
 (* 'CREATE' 'PROCEDURE' *)
 create_procedure =  'CREATE' [ 'OR' 'REPLACE' ] 'PROCEDURE'
-                    name '(' [ arg_decl { ',' arg_decl } ] ')' 
+                    name '(' [ arg_decl { ',' arg_decl } ] ')'
                     procedure_attribute { procedure_attribute } ;
 
 procedure_attribute = ( 'TRANSFORM' ( 'FOR' 'TYPE' type_name ) { ',' ( 'FOR' 'TYPE' type_name ) }
                       | 'SET' configuration_parameter ( 'TO' value | '=' value | 'FROM' 'CURRENT' )
                       | [ 'EXTERNAL' ] 'SECURITY' security_kind
-                      | 'LANGUAGE' lang_name 
-                      | 'AS' implementation_definition 
+                      | 'LANGUAGE' lang_name
+                      | 'AS' implementation_definition
                       ) ;
 
 (* 'CREATE' 'RULE' *)
