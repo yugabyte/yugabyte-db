@@ -163,6 +163,10 @@ class AbstractInstancesMethod(AbstractMethod):
                                  required=False,
                                  help="The machine image (e.g. an AMI on AWS) to install, "
                                       "this depends on the region.")
+        self.parser.add_argument("--boot_script", required=False,
+                                 help="Custom boot script to execute on the instance.")
+        self.parser.add_argument("--boot_script_token", required=False,
+                                 help="Custom boot script token in /etc/yb-boot-script-complete")
 
         mutex_group = self.parser.add_mutually_exclusive_group()
         mutex_group.add_argument("--num_volumes", type=int, default=0,
@@ -370,9 +374,6 @@ class CreateInstancesMethod(AbstractInstancesMethod):
                                  default=True,
                                  help="Delete the root volume on VM termination")
 
-        self.parser.add_argument("--boot_script", required=False,
-                                 help="Custom boot script to execute on the instance.")
-
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
         if host_info:
@@ -395,6 +396,7 @@ class CreateInstancesMethod(AbstractInstancesMethod):
             while not self.cloud.wait_for_startup_script(args, host_info) and retries < 5:
                 retries += 1
                 time.sleep(2 ** retries)
+            self.cloud.verify_startup_script(args, host_info)
 
             logging.info('Startup script finished on {}'.format(args.search_pattern))
 
@@ -442,8 +444,6 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
                                  help="Flag to set if host OS needs python installed for Ansible.")
         self.parser.add_argument("--pg_max_mem_mb", type=int, default=0,
                                  help="Max memory for postgress process.")
-        self.parser.add_argument("--boot_script", required=False,
-                                 help="Custom boot script to execute on the instance.")
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
