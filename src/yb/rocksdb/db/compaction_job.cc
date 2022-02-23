@@ -525,7 +525,7 @@ Status CompactionJob::Install(const MutableCFOptions& mutable_cf_options) {
       "[%s] compacted to: %s, MB/sec: %.1f rd, %.1f wr, level %d, "
       "files in(%d, %d) out(%d) "
       "MB in(%.1f, %.1f) out(%.1f), read-write-amplify(%.1f) "
-      "write-amplify(%.1f) %s, records in: %d, records dropped: %d\n",
+      "write-amplify(%.1f) %s, records in: %llu, records dropped: %llu\n",
       cfd->GetName().c_str(), vstorage->LevelSummary(&tmp),
       (stats.bytes_read_non_output_levels + stats.bytes_read_output_level) /
           static_cast<double>(stats.micros),
