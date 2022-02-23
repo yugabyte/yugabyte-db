@@ -22,9 +22,9 @@ In addition to having a [cluster deployed in Yugabyte Cloud](../../qs-add/), you
 
 To download the certificate to the computer that will be connecting to the cluster, do the following:
 
-1. In Yugabyte Cloud, select your cluster, and click **Connect**.
+1. In Yugabyte Cloud, select your cluster and click **Connect**.
 1. Click **YugabyteDB Client Shell** or **Connect to your Application**.
-1. Click **Download CA Cert** to download the cluster root.crt certificate to your computer.
+1. Click **Download CA Cert** to download the cluster `root.crt` certificate to your computer.
 
 ## Add your computer to the cluster IP allow list
 
