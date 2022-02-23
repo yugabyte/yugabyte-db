@@ -5,6 +5,8 @@ linkTitle: Build an application
 description: Build an application using your favorite programming language.
 headcontent: Use your favorite programming language to build an application that uses YSQL or YCQL APIs.
 image: /images/section_icons/develop/api-icon.png
+aliases:
+  - /latest/yugabyte-cloud/cloud-develop/
 menu:
   latest:
     identifier: cloud-build-apps
@@ -16,7 +18,7 @@ Applications connect to and interact with YugabyteDB using API client libraries,
 
 Because the YugabyteDB YSQL API is PostgreSQL-compatible, and the YCQL API has roots in the Apache Cassandra CQL, YugabyteDB supports many third-party drivers. For details about supported API client drivers (by programming language), see <a href="../../../reference/drivers">Drivers</a>.
 
-For more advanced applications, including Spring and GraphQL examples, refer to [Develop](../../cloud-develop/).
+For more advanced applications, including Spring and GraphQL examples, refer to [Example applications](../../cloud-examples/).
 
 <div class="row">
 
