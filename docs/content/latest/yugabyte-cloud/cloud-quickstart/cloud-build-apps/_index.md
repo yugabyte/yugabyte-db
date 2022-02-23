@@ -14,15 +14,26 @@ menu:
 
 Applications connect to and interact with YugabyteDB using API client libraries, also called client drivers. The tutorials in this section show how to connect applications to Yugabyte Cloud clusters using available drivers and ORMs.
 
-To run these applications with Yugabyte Cloud, you will need the following:
-
-- A cluster deployed in Yugabyte Cloud. To get started, use the [Quick start](../).
-- The cluster CA certificate installed on your machine. Refer to [Download your cluster certificate](../../cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
-- Your computer added to the cluster IP allow list. Refer to [Assign IP Allow Lists](../../cloud-secure-clusters/add-connections/).
-
 Because the YugabyteDB YSQL API is PostgreSQL-compatible, and the YCQL API has roots in the Apache Cassandra CQL, YugabyteDB supports many third-party drivers. For details about supported API client drivers (by programming language), see <a href="../../../reference/drivers">Drivers</a>.
 
 For more advanced applications, including Spring and GraphQL examples, refer to [Develop](../../cloud-develop/).
+
+<div class="row">
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+  <a class="section-link icon-offset" href="cloud-add-ip/">
+    <div class="head">
+        <img class="icon" src="/images/section_icons/deploy/checklist.png" aria-hidden="true" />
+      <div class="title">Before you begin</div>
+    </div>
+    <div class="body">
+      To run these applications on Yugabyte cloud, download your cluster CA certificate and add your computer to the IP allow list.
+    </div>
+  </a>
+  </div>
+</div>
+
+## Choose your language
 
 <div class="row">
 
