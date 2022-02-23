@@ -59,7 +59,11 @@ $ ./bin/yugabyted start
 
 {{<note title="Note for macOS Monterey" >}}
 
-macOS Monterey turns on AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail. The workaround is to turn AirPlay receiving off, then start YugabyteDB, and then (optionally) turn AirPlay receiving back on.
+macOS Monterey turns on AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail. The workaround is to turn AirPlay receiving off, then start YugabyteDB, and then (optionally) turn AirPlay receiving back on. Alternatively(recommended), you can change the default port number using the `--master_webserver_port` flag when you start the cluster as follows:
+
+```sh
+$ ./bin/yugabyted start --master_webserver_port=9999
+```
 
 {{< /note >}}
 
