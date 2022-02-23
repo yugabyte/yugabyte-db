@@ -45,6 +45,12 @@ showAsideToc: true
     </a>
   </li>
   <li>
+    <a href="../ysql-ebeans/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - Ebeans
+    </a>
+  </li>
+  <li>
     <a href="../ycql/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL

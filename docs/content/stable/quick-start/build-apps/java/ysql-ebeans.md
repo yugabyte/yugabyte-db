@@ -1,13 +1,19 @@
 ---
-title: Build a Java application that uses Spring Boot and YSQL
+title: Build a Java application that uses Ebeans and YSQL
 headerTitle: Build a Java application
 linkTitle: Java
-description: Build a simple Java e-commerce application that uses Spring Boot and YSQL.
+description: Build a sample Java application that uses Ebeans and YSQL API to connect to and interact with YugabyteDB.
+aliases:
+  - /develop/client-drivers/java/
+  - /latest/develop/client-drivers/java/
+  - /latest/develop/build-apps/java/
+  - /latest/quick-start/build-apps/java/
+  - /latest/integrations/jdbc-driver
 menu:
-  latest:
+  stable:
     parent: build-apps
     name: Java
-    identifier: java-3
+    identifier: java-7
     weight: 550
 type: page
 isTocNested: true
@@ -15,6 +21,7 @@ showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+
   <li >
     <a href="../ysql-yb-jdbc/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
@@ -34,13 +41,13 @@ showAsideToc: true
     </a>
   </li>
   <li >
-    <a href="../ysql-spring-data/" class="nav-link active">
+    <a href="../ysql-spring-data/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - Spring Data JPA
     </a>
   </li>
    <li>
-    <a href="../ysql-ebeans/" class="nav-link">
+    <a href="../ysql-ebeans/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - Ebeans
     </a>
@@ -59,13 +66,22 @@ showAsideToc: true
   </li>
 </ul>
 
+The following tutorial implements an ORM example using [Ebeans](https://ebean.io/docs/), an ORM in Java, that implements a simple REST API server. The scenario is that of an e-commerce application where the database access is managed through [Play framework](https://www.playframework.com/documentation/2.8.x/api/java/index.html); Play uses [Akka](https://doc.akka.io/docs/akka/current/typed/guide/introduction.html) internally and exposes Akka Streams and actors in Websockets and other streaming HTTP responses. It includes the following tables:
+
+- `users` table — the users of the e-commerce site
+- `products` table — the products being sold
+- `orders` table — the orders placed by the users
+- `orderline` table — each line item of an order
+
+The source for the above application can be found in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master/java/ebeans) repository.
+
 ## Prerequisites
 
 This tutorial assumes that you have:
 
-- YugabyteDB up and running. If you are new to YugabyteDB, you can download, install, and have YugabyteDB up and running within five minutes by following the steps in [Quick start](../../../../quick-start/).
-- Java Development Kit (JDK) 1.8, or later, is installed. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/).
-- [Apache Maven](https://maven.apache.org/index.html) 3.3, or later, is installed.
+- YugabyteDB up and running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../../quick-start/) to have YugabyteDB up and running in minutes.
+- Java Development Kit (JDK) 1.8 is installed. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/).
+- [sbt](https://www.scala-sbt.org/1.x/docs/) is installed.
 
 ## Clone the "orm-examples" repository
 
@@ -73,32 +89,54 @@ This tutorial assumes that you have:
 $ git clone https://github.com/yugabyte/orm-examples.git
 ```
 
-The [Using ORMs with YugabyteDB `orm-examples` repository](https://github.com/yugabyte/orm-examples) has a [Spring Boot](https://spring.io/projects/spring-boot) example that implements a simple REST API server. The scenario is that of an e-commerce application. Database access in this application is managed through [Spring Data JPA](https://spring.io/projects/spring-data-jpa), which internally uses Hibernate as the JPA provider. It consists of the following:
+## Database configuration
 
-- The users of the e-commerce site are stored in the `users` table.
-- The `products` table contains a list of products the e-commerce site sells.
-- The orders placed by the users are populated in the `orders` table. An order can consist of multiple line items, each of these are inserted in the `orderline` table.
+- Modify the database configuration section to include YugabyteDB's JDBC driver settings in `conf/application.conf` file as follows:
 
-The source for this example application can be found in the [repository](https://github.com/yugabyte/orm-examples/tree/master/java/spring/src/main/java/com/yugabyte/springdemo).
+  ```sh
+  #Default database configuration using PostgreSQL database engine
+  default.username=yugabyte
+  default.password=""
+  default.driver=com.yugabyte.Driver
+  default.url="jdbc:yugabytedb://127.0.0.1:5433/ysql_ebeans?load-balance=true"
+  ```
 
-There are a number of options that can be customized in the properties file located at `src/main/resources/application.properties`. Given YSQL's compatibility with the PostgreSQL language, the `spring.jpa.database` property is set to `POSTGRESQL` and the `spring.datasource.url` is set to the YSQL JDBC URL: `jdbc:postgresql://localhost:5433/yugabyte`.
+- Add a dependency in `build.sbt` for YugabyteDB’s JDBC driver.
+
+  ```sh
+  libraryDependencies += "com.yugabyte" % "jdbc-yugabytedb" % "42.3.0"
+  ```
+
+- From your local YugabyteDB installation directory, connect to the [YSQL] shell to create a database.
+
+  ```sh
+  bin/ysqlsh
+  CREATE DATABASE ysql_ebeans;
+  ```
 
 ## Build the application
 
-```sh
-$ cd orm-examples/java/spring
-```
+Build the REST API server using:
 
 ```sh
-$ mvn -DskipTests package
+$ sbt compile
 ```
+
+{{< note title="Note" >}}
+
+- Certain subversions of JDK 1.8 would require the `nashorn` package. Add the package in the `build.sbt` if there is a compile error regarding a non-existing `jdk.nashorn` package.
+
+```sh
+libraryDependencies += "com.xenoamess" % "nashorn" % "jdk8u265-b01-x3"
+```
+
+- To change the default port(8080) for the REST API Server, set `PlayKeys.playDefaultPort` value in the `src/build.sbt` file.
+{{< /note >}}
 
 ## Run the application
 
-Start the Sprint Boot REST API server at `http://localhost:8080`.
-
 ```sh
-$ mvn spring-boot:run
+$ sbt run
 ```
 
 ## Send requests to the application
@@ -147,6 +185,8 @@ $ curl \
 
 ### Using the YSQL shell
 
+- Connect to the `ysql_ebeans` database.
+
 ```sh
 $ ./bin/ysqlsh
 ```
@@ -158,10 +198,14 @@ Type "help" for help.
 yugabyte=#
 ```
 
-List the tables created by the app.
+```sql
+yugabyte=# \c ysql_ebeans;
+```
 
-```plpgsql
-yugabyte=# \d
+- List the tables created by the application.
+
+```sql
+ysql_ebeans=#  \d
 ```
 
 ```output
@@ -180,7 +224,7 @@ List of relations
 
 Note the 4 tables and 3 sequences in the list above.
 
-```plpgsql
+```sql
 yugabyte=# SELECT count(*) FROM users;
 ```
 
@@ -191,7 +235,7 @@ yugabyte=# SELECT count(*) FROM users;
 (1 row)
 ```
 
-```plpgsql
+```sql
 yugabyte=# SELECT count(*) FROM products;
 ```
 
@@ -202,7 +246,7 @@ yugabyte=# SELECT count(*) FROM products;
 (1 row)
 ```
 
-```plpgsql
+```sql
 yugabyte=# SELECT count(*) FROM orders;
 ```
 
@@ -213,7 +257,7 @@ yugabyte=# SELECT count(*) FROM orders;
 (1 row)
 ```
 
-```plpgsql
+```sql
 yugabyte=# SELECT * FROM orderline;
 ```
 
@@ -226,7 +270,11 @@ yugabyte=# SELECT * FROM orderline;
 (3 rows)
 ```
 
-Note that `orderline` is a child table of the parent `orders` table connected using a foreign key constraint.
+{{< note title="Note" >}}
+
+- `orderline` is a child table of the parent `orders` table connected using a foreign key constraint.
+- `users` are connected with `orders` using a foreign Key constraint so that no order can be placed with invalid user and that user has to be present in the users table.
+{{< /note >}}
 
 ### Using the REST API
 
@@ -318,4 +366,4 @@ $ curl http://localhost:8080/orders
 
 ## Explore the source
 
-As highlighted earlier, the source for the above application is available in the [orm-examples repository](https://github.com/yugabyte/orm-examples/tree/master/java/spring/src/main/java/com/yugabyte/springdemo).
+As highlighted earlier, the source for the above application is available in the [orm-examples repository](https://github.com/yugabyte/orm-examples/tree/master/java/ebeans).
