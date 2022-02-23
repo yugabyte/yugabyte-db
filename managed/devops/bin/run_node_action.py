@@ -13,6 +13,7 @@ ActionHandler = namedtuple('ActionHandler', ['handler', 'parser'])
 def add_k8s_subparser(subparsers, command, parent):
     k8s_parser = subparsers.add_parser(command, help='is k8s universe', parents=[parent])
     k8s_parser.add_argument('--namespace', type=str, help='k8s namespace', required=True)
+    k8s_parser.add_argument('--kubeconfig', type=str, help='k8s kubeconfig', required=True)
     return k8s_parser
 
 

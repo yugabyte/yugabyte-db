@@ -1,3 +1,4 @@
+import os
 import paramiko
 import subprocess
 
@@ -7,8 +8,11 @@ YB_USERNAME = 'yugabyte'
 class KubernetesClient:
     def __init__(self, args):
         self.namespace = args.namespace
-        self.node_name = args.node_name
+        # MultiAZ deployments have hostname_az in their name.
+        self.node_name = args.node_name.split('_')[0]
         self.is_master = args.is_master
+        self.env_config = os.environ.copy()
+        self.env_config["KUBECONFIG"] = args.kubeconfig
 
     def wrap_command(self, cmd):
         if isinstance(cmd, str):
@@ -22,15 +26,15 @@ class KubernetesClient:
             'cp',
             self.namespace + "/" + self.node_name + ":" + source_file_path,
             target_local_file_path]
-        return subprocess.call(cmd)
+        return subprocess.call(cmd, env=self.env_config)
 
     def get_command_output(self, cmd, stdout=None):
         cmd = self.wrap_command(cmd)
-        return subprocess.call(cmd, stdout=stdout)
+        return subprocess.call(cmd, stdout=stdout, env=self.env_config)
 
     def exec_command(self, cmd):
         cmd = self.wrap_command(cmd)
-        return subprocess.check_output(cmd).decode()
+        return subprocess.check_output(cmd, env=self.env_config).decode()
 
     def exec_script(self, local_script_name, params):
         '''
