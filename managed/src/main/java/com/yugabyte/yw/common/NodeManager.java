@@ -54,8 +54,10 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -83,6 +85,9 @@ import play.libs.Json;
 @Slf4j
 public class NodeManager extends DevopsBase {
   static final String BOOT_SCRIPT_PATH = "yb.universe_boot_script";
+  static final String BOOT_SCRIPT_TOKEN = "39666ab2-6633-4806-9685-5134321bd0d1";
+  static final String BOOT_SCRIPT_COMPLETE =
+      "\r\nsync\r\necho " + BOOT_SCRIPT_TOKEN + " >/etc/yb-boot-script-complete\r\n";
   private static final String YB_CLOUD_COMMAND_TYPE = "instance";
   public static final String CERT_LOCATION_NODE = "node";
   public static final String CERT_LOCATION_PLATFORM = "platform";
@@ -1308,7 +1313,7 @@ public class NodeManager extends DevopsBase {
         Collections.emptyMap());
   }
 
-  private void addBootscript(
+  private Path addBootscript(
       Config config, List<String> commandArgs, NodeTaskParams nodeTaskParam) {
     Path bootScriptFile = null;
     String bootScript = config.getString(BOOT_SCRIPT_PATH);
@@ -1320,15 +1325,27 @@ public class NodeManager extends DevopsBase {
       try {
         bootScriptFile = Files.createTempFile(nodeTaskParam.nodeName, "-boot.sh");
         Files.write(bootScriptFile, bootScript.getBytes());
+        Files.write(bootScriptFile, BOOT_SCRIPT_COMPLETE.getBytes(), StandardOpenOption.APPEND);
 
-        commandArgs.add(bootScriptFile.toAbsolutePath().toString());
       } catch (IOException e) {
         LOG.error(e.getMessage(), e);
         throw new RuntimeException(e);
       }
     } else {
-      commandArgs.add(bootScript);
+      try {
+        bootScriptFile = Files.createTempFile(nodeTaskParam.nodeName, "-boot.sh");
+        Files.write(bootScriptFile, Files.readAllBytes(Paths.get(bootScript)));
+        Files.write(bootScriptFile, BOOT_SCRIPT_COMPLETE.getBytes(), StandardOpenOption.APPEND);
+
+      } catch (IOException e) {
+        LOG.error(e.getMessage(), e);
+        throw new RuntimeException(e);
+      }
     }
+    commandArgs.add(bootScriptFile.toAbsolutePath().toString());
+    commandArgs.add("--boot_script_token");
+    commandArgs.add(BOOT_SCRIPT_TOKEN);
+    return bootScriptFile;
   }
 
   public ShellResponse nodeCommand(NodeCommandType type, NodeTaskParams nodeTaskParam) {
@@ -1392,7 +1409,7 @@ public class NodeManager extends DevopsBase {
             }
 
             if (config.hasPath(BOOT_SCRIPT_PATH)) {
-              addBootscript(config, commandArgs, nodeTaskParam);
+              bootScriptFile = addBootscript(config, commandArgs, nodeTaskParam);
             }
 
             // For now we wouldn't add machine image for aws and fallback on the default
@@ -1532,7 +1549,7 @@ public class NodeManager extends DevopsBase {
 
           Config config = this.runtimeConfigFactory.forProvider(nodeTaskParam.getProvider());
           if (config.hasPath(BOOT_SCRIPT_PATH)) {
-            addBootscript(config, commandArgs, nodeTaskParam);
+            bootScriptFile = addBootscript(config, commandArgs, nodeTaskParam);
           }
 
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));

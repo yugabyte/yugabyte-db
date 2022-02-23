@@ -640,5 +640,21 @@ class AbstractCloud(AbstractCommandParser):
 
         return True
 
+    def verify_startup_script(self, args, host_info):
+        cmd = "cat /etc/yb-boot-script-complete"
+        rc, stdout, stderr = remote_exec_command(
+            host_info['ssh_host'], host_info['ssh_port'],
+            host_info['ssh_user'], args.private_key_file, cmd
+        )
+        if rc != 0:
+            raise YBOpsRuntimeError(
+                'Failed to read /etc/yb-boot-script-complete {}\nSTDOUT: {}\nSTDERR: {}\n'.format(
+                    args.search_pattern, stdout, stderr))
+        if len(stdout) > 0:
+            if stdout[0].rstrip(os.linesep) != args.boot_script_token:
+                raise YBOpsRuntimeError(
+                    '/etc/yb-boot-script-complete on {} has incorrect token {}'.format(
+                        args.search_pattern, stdout))
+
     def get_console_output(self, args):
         return ''
