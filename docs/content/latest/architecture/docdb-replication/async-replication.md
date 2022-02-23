@@ -33,7 +33,7 @@ Asynchronous replication of data works across all the APIs (YSQL, YCQL), since t
 
 ### Active-Passive
 
-The replication could be unidirectional from a source cluster (aka the producer cluster) to one or more sink clusters (aka consumer clusters). The sink clusters are typically located in data centers or regions that are different from the source cluster. They are passive because they do not take writes from the higher layer services. Such deployments are typically used for serving low latency reads from the sink clusters as well as for disaster recovery purposes.
+The replication could be unidirectional from a source cluster (aka the producer cluster) to one sink cluster (aka consumer cluster). The sink clusters are typically located in data centers or regions that are different from the source cluster. They are passive because they do not take writes from the higher layer services. Such deployments are typically used for serving low latency reads from the sink clusters as well as for disaster recovery purposes.
 
 The source-sink deployment architecture is shown in the diagram below:
 
