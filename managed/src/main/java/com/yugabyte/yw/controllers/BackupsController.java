@@ -13,9 +13,9 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.DeleteBackupParams;
+import com.yugabyte.yw.forms.DeleteBackupParams.DeleteBackupInfo;
 import com.yugabyte.yw.forms.EditBackupParams;
 import com.yugabyte.yw.forms.PlatformResults;
-import com.yugabyte.yw.forms.DeleteBackupParams.DeleteBackupInfo;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
@@ -25,9 +25,9 @@ import com.yugabyte.yw.forms.filters.BackupApiFilter;
 import com.yugabyte.yw.forms.paging.BackupPagedApiQuery;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
-import com.yugabyte.yw.models.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
+import com.yugabyte.yw.models.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -35,9 +35,8 @@ import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.filters.BackupFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
-import com.yugabyte.yw.models.paging.BackupPagedQuery;
-import com.yugabyte.yw.models.paging.BackupPagedResponse;
 import com.yugabyte.yw.models.paging.BackupPagedApiResponse;
+import com.yugabyte.yw.models.paging.BackupPagedQuery;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -410,7 +409,8 @@ public class BackupsController extends AuthenticatedController {
   @ApiOperation(
       value = "Stop a backup",
       notes = "Stop an in-progress backup",
-      nickname = "stopBackup")
+      nickname = "stopBackup",
+      response = YBPSuccess.class)
   public Result stop(UUID customerUUID, UUID backupUUID) {
     Customer.getOrBadRequest(customerUUID);
     Process process = Util.getProcessOrBadRequest(backupUUID);
