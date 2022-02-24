@@ -1,6 +1,6 @@
-```
+```ebnf
 explain ::= EXPLAIN [ [ ANALYZE ] [ VERBOSE ] | ( option [ , ... ] ) ] 
-            statement
+            sql_stmt
 
 option ::= ANALYZE [ boolean ]
            | VERBOSE [ boolean ]

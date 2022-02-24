@@ -1,5 +1,5 @@
-```
-lock_table ::= LOCK [ TABLE ] { { [ ONLY ] name [ * ] } [ , ... ] } 
+```ebnf
+lock_table ::= LOCK [ TABLE ] { table_expr [ , ... ] } 
                [ IN lockmode MODE ] [ NOWAIT ]
 
 lockmode ::= ACCESS SHARE

@@ -163,7 +163,7 @@ seq_data_type = ( 'smallint' | 'integer' | 'bigint' ) ;
 restart = '<Integer Literal>';
 
 (* 'ALTER' 'TABLE' *)
-alter_table = 'ALTER' 'TABLE' [ 'ONLY' ] name [ '*' ]
+alter_table = 'ALTER' 'TABLE' table_expr
                         alter_table_action { ',' alter_table_action } ;
 
 alter_table_action =
@@ -218,7 +218,7 @@ argument_name = '<Text Literal>' ;
 
 (* 'COMMENT' *)
 comment_on = 'COMMENT' 'ON' (
-  'ACCESS' 'METHOD' object_name |
+  'ACCESS' 'METHOD' access_method_name |
   'AGGREGATE' aggregate_name '(' aggregate_signature ')' |
   'CAST' '(' source_type 'AS' target_type ')' |
   'COLLATION' object_name |
@@ -391,7 +391,7 @@ create_database_options =  [ 'WITH' ] [ 'OWNER' [ '=' ] user_name ]  \
                              [ 'LC_COLLATE' [ '=' ] lc_collate ]  \
                              [ 'LC_CTYPE' [ '=' ] lc_ctype ]  \
                              [ 'ALLOW_CONNECTIONS' [ '=' ] allowconn ]  \
-                             [ 'CONNECTION' 'LIMIT' [ '=' ] connlimit ]  \
+                             [ 'CONNECTION_LIMIT' [ '=' ] connlimit ]  \
                              [ 'IS_TEMPLATE' [ '=' ] istemplate ] \
                              [ 'COLOCATED' [ '=' ] ('true' | 'false') ] ;
 
@@ -411,51 +411,54 @@ create_extension = 'CREATE' 'EXTENSION' [ 'IF' 'NOT' 'EXISTS' ]
 
 (* CREATE FUNCTION *)
 create_function =  'CREATE' [ 'OR' 'REPLACE' ] 'FUNCTION'
-                   name '(' [ arg_decl { ',' arg_decl } ] ')' \
-                   [ 'RETURNS' type_name
-                   | 'RETURNS' 'TABLE' '(' ( column_name type_name ) { ',' ( column_name type_name ) } ')' ] \
-                   ( 'LANGUAGE' lang_name
-                      | 'TRANSFORM' ( 'FOR' 'TYPE' type_name ) { ',' ( 'FOR' 'TYPE' type_name ) }
-                      | 'WINDOW'
-                      | 'IMMUTABLE' | 'STABLE' | 'VOLATILE' | [ 'NOT' ] 'LEAKPROOF'
-                      | 'CALLED' 'ON' 'NULL' 'INPUT' | 'RETURNS' 'NULL' 'ON' 'NULL' 'INPUT' | 'STRICT'
-                      | [ 'EXTERNAL' ] 'SECURITY' 'INVOKER' | [ 'EXTERNAL' ] 'SECURITY' 'DEFINER'
-                      | 'PARALLEL' ( 'UNSAFE' | 'RESTRICTED' | 'SAFE' )
-                      | 'COST' int_literal
-                      | 'ROWS' int_literal
-                      | 'SET' configuration_parameter ( 'TO' value | '=' value | 'FROM' 'CURRENT' )
-                      | 'AS' 'definition'
-                      | 'AS' 'obj_file', 'link_symbol'
-                   )
-                   { ( 'LANGUAGE' lang_name
-                      | 'TRANSFORM' ( 'FOR' 'TYPE' type_name ) { ',' ( 'FOR' 'TYPE' type_name ) }
-                      | 'WINDOW'
-                      | 'IMMUTABLE' | 'STABLE' | 'VOLATILE' | [ 'NOT' ] 'LEAKPROOF'
-                      | 'CALLED' 'ON' 'NULL' 'INPUT' | 'RETURNS' 'NULL' 'ON' 'NULL' 'INPUT' | 'STRICT'
-                      | [ 'EXTERNAL' ] 'SECURITY' 'INVOKER' | [ 'EXTERNAL' ] 'SECURITY' 'DEFINER'
-                      | 'PARALLEL' ( 'UNSAFE' | 'RESTRICTED' | 'SAFE' )
-                      | 'COST' int_literal
-                      | 'ROWS' int_literal
-                      | 'SET' configuration_parameter ( 'TO' value | '=' value | 'FROM' 'CURRENT' )
-                      | 'AS' 'definition'
-                      | 'AS' 'obj_file', 'link_symbol'
-                   ) } ;
-
+                   function_name '(' [ arg_decl { ',' arg_decl } ] ')' \
+                   [ 'RETURNS' data_type
+                   | 'RETURNS' 'TABLE' '(' ( column_name data_type ) { ',' ( column_name data_type ) } ')' ] \
+                   function_attribute { function_attribute } ;
 
 arg_decl = [ argmode ] [ argname ] argtype [ ( 'DEFAULT' | '=' ) expression ] ;
 
+function_attribute =  ( 'WINDOW'
+                      | 'IMMUTABLE' | 'STABLE' | 'VOLATILE' | [ 'NOT' ] 'LEAKPROOF'
+                      | 'CALLED' 'ON' 'NULL' 'INPUT' | 'RETURNS' 'NULL' 'ON' 'NULL' 'INPUT' | 'STRICT'
+                      | 'PARALLEL' ( 'UNSAFE' | 'RESTRICTED' | 'SAFE' )
+                      | 'COST' int_literal
+                      | 'ROWS' int_literal
+                      | 'TRANSFORM' ( 'FOR' 'TYPE' type_name ) { ',' ( 'FOR' 'TYPE' type_name ) }
+                      | 'SET' configuration_parameter ( 'TO' value | '=' value | 'FROM' 'CURRENT' )
+                      | [ 'EXTERNAL' ] 'SECURITY' security_kind
+                      | 'LANGUAGE' lang_name
+                      | 'AS' implementation_definition
+                      ) ;
+
+security_kind = 'INVOKER' | 'DEFINER' ;
+
+lang_name = 'SQL' | 'PLPGSQL' | 'C' ;
+
+implementation_definition := "'" sql_stmt_list "'" |"'" plpgsql_block_stmt "'" | ( "'" obj_file"'" [ ',' "'" link_symbol "'" ] ) ;
+
+sql_stmt_list = sql_stmt ';' { sql_stmt ';' } ;
 
 (* 'CREATE' 'GROUP' *)
 create_group = 'CREATE' 'GROUP' role_name [ [ 'WITH' ] role_option { ',' role_option } ] ;
 
 (* 'CREATE' 'INDEX' *)
-create_index = 'CREATE' [ 'UNIQUE' ] 'INDEX' [ [ 'IF' 'NOT' 'EXISTS' ] name ] \
-                          'ON' [ 'ONLY' ] table_name '(' index_elem { ',' index_elem } ')' \
-                          [ 'INCLUDE' '(' column_name { ',' column_name } ')' ] \
-                          [ 'WHERE' boolean_expression ] ;
+create_index = 'CREATE' [ 'UNIQUE' ] 'INDEX' [ 'NONCONCURRENTLY' ] \
+               [ [ 'IF' 'NOT' 'EXISTS' ] name ] 'ON' [ 'ONLY' ] table_name \
+               [ 'USING' access_method_name ]
+               '(' index_elem { ',' index_elem } ')' \
+               [ 'INCLUDE' '(' column_name { ',' column_name } ')' ] \
+               [ 'WHERE' boolean_expression ] ;
 
 index_elem = ( column_name | '(' expression ')' ) [ operator_class_name ]
              [ 'HASH' | 'ASC' | 'DESC' ] [ 'NULLS' ( 'FIRST' | 'LAST' ) ] ;
+
+(* 'CREATE' 'MATERIALIZED 'VIEW' *)
+create_matview = 'CREATE' 'MATERIALIZED' 'VIEW' [ 'IF' 'NOT' 'EXISTS' ] \
+                           matview_name [ '(' column_name { ',' column_name } ')' ] \
+                           [ 'WITH' '(' storage_parameters ')' ] \
+                           [ 'TABLESPACE' tablespace ] \
+                           'AS' query [ 'WITH' [ 'NO' ] 'DATA' ] ;
 
 (* 'CREATE' 'OPERATOR' *)
 create_operator = 'CREATE' 'OPERATOR' operator_name '('
@@ -493,21 +496,15 @@ create_policy = 'CREATE' 'POLICY' name 'ON' table_name
 
 (* 'CREATE' 'PROCEDURE' *)
 create_procedure =  'CREATE' [ 'OR' 'REPLACE' ] 'PROCEDURE'
-                   name '(' [ arg_decl { ',' arg_decl } ] ')' \
-                   ( 'LANGUAGE' lang_name
-                      | 'TRANSFORM' ( 'FOR' 'TYPE' type_name ) { ',' ( 'FOR' 'TYPE' type_name ) }
-                      | [ 'EXTERNAL' ] 'SECURITY' 'INVOKER' | [ 'EXTERNAL' ] 'SECURITY' 'DEFINER'
+                    name '(' [ arg_decl { ',' arg_decl } ] ')'
+                    procedure_attribute { procedure_attribute } ;
+
+procedure_attribute = ( 'TRANSFORM' ( 'FOR' 'TYPE' type_name ) { ',' ( 'FOR' 'TYPE' type_name ) }
                       | 'SET' configuration_parameter ( 'TO' value | '=' value | 'FROM' 'CURRENT' )
-                      | 'AS' 'definition'
-                      | 'AS' 'obj_file', 'link_symbol'
-                   )
-                   { ( 'LANGUAGE' lang_name
-                      | 'TRANSFORM' ( 'FOR' 'TYPE' type_name ) { ',' ( 'FOR' 'TYPE' type_name ) }
-                      | [ 'EXTERNAL' ] 'SECURITY' 'INVOKER' | [ 'EXTERNAL' ] 'SECURITY' 'DEFINER'
-                      | 'SET' configuration_parameter ( 'TO' value | '=' value | 'FROM' 'CURRENT' )
-                      | 'AS' 'definition'
-                      | 'AS' 'obj_file', 'link_symbol'
-                   ) } ;
+                      | [ 'EXTERNAL' ] 'SECURITY' security_kind
+                      | 'LANGUAGE' lang_name
+                      | 'AS' implementation_definition
+                      ) ;
 
 (* 'CREATE' 'RULE' *)
 create_rule = 'CREATE' [ 'OR' 'REPLACE' ] 'RULE' rule_name 'AS' 'ON' rule_event
@@ -699,7 +696,7 @@ deallocate = 'DEALLOCATE' [ 'PREPARE' ] ( name | 'ALL' ) ;
 
 (* 'DELETE' *)
 delete = [ 'WITH' [ 'RECURSIVE' ] ( common_table_expression { ',' common_table_expression } ) ] \
-       'DELETE' 'FROM' [ 'ONLY' ] table_name [ '*' ] [ [ 'AS' ] alias ] \
+       'DELETE' 'FROM' table_expr [ [ 'AS' ] alias ] \
        [ 'WHERE' boolean_expression | 'WHERE' 'CURRENT' 'OF' cursor_name ] \
        [ returning_clause ] ;
 
@@ -746,6 +743,10 @@ argtype_decl = [ argmode ] [ argname ] argtype;
 
 (* 'DROP' 'GROUP' *)
 drop_group = 'DROP' 'GROUP' [ 'IF' 'EXISTS' ] role_name { ',' role_name } ;
+
+(* 'DROP' 'MATERIALIZED' 'VIEW' *)
+drop_matview = 'DROP' 'MATERIALIZED' 'VIEW' [ 'IF' 'EXISTS' ] matview_name \
+               [ 'CASCADE' | 'RESTRICT' ] ;
 
 (* 'DROP' 'OPERATOR' *)
 drop_operator = 'DROP' 'OPERATOR' [ 'IF' 'EXISTS' ] ( operator_name '(' operator_signature ')' )
@@ -801,7 +802,7 @@ end = 'END' [ 'TRANSACTION' | 'WORK' ] ;
 execute_statement = 'EXECUTE' name [ '(' expression { ',' expression } ')' ] ;
 
 (* 'EXPLAIN' *)
-explain := 'EXPLAIN' [ ( [ 'ANALYZE' ] [ 'VERBOSE' ] ) | '(' option { ',' option } ')' ] statement ;
+explain := 'EXPLAIN' [ ( [ 'ANALYZE' ] [ 'VERBOSE' ] ) | '(' option { ',' option } ')' ] sql_stmt ;
 
 option = 'ANALYZE' [ boolean ]
            | 'VERBOSE' [ boolean ]
@@ -876,7 +877,7 @@ conflict_action = 'DO' 'NOTHING' | 'DO' 'UPDATE' 'SET' update_item { ',' update_
 
 (* 'LOCK' *)
 lock_table = 'LOCK' [ 'TABLE' ]
-                      ( ( [ 'ONLY' ] name [ '*' ] ) { ',' ( [ 'ONLY' ] name [ '*' ] ) } )
+                      ( ( table_expr ) { ',' ( table_expr ) } )
                       [ 'IN' lockmode 'MODE' ] [ 'NOWAIT' ] ;
 
 lockmode = ( 'ACCESS' 'SHARE'
@@ -889,11 +890,15 @@ lockmode = ( 'ACCESS' 'SHARE'
                | 'ACCESS' 'EXCLUSIVE' ) ;
 
 (* 'PREPARE' *)
-prepare_statement = 'PREPARE' name [ '(' data_type { ',' data_type } ')' ] 'AS' statement ;
+prepare_statement = 'PREPARE' name [ '(' data_type { ',' data_type } ')' ] 'AS' sql_stmt ;
 
 (* 'REASSIGN' 'OWNED' *)
 reassign_owned = 'REASSIGN' 'OWNED' 'BY' role_specification { ',' role_specification }
                                     'TO' role_specification ;
+
+(* 'REFRESH' 'MATERIALIZED' 'VIEW' *)
+refresh_matview = 'REFRESH' 'MATERIALIZED' 'VIEW' [ 'CONCURRENTLY' ] \
+                  matview_name [ 'WITH' [ 'NO' ] 'DATA' ] ;
 
 (* 'RESET' *)
 reset_stmt := 'RESET' ( name | 'ALL' ) ;
@@ -1023,18 +1028,14 @@ show_stmt = 'SHOW' ( name | 'ALL' ) ;
 show_transaction = 'SHOW' 'TRANSACTION' 'ISOLATION' 'LEVEL' ;
 
 (* 'TRUNCATE' *)
-(*
-truncate = 'TRUNCATE' [ 'TABLE' ] ( table_expr { ',' table_expr } ) ;
-*)
 
-truncate = 'TRUNCATE' [ 'TABLE' ]
-             ( ( [ 'ONLY' ] name [ '*' ] ) { ',' ( [ 'ONLY' ] name [ '*' ] ) } ) ;
+truncate = 'TRUNCATE' [ 'TABLE' ] ( table_expr { ',' table_expr } ) [ 'CASCADE' | 'RESTRICT' ];
 
-table_expr = [ 'ONLY' ] name [ '*' ] ;
+table_expr = [ 'ONLY' ] table_name [ '*' ] ;
 
 (* 'UPDATE' *)
 update = [ 'WITH' [ 'RECURSIVE' ] ( common_table_expression { ',' common_table_expression } ) ] \
-       'UPDATE' [ 'ONLY' ] table_name [ '*' ] [ [ 'AS' ] alias ] \
+       'UPDATE' table_expr [ [ 'AS' ] alias ] \
        'SET' update_item { ',' update_item }
        (* [ 'FROM' from_list ] \ *)
        [ 'WHERE' boolean_expression | 'WHERE' 'CURRENT' 'OF' cursor_name ] \
@@ -1131,6 +1132,7 @@ table_name = qualified_name ;
 column_name = '<Text Literal>' ;
 
 object_name = name ;
+access_method_name = name ;
 relation_name = qualified_name ;
 aggregate_name = qualified_name ;
 constraint_name = qualified_name ;
@@ -1281,6 +1283,8 @@ new_name = name ;
 version = '<text literal>' ;
 extension_name = name ;
 
+matview_name = qualified_name ;
+
 (*
   Notice that the "demo-2" rule uses ( ... ) redundantly.
   The two rules are semantically identical but they produce the different diagrams.
@@ -1298,8 +1302,33 @@ demo-2-irrelevant-for-ysql-syntax = ( ( a 'K' b ) { ',' ( a 'K' b ) } ) ;
 *)
 
 (* 'SAVEPOINTS'*)
-savepoint_create := ( 'SAVEPOINT' name );
+savepoint_create := ( 'SAVEPOINT' name ) ;
 
-savepoint_release := ( 'RELEASE' [ 'SAVEPOINT' ] name );
+savepoint_release := ( 'RELEASE' [ 'SAVEPOINT' ] name ) ;
 
-savepoint_rollback := ( 'ROLLBACK' ['WORK' | 'TRANSACTION' ] 'TO' [ 'SAVEPOINT' ] name );
+savepoint_rollback := ( 'ROLLBACK' ['WORK' | 'TRANSACTION' ] 'TO' [ 'SAVEPOINT' ] name ) ;
+
+(* -------------------------------------------------------------------------------------------------------------------------------------- ))
+(* PL/pgSQL language                                                                                                                      ))
+
+COMMENTED OUT -- bllewell W.i.P.
+
+plpgsql_block_stmt = [ '<<' name '>>' ] [ plpgsql_declaration_section ] plpgsql_executable_section [ plpgsql_exception_section ] 'END' [name] ';' ;
+
+plpgsql_declaration_section = 'DECLARE' [ plpgsql_declaration { plpgsql_declaration } ] ;
+
+plpgsql_declaration = [name] [ 'CONSTANT' ] [data_type] ['NOT' 'NULL' ]  [ ':=' expression ] ';' ;
+
+plpgsql_executable_section = 'BEGIN' [ plpgsql_stmt { plpgsql_stmt } ] ;
+
+plpgsql_stmt = ( plpgsql_basic_stmt | plpgsql_compound_stmt ) ;
+
+plpgsql_basic_stmt := ( [ 'NULL' | regular_sql_stmt | embedded_sql_stmt | plpgsql_assignment_stmt | plpgsql_perform_stmt | plpgsql_assert_stmt | plpgsql_raise_stmt | plpgsql_get_diagnostics_stmt | plpgsql_return_stmt ] ) ';' ;
+
+plpgsql_compound_stmt = ( plpgsql_block_stmt | plpgsql_loop_stmt | plpgsql_if_stmt | plpgsql_case_stmt ) ';' ;
+
+plpgsql_exception_section = 'EXCEPTION' ( plpgsql_handler { plpgsql_handler } ) ;
+
+plpgsql_handler = 'WHEN' ( name | 'OTHERS' ) 'THEN' ( plpgsql_stmt { plpgsql_stmt } ) ;
+
+*)

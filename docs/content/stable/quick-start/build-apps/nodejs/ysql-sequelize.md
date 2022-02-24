@@ -1,12 +1,11 @@
 ---
-title: Build a NodeJS application that uses Sequelize ORM and YSQL
-headerTitle: Build a NodeJS application
-linkTitle: NodeJS
-description: Build a NodeJS application that uses Sequelize ORM and YSQL.
+title: Build a Node.js application that uses Sequelize ORM and YSQL
+headerTitle: Build a Node.js application
+description: Build a Node.js application that uses Sequelize ORM and YSQL.
 menu:
   stable:
     parent: build-apps
-    name: NodeJS
+    name: Node.js
     identifier: nodejs-2
     weight: 551
 type: page
@@ -37,9 +36,7 @@ showAsideToc: true
 
 ## Prerequisites
 
-This tutorial assumes that you have:
-
-- installed YugabyteDB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../../quick-start/explore/ysql/).
+This tutorial assumes that you have installed YugabyteDB and created a cluster. Refer to [Quick Start](../../../../quick-start/).
 
 ## Clone the orm-examples repository
 
@@ -47,13 +44,13 @@ This tutorial assumes that you have:
 $ git clone https://github.com/yugabyte/orm-examples.git
 ```
 
-This repository has a node.js example that implements a simple REST API server. The scenario is that of an e-commerce application. Database access in this application is managed through the Sequelize ORM. It consists of the following.
+This repository has a Node.js example that implements a REST API server. The scenario is that of an e-commerce application. Database access in this application is managed through the Sequelize ORM. It consists of the following:
 
-- The users of the e-commerce site are stored in the `users` table.
+- The `users` table contains the users of the e-commerce site.
 - The `products` table contains a list of products the e-commerce site sells.
-- The orders placed by the users are populated in the `orders` table. An order can consist of multiple line items, each of these are inserted in the `orderline` table.
+- Orders placed by the users are populated in the `orders` table. An order can consist of multiple line items, each of these are inserted in the `orderline` table.
 
-The source for the above application can be found in the [repo](https://github.com/yugabyte/orm-examples/tree/master/node/sequelize). There are a number of options that can be customized in the properties file located at `config/config.json`.
+The application source is in the [repository](https://github.com/yugabyte/orm-examples/tree/master/node/sequelize). You can customize a number of options using the properties file located at `config/config.json`.
 
 ## Build the application
 
@@ -67,7 +64,7 @@ npm install
 
 ## Run the application
 
-Bring the NodeJS API server at <http://localhost:8080> with DEBUG logs on.
+Start the Node.js API server at <http://localhost:8080> with DEBUG logs on.
 
 ```sh
 $ DEBUG=sequelize:* npm start
@@ -117,7 +114,7 @@ $ curl \
 
 ## Query results
 
-### Using the YSQL shell
+### Using ysqlsh
 
 ```sh
 $ ./bin/ysqlsh
@@ -253,4 +250,4 @@ $ curl http://localhost:8080/orders
 
 ## Explore the source
 
-As highlighted earlier, the source for the above application can be found in the [orm-examples repository](https://github.com/yugabyte/orm-examples/tree/master/node/sequelize).
+The application source is in the [orm-examples repository](https://github.com/yugabyte/orm-examples/tree/master/node/sequelize).

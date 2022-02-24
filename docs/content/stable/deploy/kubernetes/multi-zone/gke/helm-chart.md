@@ -161,7 +161,7 @@ $ helm search repo yugabytedb/yugabyte
 
 ```output
 NAME                    CHART VERSION   APP VERSION     DESCRIPTION
-yugabytedb/yugabyte     2.8.2           2.8.2.0-b51    YugabyteDB is the high-performance distributed ...
+yugabytedb/yugabyte     2.12.1           2.12.1.0-b41    YugabyteDB is the high-performance distributed ...
 ```
 
 ### Create override files
@@ -228,7 +228,7 @@ gflags:
     placement_zone: "us-central1-b"
 ```
 
-Copy the contents below to a file named `overrides-us-central1-b.yaml`.
+Copy the contents below to a file named `overrides-us-central1-c.yaml`.
 
 ```yaml
 isMultiAz: True

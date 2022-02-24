@@ -623,7 +623,7 @@ Default: `14400` (4 hours)
 
 ## Admin UI
 
-The Admin UI for yb-master is available at http://localhost:7000.
+The Admin UI for yb-master is available at <http://localhost:7000>.
 
 ### Home
 

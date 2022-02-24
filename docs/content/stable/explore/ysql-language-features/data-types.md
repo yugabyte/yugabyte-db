@@ -2,7 +2,6 @@
 title: Data Types
 linkTitle: Data Types
 description: Data Types in YSQL
-headcontent: Data Types
 image: /images/section_icons/secure/create-roles.png
 menu:
   stable:

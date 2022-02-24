@@ -9,7 +9,7 @@ menu:
   stable:
     identifier: explore-cluster-management
     parent: explore
-    weight: 250
+    weight: 290
 ---
 
 
@@ -22,10 +22,9 @@ menu:
         <div class="title">Point-in-time recovery</div>
       </div>
       <div class="body">
-          Restore the state of a cluster's data from a specific point in time. 
+          Restore the state of a cluster's data from a specific point in time.
       </div>
     </a>
   </div>
-
 
 </div>

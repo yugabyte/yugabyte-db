@@ -69,7 +69,7 @@ DROP EXTENSION IF EXISTS cube RESTRICT;
 ```
 ERROR:  cannot drop extension cube because other objects depend on it
 DETAIL:  extension earthdistance depends on function cube_out(cube)
-HINT:  Use DROP ... CASCADE to drop the dependent objects too.<Paste>
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
 ```
 
 ```plpgsql

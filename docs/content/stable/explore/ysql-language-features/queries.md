@@ -2,7 +2,6 @@
 title: Queries and Joins
 linkTitle: Queries and Joins
 description: Queries and Joins in YSQL
-headcontent: Queries and Joins in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   stable:

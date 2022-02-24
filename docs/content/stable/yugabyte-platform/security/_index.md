@@ -5,9 +5,10 @@ linkTitle: Security
 description: Secure Yugabyte Platform and YugabyteDB universes.
 image: /images/section_icons/index/secure.png
 headcontent: Secure Yugabyte Platform and your YugabyteDB universes.
+type: page
+section: YUGABYTE PLATFORM
 menu:
   stable:
-    parent: yugabyte-platform
     identifier: security
 weight: 645
 ---
@@ -69,7 +70,7 @@ weight: 645
         <div class="title">Create a KMS configuration</div>
       </div>
       <div class="body">
-        Use key management system.
+        Key management system.
       </div>
     </a>
   </div>

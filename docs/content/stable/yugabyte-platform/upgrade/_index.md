@@ -4,10 +4,11 @@ headerTitle: Upgrade Yugabyte Platform
 linkTitle: Upgrade Yugabyte Platform
 description: Upgrade Yugabyte Platform.
 image: /images/section_icons/manage/enterprise.png
+type: page
+section: YUGABYTE PLATFORM
 menu:
   stable:
     identifier: upgrade
-    parent: yugabyte-platform
     weight: 649
 ---
 

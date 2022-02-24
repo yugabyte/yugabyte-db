@@ -1,8 +1,8 @@
-```
+```ebnf
 update ::= [ WITH [ RECURSIVE ] { common_table_expression [ , ... ] } ] 
-            UPDATE [ ONLY ] table_name [ * ] [ [ AS ] alias ]  SET 
-           update_item [ , ... ] [ WHERE boolean_expression
-                                   | WHERE CURRENT OF cursor_name ]  
+            UPDATE table_expr [ [ AS ] alias ]  SET update_item 
+           [ , ... ] [ WHERE boolean_expression
+                       | WHERE CURRENT OF cursor_name ]  
            [ returning_clause ]
 
 returning_clause ::= RETURNING { * | { output_expression 
