@@ -1280,6 +1280,10 @@ class CatalogManager :
                                     const Status& s,
                                     CreateTableResponsePB* resp);
 
+  CHECKED_STATUS CreateTransactionStatusTablesForTablespaces(
+      const TablespaceIdToReplicationInfoMap& tablespace_info,
+      const TableToTablespaceIdMap& table_to_tablespace_map);
+
   void StartTablespaceBgTaskIfStopped();
 
   std::shared_ptr<YsqlTablespaceManager> GetTablespaceManager() const;

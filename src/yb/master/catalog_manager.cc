@@ -2153,6 +2153,33 @@ Result<shared_ptr<TableToTablespaceIdMap>> CatalogManager::GetYsqlTableToTablesp
   return table_to_tablespace_map;
 }
 
+Status CatalogManager::CreateTransactionStatusTablesForTablespaces(
+    const TablespaceIdToReplicationInfoMap& tablespace_info,
+    const TableToTablespaceIdMap& table_to_tablespace_map) {
+  if (!GetAtomicFlag(&FLAGS_enable_ysql_tablespaces_for_placement) ||
+      !GetAtomicFlag(&FLAGS_auto_create_local_transaction_tables)) {
+    return Status::OK();
+  }
+
+  std::unordered_set<TablespaceId> valid_tablespaces;
+  for (const auto& entry : table_to_tablespace_map) {
+    if (entry.second) {
+      valid_tablespaces.insert(*entry.second);
+    }
+  }
+  for (const auto& entry : tablespace_info) {
+    if (!entry.second) {
+      valid_tablespaces.erase(entry.first);
+    }
+  }
+
+  for (const auto& tablespace_id : valid_tablespaces) {
+    RETURN_NOT_OK(CreateLocalTransactionStatusTableIfNeeded(nullptr /* rpc */, tablespace_id));
+  }
+
+  return Status::OK();
+}
+
 void CatalogManager::StartTablespaceBgTaskIfStopped() {
   if (GetAtomicFlag(&FLAGS_ysql_tablespace_info_refresh_secs) <= 0 ||
       !GetAtomicFlag(&FLAGS_enable_ysql_tablespaces_for_placement)) {
@@ -2237,6 +2264,12 @@ Status CatalogManager::DoRefreshTablespaceInfo() {
     LockGuard lock(tablespace_mutex_);
     tablespace_manager_ = std::make_shared<YsqlTablespaceManager>(tablespace_info,
                                                                   table_to_tablespace_map);
+  }
+
+  if (table_to_tablespace_map) {
+    // Trigger transaction table creates for tablespaces with tables and no transaction tables.
+    RETURN_NOT_OK(CreateTransactionStatusTablesForTablespaces(
+        *tablespace_info, *table_to_tablespace_map));
   }
 
   VLOG(3) << "Refreshed tablespace information in memory";
