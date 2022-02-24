@@ -1,7 +1,7 @@
 ---
 title: Example applications
 linkTitle: Example applications
-description: Example Spring and GraphQL applications for Yugabyte Cloud.
+description: Example applications for Yugabyte Cloud.
 headcontent: Example applications for Yugabyte Cloud.
 image: /images/section_icons/index/develop.png
 section: YUGABYTE CLOUD
