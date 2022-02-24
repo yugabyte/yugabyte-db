@@ -8,7 +8,7 @@ aliases:
 menu:
   latest:
     identifier: hasura-cloud
-    parent: cloud-develop
+    parent: cloud-examples
     weight: 400
 isTocNested: true
 showAsideToc: true

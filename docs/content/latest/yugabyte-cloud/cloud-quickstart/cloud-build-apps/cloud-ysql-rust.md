@@ -152,7 +152,7 @@ let exec_txn = || -> Result<(), DBError> {
 
 [Rust-Postgres driver](../../../../reference/drivers/ysql-client-drivers/#rust-postgres)
 
-[Explore more applications](../../../cloud-develop)
+[Explore more applications](../../../cloud-examples)
 
 [Deploy clusters in Yugabyte Cloud](../../../cloud-basics)
 

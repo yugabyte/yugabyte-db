@@ -1,27 +1,23 @@
 ---
-title: Develop
-linkTitle: Develop
-description: Get started developing applications for Yugabyte Cloud.
-headcontent: Get started developing applications for Yugabyte Cloud.
+title: Example applications
+linkTitle: Example applications
+description: Example applications for Yugabyte Cloud.
+headcontent: Example applications for Yugabyte Cloud.
 image: /images/section_icons/index/develop.png
 section: YUGABYTE CLOUD
 menu:
   latest:
-    identifier: cloud-develop
-    weight: 20
+    identifier: cloud-examples
+    weight: 800
 isTocNested: true
 showAsideToc: true
 ---
 
-Applications connect to and interact with YugabyteDB using API client libraries, also called client drivers. Before you can connect an application, you need to install the correct driver. Because the YugabyteDB YSQL API is PostgreSQL-compatible, and the YCQL API has roots in the Apache Cassandra CQL, YugabyteDB supports many third-party drivers.
+The sample applications in this section provide advanced examples of connecting Spring, GraphQL, and YCQL Java applications to a Yugabyte Cloud cluster.
 
-- Use the examples in this section to learn how to connect applications to Yugabyte Cloud.
+To get started building applications for Yugabyte Cloud, refer to [Build an application](../cloud-quickstart/cloud-build-apps/).
 
-- To get started building applications for Yugabyte Cloud, refer to [Build an application](../cloud-quickstart/cloud-build-apps/).
-
-- For information on available drivers, refer to [Drivers](../../reference/drivers/).
-
-Yugabyte Cloud clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters.
+Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). Before you can connect an application, you need to install the correct driver. Because the YugabyteDB YSQL API is PostgreSQL-compatible, and the YCQL API has roots in the Apache Cassandra CQL, YugabyteDB supports many third-party drivers. For information on available drivers, refer to [Drivers](../../reference/drivers/).
 
 <div class="row">
 

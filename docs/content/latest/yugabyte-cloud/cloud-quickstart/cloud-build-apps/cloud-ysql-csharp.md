@@ -180,7 +180,7 @@ try
 
 [Npgsql driver](../../../../reference/drivers/ysql-client-drivers/#npgsql)
 
-[Explore more applications](../../../cloud-develop)
+[Explore more applications](../../../cloud-examples)
 
 [Deploy clusters in Yugabyte Cloud](../../../cloud-basics)
 

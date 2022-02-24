@@ -151,7 +151,7 @@ try {
 
 [php-pgsql driver](../../../../reference/drivers/ysql-client-drivers/#php-pgsql)
 
-[Explore more applications](../../../cloud-develop)
+[Explore more applications](../../../cloud-examples)
 
 [Deploy clusters in Yugabyte Cloud](../../../cloud-basics)
 

@@ -51,7 +51,7 @@ For information on SSL modes, refer to [Protection Provided in Different Modes](
 
 Connections to your cluster using YCQL require SSL and the cluster CA certificate.
 
-The generated `ycqlsh` shell command uses the `--ssl` option and sets the SSL_CERTFILE environment variable. You set SSL_CERTFILE to the path of the cluster certifcate.
+The generated `ycqlsh` shell command uses the `--ssl` option and sets the SSL_CERTFILE environment variable. You set SSL_CERTFILE to the path of the cluster certificate.
 
 ## Learn more
 
