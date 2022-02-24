@@ -18,26 +18,14 @@
     justify-content: flex-start;
     flex-grow: 1;
     overflow-y: hidden;
+    background-color: #fff;
 
     .flex-wrapper {
       width: 100%;
       max-width: 1080px;
-      height: 1405px;
       flex: 1;
       box-sizing: border-box;
-      background-color: #fff;
       z-index: 2;
-    //   @media only screen and (max-width: 991px) {
-    //     padding-top: 22px !important;
-    //     padding-bottom: 30px !important;
-    //     padding-left: 30px;
-    //     padding-right: 30px;
-    //     margin-bottom: 25px;
-    //   }
-    //   @media screen and (max-width: 767px) {
-    //     border-radius: 0;
-    //   }
-    }
 
     h2 {
       font-weight: 600;
@@ -50,14 +38,14 @@
       position: static;
       margin-top: 39px;
       align-items: center;
-      @media only screen and (max-width: 767px) {
-        font-size: 20px;
+      @media only screen and (max-width: 1199px) {
+        margin-left: 45px;
       }
     }
 
     h3 {
       font-style: normal;
-      margin-top: 36px;
+      margin-top: 48px;
       margin-bottom: 24px;
       font-weight: 600;
       font-size: 21px;
@@ -66,8 +54,8 @@
       color: #0B1117;
       height: 26px;
       padding-top: 0px !important;
-      @media only screen and (max-width: 767px) {
-        font-size: 15px;
+      @media only screen and (max-width: 1199px) {
+        margin-left: 45px;
       }
     }
 
@@ -79,18 +67,20 @@
       font-style: normal;
       font-weight: normal;
       color: #4E5F6D;
+      @media only screen and (max-width: 1199px) {
+        margin-left: 45px;
+      }
     }
 
     .explore-container {
       display: flex;
       flex-direction: row;
       flex-wrap: wrap;
+      @media only screen and (max-width: 1199px) {
+        margin-left: 45px;
+      }
     }
 
-    .main-container {
-      // margin-left: 10px;
-      // margin-right: 10px;
-    }
 
     .explore-heading {
       margin-top: 27px;
@@ -131,7 +121,7 @@
       }
     }
 
-    .example-top-area {
+    .learn-top-area {
       display: flex;
       flex-direction: row;
       align-items: center;
@@ -143,15 +133,53 @@
     #second-tile {
       margin-left: 30px;
       @media only screen and (max-width: 1199px) {
-        margin-left: 0px;
+        margin-left: 45px;
       }
     }
 
     #example-third-tile, #example-second-tile {
       margin-left: 46px;
       @media only screen and (max-width: 1199px) {
-        margin-left: 0px;
+        margin-left: 45px;
       }
+    }
+
+    #more-resources-first-tile, #resources-first-tile, #example-first-tile, #first-tile {
+      @media only screen and (max-width: 1199px) {
+        margin-left: 45px;
+      }
+    }
+
+    #more-resources-second-tile {
+      margin-left: 42px;
+      @media only screen and (max-width: 1199px) {
+        margin-left: 45px;
+      }
+    }
+
+    #more-resources-third-tile {
+      margin-left: 48px;
+      @media only screen and (max-width: 1199px) {
+        margin-left: 45px;
+      }
+    }
+
+    #resources-third-tile {
+      margin-left: 52px;
+      @media only screen and (max-width: 1199px) {
+        margin-left: 45px;
+      }
+    }
+
+    #resources-second-tile {
+      margin-left: 40px;
+      @media only screen and (max-width: 1199px) {
+        margin-left: 45px;
+      }
+    }
+
+    #more-resources-area {
+      margin-bottom: 14px;
     }
 
     .heading-container {
@@ -176,6 +204,24 @@
       }
     }
 
+    .resources-container {
+      width: 330px;
+      height: 173px;
+      background: #FFFFFF;
+      border: 1px solid #D7DDE1;
+      box-sizing: border-box;
+      border-radius: 8px;
+
+      @media only screen and (max-width: 1199px) {
+        margin-bottom: 26px;
+      }
+    }
+
+    .main-container {
+      margin-left: 10px;
+      margin-right: 10px;
+    }
+
     .section-col {
       display: flex;
       flex-direction: column;
@@ -187,8 +233,8 @@
     }
 
     .getting-started-blue {
-      margin-top: 15px;
-      margin-left: 12px;
+      margin-top: 16px;
+      margin-left: 16px;
       max-height: 36px;
       border-radius: 8px;
       background: linear-gradient(94.6deg, #5D5FEF 5.1%, #8DABF0 98.55%);
@@ -216,8 +262,8 @@
     }
 
     .tile-sentence {
-      margin-left: 12px;
-      margin-top: 12px;
+      margin-left: 15px;
+      margin-top: 15px;
       width: 260px;
       max-height: 48px;
       align-items: center;
@@ -232,8 +278,8 @@
     }
 
     .tile-link {
-      margin-left: 12px;
-      margin-top: 24px;
+      margin-left: 16px;
+      margin-top: 21px;
       max-width: 76px;
       height: 17px;
       font-style: normal;
@@ -267,17 +313,7 @@
       line-height: 24px;
       color: #0B1117;
       margin-top: 22px;
-      margin-left: 15px;
-    }
-
-    .resources-container {
-      width: 275px;
-      height: 150px;
-      background: #FFFFFF;
-      border: 1px solid #D7DDE1;
-      box-sizing: border-box;
-      border-radius: 8px;
-      margin-right: 30px;
+      margin-left: 16px;
     }
 
     .example-image-box {
@@ -293,14 +329,14 @@
       height: 48px;
       background: #F0F4F7;
       border-radius: 8px;
-      margin-left: 14px;
-      margin-top: 12px;
+      margin-left: 18px;
+      margin-top: 16px;
     }
 
     .example-title {
       max-width: 265px;
-      margin-top: 14px;
-      margin-left: 12px;
+      margin-top: 18px;
+      margin-left: 16px;
       font-style: normal;
       font-weight: 600;
       font-size: 15px;
@@ -310,9 +346,22 @@
     }
 
     .resources-title {
-      margin-left: 14px;
-      margin-top: 18px;
+      max-width: 250px;
       height: 24px;
+      margin-left: 16px;
+      margin-top: 24px;
+      font-style: normal;
+      font-weight: 600;
+      font-size: 15px;
+      line-height: 24px;
+      color: #000000;
+    }
+
+    .more-resources-title {
+      max-width: 280px;
+      height: 24px;
+      margin-left: 16px;
+      margin-top: 16px;
       font-style: normal;
       font-weight: 600;
       font-size: 15px;
@@ -324,7 +373,7 @@
       width: 103px;
       font-style: normal;
       margin-top: 8px;
-      margin-left: 12px;
+      margin-left: 16px;
       font-weight: 600;
       font-size: 11.5px;
       line-height: 21px;
@@ -334,7 +383,7 @@
 
     .example-description {
       margin-top: 5px;
-      margin-left: 12px;
+      margin-left: 16px;
       font-style: normal;
       font-weight: normal;
       font-size: 14px;
@@ -345,8 +394,8 @@
     }
 
     .example-link {
-      margin-left: 12px;
-      margin-top: 10px;
+      margin-left: 16px;
+      margin-top: 15px;
       width: 76px;
       height: 17px;
       font-style: normal;
@@ -359,13 +408,25 @@
     .resources-link {
       font-style: normal;
       font-weight: normal;
-      font-size: 13px;
+      font-size: 14px;
       line-height: 17px;
-      margin-left: 14px;
-      margin-top: 6px;
+      margin-left: 16px;
+      margin-top: 8px;
       color: #2B59C3;
       height: 17px;
-      width: fit-content;
+      max-width: 242px;
+    }
+
+    .more-resources-link {
+      font-style: normal;
+      font-weight: normal;
+      font-size: 14px;
+      line-height: 17px;
+      margin-left: 16px;
+      margin-top: 17px;
+      color: #2B59C3;
+      height: 17px;
+      max-width: 242px;
     }
   }
 }
@@ -603,4 +664,5 @@ dd {
   width: 100%;
   max-width: 800px;
   margin: 20px 0;
+}
 }
