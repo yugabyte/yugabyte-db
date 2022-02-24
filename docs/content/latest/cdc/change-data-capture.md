@@ -45,10 +45,16 @@ Change Data Capture (CDC) is a process to capture changes made to data in the da
   * Yugabyte cluster should be up and running, for details see YugabyteDB Quick Start
   * There should be at least one primary key on the table you want to stream the changes from
   * You cannot create a stream on a table which doesn’t exist. For example, if you create a DB stream on the database and after that create a new table in that database, you won’t be able to stream data out of that table. A simple workaround is to create a new DB Stream ID and use it to stream data
+  
+  {{< note title="Note" >}}
+
+  As of current implementation, if a user wants to use CDC, he will need to use Debezium and Kafka mandatorily.
+
+  {{< /note >}}
 
 ### yb-admin commands for Change Data Capture
 
-The commands used to manipulate CDC DB streams can be found under the [yb-admin](../admin/yb-admin.md#change-data-capture-cdc-commands)
+The commands used to manipulate CDC DB streams can be found under the [yb-admin](../admin/yb-admin.md#change-data-capture-cdc-commands).
 
 ### DDL commands support
 
@@ -77,7 +83,7 @@ The commands used to manipulate CDC DB streams can be found under the [yb-admin]
 
 ### Running the Debezium connector
 
-  Head over to the [Debezium connector](https://github.com/vaibhav-yb/cdc-docs/blob/main/running_cdc_with_debezium.md) doc for the steps on how to run with Debezium connector.
+  Head over to the [Debezium connector](../integrations/cdc/debezium-for-cdc.md) doc for the steps on how to run with Debezium connector.
 
 ### Limitations
   * YCQL tables are not supported currently - [GitHub #11320](https://github.com/yugabyte/yugabyte-db/issues/11320)

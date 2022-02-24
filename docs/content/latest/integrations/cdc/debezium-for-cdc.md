@@ -9,13 +9,13 @@ description: Debezium is an open source distributed platform used to capture the
 
 ### 1. Start Zookeeper
 
-```bash
+```sh
 docker run -it --rm --name zookeeper -p 2181:2181 -p 2888:2888 -p 3888:3888 debezium/zookeeper:1.6
 ```
 
 ### 2. Start Kafka
 
-```bash
+```sh
 docker run -it --rm --name kafka -p 9092:9092 --link zookeeper:zookeeper debezium/kafka:1.6
 ```
 
@@ -26,19 +26,19 @@ Now you have to run yugabyted with the IP of your machine otherwise it would con
 Note that you need a YugabyteDB version which has the changes for CDC. <br>
 
 Clone the repository:
-```bash
+```sh
 git clone git@github.com:yugabyte/yugabyte-db.git
 ```
 
 Navigate to the repo and build the code:
-```bash
+```sh
 cd yugabyte-db
 
 ./yb_build.sh
 ```
 
 Now you have to start the yugabyted cluster locally. Get your local IP in a variable:
-```bash
+```sh
 # For bash
 echo "export IP=$(ipconfig getifaddr en0)" >> ~/.bash_profile  # If using MacOS
 echo "export IP=$(hostname -i)" >> ~/.bash_profile  # If on Linux
@@ -51,12 +51,12 @@ source ~/.zshenv
 ```
 
 Start yugabyted:
-```bash
+```sh
 ./bin/yugabyted start --listen $IP
 ```
 
 Connect to ysqlsh and create a table:
-```bash
+```sh
 ./bin/ysqlsh -h $IP
 
 yugabyte=# create table test (id int primary key, name text, days_worked bigint);
@@ -65,29 +65,40 @@ yugabyte=# create table test (id int primary key, name text, days_worked bigint)
 ### 4. Create a DB stream ID using yb-admin
 
 yb-admin is equipped with the commands to manage stream IDs for Change Data Capture. Create a stream ID using the same:
-```bash
+
+```sh
 ./yb-admin --master_addresses ${IP}:7100 create_change_data_stream ysql.yugabyte
+```
+
+The above will result in an output with a DB Stream ID:
+```output
 CDC Stream ID: d540f5e4890c4d3b812933cbfd703ed3
 ```
 
 ### 5. Get the Debezium connector for YugabyteDB
 
 You can get the connector from Quay:
-```bash
+```sh
 docker pull quay.io/yugabyte/debezium-connector:1.1-beta
 ```
 
 Alternatively, if you want to build the connector yourself, follow these steps:
+
 1. Create a directory
-    ```bash
+
+    ```sh
     mkdir ~/custom-connector
     ```
+
 2. Build the code for yugabyte-db, this will give you a jar file under `yugabyte-db/java/yb-client/target/`, you need to copy it to `custom-connector`
-    ```bash
+    
+    ```sh
     cp yugabyte-db/java/yb-client/yb-client-0.8.15-SNAPSHOT-jar-with-dependencies.jar ~/custom-connector/
     ````
+
 3. Now clone the Debezium repo:
-    ```bash
+    
+    ```sh
     git clone git@github.com:yugabyte/debezium.git
     
     # Checkout to the branch having the connector
@@ -96,12 +107,16 @@ Alternatively, if you want to build the connector yourself, follow these steps:
     # Navigate to the debezium repo
     cd debezium
     ```
+    
 4. Build Debezium jar:
-    ```bash
+
+    ```sh
     mvn clean verify -Dquick
     ```
+
 5. You now need to copy the jar file for the Debezium connector
-    ```bash
+
+    ```sh
     cp debezium-connector-yugabytedb2/target/debezium-connector-yugabytedb2-1.7.0-SNAPSHOT-jar-with-dependencies.jar ~/custom-connector/
     
     # Navigate to custom-connector directory
@@ -110,7 +125,9 @@ Alternatively, if you want to build the connector yourself, follow these steps:
     # Download the Kafka JDBC connector
     wget https://packages.confluent.io/maven/io/confluent/kafka-connect-jdbc/10.2.5/kafka-connect-jdbc-10.2.5.jar
     ```
+
 6. Create a `Dockerfile` with the following contents:
+    
     ```Dockerfile
     FROM debezium/connect:1.6
     ENV KAFKA_CONNECT_YB_DIR=$KAFKA_CONNECT_PLUGINS_DIR/debezium-connector-yugabytedb
@@ -124,14 +141,16 @@ Alternatively, if you want to build the connector yourself, follow these steps:
     COPY kafka-connect-jdbc-10.2.5.jar $KAFKA_CONNECT_PLUGINS_DIR/debezium-connector-yugabytedb
 
     ```
+
 7. Build the connector:
-    ```bash
+    
+    ```sh
     docker build . -t yb-test-connector
     ```
 
 ### 6. Start Debezium
 
-```bash
+```sh
 # If you have pulled from Quay, follow this:
 docker run -it --rm --name connect -p 8083:8083 -e GROUP_ID=1 -e CONFIG_STORAGE_TOPIC=my_connect_configs \
 -e OFFSET_STORAGE_TOPIC=my_connect_offsets -e STATUS_STORAGE_TOPIC=my_connect_statuses \
@@ -168,7 +187,7 @@ curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" 
 #### There are the following configurations which we have with the Debezium connector:
 | **Property**               | **Default value**                                    | **Description**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 |----------------------------|------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| connector.class            | io.debezium.connector.yugabytedb.YugabyteDBConnector | This specifies the connector we will be using to connect Debezium to the database, in our case, since we will be connecting to YugabyteDB, we will be using the connector specified for that.                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| connector.class            |  | This specifies the connector we will be using to connect Debezium to the database, in our case, since we will be connecting to YugabyteDB, we will be using the connector specified for that i.e. `io.debezium.connector.yugabytedb.YugabyteDBConnector`                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | database.hostname          |                                                      | The IP of the host machine where the database is hosted at. If it's a distributed cluster, it's preferable to pass the IP of the leader node.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | database.port              |                                                      | The port at which the YSQL process is running                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | database.master.addresses  |                                                      | A list of the comma separated values in the form of host:port                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
@@ -193,7 +212,7 @@ curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" 
 
 ### 7. Start the Postgres sink
 
-```bash
+```sh
 docker run -it --rm --name postgresql -p 5432:5432 -e POSTGRES_USER=postgres \ 
 -e POSTGRES_PASSWORD=postgres debezium/example-postgres:1.6
 
@@ -203,7 +222,8 @@ sh -c 'exec psql -h postgresql  -p "$POSTGRES_PORT_5432_TCP_PORT" -U postgres'
 ```
 
 Deploy the JDBC sink connector properties:
-```bash
+
+```sh
 curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" localhost:8083/connectors/ -d '{
   "name": "jdbc-sink",
   "config": {

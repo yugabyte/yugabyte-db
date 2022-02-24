@@ -9,16 +9,19 @@ description: Use the CDC console client to get an idea about how CDC works.
 We have one Java console client which will take the changes and just print it to the console. Do note that this client is strictly meant for testing purposes only.
 
 ### 1. Setup a cluster
+
   This can be done either locally using yugabyted or via Yugabyte Cloud. Take a look at the [Quick Start](https://docs.yugabyte.com/latest/quick-start/) guide to know more.
   
   Assuming that you have cloned the YugabyteDB repo from GitHub and built the code already, you can move to the next step. If not done already, follow these steps:
   1. Clone the repository
         
-     ```bash
+     ```sh
      git clone git@github.com:yugabyte/yugabyte-db.git
      ```
+
   2. Build the code
-     ```bash
+     
+     ```sh
      cd yugabyte-db/
      
      ./yb_build.sh
@@ -28,13 +31,13 @@ We have one Java console client which will take the changes and just print it to
 
 ### 2. Start a local cluster if running locally
   
-  ```bash
+  ```sh
   ./bin/yugabyted start
   ```
 
 ### 3. Connect to ysqlsh
 
-  ```bash
+  ```sh
   ./bin/ysqlsh
   
   # Create a database once connected. You can use any database, as long as you have the permission for it. We will be using 'testdatabase' throughout these steps
@@ -48,14 +51,16 @@ We have one Java console client which will take the changes and just print it to
   
 ### 4. Use yb-admin to create a CDC stream
 
-  ```bash
+We can use the `create_change_data_stream` command to create a stream. For a full list of commands available for CDC, visit the [yb-admin](../../admin/yb-admin.md#change-data-capture-cdc-commands) page.
+
+  ```sh
   ./build/latest/bin/yb-admin create_change_data_stream ysql.yugabyte
   CDC Stream ID: 0bb74adc723248d584ce90b856974633
   ```
   
 ### 5. Create a `config.properties` file with the following contents:
   
-  ```bash
+  ```sh
   vi ~/config.properties
   ```
   
