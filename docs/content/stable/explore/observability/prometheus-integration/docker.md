@@ -7,7 +7,7 @@ menu:
   stable:
     identifier: observability-3-docker
     parent: explore-observability
-    weight: 240
+    weight: 235
 isTocNested: true
 showAsideToc: true
 ---
