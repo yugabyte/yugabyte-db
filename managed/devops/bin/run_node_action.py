@@ -37,6 +37,7 @@ def add_run_command_subparser(subparsers, command, parent):
 
 def handle_run_command(args, client):
     output = client.exec_command(args.command)
+    print('Command output:')
     print(output)
 
 
