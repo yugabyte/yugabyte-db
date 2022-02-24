@@ -17,6 +17,7 @@ extends: spelling
 message: 'Spelling: "%s"?'
 level: warning
 custom: false
+code: false
 filters:
   - '(?:\w*\.?)yugabyte\.com'
 ignore:

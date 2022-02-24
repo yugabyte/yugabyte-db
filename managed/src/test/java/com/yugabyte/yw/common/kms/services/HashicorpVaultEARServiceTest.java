@@ -20,6 +20,7 @@ import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.HashicorpEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultEARServiceUtilTest;
+import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
@@ -52,10 +53,10 @@ public class HashicorpVaultEARServiceTest extends FakeDBApplication {
     @Override
     public ObjectNode getAuthConfig(UUID configUUID) {
       ObjectNode n = Json.newObject();
-      n.put(HashicorpEARServiceUtil.HC_VAULT_ADDRESS, VaultEARServiceUtilTest.vaultAddr);
-      n.put(HashicorpEARServiceUtil.HC_VAULT_TOKEN, VaultEARServiceUtilTest.vaultToken);
-      n.put(HashicorpEARServiceUtil.HC_VAULT_ENGINE, VaultEARServiceUtilTest.sEngine);
-      n.put(HashicorpEARServiceUtil.HC_VAULT_MOUNT_PATH, VaultEARServiceUtilTest.mountPath);
+      n.put(HashicorpVaultConfigParams.HC_VAULT_ADDRESS, VaultEARServiceUtilTest.vaultAddr);
+      n.put(HashicorpVaultConfigParams.HC_VAULT_TOKEN, VaultEARServiceUtilTest.vaultToken);
+      n.put(HashicorpVaultConfigParams.HC_VAULT_ENGINE, VaultEARServiceUtilTest.sEngine);
+      n.put(HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH, VaultEARServiceUtilTest.mountPath);
       return n;
     }
   }
@@ -115,13 +116,13 @@ public class HashicorpVaultEARServiceTest extends FakeDBApplication {
         encryptionService.createAuthConfigWithService(
             testConfigUUID, encryptionService.getAuthConfig(testConfigUUID));
     assertNotNull(result);
-    assertNotNull(result.get(HashicorpEARServiceUtil.HC_VAULT_TTL));
-    assertNotNull(result.get(HashicorpEARServiceUtil.HC_VAULT_TTL_EXPIRY));
+    assertNotNull(result.get(HashicorpVaultConfigParams.HC_VAULT_TTL));
+    assertNotNull(result.get(HashicorpVaultConfigParams.HC_VAULT_TTL_EXPIRY));
 
     LOG.info(
         "TTL is {} and Expiry is {}",
-        result.get(HashicorpEARServiceUtil.HC_VAULT_TTL),
-        result.get(HashicorpEARServiceUtil.HC_VAULT_TTL_EXPIRY));
+        result.get(HashicorpVaultConfigParams.HC_VAULT_TTL),
+        result.get(HashicorpVaultConfigParams.HC_VAULT_TTL_EXPIRY));
   }
 
   @Test

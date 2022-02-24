@@ -73,6 +73,7 @@ class TransactionTestBase : public KeyValueTableTest<MiniClusterType> {
   void SetUp() override;
 
   void CreateTable();
+  CHECKED_STATUS CreateTable(const Schema& schema);
 
   virtual uint64_t log_segment_size_bytes() const;
 

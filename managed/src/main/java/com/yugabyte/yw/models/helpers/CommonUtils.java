@@ -84,7 +84,8 @@ public class CommonUtils {
         || ucFieldname.contains("CREDENTIALS")
         || ucFieldname.contains("API")
         || ucFieldname.contains("POLICY")
-        || ucFieldname.contains("HC_VAULT_TOKEN");
+        || ucFieldname.contains("HC_VAULT_TOKEN")
+        || ucFieldname.contains("vaultToken");
   }
 
   /**
@@ -524,5 +525,24 @@ public class CommonUtils {
       return Optional.of(annotation);
     }
     return isAnnotatedWith(clazz.getSuperclass(), annotationClass);
+  }
+
+  /**
+   * Prints the stack for called function
+   *
+   * @return printable string of stack information.
+   */
+  public static String getStackTraceHere() {
+    String rVal;
+    rVal = "***Stack trace Here****:\n";
+    StackTraceElement[] elements = Thread.currentThread().getStackTrace();
+    int depth = elements.length;
+    if (depth > 10) depth = 10; // limit stack trace length
+    for (int i = 2; i < depth; i++) {
+      StackTraceElement s = elements[i];
+      rVal += "\tat " + s.getClassName() + "." + s.getMethodName();
+      rVal += "(" + s.getFileName() + ":" + s.getLineNumber() + ")\n";
+    }
+    return rVal;
   }
 }

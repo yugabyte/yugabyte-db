@@ -1,11 +1,19 @@
 package com.yugabyte.yw.common;
 
 import com.google.inject.Singleton;
+import com.typesafe.config.Config;
+import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.NodeUniverseManager;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.InstanceType;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Collections;
 import java.util.Date;
+import java.util.UUID;
 import java.text.SimpleDateFormat;
 import java.text.ParseException;
 import java.text.DateFormat;
@@ -66,5 +74,35 @@ public class SupportBundleUtil {
       }
     }
     return result;
+  }
+
+  // Gets the path to "yb-data/" folder on the node (Ex: "/mnt/d0", "/mnt/disk0")
+  public static String getDataDirPath(
+      Universe universe, NodeDetails node, NodeUniverseManager nodeUniverseManager, Config config) {
+    String dataDirPath = "";
+
+    UserIntent userIntent = universe.getCluster(node.placementUuid).userIntent;
+    CloudType cloudType = userIntent.providerType;
+
+    if (cloudType == CloudType.onprem) {
+      String mountPoints = userIntent.deviceInfo.mountPoints;
+      try {
+        dataDirPath = mountPoints.split(",")[0];
+      } catch (Exception e) {
+        log.debug("On prem invalid mount points: {}", mountPoints);
+        return config.getString("yb.support_bundle.default_mount_point_prefix") + "0";
+      }
+    } else if (cloudType == CloudType.kubernetes) {
+      String mountPoint = config.getString("yb.support_bundle.k8s_mount_point_prefix");
+      dataDirPath = mountPoint + "0";
+    } else {
+      String nodeInstanceType = node.cloudInfo.instance_type;
+      String providerUUID = userIntent.provider;
+      InstanceType instanceType =
+          InstanceType.getOrBadRequest(UUID.fromString(providerUUID), nodeInstanceType);
+      dataDirPath = instanceType.instanceTypeDetails.volumeDetailsList.get(0).mountPath;
+    }
+
+    return dataDirPath;
   }
 }

@@ -14,7 +14,7 @@ showAsideToc: true
 
 {{< note title="Important" >}}
 
-As of v2.2, Yugabyte follows a new release versioning convention for YugabyteDB and Yugabyte Platform releases.  For details, see [Release versioning](../versioning).
+As of v2.2, Yugabyte follows a new release versioning convention for YugabyteDB and Yugabyte Platform releases. For details, see [Release versioning](../versioning).
 
 {{< /note >}}
 
@@ -31,8 +31,8 @@ For details about the differences between the stable and latest release series, 
 
 Support for YugabyteDB stable release series includes:
 
-- **Maintenance support:** For at least 1 year from the minor release date, Yugabyte will provide Updates for such release.
-- **Extended support:** Following the maintenance support period, Yugabyte will provide Updates for at least an additional 180 days subject to the following guidelines:
+- **Maintenance support:** For at least 1 year from the date of the first minor release, Yugabyte will provide Updates for such release.
+- **Extended support:** Following the maintenance support period, Yugabyte will provide support for at least an additional 180 days subject to the following guidelines:
   - Updates and Upgrades will not be made to the minor release.
   - Yugabyte will direct Customers to existing Updates and workarounds applicable to the reported case.
   - Yugabyte may direct Customers to Upgrade to a current release if a workaround does not exist.
@@ -44,20 +44,26 @@ For details, see the [Yugabyte Support Policy](https://www.yugabyte.com/support-
 
 | Release series | Released | End of maintenance support | End of Life (EOL) |
 | :------------- | :------- | :------------------------- | :---------------- |
+| [v2.12](../whats-new/stable-release) ![CURRENT STABLE](/images/releases/current-stable.png) | February 22, 2022 | February 22, 2023 | August 22, 2023 |
 | [v2.11](../whats-new/latest-release) ![LATEST](/images/releases/latest.png) | November 22, 2021 | n/a | n/a |
-| [v2.8](../whats-new/stable-release) ![CURRENT STABLE](/images/releases/current-stable.png) | November 15, 2021 | November 15, 2022 | June 15, 2023 |
+| [v2.8](../whats-new/stable-release) | November 15, 2021 | November 15, 2022 | June 15, 2023 |
+| [v2.6](../earlier-releases/v2.6) | July 5, 2021 | July 5, 2022 | January 5, 2023 |
+| [v2.4](../earlier-releases/v2.4) | January 22, 2021 | January 22, 2022 | July 21, 2022 |
+
+### Releases at end of life (EOL) {#eol-releases}
+
+The following releases are no longer supported:
+
+| Release series | Released | End of maintenance support | End of Life (EOL) |
+| :------------- | :------- | :------------------------- | :---------------- |
 | [v2.9](../earlier-releases/v2.9) | August 31, 2021 | n/a | n/a |
 | [v2.7](../earlier-releases/v2.7) | May 5, 2021 | n/a | n/a |
-| [v2.6](../earlier-releases/v2.6) | July 5, 2021 | July 5, 2022 | January 5, 2023 |
 | [v2.5](../earlier-releases/v2.5) | November 12, 2020 | n/a | n/a |
-| [v2.4](../earlier-releases/v2.4) | January 22, 2021 | January 22, 2022 | July 21, 2022 |
 | [v2.3](../earlier-releases/v2.3.0) | September 08, 2020 | n/a | n/a |
 | [v2.2](../earlier-releases/v2.2.0) | July 15, 2020 | July 15, 2021 | January 15, 2022 |
 | [v2.1](../earlier-releases/v2.1.0) | February 25, 2020 | February 25, 2021 | August 08, 2021 |
 | [v2.0](../earlier-releases/v2.0.0) | September 17, 2019 | September 17, 2020 | March 03, 2021 |
 | [v1.3](../earlier-releases/v1.3.0) | July 15, 2019 | July 15, 2020 | January 15, 2021 |
-
-**Note:** Supported stable release series include v2.1, v2.0, and v1.3, which were released prior to the new release versioning convention.
 
 ## Upcoming release series
 

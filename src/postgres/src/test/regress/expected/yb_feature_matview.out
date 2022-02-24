@@ -649,7 +649,7 @@ SELECT * FROM mvtest_tm2;
 
 DROP VIEW mvtest_tv CASCADE;
 NOTICE:  drop cascades to materialized view mvtest_tm2
--- Verify that materialized view is locked while refreshing this view
+-- SELECT FOR SHARE on Materialized view
 CREATE MATERIALIZED VIEW mvtest_tm AS SELECT type, sum(amt) AS totamt FROM mvtest_t GROUP BY type;
 REFRESH MATERIALIZED VIEW mvtest_tm WITH NO DATA;
 SELECT * FROM mvtest_tm FOR SHARE;

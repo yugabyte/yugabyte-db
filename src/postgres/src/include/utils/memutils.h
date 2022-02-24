@@ -213,7 +213,6 @@ extern MemoryContext GenerationContextCreate(MemoryContext parent,
 #define ALLOCSET_START_SMALL_SIZES \
 	ALLOCSET_SMALL_MINSIZE, ALLOCSET_SMALL_INITSIZE, ALLOCSET_DEFAULT_MAXSIZE
 
-
 /*
  * Threshold above which a request in an AllocSet context is certain to be
  * allocated separately (and thereby have constant allocation overhead).

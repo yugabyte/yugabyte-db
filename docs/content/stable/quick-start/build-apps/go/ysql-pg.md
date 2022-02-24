@@ -2,7 +2,7 @@
 title: Build a Go application that uses YSQL
 headerTitle: Build a Go application
 linkTitle: Go
-description: Build a sample Go application with the Go PostgreSQL driver and perform basic database operations.
+description: Build a sample Go application with the Go PostgreSQL driver and perform basic database operations with YugabyteDB.
 menu:
   stable:
     parent: build-apps

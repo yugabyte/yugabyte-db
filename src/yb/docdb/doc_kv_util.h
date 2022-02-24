@@ -146,6 +146,14 @@ inline std::string ToShortDebugStr(const std::string& raw_str) {
 
 Result<DocHybridTime> DecodeInvertedDocHt(Slice key_slice);
 
+constexpr size_t kMaxWordsPerEncodedHybridTimeWithValueType =
+    ((kMaxBytesPerEncodedHybridTime + 1) + sizeof(size_t) - 1) / sizeof(size_t);
+
+// Puts inverted encoded doc hybrid time specified by input to buffer.
+// And returns slice to it.
+using DocHybridTimeWordBuffer = std::array<size_t, kMaxWordsPerEncodedHybridTimeWithValueType>;
+Slice InvertEncodedDocHT(const Slice& input, DocHybridTimeWordBuffer* buffer);
+
 }  // namespace docdb
 }  // namespace yb
 

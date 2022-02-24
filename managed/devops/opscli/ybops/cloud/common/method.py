@@ -54,6 +54,7 @@ class AbstractMethod(object):
         self.parser = base_command.parser
         # Set this to False if the respective method does not need credential validation.
         self.need_validation = True
+        self.error_handler = None
 
     def prepare(self):
         """Hook for setting up parser options.
@@ -441,6 +442,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
                                  help="Flag to set if host OS needs python installed for Ansible.")
         self.parser.add_argument("--pg_max_mem_mb", type=int, default=0,
                                  help="Max memory for postgress process.")
+        self.parser.add_argument("--boot_script", required=False,
+                                 help="Custom boot script to execute on the instance.")
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -458,6 +461,12 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
             self.cloud.configure_secondary_interface(
                 args, self.extra_vars, self.cloud.get_subnet_cidr(args,
                                                                   host_info['secondary_subnet']))
+
+        # The bootscript MIGHT fail due to no access to public internet
+        # Re-run it.
+        if host_info.get('secondary_subnet') and args.boot_script:
+            # copy and run the script
+            self.cloud.execute_boot_script(args, self.extra_vars)
 
         if not args.skip_preprovision:
             self.preprovision(args)

@@ -410,7 +410,7 @@
         },
         "template" : {
           "description" : "Template name",
-          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "BACKUP_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "NODE_OOM_KILLS", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_ERROR_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "DB_MEMORY_OVERLOAD", "DB_COMPACTION_OVERLOAD", "DB_QUEUES_OVERFLOW", "DB_WRITE_READ_TEST_ERROR", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY", "YSQL_OP_AVG_LATENCY", "YCQL_OP_AVG_LATENCY", "YSQL_OP_P99_LATENCY", "YCQL_OP_P99_LATENCY", "HIGH_NUM_YSQL_CONNECTIONS", "HIGH_NUM_YCQL_CONNECTIONS", "HIGH_NUM_YEDIS_CONNECTIONS", "YSQL_THROUGHPUT", "YCQL_THROUGHPUT", "MASTER_LEADER_MISSING", "LEADERLESS_TABLETS", "UNDER_REPLICATED_TABLETS" ],
+          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "BACKUP_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "NODE_OOM_KILLS", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_ERROR_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "DB_MEMORY_OVERLOAD", "DB_COMPACTION_OVERLOAD", "DB_QUEUES_OVERFLOW", "DB_WRITE_READ_TEST_ERROR", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY", "ENCRYPTION_AT_REST_CONFIG_EXPIRY", "YSQL_OP_AVG_LATENCY", "YCQL_OP_AVG_LATENCY", "YSQL_OP_P99_LATENCY", "YCQL_OP_P99_LATENCY", "HIGH_NUM_YSQL_CONNECTIONS", "HIGH_NUM_YCQL_CONNECTIONS", "HIGH_NUM_YEDIS_CONNECTIONS", "YSQL_THROUGHPUT", "YCQL_THROUGHPUT", "MASTER_LEADER_MISSING", "LEADERLESS_TABLETS", "UNDER_REPLICATED_TABLETS" ],
           "readOnly" : true,
           "type" : "string"
         },
@@ -465,7 +465,7 @@
           "type" : "string"
         },
         "template" : {
-          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "BACKUP_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "NODE_OOM_KILLS", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_ERROR_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "DB_MEMORY_OVERLOAD", "DB_COMPACTION_OVERLOAD", "DB_QUEUES_OVERFLOW", "DB_WRITE_READ_TEST_ERROR", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY", "YSQL_OP_AVG_LATENCY", "YCQL_OP_AVG_LATENCY", "YSQL_OP_P99_LATENCY", "YCQL_OP_P99_LATENCY", "HIGH_NUM_YSQL_CONNECTIONS", "HIGH_NUM_YCQL_CONNECTIONS", "HIGH_NUM_YEDIS_CONNECTIONS", "YSQL_THROUGHPUT", "YCQL_THROUGHPUT", "MASTER_LEADER_MISSING", "LEADERLESS_TABLETS", "UNDER_REPLICATED_TABLETS" ],
+          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "BACKUP_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "NODE_OOM_KILLS", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_ERROR_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "DB_MEMORY_OVERLOAD", "DB_COMPACTION_OVERLOAD", "DB_QUEUES_OVERFLOW", "DB_WRITE_READ_TEST_ERROR", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY", "ENCRYPTION_AT_REST_CONFIG_EXPIRY", "YSQL_OP_AVG_LATENCY", "YCQL_OP_AVG_LATENCY", "YSQL_OP_P99_LATENCY", "YCQL_OP_P99_LATENCY", "HIGH_NUM_YSQL_CONNECTIONS", "HIGH_NUM_YCQL_CONNECTIONS", "HIGH_NUM_YEDIS_CONNECTIONS", "YSQL_THROUGHPUT", "YCQL_THROUGHPUT", "MASTER_LEADER_MISSING", "LEADERLESS_TABLETS", "UNDER_REPLICATED_TABLETS" ],
           "type" : "string"
         },
         "uuids" : {
@@ -619,7 +619,7 @@
         },
         "template" : {
           "description" : "Template name",
-          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "BACKUP_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "NODE_OOM_KILLS", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_ERROR_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "DB_MEMORY_OVERLOAD", "DB_COMPACTION_OVERLOAD", "DB_QUEUES_OVERFLOW", "DB_WRITE_READ_TEST_ERROR", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY", "YSQL_OP_AVG_LATENCY", "YCQL_OP_AVG_LATENCY", "YSQL_OP_P99_LATENCY", "YCQL_OP_P99_LATENCY", "HIGH_NUM_YSQL_CONNECTIONS", "HIGH_NUM_YCQL_CONNECTIONS", "HIGH_NUM_YEDIS_CONNECTIONS", "YSQL_THROUGHPUT", "YCQL_THROUGHPUT", "MASTER_LEADER_MISSING", "LEADERLESS_TABLETS", "UNDER_REPLICATED_TABLETS" ],
+          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "BACKUP_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "NODE_OOM_KILLS", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_ERROR_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "DB_MEMORY_OVERLOAD", "DB_COMPACTION_OVERLOAD", "DB_QUEUES_OVERFLOW", "DB_WRITE_READ_TEST_ERROR", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY", "ENCRYPTION_AT_REST_CONFIG_EXPIRY", "YSQL_OP_AVG_LATENCY", "YCQL_OP_AVG_LATENCY", "YSQL_OP_P99_LATENCY", "YCQL_OP_P99_LATENCY", "HIGH_NUM_YSQL_CONNECTIONS", "HIGH_NUM_YCQL_CONNECTIONS", "HIGH_NUM_YEDIS_CONNECTIONS", "YSQL_THROUGHPUT", "YCQL_THROUGHPUT", "MASTER_LEADER_MISSING", "LEADERLESS_TABLETS", "UNDER_REPLICATED_TABLETS" ],
           "readOnly" : true,
           "type" : "string"
         },
@@ -1423,6 +1423,10 @@
           "enum" : [ "YQL_TABLE_TYPE", "REDIS_TABLE_TYPE", "PGSQL_TABLE_TYPE", "TRANSACTION_STATUS_TABLE_TYPE" ],
           "type" : "string"
         },
+        "backupUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
         "createTime" : {
           "format" : "date-time",
           "type" : "string"
@@ -1475,7 +1479,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "backupType", "createTime", "customerUUID", "expiryTime", "isStorageConfigPresent", "isUniversePresent", "onDemand", "responseList", "scheduleUUID", "state", "storageConfigUUID", "universeName", "universeUUID", "updateTime" ],
+      "required" : [ "backupType", "backupUUID", "createTime", "customerUUID", "expiryTime", "isStorageConfigPresent", "isUniversePresent", "onDemand", "responseList", "scheduleUUID", "state", "storageConfigUUID", "universeName", "universeUUID", "updateTime" ],
       "type" : "object"
     },
     "BackupStorageInfo" : {
@@ -1845,6 +1849,19 @@
       "required" : [ "s3Bucket" ],
       "type" : "object"
     },
+    "BundleDetails" : {
+      "properties" : {
+        "components" : {
+          "items" : {
+            "enum" : [ "UniverseLogs", "ApplicationLogs", "OutputFiles", "ErrorFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta" ],
+            "type" : "string"
+          },
+          "type" : "array"
+        }
+      },
+      "required" : [ "components" ],
+      "type" : "object"
+    },
     "CertificateDetails" : {
       "properties" : {
         "yugabytedb.crt" : {
@@ -1861,7 +1878,7 @@
       "properties" : {
         "certType" : {
           "description" : "Type of the certificate",
-          "enum" : [ "SelfSigned", "CustomCertHostPath", "CustomServerCert" ],
+          "enum" : [ "SelfSigned", "CustomCertHostPath", "CustomServerCert", "HashicorpVault" ],
           "example" : "SelfSigned",
           "type" : "string"
         },
@@ -1875,9 +1892,11 @@
           "readOnly" : true,
           "type" : "string"
         },
-        "customCertInfo" : {
-          "$ref" : "#/definitions/CustomCertInfo",
-          "description" : "Details about the certificate"
+        "customCertPathParams" : {
+          "$ref" : "#/definitions/CustomCertInfo"
+        },
+        "customHCPKICertInfo" : {
+          "$ref" : "#/definitions/HashicorpVaultConfigParams"
         },
         "customServerCertInfo" : {
           "$ref" : "#/definitions/CustomServerCertInfo"
@@ -1927,7 +1946,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "customServerCertInfo" ],
+      "required" : [ "customCertPathParams", "customHCPKICertInfo", "customServerCertInfo" ],
       "type" : "object"
     },
     "CertificateParams" : {
@@ -1944,7 +1963,7 @@
           "type" : "integer"
         },
         "certType" : {
-          "enum" : [ "SelfSigned", "CustomCertHostPath", "CustomServerCert" ],
+          "enum" : [ "SelfSigned", "CustomCertHostPath", "CustomServerCert", "HashicorpVault" ],
           "type" : "string"
         },
         "customCertInfo" : {
@@ -1953,6 +1972,9 @@
         "customServerCertData" : {
           "$ref" : "#/definitions/CustomServerCertData"
         },
+        "hcVaultCertParams" : {
+          "$ref" : "#/definitions/HashicorpVaultConfigParams"
+        },
         "keyContent" : {
           "type" : "string"
         },
@@ -1960,7 +1982,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "certContent", "certExpiry", "certStart", "certType", "customCertInfo", "customServerCertData", "keyContent", "label" ],
+      "required" : [ "certContent", "certExpiry", "certStart", "certType", "customCertInfo", "customServerCertData", "hcVaultCertParams", "keyContent", "label" ],
       "type" : "object"
     },
     "ClientCertParams" : {
@@ -2519,6 +2541,24 @@
       "required" : [ "code", "name" ],
       "type" : "object"
     },
+    "CustomerRegisterFormData" : {
+      "properties" : {
+        "code" : {
+          "type" : "string"
+        },
+        "email" : {
+          "type" : "string"
+        },
+        "name" : {
+          "type" : "string"
+        },
+        "password" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "code", "email", "name", "password" ],
+      "type" : "object"
+    },
     "CustomerTaskData" : {
       "description" : "Customer task data",
       "properties" : {
@@ -2714,6 +2754,35 @@
           "description" : "package paths"
         }
       },
+      "type" : "object"
+    },
+    "HashicorpVaultConfigParams" : {
+      "properties" : {
+        "engine" : {
+          "type" : "string"
+        },
+        "mountPath" : {
+          "type" : "string"
+        },
+        "role" : {
+          "type" : "string"
+        },
+        "ttl" : {
+          "format" : "int64",
+          "type" : "integer"
+        },
+        "ttlExpiry" : {
+          "format" : "int64",
+          "type" : "integer"
+        },
+        "vaultAddr" : {
+          "type" : "string"
+        },
+        "vaultToken" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "engine", "mountPath", "role", "vaultAddr", "vaultToken" ],
       "type" : "object"
     },
     "HttpLocation" : {
@@ -4250,6 +4319,22 @@
       "required" : [ "universeUUID" ],
       "type" : "object"
     },
+    "RunQueryFormData" : {
+      "properties" : {
+        "db_name" : {
+          "type" : "string"
+        },
+        "query" : {
+          "type" : "string"
+        },
+        "tableType" : {
+          "enum" : [ "YQL_TABLE_TYPE", "REDIS_TABLE_TYPE", "PGSQL_TABLE_TYPE", "TRANSACTION_STATUS_TABLE_TYPE" ],
+          "type" : "string"
+        }
+      },
+      "required" : [ "db_name", "query", "tableType" ],
+      "type" : "object"
+    },
     "RuntimeConfigData" : {
       "description" : "Runtime configuration data",
       "properties" : {
@@ -4483,6 +4568,38 @@
           "type" : "boolean"
         }
       },
+      "type" : "object"
+    },
+    "SupportBundle" : {
+      "properties" : {
+        "bundleDetails" : {
+          "$ref" : "#/definitions/BundleDetails"
+        },
+        "bundleUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "endDate" : {
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "path" : {
+          "type" : "string"
+        },
+        "scopeUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "startDate" : {
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "status" : {
+          "enum" : [ "Running", "Success", "Failed" ],
+          "type" : "string"
+        }
+      },
+      "required" : [ "bundleDetails", "bundleUUID", "endDate", "path", "scopeUUID", "startDate", "status" ],
       "type" : "object"
     },
     "TableDefinitionTaskParams" : {
@@ -7045,6 +7162,41 @@
         "tags" : [ "Certificate Info" ]
       }
     },
+    "/api/v1/customers/{cUUID}/certificates/create_self_signed_cert" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "createSelfSignedCert",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "description" : "certificate label",
+          "in" : "body",
+          "name" : "label",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Create a self signed certificate",
+        "tags" : [ "Certificate Info" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/certificates/{name}" : {
       "get" : {
         "description" : "",
@@ -7176,6 +7328,38 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "Get a customer's root certificate",
+        "tags" : [ "Certificate Info" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/certificates/{rUUID}/edit" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "editCertificate",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "rUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Edit TLS certificate config details",
         "tags" : [ "Certificate Info" ]
       }
     },
@@ -10651,6 +10835,13 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "body",
+          "name" : "RunQueryFormData",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/RunQueryFormData"
+          }
         } ],
         "responses" : {
           "200" : {
@@ -10883,6 +11074,39 @@
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/support_bundle" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "listSupportBundle",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "uniUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/SupportBundle"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List all support bundles from a universe",
+        "tags" : [ "Support Bundle management" ]
+      },
       "post" : {
         "description" : "",
         "operationId" : "createSupportBundle",
@@ -10918,6 +11142,44 @@
       "get" : {
         "description" : "",
         "operationId" : "getSupportBundle",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "uniUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "sbUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/SupportBundle"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Get a support bundle from a universe",
+        "tags" : [ "Support Bundle management" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/support_bundle/{sbUUID}/download" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "downloadSupportBundle",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -12253,6 +12515,30 @@
         } ],
         "summary" : "Get Prometheus metrics",
         "tags" : [ "Metrics" ]
+      }
+    },
+    "/api/v1/register" : {
+      "post" : {
+        "description" : "Creates new customer and user",
+        "operationId" : "registerCustomer",
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "CustomerRegisterFormData",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/CustomerRegisterFormData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/SessionInfo"
+            }
+          }
+        },
+        "summary" : "Register a customer",
+        "tags" : [ "Session management" ]
       }
     },
     "/api/v1/runtime_config/mutable_keys" : {

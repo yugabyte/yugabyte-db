@@ -2,7 +2,8 @@
 
 package com.yugabyte.yw.forms;
 
-import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
+import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import play.data.validation.Constraints;
 
 /**
@@ -20,8 +21,12 @@ public class CertificateParams {
 
   public String keyContent;
 
-  public CertificateInfo.Type certType = CertificateInfo.Type.SelfSigned;
+  public CertConfigType certType = CertConfigType.SelfSigned;
 
+  /**
+   * This is used for params for custom cert path information (on prem) provided by user while
+   * creating custom cert entry.
+   */
   public static class CustomCertInfo {
     public String nodeCertPath;
     public String nodeKeyPath;
@@ -32,10 +37,13 @@ public class CertificateParams {
 
   public CustomCertInfo customCertInfo;
 
+  /** This is used for accepting custom server certificates for Node-to-client communication. */
   public static class CustomServerCertData {
     public String serverCertContent;
     public String serverKeyContent;
   }
 
   public CustomServerCertData customServerCertData;
+
+  public HashicorpVaultConfigParams hcVaultCertParams;
 }

@@ -1269,8 +1269,14 @@ Status ClusterAdminClient::ListTables(bool include_db_type,
   return Status::OK();
 }
 
+struct FollowerDetails {
+  string uuid;
+  string host_port;
+  FollowerDetails(const string &u, const string &hp) : uuid(u), host_port(hp) {}
+};
+
 Status ClusterAdminClient::ListTablets(
-    const YBTableName& table_name, int max_tablets, bool json) {
+    const YBTableName& table_name, int max_tablets, bool json, bool followers) {
   vector<string> tablet_uuids, ranges;
   std::vector<master::TabletLocationsPB> locations;
   RETURN_NOT_OK(yb_client_->GetTablets(
@@ -1283,13 +1289,20 @@ Status ClusterAdminClient::ListTablets(
   if (!json) {
     cout << RightPadToUuidWidth("Tablet-UUID") << kColumnSep
          << RightPadToWidth("Range", kPartitionRangeColWidth) << kColumnSep
-         << RightPadToWidth("Leader-IP", kLongColWidth) << kColumnSep << "Leader-UUID" << endl;
+         << RightPadToWidth("Leader-IP", kLongColWidth) << kColumnSep << "Leader-UUID";
+    if (followers) {
+      cout << kColumnSep << "Followers";
+    }
+    cout << endl;
   }
 
   for (size_t i = 0; i < tablet_uuids.size(); i++) {
     const string& tablet_uuid = tablet_uuids[i];
     string leader_host_port;
     string leader_uuid;
+    string follower_host_port;
+    vector<FollowerDetails> follower_list;
+    string follower_list_str;
     const auto& locations_of_this_tablet = locations[i];
     for (const auto& replica : locations_of_this_tablet.replicas()) {
       if (replica.role() == PeerRole::LEADER) {
@@ -1299,6 +1312,20 @@ Status ClusterAdminClient::ListTablets(
         } else {
           LOG(ERROR) << "Multiple leader replicas found for tablet " << tablet_uuid
                      << ": " << locations_of_this_tablet.ShortDebugString();
+        }
+      } else {
+        if (followers) {
+          string follower_host_port =
+            HostPortPBToString(replica.ts_info().private_rpc_addresses(0));
+          if (json) {
+            follower_list.push_back(
+                FollowerDetails(replica.ts_info().permanent_uuid(), follower_host_port));
+          } else {
+            if (!follower_list_str.empty()) {
+              follower_list_str += ",";
+            }
+            follower_list_str += follower_host_port;
+          }
         }
       }
     }
@@ -1317,11 +1344,27 @@ Status ClusterAdminClient::ListTablets(
       AddStringField("uuid", leader_uuid, &json_leader, &document.GetAllocator());
       AddStringField("endpoint", leader_host_port, &json_leader, &document.GetAllocator());
       json_tablet.AddMember(rapidjson::StringRef("leader"), json_leader, document.GetAllocator());
+      if (followers) {
+        rapidjson::Value json_followers(rapidjson::kArrayType);
+        CHECK(json_followers.IsArray());
+        for (const FollowerDetails &follower : follower_list) {
+          rapidjson::Value json_follower(rapidjson::kObjectType);
+          AddStringField("uuid", follower.uuid, &json_follower, &document.GetAllocator());
+          AddStringField("endpoint", follower.host_port, &json_follower, &document.GetAllocator());
+          json_followers.PushBack(json_follower, document.GetAllocator());
+        }
+        json_tablet.AddMember(rapidjson::StringRef("followers"), json_followers,
+                              document.GetAllocator());
+      }
       json_tablets.PushBack(json_tablet, document.GetAllocator());
     } else {
       cout << tablet_uuid << kColumnSep << RightPadToWidth(ranges[i], kPartitionRangeColWidth)
            << kColumnSep << RightPadToWidth(leader_host_port, kLongColWidth) << kColumnSep
-           << leader_uuid << endl;
+           << leader_uuid;
+      if (followers) {
+        cout << kColumnSep << follower_list_str;
+      }
+      cout << endl;
     }
   }
 

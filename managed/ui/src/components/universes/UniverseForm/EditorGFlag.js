@@ -13,7 +13,7 @@ ace.config.setModuleUrl(
 );
 
 const editorStyle = {
-  height: 510,
+  height: 530,
   width: '100%',
   marginBottom: '32px',
   display: 'flex',
