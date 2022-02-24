@@ -18,7 +18,7 @@ If you plan to script this in a loop, then a pause of about 60 seconds is recomm
 
 {{<tip title="Preserving data and cluster configuration across upgrades" >}}
 
-Your data/log/conf directories are generally stored in a separate location which stays the same across the upgrade so that the cluster data, its configuration settings are retained across the upgrade.
+Your `data/log/conf` directories are generally stored in a separate location which stays the same across the upgrade so that the cluster data, its configuration settings are retained across the upgrade.
 
 {{< /tip >}}
 
