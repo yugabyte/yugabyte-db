@@ -33,7 +33,7 @@ Learn the basics of using YugabyteDB clusters in Yugabyte Cloud.
 : Create virtual private cloud (VPC) networks to peer clusters with application VPCs.
 
 [Connect](../cloud-connect)
-: Connect to clusters from a browser using the cloud shell, from your desktop using a shell, and from applications.
+: Connect to clusters from a browser using Cloud Shell, from your desktop using a shell, and from applications.
 
 [Alerts and monitoring](../cloud-monitor)
 : Monitor cluster performance and get notified of potential problems.

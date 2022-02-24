@@ -1,7 +1,7 @@
 ---
 title: Connect to the cluster
 linkTitle: Connect to the cluster
-description: Connect to your cluster using the cloud shell.
+description: Connect to your cluster using Cloud Shell.
 headcontent:
 image: /images/section_icons/index/quick_start.png
 menu:
@@ -13,13 +13,13 @@ isTocNested: true
 showAsideToc: true
 ---
 
-After [creating a free cluster](../qs-add/), the easiest way to connect to it is to use the cloud shell.
+After [creating a free cluster](../qs-add/), the easiest way to connect to it is to use Cloud Shell.
 
-Using the cloud shell, you can connect to your Yugabyte Cloud cluster from your browser, and interact with it using distributed SQL.
+Using Cloud Shell, you can connect to your Yugabyte Cloud cluster from your browser, and interact with it using distributed SQL.
 
-Cloud shell has a 15 minute connection limit. If your session expires, close your browser tab and connect again.
+The shell has a 15 minute connection limit. If your session expires, close your browser tab and connect again.
 
-## Connect to your cluster using the cloud shell
+## Connect to your cluster using Cloud Shell
 
 To connect to your cluster, do the following:
 
@@ -31,7 +31,7 @@ To connect to your cluster, do the following:
 
 1. Enter the database name (`yugabyte`), the user name (`admin`), select the YSQL API type, and click **Confirm**.
 
-    Cloud shell opens in a separate browser window. Cloud shell can take up to 30 seconds to be ready.
+    Cloud Shell opens in a separate browser window. Cloud Shell can take up to 30 seconds to be ready.
 
     ```output
     Password for user admin: 
@@ -51,7 +51,7 @@ To connect to your cluster, do the following:
 
 The command line interface (CLI) being used is called ysqlsh. ysqlsh is the CLI for interacting with YugabyteDB using the PostgreSQL-compatible YSQL API.
 
-Cloud shell also supports ycqlsh, a CLI for the YCQL API.
+Cloud Shell also supports ycqlsh, a CLI for the YCQL API.
 
 ### Learn more
 
