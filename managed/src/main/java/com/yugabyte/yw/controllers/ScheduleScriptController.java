@@ -21,7 +21,6 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.Api;
-import io.swagger.annotations.Authorization;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -35,9 +34,7 @@ import play.mvc.Http;
 import play.mvc.Http.MultipartFormData;
 import play.mvc.Result;
 
-@Api(
-    value = "ScheduleExternalScript",
-    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+@Api(value = "SUPPORT_USE_ONLY", hidden = true)
 public class ScheduleScriptController extends AuthenticatedController {
 
   @Inject SettableRuntimeConfigFactory sConfigFactory;
