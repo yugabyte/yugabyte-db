@@ -14,10 +14,13 @@ import java.util.Comparator;
 import java.util.Collections;
 import java.util.Date;
 import java.util.UUID;
+import java.io.File;
+import java.nio.file.Path;
 import java.text.SimpleDateFormat;
 import java.text.ParseException;
 import java.text.DateFormat;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.io.FileUtils;
 import org.joda.time.DateTime;
 
 @Slf4j
@@ -33,6 +36,16 @@ public class SupportBundleUtil {
     SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
     Date dateToday = sdf.parse(sdf.format(new Date()));
     return dateToday;
+  }
+
+  public static Date getDateFromBundleFileName(String fileName) throws ParseException {
+    SimpleDateFormat bundleSdf = new SimpleDateFormat("yyyyMMddHHmmss.SSS");
+    SimpleDateFormat newSdf = new SimpleDateFormat("yyyy-MM-dd");
+
+    String[] fileNameSplit = fileName.split("-");
+    String fileDateStr = fileNameSplit[fileNameSplit.length - 2];
+
+    return newSdf.parse(newSdf.format(bundleSdf.parse(fileDateStr)));
   }
 
   public static boolean isValidDate(Date date) {
@@ -104,5 +117,13 @@ public class SupportBundleUtil {
     }
 
     return dataDirPath;
+  }
+
+  public static void deleteFile(Path filePath) {
+    if (FileUtils.deleteQuietly(new File(filePath.toString()))) {
+      log.info("Successfully deleted file with path: " + filePath.toString());
+    } else {
+      log.info("Failed to delete file with path: " + filePath.toString());
+    }
   }
 }

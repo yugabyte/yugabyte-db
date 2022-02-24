@@ -159,7 +159,15 @@ class UniverseLogsComponent implements SupportBundleComponent {
 
     ShellResponse shellOutput = this.nodeUniverseManager.runCommand(node, universe, cmd);
     String cmdOutput = shellOutput.message;
-    return Arrays.asList(cmdOutput.trim().split("\n", 0));
+    List<String> cmdOutputList = Arrays.asList(cmdOutput.trim().split("\n", 0));
+    // Removes all warnings before string "Command output:"
+    int lastIndex = 0;
+    for (int i = 0; i < cmdOutputList.size(); ++i) {
+      if (cmdOutputList.get(i).contains("Command output:")) {
+        lastIndex = i;
+      }
+    }
+    return cmdOutputList.subList(lastIndex + 1, cmdOutputList.size());
   }
 
   // Filters a list of log file paths with a regex pattern and between given start and end dates

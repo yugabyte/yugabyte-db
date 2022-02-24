@@ -34,7 +34,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.alerts.SmtpData;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.metrics.MetricService;
-import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
+import com.yugabyte.yw.forms.AlertingData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AccessKey;

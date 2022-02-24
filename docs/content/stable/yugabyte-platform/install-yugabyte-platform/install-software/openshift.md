@@ -302,8 +302,8 @@ To create a Yugabyte Platform instance, perform the following:
   ```
 
   ```output
-  NAME                 CHART VERSION  APP VERSION  DESCRIPTION
-  yugabytedb/yugaware  2.8.2          2.8.2.0-b51  YugaWare is YugaByte Database's Orchestration a...
+  NAME              CHART VERSION  APP VERSION   DESCRIPTION
+  yugabytedb/yugaware   2.5.3      2.5.3.1-b10   YugaWare is YugaByte Database's...
   ```
 
 - Verify the StorageClass setting for your cluster by executing the following command as admin user:
@@ -336,14 +336,14 @@ To create a Yugabyte Platform instance, perform the following:
     name: yw-test-cluster-monitoring-view
     labels:
       app: yugaware
-    subjects:
-    - kind: ServiceAccount
-      name: yw-test
-      namespace: yb-platform
-    roleRef:
-      kind: ClusterRole
-      name: cluster-monitoring-view
-      apiGroup: rbac.authorization.k8s.io
+  subjects:
+  - kind: ServiceAccount
+    name: yw-test
+    namespace: yb-platform
+  roleRef:
+    kind: ClusterRole
+    name: cluster-monitoring-view
+    apiGroup: rbac.authorization.k8s.io
   EOF
   ```
 
