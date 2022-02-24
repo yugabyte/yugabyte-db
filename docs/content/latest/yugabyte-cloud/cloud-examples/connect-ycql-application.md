@@ -5,7 +5,7 @@ linkTitle: Connect a YCQL Java application
 description: Build a sample Java application for Yugabyte Cloud with the Yugabyte Java Driver for YCQL v4.6.
 menu:
   latest:
-    parent: cloud-develop
+    parent: cloud-examples
     identifier: connect-ycql-application
     weight: 200
 type: page

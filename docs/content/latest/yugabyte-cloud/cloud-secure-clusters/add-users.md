@@ -25,7 +25,7 @@ When creating a YugabyteDB cluster in Yugabyte Cloud, you set up the credentials
 
 To add a database user:
 
-1. Connect to the cluster via [cloud shell](../../cloud-connect/connect-cloud-shell/) using `ysqlsh` or `ycqlsh`.
+1. Connect to the cluster via [Cloud Shell](../../cloud-connect/connect-cloud-shell/) using `ysqlsh` or `ycqlsh`.
 
 1. Add a user using the `CREATE ROLE` statement.
 
