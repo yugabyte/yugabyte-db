@@ -1,4 +1,4 @@
-```
+```ebnf
 revoke_table ::= REVOKE [ GRANT OPTION FOR ] 
                  { { SELECT
                      | INSERT

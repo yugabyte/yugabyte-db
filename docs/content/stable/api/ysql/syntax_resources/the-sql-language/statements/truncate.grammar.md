@@ -1,3 +1,4 @@
-```
-truncate ::= TRUNCATE [ TABLE ] { { [ ONLY ] name [ * ] } [ , ... ] }
+```ebnf
+truncate ::= TRUNCATE [ TABLE ] { table_expr [ , ... ] } 
+             [ CASCADE | RESTRICT ]
 ```
