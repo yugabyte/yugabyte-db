@@ -35,13 +35,6 @@
   to = "/images/:splat"
   status = 200
 
-# Bypass the landing page
-
-[[redirects]]
-  from = "/"
-  to = "/latest/"
-  force = true
-
 # Redirect older versions of specific sections
 
 [[redirects]]
