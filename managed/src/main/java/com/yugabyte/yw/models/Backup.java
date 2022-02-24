@@ -12,6 +12,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.Sets;
+import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.forms.BackupTableParams;
@@ -572,6 +573,7 @@ public class Backup extends Model {
         find.query().setPersistenceContextScope(PersistenceContextScope.QUERY).where();
 
     query.eq("customer_uuid", filter.getCustomerUUID());
+    appendActionTypeClause(query);
     if (!CollectionUtils.isEmpty(filter.getScheduleUUIDList())) {
       appendInClause(query, "schedule_uuid", filter.getScheduleUUIDList());
     }
@@ -606,6 +608,15 @@ public class Backup extends Model {
       orExpr.raw(queryStringOuter, filter.getKeyspaceList());
       query.endOr();
     }
+    return query;
+  }
+
+  public static <T> ExpressionList<T> appendActionTypeClause(ExpressionList<T> query) {
+    Junction<T> andExpr = query.and();
+    BackupUtil.OMIT_ACTION_TYPES
+        .stream()
+        .forEach(aT -> andExpr.jsonNotEqualTo("backup_info", "actionType", aT.name()));
+    query.endAnd();
     return query;
   }
 

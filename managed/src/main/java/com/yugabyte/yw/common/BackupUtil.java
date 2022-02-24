@@ -6,9 +6,12 @@ import com.cronutils.model.Cron;
 import com.cronutils.model.definition.CronDefinitionBuilder;
 import com.cronutils.model.time.ExecutionTime;
 import com.cronutils.parser.CronParser;
+import com.google.common.collect.Sets;
+import com.yugabyte.yw.forms.BackupTableParams.ActionType;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,6 +24,8 @@ public class BackupUtil {
 
   public static final long MIN_SCHEDULE_DURATION_IN_SECS = 3600L;
   public static final long MIN_SCHEDULE_DURATION_IN_MILLIS = MIN_SCHEDULE_DURATION_IN_SECS * 1000L;
+  public static final Set<ActionType> OMIT_ACTION_TYPES =
+      Sets.immutableEnumSet(ActionType.DELETE, ActionType.RESTORE, ActionType.RESTORE_KEYS);
 
   public static void validateBackupCronExpression(String cronExpression)
       throws PlatformServiceException {
