@@ -73,11 +73,25 @@ Yugabyte Platform requires a service account with the appropriate permissions to
 To create a service account, perform the following:
 
 - Open your project and use the left-side menu to navigate to **IAM & Admin > Service Accounts**.
+
 - Click **Create Service Account**.
 
-- Complete fields in the **Service account details** page.
-- In the **Grant this service account access to project** page, select the **Owner** role.
-- In the **Grant users access to this service account** page, enter the email associated with this service account. To retrieve the email information, navigate to **IAM & Admin > Service Accounts** and copy the **Email** value.  
+- Complete the **Service account details** fields and click **Create and Continue**.
+
+- In the **Grant this service account access to project** section, select the **Owner** role.
+
+- In the **Grant users access to this service account** section, enter the email associated with this service account. To retrieve the email information, navigate to **IAM & Admin > Service Accounts** and copy the **Email** value.
+
+- Navigate back to **IAM & Admin > Service Accounts**, click the email address of the service account, and then select the **KEYS** tab.
+
+- Click **ADD KEY** and select **Create new key**.
+
+- Select **JSON** as the **Key type** and click **Create**.
+
+- In the **Create private key** dialog, select **JSON** as the key type, and then click **Create** to download a service account key file. Note that after you download the key, you need to store this file, as you cannot download it again and this key is required for configuring the Yugabyte Platform UI.
+
+  For additional information, see [Creating and managing service account keys](https://cloud.google.com/iam/docs/creating-managing-service-account-keys) in the GCP documentation. 
+
 - Navigate to **IAM & Admin > IAM**, click **ADD**, and then provide principals and roles.
 
 For more information, see [Creating and managing service accounts](https://cloud.google.com/iam/docs/creating-managing-service-accounts) in the GCP documentation.
