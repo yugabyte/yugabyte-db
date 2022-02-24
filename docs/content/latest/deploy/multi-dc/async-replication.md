@@ -194,7 +194,7 @@ Some use cases can afford to temporarily stop incoming user writes. For such cas
 - Stop any new incoming user writes.
 - Wait for all changes to get replicated to the sink cluster. This can be observed by replication lag dropping to 0.
 - Apply the DDL changes on both sides.
-  - Alter replication for any newly created tables, eg: after having used CREATE TABLE / CREATE INDEX.
+  - [Alter replication](../../../admin/yb-admin/#alter-universe-replication) for any newly created tables, eg: after having used CREATE TABLE / CREATE INDEX.
 - Resume user writes.
 
 ### Using backup and restore
@@ -203,7 +203,7 @@ In the event you cannot stop incoming user traffic, then the recommended approac
 - Stop replication, in advance of DDL changes.
 - Apply all your DDL changes to the source cluster.
 - Take a backup of the source cluster, of all the relevant tables that you intend to replicate changes for.
-  - Make sure to use the bootstrap flow, as described above.
+  - Make sure to use the [bootstrapping a sink cluster](#bootstrapping-a-sink-cluster) flow, as described above.
 - Restore this backup on the sink cluster.
-- Setup replication again, for all of the relevant tables.
+- [Setup replication](../../../admin/yb-admin/#setup-universe-replication) again, for all of the relevant tables.
   - Make sure to pass in the `bootstrap_ids`, as described above.
