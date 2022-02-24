@@ -29,7 +29,7 @@ For more advanced applications, including Spring and GraphQL examples, refer to 
       <div class="title">Before you begin</div>
     </div>
     <div class="body">
-      To run these applications on Yugabyte Cloud, download your cluster CA certificate and add your computer to the IP allow list.
+      Download your cluster CA certificate and add your computer to the IP allow list.
     </div>
   </a>
   </div>
