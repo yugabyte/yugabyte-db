@@ -52,6 +52,10 @@
   width: 100%;
   height: 100%;
   margin-top: 30px;
+
+  @media screen and (max-width: 1100px) {
+    flex-direction: column;
+  }
 }
 
 .user-auth-container {
@@ -60,6 +64,10 @@
     flex-shrink: 1;
     flex-direction: column;
     margin-top: 5px;
+
+    @media screen and (max-width: 1100px) {
+      flex-direction: row;
+    }
   }
 
   .ua-form-container {
@@ -82,7 +90,7 @@
     background: $YB_WHITE;
     box-sizing: border-box;
     border-radius: 8px;
-    margin: 5px 20px 5px 10px;
+    margin: 5px 20px 10px 10px;
     align-items: center;
     justify-content: center;
     cursor: pointer;
@@ -98,6 +106,15 @@
     padding: 5px 0px;
     margin: 0px;
     max-width: 700px;
+    min-width: 700px;
+
+    @media screen and (max-width: 1100px) {
+      min-width: auto;
+    }
+
+    @media screen and (min-width: 1101px) and (max-width: 1300px) {
+      min-width: 80%;
+    }
   }
 
   .ua-field-row {
@@ -181,7 +198,8 @@
   padding-left: 15px !important;
 }
 
-.ldap-cancel-btn {
+.ldap-cancel-btn,
+.oidc-cancel-btn {
   background: $YB_WHITE;
   border: 1px solid $YB_BLACK;
   border-radius: 8px;
@@ -190,7 +208,8 @@
   font-weight: 500;
 }
 
-.ldap-cancel-btn:hover {
+.ldap-cancel-btn:hover,
+.oidc-cancel-btn:hover {
   border: 1px solid $YB_BLACK;
 }
 
@@ -201,17 +220,20 @@
   align-items: flex-start;
 }
 
-.ldap-modal-c-icon {
+.ldap-modal-c-icon,
+.oidc-modal-c-icon {
   flex-shrink: 1;
   margin-right: 15px;
 }
 
-.ldap-modal-c-content {
+.ldap-modal-c-content,
+.oidc-modal-c-content {
   flex-grow: 1;
   font-size: 14px;
 }
 
-#ldap-toggle-tooltip .tooltip-inner {
+#ldap-toggle-tooltip .tooltip-inner,
+#oidc-toggle-tooltip .tooltip-inner {
   width: 260px;
   max-width: 260px;
   padding: 8px;
@@ -232,6 +254,26 @@
   margin-bottom: 16px;
 }
 
-.ldap-info-popover {
+.ldap-info-popover,
+.oidc-info-popover {
   max-width: 650px;
+}
+
+.oidc-footer {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 8px 20px;
+}
+
+.oidc_footer_text {
+  display: flex;
+  flex-direction: row;
+}
+
+.oidc-modal-c {
+  display: flex;
+  min-height: 70px;
+  flex-direction: row;
+  align-items: flex-start;
 }

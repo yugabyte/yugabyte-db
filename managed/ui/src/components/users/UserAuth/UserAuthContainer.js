@@ -33,7 +33,8 @@ const mapDispatchToProps = (dispatch) => {
 
 function mapStateToProps(state) {
   return {
-    runtimeConfigs: state.customer.runtimeConfigs
+    runtimeConfigs: state.customer.runtimeConfigs,
+    featureFlags: state.featureFlags
   };
 }
 

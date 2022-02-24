@@ -11,7 +11,8 @@ const initialStateFeatureInTest = {
   enableHCVault: true,
   enableHCVaultEAT: false,
   enableNodeComparisonModal: false,
-  enablePathStyleAccess: false
+  enablePathStyleAccess: false,
+  enableOIDC: false
 };
 
 const initialStateFeatureReleased = {
@@ -25,7 +26,8 @@ const initialStateFeatureReleased = {
   enableHCVault: true,
   enableHCVaultEAT: false,
   enableNodeComparisonModal: false,
-  enablePathStyleAccess: false
+  enablePathStyleAccess: false,
+  enableOIDC: false
 };
 
 export const FeatureFlag = (
