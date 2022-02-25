@@ -414,15 +414,15 @@ public class NodeManager extends DevopsBase {
               serverKeyPath = String.format("%s/%s", tempStorageDirectory, serverKeyFile);
               certsLocation = CERT_LOCATION_PLATFORM;
 
-              if (taskParam.rootAndClientRootCASame && taskParam.enableClientToNodeEncrypt) {
-                // These client certs are used for node to postgres communication
-                // These are separate from clientRoot certs which are used for server to client
-                // communication These are not required anymore as this is not mandatory now and
-                // can be removed. The code is still here to maintain backward compatibility
+              if (taskParam.enableClientToNodeEncrypt) {
+
+                UUID cliRootCA = taskParam.clientRootCA;
+                if (taskParam.rootAndClientRootCASame) cliRootCA = taskParam.rootCA;
+
                 subcommandStrings.add("--client_cert_path");
-                subcommandStrings.add(CertificateHelper.getClientCertFile(taskParam.rootCA));
+                subcommandStrings.add(CertificateHelper.getClientCertFile(cliRootCA));
                 subcommandStrings.add("--client_key_path");
-                subcommandStrings.add(CertificateHelper.getClientKeyFile(taskParam.rootCA));
+                subcommandStrings.add(CertificateHelper.getClientKeyFile(cliRootCA));
               }
             } catch (IOException e) {
               LOG.error(e.getMessage(), e);
@@ -516,6 +516,18 @@ public class NodeManager extends DevopsBase {
               serverCertPath = String.format("%s/%s", tempStorageDirectory, serverCertFile);
               serverKeyPath = String.format("%s/%s", tempStorageDirectory, serverKeyFile);
               certsLocation = CERT_LOCATION_PLATFORM;
+
+              if (taskParam.enableClientToNodeEncrypt) {
+
+                UUID cliRootCA = taskParam.clientRootCA;
+                if (taskParam.rootAndClientRootCASame) cliRootCA = taskParam.rootCA;
+
+                subcommandStrings.add("--client_cert_path");
+                subcommandStrings.add(CertificateHelper.getClientCertFile(cliRootCA));
+                subcommandStrings.add("--client_key_path");
+                subcommandStrings.add(CertificateHelper.getClientKeyFile(cliRootCA));
+              }
+
             } catch (IOException e) {
               LOG.error(e.getMessage(), e);
               throw new RuntimeException(e);
