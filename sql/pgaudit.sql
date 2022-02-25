@@ -1577,6 +1577,17 @@ DROP FUNCTION my_ne(text, text);
 DROP FUNCTION lower(text);
 DROP FUNCTION upper(text);
 
+-- Create/drop extension. Note that the log level here must be warning because the create extension code will reset any higher log
+-- levels like notice
+SET pgaudit.log = 'all,-misc_set';
+SET pgaudit.log_level = 'warning';
+
+CREATE EXTENSION pg_stat_statements;
+ALTER EXTENSION pg_stat_statements UPDATE TO '1.9';
+DROP EXTENSION pg_stat_statements;
+
+SET pgaudit.log_level = 'notice';
+
 -- Cleanup
 -- Set client_min_messages up to warning to avoid noise
 SET client_min_messages = 'warning';

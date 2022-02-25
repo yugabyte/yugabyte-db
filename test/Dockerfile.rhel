@@ -23,7 +23,8 @@ RUN rpm --import http://yum.postgresql.org/RPM-GPG-KEY-PGDG
 RUN rpm -ivh https://download.postgresql.org/pub/repos/yum/reporpms/EL-7-x86_64/pgdg-redhat-repo-latest.noarch.rpm
 # Enable PG14 repo (can be removed after the official release)
 RUN yum-config-manager --enable pgdg14-updates-testing
-RUN yum install -y postgresql${PGVERSION?}-server postgresql${PGVERSION?}-devel make gcc openssl-devel llvm-toolset-7-clang llvm5.0
+RUN yum install -y postgresql${PGVERSION?}-server postgresql${PGVERSION?}-devel postgresql${PGVERSION?}-contrib \
+                   make gcc openssl-devel llvm-toolset-7-clang llvm5.0
 
 # Create PostgreSQL cluster
 RUN sudo -u postgres ${PGBIN?}/initdb -A trust -k ${PGDATA?}

@@ -2501,6 +2501,18 @@ DROP OPERATOR <> (text, text);
 DROP FUNCTION my_ne(text, text);
 DROP FUNCTION lower(text);
 DROP FUNCTION upper(text);
+-- Create/drop extension. Note that the log level here must be warning because the create extension code will reset any higher log
+-- levels like notice
+SET pgaudit.log = 'all,-misc_set';
+SET pgaudit.log_level = 'warning';
+CREATE EXTENSION pg_stat_statements;
+WARNING:  AUDIT: SESSION,3,1,DDL,CREATE EXTENSION,,,CREATE EXTENSION pg_stat_statements;,<not logged>
+ALTER EXTENSION pg_stat_statements UPDATE TO '1.9';
+WARNING:  AUDIT: SESSION,4,1,DDL,ALTER EXTENSION,,,ALTER EXTENSION pg_stat_statements UPDATE TO '1.9';,<not logged>
+NOTICE:  version "1.9" of extension "pg_stat_statements" is already installed
+DROP EXTENSION pg_stat_statements;
+WARNING:  AUDIT: SESSION,5,1,DDL,DROP EXTENSION,,,DROP EXTENSION pg_stat_statements;,<not logged>
+SET pgaudit.log_level = 'notice';
 -- Cleanup
 -- Set client_min_messages up to warning to avoid noise
 SET client_min_messages = 'warning';
