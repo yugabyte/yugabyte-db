@@ -1482,6 +1482,7 @@ yb-admin \
 * *namespace_name*: The namespace on which the DB stream ID is to be created.
 
 For example:
+
 ```sh
 yb-admin \
     -master_addresses 127.0.0.1:7100 \
@@ -1510,12 +1511,15 @@ yb-admin \
 * *namespace_name*: Optional - The namespace name for which the streams are to be listed, if not provided it would list all the streams without filtering.
 
 **Example:**
+
 ```sh
 yb-admin \
     -master_addresses 127.0.0.1:7100 \
     list_change_data_streams
 ```
-The above command would result in the following response, it will have all the table IDs associated with the stream ID:
+
+This command results in the following response. It will have all the table IDs associated with the stream ID:
+
 ```output
 CDC Streams:
 streams {
@@ -1564,13 +1568,14 @@ yb-admin \
 * *db_stream_id*: The CDC DB stream ID to get the info of.
 
 **Example:**
+
 ```sh
 yb-admin \
     -master_addresses 127.0.0.1:7100 \
     get_change_data_stream_info d540f5e4890c4d3b812933cbfd703ed3
 ```
 
-The above command would result in the following response, it will have the table_id(s) associated with the stream and the namespace_id on which the stream is created:
+The previous command results in the following response. It will have the table_id(s) associated with the stream and the namespace_id on which the stream is created:
 
 ```output
 CDC DB Stream Info:
@@ -1583,7 +1588,7 @@ namespace_id: "000033e1000030008000000000000000"
 
 #### delete_change_data_stream
 
-Delete the CDC DB stream provided as the argument.
+Delete the specified CDC DB stream.
 
 **Syntax**
 
@@ -1597,13 +1602,14 @@ yb-admin \
 * *db_stream_id*: The CDC DB stream ID to be deleted.
 
 **Example:**
+
 ```sh
 yb-admin \
     -master_addresses 127.0.0.1:7100 \
     delete_change_data_stream d540f5e4890c4d3b812933cbfd703ed3
 ```
 
-The above command would result in the following response:
+The above command results in the following response:
 
 ```output
 Successfully deleted CDC DB Stream ID: d540f5e4890c4d3b812933cbfd703ed3

@@ -17,7 +17,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Change data capture (CDC) in YugabyteDB provides technology to ensure that any changes in data (inserts, updates, and deletions) are identified, captured, and automatically applied to another data repository instance or made available for consumption by applications and other tools.
+Change data capture (CDC) in YugabyteDB provides technology to ensure that any changes in data (inserts, updates, and deletions) are identified, captured, and automatically applied to another data repository instance, or made available for consumption by applications and other tools.
 
 ## Use cases
 
@@ -49,7 +49,8 @@ In the sections below, the terms "data center", "cluster", and "universe" are us
 {{< /note >}}
 
 ## Process architecture
-To be updated: new Architecture 
+
+To be updated: new Architecture
 <!--- ![CDC process architecture](/images/architecture/cdc-2dc/process-architecture.png) --->
 
 ### CDC streams
