@@ -130,10 +130,21 @@ public class NodeUniverseManager extends DevopsBase {
               universe.getUniverseDetails().nodePrefix,
               isMultiAz ? AvailabilityZone.getOrBadRequest(node.azUuid).name : null,
               AvailabilityZone.get(node.azUuid).getUnmaskedConfig());
+      // TODO(bhavin192): this might need an updated when we have
+      // multiple releases in one namespace.
+      String kubeconfig =
+          PlacementInfoUtil.getConfigPerNamespace(
+                  cluster.placementInfo, universe.getUniverseDetails().nodePrefix, provider)
+              .get(namespace);
+      if (kubeconfig == null) {
+        throw new RuntimeException("kubeconfig cannot be null");
+      }
 
       commandArgs.add("k8s");
       commandArgs.add("--namespace");
       commandArgs.add(namespace);
+      commandArgs.add("--kubeconfig");
+      commandArgs.add(kubeconfig);
     } else if (!getNodeDeploymentMode(node, universe).equals(Common.CloudType.unknown)) {
       AccessKey accessKey =
           AccessKey.getOrBadRequest(providerUUID, cluster.userIntent.accessKeyCode);
