@@ -92,14 +92,11 @@ OperationDriver::OperationDriver(OperationTracker *operation_tracker,
     : operation_tracker_(operation_tracker),
       consensus_(consensus),
       preparer_(preparer),
-      trace_(new Trace()),
+      trace_(Trace::NewTraceForParent(Trace::CurrentTrace())),
       start_time_(MonoTime::Now()),
       replication_state_(NOT_REPLICATING),
       prepare_state_(NOT_PREPARED),
       table_type_(table_type) {
-  if (Trace::CurrentTrace()) {
-    Trace::CurrentTrace()->AddChildTrace(trace_.get());
-  }
   DCHECK(IsAcceptableAtomicImpl(op_id_copy_));
 }
 

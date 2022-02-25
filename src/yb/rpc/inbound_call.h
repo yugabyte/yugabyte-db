@@ -212,6 +212,10 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
 
   int64_t GetRpcQueuePosition() const { return rpc_queue_position_; }
 
+  // For requests that have requested traces to be collected, we will ensure
+  // that trace_ is not null and can be used for collecting the requested data.
+  void EnsureTraceCreated();
+
  protected:
   ThreadPoolTask* BindTask(InboundCallHandler* handler, int64_t rpc_queue_limit);
 

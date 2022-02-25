@@ -842,7 +842,7 @@ void TabletPeer::GetInFlightOperations(Operation::TraceType trace_type,
     int64_t running_for_micros =
         MonoTime::Now().GetDeltaSince(driver->start_time()).ToMicroseconds();
     status_pb.set_running_for_micros(running_for_micros);
-    if (trace_type == Operation::TRACE_TXNS) {
+    if (trace_type == Operation::TRACE_TXNS && driver->trace()) {
       status_pb.set_trace_buffer(driver->trace()->DumpToString(true));
     }
     out->push_back(status_pb);
