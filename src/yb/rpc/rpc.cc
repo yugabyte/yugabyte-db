@@ -80,10 +80,7 @@ using strings::SubstituteAndAppend;
 
 namespace rpc {
 
-RpcCommand::RpcCommand() : trace_(new Trace) {
-  if (Trace::CurrentTrace()) {
-    Trace::CurrentTrace()->AddChildTrace(trace_.get());
-  }
+RpcCommand::RpcCommand() : trace_(Trace::NewTraceForParent(Trace::CurrentTrace())) {
 }
 
 RpcCommand::~RpcCommand() {}
