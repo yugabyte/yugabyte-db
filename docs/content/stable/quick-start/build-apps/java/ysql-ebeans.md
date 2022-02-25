@@ -3,12 +3,6 @@ title: Build a Java application that uses Ebeans and YSQL
 headerTitle: Build a Java application
 linkTitle: Java
 description: Build a sample Java application that uses Ebeans and YSQL API to connect to and interact with YugabyteDB.
-aliases:
-  - /develop/client-drivers/java/
-  - /latest/develop/client-drivers/java/
-  - /latest/develop/build-apps/java/
-  - /latest/quick-start/build-apps/java/
-  - /latest/integrations/jdbc-driver
 menu:
   stable:
     parent: build-apps
@@ -66,12 +60,12 @@ showAsideToc: true
   </li>
 </ul>
 
-The following tutorial implements an ORM example using [Ebeans](https://ebean.io/docs/), an ORM in Java, that implements a simple REST API server. The scenario is that of an e-commerce application where the database access is managed through [Play framework](https://www.playframework.com/documentation/2.8.x/api/java/index.html); Play uses [Akka](https://doc.akka.io/docs/akka/current/typed/guide/introduction.html) internally and exposes Akka Streams and actors in Websockets and other streaming HTTP responses. It includes the following tables:
+The following tutorial implements a REST API server using the Java [Ebeans](https://ebean.io/docs/) ORM. The scenario is that of an e-commerce application where database access is managed using the [Play framework](https://www.playframework.com/documentation/2.8.x/api/java/index.html); Play uses [Akka](https://doc.akka.io/docs/akka/current/typed/guide/introduction.html) internally and exposes Akka Streams and actors in Websockets and other streaming HTTP responses. It includes the following tables:
 
-- `users` table — the users of the e-commerce site
-- `products` table — the products being sold
-- `orders` table — the orders placed by the users
-- `orderline` table — each line item of an order
+- `users` — the users of the e-commerce site
+- `products` — the products being sold
+- `orders` — the orders placed by the users
+- `orderline` — each line item of an order
 
 The source for the above application can be found in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master/java/ebeans) repository.
 
@@ -81,17 +75,17 @@ This tutorial assumes that you have:
 
 - YugabyteDB up and running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../../quick-start/) to have YugabyteDB up and running in minutes.
 - Java Development Kit (JDK) 1.8 is installed. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/).
-- [sbt](https://www.scala-sbt.org/1.x/docs/) is installed.
+- [sbt](https://www.scala-sbt.org/1.x/docs/) is installed. Homebrew users on macOS can install using `brew install AdoptOpenJDK/openjdk/adoptopenjdk8`.
 
 ## Clone the "orm-examples" repository
 
 ```sh
-$ git clone https://github.com/yugabyte/orm-examples.git
+$ git clone https://github.com/yugabyte/orm-examples.git && cd orm-examples/java/ebeans
 ```
 
 ## Database configuration
 
-- Modify the database configuration section to include YugabyteDB's JDBC driver settings in `conf/application.conf` file as follows:
+- Modify the database configuration section of the `conf/application.conf` file to include the YugabyteDB JDBC driver settings as follows:
 
   ```sh
   #Default database configuration using PostgreSQL database engine
@@ -101,17 +95,29 @@ $ git clone https://github.com/yugabyte/orm-examples.git
   default.url="jdbc:yugabytedb://127.0.0.1:5433/ysql_ebeans?load-balance=true"
   ```
 
-- Add a dependency in `build.sbt` for YugabyteDB’s JDBC driver.
+- Add a dependency in `build.sbt` for the YugabyteDB JDBC driver.
 
   ```sh
   libraryDependencies += "com.yugabyte" % "jdbc-yugabytedb" % "42.3.0"
   ```
 
-- From your local YugabyteDB installation directory, connect to the [YSQL] shell to create a database.
+- From your local YugabyteDB installation directory, connect to the [YSQL](../../../../admin/ysqlsh/) shell using:
 
   ```sh
-  bin/ysqlsh
-  CREATE DATABASE ysql_ebeans;
+  $ ./bin/ysqlsh
+  ```
+
+  ```output
+  ysqlsh (11.2)
+  Type "help" for help.
+
+  yugabyte=#
+  ```
+
+- Create the `ysql_ebeans` database using:
+
+  ```sh
+  yugabyte=# CREATE DATABASE ysql_ebeans;
   ```
 
 ## Build the application
@@ -124,13 +130,13 @@ $ sbt compile
 
 {{< note title="Note" >}}
 
-- Certain subversions of JDK 1.8 would require the `nashorn` package. Add the package in the `build.sbt` if there is a compile error regarding a non-existing `jdk.nashorn` package.
+- Some subversions of JDK 1.8 would require the `nashorn` package. If you get a compile error due to a missing `jdk.nashorn` package, add the dependency to the `build.sbt` file.
 
 ```sh
 libraryDependencies += "com.xenoamess" % "nashorn" % "jdk8u265-b01-x3"
 ```
 
-- To change the default port(8080) for the REST API Server, set `PlayKeys.playDefaultPort` value in the `src/build.sbt` file.
+- To change the default port (8080) for the REST API Server, set the `PlayKeys.playDefaultPort` value in the `build.sbt` file.
 {{< /note >}}
 
 ## Run the application
@@ -167,17 +173,43 @@ $ curl \
   -v -X POST -H 'Content-Type:application/json' http://localhost:8080/products
 ```
 
-Create 2 orders.
+Verify the `userId` and `productId` from the database using the following YSQL commands.
+
+```sh
+yugabyte=# select * from users;
+```
+
+```output
+ user_id | first_name | last_name |      user_email
+---------+------------+-----------+----------------------
+       1 | John       | Smith     | jsmith@example.com
+     101 | Tom        | Stewart   | tstewart@example.com
+(2 rows)
+```
+
+```sh
+yugabyte=# select * from products;
+```
+
+```output
+ product_id |    description    | price | product_name
+------------+-------------------+-------+--------------
+          1 | 200 page notebook |  7.50 | Notebook
+          2 | Mechanical pencil |  2.50 | Pencil
+(2 rows)
+```
+
+Create 2 orders using the `userId` for John.
 
 ```sh
 $ curl \
-  --data '{ "userId": "2", "products": [ { "productId": 1, "units": 2 } ] }' \
+  --data '{ "userId": "1", "products": [ { "productId": 1, "units": 2 } ] }' \
   -v -X POST -H 'Content-Type:application/json' http://localhost:8080/orders
 ```
 
 ```sh
 $ curl \
-  --data '{ "userId": "2", "products": [ { "productId": 1, "units": 2 }, { "productId": 2, "units": 4 } ] }' \
+  --data '{ "userId": "1", "products": [ { "productId": 1, "units": 2 }, { "productId": 2, "units": 4 } ] }' \
   -v -X POST -H 'Content-Type:application/json' http://localhost:8080/orders
 ```
 
@@ -273,7 +305,7 @@ yugabyte=# SELECT * FROM orderline;
 {{< note title="Note" >}}
 
 - `orderline` is a child table of the parent `orders` table connected using a foreign key constraint.
-- `users` are connected with `orders` using a foreign Key constraint so that no order can be placed with invalid user and that user has to be present in the users table.
+- `users` are connected with `orders` using a foreign Key constraint so that no order can be placed with an invalid user, and that user has to be present in the users table.
 {{< /note >}}
 
 ### Using the REST API
@@ -366,4 +398,4 @@ $ curl http://localhost:8080/orders
 
 ## Explore the source
 
-As highlighted earlier, the source for the above application is available in the [orm-examples repository](https://github.com/yugabyte/orm-examples/tree/master/java/ebeans).
+The application source is available in the [orm-examples](https://github.com/yugabyte/orm-examples/tree/master/java/ebeans) repository.
