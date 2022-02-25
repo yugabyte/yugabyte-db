@@ -1,4 +1,4 @@
-## [Functional Spec] YSQL Pessimistic Locking
+## YSQL Pessimistic Locking
 
 
 ## 1 Introduction
@@ -612,9 +612,6 @@ START TRANSACTION</code>
    </td>
   </tr>
 </table>
-
-
-
 
 2. **READ COMMITTED isolation level** (exactly as in PostgreSQL) has a dependency on pessimistic locking. Note that in general pessimistic locking is orthogonal to isolation levels but READ COMMITTED specifically has a “dependency” on pessimistic locking. To be precise, on facing a conflict, a transaction has to wait for the conflicting transaction to rollback/commit. On commit, the transaction will fetch the latest version of the row and work on that.
 
