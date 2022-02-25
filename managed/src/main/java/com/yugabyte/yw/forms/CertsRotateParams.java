@@ -31,6 +31,10 @@ public class CertsRotateParams extends UpgradeTaskParams {
   public UUID clientRootCA = null;
   // if null, existing value will be used
   public Boolean rootAndClientRootCASame = null;
+  // If true, rotates server cert of rootCA
+  public boolean selfSignedServerCertRotate = false;
+  // If true, rotates server cert of clientRootCA
+  public boolean selfSignedClientCertRotate = false;
 
   @JsonIgnore public CertRotationType rootCARotationType = CertRotationType.None;
   @JsonIgnore public CertRotationType clientRootCARotationType = CertRotationType.None;
@@ -169,6 +173,10 @@ public class CertsRotateParams extends UpgradeTaskParams {
       rootCA = null;
       if (isRootCARequired) {
         rootCA = currentRootCA;
+        CertificateInfo rootCert = CertificateInfo.get(rootCA);
+        if (selfSignedServerCertRotate && rootCert.certType == CertConfigType.SelfSigned) {
+          rootCARotationType = CertRotationType.ServerCert;
+        }
       }
     }
 
@@ -236,6 +244,10 @@ public class CertsRotateParams extends UpgradeTaskParams {
       clientRootCA = null;
       if (isClientRootCARequired) {
         clientRootCA = currentClientRootCA;
+        CertificateInfo clientRootCert = CertificateInfo.get(clientRootCA);
+        if (selfSignedClientCertRotate && clientRootCert.certType == CertConfigType.SelfSigned) {
+          clientRootCARotationType = CertRotationType.ServerCert;
+        }
       }
     }
 

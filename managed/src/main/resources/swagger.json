@@ -2131,6 +2131,12 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "selfSignedClientCertRotate" : {
+          "type" : "boolean"
+        },
+        "selfSignedServerCertRotate" : {
+          "type" : "boolean"
+        },
         "setTxnTableWaitCountFlag" : {
           "type" : "boolean"
         },
@@ -2194,7 +2200,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clientRootCA", "clusters", "kubernetesUpgradeSupported", "rootAndClientRootCASame", "rootCA", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "required" : [ "clientRootCA", "clusters", "kubernetesUpgradeSupported", "rootAndClientRootCASame", "rootCA", "selfSignedClientCertRotate", "selfSignedServerCertRotate", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
     "ClientCertParams" : {
