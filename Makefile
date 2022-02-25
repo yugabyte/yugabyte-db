@@ -4,7 +4,7 @@ MODULE_big = pgaudit
 OBJS = pgaudit.o $(WIN32RES)
 
 EXTENSION = pgaudit
-DATA = pgaudit--1.6.1.sql pgaudit--1.6--1.6.1.sql
+DATA = pgaudit--1.6.2.sql pgaudit--1.6--1.6.1.sql pgaudit--1.6.1--1.6.2.sql
 PGFILEDESC = "pgAudit - An audit logging extension for PostgreSQL"
 
 REGRESS = pgaudit
