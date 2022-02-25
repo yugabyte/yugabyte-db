@@ -1183,7 +1183,9 @@ public class UniverseCRUDHandler {
         rootCaChange
             || clientRootCaChange
             || taskParams.createNewRootCA
-            || taskParams.createNewClientRootCA;
+            || taskParams.createNewClientRootCA
+            || taskParams.selfSignedServerCertRotate
+            || taskParams.selfSignedClientCertRotate;
 
     if (tlsToggle && certsRotate) {
       if (((rootCaChange || taskParams.createNewRootCA) && universeDetails.rootCA != null)
@@ -1200,6 +1202,24 @@ public class UniverseCRUDHandler {
     if (!tlsToggle && !certsRotate) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST, "No changes in Tls parameters, cannot perform upgrade.");
+    }
+
+    if (certsRotate
+        && ((rootCaChange && taskParams.selfSignedServerCertRotate)
+            || (clientRootCaChange && taskParams.selfSignedClientCertRotate))) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST,
+          "Cannot update rootCA/clientRootCA when "
+              + "selfSignedServerCertRotate/selfSignedClientCertRotate is set to true");
+    }
+
+    if (certsRotate
+        && ((taskParams.createNewRootCA && taskParams.selfSignedServerCertRotate)
+            || (taskParams.createNewClientRootCA && taskParams.selfSignedClientCertRotate))) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST,
+          "Cannot create new rootCA/clientRootCA when "
+              + "selfSignedServerCertRotate/selfSignedClientCertRotate is set to true");
     }
 
     if (tlsToggle) {
@@ -1263,6 +1283,8 @@ public class UniverseCRUDHandler {
       CertsRotateParams certsRotateParams = new CertsRotateParams();
       certsRotateParams.rootCA = isRootCA ? taskParams.rootCA : null;
       certsRotateParams.clientRootCA = isClientRootCA ? taskParams.clientRootCA : null;
+      certsRotateParams.selfSignedServerCertRotate = taskParams.selfSignedServerCertRotate;
+      certsRotateParams.selfSignedClientCertRotate = taskParams.selfSignedClientCertRotate;
       certsRotateParams.rootAndClientRootCASame = taskParams.rootAndClientRootCASame;
       certsRotateParams.upgradeOption = taskParams.upgradeOption;
       certsRotateParams.sleepAfterMasterRestartMillis = taskParams.sleepAfterMasterRestartMillis;
