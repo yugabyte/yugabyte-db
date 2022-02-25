@@ -186,7 +186,7 @@ try {
 
 [libpqxx driver](../../../../reference/drivers/ysql-client-drivers/#libpqxx)
 
-[Explore more applications](../../../cloud-develop)
+[Explore more applications](../../../cloud-examples)
 
 [Deploy clusters in Yugabyte Cloud](../../../cloud-basics)
 

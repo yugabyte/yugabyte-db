@@ -33,6 +33,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
@@ -45,7 +46,6 @@ import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.InstanceTypeKey;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -1096,52 +1096,67 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   }
 
   @Parameters({
-    "aws, 0, 10, m3.medium, true",
-    "gcp, 0, 10, m3.medium, true",
-    "aws, 0, 10, c4.medium, true",
-    "aws, 0, -10, m3.medium, false", // decrease volume
-    "aws, 1, 10, m3.medium, false", // change num of nodes
-    "azu, 0, 10, m3.medium, false", // wrong provider
-    "aws, 0, 10, fake_type, false", // unknown instance type
-    "aws, 0, 10, i3.instance, false", // forbidden instance type
-    "aws, 0, 10, c5d.instance, false", // forbidden instance type
-    "gcp, 0, 10, nvme.instance, false", // instance type with NVME volume type
+    "aws, 0, 10, m3.medium, m3.medium, true",
+    "gcp, 0, 10, m3.medium, m3.medium, true",
+    "aws, 0, 10, m3.medium, c4.medium, true",
+    "aws, 0, -10, m3.medium, m3.medium, false", // decrease volume
+    "aws, 1, 10, m3.medium, m3.medium, false", // change num of nodes
+    "azu, 0, 10, m3.medium, m3.medium, false", // wrong provider
+    "aws, 0, 10, m3.medium, fake_type, false", // unknown instance type
+    "aws, 0, 10, i3.instance, m3.medium, false", // ephemeral instance type
+    "aws, 0, 10, c5d.instance, m3.medium, false", // ephemeral instance type
+    "gcp, 0, 10, scratch, m3.medium, false", // ephemeral instance type
+    "aws, 0, 10, m3.medium, c5d.instance, true" // changing to ephemeral is OK
   })
   @Test
   public void testResizeNodeAvailable(
       String cloudType,
       int numOfVolumesDiff,
       int volumeSizeDiff,
-      String instanceTypeCode,
+      String curInstanceTypeCode,
+      String targetInstanceTypeCode,
       boolean expected) {
     TestData t = new TestData(CloudType.valueOf(cloudType));
     Universe universe = t.universe;
     UUID univUuid = t.univUuid;
     UniverseDefinitionTaskParams udtp = universe.getUniverseDetails();
-    udtp.universeUUID = univUuid;
-    Universe.saveDetails(univUuid, t.setAzUUIDs());
     Cluster primaryCluster = udtp.getPrimaryCluster();
     UUID providerId = UUID.fromString(primaryCluster.userIntent.provider);
+    udtp.universeUUID = univUuid;
+    Universe.saveDetails(univUuid, t.setAzUUIDs());
+    Universe.saveDetails(
+        univUuid,
+        un -> {
+          if (curInstanceTypeCode.equals("scratch")) {
+            un.getUniverseDetails().getPrimaryCluster().userIntent.deviceInfo.storageType =
+                PublicCloudConstants.StorageType.Scratch;
+          } else {
+            un.getUniverseDetails().getPrimaryCluster().userIntent.instanceType =
+                curInstanceTypeCode;
+            createInstanceType(providerId, curInstanceTypeCode);
+          }
+        });
 
-    if (!instanceTypeCode.startsWith("fake")) {
-      InstanceType.InstanceTypeDetails instanceTypeDetails = new InstanceType.InstanceTypeDetails();
-      InstanceType.VolumeDetails volumeDetails = new InstanceType.VolumeDetails();
-      volumeDetails.volumeType =
-          instanceTypeCode.startsWith("nvme")
-              ? InstanceType.VolumeType.NVME
-              : InstanceType.VolumeType.SSD;
-      volumeDetails.volumeSizeGB = 100;
-      volumeDetails.mountPath = "/";
-      instanceTypeDetails.volumeDetailsList = Collections.singletonList(volumeDetails);
-      InstanceType.upsert(providerId, instanceTypeCode, 1, 100d, instanceTypeDetails);
+    if (!targetInstanceTypeCode.startsWith("fake")) {
+      createInstanceType(providerId, targetInstanceTypeCode);
     }
 
     primaryCluster.userIntent.deviceInfo.volumeSize += volumeSizeDiff;
     primaryCluster.userIntent.deviceInfo.numVolumes += numOfVolumesDiff;
-    primaryCluster.userIntent.instanceType = instanceTypeCode;
+    primaryCluster.userIntent.instanceType = targetInstanceTypeCode;
     PlacementInfoUtil.updateUniverseDefinition(
         udtp, t.customer.getCustomerId(), primaryCluster.uuid, EDIT);
     assertEquals(expected, udtp.nodesResizeAvailable);
+  }
+
+  private void createInstanceType(UUID providerId, String type) {
+    InstanceType.InstanceTypeDetails instanceTypeDetails = new InstanceType.InstanceTypeDetails();
+    InstanceType.VolumeDetails volumeDetails = new InstanceType.VolumeDetails();
+    volumeDetails.volumeType = InstanceType.VolumeType.SSD;
+    volumeDetails.volumeSizeGB = 100;
+    volumeDetails.mountPath = "/";
+    instanceTypeDetails.volumeDetailsList = Collections.singletonList(volumeDetails);
+    InstanceType.upsert(providerId, type, 1, 100d, instanceTypeDetails);
   }
 
   @Test

@@ -21,7 +21,7 @@ teardown
 #   3. committed and applied.
 
 session "s1"
-setup		{ BEGIN; }
+setup		{ BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ; }
 step "s1a"	{ SELECT * FROM queue; -- this is just to ensure we have picked the read point}
 # UPDATE takes a kStrongRead + kStrongWrite intent on the sub doc key made of
 # (hash code, pk, status col). Also the value portion will have 'OLD'.
@@ -30,14 +30,14 @@ step "s1c"	{ COMMIT; }
 
 
 session "s2"
-setup		{ BEGIN; }
+setup		{ BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ; }
 step "s2a"	{ SELECT * FROM queue; -- this is just to ensure we have picked the read point}
 # FOR UPDATE attempts to take a kStrongRead + kStrongWrite on the sub doc key made of
 # (hash code, pk, status col) with the value portion empty. But it will skip locking the first row
 # with id=1 due to the above UPDATE (if that executes earlier).
 step "s2b"	{ SELECT * FROM queue ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 1; }
 step "s2c"	{ COMMIT; }
-step "s2_sleep" { SELECT pg_sleep(5); }
+step "s2_sleep" { SELECT pg_sleep(1); }
 
 # (1) case of pending update:
 #   Ensure that the SELECT skips locking the row that has been implicitly locked in a conflicting

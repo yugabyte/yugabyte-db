@@ -42,7 +42,7 @@ showAsideToc: true
 
 #### Fixes
 
-- Windows and Firefox keyboard shortcuts work correctly in cloud shell.
+- Windows and Firefox keyboard shortcuts work correctly in Cloud Shell.
 
 ### December 16, 2021
 
@@ -73,7 +73,7 @@ showAsideToc: true
 
 #### Fixes
 
-- Developer users can now use the cloud shell.
+- Developer users can now use Cloud Shell.
 
 ### October 5, 2021
 
@@ -96,7 +96,7 @@ This release includes the following features:
 - Free clusters (one per account)
 - AWS and GCP cloud support
 - IP allow lists for network security
-- Cloud shell for running SQL queries from your browser
+- Cloud Shell for running SQL queries from your browser
 - YSQL and YCQL API support
 - Multiple cloud users - invite additional users to your cloud
 - Encryption at rest and in transit
@@ -146,10 +146,12 @@ The following **AWS regions** are available:
 - **Tables** - In some instances in free clusters, the **Tables** tab will show all tables with a size of 0B.
 - **Clusters** - No support for scaling vCPUs on single node clusters.
 - **Metrics** - The **View Full Screen** option in charts on the cluster **Overview** and **Performance Metrics** pages does not work in some versions of Safari 14.0 (Big Sur).
+- **Metrics** - Some clusters in European regions may show occasional spikes in the YSQL Operations/sec chart. This is due to cluster health checks and can be ignored.
+- **Invoices** - Redundant "Disk Storage (Paused)" entry on invoices for paused clusters. The entry has no effect on your invoice.
 
-### Known issues in cloud shell
+### Known issues in Cloud Shell
 
-- At this time, we recommend running only a single cloud shell session. Running more than one session may produce unexpected results.
-- If the cloud shell stops responding, close the browser tab and restart the cloud shell.
-- Cloud shell is unavailable for clusters in a VPC.
-- Cloud shell is unavailable during any edit and backup/restore operations. Wait until the operations are complete before you launch the shell.
+- At this time, we recommend running only a single Cloud Shell session. Running more than one session may produce unexpected results.
+- If Cloud Shell stops responding, close the browser tab and restart Cloud Shell.
+- Cloud Shell is unavailable for clusters in a VPC.
+- Cloud Shell is unavailable during any edit and backup/restore operations. Wait until the operations are complete before you launch the shell.
