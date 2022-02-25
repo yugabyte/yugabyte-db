@@ -613,6 +613,10 @@ public class HealthChecker {
     Map<UUID, HealthManager.ClusterInfo> clusterMetadata = new HashMap<>();
     boolean invalidUniverseData = false;
     String providerCode;
+    boolean testReadWrite =
+        runtimeConfigFactory
+            .forUniverse(params.universe)
+            .getBoolean("yb.metrics.db_read_write_test");
     for (UniverseDefinitionTaskParams.Cluster cluster : details.clusters) {
       HealthManager.ClusterInfo info = new HealthManager.ClusterInfo();
       clusterMetadata.put(cluster.uuid, info);
@@ -698,6 +702,7 @@ public class HealthChecker {
       }
 
       info.collectMetricsScript = generateMetricsCollectionScript(cluster);
+      info.testReadWrite = testReadWrite;
     }
 
     // If any clusters were invalid, abort for this universe.
