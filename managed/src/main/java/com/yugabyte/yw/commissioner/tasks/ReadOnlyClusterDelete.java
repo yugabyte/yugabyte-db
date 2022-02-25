@@ -20,9 +20,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-
 import io.jsonwebtoken.lang.Collections;
-
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
