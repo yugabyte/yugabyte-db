@@ -50,8 +50,37 @@ In the sections below, the terms "data center", "cluster", and "universe" are us
 
 ## Process architecture
 
-To be updated: new Architecture
-<!--- ![CDC process architecture](/images/architecture/cdc-2dc/process-architecture.png) --->
+
+```
+                          ╔═══════════════════════════════════════════╗
+                          ║  Node #1                                  ║
+                          ║  ╔════════════════╗ ╔══════════════════╗  ║
+                          ║  ║    YB-Master   ║ ║    YB-TServer    ║  ║  CDC Service is stateless
+    CDC Streams metadata  ║  ║  (Stores CDC   ║ ║  ╔═════════════╗ ║  ║           |
+    replicated with Raft  ║  ║   metadata)    ║ ║  ║ CDC Service ║ ║  ║<----------'
+             .----------->║  ║                ║ ║  ╚═════════════╝ ║  ║
+             |            ║  ╚════════════════╝ ╚══════════════════╝  ║
+             |            ╚═══════════════════════════════════════════╝
+             |                 
+             |
+             |_______________________________________________.
+             |                                               |
+             V                                               V
+  ╔═══════════════════════════════════════════╗    ╔═══════════════════════════════════════════╗
+  ║  Node #2                                  ║    ║  Node #3                                  ║
+  ║  ╔════════════════╗ ╔══════════════════╗  ║    ║  ╔════════════════╗ ╔══════════════════╗  ║
+  ║  ║    YB-Master   ║ ║    YB-TServer    ║  ║    ║  ║    YB-Master   ║ ║    YB-TServer    ║  ║
+  ║  ║  (Stores CDC   ║ ║  ╔═════════════╗ ║  ║    ║  ║  (Stores CDC   ║ ║  ╔═════════════╗ ║  ║
+  ║  ║   metadata)    ║ ║  ║ CDC Service ║ ║  ║    ║  ║   metadata)    ║ ║  ║ CDC Service ║ ║  ║
+  ║  ║                ║ ║  ╚═════════════╝ ║  ║    ║  ║                ║ ║  ╚═════════════╝ ║  ║
+  ║  ╚════════════════╝ ╚══════════════════╝  ║    ║  ╚════════════════╝ ╚══════════════════╝  ║
+  ╚═══════════════════════════════════════════╝    ╚═══════════════════════════════════════════╝
+
+```
+
+Every YB-TServer has a `CDC service` that is stateless. The main beta APIs provided by `CDC Service` are:
+* `createCDCSDKStream` API for creating the stream on the database.
+* `getChangesCDCSDK` API that will be use by the client to get the latest set of changes.
 
 ### CDC streams
 
@@ -81,7 +110,7 @@ In this case, it is possible for CDC to push the later update corresponding to `
 
 #### At-least-once delivery
 
-Updates for rows will be pushed at least once. With "at-least-once" delivery, you will never lose a message, but might end up being delivered to a CDC consumer more than once. This can happen in case of tablet leader change, where the old leader already pushed changes to Kafka, but the latest pushed `op id` was not updated in `cdc_subscribers` table.
+Updates for rows will be pushed at least once. With "at-least-once" delivery, you will never lose a message, but might end up being delivered to a CDC consumer more than once. This can happen in case of tablet leader change, where the old leader already pushed changes to Kafka, but the latest pushed `op id` was not updated in the CDC metadata.
 
 For example, imagine a CDC client has received changes for a row at times t1 and t3. It is possible for the client to receive those updates again.
 
