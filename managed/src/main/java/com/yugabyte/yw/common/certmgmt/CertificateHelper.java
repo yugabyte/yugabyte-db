@@ -545,6 +545,7 @@ public class CertificateHelper {
   }
 
   public static String getKeyPEM(CertificateInfo cert) {
+    if (cert.certType == CertConfigType.HashicorpVault) return "";
     String privateKeyPEM = FileUtils.readFileToString(new File(cert.privateKey));
     privateKeyPEM = Base64.getEncoder().encodeToString(privateKeyPEM.getBytes());
     return privateKeyPEM;
@@ -552,9 +553,7 @@ public class CertificateHelper {
 
   public static String getKeyPEM(UUID rootCA) {
     CertificateInfo cert = CertificateInfo.get(rootCA);
-    String privateKeyPEM = FileUtils.readFileToString(new File(cert.privateKey));
-    privateKeyPEM = Base64.getEncoder().encodeToString(privateKeyPEM.getBytes());
-    return privateKeyPEM;
+    return getKeyPEM(cert);
   }
 
   public static String getClientCertFile(UUID rootCA) {
