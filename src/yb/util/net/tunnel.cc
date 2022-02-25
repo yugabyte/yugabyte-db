@@ -40,9 +40,8 @@ struct SemiTunnel {
 
 class TunnelConnection : public std::enable_shared_from_this<TunnelConnection> {
  public:
-  explicit TunnelConnection(boost::asio::ip::tcp::socket* socket)
-      : inbound_socket_(std::move(*socket)), outbound_socket_(inbound_socket_.get_io_context()),
-        strand_(inbound_socket_.get_io_context()) {
+  explicit TunnelConnection(IoService* io_service, boost::asio::ip::tcp::socket* socket)
+      : inbound_socket_(std::move(*socket)), outbound_socket_(*io_service), strand_(*io_service) {
   }
 
   void Start(const Endpoint& dest) {
@@ -210,7 +209,7 @@ class Tunnel::Impl {
       return;
     }
 
-    auto connection = std::make_shared<TunnelConnection>(socket_.get_ptr());
+    auto connection = std::make_shared<TunnelConnection>(&io_context_, socket_.get_ptr());
     connection->Start(remote_);
     bool found = false;
     for (auto& weak_connection : connections_) {
