@@ -929,6 +929,13 @@
     "Audit" : {
       "description" : "Audit logging for requests and responses",
       "properties" : {
+        "action" : {
+          "description" : "Action",
+          "enum" : [ "RegisterSession", "CreateCloudProvider", "DeleteCloudProvider", "EditCloudProvider", "RefreshPricingCloudProvider", "CreateKubernetesCloudProvider", "BootstrapCloudProvider", "SetupDockerCloudProvider", "CreateRegion", "DeleteRegion", "CreateAvailabilityZone", "DeleteAvailabilityZone", "CreateInstance", "DeleteInstance", "CreateCustomerConfiguration", "EditCustomerConfiguration", "DeleteCustomerConfiguration", "CreateKmsConfiguration", "EditKmsConfiguration", "DeleteKmsConfiguration", "RetrieveKmsKey", "RemoveKmsKeyReferenceHistory", "DeleteCustomer", "UpsertFeaturesCustomer", "CreateRelease", "UpdateRelease", "UploadCertificate", "DeleteCertificate", "GetRootCertificate", "AddClientCertificate", "CreateAlertConfiguration", "EditAlertConfiguration", "DeleteAlertConfiguration", "CreateAlertChannel", "UpdateAlertChannel", "DeleteAlertChannel", "GetAlertDestination", "UpdateAlertDestination", "DeleteAlertDestination", "CreateMaintenanceWindow", "UpdateMaintenanceWindow", "DeleteMaintenanceWindow", "CreateAccessKey", "DeleteAccessKey", "CreateUniverse", "UpdateUniverse", "UpgradeUniverse", "DestroyUniverse", "ImportUniverse", "PauseUniverse", "ResumeUniverse", "RestartUniverse", "UpgradeSoftware", "UpgradeGFlags", "UpgradeCerts", "UpgradeTLS", "UpgradeVmImage", "UpgradeSystemd", "SetHelm3Compatible", "setBackupFlag", "setUniverseKey", "ToggleTls", "TlsConfigUpdate", "UpdateDiskSize", "CreateCluster", "DeleteCluster", "CreateAllClusters", "UpdatePrimaryCluster", "UpdateReadOnlyCluster", "CreateReadOnlyCluster", "DeleteReadOnlyCluster", "RunYsqlQuery", "EditXClusterConfig", "DeleteXClusterConfig", "SyncXClusterConfig", "CreateTable", "DropTable", "BulkImport", "CreateBackup", "CreateMultiTableBackup", "RestoreBackup", "DeleteBackups", "StopBackup", "EditBackup", "RetryTask", "CreateNodeInstance", "DeleteNodeInstance", "DetachedNodeInstanceAction", "NodeInstanceAction", "DeleteBackupSchedule", "CreateUser", "ChangeUserRole", "UpdateUserProfile", "DeleteUser" ],
+          "example" : "Create User",
+          "readOnly" : true,
+          "type" : "string"
+        },
         "apiCall" : {
           "description" : "API call",
           "example" : "/api/v1/customers/<496fdea8-df25-11eb-ba80-0242ac130004>/providers",
@@ -956,6 +963,19 @@
           "readOnly" : true,
           "type" : "object"
         },
+        "target" : {
+          "description" : "Target",
+          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "InstanceType", "CustomerConfig", "EncryptionAtRest", "Customer", "Release", "Certificate", "Alert", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "Schedule", "User" ],
+          "example" : "User",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "targetUUID" : {
+          "description" : "Target UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
         "taskUUID" : {
           "description" : "Task UUID",
           "format" : "uuid",
@@ -964,6 +984,11 @@
         },
         "timestamp" : {
           "format" : "date-time",
+          "type" : "string"
+        },
+        "userEmail" : {
+          "description" : "User Email",
+          "readOnly" : true,
           "type" : "string"
         },
         "userUUID" : {
@@ -11139,6 +11164,42 @@
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/support_bundle/{sbUUID}" : {
+      "delete" : {
+        "description" : "",
+        "operationId" : "deleteSupportBundle",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "uniUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "sbUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Delete a support bundle",
+        "tags" : [ "Support Bundle management" ]
+      },
       "get" : {
         "description" : "",
         "operationId" : "getSupportBundle",

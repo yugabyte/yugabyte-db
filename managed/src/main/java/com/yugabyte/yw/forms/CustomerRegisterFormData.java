@@ -99,22 +99,6 @@ public class CustomerRegisterFormData {
     this.callhomeLevel = callhomeLevel;
   }
 
-  public static class AlertingData {
-    @Constraints.Email
-    @Constraints.MinLength(5)
-    public String alertingEmail;
-
-    public boolean sendAlertsToYb = false;
-
-    public long checkIntervalMs = 0;
-
-    public long statusUpdateIntervalMs = 0;
-
-    public Boolean reportOnlyErrors = false;
-
-    public long activeAlertNotificationIntervalMs = 0;
-  }
-
   // TODO: Remove usages in UI and purge the field
   @ApiModelProperty(value = "UNUSED", hidden = true)
   public AlertingData alertingData;

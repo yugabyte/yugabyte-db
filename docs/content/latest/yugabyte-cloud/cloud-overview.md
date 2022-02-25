@@ -18,7 +18,7 @@ showAsideToc: true
 
 Yugabyte Cloud is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on <a href="https://cloud.google.com/">Google Cloud Platform (GCP)</a> and <a href="https://aws.amazon.com/">Amazon Web Services (AWS)</a> (as of September 2021; Azure coming soon, for information contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431)).
 
-To begin using Yugabyte Cloud, go to [Quick start](cloud-quickstart).
+To begin using Yugabyte Cloud, go to [Quick start](../cloud-quickstart/).
 
 ## Cluster basics
 
@@ -33,7 +33,7 @@ Learn the basics of using YugabyteDB clusters in Yugabyte Cloud.
 : Create virtual private cloud (VPC) networks to peer clusters with application VPCs.
 
 [Connect](../cloud-connect)
-: Connect to clusters from a browser using the cloud shell, from your desktop using a shell, and from applications.
+: Connect to clusters from a browser using Cloud Shell, from your desktop using a shell, and from applications.
 
 [Alerts and monitoring](../cloud-monitor)
 : Monitor cluster performance and get notified of potential problems.

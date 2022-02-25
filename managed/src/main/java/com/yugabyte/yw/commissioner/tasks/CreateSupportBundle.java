@@ -130,6 +130,7 @@ public class CreateSupportBundle extends AbstractTaskBase {
 
       tarOS.setLongFileMode(TarArchiveOutputStream.LONGFILE_POSIX);
       addFilesToTarGZ(bundlePath.toString(), "", tarOS);
+      FileUtils.deleteDirectory(new File(bundlePath.toAbsolutePath().toString()));
     }
     log.debug(
         "Finished aggregating logs for support bundle with UUID {}", supportBundle.getBundleUUID());

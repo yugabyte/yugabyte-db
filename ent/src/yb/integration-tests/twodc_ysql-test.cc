@@ -423,8 +423,6 @@ TEST_P(TwoDCYsqlTest, SetupUniverseReplication) {
   }
 
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
-
-  Destroy();
 }
 
 TEST_P(TwoDCYsqlTest, SimpleReplication) {
@@ -505,7 +503,6 @@ TEST_P(TwoDCYsqlTest, SimpleReplication) {
   // 5. Make sure this data is also replicated now.
   ASSERT_OK(WaitFor([&]() { return data_replicated_correctly(105); },
                     MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
-  Destroy();
 }
 
 TEST_P(TwoDCYsqlTest, SetupUniverseReplicationWithProducerBootstrapId) {
@@ -668,7 +665,6 @@ TEST_P(TwoDCYsqlTest, SetupUniverseReplicationWithProducerBootstrapId) {
 
   ASSERT_OK(WaitFor([&]() -> Result<bool> { return data_replicated_correctly(); },
                     MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
-  Destroy();
 }
 
 TEST_P(TwoDCYsqlTest, ColocatedDatabaseReplication) {
@@ -817,7 +813,6 @@ TEST_P(TwoDCYsqlTest, ColocatedDatabaseReplication) {
   // 7. Verify all tables are properly replicated.
   ASSERT_OK(WaitFor([&]() -> Result<bool> { return data_replicated_correctly(150, false); },
                     MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
-  Destroy();
 }
 
 TEST_P(TwoDCYsqlTest, ColocatedDatabaseDifferentTableOids) {
@@ -848,7 +843,6 @@ TEST_P(TwoDCYsqlTest, ColocatedDatabaseDifferentTableOids) {
   master::GetUniverseReplicationResponsePB get_universe_replication_resp;
   ASSERT_NOK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId,
       &get_universe_replication_resp));
-  Destroy();
 }
 
 // TODO adapt rest of twodc-test.cc tests.
@@ -934,8 +928,6 @@ TEST_P(TwoDCYsqlTest, DeleteTableChecks) {
   FLAGS_enable_delete_truncate_xcluster_replicated_table = true;
   ASSERT_OK(DeleteTable(&producer_cluster_, &producer_table_id));
   ASSERT_OK(DeleteTable(&consumer_cluster_, &consumer_table_id));
-
-  Destroy();
 }
 
 TEST_P(TwoDCYsqlTest, TruncateTableChecks) {
@@ -1017,8 +1009,6 @@ TEST_P(TwoDCYsqlTest, TruncateTableChecks) {
   FLAGS_enable_delete_truncate_xcluster_replicated_table = true;
   ASSERT_OK(TruncateTable(&producer_cluster_, {producer_table_id}));
   ASSERT_OK(TruncateTable(&consumer_cluster_, {consumer_table_id}));
-
-  Destroy();
 }
 
 } // namespace enterprise
