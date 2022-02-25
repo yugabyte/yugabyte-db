@@ -32,6 +32,8 @@
 
 #include "yb/common/hybrid_time.h"
 
+#include <atomic>
+
 #include <boost/algorithm/string/trim.hpp>
 #include <boost/date_time/c_local_time_adjustor.hpp>
 #include <boost/date_time/posix_time/time_formatters.hpp>

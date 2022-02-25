@@ -30,9 +30,6 @@ template <typename InternetProtocol>
 class basic_endpoint;
 
 template <typename InternetProtocol>
-class basic_resolver;
-
-template <typename InternetProtocol>
 class basic_resolver_results;
 
 class tcp;

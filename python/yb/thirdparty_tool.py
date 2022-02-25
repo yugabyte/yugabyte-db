@@ -377,6 +377,9 @@ class MetadataUpdater:
             if self.tag_filter_pattern and not self.tag_filter_pattern.match(tag_name):
                 logging.info(f'Skipping tag {tag_name}, does not match the filter')
                 continue
+            if tag_name.endswith('-lto'):
+                logging.info(f'Skipping tag {tag_name}, because it is lto release')
+                continue
 
             yb_dep_release = GitHubThirdPartyRelease(release)
             if not yb_dep_release.is_consistent_with_yb_version(yb_version):
