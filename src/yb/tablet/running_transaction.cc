@@ -303,9 +303,18 @@ void RunningTransaction::DoStatusReceived(const Status& status,
       return;
     }
 
-    if (response.status_hybrid_time().size() == 1 &&
-        response.status().size() == 1 &&
-        response.aborted_subtxn_set().size() == 1) {
+    if (response.status_hybrid_time().size() != 1 ||
+        response.status().size() != 1 ||
+        (response.aborted_subtxn_set().size() != 0 && response.aborted_subtxn_set().size() != 1)) {
+      LOG_WITH_PREFIX(DFATAL)
+          << "Wrong number of status, status hybrid time, or aborted subtxn set entries, "
+          << "exactly one entry expected: "
+          << response.ShortDebugString();
+    } else if (PREDICT_FALSE(response.aborted_subtxn_set().empty())) {
+      YB_LOG_EVERY_N(WARNING, 1)
+          << "Empty aborted_subtxn_set in transaction status response. "
+          << "This should only happen when nodes are on different versions, e.g. during upgrade.";
+    } else {
       auto aborted_subtxn_set_or_status = AbortedSubTransactionSet::FromPB(
           response.aborted_subtxn_set(0).set());
       if (aborted_subtxn_set_or_status.ok()) {
@@ -318,11 +327,6 @@ void RunningTransaction::DoStatusReceived(const Status& status,
             << "error - " << aborted_subtxn_set_or_status.status().ToString()
             << " response - " << response.ShortDebugString();
       }
-    } else {
-      LOG_WITH_PREFIX(DFATAL)
-          << "Wrong number of status, status hybrid time, or aborted subtxn set entries, "
-          << "exactly one entry expected: "
-          << response.ShortDebugString();
     }
 
     LOG_IF_WITH_PREFIX(DFATAL, response.coordinator_safe_time().size() > 1)
