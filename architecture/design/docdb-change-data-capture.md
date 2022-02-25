@@ -18,7 +18,7 @@ Two datacenter deployments in YugabyteDB leverage change data capture at the cor
 
 
 # Setting up CDC
-To set up CDC we use the CDC Streams, the commands for which can be found under [yb-admin]().
+To set up CDC we use the CDC Streams, the commands for which can be found under [yb-admin](../../docs/content/latest/admin/yb-admin.md#change-data-capture-cdc-commands).
  
 ### Debezium
 [Debezium](https://debezium.io/) is the connector we are using to pull data out of YugabyteDB, it is an open-source distributed platform which we can point out to our database by providing some configuration and it will start collecting the change events from the database and publish it to Kafka.
@@ -55,7 +55,7 @@ We need to provide the configuration values in the json format, the important on
 }
 ```
 
-For a list of complete parameters that can be configured see [Debezium Connector for YugabyteDB]().
+For a list of complete parameters that can be configured see [Debezium Connector for YugabyteDB](../../docs/content/latest/integrations/cdc/debezium-for-cdc.md).
  
 # Design
 
