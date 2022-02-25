@@ -45,6 +45,7 @@ public class HealthManager extends DevopsBase {
     public int tserverHttpPort = 9000;
     public int ysqlServerHttpPort = 13000;
     public String collectMetricsScript;
+    public boolean testReadWrite = true;
   }
 
   public ShellResponse runCommand(
