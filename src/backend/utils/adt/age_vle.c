@@ -101,8 +101,6 @@ typedef struct VLE_path_container
 
 /* declarations */
 /* agtype functions */
-static agtype_value *get_agtype_key(agtype_value *agtv, char *search_key,
-                                    int search_key_len);
 static agtype_iterator *get_next_object_pair(agtype_iterator *it,
                                              agtype_container *agtc,
                                              agtype_value *key,
@@ -385,42 +383,6 @@ static bool is_an_edge_match(VLE_local_context *vlelctx, edge_entry *ee)
     while (iterator != NULL);
 
     return true;
-}
-
-/*
- * Helper function to iterate through all object pairs, looking for a specific
- * key. It will return the key or NULL if not found.
- */
-static agtype_value *get_agtype_key(agtype_value *agtv, char *search_key,
-                                    int search_key_len)
-{
-    int i = 0;
-
-    if (agtv == NULL || search_key == NULL || search_key_len <= 0)
-    {
-        return NULL;
-    }
-
-    /* iterate through all pairs */
-    for (i = 0; i < agtv->val.object.num_pairs; i++)
-    {
-        agtype_value *agtv_key = &agtv->val.object.pairs[i].key;
-        agtype_value *agtv_value = &agtv->val.object.pairs[i].value;
-
-        char *current_key = agtv_key->val.string.val;
-        int current_key_len = agtv_key->val.string.len;
-
-        Assert(agtv_key->type == AGTV_STRING);
-
-        /* check for an id of type integer */
-        if (current_key_len == search_key_len &&
-            pg_strcasecmp(current_key, search_key) == 0)
-        {
-            return agtv_value;
-        }
-    }
-
-    return NULL;
 }
 
 /*

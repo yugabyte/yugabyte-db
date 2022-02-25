@@ -5404,7 +5404,7 @@ SELECT * FROM cypher('case_statement', $$
 $$ ) AS (i agtype, j agtype, case_statement agtype);
   i   |     j     | case_statement 
 ------+-----------+----------------
- 1    | null      | "i is 1"
+ 1    |           | "i is 1"
  "a"  | "b"       | "j is b"
  0    | 1         | "0 AND 1"
  true | false     | "i or j true"
@@ -5427,7 +5427,7 @@ SELECT * FROM cypher('case_statement', $$
 $$ ) AS (j agtype, case_statement agtype);
      j     | case_statement 
 -----------+----------------
- null      | "not a or b"
+           | "not a or b"
  "b"       | "b"
  1         | 1
  false     | false

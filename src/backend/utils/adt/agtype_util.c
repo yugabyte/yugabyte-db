@@ -422,7 +422,9 @@ agtype_value *find_agtype_value_from_container(agtype_container *container,
 
     /* Quick out without a palloc cycle if object/array is empty */
     if (count <= 0)
+    {
         return NULL;
+    }
 
     result = palloc(sizeof(agtype_value));
 

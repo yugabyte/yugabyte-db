@@ -526,7 +526,8 @@ agtype_value *string_to_agtype_value(char *s);
 agtype_value *integer_to_agtype_value(int64 int_value);
 void add_agtype(Datum val, bool is_null, agtype_in_state *result, Oid val_type,
                 bool key_scalar);
-
+agtype_value *get_agtype_key(agtype_value *agtv, char *search_key,
+                             int search_key_len);
 // OID of agtype and _agtype
 #define AGTYPEOID \
     (GetSysCacheOid2(TYPENAMENSP, CStringGetDatum("agtype"), \
