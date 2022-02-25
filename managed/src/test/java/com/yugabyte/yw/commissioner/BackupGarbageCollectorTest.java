@@ -25,6 +25,7 @@ import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.CustomerConfig.ConfigState;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import java.util.UUID;
 import org.junit.After;
 import org.junit.Before;
@@ -44,6 +45,8 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
   @Mock ExecutionContext mockExecutionContext;
 
   @Mock Scheduler mockScheduler;
+
+  @Mock RuntimeConfigFactory mockRuntimeConfigFactory;
 
   MockedStatic<AWSUtil> mockAWSUtil;
 
@@ -68,7 +71,11 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     mockAZUtil = Mockito.mockStatic(AZUtil.class);
     backupGC =
         new BackupGarbageCollector(
-            mockExecutionContext, mockActorSystem, customerConfigService, tableManagerYb);
+            mockExecutionContext,
+            mockActorSystem,
+            customerConfigService,
+            mockRuntimeConfigFactory,
+            tableManagerYb);
   }
 
   @After
