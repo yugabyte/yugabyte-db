@@ -152,7 +152,7 @@ const SubTransactionMetadata& YBSubTransaction::get() { return sub_txn_; }
 class YBTransaction::Impl final : public internal::TxnBatcherIf {
  public:
   Impl(TransactionManager* manager, YBTransaction* transaction, TransactionLocality locality)
-      : trace_(new Trace),
+      : trace_(Trace::NewTrace()),
         start_(CoarseMonoClock::Now()),
         manager_(manager),
         transaction_(transaction),
@@ -165,7 +165,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   Impl(TransactionManager* manager, YBTransaction* transaction, const TransactionMetadata& metadata)
-      : trace_(new Trace),
+      : trace_(Trace::NewTrace()),
         start_(CoarseMonoClock::Now()),
         manager_(manager),
         transaction_(transaction),
@@ -177,7 +177,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   Impl(TransactionManager* manager, YBTransaction* transaction, ChildTransactionData data)
-      : trace_(new Trace),
+      : trace_(Trace::NewTrace()),
         start_(CoarseMonoClock::Now()),
         manager_(manager),
         transaction_(transaction),
@@ -208,13 +208,14 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     manager_->rpcs().Abort(handles.begin(), handles.end());
     LOG_IF_WITH_PREFIX(DFATAL, !waiters_.empty()) << "Non empty waiters";
     const auto threshold = GetAtomicFlag(&FLAGS_txn_slow_op_threshold_ms);
+    const auto print_trace_every_n = GetAtomicFlag(&FLAGS_txn_print_trace_every_n);
     const auto now = CoarseMonoClock::Now();
-    if (trace_->must_print()
+    if ((trace_ && trace_->must_print())
            || (threshold > 0 && ToMilliseconds(now - start_) > threshold)) {
       LOG(INFO) << ToString() << " took " << ToMicroseconds(now - start_) << "us. Trace: \n"
-        << trace_->DumpToString(true);
-    } else {
-      YB_LOG_IF_EVERY_N(INFO, FLAGS_txn_print_trace_every_n > 0, FLAGS_txn_print_trace_every_n)
+        << (trace_ ? trace_->DumpToString(true) : "Not collected");
+    } else if (trace_) {
+      YB_LOG_IF_EVERY_N(INFO, print_trace_every_n > 0, print_trace_every_n)
         << ToString() << " took " << ToMicroseconds(now - start_) << "us. Trace: \n"
         << trace_->DumpToString(true);
     }
