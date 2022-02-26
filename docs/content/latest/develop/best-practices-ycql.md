@@ -63,6 +63,8 @@ In YugabyteDB, YCQL extends Apache Cassandra to add increment and decrement oper
 
 YCQL supports automatic expiration of data using the [`TTL feature`](../../api/ycql/ddl_create_table/#use-table-property-to-define-the-default-expiration-time-for-rows). You can set a retention policy for data at table/row/column level and the older data is automatically purged from the database.
 
+If configuring TTL for a time series dataset, it is recommended specific configuration options for CPU and space efficiency.  More details can be found in [`configuring TTL for time series workloads`](../../develop/learn/ttl-data-expiration-ycql.md/#configuration-for-time-series-workloads).
+
 {{< note title="Note" >}}
 
 TTL is not applicable to transactional tables and hence is not supported in that context.

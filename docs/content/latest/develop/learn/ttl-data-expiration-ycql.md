@@ -108,6 +108,51 @@ SELECT * FROM pageviews;
 (1 rows)
 ```
 
+## Configuration for time series workloads
+
+Time series workloads frequently use TTL to hold a dataset to a specific size. YCQL includes a file expiration feature optimized for such workloads, reducing both CPU usage and space amplification. This is accomplished by organizing data into files by time, similar to Cassandra's time window compaction strategy.
+
+This feature is available in 2.6.10+, 2.8., and 2.12.1+
+
+#### Configuring for new YCQL time series datasets with TTL
+
+If configuring a new YCQL database for time series datasets and using a default time to live, we recommend the following TServer flag configurations:
+
+##### --tablet_enable_ttl_file_filter = true
+
+Enables expired files to be directly deleted, rather than relying on garbage collection during compaction.
+
+##### --rocksdb_max_file_size_for_compaction = \[the amount of data to be deleted at once, in bytes\]
+
+This value for this flag is chosen depending on how much data is expected to be deleted at once. For example, if a table's TTL is 90 days, it might be desireable to delete three days' worth of data at once. In this case, *rocksdb_max_file_size_for_compaction* should be set to the amount of data expected to be generated in 3 days. Files over this size will be excluded from normal compactions, leading to CPU gains.
+
+Note that there is some tradeoff here between the number of files created and read perforance. A reasonable rule of thumb is to configure the flag such that 30 to 50 files store the full dataset (e.g. 90 days divided by 3 days is 30 files). CPU benefits of using this feature should more than make up for any read performance loss.
+
+##### --sst_files_soft_limit = \[number of expected files at steady state + 20\]
+##### --sst_files_hard_limit = \[number of expected files at steady state + 40\]
+
+The value of these flags is directly dependent on the number of files expected to hold the full dataset at steady state. These flags throttle writes to YCQL if the number of files per tablet exceed their value. Thus, they need to be set in a way that will In the example above, 30 files should hold 90 days worth of data. In this case, *sst_files_soft_limit* would be set to 50, and *sst_files_hard_limit* set to 70.
+
+In some fresh dataset cases, new data will be backfilled into the database before the application is turned on. This backfilled data may have a value-level TTL associated with it that is significantly lower than the `default_time_to_live` property on the table, with the desired effect being that this data be removed earlier than the table TTL would allow. By default, such data will *not* expire early. However, the **file_expiration_value_ttl_overrides_table_ttl** flag can be used to ignore table TTL and expire solely based on value TTL.
+
+**NOTE:** When using the `file_expiration_value_ttl_overrides_table_ttl` flag, be sure to set the flag back to `false` *before* all backfilled data has fully expired. Failing to do so can result in unexpected loss of data. For example, if the `default_time_to_live` is 90 days, and data has been backfilled with value-level TTL from 1 day to 89 days, it is important that the `file_expiration_value_ttl_overrides_table_ttl` flag be set back to `false` within 89 days of data ingestion to avoid data loss.
+
+#### Configuring for existing YCQL time series datasets with TTL
+
+To convert existing YCQL tables to ones configured for file expiration, the same TServer flag values as above can be used. However, it should be known that a **temporary 2x space amplification** of the data should be expected in this case. This amplification happens because the existing file structure will have kept most data in a single large file, and that file will now be excluded from compactions going forward. Thus, this file will be unchanged until its contents has entirely expired, roughly *TTL amount of time* after the file expiration feature was configured.
+
+Additionally, if data files were created with YugabyteDB versions below 2.6.6 or 2.8.1, files may lack the necessary metadata to be expired naturally. The **file_expiration_ignore_value_ttl** flag can be set to `true` to ignore the missing metadata. 
+
+**NOTE:** To prevent early data deletion, it is very important that in these cases, the `default_time_to_live` for any tables with TTL should be set to greater than or equal to the largest value-level TTL contained within those tables. It is recommended that once the files lacking the metadata have been removed, the `file_expiration_ignore_value_ttl` flag be set back to `false` (no restart required).
+
+#### Best usage and troubleshooting
+
+* The file expiration feature is only enabled for tables with a default time to live. Even applications that explicitly set TTL on insert should be configured with a default time to live.
+* The file expiration feature assumes that data arrives in rough chronological order relative to its expected expiration time. The feature is safe to use if this assumption is not met, but will be significantly less effective.
+* Files are expired in a conservative manner, only being deleted after every data item it holds has completely expired. If a file has both a default TTL and column-level TTL, the later of the two is used in determining expiration.
+* In situations in which a universe was created on a version older than 2.6.6 or 2.8.1, files may not contain the necessary metadata for file expiration. Similarly, if a data item is inserted with an unreasonably high TTL (or no TTL), the file expiration feature will stop being able to garbage collect data. In these cases, it may become necessary to set the **file_expiration_ignore_value_ttl** flag to `true`. NOTE: setting this flag to true can lead to unwanted loss of data. See [`File expiration based on TTL flags`](../../../reference/configuration/yb-tserver/#file-expiration-based-on-ttl-flags).
+* If backfilling data into a table using a column TTL lower than the default TTL, it should be expected that this data will not expire until the table's default TTL has been exceeded. This can be circumvented by setting the **file_expiration_value_ttl_overrides_table_ttl** flag to `true`. NOTE: setting this flag to true can lead to unwanted loss of data. See [File expiration based on TTL flags](../../../reference/configuration/yb-tserver/#file-expiration-based-on-ttl-flags).
+
 ## TTL related commands & functions
 
 There are several ways to work with TTL:
@@ -117,3 +162,4 @@ There are several ways to work with TTL:
 3. [`TTL` function](../../../api/ycql/expr_fcall/#ttl-function) to return number of seconds until expiration
 4. [`WriteTime` function](../../../api/ycql/expr_fcall/#writetime-function) returns timestamp when row/column was inserted
 5. [Update row/column TTL](../../../api/ycql/dml_update/#using-clause) to update the TTL of a row or column
+6. [TServer flags related to TTL](../../../reference/configuration/yb-tserver/#file-expiration-based-on-ttl-flags) to configure the TServer for file expiration based on TTL
