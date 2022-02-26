@@ -5,7 +5,7 @@
 @import "./_layout.scss";
 
 .landingpage{
-  @media only screen and (max-width:1024px) {
+  @media only screen and (max-width:1199px) {
     width: 100%;
     max-width: 100%;
     padding: 0 40px;
@@ -29,6 +29,7 @@
 
       h2 {
         font-weight: 600;
+        font-family: Inter;
         font-style: normal;
         font-size: 32px;
         line-height: 38px;
@@ -45,6 +46,7 @@
 
       h3 {
         font-style: normal;
+        font-family: Inter;
         margin-top: 48px;
         margin-bottom: 24px;
         font-weight: 600;
@@ -66,6 +68,7 @@
         margin-top: 24px;
         font-style: normal;
         font-weight: normal;
+        font-family: Inter;
         color: #4E5F6D;
         @media only screen and (max-width: 1199px) {
           margin-left: 45px;
@@ -87,17 +90,28 @@
         margin-right: 15px;
         font-style: normal;
         font-weight: normal;
+        font-family: Inter;
         font-size: 14px;
         line-height: 19px;
         height: 19px;
         color: #4E5F6D;
       }
 
-      .explore-topics {
+      .explore-topics-grey {
         padding: 4px 6px;
         border-radius: 6px;
         background: #EDEDFD;
-        margin-right: 8px;
+        margin-right: 14px;
+        height: 27px;
+        line-height: 19px;
+        margin-top: 24px;
+      }
+
+      .explore-topics-green {
+        padding: 4px 6px;
+        border-radius: 6px;
+        background: #F0F4F7;
+        margin-right: 18px;
         height: 27px;
         line-height: 19px;
         margin-top: 24px;
@@ -106,6 +120,7 @@
       .explore-text {
         font-style: normal;
         font-weight: normal;
+        font-family: Inter;
         font-size: 14px;
         color: #4E5F6D;
       }
@@ -193,6 +208,7 @@
         border: 1px solid #D7DEE4;
         border-radius: 8px;
         width: 525px;
+        height: 203px;
         @media only screen and (max-width: 1199px) {
           margin-bottom: 26px;
         }
@@ -227,6 +243,7 @@
       .main-container {
         margin-left: 10px;
         margin-right: 10px;
+        margin-bottom: 32px;
       }
 
       .section-col {
@@ -266,6 +283,7 @@
         font-size: 15px;
         font-style: normal;
         font-weight: 600;
+        font-family: Inter;
       }
 
       .tile-sentence {
@@ -277,6 +295,7 @@
         font-size: 14px;
         font-style: normal;
         font-weight: normal;
+        font-family: Inter;
         line-height: 21px;
         color: #4E5F6D;
         @media only screen and (max-width: 1199px) {
@@ -291,6 +310,7 @@
         height: 17px;
         font-style: normal;
         font-weight: normal;
+        font-family: Inter;
         font-size: 14px;
         line-height: 17px;
         color: #2B59C3;
@@ -299,7 +319,7 @@
       .tile-image-box {
         margin-left: auto;
         width: 160px;
-        height: 180px;
+        height: 203px;
         background: #F0F4F7;
       }
 
@@ -316,6 +336,7 @@
         height: 24px;
         font-style: normal;
         font-weight: normal;
+        font-family: Inter;
         font-size: 18px;
         line-height: 24px;
         color: #0B1117;
@@ -346,6 +367,7 @@
         margin-left: 16px;
         font-style: normal;
         font-weight: 600;
+        font-family: Inter;
         font-size: 15px;
         line-height: 24px;
         height: 24px;
@@ -356,9 +378,11 @@
         max-width: 250px;
         height: 24px;
         margin-left: 16px;
+        margin-right: 13px;
         margin-top: 24px;
         font-style: normal;
         font-weight: 600;
+        font-family: Inter;
         font-size: 15px;
         line-height: 24px;
         color: #000000;
@@ -369,19 +393,22 @@
         height: 24px;
         margin-left: 16px;
         margin-top: 16px;
+        margin-right: 13px;
         font-style: normal;
         font-weight: 600;
+        font-family: Inter;
         font-size: 15px;
         line-height: 24px;
         color: #000000;
       }
 
       .example-heading {
-        width: 103px;
+        width: 110px;
         font-style: normal;
         margin-top: 8px;
         margin-left: 16px;
         font-weight: 600;
+        font-family: Inter;
         font-size: 11.5px;
         line-height: 21px;
         height: 21px;
@@ -391,8 +418,10 @@
       .example-description {
         margin-top: 5px;
         margin-left: 16px;
+        margin-right: 13px;
         font-style: normal;
         font-weight: normal;
+        font-family: Inter;
         font-size: 14px;
         line-height: 19px;
         height: 38px;
@@ -407,6 +436,7 @@
         height: 17px;
         font-style: normal;
         font-weight: normal;
+        font-family: Inter;
         font-size: 14px;
         line-height: 17px;
         color: #2B59C3;
@@ -415,6 +445,7 @@
       .resources-link {
         font-style: normal;
         font-weight: normal;
+        font-family: Inter;
         font-size: 14px;
         line-height: 17px;
         margin-left: 16px;
@@ -427,6 +458,7 @@
       .more-resources-link {
         font-style: normal;
         font-weight: normal;
+        font-family: Inter;
         font-size: 14px;
         line-height: 17px;
         margin-left: 16px;
@@ -530,7 +562,7 @@
 
         @include transition(0.125s);
 
-        @media only screen and (min-width:768px) and (max-width:1024px) {
+        @media only screen and (min-width:768px) and (max-width:1199px) {
           height: 235px;
         }
         @media only screen and (max-width:520px) {
@@ -632,13 +664,13 @@
           z-index: 2;
           text-shadow: 0.15px 0.15px #2e3135, 0.15px -0.15px #2e3135;
 
-          @media only screen and (min-width:768px) and (max-width:1024px) {
+          @media only screen and (min-width:768px) and (max-width:1199px) {
             max-height: 84px; 
           }
           @media only screen and (max-width:520px) {
             max-height: 84px; 
           }
-          @media only screen and (min-width:768px) and (max-width:1024px) {
+          @media only screen and (min-width:768px) and (max-width:1199px) {
             letter-spacing: -.025em;
           }
         }
