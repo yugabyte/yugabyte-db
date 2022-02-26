@@ -262,8 +262,8 @@
         max-height: 36px;
         border-radius: 8px;
         background: linear-gradient(94.6deg, #5D5FEF 5.1%, #8DABF0 98.55%);
-        max-width: 103px;
         padding: 6px 10px;
+        width: 103px;
       }
 
       .getting-started-orange{
@@ -272,8 +272,8 @@
         max-height: 36px;
         border-radius: 8px;
         background: linear-gradient(96.37deg, #FF460E 0%, #FE6B3E 100%);
-        width: 104px;
         padding: 6px 10px;
+        width: 101px;
       }
 
       .getting-started-text {
@@ -305,7 +305,7 @@
 
       .tile-link {
         margin-left: 16px;
-        margin-top: 21px;
+        margin-top: 38px;
         max-width: 76px;
         height: 17px;
         font-style: normal;
@@ -341,7 +341,7 @@
         line-height: 24px;
         color: #0B1117;
         margin-top: 22px;
-        margin-left: 16px;
+        margin-left: 8px;
       }
 
       .example-image-box {
@@ -426,12 +426,13 @@
         line-height: 19px;
         height: 38px;
         max-width: 301px;
+        float: left;
         color: #4E5F6D;
       }
 
       .example-link {
         margin-left: 16px;
-        margin-top: 15px;
+        margin-top: 10px;
         width: 76px;
         height: 17px;
         font-style: normal;
