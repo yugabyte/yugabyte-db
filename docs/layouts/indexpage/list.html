@@ -18,6 +18,7 @@
 <div class="container-fluid landingpage">
 	<main class="main">
 		<div class="drawer">
+			{{ .Scratch.Set "currentVersionTitle" "v2.11 (latest)"}}
 			{{ partial "drawer" (dict "context" . "menu" .Site.Menus.latest) }}
 		</div>
 		<article class="doc-article">
