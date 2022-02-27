@@ -169,7 +169,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
     config.put(Universe.TAKE_BACKUPS, "true");
     defaultUniverse.updateConfig(config);
     ShellResponse shellResponse = new ShellResponse();
-    shellResponse.message = "{\"success\": true}";
+    shellResponse.message = "{\"snapshot_url\": \"/tmp/backup\", \"backup_size_in_bytes\": 340}";
     shellResponse.code = 0;
     when(mockTableManager.createBackup(any())).thenReturn(shellResponse);
 
@@ -185,7 +185,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
     config.put(Universe.TAKE_BACKUPS, "true");
     defaultUniverse.updateConfig(config);
     ShellResponse shellResponse = new ShellResponse();
-    shellResponse.message = "{\"success\": true}";
+    shellResponse.message = "{\"snapshot_url\": \"/tmp/backup\", \"backup_size_in_bytes\": 340}";
     shellResponse.code = 0;
     when(mockTableManager.createBackup(any())).thenReturn(shellResponse);
 
@@ -220,7 +220,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
     config.put(Universe.TAKE_BACKUPS, "true");
     defaultUniverse.updateConfig(config);
     ShellResponse shellResponse = new ShellResponse();
-    shellResponse.message = "{\"success\": true}";
+    shellResponse.message = "{\"snapshot_url\": \"/tmp/backup\", \"backup_size_in_bytes\": 340}";
     shellResponse.code = 0;
     when(mockTableManager.createBackup(any())).thenReturn(shellResponse);
 
@@ -235,7 +235,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
     config.put(Universe.TAKE_BACKUPS, "true");
     defaultUniverse.updateConfig(config);
     ShellResponse shellResponse = new ShellResponse();
-    shellResponse.message = "{\"success\": true}";
+    shellResponse.message = "{\"snapshot_url\": \"/tmp/backup\", \"backup_size_in_bytes\": 340}";
     shellResponse.code = 0;
     when(mockTableManager.createBackup(any())).thenReturn(shellResponse);
     List<UUID> tableUUIDs = new ArrayList<>();
@@ -253,7 +253,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
     config.put(Universe.TAKE_BACKUPS, "true");
     defaultUniverse.updateConfig(config);
     ShellResponse shellResponse = new ShellResponse();
-    shellResponse.message = "{\"success\": true}";
+    shellResponse.message = "{\"snapshot_url\": \"/tmp/backup\", \"backup_size_in_bytes\": 340}";
     shellResponse.code = 0;
     when(mockTableManager.createBackup(any())).thenReturn(shellResponse);
     List<UUID> tableUUIDs = new ArrayList<>();
@@ -276,7 +276,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
     config.put(Universe.TAKE_BACKUPS, "true");
     defaultUniverse.updateConfig(config);
     ShellResponse shellResponse = new ShellResponse();
-    shellResponse.message = "{\"success\": true}";
+    shellResponse.message = "{\"snapshot_url\": \"/tmp/backup\", \"backup_size_in_bytes\": 340}";
     shellResponse.code = 0;
     when(mockTableManager.createBackup(any())).thenReturn(shellResponse);
     TaskInfo taskInfo =

@@ -6,6 +6,7 @@ import com.cronutils.model.Cron;
 import com.cronutils.model.definition.CronDefinitionBuilder;
 import com.cronutils.model.time.ExecutionTime;
 import com.cronutils.parser.CronParser;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.forms.BackupTableParams.ActionType;
 import java.time.Duration;
@@ -26,6 +27,7 @@ public class BackupUtil {
   public static final long MIN_SCHEDULE_DURATION_IN_MILLIS = MIN_SCHEDULE_DURATION_IN_SECS * 1000L;
   public static final Set<ActionType> OMIT_ACTION_TYPES =
       Sets.immutableEnumSet(ActionType.DELETE, ActionType.RESTORE, ActionType.RESTORE_KEYS);
+  public static final String BACKUP_SIZE_FIELD = "backup_size_in_bytes";
 
   public static void validateBackupCronExpression(String cronExpression)
       throws PlatformServiceException {
@@ -54,5 +56,16 @@ public class BackupUtil {
     if (frequency < MIN_SCHEDULE_DURATION_IN_MILLIS) {
       throw new PlatformServiceException(BAD_REQUEST, "Minimum schedule duration is 1 hour");
     }
+  }
+
+  public static long extractBackupSize(JsonNode backupResponse) {
+    long backupSize = 0L;
+    JsonNode backupSizeJsonNode = backupResponse.get(BACKUP_SIZE_FIELD);
+    if (backupSizeJsonNode != null && !backupSizeJsonNode.isNull()) {
+      backupSize = Long.parseLong(backupSizeJsonNode.asText());
+    } else {
+      LOG.error(BACKUP_SIZE_FIELD + " not present in " + backupResponse.toString());
+    }
+    return backupSize;
   }
 }

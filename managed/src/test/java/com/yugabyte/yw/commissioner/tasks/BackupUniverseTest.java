@@ -75,7 +75,7 @@ public class BackupUniverseTest extends CommissionerBaseTest {
   @Test
   public void testBackupTableCreateAction() {
     ShellResponse shellResponse = new ShellResponse();
-    shellResponse.message = "{\"success\": true}";
+    shellResponse.message = "{\"snapshot_url\": \"/tmp/backup\", \"backup_size_in_bytes\": 340}";
     shellResponse.code = 0;
     when(mockTableManager.createBackup(any())).thenReturn(shellResponse);
 
