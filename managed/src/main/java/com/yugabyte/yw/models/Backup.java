@@ -444,6 +444,19 @@ public class Backup extends Model {
     }
   }
 
+  public void setBackupSizeInBackupList(int idx, long backupSize) {
+    int backupListLen = this.backupInfo.backupList.size();
+    if (idx >= backupListLen) {
+      LOG.error("Index {} not present in backup list of length {}", idx, backupListLen);
+      return;
+    }
+    this.backupInfo.backupList.get(idx).backupSizeInBytes = backupSize;
+  }
+
+  public void setTotalBackupSize(long backupSize) {
+    this.backupInfo.backupSizeInBytes = backupSize;
+  }
+
   public static List<Backup> getInProgressAndCompleted(UUID customerUUID) {
     return find.query()
         .where()
