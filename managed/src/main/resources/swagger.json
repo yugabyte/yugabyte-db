@@ -1565,6 +1565,11 @@
           },
           "type" : "array"
         },
+        "backupSizeInBytes" : {
+          "description" : "Backup size in bytes",
+          "format" : "int64",
+          "type" : "integer"
+        },
         "backupType" : {
           "description" : "Backup type",
           "enum" : [ "YQL_TABLE_TYPE", "REDIS_TABLE_TYPE", "PGSQL_TABLE_TYPE", "TRANSACTION_STATUS_TABLE_TYPE" ],
@@ -3250,6 +3255,11 @@
             "$ref" : "#/definitions/BackupTableParams"
           },
           "type" : "array"
+        },
+        "backupSizeInBytes" : {
+          "description" : "Backup size in bytes",
+          "format" : "int64",
+          "type" : "integer"
         },
         "backupType" : {
           "description" : "Backup type",
