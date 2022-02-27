@@ -105,6 +105,9 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "User name of the new tables owner")
   public String newOwner = null;
 
+  @ApiModelProperty(value = "Backup size in bytes")
+  public long backupSizeInBytes = 0L;
+
   @JsonIgnore
   public Set<String> getTableNames() {
     Set<String> tableNames = new HashSet<>();
