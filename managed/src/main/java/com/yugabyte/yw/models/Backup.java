@@ -416,13 +416,18 @@ public class Backup extends Model {
     return ret;
   }
 
-  public void transitionState(BackupState newState) {
+  public synchronized void transitionState(BackupState newState) {
+    // Need updated backup state as multiple threads can access backup object.
+    this.refresh();
+
     if (this.state == newState) {
       LOG.error("Skipping state transition as no change in previous and new state");
     } else if ((this.state == BackupState.InProgress || newState == BackupState.QueuedForDeletion)
         || (this.state == BackupState.QueuedForDeletion && newState == BackupState.DeleteInProgress)
         || (this.state == BackupState.QueuedForDeletion && newState == BackupState.FailedToDelete)
-        || (this.state == BackupState.DeleteInProgress && newState == BackupState.FailedToDelete)) {
+        || (this.state == BackupState.DeleteInProgress && newState == BackupState.FailedToDelete)
+        || (this.state == BackupState.Completed && newState == BackupState.Stopped)
+        || (this.state == BackupState.Failed && newState == BackupState.Stopped)) {
       LOG.debug("New Backup API: transitioned from {} to {}", this.state, newState);
       this.state = newState;
       save();
@@ -437,6 +442,19 @@ public class Backup extends Model {
     } else {
       LOG.error("Ignored INVALID STATE TRANSITION  {} -> {}", state, newState);
     }
+  }
+
+  public void setBackupSizeInBackupList(int idx, long backupSize) {
+    int backupListLen = this.backupInfo.backupList.size();
+    if (idx >= backupListLen) {
+      LOG.error("Index {} not present in backup list of length {}", idx, backupListLen);
+      return;
+    }
+    this.backupInfo.backupList.get(idx).backupSizeInBytes = backupSize;
+  }
+
+  public void setTotalBackupSize(long backupSize) {
+    this.backupInfo.backupSizeInBytes = backupSize;
   }
 
   public static List<Backup> getInProgressAndCompleted(UUID customerUUID) {

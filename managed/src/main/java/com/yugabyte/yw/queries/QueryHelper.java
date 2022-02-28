@@ -64,7 +64,7 @@ public class QueryHelper {
       Universe universe, boolean fetchSlowQueries, String username, String password)
       throws IllegalArgumentException {
     ExecutorService threadPool = Executors.newFixedThreadPool(QUERY_EXECUTOR_THREAD_POOL);
-    Set<Future<JsonNode>> futures = new HashSet<Future<JsonNode>>();
+    Set<Future<JsonNode>> futures = new HashSet<>();
     ObjectNode responseJson = Json.newObject();
     ObjectNode ysqlJson = Json.newObject();
     ysqlJson.put("errorCount", 0);
@@ -113,9 +113,9 @@ public class QueryHelper {
             throw new IllegalArgumentException("Incorrect Username or Password");
           }
           String type = response.get("type").asText();
-          if (type == "ysql") {
+          if ("ysql".equals(type)) {
             ysqlJson.put("errorCount", ysqlJson.get("errorCount").asInt() + 1);
-          } else if (type == "ycql") {
+          } else if ("ycql".equals(type)) {
             ycqlJson.put("errorCount", ycqlJson.get("errorCount").asInt() + 1);
           }
         } else {
@@ -151,7 +151,7 @@ public class QueryHelper {
                   int tmpTables =
                       previousQueryObj.get("local_blks_written").asInt()
                           + queryObject.get("local_blks_written").asInt();
-                  /**
+                  /*
                    * Formula to calculate std dev of two samples: Let mean, std dev, and size of
                    * sample A be X_a, S_a, n_a respectively; and mean, std dev, and size of sample B
                    * be X_b, S_b, n_b respectively. Then mean of combined sample X is given by n_a

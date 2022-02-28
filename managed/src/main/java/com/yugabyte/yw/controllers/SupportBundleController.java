@@ -10,27 +10,23 @@ import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.forms.PlatformResults;
-import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.SupportBundleFormData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.SupportBundle;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.SupportBundle.SupportBundleStatusType;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-import java.io.IOException;
 import java.io.InputStream;
-import java.io.File;
-import java.nio.file.Path;
-import java.util.UUID;
 import java.util.List;
+import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.apache.commons.io.FileUtils;
 import play.mvc.Result;
 
 @Api(
@@ -83,6 +79,7 @@ public class SupportBundleController extends AuthenticatedController {
   @ApiOperation(
       value = "Download support bundle",
       nickname = "downloadSupportBundle",
+      response = SupportBundle.class,
       produces = "application/x-compressed")
   public Result download(UUID customerUUID, UUID universeUUID, UUID bundleUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);

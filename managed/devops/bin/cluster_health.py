@@ -224,7 +224,7 @@ class NodeChecker():
                  start_time_ms, namespace_to_config, ysql_port, ycql_port, redis_port,
                  enable_tls_client, root_and_client_root_ca_same, ssl_protocol, enable_ysql,
                  enable_ysql_auth, master_http_port, tserver_http_port, ysql_server_http_port,
-                 collect_metrics_script, universe_version):
+                 collect_metrics_script, test_read_write, universe_version):
         self.node = node
         self.node_name = node_name
         self.master_index = master_index
@@ -253,6 +253,7 @@ class NodeChecker():
         self.tserver_http_port = tserver_http_port
         self.ysql_server_http_port = ysql_server_http_port
         self.collect_metrics_script = collect_metrics_script
+        self.test_read_write = test_read_write
         self.universe_version = universe_version
         self.additional_info = {}
 
@@ -787,6 +788,7 @@ class NodeChecker():
         script_content = script_content.replace('{{YSQLSH_CMD_TEMPLATE}}', ysqlsh_cmd_template)
         script_content = script_content.replace('{{MASTER_INDEX}}', str(self.master_index))
         script_content = script_content.replace('{{TSERVER_INDEX}}', str(self.tserver_index))
+        script_content = script_content.replace('{{TEST_READ_WRITE}}', str(self.test_read_write))
 
         script_dir = os.path.dirname(os.path.abspath(self.collect_metrics_script))
         node_script = os.path.join(script_dir, "cluster_health_" + self.node + ".sh")
@@ -975,6 +977,7 @@ class Cluster():
         self.tserver_http_port = data["tserverHttpPort"]
         self.ysql_server_http_port = data["ysqlServerHttpPort"]
         self.collect_metrics_script = data["collectMetricsScript"]
+        self.test_read_write = data["testReadWrite"]
 
 
 class UniverseDefinition():
@@ -1034,7 +1037,8 @@ def main():
                         c.ycql_port, c.redis_port, c.enable_tls_client,
                         c.root_and_client_root_ca_same, c.ssl_protocol, c.enable_ysql,
                         c.enable_ysql_auth, c.master_http_port, c.tserver_http_port,
-                        c.ysql_server_http_port, c.collect_metrics_script, universe_version)
+                        c.ysql_server_http_port, c.collect_metrics_script, c.test_read_write,
+                        universe_version)
 
                 coordinator.add_precheck(checker, "check_openssl_availability")
                 coordinator.add_precheck(checker, "upload_collect_metrics_script")

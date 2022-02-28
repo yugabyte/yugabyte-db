@@ -486,6 +486,13 @@ class AzBackupStorage(AbstractBackupStorage):
         dest = "'{}'".format(dest + os.getenv('AZURE_STORAGE_SAS_TOKEN'))
         return ["{} {} {} {}".format(self._command_list_prefix(), "rm", dest, "--recursive=true")]
 
+    def backup_obj_size_cmd(self, backup_obj_location):
+        sas_token = os.getenv('AZURE_STORAGE_SAS_TOKEN')
+        backup_obj_location = "'{}'".format(backup_obj_location + sas_token)
+        return ["{} {} {} {} {} {} {} {} {}".format(self._command_list_prefix(), "list",
+                backup_obj_location, "--machine-readable", "--running-tally", "|",
+                "grep 'Total file size:'", "|", "grep -Eo '[0-9]*'")]
+
 
 class GcsBackupStorage(AbstractBackupStorage):
     def __init__(self, options):
@@ -515,6 +522,9 @@ class GcsBackupStorage(AbstractBackupStorage):
         if dest is None or dest == '/' or dest == '':
             raise BackupException("Destination needs to be well formed.")
         return self._command_list_prefix() + ["rm", "-r", dest]
+
+    def backup_obj_size_cmd(self, backup_obj_location):
+        return self._command_list_prefix() + ["du", "-s", "-a", backup_obj_location]
 
 
 class S3BackupStorage(AbstractBackupStorage):
@@ -553,6 +563,9 @@ class S3BackupStorage(AbstractBackupStorage):
         if dest is None or dest == '/' or dest == '':
             raise BackupException("Destination needs to be well formed.")
         return self._command_list_prefix() + ["del", "-r", dest]
+
+    def backup_obj_size_cmd(self, backup_obj_location):
+        return self._command_list_prefix() + ["du", backup_obj_location]
 
 
 class NfsBackupStorage(AbstractBackupStorage):
@@ -595,6 +608,9 @@ class NfsBackupStorage(AbstractBackupStorage):
         if dest is None or dest == '/' or dest == '':
             raise BackupException("Destination needs to be well formed.")
         return ["rm", "-rf", pipes.quote(dest)]
+
+    def backup_obj_size_cmd(self, backup_obj_location):
+        return ["du", "-sb", backup_obj_location]
 
 
 BACKUP_STORAGE_ABSTRACTIONS = {
@@ -770,6 +786,7 @@ class YBManifest:
         properties['pg-based-backup'] = pg_based_backup
         properties['start-time'] = self.backup.timer.start_time_str()
         properties['end-time'] = self.backup.timer.end_time_str()
+        properties['size-in-bytes'] = self.backup.calc_size_in_bytes(snapshot_bucket)
 
     def init_locations(self, tablet_leaders, snapshot_bucket):
         locations = self.body['locations']
@@ -784,6 +801,8 @@ class YBManifest:
                 location_data['region'] = tserver_region
 
             locations[tablet_location]['tablet-directories'][tablet_id] = {}
+
+        self.body['properties']['size-in-bytes'] += len(self.to_string())
 
     # Data saving/loading/printing.
     def to_string(self):
@@ -828,6 +847,9 @@ class YBManifest:
         if pg_based_backup is None:
             pg_based_backup = False
         return pg_based_backup
+
+    def get_backup_size(self):
+        return self.body['properties'].get('size-in-bytes')
 
 
 class YBBackup:
@@ -1439,6 +1461,24 @@ class YBBackup:
             self.get_ysql_dump_std_args() + ['--dbname=template1'],
             cmd_line_args,
             run_ip=run_at_ip)
+
+    def calc_size_in_bytes(self, snapshot_bucket):
+        """
+        Fetches the backup object size by making a call to respective data source.
+        :param snapshot_bucket: the bucket directory under which data directories were uploaded
+        :return: backup size in bytes
+        """
+        snapshot_filepath = self.snapshot_location(snapshot_bucket)
+        backup_size = 0
+        backup_size_cmd = self.storage.backup_obj_size_cmd(snapshot_filepath)
+        try:
+            resp = self.run_ssh_cmd(backup_size_cmd, self.get_main_host_ip())
+            backup_size = int(resp.strip().split()[0])
+            logging.info('Backup size in bytes: {}'.format(backup_size))
+        except Exception as ex:
+            logging.error(
+                'Failed to get backup size, cmd: {}, exception: {}'.format(backup_size_cmd, ex))
+        return backup_size
 
     def create_snapshot(self):
         """
@@ -2592,6 +2632,7 @@ class YBBackup:
                             region, regional_filepath))
                         snapshot_locations[region] = regional_filepath
 
+            snapshot_locations["backup_size_in_bytes"] = self.manifest.get_backup_size()
         else:
             snapshot_locations["snapshot_url"] = "UPLOAD_SKIPPED"
 
