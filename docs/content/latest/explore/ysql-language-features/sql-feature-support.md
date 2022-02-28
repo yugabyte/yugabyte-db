@@ -92,6 +92,32 @@ Altering tables | ✓ | [`ALTER TABLE`  documentation](https://docs.yugabyte.com
  `BEGIN` | ✓ | [`BEGIN` documentation](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/txn_begin/)
  `COMMIT` | ✓ | [`COMMIT` documentation](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/txn_commit/)
  `ROLLBACK` | ✓ | [`ROLLBACK` documentation](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/txn_rollback/)
- `SAVEPOINT` | ✓ |  [`SAVEPOINT documentation`](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/savepoint_create/)
- `ROLLBACK TO SAVEPOINT` | ✓ |  [`ROLLBACK TO SAVEPOINT documentation`](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/savepoint_create/)
+ `SAVEPOINT` | ✓ |  [`SAVEPOINT` documentation](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/savepoint_create/)
+ `ROLLBACK TO SAVEPOINT` | ✓ |  [`ROLLBACK TO SAVEPOINT` documentation](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/savepoint_create/)
 
+### Roles and Permissions
+
+ Component | Supported | Details
+-----------|-----------|---------
+ Users | ✓ | 
+ Roles | ✓ | 
+ Object ownership | ✓ | 
+ Privileges | ✓ | 
+ Default privileges | ✗ |
+ 
+### Advanced statements (other than common statementes)
+
+Statement | Supported |  Details
+-----------|-----------|---------
+ `UPSERT` | ✗ | 
+ `SELECT INTO` | ✗|
+ `SELECT FOR UPDATE` | ✗ | 
+ `EXPLAIN` | ✓ | [`EXPLAIN` documentation](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/perf_explain)
+
+### Clauses
+
+ Clause | Supported | Details
+-----------|-----------|---------
+ `LIMIT` | ✗ | 
+ `LIMIT` with `OFFSET` | ✗ | 
+ `RETURNING` | ✗ | 
