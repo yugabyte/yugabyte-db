@@ -11,9 +11,6 @@ menu:
 isTocNested: true
 showAsideToc: true
 ---
-
-
-# PostgreSQL Compatibility
 YugabyteDB is a PostgreSQL compatible distributed database that supports the majority of PostgreSQL syntax. This means that existing applications built on PostgreSQL can often be migrated to YugabyteDB without changing application code.
 
 Since YugabyteDB is PostgreSQL compatible, it works with the majority of PostgreSQL database tools such as various language drivers, ORM tools, schema migration tools, and many more third-party database tools. 
