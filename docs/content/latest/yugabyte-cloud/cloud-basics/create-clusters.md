@@ -35,7 +35,7 @@ Standard clusters include the following features:
 ## Prerequisites
 
 - You need to create a billing profile and add a payment method before you can create a standard cluster. Refer to [Manage your billing profile and payment method](../../cloud-admin/cloud-billing-profile/).
-- If you want to use dedicated VPCs for network isolation and security, you need to create the VPC before you create your cluster. Yugabyte Cloud supports AWC and GCP for peering. Refer to [VPC networking](../../cloud-secure-clusters/cloud-vpcs/).
+- If you want to use dedicated VPCs for network isolation and security, you need to create the VPC before you create your cluster. Yugabyte Cloud supports AWC and GCP for peering. Refer to [VPC networking](../../cloud-basics/cloud-vpcs/).
 
 ## Create a cluster
 
@@ -75,7 +75,7 @@ Set the following options:
   - **vCPU/Node** - enter the number of virtual CPUs per node.
   - **Disk size/Node** - enter the disk size per node in GB.
 
-- **Network Access**: If you want to use a VPC for network isolation and security, select **Deploy this cluster in a dedicated VPC**, then select the VPC. Only VPCs using the selected cloud provider are listed. The VPC must be created before deploying the cluster. Refer to [VPC networking](../../cloud-secure-clusters/cloud-vpcs/).
+- **Network Access**: If you want to use a VPC for network isolation and security, select **Deploy this cluster in a dedicated VPC**, then select the VPC. Only VPCs using the selected cloud provider are listed. The VPC must be created before deploying the cluster. Refer to [VPC networking](../../cloud-basics/cloud-vpcs/).
 
 - **Database Version**: By default, clusters are deployed using a [stable release](../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on). If you want to use an [edge release](../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) for a standard cluster, click **Advanced Settings** and choose a release. Before deploying a production cluster using an edge release, contact {{<support-cloud>}}. If you have arranged a custom build with Yugabyte, it will also be listed here.
 

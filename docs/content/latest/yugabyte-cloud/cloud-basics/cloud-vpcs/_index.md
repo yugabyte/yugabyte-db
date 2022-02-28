@@ -10,21 +10,24 @@ aliases:
 menu:
   latest:
     identifier: cloud-vpcs
-    parent: cloud-secure-clusters
+    parent: cloud-basics
     weight: 200
 ---
 
-A Virtual Private Cloud (VPC) network allows applications running on instances on the same cloud provider as your Yugabyte Cloud clusters to communicate with those clusters without traversing the public internet; all traffic stays within the cloud provider's network.
-
-In Yugabyte Cloud, a VPC network consists of a _VPC_ where you can deploy clusters, and a _peering connection_ that links the cluster VPC to an application VPC on the same cloud provider.
+A Virtual Private Cloud (VPC) network allows applications running on instances on the same cloud provider as your Yugabyte Cloud clusters to communicate with those clusters without traversing the public internet; all traffic stays in the cloud provider's network.
 
 Use VPC networks to lower network latencies, make your application and database infrastructure more secure, and reduce network data transfer costs.
 
-VPCs and peering connections are managed in Yugabyte Cloud on the **VPC Network** tab of the **Network Access** page.
+In Yugabyte Cloud, a VPC network consists of the following:
+
+- The _VPC_, where you can deploy clusters. The VPC reserves a block of IP addresses on the cloud provider.
+- A _peering connection_, which links the cluster VPC to an application VPC on the same cloud provider.
+
+VPCs and peering connections are managed on the **VPC Network** tab of the **Network Access** page.
 
 {{< note title="Note" >}}
 
-To use VPC peering in a cluster, your cluster must be deployed in a dedicated VPC that is peered with your application VPC. You must set up a dedicated VPC _before_ deploying your cluster.
+To peer a cluster with an application VPC, you need to deploy the cluster in a dedicated VPC. You need to set up the dedicated VPC _before_ deploying your cluster.
 
 VPC peering is not supported in free clusters.
 

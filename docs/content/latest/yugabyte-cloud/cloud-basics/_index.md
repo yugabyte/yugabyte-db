@@ -22,7 +22,7 @@ Before deploying a cluster, you need to decide on the following:
 - Cloud provider and regions - Where you deploy the cluster will impact latencies. For a list of currently supported regions in Yugabyte Cloud, refer to [Cloud provider regions](../release-notes/#cloud-provider-regions).
 - Cluster size - Size your cluster to the potential load. As Yugabyte Cloud supports both horizontal and vertical scaling, you can always change this later to better match your performance requirements.
 - Fault Tolerance - The fault tolerance determines how resilient the cluster is to node and cloud zone failures. You cannot change the fault tolerance after the cluster is created.
-- VPC peering - Virtual Private Cloud (VPC) peering allows applications running on instances on the same cloud provider as your Yugabyte Cloud cluster to communicate with your cluster without traversing the public internet. If you want your cluster to be in a dedicated VPC and to be peered with an application VPC, you must set up the VPC before you create your cluster.
+- VPC network - Virtual Private Cloud (VPC) peering allows applications running on instances on the same cloud provider as your Yugabyte Cloud cluster to communicate with your cluster without traversing the public internet. If you want your cluster to be in a dedicated VPC and to be peered with an application VPC, you must set up the VPC _before_ you create your cluster.
 
 <div class="row">
 
@@ -34,6 +34,18 @@ Before deploying a cluster, you need to decide on the following:
       </div>
       <div class="body">
         Plan your production deployment.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="cloud-vpcs/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
+        <div class="title">VPC networks</div>
+      </div>
+      <div class="body">
+        VPC networking in Yugabyte Cloud.
       </div>
     </a>
   </div>
