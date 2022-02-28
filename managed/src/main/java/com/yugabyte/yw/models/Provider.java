@@ -153,6 +153,16 @@ public class Provider extends Model {
   @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
   public boolean overrideKeyValidate = false;
 
+  // Whether or not to set up NTP
+  @Transient
+  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
+  public boolean setUpChrony = false;
+
+  // NTP servers to connect to
+  @Transient
+  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
+  public List<String> ntpServers = new ArrayList<>();
+
   // End Transient Properties
 
   // Set and encrypt config
