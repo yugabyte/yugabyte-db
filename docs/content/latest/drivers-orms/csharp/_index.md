@@ -54,7 +54,7 @@ For fully runnable code snippets and exaplantion for common operations, see the 
 | Project | Type | Usage Examples |
 | :------ | :--- | :------------- |
 | [Postgres Npgsql Driver](/latest/reference/drivers/csharp/postgres-npgsql-reference/) | C# Driver | [Hello World](/latest/quick-start/build-apps/csharp/ysql) <br />[CRUD App](postgres-npgsql)
-| [EntityFramework](entityframework) | ORM |  [Hello World](/latest/integrations/entity-framework) <br />[CRUD App](postgres-npgsql) |
+| [EntityFramework](entityframework) | ORM |  [Hello World](/latest/integrations/entity-framework) <br />[CRUD App](entityframework) |
 
 ## Next Steps
 

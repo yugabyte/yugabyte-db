@@ -107,22 +107,6 @@ NpgsqlCommand empInsertCmd = new NpgsqlCommand("INSERT INTO employee (id, name, 
 int numRows = empInsertCmd.ExecuteNonQuery();
 ```
 
-<!-- For inserting data using JDBC clients, it is always a good pratice to use `java.sql.PreparedStatemet` for executing `INSERT` statements.
-```java
-Connection conn = DriverManager.getConnection("jdbc:postgresql://localhost:5433/yugabyte","yugabyte", "yugabyte");
-Statment stmt = conn.createStatement();
-try {
-  PreparedStatement pstmt = connection.prepareStatement("INSERT INTO employees (id, name, age, langugage) VALUES (?, ?, ?, ?)");
-  pstmt.setInt(1, 1);
-  pstmt.setString(2, "John");
-  pstmt.setInt(3, 35);
-  pstmt.setString(4, "Java");
-  pstmt.execute();
-} catch (SQLException e) {
-  System.err.println(e.getMessage());
-}
-``` -->
-
 #### Query Data
 
 In order to query data from YugabyteDB tables, execute the `SELECT` statement using `NpgsqlCommand` class, get the command object and then call the `ExecuteReader()` function using the object. Loop through the reader to get the list of returned rows.
@@ -149,20 +133,35 @@ while (reader.Read())
 
 ### Configure SSL/TLS
 
-The client driver supports several SSL modes, as follows:
+For Npgsql versions < 6.0, The client driver supports several SSL modes, as follows:
 
 | SSL mode | Client driver behavior |
 | :------- | :--------------------- |
 | disable | Supported |
 | allow | Not Supported |
 | prefer | Supported |
-| require | Supported  |
-| verify-ca | Supported <br/> (Self-signed certificates aren't supported.) |
-| verify-full | Supported <br/> (Self-signed certificates aren't supported.) |
+| require | Supported <br/> (Self-signed certificates aren't supported.) |
+| verify-ca | Not Supported  |
+| verify-full | Not Supported |
 
 The Npgsql driver does not support the strings `verify-ca` and `verify-full` when specifying the SSL mode.
 
 The .NET Npgsql driver validates certificates differently from other PostgreSQL drivers. When you specify SSL mode `require`, the driver verifies the certificate by default (like the `verify-ca` or `verify-full` modes), and fails for self-signed certificates. You can override this by specifying "Trust Server Certificate=true", in which case it bypasses walking the certificate chain to validate trust and hence works like other drivers' `require` mode. In this case, the Root-CA certificate is not required to be configured.
+
+For versions 6.0 and older,
+
+| SSL mode | Client driver behavior |
+| :------- | :--------------------- |
+| disable | Supported |
+| allow | Supported |
+| prefer | Supported |
+| require | Supported  |
+| verify-ca | Supported  |
+| verify-full | Supported |
+
+SSL Mode=Require currently requires explicitly setting Trust Server Certificate=true as well. This combination should be used with e.g. self-signed certificates.
+
+The default mode in 6.0+ is Prefer, which allows SSL but does not require it, and does not validate certificates.
 
 ## Compatibility Matrix
 
