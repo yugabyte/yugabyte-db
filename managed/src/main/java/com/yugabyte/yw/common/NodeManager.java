@@ -414,15 +414,11 @@ public class NodeManager extends DevopsBase {
               serverKeyPath = String.format("%s/%s", tempStorageDirectory, serverKeyFile);
               certsLocation = CERT_LOCATION_PLATFORM;
 
-              if (taskParam.enableClientToNodeEncrypt) {
-
-                UUID cliRootCA = taskParam.clientRootCA;
-                if (taskParam.rootAndClientRootCASame) cliRootCA = taskParam.rootCA;
-
+              if (taskParam.enableClientToNodeEncrypt && taskParam.rootAndClientRootCASame) {
                 subcommandStrings.add("--client_cert_path");
-                subcommandStrings.add(CertificateHelper.getClientCertFile(cliRootCA));
+                subcommandStrings.add(CertificateHelper.getClientCertFile(taskParam.rootCA));
                 subcommandStrings.add("--client_key_path");
-                subcommandStrings.add(CertificateHelper.getClientKeyFile(cliRootCA));
+                subcommandStrings.add(CertificateHelper.getClientKeyFile(taskParam.rootCA));
               }
             } catch (IOException e) {
               LOG.error(e.getMessage(), e);
@@ -517,15 +513,11 @@ public class NodeManager extends DevopsBase {
               serverKeyPath = String.format("%s/%s", tempStorageDirectory, serverKeyFile);
               certsLocation = CERT_LOCATION_PLATFORM;
 
-              if (taskParam.enableClientToNodeEncrypt) {
-
-                UUID cliRootCA = taskParam.clientRootCA;
-                if (taskParam.rootAndClientRootCASame) cliRootCA = taskParam.rootCA;
-
+              if (taskParam.enableClientToNodeEncrypt && taskParam.rootAndClientRootCASame) {
                 subcommandStrings.add("--client_cert_path");
-                subcommandStrings.add(CertificateHelper.getClientCertFile(cliRootCA));
+                subcommandStrings.add(CertificateHelper.getClientCertFile(taskParam.rootCA));
                 subcommandStrings.add("--client_key_path");
-                subcommandStrings.add(CertificateHelper.getClientKeyFile(cliRootCA));
+                subcommandStrings.add(CertificateHelper.getClientKeyFile(taskParam.rootCA));
               }
 
             } catch (IOException e) {
