@@ -120,7 +120,7 @@ You can set a private DNS zone as follows:
 
     ![Private DNS: basics tab](/images/yb-platform/install/azure/private-dns-basics-tab.png)<br><br>
 
-1. Navigate to the resource page and click **Settings > Virtual Network Links** on the left tab, as per the following illustration:<br><br>
+1. Navigate to the resource page and click **Settings > Virtual Network Links**, as per the following illustration:<br><br>
 
     ![Resource menu](/images/yb-platform/install/azure/resource-menu.png)<br><br>
 
@@ -180,15 +180,15 @@ You set up a shared gallery image on Azure as follows:
 
 1. Navigate to the VM and click **Capture** on the top menu. 
 
-1. Fill in the information and then choose the gallery and image definition you created in the previous steps, as per the following illustration:
+1. Fill in the information and then choose the gallery and image definition you created in the previous steps, as per the following illustration:<br><br>
 
     ![img](/images/yb-platform/install/azure/shared-gallery-capture.png)
 
-    Ensure that the images are replicated to each region in which you are planning to use them. For example, configuration shown in the following illustration would only work for US East:
+    <br><br>Ensure that the images are replicated to each region in which you are planning to use them. For example, configuration shown in the following illustration would only work for US East:
 
     ![description](/images/yb-platform/install/azure/shared-gallery-replication.png)
 
 1. To use the image in Yugabyte Platform, enter the image version's resource ID into the **Marketplace Image URN/Shared Gallery Image ID** field of the **Specify Region Info** dialog.
 
-    
+   <br>Note that if you provide the resource ID, Yugabyte Platform infers  the resource group from it. If you provide only the name, then Yugabyte  Platform assumes that the resource group is the same as the group used  in the cloud provider. 
 
