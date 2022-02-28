@@ -74,8 +74,8 @@ The source for the above application can be found in the [Using ORMs with Yugaby
 This tutorial assumes that you have:
 
 - YugabyteDB up and running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../../quick-start/) to have YugabyteDB up and running in minutes.
-- Java Development Kit (JDK) 1.8 is installed. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/).
-- [sbt](https://www.scala-sbt.org/1.x/docs/) is installed. Homebrew users on macOS can install using `brew install AdoptOpenJDK/openjdk/adoptopenjdk8`.
+- Java Development Kit (JDK) 1.8 is installed. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/). Homebrew users on macOS can install using `brew install AdoptOpenJDK/openjdk/adoptopenjdk8`.
+- [sbt](https://www.scala-sbt.org/1.x/docs/) is installed.
 
 ## Clone the "orm-examples" repository
 
@@ -121,6 +121,12 @@ $ git clone https://github.com/yugabyte/orm-examples.git && cd orm-examples/java
   ```
 
 ## Build the application
+
+- Create the `build.properties` file under the `project` directory and add the sbt version.
+
+```sh
+sbt.version=1.2.8
+```
 
 Build the REST API server using:
 
