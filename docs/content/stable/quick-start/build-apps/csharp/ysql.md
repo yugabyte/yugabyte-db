@@ -20,7 +20,12 @@ showAsideToc: true
       YSQL
     </a>
   </li>
-
+  <li>
+    <a href="../ysql-entity-framework/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - Entity Framework
+    </a>
+  </li>
   <li>
     <a href="{{< relref "./ycql.md" >}}" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
@@ -95,7 +100,7 @@ namespace Yugabyte_CSharp_Demo
                 empPrepCmd.Parameters["@EmployeeId"].Value = 1;
                 NpgsqlDataReader reader = empPrepCmd.ExecuteReader();
 
-                Console.WriteLine("Query returned:\nName\tAge\tLanguage"); 
+                Console.WriteLine("Query returned:\nName\tAge\tLanguage");
                 while (reader.Read())
                 {
                     Console.WriteLine("{0}\t{1}\t{2}", reader.GetString(0), reader.GetInt32(1), reader.GetString(2));
@@ -167,7 +172,7 @@ Next, copy the contents below to your `Program.cs` file, :
 ```csharp
 using System;
 using Npgsql;
- 
+
 namespace Yugabyte_CSharp_Demo
 {
    class Program
@@ -190,25 +195,25 @@ namespace Yugabyte_CSharp_Demo
            try
            {
                conn.Open();
- 
+
                NpgsqlCommand empDropCmd = new NpgsqlCommand("DROP TABLE if exists employee;", conn);
                empDropCmd.ExecuteNonQuery();
                Console.WriteLine("Dropped table Employee");
- 
+
                NpgsqlCommand empCreateCmd = new NpgsqlCommand("CREATE TABLE employee (id int PRIMARY KEY, name varchar, age int, language varchar);", conn);
                empCreateCmd.ExecuteNonQuery();
                Console.WriteLine("Created table Employee");
- 
+
                NpgsqlCommand empInsertCmd = new NpgsqlCommand("INSERT INTO employee (id, name, age, language) VALUES (1, 'John', 35, 'CSharp');", conn);
                int numRows = empInsertCmd.ExecuteNonQuery();
                Console.WriteLine("Inserted data (1, 'John', 35, 'CSharp + SSL')");
- 
+
                NpgsqlCommand empPrepCmd = new NpgsqlCommand("SELECT name, age, language FROM employee WHERE id = @EmployeeId", conn);
                empPrepCmd.Parameters.Add("@EmployeeId", NpgsqlTypes.NpgsqlDbType.Integer);
- 
+
                empPrepCmd.Parameters["@EmployeeId"].Value = 1;
                NpgsqlDataReader reader = empPrepCmd.ExecuteReader();
- 
+
                Console.WriteLine("Query returned:\nName\tAge\tLanguage");
                while (reader.Read())
                {
