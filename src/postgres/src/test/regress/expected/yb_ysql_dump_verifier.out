@@ -25,8 +25,13 @@
  public | tgroup_one_option_and_tgroup | table    | tablegroup_test_user
  public | tgroup_options               | table    | tablegroup_test_user
  public | tgroup_options_and_tgroup    | table    | tablegroup_test_user
+ public | th1                          | table    | yugabyte_test
+ public | th2                          | table    | yugabyte_test
+ public | th3                          | table    | yugabyte_test
+ public | tr1                          | table    | yugabyte_test
+ public | tr2                          | table    | yugabyte_test
  public | uaccount                     | table    | regress_rls_alice
-(25 rows)
+(30 rows)
 
        List of tablespaces
     Name    |  Owner   | Location 
