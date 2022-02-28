@@ -301,8 +301,8 @@ public class BackupsControllerTest extends FakeDBApplication {
 
   private Result deleteBackupYb(ObjectNode bodyJson, Users user) {
     String authToken = user == null ? defaultUser.createAuthToken() : user.createAuthToken();
-    String method = "DELETE";
-    String url = "/api/customers/" + defaultCustomer.uuid + "/delete_backups";
+    String method = "POST";
+    String url = "/api/customers/" + defaultCustomer.uuid + "/backups/delete";
     return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
   }
 

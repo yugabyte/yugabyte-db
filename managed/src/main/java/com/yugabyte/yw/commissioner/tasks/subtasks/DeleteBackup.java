@@ -58,7 +58,7 @@ public class DeleteBackup extends AbstractTaskBase {
               ? ImmutableList.of(backupParams)
               : backupParams.backupList;
       if (deleteAllBackups(backupList)) {
-        transitionState(backup, Backup.BackupState.Deleted);
+        backup.delete();
         return;
       }
     } catch (Exception ex) {

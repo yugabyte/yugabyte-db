@@ -10,7 +10,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
 import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TaskInfoManager;
-import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.forms.BackupRequestParams;
@@ -54,7 +53,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 import javax.inject.Inject;
 import org.apache.commons.collections.CollectionUtils;
 import org.slf4j.Logger;
@@ -543,13 +541,13 @@ public class BackupsController extends AuthenticatedController {
       UUID backupUUID = deleteBackupInfo.backupUUID;
       Backup backup = Backup.getOrBadRequest(customerUUID, backupUUID);
       if (backup == null) {
-        LOG.info("Can not delete {} backup as it is not present in the database.", backupUUID);
+        LOG.debug("Can not delete {} backup as it is not present in the database.", backupUUID);
       } else {
-        if (backup.state == BackupState.InProgress) {
-          LOG.info("Can not delete {} backup as it is still in progress", backupUUID);
-        } else if (backup.state == BackupState.DeleteInProgress
-            || backup.state == BackupState.QueuedForDeletion) {
-          LOG.info("Backup {} is already in queue for deletion", backupUUID);
+        if (backup.state.equals(BackupState.InProgress)) {
+          LOG.debug("Can not delete {} backup as it is still in progress", backupUUID);
+        } else if (backup.state.equals(BackupState.DeleteInProgress)
+            || backup.state.equals(BackupState.QueuedForDeletion)) {
+          LOG.debug("Backup {} is already in queue for deletion", backupUUID);
         } else {
           UUID storageConfigUUID = deleteBackupInfo.storageConfigUUID;
           if (storageConfigUUID == null) {

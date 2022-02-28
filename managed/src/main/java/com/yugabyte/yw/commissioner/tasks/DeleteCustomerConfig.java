@@ -97,7 +97,7 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
                   backup.transitionState(Backup.BackupState.FailedToDelete);
                 } finally {
                   if (backup.state != Backup.BackupState.FailedToDelete) {
-                    backup.transitionState(Backup.BackupState.Deleted);
+                    backup.delete();
                   }
                 }
               }
@@ -113,7 +113,7 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
                   backup.transitionState(Backup.BackupState.FailedToDelete);
                 } finally {
                   if (backup.state != Backup.BackupState.FailedToDelete) {
-                    backup.transitionState(Backup.BackupState.Deleted);
+                    backup.delete();
                   }
                 }
               }
@@ -129,7 +129,7 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
                   backup.transitionState(Backup.BackupState.FailedToDelete);
                 } finally {
                   if (backup.state != Backup.BackupState.FailedToDelete) {
-                    backup.transitionState(Backup.BackupState.Deleted);
+                    backup.delete();
                   }
                 }
               }

@@ -10,8 +10,8 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.models.Backup.BackupState.Completed;
-import static com.yugabyte.yw.models.Backup.BackupState.Deleted;
 import static com.yugabyte.yw.models.Backup.BackupState.FailedToDelete;
 import static com.yugabyte.yw.models.Backup.BackupState.InProgress;
 import static com.yugabyte.yw.models.Backup.BackupState.Failed;
@@ -22,6 +22,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
+import com.yugabyte.yw.common.AssertHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
@@ -33,6 +34,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
+import play.mvc.Result;
 
 @RunWith(MockitoJUnitRunner.class)
 public class DeleteBackupTest extends FakeDBApplication {
@@ -83,8 +85,10 @@ public class DeleteBackupTest extends FakeDBApplication {
     deleteBackupTask.run();
 
     verify(mockTableManager, times(1)).deleteBackup(any());
-    Backup backup = Backup.get(params.customerUUID, params.backupUUID);
-    assertEquals(Deleted, backup.state);
+    Result result =
+        assertPlatformException(
+            () -> Backup.getOrBadRequest(params.customerUUID, params.backupUUID));
+    AssertHelper.assertBadRequest(result, "Invalid customer or backup UUID");
   }
 
   @Test
@@ -104,8 +108,10 @@ public class DeleteBackupTest extends FakeDBApplication {
     deleteBackupTask.run();
 
     verify(mockTableManager, times(1)).deleteBackup(any());
-    Backup backup = Backup.get(params.customerUUID, params.backupUUID);
-    assertEquals(Deleted, backup.state);
+    Result result =
+        assertPlatformException(
+            () -> Backup.getOrBadRequest(params.customerUUID, params.backupUUID));
+    AssertHelper.assertBadRequest(result, "Invalid customer or backup UUID");
   }
 
   @Test
