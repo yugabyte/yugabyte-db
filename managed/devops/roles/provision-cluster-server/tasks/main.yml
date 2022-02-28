@@ -10,85 +10,46 @@
   assert:
     that:
       - cloud_type is defined
-      - use_chrony is defined
       - mount_points is defined
       - systemd_option is defined
       - pg_max_mem_mb is defined
-
-- name: Do we need chrony?
-  set_fact:
-    should_setup_chrony: "{{ ((cloud_type == 'aws' or cloud_type == 'gcp') and \
-                          (use_chrony or \
-                          ((ansible_os_family == 'RedHat') and \
-                          (ansible_distribution_major_version > '7')))) | bool }}"
-    ntp_service_name: "{{ 'ntpd' if ((ansible_distribution != 'Debian') and \
-                      (ansible_distribution != 'Ubuntu')) else 'ntp' }}"
-  tags: yb-prebuilt-ami
+      - use_chrony is defined
 
 - block:
-  - name: Install NTP
-    become: yes
-    become_method: sudo
-    module_defaults:
-      yum:
-        lock_timeout: 600
-    package:
-      name: ntp
-      state: latest
-
-  - block:
-    - name: Provision | Stop NTP service
-      service:
-        enabled: yes
-        name: "{{ ntp_service_name }}"
-        state: stopped
-
-    - name: Force date/time synchronization with NTP
-      become: yes
-      become_method: sudo
-      shell: ntpd -gq
-
-    when: ansible_distribution != "Debian"
-
-  - name: Provision | Restart NTP service
-    service:
-      enabled: yes
-      name: "{{ ntp_service_name }}"
-      state: restarted
-
-  when: "{{ not should_setup_chrony and not air_gap and cloud_type != 'onprem' }}"
-  tags: yb-prebuilt-ami
-
-- block:
-  - name: Uninstall NTP if available
-    become: yes
-    become_method: sudo
-    module_defaults:
-      yum:
-        lock_timeout: 600
-    package:
-      name: ntp
-      state: absent
-  when: should_setup_chrony and not air_gap
-  tags: yb-prebuilt-ami
-
-- block:
-  - name: Install and Configure chrony
+  - name: Install and configure chrony with given server list
     include_role:
       name: ansible-chrony
     vars:
-      #  per AWS Time Sync docs: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/set-time.html
-      #  per GCP docs:
-      #     https://cloud.google.com/container-optimized-os/docs/how-to/create-configure-instance
-      chrony_server: "{% if cloud_type == 'aws' %}169.254.169.123 \
-                      {% else %}metadata.google.internal \
-                      {% endif %} prefer iburst minpoll 4 maxpoll 4"
-
+      chrony_server: # Necessary to remove default
+      chrony_server_list: "{{ ntp_servers }}"
+    when: ntp_servers is defined
+  - name: Install and configure chrony to cloud defaults
+    block:
+    - name: Set up default GCP NTP configuration
+      include_role:
+        name: ansible-chrony
+      vars:
+        chrony_server: "metadata.google.internal iburst minpoll 4 maxpoll 4"
+      when: "{{ cloud_type == 'gcp' }}"
+    - name: Set up default AWS NTP configuration
+      include_role:
+        name: ansible-chrony
+      vars:
+        chrony_server: "169.254.169.123 iburst minpoll 4 maxpoll 4"
+      when: "{{ cloud_type == 'aws' }}"
+    - name: Set up default Azure NTP configuratoin
+      include_role:
+        name: ansible-chrony
+      vars:
+        chrony_server: # Necessary to remove default
+        chrony_azure_refclock: true
+      when: "{{ cloud_type == 'azu' }}"
+    when: ntp_servers is not defined
   - name: Force date/time synchronization with chrony
     become: yes
     become_method: sudo
     shell: chronyc makestep
-  when: should_setup_chrony
+  when: use_chrony
   tags: yb-prebuilt-ami
 
 - name: Provision | Set swappiness off
