@@ -6,7 +6,7 @@ image: /images/section_icons/secure/create-roles.png
 menu:
   latest:
     identifier: explore-ysql-postgresql-compatibility
-    parent: explore-ysql-postgresql-compatibility
+    parent: explore-ysql-language-features
     weight: 70
 isTocNested: true
 showAsideToc: true
