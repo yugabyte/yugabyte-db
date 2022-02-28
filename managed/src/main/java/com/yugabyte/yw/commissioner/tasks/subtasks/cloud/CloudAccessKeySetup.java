@@ -66,6 +66,8 @@ public class CloudAccessKeySetup extends CloudTaskBase {
           taskParams().sshPort,
           taskParams().airGapInstall,
           false,
+          taskParams().setUpChrony,
+          taskParams().ntpServers,
           taskParams().overrideKeyValidate);
     } else {
       accessManager.addKey(
@@ -75,7 +77,9 @@ public class CloudAccessKeySetup extends CloudTaskBase {
           taskParams().sshUser,
           taskParams().sshPort,
           taskParams().airGapInstall,
-          false);
+          false,
+          taskParams().setUpChrony,
+          taskParams().ntpServers);
     }
   }
 }

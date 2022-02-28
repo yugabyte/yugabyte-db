@@ -3324,6 +3324,12 @@
         "nodeExporterUser" : {
           "type" : "string"
         },
+        "ntpServers" : {
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
         "passwordlessSudoAccess" : {
           "type" : "boolean"
         },
@@ -3335,6 +3341,12 @@
         },
         "publicKey" : {
           "type" : "string"
+        },
+        "setUpChrony" : {
+          "type" : "boolean"
+        },
+        "showSetUpChrony" : {
+          "type" : "boolean"
         },
         "skipProvisioning" : {
           "type" : "boolean"
@@ -4414,6 +4426,13 @@
           "description" : "Provider name",
           "type" : "string"
         },
+        "ntpServers" : {
+          "description" : "Transient property - only present in mutate API request",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
         "overrideKeyValidate" : {
           "description" : "Transient property - only present in mutate API request",
           "type" : "boolean"
@@ -4423,6 +4442,10 @@
             "$ref" : "#/definitions/Region"
           },
           "type" : "array"
+        },
+        "setUpChrony" : {
+          "description" : "Transient property - only present in mutate API request",
+          "type" : "boolean"
         },
         "sshPort" : {
           "description" : "Transient property - only present in mutate API request",

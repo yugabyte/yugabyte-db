@@ -454,6 +454,10 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
                                  help="Flag to set if host OS needs python installed for Ansible.")
         self.parser.add_argument("--pg_max_mem_mb", type=int, default=0,
                                  help="Max memory for postgress process.")
+        self.parser.add_argument("--use_chrony", action="store_true",
+                                 help="Whether to set up chrony for NTP synchronization.")
+        self.parser.add_argument("--ntp_server", required=False, action="append",
+                                 help="NTP server to connect to.")
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -502,6 +506,9 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
             self.extra_vars.update({"remote_package_path": args.remote_package_path})
         if args.pg_max_mem_mb:
             self.extra_vars.update({"pg_max_mem_mb": args.pg_max_mem_mb})
+        if args.ntp_server:
+            self.extra_vars.update({"ntp_servers": args.ntp_server})
+        self.extra_vars["use_chrony"] = args.use_chrony
         self.extra_vars.update({"systemd_option": args.systemd_services})
         self.extra_vars.update({"instance_type": args.instance_type})
         self.extra_vars["device_names"] = self.cloud.get_device_names(args)
