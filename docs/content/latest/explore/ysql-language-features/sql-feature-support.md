@@ -121,3 +121,52 @@ Statement | Supported |  Details
  `LIMIT` | ✗ | 
  `LIMIT` with `OFFSET` | ✗ | 
  `RETURNING` | ✗ | 
+
+### Table expressions
+
+ Component | Supported |  Details
+-----------|-----------|---------
+ Table and View references | ✓ | 
+ `AS` in table expressions | ✓ | 
+ `JOIN` (`INNER`, `LEFT`, `RIGHT`, `FULL`, `CROSS`) |✓ |  
+ Sub-queries as table expressions | ✓ | 
+ Table generator functions | ✓ | 
+ `WITH ORDINALITY` | ✓ | 
+
+### Scalar expressions and Boolean formulas
+
+ Component | Supported |  Details
+-----------|-----------|---------
+ Common functions | ✓ | 
+ Common operators | ✓ | 
+ `IF`/`CASE`/`NULLIF` | ✓ |
+ `COALESCE`/`IFNULL` | ✓ | 
+ `AND`/`OR` | ✓ | 
+ `LIKE`/`ILIKE`  | ✓ |
+ `SIMILAR TO` | ✓ |
+ Matching using POSIX regular expressions  | ✓ |
+ `EXISTS` | ✓ |
+ Scalar subqueries | ✓ |
+ Bitwise arithmetic | ✓ |
+ `COLLATE`| ✓ | 
+ Column ordinal references | ✓ |
+ Type annotations | ✓ |
+
+### Miscellaneous
+
+ Component | Supported | Details
+-----------|-----------|---------
+ Column families | ✓ | 
+ Computed columns (stored and virtual) | ✓ |
+ `ON UPDATE` expressions | ✓ |
+ Multi-region capabilities | ✓ | 
+ System catalog schemas | ✓ | 
+ Sequences |  ✓ | 
+ Identity columns | ✓ |
+ Views | ✓ | 
+ Materialized views | ✓ | 
+ Window functions | ✓ | 
+ Common table expressions | ✓|
+ Stored procedures | ✓ | 
+ Cursors | ✓ | 
+ Triggers | ✓ | 
