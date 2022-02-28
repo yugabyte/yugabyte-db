@@ -1220,26 +1220,6 @@
       "required" : [ "dateRangeEnd", "dateRangeStart", "keyspaceList", "scheduleUUIDList", "states", "storageConfigUUIDList", "universeNameList", "universeUUIDList" ],
       "type" : "object"
     },
-    "BackupData" : {
-      "description" : "Backup Info for doing restore operation",
-      "properties" : {
-        "backupUUID" : {
-          "description" : "Backup UUID",
-          "format" : "uuid",
-          "type" : "string"
-        },
-        "sse" : {
-          "description" : "Is SSE",
-          "type" : "boolean"
-        },
-        "storageConfigUUID" : {
-          "description" : "Storage config uuid",
-          "format" : "uuid",
-          "type" : "string"
-        }
-      },
-      "type" : "object"
-    },
     "BackupPagedApiQuery" : {
       "properties" : {
         "direction" : {
@@ -1523,11 +1503,6 @@
           "description" : "Is SSE",
           "type" : "boolean"
         },
-        "storageConfigUUID" : {
-          "description" : "Storage config uuid",
-          "format" : "uuid",
-          "type" : "string"
-        },
         "storageLocation" : {
           "description" : "Storage location",
           "type" : "string"
@@ -1535,14 +1510,6 @@
         "tableNameList" : {
           "description" : "Tables",
           "items" : {
-            "type" : "string"
-          },
-          "type" : "array"
-        },
-        "tableUUIDList" : {
-          "description" : "Table UUIDs",
-          "items" : {
-            "format" : "uuid",
             "type" : "string"
           },
           "type" : "array"
@@ -1564,6 +1531,11 @@
             "$ref" : "#/definitions/BackupTableParams"
           },
           "type" : "array"
+        },
+        "backupSizeInBytes" : {
+          "description" : "Backup size in bytes",
+          "format" : "int64",
+          "type" : "integer"
         },
         "backupType" : {
           "description" : "Backup type",
@@ -3251,6 +3223,11 @@
           },
           "type" : "array"
         },
+        "backupSizeInBytes" : {
+          "description" : "Backup size in bytes",
+          "format" : "int64",
+          "type" : "integer"
+        },
         "backupType" : {
           "description" : "Backup type",
           "enum" : [ "YQL_TABLE_TYPE", "REDIS_TABLE_TYPE", "PGSQL_TABLE_TYPE", "TRANSACTION_STATUS_TABLE_TYPE" ],
@@ -4221,10 +4198,6 @@
           "enum" : [ "RESTORE", "RESTORE_KEYS" ],
           "type" : "string"
         },
-        "backupData" : {
-          "$ref" : "#/definitions/BackupData",
-          "description" : "Data of the backup to be restored"
-        },
         "backupStorageInfoList" : {
           "description" : "Backup's storage info to restore",
           "items" : {
@@ -4321,6 +4294,11 @@
           },
           "readOnly" : true,
           "type" : "array"
+        },
+        "storageConfigUUID" : {
+          "description" : "Storage config uuid",
+          "format" : "uuid",
+          "type" : "string"
         },
         "targetXClusterConfigs" : {
           "description" : "The target universe's xcluster replication relationships",
@@ -7108,8 +7086,11 @@
           "type" : "string"
         } ],
         "responses" : {
-          "default" : {
-            "description" : "successful operation"
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
           }
         },
         "security" : [ {
@@ -8195,24 +8176,6 @@
         "tags" : [ "Node instances" ]
       }
     },
-    "/api/v1/customers/{cUUID}/password_policy" : {
-      "get" : {
-        "operationId" : "getPasswordPolicy",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "tags" : [ "Session management" ]
-      }
-    },
     "/api/v1/customers/{cUUID}/providers" : {
       "get" : {
         "description" : "",
@@ -8646,8 +8609,11 @@
           "type" : "string"
         } ],
         "responses" : {
-          "default" : {
-            "description" : "successful operation"
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
           }
         },
         "security" : [ {
@@ -8745,8 +8711,11 @@
           "type" : "string"
         } ],
         "responses" : {
-          "default" : {
-            "description" : "successful operation"
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
           }
         },
         "security" : [ {
@@ -9314,8 +9283,11 @@
           "type" : "string"
         } ],
         "responses" : {
-          "default" : {
-            "description" : "successful operation"
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
           }
         },
         "security" : [ {
@@ -9347,8 +9319,11 @@
         } ],
         "produces" : [ "text/plain" ],
         "responses" : {
-          "default" : {
-            "description" : "successful operation"
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "string"
+            }
           }
         },
         "security" : [ {
@@ -9388,8 +9363,11 @@
           }
         } ],
         "responses" : {
-          "default" : {
-            "description" : "successful operation"
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
           }
         },
         "security" : [ {
@@ -10883,33 +10861,6 @@
         "tags" : [ "Universe database management" ]
       }
     },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/schedule_script" : {
-      "post" : {
-        "operationId" : "externalScriptSchedule",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "tags" : [ "ScheduleExternalScript" ]
-      }
-    },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/set_key" : {
       "post" : {
         "description" : "",
@@ -11069,33 +11020,6 @@
         } ],
         "summary" : "Get a universe's status",
         "tags" : [ "Universe information" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/stop_scheduled_script" : {
-      "put" : {
-        "operationId" : "stopScheduledScript",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "tags" : [ "ScheduleExternalScript" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/support_bundle" : {
@@ -11262,8 +11186,11 @@
         } ],
         "produces" : [ "application/x-compressed" ],
         "responses" : {
-          "default" : {
-            "description" : "successful operation"
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/SupportBundle"
+            }
           }
         },
         "security" : [ {
@@ -11688,33 +11615,6 @@
         "tags" : [ "Universe database management" ]
       }
     },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/update_scheduled_script" : {
-      "put" : {
-        "operationId" : "updateScheduledScript",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "tags" : [ "ScheduleExternalScript" ]
-      }
-    },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/yqlservers" : {
       "get" : {
         "description" : "",
@@ -11803,8 +11703,11 @@
         } ],
         "produces" : [ "application/x-compressed" ],
         "responses" : {
-          "default" : {
-            "description" : "successful operation"
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "string"
+            }
           }
         },
         "security" : [ {
@@ -12431,8 +12334,11 @@
         } ],
         "produces" : [ "text/plain" ],
         "responses" : {
-          "default" : {
-            "description" : "successful operation"
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "string"
+            }
           }
         },
         "summary" : "getFilteredLogs",
@@ -12725,8 +12631,6 @@
     "name" : "Runtime configuration"
   }, {
     "name" : "Schedule management"
-  }, {
-    "name" : "ScheduleExternalScript"
   }, {
     "name" : "Session management"
   }, {
