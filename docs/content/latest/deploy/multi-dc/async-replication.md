@@ -265,7 +265,13 @@ CREATE TABLE transactions_us
     ```
 3. Observe replication setup(`xClusterSetup1`) in Platform UI (At Replication tab in source universe and target universe)
 
+<<<<<<< HEAD
 ## Bootstrapping a sink cluster
+=======
+## Verifying Replication
+You can verify replication by stopping the workload and then using the `COUNT(*)` function on the yugabyte-target to yugabyte-source match.
+### Unidirectional Replication
+>>>>>>> d2cb28493b (Added removed/missing line)
 
 Documentation coming soon. More details in [#6870](https://github.com/yugabyte/yugabyte-db/issues/6870).
 
