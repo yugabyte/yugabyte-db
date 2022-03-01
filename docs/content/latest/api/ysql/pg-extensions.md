@@ -24,7 +24,17 @@ For information about using a specific extension, see the documentation link in 
 [fuzzystrmatch](https://www.postgresql.org/docs/current/fuzzystrmatch.html)  | Bundled | The fuzzystrmatch module provides several functions to determine similarities and distance between strings.
 [orafce](https://github.com/orafce/orafce)| Bundled |The orafce extension provides compatibility with Oracle functions and packages that are either missing or implemented differently in YugabyteDB and PostgreSQL. This compatibility layer can help you port your Oracle applications to YugabyteDB.
 [pgcrypto](https://www.postgresql.org/docs/current/pgcrypto.html)| Bundled |The pgcrypto extension provides various cryptographic functions.
-
+pg_stat_statements| |
+pg_hint_plan| |
+pgaudit| |
+pg_stat_monitor| |
+spi module| |
+uuid_ossp| |
+hstore| |
+pg_trgm| |
+postgres_fdw| |
+file_fdw| |
+sslinfo| |
 
 ## Using PostgreSQL extensions
 You can install only the extensions that are supported by YugabyteDB.
