@@ -1,3 +1,17 @@
+---
+title: Debezium connector for YugabyteDB
+headerTitle: Debezium connector for YugabyteDB
+linkTitle: Debezium connector YugabyteDB
+description: Debezium is an open source distributed platform used to capture the changes in a database.
+menu:
+  latest:
+    identifier: debezium-connector-yugabytedb
+    parent: cdc
+    weight: 580
+isTocNested: true
+showAsideToc: true
+---
+
 # Debezium connector for YugabyteDB
 The Debezium connector for YugabyteDB captures row-level changes in the schemas of a YugabyteDB database.
 
