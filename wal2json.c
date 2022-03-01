@@ -2007,6 +2007,15 @@ pg_decode_write_tuple(LogicalDecodingContext *ctx, Relation relation, HeapTuple 
 			ReleaseSysCache(type_tuple);
 		}
 
+		/*
+		 * Print type oid for columns.
+		 */
+		if (data->include_type_oids)
+		{
+			appendStringInfoString(ctx->out, ",\"typeoid\":");
+			appendStringInfo(ctx->out, "%d", attr->atttypid);
+		}
+
 		if (kind != PGOUTPUTJSON_PK)
 		{
 			appendStringInfoString(ctx->out, ",\"value\":");

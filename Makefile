@@ -3,7 +3,8 @@ MODULES = wal2json
 REGRESS = cmdline insert1 update1 update2 update3 update4 delete1 delete2 \
 		  delete3 delete4 savepoint specialvalue toast bytea message typmod \
 		  filtertable selecttable include_timestamp include_lsn include_xids \
-		  include_domain_data_type truncate actions position default pk rename_column
+		  include_domain_data_type truncate type_oid actions position default \
+		  pk rename_column
 
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
