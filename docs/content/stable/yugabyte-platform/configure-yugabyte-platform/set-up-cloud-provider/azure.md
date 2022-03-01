@@ -128,11 +128,11 @@ To set a private DNS zone, do the following:
 
 1. Add a link to the virtual network that you want it to be connected to. (For more details, refer to [this Microsoft document](https://docs.microsoft.com/en-us/azure/dns/private-dns-getstarted-portal).)
 
-1. To use the Private DNS Zone in Platform, add either the Resource ID OR the name of the DNS zone to the “Private DNS Zone” field.
+1. To use the Private DNS Zone in Yugabyte Platform, add either the Resource ID or the name of the DNS zone to the Private DNS Zone field.
 
-    <br/><br/>
+    <br/>
 
-    **Note** that if you enter the Resource ID, Platform infers the resource group from there. If you provide only the name, then Platform assumes that the resource group is the same as the group used in the provider.
+    If the private DNS zone is defined by an ID, Yugabyte Platform will use it together with the default subscription ID and the resource group. If the private DNS zone is defined by a full URL that contains both the subscription ID and resource group, then these two values will be used instead of default values.
 
 #### Private DNS zone examples
 
@@ -167,8 +167,11 @@ You can use shared image galleries as an alternative to using Marketplace Image 
 To set up a shared gallery image on Azure:
 
 1. On the Azure portal, create a shared image gallery.
+
 1. Create an image definition in that gallery.
+
 1. Create a VM that you want to take a snapshot of.
+
 1. Go to the VM and click “Capture” on the top menu bar. Fill in the information that’s asked for and choose the gallery and image definition you created in the previous steps.
 
     ![description](/images/yb-platform/install/azure/shared-gallery-capture.png)
@@ -178,3 +181,5 @@ To set up a shared gallery image on Azure:
     ![description](/images/yb-platform/install/azure/shared-gallery-replication.png)
 
 1. To use the image in Platform, put the image version's resource ID into the Marketplace Image URN/Shared Gallery Image ID field of the Region Info popup.
+
+    <br>The gallery image ID could be defined by a full URL containing a subscription ID, a resource group name, and the resource name itself. If the subscription ID or the resource group is different from the default values, Yugabyte Platform will use them instead.
