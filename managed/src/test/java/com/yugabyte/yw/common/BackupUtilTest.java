@@ -11,7 +11,7 @@ import junitparams.Parameters;
 public class BackupUtilTest extends FakeDBApplication {
 
   @Test(expected = Test.None.class)
-  @Parameters({"0 */2 * * *", "0 */3 * * *", "0 */1 * * *", "5 */1 * * *", "* * * * 2"})
+  @Parameters({"0 */2 * * *", "0 */3 * * *", "0 */1 * * *", "5 */1 * * *", "1 * * * 2"})
   public void testBackupCronExpressionValid(String cronExpression) {
     BackupUtil.validateBackupCronExpression(cronExpression);
   }
