@@ -1464,6 +1464,9 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "sse" : {
+          "type" : "boolean"
+        },
         "state" : {
           "enum" : [ "InProgress", "Completed", "Failed", "Deleted", "Skipped", "FailedToDelete", "Stopped", "DeleteInProgress", "QueuedForDeletion" ],
           "type" : "string"
@@ -1484,7 +1487,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "backupType", "backupUUID", "createTime", "customerUUID", "expiryTime", "isStorageConfigPresent", "isUniversePresent", "onDemand", "responseList", "scheduleUUID", "state", "storageConfigUUID", "universeName", "universeUUID", "updateTime" ],
+      "required" : [ "backupType", "backupUUID", "createTime", "customerUUID", "expiryTime", "isStorageConfigPresent", "isUniversePresent", "onDemand", "responseList", "scheduleUUID", "sse", "state", "storageConfigUUID", "universeName", "universeUUID", "updateTime" ],
       "type" : "object"
     },
     "BackupStorageInfo" : {
