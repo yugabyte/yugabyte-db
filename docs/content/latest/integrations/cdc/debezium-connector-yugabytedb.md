@@ -92,7 +92,7 @@ Now suppose that the tables are not part of a specific schema but were created i
   * `dbserver.public.customers`
   * `dbserver.public.orders`
 
-The connector applies similar naming conventions to label its [transaction metadata topics]().
+The connector applies similar naming conventions to label its [transaction metadata topics](#transaction-metadata).
 
 If the default topic name do not meet your requirements, you can configure custom topic names. To configure custom topic names, you specify regular expressions in the logical topic routing SMT. For more information about using the logical topic routing SMT to customize topic naming, see Debezium's documentation on [Topic routing](https://debezium.io/documentation/reference/stable/transformations/topic-routing.html#topic-routing).
 
