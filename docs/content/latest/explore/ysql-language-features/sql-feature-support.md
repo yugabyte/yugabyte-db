@@ -56,6 +56,8 @@ Altering tables | ✓ | [`ALTER TABLE`  documentation](https://docs.yugabyte.com
  `INT4RANGE`, `INT8RANGE`, `NUMRANGE`, `TSRANGE`, `TSTZRANGE`, `DATERANGE` | ✓ | [Range data types documentation](https://docs.yugabyte.com/latest/api/ysql/datatypes/type_range/)
  `UUID` | ✓ | [UUID documentation](https://docs.yugabyte.com/latest/api/ysql/datatypes/type_uuid/)
  `XML`| ✗ | 
+ `TSVECTOR` | ✓ |
+ UDT | ✓ |
  
 ### Indexes
 
@@ -71,7 +73,9 @@ Altering tables | ✓ | [`ALTER TABLE`  documentation](https://docs.yugabyte.com
  Multiple indexes per query | ✗ |
  Full-text indexes | ✗ | 
  Prefix indexes | ✗ | Implement using [Expression indexes](https://docs.yugabyte.com/latest/explore/indexes-constraints/expression-index-ysql/)
- Hash indexes | ✗ | 
+ Hash indexes | ✓ | 
+ GiST indexes | ✗ | 
+ BRIN indexes | ✗ | 
  
 ### Constraints
 
@@ -104,12 +108,12 @@ Altering tables | ✓ | [`ALTER TABLE`  documentation](https://docs.yugabyte.com
  Object ownership | ✓ | 
  Privileges | ✓ | 
  Default privileges | ✗ |
+ RLS/CLS | |
  
 ### Advanced statements (other than common statementes)
 
 Statement | Supported |  Details
 -----------|-----------|---------
- `UPSERT` | ✗ | 
  `SELECT INTO` | ✗|
  `SELECT FOR UPDATE` | ✗ | 
  `EXPLAIN` | ✓ | [`EXPLAIN` documentation](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/perf_explain)
