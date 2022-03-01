@@ -263,7 +263,7 @@ List of relations
 Note the 4 tables and 3 sequences in the list above.
 
 ```sql
-yugabyte=# SELECT count(*) FROM users;
+ysql_ebeans=# SELECT count(*) FROM users;
 ```
 
 ```output
@@ -274,7 +274,7 @@ yugabyte=# SELECT count(*) FROM users;
 ```
 
 ```sql
-yugabyte=# SELECT count(*) FROM products;
+ysql_ebeans=# SELECT count(*) FROM products;
 ```
 
 ```output
@@ -285,7 +285,7 @@ yugabyte=# SELECT count(*) FROM products;
 ```
 
 ```sql
-yugabyte=# SELECT count(*) FROM orders;
+ysql_ebeans=# SELECT count(*) FROM orders;
 ```
 
 ```output
@@ -296,7 +296,7 @@ yugabyte=# SELECT count(*) FROM orders;
 ```
 
 ```sql
-yugabyte=# SELECT * FROM orderline;
+ysql_ebeans=# SELECT * FROM orderline;
 ```
 
 ```output
@@ -375,10 +375,10 @@ $ curl http://localhost:8080/orders
       "orderTime": "2019-05-10T04:26:54.590+0000",
       "orderId": "999ae272-f2f4-46a1-bede-5ab765bb27fe",
       "user": {
-        "userId": 2,
-        "firstName": "Tom",
-        "lastName": "Stewart",
-        "email": "tstewart@example.com"
+        "userId": 1,
+        "firstName": "John",
+        "lastName": "Smith",
+        "email": "jsmith@example.com"
       },
       "userId": null,
       "orderTotal": 25,
@@ -388,10 +388,10 @@ $ curl http://localhost:8080/orders
       "orderTime": "2019-05-10T04:26:48.074+0000",
       "orderId": "1598c8d4-1857-4725-a9ab-14deb089ab4e",
       "user": {
-        "userId": 2,
-        "firstName": "Tom",
-        "lastName": "Stewart",
-        "email": "tstewart@example.com"
+        "userId": 1,
+        "firstName": "John",
+        "lastName": "Smith",
+        "email": "jsmith@example.com"
       },
       "userId": null,
       "orderTotal": 15,
