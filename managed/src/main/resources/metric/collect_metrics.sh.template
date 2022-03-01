@@ -69,6 +69,7 @@ YSQL_SERVER_HTTP_ENDPOINT="{{NODE_PRIVATE_IP}}:{{YSQL_SERVER_HTTP_PORT}}"
 YSQLSH_CMD_TEMPLATE="{{YSQLSH_CMD_TEMPLATE}}"
 MASTER_INDEX="{{MASTER_INDEX}}"
 TSERVER_INDEX="{{TSERVER_INDEX}}"
+TEST_READ_WRITE="{{TEST_READ_WRITE}}"
 
 metrics=""
 
@@ -228,6 +229,7 @@ ysql_connect()
 
 ysql_write_read()
 {
+  [[ ! "${TEST_READ_WRITE,,}" == "true" ]] && { echo "Read Write test is disabled"; return 1; }
   [[ -z "$YSQLSH_CMD_TEMPLATE" ]] && { echo "YSQL is disabled"; return 1; }
   local tserver_pid=$(get_tserver_pid)
   [[ -z "$tserver_pid" ]] && { echo "TServer is not running"; return 1; }

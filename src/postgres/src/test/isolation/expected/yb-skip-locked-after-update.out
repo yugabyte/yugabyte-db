@@ -51,7 +51,7 @@ id             data           status
 2              bar            NEW
 step s1b: UPDATE queue set status='OLD' WHERE id=1;
 step s1c: COMMIT;
-step s2_sleep: SELECT pg_sleep(5);
+step s2_sleep: SELECT pg_sleep(1);
 pg_sleep
 
 

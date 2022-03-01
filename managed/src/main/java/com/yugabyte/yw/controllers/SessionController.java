@@ -228,7 +228,7 @@ public class SessionController extends AbstractPlatformController {
     }
   }
 
-  @ApiOperation(value = "getFilteredLogs", produces = "text/plain")
+  @ApiOperation(value = "getFilteredLogs", produces = "text/plain", response = String.class)
   @With(TokenAuthenticator.class)
   public Result getFilteredLogs(Integer maxLines, String universeName, String queryRegex) {
     LOG.debug(
@@ -372,7 +372,7 @@ public class SessionController extends AbstractPlatformController {
     if (environment.isDev()) {
       return redirect("http://localhost:3000/");
     } else {
-      return redirect("/");
+      return redirect(appConfig.getString("yb.url", "/"));
     }
   }
 
@@ -501,6 +501,7 @@ public class SessionController extends AbstractPlatformController {
     }
   }
 
+  @ApiOperation(value = "UI_ONLY", hidden = true)
   public Result getPasswordPolicy(UUID customerUUID) {
     PasswordPolicyFormData validPolicy = passwordPolicyService.getPasswordPolicyData(customerUUID);
     if (validPolicy != null) {

@@ -8,19 +8,21 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.SupportBundleUtil;
+import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.SupportBundleFormData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.SupportBundle;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.SupportBundle.SupportBundleStatusType;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Path;
+import java.util.List;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
@@ -76,9 +78,10 @@ public class SupportBundleController extends AuthenticatedController {
 
   @ApiOperation(
       value = "Download support bundle",
-      nickname = "getSupportBundle",
+      nickname = "downloadSupportBundle",
+      response = SupportBundle.class,
       produces = "application/x-compressed")
-  public Result get(UUID customerUUID, UUID universeUUID, UUID bundleUUID) {
+  public Result download(UUID customerUUID, UUID universeUUID, UUID bundleUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
     SupportBundle bundle = SupportBundle.getOrBadRequest(bundleUUID);
@@ -93,5 +96,42 @@ public class SupportBundleController extends AuthenticatedController {
             "Content-Disposition",
             "attachment; filename=" + SupportBundle.get(bundleUUID).getFileName());
     return ok(is).as("application/x-compressed");
+  }
+
+  @ApiOperation(
+      value = "List all support bundles from a universe",
+      response = SupportBundle.class,
+      responseContainer = "List",
+      nickname = "listSupportBundle")
+  public Result list(UUID customerUUID, UUID universeUUID) {
+    List<SupportBundle> supportBundles = SupportBundle.getAll(universeUUID);
+    return PlatformResults.withData(supportBundles);
+  }
+
+  @ApiOperation(
+      value = "Get a support bundle from a universe",
+      response = SupportBundle.class,
+      nickname = "getSupportBundle")
+  public Result get(UUID customerUUID, UUID universeUUID, UUID supportBundleUUID) {
+    SupportBundle supportBundle = SupportBundle.getOrBadRequest(supportBundleUUID);
+    return PlatformResults.withData(supportBundle);
+  }
+
+  @ApiOperation(
+      value = "Delete a support bundle",
+      response = YBPSuccess.class,
+      nickname = "deleteSupportBundle")
+  public Result delete(UUID customerUUID, UUID universeUUID, UUID bundleUUID) {
+    SupportBundle supportBundle = SupportBundle.getOrBadRequest(bundleUUID);
+
+    // Deletes row from the support_bundle db table
+    SupportBundle.delete(bundleUUID);
+
+    // Delete the actual archive file
+    SupportBundleUtil.deleteFile(supportBundle.getPathObject());
+
+    auditService().createAuditEntry(ctx(), request());
+    log.info("Successfully deleted the support bundle: " + bundleUUID.toString());
+    return YBPSuccess.empty();
   }
 }

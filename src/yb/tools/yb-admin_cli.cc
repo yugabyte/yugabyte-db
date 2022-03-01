@@ -178,7 +178,7 @@ Result<pair<int, bool>> GetTimeoutAndAddIndexesFlag(
   return std::make_pair(temp_pair.first, temp_pair.second.Test(AddIndexes::ADD_INDEXES));
 }
 
-YB_DEFINE_ENUM(ListTabletsFlags, (JSON));
+YB_DEFINE_ENUM(ListTabletsFlags, (JSON)(INCLUDE_FOLLOWERS));
 
 } // namespace
 
@@ -375,7 +375,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
 
   Register(
       "list_tablets",
-      " <table> [max_tablets] (default 10, set 0 for max) [JSON]",
+      " <table> [max_tablets] (default 10, set 0 for max) [JSON] [include_followers]",
       [client](const CLIArguments& args) -> Status {
         std::pair<int, EnumBitSet<ListTabletsFlags>> arguments;
         const auto table_name  = VERIFY_RESULT(ResolveSingleTableName(
@@ -386,7 +386,8 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
             }));
         RETURN_NOT_OK_PREPEND(
             client->ListTablets(
-                table_name, arguments.first, arguments.second.Test(ListTabletsFlags::JSON)),
+                table_name, arguments.first, arguments.second.Test(ListTabletsFlags::JSON),
+                arguments.second.Test(ListTabletsFlags::INCLUDE_FOLLOWERS)),
             Format("Unable to list tablets of table $0", table_name));
         return Status::OK();
       });

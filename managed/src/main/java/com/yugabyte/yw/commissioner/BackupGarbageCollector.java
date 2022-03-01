@@ -13,13 +13,15 @@ import com.yugabyte.yw.common.GCPUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableManagerYb;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Backup.BackupState;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -29,7 +31,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 import scala.concurrent.ExecutionContext;
-import scala.concurrent.duration.Duration;
 
 @Singleton
 @Slf4j
@@ -39,11 +40,13 @@ public class BackupGarbageCollector {
 
   private final ExecutionContext executionContext;
 
-  private final int YB_SET_BACKUP_GARBAGE_COLLECTOR_INTERVAL = 15;
-
   private final TableManagerYb tableManagerYb;
 
   private final CustomerConfigService customerConfigService;
+
+  private final RuntimeConfigFactory runtimeConfigFactory;
+
+  private static final String YB_BACKUP_GARBAGE_COLLECTOR_INTERVAL = "yb.backupGC.gc_run_interval";
 
   private AtomicBoolean running = new AtomicBoolean(false);
 
@@ -57,21 +60,26 @@ public class BackupGarbageCollector {
       ExecutionContext executionContext,
       ActorSystem actorSystem,
       CustomerConfigService customerConfigService,
+      RuntimeConfigFactory runtimeConfigFactory,
       TableManagerYb tableManagerYb) {
     this.actorSystem = actorSystem;
     this.executionContext = executionContext;
     this.customerConfigService = customerConfigService;
+    this.runtimeConfigFactory = runtimeConfigFactory;
     this.tableManagerYb = tableManagerYb;
   }
 
   public void start() {
+    Duration gcInterval = this.gcRunInterval();
     this.actorSystem
         .scheduler()
-        .schedule(
-            Duration.create(0, TimeUnit.MINUTES),
-            Duration.create(YB_SET_BACKUP_GARBAGE_COLLECTOR_INTERVAL, TimeUnit.MINUTES),
-            this::scheduleRunner,
-            this.executionContext);
+        .schedule(Duration.ZERO, gcInterval, this::scheduleRunner, this.executionContext);
+  }
+
+  private Duration gcRunInterval() {
+    return runtimeConfigFactory
+        .staticApplicationConf()
+        .getDuration(YB_BACKUP_GARBAGE_COLLECTOR_INTERVAL);
   }
 
   @VisibleForTesting

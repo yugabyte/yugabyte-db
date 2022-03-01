@@ -59,6 +59,9 @@ import play.data.validation.Constraints;
 @JsonDeserialize(converter = UniverseDefinitionTaskParams.BaseConverter.class)
 public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
+  private static final Set<String> AWS_INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY =
+      ImmutableSet.of("i3.", "c5d.", "c6gd.");
+
   @Constraints.Required()
   @Constraints.MinLength(1)
   public List<Cluster> clusters = new LinkedList<>();
@@ -174,9 +177,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @JsonInclude(value = JsonInclude.Include.NON_NULL)
   public static class Cluster {
 
-    private static final Set<String> AWS_INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY =
-        ImmutableSet.of("i3.", "c5d.", "c6gd.");
-
     public UUID uuid = UUID.randomUUID();
 
     @ApiModelProperty(required = false)
@@ -281,7 +281,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       }
       DeviceInfo deviceInfo = userIntent.deviceInfo;
       CloudType cloudType = userIntent.providerType;
-      if (cloudType == CloudType.aws && isAwsClusterWithEphemeralStorage()) {
+      if (cloudType == CloudType.aws && hasEphemeralStorage(userIntent)) {
         // Ephemeral storage AWS instances should not have storage type
         if (deviceInfo.storageType != null) {
           throw new PlatformServiceException(
@@ -305,16 +305,21 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         }
       }
     }
+  }
 
-    @JsonIgnore
-    public boolean isAwsClusterWithEphemeralStorage() {
+  public static boolean hasEphemeralStorage(UserIntent userIntent) {
+    if (userIntent.providerType == CloudType.aws) {
       for (String prefix : AWS_INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY) {
         if (userIntent.instanceType.startsWith(prefix)) {
           return true;
         }
       }
       return false;
+    } else if (userIntent.providerType == CloudType.gcp) {
+      return userIntent.deviceInfo != null
+          && userIntent.deviceInfo.storageType == PublicCloudConstants.StorageType.Scratch;
     }
+    return false;
   }
 
   /** The user defined intent for the universe. */

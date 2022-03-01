@@ -3,17 +3,23 @@ import clsx from 'clsx';
 import { YBLoading } from '../../common/indicators';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { LDAPAuth } from './LDAPAuth';
+import { OIDCAuth } from './OIDCAuth';
 
 const TABS = [
   {
     label: 'LDAP Configuration',
     id: 'LDAP',
     Component: LDAPAuth
+  },
+  {
+    label: 'OIDC Configuration',
+    id: 'OIDC',
+    Component: OIDCAuth
   }
 ];
 
 export const UserAuth = (props) => {
-  const { fetchRunTimeConfigs, runtimeConfigs, isAdmin } = props;
+  const { fetchRunTimeConfigs, runtimeConfigs, isAdmin, featureFlags } = props;
   const [activeTab, setTab] = useState(TABS[0].id);
 
   const handleTabSelect = (e, tab) => {
@@ -21,7 +27,8 @@ export const UserAuth = (props) => {
     setTab(tab);
   };
 
-  const isTabsVisible = TABS.length > 1; //Now we have only LDAP, OIDC is coming soon
+  const isOIDCEnabled = featureFlags.test.enableOIDC || featureFlags.released.enableOIDC;
+  const isTabsVisible = isOIDCEnabled && TABS.length > 1; //Now we have only LDAP, OIDC is coming soon
   const currentTab = TABS.find((tab) => tab.id === activeTab);
   const isLoading =
     !runtimeConfigs ||

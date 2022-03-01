@@ -437,7 +437,6 @@ polyfills
 pooler
 postfixed
 postgres.ai
-PostgreSQL
 precompile
 precompiled
 preconfigure

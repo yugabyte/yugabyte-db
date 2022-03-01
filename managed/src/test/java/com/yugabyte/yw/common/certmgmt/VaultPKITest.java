@@ -17,7 +17,6 @@ import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import org.bouncycastle.asn1.x509.GeneralName;
 
 import java.security.PublicKey;
 import java.security.cert.X509Certificate;
@@ -29,6 +28,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.certmgmt.providers.CertificateProviderInterface;
@@ -37,6 +37,7 @@ import com.yugabyte.yw.common.certmgmt.providers.VaultPKI.VaultOperationsForCert
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultAccessor;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultEARServiceUtilTest;
+
 import org.bouncycastle.asn1.x509.GeneralName;
 import org.bouncycastle.asn1.x509.GeneralNames;
 import org.junit.Before;
@@ -44,7 +45,7 @@ import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-// @RunWith(MockitoJUnitRunner.class)
+// @RunWith(MockitoJUnitRunneoriginalObjr.class)
 public class VaultPKITest extends FakeDBApplication {
   protected static final Logger LOG = LoggerFactory.getLogger(VaultPKITest.class);
 
@@ -86,6 +87,21 @@ public class VaultPKITest extends FakeDBApplication {
             + "/"
             + VaultOperationsForCert.CA_CERT.toString();
     assertEquals(oPath, path);
+  }
+
+  @Test
+  public void TestHashicorpParams() {
+    HashicorpVaultConfigParams params2 = new HashicorpVaultConfigParams(params);
+    Calendar tokenTtlExpiry = Calendar.getInstance();
+    params2.ttl = 0L;
+    params2.ttlExpiry = tokenTtlExpiry.getTimeInMillis();
+
+    LOG.debug(" Json string:{}", params2.toString());
+    JsonNode node = params2.toJsonNode();
+
+    assertNotNull(node);
+    assertEquals("0", node.get("HC_VAULT_TTL").asText());
+    assertEquals(String.valueOf(params2.ttlExpiry), node.get("HC_VAULT_TTL_EXPIRY").asText());
   }
 
   @Test
@@ -318,7 +334,7 @@ public class VaultPKITest extends FakeDBApplication {
     HashicorpVaultConfigParams params2 = new HashicorpVaultConfigParams(params);
     params2.role = "invalid_role";
     try {
-      VaultPKI certProvider = VaultPKI.getVaultPKIInstance(caUUID, params2);
+      VaultPKI.getVaultPKIInstance(caUUID, params2);
       assertTrue(false);
     } catch (Exception e) {
       assertTrue(true);

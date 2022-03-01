@@ -2,6 +2,17 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.BackupUtil.EMR_MULTIPLE;
+import static com.yugabyte.yw.common.BackupUtil.BACKUP_PREFIX_LENGTH;
+import static com.yugabyte.yw.common.BackupUtil.TS_FMT_LENGTH;
+import static com.yugabyte.yw.common.BackupUtil.UNIV_PREFIX_LENGTH;
+import static com.yugabyte.yw.common.BackupUtil.UUID_LENGTH;
+import static com.yugabyte.yw.common.BackupUtil.VM_CERT_DIR;
+import static com.yugabyte.yw.common.BackupUtil.YB_CLOUD_COMMAND_TYPE;
+import static com.yugabyte.yw.common.BackupUtil.K8S_CERT_PATH;
+import static com.yugabyte.yw.common.BackupUtil.BACKUP_SCRIPT;
+import static com.yugabyte.yw.common.BackupUtil.REGION_LOCATIONS;
+import static com.yugabyte.yw.common.BackupUtil.REGION_NAME;
 import static com.yugabyte.yw.common.TableManager.CommandSubType.BACKUP;
 import static com.yugabyte.yw.common.TableManager.CommandSubType.BULK_IMPORT;
 import static com.yugabyte.yw.common.TableManager.CommandSubType.DELETE;
@@ -38,18 +49,6 @@ import play.libs.Json;
 
 @Singleton
 public class TableManager extends DevopsBase {
-  private static final int EMR_MULTIPLE = 8;
-  private static final int BACKUP_PREFIX_LENGTH = 8;
-  private static final int TS_FMT_LENGTH = 19;
-  private static final int UNIV_PREFIX_LENGTH = 6;
-  private static final int UUID_LENGTH = 36;
-  private static final String YB_CLOUD_COMMAND_TYPE = "table";
-  private static final String K8S_CERT_PATH = "/opt/certs/yugabyte/";
-  private static final String VM_CERT_DIR = "/yugabyte-tls-config/";
-  private static final String BACKUP_SCRIPT = "bin/yb_backup.py";
-
-  private static final String REGION_LOCATIONS = "REGION_LOCATIONS";
-  private static final String REGION_NAME = "REGION";
 
   public enum CommandSubType {
     BACKUP(BACKUP_SCRIPT),
@@ -94,8 +93,11 @@ public class TableManager extends DevopsBase {
 
     List<NodeDetails> tservers = universe.getTServers();
     // Verify if secondary IPs exist. If so, create map.
+    boolean legacyNet =
+        universe.getConfig().getOrDefault(Universe.DUAL_NET_LEGACY, "true").equals("true");
     if (tservers.get(0).cloudInfo.secondary_private_ip != null
-        && !tservers.get(0).cloudInfo.secondary_private_ip.equals("null")) {
+        && !tservers.get(0).cloudInfo.secondary_private_ip.equals("null")
+        && !legacyNet) {
       secondaryToPrimaryIP =
           tservers
               .stream()

@@ -929,6 +929,13 @@
     "Audit" : {
       "description" : "Audit logging for requests and responses",
       "properties" : {
+        "action" : {
+          "description" : "Action",
+          "enum" : [ "RegisterSession", "CreateCloudProvider", "DeleteCloudProvider", "EditCloudProvider", "RefreshPricingCloudProvider", "CreateKubernetesCloudProvider", "BootstrapCloudProvider", "SetupDockerCloudProvider", "CreateRegion", "DeleteRegion", "CreateAvailabilityZone", "DeleteAvailabilityZone", "CreateInstance", "DeleteInstance", "CreateCustomerConfiguration", "EditCustomerConfiguration", "DeleteCustomerConfiguration", "CreateKmsConfiguration", "EditKmsConfiguration", "DeleteKmsConfiguration", "RetrieveKmsKey", "RemoveKmsKeyReferenceHistory", "DeleteCustomer", "UpsertFeaturesCustomer", "CreateRelease", "UpdateRelease", "UploadCertificate", "DeleteCertificate", "GetRootCertificate", "AddClientCertificate", "CreateAlertConfiguration", "EditAlertConfiguration", "DeleteAlertConfiguration", "CreateAlertChannel", "UpdateAlertChannel", "DeleteAlertChannel", "GetAlertDestination", "UpdateAlertDestination", "DeleteAlertDestination", "CreateMaintenanceWindow", "UpdateMaintenanceWindow", "DeleteMaintenanceWindow", "CreateAccessKey", "DeleteAccessKey", "CreateUniverse", "UpdateUniverse", "UpgradeUniverse", "DestroyUniverse", "ImportUniverse", "PauseUniverse", "ResumeUniverse", "RestartUniverse", "UpgradeSoftware", "UpgradeGFlags", "UpgradeCerts", "UpgradeTLS", "UpgradeVmImage", "UpgradeSystemd", "SetHelm3Compatible", "setBackupFlag", "setUniverseKey", "ToggleTls", "TlsConfigUpdate", "UpdateDiskSize", "CreateCluster", "DeleteCluster", "CreateAllClusters", "UpdatePrimaryCluster", "UpdateReadOnlyCluster", "CreateReadOnlyCluster", "DeleteReadOnlyCluster", "RunYsqlQuery", "EditXClusterConfig", "DeleteXClusterConfig", "SyncXClusterConfig", "CreateTable", "DropTable", "BulkImport", "CreateBackup", "CreateMultiTableBackup", "RestoreBackup", "DeleteBackups", "StopBackup", "EditBackup", "RetryTask", "CreateNodeInstance", "DeleteNodeInstance", "DetachedNodeInstanceAction", "NodeInstanceAction", "DeleteBackupSchedule", "CreateUser", "ChangeUserRole", "UpdateUserProfile", "DeleteUser" ],
+          "example" : "Create User",
+          "readOnly" : true,
+          "type" : "string"
+        },
         "apiCall" : {
           "description" : "API call",
           "example" : "/api/v1/customers/<496fdea8-df25-11eb-ba80-0242ac130004>/providers",
@@ -956,6 +963,19 @@
           "readOnly" : true,
           "type" : "object"
         },
+        "target" : {
+          "description" : "Target",
+          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "InstanceType", "CustomerConfig", "EncryptionAtRest", "Customer", "Release", "Certificate", "Alert", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "Schedule", "User" ],
+          "example" : "User",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "targetUUID" : {
+          "description" : "Target UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
         "taskUUID" : {
           "description" : "Task UUID",
           "format" : "uuid",
@@ -964,6 +984,11 @@
         },
         "timestamp" : {
           "format" : "date-time",
+          "type" : "string"
+        },
+        "userEmail" : {
+          "description" : "User Email",
+          "readOnly" : true,
           "type" : "string"
         },
         "userUUID" : {
@@ -1193,26 +1218,6 @@
         }
       },
       "required" : [ "dateRangeEnd", "dateRangeStart", "keyspaceList", "scheduleUUIDList", "states", "storageConfigUUIDList", "universeNameList", "universeUUIDList" ],
-      "type" : "object"
-    },
-    "BackupData" : {
-      "description" : "Backup Info for doing restore operation",
-      "properties" : {
-        "backupUUID" : {
-          "description" : "Backup UUID",
-          "format" : "uuid",
-          "type" : "string"
-        },
-        "sse" : {
-          "description" : "Is SSE",
-          "type" : "boolean"
-        },
-        "storageConfigUUID" : {
-          "description" : "Storage config uuid",
-          "format" : "uuid",
-          "type" : "string"
-        }
-      },
       "type" : "object"
     },
     "BackupPagedApiQuery" : {
@@ -1498,11 +1503,6 @@
           "description" : "Is SSE",
           "type" : "boolean"
         },
-        "storageConfigUUID" : {
-          "description" : "Storage config uuid",
-          "format" : "uuid",
-          "type" : "string"
-        },
         "storageLocation" : {
           "description" : "Storage location",
           "type" : "string"
@@ -1510,14 +1510,6 @@
         "tableNameList" : {
           "description" : "Tables",
           "items" : {
-            "type" : "string"
-          },
-          "type" : "array"
-        },
-        "tableUUIDList" : {
-          "description" : "Table UUIDs",
-          "items" : {
-            "format" : "uuid",
             "type" : "string"
           },
           "type" : "array"
@@ -1539,6 +1531,11 @@
             "$ref" : "#/definitions/BackupTableParams"
           },
           "type" : "array"
+        },
+        "backupSizeInBytes" : {
+          "description" : "Backup size in bytes",
+          "format" : "int64",
+          "type" : "integer"
         },
         "backupType" : {
           "description" : "Backup type",
@@ -1847,6 +1844,19 @@
         }
       },
       "required" : [ "s3Bucket" ],
+      "type" : "object"
+    },
+    "BundleDetails" : {
+      "properties" : {
+        "components" : {
+          "items" : {
+            "enum" : [ "UniverseLogs", "ApplicationLogs", "OutputFiles", "ErrorFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta" ],
+            "type" : "string"
+          },
+          "type" : "array"
+        }
+      },
+      "required" : [ "components" ],
       "type" : "object"
     },
     "CertificateDetails" : {
@@ -2758,7 +2768,7 @@
           "format" : "int64",
           "type" : "integer"
         },
-        "ttl_expiry" : {
+        "ttlExpiry" : {
           "format" : "int64",
           "type" : "integer"
         },
@@ -3212,6 +3222,11 @@
             "$ref" : "#/definitions/BackupTableParams"
           },
           "type" : "array"
+        },
+        "backupSizeInBytes" : {
+          "description" : "Backup size in bytes",
+          "format" : "int64",
+          "type" : "integer"
         },
         "backupType" : {
           "description" : "Backup type",
@@ -4183,10 +4198,6 @@
           "enum" : [ "RESTORE", "RESTORE_KEYS" ],
           "type" : "string"
         },
-        "backupData" : {
-          "$ref" : "#/definitions/BackupData",
-          "description" : "Data of the backup to be restored"
-        },
         "backupStorageInfoList" : {
           "description" : "Backup's storage info to restore",
           "items" : {
@@ -4283,6 +4294,11 @@
           },
           "readOnly" : true,
           "type" : "array"
+        },
+        "storageConfigUUID" : {
+          "description" : "Storage config uuid",
+          "format" : "uuid",
+          "type" : "string"
         },
         "targetXClusterConfigs" : {
           "description" : "The target universe's xcluster replication relationships",
@@ -4555,6 +4571,38 @@
           "type" : "boolean"
         }
       },
+      "type" : "object"
+    },
+    "SupportBundle" : {
+      "properties" : {
+        "bundleDetails" : {
+          "$ref" : "#/definitions/BundleDetails"
+        },
+        "bundleUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "endDate" : {
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "path" : {
+          "type" : "string"
+        },
+        "scopeUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "startDate" : {
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "status" : {
+          "enum" : [ "Running", "Success", "Failed" ],
+          "type" : "string"
+        }
+      },
+      "required" : [ "bundleDetails", "bundleUUID", "endDate", "path", "scopeUUID", "startDate", "status" ],
       "type" : "object"
     },
     "TableDefinitionTaskParams" : {
@@ -7038,8 +7086,11 @@
           "type" : "string"
         } ],
         "responses" : {
-          "default" : {
-            "description" : "successful operation"
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
           }
         },
         "security" : [ {
@@ -7114,6 +7165,41 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "Restore a certificate from backup",
+        "tags" : [ "Certificate Info" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/certificates/create_self_signed_cert" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "createSelfSignedCert",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "description" : "certificate label",
+          "in" : "body",
+          "name" : "label",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Create a self signed certificate",
         "tags" : [ "Certificate Info" ]
       }
     },
@@ -8090,24 +8176,6 @@
         "tags" : [ "Node instances" ]
       }
     },
-    "/api/v1/customers/{cUUID}/password_policy" : {
-      "get" : {
-        "operationId" : "getPasswordPolicy",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "tags" : [ "Session management" ]
-      }
-    },
     "/api/v1/customers/{cUUID}/providers" : {
       "get" : {
         "description" : "",
@@ -8541,8 +8609,11 @@
           "type" : "string"
         } ],
         "responses" : {
-          "default" : {
-            "description" : "successful operation"
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
           }
         },
         "security" : [ {
@@ -8640,8 +8711,11 @@
           "type" : "string"
         } ],
         "responses" : {
-          "default" : {
-            "description" : "successful operation"
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
           }
         },
         "security" : [ {
@@ -9209,8 +9283,11 @@
           "type" : "string"
         } ],
         "responses" : {
-          "default" : {
-            "description" : "successful operation"
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
           }
         },
         "security" : [ {
@@ -9242,8 +9319,11 @@
         } ],
         "produces" : [ "text/plain" ],
         "responses" : {
-          "default" : {
-            "description" : "successful operation"
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "string"
+            }
           }
         },
         "security" : [ {
@@ -9283,8 +9363,11 @@
           }
         } ],
         "responses" : {
-          "default" : {
-            "description" : "successful operation"
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
           }
         },
         "security" : [ {
@@ -10778,33 +10861,6 @@
         "tags" : [ "Universe database management" ]
       }
     },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/schedule_script" : {
-      "post" : {
-        "operationId" : "externalScriptSchedule",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "tags" : [ "ScheduleExternalScript" ]
-      }
-    },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/set_key" : {
       "post" : {
         "description" : "",
@@ -10966,9 +11022,10 @@
         "tags" : [ "Universe information" ]
       }
     },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/stop_scheduled_script" : {
-      "put" : {
-        "operationId" : "stopScheduledScript",
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/support_bundle" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "listSupportBundle",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -10983,17 +11040,22 @@
           "type" : "string"
         } ],
         "responses" : {
-          "default" : {
-            "description" : "successful operation"
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/SupportBundle"
+              },
+              "type" : "array"
+            }
           }
         },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "tags" : [ "ScheduleExternalScript" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/support_bundle" : {
+        "summary" : "List all support bundles from a universe",
+        "tags" : [ "Support Bundle management" ]
+      },
       "post" : {
         "description" : "",
         "operationId" : "createSupportBundle",
@@ -11026,6 +11088,42 @@
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/support_bundle/{sbUUID}" : {
+      "delete" : {
+        "description" : "",
+        "operationId" : "deleteSupportBundle",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "uniUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "sbUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Delete a support bundle",
+        "tags" : [ "Support Bundle management" ]
+      },
       "get" : {
         "description" : "",
         "operationId" : "getSupportBundle",
@@ -11048,10 +11146,51 @@
           "required" : true,
           "type" : "string"
         } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/SupportBundle"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Get a support bundle from a universe",
+        "tags" : [ "Support Bundle management" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/support_bundle/{sbUUID}/download" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "downloadSupportBundle",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "uniUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "sbUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
         "produces" : [ "application/x-compressed" ],
         "responses" : {
-          "default" : {
-            "description" : "successful operation"
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/SupportBundle"
+            }
           }
         },
         "security" : [ {
@@ -11476,33 +11615,6 @@
         "tags" : [ "Universe database management" ]
       }
     },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/update_scheduled_script" : {
-      "put" : {
-        "operationId" : "updateScheduledScript",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "tags" : [ "ScheduleExternalScript" ]
-      }
-    },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/yqlservers" : {
       "get" : {
         "description" : "",
@@ -11591,8 +11703,11 @@
         } ],
         "produces" : [ "application/x-compressed" ],
         "responses" : {
-          "default" : {
-            "description" : "successful operation"
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "string"
+            }
           }
         },
         "security" : [ {
@@ -12219,8 +12334,11 @@
         } ],
         "produces" : [ "text/plain" ],
         "responses" : {
-          "default" : {
-            "description" : "successful operation"
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "string"
+            }
           }
         },
         "summary" : "getFilteredLogs",
@@ -12513,8 +12631,6 @@
     "name" : "Runtime configuration"
   }, {
     "name" : "Schedule management"
-  }, {
-    "name" : "ScheduleExternalScript"
   }, {
     "name" : "Session management"
   }, {

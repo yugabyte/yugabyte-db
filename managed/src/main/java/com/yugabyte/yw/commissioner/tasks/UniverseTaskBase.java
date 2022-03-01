@@ -1149,7 +1149,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *
    * @param nodeName name of a node in the taskparams' uuid universe.
    */
-  public SubTaskGroup deleteNodeFromUniverseTask(String nodeName) {
+  public SubTaskGroup createDeleteNodeFromUniverseTask(String nodeName) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("DeleteNode", executor);
     NodeTaskParams params = new NodeTaskParams();
     params.nodeName = nodeName;

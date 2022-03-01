@@ -736,7 +736,6 @@ void CatalogManager::NamespaceNameMapper::clear() {
 
 CatalogManager::CatalogManager(Master* master)
     : master_(master),
-      rng_(GetRandomSeed32()),
       tablet_exists_(false),
       state_(kConstructed),
       leader_ready_term_(-1),
@@ -2503,11 +2502,7 @@ bool CatalogManager::ShouldSplitValidCandidate(
   if (size < FLAGS_tablet_split_low_phase_size_threshold_bytes) {
     return false;
   }
-  TSDescriptorVector ts_descs;
-  {
-    BlacklistSet blacklist = BlacklistSetFromPB();
-    master_->ts_manager()->GetAllLiveDescriptors(&ts_descs, blacklist);
-  }
+  TSDescriptorVector ts_descs = GetAllLiveNotBlacklistedTServers();
 
   size_t num_servers = 0;
   auto table_replication_info_or_status = GetTableReplicationInfo(tablet_info);
@@ -2997,6 +2992,13 @@ size_t CatalogManager::GetNumLiveTServersForPlacement(const PlacementId& placeme
   TSDescriptorVector ts_descs;
   master_->ts_manager()->GetAllLiveDescriptorsInCluster(&ts_descs, placement_id, blacklist);
   return ts_descs.size();
+}
+
+TSDescriptorVector CatalogManager::GetAllLiveNotBlacklistedTServers() const {
+  TSDescriptorVector ts_descs;
+  BlacklistSet blacklist = BlacklistSetFromPB();
+  master_->ts_manager()->GetAllLiveDescriptors(&ts_descs, blacklist);
+  return ts_descs;
 }
 
 namespace {
@@ -9005,8 +9007,16 @@ Status CatalogManager::HandleTabletSchemaVersionReport(
   return MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(this, table, version);
 }
 
-Status CatalogManager::ProcessPendingAssignments(const TabletInfos& tablets) {
+Status CatalogManager::ProcessPendingAssignmentsPerTable(
+    const TableId& table_id, const TabletInfos& tablets, CMGlobalLoadState* global_load_state) {
   VLOG(1) << "Processing pending assignments";
+
+  TSDescriptorVector ts_descs = GetAllLiveNotBlacklistedTServers();
+
+  // Initialize this table load state.
+  CMPerTableLoadState table_load_state(global_load_state);
+  InitializeTableLoadState(table_id, ts_descs, &table_load_state);
+  table_load_state.SortLoad();
 
   // Take write locks on all tablets to be processed, and ensure that they are
   // unlocked at the end of this scope.
@@ -9052,18 +9062,14 @@ Status CatalogManager::ProcessPendingAssignments(const TabletInfos& tablets) {
   }
 
   // For those tablets which need to be created in this round, assign replicas.
-  TSDescriptorVector ts_descs;
-  {
-    BlacklistSet blacklist = BlacklistSetFromPB();
-    master_->ts_manager()->GetAllLiveDescriptors(&ts_descs, blacklist);
-  }
   Status s;
   std::unordered_set<TableInfo*> ok_status_tables;
   for (TabletInfo *tablet : deferred.needs_create_rpc) {
     // NOTE: if we fail to select replicas on the first pass (due to
     // insufficient Tablet Servers being online), we will still try
     // again unless the tablet/table creation is cancelled.
-    s = SelectReplicasForTablet(ts_descs, tablet);
+    LOG(INFO) << "Selecting replicas for tablet " << tablet->id();
+    s = SelectReplicasForTablet(ts_descs, tablet, &table_load_state, global_load_state);
     if (!s.ok()) {
       s = s.CloneAndPrepend(Substitute(
           "An error occurred while selecting replicas for tablet $0: $1",
@@ -9142,8 +9148,9 @@ Status CatalogManager::ProcessPendingAssignments(const TabletInfos& tablets) {
   return SendCreateTabletRequests(deferred.needs_create_rpc);
 }
 
-Status CatalogManager::SelectReplicasForTablet(const TSDescriptorVector& ts_descs,
-                                               TabletInfo* tablet) {
+Status CatalogManager::SelectReplicasForTablet(
+    const TSDescriptorVector& ts_descs, TabletInfo* tablet,
+    CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state) {
   auto table_guard = tablet->table()->LockForRead();
 
   if (!table_guard->pb.IsInitialized()) {
@@ -9164,7 +9171,8 @@ Status CatalogManager::SelectReplicasForTablet(const TSDescriptorVector& ts_desc
   consensus::RaftConfigPB *config = cstate->mutable_config();
   config->set_opid_index(consensus::kInvalidOpIdIndex);
 
-  Status s = HandlePlacementUsingReplicationInfo(replication_info, ts_descs, config);
+  Status s = HandlePlacementUsingReplicationInfo(
+      replication_info, ts_descs, config, per_table_state, global_state);
   if (!s.ok()) {
     return s;
   }
@@ -9204,7 +9212,9 @@ void CatalogManager::GetTsDescsFromPlacementInfo(const PlacementInfoPB& placemen
 Status CatalogManager::HandlePlacementUsingReplicationInfo(
     const ReplicationInfoPB& replication_info,
     const TSDescriptorVector& all_ts_descs,
-    consensus::RaftConfigPB* config) {
+    consensus::RaftConfigPB* config,
+    CMPerTableLoadState* per_table_state,
+    CMGlobalLoadState* global_state) {
   // Validate if we have enough tservers to put the replicas.
   ValidateReplicationInfoRequestPB req;
   req.mutable_replication_info()->CopyFrom(replication_info);
@@ -9213,15 +9223,14 @@ Status CatalogManager::HandlePlacementUsingReplicationInfo(
 
   TSDescriptorVector ts_descs;
   GetTsDescsFromPlacementInfo(replication_info.live_replicas(), all_ts_descs, &ts_descs);
-  RETURN_NOT_OK(HandlePlacementUsingPlacementInfo(replication_info.live_replicas(),
-                                                  ts_descs,
-                                                  PeerMemberType::VOTER, config));
+  RETURN_NOT_OK(HandlePlacementUsingPlacementInfo(
+      replication_info.live_replicas(), ts_descs, PeerMemberType::VOTER,
+      config, per_table_state, global_state));
   for (int i = 0; i < replication_info.read_replicas_size(); i++) {
     GetTsDescsFromPlacementInfo(replication_info.read_replicas(i), all_ts_descs, &ts_descs);
-    RETURN_NOT_OK(HandlePlacementUsingPlacementInfo(replication_info.read_replicas(i),
-                                                    ts_descs,
-                                                    PeerMemberType::OBSERVER,
-                                                    config));
+    RETURN_NOT_OK(HandlePlacementUsingPlacementInfo(
+        replication_info.read_replicas(i), ts_descs, PeerMemberType::OBSERVER,
+        config, per_table_state, global_state));
   }
   return Status::OK();
 }
@@ -9229,19 +9238,21 @@ Status CatalogManager::HandlePlacementUsingReplicationInfo(
 Status CatalogManager::HandlePlacementUsingPlacementInfo(const PlacementInfoPB& placement_info,
                                                          const TSDescriptorVector& ts_descs,
                                                          PeerMemberType member_type,
-                                                         consensus::RaftConfigPB* config) {
+                                                         consensus::RaftConfigPB* config,
+                                                         CMPerTableLoadState* per_table_state,
+                                                         CMGlobalLoadState* global_state) {
   size_t nreplicas = GetNumReplicasFromPlacementInfo(placement_info);
   size_t ntservers = ts_descs.size();
-
   // Keep track of servers we've already selected, so that we don't attempt to
   // put two replicas on the same host.
-  set<shared_ptr<TSDescriptor>> already_selected_ts;
+  set<TabletServerId> already_selected_ts;
   if (placement_info.placement_blocks().empty()) {
     // If we don't have placement info, just place the replicas as before, distributed across the
     // whole cluster.
     // We cannot put more than ntservers replicas.
     nreplicas = min(nreplicas, ntservers);
-    SelectReplicas(ts_descs, nreplicas, config, &already_selected_ts, member_type);
+    SelectReplicas(ts_descs, nreplicas, config, &already_selected_ts, member_type,
+                   per_table_state, global_state);
   } else {
     // TODO(bogdan): move to separate function
     //
@@ -9261,7 +9272,8 @@ Status CatalogManager::HandlePlacementUsingPlacementInfo(const PlacementInfoPB& 
       // We cannot put more than the available tablet servers in that placement block.
       size_t num_replicas = min(min_num_replicas, available_ts_descs_size);
       min_replica_count_sum += min_num_replicas;
-      SelectReplicas(available_ts_descs, num_replicas, config, &already_selected_ts, member_type);
+      SelectReplicas(available_ts_descs, num_replicas, config, &already_selected_ts, member_type,
+                     per_table_state, global_state);
     }
 
     size_t replicas_left = nreplicas - min_replica_count_sum;
@@ -9273,7 +9285,8 @@ Status CatalogManager::HandlePlacementUsingPlacementInfo(const PlacementInfoPB& 
       // No need to do an extra check here, as we checked early if we have enough to cover all
       // requested placements and checked individually per placement info, if we could cover the
       // minimums.
-      SelectReplicas(all_allowed_ts, replicas_left, config, &already_selected_ts, member_type);
+      SelectReplicas(all_allowed_ts, replicas_left, config, &already_selected_ts, member_type,
+                     per_table_state, global_state);
     }
   }
   return Status::OK();
@@ -9370,11 +9383,7 @@ void CatalogManager::StartElectionIfReady(
   }
 
   // Find tservers that can be leaders for a tablet.
-  TSDescriptorVector ts_descs;
-  {
-    BlacklistSet blacklist = BlacklistSetFromPB();
-    master_->ts_manager()->GetAllLiveDescriptors(&ts_descs, blacklist);
-  }
+  TSDescriptorVector ts_descs = GetAllLiveNotBlacklistedTServers();
 
   std::vector<std::string> possible_leaders;
   for (const auto& replica : *replicas) {
@@ -9425,99 +9434,44 @@ void CatalogManager::StartElectionIfReady(
   WARN_NOT_OK(task->Run(), "Failed to send new tablet start election request");
 }
 
-shared_ptr<TSDescriptor> CatalogManager::PickBetterReplicaLocation(
-    const TSDescriptorVector& two_choices) {
-  DCHECK_EQ(two_choices.size(), 2);
-
-  const auto& a = two_choices[0];
-  const auto& b = two_choices[1];
-
-  // When creating replicas, we consider two aspects of load:
-  //   (1) how many tablet replicas are already on the server, and
-  //   (2) how often we've chosen this server recently.
-  //
-  // The first factor will attempt to put more replicas on servers that
-  // are under-loaded (eg because they have newly joined an existing cluster, or have
-  // been reformatted and re-joined).
-  //
-  // The second factor will ensure that we take into account the recent selection
-  // decisions even if those replicas are still in the process of being created (and thus
-  // not yet reported by the server). This is important because, while creating a table,
-  // we batch the selection process before sending any creation commands to the
-  // servers themselves.
-  //
-  // TODO: in the future we may want to factor in other items such as available disk space,
-  // actual request load, etc.
-  double load_a = a->RecentReplicaCreations() + a->num_live_replicas();
-  double load_b = b->RecentReplicaCreations() + b->num_live_replicas();
-  if (load_a < load_b) {
-    return a;
-  } else if (load_b < load_a) {
-    return b;
-  } else {
-    // If the load is the same, we can just pick randomly.
-    return two_choices[rng_.Uniform(2)];
-  }
-}
-
 shared_ptr<TSDescriptor> CatalogManager::SelectReplica(
     const TSDescriptorVector& ts_descs,
-    const set<shared_ptr<TSDescriptor>>& excluded) {
-  // The replica selection algorithm follows the idea from
-  // "Power of Two Choices in Randomized Load Balancing"[1]. For each replica,
-  // we randomly select two tablet servers, and then assign the replica to the
-  // less-loaded one of the two. This has some nice properties:
-  //
-  // 1) because the initial selection of two servers is random, we get good
-  //    spreading of replicas across the cluster. In contrast if we sorted by
-  //    load and always picked under-loaded servers first, we'd end up causing
-  //    all tablets of a new table to be placed on an empty server. This wouldn't
-  //    give good load balancing of that table.
-  //
-  // 2) because we pick the less-loaded of two random choices, we do end up with a
-  //    weighting towards filling up the underloaded one over time, without
-  //    the extreme scenario above.
-  //
-  // 3) because we don't follow any sequential pattern, every server is equally
-  //    likely to replicate its tablets to every other server. In contrast, a
-  //    round-robin design would enforce that each server only replicates to its
-  //    adjacent nodes in the TS sort order, limiting recovery bandwidth (see
-  //    KUDU-1317).
-  //
-  // [1] http://www.eecs.harvard.edu/~michaelm/postscripts/mythesis.pdf
+    set<TabletServerId>* excluded,
+    CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state) {
+  shared_ptr<TSDescriptor> found_ts;
+  for (const auto& sorted_load : per_table_state->sorted_load_) {
+    // Don't consider a tserver that has already been considered for this tablet.
+    if (excluded->count(sorted_load)) {
+      continue;
+    }
+    // Only choose from the set of allowed tservers for this tablet.
+    auto it = std::find_if(ts_descs.begin(), ts_descs.end(), [&sorted_load](const auto& ts) {
+      return ts->permanent_uuid() == sorted_load;
+    });
 
-  // Pick two random servers, excluding those we've already picked.
-  // If we've only got one server left, 'two_choices' will actually
-  // just contain one element.
-  vector<shared_ptr<TSDescriptor>> two_choices;
-  rng_.ReservoirSample(ts_descs, 2, excluded, &two_choices);
-
-  if (two_choices.size() == 2) {
-    // Pick the better of the two.
-    return PickBetterReplicaLocation(two_choices);
+    if (it != ts_descs.end()) {
+      found_ts = *it;
+      break;
+    }
   }
 
-  // If we couldn't randomly sample two servers, it's because we only had one
-  // more non-excluded choice left.
-  CHECK_EQ(1, two_choices.size()) << "ts_descs: " << ts_descs.size()
-                                  << " already_sel: " << excluded.size();
-  return two_choices[0];
+  return found_ts;
 }
 
 void CatalogManager::SelectReplicas(
     const TSDescriptorVector& ts_descs, size_t nreplicas, consensus::RaftConfigPB* config,
-    set<shared_ptr<TSDescriptor>>* already_selected_ts, PeerMemberType member_type) {
+    set<TabletServerId>* already_selected_ts, PeerMemberType member_type,
+    CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state) {
   DCHECK_LE(nreplicas, ts_descs.size());
 
   for (size_t i = 0; i < nreplicas; ++i) {
-    // We have to derefence already_selected_ts here, as the inner mechanics uses ReservoirSample,
-    // which in turn accepts only a reference to the set, not a pointer. Alternatively, we could
-    // have passed it in as a non-const reference, but that goes against our argument passing
-    // convention.
-    //
-    // TODO(bogdan): see if we indeed want to switch back to non-const reference.
-    shared_ptr<TSDescriptor> ts = SelectReplica(ts_descs, *already_selected_ts);
-    InsertOrDie(already_selected_ts, ts);
+    shared_ptr<TSDescriptor> ts = SelectReplica(
+        ts_descs, already_selected_ts, per_table_state, global_state);
+    InsertOrDie(already_selected_ts, ts->permanent_uuid());
+    // Update the load state at global and table level.
+    per_table_state->per_ts_load_[ts->permanent_uuid()]++;
+    global_state->per_ts_load_[ts->permanent_uuid()]++;
+    per_table_state->SortLoad();
 
     // Increment the number of pending replicas so that we take this selection into
     // account when assigning replicas for other tablets of the same table. This
@@ -10642,6 +10596,45 @@ void CatalogManager::CheckTableDeleted(const TableInfoPtr& table) {
 
 const YQLPartitionsVTable& CatalogManager::GetYqlPartitionsVtable() const {
   return down_cast<const YQLPartitionsVTable&>(system_partitions_tablet_->QLStorage());
+}
+
+void CatalogManager::InitializeTableLoadState(
+    const TableId& table_id, TSDescriptorVector ts_descs, CMPerTableLoadState* state) {
+  for (const auto& ts : ts_descs) {
+    // Touch every tserver with 0 load.
+    state->per_ts_load_[ts->permanent_uuid()];
+    // Insert into the sorted list.
+    state->sorted_load_.emplace_back(ts->permanent_uuid());
+  }
+
+  auto table_info = GetTableInfo(table_id);
+
+  if (!table_info) {
+    return;
+  }
+  CatalogManagerUtil::FillTableLoadState(table_info, state);
+}
+
+void CatalogManager::InitializeGlobalLoadState(
+    TSDescriptorVector ts_descs, CMGlobalLoadState* state) {
+  for (const auto& ts : ts_descs) {
+    // Touch every tserver with 0 load.
+    state->per_ts_load_[ts->permanent_uuid()];
+  }
+
+  SharedLock l(mutex_);
+  for (const auto& id_and_info : *table_ids_map_) {
+    // Ignore system, colocated and deleting/deleted tables.
+    {
+      auto l = id_and_info.second->LockForRead();
+      if (IsSystemTable(*(id_and_info.second)) ||
+          id_and_info.second->IsColocatedUserTable() ||
+          l->started_deleting()) {
+        continue;
+      }
+    }
+    CatalogManagerUtil::FillTableLoadState(id_and_info.second, state);
+  }
 }
 
 }  // namespace master

@@ -148,11 +148,17 @@ void CatalogManagerBgTasks::Run() {
 
       bool processed_tablets = false;
       if (!to_process.empty()) {
+        // For those tablets which need to be created in this round, assign replicas.
+        TSDescriptorVector ts_descs = catalog_manager_->GetAllLiveNotBlacklistedTServers();
+        CMGlobalLoadState global_load_state;
+        catalog_manager_->InitializeGlobalLoadState(ts_descs, &global_load_state);
         // Transition tablet assignment state from preparing to creating, send
         // and schedule creation / deletion RPC messages, etc.
+        // This is done table by table.
         for (const auto& entries : to_process) {
           LOG(INFO) << "Processing pending assignments for table: " << entries.first;
-          Status s = catalog_manager_->ProcessPendingAssignments(entries.second);
+          Status s = catalog_manager_->ProcessPendingAssignmentsPerTable(
+              entries.first, entries.second, &global_load_state);
           WARN_NOT_OK(s, "Assignment failed");
           // Set processed_tablets as true if the call succeeds for at least one table.
           processed_tablets = processed_tablets || s.ok();
