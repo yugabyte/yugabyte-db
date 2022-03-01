@@ -935,6 +935,7 @@ public class TestYbBackup extends BasePgSQLTest {
   @Test
   public void testUserDefinedTypes() throws Exception {
     // TODO(myang): Add ALTER TYPE test after #1893 is fixed.
+    String backupDir = null;
     try (Statement stmt = connection.createStatement()) {
       // A enum type.
       stmt.execute("CREATE TYPE e_t AS ENUM('c', 'b', 'a')");
@@ -1002,7 +1003,10 @@ public class TestYbBackup extends BasePgSQLTest {
                    "'a', 'b', 'c', 'a'), ('a', 'c', 'b', 'b'), ('b', 'a', 'c', 'c')");
       stmt.execute("ALTER TABLE test_tb11 DROP COLUMN c2");
 
-      YBBackupUtil.runYbBackupCreate("--keyspace", "ysql.yugabyte");
+      backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yugabyte");
+      backupDir = new JSONObject(output).getString("snapshot_url");
 
       stmt.execute("INSERT INTO test_tb1 VALUES ('a')");
       stmt.execute("INSERT INTO test_tb2 VALUES(2)");
@@ -1068,7 +1072,7 @@ public class TestYbBackup extends BasePgSQLTest {
       assertRowList(stmt, "SELECT * FROM test_tb11 ORDER BY c1, c4", expectedRows11);
     }
 
-    YBBackupUtil.runYbBackupRestore("--keyspace", "ysql.yb2");
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
 
     try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
          Statement stmt = connection2.createStatement()) {
