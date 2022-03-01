@@ -54,6 +54,12 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
 
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
+      // This value is used by subsequent calls to helper methods for
+      // creating KubernetesCommandExecutor tasks. This value cannot
+      // be changed once set during the Universe creation, so we don't
+      // allow users to modify it later during edit, upgrade, etc.
+      taskParams().useNewHelmNamingStyle = universe.getUniverseDetails().useNewHelmNamingStyle;
+
       preTaskActions();
       Provider provider =
           Provider.get(UUID.fromString(taskParams().getPrimaryCluster().userIntent.provider));
@@ -88,6 +94,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       PlacementInfo currPI = universeDetails.getPrimaryCluster().placementInfo;
 
       currPlacement = new KubernetesPlacement(currPI);
+
+      boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
+
+      String nodePrefix = taskParams().nodePrefix;
 
       Set<NodeDetails> mastersToAdd =
           getPodsToAdd(newPlacement.masters, currPlacement.masters, ServerType.MASTER, isMultiAz);
@@ -141,7 +151,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
             ServerType.MASTER,
             newPI,
             provider,
-            universeDetails.communicationPorts.masterRpcPort);
+            universeDetails.communicationPorts.masterRpcPort,
+            newNamingStyle);
 
         // Update master addresses to the latest required ones.
         createMoveMasterTasks(new ArrayList<>(mastersToAdd), new ArrayList<>(mastersToRemove));
@@ -154,7 +165,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
             ServerType.TSERVER,
             newPI,
             provider,
-            universeDetails.communicationPorts.masterRpcPort);
+            universeDetails.communicationPorts.masterRpcPort,
+            newNamingStyle);
       }
 
       // Update the blacklist servers on master leader.
@@ -180,7 +192,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               provider,
               universeDetails.communicationPorts.masterRpcPort,
               true,
-              true);
+              true,
+              newNamingStyle);
         }
         updateRemainingPods(
             ServerType.TSERVER,
@@ -188,14 +201,19 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
             provider,
             universeDetails.communicationPorts.masterRpcPort,
             false,
-            true);
+            true,
+            newNamingStyle);
       }
 
       // If tservers have been removed, check if some deployments need to be completely
       // removed. Also modify the blacklist to untrack deleted pods.
       if (!tserversToRemove.isEmpty()) {
         removeDeployments(
-            newPI, provider, userIntentChange, universeDetails.communicationPorts.masterRpcPort);
+            newPI,
+            provider,
+            userIntentChange,
+            universeDetails.communicationPorts.masterRpcPort,
+            newNamingStyle);
         createModifyBlackListTask(
                 new ArrayList<>(tserversToRemove), false /* isAdd */, false /* isLeaderBlacklist */)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
@@ -249,13 +267,19 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       ServerType serverType,
       PlacementInfo newPI,
       Provider provider,
-      int masterRpcPort) {
+      int masterRpcPort,
+      boolean newNamingStyle) {
     // If starting new masters, we want them to come up in shell-mode.
     String masterAddresses =
         serverType == ServerType.MASTER
             ? ""
             : PlacementInfoUtil.computeMasterAddresses(
-                newPI, newPlacement.masters, taskParams().nodePrefix, provider, masterRpcPort);
+                newPI,
+                newPlacement.masters,
+                taskParams().nodePrefix,
+                provider,
+                masterRpcPort,
+                newNamingStyle);
 
     createPodsTask(newPlacement, masterAddresses, currPlacement, serverType, activeZones);
 
@@ -275,11 +299,16 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       Provider provider,
       int masterRpcPort,
       boolean masterChanged,
-      boolean tserverChanged) {
-
+      boolean tserverChanged,
+      boolean newNamingStyle) {
     String masterAddresses =
         PlacementInfoUtil.computeMasterAddresses(
-            newPI, newPlacement.masters, taskParams().nodePrefix, provider, masterRpcPort);
+            newPI,
+            newPlacement.masters,
+            taskParams().nodePrefix,
+            provider,
+            masterRpcPort,
+            newNamingStyle);
 
     String ybSoftwareVersion = taskParams().getPrimaryCluster().userIntent.ybSoftwareVersion;
 
@@ -291,17 +320,27 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         ybSoftwareVersion,
         DEFAULT_WAIT_TIME_MS,
         masterChanged,
-        tserverChanged);
+        tserverChanged,
+        newNamingStyle);
   }
 
   /*
   Deletes/Scales down the helm deployments.
   */
   public void removeDeployments(
-      PlacementInfo newPI, Provider provider, boolean userIntentChange, int masterRpcPort) {
+      PlacementInfo newPI,
+      Provider provider,
+      boolean userIntentChange,
+      int masterRpcPort,
+      boolean newNamingStyle) {
     String masterAddresses =
         PlacementInfoUtil.computeMasterAddresses(
-            newPI, newPlacement.masters, taskParams().nodePrefix, provider, masterRpcPort);
+            newPI,
+            newPlacement.masters,
+            taskParams().nodePrefix,
+            provider,
+            masterRpcPort,
+            newNamingStyle);
 
     // Need to unify with DestroyKubernetesUniverse.
     deletePodsTask(currPlacement, masterAddresses, newPlacement, userIntentChange);

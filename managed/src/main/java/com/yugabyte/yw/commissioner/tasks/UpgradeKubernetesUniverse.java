@@ -51,6 +51,12 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
 
       taskParams().rootCA = universe.getUniverseDetails().rootCA;
 
+      // This value is used by subsequent calls to helper methods for
+      // creating KubernetesCommandExecutor tasks. This value cannot
+      // be changed once set during the Universe creation, so we don't
+      // allow users to modify it later during edit, upgrade, etc.
+      taskParams().useNewHelmNamingStyle = universe.getUniverseDetails().useNewHelmNamingStyle;
+
       UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
       PlacementInfo pi = universe.getUniverseDetails().getPrimaryCluster().placementInfo;
 
@@ -153,13 +159,16 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
 
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
 
+    boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
+
     String masterAddresses =
         PlacementInfoUtil.computeMasterAddresses(
             pi,
             placement.masters,
             taskParams().nodePrefix,
             provider,
-            universeDetails.communicationPorts.masterRpcPort);
+            universeDetails.communicationPorts.masterRpcPort,
+            newNamingStyle);
 
     if (masterChanged) {
       userIntent.masterGFlags = taskParams().masterGFlags;
@@ -171,7 +180,8 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
           ybSoftwareVersion,
           taskParams().sleepAfterMasterRestartMillis,
           masterChanged,
-          tserverChanged);
+          tserverChanged,
+          newNamingStyle);
     }
     if (tserverChanged) {
       createLoadBalancerStateChangeTask(false /*enable*/)
@@ -186,7 +196,8 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
           ybSoftwareVersion,
           taskParams().sleepAfterTServerRestartMillis,
           false /* master change is false since it has already been upgraded.*/,
-          tserverChanged);
+          tserverChanged,
+          newNamingStyle);
 
       createLoadBalancerStateChangeTask(true /*enable*/).setSubTaskGroupType(getTaskSubGroupType());
     }

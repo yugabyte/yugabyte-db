@@ -76,7 +76,7 @@ public class TableManagerYb extends DevopsBase {
     AccessKey accessKey = AccessKey.get(region.provider.uuid, accessKeyCode);
     List<String> commandArgs = new ArrayList<>();
     Map<String, String> extraVars = region.provider.getUnmaskedConfig();
-    Map<String, String> namespaceToConfig = new HashMap<>();
+    Map<String, String> podFQDNToConfig = new HashMap<>();
     Map<String, String> secondaryToPrimaryIP = new HashMap<>();
     Map<String, String> ipToSshKeyPath = new HashMap<>();
 
@@ -84,9 +84,9 @@ public class TableManagerYb extends DevopsBase {
 
     if (region.provider.code.equals("kubernetes")) {
       PlacementInfo pi = primaryCluster.placementInfo;
-      namespaceToConfig =
-          PlacementInfoUtil.getConfigPerNamespace(
-              pi, universe.getUniverseDetails().nodePrefix, provider);
+      podFQDNToConfig =
+          PlacementInfoUtil.getKubernetesConfigPerPod(
+              pi, universe.getUniverseDetails().nodeDetailsSet);
     } else {
       // Populate the map so that we use the correct SSH Keys for the different
       // nodes in different clusters.
@@ -189,7 +189,7 @@ public class TableManagerYb extends DevopsBase {
             region,
             customerConfig,
             provider,
-            namespaceToConfig,
+            podFQDNToConfig,
             nodeToNodeTlsEnabled,
             ipToSshKeyPath,
             commandArgs);
@@ -245,7 +245,7 @@ public class TableManagerYb extends DevopsBase {
             region,
             customerConfig,
             provider,
-            namespaceToConfig,
+            podFQDNToConfig,
             nodeToNodeTlsEnabled,
             ipToSshKeyPath,
             commandArgs);
@@ -270,13 +270,13 @@ public class TableManagerYb extends DevopsBase {
       Region region,
       CustomerConfig customerConfig,
       Provider provider,
-      Map<String, String> namespaceToConfig,
+      Map<String, String> podFQDNToConfig,
       boolean nodeToNodeTlsEnabled,
       Map<String, String> ipToSshKeyPath,
       List<String> commandArgs) {
     if (region.provider.code.equals("kubernetes")) {
       commandArgs.add("--k8s_config");
-      commandArgs.add(Json.stringify(Json.toJson(namespaceToConfig)));
+      commandArgs.add(Json.stringify(Json.toJson(podFQDNToConfig)));
     } else {
       commandArgs.add("--ssh_port");
       commandArgs.add(accessKey.getKeyInfo().sshPort.toString());

@@ -21,6 +21,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
@@ -1725,6 +1726,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         expectedConfigs, PlacementInfoUtil.getConfigPerNamespace(pi, nodePrefix, k8sProvider));
   }
 
+  // TODO: use parameters here?
   @Test
   public void testGetKubernetesNamespace() {
     Map<String, String> config = new HashMap<>();
@@ -1733,16 +1735,136 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     String nodePrefix = "demo-universe";
     String nodePrefixAz = String.format("%s-%s", nodePrefix, az);
 
-    assertEquals(nodePrefix, PlacementInfoUtil.getKubernetesNamespace(nodePrefix, null, config));
-    assertEquals(nodePrefixAz, PlacementInfoUtil.getKubernetesNamespace(nodePrefix, az, config));
     assertEquals(
-        nodePrefixAz, PlacementInfoUtil.getKubernetesNamespace(true, nodePrefix, az, config));
+        nodePrefixAz, PlacementInfoUtil.getKubernetesNamespace(nodePrefix, az, config, false));
     assertEquals(
-        nodePrefix, PlacementInfoUtil.getKubernetesNamespace(false, nodePrefix, az, config));
+        nodePrefix, PlacementInfoUtil.getKubernetesNamespace(nodePrefix, null, config, false));
+    assertEquals(
+        nodePrefix, PlacementInfoUtil.getKubernetesNamespace(nodePrefix, az, config, true));
+    assertEquals(
+        nodePrefix, PlacementInfoUtil.getKubernetesNamespace(nodePrefix, null, config, true));
+
+    assertEquals(
+        nodePrefixAz,
+        PlacementInfoUtil.getKubernetesNamespace(true, nodePrefix, az, config, false));
+    assertEquals(
+        nodePrefix, PlacementInfoUtil.getKubernetesNamespace(false, nodePrefix, az, config, false));
+    assertEquals(
+        nodePrefix, PlacementInfoUtil.getKubernetesNamespace(true, nodePrefix, az, config, true));
+    assertEquals(
+        nodePrefix, PlacementInfoUtil.getKubernetesNamespace(false, nodePrefix, az, config, true));
 
     config.put("KUBENAMESPACE", ns);
-    assertEquals(ns, PlacementInfoUtil.getKubernetesNamespace(true, nodePrefix, az, config));
-    assertEquals(ns, PlacementInfoUtil.getKubernetesNamespace(false, nodePrefix, az, config));
+    assertEquals(ns, PlacementInfoUtil.getKubernetesNamespace(true, nodePrefix, az, config, false));
+    assertEquals(
+        ns, PlacementInfoUtil.getKubernetesNamespace(false, nodePrefix, az, config, false));
+    assertEquals(ns, PlacementInfoUtil.getKubernetesNamespace(true, nodePrefix, az, config, true));
+    assertEquals(ns, PlacementInfoUtil.getKubernetesNamespace(false, nodePrefix, az, config, true));
+  }
+
+  @Test
+  @Parameters({
+    ", false, demo, az-1, false",
+    "demo-, false, demo, az-1, true",
+    "demo-az-1-, true, demo, az-1, true",
+    "demo-node-prefix-which-is-longer-1234567-az-, true, demo-node-prefix-which-is-longer-1234567, az-1, true"
+  })
+  public void testGetHelmFullNameWithSuffix(
+      String helmName,
+      boolean isMultiAZ,
+      String nodePrefix,
+      String azName,
+      boolean newNamingStyle) {
+    assertEquals(
+        helmName,
+        PlacementInfoUtil.getHelmFullNameWithSuffix(isMultiAZ, nodePrefix, azName, newNamingStyle));
+  }
+
+  @Test
+  public void testK8sComputeMasterAddressesMultiAZ() {
+    String customerCode = String.valueOf(customerIdx.nextInt(99999));
+    Customer k8sCustomer =
+        ModelFactory.testCustomer(customerCode, String.format("Test Customer %s", customerCode));
+    Provider k8sProvider = ModelFactory.newProvider(k8sCustomer, CloudType.kubernetes);
+    Region r1 = Region.create(k8sProvider, "region-1", "Region 1", "yb-image-1");
+    Region r2 = Region.create(k8sProvider, "region-2", "Region 2", "yb-image-1");
+    AvailabilityZone az1 = AvailabilityZone.createOrThrow(r1, "az-" + 1, "az-" + 1, "subnet-" + 1);
+    AvailabilityZone az2 = AvailabilityZone.createOrThrow(r1, "az-" + 2, "az-" + 2, "subnet-" + 2);
+    AvailabilityZone az3 = AvailabilityZone.createOrThrow(r2, "az-" + 3, "az-" + 3, "subnet-" + 3);
+    PlacementInfo pi = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(az1.uuid, pi);
+    PlacementInfoUtil.addPlacementZone(az2.uuid, pi);
+    PlacementInfoUtil.addPlacementZone(az3.uuid, pi);
+    Map<UUID, Integer> azToNumMasters = ImmutableMap.of(az1.uuid, 1, az2.uuid, 1, az3.uuid, 1);
+    String nodePrefix = "demo-universe";
+
+    // New naming style
+    String masterAddresses =
+        PlacementInfoUtil.computeMasterAddresses(
+            pi, azToNumMasters, nodePrefix, k8sProvider, 1234, true);
+    String masterAddressFormat =
+        "%s-%s-yb-master-0.%1$s-%2$s-yb-masters.%1$s.svc.cluster.local:1234";
+    String expectedMasterAddresses =
+        String.format(masterAddressFormat, nodePrefix, az1.code)
+            + ","
+            + String.format(masterAddressFormat, nodePrefix, az2.code)
+            + ","
+            + String.format(masterAddressFormat, nodePrefix, az3.code);
+    assertEquals(expectedMasterAddresses, masterAddresses);
+
+    // Old naming style
+    masterAddresses =
+        PlacementInfoUtil.computeMasterAddresses(
+            pi, azToNumMasters, nodePrefix, k8sProvider, 1234, false);
+    masterAddressFormat = "yb-master-0.yb-masters.%s-%s.svc.cluster.local:1234";
+    expectedMasterAddresses =
+        String.format(masterAddressFormat, nodePrefix, az1.code)
+            + ","
+            + String.format(masterAddressFormat, nodePrefix, az2.code)
+            + ","
+            + String.format(masterAddressFormat, nodePrefix, az3.code);
+    assertEquals(expectedMasterAddresses, masterAddresses);
+  }
+
+  @Test
+  public void testK8sComputeMasterAddressesSingleAZ() {
+    String customerCode = String.valueOf(customerIdx.nextInt(99999));
+    Customer k8sCustomer =
+        ModelFactory.testCustomer(customerCode, String.format("Test Customer %s", customerCode));
+    Provider k8sProvider = ModelFactory.newProvider(k8sCustomer, CloudType.kubernetes);
+    Region r1 = Region.create(k8sProvider, "region-1", "Region 1", "yb-image-1");
+    AvailabilityZone az1 = AvailabilityZone.createOrThrow(r1, "az-" + 1, "az-" + 1, "subnet-" + 1);
+    PlacementInfo pi = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(az1.uuid, pi);
+    Map<UUID, Integer> azToNumMasters = ImmutableMap.of(az1.uuid, 1);
+
+    String masterAddresses =
+        PlacementInfoUtil.computeMasterAddresses(
+            pi, azToNumMasters, "demo-universe", k8sProvider, 1234, true);
+    assertNull(masterAddresses);
+  }
+
+  @Test
+  public void testGetKubernetesConfigPerPod() {
+    PlacementInfo pi = new PlacementInfo();
+    List<AvailabilityZone> azs =
+        ImmutableList.of(testData.get(0).az1, testData.get(0).az2, testData.get(0).az3);
+    Set<NodeDetails> nodeDetailsSet = new HashSet<>();
+    int idx = 1;
+    for (AvailabilityZone az : azs) {
+      az.updateConfig(ImmutableMap.of("KUBECONFIG", "az-" + idx));
+      PlacementInfoUtil.addPlacementZone(az.uuid, pi);
+
+      NodeDetails node = ApiUtils.getDummyNodeDetails(idx);
+      node.azUuid = az.uuid;
+      nodeDetailsSet.add(node);
+      idx++;
+    }
+    Map<String, String> expectedConfigPerPod =
+        ImmutableMap.of("10.0.0.1", "az-1", "10.0.0.2", "az-2", "10.0.0.3", "az-3");
+
+    assertEquals(
+        expectedConfigPerPod, PlacementInfoUtil.getKubernetesConfigPerPod(pi, nodeDetailsSet));
   }
 
   @Test

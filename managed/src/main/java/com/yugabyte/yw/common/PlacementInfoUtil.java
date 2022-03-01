@@ -2250,35 +2250,41 @@ public class PlacementInfoUtil {
   // of azName. In case of single AZ providers, the azName is passed
   // as null.
   public static String getKubernetesNamespace(
-      String nodePrefix, String azName, Map<String, String> azConfig) {
+      String nodePrefix, String azName, Map<String, String> azConfig, boolean newNamingStyle) {
     boolean isMultiAZ = (azName != null);
-    return getKubernetesNamespace(isMultiAZ, nodePrefix, azName, azConfig);
+    return getKubernetesNamespace(isMultiAZ, nodePrefix, azName, azConfig, newNamingStyle);
   }
 
   /**
    * This function returns the namespace for the given AZ. If the AZ config has KUBENAMESPACE
    * defined, then it is used directly. Otherwise, the namespace is constructed with nodePrefix &
-   * azName params.
+   * azName params. In case of newNamingStyle, the nodePrefix is used as it is.
    */
   public static String getKubernetesNamespace(
-      boolean isMultiAZ, String nodePrefix, String azName, Map<String, String> azConfig) {
+      boolean isMultiAZ,
+      String nodePrefix,
+      String azName,
+      Map<String, String> azConfig,
+      boolean newNamingStyle) {
     String namespace = azConfig.get("KUBENAMESPACE");
     if (StringUtils.isBlank(namespace)) {
       int suffixLen = isMultiAZ ? azName.length() + 1 : 0;
       namespace = Util.sanitizeKubernetesNamespace(nodePrefix, suffixLen);
-      if (isMultiAZ) {
+      if (isMultiAZ && !newNamingStyle) {
         namespace = String.format("%s-%s", namespace, azName);
       }
     }
     return namespace;
   }
 
-  // TODO(bhavin192): what if the same namespace is being used for
-  // different AZs (can be possible when we allow multiple releases in
-  // one namespace)? We need to have something like ns_az to make sure
-  // that the configuration is correct. This is eventually used by
-  // bin/yb_backup.py and bin/cluster_health.py. Those will need an
-  // update as well.
+  /**
+   * This method always assumes that old Helm naming style is being used.
+   *
+   * @deprecated Use {@link #getKubernetesConfigPerPod()} instead as it works for both new and old
+   *     Helm naming styles. Read the docstrig of {@link #getKubernetesConfigPerPod()} to understand
+   *     more about this deprecation.
+   */
+  @Deprecated
   public static Map<String, String> getConfigPerNamespace(
       PlacementInfo pi, String nodePrefix, Provider provider) {
     Map<String, String> namespaceToConfig = new HashMap<>();
@@ -2291,7 +2297,8 @@ public class PlacementInfoUtil {
       }
 
       String azName = AvailabilityZone.get(entry.getKey()).code;
-      String namespace = getKubernetesNamespace(isMultiAZ, nodePrefix, azName, entry.getValue());
+      String namespace =
+          getKubernetesNamespace(isMultiAZ, nodePrefix, azName, entry.getValue(), false);
       namespaceToConfig.put(namespace, kubeconfig);
       if (!isMultiAZ) {
         break;
@@ -2301,14 +2308,46 @@ public class PlacementInfoUtil {
     return namespaceToConfig;
   }
 
+  /**
+   * Returns a map of pod FQDN to KUBECONFIG string for all pods in the nodeDetailsSet. This method
+   * is useful for both new and old naming styles, as we are not using namespace as key.
+   *
+   * <p>In new naming style, all the AZ deployments are in the same namespace. These AZs can be in
+   * different Kubernetes clusters, and will have same namespace name across all of them. This
+   * requires different kubeconfig per cluster/pod to access them.
+   */
+  public static Map<String, String> getKubernetesConfigPerPod(
+      PlacementInfo pi, Set<NodeDetails> nodeDetailsSet) {
+    Map<String, String> podToConfig = new HashMap<>();
+    Map<UUID, String> azToKubeconfig = new HashMap<>();
+    Map<UUID, Map<String, String>> azToConfig = getConfigPerAZ(pi);
+    for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
+      String kubeconfig = entry.getValue().get("KUBECONFIG");
+      if (kubeconfig == null) {
+        throw new NullPointerException("Couldn't find a kubeconfig for AZ " + entry.getKey());
+      }
+      azToKubeconfig.put(entry.getKey(), kubeconfig);
+    }
+
+    for (NodeDetails nd : nodeDetailsSet) {
+      String kubeconfig = azToKubeconfig.get(nd.azUuid);
+      if (kubeconfig == null) {
+        throw new NullPointerException("Couldn't find a kubeconfig for AZ " + nd.azUuid);
+      }
+      podToConfig.put(nd.cloudInfo.private_ip, kubeconfig);
+    }
+    return podToConfig;
+  }
+
   // Compute the master addresses of the pods in the deployment if multiAZ.
   public static String computeMasterAddresses(
       PlacementInfo pi,
       Map<UUID, Integer> azToNumMasters,
       String nodePrefix,
       Provider provider,
-      int masterRpcPort) {
-    List<String> masters = new ArrayList<>();
+      int masterRpcPort,
+      boolean newNamingStyle) {
+    List<String> masters = new ArrayList<String>();
     Map<UUID, String> azToDomain = getDomainPerAZ(pi);
     boolean isMultiAZ = isMultiAZ(provider);
     if (!isMultiAZ) {
@@ -2318,14 +2357,16 @@ public class PlacementInfoUtil {
     for (Entry<UUID, Integer> entry : azToNumMasters.entrySet()) {
       AvailabilityZone az = AvailabilityZone.get(entry.getKey());
       String namespace =
-          getKubernetesNamespace(isMultiAZ, nodePrefix, az.code, az.getUnmaskedConfig());
+          getKubernetesNamespace(
+              isMultiAZ, nodePrefix, az.code, az.getUnmaskedConfig(), newNamingStyle);
       String domain = azToDomain.get(entry.getKey());
+      String helmFullName =
+          getHelmFullNameWithSuffix(isMultiAZ, nodePrefix, az.code, newNamingStyle);
       for (int idx = 0; idx < entry.getValue(); idx++) {
-        // TODO(bhavin192): might need to change when we have multiple
-        // releases in one namespace.
         String master =
             String.format(
-                "yb-master-%d.yb-masters.%s.%s:%d", idx, namespace, domain, masterRpcPort);
+                "%syb-master-%d.%syb-masters.%s.%s:%d",
+                helmFullName, idx, helmFullName, namespace, domain, masterRpcPort);
         masters.add(master);
       }
     }
@@ -2349,6 +2390,24 @@ public class PlacementInfoUtil {
     }
 
     return azToDomain;
+  }
+
+  // Returns a string which is exactly the same as yugabyte chart's
+  // helper template yugabyte.fullname. This is prefixed to all the
+  // resource names when newNamingstyle is being used. We set
+  // fullnameOverride in the Helm overrides.
+  // https://git.io/yugabyte.fullname
+  public static String getHelmFullNameWithSuffix(
+      boolean isMultiAZ, String nodePrefix, String azName, boolean newNamingStyle) {
+    if (!newNamingStyle) {
+      return "";
+    }
+    String releaseName = isMultiAZ ? String.format("%s-%s", nodePrefix, azName) : nodePrefix;
+    // <release name> | truncate 43
+    if (releaseName.length() > 43) {
+      releaseName = releaseName.substring(0, 43);
+    }
+    return releaseName + "-";
   }
 
   // Returns the start index for provisioning new nodes based on the current maximum node index

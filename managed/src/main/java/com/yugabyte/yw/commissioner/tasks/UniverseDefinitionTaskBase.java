@@ -152,6 +152,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     if (!isReadOnlyCreate) {
       universeDetails.nodeDetailsSet = taskParams.nodeDetailsSet;
       universeDetails.nodePrefix = taskParams.nodePrefix;
+      universeDetails.useNewHelmNamingStyle = taskParams.useNewHelmNamingStyle;
       universeDetails.universeUUID = taskParams.universeUUID;
       universeDetails.allowInsecure = taskParams.allowInsecure;
       universeDetails.rootAndClientRootCASame = taskParams.rootAndClientRootCASame;
@@ -992,6 +993,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       throw new IllegalStateException("Should not have any masters before create task is run.");
     }
 
+    // TODO(bhavin192): should we have check for useNewHelmNamingStyle
+    // being changed later at some point during edit?
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     for (Cluster cluster : taskParams().clusters) {
