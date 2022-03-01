@@ -83,15 +83,15 @@ public class CertsRotate extends UpgradeTaskBase {
             }
             // Copy new server certs to all nodes
             createCertUpdateTasks(nodes.getRight(), CertRotateAction.ROTATE_CERTS);
+            // Update gflags of cert directories
+            createUpdateCertDirsTask(nodes.getLeft(), ServerType.MASTER);
+            createUpdateCertDirsTask(nodes.getRight(), ServerType.TSERVER);
             // Do a rolling/non-rolling restart
             createRestartTasks(nodes, taskParams().upgradeOption);
             // Reset the old rootCA content in platform
             if (taskParams().rootCARotationType == CertRotationType.RootCert) {
               createUniverseUpdateRootCertTask(UpdateRootCertAction.Reset);
             }
-            // Update gflags of cert directories
-            createUpdateCertDirsTask(nodes.getLeft(), ServerType.MASTER);
-            createUpdateCertDirsTask(nodes.getRight(), ServerType.TSERVER);
             // Update universe details with new cert values
             createUniverseSetTlsParamsTask();
           }

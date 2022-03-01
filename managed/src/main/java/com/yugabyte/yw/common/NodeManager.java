@@ -416,7 +416,11 @@ public class NodeManager extends DevopsBase {
               serverKeyPath = String.format("%s/%s", tempStorageDirectory, serverKeyFile);
               certsLocation = CERT_LOCATION_PLATFORM;
 
-              if (taskParam.enableClientToNodeEncrypt && taskParam.rootAndClientRootCASame) {
+              if (taskParam.rootAndClientRootCASame && taskParam.enableClientToNodeEncrypt) {
+                // These client certs are used for node to postgres communication
+                // These are separate from clientRoot certs which are used for server to client
+                // communication These are not required anymore as this is not mandatory now and
+                // can be removed. The code is still here to maintain backward compatibility
                 subcommandStrings.add("--client_cert_path");
                 subcommandStrings.add(CertificateHelper.getClientCertFile(taskParam.rootCA));
                 subcommandStrings.add("--client_key_path");
@@ -514,14 +518,6 @@ public class NodeManager extends DevopsBase {
               serverCertPath = String.format("%s/%s", tempStorageDirectory, serverCertFile);
               serverKeyPath = String.format("%s/%s", tempStorageDirectory, serverKeyFile);
               certsLocation = CERT_LOCATION_PLATFORM;
-
-              if (taskParam.enableClientToNodeEncrypt && taskParam.rootAndClientRootCASame) {
-                subcommandStrings.add("--client_cert_path");
-                subcommandStrings.add(CertificateHelper.getClientCertFile(taskParam.rootCA));
-                subcommandStrings.add("--client_key_path");
-                subcommandStrings.add(CertificateHelper.getClientKeyFile(taskParam.rootCA));
-              }
-
             } catch (IOException e) {
               LOG.error(e.getMessage(), e);
               throw new RuntimeException(e);
@@ -1026,6 +1022,7 @@ public class NodeManager extends DevopsBase {
                           universe.getUniverseDetails().getPrimaryCluster().userIntent.provider))
                   .getYbHome();
           String certsNodeDir = getCertsNodeDir(ybHomeDir);
+          String certsForClientDir = getCertsForClientDir(ybHomeDir);
 
           subcommand.add("--cert_rotate_action");
           subcommand.add(taskParam.certRotateAction.toString());
@@ -1088,14 +1085,21 @@ public class NodeManager extends DevopsBase {
               }
               break;
             case UPDATE_CERT_DIRS:
+              {
+                Map<String, String> gflags = new HashMap<>();
+                if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
+                  gflags.put("certs_dir", certsNodeDir);
+                }
+                if (EncryptionInTransitUtil.isClientRootCARequired(taskParam)) {
+                  gflags.put("certs_for_client_dir", certsForClientDir);
+                }
+                subcommand.add("--gflags");
+                subcommand.add(Json.stringify(Json.toJson(gflags)));
+                subcommand.add("--tags");
+                subcommand.add("override_gflags");
+                break;
+              }
           }
-
-          Map<String, String> gflags = new HashMap<>(taskParam.gflags);
-          subcommand.add("--gflags");
-          subcommand.add(Json.stringify(Json.toJson(gflags)));
-
-          subcommand.add("--tags");
-          subcommand.add("override_gflags");
         }
         break;
       case ToggleTls:
