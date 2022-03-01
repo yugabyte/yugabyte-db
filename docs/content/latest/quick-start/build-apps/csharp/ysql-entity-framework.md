@@ -49,13 +49,7 @@ The tutorial assumes that you have:
 
 - YugabyteDB up and running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../../quick-start/) to have YugabyteDB up and running in minutes.
 
-- [.NET 2.0](https://dotnet.microsoft.com/en-us/download/dotnet/2.0)
-
-{{< note title="Note" >}}
-
-.NET 2.0 is an EOL version and updates to run this example with the latest version is under progress.
-
-{{< /note >}}
+- [.NET framework](https://dotnet.microsoft.com/en-us/download)
 
 ## Clone the "orm-examples" repository
 
@@ -67,16 +61,14 @@ $ git clone https://github.com/yugabyte/orm-examples.git && cd orm-examples/csha
 
 - To modify the database connection settings, change the default `ConnectionStrings` in `appsettings.json` file which is in the following format:
 
-```sh
-Host=$hostName; Port=$dbPort; Username=$dbUser; Password=$dbPassword; Database=$database
-```
+`Host=$hostName; Port=$dbPort; Username=$dbUser; Password=$dbPassword; Database=$database`
 
 | Properties | Description | Default |
 | :--------- | :---------- | :------ |
 | Host | Database server IP address or DNS name. | 127.0.0.1 |
 | Port | Database port where it accepts client connections. | 5433 |
 | Username | The username to connect to the database. | yugabyte |
-| Password | The password to connect to the database. Leave the password field blank. |
+| Password | The password to connect to the database. | yugabyte |
 | Database | Database instance in database server. | ysql_entityframework |
 
 ## Start the REST API server
@@ -128,7 +120,15 @@ $ curl \
 Verify the `userId` and `productId` from the database using the following YSQL commands.
 
 ```sh
-yugabyte=# select * from users;
+yugabyte=# \c ysql_entityframework
+```
+
+```output
+You are now connected to database "ysql_entityframework" as user "yugabyte".
+```
+
+```sh
+ysql_entityframework=# SELECT count(*) FROM users;
 ```
 
 ```output
@@ -140,7 +140,7 @@ yugabyte=# select * from users;
 ```
 
 ```sh
-yugabyte=# select * from products;
+ysql_entityframework=# SELECT count(*) FROM products;
 ```
 
 ```output
@@ -151,7 +151,7 @@ yugabyte=# select * from products;
 (2 rows)
 ```
 
-Create 2 orders using the `userId` for John.
+Create 2 orders with products using the `userId` for John.
 
 ```sh
 $ curl \
@@ -179,8 +179,16 @@ Type "help" for help.
 yugabyte=#
 ```
 
+```sh
+yugabyte=# \c ysql_entityframework
+```
+
+```output
+You are now connected to database "ysql_entityframework" as user "yugabyte".
+```
+
 ```sql
-yugabyte=# SELECT count(*) FROM users;
+ysql_entityframework=# SELECT count(*) FROM users;
 ```
 
 ```output
@@ -191,7 +199,7 @@ yugabyte=# SELECT count(*) FROM users;
 ```
 
 ```sql
-yugabyte=# SELECT count(*) FROM products;
+ysql_entityframework=# SELECT count(*) FROM products;
 ```
 
 ```output
@@ -202,7 +210,7 @@ yugabyte=# SELECT count(*) FROM products;
 ```
 
 ```sql
-yugabyte=# SELECT count(*) FROM orders;
+ysql_entityframework=# SELECT count(*) FROM orders;
 ```
 
 ```output
@@ -273,10 +281,10 @@ $ curl http://localhost:8080/orders
       "orderTime": "2019-05-10T04:26:54.590+0000",
       "orderId": "999ae272-f2f4-46a1-bede-5ab765bb27fe",
       "user": {
-        "userId": 2,
-        "firstName": "Tom",
-        "lastName": "Stewart",
-        "email": "tstewart@example.com"
+        "userId": 1,
+        "firstName": "John",
+        "lastName": "Smith",
+        "email": "jsmith@example.com"
       },
       "userId": null,
       "orderTotal": 25,
@@ -286,10 +294,10 @@ $ curl http://localhost:8080/orders
       "orderTime": "2019-05-10T04:26:48.074+0000",
       "orderId": "1598c8d4-1857-4725-a9ab-14deb089ab4e",
       "user": {
-        "userId": 2,
-        "firstName": "Tom",
-        "lastName": "Stewart",
-        "email": "tstewart@example.com"
+        "userId": 1,
+        "firstName": "John",
+        "lastName": "Smith",
+        "email": "jsmith@example.com"
       },
       "userId": null,
       "orderTotal": 15,
