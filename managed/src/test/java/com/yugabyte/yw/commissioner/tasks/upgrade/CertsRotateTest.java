@@ -455,15 +455,15 @@ public class CertsRotateTest extends UpgradeTaskTest {
     }
     // Cert update tasks
     position = assertCommonTasks(subTasksByPosition, position, false, false);
+    // gflags update tasks
+    position = assertCommonTasks(subTasksByPosition, position, false, false);
+    position = assertCommonTasks(subTasksByPosition, position, false, false);
     // Restart tasks
     position = assertRestartSequence(subTasksByPosition, position, false);
     // RootCA update task
     if (rotateRootCA) {
       position = assertCommonTasks(subTasksByPosition, position, true, false);
     }
-    // gflags update tasks
-    position = assertCommonTasks(subTasksByPosition, position, false, false);
-    position = assertCommonTasks(subTasksByPosition, position, false, false);
     // Update universe params task
     position = assertCommonTasks(subTasksByPosition, position, false, true);
 
@@ -638,11 +638,11 @@ public class CertsRotateTest extends UpgradeTaskTest {
     } else {
       // Cert update tasks
       position = assertCommonTasks(subTasksByPosition, position, false, false);
-      // Restart tasks
-      position = assertRestartSequence(subTasksByPosition, position, true);
       // gflags update tasks
       position = assertCommonTasks(subTasksByPosition, position, false, false);
       position = assertCommonTasks(subTasksByPosition, position, false, false);
+      // Restart tasks
+      position = assertRestartSequence(subTasksByPosition, position, true);
       // Update universe params task
       position = assertCommonTasks(subTasksByPosition, position, false, true);
     }
