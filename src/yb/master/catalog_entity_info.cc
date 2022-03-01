@@ -35,6 +35,7 @@
 #include <string>
 
 #include "yb/common/doc_hybrid_time.h"
+#include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/master/master_client.pb.h"
@@ -45,6 +46,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/format.h"
 #include "yb/util/status_format.h"
+#include "yb/util/string_util.h"
 
 using std::string;
 
@@ -768,8 +770,15 @@ IndexInfo TableInfo::GetIndexInfo(const TableId& index_id) const {
 
 bool TableInfo::UsesTablespacesForPlacement() const {
   auto l = LockForRead();
-  return l->pb.table_type() == PGSQL_TABLE_TYPE && !IsColocatedUserTable() &&
-         l->namespace_id() != kPgSequencesDataNamespaceId;
+  // Global transaction table is excluded due to not having a tablespace id set.
+  bool is_transaction_table_using_tablespaces =
+      l->pb.table_type() == TRANSACTION_STATUS_TABLE_TYPE &&
+      l->pb.has_transaction_table_tablespace_id();
+  bool is_regular_pgsql_table =
+      l->pb.table_type() == PGSQL_TABLE_TYPE && !IsColocatedUserTable() &&
+      l->namespace_id() != kPgSequencesDataNamespaceId &&
+      !IsColocatedParentTable();
+  return is_transaction_table_using_tablespaces || is_regular_pgsql_table;
 }
 
 bool TableInfo::IsTablegroupParentTable() const {

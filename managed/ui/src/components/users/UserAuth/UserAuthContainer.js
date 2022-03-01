@@ -5,6 +5,8 @@ import { UserAuth } from './UserAuth';
 import {
   fetchRunTimeConfigs,
   fetchRunTimeConfigsResponse,
+  deleteRunTimeConfig,
+  deleteRunTimeConfigResponse,
   setRunTimeConfig,
   setRunTimeConfigResponse
 } from '../../../actions/customers';
@@ -20,13 +22,19 @@ const mapDispatchToProps = (dispatch) => {
       return dispatch(setRunTimeConfig(payload)).then((response) =>
         dispatch(setRunTimeConfigResponse(response.payload))
       );
+    },
+    deleteRunTimeConfig: (payload) => {
+      return dispatch(deleteRunTimeConfig(payload)).then((response) =>
+        dispatch(deleteRunTimeConfigResponse(response.payload))
+      );
     }
   };
 };
 
 function mapStateToProps(state) {
   return {
-    runtimeConfigs: state.customer.runtimeConfigs
+    runtimeConfigs: state.customer.runtimeConfigs,
+    featureFlags: state.featureFlags
   };
 }
 

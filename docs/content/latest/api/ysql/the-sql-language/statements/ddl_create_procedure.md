@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Use the `CREATE PROCEDURE` statement to to create a procedure in a database.
+Use the `CREATE PROCEDURE` statement to create a procedure in a database.
 
 ## Syntax
 

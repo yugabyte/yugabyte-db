@@ -34,6 +34,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
@@ -43,7 +44,7 @@ import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.CertificateInfo;
-import com.yugabyte.yw.models.CertificateInfo.Type;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
@@ -53,8 +54,10 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -68,6 +71,8 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
+import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.validator.routines.InetAddressValidator;
@@ -80,6 +85,9 @@ import play.libs.Json;
 @Slf4j
 public class NodeManager extends DevopsBase {
   static final String BOOT_SCRIPT_PATH = "yb.universe_boot_script";
+  static final String BOOT_SCRIPT_TOKEN = "39666ab2-6633-4806-9685-5134321bd0d1";
+  static final String BOOT_SCRIPT_COMPLETE =
+      "\r\nsync\r\necho " + BOOT_SCRIPT_TOKEN + " >/etc/yb-boot-script-complete\r\n";
   private static final String YB_CLOUD_COMMAND_TYPE = "instance";
   public static final String CERT_LOCATION_NODE = "node";
   public static final String CERT_LOCATION_PLATFORM = "platform";
@@ -321,6 +329,17 @@ public class NodeManager extends DevopsBase {
     return null;
   }
 
+  /**
+   * Creates certificates if not present. Called from various places like - when node is added to
+   * universe
+   *
+   * @param config
+   * @param userIntent
+   * @param taskParam
+   * @param nodeIP
+   * @param ybHomeDir
+   * @return
+   */
   private List<String> getCertificatePaths(
       Config config,
       UserIntent userIntent,
@@ -332,8 +351,8 @@ public class NodeManager extends DevopsBase {
         config,
         userIntent,
         taskParam,
-        CertificateHelper.isRootCARequired(taskParam),
-        CertificateHelper.isClientRootCARequired(taskParam),
+        EncryptionInTransitUtil.isRootCARequired(taskParam),
+        EncryptionInTransitUtil.isClientRootCARequired(taskParam),
         nodeIP,
         ybHomeDir,
         subjectAltName);
@@ -367,12 +386,20 @@ public class NodeManager extends DevopsBase {
 
       switch (rootCert.certType) {
         case SelfSigned:
+        case HashicorpVault:
           {
             try {
               // Creating a temp directory to save Server Cert and Key from Root for the node
-              Path tempStorageDirectory =
-                  Files.createTempDirectory(String.format("SelfSigned%s", taskParam.rootCA))
-                      .toAbsolutePath();
+              Path tempStorageDirectory;
+              if (rootCert.certType == CertConfigType.SelfSigned) {
+                tempStorageDirectory =
+                    Files.createTempDirectory(String.format("SelfSigned%s", taskParam.rootCA))
+                        .toAbsolutePath();
+              } else {
+                tempStorageDirectory =
+                    Files.createTempDirectory(String.format("Hashicorp%s", taskParam.rootCA))
+                        .toAbsolutePath();
+              }
               CertificateHelper.createServerCertificate(
                   taskParam.rootCA,
                   tempStorageDirectory.toString(),
@@ -387,11 +414,7 @@ public class NodeManager extends DevopsBase {
               serverKeyPath = String.format("%s/%s", tempStorageDirectory, serverKeyFile);
               certsLocation = CERT_LOCATION_PLATFORM;
 
-              if (taskParam.rootAndClientRootCASame && taskParam.enableClientToNodeEncrypt) {
-                // These client certs are used for node to postgres communication
-                // These are separate from clientRoot certs which are used for server to client
-                // communication These are not required anymore as this is not mandatory now and
-                // can be removed. The code is still here to maintain backward compatibility
+              if (taskParam.enableClientToNodeEncrypt && taskParam.rootAndClientRootCASame) {
                 subcommandStrings.add("--client_cert_path");
                 subcommandStrings.add(CertificateHelper.getClientCertFile(taskParam.rootCA));
                 subcommandStrings.add("--client_key_path");
@@ -405,7 +428,7 @@ public class NodeManager extends DevopsBase {
           }
         case CustomCertHostPath:
           {
-            CertificateParams.CustomCertInfo customCertInfo = rootCert.getCustomCertInfo();
+            CertificateParams.CustomCertInfo customCertInfo = rootCert.getCustomCertPathParams();
             rootCertPath = customCertInfo.rootCertPath;
             serverCertPath = customCertInfo.nodeCertPath;
             serverKeyPath = customCertInfo.nodeKeyPath;
@@ -462,13 +485,20 @@ public class NodeManager extends DevopsBase {
 
       switch (clientRootCert.certType) {
         case SelfSigned:
+        case HashicorpVault:
           {
             try {
               // Creating a temp directory to save Server Cert and Key from Root for the node
-              Path tempStorageDirectory =
-                  Files.createTempDirectory(
-                          String.format("SelfSignedClient%s", taskParam.clientRootCA))
-                      .toAbsolutePath();
+              Path tempStorageDirectory;
+              if (clientRootCert.certType == CertConfigType.SelfSigned) {
+                tempStorageDirectory =
+                    Files.createTempDirectory(String.format("SelfSigned%s", taskParam.rootCA))
+                        .toAbsolutePath();
+              } else {
+                tempStorageDirectory =
+                    Files.createTempDirectory(String.format("Hashicorp%s", taskParam.rootCA))
+                        .toAbsolutePath();
+              }
               CertificateHelper.createServerCertificate(
                   taskParam.clientRootCA,
                   tempStorageDirectory.toString(),
@@ -482,6 +512,14 @@ public class NodeManager extends DevopsBase {
               serverCertPath = String.format("%s/%s", tempStorageDirectory, serverCertFile);
               serverKeyPath = String.format("%s/%s", tempStorageDirectory, serverKeyFile);
               certsLocation = CERT_LOCATION_PLATFORM;
+
+              if (taskParam.enableClientToNodeEncrypt && taskParam.rootAndClientRootCASame) {
+                subcommandStrings.add("--client_cert_path");
+                subcommandStrings.add(CertificateHelper.getClientCertFile(taskParam.rootCA));
+                subcommandStrings.add("--client_key_path");
+                subcommandStrings.add(CertificateHelper.getClientKeyFile(taskParam.rootCA));
+              }
+
             } catch (IOException e) {
               LOG.error(e.getMessage(), e);
               throw new RuntimeException(e);
@@ -490,7 +528,8 @@ public class NodeManager extends DevopsBase {
           }
         case CustomCertHostPath:
           {
-            CertificateParams.CustomCertInfo customCertInfo = clientRootCert.getCustomCertInfo();
+            CertificateParams.CustomCertInfo customCertInfo =
+                clientRootCert.getCustomCertPathParams();
             rootCertPath = customCertInfo.rootCertPath;
             serverCertPath = customCertInfo.nodeCertPath;
             serverKeyPath = customCertInfo.nodeKeyPath;
@@ -572,10 +611,10 @@ public class NodeManager extends DevopsBase {
     if (taskParam.enableClientToNodeEncrypt || taskParam.enableNodeToNodeEncrypt) {
       gflags.put("cert_node_filename", node.cloudInfo.private_ip);
     }
-    if (CertificateHelper.isRootCARequired(taskParam)) {
+    if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
       gflags.put("certs_dir", certsDir);
     }
-    if (CertificateHelper.isClientRootCARequired(taskParam)) {
+    if (EncryptionInTransitUtil.isClientRootCARequired(taskParam)) {
       gflags.put("certs_for_client_dir", certsForClientDir);
     }
     return gflags;
@@ -682,7 +721,10 @@ public class NodeManager extends DevopsBase {
   }
 
   private Map<String, String> getTServerDefaultGflags(
-      AnsibleConfigureServers.Params taskParam, Boolean useHostname, Boolean useSecondaryIp) {
+      AnsibleConfigureServers.Params taskParam,
+      Boolean useHostname,
+      Boolean useSecondaryIp,
+      Boolean isDualNet) {
     Map<String, String> gflags = new HashMap<>();
     Universe universe = Universe.getOrBadRequest(taskParam.universeUUID);
     NodeDetails node = universe.getNode(taskParam.nodeName);
@@ -709,6 +751,11 @@ public class NodeManager extends DevopsBase {
           String.format("%s:%s", node.cloudInfo.secondary_private_ip, node.tserverRpcPort);
       String bindAddresses = bindAddressSecondary + "," + bindAddressPrimary;
       gflags.put("rpc_bind_addresses", bindAddresses);
+    } else if (isDualNet) {
+      // We want the broadcast address to be secondary so that
+      // it gets populated correctly for the client discovery tables.
+      gflags.put("server_broadcast_addresses", node.cloudInfo.secondary_private_ip);
+      gflags.put("use_private_ip", "cloud");
     }
 
     gflags.put("webserver_port", Integer.toString(node.tserverHttpPort));
@@ -751,9 +798,13 @@ public class NodeManager extends DevopsBase {
     Universe universe = Universe.getOrBadRequest(taskParam.universeUUID);
     NodeDetails node = universe.getNode(taskParam.nodeName);
     boolean useSecondaryIp = false;
-    if (config.getBoolean("yb.cloud.enabled")
-        && node.cloudInfo.secondary_private_ip != null
-        && !node.cloudInfo.secondary_private_ip.equals("null")) {
+    boolean legacyNet =
+        universe.getConfig().getOrDefault(Universe.DUAL_NET_LEGACY, "true").equals("true");
+    boolean isDualNet =
+        config.getBoolean("yb.cloud.enabled")
+            && node.cloudInfo.secondary_private_ip != null
+            && !node.cloudInfo.secondary_private_ip.equals("null");
+    if (isDualNet && !legacyNet) {
       useSecondaryIp = true;
     }
 
@@ -761,7 +812,8 @@ public class NodeManager extends DevopsBase {
     if (processType == null) {
       extra_gflags.put("master_addresses", "");
     } else if (processType.equals(ServerType.TSERVER.name())) {
-      extra_gflags.putAll(getTServerDefaultGflags(taskParam, useHostname, useSecondaryIp));
+      extra_gflags.putAll(
+          getTServerDefaultGflags(taskParam, useHostname, useSecondaryIp, isDualNet));
     } else {
       extra_gflags.putAll(getMasterDefaultGFlags(taskParam, useHostname, useSecondaryIp));
     }
@@ -932,6 +984,7 @@ public class NodeManager extends DevopsBase {
             subcommand.add(processType.toLowerCase());
           }
 
+          // TODO: PLAT-2782: certificates are generated 3 times for each node.
           if ((taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt)) {
             subcommand.addAll(
                 getCertificatePaths(
@@ -942,6 +995,7 @@ public class NodeManager extends DevopsBase {
                     taskParam.getProvider().getYbHome(),
                     alternateNames));
           }
+
           Map<String, String> gflags = new HashMap<>(taskParam.gflags);
           subcommand.add("--gflags");
           subcommand.add(Json.stringify(Json.toJson(gflags)));
@@ -991,19 +1045,22 @@ public class NodeManager extends DevopsBase {
                 if (rootCert == null) {
                   throw new RuntimeException("Certificate is null: " + taskParam.rootCA);
                 }
-                if (rootCert.certType == Type.CustomServerCert) {
+                if (rootCert.certType == CertConfigType.CustomServerCert) {
                   throw new RuntimeException(
                       "Root certificate cannot be of type CustomServerCert.");
                 }
 
                 String rootCertPath = "";
                 String certsLocation = "";
-                if (rootCert.certType == Type.SelfSigned) {
+                if (rootCert.certType == CertConfigType.SelfSigned) {
                   rootCertPath = rootCert.certificate;
                   certsLocation = CERT_LOCATION_PLATFORM;
-                } else if (rootCert.certType == Type.CustomCertHostPath) {
-                  rootCertPath = rootCert.getCustomCertInfo().rootCertPath;
+                } else if (rootCert.certType == CertConfigType.CustomCertHostPath) {
+                  rootCertPath = rootCert.getCustomCertPathParams().rootCertPath;
                   certsLocation = CERT_LOCATION_NODE;
+                } else if (rootCert.certType == CertConfigType.HashicorpVault) {
+                  rootCertPath = rootCert.certificate;
+                  certsLocation = CERT_LOCATION_PLATFORM;
                 }
 
                 subcommand.add("--root_cert_path");
@@ -1079,10 +1136,10 @@ public class NodeManager extends DevopsBase {
               gflags.put("use_node_to_node_encryption", nodeToNodeString);
               gflags.put("use_client_to_server_encryption", clientToNodeString);
               gflags.put("allow_insecure_connections", "true");
-              if (CertificateHelper.isRootCARequired(taskParam)) {
+              if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
                 gflags.put("certs_dir", certsDir);
               }
-              if (CertificateHelper.isClientRootCARequired(taskParam)) {
+              if (EncryptionInTransitUtil.isClientRootCARequired(taskParam)) {
                 gflags.put("certs_for_client_dir", certsForClientDir);
               }
             } else if (taskParam.nodeToNodeChange < 0) {
@@ -1091,10 +1148,10 @@ public class NodeManager extends DevopsBase {
               gflags.put("use_node_to_node_encryption", nodeToNodeString);
               gflags.put("use_client_to_server_encryption", clientToNodeString);
               gflags.put("allow_insecure_connections", allowInsecureString);
-              if (CertificateHelper.isRootCARequired(taskParam)) {
+              if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
                 gflags.put("certs_dir", certsDir);
               }
-              if (CertificateHelper.isClientRootCARequired(taskParam)) {
+              if (EncryptionInTransitUtil.isClientRootCARequired(taskParam)) {
                 gflags.put("certs_for_client_dir", certsForClientDir);
               }
             }
@@ -1114,10 +1171,10 @@ public class NodeManager extends DevopsBase {
               gflags.put("use_node_to_node_encryption", nodeToNodeString);
               gflags.put("use_client_to_server_encryption", clientToNodeString);
               gflags.put("allow_insecure_connections", allowInsecureString);
-              if (CertificateHelper.isRootCARequired(taskParam)) {
+              if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
                 gflags.put("certs_dir", certsDir);
               }
-              if (CertificateHelper.isClientRootCARequired(taskParam)) {
+              if (EncryptionInTransitUtil.isClientRootCARequired(taskParam)) {
                 gflags.put("certs_for_client_dir", certsForClientDir);
               }
             } else {
@@ -1260,6 +1317,41 @@ public class NodeManager extends DevopsBase {
         Collections.emptyMap());
   }
 
+  private Path addBootscript(
+      Config config, List<String> commandArgs, NodeTaskParams nodeTaskParam) {
+    Path bootScriptFile = null;
+    String bootScript = config.getString(BOOT_SCRIPT_PATH);
+    commandArgs.add("--boot_script");
+
+    // treat the contents as script body if it starts with a shebang line
+    // otherwise consider the contents to be a path
+    if (bootScript.startsWith("#!")) {
+      try {
+        bootScriptFile = Files.createTempFile(nodeTaskParam.nodeName, "-boot.sh");
+        Files.write(bootScriptFile, bootScript.getBytes());
+        Files.write(bootScriptFile, BOOT_SCRIPT_COMPLETE.getBytes(), StandardOpenOption.APPEND);
+
+      } catch (IOException e) {
+        LOG.error(e.getMessage(), e);
+        throw new RuntimeException(e);
+      }
+    } else {
+      try {
+        bootScriptFile = Files.createTempFile(nodeTaskParam.nodeName, "-boot.sh");
+        Files.write(bootScriptFile, Files.readAllBytes(Paths.get(bootScript)));
+        Files.write(bootScriptFile, BOOT_SCRIPT_COMPLETE.getBytes(), StandardOpenOption.APPEND);
+
+      } catch (IOException e) {
+        LOG.error(e.getMessage(), e);
+        throw new RuntimeException(e);
+      }
+    }
+    commandArgs.add(bootScriptFile.toAbsolutePath().toString());
+    commandArgs.add("--boot_script_token");
+    commandArgs.add(BOOT_SCRIPT_TOKEN);
+    return bootScriptFile;
+  }
+
   public ShellResponse nodeCommand(NodeCommandType type, NodeTaskParams nodeTaskParam) {
     Universe universe = Universe.getOrBadRequest(nodeTaskParam.universeUUID);
     List<String> commandArgs = new ArrayList<>();
@@ -1321,24 +1413,7 @@ public class NodeManager extends DevopsBase {
             }
 
             if (config.hasPath(BOOT_SCRIPT_PATH)) {
-              String bootScript = config.getString(BOOT_SCRIPT_PATH);
-              commandArgs.add("--boot_script");
-
-              // treat the contents as script body if it starts with a shebang line
-              // otherwise consider the contents to be a path
-              if (bootScript.startsWith("#!")) {
-                try {
-                  bootScriptFile = Files.createTempFile(nodeTaskParam.nodeName, "-boot.sh");
-                  Files.write(bootScriptFile, bootScript.getBytes());
-
-                  commandArgs.add(bootScriptFile.toAbsolutePath().toString());
-                } catch (IOException e) {
-                  LOG.error(e.getMessage(), e);
-                  throw new RuntimeException(e);
-                }
-              } else {
-                commandArgs.add(bootScript);
-              }
+              bootScriptFile = addBootscript(config, commandArgs, nodeTaskParam);
             }
 
             // For now we wouldn't add machine image for aws and fallback on the default
@@ -1474,6 +1549,11 @@ public class NodeManager extends DevopsBase {
               commandArgs.add("--remote_package_path");
               commandArgs.add(taskParam.remotePackagePath);
             }
+          }
+
+          Config config = this.runtimeConfigFactory.forProvider(nodeTaskParam.getProvider());
+          if (config.hasPath(BOOT_SCRIPT_PATH)) {
+            bootScriptFile = addBootscript(config, commandArgs, nodeTaskParam);
           }
 
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
@@ -1734,12 +1814,12 @@ public class NodeManager extends DevopsBase {
     }
     CertificateInfo rootCert = CertificateInfo.get(rootCA);
     // checking only certs with CustomCertHostPath type, CustomServerCert is not used for onprem
-    if (rootCert.certType != CertificateInfo.Type.CustomCertHostPath) {
+    if (rootCert.certType != CertConfigType.CustomCertHostPath) {
       return;
     }
     String suffix = isClient ? "_client_to_server" : "";
 
-    CertificateParams.CustomCertInfo customCertInfo = rootCert.getCustomCertInfo();
+    CertificateParams.CustomCertInfo customCertInfo = rootCert.getCustomCertPathParams();
 
     commandArgs.add(String.format("--root_cert_path%s", suffix));
     commandArgs.add(customCertInfo.rootCertPath);

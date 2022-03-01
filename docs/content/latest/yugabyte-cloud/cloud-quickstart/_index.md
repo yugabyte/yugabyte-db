@@ -37,7 +37,7 @@ Get started with YugabyteDB on Yugabyte Cloud in a few steps:
         <div class="title">Connect to the cluster</div>
       </div>
       <div class="body">
-        Connect to your cluster using the cloud shell.
+        Connect to your cluster using Cloud Shell.
       </div>
     </a>
   </div>
@@ -49,7 +49,7 @@ Get started with YugabyteDB on Yugabyte Cloud in a few steps:
         <div class="title">Create a database and load data</div>
       </div>
       <div class="body">
-        Create a database on your cluster and add some data using the cloud shell.
+        Create a database on your cluster and add some data using Cloud Shell.
       </div>
     </a>
   </div>

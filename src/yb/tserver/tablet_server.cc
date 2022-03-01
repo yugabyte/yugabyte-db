@@ -579,10 +579,10 @@ void TabletServer::SetYSQLCatalogVersion(uint64_t new_version, uint64_t new_brea
   }
 }
 
-void TabletServer::UpdateTxnTableVersionsHash(uint64_t new_hash) {
+void TabletServer::UpdateTransactionTablesVersion(uint64_t new_version) {
   const auto transaction_manager = transaction_manager_.load(std::memory_order_acquire);
   if (transaction_manager) {
-    transaction_manager->UpdateTxnTableVersionsHash(new_hash);
+    transaction_manager->UpdateTransactionTablesVersion(new_version);
   }
 }
 

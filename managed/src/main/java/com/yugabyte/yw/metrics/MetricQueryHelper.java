@@ -104,6 +104,18 @@ public class MetricQueryHelper {
       params.put("step", String.valueOf(resolution));
     }
 
+    // Adjust the start time so the graphs are consistent for different requests.
+    if (params.get("start") != null) {
+      long startTime = Long.parseLong(params.get("start"));
+      long adjustingRemainder = startTime % Long.parseLong(params.get("step"));
+      long adjustedStartTime = startTime - adjustingRemainder;
+      params.put("start", Long.toString(adjustedStartTime));
+      if (params.get("end") != null) {
+        long adjustedEndTime = Long.parseLong(params.get("end")) - adjustingRemainder;
+        params.put("end", Long.toString(adjustedEndTime));
+      }
+    }
+
     HashMap<String, String> additionalFilters = new HashMap<>();
     if (params.containsKey("filters")) {
       try {

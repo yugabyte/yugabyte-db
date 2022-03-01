@@ -161,24 +161,6 @@ Status TabletSplitManager::ValidateSplitCandidateTablet(const TabletInfo& tablet
   return Status::OK();
 }
 
-unordered_set<TabletId> TabletSplitManager::FindSplitsWithTask(
-    const vector<TableInfoPtr>& tables) {
-  unordered_set<TabletId> splits_with_task;
-  // These tasks will retry automatically until they succeed or fail.
-  for (const auto& table : tables) {
-    for (const auto& task : table->GetTasks()) {
-      if (task->type() == yb::server::MonitoredTask::ASYNC_GET_TABLET_SPLIT_KEY ||
-          task->type() == yb::server::MonitoredTask::ASYNC_SPLIT_TABLET) {
-        splits_with_task.insert(static_cast<AsyncTabletLeaderTask*>(task.get())->tablet_id());
-        if (splits_with_task.size() >= FLAGS_outstanding_tablet_split_limit) {
-          return splits_with_task;
-        }
-      }
-    }
-  }
-  return splits_with_task;
-}
-
 bool AllReplicasHaveFinishedCompaction(const TabletInfo& tablet_info) {
   auto replica_map = tablet_info.GetReplicaLocations();
   for (auto const& replica : *replica_map) {
@@ -208,22 +190,16 @@ void TabletSplitManager::ScheduleSplits(const unordered_set<TabletId>& splits_to
   for (const auto& tablet_id : splits_to_schedule) {
     auto s = driver_->SplitTablet(tablet_id, false /* select_all_tablets_for_split */);
     if (!s.ok()) {
-      WARN_NOT_OK(s, Format("Failed to restart split for tablet_id: $0.", tablet_id));
+      WARN_NOT_OK(s, Format("Failed to start/restart split for tablet_id: $0.", tablet_id));
+    } else {
+      LOG(INFO) << Substitute("Scheduled split for tablet_id: $0.", tablet_id);
     }
   }
 }
 
 void TabletSplitManager::DoSplitting(const TableInfoMap& table_info_map) {
-  vector<TableInfoPtr> valid_tables;
-  for (const auto& table : table_info_map) {
-    if (ValidateSplitCandidateTable(*table.second).ok()) {
-      valid_tables.push_back(table.second);
-    }
-  }
-
-  // Process valid tables to find ongoing AsyncGetTabletSplitKey and AsyncSplitTablet requests.
-  const unordered_set<TabletId> splits_with_task = FindSplitsWithTask(valid_tables);
-
+  // Splits which are tracked by an AsyncGetTabletSplitKey or AsyncSplitTablet task.
+  unordered_set<TabletId> splits_with_task;
   // Splits for which at least one child tablet is still undergoing compaction.
   unordered_set<TabletId> compacting_splits;
   // Splits that need to be started / restarted.
@@ -239,6 +215,34 @@ void TabletSplitManager::DoSplitting(const TableInfoMap& table_info_map) {
     return outstanding_splits < FLAGS_outstanding_tablet_split_limit;
   };
 
+  // TODO(asrivastava): We might want to loop over all running tables when determining outstanding
+  // splits, to avoid missing outstanding splits for tables that have recently become invalid for
+  // splitting. This is most critical for tables that frequently switch between being valid and
+  // invalid for splitting (e.g. for tables with frequent PITR schedules).
+  // https://github.com/yugabyte/yugabyte-db/issues/11459
+  vector<TableInfoPtr> valid_tables;
+  for (const auto& table : table_info_map) {
+    if (ValidateSplitCandidateTable(*table.second).ok()) {
+      valid_tables.push_back(table.second);
+    }
+  }
+
+  for (const auto& table : valid_tables) {
+    for (const auto& task : table->GetTasks()) {
+      // These tasks will retry automatically until they succeed or fail.
+      if (task->type() == yb::server::MonitoredTask::ASYNC_GET_TABLET_SPLIT_KEY ||
+          task->type() == yb::server::MonitoredTask::ASYNC_SPLIT_TABLET) {
+        const TabletId tablet_id = static_cast<AsyncTabletLeaderTask*>(task.get())->tablet_id();
+        splits_with_task.insert(tablet_id);
+        LOG(INFO) << Substitute("Found split with ongoing task. Task type: $0. "
+                                "Split parent id: $1.", task->type_name(), tablet_id);
+        if (!can_split_more()) {
+          return;
+        }
+      }
+    }
+  }
+
   for (const auto& table : valid_tables) {
     for (const auto& tablet : table->GetTablets()) {
       if (!can_split_more()) {
@@ -253,14 +257,21 @@ void TabletSplitManager::DoSplitting(const TableInfoMap& table_info_map) {
       bool ignore_as_candidate = false;
       if (tablet_lock->pb.has_split_parent_tablet_id()) {
         const TabletId& parent_id = tablet_lock->pb.split_parent_tablet_id();
+        if (splits_with_task.count(parent_id) != 0) {
+          continue;
+        }
         if (!tablet_lock->is_running()) {
           // Recently split child is not running; restart the split.
           ignore_as_candidate = true;
+          LOG(INFO) << Substitute("Found split child ($0) that is not running. Adding parent ($1) "
+                                  "to list of splits to reschedule.", tablet->id(), parent_id);
           splits_to_schedule.insert(parent_id);
         } else if (!AllReplicasHaveFinishedCompaction(*tablet)) {
           // This (running) tablet is the child of a split and is still compacting. We assume that
           // this split will eventually complete for both tablets.
           ignore_as_candidate = true;
+          LOG(INFO) << Substitute("Found split child ($0) that is compacting. Adding parent ($1) "
+                                  " to list of compacting splits.", tablet->id(), parent_id);
           compacting_splits.insert(parent_id);
         }
         if (splits_to_schedule.count(parent_id) != 0 && compacting_splits.count(parent_id) != 0) {
@@ -268,6 +279,8 @@ void TabletSplitManager::DoSplitting(const TableInfoMap& table_info_map) {
           // splits_to_schedule, and another leads us to insert into compacting_splits. In this
           // case, it means one of the children is live, thus both children have been created and
           // the split RPC does not need to be scheduled.
+          LOG(INFO) << Substitute("Found compacting split child ($0), so removing split parent "
+                                  "($1) from splits to schedule.", tablet->id(), parent_id);
           splits_to_schedule.erase(parent_id);
         }
       }

@@ -184,6 +184,23 @@ bool CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(const PlacementInfoPB
   return false;
 }
 
+bool CatalogManagerUtil::DoesPlacementInfoSpanMultipleRegions(
+    const PlacementInfoPB& placement_info) {
+  int num_blocks = placement_info.placement_blocks_size();
+  if (num_blocks < 2) {
+    return false;
+  }
+  const auto& first_block = placement_info.placement_blocks(0).cloud_info();
+  for (int i = 1; i < num_blocks; ++i) {
+    const auto& cur_block = placement_info.placement_blocks(i).cloud_info();
+    if (first_block.placement_cloud() != cur_block.placement_cloud() ||
+        first_block.placement_region() != cur_block.placement_region()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 Result<std::string> CatalogManagerUtil::GetPlacementUuidFromRaftPeer(
     const ReplicationInfoPB& replication_info, const consensus::RaftPeerPB& peer) {
   switch (peer.member_type()) {
@@ -382,6 +399,21 @@ CHECKED_STATUS CatalogManagerUtil::IsPlacementInfoValid(const PlacementInfoPB& p
     }
   }
   return Status::OK();
+}
+
+bool CMPerTableLoadState::CompareLoads(const TabletServerId &ts1, const TabletServerId &ts2) {
+  if (per_ts_load_[ts1] != per_ts_load_[ts2]) {
+    return per_ts_load_[ts1] < per_ts_load_[ts2];
+  }
+  if (global_load_state_->GetGlobalLoad(ts1) == global_load_state_->GetGlobalLoad(ts2)) {
+    return ts1 < ts2;
+  }
+  return global_load_state_->GetGlobalLoad(ts1) < global_load_state_->GetGlobalLoad(ts2);
+}
+
+void CMPerTableLoadState::SortLoad() {
+  Comparator comp(this);
+  std::sort(sorted_load_.begin(), sorted_load_.end(), comp);
 }
 
 } // namespace master

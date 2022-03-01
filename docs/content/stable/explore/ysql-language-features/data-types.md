@@ -2,7 +2,6 @@
 title: Data Types
 linkTitle: Data Types
 description: Data Types in YSQL
-headcontent: Data Types
 image: /images/section_icons/secure/create-roles.png
 menu:
   stable:
@@ -13,7 +12,7 @@ isTocNested: false
 showAsideToc: true
 ---
 
-This document describes the data types supported in YSQL, from the basic data types to the `SERIAL` pseudo-type (for implementing an auto-incrementing primary key column in a table), arrays, composite types, and range types. 
+This document describes the data types supported in YSQL, from the basic data types to the `SERIAL` pseudo-type (for implementing an auto-incrementing primary key column in a table), arrays, composite types, and range types.
 
 The [JSONB document data type](../../json-support/jsonb-ysql) is described in a separate section.
 
@@ -80,7 +79,7 @@ CREATE TABLE floating_point_test (
 
 INSERT INTO floating_point_test (floatn_test, real_test, numeric_test)
 VALUES
-  (9223372036854775807, 2147483647, 5.36), 
+  (9223372036854775807, 2147483647, 5.36),
   (9223372036854775800, 2147483640, 9.99);
 ```
 
@@ -128,9 +127,9 @@ The following example inserts a row into the table:
 INSERT INTO temporal_types (
   date_type, time_type, timestamp_type, timestampz_type, interval_type)
 VALUES
-  ('2000-06-28', '06:23:00', '2016-06-22 19:10:25-07', 
+  ('2000-06-28', '06:23:00', '2016-06-22 19:10:25-07',
    '2016-06-22 19:10:25-07', '1 year'),
-  ('2010-06-28', '12:32:12','2016-06-22 19:10:25-07', 
+  ('2010-06-28', '12:32:12','2016-06-22 19:10:25-07',
    '2016-06-22 19:10:25-07', '10 years 3 months 5 days');
 ```
 
@@ -245,7 +244,7 @@ Expect the following output:
 ### 5. Update the entire array
 
 ```sql
-UPDATE rock_band SET members = '{"Mason", "Wright", "Gilmour"}' 
+UPDATE rock_band SET members = '{"Mason", "Wright", "Gilmour"}'
        WHERE name = 'Pink Floyd';
 select * from rock_band where name = 'Pink Floyd';
 ```
@@ -284,8 +283,8 @@ YugabyteDB supports the `ENUM` type in PostgreSQL. The following examples are ad
 
 ```sql
 CREATE TYPE e_contact_method AS ENUM (
-  'Email', 
-  'Sms', 
+  'Email',
+  'Sms',
   'Phone');
 ```
 
@@ -294,8 +293,8 @@ CREATE TYPE e_contact_method AS ENUM (
 To view the list of values across all `ENUM` types, execute the following:
 
 ```sql
-SELECT t.typname, e.enumlabel 
-  FROM pg_type t, pg_enum e 
+SELECT t.typname, e.enumlabel
+  FROM pg_type t, pg_enum e
   WHERE t.oid = e.enumtypid;
 ```
 
@@ -321,7 +320,7 @@ CREATE TABLE contact_method_info (
 
 ### 3. Insert a row with `ENUM`
 
-The `ENUM` should should have a valid value, as follows:
+The `ENUM` should have a valid value, as follows:
 
 ```sql
 INSERT INTO contact_method_info VALUES ('Jeff', 'Email', 'jeff@mail.com')
@@ -428,7 +427,7 @@ CREATE TABLE employees (employee_no int, vacation tsrange);
 ```
 
 ```sql
-INSERT INTO employees 
+INSERT INTO employees
   VALUES (1227, '[2020-01-01 8:30, 2020-02-02 5:30)');
 ```
 
@@ -459,7 +458,7 @@ SELECT numrange(3.0, 10.0, '(]');
 In addition to using built-in range types, you can define your own custom ones. The following example shows how to define a range type of subtype `text` and use it in a `SELECT` statement:
 
 ```sql
-CREATE TYPE textrange 
+CREATE TYPE textrange
   AS RANGE (subtype = text);
 ```
 
@@ -467,4 +466,4 @@ CREATE TYPE textrange
 SELECT '( " a " " a ", " z " " z " )'::textrange;
 ```
 
-For more information on range types, see [Range Data Types](/latest/api/ysql/datatypes/type_range/). 
+For more information on range types, see [Range Data Types](/latest/api/ysql/datatypes/type_range/).

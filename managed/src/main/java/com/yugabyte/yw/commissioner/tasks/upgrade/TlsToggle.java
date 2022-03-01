@@ -8,7 +8,7 @@ import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
-import com.yugabyte.yw.common.CertificateHelper;
+import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
@@ -18,6 +18,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import javax.inject.Inject;
 import org.apache.commons.lang3.tuple.Pair;
 
@@ -64,11 +65,11 @@ public class TlsToggle extends UpgradeTaskBase {
   private void verifyParams() {
     taskParams().verifyParams(getUniverse());
 
-    if (CertificateHelper.isRootCARequired(taskParams()) && taskParams().rootCA == null) {
+    if (EncryptionInTransitUtil.isRootCARequired(taskParams()) && taskParams().rootCA == null) {
       throw new IllegalArgumentException("Root certificate is null");
     }
 
-    if (CertificateHelper.isClientRootCARequired(taskParams())
+    if (EncryptionInTransitUtil.isClientRootCARequired(taskParams())
         && taskParams().clientRootCA == null) {
       throw new IllegalArgumentException("Client root certificate is null");
     }
@@ -78,27 +79,27 @@ public class TlsToggle extends UpgradeTaskBase {
     if (getNodeToNodeChange() < 0) {
       // Setting allow_insecure to true can be done in non-restart way
       createNonRestartUpgradeTaskFlow(
-          (List<NodeDetails> nodeList, ServerType processType) -> {
-            createGFlagUpdateTasks(1, nodeList, processType);
+          (List<NodeDetails> nodeList, Set<ServerType> processTypes) -> {
+            createGFlagUpdateTasks(1, nodeList, getSingle(processTypes));
             Map<String, String> gflags = new HashMap<>();
             gflags.put("allow_insecure_connections", "true");
-            createSetFlagInMemoryTasks(nodeList, processType, true, gflags, false)
+            createSetFlagInMemoryTasks(nodeList, getSingle(processTypes), true, gflags, false)
                 .setSubTaskGroupType(getTaskSubGroupType());
           },
           nodes);
     } else {
       if (taskParams().upgradeOption == UpgradeOption.ROLLING_UPGRADE) {
         createRollingUpgradeTaskFlow(
-            (List<NodeDetails> nodeList, ServerType processType) ->
-                createGFlagUpdateTasks(1, nodeList, processType),
+            (nodeList, processTypes) ->
+                createGFlagUpdateTasks(1, nodeList, getSingle(processTypes)),
             nodes,
-            true);
+            RUN_BEFORE_STOPPING);
       } else if (taskParams().upgradeOption == UpgradeOption.NON_ROLLING_UPGRADE) {
         createNonRollingUpgradeTaskFlow(
-            (List<NodeDetails> nodeList, ServerType processType) ->
-                createGFlagUpdateTasks(1, nodeList, processType),
+            (nodeList, processTypes) ->
+                createGFlagUpdateTasks(1, nodeList, getSingle(processTypes)),
             nodes,
-            true);
+            RUN_BEFORE_STOPPING);
       }
     }
   }
@@ -108,7 +109,8 @@ public class TlsToggle extends UpgradeTaskBase {
     if (getNodeToNodeChange() > 0) {
       // Setting allow_insecure can be done in non-restart way
       createNonRestartUpgradeTaskFlow(
-          (List<NodeDetails> nodeList, ServerType processType) -> {
+          (List<NodeDetails> nodeList, Set<ServerType> processTypes) -> {
+            ServerType processType = getSingle(processTypes);
             createGFlagUpdateTasks(2, nodeList, processType);
             Map<String, String> gflags = new HashMap<>();
             gflags.put("allow_insecure_connections", String.valueOf(taskParams().allowInsecure));
@@ -119,16 +121,16 @@ public class TlsToggle extends UpgradeTaskBase {
     } else if (getNodeToNodeChange() < 0) {
       if (taskParams().upgradeOption == UpgradeOption.ROLLING_UPGRADE) {
         createRollingUpgradeTaskFlow(
-            (List<NodeDetails> nodeList, ServerType processType) ->
-                createGFlagUpdateTasks(2, nodeList, processType),
+            (nodeList, processTypes) ->
+                createGFlagUpdateTasks(2, nodeList, getSingle(processTypes)),
             nodes,
-            true);
+            RUN_BEFORE_STOPPING);
       } else if (taskParams().upgradeOption == UpgradeOption.NON_ROLLING_UPGRADE) {
         createNonRollingUpgradeTaskFlow(
-            (List<NodeDetails> nodeList, ServerType processType) ->
-                createGFlagUpdateTasks(2, nodeList, processType),
+            (nodeList, processTypes) ->
+                createGFlagUpdateTasks(2, nodeList, getSingle(processTypes)),
             nodes,
-            true);
+            RUN_BEFORE_STOPPING);
       }
     }
   }

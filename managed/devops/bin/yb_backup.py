@@ -46,6 +46,7 @@ FS_DATA_DIRS_ARG_NAME = '--fs_data_dirs'
 FS_DATA_DIRS_ARG_PREFIX = FS_DATA_DIRS_ARG_NAME + '='
 RPC_BIND_ADDRESSES_ARG_NAME = '--rpc_bind_addresses'
 RPC_BIND_ADDRESSES_ARG_PREFIX = RPC_BIND_ADDRESSES_ARG_NAME + '='
+LIST_TABLET_SERVERS_RE = re.compile('.*list_tablet_servers.*(' + UUID_RE_STR + ').*')
 
 IMPORTED_TABLE_RE = re.compile(r'(?:Colocated t|T)able being imported: ([^\.]*)\.(.*)')
 RESTORATION_RE = re.compile('^Restoration id: (' + UUID_RE_STR + r')\b')
@@ -232,22 +233,10 @@ class SequencedParallelCmd(SingleArgParallelCmd):
         -> run in parallel Thread-1: -> fn(a1, a2); fn(b1, b2)
                            Thread-2: -> fn(c1, c2); fn(d1, d2)
     """
-    def __init__(self, fn, handle_errors=False):
+    def __init__(self, fn, preprocess_args_fn=None, handle_errors=False):
         self.fn = fn
         self.args = []
-        """
-        The index is used to return a function call result as the whole command result.
-        For example:
-            SequencedParallelCmd p(fn)
-            p.start_command()
-            p.add_args(a1, a2)
-            p.add_args(b1, b2)
-            p.use_last_fn_result_as_command_result()
-            p.add_args(c1, c2)
-            p.run(pool)
-            -> run -> fn(a1, a2); result = fn(b1, b2); fn(c1, c2); return result
-        """
-        self.result_fn_call_index = None
+        self.preprocess_args_fn = preprocess_args_fn
         # Whether or not we will throw an error on a cmd failure, or handle it and return a
         # tuple: ('failed-cmd', handle).
         self.handle_errors = handle_errors
@@ -259,14 +248,6 @@ class SequencedParallelCmd(SingleArgParallelCmd):
         # Place handle at the front.
         self.args.append([handle])
 
-    def use_last_fn_result_as_command_result(self):
-        # Let's remember the last fn call index to return its' result as the command result.
-        last_fn_call_index = len(self.args[-1]) - 1
-        # All commands in the set must have the same index of the result function call.
-        assert (self.result_fn_call_index is None or
-                self.result_fn_call_index == last_fn_call_index)
-        self.result_fn_call_index = last_fn_call_index
-
     def add_args(self, *args_tuple):
         assert isinstance(args_tuple, tuple)
         assert len(self.args) > 0, 'Call start_command() before'
@@ -277,28 +258,25 @@ class SequencedParallelCmd(SingleArgParallelCmd):
             assert isinstance(list_of_arg_tuples, list)
             # First entry is the handle.
             handle = list_of_arg_tuples[0]
-            # Add empty string at beginning to keep len(results) = len(list_of_arg_tuples).
-            results = ['']
-            # A list of commands: do it one by one.
-            for args_tuple in list_of_arg_tuples[1:]:
+            # Pre-process the list of arguments.
+            processed_arg_tuples = (list_of_arg_tuples[1:] if self.preprocess_args_fn is None
+                                    else self.preprocess_args_fn(list_of_arg_tuples[1:], handle))
+
+            results = []
+            for args_tuple in processed_arg_tuples:
                 assert isinstance(args_tuple, tuple)
                 try:
                     results.append(self.fn(*args_tuple))
                 except Exception as ex:
                     logging.warning(
-                        "Encountered error for handle '{}' while running "
-                        "command '{}'. Error: {}".
+                        "Encountered error for handle '{}' while running command '{}'. Error: {}".
                         format(handle, args_tuple, ex))
                     if (self.handle_errors):
                         # If we handle errors, then return 'failed-cmd' with the handle.
                         return ('failed-cmd', handle)
                     raise ex
 
-            if self.result_fn_call_index is None:
-                return results
-            else:
-                assert self.result_fn_call_index < len(results)
-                return results[self.result_fn_call_index]
+            return results
 
         fn_args = [str(list_of_arg_tuples) for list_of_arg_tuples in self.args]
         return self._run_internal(internal_fn, self.args, fn_args, pool)
@@ -353,18 +331,19 @@ def key_and_file_filter(checksum_file):
     return "\" $( sed 's| .*/| |' {} ) \"".format(pipes.quote(checksum_file))
 
 
+# error_on_failure: If set to true, then the test command will return an error (errno != 0) if the
+# check fails. This is useful if we're taking advantage of larger retry mechanisms (eg retrying an
+# entire command chain).
 # TODO: get rid of this sed / test program generation in favor of a more maintainable solution.
-def compare_checksums_cmd(checksum_file1, checksum_file2):
-    return "test {} = {} && echo correct || echo invalid".format(
-        key_and_file_filter(checksum_file1), key_and_file_filter(checksum_file2))
+def compare_checksums_cmd(checksum_file1, checksum_file2, error_on_failure=False):
+    return "test {} = {}{}".format(
+        key_and_file_filter(checksum_file1),
+        key_and_file_filter(checksum_file2),
+        '' if error_on_failure else ' && echo correct || echo invalid')
 
 
 def get_db_name_cmd(dump_file):
     return "sed -n '/CREATE DATABASE/{s|CREATE DATABASE||;s|WITH.*||;p}' " + pipes.quote(dump_file)
-
-
-def get_grep_enums_cmd(dump_file):
-    return "egrep '^CREATE TYPE ' " + pipes.quote(dump_file) + " || [[ $? == 1 ]]"
 
 
 def apply_sed_edit_reg_exp_cmd(dump_file, reg_exp):
@@ -470,14 +449,23 @@ class AzBackupStorage(AbstractBackupStorage):
     def _command_list_prefix(self):
         return "azcopy"
 
-    def upload_file_cmd(self, src, dest):
-        dest = dest + os.getenv('AZURE_STORAGE_SAS_TOKEN')
-        return [self._command_list_prefix(), "cp", src, dest]
+    def upload_file_cmd(self, src, dest, local=False):
+        if local is True:
+            dest = dest + os.getenv('AZURE_STORAGE_SAS_TOKEN')
+            return [self._command_list_prefix(), "cp", src, dest]
+        src = "'{}'".format(src)
+        dest = "'{}'".format(dest + os.getenv('AZURE_STORAGE_SAS_TOKEN'))
+        return ["{} {} {} {}".format(self._command_list_prefix(), "cp", src, dest)]
 
-    def download_file_cmd(self, src, dest):
-        src = src + os.getenv('AZURE_STORAGE_SAS_TOKEN')
-        return [self._command_list_prefix(), "cp", src,
-                dest, "--recursive"]
+    def download_file_cmd(self, src, dest, local=False):
+        if local is True:
+            src = src + os.getenv('AZURE_STORAGE_SAS_TOKEN')
+            return [self._command_list_prefix(), "cp", src,
+                    dest, "--recursive"]
+        src = "'{}'".format(src + os.getenv('AZURE_STORAGE_SAS_TOKEN'))
+        dest = "'{}'".format(dest)
+        return ["{} {} {} {} {}".format(self._command_list_prefix(), "cp", src,
+                dest, "--recursive")]
 
     def upload_dir_cmd(self, src, dest):
         # azcopy will download the top-level directory as well as the contents without "/*".
@@ -497,6 +485,13 @@ class AzBackupStorage(AbstractBackupStorage):
             raise BackupException("Destination needs to be well formed.")
         dest = "'{}'".format(dest + os.getenv('AZURE_STORAGE_SAS_TOKEN'))
         return ["{} {} {} {}".format(self._command_list_prefix(), "rm", dest, "--recursive=true")]
+
+    def backup_obj_size_cmd(self, backup_obj_location):
+        sas_token = os.getenv('AZURE_STORAGE_SAS_TOKEN')
+        backup_obj_location = "'{}'".format(backup_obj_location + sas_token)
+        return ["{} {} {} {} {} {} {} {} {}".format(self._command_list_prefix(), "list",
+                backup_obj_location, "--machine-readable", "--running-tally", "|",
+                "grep 'Total file size:'", "|", "grep -Eo '[0-9]*'")]
 
 
 class GcsBackupStorage(AbstractBackupStorage):
@@ -527,6 +522,9 @@ class GcsBackupStorage(AbstractBackupStorage):
         if dest is None or dest == '/' or dest == '':
             raise BackupException("Destination needs to be well formed.")
         return self._command_list_prefix() + ["rm", "-r", dest]
+
+    def backup_obj_size_cmd(self, backup_obj_location):
+        return self._command_list_prefix() + ["du", "-s", "-a", backup_obj_location]
 
 
 class S3BackupStorage(AbstractBackupStorage):
@@ -565,6 +563,9 @@ class S3BackupStorage(AbstractBackupStorage):
         if dest is None or dest == '/' or dest == '':
             raise BackupException("Destination needs to be well formed.")
         return self._command_list_prefix() + ["del", "-r", dest]
+
+    def backup_obj_size_cmd(self, backup_obj_location):
+        return self._command_list_prefix() + ["du", backup_obj_location]
 
 
 class NfsBackupStorage(AbstractBackupStorage):
@@ -607,6 +608,9 @@ class NfsBackupStorage(AbstractBackupStorage):
         if dest is None or dest == '/' or dest == '':
             raise BackupException("Destination needs to be well formed.")
         return ["rm", "-rf", pipes.quote(dest)]
+
+    def backup_obj_size_cmd(self, backup_obj_location):
+        return ["du", "-sb", backup_obj_location]
 
 
 BACKUP_STORAGE_ABSTRACTIONS = {
@@ -782,6 +786,7 @@ class YBManifest:
         properties['pg-based-backup'] = pg_based_backup
         properties['start-time'] = self.backup.timer.start_time_str()
         properties['end-time'] = self.backup.timer.end_time_str()
+        properties['size-in-bytes'] = self.backup.calc_size_in_bytes(snapshot_bucket)
 
     def init_locations(self, tablet_leaders, snapshot_bucket):
         locations = self.body['locations']
@@ -796,6 +801,8 @@ class YBManifest:
                 location_data['region'] = tserver_region
 
             locations[tablet_location]['tablet-directories'][tablet_id] = {}
+
+        self.body['properties']['size-in-bytes'] += len(self.to_string())
 
     # Data saving/loading/printing.
     def to_string(self):
@@ -840,6 +847,9 @@ class YBManifest:
         if pg_based_backup is None:
             pg_based_backup = False
         return pg_based_backup
+
+    def get_backup_size(self):
+        return self.body['properties'].get('size-in-bytes')
 
 
 class YBBackup:
@@ -898,7 +908,9 @@ class YBBackup:
 
                 subprocess_result = str(subprocess.check_output(
                                          args, stderr=subprocess.STDOUT,
-                                         env=proc_env, **kwargs).decode('utf-8', errors='replace'))
+                                         env=proc_env, **kwargs).decode('utf-8', errors='replace')
+                                                                .encode("ascii", "ignore")
+                                                                .decode("ascii"))
 
                 if self.args.verbose:
                     logging.info(
@@ -907,7 +919,9 @@ class YBBackup:
                 return subprocess_result
             except subprocess.CalledProcessError as e:
                 logging.error("Failed to run command [[ {} ]]: code={} output={}".format(
-                    cmd_as_str, e.returncode, str(e.output.decode('utf-8', errors='replace'))))
+                    cmd_as_str, e.returncode, str(e.output.decode('utf-8', errors='replace')
+                                                          .encode("ascii", "ignore")
+                                                          .decode("ascii"))))
                 self.sleep_or_raise(num_retry, timeout, e)
             except Exception as ex:
                 logging.error("Failed to run command [[ {} ]]: {}".format(cmd_as_str, ex))
@@ -976,9 +990,6 @@ class YBBackup:
         parser.add_argument(
             '--pg_based_backup', action='store_true', default=False, help="Use it to trigger "
                                                                           "pg based backup.")
-        parser.add_argument(
-            '--detect_enums', action='store_true', default=True, help="Use it to detect enums "
-                                                                      "in schema.")
         parser.add_argument(
             '--ssh_key_path', required=False, help="Path to the ssh key file")
         parser.add_argument(
@@ -1370,6 +1381,8 @@ class YBBackup:
         :return: the standard output of yb-admin
         """
 
+        # Convert to list, since some callers like SequencedParallelCmd will send in tuples.
+        cmd_line_args = list(cmd_line_args)
         # Specify cert file in case TLS is enabled.
         cert_flag = []
         if self.args.certs_dir:
@@ -1448,6 +1461,24 @@ class YBBackup:
             self.get_ysql_dump_std_args() + ['--dbname=template1'],
             cmd_line_args,
             run_ip=run_at_ip)
+
+    def calc_size_in_bytes(self, snapshot_bucket):
+        """
+        Fetches the backup object size by making a call to respective data source.
+        :param snapshot_bucket: the bucket directory under which data directories were uploaded
+        :return: backup size in bytes
+        """
+        snapshot_filepath = self.snapshot_location(snapshot_bucket)
+        backup_size = 0
+        backup_size_cmd = self.storage.backup_obj_size_cmd(snapshot_filepath)
+        try:
+            resp = self.run_ssh_cmd(backup_size_cmd, self.get_main_host_ip())
+            backup_size = int(resp.strip().split()[0])
+            logging.info('Backup size in bytes: {}'.format(backup_size))
+        except Exception as ex:
+            logging.error(
+                'Failed to get backup size, cmd: {}, exception: {}'.format(backup_size_cmd, ex))
+        return backup_size
 
     def create_snapshot(self):
         """
@@ -1568,7 +1599,7 @@ class YBBackup:
         web_port = self.tserver_ip_to_web_port[tserver_ip]\
             if tserver_ip in self.tserver_ip_to_web_port else DEFAULT_TS_WEB_PORT
         url = "{}:{}/varz".format(tserver_ip, web_port)
-        output = self.run_program(['curl', url])
+        output = self.run_program(['curl', url], num_retry=10)
         suffix_match = PLACEMENT_REGION_RE.match(output)
         if suffix_match:
             region = suffix_match.group(1)
@@ -1790,6 +1821,10 @@ class YBBackup:
                 'ssh',
                 '-o', 'StrictHostKeyChecking=no',
                 '-o', 'UserKnownHostsFile=/dev/null',
+                # Control flags here are for ssh multiplexing (reuse the same ssh connections).
+                '-o', 'ControlMaster=auto',
+                '-o', 'ControlPath=~/.ssh/ssh-%r@%h:%p',
+                '-o', 'ControlPersist=1m',
                 '-i', self.args.ssh_key_path,
                 '-p', self.args.ssh_port,
                 '-q',
@@ -1798,6 +1833,23 @@ class YBBackup:
                 num_retry=num_retries)
         else:
             return self.run_program(['bash', '-c', cmd])
+
+    def join_ssh_cmds(self, list_of_arg_tuples, handle):
+        (tablet_id, tserver_ip) = handle
+        # A list of commands: execute all of the tuples in a single control connection.
+        joined_cmd = 'set -ex;'  # Exit as soon as one command fails.
+        for args_tuple in list_of_arg_tuples:
+            assert isinstance(args_tuple, tuple)
+            for args in args_tuple:
+                if (isinstance(args, tuple)):
+                    joined_cmd += ' '.join(args)
+                else:
+                    joined_cmd += ' ' + args
+            joined_cmd += ';'
+
+        # Return a single arg tuple with the entire joined command.
+        # Convert to string to handle python2 converting to 'unicode' by default.
+        return [(str(joined_cmd), tserver_ip)]
 
     def find_data_dirs(self, tserver_ip):
         """
@@ -1808,7 +1860,7 @@ class YBBackup:
         """
         web_port = (self.tserver_ip_to_web_port[tserver_ip]
                     if tserver_ip in self.tserver_ip_to_web_port else DEFAULT_TS_WEB_PORT)
-        output = self.run_program(['curl', "{}:{}/varz".format(tserver_ip, web_port)])
+        output = self.run_program(['curl', "{}:{}/varz".format(tserver_ip, web_port)], num_retry=10)
         data_dirs = []
         for line in output.split('\n'):
             if line.startswith(FS_DATA_DIRS_ARG_PREFIX):
@@ -1976,7 +2028,8 @@ class YBBackup:
         leader_ip_to_tablet_id_to_snapshot_dirs = self.rearrange_snapshot_dirs(
             find_snapshot_dir_results, snapshot_id, tablets_by_leader_ip)
 
-        parallel_uploads = SequencedParallelCmd(self.run_ssh_cmd)
+        parallel_uploads = SequencedParallelCmd(
+            self.run_ssh_cmd, preprocess_args_fn=self.join_ssh_cmds)
         self.prepare_cloud_ssh_cmds(
              parallel_uploads, leader_ip_to_tablet_id_to_snapshot_dirs, location_by_tablet,
              snapshot_id, tablets_by_leader_ip, upload=True, snapshot_metadata=None)
@@ -2007,9 +2060,11 @@ class YBBackup:
             for snapshot_dir in snapshot_dirs:
                 suffix_match = SNAPSHOT_DIR_SUFFIX_RE.match(snapshot_dir)
                 if not suffix_match:
-                    raise BackupException(
+                    logging.warning(
                         ("Could not parse tablet id and snapshot id out of snapshot "
                          "directory: '{}'").format(snapshot_dir))
+                    continue
+
                 if snapshot_id != suffix_match.group(2):
                     raise BackupException(
                         "Snapshot directory does not end with snapshot id: '{}'".format(
@@ -2079,11 +2134,11 @@ class YBBackup:
         # Commands to be run on TSes over ssh for uploading the tablet backup.
         if not self.args.disable_checksums:
             # 1. Create check-sum file (via sha256sum tool).
-            parallel_commands.add_args(create_checksum_cmd, tserver_ip)
+            parallel_commands.add_args(create_checksum_cmd)
             # 2. Upload check-sum file.
-            parallel_commands.add_args(tuple(upload_checksum_cmd), tserver_ip)
+            parallel_commands.add_args(tuple(upload_checksum_cmd))
         # 3. Upload tablet folder.
-        parallel_commands.add_args(tuple(upload_tablet_cmd), tserver_ip)
+        parallel_commands.add_args(tuple(upload_tablet_cmd))
 
     def prepare_download_command(self, parallel_commands, tablet_id,
                                  tserver_ip, snapshot_dir, snapshot_metadata):
@@ -2115,8 +2170,12 @@ class YBBackup:
             source_checksum_filepath, snapshot_dir_checksum)
 
         create_checksum_cmd = self.create_checksum_cmd_for_dir(snapshot_dir_tmp)
+        # Throw an error on failed checksum comparison, this will trigger this entire command
+        # chain to be retried.
         check_checksum_cmd = compare_checksums_cmd(
-            snapshot_dir_checksum, checksum_path(strip_dir(snapshot_dir_tmp)))
+            snapshot_dir_checksum,
+            checksum_path(strip_dir(snapshot_dir_tmp)),
+            error_on_failure=True)
 
         rmcmd = ['rm', '-rf', snapshot_dir]
         mkdircmd = ['mkdir', '-p', snapshot_dir_tmp]
@@ -2124,21 +2183,20 @@ class YBBackup:
 
         # Commands to be run over ssh for downloading the tablet backup.
         # 1. Clean-up: delete target tablet folder.
-        parallel_commands.add_args(tuple(rmcmd), tserver_ip)
+        parallel_commands.add_args(tuple(rmcmd))
         # 2. Create temporary snapshot dir.
-        parallel_commands.add_args(tuple(mkdircmd), tserver_ip)
+        parallel_commands.add_args(tuple(mkdircmd))
         # 3. Download tablet folder.
-        parallel_commands.add_args(tuple(cmd), tserver_ip)
+        parallel_commands.add_args(tuple(cmd))
         if not self.args.disable_checksums:
             # 4. Download check-sum file.
-            parallel_commands.add_args(tuple(cmd_checksum), tserver_ip)
+            parallel_commands.add_args(tuple(cmd_checksum))
             # 5. Create new check-sum file.
-            parallel_commands.add_args(create_checksum_cmd, tserver_ip)
+            parallel_commands.add_args(create_checksum_cmd)
             # 6. Compare check-sum files.
-            parallel_commands.add_args(check_checksum_cmd, tserver_ip)
-            parallel_commands.use_last_fn_result_as_command_result()
+            parallel_commands.add_args(check_checksum_cmd)
         # 7. Move the backup in place.
-        parallel_commands.add_args(tuple(mvcmd), tserver_ip)
+        parallel_commands.add_args(tuple(mvcmd))
 
     def prepare_cloud_ssh_cmds(
             self, parallel_commands, tserver_ip_to_tablet_id_to_snapshot_dirs, location_by_tablet,
@@ -2229,6 +2287,9 @@ class YBBackup:
             self.upload_local_file_to_server(self.get_main_host_ip(),
                                              self.args.backup_keys_source,
                                              os.path.dirname(key_file_dest))
+        elif self.is_az():
+            self.run_program(self.storage.upload_file_cmd(self.args.backup_keys_source,
+                             key_file_dest, True))
         else:
             self.run_program(self.storage.upload_file_cmd(self.args.backup_keys_source,
                              key_file_dest))
@@ -2253,6 +2314,11 @@ class YBBackup:
             self.download_file_from_server(self.get_main_host_ip(),
                                            key_file_src,
                                            self.args.restore_keys_destination)
+        elif self.is_az():
+            self.run_program(
+                self.storage.download_file_cmd(key_file_src, self.args.restore_keys_destination,
+                                               True)
+            )
         else:
             self.run_program(
                 self.storage.download_file_cmd(key_file_src, self.args.restore_keys_destination)
@@ -2341,13 +2407,6 @@ class YBBackup:
                     "'Version: <number>' in the end: {}".format(output))
         return matched.group('version')
 
-    def is_enum_present(self, sql_dump_path):
-        """
-        Detects the presence of enum in schema of a YSQL database.
-        """
-        resp = self.run_cli_tool(get_grep_enums_cmd(sql_dump_path))
-        return ' AS ENUM (' in resp if resp else False
-
     def create_metadata_files(self):
         """
         :return: snapshot_id and list of sql_dump files
@@ -2373,10 +2432,6 @@ class YBBackup:
             logging.info("[app] Creating ysql dump for DB '{}' to {}".format(
                             db_name, sql_dump_path))
             self.run_ysql_dump(ysql_dump_args)
-
-            if not pg_based_backup and self.args.detect_enums:
-                logging.info('Detecting enum in {}'.format(sql_dump_path))
-                pg_based_backup = self.is_enum_present(sql_dump_path)
 
             dump_files.append(sql_dump_path)
             if pg_based_backup:
@@ -2577,6 +2632,7 @@ class YBBackup:
                             region, regional_filepath))
                         snapshot_locations[region] = regional_filepath
 
+            snapshot_locations["backup_size_in_bytes"] = self.manifest.get_backup_size()
         else:
             snapshot_locations["snapshot_url"] = "UPLOAD_SKIPPED"
 
@@ -2598,8 +2654,7 @@ class YBBackup:
                 self.run_program(
                     self.create_checksum_cmd(target_path, checksum_path(target_path)))
                 check_checksum_res = self.run_program(
-                    compare_checksums_cmd(checksum_downloaded,
-                                          checksum_path(target_path))).strip()
+                    compare_checksums_cmd(checksum_downloaded, checksum_path(target_path))).strip()
         else:
             server_ip = self.get_main_host_ip()
 
@@ -2822,15 +2877,31 @@ class YBBackup:
         tservers that need to be processed.
         """
 
+        # Parallize this using half of the parallelism setting to not overload master with yb-admin.
+        parallelism = min(16, (self.args.parallelism + 1) // 2)
+        pool = ThreadPool(parallelism)
+        self.pools.append(pool)
         tablets_by_tserver_ip = {}
+        parallel_find_tservers = MultiArgParallelCmd(self.run_yb_admin)
+
+        # First construct all the yb-admin commands to send.
         for new_id in snapshot_metadata['tablet']:
-            output = self.run_yb_admin(['list_tablet_servers', new_id])
-            for line in output.splitlines():
+            parallel_find_tservers.add_args(('list_tablet_servers', new_id))
+
+        # Run all the list_tablet_servers in parallel.
+        output = parallel_find_tservers.run(pool)
+
+        # Process the output.
+        for cmd in output:
+            # Pull the new_id value out from the command string.
+            matches = LIST_TABLET_SERVERS_RE.match(str(cmd))
+            new_id = matches.group(1)
+
+            # For each output line, get the tablet servers ips for this tablet id.
+            for line in output[cmd].splitlines():
                 if LEADING_UUID_RE.match(line):
                     (ts_uuid, ts_ip_port, role) = split_by_tab(line)
                     (ts_ip, ts_port) = ts_ip_port.split(':')
-                    if self.ts_secondary_to_primary_ip_map:
-                        ts_ip = self.ts_secondary_to_primary_ip_map[ts_ip]
                     tablets_by_tserver_ip.setdefault(ts_ip, set()).add(new_id)
 
         return tablets_by_tserver_ip
@@ -2877,7 +2948,8 @@ class YBBackup:
             tablets_by_tserver_to_download[tserver_ip] -= deleted_tablets
 
         self.timer.log_new_phase("Download data")
-        parallel_downloads = SequencedParallelCmd(self.run_ssh_cmd, handle_errors=True)
+        parallel_downloads = SequencedParallelCmd(
+            self.run_ssh_cmd, preprocess_args_fn=self.join_ssh_cmds, handle_errors=True)
         self.prepare_cloud_ssh_cmds(
             parallel_downloads, tserver_to_tablet_to_snapshot_dirs,
             None, snapshot_id, tablets_by_tserver_to_download,
@@ -2894,10 +2966,6 @@ class YBBackup:
                 # In case we fail a cmd, don't mark this tablet-tserver pair as succeeded, instead
                 # we will retry in the next round of downloads.
                 tserver_to_deleted_tablets.setdefault(tserver_ip, set()).add(tablet_id)
-            elif not self.args.disable_checksums:
-                v = v.strip()
-                if v != 'correct':
-                    raise BackupException('Check-sum for "{}" is {}'.format(k, v))
 
         return tserver_to_deleted_tablets
 

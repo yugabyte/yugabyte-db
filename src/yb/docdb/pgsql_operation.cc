@@ -25,6 +25,7 @@
 #include "yb/common/ql_value.h"
 
 #include "yb/docdb/doc_path.h"
+#include "yb/docdb/doc_pg_expr.h"
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_write_batch.h"
@@ -76,6 +77,7 @@ namespace docdb {
 
 namespace {
 
+// Compatibility: accept column references from a legacy nodes as a list of column ids only
 CHECKED_STATUS CreateProjection(const Schema& schema,
                                 const PgsqlColumnRefsPB& column_refs,
                                 Schema* projection) {
@@ -85,6 +87,21 @@ CHECKED_STATUS CreateProjection(const Schema& schema,
   column_ids.reserve(column_refs.ids_size());
   for (int32_t id : column_refs.ids()) {
     const ColumnId column_id(id);
+    if (!schema.is_key_column(column_id)) {
+      column_ids.emplace_back(column_id);
+    }
+  }
+  return schema.CreateProjectionByIdsIgnoreMissing(column_ids, projection);
+}
+
+CHECKED_STATUS CreateProjection(
+    const Schema& schema,
+    const google::protobuf::RepeatedPtrField<PgsqlColRefPB> &column_refs,
+    Schema* projection) {
+  vector<ColumnId> column_ids;
+  column_ids.reserve(column_refs.size());
+  for (const PgsqlColRefPB& column_ref : column_refs) {
+    const ColumnId column_id(column_ref.column_id());
     if (!schema.is_key_column(column_id)) {
       column_ids.emplace_back(column_id);
     }
@@ -384,7 +401,7 @@ Status PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
 
     case PgsqlWriteRequestPB::PGSQL_UPSERT: {
       // Upserts should not have column refs (i.e. require read).
-      RSTATUS_DCHECK(!request_.has_column_refs() || request_.column_refs().ids().empty(),
+      RSTATUS_DCHECK(request_.col_refs().empty(),
               IllegalState,
               "Upsert operation should not have column references");
       return ApplyInsert(data, IsUpsert::kTrue);
@@ -473,6 +490,26 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
   bool skipped = true;
 
   if (request_.has_ybctid_column_value()) {
+    DocPgExprExecutor expr_exec(&schema_);
+    std::vector<QLExprResult> results;
+    int num_exprs = 0;
+    int cur_expr = 0;
+    for (const auto& column_value : request_.column_new_values()) {
+      if (GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kPgEvalExprCall) {
+        RETURN_NOT_OK(expr_exec.AddTargetExpression(column_value.expr()));
+        VLOG(1) << "Added target expression to the executor";
+        num_exprs++;
+      }
+    }
+    if (num_exprs > 0) {
+      bool match;
+      for (const PgsqlColRefPB& column_ref : request_.col_refs()) {
+        RETURN_NOT_OK(expr_exec.AddColumnRef(column_ref));
+        VLOG(1) << "Added column reference to the executor";
+      }
+      results.resize(num_exprs);
+      RETURN_NOT_OK(expr_exec.Exec(table_row, &results, &match));
+    }
     for (const auto& column_value : request_.column_new_values()) {
       // Get the column.
       if (!column_value.has_column_id()) {
@@ -480,16 +517,19 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
       }
       const ColumnId column_id(column_value.column_id());
       const ColumnSchema& column = VERIFY_RESULT(schema_.column_by_id(column_id));
-
-      // Check column-write operator.
-      SCHECK(GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kScalarInsert ||
-             GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kPgEvalExprCall,
-             InternalError,
-             "Unsupported DocDB Expression");
-
       // Evaluate column value.
       QLExprResult expr_result;
-      RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, expr_result.Writer(), &schema_));
+
+      if (GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kPgEvalExprCall) {
+        expr_result = std::move(results[cur_expr++]);
+      } else {
+        // Check column-write operator.
+        SCHECK(GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kScalarInsert,
+               InternalError,
+               "Unsupported DocDB Expression");
+
+        RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, expr_result.Writer(), &schema_));
+      }
 
       // Update RETURNING values
       if (request_.targets_size()) {
@@ -912,8 +952,14 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
   Schema index_projection;
   YQLRowwiseIteratorIf *iter;
   const Schema* scan_schema;
+  DocPgExprExecutor expr_exec(&schema);
 
-  RETURN_NOT_OK(CreateProjection(schema, request_.column_refs(), &projection));
+  if (!request_.col_refs().empty()) {
+    RETURN_NOT_OK(CreateProjection(schema, request_.col_refs(), &projection));
+  } else {
+    // Compatibility: Either request indeed has no column refs, or it comes from a legacy node.
+    RETURN_NOT_OK(CreateProjection(schema, request_.column_refs(), &projection));
+  }
   table_iter_ = VERIFY_RESULT(CreateIterator(
       ql_storage, request_, projection, schema, txn_op_context_,
       deadline, read_time, is_explicit_request_read_time));
@@ -933,9 +979,17 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
   } else {
     iter = table_iter_.get();
     scan_schema = &schema;
+    for (const PgsqlColRefPB& column_ref : request_.col_refs()) {
+      RETURN_NOT_OK(expr_exec.AddColumnRef(column_ref));
+      VLOG(1) << "Added column reference to the executor";
+    }
+    for (const PgsqlExpressionPB& expr : request_.where_clauses()) {
+      RETURN_NOT_OK(expr_exec.AddWhereExpression(expr));
+      VLOG(1) << "Added where expression to the executor";
+    }
   }
 
-  VTRACE(1, "Initialized iterator");
+  VLOG(1) << "Started iterator";
 
   // Set scan start time.
   bool scan_time_exceeded = false;
@@ -967,11 +1021,7 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
 
     // Match the row with the where condition before adding to the row block.
     bool is_match = true;
-    if (request_.has_where_expr()) {
-      QLExprResult match;
-      RETURN_NOT_OK(EvalExpr(request_.where_expr(), row, match.Writer()));
-      is_match = match.Value().bool_value();
-    }
+    RETURN_NOT_OK(expr_exec.Exec(row, nullptr, &is_match));
     if (is_match) {
       match_count++;
       if (request_.is_aggregate()) {
@@ -985,6 +1035,10 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
     // Check if we are running out of time
     scan_time_exceeded = CoarseMonoClock::now() >= stop_scan;
   }
+
+  VLOG(1) << "Stopped iterator after " << match_count << " matches, "
+          << fetched_rows << " rows fetched";
+  VLOG(1) << "Deadline is " << (scan_time_exceeded ? "" : "not ") << "exceeded";
 
   if (request_.is_aggregate() && match_count > 0) {
     RETURN_NOT_OK(PopulateAggregate(row, result_buffer));

@@ -69,8 +69,6 @@ public class AnsibleDestroyServer extends NodeTaskBase {
 
   @Override
   public void run() {
-    // Update the node state as removing.
-    setNodeState(NodeDetails.NodeState.Removing);
     // Execute the ansible command.
     try {
       ShellResponse response =

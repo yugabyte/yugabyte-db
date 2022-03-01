@@ -249,12 +249,19 @@ class Postprocessor:
                 grep_command = subprocess.run(['zgrep', '-Eoh', pattern, self.test_log_path],
                                               capture_output=True)
                 if grep_command.returncode == 0:
+                    # When grep-ing for a signal, there can be multiple matches.
+                    # Filter stdout to get unique, non-empty matches and append a tag for each.
+                    grep_stdout = sorted(set(grep_command.stdout.decode('utf-8').split('\n')))
+                    grep_stdout = [match for match in grep_stdout if match != '']
+
                     if tag == SIGNAL_FORMAT_STRING:
-                        # Get the matching signal from stdout
-                        fail_tag = tag.format(grep_command.stdout.decode('utf-8').strip())
+                        # Get the matching signals from stdout
+                        fail_tags = [tag.format(match) for match in grep_stdout]
                     else:
-                        fail_tag = tag
-                    test_kvs['fail_tags'] = test_kvs.get('fail_tags', []) + [fail_tag]
+                        fail_tags = [tag]
+
+                    test_kvs['fail_tags'] = test_kvs.get('fail_tags', []) + fail_tags
+
                 elif grep_command.returncode > 1:
                     logging.warning("Error running '{}': \n{}".format(
                         ' '.join(grep_command.args), grep_command.stderr.decode('utf-8'))

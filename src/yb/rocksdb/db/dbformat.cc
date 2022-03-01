@@ -45,12 +45,18 @@ uint64_t PackSequenceAndType(uint64_t seq, ValueType t) {
   return (seq << 8) | t;
 }
 
-void UnPackSequenceAndType(uint64_t packed, uint64_t* seq, ValueType* t) {
-  *seq = packed >> 8;
-  *t = static_cast<ValueType>(packed & 0xff);
+SequenceAndType UnPackSequenceAndTypeFromEnd(const void* end) {
+  uint64_t packed;
+  memcpy(&packed, static_cast<const char*>(end) - kLastInternalComponentSize, sizeof(packed));
+  auto result = SequenceAndType {
+    .sequence = packed >> 8,
+    .type = static_cast<ValueType>(packed & 0xff),
+  };
 
-  assert(*seq <= kMaxSequenceNumber);
-  assert(IsValueType(*t));
+  assert(result.sequence <= kMaxSequenceNumber);
+  assert(IsValueType(result.type));
+
+  return result;
 }
 
 void AppendInternalKey(std::string* result, const ParsedInternalKey& key) {

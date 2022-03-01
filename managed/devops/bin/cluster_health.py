@@ -9,13 +9,14 @@
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
 import argparse
+import concurrent.futures
 import json
 import logging
 import os
 import re
 import subprocess
 import sys
-import requests
+import threading
 import time
 
 try:
@@ -24,7 +25,6 @@ except Exception as e:
     from exceptions import RuntimeError
 from datetime import datetime, timedelta
 from dateutil import tz
-from multiprocessing import Pool
 from six import string_types, PY2, PY3
 
 
@@ -49,7 +49,7 @@ DISK_UTILIZATION_THRESHOLD_PCT = 80
 FD_THRESHOLD_PCT = 50
 SSH_TIMEOUT_SEC = 10
 CMD_TIMEOUT_SEC = 20
-MAX_CONCURRENT_PROCESSES = 10
+MAX_THREADS = 10
 MAX_TRIES = 2
 
 DEFAULT_SSL_VERSION = "TLSv1_2"
@@ -224,7 +224,7 @@ class NodeChecker():
                  start_time_ms, namespace_to_config, ysql_port, ycql_port, redis_port,
                  enable_tls_client, root_and_client_root_ca_same, ssl_protocol, enable_ysql,
                  enable_ysql_auth, master_http_port, tserver_http_port, ysql_server_http_port,
-                 collect_metrics_script, universe_version):
+                 collect_metrics_script, test_read_write, universe_version):
         self.node = node
         self.node_name = node_name
         self.master_index = master_index
@@ -253,6 +253,7 @@ class NodeChecker():
         self.tserver_http_port = tserver_http_port
         self.ysql_server_http_port = ysql_server_http_port
         self.collect_metrics_script = collect_metrics_script
+        self.test_read_write = test_read_write
         self.universe_version = universe_version
         self.additional_info = {}
 
@@ -787,6 +788,7 @@ class NodeChecker():
         script_content = script_content.replace('{{YSQLSH_CMD_TEMPLATE}}', ysqlsh_cmd_template)
         script_content = script_content.replace('{{MASTER_INDEX}}', str(self.master_index))
         script_content = script_content.replace('{{TSERVER_INDEX}}', str(self.tserver_index))
+        script_content = script_content.replace('{{TEST_READ_WRITE}}', str(self.test_read_write))
 
         script_dir = os.path.dirname(os.path.abspath(self.collect_metrics_script))
         node_script = os.path.join(script_dir, "cluster_health_" + self.node + ".sh")
@@ -855,14 +857,13 @@ def is_equal_release_build(release_build1, release_build2):
 ###################################################################################################
 # Multi-threaded handling and main
 ###################################################################################################
-def multithreaded_caller(instance, func_name,  sleep_interval=0, args=(), kwargs=None):
+def multithreaded_caller(check, func_name, lock, sleep_interval=0, args=()):
     if sleep_interval > 0:
         logging.debug("waiting for sleep to run " + func_name)
         time.sleep(sleep_interval)
-
-    if kwargs is None:
-        kwargs = {}
-    return getattr(instance, func_name)(*args, **kwargs)
+    result = getattr(check.instance, func_name)(*args)
+    with lock:
+        check.result = result
 
 
 class CheckCoordinator:
@@ -888,7 +889,6 @@ class CheckCoordinator:
             self.tries = 0
 
     def __init__(self, retry_interval_secs):
-        self.pool = Pool(MAX_CONCURRENT_PROCESSES)
         self.prechecks = []
         self.checks = []
         self.retry_interval_secs = retry_interval_secs
@@ -901,56 +901,56 @@ class CheckCoordinator:
 
     def run(self):
 
-        precheck_results = []
-        for precheck in self.prechecks:
-            precheck_func_name = precheck.__name__ if PY3 else precheck.func_name
-            result = self.pool.apply_async(multithreaded_caller, (precheck.instance,
-                                                                  precheck_func_name))
-            precheck_results.append(result)
+        lock = threading.Lock()
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
+            for precheck in self.prechecks:
+                precheck_func_name = precheck.__name__ if PY3 else precheck.func_name
+                executor.submit(multithreaded_caller, precheck,
+                                precheck_func_name, lock)
 
         # Getting results.
         additional_info = {}
-        for result in precheck_results:
-            additional_info.update(result.get())
+        with lock:
+            for precheck in self.prechecks:
+                additional_info.update(precheck.result)
 
         while True:
             checks_remaining = 0
-            for check in self.checks:
-                check.instance.additional_info = additional_info
-                check.entry = check.result.get() if check.result else None
+            with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
+                for check in self.checks:
+                    check.instance.additional_info = additional_info
+                    with lock:
+                        check.entry = check.result if check.result else None
 
-                # Run checks until they succeed, up to max tries. Wait for sleep_interval secs
-                # before retrying to let transient errors correct themselves.
-                if check.entry is None or (check.entry.has_error and check.tries < MAX_TRIES):
-                    checks_remaining += 1
-                    sleep_interval = self.retry_interval_secs if check.tries > 0 else 0
+                    # Run checks until they succeed, up to max tries. Wait for sleep_interval secs
+                    # before retrying to let transient errors correct themselves.
+                    if check.entry is None or (check.entry.has_error and check.tries < MAX_TRIES):
+                        checks_remaining += 1
+                        sleep_interval = self.retry_interval_secs if check.tries > 0 else 0
 
-                    check_func_name = check.__name__ if PY3 else check.func_name
-                    if check.tries > 0:
-                        logging.info("Retry # " + str(check.tries) +
-                                     " for check " + check_func_name)
+                        check_func_name = check.__name__ if PY3 else check.func_name
+                        if check.tries > 0:
+                            logging.info("Retry # " + str(check.tries) +
+                                         " for check " + check_func_name)
 
-                    if check.yb_process is None:
-                        check.result = self.pool.apply_async(
-                                            multithreaded_caller,
-                                            (check.instance, check_func_name, sleep_interval))
-                    else:
-                        check.result = self.pool.apply_async(
-                                            multithreaded_caller,
-                                            (check.instance,
-                                                check_func_name,
-                                                sleep_interval,
-                                                (check.yb_process,)))
-
-                    check.tries += 1
+                        if check.yb_process is None:
+                            executor.submit(multithreaded_caller, check,
+                                            check_func_name, lock, sleep_interval)
+                        else:
+                            executor.submit(multithreaded_caller, check,
+                                            check_func_name, lock, sleep_interval,
+                                            (check.yb_process,))
+                        with lock:
+                            check.tries += 1
 
             if checks_remaining == 0:
                 break
 
         entries = []
-        for check in self.checks:
-            # TODO: we probably do not need to set a timeout, since SSH has one...
-            entries.append(check.result.get())
+        with lock:
+            for check in self.checks:
+                entries.append(check.result)
         return entries
 
 
@@ -977,6 +977,7 @@ class Cluster():
         self.tserver_http_port = data["tserverHttpPort"]
         self.ysql_server_http_port = data["ysqlServerHttpPort"]
         self.collect_metrics_script = data["collectMetricsScript"]
+        self.test_read_write = data["testReadWrite"]
 
 
 class UniverseDefinition():
@@ -1036,7 +1037,8 @@ def main():
                         c.ycql_port, c.redis_port, c.enable_tls_client,
                         c.root_and_client_root_ca_same, c.ssl_protocol, c.enable_ysql,
                         c.enable_ysql_auth, c.master_http_port, c.tserver_http_port,
-                        c.ysql_server_http_port, c.collect_metrics_script, universe_version)
+                        c.ysql_server_http_port, c.collect_metrics_script, c.test_read_write,
+                        universe_version)
 
                 coordinator.add_precheck(checker, "check_openssl_availability")
                 coordinator.add_precheck(checker, "upload_collect_metrics_script")

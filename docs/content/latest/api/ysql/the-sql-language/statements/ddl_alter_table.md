@@ -46,7 +46,7 @@ Use the `ALTER TABLE` statement to change the definition of a table.
 <a name="table-expr-note"></a></br></br>
 {{< note title="Table inheritance is not yet supported" >}}
 
-YSQL in the present "latest" YugabyteDB does not yet support the "table inheritance" feature that is described in the <a href="https://www.postgresql.org/docs/11/ddl-inherit.html" target="_blank">PostgreSQL documentation <i class="fas fa-external-link-alt"></i></a>. The attempt to create a table that inherits another table causes the _0A000 (feature_not_supported)_ error with the message _"INHERITS not supported yet"_. This means that the syntax that the `table_expr` rule allows doesn't not yet bring any useful meaning.
+YSQL in the present "latest" YugabyteDB does not yet support the "table inheritance" feature that is described in the [PostgreSQL documentation](https://www.postgresql.org/docs/11/ddl-inherit.html). The attempt to create a table that inherits another table causes the _0A000 (feature_not_supported)_ error with the message _"INHERITS not supported yet"_. This means that the syntax that the `table_expr` rule allows doesn't not yet bring any useful meaning.
 
 It says that you can write, for example, this:
 
@@ -86,7 +86,7 @@ Renaming a table is a non blocking metadata change operation.
 
 #### DROP [ COLUMN ] *column_name* [ RESTRICT | CASCADE ]
 
-Drop the named column from the table. 
+Drop the named column from the table.
 
 - `RESTRICT` — Remove only the specified column.
 - `CASCADE` — Remove the specified column and any dependent objects.
@@ -95,7 +95,7 @@ Drop the named column from the table.
 
 Set up and populate a parents-children pair of tables:
 
-```plpgssql
+```plpgsql
 drop table if exists children cascade;
 drop table if exists parents  cascade;
 
@@ -140,7 +140,7 @@ order by p.b, c.k;
 This is the result:
 
 ```output
- p.v  |     c.v      
+ p.v  |     c.v
 ------+--------------
  dog  | dog-child-a
  dog  | dog-child-b

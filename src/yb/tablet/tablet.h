@@ -556,6 +556,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   void TEST_DocDBDumpToContainer(
       IncludeIntents include_intents, std::unordered_set<std::string>* out);
 
+  // Dumps DocDB contents to log, every record as a separate log message, with the given prefix.
+  void TEST_DocDBDumpToLog(IncludeIntents include_intents);
+
   size_t TEST_CountRegularDBRecords();
 
   CHECKED_STATUS CreateReadIntents(
@@ -728,11 +731,11 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   void DocDBDebugDump(std::vector<std::string> *lines);
 
-  CHECKED_STATUS PrepareTransactionWriteBatch(
+  CHECKED_STATUS WriteTransactionalBatch(
       int64_t batch_idx, // index of this batch in its transaction
       const docdb::KeyValueWriteBatchPB& put_batch,
       HybridTime hybrid_time,
-      rocksdb::WriteBatch* rocksdb_write_batch);
+      const rocksdb::UserFrontiers* frontiers);
 
   Result<TransactionOperationContext> CreateTransactionOperationContext(
       const boost::optional<TransactionId>& transaction_id,

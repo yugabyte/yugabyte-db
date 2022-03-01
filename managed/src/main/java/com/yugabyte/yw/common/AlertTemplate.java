@@ -98,51 +98,46 @@ public enum AlertTemplate {
   HEALTH_CHECK_ERROR(
       "Health Check Error",
       "Failed to perform health check",
-      "ybp_health_check_status{universe_uuid = \"__universeUuid__\"} {{ query_condition }} 1",
-      "Failed to perform health check for universe '{{ $labels.source_name }}':"
-          + " {{ $labels.error_message }}",
+      "last_over_time(ybp_health_check_status{universe_uuid = \"__universeUuid__\"}[1d])"
+          + " {{ query_condition }} 1",
+      "Failed to perform health check for universe '{{ $labels.source_name }}'"
+          + " - check YB Platform logs for details or contact YB support team",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
-      ThresholdSettings.builder().statusThreshold(SEVERE).build(),
-      TestAlertSettings.builder()
-          .label(KnownAlertLabels.ERROR_MESSAGE, "Some error occurred")
-          .build()),
+      ThresholdSettings.builder().statusThreshold(SEVERE).build()),
 
   HEALTH_CHECK_NOTIFICATION_ERROR(
       "Health Check Notification Error",
       "Failed to perform health check notification",
-      "ybp_health_check_notification_status{universe_uuid = \"__universeUuid__\"}"
+      "last_over_time(ybp_health_check_notification_status"
+          + "{universe_uuid = \"__universeUuid__\"}[1d])"
           + " {{ query_condition }} 1",
-      "Failed to perform health check notification for universe '{{ $labels.source_name }}':"
-          + " {{ $labels.error_message }}",
+      "Failed to perform health check notification for universe '{{ $labels.source_name }}'"
+          + " - check Health notification settings and YB Platform logs for details"
+          + " or contact YB support team",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
-      ThresholdSettings.builder().statusThreshold(SEVERE).build(),
-      TestAlertSettings.builder()
-          .label(KnownAlertLabels.ERROR_MESSAGE, "Some error occurred")
-          .build()),
+      ThresholdSettings.builder().statusThreshold(SEVERE).build()),
 
   BACKUP_FAILURE(
       "Backup Failure",
       "Last universe backup creation task failed",
-      "ybp_create_backup_status{universe_uuid = \"__universeUuid__\"}" + " {{ query_condition }} 1",
-      "Last backup task for universe '{{ $labels.source_name }}' failed:"
-          + " {{ $labels.error_message }}",
+      "last_over_time(ybp_create_backup_status{universe_uuid = \"__universeUuid__\"}[1d])"
+          + " {{ query_condition }} 1",
+      "Last backup task for universe '{{ $labels.source_name }}' failed"
+          + " - check backup task result for more details",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
-      ThresholdSettings.builder().statusThreshold(SEVERE).build(),
-      TestAlertSettings.builder()
-          .label(KnownAlertLabels.ERROR_MESSAGE, "Some error occurred")
-          .build()),
+      ThresholdSettings.builder().statusThreshold(SEVERE).build()),
 
   BACKUP_SCHEDULE_FAILURE(
       "Backup Schedule Failure",
       "Last attempt to run scheduled backup failed due to other backup"
           + " or universe operation in progress",
-      "ybp_schedule_backup_status{universe_uuid = \"__universeUuid__\"}"
+      "last_over_time(ybp_schedule_backup_status{universe_uuid = \"__universeUuid__\"}[1d])"
           + " {{ query_condition }} 1",
       "Last attempt to run scheduled backup for universe '{{ $labels.source_name }}'"
           + " failed due to other backup or universe operation is in progress.",
@@ -171,60 +166,49 @@ public enum AlertTemplate {
   ALERT_QUERY_FAILED(
       "Alert Query Failed",
       "Failed to query alerts from Prometheus",
-      "ybp_alert_query_status {{ query_condition }} 1",
-      "Last alert query for customer '{{ $labels.source_name }}' failed:"
-          + " {{ $labels.error_message }}",
+      "last_over_time(ybp_alert_query_status[1d]) {{ query_condition }} 1",
+      "Last alert query for customer '{{ $labels.source_name }}' failed"
+          + " - check YB Platform logs for details or contact YB support team",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.PLATFORM,
-      ThresholdSettings.builder().statusThreshold(SEVERE).build(),
-      TestAlertSettings.builder()
-          .label(KnownAlertLabels.ERROR_MESSAGE, "Some error occurred")
-          .build()),
+      ThresholdSettings.builder().statusThreshold(SEVERE).build()),
 
   ALERT_CONFIG_WRITING_FAILED(
       "Alert Rules Sync Failed",
       "Failed to sync alerting rules to Prometheus",
-      "ybp_alert_config_writer_status {{ query_condition }} 1",
-      "Last alert rules sync for customer '{{ $labels.source_name }}' failed:"
-          + " {{ $labels.error_message }}",
+      "last_over_time(ybp_alert_config_writer_status[1d]) {{ query_condition }} 1",
+      "Last alert rules sync for customer '{{ $labels.source_name }}' failed"
+          + " - check YB Platform logs for details or contact YB support team",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.PLATFORM,
-      ThresholdSettings.builder().statusThreshold(SEVERE).build(),
-      TestAlertSettings.builder()
-          .label(KnownAlertLabels.ERROR_MESSAGE, "Some error occurred")
-          .build()),
+      ThresholdSettings.builder().statusThreshold(SEVERE).build()),
 
   ALERT_NOTIFICATION_ERROR(
       "Alert Notification Failed",
       "Failed to send alert notifications",
-      "ybp_alert_manager_status{customer_uuid = \"__customerUuid__\"}" + " {{ query_condition }} 1",
+      "last_over_time(ybp_alert_manager_status{customer_uuid = \"__customerUuid__\"}[1d])"
+          + " {{ query_condition }} 1",
       "Last attempt to send alert notifications for customer '{{ $labels.source_name }}'"
-          + " failed: {{ $labels.error_message }}",
+          + " failed - check YB Platform logs for details or contact YB support team",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.PLATFORM,
-      ThresholdSettings.builder().statusThreshold(SEVERE).build(),
-      TestAlertSettings.builder()
-          .label(KnownAlertLabels.ERROR_MESSAGE, "Some error occurred")
-          .build()),
+      ThresholdSettings.builder().statusThreshold(SEVERE).build()),
 
   ALERT_NOTIFICATION_CHANNEL_ERROR(
       "Alert Channel Failed",
       "Failed to send alerts to notification channel",
-      "ybp_alert_manager_channel_status{customer_uuid = \"__customerUuid__\"}"
+      "last_over_time(ybp_alert_manager_channel_status{customer_uuid = \"__customerUuid__\"}[1d])"
           + " {{ query_condition }} 1",
       "Last attempt to send alert notifications to channel '{{ $labels.source_name }}'"
-          + " failed: {{ $labels.error_message }}",
+          + " failed - try sending test alert to get more details",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER, DefinitionSettings.SKIP_TARGET_LABELS),
       TargetType.PLATFORM,
       ThresholdSettings.builder().statusThreshold(SEVERE).build(),
-      TestAlertSettings.builder()
-          .label(KnownAlertLabels.ERROR_MESSAGE, "Some error occurred")
-          .label(KnownAlertLabels.SOURCE_NAME, "Some Channel")
-          .build()),
+      TestAlertSettings.builder().label(KnownAlertLabels.SOURCE_NAME, "Some Channel").build()),
 
   NODE_DOWN(
       "DB node down",
@@ -520,11 +504,11 @@ public enum AlertTemplate {
   DB_MEMORY_OVERLOAD(
       "DB memory overload",
       "DB memory rejections detected during last 10 minutes",
-      "sum by (node_prefix) (sum_over_time("
+      "sum by (node_prefix) (increase("
           + "leader_memory_pressure_rejections{node_prefix=\"__nodePrefix__\"}[10m])) + "
-          + "sum by (node_prefix) (sum_over_time("
+          + "sum by (node_prefix) (increase("
           + "follower_memory_pressure_rejections{node_prefix=\"__nodePrefix__\"}[10m])) + "
-          + "sum by (node_prefix) (sum_over_time("
+          + "sum by (node_prefix) (increase("
           + "operation_memory_pressure_rejections{node_prefix=\"__nodePrefix__\"}[10m])) "
           + "{{ query_condition }} {{ query_threshold }}",
       "DB memory rejections detected for universe '{{ $labels.source_name }}'.",
@@ -541,7 +525,7 @@ public enum AlertTemplate {
   DB_COMPACTION_OVERLOAD(
       "DB compaction overload",
       "DB compaction rejections detected during last 10 minutes",
-      "sum by (node_prefix) (sum_over_time("
+      "sum by (node_prefix) (increase("
           + "majority_sst_files_rejections{node_prefix=\"__nodePrefix__\"}[10m])) "
           + "{{ query_condition }} {{ query_threshold }}",
       "DB compaction rejections detected for universe '{{ $labels.source_name }}'.",
@@ -558,9 +542,9 @@ public enum AlertTemplate {
   DB_QUEUES_OVERFLOW(
       "DB queues overflow",
       "DB queues overflow detected during last 10 minutes",
-      "sum by (node_prefix) (sum_over_time("
+      "sum by (node_prefix) (increase("
           + "rpcs_queue_overflow{node_prefix=\"__nodePrefix__\"}[10m])) + "
-          + "sum by (node_prefix) (sum_over_time("
+          + "sum by (node_prefix) (increase("
           + "rpcs_timed_out_in_queue{node_prefix=\"__nodePrefix__\"}[10m])) "
           + "{{ query_condition }} {{ query_threshold }}",
       "DB queues overflow detected for universe '{{ $labels.source_name }}'.",
@@ -651,6 +635,23 @@ public enum AlertTemplate {
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
           .defaultThreshold(SEVERE, "yb.alert.max_node_cert_expiry_days_severe")
+          .defaultThresholdUnit(DAY)
+          .defaultThresholdCondition(Condition.LESS_THAN)
+          .build()),
+
+  ENCRYPTION_AT_REST_CONFIG_EXPIRY(
+      "Encryption At Rest config expiry",
+      "Encryption At Rest config expires soon",
+      "ybp_universe_encryption_key_expiry_days"
+          + "{universe_uuid=\"__universeUuid__\"} "
+          + "{{ query_condition }} {{ query_threshold }}",
+      "Encryption At Rest config for universe '{{ $labels.source_name }}'"
+          + " will expire in {{ $value | printf \\\"%.0f\\\" }} days.",
+      15,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      TargetType.UNIVERSE,
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, "yb.alert.max_enc_at_rest_config_expiry_days_severe")
           .defaultThresholdUnit(DAY)
           .defaultThresholdCondition(Condition.LESS_THAN)
           .build()),

@@ -203,4 +203,21 @@ public class UniverseInfoHandler {
     }
     return targetFile;
   }
+
+  public Path downloadNodeFile(
+      Customer customer,
+      Universe universe,
+      NodeDetails node,
+      String ybHomeDir,
+      String sourceNodeFile,
+      Path targetFile) {
+    ShellResponse response =
+        nodeUniverseManager.downloadNodeFile(
+            node, universe, ybHomeDir, sourceNodeFile, targetFile.toString());
+
+    if (response.code != 0) {
+      throw new PlatformServiceException(Http.Status.INTERNAL_SERVER_ERROR, response.message);
+    }
+    return targetFile;
+  }
 }

@@ -576,6 +576,14 @@ YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target) {
   return ToYBCStatus(pgapi->DmlAppendTarget(handle, target));
 }
 
+YBCStatus YbPgDmlAppendQual(YBCPgStatement handle, YBCPgExpr qual) {
+  return ToYBCStatus(pgapi->DmlAppendQual(handle, qual));
+}
+
+YBCStatus YbPgDmlAppendColumnRef(YBCPgStatement handle, YBCPgExpr colref) {
+  return ToYBCStatus(pgapi->DmlAppendColumnRef(handle, colref));
+}
+
 YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value) {
   return ToYBCStatus(pgapi->DmlBindColumn(handle, attr_num, attr_value));
 }
@@ -712,10 +720,6 @@ YBCStatus YBCPgNewUpdate(const YBCPgOid database_oid,
 
 YBCStatus YBCPgExecUpdate(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecUpdate(handle));
-}
-
-bool YBCGetEnableUpdateBatching() {
-  return FLAGS_ysql_enable_update_batching;
 }
 
 // DELETE Operations -------------------------------------------------------------------------------
@@ -904,8 +908,12 @@ YBCStatus YBCPgRestartTransaction() {
   return ToYBCStatus(pgapi->RestartTransaction());
 }
 
-YBCStatus YBCPgMaybeResetTransactionReadPoint() {
-  return ToYBCStatus(pgapi->MaybeResetTransactionReadPoint());
+YBCStatus YBCPgResetTransactionReadPoint() {
+  return ToYBCStatus(pgapi->ResetTransactionReadPoint());
+}
+
+YBCStatus YBCPgRestartReadPoint() {
+  return ToYBCStatus(pgapi->RestartReadPoint());
 }
 
 YBCStatus YBCPgCommitTransaction() {

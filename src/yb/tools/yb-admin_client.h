@@ -162,7 +162,10 @@ class ClusterAdminClient {
                             bool include_table_type);
 
   // List all tablets of this table
-  CHECKED_STATUS ListTablets(const client::YBTableName& table_name, int max_tablets, bool json);
+  CHECKED_STATUS ListTablets(const client::YBTableName& table_name,
+                             int max_tablets,
+                             bool json,
+                             bool followers);
 
   // Per Tablet list of all tablet servers
   CHECKED_STATUS ListPerTabletTabletServers(const PeerId& tablet_id);

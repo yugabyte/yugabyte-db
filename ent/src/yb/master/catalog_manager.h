@@ -84,7 +84,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   CHECKED_STATUS InitCDCConsumer(const std::vector<CDCConsumerStreamInfo>& consumer_info,
                                  const std::string& master_addrs,
-                                 const std::string& producer_universe_uuid);
+                                 const std::string& producer_universe_uuid,
+                                 std::shared_ptr<CDCRpcTasks> cdc_rpc_tasks);
 
   void HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool error) override;
 
@@ -94,15 +95,6 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
       const SnapshotId& snapshot_id, TabletInfo *tablet, bool error) override;
 
   void DumpState(std::ostream* out, bool on_disk_dump = false) const override;
-
-  CHECKED_STATUS HandlePlacementUsingReplicationInfo(const ReplicationInfoPB& replication_info,
-                                                     const TSDescriptorVector& all_ts_descs,
-                                                     consensus::RaftConfigPB* config) override;
-
-  // Populates ts_descs with all tservers belonging to a certain placement.
-  void GetTsDescsFromPlacementInfo(const PlacementInfoPB& placement_info,
-                                   const TSDescriptorVector& all_ts_descs,
-                                   TSDescriptorVector* ts_descs);
 
   // Fills the heartbeat response with the decrypted universe key registry.
   CHECKED_STATUS FillHeartbeatResponse(const TSHeartbeatRequestPB* req,

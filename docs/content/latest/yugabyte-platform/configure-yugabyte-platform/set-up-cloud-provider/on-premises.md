@@ -373,10 +373,10 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
 
 ##### Install Prometheus node exporter
 
-For Yugabyte Platform versions 2.8 and later, download the 1.2.2 version of the Prometheus node exporter, as follows:
+For Yugabyte Platform versions 2.8 and later, download the 1.3.1 version of the Prometheus node exporter, as follows:
 
 ```sh
-wget https://github.com/prometheus/node_exporter/releases/download/v1.2.2/node_exporter-1.2.2.linux-amd64.tar.gz
+wget https://github.com/prometheus/node_exporter/releases/download/v1.3.1/node_exporter-1.3.1.linux-amd64.tar.gz
 ```
 
 For Yugabyte Platform versions prior to 2.8, download the 0.13.0 version of the exporter, as follows:
@@ -387,7 +387,7 @@ $ wget https://github.com/prometheus/node_exporter/releases/download/v0.13.0/nod
 
 If you are doing an airgapped installation, download the node exporter using a computer connected to the internet and copy it over to the database nodes.
 
-Note that the instructions are for the 0.13.0 version. The same instructions are applicable to the 1.2.2 version, but you need to use the correct file name.
+Note that the instructions are for the 0.13.0 version. The same instructions are applicable to the 1.3.1 version, but you need to use the correct file name.
 
 On each node, perform the following as a user with sudo access:
 
@@ -487,17 +487,17 @@ Yugabyte Platform supports backing up YugabyteDB to AWS S3, Azure Storage, Googl
 
 **Azure Storage** - Install azcopy using one of the following options:
 
-* Download `azcopy_linux_amd64_10.4.0.tar.gz` using the following command:
+* Download `azcopy_linux_amd64_10.13.0.tar.gz` using the following command:
 
     ```sh
-    $ wget https://azcopyvnext.azureedge.net/release20200410/azcopy_linux_amd64_10.4.0.tar.gz
+    $ wget https://azcopyvnext.azureedge.net/release20200410/azcopy_linux_amd64_10.13.0.tar.gz
     ```
 
-* For airgapped installations, copy `/opt/third-party/azcopy_linux_amd64_10.4.0.tar.gz` from the Yugabyte Platform node, as follows:
+* For airgapped installations, copy `/opt/third-party/azcopy_linux_amd64_10.13.0.tar.gz` from the Yugabyte Platform node, as follows:
 
     ```sh
     $ cd /usr/local
-    $ sudo tar xfz path-to-azcopy_linux_amd64_10.4.0.tar.gz -C /usr/local/bin azcopy_linux_amd64_10.4.0/azcopy --strip-components 1
+    $ sudo tar xfz path-to-azcopy_linux_amd64_10.13.0.tar.gz -C /usr/local/bin azcopy_linux_amd64_10.13.0/azcopy --strip-components 1
     ```
 
 **Google Cloud Storage** - Install gsutil using one of the following options:

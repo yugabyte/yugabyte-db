@@ -20,6 +20,7 @@ enum IsolationLevel {
   NON_TRANSACTIONAL = 0;
   SNAPSHOT_ISOLATION = 1;
   SERIALIZABLE_ISOLATION = 2;
+  READ_COMMITTED = 3;
 }
 
 enum TransactionStatus {

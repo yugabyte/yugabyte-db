@@ -152,17 +152,19 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
       if (!blacklisted_servers_.count(ts_uuid)) {
         if (GetAtomicFlag(&FLAGS_allow_leader_balancing_dead_node)) {
           allow_only_leader_balancing_ = true;
-          LOG(INFO) << strings::Substitute("Master leader not received "
-                "heartbeat from ts $0. Only performing leader balancing for tables with replicas"
-                " in this TS.", ts_uuid);
+          YB_LOG_EVERY_N_SECS(INFO, 30)
+              << strings::Substitute("Master leader not received heartbeat from ts $0. "
+                                     "Only performing leader balancing for tables with replicas"
+                                     " in this TS.", ts_uuid);
         } else {
           return STATUS_SUBSTITUTE(LeaderNotReadyToServe, "Master leader has not yet received "
               "heartbeat from ts $0. Aborting load balancing.", ts_uuid);
         }
       } else {
-        LOG(INFO) << strings::Substitute("Master leader not received heartbeat from ts $0"
-                              " but it is blacklisted. Continuing LB operations for tables"
-                              " with replicas in this TS.", ts_uuid);
+        YB_LOG_EVERY_N_SECS(INFO, 30)
+            << strings::Substitute("Master leader not received heartbeat from ts $0 but it is "
+                                   "blacklisted. Continuing LB operations for tables with replicas"
+                                   " in this TS.", ts_uuid);
       }
     }
 
@@ -411,8 +413,8 @@ Result<bool> PerTableLoadState::CanAddTabletToTabletServer(
   }
   // If we ask to use placement information, check against it.
   if (placement_info && !GetValidPlacement(to_ts, placement_info).has_value()) {
-    LOG(INFO) << "tablet server " << to_ts << " has invalid placement info. "
-              << "Not allowing it to take more tablets.";
+    YB_LOG_EVERY_N_SECS(INFO, 30) << "tablet server " << to_ts << " has invalid placement info. "
+                                  << "Not allowing it to take more tablets.";
     return false;
   }
   // If this server has a pending tablet delete, don't use it.

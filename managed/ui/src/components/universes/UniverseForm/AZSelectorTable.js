@@ -223,6 +223,7 @@ export default class AZSelectorTable extends Component {
                 uuid: zoneItem.uuid,
                 replicationFactor: replicationFactor,
                 subnet: zoneItem.subnet,
+                secondarySubnet: zoneItem.secondarySubnet,
                 name: zoneItem.name,
                 numNodesInAZ: azItem.count,
                 isAffinitized: azItem.isAffinitized

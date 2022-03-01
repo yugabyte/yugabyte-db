@@ -281,7 +281,7 @@ You are now connected to database "yb_demo" as user "yugabyte".
 
 yb_demo=# select to_char(max(orders.created_at), 'DD-MON-YYYY HH24:MI') AS "Last Order Date" from orders;
 
-  Last Order Date  
+  Last Order Date
 -------------------
  19-APR-2020 14:07
 
@@ -614,7 +614,7 @@ All settings except ISO allow you specify whether a Day appears before or after 
 
 If you are reading dates as text fields from a file or any source that is not a YugabyteDB date or timestamp data type, then it is very important that you set your DateStyle properly unless you are very specific on how to convert a text field to a date - an example of which is included below.
 
-Note that YugabyteDB will always interpret '6/6' as 6th June, and '13/12' as 13th December (because the month cannot be 13), but what about about '6/12'? Lets work through some examples within YSQL.
+Note that YugabyteDB will always interpret '6/6' as 6th June, and '13/12' as 13th December (because the month cannot be 13), but what about '6/12'? Let's work through some examples within YSQL.
 
 ```
 yugabyte=# SHOW DateStyle;
@@ -728,7 +728,7 @@ yugabyte=# \x on
 
 Expanded display is on.
 
-yugabyte=# select name, short_desc, coalesce(setting, reset_val) AS "setting_value", sourcefile  
+yugabyte=# select name, short_desc, coalesce(setting, reset_val) AS "setting_value", sourcefile
           from pg_catalog.pg_settings
           where name in('log_timezone', 'log_directory', 'log_filename', 'lc_time')
           order by name asc;

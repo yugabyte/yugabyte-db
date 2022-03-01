@@ -404,18 +404,25 @@ Status PgSession::RunHelper::Apply(std::shared_ptr<client::YBPgsqlOp> op,
       read_only = read_only && pending_ops_.empty();
     }
   }
-  bool pessimistic_lock_required = false;
+
+  TxnPriorityRequirement txn_priority_requirement = kLowerPriorityRange;
   if (op->type() == YBOperation::Type::PGSQL_READ) {
     const PgsqlReadRequestPB& read_req = down_cast<client::YBPgsqlReadOp*>(op.get())->request();
     auto row_mark_type = GetRowMarkTypeFromPB(read_req);
     read_only = read_only && !IsValidRowMarkType(row_mark_type);
-    pessimistic_lock_required = RowMarkNeedsPessimisticLock(row_mark_type);
+    if (RowMarkNeedsHigherPriority((RowMarkType) row_mark_type)) {
+      txn_priority_requirement = kHigherPriorityRange;
+    }
+  }
+
+  if (pg_session_.GetIsolationLevel() == PgIsolationLevel::READ_COMMITTED) {
+    txn_priority_requirement = kHighestPriority;
   }
 
   auto session = VERIFY_RESULT(pg_session_.GetSession(
       transactional_,
       IsReadOnlyOperation(read_only),
-      IsPessimisticLockRequired(pessimistic_lock_required),
+      txn_priority_requirement,
       IsCatalogOperation(op->IsYsqlCatalogOp())));
   if (!yb_session_) {
     yb_session_ = session->shared_from_this();
@@ -678,9 +685,15 @@ Status PgSession::UpdateSequenceTuple(int64_t db_oid,
     where_pb->set_op(QL_OP_EXISTS);
   }
 
+  // For compatibility set deprecated column_refs
   write_request->mutable_column_refs()->add_ids(
       t->schema().column_id(kPgSequenceLastValueColIdx));
   write_request->mutable_column_refs()->add_ids(
+      t->schema().column_id(kPgSequenceIsCalledColIdx));
+  // Same values, to be consumed by current TServers
+  write_request->add_col_refs()->set_column_id(
+      t->schema().column_id(kPgSequenceLastValueColIdx));
+  write_request->add_col_refs()->set_column_id(
       t->schema().column_id(kPgSequenceIsCalledColIdx));
 
   RETURN_NOT_OK(session_->ApplyAndFlush(psql_write));
@@ -711,9 +724,15 @@ Status PgSession::ReadSequenceTuple(int64_t db_oid,
   read_request->add_targets()->set_column_id(
       t->schema().column_id(kPgSequenceIsCalledColIdx));
 
+  // For compatibility set deprecated column_refs
   read_request->mutable_column_refs()->add_ids(
       t->schema().column_id(kPgSequenceLastValueColIdx));
   read_request->mutable_column_refs()->add_ids(
+      t->schema().column_id(kPgSequenceIsCalledColIdx));
+  // Same values, to be consumed by current TServers
+  read_request->add_col_refs()->set_column_id(
+      t->schema().column_id(kPgSequenceLastValueColIdx));
+  read_request->add_col_refs()->set_column_id(
       t->schema().column_id(kPgSequenceIsCalledColIdx));
 
   RETURN_NOT_OK(session_->ReadSync(psql_read));
@@ -859,6 +878,10 @@ void PgSession::DropBufferedOperations() {
   buffered_txn_ops_.clear();
 }
 
+PgIsolationLevel PgSession::GetIsolationLevel() {
+  return pg_txn_manager_->GetIsolationLevel();
+}
+
 Status PgSession::FlushBufferedOperationsImpl(const Flusher& flusher) {
   auto ops = std::move(buffered_ops_);
   auto txn_ops = std::move(buffered_txn_ops_);
@@ -900,12 +923,12 @@ Result<bool> PgSession::ShouldHandleTransactionally(const client::YBPgsqlOp& op)
 
 Result<YBSession*> PgSession::GetSession(IsTransactionalSession transactional,
                                          IsReadOnlyOperation read_only_op,
-                                         IsPessimisticLockRequired pessimistic_lock_required,
+                                         TxnPriorityRequirement txn_priority_requirement,
                                          IsCatalogOperation is_catalog_op) {
   if (transactional) {
     YBSession* txn_session = VERIFY_RESULT(pg_txn_manager_->GetTransactionalSession());
     RETURN_NOT_OK(pg_txn_manager_->BeginWriteTransactionIfNecessary(read_only_op,
-                                                                    pessimistic_lock_required));
+                                                                    txn_priority_requirement));
     VLOG(2) << __PRETTY_FUNCTION__
             << ": read_only_op=" << read_only_op << ", returning transactional session: "
             << txn_session;
@@ -940,7 +963,15 @@ Status PgSession::ApplyOperation(client::YBSession *session,
 
 Status PgSession::FlushOperations(PgsqlOpBuffer ops, IsTransactionalSession transactional) {
   DCHECK(ops.size() > 0 && ops.size() <= FLAGS_ysql_session_max_batch_size);
-  auto session = VERIFY_RESULT(GetSession(transactional, IsReadOnlyOperation::kFalse));
+
+  TxnPriorityRequirement txn_priority_requirement = kLowerPriorityRange;
+  if (GetIsolationLevel() == PgIsolationLevel::READ_COMMITTED) {
+    txn_priority_requirement = kHighestPriority;
+  }
+
+  auto session = VERIFY_RESULT(GetSession(
+                                  transactional, IsReadOnlyOperation::kFalse,
+                                  txn_priority_requirement));
   if (session != session_.get()) {
     DCHECK(transactional);
     session->SetInTxnLimit(HybridTime(clock_->Now().ToUint64()));

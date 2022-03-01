@@ -913,6 +913,7 @@ PowerWithUpperLimit(double base, int exp, double upper_limit)
 
 bool yb_enable_create_with_table_oid = false;
 int yb_index_state_flags_update_delay = 1000;
+bool yb_enable_expression_pushdown = false;
 
 //------------------------------------------------------------------------------
 // YB Debug utils.

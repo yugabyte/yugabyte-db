@@ -29,11 +29,11 @@ If you are trying to connect to a cluster from your local computer, add your com
 
 If you have a VPC configured, add one or more IP addresses from the peered VPC to the cluster [IP allow list](../cloud-secure-clusters/add-connections/).
 
-### Connection closed in cloud shell
+### Connection closed in Cloud Shell
 
-If you are connected to a cluster in cloud shell and the message Connection Closed appears.
+If you are connected to a cluster in Cloud Shell and the message Connection Closed appears.
 
-Cloud shell has a hard limit of 15 minutes for connections. Close the cloud shell window and [launch a new cloud shell session](../cloud-connect/connect-cloud-shell/).
+Cloud Shell has a hard limit of 15 minutes for connections. Close the shell window and [launch a new session](../cloud-connect/connect-cloud-shell/).
 
 ### SSL off
 
@@ -69,7 +69,7 @@ The database admin credentials are separate from your Yugabyte Cloud credentials
 
 If you are a database user who was added to the database by an administrator, ask them to either re-send your credentials or reset your database password.
 
-If you are the database admin and are unable to locate your database admin credentials file, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
+If you are the database admin and are unable to locate your database admin credentials file, contact {{<support-cloud>}}.
 
 ### VPC networking
 
@@ -77,11 +77,11 @@ If you have set up a VPC network and are unable to connect, verify the following
 
 #### VPC status is Failed
 
-If you are unable to successfully create the VPC, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
+If you are unable to successfully create the VPC, contact {{<support-cloud>}}.
 
 #### Peering connection status is Pending
 
-A peering connection status of _Pending_ indicates that you need to configure your cloud provider to accept the connection. Refer to [Create a peering connection](../cloud-secure-clusters/cloud-vpcs/cloud-add-peering).
+A peering connection status of _Pending_ indicates that you need to configure your cloud provider to accept the connection. Refer to [Create a peering connection](../cloud-basics/cloud-vpcs/cloud-add-peering).
 
 #### Peering connection status is Expired (AWS only)
 
@@ -94,6 +94,19 @@ Select the peering request to display the **Peering Details** sheet and check th
 #### VPC and peering connection are active but your application cannot connect to the cluster
 
 Add the application VPC CIDR address to the [cluster IP allow list](../cloud-secure-clusters/add-connections/). Even with connectivity established between VPCs, the cluster cannot accept connections until the application VPC IP addresses are added to the IP allow list.
+
+## Database management
+
+### Permission denied, must be superuser
+
+If you execute a YSQL command and receive the following error:
+
+```output
+ERROR:  permission denied to [...]
+HINT:  Must be superuser to [...].
+```
+
+For security reasons, the database admin user is not a superuser. The admin user is a member of yb_superuser, which does allow most operations. For more information on database roles and privileges in Yugabyte Cloud, refer to [Database authorization in Yugabyte Cloud clusters](../cloud-secure-clusters/cloud-users/). If you need to perform an operation that requires superuser privileges, contact {{<support-cloud>}}.
 
 ## Cluster management
 

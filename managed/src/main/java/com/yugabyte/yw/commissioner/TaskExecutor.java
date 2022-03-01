@@ -13,6 +13,7 @@ import com.google.common.collect.Sets;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.DrainableMap;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.password.RedactingService;
@@ -127,7 +128,7 @@ public class TaskExecutor {
   private final ExecutorServiceProvider executorServiceProvider;
 
   // A map from task UUID to its RunnableTask while it is running.
-  private final Map<UUID, RunnableTask> runnableTasks = new ConcurrentHashMap<>();
+  private final DrainableMap<UUID, RunnableTask> runnableTasks = new DrainableMap<>();
 
   // A utility for Platform HA.
   private final PlatformReplicationManager replicationManager;
@@ -249,29 +250,26 @@ public class TaskExecutor {
   // It assumes that the executor services will
   // also be shutdown gracefully.
   public boolean shutdown(Duration timeout) {
-    if (!isShutdown.compareAndSet(false, true)) {
-      return false;
-    }
-    Instant abortTime = Instant.now();
-    runnableTasks.forEach(
-        (uuid, runnable) -> {
-          runnable.setAbortTime(abortTime);
-        });
-    // TODO replace with wait-notify to be notified when the runnableTasks is empty.
-    while (!runnableTasks.isEmpty()) {
-      try {
-        Thread.sleep(TASK_SPIN_WAIT_INTERVAL_MS);
-      } catch (InterruptedException e) {
-        return false;
-      }
-      if (timeout != null && !timeout.isZero()) {
-        Duration elapsed = Duration.between(abortTime, Instant.now());
-        if (elapsed.compareTo(timeout) > 0) {
-          return false;
-        }
+    if (isShutdown.compareAndSet(false, true)) {
+      log.info("TaskExecutor is shutting down");
+      runnableTasks.sealMap();
+      Instant abortTime = Instant.now();
+      synchronized (runnableTasks) {
+        runnableTasks.forEach(
+            (uuid, runnable) -> {
+              runnable.setAbortTime(abortTime);
+            });
       }
     }
-    return true;
+    try {
+      // Wait for all the RunnableTask to be done.
+      // A task in runnableTasks map is removed when it is cancelled due to executor shutdown or
+      // when it is completed.
+      return runnableTasks.waitForEmpty(timeout);
+    } catch (InterruptedException e) {
+      log.error("Wait for task completion interrupted", e);
+    }
+    return false;
   }
 
   private void checkTaskExecutorState() {
@@ -602,6 +600,10 @@ public class TaskExecutor {
             t = e;
             runnableSubTask.setTaskState(TaskInfo.State.Aborted);
             runnableSubTask.updateTaskDetailsOnError(e);
+          } catch (InterruptedException e) {
+            t = new CancellationException(e.getMessage());
+            runnableSubTask.setTaskState(TaskInfo.State.Aborted);
+            runnableSubTask.updateTaskDetailsOnError(e);
           } catch (Exception e) {
             t = e;
             runnableSubTask.setTaskState(TaskInfo.State.Failure);
@@ -810,7 +812,6 @@ public class TaskExecutor {
               + ", hit error:\n\n"
               + StringUtils.abbreviateMiddle(t.getMessage(), "...", 3000)
               + ".";
-
       log.error(
           "Failed to execute task type {} UUID {} details {}, hit error.",
           taskInfo.getTaskType(),

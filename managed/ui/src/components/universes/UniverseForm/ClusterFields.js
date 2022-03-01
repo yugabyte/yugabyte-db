@@ -766,6 +766,33 @@ export default class ClusterFields extends Component {
     const { updateFormField, clusterType } = this.props;
     this.setState({ nodeSetViaAZList: true, numNodes: value });
     updateFormField(`${clusterType}.numNodes`, value);
+    this.resetVolumeSizeIfNeeded();
+  }
+
+  resetVolumeSizeIfNeeded() {
+    const { hasInstanceTypeChanged, deviceInfo } = this.state;
+    const {
+      clusterType,
+      universe: { currentUniverse }
+    } = this.props;
+    if (
+      isEmptyObject(currentUniverse.data) ||
+      isEmptyObject(currentUniverse.data.universeDetails)
+    ) {
+      return;
+    }
+    if (!hasInstanceTypeChanged) {
+      const curCluster = getClusterByType(
+        currentUniverse.data.universeDetails.clusters,
+        clusterType
+      );
+      if (
+        !isEmptyObject(curCluster) &&
+        curCluster.userIntent.deviceInfo.volumeSize !== deviceInfo.volumeSize
+      ) {
+        this.volumeSizeChanged(curCluster.userIntent.deviceInfo.volumeSize);
+      }
+    }
   }
 
   setDeviceInfo(instanceTypeCode, instanceTypeList) {
@@ -1319,6 +1346,7 @@ export default class ClusterFields extends Component {
     const { updateFormField, clusterType } = this.props;
     this.setState({ numNodes: value, nodeSetViaAZList: false });
     updateFormField(`${clusterType}.numNodes`, value);
+    this.resetVolumeSizeIfNeeded();
   }
 
   getCurrentProvider(providerUUID) {
@@ -1696,6 +1724,10 @@ export default class ClusterFields extends Component {
             />
           </span>
         );
+        const smartResizePossible =
+          isDefinedNotNull(currentProvider) &&
+          (currentProvider.code === 'aws' || currentProvider.code === 'gcp') &&
+          clusterType !== 'async';
         const volumeSize = (
           <span className="volume-info-field volume-info-size">
             <Field
@@ -1704,7 +1736,7 @@ export default class ClusterFields extends Component {
               label="Volume Size"
               valueFormat={volumeTypeFormat}
               onInputChanged={self.volumeSizeChanged}
-              readOnly={fixedVolumeInfo || !hasInstanceTypeChanged}
+              readOnly={fixedVolumeInfo || (!hasInstanceTypeChanged && !smartResizePossible)}
             />
           </span>
         );

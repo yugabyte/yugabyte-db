@@ -102,6 +102,42 @@ Once you have set up replication, load data into the source universe as follows:
 
 When completed, proceed to [Verifying Replication](#verifying-replication).
 
+## Verifying Replication
+
+You can verify replication by stopping the workload and then using the `COUNT(*)` function on the yugabyte-target to yugabyte-source match.
+
+### Unidirectional Replication
+
+For unidirectional replication, connect to the yugabyte-target universe using the YSQL shell (`ysqlsh`) or the YCQL shell (`ycqlsh`), and confirm that you can see the expected records.
+
+### Bidirectional Replication
+
+For bidirectional replication, repeat the procedure described in [Unidirectional Replication](#unidirectional-replication), but reverse the source and destination information, as follows:
+
+1. Run `yb-admin setup_universe_replication` on the yugabyte-target universe, pointing to yugabyte-source.
+2. Use the workload generator to start loading data into the yugabyte-target universe.
+3. Verify replication from yugabyte-target to yugabyte-source.
+
+To avoid primary key conflict errors, keep the key ranges for the two universes separate. This is done automatically by the applications included in the `yb-sample-apps.jar`.
+
+### Replication Lag
+
+Replication lag is computed at the tablet level as follows:
+
+`replication lag = hybrid_clock_time - last_read_hybrid_time`
+
+*hybrid_clock_time* is the hybrid clock timestamp on the source's tablet-server, and *last_read_hybrid_time* is the hybrid clock timestamp of the latest record pulled from the source.
+
+An example script [`determine_replication_lag.sh`](/files/determine_replication_lag.sh) calculates the replication lag. The script requires the [`jq`](https://stedolan.github.io/jq/) package.
+
+The following example generates a replication lag summary for all tables on a cluster. You can also request an individual table.
+
+```sh
+./determine_repl_latency.sh -m 10.150.255.114,10.150.255.115,10.150.255.113
+```
+
+To obtain a summary of all command options, execute `determine_repl_latency.sh -h` .
+
 ## Setting Up Replication with TLS
 
 ### Source and Target Universes have the Same Certificates
@@ -144,38 +180,30 @@ When both universes use different certificates, you need to store the certificat
       000030a5000030008000000000004000,000030a5000030008000000000004005,dfef757c415c4b2cacc9315b8acb539a
     ```
 
-## Verifying Replication
+## Bootstrapping a sink cluster
 
-You can verify replication by stopping the workload and then using the `COUNT(*)` function on the yugabyte-target to yugabyte-source match.
+Documentation coming soon. More details in [#6870](https://github.com/yugabyte/yugabyte-db/issues/6870).
 
-### Unidirectional Replication
+## Schema migration
 
-For unidirectional replication, connect to the yugabyte-target universe using the YSQL shell (`ysqlsh`) or the YCQL shell (`ycqlsh`), and confirm that you can see the expected records.
+This section describs how to execute DDL operations, after replication has been already configured for some tables.
 
-### Bidirectional Replication
+### Stopping user writes
 
-For bidirectional replication, repeat the procedure described in [Unidirectional Replication](#unidirectional-replication), but reverse the source and destination information, as follows:
+Some use cases can afford to temporarily stop incoming user writes. For such cases, the typical runbook would be:
+- Stop any new incoming user writes.
+- Wait for all changes to get replicated to the sink cluster. This can be observed by replication lag dropping to 0.
+- Apply the DDL changes on both sides.
+  - [Alter replication](../../../admin/yb-admin/#alter-universe-replication) for any newly created tables, eg: after having used CREATE TABLE / CREATE INDEX.
+- Resume user writes.
 
-1. Run `yb-admin setup_universe_replication` on the yugabyte-target universe, pointing to yugabyte-source.
-2. Use the workload generator to start loading data into the yugabyte-target universe.
-3. Verify replication from yugabyte-target to yugabyte-source.
+### Using backup and restore
 
-To avoid primary key conflict errors, keep the key ranges for the two universes separate. This is done automatically by the applications included in the `yb-sample-apps.jar`.
-
-### Replication Lag
-
-Replication lag is computed at the tablet level as follows:
-
-`replication lag = hybrid_clock_time - last_read_hybrid_time`
-
-*hybrid_clock_time* is the hybrid clock timestamp on the source's tablet-server, and *last_read_hybrid_time* is the hybrid clock timestamp of the latest record pulled from the source.
-
-An example script [`determine_replication_lag.sh`](/files/determine_replication_lag.sh) calculates the replication lag. The script requires the [`jq`](https://stedolan.github.io/jq/) package.
-
-The following example generates a replication lag summary for all tables on a cluster. You can also request an individual table.
-
-```sh
-./determine_repl_latency.sh -m 10.150.255.114,10.150.255.115,10.150.255.113
-```
-
-To obtain a summary of all command options, execute `determine_repl_latency.sh -h` .
+In the event you cannot stop incoming user traffic, then the recommended approach would be to apply DDLs on the source cluster and use [bootstrapping a sink cluster](#bootstrapping-a-sink-cluster) flow above. A more detailed runbook would be as follows:
+- Stop replication, in advance of DDL changes.
+- Apply all your DDL changes to the source cluster.
+- Take a backup of the source cluster, of all the relevant tables that you intend to replicate changes for.
+  - Make sure to use the [bootstrapping a sink cluster](#bootstrapping-a-sink-cluster) flow, as described above.
+- Restore this backup on the sink cluster.
+- [Setup replication](../../../admin/yb-admin/#setup-universe-replication) again, for all of the relevant tables.
+  - Make sure to pass in the `bootstrap_ids`, as described above.

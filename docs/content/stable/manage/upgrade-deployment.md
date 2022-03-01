@@ -18,7 +18,7 @@ If you plan to script this in a loop, then a pause of about 60 seconds is recomm
 
 {{<tip title="Preserving data and cluster configuration across upgrades" >}}
 
-Your data/log/conf directories are generally stored in a separate location which stays the same across the upgrade so that the cluster data, its configuration settings are retained across the upgrade.
+Your `data/log/conf` directories are generally stored in a separate location which stays the same across the upgrade so that the cluster data, its configuration settings are retained across the upgrade.
 
 {{< /tip >}}
 
@@ -53,7 +53,7 @@ pkill yb-master
 cd /home/yugabyte/softwareyb-$VER/
 ```
 
-- Start the the newer version of the yb-master process.
+- Start the newer version of the yb-master process.
 
 - Verify in `http://<any-yb-master>:7000/` that all masters are alive.
 
@@ -73,7 +73,7 @@ pkill yb-tserver
 cd /home/yugabyte/softwareyb-$VER/
 ```
 
-- Start the the newer version of the yb-tserver process.
+- Start the newer version of the yb-tserver process.
 
 - Verify in `http://<any-yb-master>:7000/tablet-servers` to see if the new YB-TServer is alive and heart beating.
 

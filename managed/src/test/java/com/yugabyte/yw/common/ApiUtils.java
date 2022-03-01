@@ -21,12 +21,15 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TableDetails;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
 import org.yb.ColumnSchema.SortOrder;
 
 public class ApiUtils {
@@ -132,6 +135,19 @@ public class ApiUtils {
         universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
         universeDetails.nodeDetailsSet = new HashSet<>();
         universeDetails.updateInProgress = updateInProgress;
+        List<UUID> azUUIDList = null;
+        if (placementInfo != null) {
+          azUUIDList =
+              placementInfo
+                  .cloudList
+                  .get(0)
+                  .regionList
+                  .get(0)
+                  .azList
+                  .stream()
+                  .flatMap(p -> Collections.nCopies(p.numNodesInAZ, p.uuid).stream())
+                  .collect(Collectors.toList());
+        }
         for (int idx = 1; idx <= userIntent.numNodes; idx++) {
           // TODO: This state needs to be ToBeAdded as Create(k8s)Univ runtime sets it to Live
           // and nodeName should be null for ToBeAdded.
@@ -141,11 +157,9 @@ public class ApiUtils {
                   NodeDetails.NodeState.Live,
                   setMasters && idx <= userIntent.replicationFactor);
           node.placementUuid = universeDetails.getPrimaryCluster().uuid;
-          if (placementInfo != null) {
-            List<PlacementInfo.PlacementAZ> azList =
-                placementInfo.cloudList.get(0).regionList.get(0).azList;
-            int azIndex = (idx - 1) % azList.size();
-            node.azUuid = azList.get(azIndex).uuid;
+          if (azUUIDList != null) {
+            int azIndex = (idx - 1) % azUUIDList.size();
+            node.azUuid = azUUIDList.get(azIndex);
           }
           universeDetails.nodeDetailsSet.add(node);
         }
@@ -339,6 +353,32 @@ public class ApiUtils {
         universeDetails.nodeDetailsSet.addAll(readReplicaNodesSet);
         universeDetails.upsertCluster(userIntent, null, readonlyClusterUUID);
 
+        universe.setUniverseDetails(universeDetails);
+      }
+    };
+  }
+
+  public static Universe.UniverseUpdater mockUniverseUpdaterWithNodeCallback(
+      UserIntent userIntent, Consumer<NodeDetails> callback) {
+    return new Universe.UniverseUpdater() {
+      @Override
+      public void run(Universe universe) {
+        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+        UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
+        // Add a desired number of nodes.
+        universeDetails.nodeDetailsSet = new HashSet<>();
+        userIntent.numNodes = userIntent.replicationFactor;
+        for (int idx = 1; idx <= userIntent.numNodes; idx++) {
+          NodeDetails node =
+              getDummyNodeDetails(
+                  idx, NodeDetails.NodeState.Live, idx <= userIntent.replicationFactor);
+          if (callback != null) {
+            callback.accept(node);
+          }
+          universeDetails.nodeDetailsSet.add(node);
+        }
+        universeDetails.upsertPrimaryCluster(userIntent, null);
+        universeDetails.nodePrefix = "host";
         universe.setUniverseDetails(universeDetails);
       }
     };

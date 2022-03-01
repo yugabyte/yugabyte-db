@@ -16,7 +16,7 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
-    <a href="../ysql-pgx" class="nav-link">
+    <a href="../ysql-pgx/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - PGX
     </a>
@@ -47,7 +47,7 @@ showAsideToc: true
   </li>
 </ul>
 
-The following tutorial implements an an ORM example using [GORM](https://gorm.io/), the ORM library for Golang, that implements a simple REST API server. The scenario is that of an e-commerce application. Database access in this application is managed using GORM. The e-commerce database (`ysql_gorm`) includes the following tables:
+The following tutorial implements an ORM example using [GORM](https://gorm.io/), the ORM library for Golang, that implements a simple REST API server. The scenario is that of an e-commerce application. Database access in this application is managed using GORM. The e-commerce database (`ysql_gorm`) includes the following tables:
 
 - `users` table — the users of the e-commerce site
 - `products` table — the products being sold
