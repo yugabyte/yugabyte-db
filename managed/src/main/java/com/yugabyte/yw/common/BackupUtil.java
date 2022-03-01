@@ -8,11 +8,19 @@ import com.cronutils.model.time.ExecutionTime;
 import com.cronutils.parser.CronParser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.Sets;
-import com.yugabyte.yw.forms.BackupTableParams.ActionType;
+import com.yugabyte.yw.common.customer.config.CustomerConfigService;
+import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.BackupResp;
+import com.yugabyte.yw.models.BackupResp.BackupRespBuilder;
+import com.yugabyte.yw.models.CustomerConfig;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.KeyspaceTablesList;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,8 +38,6 @@ public class BackupUtil {
   public static final int UUID_LENGTH = 36;
   public static final long MIN_SCHEDULE_DURATION_IN_SECS = 3600L;
   public static final long MIN_SCHEDULE_DURATION_IN_MILLIS = MIN_SCHEDULE_DURATION_IN_SECS * 1000L;
-  public static final Set<ActionType> OMIT_ACTION_TYPES =
-      Sets.immutableEnumSet(ActionType.DELETE, ActionType.RESTORE, ActionType.RESTORE_KEYS);
   public static final String BACKUP_SIZE_FIELD = "backup_size_in_bytes";
 
   public static final String YB_CLOUD_COMMAND_TYPE = "table";
@@ -79,5 +85,68 @@ public class BackupUtil {
       LOG.error(BACKUP_SIZE_FIELD + " not present in " + backupResponse.toString());
     }
     return backupSize;
+  }
+
+  public static BackupResp toBackupResp(
+      Backup backup, CustomerConfigService customerConfigService) {
+
+    Boolean isStorageConfigPresent = true;
+    Boolean isUniversePresent = true;
+    try {
+      CustomerConfig config =
+          customerConfigService.getOrBadRequest(
+              backup.customerUUID, backup.getBackupInfo().storageConfigUUID);
+    } catch (PlatformServiceException e) {
+      isStorageConfigPresent = false;
+    }
+    try {
+      Universe universe = Universe.getOrBadRequest(backup.universeUUID);
+    } catch (PlatformServiceException e) {
+      isUniversePresent = false;
+    }
+    Boolean onDemand = (backup.getScheduleUUID() == null);
+    BackupRespBuilder builder =
+        BackupResp.builder()
+            .createTime(backup.getCreateTime())
+            .updateTime(backup.getUpdateTime())
+            .expiryTime(backup.getExpiry())
+            .onDemand(onDemand)
+            .sse(backup.getBackupInfo().sse)
+            .universeName(backup.universeName)
+            .backupUUID(backup.backupUUID)
+            .scheduleUUID(backup.getScheduleUUID())
+            .customerUUID(backup.customerUUID)
+            .universeUUID(backup.universeUUID)
+            .storageConfigUUID(backup.storageConfigUUID)
+            .isStorageConfigPresent(isStorageConfigPresent)
+            .isUniversePresent(isUniversePresent)
+            .backupType(backup.getBackupInfo().backupType)
+            .state(backup.state);
+    if (backup.getBackupInfo().backupList == null) {
+      KeyspaceTablesList kTList =
+          KeyspaceTablesList.builder()
+              .keyspace(backup.getBackupInfo().getKeyspace())
+              .tablesList(backup.getBackupInfo().getTableNames())
+              .storageLocation(backup.getBackupInfo().storageLocation)
+              .build();
+      builder.responseList(Stream.of(kTList).collect(Collectors.toSet()));
+    } else {
+      Set<KeyspaceTablesList> kTLists =
+          backup
+              .getBackupInfo()
+              .backupList
+              .stream()
+              .map(
+                  b -> {
+                    return KeyspaceTablesList.builder()
+                        .keyspace(b.getKeyspace())
+                        .tablesList(b.getTableNames())
+                        .storageLocation(b.storageLocation)
+                        .build();
+                  })
+              .collect(Collectors.toSet());
+      builder.responseList(kTLists);
+    }
+    return builder.build();
   }
 }
