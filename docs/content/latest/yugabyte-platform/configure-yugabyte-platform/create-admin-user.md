@@ -1,8 +1,8 @@
 ---
-title: Create the admin user
-headerTitle: Create the admin user
+title: Create an admin user
+headerTitle: Create an admin user
 linkTitle: Create admin user
-description: Create the admin user.
+description: Create an admin user.
 menu:
   latest:
     identifier: create-admin-user
@@ -12,9 +12,11 @@ isTocNested: true
 showAsideToc: false
 ---
 
-To create an admin account, go to [http://yugaware-host-public-ip/register](http://yugaware-host-public-ip/register). By default, Yugabyte Platform runs as a single-tenant application.
+You can create an admin account via [http://yugaware-host-public-ip/register](http://yugaware-host-public-ip/register). 
 
 ![Register](/images/ee/register.png)
+
+By default, Yugabyte Platform runs as a single-tenant application.
 
 After you click **Submit**, you are automatically logged into the Yugabyte Platform console. Proceed to [configuring cloud providers](../set-up-cloud-provider/aws).
 
