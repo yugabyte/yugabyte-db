@@ -30,10 +30,10 @@ menu:
       <a class="section-link icon-offset" href="stable-release/">
           <div class="head">
               <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
-              <div class="title">What's new in the v2.8 current stable release series</div>
+              <div class="title">What's new in the v2.12 current stable release series</div>
           </div>
           <div class="body">
-              Features, enhancements, and fixes in the recommended stable release series v2.8.
+              Features, enhancements, and fixes in the recommended stable release series v2.12.
           </div>
       </a>
   </div>

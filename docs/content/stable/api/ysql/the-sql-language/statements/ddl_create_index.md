@@ -43,7 +43,7 @@ Use the `CREATE INDEX` statement to create an index on the specified columns of 
 
 ## Semantics
 
-`CONCURRENTLY`, `USING method`, `COLLATE`, and `TABLESPACE` options are not yet supported.
+`CONCURRENTLY`, `COLLATE`, and `TABLESPACE` options are not yet supported.
 
 When an index is created on a populated table, YugabyteDB automatically backfills the existing data into the index.
 In most cases, this uses an online schema migration.
@@ -64,9 +64,23 @@ For details on how online index backfill works, refer to [Online Index Backfill]
 
 {{< /note >}}
 
+Regarding colocation, indexes follow their table. If the table is colocated, its index is also colocated; if the table is not colocated, its index is also not colocated.
+
 ### UNIQUE
 
 Enforce that duplicate values in a table are not allowed.
+
+### NONCONCURRENTLY
+
+Disable online schema migration (see [Semantics](#semantics) for details).
+
+Concurrent is the default, but the grammar does not yet support `CONCURRENTLY`.
+
+### *access_method_name*
+
+The name of the index access method.
+By default, `lsm` is used for YugabyteDB tables and `btree` is used otherwise (for example, temporary tables).
+[GIN indexes](../../../../../explore/indexes-constraints/gin/) can be created in YugabyteDB by using the `ybgin` access method.
 
 ### INCLUDE clause
 
@@ -74,9 +88,9 @@ Specify a list of columns which will be included in the index as non-key columns
 
 ### WHERE clause
 
-A [partial index](#partial-indexes) is an index that is built on a subset of a table and includes only rows that satisfy the condition specified in the `WHERE` clause. 
+A [partial index](#partial-indexes) is an index that is built on a subset of a table and includes only rows that satisfy the condition specified in the `WHERE` clause.
 It can be used to exclude NULL or common values from the index, or include just the rows of interest.
-This will speed up any writes to the table since rows containing the common column values don't need to be indexed. 
+This will speed up any writes to the table since rows containing the common column values don't need to be indexed.
 It will also reduce the size of the index, thereby improving the speed for read queries that use the index.
 
 #### *name*

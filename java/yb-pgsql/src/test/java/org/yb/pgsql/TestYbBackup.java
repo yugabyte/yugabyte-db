@@ -13,6 +13,7 @@
 package org.yb.pgsql;
 
 import java.io.File;
+import java.lang.Math;
 import java.sql.Connection;
 import java.sql.Statement;
 import java.time.Instant;
@@ -28,10 +29,12 @@ import java.util.Set;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.json.JSONObject;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.apache.commons.io.FileUtils;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.util.TableProperties;
@@ -44,6 +47,7 @@ import com.google.common.collect.ImmutableMap;
 import static org.yb.AssertionWrappers.assertArrayEquals;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
+import static org.yb.AssertionWrappers.assertLessThan;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
@@ -106,11 +110,14 @@ public class TestYbBackup extends BasePgSQLTest {
       }
 
       stmt.execute("ALTER TABLE test_tbl DROP a");
-      YBBackupUtil.runYbBackupCreate("--keyspace", "ysql." + initialDBName);
+      String backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql." + initialDBName);
+      backupDir = new JSONObject(output).getString("snapshot_url");
 
       stmt.execute("INSERT INTO test_tbl (h, b) VALUES (9999, 8.9)");
 
-      YBBackupUtil.runYbBackupRestore("--keyspace", "ysql." + restoreDBName);
+      YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql." + restoreDBName);
 
       assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=1", new Row(1, 3.14));
       assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=2000", new Row(2000, 2002.14));
@@ -174,7 +181,10 @@ public class TestYbBackup extends BasePgSQLTest {
         }
       }
 
-      YBBackupUtil.runYbBackupCreate("--keyspace", "ysql." + initialDBName);
+      String backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql." + initialDBName);
+      backupDir = new JSONObject(output).getString("snapshot_url");
 
       // Insert more rows after taking the snapshot.
       for (int j = 1; j <= 3; ++j) {
@@ -184,7 +194,7 @@ public class TestYbBackup extends BasePgSQLTest {
         ", " + String.valueOf((2.14 + 9999f) * j) + ")");        // b
       }
 
-      YBBackupUtil.runYbBackupRestore("--keyspace", "ysql." + restoreDBName);
+      YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql." + restoreDBName);
 
       // Verify the original database has the rows we previously inserted.
       for (int j = 1; j <= 3; ++j) {
@@ -249,18 +259,21 @@ public class TestYbBackup extends BasePgSQLTest {
           ", " + String.valueOf(2.14 + (float)i) + ")"); // b
       }
 
-      YBBackupUtil.runYbBackupCreate("--keyspace", "ysql.yugabyte");
+      String backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yugabyte");
+      backupDir = new JSONObject(output).getString("snapshot_url");
       stmt.execute("ALTER TABLE test_tbl DROP a");
       stmt.execute("INSERT INTO test_tbl (h, b) VALUES (9999, 8.9)");
 
       try {
-        YBBackupUtil.runYbBackupRestore();
+        YBBackupUtil.runYbBackupRestore(backupDir);
         fail("Backup restoring did not fail as expected");
       } catch (YBBackupException ex) {
         LOG.info("Expected exception", ex);
       }
 
-      YBBackupUtil.runYbBackupRestore("--keyspace", "ysql.yb2");
+      YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
       assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=1", new Row(1, 3.14));
       assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=2000", new Row(2000, 2002.14));
       assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=9999", new Row(9999, 8.9));
@@ -290,8 +303,11 @@ public class TestYbBackup extends BasePgSQLTest {
       stmt.execute("INSERT INTO test_tbl (h, a, b) VALUES (1, 101, 3.14)");
 
       // Check that backup and restore works fine.
-      YBBackupUtil.runYbBackupCreate("--keyspace", "ysql.yb1");
-      YBBackupUtil.runYbBackupRestore("--keyspace", "ysql.yb2");
+      String backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yb1");
+      backupDir = new JSONObject(output).getString("snapshot_url");
+      YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
     }
     // Verify data is correct.
     try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
@@ -300,8 +316,11 @@ public class TestYbBackup extends BasePgSQLTest {
       assertQuery(stmt, "SELECT b FROM test_tbl WHERE h=1", new Row(3.14));
 
       // Now try to do a backup/restore of the restored db.
-      YBBackupUtil.runYbBackupCreate("--keyspace", "ysql.yb2");
-      YBBackupUtil.runYbBackupRestore("--keyspace", "ysql.yb3");
+      String backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yb2");
+      backupDir = new JSONObject(output).getString("snapshot_url");
+      YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb3");
     }
     // Verify data is correct.
     try (Connection connection2 = getConnectionBuilder().withDatabase("yb3").connect();
@@ -332,10 +351,13 @@ public class TestYbBackup extends BasePgSQLTest {
           stmt, "INSERT INTO test_tbl(id, b) VALUES(3, 6)",
           "null value in column \"a\" violates not-null constraint");
 
-      YBBackupUtil.runYbBackupCreate("--keyspace", "ysql.yugabyte");
+      String backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yugabyte");
+      backupDir = new JSONObject(output).getString("snapshot_url");
       stmt.execute("INSERT INTO test_tbl (id, a, b) VALUES (9999, 9, 9)");
 
-      YBBackupUtil.runYbBackupRestore("--keyspace", "ysql.yb2");
+      YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
       assertQuery(stmt, "SELECT * FROM test_tbl WHERE id=1", new Row(1, 2, 3));
       assertQuery(stmt, "SELECT * FROM test_tbl WHERE id=2", new Row(2, 4, (Integer) null));
       assertQuery(stmt, "SELECT * FROM test_tbl WHERE id=3");
@@ -358,6 +380,7 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Test
   public void testIndex() throws Exception {
+    String backupDir = null;
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE TABLE test_tbl (h INT PRIMARY KEY, a INT, b FLOAT)");
       stmt.execute("CREATE INDEX test_idx ON test_tbl (a)");
@@ -369,7 +392,10 @@ public class TestYbBackup extends BasePgSQLTest {
           ", " + String.valueOf(2.14 + (float)i) + ")"); // b
       }
 
-      YBBackupUtil.runYbBackupCreate("--keyspace", "ysql.yugabyte");
+      backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yugabyte");
+      backupDir = new JSONObject(output).getString("snapshot_url");
 
       stmt.execute("INSERT INTO test_tbl (h, a, b) VALUES (9999, 8888, 8.9)");
 
@@ -388,7 +414,7 @@ public class TestYbBackup extends BasePgSQLTest {
     // Wait for node list refresh.
     Thread.sleep(MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 2 * 1000);
     YBBackupUtil.setTSAddresses(miniCluster.getTabletServers());
-    YBBackupUtil.runYbBackupRestore("--keyspace", "ysql.yb2");
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
 
     try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
          Statement stmt = connection2.createStatement()) {
@@ -410,6 +436,7 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Test
   public void testIndexTypes() throws Exception {
+    String backupDir = null;
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE TABLE test_tbl (h INT PRIMARY KEY, c1 INT, c2 INT, c3 INT, c4 INT)");
       stmt.execute("CREATE INDEX test_idx1 ON test_tbl (c1)");
@@ -419,7 +446,10 @@ public class TestYbBackup extends BasePgSQLTest {
 
       stmt.execute("INSERT INTO test_tbl (h, c1, c2, c3, c4) VALUES (1, 11, 12, 13, 14)");
 
-      YBBackupUtil.runYbBackupCreate("--keyspace", "ysql.yugabyte");
+      backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yugabyte");
+      backupDir = new JSONObject(output).getString("snapshot_url");
 
       stmt.execute("INSERT INTO test_tbl (h, c1, c2, c3, c4) VALUES (9, 21, 22, 23, 24)");
 
@@ -436,7 +466,7 @@ public class TestYbBackup extends BasePgSQLTest {
       assertQuery(stmt, "SELECT * FROM test_tbl WHERE c4=24", new Row(9, 21, 22, 23, 24));
     }
 
-    YBBackupUtil.runYbBackupRestore("--keyspace", "ysql.yb2");
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
 
     try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
          Statement stmt = connection2.createStatement()) {
@@ -498,6 +528,7 @@ public class TestYbBackup extends BasePgSQLTest {
   }
 
   private void testCollationIndexTypesHelper(String collName) throws Exception {
+    String backupDir = null;
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("DROP TABLE IF EXISTS test_tbl");
       stmt.execute("CREATE TABLE test_tbl (h TEXT PRIMARY KEY COLLATE \"" + collName + "\", " +
@@ -515,14 +546,17 @@ public class TestYbBackup extends BasePgSQLTest {
 
       verifyCollationIndexData(stmt, 1);
 
-      YBBackupUtil.runYbBackupCreate("--keyspace", "ysql.yugabyte");
+      backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yugabyte");
+      backupDir = new JSONObject(output).getString("snapshot_url");
 
       stmt.execute("INSERT INTO test_tbl (h, c1, c2, c3, c4) VALUES ('f', 'g', 'h', 'i', 'j')");
 
       verifyCollationIndexData(stmt, 2);
     }
 
-    YBBackupUtil.runYbBackupRestore("--keyspace", "ysql.yb2");
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
 
     try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
          Statement stmt = connection2.createStatement()) {
@@ -562,6 +596,7 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Test
   public void testPartialIndexes() throws Exception {
+    String backupDir = null;
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE TABLE test_tbl (h INT PRIMARY KEY, c1 INT, c2 INT)");
       stmt.execute("CREATE INDEX test_idx1 ON test_tbl (c1) WHERE (c1 IS NOT NULL)");
@@ -578,11 +613,14 @@ public class TestYbBackup extends BasePgSQLTest {
 
       stmt.execute("INSERT INTO \"WHERE_tbl\" (h, \"WHERE_c1\", \" WHERE c2\") VALUES (1, 11, 22)");
 
-      YBBackupUtil.runYbBackupCreate("--keyspace", "ysql.yugabyte");
+      backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yugabyte");
+      backupDir = new JSONObject(output).getString("snapshot_url");
       verifyPartialIndexData(stmt);
     }
 
-    YBBackupUtil.runYbBackupRestore("--keyspace", "ysql.yb2");
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
 
     try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
          Statement stmt = connection2.createStatement()) {
@@ -613,10 +651,13 @@ public class TestYbBackup extends BasePgSQLTest {
       // Insert additional values into the table before taking the backup.
       stmt.execute("INSERT INTO test_tbl (h, a, b) VALUES (9999, 789, 8.9)");
 
-      YBBackupUtil.runYbBackupCreate("--keyspace", "ysql.yugabyte");
+      String backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yugabyte");
+      backupDir = new JSONObject(output).getString("snapshot_url");
 
       // Backup using --restore_time.
-      YBBackupUtil.runYbBackupRestore("--keyspace", "ysql.yb2", "--restore_time", ts);
+      YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2", "--restore_time", ts);
     }
 
     // Verify we only restore the original rows.
@@ -629,16 +670,42 @@ public class TestYbBackup extends BasePgSQLTest {
   }
 
   @Test
+  public void testBackupCreateGetBackupSize() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE  test_tbl (h INT PRIMARY KEY, a INT, b FLOAT)");
+
+      for (int i = 1; i <= 2000; ++i) {
+        stmt.execute("INSERT INTO test_tbl (h, a, b) VALUES" +
+            " (" + String.valueOf(i) +                     // h
+            ", " + String.valueOf(100 + i) +               // a
+            ", " + String.valueOf(2.14 + (float)i) + ")"); // b
+      }
+
+      String backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yugabyte", "--pg_based_backup", "--disable_checksum");
+      JSONObject json = new JSONObject(output);
+      long expectedBackupSize = json.getLong("backup_size_in_bytes");
+      long actualBackupSize = FileUtils.sizeOfDirectory(new File(json.getString("snapshot_url")));
+      long allowedDelta = 1 * 1024;     // 1 KB
+      assertLessThan(Math.abs(expectedBackupSize - actualBackupSize), allowedDelta);
+    }
+  }
+
+  @Test
   public void testSedRegExpForYSQLDump() throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE ROLE  admin");
       // Default DB & table owner is ROLE 'yugabyte'.
       stmt.execute("CREATE TABLE  test_tbl (h INT PRIMARY KEY, a INT)");
 
-      YBBackupUtil.runYbBackupCreate("--keyspace", "ysql.yugabyte");
+      String backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yugabyte");
+      backupDir = new JSONObject(output).getString("snapshot_url");
 
       // Restore with the table owner renaming on fly.
-      YBBackupUtil.runYbBackupRestore("--keyspace", "ysql.yb2",
+      YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2",
           "--edit_ysql_dump_sed_reg_exp", "s|OWNER TO yugabyte_test|OWNER TO admin|");
 
       // In this DB the table owner was not changed.
@@ -720,7 +787,7 @@ public class TestYbBackup extends BasePgSQLTest {
       List<String> tblR2Tablets = getTabletsForTable("yugabyte", "tbl_r2");
       List<String> tblR3Tablets = getTabletsForTable("yugabyte", "tbl_r3");
 
-      final String backupDir = YBBackupUtil.getTempBackupDir();
+      String backupDir = YBBackupUtil.getTempBackupDir(), output = null;
       List<String> args = new ArrayList<>(Arrays.asList("--keyspace", "ysql.yugabyte"));
       if (useTablespaces) {
         args.add("--use_tablespaces");
@@ -728,13 +795,17 @@ public class TestYbBackup extends BasePgSQLTest {
 
       switch (numRegions) {
         case 0:
-          YBBackupUtil.runYbBackupCreate(args);
+          args.addAll(Arrays.asList("--backup_location", backupDir));
+          output = YBBackupUtil.runYbBackupCreate(args);
+          backupDir = new JSONObject(output).getString("snapshot_url");
           checkTabletsInDir(backupDir, tblTablets, tblR1Tablets, tblR2Tablets, tblR3Tablets);
           break;
         case 1:
           args.addAll(Arrays.asList(
-              "--region", "region1", "--region_location", backupDir + "_reg1"));
-          YBBackupUtil.runYbBackupCreate(args);
+              "--region", "region1", "--region_location", backupDir + "_reg1",
+              "--backup_location", backupDir));
+          output = YBBackupUtil.runYbBackupCreate(args);
+          backupDir = new JSONObject(output).getString("snapshot_url");
           checkTabletsInDir(backupDir, tblR2Tablets, tblR3Tablets);
           checkTabletsInDir(backupDir + "_reg1", tblR1Tablets);
           break;
@@ -742,8 +813,10 @@ public class TestYbBackup extends BasePgSQLTest {
           args.addAll(Arrays.asList(
             "--region", "region1", "--region_location", backupDir + "_reg1",
             "--region", "region2", "--region_location", backupDir + "_reg2",
-            "--region", "region3", "--region_location", backupDir + "_reg3"));
-          YBBackupUtil.runYbBackupCreate(args);
+            "--region", "region3", "--region_location", backupDir + "_reg3",
+            "--backup_location", backupDir));
+          output = YBBackupUtil.runYbBackupCreate(args);
+          backupDir = new JSONObject(output).getString("snapshot_url");
           assertTrue(subDirs(backupDir).isEmpty());
           checkTabletsInDir(backupDir + "_reg1", tblR1Tablets);
           checkTabletsInDir(backupDir + "_reg2", tblR2Tablets);
@@ -782,7 +855,7 @@ public class TestYbBackup extends BasePgSQLTest {
       }
       // else - overwriting existing tables in DB "yugabyte".
 
-      YBBackupUtil.runYbBackupRestore(args);
+      YBBackupUtil.runYbBackupRestore(backupDir, args);
     }
 
     try (Connection connection2 = getConnectionBuilder().withDatabase(targetDB).connect();
@@ -857,5 +930,192 @@ public class TestYbBackup extends BasePgSQLTest {
   @Test
   public void testGeoPartitioningRestoringIntoExistingWithTablespaces() throws Exception {
     doTestGeoPartitionedBackup("yugabyte", 3, true);
+  }
+
+  @Test
+  public void testUserDefinedTypes() throws Exception {
+    // TODO(myang): Add ALTER TYPE test after #1893 is fixed.
+    String backupDir = null;
+    try (Statement stmt = connection.createStatement()) {
+      // A enum type.
+      stmt.execute("CREATE TYPE e_t AS ENUM('c', 'b', 'a')");
+
+      // Table column of enum type.
+      stmt.execute("CREATE TABLE test_tb1(c1 e_t)");
+      stmt.execute("INSERT INTO test_tb1 VALUES ('b'), ('c')");
+
+      // Table column of enum type with default value.
+      stmt.execute("CREATE TABLE test_tb2(c1 INT, c2 e_t DEFAULT 'a')");
+      stmt.execute("INSERT INTO test_tb2 VALUES(1)");
+
+      // A user-defined type.
+      stmt.execute("CREATE TYPE udt1 AS (f1 INT, f2 TEXT, f3 e_t)");
+
+      // Table column of user-defined type.
+      stmt.execute("CREATE TABLE test_tb3(c1 udt1)");
+      stmt.execute("INSERT INTO test_tb3 VALUES((1, '1', 'a'))");
+      stmt.execute("INSERT INTO test_tb3 VALUES((1, '2', 'b'))");
+      stmt.execute("INSERT INTO test_tb3 VALUES((1, '2', 'c'))");
+
+      // Table column of user-defined type and enum type with default values.
+      stmt.execute("CREATE TABLE test_tb4(c1 INT, c2 udt1 DEFAULT (1, '2', 'b'), " +
+                   "c3 e_t DEFAULT 'b')");
+      stmt.execute("INSERT INTO test_tb4 VALUES (1)");
+
+      // Table column of enum array type.
+      stmt.execute("CREATE TABLE test_tb5 (c1 e_t[])");
+      stmt.execute("INSERT INTO test_tb5 VALUES (ARRAY['a', 'b', 'c']::e_t[])");
+
+      // nested user-defined type and enum type.
+      stmt.execute("CREATE TYPE udt2 AS (f1 INT, f2 udt1, f3 e_t)");
+
+      // Table column of nested user-defined type and enum type.
+      stmt.execute("CREATE TABLE test_tb6(c1 INT, c2 udt2, c3 e_t)");
+      stmt.execute("INSERT INTO test_tb6 VALUES (1, (1, (1, '1', 'a'), 'b'), 'c')");
+
+      // Table column of array of nested user-defined type and enum type.
+      stmt.execute("CREATE TABLE test_tb7 (c1 udt2[])");
+      stmt.execute("INSERT INTO test_tb7 VALUES (ARRAY[" +
+                   "(1, (1, (1, '1', 'a'), 'b'), 'c')," +
+                   "(2, (2, (2, '2', 'b'), 'a'), 'c')," +
+                   "(3, (3, (3, '3', 'a'), 'c'), 'b')]::udt2[])");
+
+      // A domain type.
+      stmt.execute("CREATE DOMAIN dom AS TEXT " +
+                   "check(value ~ '^\\d{5}$'or value ~ '^\\d{5}-\\d{4}$')");
+      // Table column of array of domain type.
+      stmt.execute("CREATE TABLE test_tb8(c1 dom[])");
+      stmt.execute("INSERT INTO test_tb8 VALUES (ARRAY['32768', '65536']::dom[])");
+
+      // A range type.
+      stmt.execute("CREATE TYPE inetrange AS RANGE(subtype = inet)");
+      // Table column of range type.
+      stmt.execute("CREATE TABLE test_tb9(c1 inetrange)");
+      stmt.execute("INSERT INTO test_tb9 VALUES ('[10.0.0.1,10.0.0.2]'::inetrange)");
+      // Table column of array of range type.
+      stmt.execute("CREATE TABLE test_tb10(c1 inetrange[])");
+      stmt.execute("INSERT INTO test_tb10 VALUES (ARRAY[" +
+                   "'[10.0.0.1,10.0.0.2]'::inetrange, '[10.0.0.3,10.0.0.8]'::inetrange])");
+
+      // Test drop column in the middle.
+      stmt.execute("CREATE TABLE test_tb11(c1 e_t, c2 e_t, c3 e_t, c4 e_t)");
+      stmt.execute("INSERT INTO test_tb11 VALUES (" +
+                   "'a', 'b', 'c', 'a'), ('a', 'c', 'b', 'b'), ('b', 'a', 'c', 'c')");
+      stmt.execute("ALTER TABLE test_tb11 DROP COLUMN c2");
+
+      backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yugabyte");
+      backupDir = new JSONObject(output).getString("snapshot_url");
+
+      stmt.execute("INSERT INTO test_tb1 VALUES ('a')");
+      stmt.execute("INSERT INTO test_tb2 VALUES(2)");
+      stmt.execute("INSERT INTO test_tb3 VALUES((2, '1', 'a'))");
+      stmt.execute("INSERT INTO test_tb3 VALUES((2, '2', 'b'))");
+      stmt.execute("INSERT INTO test_tb3 VALUES((2, '2', 'c'))");
+      stmt.execute("INSERT INTO test_tb4 VALUES (2)");
+      stmt.execute("INSERT INTO test_tb5 VALUES (ARRAY['c', 'b', 'a']::e_t[])");
+      stmt.execute("INSERT INTO test_tb6 VALUES (2, (2, (2, '2', 'c'), 'b'), 'a')");
+      stmt.execute("INSERT INTO test_tb7 VALUES (ARRAY[" +
+                   "(4, (4, (4, '4', 'c'), 'b'), 'a')]::udt2[])");
+      stmt.execute("INSERT INTO test_tb8 VALUES (ARRAY['16384', '81920']::dom[])");
+      stmt.execute("INSERT INTO test_tb9 VALUES ('[10.0.0.3,10.0.0.8]'::inetrange)");
+      stmt.execute("INSERT INTO test_tb10 VALUES (array['[10.0.0.9,10.0.0.12]'::inetrange])");
+      stmt.execute("ALTER TABLE test_tb11 DROP COLUMN c3");
+
+      List<Row> expectedRows1 = Arrays.asList(new Row("c"),
+                                              new Row("b"),
+                                              new Row("a"));
+      List<Row> expectedRows2 = Arrays.asList(new Row(1, "a"),
+                                              new Row(2, "a"));
+      List<Row> expectedRows3 = Arrays.asList(new Row("(1,1,a)"),
+                                              new Row("(1,2,c)"),
+                                              new Row("(1,2,b)"),
+                                              new Row("(2,1,a)"),
+                                              new Row("(2,2,c)"),
+                                              new Row("(2,2,b)"));
+      List<Row> expectedRows4 = Arrays.asList(new Row(1, "(1,2,b)", "b"),
+                                              new Row(2, "(1,2,b)", "b"));
+      List<Row> expectedRows5 = Arrays.asList(new Row("{a,b,c}"),
+                                              new Row("{c,b,a}"));
+      List<Row> expectedRows6 = Arrays.asList(new Row(1, "(1,\"(1,1,a)\",b)", "c"),
+                                              new Row(2, "(2,\"(2,2,c)\",b)", "a"));
+      List<Row> expectedRows7 = Arrays.asList(
+        new Row("{\"(1,\\\"(1,\\\"\\\"(1,1,a)\\\"\\\",b)\\\",c)\"," +
+                 "\"(2,\\\"(2,\\\"\\\"(2,2,b)\\\"\\\",a)\\\",c)\"," +
+                 "\"(3,\\\"(3,\\\"\\\"(3,3,a)\\\"\\\",c)\\\",b)\"}"),
+        new Row("{\"(4,\\\"(4,\\\"\\\"(4,4,c)\\\"\\\",b)\\\",a)\"}"));
+      List<Row> expectedRows8 = Arrays.asList(new Row("{16384,81920}"),
+                                              new Row("{32768,65536}"));
+      List<Row> expectedRows9 = Arrays.asList(new Row("[10.0.0.1,10.0.0.2]"),
+                                              new Row("[10.0.0.3,10.0.0.8]"));
+      List<Row> expectedRows10 = Arrays.asList(
+        new Row("{\"[10.0.0.1,10.0.0.2]\",\"[10.0.0.3,10.0.0.8]\"}"),
+        new Row("{\"[10.0.0.9,10.0.0.12]\"}"));
+
+      // Column c2 and c3 are dropped from test_tbl1 so we only expect to see rows for
+      // column c1 and c4.
+      List<Row> expectedRows11 = Arrays.asList(new Row("b", "c"),
+                                               new Row("a", "b"),
+                                               new Row("a", "a"));
+      assertRowList(stmt, "SELECT * FROM test_tb1 ORDER BY c1", expectedRows1);
+      assertRowList(stmt, "SELECT * FROM test_tb1 ORDER BY c1", expectedRows1);
+      assertRowList(stmt, "SELECT * FROM test_tb2 ORDER BY c1", expectedRows2);
+      assertRowList(stmt, "SELECT * FROM test_tb3 ORDER BY c1", expectedRows3);
+      assertRowList(stmt, "SELECT * FROM test_tb4 ORDER BY c1", expectedRows4);
+      assertRowList(stmt, "SELECT c1::TEXT FROM test_tb5 ORDER BY c1", expectedRows5);
+      assertRowList(stmt, "SELECT * FROM test_tb6 ORDER BY c1", expectedRows6);
+      assertRowList(stmt, "SELECT c1::TEXT FROM test_tb7 ORDER BY c1", expectedRows7);
+      assertRowList(stmt, "SELECT c1::TEXT FROM test_tb8 ORDER BY c1", expectedRows8);
+      assertRowList(stmt, "SELECT * FROM test_tb9 ORDER BY c1", expectedRows9);
+      assertRowList(stmt, "SELECT c1::TEXT FROM test_tb10 ORDER BY c1", expectedRows10);
+      assertRowList(stmt, "SELECT * FROM test_tb11 ORDER BY c1, c4", expectedRows11);
+    }
+
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection2.createStatement()) {
+      List<Row> expectedRows1 = Arrays.asList(new Row("c"),
+                                              new Row("b"));
+      List<Row> expectedRows2 = Arrays.asList(new Row(1, "a"));
+      List<Row> expectedRows3 = Arrays.asList(new Row("(1,1,a)"),
+                                              new Row("(1,2,c)"),
+                                              new Row("(1,2,b)"));
+      List<Row> expectedRows4 = Arrays.asList(new Row(1, "(1,2,b)", "b"));
+      List<Row> expectedRows5 = Arrays.asList(new Row("{a,b,c}"));
+      List<Row> expectedRows6 = Arrays.asList(new Row(1, "(1,\"(1,1,a)\",b)", "c"));
+      List<Row> expectedRows7 = Arrays.asList(
+        new Row("{\"(1,\\\"(1,\\\"\\\"(1,1,a)\\\"\\\",b)\\\",c)\"," +
+                 "\"(2,\\\"(2,\\\"\\\"(2,2,b)\\\"\\\",a)\\\",c)\"," +
+                 "\"(3,\\\"(3,\\\"\\\"(3,3,a)\\\"\\\",c)\\\",b)\"}"));
+      List<Row> expectedRows8 = Arrays.asList(new Row("{32768,65536}"));
+      List<Row> expectedRows9 = Arrays.asList(new Row("[10.0.0.1,10.0.0.2]"));
+      List<Row> expectedRows10 = Arrays.asList(
+        new Row("{\"[10.0.0.1,10.0.0.2]\",\"[10.0.0.3,10.0.0.8]\"}"));
+
+      // Only column c2 is dropped from test_tbl1 before backup, the column c3 was dropped
+      // after backup and it should be restored. Therefore we expect to see rows for column
+      // c1, c3 and c4.
+      List<Row> expectedRows11 = Arrays.asList(new Row("b", "c", "c"),
+                                               new Row("a", "c", "a"),
+                                               new Row("a", "b", "b"));
+      assertRowList(stmt, "SELECT * FROM test_tb1 ORDER BY c1", expectedRows1);
+      assertRowList(stmt, "SELECT * FROM test_tb2 ORDER BY c1", expectedRows2);
+      assertRowList(stmt, "SELECT * FROM test_tb3 ORDER BY c1", expectedRows3);
+      assertRowList(stmt, "SELECT * FROM test_tb4 ORDER BY c1", expectedRows4);
+      assertRowList(stmt, "SELECT c1::TEXT FROM test_tb5 ORDER BY c1", expectedRows5);
+      assertRowList(stmt, "SELECT * FROM test_tb6 ORDER BY c1", expectedRows6);
+      assertRowList(stmt, "SELECT c1::TEXT FROM test_tb7 ORDER BY c1", expectedRows7);
+      assertRowList(stmt, "SELECT c1::TEXT FROM test_tb8 ORDER BY c1", expectedRows8);
+      assertRowList(stmt, "SELECT * FROM test_tb9 ORDER BY c1", expectedRows9);
+      assertRowList(stmt, "SELECT c1::TEXT FROM test_tb10 ORDER BY c1", expectedRows10);
+      assertRowList(stmt, "SELECT * FROM test_tb11 ORDER BY c1, c3, c4", expectedRows11);
+    }
+
+    // Cleanup.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP DATABASE yb2");
+    }
   }
 }

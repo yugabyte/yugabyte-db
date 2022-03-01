@@ -14,7 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-After [creating a free cluster](../qs-add/), [connecting to the cluster](../qs-connect/) using the cloud shell, and [creating a database (yb_demo) and loading some data](../qs-data/), you can start exploring YugabyteDB's PostgreSQL-compatible, fully-relational Yugabyte SQL API.
+After [creating a free cluster](../qs-add/), [connecting to the cluster](../qs-connect/) using Cloud Shell, and [creating a database (yb_demo) and loading some data](../qs-data/), you can start exploring YugabyteDB's PostgreSQL-compatible, fully-relational Yugabyte SQL API.
 
 This exercise assumes you are already connected to your cluster using the `ysqlsh` shell, have created the `yb_demo` database, and loaded the sample data.
 

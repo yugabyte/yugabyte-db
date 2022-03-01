@@ -2,7 +2,6 @@
 title: Expressions and Operators
 linkTitle: Expressions and Operators
 description: Expressions and Operators in YSQL
-headcontent: Expressions and Operators in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   stable:
@@ -51,7 +50,7 @@ SELECT ||/ 27.0;
 
 ### Comparison Operators
 
-Comparison operators are binary. They return a `boolean` value `true` or `false`, depending on whether or not the comparison was asserted. 
+Comparison operators are binary. They return a `boolean` value `true` or `false`, depending on whether or not the comparison was asserted.
 
 The following table lists comparison operators that you can use in YSQL.
 
@@ -75,12 +74,12 @@ CREATE TABLE employees (
   salary integer
 );
 
-INSERT INTO employees (employee_no, name, department, salary) 
-  VALUES 	
+INSERT INTO employees (employee_no, name, department, salary)
+  VALUES
   (1221, 'John Smith', 'Marketing', 50000),
   (1222, 'Bette Davis', 'Sales', 55000),
   (1223, 'Lucille Ball', 'Operations', 70000),
-  (1224, 'John Zimmerman', 'Sales', 60000); 
+  (1224, 'John Zimmerman', 'Sales', 60000);
 ```
 
 The following example shows a `SELECT` statement that returns employees whose employee numbers are greater than 1222:
@@ -227,12 +226,12 @@ Conditional expressions and operators assist you with forming conditional querie
 
 ### CASE
 
-The `CASE` expression enables you to add if-else logic to your queries (for example, to `SELECT`, `WHERE`, `GROUP BY`, and `HAVING` ). 
+The `CASE` expression enables you to add if-else logic to your queries (for example, to `SELECT`, `WHERE`, `GROUP BY`, and `HAVING` ).
 
 The following is the syntax of the general form of the `CASE` expression:
 
 ```
-CASE 
+CASE
   WHEN condition_a  THEN result_a
   WHEN condition_b  THEN result_b
   [WHEN ...]
@@ -253,13 +252,13 @@ CREATE TABLE employees (
 ```
 
 ```sql
-INSERT INTO employees VALUES 
+INSERT INTO employees VALUES
   (1221, 'John Smith', 'Marketing'),
   (1222, 'Bette Davis', 'Sales'),
   (1223, 'Lucille Ball', 'Operations'),
   (1224, 'John Zimmerman', 'Sales'),
   (1225, 'Lee Bo', 'Sales'),
-  (1226, 'Frank Sinatra', 'Operations'); 
+  (1226, 'Frank Sinatra', 'Operations');
 ```
 
 The following example uses the `CASE` expression in the `SELECT` statement to create labels for employees based on their employee number: if the number is smaller than 1223, the employee is a senior; if the number is greater than 1223 and smaller than or equal to 1225, the employee is intermediate; if the number is greater than 1225, the employee is a junior:
@@ -311,7 +310,7 @@ SELECT CAST ('25' AS INTEGER);
 The following example converts a string constant to a date:
 
 ```sql
-SELECT 
+SELECT
   CAST ('2021-02-02' AS DATE),
   CAST ('02-DEC-2020' AS DATE);
 ```
@@ -319,7 +318,7 @@ SELECT
 The preceding example produces the following output:
 
 ```
- date       | date   
+ date       | date
 ------------+----------------
  2021-02-02 | 2020-12-02
 ```
@@ -333,7 +332,7 @@ expression::type
 The following example demonstrates the use of the :: operator:
 
 ```sql
-SELECT 
+SELECT
 '25'::INTEGER,
 '02-DEC-2020'::DATE;
 ```

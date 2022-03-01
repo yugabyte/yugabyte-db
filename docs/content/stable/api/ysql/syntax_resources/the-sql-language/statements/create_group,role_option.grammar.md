@@ -1,4 +1,4 @@
-```
+```ebnf
 create_group ::= CREATE GROUP role_name 
                  [ [ WITH ] role_option [ , ... ] ]
 

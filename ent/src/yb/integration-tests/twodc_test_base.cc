@@ -44,7 +44,7 @@ using tserver::enterprise::CDCConsumer;
 
 namespace enterprise {
 
-void TwoDCTestBase::Destroy() {
+void TwoDCTestBase::TearDown() {
   LOG(INFO) << "Destroying CDC Clusters";
   if (consumer_cluster()) {
     if (consumer_cluster_.pg_supervisor_) {
@@ -63,10 +63,9 @@ void TwoDCTestBase::Destroy() {
   }
 
   producer_cluster_.client_.reset();
-  // The following call may produce heap-use-after-free error in ASAN build for TwoDCTestParams.
-  // Since cancelling all outgoing RPCs before we reset the client needs some design change, comment
-  // out the call for now.
-  // consumer_cluster_.client_.reset();
+  consumer_cluster_.client_.reset();
+
+  YBTest::TearDown();
 }
 
 Status TwoDCTestBase::SetupUniverseReplication(

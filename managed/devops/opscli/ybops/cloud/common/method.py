@@ -19,6 +19,7 @@ import string
 import sys
 import time
 
+from pprint import pprint
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.utils import get_ssh_host_port, wait_for_ssh, get_path_from_yb, \
   generate_random_password, validated_key_file, format_rsa_key, validate_cron_status, \
@@ -163,6 +164,10 @@ class AbstractInstancesMethod(AbstractMethod):
                                  required=False,
                                  help="The machine image (e.g. an AMI on AWS) to install, "
                                       "this depends on the region.")
+        self.parser.add_argument("--boot_script", required=False,
+                                 help="Custom boot script to execute on the instance.")
+        self.parser.add_argument("--boot_script_token", required=False,
+                                 help="Custom boot script token in /etc/yb-boot-script-complete")
 
         mutex_group = self.parser.add_mutually_exclusive_group()
         mutex_group.add_argument("--num_volumes", type=int, default=0,
@@ -370,9 +375,6 @@ class CreateInstancesMethod(AbstractInstancesMethod):
                                  default=True,
                                  help="Delete the root volume on VM termination")
 
-        self.parser.add_argument("--boot_script", required=False,
-                                 help="Custom boot script to execute on the instance.")
-
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
         if host_info:
@@ -395,6 +397,7 @@ class CreateInstancesMethod(AbstractInstancesMethod):
             while not self.cloud.wait_for_startup_script(args, host_info) and retries < 5:
                 retries += 1
                 time.sleep(2 ** retries)
+            self.cloud.verify_startup_script(args, host_info)
 
             logging.info('Startup script finished on {}'.format(args.search_pattern))
 
@@ -442,8 +445,6 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
                                  help="Flag to set if host OS needs python installed for Ansible.")
         self.parser.add_argument("--pg_max_mem_mb", type=int, default=0,
                                  help="Max memory for postgress process.")
-        self.parser.add_argument("--boot_script", required=False,
-                                 help="Custom boot script to execute on the instance.")
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -605,6 +606,28 @@ class UpdateDiskMethod(AbstractInstancesMethod):
         }
         ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
         self.cloud.expand_file_system(args, ssh_options)
+
+
+class UpdateMountedDisksMethod(AbstractInstancesMethod):
+    """Superclass for updating fstab for disks, see PLAT-2547.
+    """
+
+    def __init__(self, base_command):
+        super(UpdateMountedDisksMethod, self).__init__(base_command, "update_mounted_disks")
+
+    def update_ansible_vars_with_args(self, args):
+        super(UpdateMountedDisksMethod, self).update_ansible_vars_with_args(args)
+        self.extra_vars["device_names"] = self.cloud.get_device_names(args)
+
+    def callback(self, args):
+        # Need to verify that all disks are mounted by UUUID
+        host_info = self.cloud.get_host_info(args)
+        ansible = self.cloud.setup_ansible(args)
+        self.update_ansible_vars_with_args(args)
+        self.extra_vars.update(get_ssh_host_port(host_info, args.custom_ssh_port))
+        ansible.playbook_args["remote_role"] = "mount_ephemeral_drives"
+        logging.debug(pprint(self.extra_vars))
+        ansible.run("remote_role.yml", self.extra_vars, host_info)
 
 
 class ChangeInstanceTypeMethod(AbstractInstancesMethod):

@@ -165,6 +165,7 @@ You should see the following output.
  pg_write_server_files     | f        | f
  pg_execute_server_program | f        | f
  yb_extension              | f        | f
+ yb_fdw                    | f        | f
  yugabyte                  | t        | t
  john                      | f        | t
 (11 rows)
