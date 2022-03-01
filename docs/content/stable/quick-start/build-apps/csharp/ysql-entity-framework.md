@@ -49,7 +49,7 @@ The tutorial assumes that you have:
 
 - YugabyteDB up and running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../../quick-start/) to have YugabyteDB up and running in minutes.
 
-- [.NET framework](https://dotnet.microsoft.com/en-us/download)
+- [.NET framework](https://dotnet.microsoft.com/en-us/download) installed.
 
 ## Clone the "orm-examples" repository
 
@@ -147,7 +147,7 @@ ysql_entityframework=# SELECT count(*) FROM products;
  product_id |    description    | price | product_name
 ------------+-------------------+-------+--------------
           1 | 200 page notebook |  7.50 | Notebook
-          2 | Mechanical pencil |  2.50 | Pencil
+        101 | Mechanical pencil |  2.50 | Pencil
 (2 rows)
 ```
 
@@ -161,7 +161,7 @@ $ curl \
 
 ```sh
 $ curl \
-  --data '{ "userId": "1", "products": [ { "productId": 1, "units": 2 }, { "productId": 2, "units": 4 } ] }' \
+  --data '{ "userId": "1", "products": [ { "productId": 1, "units": 2 }, { "productId": 101, "units": 4 } ] }' \
   -v -X POST -H 'Content-Type:application/json' http://localhost:8080/orders
 ```
 
@@ -230,7 +230,7 @@ $ curl http://localhost:8080/users
 {
   "content": [
     {
-      "userId": 2,
+      "userId": 101,
       "firstName": "Tom",
       "lastName": "Stewart",
       "email": "tstewart@example.com"
@@ -254,7 +254,7 @@ $ curl http://localhost:8080/products
 {
   "content": [
     {
-      "productId": 2,
+      "productId": 101,
       "productName": "Pencil",
       "description": "Mechanical pencil",
       "price": 2.5
@@ -277,34 +277,23 @@ $ curl http://localhost:8080/orders
 ```json
 {
   "content": [
-    {
-      "orderTime": "2019-05-10T04:26:54.590+0000",
-      "orderId": "999ae272-f2f4-46a1-bede-5ab765bb27fe",
-      "user": {
-        "userId": 1,
-        "firstName": "John",
-        "lastName": "Smith",
-        "email": "jsmith@example.com"
-      },
-      "userId": null,
-      "orderTotal": 25,
-      "products": []
-    },
-    {
-      "orderTime": "2019-05-10T04:26:48.074+0000",
-      "orderId": "1598c8d4-1857-4725-a9ab-14deb089ab4e",
-      "user": {
-        "userId": 1,
-        "firstName": "John",
-        "lastName": "Smith",
-        "email": "jsmith@example.com"
-      },
-      "userId": null,
-      "orderTotal": 15,
-      "products": []
-    }
-  ],
-  ...
+   {
+      "orderId":"2692e1e9-0bbd-40e8-bf51-4fbcc4e9fea2",
+      "orderTime":"2022-02-24T02:32:52.60555",
+      "orderTotal":15.00,
+      "userId":1,
+      "users":null,
+      "products":null
+   },
+   {
+      "orderId":"f7343f22-7dfc-4a18-b4d3-9fcd17161518",
+      "orderTime":"2022-02-24T02:33:06.832663",
+      "orderTotal":25.00,
+      "userId":1,
+      "users":null,
+      "products":null
+   }
+]
 }
 ```
 
