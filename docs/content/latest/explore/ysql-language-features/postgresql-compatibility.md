@@ -21,16 +21,16 @@ Since YugabyteDB is a distributed database, supporting all PostgreSQL features e
 The following PostgreSQL features are not supported in YugabyteDB:
 - Passimistic locking
 - Table locks
+- [Inheritance](https://www.postgresql.org/docs/11/tutorial-inheritance.html)
+- Exclusion Constraints
 - GiST indexes
 - Kerberos/GSSAPI 
-- Events
-- User-defined functions (UDF)
-- FULLTEXT functions and indexes
+- Events (Listen/Notify) 
 - Drop primary key
 - XML Functions
-- Column-level privileges
 - XA syntax
-- Query cancellation
 
 ## Features that differ from PostgreSQL
-
+- Tablespaces 
+- Logical replication is CDC 
+- Primary key (hash/range)
