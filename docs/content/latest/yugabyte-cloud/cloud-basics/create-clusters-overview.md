@@ -50,9 +50,9 @@ For application development and testing, you can set fault tolerance to **None**
 
 ## Security
 
-If your applications run in a virtual private cloud (VPC), deploy your cluster in a VPC to improve security. A VPC network also has the advantage of lowering network latency. You need to create the VPC before you deploy the cluster. Yugabyte Cloud supports AWS and GCP for VPCs. Refer to [VPC network](../../cloud-secure-clusters/cloud-vpcs/).
+If your applications run in a virtual private cloud (VPC), deploy your cluster in a VPC to improve security. A VPC network also has the advantage of lowering network latency. You need to create the VPC before you deploy the cluster. Yugabyte Cloud supports AWS and GCP for VPCs. Refer to [VPC network](../../cloud-basics/cloud-vpcs/).
 
-By default, access to clusters is restricted to IP addresses that you specify in IP allow lists. After the cluster is deployed, add the IP addresses of the clients to the cluster allow list. This includes the _CIDR ranges of any application VPCs_, as well as addresses of users connecting to the cluster using a client. Refer to [IP allow lists](../../cloud-secure-clusters/add-connections/).
+By default, access to clusters is restricted to IP addresses that you specify in IP allow lists. After the cluster is deployed, add the IP addresses of the clients to the cluster allow list. This includes the _CIDR ranges of any peered application VPCs_, as well as addresses of users connecting to the cluster using a client. Refer to [IP allow lists](../../cloud-secure-clusters/add-connections/).
 
 ## YugabyteDB version
 

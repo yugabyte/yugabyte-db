@@ -26,11 +26,11 @@ Learn the basics of using YugabyteDB clusters in Yugabyte Cloud.
 
 [Deploy](../cloud-basics/)
 : Create single region clusters that can be deployed across multiple and single availability zones. (To deploy multi-region clusters, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).)
+: Create virtual private cloud (VPC) networks to peer clusters with application VPCs.
 
 [Secure](../cloud-secure-clusters)
 : Manage the security features of your clusters, including network authorization, database authorization, encryption, and auditing.
 : Use IP allow lists to manage access to clusters.
-: Create virtual private cloud (VPC) networks to peer clusters with application VPCs.
 
 [Connect](../cloud-connect)
 : Connect to clusters from a browser using Cloud Shell, from your desktop using a shell, and from applications.

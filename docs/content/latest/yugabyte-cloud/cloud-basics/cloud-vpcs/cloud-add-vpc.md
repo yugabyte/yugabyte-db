@@ -38,7 +38,7 @@ You'll also need to know the CIDR range for the application VPC with which you w
 To create a VPC, do the following:
 
 1. On the **Network Access** page, select **VPC Network**, then **VPCs**.
-1. Cick **Create VPC** to display the **Create VPC** sheet.
+1. Click **Create VPC** to display the **Create VPC** sheet.
 1. Enter a name for the VPC.
 1. Choose the provider (AWS or GCP).
 1. If you selected **GCP**, choose one of the following options:
@@ -53,7 +53,7 @@ The VPC's network name and project ID are automatically assigned. You'll need th
 
 ## Deploy a cluster in a VPC
 
-You can [deploy your cluster](../../cloud-basics/create-clusters/) in a VPC any time after it has been created.
+You can [deploy your cluster](../../create-clusters/) in a VPC any time after it has been created.
 
 1. On the **Clusters** page, click **Add Cluster**.
 1. Choose **Yugabyte Cloud** and click **Next**.
@@ -64,9 +64,9 @@ You can [deploy your cluster](../../cloud-basics/create-clusters/) in a VPC any 
 1. Under **Network Access**, choose **Deploy this cluster in a dedicated VPC**, and select your VPC.
 1. Click **Create Cluster**.
 
-For more information on creating clusters, refer to [Create a cluster](../../cloud-basics/create-clusters/).
+For more information on creating clusters, refer to [Create a cluster](../../create-clusters/).
 
 ## Next steps
 
 - [Create a peering connection and configure your cloud provider](../cloud-add-peering/)
-- [Add the application VPC CIDR to the cluster IP allow list](../../add-connections/)
+- [Add the application VPC CIDR to the cluster IP allow list](../../../cloud-secure-clusters/add-connections/)

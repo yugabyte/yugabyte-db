@@ -23,7 +23,7 @@ Add IP allow lists for the following:
 
 - [Connecting from a client shell](../../cloud-connect/connect-client-shell/). Before you can connect to a cluster using ysqlsh, ycqlsh, or psql, you need to add your computer's IP address to the cluster allow list.
 - [Connecting an application](../../cloud-connect/connect-applications/). Add the public IP addresses of the instance running the application.
-- [Connecting a peered application VPC](../../cloud-secure-clusters/cloud-vpcs/). Add the CIDR of the application VPC.
+- [Connecting a peered application VPC](../../cloud-basics/cloud-vpcs/). Add the CIDR of the application VPC.
 
 Each entry can either be a single IP address, a CIDR-notated range of addresses, or a comma-delimited list of addresses. For example:
 
