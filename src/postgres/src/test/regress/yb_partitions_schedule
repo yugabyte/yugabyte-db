@@ -6,3 +6,4 @@
 ###############################################################################
 test: yb_partition_fk
 test: yb_partition_pk
+test: yb_partition_alter
