@@ -13,12 +13,14 @@ package com.yugabyte.yw.common;
 import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_EXECUTION_CANCELLED;
 import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_GENERIC_ERROR;
 import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_SUCCESS;
+
 import com.google.common.base.Joiner;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.time.Duration;
@@ -54,6 +56,7 @@ public class ShellProcessHandler {
       Pattern.compile("TASK.*?fatal.*?FAILED.*", Pattern.DOTALL);
   static final String ANSIBLE_IGNORING = "ignoring";
   static final String COMMAND_OUTPUT_LOGS_DELETE = "yb.logs.cmdOutputDelete";
+  static final String YB_LOGS_MAX_MSG_SIZE = "yb.logs.max_msg_size";
 
   @Inject
   public ShellProcessHandler(play.Configuration appConfig) {
@@ -96,7 +99,7 @@ public class ShellProcessHandler {
     }
 
     ProcessBuilder pb = new ProcessBuilder(command);
-    Map envVars = pb.environment();
+    Map<String, String> envVars = pb.environment();
     if (extraEnvVars != null && !extraEnvVars.isEmpty()) {
       envVars.putAll(extraEnvVars);
     }
@@ -140,12 +143,10 @@ public class ShellProcessHandler {
       }
       // TimeUnit.MINUTES.sleep(5);
       waitForProcessExit(process, tempOutputFile, tempErrorFile);
-      try (FileInputStream outputInputStream = new FileInputStream(tempOutputFile);
-          InputStreamReader outputReader = new InputStreamReader(outputInputStream);
-          BufferedReader outputStream = new BufferedReader(outputReader);
-          FileInputStream errorInputStream = new FileInputStream(tempErrorFile);
-          InputStreamReader errorReader = new InputStreamReader(errorInputStream);
-          BufferedReader errorStream = new BufferedReader(errorReader)) {
+      // We will only read last 20MB of process stdout and stderr file.
+      // stdout has `data` so we wont limit that.
+      try (BufferedReader outputStream = getLastNReader(tempOutputFile, Long.MAX_VALUE);
+          BufferedReader errorStream = getLastNReader(tempErrorFile, getMaxLogMsgSize())) {
         if (logCmdOutput) {
           LOG.debug("Proc stdout for '{}' :", response.description);
         }
@@ -221,9 +222,7 @@ public class ShellProcessHandler {
         response.durationMs = System.currentTimeMillis() - startMs;
       }
       String status =
-          (ERROR_CODE_SUCCESS == response.code)
-              ? "success"
-              : ("failure code=" + Integer.toString(response.code));
+          (ERROR_CODE_SUCCESS == response.code) ? "success" : ("failure code=" + response.code);
       LOG.info(
           "Completed proc '{}' status={} [ {} ms ]",
           response.description,
@@ -240,6 +239,26 @@ public class ShellProcessHandler {
     }
 
     return response;
+  }
+
+  private long getMaxLogMsgSize() {
+    return appConfig.getBytes(YB_LOGS_MAX_MSG_SIZE);
+  }
+
+  /** For a given file return a bufferred reader that reads only last N bytes. */
+  private static BufferedReader getLastNReader(File file, long lastNBytes)
+      throws FileNotFoundException {
+    final BufferedReader reader =
+        new BufferedReader(new InputStreamReader(new FileInputStream(file)));
+    long skip = file.length() - lastNBytes;
+    if (skip > 0) {
+      try {
+        LOG.warn("Skipped first {} bytes because max_msg_size= {}", reader.skip(skip), lastNBytes);
+      } catch (IOException e) {
+        LOG.warn("Unexpected exception when skipping large file", e);
+      }
+    }
+    return reader;
   }
 
   public ShellResponse run(List<String> command, Map<String, String> extraEnvVars) {
@@ -283,7 +302,7 @@ public class ShellProcessHandler {
 
   private static void tailStream(BufferedReader br) throws IOException {
 
-    String line = null;
+    String line;
     // Note: technically, this readLine can pick up incomplete lines as we race
     // with the process output being appended to this file but for the purposes
     // of logging, it is ok to log partial lines.
@@ -313,7 +332,7 @@ public class ShellProcessHandler {
         }
         Matcher m = ANSIBLE_FAILED_TASK_PAT.matcher(s);
         if (m.find()) {
-          result = ((result != null) ? (result + "\n") : "") + m.group(0);
+          result += "\n" + m.group(0);
         }
       }
     }
