@@ -370,7 +370,7 @@ static void ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		  bool recurse, bool recursing, LOCKMODE lockmode);
 static void ATRewriteCatalogs(List **wqueue,
 							  LOCKMODE lockmode,
-							  YBCPgStatement *rollbackHandle);
+							  List **rollbackHandles);
 static void ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation *mutable_rel,
 		  AlterTableCmd *cmd, LOCKMODE lockmode);
 static void ATRewriteTables(AlterTableStmt *parsetree,
@@ -3119,6 +3119,17 @@ renameatt(RenameStmt *stmt)
 	if (IsYugaByteEnabled())
 	{
 		YBCRename(stmt, relid);
+		if (stmt->renameType == OBJECT_COLUMN)
+		{
+			ListCell *child;
+			List *children = find_all_inheritors(relid, NoLock, NULL);
+			foreach(child, children)
+			{
+				Oid childrelid = lfirst_oid(child);
+				if (childrelid != relid)
+					YBCRename(stmt, childrelid);
+			}
+		}
 	}
 
 	ObjectAddressSubSet(address, RelationRelationId, relid, attnum);
@@ -3851,13 +3862,13 @@ ATController(AlterTableStmt *parsetree,
 	relation_close(rel, NoLock);
 
 	/* Phase 2: update system catalogs */
-	YBCPgStatement rollbackHandle = NULL;
+	List *rollbackHandles = NIL;
 	/*
 	 * ATRewriteCatalogs also executes changes to DocDB.
 	 * If Phase 3 fails, rollbackHandle will specify how to rollback the
 	 * changes done to DocDB.
 	*/
-	ATRewriteCatalogs(&wqueue, lockmode, &rollbackHandle);
+	ATRewriteCatalogs(&wqueue, lockmode, &rollbackHandles);
 
 	/* Phase 3: scan/rewrite tables as needed */
 	PG_TRY();
@@ -3867,9 +3878,11 @@ ATController(AlterTableStmt *parsetree,
 	PG_CATCH();
 	{
 		/* Rollback the DocDB changes. */
-		if (rollbackHandle)
+		ListCell *lc = NULL;
+		foreach(lc, rollbackHandles)
 		{
-			YBCExecAlterTable(rollbackHandle, RelationGetRelid(rel));
+			YBCPgStatement handle = (YBCPgStatement) lfirst(lc);
+			YBCExecAlterTable(handle, RelationGetRelid(rel));
 		}
 		PG_RE_THROW();
 	}
@@ -4192,7 +4205,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 static void
 ATRewriteCatalogs(List **wqueue,
 				  LOCKMODE lockmode,
-				  YBCPgStatement *rollbackHandle)
+				  List **rollbackHandles)
 {
 	int			pass;
 	ListCell   *ltab;
@@ -4208,10 +4221,42 @@ ATRewriteCatalogs(List **wqueue,
 	 */
 	AlteredTableInfo* info       = (AlteredTableInfo *) linitial(*wqueue);
 	Oid               main_relid = info->relid;
-	YBCPgStatement    handle     = YBCPrepareAlterTable(info->subcmds,
-														AT_NUM_PASSES,
-														main_relid,
-														rollbackHandle);
+	YBCPgStatement rollbackHandle = NULL;
+	List *handles = NIL;
+	YBCPgStatement handle = YBCPrepareAlterTable(info->subcmds,
+												AT_NUM_PASSES,
+												main_relid,
+												&rollbackHandle,
+												false /* isPartitionOfAlteredTable */);
+	handles = lappend(handles, handle);
+	if (rollbackHandle)
+		*rollbackHandles = lappend(*rollbackHandles, rollbackHandle);
+
+	/*
+	 * If this is a partitioned table, prepare alter table handles for all
+	 * the partitions as well.
+	 */
+	List *children = find_all_inheritors(main_relid, NoLock, NULL);
+	ListCell   *child;
+	foreach(child, children)
+	{
+		Oid childrelid = lfirst_oid(child);
+		/*
+		 * find_all_inheritors also returns the oid of the table itself.
+		 * Skip it, as we have already added handles for it.
+		 */
+		if (childrelid == main_relid)
+			continue;
+		YBCPgStatement childRollbackHandle = NULL;
+		YBCPgStatement child_handle = YBCPrepareAlterTable(info->subcmds,
+														   AT_NUM_PASSES,
+														   childrelid,
+														   &childRollbackHandle,
+														   true /*isPartitionOfAlteredTable */);
+		handles = lappend(handles, child_handle);
+		if (childRollbackHandle)
+			*rollbackHandles = lappend(*rollbackHandles, childRollbackHandle);
+	}
 
 	/*
 	 * We process all the tables "in parallel", one pass at a time.  This is
@@ -4220,6 +4265,7 @@ ATRewriteCatalogs(List **wqueue,
 	 * re-adding of the foreign key constraint to the other table).  Work can
 	 * only be propagated into later passes, however.
 	 */
+	ListCell *lc = NULL;
 	for (pass = 0; pass < AT_NUM_PASSES; pass++)
 	{
 		/*
@@ -4231,9 +4277,13 @@ ATRewriteCatalogs(List **wqueue,
 		 * However, we must also do this before we start adding indexes because
 		 * the column in question might not be there yet.
 		 */
-		if (pass == AT_PASS_ADD_INDEX && handle)
+		if (pass == AT_PASS_ADD_INDEX)
 		{
-			YBCExecAlterTable(handle, main_relid);
+			foreach(lc, handles)
+			{
+				YBCPgStatement handle = (YBCPgStatement) lfirst(lc);
+				YBCExecAlterTable(handle, main_relid);
+			}
 		}
 
 		/* Go through each table that needs to be processed */
