@@ -859,7 +859,8 @@ class GoogleCloudAdmin():
         if tags is not None:
             tags_dict = json.loads(tags)
             body.update({"labels": tags_dict})
-            initial_params.update({"labels": tags_dict})
+            if volume_type != GCP_SCRATCH:
+                initial_params.update({"labels": tags_dict})
             boot_disk_init_params.update({"labels": tags_dict})
             body["metadata"]["items"].append(
                 [{"key": k, "value": v} for (k, v) in tags_dict.items()])
