@@ -485,7 +485,7 @@ static void
 pgss_ExecutorStart(QueryDesc *queryDesc, int eflags)
 {
 	if (getrusage(RUSAGE_SELF, &rusage_start) != 0)
-		pgsm_log_error("pgss_ExecutorStart: failed to execute getrusage");
+		elog(DEBUG1, "pgss_ExecutorStart: failed to execute getrusage");
 
 	if (prev_ExecutorStart)
 		prev_ExecutorStart(queryDesc, eflags);
@@ -980,7 +980,7 @@ static void pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 		WalUsage    walusage_start = pgWalUsage;
 #endif
 		INSTR_TIME_SET_CURRENT(start);
-		exec_nested_level++;
+		nested_level++;
 		PG_TRY();
 		{
 #if PG_VERSION_NUM >= 140000
@@ -1019,7 +1019,7 @@ static void pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 										dest,
 									    completionTag);
 #endif
-			exec_nested_level--;
+			nested_level--;
 		}
 		PG_CATCH();
         {
@@ -1514,7 +1514,7 @@ pgss_store(uint64 queryid,
 #if PG_VERSION_NUM < 140000
     key.toplevel = 1;
 #else
-    key.toplevel = ((exec_nested_level + plan_nested_level) == 0);
+    key.toplevel = ((nested_level + plan_nested_level) == 0);
 #endif
 	pgss_hash = pgsm_get_hash();
 
@@ -1553,7 +1553,7 @@ pgss_store(uint64 queryid,
 			LWLockRelease(pgss->lock);
 			if (norm_query)
 				pfree(norm_query);
-			pgsm_log_error("pgss_store: out of memory (pgss_query_hash).");
+			elog(DEBUG1, "pgss_store: out of memory (pgss_query_hash).");
 			return;
 		}
 		else if (!query_found)
@@ -1579,7 +1579,7 @@ pgss_store(uint64 queryid,
 				LWLockRelease(pgss->lock);
 				if (norm_query)
 					pfree(norm_query);
-				pgsm_log_error("pgss_store: insufficient shared space for query.");
+				elog(DEBUG1, "pgss_store: insufficient shared space for query.");
 				return;
 			}
 			/*
@@ -1625,7 +1625,6 @@ pgss_store(uint64 queryid,
 					kind,				/* kind */
 					app_name_ptr,
 					app_name_len);
-	}
 
 	LWLockRelease(pgss->lock);
 	if (norm_query)
@@ -1795,7 +1794,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		{
 			if (read_query(pgss_qbuf, tmp.info.parentid, parent_query_txt, 0) == 0)
 			{
-				rc = read_query_buffer(bucketid, tmp.info.parentid, parent_query_txt, 0);
+				int rc = read_query_buffer(bucketid, tmp.info.parentid, parent_query_txt, 0);
 				if (rc != 1)
 					snprintf(parent_query_txt, 32, "%s", "<insufficient disk/shared space>");
 			}
@@ -3216,7 +3215,7 @@ SaveQueryText(uint64 bucketid,
 
 				if (pgss->overflow)
 				{
-					pgsm_log_error("query buffer overflowed twice");
+					elog(DEBUG1, "query buffer overflowed twice");
 					return false;
 				}
 

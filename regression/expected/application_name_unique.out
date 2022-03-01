@@ -20,14 +20,15 @@ SELECT 1 AS num;
 (1 row)
 
 SELECT query,application_name FROM pg_stat_monitor ORDER BY query, application_name COLLATE "C";
-             query              |          application_name          
---------------------------------+------------------------------------
- SELECT $1 AS num               | naeem
- SELECT $1 AS num               | psql
- SELECT pg_stat_monitor_reset() | pg_regress/application_name_unique
- Set application_name = 'naeem' | naeem
- Set application_name = 'psql'  | psql
-(5 rows)
+                                              query                                              |          application_name          
+-------------------------------------------------------------------------------------------------+------------------------------------
+ SELECT $1 AS num                                                                                | naeem
+ SELECT $1 AS num                                                                                | psql
+ SELECT pg_stat_monitor_reset()                                                                  | pg_regress/application_name_unique
+ SELECT query,application_name FROM pg_stat_monitor ORDER BY query, application_name COLLATE "C" | psql
+ Set application_name = 'naeem'                                                                  | naeem
+ Set application_name = 'psql'                                                                   | psql
+(6 rows)
 
 SELECT pg_stat_monitor_reset();
  pg_stat_monitor_reset 

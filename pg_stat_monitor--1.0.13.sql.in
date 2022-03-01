@@ -119,13 +119,12 @@ LANGUAGE SQL PARALLEL SAFE;
 
 CREATE FUNCTION pg_stat_monitor_settings(
     OUT name  text,
-    OUT value text,
-    OUT default_value text,
+    OUT value INTEGER,
+    OUT default_value INTEGER,
     OUT description  text,
     OUT minimum INTEGER,
     OUT maximum INTEGER,
-    OUT options text,
-    OUT restart text
+    OUT restart INTEGER
 )
 RETURNS SETOF record
 AS 'MODULE_PATHNAME', 'pg_stat_monitor_settings'
@@ -138,7 +137,6 @@ CREATE VIEW pg_stat_monitor_settings AS SELECT
     description,
     minimum,
     maximum,
-    options,
     restart
 FROM pg_stat_monitor_settings();
 
@@ -259,40 +257,8 @@ $$ language plpgsql;
 --    ROUND(CAST(total_time / greatest(sum(total_time) OVER(), 0.00000001) * 100 as numeric), 2)::text || '%' as load_comparison
 -- FROM pg_stat_monitor_hook_stats();
 
-CREATE FUNCTION pg_stat_monitor_errors(
-    OUT severity   int,
-    OUT message    text,
-    OUT msgtime    text,
-    OUT calls      int8
-)
-RETURNS SETOF record
-AS 'MODULE_PATHNAME', 'pg_stat_monitor_errors'
-LANGUAGE C STRICT VOLATILE PARALLEL SAFE;
-
-CREATE OR REPLACE FUNCTION pgsm_log_severity_as_text(severity int) RETURNS TEXT AS
-$$
-SELECT
-	CASE
-		WHEN severity = 0 THEN 'INFO'
-		WHEN severity = 1 THEN 'WARNING'
-		WHEN severity = 2 THEN 'ERROR'
-	END
-$$
-LANGUAGE SQL PARALLEL SAFE;
-
-CREATE VIEW pg_stat_monitor_errors AS SELECT
-    pgsm_log_severity_as_text(severity) as severity, message, msgtime, calls
-FROM pg_stat_monitor_errors();
-
-CREATE FUNCTION pg_stat_monitor_reset_errors()
-RETURNS void
-AS 'MODULE_PATHNAME'
-LANGUAGE C PARALLEL SAFE;
-
 GRANT SELECT ON pg_stat_monitor TO PUBLIC;
 GRANT SELECT ON pg_stat_monitor_settings TO PUBLIC;
 
-GRANT SELECT ON pg_stat_monitor_errors TO PUBLIC;
 -- Don't want this to be available to non-superusers.
 REVOKE ALL ON FUNCTION pg_stat_monitor_reset() FROM PUBLIC;
-REVOKE ALL ON FUNCTION pg_stat_monitor_reset_errors() FROM PUBLIC;

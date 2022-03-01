@@ -45,17 +45,18 @@ INFO:  Sleep 5 seconds
 (1 row)
 
 SELECT substr(query, 0,50) as query, calls, resp_calls FROM pg_stat_monitor ORDER BY query COLLATE "C";
-              query              | calls |      resp_calls       
----------------------------------+-------+-----------------------
- SELECT pg_sleep(i)              |     5 | {0,0,0,0,0,0,3,2,0,0}
- SELECT pg_stat_monitor_reset()  |     1 | {1,0,0,0,0,0,0,0,0,0}
- Set pg_stat_monitor.track='all' |     1 | {1,0,0,0,0,0,0,0,0,0}
- select run_pg_sleep($1)         |     1 | {0,0,0,0,0,0,0,0,1,0}
-(4 rows)
+                       query                       | calls |      resp_calls       
+---------------------------------------------------+-------+-----------------------
+ SELECT pg_sleep(i)                                |     5 | {0,0,0,0,0,0,3,2,0,0}
+ SELECT pg_stat_monitor_reset()                    |     1 | {1,0,0,0,0,0,0,0,0,0}
+ SELECT substr(query, $1,$2) as query, calls, resp |     1 | {1,0,0,0,0,0,0,0,0,0}
+ Set pg_stat_monitor.track='all'                   |     1 | {1,0,0,0,0,0,0,0,0,0}
+ select run_pg_sleep($1)                           |     1 | {0,0,0,0,0,0,0,0,1,0}
+(5 rows)
 
 select * from generate_histogram();
-       range        | freq |                                            bar                                             
---------------------+------+--------------------------------------------------------------------------------------------
+       range        | freq |              bar               
+--------------------+------+--------------------------------
  (0 - 3)}           |    0 | 
   (3 - 10)}         |    0 | 
   (10 - 31)}        |    0 | 
