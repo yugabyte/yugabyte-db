@@ -34,6 +34,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateMountedDisks;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CertificateParams;
@@ -120,6 +121,7 @@ public class NodeManager extends DevopsBase {
     Tags,
     InitYSQL,
     Disk_Update,
+    Update_Mounted_Disks,
     Change_Instance_Type,
     Pause,
     Resume,
@@ -1727,6 +1729,22 @@ public class NodeManager extends DevopsBase {
           if (taskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(taskParam));
           }
+          break;
+        }
+      case Update_Mounted_Disks:
+        {
+          if (!(nodeTaskParam instanceof UpdateMountedDisks.Params)) {
+            throw new RuntimeException("NodeTaskParams is not UpdateMountedDisksTask.Params");
+          }
+          UpdateMountedDisks.Params taskParam = (UpdateMountedDisks.Params) nodeTaskParam;
+          commandArgs.add("--instance_type");
+          commandArgs.add(taskParam.instanceType);
+          if (nodeTaskParam.deviceInfo != null) {
+            commandArgs.add("--volume_type");
+            commandArgs.add(nodeTaskParam.deviceInfo.storageType.toString().toLowerCase());
+            commandArgs.addAll(getDeviceArgs(nodeTaskParam));
+          }
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           break;
         }
       case Change_Instance_Type:

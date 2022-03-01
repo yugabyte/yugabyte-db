@@ -38,7 +38,7 @@ To create a VPC network, you need to complete the following tasks:
 
     - The status of the VPC is _Active_ when done.
 
-    - Once the VPC is created, you can [deploy a cluster in the VPC](../cloud-add-vpc/#deploy-a-cluster-in-a-vpc); you don't need to wait until the VPC is peered.
+    - After the VPC is created, you can [deploy a cluster in the VPC](../cloud-add-vpc/#deploy-a-cluster-in-a-vpc); you don't need to wait until the VPC is peered.
 
 1. [Create a peering connection](../cloud-add-peering/) between the VPC and the application VPC on the cloud provider network.
 
@@ -52,7 +52,7 @@ To create a VPC network, you need to complete the following tasks:
     - In GCP, [create a peering connection](../cloud-add-peering/#peer-gcp).
     - The status of the peering connection changes to _Active_ once communication is established.
 
-1. [Add the application VPC CIDR to the cluster IP allow list](../../add-connections/).
+1. [Add the application VPC CIDR to the cluster IP allow list](../../../cloud-secure-clusters/add-connections/).
 
     - To communicate with a cluster, networks must be added to the cluster IP allow list.
 
