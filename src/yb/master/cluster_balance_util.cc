@@ -81,8 +81,8 @@ bool PerTableLoadState::LeaderLoadComparator::operator()(
   }
 
   // Use global leader load as tie-breaker.
-  int a_load = state_->GetLeaderLoad(a);
-  int b_load = state_->GetLeaderLoad(b);
+  auto a_load = state_->GetLeaderLoad(a);
+  auto b_load = state_->GetLeaderLoad(b);
   if (a_load == b_load) {
     a_load = state_->global_state_->GetGlobalLeaderLoad(a);
     b_load = state_->global_state_->GetGlobalLeaderLoad(b);
@@ -95,8 +95,8 @@ bool PerTableLoadState::LeaderLoadComparator::operator()(
 }
 
 bool PerTableLoadState::CompareByUuid(const TabletServerId& a, const TabletServerId& b) {
-  int load_a = GetLoad(a);
-  int load_b = GetLoad(b);
+  auto load_a = GetLoad(a);
+  auto load_b = GetLoad(b);
   if (load_a == load_b) {
     // Use global load as a heuristic to help break ties.
     load_a = global_state_->GetGlobalLoad(a);
@@ -108,12 +108,12 @@ bool PerTableLoadState::CompareByUuid(const TabletServerId& a, const TabletServe
   return load_a < load_b;
 }
 
-int PerTableLoadState::GetLoad(const TabletServerId& ts_uuid) const {
+size_t PerTableLoadState::GetLoad(const TabletServerId& ts_uuid) const {
   const auto& ts_meta = per_ts_meta_.at(ts_uuid);
   return ts_meta.starting_tablets.size() + ts_meta.running_tablets.size();
 }
 
-int PerTableLoadState::GetLeaderLoad(const TabletServerId& ts_uuid) const {
+size_t PerTableLoadState::GetLeaderLoad(const TabletServerId& ts_uuid) const {
   return per_ts_meta_.at(ts_uuid).leaders.size();
 }
 
@@ -152,17 +152,19 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
       if (!blacklisted_servers_.count(ts_uuid)) {
         if (GetAtomicFlag(&FLAGS_allow_leader_balancing_dead_node)) {
           allow_only_leader_balancing_ = true;
-          LOG(INFO) << strings::Substitute("Master leader not received "
-                "heartbeat from ts $0. Only performing leader balancing for tables with replicas"
-                " in this TS.", ts_uuid);
+          YB_LOG_EVERY_N_SECS(INFO, 30)
+              << strings::Substitute("Master leader not received heartbeat from ts $0. "
+                                     "Only performing leader balancing for tables with replicas"
+                                     " in this TS.", ts_uuid);
         } else {
           return STATUS_SUBSTITUTE(LeaderNotReadyToServe, "Master leader has not yet received "
               "heartbeat from ts $0. Aborting load balancing.", ts_uuid);
         }
       } else {
-        LOG(INFO) << strings::Substitute("Master leader not received heartbeat from ts $0"
-                              " but it is blacklisted. Continuing LB operations for tables"
-                              " with replicas in this TS.", ts_uuid);
+        YB_LOG_EVERY_N_SECS(INFO, 30)
+            << strings::Substitute("Master leader not received heartbeat from ts $0 but it is "
+                                   "blacklisted. Continuing LB operations for tables with replicas"
+                                   " in this TS.", ts_uuid);
       }
     }
 
@@ -213,7 +215,7 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
   }
 
   // Only set the over-replication section if we need to.
-  int placement_num_replicas = placement.num_replicas() > 0 ?
+  size_t placement_num_replicas = placement.num_replicas() > 0 ?
       placement.num_replicas() : FLAGS_replication_factor;
   tablet_meta.is_over_replicated = placement_num_replicas < replica_map->size();
   tablet_meta.is_under_replicated = placement_num_replicas > replica_map->size();
@@ -257,7 +259,7 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
     for (const auto& entry : placement_to_replicas) {
       const auto& cloud_info = entry.first;
       const auto& replica_set = entry.second;
-      const auto min_num_replicas = placement_to_min_replicas[cloud_info];
+      const size_t min_num_replicas = placement_to_min_replicas[cloud_info];
       if (min_num_replicas > replica_set.size()) {
         // Placements that are under-replicated should be handled ASAP.
         tablet_meta.under_replicated_placements.insert(cloud_info);
@@ -411,8 +413,8 @@ Result<bool> PerTableLoadState::CanAddTabletToTabletServer(
   }
   // If we ask to use placement information, check against it.
   if (placement_info && !GetValidPlacement(to_ts, placement_info).has_value()) {
-    LOG(INFO) << "tablet server " << to_ts << " has invalid placement info. "
-              << "Not allowing it to take more tablets.";
+    YB_LOG_EVERY_N_SECS(INFO, 30) << "tablet server " << to_ts << " has invalid placement info. "
+                                  << "Not allowing it to take more tablets.";
     return false;
   }
   // If this server has a pending tablet delete, don't use it.
@@ -562,8 +564,11 @@ void PerTableLoadState::SortDriveLoad() {
   for (const auto& ts : sorted_load_) {
     auto& ts_meta = per_ts_meta_[ts];
     std::vector<std::pair<std::string, uint64>> drive_load;
+    bool empty_path_found = false;
     for (const auto& path_to_tablet : ts_meta.path_to_tablets) {
       if (path_to_tablet.first.empty()) {
+        // TS reported tablet without path (rolling restart case).
+        empty_path_found = true;
         continue;
       }
       int starting_tablets_count = FindWithDefault(ts_meta.path_to_starting_tablets_count,
@@ -582,8 +587,11 @@ void PerTableLoadState::SortDriveLoad() {
     std::transform(drive_load.begin(), drive_load.end(),
                     std::back_inserter(ts_meta.sorted_path_load_by_tablets_count),
                     [](const std::pair<std::string, uint64>& v) { return v.first;});
-    // Add undefined to the end for backward compatibility.
-    ts_meta.sorted_path_load_by_tablets_count.push_back(std::string());
+    if (empty_path_found) {
+      // Empty path was found at path_to_tablets, so add the empty path to the
+      // end so that it has the lowest priority.
+      ts_meta.sorted_path_load_by_tablets_count.push_back(std::string());
+    }
   }
 }
 
@@ -622,9 +630,11 @@ void PerTableLoadState::SortDriveLeaderLoad() {
   for (const auto& ts : sorted_leader_load_) {
     auto& ts_meta = per_ts_meta_[ts];
     std::vector<std::pair<std::string, uint64>> drive_load;
+    bool empty_path_found = false;
     // Add drives with leaders
     for (const auto& path_to_tablet : ts_meta.path_to_leaders) {
       if (path_to_tablet.first.empty()) {
+        empty_path_found = true;
         continue;
       }
       drive_load.emplace_back(std::pair<std::string, uint>(
@@ -647,12 +657,15 @@ void PerTableLoadState::SortDriveLeaderLoad() {
           [](const std::pair<std::string, uint64>& l, const std::pair<std::string, uint64>& r) {
               return l.second < r.second;
             });
-    ts_meta.sorted_path_load_by_leader_count.reserve(drive_load.size());
+    bool add_empty_path = empty_path_found || ts_meta.path_to_leaders.empty();
+    ts_meta.sorted_path_load_by_leader_count.reserve(drive_load.size() + (add_empty_path ? 1 : 0));
+    if (add_empty_path) {
+      // Empty path was found at path_to_leaders or no leaders on TS, so add the empty path.
+      ts_meta.sorted_path_load_by_leader_count.push_back(std::string());
+    }
     std::transform(drive_load.begin(), drive_load.end(),
                     std::back_inserter(ts_meta.sorted_path_load_by_leader_count),
                     [](const std::pair<std::string, uint64>& v) { return v.first;});
-    // Add undefined to the end for backward compatibility.
-    ts_meta.sorted_path_load_by_leader_count.push_back(std::string());
   }
 }
 
@@ -736,7 +749,7 @@ Status PerTableLoadState::RemoveRunningTablet(
   SCHECK(per_ts_meta_.find(ts_uuid) != per_ts_meta_.end(), IllegalState,
           Format(uninitialized_ts_meta_format_msg, ts_uuid, table_id_));
   auto& meta_ts = per_ts_meta_.at(ts_uuid);
-  int num_erased = meta_ts.running_tablets.erase(tablet_id);
+  auto num_erased = meta_ts.running_tablets.erase(tablet_id);
   if (num_erased == 0) {
     return STATUS_FORMAT(
       IllegalState,
@@ -792,7 +805,7 @@ Status PerTableLoadState::RemoveLeaderTablet(
     const TabletId& tablet_id, const TabletServerId& ts_uuid) {
   SCHECK(per_ts_meta_.find(ts_uuid) != per_ts_meta_.end(), IllegalState,
           Format(uninitialized_ts_meta_format_msg, ts_uuid, table_id_));
-  int num_erased = per_ts_meta_.at(ts_uuid).leaders.erase(tablet_id);
+  auto num_erased = per_ts_meta_.at(ts_uuid).leaders.erase(tablet_id);
   global_state_->per_ts_global_meta_[ts_uuid].leaders_count -= num_erased;
   return Status::OK();
 }

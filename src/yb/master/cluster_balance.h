@@ -333,17 +333,17 @@ class ClusterLoadBalancer {
   //
 
   // Get the total number of extra replicas.
-  int get_total_over_replication() const;
+  size_t get_total_over_replication() const;
 
-  int get_total_under_replication() const;
+  size_t get_total_under_replication() const;
 
   // Convenience methods for getting totals of starting or running tablets.
-  int get_total_starting_tablets() const;
+  size_t get_total_starting_tablets() const;
   int get_total_running_tablets() const;
 
-  int get_total_wrong_placement() const;
-  int get_total_blacklisted_servers() const;
-  int get_total_leader_blacklisted_servers() const;
+  size_t get_total_wrong_placement() const;
+  size_t get_total_blacklisted_servers() const;
+  size_t get_total_leader_blacklisted_servers() const;
 
   std::unordered_map<TableId, std::unique_ptr<PerTableLoadState>> per_table_states_;
   // The state of the table load in the cluster, as far as this run of the algorithm is concerned.
@@ -392,7 +392,7 @@ class ClusterLoadBalancer {
   boost::circular_buffer<ActivityInfo> cbuf_activities_;
 
   // Summary of circular buffer of load balancer activity.
-  int num_idle_runs_ = 0;
+  size_t num_idle_runs_ = 0;
   std::atomic<bool> is_idle_ {true};
 
   // Check if we are able to balance global load. With the current algorithm, we only allow for

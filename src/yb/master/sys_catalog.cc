@@ -140,7 +140,7 @@ DECLARE_bool(create_initial_sys_catalog_snapshot);
 DECLARE_int32(master_discovery_timeout_ms);
 
 DEFINE_int32(sys_catalog_write_timeout_ms, 60000, "Timeout for writes into system catalog");
-DEFINE_int32(copy_tables_batch_bytes, 500_KB, "Max bytes per batch for copy pg sql tables");
+DEFINE_uint64(copy_tables_batch_bytes, 500_KB, "Max bytes per batch for copy pg sql tables");
 
 DEFINE_test_flag(int32, sys_catalog_write_rejection_percentage, 0,
   "Reject specified percentage of sys catalog writes.");
@@ -440,14 +440,14 @@ void SysCatalogTable::SysCatalogStateChanged(
     // been a ROLE_CHANGE, thus old_config must have exactly one peer in transition (PRE_VOTER or
     // PRE_OBSERVER) and new_config should have none.
     if (new_count == old_count) {
-      int old_config_peers_transition_count =
+      auto old_config_peers_transition_count =
           CountServersInTransition(context->change_record.old_config());
-      if ( old_config_peers_transition_count != 1) {
+      if (old_config_peers_transition_count != 1) {
         LOG(FATAL) << "Expected old config to have one server in transition (PRE_VOTER or "
                    << "PRE_OBSERVER), but found " << old_config_peers_transition_count
                    << ". Config: " << context->change_record.old_config().ShortDebugString();
       }
-      int new_config_peers_transition_count =
+      auto new_config_peers_transition_count =
           CountServersInTransition(context->change_record.new_config());
       if (new_config_peers_transition_count != 0) {
         LOG(FATAL) << "Expected new config to have no servers in transition (PRE_VOTER or "
@@ -992,6 +992,7 @@ Status SysCatalogTable::ReadTablespaceInfoFromPgYbTablegroup(
 
 Status SysCatalogTable::ReadPgClassInfo(
     const uint32_t database_oid,
+    const bool is_colocated_database,
     TableToTablespaceIdMap* table_to_tablespace_map) {
 
   TRACE_EVENT0("master", "ReadPgClass");
@@ -1008,11 +1009,20 @@ Status SysCatalogTable::ReadPgClassInfo(
   const Schema& schema = *table_info->schema;
 
   Schema projection;
-  RETURN_NOT_OK(schema.CreateProjectionByNames({"oid", "reltablespace", "relkind"}, &projection,
-                schema.num_key_columns()));
+  std::vector<GStringPiece> col_names = {"oid", "reltablespace", "relkind"};
+
+  if (is_colocated_database) {
+    VLOG(5) << "Scanning pg_class for colocated database oid " << database_oid;
+    col_names.emplace_back("reloptions");
+  }
+
+  RETURN_NOT_OK(schema.CreateProjectionByNames(col_names,
+                                               &projection,
+                                               schema.num_key_columns()));
   const auto oid_col_id = VERIFY_RESULT(projection.ColumnIdByName("oid")).rep();
   const auto relkind_col_id = VERIFY_RESULT(projection.ColumnIdByName("relkind")).rep();
   const auto tablespace_col_id = VERIFY_RESULT(projection.ColumnIdByName("reltablespace")).rep();
+
   auto iter = VERIFY_RESULT(tablet->NewRowIterator(
     projection.CopyWithoutColumnIds(), {} /* read_hybrid_time */, pg_table_id));
   {
@@ -1061,6 +1071,36 @@ Status SysCatalogTable::ReadPgClassInfo(
     if (relkind != 'r' && relkind != 'i' && relkind != 'p' && relkind != 'I') {
       // This database object is not a table/index/partitioned table/partitioned index.
       // Skip this.
+      continue;
+    }
+
+    bool is_colocated_table = false;
+    if (is_colocated_database) {
+      // A table in a colocated database is colocated unless it opted out
+      // of colocation.
+      is_colocated_table = true;
+      const auto reloptions_col_id = VERIFY_RESULT(projection.ColumnIdByName("reloptions")).rep();
+      const auto& reloptions_col = row.GetValue(reloptions_col_id);
+      if (!reloptions_col) {
+        return STATUS(Corruption, "Could not read reloptions column from pg_class for oid " +
+            std::to_string(oid));
+      }
+      if (!reloptions_col->binary_value().empty()) {
+        vector<QLValuePB> reloptions;
+        RETURN_NOT_OK(yb::docdb::ExtractTextArrayFromQLBinaryValue(reloptions_col.value(),
+                                                                   &reloptions));
+        for (const auto& reloption : reloptions) {
+          if (reloption.string_value().compare("colocated=false") == 0) {
+            is_colocated_table = false;
+            break;
+          }
+        }
+      }
+    }
+
+    if (is_colocated_table) {
+      // This is a colocated table. This cannot have a tablespace associated with it.
+      VLOG(5) << "Table oid: " << oid << " skipped as it is colocated";
       continue;
     }
 
@@ -1212,7 +1252,7 @@ Status SysCatalogTable::CopyPgsqlTables(
   int batch_count = 0, total_count = 0, total_bytes = 0;
   const tablet::TabletPtr tablet = tablet_peer()->shared_tablet();
   const auto* meta = tablet->metadata();
-  for (int i = 0; i < source_table_ids.size(); ++i) {
+  for (size_t i = 0; i < source_table_ids.size(); ++i) {
     auto& source_table_id = source_table_ids[i];
     auto& target_table_id = target_table_ids[i];
 

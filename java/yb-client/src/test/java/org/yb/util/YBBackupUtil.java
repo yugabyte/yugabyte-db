@@ -14,6 +14,7 @@ package org.yb.util;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.io.File;
 import java.net.InetSocketAddress;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
@@ -51,8 +52,7 @@ public final class YBBackupUtil {
 
   public static void setTSAddresses(Map<HostAndPort, MiniYBDaemon> tserversMap) {
     String hostsAndPorts = "";
-    List<MiniYBDaemon> tservers = new ArrayList<>(tserversMap.values());
-    for (MiniYBDaemon tserver : tservers) {
+    for (MiniYBDaemon tserver : tserversMap.values()) {
       hostsAndPorts += (hostsAndPorts.isEmpty() ? "" : ",") + tserver.getWebHostAndPort();
     }
     setTSWebAddresses(hostsAndPorts);
@@ -147,25 +147,32 @@ public final class YBBackupUtil {
   }
 
   public static String getTempBackupDir() {
-    return TestUtils.getBaseTmpDir() + "/backup";
+    return TestUtils.getBaseTmpDir() + "/backup-" + new Random().nextInt(Integer.MAX_VALUE);
   }
 
-  public static void runYbBackupCreate(String... args) throws Exception {
-    List<String> processCommand = new ArrayList<String>(Arrays.asList(
-        "--backup_location", getTempBackupDir(),
-        "create"));
-    processCommand.addAll(Arrays.asList(args));
+  public static String runYbBackupCreate(String... args) throws Exception {
+    return runYbBackupCreate(Arrays.asList(args));
+  }
+
+  public static String runYbBackupCreate(List<String> args) throws Exception {
+    List<String> processCommand = new ArrayList<String>(Arrays.asList("create"));
+    processCommand.addAll(args);
     final String output = runYbBackup(processCommand);
     JSONObject json = new JSONObject(output);
     final String url = json.getString("snapshot_url");
     LOG.info("SUCCESS. Backup-create operation result - snapshot url: " + url);
+    return output;
   }
 
-  public static void runYbBackupRestore(String... args) throws Exception {
+  public static void runYbBackupRestore(String backupDir, String... args) throws Exception {
+    runYbBackupRestore(backupDir, Arrays.asList(args));
+  }
+
+  public static void runYbBackupRestore(String backupDir, List<String> args) throws Exception {
     List<String> processCommand = new ArrayList<String>(Arrays.asList(
-        "--backup_location", getTempBackupDir(),
+        "--backup_location", backupDir,
         "restore"));
-    processCommand.addAll(Arrays.asList(args));
+    processCommand.addAll(args);
     final String output = runYbBackup(processCommand);
     JSONObject json = new JSONObject(output);
     final boolean resultOk = json.getBoolean("success");
@@ -186,7 +193,6 @@ public final class YBBackupUtil {
     processCommand.addAll(Arrays.asList(args));
     final String output = runProcess(processCommand, defaultYbBackupTimeoutInSeconds);
     LOG.info("yb-admin output: " + output);
-
     return output;
   }
 
@@ -198,6 +204,5 @@ public final class YBBackupUtil {
                  .filter(line -> !line.startsWith("Tablet-UUID"))
                  .map(line -> line.split(" ")[0])
                  .collect(Collectors.toList());
-
   }
 }

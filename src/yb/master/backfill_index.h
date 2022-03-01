@@ -152,7 +152,7 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
 
   const TableId& indexed_table_id() const { return indexed_table_->id(); }
 
-  Status UpdateRowsProcessedForIndexTable(const int number_rows_processed);
+  Status UpdateRowsProcessedForIndexTable(const uint64_t number_rows_processed);
 
  private:
   void LaunchComputeSafeTimeForRead();
@@ -260,7 +260,7 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
   void Done(
       const Status& status,
       const boost::optional<string>& backfilled_until,
-      const int number_rows_processed,
+      const uint64_t number_rows_processed,
       const std::unordered_set<TableId>& failed_indexes);
 
   Master* master() { return backfill_table_->master(); }
@@ -293,7 +293,7 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
 
  private:
   CHECKED_STATUS UpdateBackfilledUntil(
-      const string& backfilled_until, const int number_rows_processed);
+      const string& backfilled_until, const uint64_t number_rows_processed);
 
   std::shared_ptr<BackfillTable> backfill_table_;
   const scoped_refptr<TabletInfo> tablet_;

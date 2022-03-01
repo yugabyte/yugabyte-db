@@ -35,30 +35,30 @@ cmake_minimum_required(VERSION 3.7.0)
 
 project(YugabyteDB)
 
+if("$CACHE{YB_PCH_ON}" STREQUAL "")
+  if("$ENV{YB_USE_PCH}" STREQUAL "1")
+    set(YB_USE_PCH ON)
+  else()
+    set(YB_USE_PCH OFF)
+  endif()
+  set(YB_PCH_ON ${YB_USE_PCH} CACHE BOOL "Whether to use precompiled headers")
+endif()
+
 message("-- CMAKE_SYSTEM_INFO_FILE: ${CMAKE_SYSTEM_INFO_FILE}")
 message("-- CMAKE_SYSTEM_NAME:      ${CMAKE_SYSTEM_NAME}")
 message("-- CMAKE_SYSTEM_PROCESSOR: ${CMAKE_SYSTEM_PROCESSOR}")
 message("-- CMAKE_SYSTEM:           ${CMAKE_SYSTEM}")
 message("-- CMAKE_VERSION:          ${CMAKE_VERSION}")
+message("-- PRECOMPILED HEADERS:    ${YB_PCH_ON}")
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake_modules")
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake_standard_modules")
-set(YB_PCH_ON FALSE)
-set(YB_PCH_CODEGEN FALSE)
-if("$ENV{YB_USE_PCH}" STREQUAL "1")
-  set(YB_PCH_ON TRUE)
-  if (APPLE)
-    set(CMAKE_CXX_COMPILE_OPTIONS_INSTANTIATE_TEMPLATES_PCH -fpch-instantiate-templates)
-    list(APPEND CMAKE_CXX_COMPILE_OPTIONS_CREATE_PCH -fpch-codegen -fpch-debuginfo)
-    set(YB_PCH_CODEGEN TRUE)
-  endif()
-endif()
 include(YugabyteFunctions)
 yb_initialize_constants()
 include(YugabyteTesting)
 
 ADD_CXX_FLAGS("-Werror")
-ADD_CXX_FLAGS("-fno-strict-aliasing -Wall -Wno-sign-compare -Wno-deprecated")
+ADD_CXX_FLAGS("-fno-strict-aliasing -Wall")
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
   # Certain platforms such as ARM do not use signed chars by default
   # which causes issues with certain bounds checks.
@@ -69,6 +69,11 @@ elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
   ADD_CXX_FLAGS("-msse4.2")
 else()
   message(FATAL_ERROR "Unsupported CPU architecture: ${CMAKE_SYSTEM_PROCESSOR}")
+endif()
+
+if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
+  # Optimize for Graviton on Linux/aarch64 (not mac/arm64)
+  ADD_CXX_FLAGS("-march=armv8.2-a+fp16+rcpc+dotprod+crypto")
 endif()
 
 if (NOT "$ENV{YB_TARGET_ARCH}" STREQUAL "" AND
@@ -96,17 +101,31 @@ set(YB_ALL_DEPS "" CACHE INTERNAL "All dependencies" FORCE)
 # This is used to let the add_executable wrapper know if we're adding a test.
 set(YB_ADDING_TEST_EXECUTABLE "FALSE" CACHE INTERNAL "" FORCE)
 
-if ("$ENV{YB_DO_NOT_BUILD_TESTS}" STREQUAL "1")
-  message("Skipping building tests (YB_DO_NOT_BUILD_TESTS environment variable is set to 1)")
-  set(BUILD_TESTS OFF)
-else()
+if(NOT "$ENV{YB_DO_NOT_BUILD_TESTS}" STREQUAL "")
+  if("$ENV{YB_DO_NOT_BUILD_TESTS}" STREQUAL "1")
+    message("YB_DO_NOT_BUILD_TESTS is set to 1, will not build tests")
+    set(BUILD_TESTS OFF)
+  elseif("$ENV{YB_DO_NOT_BUILD_TESTS}" STREQUAL "0")
+    message("YB_DO_NOT_BUILD_TESTS is set to 0, will build tests")
+    set(BUILD_TESTS ON)
+  else()
+    message(FATAL_ERROR
+            "Invalid value of the YB_DO_NOT_BUILD_TESTS environment variable, expected 0 or 1 but "
+            "got '$ENV{YB_DO_NOT_BUILD_TESTS}'.")
+  endif()
+  set(BUILD_TESTS ${BUILD_TESTS} CACHE BOOL "Whether to build tests")
+elseif("$CACHE{BUILD_TESTS}" STREQUAL "")
   set(BUILD_TESTS ON)
+  message("Will build tests by default")
+else()
+  message("BUILD_TESTS from cache: ${BUILD_TESTS} (set YB_DO_NOT_BUILD_TESTS to 0 or 1 to change)")
 endif()
 
 parse_build_root_basename()
 if("${YB_BUILD_TYPE}" STREQUAL "")
   message(FATAL_ERROR "YB_BUILD_TYPE still not set after parse_build_root_basename")
 endif()
+
 message("YB_BUILD_TYPE: ${YB_BUILD_TYPE}")
 message("CMAKE_MAKE_PROGRAM: ${CMAKE_MAKE_PROGRAM}")
 
@@ -238,6 +257,7 @@ elseif (IS_GCC)
 else()
   message(FATAL_ERROR "Unknown compiler family: '${COMPILER_FAMILY}'.")
 endif()
+
 message("THIRDPARTY_INSTRUMENTATION_TYPE=${THIRDPARTY_INSTRUMENTATION_TYPE}")
 
 # Make sure third-party dependency is up-to-date.
@@ -295,6 +315,7 @@ endif()
 
 VALIDATE_COMPILER_TYPE()
 DETECT_BREW()
+enable_lto_if_needed()
 
 message("Using COMPILER_FAMILY=${COMPILER_FAMILY}")
 
@@ -372,7 +393,7 @@ if(IS_CLANG)
     message("YB_ENABLE_STATIC_ANALYZER is not set to 1, not enabling Clang static analyzer")
   endif()
 
-  # The actual static analysis is turned on using the --analyze flag.
+  ADD_CXX_FLAGS("-Wshorten-64-to-32")
 endif()
 
 if(USING_LINUXBREW AND IS_CLANG)

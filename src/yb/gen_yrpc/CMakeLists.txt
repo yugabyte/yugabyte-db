@@ -12,6 +12,7 @@
 #
 
 set(YB_PCH_PREFIX gen_yrpc)
+set(YB_PCH_DEP_LIBS gutil yb_util)
 
 ### RPC generator tool
 add_executable(protoc-gen-yrpc

@@ -10,16 +10,16 @@
 
 package com.yugabyte.yw.common;
 
-import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.DetachedNodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.INodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
@@ -34,6 +34,8 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateMountedDisks;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
@@ -43,7 +45,7 @@ import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.CertificateInfo;
-import com.yugabyte.yw.models.CertificateInfo.Type;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
@@ -53,8 +55,10 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -62,14 +66,18 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
+import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 
 import org.apache.commons.collections.MapUtils;
-import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang.StringUtils;
 import org.apache.commons.validator.routines.InetAddressValidator;
+import org.bouncycastle.asn1.x509.GeneralName;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -78,6 +86,9 @@ import play.libs.Json;
 @Slf4j
 public class NodeManager extends DevopsBase {
   static final String BOOT_SCRIPT_PATH = "yb.universe_boot_script";
+  static final String BOOT_SCRIPT_TOKEN = "39666ab2-6633-4806-9685-5134321bd0d1";
+  static final String BOOT_SCRIPT_COMPLETE =
+      "\r\nsync\r\necho " + BOOT_SCRIPT_TOKEN + " >/etc/yb-boot-script-complete\r\n";
   private static final String YB_CLOUD_COMMAND_TYPE = "instance";
   public static final String CERT_LOCATION_NODE = "node";
   public static final String CERT_LOCATION_PLATFORM = "platform";
@@ -110,6 +121,7 @@ public class NodeManager extends DevopsBase {
     Tags,
     InitYSQL,
     Disk_Update,
+    Update_Mounted_Disks,
     Change_Instance_Type,
     Pause,
     Resume,
@@ -319,20 +331,33 @@ public class NodeManager extends DevopsBase {
     return null;
   }
 
+  /**
+   * Creates certificates if not present. Called from various places like - when node is added to
+   * universe
+   *
+   * @param config
+   * @param userIntent
+   * @param taskParam
+   * @param nodeIP
+   * @param ybHomeDir
+   * @return
+   */
   private List<String> getCertificatePaths(
       Config config,
       UserIntent userIntent,
       AnsibleConfigureServers.Params taskParam,
       String nodeIP,
-      String ybHomeDir) {
+      String ybHomeDir,
+      Map<String, Integer> subjectAltName) {
     return getCertificatePaths(
         config,
         userIntent,
         taskParam,
-        CertificateHelper.isRootCARequired(taskParam),
-        CertificateHelper.isClientRootCARequired(taskParam),
+        EncryptionInTransitUtil.isRootCARequired(taskParam),
+        EncryptionInTransitUtil.isClientRootCARequired(taskParam),
         nodeIP,
-        ybHomeDir);
+        ybHomeDir,
+        subjectAltName);
   }
 
   // Return the List of Strings which gives the certificate paths for the specific taskParams
@@ -342,12 +367,13 @@ public class NodeManager extends DevopsBase {
       AnsibleConfigureServers.Params taskParam,
       boolean isRootCARequired,
       boolean isClientRootCARequired,
-      String nodeIP,
-      String ybHomeDir) {
+      String commonName,
+      String ybHomeDir,
+      Map<String, Integer> subjectAltName) {
     List<String> subcommandStrings = new ArrayList<>();
 
-    String serverCertFile = String.format("node.%s.crt", nodeIP);
-    String serverKeyFile = String.format("node.%s.key", nodeIP);
+    String serverCertFile = String.format("node.%s.crt", commonName);
+    String serverKeyFile = String.format("node.%s.key", commonName);
 
     if (isRootCARequired) {
       subcommandStrings.add("--certs_node_dir");
@@ -362,30 +388,35 @@ public class NodeManager extends DevopsBase {
 
       switch (rootCert.certType) {
         case SelfSigned:
+        case HashicorpVault:
           {
             try {
               // Creating a temp directory to save Server Cert and Key from Root for the node
-              Path tempStorageDirectory =
-                  Files.createTempDirectory(String.format("SelfSigned%s", taskParam.rootCA))
-                      .toAbsolutePath();
+              Path tempStorageDirectory;
+              if (rootCert.certType == CertConfigType.SelfSigned) {
+                tempStorageDirectory =
+                    Files.createTempDirectory(String.format("SelfSigned%s", taskParam.rootCA))
+                        .toAbsolutePath();
+              } else {
+                tempStorageDirectory =
+                    Files.createTempDirectory(String.format("Hashicorp%s", taskParam.rootCA))
+                        .toAbsolutePath();
+              }
               CertificateHelper.createServerCertificate(
                   taskParam.rootCA,
                   tempStorageDirectory.toString(),
-                  nodeIP,
+                  commonName,
                   null,
                   null,
                   serverCertFile,
-                  serverKeyFile);
+                  serverKeyFile,
+                  subjectAltName);
               rootCertPath = rootCert.certificate;
               serverCertPath = String.format("%s/%s", tempStorageDirectory, serverCertFile);
               serverKeyPath = String.format("%s/%s", tempStorageDirectory, serverKeyFile);
               certsLocation = CERT_LOCATION_PLATFORM;
 
-              if (taskParam.rootAndClientRootCASame && taskParam.enableClientToNodeEncrypt) {
-                // These client certs are used for node to postgres communication
-                // These are separate from clientRoot certs which are used for server to client
-                // communication These are not required anymore as this is not mandatory now and
-                // can be removed. The code is still here to maintain backward compatibility
+              if (taskParam.enableClientToNodeEncrypt && taskParam.rootAndClientRootCASame) {
                 subcommandStrings.add("--client_cert_path");
                 subcommandStrings.add(CertificateHelper.getClientCertFile(taskParam.rootCA));
                 subcommandStrings.add("--client_key_path");
@@ -399,7 +430,7 @@ public class NodeManager extends DevopsBase {
           }
         case CustomCertHostPath:
           {
-            CertificateParams.CustomCertInfo customCertInfo = rootCert.getCustomCertInfo();
+            CertificateParams.CustomCertInfo customCertInfo = rootCert.getCustomCertPathParams();
             rootCertPath = customCertInfo.rootCertPath;
             serverCertPath = customCertInfo.nodeCertPath;
             serverKeyPath = customCertInfo.nodeKeyPath;
@@ -456,25 +487,41 @@ public class NodeManager extends DevopsBase {
 
       switch (clientRootCert.certType) {
         case SelfSigned:
+        case HashicorpVault:
           {
             try {
               // Creating a temp directory to save Server Cert and Key from Root for the node
-              Path tempStorageDirectory =
-                  Files.createTempDirectory(
-                          String.format("SelfSignedClient%s", taskParam.clientRootCA))
-                      .toAbsolutePath();
+              Path tempStorageDirectory;
+              if (clientRootCert.certType == CertConfigType.SelfSigned) {
+                tempStorageDirectory =
+                    Files.createTempDirectory(String.format("SelfSigned%s", taskParam.rootCA))
+                        .toAbsolutePath();
+              } else {
+                tempStorageDirectory =
+                    Files.createTempDirectory(String.format("Hashicorp%s", taskParam.rootCA))
+                        .toAbsolutePath();
+              }
               CertificateHelper.createServerCertificate(
                   taskParam.clientRootCA,
                   tempStorageDirectory.toString(),
-                  nodeIP,
+                  commonName,
                   null,
                   null,
                   serverCertFile,
-                  serverKeyFile);
+                  serverKeyFile,
+                  subjectAltName);
               rootCertPath = clientRootCert.certificate;
               serverCertPath = String.format("%s/%s", tempStorageDirectory, serverCertFile);
               serverKeyPath = String.format("%s/%s", tempStorageDirectory, serverKeyFile);
               certsLocation = CERT_LOCATION_PLATFORM;
+
+              if (taskParam.enableClientToNodeEncrypt && taskParam.rootAndClientRootCASame) {
+                subcommandStrings.add("--client_cert_path");
+                subcommandStrings.add(CertificateHelper.getClientCertFile(taskParam.rootCA));
+                subcommandStrings.add("--client_key_path");
+                subcommandStrings.add(CertificateHelper.getClientKeyFile(taskParam.rootCA));
+              }
+
             } catch (IOException e) {
               LOG.error(e.getMessage(), e);
               throw new RuntimeException(e);
@@ -483,7 +530,8 @@ public class NodeManager extends DevopsBase {
           }
         case CustomCertHostPath:
           {
-            CertificateParams.CustomCertInfo customCertInfo = clientRootCert.getCustomCertInfo();
+            CertificateParams.CustomCertInfo customCertInfo =
+                clientRootCert.getCustomCertPathParams();
             rootCertPath = customCertInfo.rootCertPath;
             serverCertPath = customCertInfo.nodeCertPath;
             serverKeyPath = customCertInfo.nodeKeyPath;
@@ -565,22 +613,22 @@ public class NodeManager extends DevopsBase {
     if (taskParam.enableClientToNodeEncrypt || taskParam.enableNodeToNodeEncrypt) {
       gflags.put("cert_node_filename", node.cloudInfo.private_ip);
     }
-    if (CertificateHelper.isRootCARequired(taskParam)) {
+    if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
       gflags.put("certs_dir", certsDir);
     }
-    if (CertificateHelper.isClientRootCARequired(taskParam)) {
+    if (EncryptionInTransitUtil.isClientRootCARequired(taskParam)) {
       gflags.put("certs_for_client_dir", certsForClientDir);
     }
     return gflags;
   }
 
   private Map<String, String> getYSQLGFlags(
-      AnsibleConfigureServers.Params taskParam, Boolean useHostname) {
+      AnsibleConfigureServers.Params taskParam, Boolean useHostname, Boolean useSecondaryIp) {
     Map<String, String> gflags = new HashMap<>();
     Universe universe = Universe.getOrBadRequest(taskParam.universeUUID);
     NodeDetails node = universe.getNode(taskParam.nodeName);
     String pgsqlProxyBindAddress = node.cloudInfo.private_ip;
-    if (useHostname) {
+    if (useHostname || useSecondaryIp) {
       pgsqlProxyBindAddress = "0.0.0.0";
     }
 
@@ -589,6 +637,9 @@ public class NodeManager extends DevopsBase {
       gflags.put(
           "pgsql_proxy_bind_address",
           String.format("%s:%s", pgsqlProxyBindAddress, node.ysqlServerRpcPort));
+      gflags.put(
+          "pgsql_proxy_webserver_port",
+          Integer.toString(taskParam.communicationPorts.ysqlServerHttpPort));
       if (taskParam.enableYSQLAuth) {
         gflags.put("ysql_enable_auth", "true");
         gflags.put("ysql_hba_conf_csv", "local all yugabyte trust");
@@ -602,12 +653,12 @@ public class NodeManager extends DevopsBase {
   }
 
   private Map<String, String> getYCQLGFlags(
-      AnsibleConfigureServers.Params taskParam, Boolean useHostname) {
+      AnsibleConfigureServers.Params taskParam, Boolean useHostname, Boolean useSecondaryIp) {
     Map<String, String> gflags = new HashMap<>();
     Universe universe = Universe.getOrBadRequest(taskParam.universeUUID);
     NodeDetails node = universe.getNode(taskParam.nodeName);
     String cqlProxyBindAddress = node.cloudInfo.private_ip;
-    if (useHostname) {
+    if (useHostname || useSecondaryIp) {
       cqlProxyBindAddress = "0.0.0.0";
     }
 
@@ -616,6 +667,9 @@ public class NodeManager extends DevopsBase {
       gflags.put(
           "cql_proxy_bind_address",
           String.format("%s:%s", cqlProxyBindAddress, node.yqlServerRpcPort));
+      gflags.put(
+          "cql_proxy_webserver_port",
+          Integer.toString(taskParam.communicationPorts.yqlServerHttpPort));
       if (taskParam.enableYCQLAuth) {
         gflags.put("use_cassandra_authentication", "true");
       } else {
@@ -628,11 +682,11 @@ public class NodeManager extends DevopsBase {
   }
 
   private Map<String, String> getMasterDefaultGFlags(
-      AnsibleConfigureServers.Params taskParam, Boolean useHostname) {
+      AnsibleConfigureServers.Params taskParam, Boolean useHostname, Boolean useSecondaryIp) {
     Map<String, String> gflags = new HashMap<>();
     Universe universe = Universe.getOrBadRequest(taskParam.universeUUID);
     NodeDetails node = universe.getNode(taskParam.nodeName);
-    String masterAddresses = universe.getMasterAddresses(false);
+    String masterAddresses = universe.getMasterAddresses(false, useSecondaryIp);
     String private_ip = node.cloudInfo.private_ip;
 
     if (useHostname) {
@@ -642,6 +696,7 @@ public class NodeManager extends DevopsBase {
     } else {
       gflags.put("server_broadcast_addresses", "");
     }
+
     if (!taskParam.isMasterInShellMode) {
       gflags.put("master_addresses", masterAddresses);
     } else {
@@ -651,6 +706,16 @@ public class NodeManager extends DevopsBase {
     gflags.put(
         "rpc_bind_addresses",
         String.format("%s:%s", private_ip, Integer.toString(node.masterRpcPort)));
+
+    if (useSecondaryIp) {
+      String bindAddressPrimary =
+          String.format("%s:%s", node.cloudInfo.private_ip, node.masterRpcPort);
+      String bindAddressSecondary =
+          String.format("%s:%s", node.cloudInfo.secondary_private_ip, node.masterRpcPort);
+      String bindAddresses = bindAddressSecondary + "," + bindAddressPrimary;
+      gflags.put("rpc_bind_addresses", bindAddresses);
+    }
+
     gflags.put("webserver_port", Integer.toString(node.masterHttpPort));
     gflags.put("webserver_interface", private_ip);
 
@@ -658,11 +723,14 @@ public class NodeManager extends DevopsBase {
   }
 
   private Map<String, String> getTServerDefaultGflags(
-      AnsibleConfigureServers.Params taskParam, Boolean useHostname) {
+      AnsibleConfigureServers.Params taskParam,
+      Boolean useHostname,
+      Boolean useSecondaryIp,
+      Boolean isDualNet) {
     Map<String, String> gflags = new HashMap<>();
     Universe universe = Universe.getOrBadRequest(taskParam.universeUUID);
     NodeDetails node = universe.getNode(taskParam.nodeName);
-    String masterAddresses = universe.getMasterAddresses(false);
+    String masterAddresses = universe.getMasterAddresses(false, useSecondaryIp);
     String private_ip = node.cloudInfo.private_ip;
     UserIntent userIntent = getUserIntentFromParams(taskParam);
 
@@ -673,36 +741,36 @@ public class NodeManager extends DevopsBase {
     } else {
       gflags.put("server_broadcast_addresses", "");
     }
-
     gflags.put(
         "rpc_bind_addresses",
         String.format("%s:%s", private_ip, Integer.toString(node.tserverRpcPort)));
     gflags.put("tserver_master_addrs", masterAddresses);
+
+    if (useSecondaryIp) {
+      String bindAddressPrimary =
+          String.format("%s:%s", node.cloudInfo.private_ip, node.tserverRpcPort);
+      String bindAddressSecondary =
+          String.format("%s:%s", node.cloudInfo.secondary_private_ip, node.tserverRpcPort);
+      String bindAddresses = bindAddressSecondary + "," + bindAddressPrimary;
+      gflags.put("rpc_bind_addresses", bindAddresses);
+    } else if (isDualNet) {
+      // We want the broadcast address to be secondary so that
+      // it gets populated correctly for the client discovery tables.
+      gflags.put("server_broadcast_addresses", node.cloudInfo.secondary_private_ip);
+      gflags.put("use_private_ip", "cloud");
+    }
+
     gflags.put("webserver_port", Integer.toString(node.tserverHttpPort));
     gflags.put("webserver_interface", private_ip);
     gflags.put(
-        "cql_proxy_bind_address",
-        String.format("%s:%s", private_ip, Integer.toString(node.yqlServerRpcPort)));
-    gflags.put(
         "redis_proxy_bind_address",
         String.format("%s:%s", private_ip, Integer.toString(node.redisServerRpcPort)));
-
     if (userIntent.enableYEDIS) {
       gflags.put(
           "redis_proxy_webserver_port",
           Integer.toString(taskParam.communicationPorts.redisServerHttpPort));
     } else {
       gflags.put("start_redis_proxy", "false");
-    }
-    if (userIntent.enableYCQL) {
-      gflags.put(
-          "cql_proxy_webserver_port",
-          Integer.toString(taskParam.communicationPorts.yqlServerHttpPort));
-    }
-    if (userIntent.enableYSQL) {
-      gflags.put(
-          "pgsql_proxy_webserver_port",
-          Integer.toString(taskParam.communicationPorts.ysqlServerHttpPort));
     }
     if (runtimeConfigFactory.forUniverse(universe).getInt(POSTGRES_MAX_MEM_MB) > 0) {
       gflags.put("postmaster_cgroup", YSQL_CGROUP_PATH);
@@ -712,7 +780,7 @@ public class NodeManager extends DevopsBase {
 
   /** Return the map of default gflags which will be passed as extra gflags to the db nodes. */
   private Map<String, String> getAllDefaultGFlags(
-      AnsibleConfigureServers.Params taskParam, Boolean useHostname) {
+      AnsibleConfigureServers.Params taskParam, Boolean useHostname, Config config) {
     Map<String, String> extra_gflags = new HashMap<>();
     extra_gflags.put("placement_cloud", taskParam.getProvider().code);
     extra_gflags.put("placement_region", taskParam.getRegion().code);
@@ -729,13 +797,27 @@ public class NodeManager extends DevopsBase {
       throw new RuntimeException("mountpoints and numVolumes are missing from taskParam");
     }
 
+    Universe universe = Universe.getOrBadRequest(taskParam.universeUUID);
+    NodeDetails node = universe.getNode(taskParam.nodeName);
+    boolean useSecondaryIp = false;
+    boolean legacyNet =
+        universe.getConfig().getOrDefault(Universe.DUAL_NET_LEGACY, "true").equals("true");
+    boolean isDualNet =
+        config.getBoolean("yb.cloud.enabled")
+            && node.cloudInfo.secondary_private_ip != null
+            && !node.cloudInfo.secondary_private_ip.equals("null");
+    if (isDualNet && !legacyNet) {
+      useSecondaryIp = true;
+    }
+
     String processType = taskParam.getProperty("processType");
     if (processType == null) {
       extra_gflags.put("master_addresses", "");
-    } else if (processType == ServerType.TSERVER.name()) {
-      extra_gflags.putAll(getTServerDefaultGflags(taskParam, useHostname));
+    } else if (processType.equals(ServerType.TSERVER.name())) {
+      extra_gflags.putAll(
+          getTServerDefaultGflags(taskParam, useHostname, useSecondaryIp, isDualNet));
     } else {
-      extra_gflags.putAll(getMasterDefaultGFlags(taskParam, useHostname));
+      extra_gflags.putAll(getMasterDefaultGFlags(taskParam, useHostname, useSecondaryIp));
     }
 
     UserIntent userIntent = getUserIntentFromParams(taskParam);
@@ -744,7 +826,6 @@ public class NodeManager extends DevopsBase {
       extra_gflags.put("replication_factor", String.valueOf(userIntent.replicationFactor));
     }
 
-    Universe universe = Universe.getOrBadRequest(taskParam.universeUUID);
     if (taskParam.getCurrentClusterType() == UniverseDefinitionTaskParams.ClusterType.PRIMARY
         && taskParam.setTxnTableWaitCountFlag) {
       extra_gflags.put(
@@ -760,8 +841,8 @@ public class NodeManager extends DevopsBase {
       }
     }
 
-    extra_gflags.putAll(getYSQLGFlags(taskParam, useHostname));
-    extra_gflags.putAll(getYCQLGFlags(taskParam, useHostname));
+    extra_gflags.putAll(getYSQLGFlags(taskParam, useHostname, useSecondaryIp));
+    extra_gflags.putAll(getYCQLGFlags(taskParam, useHostname, useSecondaryIp));
     extra_gflags.putAll(getCertsAndTlsGFlags(taskParam));
     return extra_gflags;
   }
@@ -828,9 +909,26 @@ public class NodeManager extends DevopsBase {
     subcommand.add("--redis_proxy_rpc_port");
     subcommand.add(Integer.toString(node.redisServerRpcPort));
 
+    // Custom cluster creation flow with prebuilt AMI
+    if (userIntent.providerType.equals(Common.CloudType.aws)
+        && taskParam.getRegion().ybPrebuiltAmi) {
+      subcommand.add("--skip_tags");
+      subcommand.add("yb-prebuilt-ami");
+    }
+
     boolean useHostname =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.useHostname
             || !isIpAddress(node.cloudInfo.private_ip);
+
+    Map<String, Integer> alternateNames = new HashMap<>();
+    String commonName = node.cloudInfo.private_ip;
+    alternateNames.put(
+        node.cloudInfo.private_ip, useHostname ? GeneralName.dNSName : GeneralName.iPAddress);
+    if (node.cloudInfo.secondary_private_ip != null
+        && !node.cloudInfo.secondary_private_ip.equals("null")) {
+      commonName = node.cloudInfo.secondary_private_ip;
+      alternateNames.put(node.cloudInfo.secondary_private_ip, GeneralName.iPAddress);
+    }
 
     switch (taskParam.type) {
       case Everything:
@@ -846,8 +944,9 @@ public class NodeManager extends DevopsBase {
                   config,
                   userIntent,
                   taskParam,
-                  node.cloudInfo.private_ip,
-                  taskParam.getProvider().getYbHome()));
+                  commonName,
+                  taskParam.getProvider().getYbHome(),
+                  alternateNames));
         }
         break;
       case Software:
@@ -887,15 +986,18 @@ public class NodeManager extends DevopsBase {
             subcommand.add(processType.toLowerCase());
           }
 
+          // TODO: PLAT-2782: certificates are generated 3 times for each node.
           if ((taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt)) {
             subcommand.addAll(
                 getCertificatePaths(
                     runtimeConfigFactory.forUniverse(universe),
                     userIntent,
                     taskParam,
-                    node.cloudInfo.private_ip,
-                    taskParam.getProvider().getYbHome()));
+                    commonName,
+                    taskParam.getProvider().getYbHome(),
+                    alternateNames));
           }
+
           Map<String, String> gflags = new HashMap<>(taskParam.gflags);
           subcommand.add("--gflags");
           subcommand.add(Json.stringify(Json.toJson(gflags)));
@@ -924,7 +1026,6 @@ public class NodeManager extends DevopsBase {
                           universe.getUniverseDetails().getPrimaryCluster().userIntent.provider))
                   .getYbHome();
           String certsNodeDir = getCertsNodeDir(ybHomeDir);
-          String certsForClientDir = getCertsForClientDir(ybHomeDir);
 
           subcommand.add("--cert_rotate_action");
           subcommand.add(taskParam.certRotateAction.toString());
@@ -946,19 +1047,22 @@ public class NodeManager extends DevopsBase {
                 if (rootCert == null) {
                   throw new RuntimeException("Certificate is null: " + taskParam.rootCA);
                 }
-                if (rootCert.certType == Type.CustomServerCert) {
+                if (rootCert.certType == CertConfigType.CustomServerCert) {
                   throw new RuntimeException(
                       "Root certificate cannot be of type CustomServerCert.");
                 }
 
                 String rootCertPath = "";
                 String certsLocation = "";
-                if (rootCert.certType == Type.SelfSigned) {
+                if (rootCert.certType == CertConfigType.SelfSigned) {
                   rootCertPath = rootCert.certificate;
                   certsLocation = CERT_LOCATION_PLATFORM;
-                } else if (rootCert.certType == Type.CustomCertHostPath) {
-                  rootCertPath = rootCert.getCustomCertInfo().rootCertPath;
+                } else if (rootCert.certType == CertConfigType.CustomCertHostPath) {
+                  rootCertPath = rootCert.getCustomCertPathParams().rootCertPath;
                   certsLocation = CERT_LOCATION_NODE;
+                } else if (rootCert.certType == CertConfigType.HashicorpVault) {
+                  rootCertPath = rootCert.certificate;
+                  certsLocation = CERT_LOCATION_PLATFORM;
                 }
 
                 subcommand.add("--root_cert_path");
@@ -978,8 +1082,9 @@ public class NodeManager extends DevopsBase {
                         taskParam,
                         taskParam.rootCARotationType != CertRotationType.None,
                         taskParam.clientRootCARotationType != CertRotationType.None,
-                        node.cloudInfo.private_ip,
-                        ybHomeDir));
+                        commonName,
+                        ybHomeDir,
+                        alternateNames));
               }
               break;
             case UPDATE_CERT_DIRS:
@@ -1024,7 +1129,7 @@ public class NodeManager extends DevopsBase {
             }
             subcommand.addAll(
                 getCertificatePaths(
-                    config, userIntent, taskParam, node.cloudInfo.private_ip, ybHomeDir));
+                    config, userIntent, taskParam, commonName, ybHomeDir, alternateNames));
 
           } else if (UpgradeTaskParams.UpgradeTaskSubType.Round1GFlagsUpdate.name()
               .equals(subType)) {
@@ -1033,10 +1138,10 @@ public class NodeManager extends DevopsBase {
               gflags.put("use_node_to_node_encryption", nodeToNodeString);
               gflags.put("use_client_to_server_encryption", clientToNodeString);
               gflags.put("allow_insecure_connections", "true");
-              if (CertificateHelper.isRootCARequired(taskParam)) {
+              if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
                 gflags.put("certs_dir", certsDir);
               }
-              if (CertificateHelper.isClientRootCARequired(taskParam)) {
+              if (EncryptionInTransitUtil.isClientRootCARequired(taskParam)) {
                 gflags.put("certs_for_client_dir", certsForClientDir);
               }
             } else if (taskParam.nodeToNodeChange < 0) {
@@ -1045,10 +1150,10 @@ public class NodeManager extends DevopsBase {
               gflags.put("use_node_to_node_encryption", nodeToNodeString);
               gflags.put("use_client_to_server_encryption", clientToNodeString);
               gflags.put("allow_insecure_connections", allowInsecureString);
-              if (CertificateHelper.isRootCARequired(taskParam)) {
+              if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
                 gflags.put("certs_dir", certsDir);
               }
-              if (CertificateHelper.isClientRootCARequired(taskParam)) {
+              if (EncryptionInTransitUtil.isClientRootCARequired(taskParam)) {
                 gflags.put("certs_for_client_dir", certsForClientDir);
               }
             }
@@ -1068,10 +1173,10 @@ public class NodeManager extends DevopsBase {
               gflags.put("use_node_to_node_encryption", nodeToNodeString);
               gflags.put("use_client_to_server_encryption", clientToNodeString);
               gflags.put("allow_insecure_connections", allowInsecureString);
-              if (CertificateHelper.isRootCARequired(taskParam)) {
+              if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
                 gflags.put("certs_dir", certsDir);
               }
-              if (CertificateHelper.isClientRootCARequired(taskParam)) {
+              if (EncryptionInTransitUtil.isClientRootCARequired(taskParam)) {
                 gflags.put("certs_for_client_dir", certsForClientDir);
               }
             } else {
@@ -1094,7 +1199,8 @@ public class NodeManager extends DevopsBase {
     // User set flags are added to gflags, so if user specifies any of the gflags set here, they
     // will take precedence over our base set.
     subcommand.add("--extra_gflags");
-    subcommand.add(Json.stringify(Json.toJson(getAllDefaultGFlags(taskParam, useHostname))));
+    subcommand.add(
+        Json.stringify(Json.toJson(getAllDefaultGFlags(taskParam, useHostname, config))));
     return subcommand;
   }
 
@@ -1113,6 +1219,15 @@ public class NodeManager extends DevopsBase {
   @VisibleForTesting
   static SkipCertValidationType getSkipCertValidationType(
       Config config, UserIntent userIntent, AnsibleConfigureServers.Params taskParam) {
+    return getSkipCertValidationType(
+        config, userIntent, taskParam.gflags, taskParam.gflagsToRemove);
+  }
+
+  private static SkipCertValidationType getSkipCertValidationType(
+      Config config,
+      UserIntent userIntent,
+      Map<String, String> gflagsToAdd,
+      Set<String> gflagsToRemove) {
     String configValue = config.getString(SKIP_CERT_VALIDATION);
     if (!configValue.isEmpty()) {
       try {
@@ -1121,13 +1236,13 @@ public class NodeManager extends DevopsBase {
         log.error("Incorrect config value {} for {} ", configValue, SKIP_CERT_VALIDATION);
       }
     }
-    if (taskParam.gflagsToRemove.contains(VERIFY_SERVER_ENDPOINT_GFLAG)) {
+    if (gflagsToRemove.contains(VERIFY_SERVER_ENDPOINT_GFLAG)) {
       return SkipCertValidationType.NONE;
     }
 
     boolean skipHostValidation;
-    if (taskParam.gflags.containsKey(VERIFY_SERVER_ENDPOINT_GFLAG)) {
-      skipHostValidation = shouldSkipServerEndpointVerification(taskParam.gflags);
+    if (gflagsToAdd.containsKey(VERIFY_SERVER_ENDPOINT_GFLAG)) {
+      skipHostValidation = shouldSkipServerEndpointVerification(gflagsToAdd);
     } else {
       skipHostValidation =
           shouldSkipServerEndpointVerification(userIntent.masterGFlags)
@@ -1204,6 +1319,41 @@ public class NodeManager extends DevopsBase {
         Collections.emptyMap());
   }
 
+  private Path addBootscript(
+      Config config, List<String> commandArgs, NodeTaskParams nodeTaskParam) {
+    Path bootScriptFile = null;
+    String bootScript = config.getString(BOOT_SCRIPT_PATH);
+    commandArgs.add("--boot_script");
+
+    // treat the contents as script body if it starts with a shebang line
+    // otherwise consider the contents to be a path
+    if (bootScript.startsWith("#!")) {
+      try {
+        bootScriptFile = Files.createTempFile(nodeTaskParam.nodeName, "-boot.sh");
+        Files.write(bootScriptFile, bootScript.getBytes());
+        Files.write(bootScriptFile, BOOT_SCRIPT_COMPLETE.getBytes(), StandardOpenOption.APPEND);
+
+      } catch (IOException e) {
+        LOG.error(e.getMessage(), e);
+        throw new RuntimeException(e);
+      }
+    } else {
+      try {
+        bootScriptFile = Files.createTempFile(nodeTaskParam.nodeName, "-boot.sh");
+        Files.write(bootScriptFile, Files.readAllBytes(Paths.get(bootScript)));
+        Files.write(bootScriptFile, BOOT_SCRIPT_COMPLETE.getBytes(), StandardOpenOption.APPEND);
+
+      } catch (IOException e) {
+        LOG.error(e.getMessage(), e);
+        throw new RuntimeException(e);
+      }
+    }
+    commandArgs.add(bootScriptFile.toAbsolutePath().toString());
+    commandArgs.add("--boot_script_token");
+    commandArgs.add(BOOT_SCRIPT_TOKEN);
+    return bootScriptFile;
+  }
+
   public ShellResponse nodeCommand(NodeCommandType type, NodeTaskParams nodeTaskParam) {
     Universe universe = Universe.getOrBadRequest(nodeTaskParam.universeUUID);
     List<String> commandArgs = new ArrayList<>();
@@ -1265,24 +1415,7 @@ public class NodeManager extends DevopsBase {
             }
 
             if (config.hasPath(BOOT_SCRIPT_PATH)) {
-              String bootScript = config.getString(BOOT_SCRIPT_PATH);
-              commandArgs.add("--boot_script");
-
-              // treat the contents as script body if it starts with a shebang line
-              // otherwise consider the contents to be a path
-              if (bootScript.startsWith("#!")) {
-                try {
-                  bootScriptFile = Files.createTempFile(nodeTaskParam.nodeName, "-boot.sh");
-                  Files.write(bootScriptFile, bootScript.getBytes());
-
-                  commandArgs.add(bootScriptFile.toAbsolutePath().toString());
-                } catch (IOException e) {
-                  LOG.error(e.getMessage(), e);
-                  throw new RuntimeException(e);
-                }
-              } else {
-                commandArgs.add(bootScript);
-              }
+              bootScriptFile = addBootscript(config, commandArgs, nodeTaskParam);
             }
 
             // For now we wouldn't add machine image for aws and fallback on the default
@@ -1374,10 +1507,16 @@ public class NodeManager extends DevopsBase {
           AnsibleSetupServer.Params taskParam = (AnsibleSetupServer.Params) nodeTaskParam;
           Common.CloudType cloudType = userIntent.providerType;
 
-          // aws uses instance_type to determine device names for mounting
           if (cloudType.equals(Common.CloudType.aws)) {
+            // aws uses instance_type to determine device names for mounting
             commandArgs.add("--instance_type");
             commandArgs.add(taskParam.instanceType);
+
+            // Custom cluster creation flow with prebuilt AMI
+            if (taskParam.getRegion().ybPrebuiltAmi) {
+              commandArgs.add("--skip_tags");
+              commandArgs.add("yb-prebuilt-ami");
+            }
           }
 
           // gcp uses machine_image for ansible preprovision.yml
@@ -1412,6 +1551,11 @@ public class NodeManager extends DevopsBase {
               commandArgs.add("--remote_package_path");
               commandArgs.add(taskParam.remotePackagePath);
             }
+          }
+
+          Config config = this.runtimeConfigFactory.forProvider(nodeTaskParam.getProvider());
+          if (config.hasPath(BOOT_SCRIPT_PATH)) {
+            bootScriptFile = addBootscript(config, commandArgs, nodeTaskParam);
           }
 
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
@@ -1487,7 +1631,14 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("NodeTaskParams is not AnsibleDestroyServer.Params");
           }
           AnsibleDestroyServer.Params taskParam = (AnsibleDestroyServer.Params) nodeTaskParam;
+          if (taskParam.nodeUuid == null && Strings.isNullOrEmpty(taskParam.nodeIP)) {
+            throw new IllegalArgumentException("At least one of node UUID or IP must be specified");
+          }
           commandArgs = addArguments(commandArgs, taskParam.nodeIP, taskParam.instanceType);
+          if (taskParam.nodeUuid != null) {
+            commandArgs.add("--node_uuid");
+            commandArgs.add(taskParam.nodeUuid.toString());
+          }
           if (taskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(taskParam));
           }
@@ -1580,6 +1731,22 @@ public class NodeManager extends DevopsBase {
           }
           break;
         }
+      case Update_Mounted_Disks:
+        {
+          if (!(nodeTaskParam instanceof UpdateMountedDisks.Params)) {
+            throw new RuntimeException("NodeTaskParams is not UpdateMountedDisksTask.Params");
+          }
+          UpdateMountedDisks.Params taskParam = (UpdateMountedDisks.Params) nodeTaskParam;
+          commandArgs.add("--instance_type");
+          commandArgs.add(taskParam.instanceType);
+          if (nodeTaskParam.deviceInfo != null) {
+            commandArgs.add("--volume_type");
+            commandArgs.add(nodeTaskParam.deviceInfo.storageType.toString().toLowerCase());
+            commandArgs.addAll(getDeviceArgs(nodeTaskParam));
+          }
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          break;
+        }
       case Change_Instance_Type:
         {
           if (!(nodeTaskParam instanceof ChangeInstanceType.Params)) {
@@ -1609,6 +1776,30 @@ public class NodeManager extends DevopsBase {
               AccessKey.getOrBadRequest(nodeTaskParam.getProvider().uuid, userIntent.accessKeyCode);
           commandArgs.addAll(
               getCommunicationPortsParams(userIntent, accessKey, nodeTaskParam.communicationPorts));
+
+          boolean rootAndClientAreTheSame =
+              nodeTaskParam.clientRootCA == null
+                  || Objects.equals(nodeTaskParam.rootCA, nodeTaskParam.clientRootCA);
+          appendCertPathsToCheck(
+              commandArgs,
+              nodeTaskParam.rootCA,
+              false,
+              rootAndClientAreTheSame && userIntent.enableNodeToNodeEncrypt);
+
+          if (!rootAndClientAreTheSame) {
+            appendCertPathsToCheck(commandArgs, nodeTaskParam.clientRootCA, true, false);
+          }
+
+          Config config = runtimeConfigFactory.forUniverse(universe);
+
+          SkipCertValidationType skipType =
+              getSkipCertValidationType(
+                  config, userIntent, Collections.emptyMap(), Collections.emptySet());
+          if (skipType != SkipCertValidationType.NONE) {
+            commandArgs.add("--skip_cert_validation");
+            commandArgs.add(skipType.name());
+          }
+
           break;
         }
     }
@@ -1631,6 +1822,36 @@ public class NodeManager extends DevopsBase {
           LOG.error(e.getMessage(), e);
         }
       }
+    }
+  }
+
+  private void appendCertPathsToCheck(
+      List<String> commandArgs, UUID rootCA, boolean isClient, boolean appendClientPaths) {
+    if (rootCA == null) {
+      return;
+    }
+    CertificateInfo rootCert = CertificateInfo.get(rootCA);
+    // checking only certs with CustomCertHostPath type, CustomServerCert is not used for onprem
+    if (rootCert.certType != CertConfigType.CustomCertHostPath) {
+      return;
+    }
+    String suffix = isClient ? "_client_to_server" : "";
+
+    CertificateParams.CustomCertInfo customCertInfo = rootCert.getCustomCertPathParams();
+
+    commandArgs.add(String.format("--root_cert_path%s", suffix));
+    commandArgs.add(customCertInfo.rootCertPath);
+    commandArgs.add(String.format("--server_cert_path%s", suffix));
+    commandArgs.add(customCertInfo.nodeCertPath);
+    commandArgs.add(String.format("--server_key_path%s", suffix));
+    commandArgs.add(customCertInfo.nodeKeyPath);
+    if (appendClientPaths
+        && !StringUtils.isEmpty(customCertInfo.clientCertPath)
+        && !StringUtils.isEmpty(customCertInfo.clientKeyPath)) {
+      commandArgs.add("--client_cert_path");
+      commandArgs.add(customCertInfo.clientCertPath);
+      commandArgs.add("--client_key_path");
+      commandArgs.add(customCertInfo.clientKeyPath);
     }
   }
 
@@ -1673,13 +1894,15 @@ public class NodeManager extends DevopsBase {
   private List<String> addArguments(List<String> commandArgs, String nodeIP, String instanceType) {
     commandArgs.add("--instance_type");
     commandArgs.add(instanceType);
-    commandArgs.add("--node_ip");
-    commandArgs.add(nodeIP);
+    if (!Strings.isNullOrEmpty(nodeIP)) {
+      commandArgs.add("--node_ip");
+      commandArgs.add(nodeIP);
+    }
     return commandArgs;
   }
 
   private boolean isLowMemInstanceType(String instanceType) {
-    List<String> lowMemInstanceTypePrefixes = ImmutableList.of("t2.");
+    List<String> lowMemInstanceTypePrefixes = ImmutableList.of("t2.", "t3.");
     String instanceTypePrefix = instanceType.split("\\.")[0] + ".";
     return lowMemInstanceTypePrefixes.contains(instanceTypePrefix);
   }

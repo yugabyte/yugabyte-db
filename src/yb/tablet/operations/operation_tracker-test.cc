@@ -132,11 +132,11 @@ class OperationTrackerTest : public YBTest {
 };
 
 TEST_F(OperationTrackerTest, TestGetPending) {
-  ASSERT_EQ(0, tracker_.GetNumPendingForTests());
+  ASSERT_EQ(0, tracker_.TEST_GetNumPending());
   vector<scoped_refptr<OperationDriver> > drivers;
   ASSERT_OK(AddDrivers(1, &drivers));
   scoped_refptr<OperationDriver> driver = drivers[0];
-  ASSERT_EQ(1, tracker_.GetNumPendingForTests());
+  ASSERT_EQ(1, tracker_.TEST_GetNumPending());
 
   auto pending_operations = tracker_.GetPendingOperations();
   ASSERT_EQ(1, pending_operations.size());
@@ -145,7 +145,7 @@ TEST_F(OperationTrackerTest, TestGetPending) {
   // And mark the operation as failed, which will cause it to unregister itself.
   driver->Abort(STATUS(Aborted, ""));
 
-  ASSERT_EQ(0, tracker_.GetNumPendingForTests());
+  ASSERT_EQ(0, tracker_.TEST_GetNumPending());
 }
 
 // Thread which starts a bunch of operations and later stops them all.
@@ -178,7 +178,7 @@ TEST_F(OperationTrackerTest, TestWaitForAllToFinish) {
                           &thr));
 
   // Wait for the txns to start.
-  while (tracker_.GetNumPendingForTests() == 0) {
+  while (tracker_.TEST_GetNumPending() == 0) {
     SleepFor(MonoDelta::FromMilliseconds(1));
   }
 
@@ -187,7 +187,7 @@ TEST_F(OperationTrackerTest, TestWaitForAllToFinish) {
   tracker_.WaitForAllToFinish();
 
   CHECK_OK(ThreadJoiner(thr.get()).Join());
-  ASSERT_EQ(tracker_.GetNumPendingForTests(), 0);
+  ASSERT_EQ(tracker_.TEST_GetNumPending(), 0);
 }
 
 static void CheckMetrics(const scoped_refptr<MetricEntity>& entity,

@@ -701,7 +701,7 @@ TEST_F_EX(QLStressTest, OldLeaderCatchUpAfterNetworkPartition, QLStressTestSingl
     std::this_thread::sleep_for(5s * yb::kTimeMultiplier);
 
     tserver::MiniTabletServer* leader = nullptr;
-    for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
       auto current = cluster_->mini_tablet_server(i);
       auto peers = current->server()->tablet_manager()->GetTabletPeers();
       ASSERT_EQ(peers.size(), 1);
@@ -757,7 +757,7 @@ TEST_F_EX(QLStressTest, SlowUpdateConsensus, QLStressTestSingleTablet) {
   down_cast<consensus::RaftConsensus*>(peers[0]->consensus())->TEST_DelayUpdate(0s);
 
   int64_t max_peak_consumption = 0;
-  for (int i = 1; i <= cluster_->num_tablet_servers(); ++i) {
+  for (size_t i = 1; i <= cluster_->num_tablet_servers(); ++i) {
     auto server_tracker = MemTracker::FindTracker(Format("server $0", i));
     auto call_tracker = MemTracker::FindTracker("Call", server_tracker);
     auto inbound_rpc_tracker = MemTracker::FindTracker("Inbound RPC", call_tracker);
@@ -883,7 +883,7 @@ void QLStressTest::TestWriteRejection() {
     last_keys_written_update_time = CoarseMonoClock::now();
 
     uint64_t total_rejections = 0;
-    for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
       int64_t rejections = 0;
       auto peers = cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
       for (const auto& peer : peers) {
@@ -1138,7 +1138,7 @@ TEST_F_EX(QLStressTest, SyncOldLeader, QLStressTestSingleTablet) {
   auto old_leader = ASSERT_RESULT(ServerWithLeaders(cluster_.get()));
   LOG(INFO) << "Isolate old leader: "
             << cluster_->mini_tablet_server(old_leader)->server()->permanent_uuid();
-  for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
     if (i != old_leader) {
       ASSERT_OK(SetupConnectivity(cluster_.get(), i, old_leader, Connectivity::kOff));
     }
@@ -1163,7 +1163,7 @@ TEST_F_EX(QLStressTest, SyncOldLeader, QLStressTestSingleTablet) {
     peer->raft_consensus()->TEST_RejectMode(consensus::RejectMode::kNonEmpty);
   }
 
-  for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
     if (i != old_leader) {
       ASSERT_OK(SetupConnectivity(cluster_.get(), i, old_leader, Connectivity::kOn));
     }

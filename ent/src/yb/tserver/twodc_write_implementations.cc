@@ -40,7 +40,7 @@ TAG_FLAG(cdc_max_apply_batch_size_bytes, runtime);
 DEFINE_test_flag(bool, twodc_write_hybrid_time, false,
                  "Override external_hybrid_time with initialHybridTimeValue for testing.");
 
-DECLARE_int32(consensus_max_batch_size_bytes);
+DECLARE_uint64(consensus_max_batch_size_bytes);
 
 namespace yb {
 
@@ -90,7 +90,7 @@ CHECKED_STATUS CombineExternalIntents(
     Uuid involved_tablet_;
     const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>& pairs_;
     docdb::KeyValuePairPB* out_;
-    size_t next_idx_ = 0;
+    int next_idx_ = 0;
   };
 
   auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(transaction_state.transaction_id()));
@@ -155,8 +155,9 @@ class BatchedWriteImplementation : public TwoDCWriteInterface {
         FLAGS_cdc_max_apply_batch_size_bytes : FLAGS_consensus_max_batch_size_bytes;
 
     if (queue.empty() ||
-        queue.back()->write_batch().write_pairs_size() >= max_batch_records ||
-        queue.back()->ByteSize() >= max_batch_size) {
+        implicit_cast<size_t>(queue.back()->write_batch().write_pairs_size())
+            >= max_batch_records ||
+        queue.back()->ByteSizeLong() >= max_batch_size) {
       // Create a new batch.
       auto req = std::make_unique<WriteRequestPB>();
       req->set_tablet_id(tablet_id);

@@ -95,7 +95,7 @@ void CheckEncoding(int64_t v) {
     static const string kPrefix = "some_prefix";
     string encoded_dest = kPrefix;
     FastEncodeDescendingSignedVarInt(-v, &encoded_dest);
-    const int encoded_size = encoded_dest.size() - kPrefix.size();
+    const auto encoded_size = encoded_dest.size() - kPrefix.size();
     ASSERT_EQ(correct_encoded,
               encoded_dest.substr(kPrefix.size(), encoded_size));
 
@@ -151,7 +151,7 @@ std::vector<T> GenerateRandomValues(size_t values_per_length = NonTsanVsTsan(500
   values.reserve((kMaxLength - kMinLength + 1) * values_per_length);
   uint64_t min_value = kMinLength == 1 ? 0 : 1ULL << (kMinLength - 1);
   std::uniform_int_distribution<int> bool_dist(0, 1);
-  for (int i = kMinLength; i <= kMaxLength; ++i) {
+  for (size_t i = kMinLength; i <= kMaxLength; ++i) {
     uint64_t max_value = min_value ? min_value * 2 - 1 : 1;
     std::uniform_int_distribution<T> distribution(min_value, max_value);
     for (size_t j = values_per_length; j-- != 0;) {

@@ -14,7 +14,7 @@
 #define ENT_SRC_YB_TOOLS_YB_ADMIN_CLIENT_H
 
 #include "../../../../src/yb/tools/yb-admin_client.h"
-
+#include "yb/cdc/cdc_service.pb.h"
 #include "yb/common/snapshot.h"
 #include "yb/rpc/secure_stream.h"
 #include "yb/server/secure.h"
@@ -84,16 +84,25 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
 
   CHECKED_STATUS CreateCDCStream(const TableId& table_id);
 
-  CHECKED_STATUS DeleteCDCStream(const std::string& stream_id);
+  CHECKED_STATUS CreateCDCSDKDBStream(const TypedNamespaceName& ns);
+
+  CHECKED_STATUS DeleteCDCStream(const std::string& stream_id, bool force_delete = false);
+
+  CHECKED_STATUS DeleteCDCSDKDBStream(const std::string& db_stream_id);
 
   CHECKED_STATUS ListCDCStreams(const TableId& table_id);
+
+  CHECKED_STATUS ListCDCSDKStreams(const std::string& namespace_name);
+
+  CHECKED_STATUS GetCDCDBStreamInfo(const std::string& db_stream_id);
 
   CHECKED_STATUS SetupUniverseReplication(const std::string& producer_uuid,
                                           const std::vector<std::string>& producer_addresses,
                                           const std::vector<TableId>& tables,
                                           const std::vector<std::string>& producer_bootstrap_ids);
 
-  CHECKED_STATUS DeleteUniverseReplication(const std::string& producer_id, bool force = false);
+  CHECKED_STATUS DeleteUniverseReplication(const std::string& producer_id,
+                                           bool ignore_errors = false);
 
   CHECKED_STATUS AlterUniverseReplication(
       const std::string& producer_uuid,

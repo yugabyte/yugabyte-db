@@ -467,7 +467,7 @@ void HandleExtraFields(YBPgsqlReadOp* op, tserver::ReadRequestPB* req) {
 template <class OpType, class Req, class Out>
 void FillOps(
     const InFlightOps& ops, YBOperation::Type expected_type, Req* req, Out* out) {
-  out->Reserve(ops.size());
+  out->Reserve(narrow_cast<int>(ops.size()));
   size_t idx = 0;
   for (auto& op : ops) {
     CHECK_EQ(op.yb_op->type(), expected_type);
@@ -557,9 +557,9 @@ void WriteRpc::CallRemoteMethod() {
 }
 
 void WriteRpc::SwapResponses() {
-  size_t redis_idx = 0;
-  size_t ql_idx = 0;
-  size_t pgsql_idx = 0;
+  int redis_idx = 0;
+  int ql_idx = 0;
+  int pgsql_idx = 0;
 
   // Retrieve Redis and QL responses and make sure we received all the responses back.
   for (auto& op : ops_) {
@@ -702,14 +702,11 @@ void ReadRpc::CallRemoteMethod() {
 }
 
 void ReadRpc::SwapResponses() {
-  size_t redis_idx = 0;
-  size_t ql_idx = 0;
-  size_t pgsql_idx = 0;
+  int redis_idx = 0;
+  int ql_idx = 0;
+  int pgsql_idx = 0;
 
   // Retrieve Redis and QL responses and make sure we received all the responses back.
-  redis_idx = 0;
-  ql_idx = 0;
-  pgsql_idx = 0;
   for (auto& op : ops_) {
     YBOperation* yb_op = op.yb_op.get();
     switch (yb_op->type()) {

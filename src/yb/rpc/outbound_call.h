@@ -175,7 +175,7 @@ class CallResponse {
     return serialized_response_;
   }
 
-  Result<Slice> GetSidecar(int idx) const;
+  Result<Slice> GetSidecar(size_t idx) const;
 
   size_t DynamicMemoryUsage() const {
     return DynamicMemoryUsageOf(header_, response_data_) +
@@ -343,7 +343,7 @@ class OutboundCall : public RpcCall {
  protected:
   friend class RpcController;
 
-  virtual Result<Slice> GetSidecar(int idx) const;
+  virtual Result<Slice> GetSidecar(size_t idx) const;
 
   ConnectionId conn_id_;
   const std::string* hostname_;

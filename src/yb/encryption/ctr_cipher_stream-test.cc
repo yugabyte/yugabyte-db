@@ -44,7 +44,7 @@ class TestCipherStream : public YBTest {
     auto params = EncryptionParams::NewEncryptionParams();
     // Initialize the nonce to be about to overflow for each position.
     uint8_t nonce[12];
-    for (int i = 0; i < sizeof(nonce); i++) {
+    for (size_t i = 0; i < sizeof(nonce); i++) {
       nonce[i] = 0xFF;
     }
     params->counter = 0xFFFFFFF0;
@@ -121,8 +121,8 @@ TEST_F(TestCipherStream, ConcurrentEncryption) {
     });
   }
 
-  for (int i = 0; i < threads.size(); i++) {
-    threads[i].join();
+  for (auto& thread : threads) {
+    thread.join();
   }
 }
 

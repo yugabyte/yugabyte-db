@@ -332,6 +332,14 @@ def aws_request_limit_retry(fn):
     return request_retry_decorator(fn, aws_exception_handler)
 
 
+def get_raw_client(region):
+    """
+    Returns:
+        boto3 client
+    """
+    return boto3.client("ec2", region_name=region)
+
+
 def get_client(region):
     """Method to get boto3 ec2 resource for given region
     Args:
@@ -834,25 +842,42 @@ def create_vpc_peering(client, vpc, host_vpc, target_region):
         raise YBOpsRuntimeError("Unable to create VPC peering.")
 
 
-def get_device_names(instance_type, num_volumes):
+def get_instance_details(instance_type, region):
+    c = get_raw_client(region)
+    instances = c.describe_instance_types(InstanceTypes=[instance_type]).get("InstanceTypes", [])
+    if (len(instances) == 0):
+        raise YBOpsRuntimeError("Could not find instance type {}".format(instance_type))
+    return instances[0]
+
+
+def get_device_names(instance_type, num_volumes, region):
     device_names = []
+    instance = get_instance_details(instance_type, region)
     for i in range(num_volumes):
-        device_name_format = "nvme{}n1" if is_nvme(instance_type) else "xvd{}"
-        index = "{}".format(i if is_nvme(instance_type) else chr(ord('b') + i))
+        device_name_format = "nvme{}n1" if is_nvme(instance) else "xvd{}"
+        index = "{}".format(i if is_nvme(instance) else chr(ord('b') + i))
         device_names.append(device_name_format.format(index))
     return device_names
 
 
-def is_next_gen(instance_type):
-    return instance_type.startswith(("c3.", "c4.", "c5.", "m4.", "r4.", "m6g.", "t2.", "c6g."))
+def is_ebs_only(instance):
+    """
+    Determines whether or not an instance only supports EBS volumes.
+    Must be called on instance type dictionary details as returned by get_instance_details()
+    """
+    return not instance.get("InstanceStorageSupported")
 
 
-def is_nvme(instance_type):
-    return instance_type.startswith(("i3.", "c5d.", "c6gd."))
+def is_nvme(instance):
+    """
+    Determines whether or not an instance has instance storage.
+    """
+    return instance.get("InstanceStorageSupported")
 
 
-def has_ephemerals(instance_type):
-    return not is_nvme(instance_type) and not is_next_gen(instance_type)
+def has_ephemerals(instance_type, region):
+    instance = get_instance_details(instance_type, region)
+    return not is_nvme(instance) and not is_ebs_only(instance)
 
 
 def __get_security_group(client, args):
@@ -923,16 +948,16 @@ def create_instance(args):
         "Ebs": ebs
     })
 
-    device_names = get_device_names(args.instance_type, args.num_volumes)
+    device_names = get_device_names(args.instance_type, args.num_volumes, args.region)
     # TODO: Clean up semantics on nvme vs "next-gen" vs ephemerals, as this is currently whack...
     for i, device_name in enumerate(device_names):
         volume = {}
-        if has_ephemerals(args.instance_type):
+        if has_ephemerals(args.instance_type, args.region):
             volume = {
                 "DeviceName": "/dev/{}".format(device_name),
                 "VirtualName": "ephemeral{}".format(i)
             }
-        elif is_next_gen(args.instance_type):
+        elif is_ebs_only(get_instance_details(args.instance_type, args.region)):
             ebs = {
                 "DeleteOnTermination": True,
                 "VolumeType": args.volume_type,
@@ -986,6 +1011,13 @@ def create_instance(args):
             }
             tag_dicts.append(resources_tag_dict)
     vars["TagSpecifications"] = tag_dicts
+
+    # Newer instance types have Credit Specification set to unlimited by default
+    if args.instance_type == "t3.small":
+        vars["CreditSpecification"] = {
+            "CpuCredits": 'standard'
+        }
+
     # TODO: user_data > templates/cloud_init.yml.j2, still needed?
     logging.info("[app] About to create AWS VM {}. ".format(args.search_pattern))
     instance_ids = client.create_instances(**vars)
@@ -1018,9 +1050,13 @@ def create_instance(args):
         instance = client.Instance(instance.id)
         # Get instance's primary network interface and attach IP.
         interface_id = None
+        # If secondary subnet, we want to set the public IP on the customer
+        # facing NIC.
+        req_index = 1 if args.cloud_subnet_secondary else 0
         for i in instance.network_interfaces:
-            if i.attachment.get("DeviceIndex") == 0:
+            if i.attachment.get("DeviceIndex") == req_index:
                 interface_id = i.id
+                break
         # Associate elastic IP with instance.
         ec2_client.associate_address(
             AllocationId=eip["AllocationId"],
@@ -1056,7 +1092,7 @@ def modify_tags(region, instance_id, tags_to_set_str, tags_to_remove_str):
 
 def update_disk(args, instance_id):
     ec2_client = boto3.client('ec2', region_name=args.region)
-    device_names = set(get_device_names(args.instance_type, args.num_volumes))
+    device_names = set(get_device_names(args.instance_type, args.num_volumes, args.region))
     instance = get_client(args.region).Instance(instance_id)
     vol_ids = list()
     for volume in instance.volumes.all():

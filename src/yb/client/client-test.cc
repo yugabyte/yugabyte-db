@@ -243,7 +243,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
   }
 
   void CheckNoRpcOverflow() {
-    for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
       MiniTabletServer* server = cluster_->mini_tablet_server(i);
       if (server->is_started()) {
         ASSERT_EQ(0, server->server()->rpc_server()->
@@ -332,7 +332,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
       }
       // The sum should be the sum of the arithmetic series from
       // 0..FLAGS_test_scan_num_rows-1
-      uint64_t expected = implicit_cast<uint64_t>(FLAGS_test_scan_num_rows) *
+      uint64_t expected = FLAGS_test_scan_num_rows *
           (0 + (FLAGS_test_scan_num_rows - 1)) / 2;
       ASSERT_EQ(expected, sum);
     }
@@ -383,7 +383,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
   void CreateTable(const YBTableName& table_name_orig,
                    int num_tablets,
                    TableHandle* table) {
-    auto num_replicas = FLAGS_replication_factor;
+    size_t num_replicas = FLAGS_replication_factor;
     // The implementation allows table name without a keyspace.
     YBTableName table_name(table_name_orig.namespace_type(), table_name_orig.has_namespace() ?
         table_name_orig.namespace_name() : kKeyspaceName, table_name_orig.table_name());
@@ -407,7 +407,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
   // finish bootstrapping.
   Status KillTServerImpl(const string& uuid, const bool restart, const bool wait_started) {
     bool ts_found = false;
-    for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
       MiniTabletServer* ts = cluster_->mini_tablet_server(i);
       if (ts->server()->instance_pb().permanent_uuid() == uuid) {
         if (restart) {
@@ -521,7 +521,7 @@ TableFilter MakeFilter(int32_t lower_bound, int32_t upper_bound, std::string col
   return TableFilter();
 }
 
-int CountRowsFromClient(const TableHandle& table, YBConsistencyLevel consistency,
+size_t CountRowsFromClient(const TableHandle& table, YBConsistencyLevel consistency,
                         int32_t lower_bound, int32_t upper_bound) {
   TableIteratorOptions options;
   options.consistency = consistency;
@@ -530,11 +530,11 @@ int CountRowsFromClient(const TableHandle& table, YBConsistencyLevel consistency
   return boost::size(TableRange(table, options));
 }
 
-int CountRowsFromClient(const TableHandle& table, int32_t lower_bound, int32_t upper_bound) {
+size_t CountRowsFromClient(const TableHandle& table, int32_t lower_bound, int32_t upper_bound) {
   return CountRowsFromClient(table, YBConsistencyLevel::STRONG, lower_bound, upper_bound);
 }
 
-int CountRowsFromClient(const TableHandle& table) {
+size_t CountRowsFromClient(const TableHandle& table) {
   return CountRowsFromClient(table, kNoBound, kNoBound);
 }
 
@@ -693,7 +693,7 @@ TEST_F(ClientTest, TestListTabletServers) {
   set<string> actual_ts_hostnames;
   set<string> expected_ts_uuids;
   set<string> expected_ts_hostnames;
-  for (int i = 0; i < tss.size(); ++i) {
+  for (size_t i = 0; i < tss.size(); ++i) {
     auto server = cluster_->mini_tablet_server(i)->server();
     expected_ts_uuids.insert(server->instance_pb().permanent_uuid());
     actual_ts_uuids.insert(tss[i].uuid);
@@ -1236,7 +1236,7 @@ void ClientTest::DoTestWriteWithDeadServer(WhichServerToKill which) {
       cluster_->mini_master()->Shutdown();
       break;
     case DEAD_TSERVER:
-      for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
+      for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
         cluster_->mini_tablet_server(i)->Shutdown();
       }
       break;
@@ -1594,7 +1594,7 @@ TEST_F(ClientTest, TestStaleLocations) {
   ASSERT_FALSE(locs_pb.stale());
 
   // On Master restart and no tablet report we expect the locations to be stale
-  for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
     cluster_->mini_tablet_server(i)->Shutdown();
   }
   ASSERT_OK(cluster_->mini_master()->Restart());
@@ -1604,7 +1604,7 @@ TEST_F(ClientTest, TestStaleLocations) {
   ASSERT_TRUE(locs_pb.stale());
 
   // Restart the TS and Wait for the tablets to be reported to the master.
-  for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
     ASSERT_OK(cluster_->mini_tablet_server(i)->Start());
   }
   ASSERT_OK(cluster_->WaitForTabletServerCount(cluster_->num_tablet_servers()));
@@ -1678,7 +1678,7 @@ TEST_F(ClientTest, TestReplicatedMultiTabletTableFailover) {
   int tries = 0;
   for (;;) {
     tries++;
-    int num_rows = CountRowsFromClient(table);
+    auto num_rows = CountRowsFromClient(table);
     if (num_rows == kNumRowsToWrite) {
       LOG(INFO) << "Found expected number of rows: " << num_rows;
       break;
@@ -1736,8 +1736,8 @@ TEST_F(ClientTest, TestReplicatedTabletWritesAndAltersWithLeaderElection) {
   // and we can just promote another replica.
   auto client_messenger = rpc::CreateAutoShutdownMessengerHolder(
       ASSERT_RESULT(CreateMessenger("client")));
-  int new_leader_idx = -1;
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  ssize_t new_leader_idx = -1;
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     MiniTabletServer* ts = cluster_->mini_tablet_server(i);
     LOG(INFO) << "GOT TS " << i << " WITH UUID ???";
     if (ts->is_started()) {
@@ -2011,9 +2011,9 @@ TEST_F(ClientTest, TestDeadlockSimulation) {
   FlushSessionOrDie(session);
 
   // Check both clients see rows
-  int fwd = CountRowsFromClient(client_table_);
+  auto fwd = CountRowsFromClient(client_table_);
   ASSERT_EQ(kNumRows, fwd);
-  int rev = CountRowsFromClient(rev_table);
+  auto rev = CountRowsFromClient(rev_table);
   ASSERT_EQ(kNumRows, rev);
 
   // Generate sessions
@@ -2136,7 +2136,7 @@ TEST_F(ClientTest, TestServerTooBusyRetry) {
   // amount of time.
   FLAGS_min_backoff_ms_exponent = 0;
   FLAGS_max_backoff_ms_exponent = 3;
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     MiniTabletServer* ts = cluster_->mini_tablet_server(i);
     ASSERT_OK(ts->Restart());
     ASSERT_OK(ts->WaitStarted());
@@ -2180,7 +2180,7 @@ TEST_F(ClientTest, TestServerTooBusyRetry) {
       std::this_thread::sleep_for(10ms);
     }
 
-    for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
       scoped_refptr<Counter> counter = METRIC_rpcs_queue_overflow.Instantiate(
           cluster_->mini_tablet_server(i)->server()->metric_entity());
       if (counter->value() > 0) {
@@ -2248,9 +2248,9 @@ TEST_F(ClientTest, TestReadFromFollower) {
       std::shared_ptr<std::vector<ColumnSchema>> selected_cols =
           std::make_shared<std::vector<ColumnSchema>>(schema_.columns());
       QLRSRowDescPB *rsrow_desc = ql_read->mutable_rsrow_desc();
-      for (int i = 0; i < schema_.num_columns(); i++) {
-        ql_read->add_selected_exprs()->set_column_id(yb::kFirstColumnId + i);
-        ql_read->mutable_column_refs()->add_ids(yb::kFirstColumnId + i);
+      for (size_t i = 0; i < schema_.num_columns(); i++) {
+        ql_read->add_selected_exprs()->set_column_id(narrow_cast<int32_t>(kFirstColumnId + i));
+        ql_read->mutable_column_refs()->add_ids(narrow_cast<int32_t>(kFirstColumnId + i));
 
         QLRSColDescPB *rscol_desc = rsrow_desc->add_rscol_descs();
         rscol_desc->set_name((*selected_cols)[i].name());
@@ -2268,13 +2268,13 @@ TEST_F(ClientTest, TestReadFromFollower) {
 
       EXPECT_TRUE(controller.finished());
       Slice rows_data = EXPECT_RESULT(controller.GetSidecar(ql_resp.rows_data_sidecar()));
-      yb::ql::RowsResult rowsResult(kReadFromFollowerTable, selected_cols, rows_data.ToBuffer());
-      row_block = rowsResult.GetRowBlock();
-      return FLAGS_test_scan_num_rows == row_block->row_count();
+      ql::RowsResult rows_result(kReadFromFollowerTable, selected_cols, rows_data.ToBuffer());
+      row_block = rows_result.GetRowBlock();
+      return implicit_cast<size_t>(FLAGS_test_scan_num_rows) == row_block->row_count();
     }, MonoDelta::FromSeconds(30), "Waiting for replication to followers"));
 
     std::vector<bool> seen_key(row_block->row_count());
-    for (int i = 0; i < row_block->row_count(); i++) {
+    for (size_t i = 0; i < row_block->row_count(); i++) {
       const QLRow& row = row_block->row(i);
       auto key = row.column(0).int32_value();
       ASSERT_LT(key, seen_key.size());

@@ -208,7 +208,7 @@ bool SnapshotState::IsTerminalFailure(const Status& status) {
 
 bool SnapshotState::ShouldUpdate(const SnapshotState& other) const {
   // Backward compatibility mode
-  int other_version = other.version() == 0 ? version() + 1 : other.version();
+  auto other_version = other.version() == 0 ? version() + 1 : other.version();
   // If we have several updates for single snapshot, they are loaded in chronological order.
   // So latest update should be picked.
   return version() < other_version;

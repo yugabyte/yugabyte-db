@@ -42,7 +42,7 @@ class UnsignedIntSetTest : public YBTest {
 
   void VerifyState() const {
     EXPECT_EQ(state_.empty(), set_.IsEmpty());
-    for (int i = 0; i <= GetMaxIndexToCheck(); ++i) {
+    for (uint32_t i = 0; i <= GetMaxIndexToCheck(); ++i) {
       EXPECT_EQ(set_.Test(i), state_.find(i) != state_.end()) << i;
     }
   }
@@ -54,7 +54,7 @@ class UnsignedIntSetTest : public YBTest {
     }
 
     Random rng(29203);
-    for (int i = 0; i < kNumRandomToVerify; ++i) {
+    for (size_t i = 0; i < kNumRandomToVerify; ++i) {
       auto random_idx = rng.Next32();
       EXPECT_EQ(set_.Test(random_idx), state_.find(random_idx) != state_.end()) << i;
     }
@@ -93,7 +93,7 @@ class UnsignedIntSetEncodeDecodeTest : public UnsignedIntSetTest {
   void VerifyCopy() const {
     auto copy = ASSERT_RESULT(GetCopy());
 
-    for (int i = 0; i <= GetMaxIndexToCheck(); ++i) {
+    for (uint32_t i = 0; i <= GetMaxIndexToCheck(); ++i) {
       EXPECT_EQ(set_.Test(i), copy.Test(i));
     }
   }
@@ -107,7 +107,7 @@ class UnsignedIntSetEncodeDecodeTest : public UnsignedIntSetTest {
     }
 
     Random rng(29203);
-    for (int i = 0; i < kNumRandomToVerify; ++i) {
+    for (size_t i = 0; i < kNumRandomToVerify; ++i) {
       auto random_idx = rng.Next32();
       EXPECT_EQ(set_.Test(random_idx), copy.Test(random_idx)) << i;
     }
@@ -157,7 +157,7 @@ TEST_F(UnsignedIntSetEncodeDecodeTest, Random) {
   for (int i = 0; i < kNumIters; ++i) {
     UnsignedIntSet<uint16_t> set;
     auto num_ranges = kMinNumIntervals + rng.Uniform(kMaxNumIntervals);
-    for (int range_idx = 0; range_idx < num_ranges; ++range_idx) {
+    for (size_t range_idx = 0; range_idx < num_ranges; ++range_idx) {
       uint16_t lo = rng.Uniform(kMaxValue - 1);
       uint16_t hi = lo + rng.Uniform(kMaxValue - lo);
       ASSERT_OK(SetRange(lo, hi));

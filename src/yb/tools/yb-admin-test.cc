@@ -48,10 +48,12 @@
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/cql_test_util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/test_workload.h"
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_defaults.h"
+#include "yb/master/master_client.pb.h"
 
 #include "yb/tools/admin-test-base.h"
 
@@ -79,6 +81,8 @@ using client::YBTableCreator;
 using client::YBTableType;
 using std::shared_ptr;
 using std::vector;
+using std::string;
+using std::unordered_map;
 using itest::TabletServerMap;
 using itest::TServerDetails;
 using strings::Substitute;
@@ -205,6 +209,7 @@ TEST_F(AdminCliTest, TestChangeConfig) {
   workload.set_write_timeout_millis(10000);
   workload.set_num_write_threads(1);
   workload.set_write_batch_size(1);
+  workload.set_sequential_write(true);
   workload.Setup();
   workload.Start();
 
@@ -223,19 +228,19 @@ TEST_F(AdminCliTest, TestChangeConfig) {
                                                 MonoDelta::FromSeconds(10)));
 
   workload.StopAndJoin();
-  int num_batches = workload.batches_completed();
+  auto num_batches = workload.batches_completed();
 
   LOG(INFO) << "Waiting for replicas to agree...";
   // Wait for all servers to replicate everything up through the last write op.
   // Since we don't batch, there should be at least # rows inserted log entries,
   // plus the initial leader's no-op, plus 1 for
   // the added replica for a total == #rows + 2.
-  int min_log_index = num_batches + 2;
+  auto min_log_index = num_batches + 2;
   ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(30),
                                   active_tablet_servers, tablet_id_,
                                   min_log_index));
 
-  int rows_inserted = workload.rows_inserted();
+  auto rows_inserted = workload.rows_inserted();
   LOG(INFO) << "Number of rows inserted: " << rows_inserted;
 
   ClusterVerifier cluster_verifier(cluster_.get());
@@ -506,6 +511,105 @@ TEST_F(AdminCliTest, TestLeaderStepdown) {
   }, 5s, "Leader stepdown"));
 }
 
+namespace {
+Result<string> RegexFetchFirst(const string out, const string &exp) {
+  std::smatch match;
+  if (!std::regex_search(out.cbegin(), out.cend(), match, std::regex(exp)) || match.size() != 2) {
+    return STATUS_FORMAT(NotFound, "No pattern in '$0'", out);
+  }
+  return match[1];
+}
+} // namespace
+
+// Use list_tablets to list one single tablet for the table.
+// Parse out the tablet from the output.
+// Use list_tablet_servers to list the tablets leader and follower details.
+// Get the leader uuid and host:port from this.
+// Also create an unordered_map of all followers host_port to uuid.
+// Verify that these are present in the appropriate locations in the output of list_tablets.
+// Use list_tablets with the json option to get the json output.
+// Parse the json output, extract data for the specific tablet and compare the leader and
+// follower details with the values extraced previously.
+TEST_F(AdminCliTest, TestFollowersTableList) {
+  BuildAndStart();
+
+  string lt_out = ASSERT_RESULT(CallAdmin(
+      "list_tablets", kTableName.namespace_name(), kTableName.table_name(),
+      "1", "include_followers"));
+  const auto tablet_id = ASSERT_RESULT(RegexFetchFirst(lt_out, R"(\s+([a-z0-9]{32})\s+)"));
+  ASSERT_FALSE(tablet_id.empty());
+
+  master::TabletLocationsPB locs_pb;
+  ASSERT_OK(itest::GetTabletLocations(
+        cluster_.get(), tablet_id, MonoDelta::FromSeconds(10), &locs_pb));
+  ASSERT_EQ(3, locs_pb.replicas().size());
+  string leader_uuid;
+  string leader_host_port;
+  unordered_map<string, string> follower_hp_to_uuid_map;
+  for (const auto& replica : locs_pb.replicas()) {
+    if (replica.role() == PeerRole::LEADER) {
+      leader_host_port = HostPortPBToString(replica.ts_info().private_rpc_addresses(0));
+      leader_uuid = replica.ts_info().permanent_uuid();
+    } else {
+      follower_hp_to_uuid_map[HostPortPBToString(replica.ts_info().private_rpc_addresses(0))] =
+          replica.ts_info().permanent_uuid();
+    }
+  }
+  ASSERT_FALSE(leader_uuid.empty());
+  ASSERT_FALSE(leader_host_port.empty());
+  ASSERT_EQ(2, follower_hp_to_uuid_map.size());
+
+  const auto follower_list_str = ASSERT_RESULT(RegexFetchFirst(
+        lt_out, R"(\s+)" + leader_host_port + R"(\s+)" + leader_uuid + R"(\s+(\S+))"));
+
+  vector<string> followers;
+  boost::split(followers, follower_list_str, boost::is_any_of(","));
+  ASSERT_EQ(2, followers.size());
+  for (const string &follower_host_port : followers) {
+      auto got = follower_hp_to_uuid_map.find(follower_host_port);
+      ASSERT_TRUE(got != follower_hp_to_uuid_map.end());
+  }
+
+  string lt_json_out = ASSERT_RESULT(CallAdmin(
+      "list_tablets", kTableName.namespace_name(), kTableName.table_name(),
+      "json", "include_followers"));
+  boost::erase_all(lt_json_out, "\n");
+  JsonReader reader(lt_json_out);
+
+  ASSERT_OK(reader.Init());
+  vector<const rapidjson::Value *> tablets;
+  ASSERT_OK(reader.ExtractObjectArray(reader.root(), "tablets", &tablets));
+
+  for (const rapidjson::Value *entry : tablets) {
+    string tid;
+    ASSERT_OK(reader.ExtractString(entry, "id", &tid));
+    // Testing only for the tablet received in list_tablets <table id> 1 include_followers.
+    if (tid != tablet_id) {
+      continue;
+    }
+    const rapidjson::Value *leader;
+    ASSERT_OK(reader.ExtractObject(entry, "leader", &leader));
+    string lhp;
+    string luuid;
+    ASSERT_OK(reader.ExtractString(leader, "endpoint", &lhp));
+    ASSERT_OK(reader.ExtractString(leader, "uuid", &luuid));
+    ASSERT_STR_EQ(lhp, leader_host_port);
+    ASSERT_STR_EQ(luuid, leader_uuid);
+
+    vector<const rapidjson::Value *> follower_json;
+    ASSERT_OK(reader.ExtractObjectArray(entry, "followers", &follower_json));
+    for (const rapidjson::Value *f : follower_json) {
+      string fhp;
+      string fuuid;
+      ASSERT_OK(reader.ExtractString(f, "endpoint", &fhp));
+      ASSERT_OK(reader.ExtractString(f, "uuid", &fuuid));
+      auto got = follower_hp_to_uuid_map.find(fhp);
+      ASSERT_TRUE(got != follower_hp_to_uuid_map.end());
+      ASSERT_STR_EQ(got->second, fuuid);
+    }
+  }
+}
+
 TEST_F(AdminCliTest, TestGetClusterLoadBalancerState) {
   std::string output;
   std::vector<std::string> master_flags;
@@ -538,6 +642,22 @@ TEST_F(AdminCliTest, TestGetClusterLoadBalancerState) {
   ASSERT_NE(output.find("ENABLED"), std::string::npos);
 }
 
+TEST_F(AdminCliTest, TestModifyPlacementPolicy) {
+  BuildAndStart();
+
+  // Modify the cluster placement policy to consist of 2 zones.
+  ASSERT_OK(CallAdmin("modify_placement_info", "c.r.z0,c.r.z1:2,c.r.z0:2", 5, ""));
+
+  auto output = ASSERT_RESULT(CallAdmin("get_universe_config"));
+
+  std::string expected_placement_blocks =
+      "[{\"cloudInfo\":{\"placementCloud\":\"c\",\"placementRegion\":\"r\","
+      "\"placementZone\":\"z1\"},\"minNumReplicas\":2},{\"cloudInfo\":{\"placementCloud\":\"c\","
+      "\"placementRegion\":\"r\",\"placementZone\":\"z0\"},\"minNumReplicas\":3}]";
+
+  ASSERT_NE(output.find(expected_placement_blocks), string::npos);
+}
+
 TEST_F(AdminCliTest, TestModifyTablePlacementPolicy) {
   // Start a cluster with 3 tservers, each corresponding to a different zone.
   FLAGS_num_tablet_servers = 3;
@@ -567,6 +687,7 @@ TEST_F(AdminCliTest, TestModifyTablePlacementPolicy) {
   TestWorkload workload(cluster_.get());
   workload.set_table_name(extra_table);
   workload.set_timeout_allowed(true);
+  workload.set_sequential_write(true);
   workload.Setup();
   workload.Start();
 
@@ -638,7 +759,7 @@ TEST_F(AdminCliTest, TestModifyTablePlacementPolicy) {
 
   // Stop the workload.
   workload.StopAndJoin();
-  int rows_inserted = workload.rows_inserted();
+  auto rows_inserted = workload.rows_inserted();
   LOG(INFO) << "Number of rows inserted: " << rows_inserted;
 
   sleep(5);
@@ -672,6 +793,7 @@ TEST_F(AdminCliTest, TestCreateTransactionStatusTablesWithPlacements) {
   TestWorkload workload(cluster_.get());
   workload.set_table_name(extra_table);
   workload.set_timeout_allowed(true);
+  workload.set_sequential_write(true);
   workload.Setup();
   workload.Start();
 
@@ -721,7 +843,7 @@ TEST_F(AdminCliTest, TestCreateTransactionStatusTablesWithPlacements) {
 
   // Stop the workload.
   workload.StopAndJoin();
-  int rows_inserted = workload.rows_inserted();
+  auto rows_inserted = workload.rows_inserted();
   LOG(INFO) << "Number of rows inserted: " << rows_inserted;
 
   sleep(5);
@@ -729,8 +851,8 @@ TEST_F(AdminCliTest, TestCreateTransactionStatusTablesWithPlacements) {
   // Verify that there was no data loss.
   ClusterVerifier cluster_verifier(cluster_.get());
   ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
-  ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(
-    extra_table, ClusterVerifier::EXACTLY, rows_inserted));
+  ASSERT_NO_FATALS(cluster_verifier.CheckRowCountWithRetries(
+    extra_table, ClusterVerifier::EXACTLY, rows_inserted, 20s));
 }
 
 TEST_F(AdminCliTest, TestClearPlacementPolicy) {
@@ -820,6 +942,65 @@ TEST_F(AdminCliTest, CompactSysCatalog) {
   string master_address = ToString(cluster_->master()->bound_rpc_addr());
   auto client = ASSERT_RESULT(YBClientBuilder().add_master_server_addr(master_address).Build());
   ASSERT_OK(CallAdmin("compact_sys_catalog"));
+}
+
+// A simple smoke test to ensure it working and
+// nothing is broken by future changes.
+TEST_F(AdminCliTest, SetWalRetentionSecsTest) {
+  constexpr auto WAL_RET_TIME_SEC = 100ul;
+  constexpr auto UNEXPECTED_ARG = 911ul;
+
+  BuildAndStart();
+  const auto master_address = ToString(cluster_->master()->bound_rpc_addr());
+
+  // Default table that gets created;
+  const auto& table_name = kTableName.table_name();
+  const auto& keyspace = kTableName.namespace_name();
+
+  // No WAL ret time found
+  {
+    const auto output = ASSERT_RESULT(CallAdmin("get_wal_retention_secs", keyspace, table_name));
+    ASSERT_NE(output.find("not set"), std::string::npos);
+  }
+
+  // Successfuly set WAL time and verified by the getter
+  {
+    ASSERT_OK(CallAdmin("set_wal_retention_secs", keyspace, table_name, WAL_RET_TIME_SEC));
+    const auto output = ASSERT_RESULT(CallAdmin("get_wal_retention_secs", keyspace, table_name));
+    ASSERT_TRUE(
+        output.find(std::to_string(WAL_RET_TIME_SEC)) != std::string::npos &&
+        output.find(table_name) != std::string::npos);
+  }
+
+  // Too many args in input
+  {
+    const auto output_setter =
+        CallAdmin("set_wal_retention_secs", keyspace, table_name, WAL_RET_TIME_SEC, UNEXPECTED_ARG);
+    ASSERT_FALSE(output_setter.ok());
+    ASSERT_TRUE(output_setter.status().IsRuntimeError());
+    ASSERT_TRUE(
+        output_setter.status().ToUserMessage().find("Invalid argument") != std::string::npos);
+
+    const auto output_getter =
+        CallAdmin("get_wal_retention_secs", keyspace, table_name, UNEXPECTED_ARG);
+    ASSERT_FALSE(output_getter.ok());
+    ASSERT_TRUE(output_getter.status().IsRuntimeError());
+    ASSERT_TRUE(
+        output_getter.status().ToUserMessage().find("Invalid argument") != std::string::npos);
+  }
+
+  // Outbounded arg in input
+  {
+    const auto output_setter =
+        CallAdmin("set_wal_retention_secs", keyspace, table_name, -WAL_RET_TIME_SEC);
+    ASSERT_FALSE(output_setter.ok());
+    ASSERT_TRUE(output_setter.status().IsRuntimeError());
+
+    const auto output_getter =
+        CallAdmin("get_wal_retention_secs", keyspace, table_name + "NoTable");
+    ASSERT_FALSE(output_getter.ok());
+    ASSERT_TRUE(output_getter.status().IsRuntimeError());
+  }
 }
 
 }  // namespace tools

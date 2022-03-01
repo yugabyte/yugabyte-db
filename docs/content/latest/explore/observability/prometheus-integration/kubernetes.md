@@ -1,13 +1,13 @@
 ---
 title: Prometheus Integration
 headerTitle: Prometheus Integration
-linkTitle: Prometheus Integration 
+linkTitle: Prometheus Integration
 description: Learn about exporting YugabyteDB metrics and monitoring the cluster with Prometheus.
 menu:
   latest:
     identifier: observability-4-kubernetes
     parent: explore-observability
-    weight: 240
+    weight: 235
 isTocNested: true
 showAsideToc: true
 ---

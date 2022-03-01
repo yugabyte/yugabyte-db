@@ -223,6 +223,8 @@ _copyModifyTable(const ModifyTable *from)
 	COPY_SCALAR_FIELD(exclRelRTI);
 	COPY_NODE_FIELD(exclRelTlist);
 	COPY_NODE_FIELD(ybPushdownTlist);
+	COPY_NODE_FIELD(ybReturningColumns);
+	COPY_NODE_FIELD(ybColumnRefs);
 	COPY_NODE_FIELD(no_update_index_list);
 	COPY_SCALAR_FIELD(no_row_trigger);
 
@@ -4041,15 +4043,6 @@ _copyCreateTableGroupStmt(const CreateTableGroupStmt *from)
 	return newnode;
 }
 
-static DropTableGroupStmt *
-_copyDropTableGroupStmt(const DropTableGroupStmt *from)
-{
-	DropTableGroupStmt *newnode = makeNode(DropTableGroupStmt);
-
-	COPY_STRING_FIELD(tablegroupname);
-	return newnode;
-}
-
 static CreateTableSpaceStmt *
 _copyCreateTableSpaceStmt(const CreateTableSpaceStmt *from)
 {
@@ -4858,6 +4851,19 @@ _copyRowBounds(const RowBounds *from)
 	return newnode;
 }
 
+static YbExprParamDesc *
+_copyYbExprParamDesc(const YbExprParamDesc *from)
+{
+	YbExprParamDesc *newnode = makeNode(YbExprParamDesc);
+
+	COPY_SCALAR_FIELD(attno);
+	COPY_SCALAR_FIELD(typid);
+	COPY_SCALAR_FIELD(typmod);
+	COPY_SCALAR_FIELD(collid);
+
+	return newnode;
+}
+
 /*
  * copyObjectImpl -- implementation of copyObject(); see nodes/nodes.h
  *
@@ -5460,9 +5466,6 @@ copyObjectImpl(const void *from)
 		case T_CreateTableGroupStmt:
 			retval = _copyCreateTableGroupStmt(from);
 			break;
-		case T_DropTableGroupStmt:
-			retval = _copyDropTableGroupStmt(from);
-			break;
 		case T_CreateTableSpaceStmt:
 			retval = _copyCreateTableSpaceStmt(from);
 			break;
@@ -5772,6 +5775,10 @@ copyObjectImpl(const void *from)
 
 		case T_RowBounds:
 			retval = _copyRowBounds(from);
+			break;
+
+		case T_YbExprParamDesc:
+			retval = _copyYbExprParamDesc(from);
 			break;
 
 		default:

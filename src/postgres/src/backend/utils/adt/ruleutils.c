@@ -16,8 +16,9 @@
 #include "postgres.h"
 
 #include <ctype.h>
-#include <unistd.h>
 #include <fcntl.h>
+#include <inttypes.h>
+#include <unistd.h>
 
 #include "access/amapi.h"
 #include "access/htup_details.h"
@@ -1487,17 +1488,23 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 			if (yb_table_properties.num_hash_key_columns > 0)
 			{
 				/* For hash-partitioned tables */
-				appendStringInfo(&buf, " SPLIT INTO %u TABLETS", yb_table_properties.num_tablets);
+				appendStringInfo(&buf, " SPLIT INTO %" PRIu64 " TABLETS", yb_table_properties.num_tablets);
 			}
 			else
 			{
 				/* For range-partitioned tables */
 				if (yb_table_properties.num_tablets > 1)
 				{
-					ereport(ERROR,
+					ereport(WARNING,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("Exporting SPLIT clause for range-partitioned "
-									"tables is not yet supported")));
+							 errmsg("exporting SPLIT clause for range-split relations is not yet "
+									"supported"),
+							 errdetail("Index '%s' will be created with default (1) tablets "
+									   "instead of %" PRIu64 ".",
+									   generate_relation_name(indrelid, NIL),
+									   yb_table_properties.num_tablets),
+							 errhint("See https://github.com/yugabyte/yugabyte-db/issues/4873."
+									 " Click '+' on the description to raise its priority.")));
 				}
 			}
 		}

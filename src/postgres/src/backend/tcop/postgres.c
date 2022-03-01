@@ -3698,6 +3698,10 @@ static void YBRefreshCache()
 	if (yb_catalog_version_type != CATALOG_VERSION_CATALOG_TABLE)
 		yb_catalog_version_type = CATALOG_VERSION_UNSET;
 	const uint64_t catalog_master_version = YbGetMasterCatalogVersion();
+	if (YBCGetLogYsqlCatalogVersions())
+		ereport(LOG,
+				(errmsg("%s: got master catalog version: %" PRIu64,
+						__func__, catalog_master_version)));
 
 	/* Need to execute some (read) queries internally so start a local txn. */
 	start_xact_command();
@@ -3713,6 +3717,10 @@ static void YBRefreshCache()
 	/* Set the new ysql cache version. */
 	yb_catalog_cache_version = catalog_master_version;
 	yb_need_cache_refresh = false;
+	if (YBCGetLogYsqlCatalogVersions())
+		ereport(LOG,
+				(errmsg("%s: set local catalog version: %" PRIu64,
+						__func__, yb_catalog_cache_version)));
 
 	finish_xact_command();
 }
@@ -3760,6 +3768,13 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata, bool consider_retry,
 	YBCPgResetCatalogReadTime();
 	const uint64_t catalog_master_version = YbGetMasterCatalogVersion();
 	const bool need_global_cache_refresh = yb_catalog_cache_version != catalog_master_version;
+	if (YBCGetLogYsqlCatalogVersions())
+	{
+		int elevel = need_global_cache_refresh ? LOG : DEBUG1;
+		ereport(elevel,
+				(errmsg("%s: got master catalog version: %" PRIu64,
+						__func__, catalog_master_version)));
+	}
 	if (!(need_global_cache_refresh || need_table_cache_refresh))
 		return;
 
@@ -3983,7 +3998,16 @@ static void YBCheckSharedCatalogCacheVersion() {
 
 	uint64_t shared_catalog_version;
 	HandleYBStatus(YBCGetSharedCatalogVersion(&shared_catalog_version));
-	if (yb_catalog_cache_version < shared_catalog_version)
+	const bool need_global_cache_refresh =
+		yb_catalog_cache_version < shared_catalog_version;
+	if (YBCGetLogYsqlCatalogVersions())
+	{
+		int elevel = need_global_cache_refresh ? LOG : DEBUG1;
+		ereport(elevel,
+				(errmsg("%s: got tserver catalog version: %" PRIu64,
+						__func__, shared_catalog_version)));
+	}
+	if (need_global_cache_refresh)
 	{
 		YBRefreshCache();
 	}
@@ -4024,17 +4048,24 @@ yb_is_restart_possible(const ErrorData* edata,
 		return false;
 	}
 
+	elog(DEBUG1, "Error details: edata->message=%s edata->filename=%s edata->lineno=%d",
+			 edata->message, edata->filename, edata->lineno);
 	bool is_read_restart_error = YBCIsRestartReadError(edata->yb_txn_errcode);
 	bool is_conflict_error     = YBCIsTxnConflictError(edata->yb_txn_errcode);
 	if (!is_read_restart_error && !is_conflict_error)
 	{
 		if (yb_debug_log_internal_restarts)
-			elog(LOG, "Restart isn't possible, code %d isn't a restart/conflict error",
+			elog(LOG, "Restart isn't possible, code %d isn't a read restart/conflict error",
 			          edata->yb_txn_errcode);
 		return false;
 	}
 
-	if (is_conflict_error && attempt >= YBCGetMaxWriteRestartAttempts())
+	/*
+	 * In case of READ COMMITTED, retries for kConflict are performed indefinitely until statement
+	 * timeout is hit.
+	 */
+	if (!IsYBReadCommitted() &&
+			(is_conflict_error && attempt >= YBCGetMaxWriteRestartAttempts()))
 	{
 		if (yb_debug_log_internal_restarts)
 			elog(LOG, "Restart isn't possible, we're out of write restart attempts (%d)",
@@ -4060,9 +4091,8 @@ yb_is_restart_possible(const ErrorData* edata,
 	// We can perform kReadRestart retries in READ COMMITTED isolation level even if data has been
 	// sent as part of the txn, but not as part of the current query. This is because we just have to
 	// retry the query and not the whole transaction.
-	if ((XactIsoLevel != XACT_READ_COMMITTED && YBIsDataSent()) ||
-			(XactIsoLevel == XACT_READ_COMMITTED && is_conflict_error && YBIsDataSent()) ||
-			(XactIsoLevel == XACT_READ_COMMITTED && is_read_restart_error && YBIsDataSentForCurrQuery()))
+	if ((!IsYBReadCommitted() && YBIsDataSent()) ||
+			(IsYBReadCommitted() && YBIsDataSentForCurrQuery()))
 	{
 		if (yb_debug_log_internal_restarts)
 			elog(LOG, "Restart isn't possible, data was already sent. Txn error code=%d",
@@ -4085,8 +4115,7 @@ yb_is_restart_possible(const ErrorData* edata,
 		return false;
 	}
 
-	// TODO(Piyush): Restart even in sub-transactions if in READ COMMITTED isolation.
-	if (IsSubTransaction()) {
+	if (IsSubTransaction() && !IsYBReadCommitted()) {
 		if (yb_debug_log_internal_restarts)
 			elog(LOG, "Restart isn't possible, savepoints have been used");
 		return false;
@@ -4352,45 +4381,122 @@ yb_attempt_to_restart_on_error(int attempt,
 			                attempt)));
 		}
 		/*
-		 * Cleanup the error, restart portal, restart txn and let the control
-		 * flow continue
+		 * Cleanup the error and restart portal.
 		 */
 		FlushErrorState();
 
-		if (restart_data->portal_name) {
+		if (restart_data->portal_name)
+		{
+			elog(DEBUG1, "Restarting portal %s for retry", restart_data->portal_name);
 			yb_restart_portal(restart_data->portal_name);
 		}
 		YBRestoreOutputBufferPosition();
 
-		/*
-		 * The txn might or might not have performed writes. Reset the state in
-		 * either case to avoid checking/tracking if a write could have been
-		 * performed.
-		 */
-		YBCRestartWriteTransaction();
-
-		if (YBCIsRestartReadError(edata->yb_txn_errcode))
-		{
-			YBCRestartTransaction(false /* force_restart */);
-		}
-		else if (YBCIsTxnConflictError(edata->yb_txn_errcode))
+		if (IsYBReadCommitted() && IsInTransactionBlock(true /* isTopLevel */))
 		{
 			/*
-			 * Recreate the YB state for the transaction. This call preserves the
-			 * priority of the current YB transaction so that when we retry, we re-use
-			 * the same priority.
+			 * In this case the txn is not restarted, just the statement is restarted after rolling back
+			 * to the internal savepoint registered at start of the statement.
 			 */
-			YBCRecreateTransaction();
-			pg_usleep(yb_get_sleep_usecs_on_txn_conflict(attempt));
+			elog(DEBUG1, "Rolling back statement");
+
+			/*
+			 * Presence of triggers pushes additional snapshots. Pop all of them.
+			 */
+			PopAllActiveSnapshots();
+
+			// TODO(Piyush): Perform pg_session_->InvalidateForeignKeyReferenceCache() and create tests
+			// that would fail without this.
+
+			/*
+			 * Rollback to the savepoint that was started in StartTransactionCommand() for READ COMMITTED
+			 * isolation.
+			 */
+
+			if (restart_data->portal_name)
+			{
+				Portal portal = GetPortalByName(restart_data->portal_name);
+				Assert(portal);
+
+				/*
+				 * Set the createSubid to the next internal sub txn that we are going to create after
+				 * RollbackAndReleaseCurrentSubTransaction(). This is ensure
+				 * RollbackAndReleaseCurrentSubTransaction() doesn't clean up the portal we had just
+				 * restarted using yb_restart_portal().
+				 */
+				portal->createSubid = GetCurrentSubTransactionId() + 1;
+				portal->activeSubid = portal->createSubid;
+				ResourceOwnerNewParent(portal->resowner, NULL);
+			}
+
+			Assert(strcmp(GetCurrentTransactionName(), YB_READ_COMMITTED_INTERNAL_SUB_TXN_NAME) == 0);
+			RollbackAndReleaseCurrentSubTransaction();
+			BeginInternalSubTransactionForReadCommittedStatement();
+
+			if (restart_data->portal_name)
+			{
+				Portal portal = GetPortalByName(restart_data->portal_name);
+				Assert(portal);
+				ResourceOwnerNewParent(portal->resowner, CurTransactionResourceOwner);
+			}
+
+			if (YBCIsRestartReadError(edata->yb_txn_errcode))
+			{
+				HandleYBStatus(YBCPgRestartReadPoint());
+			}
+			else if (YBCIsTxnConflictError(edata->yb_txn_errcode))
+			{
+				HandleYBStatus(YBCPgResetTransactionReadPoint());
+				pg_usleep(yb_get_sleep_usecs_on_txn_conflict(attempt));
+			}
+			else
+			{
+				/*
+				 * We shouldn't really be able to reach here. If yb_is_restart_possible()
+				 * was true, the error should have been either of kReadRestart/kConflict
+				 */
+				MemoryContextSwitchTo(error_context);
+				PG_RE_THROW();
+			}
 		}
 		else
 		{
 			/*
-			 * We shouldn't really be able to reach here. If yb_is_restart_possible()
-			 * was true, the error should have been either of kReadRestart/kConflict
+			 * In this case the txn is restarted, which can be done since we haven't executed even the
+			 * first statement fully and no data has been sent to the client.
 			 */
-			MemoryContextSwitchTo(error_context);
-			PG_RE_THROW();
+			elog(DEBUG1, "Restarting txn");
+
+			/*
+			 * The txn might or might not have performed writes. Reset the state in
+			 * either case to avoid checking/tracking if a write could have been
+			 * performed.
+			 */
+			YBCRestartWriteTransaction();
+
+			if (YBCIsRestartReadError(edata->yb_txn_errcode))
+			{
+				YBCRestartTransaction(false /* force_restart */);
+			}
+			else if (YBCIsTxnConflictError(edata->yb_txn_errcode))
+			{
+				/*
+				 * Recreate the YB state for the transaction. This call preserves the
+				 * priority of the current YB transaction so that when we retry, we re-use
+				 * the same priority.
+				 */
+				YBCRecreateTransaction();
+				pg_usleep(yb_get_sleep_usecs_on_txn_conflict(attempt));
+			}
+			else
+			{
+				/*
+				 * We shouldn't really be able to reach here. If yb_is_restart_possible()
+				 * was true, the error should have been either of kReadRestart/kConflict
+				 */
+				MemoryContextSwitchTo(error_context);
+				PG_RE_THROW();
+			}
 		}
 	} else {
 		/* if we shouldn't restart - propagate the error */
@@ -4407,17 +4513,24 @@ typedef void(*YBFunctor)(const void*);
 
 static void
 yb_exec_query_wrapper(MemoryContext exec_context,
-                      YBQueryRestartData* restart_data,
-                      YBFunctor functor,
-                      const void* functor_context)
+					  YBQueryRestartData* restart_data,
+					  YBFunctor functor,
+					  const void* functor_context)
 {
-	for (int attempt = 0;; ++attempt)
+	bool retry = true;
+	for (int attempt = 0; retry; ++attempt)
 	{
-		YBSaveOutputBufferPosition(!yb_is_begin_transaction(restart_data->command_tag));
+		elog(DEBUG2, "yb_exec_query_wrapper attempt %d for %s", attempt, restart_data->query_string);
+		YBSaveOutputBufferPosition(
+			!yb_is_begin_transaction(restart_data->command_tag));
 		PG_TRY();
 		{
 			(*functor)(functor_context);
-			return;
+			/*
+			 * Stop retrying if successfull. Note, break or return could not be
+			 * used here, they would prevent PG_END_TRY();
+			 */
+			retry = false;
 		}
 		PG_CATCH();
 		{

@@ -47,7 +47,7 @@ void DocDBTestBase::ClearLogicalSnapshots() {
   logical_snapshots_.clear();
 }
 
-void DocDBTestBase::RestoreToRocksDBLogicalSnapshot(int snapshot_index) {
+void DocDBTestBase::RestoreToRocksDBLogicalSnapshot(size_t snapshot_index) {
   CHECK_LE(0, snapshot_index);
   CHECK_LT(snapshot_index, logical_snapshots_.size());
   logical_snapshots_[snapshot_index].RestoreTo(rocksdb());

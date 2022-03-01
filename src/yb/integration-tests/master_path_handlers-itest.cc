@@ -309,7 +309,7 @@ TEST_F_EX(MasterPathHandlersItest, Forward, MultiMasterPathHandlersItest) {
   FLAGS_TEST_master_extra_list_host_port = RandomHumanReadableString(16) + ".com";
   EasyCurl curl;
   faststring content;
-  for (int i = 0; i != cluster_->num_masters(); ++i) {
+  for (size_t i = 0; i != cluster_->num_masters(); ++i) {
     auto url = Format("http://$0/tablet-servers", cluster_->mini_master(i)->bound_http_addr());
     content.clear();
     ASSERT_OK(curl.FetchURL(url, &content));

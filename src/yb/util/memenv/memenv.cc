@@ -23,6 +23,7 @@
 #include <string.h>
 
 #include <map>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -248,14 +249,14 @@ class InMemoryEnv : public EnvWrapper {
                                      std::string* created_filename,
                                      std::unique_ptr<WritableFile>* result) override {
     // Not very random, but InMemoryEnv is basically a test env.
-    Random random(GetCurrentTimeMicros());
+    std::mt19937_64 random(GetCurrentTimeMicros());
     while (true) {
       string stripped;
       if (!TryStripSuffixString(name_template, "XXXXXX", &stripped)) {
         return STATUS(InvalidArgument, "Name template must end with the string XXXXXX",
                                        name_template);
       }
-      uint32_t num = random.Next() % 999999; // Ensure it's <= 6 digits long.
+      uint32_t num = random() % 999999; // Ensure it's <= 6 digits long.
       string path = StringPrintf("%s%06u", stripped.c_str(), num);
 
       MutexLock lock(mutex_);

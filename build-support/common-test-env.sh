@@ -1518,25 +1518,29 @@ run_java_test() {
 
   # We specify tempDir to use a separate temporary directory for each test.
   # http://maven.apache.org/surefire/maven-surefire-plugin/test-mojo.html
-  #
-  # We specify --offline because we don't want any downloads to happen from Maven Central or Nexus.
-  # Everything we need should already be in the local Maven repository.
-  #
-  # Also --legacy-local-repository is really important (could also be specified using
-  # -Dmaven.legacyLocalRepo=true). Without this option, there might be some mysterious
-  # _remote.repositories files somewhere (maybe even embedded in some artifacts?) that may force
-  # Maven to try to check Maven Central for artifacts that it already has in its local repository,
-  # and with --offline that will lead to a runtime error.
-  #
-  # See https://maven.apache.org/ref/3.1.1/maven-embedder/cli.html and https://bit.ly/3xeMFYP
   mvn_opts=(
     -Dtest="$test_class_and_maybe_method"
     --projects "$module_name"
     -DtempDir="$surefire_rel_tmp_dir"
-    --offline
-    --legacy-local-repository
     "${MVN_COMMON_OPTIONS_IN_TESTS[@]}"
   )
+  if [[ ${YB_JAVA_TEST_OFFLINE_MODE:-1} == "1" ]]; then
+    # When running in a CI/CD environment, we specify --offline because we don't want any downloads
+    # to happen from Maven Central or Nexus. Everything we need should already be in the local Maven
+    # repository.
+    #
+    # In yb_build.sh, we set YB_JAVA_TEST_OFFLINE_MODE=0 specifically to disable this behavior,
+    # because downloading extra artifacts is OK when running tests locally.
+    #
+    # Also --legacy-local-repository is really important (could also be specified using
+    # -Dmaven.legacyLocalRepo=true). Without this option, there might be some mysterious
+    # _remote.repositories files somewhere (maybe even embedded in some artifacts?) that may force
+    # Maven to try to check Maven Central for artifacts that it already has in its local repository,
+    # and with --offline that will lead to a runtime error.
+    #
+    # See https://maven.apache.org/ref/3.1.1/maven-embedder/cli.html and https://bit.ly/3xeMFYP
+    mvn_opts+=( --offline --legacy-local-repository )
+  fi
   append_common_mvn_opts
 
   local report_suffix
@@ -1856,6 +1860,8 @@ run_python_tests() {
     run_python_doctest
     log "Invoking the codecheck tool"
     python3 -m codecheck
+    log "Running unit tests with pytest"
+    pytest python/
   )
 }
 

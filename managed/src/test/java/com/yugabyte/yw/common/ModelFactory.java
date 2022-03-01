@@ -14,11 +14,12 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
 import com.yugabyte.yw.common.alerts.AlertChannelParams;
 import com.yugabyte.yw.common.alerts.AlertChannelSlackParams;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.forms.BackupTableParams;
-import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
+import com.yugabyte.yw.forms.AlertingData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.filters.AlertConfigurationApiFilter;
 import com.yugabyte.yw.models.Alert;
@@ -240,6 +241,19 @@ public class ModelFactory {
     return CustomerConfig.createWithFormData(customer.uuid, formData);
   }
 
+  public static CustomerConfig createAZStorageConfig(Customer customer, String configName) {
+    JsonNode formData =
+        Json.parse(
+            "{\"configName\": \""
+                + configName
+                + "\", \"name\": \"AZ\","
+                + " \"type\": \"STORAGE\","
+                + " \"data\":"
+                + " {\"BACKUP_LOCATION\": \"https://foo.blob.core.windows.net/azurecontainer\","
+                + " \"AZURE_STORAGE_SAS_TOKEN\": \"AZ-TOKEN\"}}");
+    return CustomerConfig.createWithFormData(customer.uuid, formData);
+  }
+
   public static Backup createBackup(UUID customerUUID, UUID universeUUID, UUID configUUID) {
     BackupTableParams params = new BackupTableParams();
     params.storageConfigUUID = configUUID;
@@ -247,6 +261,18 @@ public class ModelFactory {
     params.setKeyspace("foo");
     params.setTableName("bar");
     params.tableUUID = UUID.randomUUID();
+    params.actionType = BackupTableParams.ActionType.CREATE;
+    return Backup.create(customerUUID, params);
+  }
+
+  public static Backup restoreBackup(UUID customerUUID, UUID universeUUID, UUID configUUID) {
+    BackupTableParams params = new BackupTableParams();
+    params.storageConfigUUID = configUUID;
+    params.universeUUID = universeUUID;
+    params.setKeyspace("foo");
+    params.setTableName("bar");
+    params.tableUUID = UUID.randomUUID();
+    params.actionType = BackupTableParams.ActionType.RESTORE;
     return Backup.create(customerUUID, params);
   }
 
@@ -480,6 +506,7 @@ public class ModelFactory {
         new MaintenanceWindow()
             .generateUUID()
             .setName("Test")
+            .setDescription("Test Description")
             .setStartTime(startDate)
             .setEndTime(endDate)
             .setCustomerUUID(customerUUID)
@@ -509,7 +536,7 @@ public class ModelFactory {
    * CertificateInfo creation helpers.
    */
   public static CertificateInfo createCertificateInfo(
-      UUID customerUUID, String certificate, CertificateInfo.Type certType)
+      UUID customerUUID, String certificate, CertConfigType certType)
       throws IOException, NoSuchAlgorithmException {
     return CertificateInfo.create(
         UUID.randomUUID(), customerUUID, "test", new Date(), new Date(), "", certificate, certType);

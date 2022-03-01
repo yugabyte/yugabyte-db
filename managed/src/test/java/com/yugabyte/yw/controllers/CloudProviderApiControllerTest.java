@@ -45,7 +45,6 @@ import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AccessKey;
@@ -58,15 +57,12 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.File;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
-import org.apache.commons.io.FileUtils;
-import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -93,7 +89,6 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   public void setUp() {
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
-    new File(TestHelper.TMP_PATH).mkdirs();
     try {
       String kubeFile = createTempFile("test2.conf", "test5678");
       //      when(mockAccessManager.createKubernetesConfig(anyString(), anyMap(), anyBoolean()))
@@ -101,11 +96,6 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     } catch (Exception e) {
       // Do nothing
     }
-  }
-
-  @After
-  public void tearDown() throws IOException {
-    FileUtils.deleteDirectory(new File(TestHelper.TMP_PATH));
   }
 
   private Result listProviders() {
@@ -363,7 +353,8 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     assertYBPSuccess(result, "Deleted provider: " + p.uuid);
     assertEquals(0, AccessKey.getAll(p.uuid).size());
     assertNull(Provider.get(p.uuid));
-    verify(mockAccessManager, times(1)).deleteKeyByProvider(p, ak.getKeyCode());
+    verify(mockAccessManager, times(1))
+        .deleteKeyByProvider(p, ak.getKeyCode(), ak.getKeyInfo().deleteRemote);
     assertAuditEntry(1, customer.uuid);
   }
 
@@ -403,7 +394,8 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     assertYBPSuccess(result, "Deleted provider: " + p.uuid);
     assertEquals(0, AccessKey.getAll(p.uuid).size());
     assertNull(Provider.get(p.uuid));
-    verify(mockAccessManager, times(1)).deleteKeyByProvider(p, ak.getKeyCode());
+    verify(mockAccessManager, times(1))
+        .deleteKeyByProvider(p, ak.getKeyCode(), ak.getKeyInfo().deleteRemote);
     assertAuditEntry(1, customer.uuid);
   }
 

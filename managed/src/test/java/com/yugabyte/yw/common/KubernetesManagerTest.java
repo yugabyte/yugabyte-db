@@ -38,7 +38,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
 
   @Mock play.Configuration mockAppConfig;
 
-  @InjectMocks KubernetesManager kubernetesManager;
+  @InjectMocks ShellKubernetesManager kubernetesManager;
 
   Provider defaultProvider;
   Customer defaultCustomer;
@@ -75,7 +75,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
 
   private void runCommand(
       KubernetesCommandExecutor.CommandType commandType, String ybSoftwareVersion) {
-    ShellResponse response = new ShellResponse();
+    ShellResponse response = ShellResponse.create(0, "{}");
     when(shellProcessHandler.run(anyList(), anyMap(), anyString())).thenReturn(response);
 
     int numOfCalls = 1;
@@ -311,7 +311,9 @@ public class KubernetesManagerTest extends FakeDBApplication {
 
   @Test
   public void getMasterServiceIPs() {
-    kubernetesManager.getServiceIPs(configProvider, "demo-universe", true);
+    ShellResponse response = ShellResponse.create(0, "{}");
+    when(shellProcessHandler.run(anyList(), anyMap(), anyString())).thenReturn(response);
+    kubernetesManager.getPreferredServiceIP(configProvider, "demo-universe", true);
     Mockito.verify(shellProcessHandler, times(1))
         .run(command.capture(), (Map<String, String>) config.capture(), description.capture());
     assertEquals(
@@ -323,13 +325,15 @@ public class KubernetesManagerTest extends FakeDBApplication {
             "--namespace",
             "demo-universe",
             "-o",
-            "jsonpath={.spec.clusterIP}|{.status.*.ingress[0].ip}|{.status.*.ingress[0].hostname}"),
+            "json"),
         command.getValue());
   }
 
   @Test
   public void getTserverServiceIPs() {
-    kubernetesManager.getServiceIPs(configProvider, "demo-universe", false);
+    ShellResponse response = ShellResponse.create(0, "{}");
+    when(shellProcessHandler.run(anyList(), anyMap(), anyString())).thenReturn(response);
+    kubernetesManager.getPreferredServiceIP(configProvider, "demo-universe", false);
     Mockito.verify(shellProcessHandler, times(1))
         .run(command.capture(), (Map<String, String>) config.capture(), description.capture());
     assertEquals(
@@ -341,12 +345,14 @@ public class KubernetesManagerTest extends FakeDBApplication {
             "--namespace",
             "demo-universe",
             "-o",
-            "jsonpath={.spec.clusterIP}|{.status.*.ingress[0].ip}|{.status.*.ingress[0].hostname}"),
+            "json"),
         command.getValue());
   }
 
   @Test
   public void getServices() {
+    ShellResponse response = ShellResponse.create(0, "{}");
+    when(shellProcessHandler.run(anyList(), anyMap(), anyString())).thenReturn(response);
     kubernetesManager.getServices(configProvider, "demo-universe", "demo-ns");
     Mockito.verify(shellProcessHandler, times(1))
         .run(command.capture(), (Map<String, String>) config.capture(), description.capture());
@@ -366,7 +372,9 @@ public class KubernetesManagerTest extends FakeDBApplication {
 
   @Test
   public void getNodeInfos() {
-    kubernetesManager.runGetNodeInfos(configProvider);
+    ShellResponse response = ShellResponse.create(0, "{}");
+    when(shellProcessHandler.run(anyList(), anyMap(), anyString())).thenReturn(response);
+    kubernetesManager.getNodeInfos(configProvider);
     Mockito.verify(shellProcessHandler, times(1))
         .run(command.capture(), (Map<String, String>) config.capture(), description.capture());
     assertEquals(ImmutableList.of("kubectl", "get", "nodes", "-o", "json"), command.getValue());
@@ -374,7 +382,9 @@ public class KubernetesManagerTest extends FakeDBApplication {
 
   @Test
   public void getSecret() {
-    kubernetesManager.runGetSecret(configProvider, "pull-sec", "test-ns");
+    ShellResponse response = ShellResponse.create(0, "{}");
+    when(shellProcessHandler.run(anyList(), anyMap(), anyString())).thenReturn(response);
+    kubernetesManager.getSecret(configProvider, "pull-sec", "test-ns");
     Mockito.verify(shellProcessHandler, times(1))
         .run(command.capture(), (Map<String, String>) config.capture(), description.capture());
     assertEquals(
@@ -385,7 +395,9 @@ public class KubernetesManagerTest extends FakeDBApplication {
 
   @Test
   public void getSecretWithoutNamespace() {
-    kubernetesManager.runGetSecret(configProvider, "pull-sec", null);
+    ShellResponse response = ShellResponse.create(0, "{}");
+    when(shellProcessHandler.run(anyList(), anyMap(), anyString())).thenReturn(response);
+    kubernetesManager.getSecret(configProvider, "pull-sec", null);
     Mockito.verify(shellProcessHandler, times(1))
         .run(command.capture(), (Map<String, String>) config.capture(), description.capture());
     assertEquals(

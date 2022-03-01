@@ -64,7 +64,7 @@ After you created the required tables, you can set up asynchronous replication a
     ```
 
 
-The preceding command contains three table IDs: the first two are YSQL for the base table and index, and the third is the YCQL table. 
+The preceding command contains three table IDs: the first two are YSQL for the base table and index, and the third is the YCQL table.
 
 Also, be sure to specify all master addresses for source and target universes in the command.
 
@@ -137,3 +137,73 @@ The following example generates a replication lag summary for all tables on a cl
 ```
 
 To obtain a summary of all command options, execute `determine_repl_latency.sh -h` .
+
+## Setting Up Replication with TLS
+
+### Source and Target Universes have the Same Certificates
+
+If both universes use the same certificates, run `yb-admin setup_universe_replication` and include the [`-certs_dir_name`](../../../admin/yb-admin#syntax) flag. Setting that to the target universe's certificate directory will make replication use those certificates for connecting to both universes.
+
+For example:
+
+```sh
+./bin/yb-admin -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
+  -certs_dir_name /home/yugabyte/yugabyte-tls-config \
+  setup_universe_replication e260b8b6-e89f-4505-bb8e-b31f74aa29f3 \
+  127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+  000030a5000030008000000000004000,000030a5000030008000000000004005,dfef757c415c4b2cacc9315b8acb539a
+```
+
+### Source and Target Universes have Different Certificates
+
+When both universes use different certificates, you need to store the certificates for the producer universe on the target universe:
+
+1. Ensure that `use_node_to_node_encryption` is set to `true` on all [masters](../../reference/configuration/yb-master/#use-node-to-node-encryption) and [tservers](../../reference/configuration/yb-tserver/#use-node-to-node-encryption) on both the source and target.
+
+1. For each master and tserver on the target universe, set the gflag `certs_for_cdc_dir` to the parent directory where you will store all the source universe's certs for replication.
+
+1. Find the certificate authority file used by the source universe (`ca.crt`). This should be stored within the [`--certs_dir`](https://docs.yugabyte.com/latest/reference/configuration/yb-master/#certs-dir).
+
+1. Copy this file to each node on the target. It needs to be copied to a directory named: `<certs_for_cdc_dir>/<source_universe_uuid>`.
+
+    For example, if you previously set `certs_for_cdc_dir=/home/yugabyte/yugabyte_producer_certs`, and the source universe's ID is `00000000-1111-2222-3333-444444444444`, then you would need to copy the cert file to `/home/yugabyte/yugabyte_producer_certs/00000000-1111-2222-3333-444444444444/ca.crt`.
+
+1. Finally, set up replication using `yb-admin setup_universe_replication`, making sure to also set the `-certs_dir_name` flag to the directory with the *target universe's* certificates (this should be different from the directory used in the previous steps).
+
+    For example, if you have the target's certificates in `/home/yugabyte/yugabyte-tls-config`, then you would run:
+
+    ```sh
+    ./bin/yb-admin -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
+      -certs_dir_name /home/yugabyte/yugabyte-tls-config \
+      setup_universe_replication 00000000-1111-2222-3333-444444444444 \
+      127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+      000030a5000030008000000000004000,000030a5000030008000000000004005,dfef757c415c4b2cacc9315b8acb539a
+    ```
+
+## Bootstrapping a sink cluster
+
+Documentation coming soon. More details in [#6870](https://github.com/yugabyte/yugabyte-db/issues/6870).
+
+## Schema migration
+
+This section describs how to execute DDL operations, after replication has been already configured for some tables.
+
+### Stopping user writes
+
+Some use cases can afford to temporarily stop incoming user writes. For such cases, the typical runbook would be:
+- Stop any new incoming user writes.
+- Wait for all changes to get replicated to the sink cluster. This can be observed by replication lag dropping to 0.
+- Apply the DDL changes on both sides.
+  - [Alter replication](../../../admin/yb-admin/#alter-universe-replication) for any newly created tables, eg: after having used CREATE TABLE / CREATE INDEX.
+- Resume user writes.
+
+### Using backup and restore
+
+In the event you cannot stop incoming user traffic, then the recommended approach would be to apply DDLs on the source cluster and use [bootstrapping a sink cluster](#bootstrapping-a-sink-cluster) flow above. A more detailed runbook would be as follows:
+- Stop replication, in advance of DDL changes.
+- Apply all your DDL changes to the source cluster.
+- Take a backup of the source cluster, of all the relevant tables that you intend to replicate changes for.
+  - Make sure to use the [bootstrapping a sink cluster](#bootstrapping-a-sink-cluster) flow, as described above.
+- Restore this backup on the sink cluster.
+- [Setup replication](../../../admin/yb-admin/#setup-universe-replication) again, for all of the relevant tables.
+  - Make sure to pass in the `bootstrap_ids`, as described above.

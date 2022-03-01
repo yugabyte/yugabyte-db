@@ -10,9 +10,10 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -34,17 +35,19 @@ public class CertificateInfoTest extends FakeDBApplication {
   private final List<String> certList = Arrays.asList("test_cert1", "test_cert2", "test_cert3");
   private final List<UUID> certIdList = new ArrayList<>();
 
+  private final String TMP_CERTS_PATH = "/tmp/" + getClass().getSimpleName() + "/certs";
+
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
     for (String cert : certList) {
-      certIdList.add(CertificateHelper.createRootCA(cert, customer.uuid, "/tmp/certs"));
+      certIdList.add(CertificateHelper.createRootCA(cert, customer.uuid, TMP_CERTS_PATH));
     }
   }
 
   @After
   public void tearDown() throws IOException {
-    FileUtils.deleteDirectory(new File("/tmp/certs"));
+    FileUtils.deleteDirectory(new File(TMP_CERTS_PATH));
   }
 
   @Test

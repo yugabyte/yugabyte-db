@@ -10,21 +10,20 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
-import com.yugabyte.yw.common.KubernetesManager;
-import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.models.Provider;
-import java.util.ArrayList;
-import java.util.Iterator;
+
+import io.fabric8.kubernetes.api.model.PodCondition;
+import io.fabric8.kubernetes.api.model.PodStatus;
+
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
-import play.libs.Json;
 
 public class KubernetesWaitForPod extends AbstractTaskBase {
   public enum CommandType {
@@ -39,13 +38,14 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
     }
   }
 
-  private final KubernetesManager kubernetesManager;
+  private final KubernetesManagerFactory kubernetesManagerFactory;
 
   @Inject
   protected KubernetesWaitForPod(
-      BaseTaskDependencies baseTaskDependencies, KubernetesManager kubernetesManager) {
+      BaseTaskDependencies baseTaskDependencies,
+      KubernetesManagerFactory kubernetesManagerFactory) {
     super(baseTaskDependencies);
-    this.kubernetesManager = kubernetesManager;
+    this.kubernetesManagerFactory = kubernetesManagerFactory;
   }
 
   // Number of iterations to wait for the pod to come up.
@@ -106,18 +106,13 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
     if (taskParams().config == null) {
       config = Provider.get(taskParams().providerUUID).getUnmaskedConfig();
     }
-    ShellResponse podResponse =
-        kubernetesManager.getPodStatus(config, taskParams().namespace, taskParams().podName);
-    JsonNode podInfo = parseShellResponseAsJson(podResponse);
-    JsonNode statusNode = podInfo.path("status");
-    String status = statusNode.get("phase").asText();
-    JsonNode podConditions = statusNode.path("conditions");
-    ArrayList conditions = Json.fromJson(podConditions, ArrayList.class);
-    Iterator iter = conditions.iterator();
-    while (iter.hasNext()) {
-      JsonNode info = Json.toJson(iter.next());
-      String statusContainer = info.path("status").asText();
-      if (statusContainer.equals("False")) {
+    PodStatus podStatus =
+        kubernetesManagerFactory
+            .getManager()
+            .getPodStatus(config, taskParams().namespace, taskParams().podName);
+    String status = podStatus.getPhase();
+    for (PodCondition condition : podStatus.getConditions()) {
+      if (condition.getStatus().equals("False")) {
         status = "Not Ready";
       }
     }

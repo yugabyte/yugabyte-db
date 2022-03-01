@@ -42,11 +42,11 @@ class SysCatalogRespectAffinityTest : public YBTableTestBase {
 
   bool use_external_mini_cluster() override { return true; }
 
-  int num_masters() override {
+  size_t num_masters() override {
     return 3;
   }
 
-  int num_tablet_servers() override {
+  size_t num_tablet_servers() override {
     return 3;
   }
 

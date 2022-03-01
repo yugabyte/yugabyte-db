@@ -30,6 +30,8 @@
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/env.h"
 
+#include "yb/rocksdb/util/testutil.h"
+
 namespace rocksdb {
 
 class TestFilterBitsBuilder : public FilterBitsBuilder {
@@ -115,7 +117,7 @@ class TestHashFilter : public FilterPolicy {
   FilterType GetFilterType() const override { return kFullFilter; }
 };
 
-class PluginFullFilterBlockTest : public testing::Test {
+class PluginFullFilterBlockTest : public RocksDBTest {
  public:
   BlockBasedTableOptions table_options_;
 
@@ -158,7 +160,7 @@ TEST_F(PluginFullFilterBlockTest, PluginSingleChunk) {
   ASSERT_TRUE(!reader.KeyMayMatch("other"));
 }
 
-class FullFilterBlockTest : public testing::Test {
+class FullFilterBlockTest : public RocksDBTest {
  public:
   BlockBasedTableOptions table_options_;
 

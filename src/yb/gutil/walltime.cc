@@ -40,11 +40,12 @@
 
 #include "yb/gutil/walltime.h"
 
-
 #if defined(__APPLE__)
 #include <mach/clock.h>
 #include <mach/mach.h>
 #endif  // defined(__APPLE__)
+
+#include <memory>
 
 #include <glog/logging.h>
 
@@ -76,28 +77,25 @@ void StringAppendStrftime(std::string* dst,
                           const struct tm* tm) {
   char space[1024];
 
-  int result = strftime(space, sizeof(space), format, tm);
+  size_t result = strftime(space, sizeof(space), format, tm);
 
-  if ((result >= 0) && (result < sizeof(space))) {
+  if (result > 0) {
     // It fit
     dst->append(space, result);
     return;
   }
 
-  int length = sizeof(space);
+  size_t length = sizeof(space);
   for (int sanity = 0; sanity < 5; ++sanity) {
     length *= 2;
-    auto buf = new char[length];
+    std::unique_ptr<char[]> buf(new char[length]);
 
-    result = strftime(buf, length, format, tm);
-    if ((result >= 0) && (result < length)) {
+    result = strftime(buf.get(), length, format, tm);
+    if (result > 0) {
       // It fit
-      dst->append(buf, result);
-      delete[] buf;
+      dst->append(buf.get(), result);
       return;
     }
-
-    delete[] buf;
   }
 
   // sanity failure

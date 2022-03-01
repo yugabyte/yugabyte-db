@@ -143,29 +143,28 @@ class Socket {
   // get the error status using getsockopt(2)
   CHECKED_STATUS GetSockError() const;
 
-  CHECKED_STATUS Write(const uint8_t *buf, int32_t amt, int32_t *nwritten);
+  Result<size_t> Write(const uint8_t *buf, ssize_t amt);
 
-  CHECKED_STATUS Writev(const struct ::iovec *iov, int iov_len, int32_t *nwritten);
+  Result<size_t> Writev(const struct ::iovec *iov, int iov_len);
 
   // Blocking Write call, returns IOError unless full buffer is sent.
   // Underlying Socket expected to be in blocking mode. Fails if any Write() sends 0 bytes.
   // Returns OK if buflen bytes were sent, otherwise IOError.
   // Upon return, num_written will contain the number of bytes actually written.
   // See also writen() from Stevens (2004) or Kerrisk (2010)
-  CHECKED_STATUS BlockingWrite(const uint8_t *buf, size_t buflen, size_t *num_written,
-      const MonoTime& deadline);
+  CHECKED_STATUS BlockingWrite(const uint8_t *buf, size_t buflen, const MonoTime& deadline);
 
-  Result<int32_t> Recv(uint8_t* buf, int32_t amt);
+  Result<size_t> Recv(uint8_t* buf, ssize_t amt);
 
   // Receives into multiple buffers, returns number of bytes received.
-  Result<int32_t> Recvv(IoVecs* vecs);
+  Result<size_t> Recvv(IoVecs* vecs);
 
   // Blocking Recv call, returns IOError unless requested amt bytes are read.
   // Underlying Socket expected to be in blocking mode. Fails if any Recv() reads 0 bytes.
   // Returns OK if amt bytes were read, otherwise IOError.
   // Upon return, nread will contain the number of bytes actually read.
   // See also readn() from Stevens (2004) or Kerrisk (2010)
-  CHECKED_STATUS BlockingRecv(uint8_t *buf, size_t amt, size_t *nread, const MonoTime& deadline);
+  Result<size_t> BlockingRecv(uint8_t *buf, size_t amt, const MonoTime& deadline);
 
   // Implements the SOL_SOCKET/SO_RCVBUF socket option.
   Result<int32_t> GetReceiveBufferSize();

@@ -156,17 +156,11 @@ static inline int32_t CQLDecodeLength(const void* buffer) {
 }
 
 //----------------------------------- CQL value encode functions ---------------------------------
-static inline void CQLEncodeLength(const int32_t length, faststring* buffer) {
-  uint32_t byte_value;
-  NetworkByteOrder::Store32(&byte_value, static_cast<uint32_t>(length));
-  buffer->append(&byte_value, sizeof(byte_value));
-}
+void CQLEncodeLength(const ssize_t length, faststring* buffer);
 
 // Encode a 32-bit length into the buffer without extending the buffer. Caller should ensure the
 // buffer size is at least 4 bytes.
-static inline void CQLEncodeLength(const int32_t length, void* buffer) {
-  NetworkByteOrder::Store32(buffer, static_cast<uint32_t>(length));
-}
+void CQLEncodeLength(const ssize_t length, void* buffer);
 
 // Encode a CQL number (8, 16, 32 and 64-bit integer). <num_type> is the integer type.
 // <converter> converts the number from machine byte-order to network order and <data_type>

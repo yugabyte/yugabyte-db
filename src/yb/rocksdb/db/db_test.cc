@@ -60,11 +60,14 @@
 
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 
+#include "yb/util/countdown_latch.h"
 #include "yb/util/format.h"
 #include "yb/util/priority_thread_pool.h"
+#include "yb/util/random_util.h"
 #include "yb/util/slice.h"
 #include "yb/util/string_util.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
 
 DECLARE_bool(use_priority_thread_pool_for_compactions);
@@ -5162,75 +5165,161 @@ TEST_F(DBTest, SimpleWriteTimeoutTest) {
   ASSERT_NOK(Put(Key(1), Key(1) + std::string(100, 'v'), write_opt));
 }
 
-#ifndef ROCKSDB_LITE
+// Class that wraps DB write instructions
+class DBWriter : public DBHolder {
+ public:
+  struct WriteStat {
+    int64_t bytes_count_ = 0;
+    yb::MonoTime start_time_;
+    yb::MonoTime stop_time_;
+
+    Result<double> GetRate() const {
+      RETURN_NOT_OK(Verify());
+      return bytes_count_ / (stop_time_ - start_time_).ToSeconds();
+    }
+
+    CHECKED_STATUS Verify() const {
+      SCHECK_GT(bytes_count_, 0, IllegalState, "Bytes count must be greater than zero");
+      SCHECK_LT(start_time_, stop_time_, IllegalState, "Start time must be less than stop time");
+      return Status::OK();
+    }
+  };
+
+  explicit DBWriter(std::string path = "/db_test_write")
+      : DBHolder(path) , write_options_(CurrentOptions()) {
+    write_options_.write_buffer_size = 1_MB;
+    write_options_.level0_file_num_compaction_trigger = 2;
+    write_options_.target_file_size_base = 1_MB;
+    write_options_.max_bytes_for_level_base = 4_MB;
+    write_options_.max_bytes_for_level_multiplier = 4;
+    write_options_.compression = kNoCompression;
+    write_options_.create_if_missing = true;
+    write_options_.env = env_;
+    write_options_.IncreaseParallelism(4);
+  }
+
+  CHECKED_STATUS InitRate(boost::optional<double> rate_bytes_per_sec = boost::none) {
+    if (rate_bytes_per_sec) {
+      write_reference_rate_bytes_per_sec_ = *rate_bytes_per_sec;
+      SCHECK_GT(write_reference_rate_bytes_per_sec_, 0.0,
+                IllegalState, "Reference rate must be greater than zero");
+    } else {
+      RETURN_NOT_OK(ExecWrite());
+      write_reference_rate_bytes_per_sec_ = VERIFY_RESULT(write_stat_.GetRate());
+    }
+    return Status::OK();
+  }
+
+  CHECKED_STATUS ExecWrite() {
+    env_->bytes_written_ = 0;
+    DestroyAndReopen(write_options_);
+    WriteOptions wo;
+    wo.disableWAL = true;
+
+    // Write ~48M data
+    auto rnd = &yb::ThreadLocalRandom();
+    write_stat_.start_time_ = yb::MonoTime::Now();
+    for (size_t i = 0; i < (48 << 10); ++i) {
+      RETURN_NOT_OK_PREPEND(
+        Put(yb::RandomString(32, rnd), yb::RandomString(1_KB + 1, rnd), wo),
+        "iteration #" + std::to_string(i));
+    }
+    write_stat_.stop_time_ = yb::MonoTime::Now();
+    Close();
+    write_stat_.bytes_count_ = env_->bytes_written_.load();
+    return write_stat_.Verify();
+  }
+
+  CHECKED_STATUS ExecWriteWithNewRateLimiter(double rate_bytes_per_sec) {
+    write_options_.rate_limiter.reset(
+      NewGenericRateLimiter(static_cast<int64_t>(rate_bytes_per_sec)));
+    RETURN_NOT_OK(ExecWrite());
+    SCHECK_EQ(write_stat_.bytes_count_, write_options_.rate_limiter->GetTotalBytesThrough(),
+              IllegalState, "Bytes count vs rate limiter total bytes inconsistency");
+    return Status::OK();
+  }
+
+  CHECKED_STATUS MeasureWrite(double rate_ratio, double max_rate_ratio) {
+    SCHECK_GT(rate_ratio, 0.0, IllegalState, "Rate ratio must be greater than zero");
+    SCHECK_LE(rate_ratio, max_rate_ratio,
+              IllegalState, "Max rate ratio must be greater than rate ratio");
+    RETURN_NOT_OK(ExecWriteWithNewRateLimiter(write_reference_rate_bytes_per_sec_ * rate_ratio));
+    return CheckRatio(write_stat_, max_rate_ratio);
+  }
+
+  CHECKED_STATUS CheckRatio(const WriteStat& period, double expected_ratio) const {
+    SCHECK_GT(write_reference_rate_bytes_per_sec_, 0.0,
+              IllegalState, "Reference rate must be greater than zero");
+    auto ratio = VERIFY_RESULT(period.GetRate()) / write_reference_rate_bytes_per_sec_;
+    LOG(INFO) << "Write rate ratio = " << std::fixed << std::setprecision(2) << ratio
+              << ", expected ratio = " << std::fixed << std::setprecision(2) << expected_ratio;
+    SCHECK_LE(ratio, expected_ratio, IllegalState, "Ratio must be less than expected ratio");
+    return Status::OK();
+  }
+
+ public:
+  Options write_options_;
+  WriteStat write_stat_;
+  double write_reference_rate_bytes_per_sec_ = 0.0;
+};
+
 /*
  * This test is not reliable enough as it heavily depends on disk behavior.
  */
-TEST_F(DBTest, RateLimitingTest) {
-  Options options = CurrentOptions();
-  options.write_buffer_size = 1 << 20;         // 1MB
-  options.level0_file_num_compaction_trigger = 2;
-  options.target_file_size_base = 1 << 20;     // 1MB
-  options.max_bytes_for_level_base = 4 << 20;  // 4MB
-  options.max_bytes_for_level_multiplier = 4;
-  options.compression = kNoCompression;
-  options.create_if_missing = true;
-  options.env = env_;
-  options.IncreaseParallelism(4);
-  DestroyAndReopen(options);
+TEST_F_EX(DBTest, RateLimitingTest, RocksDBTest) {
+  DBWriter dbw;
 
-  WriteOptions wo;
-  wo.disableWAL = true;
-
-  // # no rate limiting
-  Random rnd(301);
-  uint64_t start = env_->NowMicros();
-  // Write ~96M data
-  for (int64_t i = 0; i < (96 << 10); ++i) {
-    ASSERT_OK(Put(RandomString(&rnd, 32),
-                  RandomString(&rnd, (1 << 10) + 1), wo));
-  }
-  uint64_t elapsed = env_->NowMicros() - start;
-  double raw_rate = env_->bytes_written_ * 1000000.0 / elapsed;
-  Close();
+  // # no rate limiting, initializing
+  ASSERT_OK(dbw.InitRate());
 
   // # rate limiting with 0.7 x threshold
-  options.rate_limiter.reset(
-    NewGenericRateLimiter(static_cast<int64_t>(0.7 * raw_rate)));
-  env_->bytes_written_ = 0;
-  DestroyAndReopen(options);
-
-  start = env_->NowMicros();
-  // Write ~96M data
-  for (int64_t i = 0; i < (96 << 10); ++i) {
-    ASSERT_OK(Put(RandomString(&rnd, 32),
-                  RandomString(&rnd, (1 << 10) + 1), wo));
-  }
-  elapsed = env_->NowMicros() - start;
-  Close();
-  ASSERT_EQ(options.rate_limiter->GetTotalBytesThrough(), env_->bytes_written_);
-  double ratio = env_->bytes_written_ * 1000000 / elapsed / raw_rate;
-  fprintf(stderr, "write rate ratio = %.2lf, expected 0.7\n", ratio);
-  ASSERT_TRUE(ratio < 0.8);
+  ASSERT_OK(dbw.MeasureWrite(0.7, 0.8));
 
   // # rate limiting with half of the raw_rate
-  options.rate_limiter.reset(
-    NewGenericRateLimiter(static_cast<int64_t>(raw_rate / 2)));
-  env_->bytes_written_ = 0;
-  DestroyAndReopen(options);
+  ASSERT_OK(dbw.MeasureWrite(0.5, 0.6));
 
-  start = env_->NowMicros();
-  // Write ~96M data
-  for (int64_t i = 0; i < (96 << 10); ++i) {
-    ASSERT_OK(Put(RandomString(&rnd, 32),
-                  RandomString(&rnd, (1 << 10) + 1), wo));
+  // # shared rate limiting with half of the raw rate
+  {
+    const size_t kNumDBs = yb::RandomUniformInt(4, 8, &yb::ThreadLocalRandom());
+    LOG(INFO) << "Number of writers: " << kNumDBs;
+
+    std::vector<std::unique_ptr<DBWriter>> writers;
+    yb::TestThreadHolder workers;
+    yb::CountDownLatch ready_latch(kNumDBs);
+    yb::CountDownLatch done_latch(kNumDBs);
+    std::shared_ptr<RateLimiter> shared_limiter(
+        NewGenericRateLimiter(static_cast<int64_t>(dbw.write_reference_rate_bytes_per_sec_)));
+
+    while (writers.size() != kNumDBs) {
+      writers.push_back(std::make_unique<DBWriter>(std::to_string(writers.size())));
+      auto& one_writer = *writers.back();
+      one_writer.write_options_.rate_limiter = shared_limiter;
+      workers.AddThread([&one_writer, &ready_latch, &done_latch](){
+        ready_latch.CountDown();
+        ready_latch.Wait();
+        EXPECT_OK(one_writer.ExecWrite());
+        done_latch.CountDown(); // To make TSAN happy
+      });
+    }
+
+    // Wait for all jobs are done
+    done_latch.Wait();
+    workers.JoinAll();
+
+    // Measure rates on writing is done: write rate for multiple parallel writers
+    // with the same shared rate limiter should be close to the rate of single writer
+    // with the same rate
+    DBWriter::WriteStat stat;
+    stat.start_time_ = yb::MonoTime::Max();
+    stat.stop_time_  = yb::MonoTime::Min();
+    for (const auto& w : writers) {
+      stat.bytes_count_ += w->write_stat_.bytes_count_;
+      stat.start_time_ = std::min(stat.start_time_, w->write_stat_.start_time_);
+      stat.stop_time_  = std::max(stat.stop_time_, w->write_stat_.stop_time_);
+    }
+    ASSERT_EQ(stat.bytes_count_, shared_limiter->GetTotalBytesThrough());
+    ASSERT_OK(dbw.CheckRatio(stat, 1.1));
   }
-  elapsed = env_->NowMicros() - start;
-  Close();
-  ASSERT_EQ(options.rate_limiter->GetTotalBytesThrough(), env_->bytes_written_);
-  ratio = env_->bytes_written_ * 1000000 / elapsed / raw_rate;
-  fprintf(stderr, "write rate ratio = %.2lf, expected 0.5\n", ratio);
-  ASSERT_LT(ratio, 0.6);
 }
 
 TEST_F(DBTest, TableOptionsSanitizeTest) {
@@ -5277,8 +5366,6 @@ TEST_F(DBTest, ConcurrentMemtableNotSupported) {
   ColumnFamilyHandle* handle;
   ASSERT_NOK(db_->CreateColumnFamily(cf_options, "name", &handle));
 }
-
-#endif  // ROCKSDB_LITE
 
 TEST_F(DBTest, SanitizeNumThreads) {
   for (int attempt = 0; attempt < 2; attempt++) {

@@ -69,6 +69,7 @@
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/ql_rocksdb_storage.h"
 #include "yb/docdb/redis_operation.h"
+#include "yb/docdb/rocksdb_writer.h"
 
 #include "yb/gutil/casts.h"
 
@@ -157,7 +158,7 @@ DEFINE_int32(num_raft_ops_to_force_idle_intents_db_to_flush, 1000,
 DEFINE_bool(delete_intents_sst_files, true,
             "Delete whole intents .SST files when possible.");
 
-DEFINE_int32(backfill_index_write_batch_size, 128, "The batch size for backfilling the index.");
+DEFINE_uint64(backfill_index_write_batch_size, 128, "The batch size for backfilling the index.");
 TAG_FLAG(backfill_index_write_batch_size, advanced);
 TAG_FLAG(backfill_index_write_batch_size, runtime);
 
@@ -168,7 +169,7 @@ DEFINE_int32(backfill_index_rate_rows_per_sec, 0, "Rate of at which the "
 TAG_FLAG(backfill_index_rate_rows_per_sec, advanced);
 TAG_FLAG(backfill_index_rate_rows_per_sec, runtime);
 
-DEFINE_int32(verify_index_read_batch_size, 128, "The batch size for reading the index.");
+DEFINE_uint64(verify_index_read_batch_size, 128, "The batch size for reading the index.");
 TAG_FLAG(verify_index_read_batch_size, advanced);
 TAG_FLAG(verify_index_read_batch_size, runtime);
 
@@ -223,7 +224,7 @@ DEFINE_bool(tablet_enable_ttl_file_filter, false,
 DEFINE_test_flag(int32, slowdown_backfill_by_ms, 0,
                  "If set > 0, slows down the backfill process by this amount.");
 
-DEFINE_test_flag(int32, backfill_paging_size, 0,
+DEFINE_test_flag(uint64, backfill_paging_size, 0,
                  "If set > 0, returns early after processing this number of rows.");
 
 DEFINE_test_flag(bool, tablet_verify_flushed_frontier_after_modifying, false,
@@ -257,6 +258,9 @@ DECLARE_int32(rocksdb_level0_stop_writes_trigger);
 DECLARE_uint64(rocksdb_max_file_size_for_compaction);
 DECLARE_int64(apply_intents_task_injected_delay_ms);
 DECLARE_string(regular_tablets_data_block_key_value_encoding);
+
+DEFINE_test_flag(uint64, inject_sleep_before_applying_intents_ms, 0,
+                 "Sleep before applying intents to docdb after transaction commit");
 
 using namespace std::placeholders;
 
@@ -1151,21 +1155,23 @@ Status Tablet::ApplyOperation(
       batch_idx, write_batch, frontiers_ptr, hybrid_time, already_applied_to_regular_db);
 }
 
-Status Tablet::PrepareTransactionWriteBatch(
+Status Tablet::WriteTransactionalBatch(
     int64_t batch_idx,
     const KeyValueWriteBatchPB& put_batch,
     HybridTime hybrid_time,
-    rocksdb::WriteBatch* rocksdb_write_batch) {
+    const rocksdb::UserFrontiers* frontiers) {
   auto transaction_id = CHECK_RESULT(
       FullyDecodeTransactionId(put_batch.transaction().transaction_id()));
+
+  bool store_metadata = false;
   if (put_batch.transaction().has_isolation()) {
     // Store transaction metadata (status tablet, isolation level etc.)
-    if (!transaction_participant()->Add(put_batch.transaction(), rocksdb_write_batch)) {
-      auto status = STATUS_EC_FORMAT(
-          TryAgain, PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE),
-          "Transaction was recently aborted: $0", transaction_id);
-      return status.CloneAndAddErrorCode(TransactionError(TransactionErrorCode::kAborted));
+    auto metadata = VERIFY_RESULT(TransactionMetadata::FromPB(put_batch.transaction()));
+    auto add_result = transaction_participant()->Add(metadata);
+    if (!add_result.ok()) {
+      return add_result.status();
     }
+    store_metadata = add_result.get();
   }
   boost::container::small_vector<uint8_t, 16> encoded_replicated_batch_idx_set;
   auto prepare_batch_data = transaction_participant()->PrepareBatchData(
@@ -1181,12 +1187,23 @@ Status Tablet::PrepareTransactionWriteBatch(
 
   auto isolation_level = prepare_batch_data->first;
   auto& last_batch_data = prepare_batch_data->second;
-  yb::docdb::PrepareTransactionWriteBatch(
-      put_batch, hybrid_time, rocksdb_write_batch, transaction_id, isolation_level,
+
+  docdb::TransactionalWriter writer(
+      put_batch, hybrid_time, transaction_id, isolation_level,
       docdb::PartialRangeKeyIntents(metadata_->UsePartialRangeKeyIntents()),
       Slice(encoded_replicated_batch_idx_set.data(), encoded_replicated_batch_idx_set.size()),
-      &last_batch_data.next_write_id);
+      last_batch_data.next_write_id);
+  if (store_metadata) {
+    writer.SetMetadataToStore(&put_batch.transaction());
+  }
+  rocksdb::WriteBatch write_batch;
+  write_batch.SetDirectWriter(&writer);
+  RequestScope request_scope(transaction_participant_.get());
+
+  WriteToRocksDB(frontiers, &write_batch, StorageDbType::kIntents);
+
   last_batch_data.hybrid_time = hybrid_time;
+  last_batch_data.next_write_id = writer.intra_txn_write_id();
   transaction_participant()->BatchReplicated(transaction_id, last_batch_data);
 
   return Status::OK();
@@ -1208,26 +1225,29 @@ Status Tablet::ApplyKeyValueRowOperations(
   // In all other cases we should crash instead of skipping apply.
 
   if (put_batch.has_transaction()) {
-    rocksdb::WriteBatch write_batch;
-    RequestScope request_scope(transaction_participant_.get());
-    RETURN_NOT_OK(PrepareTransactionWriteBatch(batch_idx, put_batch, hybrid_time, &write_batch));
-    WriteToRocksDB(frontiers, &write_batch, StorageDbType::kIntents);
+    RETURN_NOT_OK(WriteTransactionalBatch(batch_idx, put_batch, hybrid_time, frontiers));
   } else {
     rocksdb::WriteBatch regular_write_batch;
     auto* regular_write_batch_ptr = !already_applied_to_regular_db ? &regular_write_batch : nullptr;
-    // See comments for PrepareNonTransactionWriteBatch.
+
+    // See comments for PrepareExternalWriteBatch.
     rocksdb::WriteBatch intents_write_batch;
-    PrepareNonTransactionWriteBatch(
+    bool has_non_exteranl_records = PrepareExternalWriteBatch(
         put_batch, hybrid_time, intents_db_.get(), regular_write_batch_ptr, &intents_write_batch);
 
-    if (regular_write_batch.Count() != 0) {
-      WriteToRocksDB(frontiers, regular_write_batch_ptr, StorageDbType::kRegular);
-    }
     if (intents_write_batch.Count() != 0) {
       if (!metadata_->is_under_twodc_replication()) {
         RETURN_NOT_OK(metadata_->SetIsUnderTwodcReplicationAndFlush(true));
       }
       WriteToRocksDB(frontiers, &intents_write_batch, StorageDbType::kIntents);
+    }
+
+    docdb::NonTransactionalWriter writer(put_batch, hybrid_time);
+    if (!already_applied_to_regular_db && has_non_exteranl_records) {
+      regular_write_batch.SetDirectWriter(&writer);
+    }
+    if (regular_write_batch.Count() != 0 || regular_write_batch.HasDirectWriter()) {
+      WriteToRocksDB(frontiers, &regular_write_batch, StorageDbType::kRegular);
     }
 
     if (snapshot_coordinator_) {
@@ -1245,9 +1265,6 @@ void Tablet::WriteToRocksDB(
     const rocksdb::UserFrontiers* frontiers,
     rocksdb::WriteBatch* write_batch,
     docdb::StorageDbType storage_db_type) {
-  if (write_batch->Count() == 0) {
-    return;
-  }
   rocksdb::DB* dest_db = nullptr;
   switch (storage_db_type) {
     case StorageDbType::kRegular: dest_db = regular_db_.get(); break;
@@ -1446,10 +1463,10 @@ Status Tablet::HandlePgsqlReadRequest(
 // are split into two sub-tablets, then such batched index lookups of ybctid requests should be sent
 // to multiple tablets (the two sub-tablets). Hence, the request ends up not being a single tablet
 // request.
-Result<bool> Tablet::IsQueryOnlyForTablet(const PgsqlReadRequestPB& pgsql_read_request,
-    size_t row_count) const {
+Result<bool> Tablet::IsQueryOnlyForTablet(
+    const PgsqlReadRequestPB& pgsql_read_request, size_t row_count) const {
   if ((!pgsql_read_request.ybctid_column_value().value().binary_value().empty() &&
-       (pgsql_read_request.batch_arguments_size() == row_count ||
+       (implicit_cast<size_t>(pgsql_read_request.batch_arguments_size()) == row_count ||
         pgsql_read_request.batch_arguments_size() == 0)) ||
        !pgsql_read_request.partition_column_values().empty() ) {
     return true;
@@ -1462,7 +1479,8 @@ Result<bool> Tablet::IsQueryOnlyForTablet(const PgsqlReadRequestPB& pgsql_read_r
   }
 
   if (schema->num_hash_key_columns() == 0 &&
-      schema->num_range_key_columns() == pgsql_read_request.range_column_values_size()) {
+      schema->num_range_key_columns() ==
+          implicit_cast<size_t>(pgsql_read_request.range_column_values_size())) {
     // PK is contained within this tablet.
     return true;
   }
@@ -1479,7 +1497,7 @@ Result<bool> Tablet::HasScanReachedMaxPartitionKey(
     // upper bound. If it is, we can then avoid paging. Paging of batched index lookup of ybctids
     // occur when tablets split after request is prepared.
     if (pgsql_read_request.has_ybctid_column_value() &&
-        pgsql_read_request.batch_arguments_size() > row_count) {
+        implicit_cast<size_t>(pgsql_read_request.batch_arguments_size()) > row_count) {
       if (!pgsql_read_request.upper_bound().has_key()) {
           return false;
       }
@@ -1666,18 +1684,25 @@ Status Tablet::ImportData(const std::string& source_dir) {
 Result<docdb::ApplyTransactionState> Tablet::ApplyIntents(const TransactionApplyData& data) {
   VLOG_WITH_PREFIX(4) << __func__ << ": " << data.transaction_id;
 
+  // This flag enables tests to induce a situation where a transaction has committed but its intents
+  // haven't yet moved to regular db for a sufficiently long period. For example, it can help a test
+  // to reliably assert that conflict resolution/ concurrency control with a conflicting committed
+  // transaction is done properly in the rare situation where the committed transaction's intents
+  // are still in intents db and not yet in regular db.
+  AtomicFlagSleepMs(&FLAGS_TEST_inject_sleep_before_applying_intents_ms);
+  docdb::ApplyIntentsContext context(
+      data.transaction_id, data.apply_state, data.aborted, data.commit_ht, data.log_ht,
+      &key_bounds_, intents_db_.get());
+  docdb::IntentsWriter intents_writer(
+      data.apply_state ? data.apply_state->key : Slice(), intents_db_.get(), &context);
   rocksdb::WriteBatch regular_write_batch;
-  auto new_apply_state = VERIFY_RESULT(docdb::PrepareApplyIntentsBatch(
-      tablet_id(), data.transaction_id, data.aborted, data.commit_ht, &key_bounds_,
-      data.apply_state, data.log_ht, &regular_write_batch, intents_db_.get(),
-      nullptr /* intents_write_batch */));
-
+  regular_write_batch.SetDirectWriter(&intents_writer);
   // data.hybrid_time contains transaction commit time.
   // We don't set transaction field of put_batch, otherwise we would write another bunch of intents.
   docdb::ConsensusFrontiers frontiers;
   auto frontiers_ptr = data.op_id.empty() ? nullptr : InitFrontiers(data, &frontiers);
   WriteToRocksDB(frontiers_ptr, &regular_write_batch, StorageDbType::kRegular);
-  return new_apply_state;
+  return context.apply_state();
 }
 
 template <class Ids>
@@ -1689,35 +1714,25 @@ CHECKED_STATUS Tablet::RemoveIntentsImpl(const RemoveIntentsData& data, const Id
   for (const auto& id : ids) {
     boost::optional<docdb::ApplyTransactionState> apply_state;
     for (;;) {
-      auto new_apply_state = VERIFY_RESULT(docdb::PrepareApplyIntentsBatch(
-          tablet_id(),
-          id,
-          AbortedSubTransactionSet(),
-          HybridTime() /* commit_ht */,
-          &key_bounds_,
-          apply_state.get_ptr(),
-          HybridTime(),
-          nullptr /* regular_write_batch */,
-          intents_db_.get(),
-          &intents_write_batch));
-      if (new_apply_state.key.empty()) {
-        break;
-      }
-
+      docdb::RemoveIntentsContext context(id);
+      docdb::IntentsWriter writer(
+          apply_state ? apply_state->key : Slice(), intents_db_.get(), &context);
+      intents_write_batch.SetDirectWriter(&writer);
       docdb::ConsensusFrontiers frontiers;
       auto frontiers_ptr = InitFrontiers(data, &frontiers);
       WriteToRocksDB(frontiers_ptr, &intents_write_batch, StorageDbType::kIntents);
 
-      apply_state = std::move(new_apply_state);
+      if (!context.apply_state().active()) {
+        break;
+      }
+
+      apply_state = std::move(context.apply_state());
       intents_write_batch.Clear();
 
       AtomicFlagSleepMs(&FLAGS_apply_intents_task_injected_delay_ms);
     }
   }
 
-  docdb::ConsensusFrontiers frontiers;
-  auto frontiers_ptr = InitFrontiers(data, &frontiers);
-  WriteToRocksDB(frontiers_ptr, &intents_write_batch, StorageDbType::kIntents);
   return Status::OK();
 }
 
@@ -1804,90 +1819,62 @@ Status Tablet::AlterSchema(ChangeMetadataOperation *operation) {
   RSTATUS_DCHECK(key_schema.KeyEquals(*DCHECK_NOTNULL(operation->schema())), InvalidArgument,
                  "Schema keys cannot be altered");
 
-  {
-    // Abortable read/write operations could be long and they shouldn't access metadata_ without
-    // locks, so no need to wait for them here.
-    auto op_pause = PauseReadWriteOperations(Abortable::kFalse);
-    RETURN_NOT_OK(op_pause);
+  // Abortable read/write operations could be long and they shouldn't access metadata_ without
+  // locks, so no need to wait for them here.
+  auto op_pause = PauseReadWriteOperations(Abortable::kFalse);
+  RETURN_NOT_OK(op_pause);
 
-    // If the current version >= new version, there is nothing to do.
-    if (current_table_info->schema_version >= operation->schema_version()) {
-      LOG_WITH_PREFIX(INFO)
-          << "Already running schema version " << current_table_info->schema_version
-          << " got alter request for version " << operation->schema_version();
-      return Status::OK();
-    }
-
-    LOG_WITH_PREFIX(INFO) << "Alter schema from " << current_table_info->schema->ToString()
-                          << " version " << current_table_info->schema_version
-                          << " to " << operation->schema()->ToString()
-                          << " version " << operation->schema_version();
-
-    // Find out which columns have been deleted in this schema change, and add them to metadata.
-    vector<DeletedColumn> deleted_cols;
-    for (const auto& col : current_table_info->schema->column_ids()) {
-      if (operation->schema()->find_column_by_id(col) == Schema::kColumnNotFound) {
-        deleted_cols.emplace_back(col, clock_->Now());
-        LOG_WITH_PREFIX(INFO) << "Column " << col << " recorded as deleted.";
-      }
-    }
-
-    metadata_->SetSchema(*operation->schema(), operation->index_map(), deleted_cols,
-                        operation->schema_version(), current_table_info->table_id);
-    if (operation->has_new_table_name()) {
-      metadata_->SetTableName(current_table_info->namespace_name, operation->new_table_name());
-      if (table_metrics_entity_) {
-        table_metrics_entity_->SetAttribute("table_name", operation->new_table_name());
-        table_metrics_entity_->SetAttribute("namespace_name", current_table_info->namespace_name);
-      }
-      if (tablet_metrics_entity_) {
-        tablet_metrics_entity_->SetAttribute("table_name", operation->new_table_name());
-        tablet_metrics_entity_->SetAttribute("namespace_name", current_table_info->namespace_name);
-      }
-    }
-
-    // Clear old index table metadata cache.
-    ResetYBMetaDataCache();
-
-    // Create transaction manager and index table metadata cache for secondary index update.
-    if (!operation->index_map().empty()) {
-      if (current_table_info->schema->table_properties().is_transactional() &&
-          !transaction_manager_) {
-        transaction_manager_ = std::make_unique<client::TransactionManager>(
-            client_future_.get(), scoped_refptr<server::Clock>(clock_), local_tablet_filter_);
-      }
-      CreateNewYBMetaDataCache();
-    }
-
-    // Flush the updated schema metadata to disk.
-    RETURN_NOT_OK(metadata_->Flush());
+  // If the current version >= new version, there is nothing to do.
+  if (current_table_info->schema_version >= operation->schema_version()) {
+    LOG_WITH_PREFIX(INFO)
+        << "Already running schema version " << current_table_info->schema_version
+        << " got alter request for version " << operation->schema_version();
+    return Status::OK();
   }
 
-  Status status = Status::OK();
-  // After schema is flushed on disk, any incoming query will encounter 'Schema version mismatch'.
-  // Thus it is okay to proceed with transaction abort after the write operation resumes.
-  if (operation->request()->should_abort_active_txns()) {
-    DCHECK(table_type_ == TableType::PGSQL_TABLE_TYPE);
-    DCHECK(operation->request()->has_transaction_id());
-    if (transaction_participant() == nullptr) {
-      LOG(ERROR) << "Transaction participant is not available for tablet " << tablet_id();
-      return STATUS(IllegalState, "Transaction participant is null for tablet " + tablet_id());
-    }
-    HybridTime max_cutoff = HybridTime::kMax;
-    CoarseTimePoint deadline = CoarseMonoClock::Now() +
-        MonoDelta::FromMilliseconds(FLAGS_ysql_transaction_abort_timeout_ms);
-    auto txn_id = VERIFY_RESULT(
-       TransactionIdFromString(operation->request()->transaction_id()));
-    LOG_WITH_PREFIX(INFO) << "Aborting transactions that started prior to " << max_cutoff
-                          << " for tablet id " << tablet_id()
-                          << " excluding transaction with id " << txn_id;
-    status = transaction_participant()->StopActiveTxnsPriorTo(max_cutoff, deadline, &txn_id);
-    if (!status.ok()) {
-      LOG(ERROR) << "Aborting transactions failed for tablet " << tablet_id();
+  LOG_WITH_PREFIX(INFO) << "Alter schema from " << current_table_info->schema->ToString()
+                        << " version " << current_table_info->schema_version
+                        << " to " << operation->schema()->ToString()
+                        << " version " << operation->schema_version();
+
+  // Find out which columns have been deleted in this schema change, and add them to metadata.
+  vector<DeletedColumn> deleted_cols;
+  for (const auto& col : current_table_info->schema->column_ids()) {
+    if (operation->schema()->find_column_by_id(col) == Schema::kColumnNotFound) {
+      deleted_cols.emplace_back(col, clock_->Now());
+      LOG_WITH_PREFIX(INFO) << "Column " << col << " recorded as deleted.";
     }
   }
 
-  return status;
+  metadata_->SetSchema(*operation->schema(), operation->index_map(), deleted_cols,
+                      operation->schema_version(), current_table_info->table_id);
+  if (operation->has_new_table_name()) {
+    metadata_->SetTableName(current_table_info->namespace_name, operation->new_table_name());
+    if (table_metrics_entity_) {
+      table_metrics_entity_->SetAttribute("table_name", operation->new_table_name());
+      table_metrics_entity_->SetAttribute("namespace_name", current_table_info->namespace_name);
+    }
+    if (tablet_metrics_entity_) {
+      tablet_metrics_entity_->SetAttribute("table_name", operation->new_table_name());
+      tablet_metrics_entity_->SetAttribute("namespace_name", current_table_info->namespace_name);
+    }
+  }
+
+  // Clear old index table metadata cache.
+  ResetYBMetaDataCache();
+
+  // Create transaction manager and index table metadata cache for secondary index update.
+  if (!operation->index_map().empty()) {
+    if (current_table_info->schema->table_properties().is_transactional() &&
+        !transaction_manager_) {
+      transaction_manager_ = std::make_unique<client::TransactionManager>(
+          client_future_.get(), scoped_refptr<server::Clock>(clock_), local_tablet_filter_);
+    }
+    CreateNewYBMetaDataCache();
+  }
+
+  // Flush the updated schema metadata to disk.
+  return metadata_->Flush();
 }
 
 Status Tablet::AlterWalRetentionSecs(ChangeMetadataOperation* operation) {
@@ -2101,7 +2088,9 @@ Status Tablet::BackfillIndexesForYsql(
   {
     std::stringstream ss;
     for (auto& index : indexes) {
-      Oid index_oid = VERIFY_RESULT(GetPgsqlTableOid(index.table_id()));
+      // Cannot use Oid type because for large OID such as 2147500041, it overflows Postgres
+      // lexer <ival> type. Use int to output as -2147467255 that is accepted by <ival>.
+      int index_oid = VERIFY_RESULT(GetPgsqlTableOid(index.table_id()));
       ss << index_oid << ",";
     }
     index_oids = ss.str();
@@ -2116,7 +2105,7 @@ Status Tablet::BackfillIndexesForYsql(
         GenerateSerializedBackfillSpec(backfill_params.batch_size, *backfilled_until);
 
     // This should be safe from injection attacks because the parameters only consist of characters
-    // [,0-9a-f].
+    // [-,0-9a-f].
     std::string query_str = Format(
         "BACKFILL INDEX $0 WITH x'$1' READ TIME $2 PARTITION x'$3';",
         index_oids,
@@ -3161,6 +3150,19 @@ void Tablet::TEST_DocDBDumpToContainer(
   return docdb::DocDBDebugDumpToContainer(doc_db(), out);
 }
 
+void Tablet::TEST_DocDBDumpToLog(IncludeIntents include_intents) {
+  if (!regular_db_) {
+    LOG_WITH_PREFIX(INFO) << "No RocksDB to dump";
+    return;
+  }
+
+  docdb::DumpRocksDBToLog(regular_db_.get(), StorageDbType::kRegular, LogPrefix());
+
+  if (include_intents && intents_db_) {
+    docdb::DumpRocksDBToLog(intents_db_.get(), StorageDbType::kIntents, LogPrefix());
+  }
+}
+
 size_t Tablet::TEST_CountRegularDBRecords() {
   if (!regular_db_) return 0;
   rocksdb::ReadOptions read_opts;
@@ -3413,22 +3415,51 @@ const std::string& Tablet::tablet_id() const {
 }
 
 Result<std::string> Tablet::GetEncodedMiddleSplitKey() const {
+  auto error_prefix = [this]() {
+    return Format(
+        "Failed to detect middle key for tablet $0 (key_bounds: $1 - $2)",
+        tablet_id(),
+        Slice(key_bounds_.lower).ToDebugHexString(),
+        Slice(key_bounds_.upper).ToDebugHexString());
+  };
+
   // TODO(tsplit): should take key_bounds_ into account.
   auto middle_key = VERIFY_RESULT(regular_db_->GetMiddleKey());
+
+  // In some rare cases middle key can point to a special internal record which is not visible
+  // for a user, but tablet splitting routines expect the specific structure for partition keys
+  // that does not match the struct of the internally used records. Moreover, it is expected
+  // to have two child tablets with alive user records after the splitting, but the split
+  // by the internal record will lead to a case when one tablet will consist of internal records
+  // only and these records will be compacted out at some point making an empty tablet.
+  if (PREDICT_FALSE(docdb::IsInternalRecordKeyType(docdb::DecodeValueType(middle_key[0])))) {
+    return STATUS_FORMAT(
+        IllegalState, "$0: got internal record \"$1\"",
+        error_prefix(), Slice(middle_key).ToDebugHexString());
+  }
+
   const auto key_part = metadata()->partition_schema()->IsHashPartitioning()
                             ? docdb::DocKeyPart::kUpToHashCode
                             : docdb::DocKeyPart::kWholeDocKey;
   const auto split_key_size = VERIFY_RESULT(DocKey::EncodedSize(middle_key, key_part));
+  if (PREDICT_FALSE(split_key_size == 0)) {
+    // Using this verification just to have a more sensible message. The below verification will
+    // not pass with split_key_size == 0 also, but its message is not accurate enough. This failure
+    // may happen when a key cannot be decoded with key_part inside DocKey::EncodedSize and the key
+    // still valid for any reason (e.g. gettining non-hash key for hash partitioning).
+    return STATUS_FORMAT(
+        IllegalState, "$0: got unexpected key \"$1\"",
+        error_prefix(), Slice(middle_key).ToDebugHexString());
+  }
+
   middle_key.resize(split_key_size);
   const Slice middle_key_slice(middle_key);
   if (middle_key_slice.compare(key_bounds_.lower) <= 0 ||
       (!key_bounds_.upper.empty() && middle_key_slice.compare(key_bounds_.upper) >= 0)) {
     return STATUS_FORMAT(
         IllegalState,
-        "Failed to detect middle key (got \"$0\") for tablet $1 (key_bounds: $2 - $3), this can "
-        "happen if post-split tablet wasn't fully compacted after split",
-        middle_key_slice.ToDebugHexString(), tablet_id(),
-        Slice(key_bounds_.lower).ToDebugHexString(), Slice(key_bounds_.upper).ToDebugHexString());
+        "$0: got \"$1\". This can happen if post-split tablet wasn't fully compacted after split",
+        error_prefix(), middle_key_slice.ToDebugHexString());
   }
   return middle_key;
 }

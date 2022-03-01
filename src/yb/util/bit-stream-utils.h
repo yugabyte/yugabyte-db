@@ -42,12 +42,13 @@
 // limitations under the License.
 
 
-#ifndef IMPALA_UTIL_BIT_STREAM_UTILS_H
-#define IMPALA_UTIL_BIT_STREAM_UTILS_H
+#ifndef YB_UTIL_BIT_STREAM_UTILS_H
+#define YB_UTIL_BIT_STREAM_UTILS_H
 
 #include "yb/gutil/port.h"
 #include "yb/util/bit-util.h"
 #include "yb/util/faststring.h"
+#include "yb/util/math_util.h"
 
 namespace yb {
 
@@ -73,7 +74,7 @@ class BitWriter {
 
   // The number of current bytes written, including the current byte (i.e. may include a
   // fraction of a byte). Includes buffered values.
-  int bytes_written() const { return byte_offset_ + BitUtil::Ceil(bit_offset_, 8); }
+  int bytes_written() const { return byte_offset_ + ceil_div(bit_offset_, 8); }
 
   // Writes a value to buffered_values_, flushing to buffer_ if necessary.  This is bit
   // packed. num_bits must be <= 32.
@@ -118,9 +119,9 @@ class BitWriter {
 class BitReader {
  public:
   // 'buffer' is the buffer to read from.  The buffer's length is 'buffer_len'.
-  BitReader(const uint8_t* buffer, int buffer_len);
+  BitReader(const uint8_t* buffer, size_t buffer_len);
 
-  BitReader() : buffer_(NULL), max_bytes_(0) {}
+  BitReader() : buffer_(nullptr), max_bytes_(0) {}
 
   // Gets the next value from the buffer.  Returns true if 'v' could be read or false if
   // there are not enough bytes left. num_bits must be <= 32.
@@ -140,13 +141,13 @@ class BitReader {
 
   // Returns the number of bytes left in the stream, not including the current byte (i.e.,
   // there may be an additional fraction of a byte).
-  int bytes_left() { return max_bytes_ - (byte_offset_ + BitUtil::Ceil(bit_offset_, 8)); }
+  size_t bytes_left() { return max_bytes_ - (byte_offset_ + ceil_div<size_t>(bit_offset_, 8)); }
 
   // Current position in the stream, by bit.
-  int position() const { return byte_offset_ * 8 + bit_offset_; }
+  size_t position() const { return byte_offset_ * 8 + bit_offset_; }
 
   // Rewind the stream by 'num_bits' bits
-  void Rewind(int num_bits);
+  void Rewind(ssize_t num_bits);
 
   // Seek to a specific bit in the buffer
   void SeekToBit(uint stream_position);
@@ -154,7 +155,7 @@ class BitReader {
   // Maximum byte length of a vlq encoded int
   static const int MAX_VLQ_BYTE_LEN = 5;
 
-  bool is_initialized() const { return buffer_ != NULL; }
+  bool is_initialized() const { return buffer_ != nullptr; }
 
  private:
   // Used by SeekToBit() and GetValue() to fetch the
@@ -162,16 +163,16 @@ class BitReader {
   void BufferValues();
 
   const uint8_t* buffer_;
-  int max_bytes_;
+  size_t max_bytes_;
 
   // Bytes are memcpy'd from buffer_ and values are read from this variable. This is
   // faster than reading values byte by byte directly from buffer_.
   uint64_t buffered_values_;
 
-  int byte_offset_;       // Offset in buffer_
-  int bit_offset_;        // Offset in buffered_values_
+  size_t byte_offset_;       // Offset in buffer_
+  ssize_t bit_offset_;        // Offset in buffered_values_
 };
 
 } // namespace yb
 
-#endif
+#endif // YB_UTIL_BIT_STREAM_UTILS_H

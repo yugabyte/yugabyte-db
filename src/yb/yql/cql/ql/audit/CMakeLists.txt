@@ -19,6 +19,4 @@ target_link_libraries(ql_audit
                       yb_util)
 add_dependencies(ql_audit ql_parser)
 
-if(${YB_PCH_ON})
-  target_precompile_headers(ql_audit REUSE_FROM ql_util)
-endif()
+yb_use_pch(ql_audit ql)

@@ -36,6 +36,7 @@
 #include "yb/common/ql_datatype.h"
 #include "yb/common/ql_type.h"
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/endian.h"
 #include "yb/gutil/strings/escaping.h"
 #include "yb/util/date_time.h"
@@ -469,7 +470,7 @@ CHECKED_STATUS ConvertI64ToI32(PTypePtr source, RTypePtr target) {
   if (source->IsNull()) {
     target->SetNull();
   } else {
-    target->set_int32_value(source->int64_value());
+    target->set_int32_value(static_cast<int32_t>(source->int64_value()));
   }
   return Status::OK();
 }
@@ -1193,7 +1194,7 @@ CHECKED_STATUS ConvertVarintToI32(PTypePtr source, RTypePtr target) {
     if (val < INT32_MIN || val > INT32_MAX) {
       return STATUS(QLError, "VarInt cannot be converted to int32 due to overflow");
     }
-    target->set_int32_value(val);
+    target->set_int32_value(static_cast<int32_t>(val));
   }
   return Status::OK();
 }
@@ -1274,8 +1275,8 @@ CHECKED_STATUS ConvertI64ToVarint(PTypePtr source, RTypePtr target) {
 }
 
 template<typename RTypePtr>
-CHECKED_STATUS ToInt32(int32_t val, RTypePtr target) {
-  target->set_int32_value(val);
+CHECKED_STATUS ToInt32(int64_t val, RTypePtr target) {
+  target->set_int32_value(static_cast<int32_t>(val));
   return Status::OK();
 }
 

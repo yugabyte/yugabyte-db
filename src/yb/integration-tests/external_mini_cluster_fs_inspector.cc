@@ -74,7 +74,7 @@ ExternalMiniClusterFsInspector::ExternalMiniClusterFsInspector(ExternalMiniClust
 ExternalMiniClusterFsInspector::~ExternalMiniClusterFsInspector() {}
 
 void ExternalMiniClusterFsInspector::TabletsWithDataOnTS(
-    int index,
+    size_t index,
     std::function<void (const std::string&, const std::string&)> handler) {
   static const std::string kTabletDirPrefix = "tablet-";
   for (const auto& data_dir : cluster_->tablet_server(index)->GetDataDirs()) {
@@ -107,14 +107,14 @@ Status ExternalMiniClusterFsInspector::ListFilesInDir(const string& path,
   return Status::OK();
 }
 
-int ExternalMiniClusterFsInspector::CountFilesInDir(const string& path) {
+size_t ExternalMiniClusterFsInspector::CountFilesInDir(const string& path) {
   vector<string> entries;
   Status s = ListFilesInDir(path, &entries);
   if (!s.ok()) return 0;
   return entries.size();
 }
 
-int ExternalMiniClusterFsInspector::CountWALSegmentsOnTS(int index) {
+int ExternalMiniClusterFsInspector::CountWALSegmentsOnTS(size_t index) {
   int total_segments = 0;
   for (const auto& data_dir : cluster_->tablet_server(index)->GetDataDirs()) {
     string ts_wal_dir = JoinPathSegments(data_dir, FsManager::kWalDirName);
@@ -136,14 +136,14 @@ int ExternalMiniClusterFsInspector::CountWALSegmentsOnTS(int index) {
 
 vector<string> ExternalMiniClusterFsInspector::ListTablets() {
   set<string> tablets;
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     auto ts_tablets = ListTabletsOnTS(i);
     tablets.insert(ts_tablets.begin(), ts_tablets.end());
   }
   return vector<string>(tablets.begin(), tablets.end());
 }
 
-vector<string> ExternalMiniClusterFsInspector::ListTabletsOnTS(int index) {
+vector<string> ExternalMiniClusterFsInspector::ListTabletsOnTS(size_t index) {
   vector<string> all_tablets;
   for (const auto& data_dir : cluster_->tablet_server(index)->GetDataDirs()) {
     string meta_dir = FsManager::GetRaftGroupMetadataDir(data_dir);
@@ -154,7 +154,8 @@ vector<string> ExternalMiniClusterFsInspector::ListTabletsOnTS(int index) {
   return all_tablets;
 }
 
-std::unordered_map<string, vector<string>> ExternalMiniClusterFsInspector::DrivesOnTS(int index) {
+std::unordered_map<string, vector<string>> ExternalMiniClusterFsInspector::DrivesOnTS(
+    size_t index) {
   std::unordered_map<string, vector<string>> drives;
   TabletsWithDataOnTS(index, [&](const std::string& drive, const std::string& tablet) {
     drives[drive].push_back(tablet);
@@ -162,7 +163,7 @@ std::unordered_map<string, vector<string>> ExternalMiniClusterFsInspector::Drive
   return drives;
 }
 
-vector<string> ExternalMiniClusterFsInspector::ListTabletsWithDataOnTS(int index) {
+vector<string> ExternalMiniClusterFsInspector::ListTabletsWithDataOnTS(size_t index) {
   vector<string> all_tablets;
   TabletsWithDataOnTS(index, [&](const std::string& drive, const std::string& tablet) {
     all_tablets.push_back(tablet);
@@ -170,7 +171,7 @@ vector<string> ExternalMiniClusterFsInspector::ListTabletsWithDataOnTS(int index
   return all_tablets;
 }
 
-int ExternalMiniClusterFsInspector::CountWALSegmentsForTabletOnTS(int index,
+int ExternalMiniClusterFsInspector::CountWALSegmentsForTabletOnTS(size_t index,
                                                                   const string& tablet_id) {
   int count = 0;
   for (const auto& data_dir : cluster_->tablet_server(index)->GetDataDirs()) {
@@ -193,7 +194,7 @@ int ExternalMiniClusterFsInspector::CountWALSegmentsForTabletOnTS(int index,
   return count;
 }
 
-bool ExternalMiniClusterFsInspector::DoesConsensusMetaExistForTabletOnTS(int index,
+bool ExternalMiniClusterFsInspector::DoesConsensusMetaExistForTabletOnTS(size_t index,
                                                                          const string& tablet_id) {
   ConsensusMetadataPB cmeta_pb;
   Status s = ReadConsensusMetadataOnTS(index, tablet_id, &cmeta_pb);
@@ -206,7 +207,7 @@ int ExternalMiniClusterFsInspector::CountReplicasInMetadataDirs() {
   // external minicluster, and initializing a new FsManager to point at the running
   // tablet servers isn't easy.
   int count = 0;
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     for (const auto& data_dir : cluster_->tablet_server(i)->GetDataDirs()) {
       count += CountFilesInDir(FsManager::GetRaftGroupMetadataDir(data_dir));
     }
@@ -214,7 +215,7 @@ int ExternalMiniClusterFsInspector::CountReplicasInMetadataDirs() {
   return count;
 }
 
-Status ExternalMiniClusterFsInspector::CheckNoDataOnTS(int index) {
+Status ExternalMiniClusterFsInspector::CheckNoDataOnTS(size_t index) {
   for (const auto& data_dir : cluster_->tablet_server(index)->GetDataDirs()) {
     if (CountFilesInDir(FsManager::GetRaftGroupMetadataDir(data_dir)) > 0) {
       return STATUS(IllegalState, "tablet metadata blocks still exist", data_dir);
@@ -230,20 +231,20 @@ Status ExternalMiniClusterFsInspector::CheckNoDataOnTS(int index) {
 }
 
 Status ExternalMiniClusterFsInspector::CheckNoData() {
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     RETURN_NOT_OK(CheckNoDataOnTS(i));
   }
   return Status::OK();;
 }
 
 std::string ExternalMiniClusterFsInspector::GetTabletSuperBlockPathOnTS(
-    int ts_index, const string& tablet_id) const {
+    size_t ts_index, const string& tablet_id) const {
   string data_dir = cluster_->tablet_server(ts_index)->GetDataDirs()[0];
   std::string meta_dir = FsManager::GetRaftGroupMetadataDir(data_dir);
   return JoinPathSegments(meta_dir, tablet_id);
 }
 
-Status ExternalMiniClusterFsInspector::ReadTabletSuperBlockOnTS(int index,
+Status ExternalMiniClusterFsInspector::ReadTabletSuperBlockOnTS(size_t index,
                                                                 const string& tablet_id,
                                                                 RaftGroupReplicaSuperBlockPB* sb) {
   const auto& sb_path = GetTabletSuperBlockPathOnTS(index, tablet_id);
@@ -251,7 +252,7 @@ Status ExternalMiniClusterFsInspector::ReadTabletSuperBlockOnTS(int index,
 }
 
 int64_t ExternalMiniClusterFsInspector::GetTabletSuperBlockMTimeOrDie(
-    int ts_index, const std::string& tablet_id) {
+    size_t ts_index, const std::string& tablet_id) {
   const auto& sb_path = GetTabletSuperBlockPathOnTS(ts_index, tablet_id);
   struct stat s;
   CHECK_ERR(stat(sb_path.c_str(), &s)) << "failed to stat: " << sb_path;
@@ -262,7 +263,7 @@ int64_t ExternalMiniClusterFsInspector::GetTabletSuperBlockMTimeOrDie(
 #endif
 }
 
-Status ExternalMiniClusterFsInspector::ReadConsensusMetadataOnTS(int index,
+Status ExternalMiniClusterFsInspector::ReadConsensusMetadataOnTS(size_t index,
                                                                  const string& tablet_id,
                                                                  ConsensusMetadataPB* cmeta_pb) {
   string data_dir = cluster_->tablet_server(index)->GetDataDirs()[0];
@@ -274,7 +275,7 @@ Status ExternalMiniClusterFsInspector::ReadConsensusMetadataOnTS(int index,
   return pb_util::ReadPBContainerFromPath(env_, cmeta_file, cmeta_pb);
 }
 
-Status ExternalMiniClusterFsInspector::CheckTabletDataStateOnTS(int index,
+Status ExternalMiniClusterFsInspector::CheckTabletDataStateOnTS(size_t index,
                                                                 const string& tablet_id,
                                                                 TabletDataState state) {
   RaftGroupReplicaSuperBlockPB sb;
@@ -301,7 +302,7 @@ Status ExternalMiniClusterFsInspector::WaitForNoData(const MonoDelta& timeout) {
   return STATUS(TimedOut, "Timed out waiting for no data", s.ToString());
 }
 
-Status ExternalMiniClusterFsInspector::WaitForNoDataOnTS(int index, const MonoDelta& timeout) {
+Status ExternalMiniClusterFsInspector::WaitForNoDataOnTS(size_t index, const MonoDelta& timeout) {
   MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(timeout);
   Status s;
@@ -316,7 +317,7 @@ Status ExternalMiniClusterFsInspector::WaitForNoDataOnTS(int index, const MonoDe
   return STATUS(TimedOut, "Timed out waiting for no data", s.ToString());
 }
 
-Status ExternalMiniClusterFsInspector::WaitForMinFilesInTabletWalDirOnTS(int index,
+Status ExternalMiniClusterFsInspector::WaitForMinFilesInTabletWalDirOnTS(size_t index,
                                                                          const string& tablet_id,
                                                                          int count,
                                                                          const MonoDelta& timeout) {
@@ -355,7 +356,7 @@ Status ExternalMiniClusterFsInspector::WaitForReplicaCount(int expected, const M
                                      expected, found));
 }
 
-Status ExternalMiniClusterFsInspector::WaitForTabletDataStateOnTS(int index,
+Status ExternalMiniClusterFsInspector::WaitForTabletDataStateOnTS(size_t index,
                                                                   const string& tablet_id,
                                                                   TabletDataState expected,
                                                                   const MonoDelta& timeout) {

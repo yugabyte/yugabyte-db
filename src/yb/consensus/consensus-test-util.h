@@ -925,7 +925,7 @@ class TestRaftConsensusQueueIface : public PeerMessageQueueObserver {
     return majority_replicated_op_id_;
   }
 
-  void WaitForMajorityReplicatedIndex(int index, MonoDelta timeout = MonoDelta(30s)) {
+  void WaitForMajorityReplicatedIndex(int64_t index, MonoDelta timeout = MonoDelta(30s)) {
     ASSERT_OK(WaitFor(
         [&]() { return IsMajorityReplicated(index); },
         timeout, Format("waiting for index $0 to be replicated", index)));

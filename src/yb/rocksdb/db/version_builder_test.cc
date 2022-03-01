@@ -27,10 +27,11 @@
 #include "yb/rocksdb/env.h"
 
 #include "yb/util/string_util.h"
+#include "yb/rocksdb/util/testutil.h"
 
 namespace rocksdb {
 
-class VersionBuilderTest : public testing::Test {
+class VersionBuilderTest : public RocksDBTest {
  public:
   const Comparator* ucmp_;
   InternalKeyComparatorPtr icmp_;

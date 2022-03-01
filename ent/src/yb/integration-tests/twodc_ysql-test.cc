@@ -87,6 +87,7 @@ DECLARE_bool(enable_ysql);
 DECLARE_bool(hide_pg_catalog_table_creation_logs);
 DECLARE_bool(master_auto_run_initdb);
 DECLARE_int32(pggate_rpc_timeout_secs);
+DECLARE_bool(enable_delete_truncate_xcluster_replicated_table);
 
 namespace yb {
 
@@ -167,7 +168,7 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
 
     std::vector<YBTableName> tables;
     std::vector<std::shared_ptr<client::YBTable>> yb_tables;
-    for (int i = 0; i < num_consumer_tablets.size(); i++) {
+    for (uint32_t i = 0; i < num_consumer_tablets.size(); i++) {
       RETURN_NOT_OK(CreateTable(i, num_producer_tablets[i], &producer_cluster_,
                                 &tables, colocated));
       std::shared_ptr<client::YBTable> producer_table;
@@ -369,6 +370,19 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
       return PQntuples(results.get()) == expected_size;
     }, MonoDelta::FromSeconds(kRpcTimeout), "Verify number of records");
   }
+
+  Status DeleteTable(Cluster* cluster,
+                     TableId* table_id /* = nullptr */) {
+    RETURN_NOT_OK(cluster->client_->DeleteTable(*table_id));
+
+    return Status::OK();
+  }
+
+  Status TruncateTable(Cluster* cluster,
+                       std::vector<string> table_ids) {
+    RETURN_NOT_OK(cluster->client_->TruncateTables(table_ids));
+    return Status::OK();
+  }
 };
 
 INSTANTIATE_TEST_CASE_P(TwoDCTestParams, TwoDCYsqlTest,
@@ -385,7 +399,7 @@ TEST_P(TwoDCYsqlTest, SetupUniverseReplication) {
   // tables contains both producer and consumer universe tables (alternately).
   // Pick out just the producer tables from the list.
   producer_tables.reserve(tables.size() / 2);
-  for (int i = 0; i < tables.size(); i += 2) {
+  for (size_t i = 0; i < tables.size(); i += 2) {
     producer_tables.push_back(tables[i]);
   }
   ASSERT_OK(SetupUniverseReplication(
@@ -396,21 +410,19 @@ TEST_P(TwoDCYsqlTest, SetupUniverseReplication) {
   ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, &resp));
   ASSERT_EQ(resp.entry().producer_id(), kUniverseId);
   ASSERT_EQ(resp.entry().tables_size(), producer_tables.size());
-  for (int i = 0; i < producer_tables.size(); i++) {
-    ASSERT_EQ(resp.entry().tables(i), producer_tables[i]->id());
+  for (size_t i = 0; i < producer_tables.size(); i++) {
+    ASSERT_EQ(resp.entry().tables(narrow_cast<int>(i)), producer_tables[i]->id());
   }
 
   // Verify that CDC streams were created on producer for all tables.
-  for (int i = 0; i < producer_tables.size(); i++) {
+  for (size_t i = 0; i < producer_tables.size(); i++) {
     master::ListCDCStreamsResponsePB stream_resp;
     ASSERT_OK(GetCDCStreamForTable(producer_tables[i]->id(), &stream_resp));
     ASSERT_EQ(stream_resp.streams_size(), 1);
-    ASSERT_EQ(stream_resp.streams(0).table_id(), producer_tables[i]->id());
+    ASSERT_EQ(stream_resp.streams(0).table_id().Get(0), producer_tables[i]->id());
   }
 
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
-
-  Destroy();
 }
 
 TEST_P(TwoDCYsqlTest, SimpleReplication) {
@@ -426,7 +438,7 @@ TEST_P(TwoDCYsqlTest, SimpleReplication) {
   std::vector<std::shared_ptr<client::YBTable>> consumer_tables;
   producer_tables.reserve(tables.size() / 2);
   consumer_tables.reserve(tables.size() / 2);
-  for (int i = 0; i < tables.size(); ++i) {
+  for (size_t i = 0; i < tables.size(); ++i) {
     if (i % 2 == 0) {
       producer_tables.push_back(tables[i]);
     } else {
@@ -459,8 +471,8 @@ TEST_P(TwoDCYsqlTest, SimpleReplication) {
   master::GetUniverseReplicationResponsePB get_universe_replication_resp;
   ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId,
       &get_universe_replication_resp));
-  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(),
-                                       tables_vector.size() * kNTabletsPerTable));
+  ASSERT_OK(CorrectlyPollingAllTablets(
+      consumer_cluster(), narrow_cast<uint32_t>(tables_vector.size() * kNTabletsPerTable)));
 
   auto data_replicated_correctly = [&](int num_results) -> Result<bool> {
     for (const auto& consumer_table : consumer_tables) {
@@ -491,7 +503,6 @@ TEST_P(TwoDCYsqlTest, SimpleReplication) {
   // 5. Make sure this data is also replicated now.
   ASSERT_OK(WaitFor([&]() { return data_replicated_correctly(105); },
                     MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
-  Destroy();
 }
 
 TEST_P(TwoDCYsqlTest, SetupUniverseReplicationWithProducerBootstrapId) {
@@ -518,7 +529,7 @@ TEST_P(TwoDCYsqlTest, SetupUniverseReplicationWithProducerBootstrapId) {
   std::vector<std::shared_ptr<client::YBTable>> consumer_tables;
   producer_tables.reserve(tables.size() / 2);
   consumer_tables.reserve(tables.size() / 2);
-  for (int i = 0; i < tables.size(); ++i) {
+  for (size_t i = 0; i < tables.size(); ++i) {
     if (i % 2 == 0) {
       producer_tables.push_back(tables[i]);
     } else {
@@ -599,7 +610,8 @@ TEST_P(TwoDCYsqlTest, SetupUniverseReplicationWithProducerBootstrapId) {
   auto hp_vec = ASSERT_RESULT(HostPort::ParseStrings(master_addr, 0));
   HostPortsToPBs(hp_vec, setup_universe_req.mutable_producer_master_addresses());
 
-  setup_universe_req.mutable_producer_table_ids()->Reserve(producer_tables.size());
+  setup_universe_req.mutable_producer_table_ids()->Reserve(
+      narrow_cast<int>(producer_tables.size()));
   for (const auto& producer_table : producer_tables) {
     setup_universe_req.add_producer_table_ids(producer_table->id());
     const auto& iter = table_bootstrap_ids.find(producer_table->id());
@@ -621,8 +633,8 @@ TEST_P(TwoDCYsqlTest, SetupUniverseReplicationWithProducerBootstrapId) {
   master::GetUniverseReplicationResponsePB get_universe_replication_resp;
   ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId,
       &get_universe_replication_resp));
-  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(),
-                                       tables_vector.size() * kNTabletsPerTable));
+  ASSERT_OK(CorrectlyPollingAllTablets(
+      consumer_cluster(), narrow_cast<uint32_t>(tables_vector.size() * kNTabletsPerTable)));
 
   // 4. Write more data.
   for (const auto& producer_table : producer_tables) {
@@ -653,7 +665,6 @@ TEST_P(TwoDCYsqlTest, SetupUniverseReplicationWithProducerBootstrapId) {
 
   ASSERT_OK(WaitFor([&]() -> Result<bool> { return data_replicated_correctly(); },
                     MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
-  Destroy();
 }
 
 TEST_P(TwoDCYsqlTest, ColocatedDatabaseReplication) {
@@ -692,7 +703,7 @@ TEST_P(TwoDCYsqlTest, ColocatedDatabaseReplication) {
   consumer_tables.reserve(colocated_tables.size() / 2 + 1);
   colocated_producer_tables.reserve(colocated_tables.size() / 2);
   colocated_consumer_tables.reserve(colocated_tables.size() / 2);
-  for (int i = 0; i < colocated_tables.size(); ++i) {
+  for (size_t i = 0; i < colocated_tables.size(); ++i) {
     if (i % 2 == 0) {
       producer_tables.push_back(colocated_tables[i]);
       colocated_producer_tables.push_back(colocated_tables[i]);
@@ -802,7 +813,6 @@ TEST_P(TwoDCYsqlTest, ColocatedDatabaseReplication) {
   // 7. Verify all tables are properly replicated.
   ASSERT_OK(WaitFor([&]() -> Result<bool> { return data_replicated_correctly(150, false); },
                     MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
-  Destroy();
 }
 
 TEST_P(TwoDCYsqlTest, ColocatedDatabaseDifferentTableOids) {
@@ -833,10 +843,173 @@ TEST_P(TwoDCYsqlTest, ColocatedDatabaseDifferentTableOids) {
   master::GetUniverseReplicationResponsePB get_universe_replication_resp;
   ASSERT_NOK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId,
       &get_universe_replication_resp));
-  Destroy();
 }
 
 // TODO adapt rest of twodc-test.cc tests.
+
+TEST_P(TwoDCYsqlTest, DeleteTableChecks) {
+  YB_SKIP_TEST_IN_TSAN();
+  constexpr int kNTabletsPerTable = 1;
+  std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
+  auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
+  const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
+
+  // tables contains both producer and consumer universe tables (alternately).
+  // Pick out just the producer tables from the list.
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  std::vector<std::shared_ptr<client::YBTable>> consumer_tables;
+  producer_tables.reserve(tables.size() / 2);
+  consumer_tables.reserve(tables.size() / 2);
+  for (size_t i = 0; i < tables.size(); ++i) {
+    if (i % 2 == 0) {
+      producer_tables.push_back(tables[i]);
+    } else {
+      consumer_tables.push_back(tables[i]);
+    }
+  }
+
+  // 1. Write some data.
+  for (const auto& producer_table : producer_tables) {
+    LOG(INFO) << "Writing records for table " << producer_table->name().ToString();
+    WriteWorkload(0, 100, &producer_cluster_, producer_table->name());
+  }
+
+  // Verify data is written on the producer.
+  for (const auto& producer_table : producer_tables) {
+    auto producer_results = ScanToStrings(producer_table->name(), &producer_cluster_);
+    ASSERT_EQ(100, PQntuples(producer_results.get()));
+    int result;
+    for (int i = 0; i < 100; ++i) {
+      result = ASSERT_RESULT(GetInt32(producer_results.get(), i, 0));
+      ASSERT_EQ(i, result);
+    }
+  }
+
+  // 2. Setup replication.
+  ASSERT_OK(SetupUniverseReplication(producer_cluster(), consumer_cluster(), consumer_client(),
+                                     kUniverseId, producer_tables));
+
+  // 3. Verify everything is setup correctly.
+  master::GetUniverseReplicationResponsePB get_universe_replication_resp;
+  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId,
+      &get_universe_replication_resp));
+  ASSERT_OK(CorrectlyPollingAllTablets(
+      consumer_cluster(), narrow_cast<uint32_t>(tables_vector.size() * kNTabletsPerTable)));
+
+  auto data_replicated_correctly = [&](int num_results) -> Result<bool> {
+    for (const auto& consumer_table : consumer_tables) {
+      LOG(INFO) << "Checking records for table " << consumer_table->name().ToString();
+      auto consumer_results = ScanToStrings(consumer_table->name(), &consumer_cluster_);
+
+      if (num_results != PQntuples(consumer_results.get())) {
+        return false;
+      }
+      int result;
+      for (int i = 0; i < num_results; ++i) {
+        result = VERIFY_RESULT(GetInt32(consumer_results.get(), i, 0));
+        if (i != result) {
+          return false;
+        }
+      }
+    }
+    return true;
+  };
+  ASSERT_OK(WaitFor([&]() -> Result<bool> { return data_replicated_correctly(100); },
+                    MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
+
+  // Attempt to destroy the producer and consumer tables.
+  string producer_table_name = producer_tables[0]->name().ToString();
+  string producer_table_id = producer_tables[0]->id();
+  string consumer_table_name = consumer_tables[0]->name().ToString();
+  string consumer_table_id = consumer_tables[0]->id();
+  ASSERT_NOK(DeleteTable(&producer_cluster_, &producer_table_id));
+  ASSERT_NOK(DeleteTable(&consumer_cluster_, &consumer_table_id));
+
+  FLAGS_enable_delete_truncate_xcluster_replicated_table = true;
+  ASSERT_OK(DeleteTable(&producer_cluster_, &producer_table_id));
+  ASSERT_OK(DeleteTable(&consumer_cluster_, &consumer_table_id));
+}
+
+TEST_P(TwoDCYsqlTest, TruncateTableChecks) {
+  YB_SKIP_TEST_IN_TSAN();
+  constexpr int kNTabletsPerTable = 1;
+  std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
+  auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
+  const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
+
+  // tables contains both producer and consumer universe tables (alternately).
+  // Pick out just the producer tables from the list.
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  std::vector<std::shared_ptr<client::YBTable>> consumer_tables;
+  producer_tables.reserve(tables.size() / 2);
+  consumer_tables.reserve(tables.size() / 2);
+  for (size_t i = 0; i < tables.size(); ++i) {
+    if (i % 2 == 0) {
+      producer_tables.push_back(tables[i]);
+    } else {
+      consumer_tables.push_back(tables[i]);
+    }
+  }
+
+  // 1. Write some data.
+  for (const auto& producer_table : producer_tables) {
+    LOG(INFO) << "Writing records for table " << producer_table->name().ToString();
+    WriteWorkload(0, 100, &producer_cluster_, producer_table->name());
+  }
+
+  // Verify data is written on the producer.
+  for (const auto& producer_table : producer_tables) {
+    auto producer_results = ScanToStrings(producer_table->name(), &producer_cluster_);
+    ASSERT_EQ(100, PQntuples(producer_results.get()));
+    int result;
+    for (int i = 0; i < 100; ++i) {
+      result = ASSERT_RESULT(GetInt32(producer_results.get(), i, 0));
+      ASSERT_EQ(i, result);
+    }
+  }
+
+  // 2. Setup replication.
+  ASSERT_OK(SetupUniverseReplication(producer_cluster(), consumer_cluster(), consumer_client(),
+                                     kUniverseId, producer_tables));
+
+  // 3. Verify everything is setup correctly.
+  master::GetUniverseReplicationResponsePB get_universe_replication_resp;
+  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId,
+      &get_universe_replication_resp));
+  ASSERT_OK(CorrectlyPollingAllTablets(
+      consumer_cluster(), narrow_cast<uint32_t>(tables_vector.size() * kNTabletsPerTable)));
+
+  auto data_replicated_correctly = [&](int num_results) -> Result<bool> {
+    for (const auto& consumer_table : consumer_tables) {
+      LOG(INFO) << "Checking records for table " << consumer_table->name().ToString();
+      auto consumer_results = ScanToStrings(consumer_table->name(), &consumer_cluster_);
+
+      if (num_results != PQntuples(consumer_results.get())) {
+        return false;
+      }
+      int result;
+      for (int i = 0; i < num_results; ++i) {
+        result = VERIFY_RESULT(GetInt32(consumer_results.get(), i, 0));
+        if (i != result) {
+          return false;
+        }
+      }
+    }
+    return true;
+  };
+  ASSERT_OK(WaitFor([&]() -> Result<bool> { return data_replicated_correctly(100); },
+                    MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
+
+  // Attempt to Truncate the producer and consumer tables.
+  string producer_table_id = producer_tables[0]->id();
+  string consumer_table_id = consumer_tables[0]->id();
+  ASSERT_NOK(TruncateTable(&producer_cluster_, {producer_table_id}));
+  ASSERT_NOK(TruncateTable(&consumer_cluster_, {consumer_table_id}));
+
+  FLAGS_enable_delete_truncate_xcluster_replicated_table = true;
+  ASSERT_OK(TruncateTable(&producer_cluster_, {producer_table_id}));
+  ASSERT_OK(TruncateTable(&consumer_cluster_, {consumer_table_id}));
+}
 
 } // namespace enterprise
 } // namespace yb

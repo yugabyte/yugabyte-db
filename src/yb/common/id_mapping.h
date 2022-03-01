@@ -133,7 +133,7 @@ class IdMapping {
     }
   }
 
-  int capacity() const {
+  size_t capacity() const {
     return mask_ + 1;
   }
 
@@ -151,7 +151,7 @@ class IdMapping {
   }
 
   void DoubleCapacity() {
-    int new_capacity = capacity() * 2;
+    auto new_capacity = capacity() * 2;
     std::vector<value_type> entries(new_capacity);
     ClearMap(&entries);
     mask_ = new_capacity - 1;

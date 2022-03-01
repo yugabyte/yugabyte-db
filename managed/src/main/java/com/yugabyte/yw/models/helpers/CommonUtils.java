@@ -21,6 +21,7 @@ import io.ebean.Junction;
 import io.ebean.PagedList;
 import io.ebean.Query;
 import io.ebean.common.BeanList;
+import java.lang.annotation.Annotation;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -34,6 +35,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -82,7 +84,8 @@ public class CommonUtils {
         || ucFieldname.contains("CREDENTIALS")
         || ucFieldname.contains("API")
         || ucFieldname.contains("POLICY")
-        || ucFieldname.contains("HC_VAULT_TOKEN");
+        || ucFieldname.contains("HC_VAULT_TOKEN")
+        || ucFieldname.contains("vaultToken");
   }
 
   /**
@@ -271,6 +274,18 @@ public class CommonUtils {
       Junction<T> orExpr = query.or();
       for (List<?> batch : Iterables.partition(values, CommonUtils.DB_MAX_IN_CLAUSE_ITEMS)) {
         orExpr.in(field, batch);
+      }
+      query.endOr();
+    }
+    return query;
+  }
+
+  public static <T> ExpressionList<T> appendLikeClause(
+      ExpressionList<T> query, String field, Collection<String> values) {
+    if (!CollectionUtils.isEmpty(values)) {
+      Junction<T> orExpr = query.or();
+      for (String value : values) {
+        orExpr.icontains(field, value);
       }
       query.endOr();
     }
@@ -491,5 +506,43 @@ public class CommonUtils {
   @FunctionalInterface
   private interface TriFunction<A, B, C, R> {
     R apply(A a, B b, C c);
+  }
+
+  /**
+   * Finds if the annotation class is present on the given class or its super classes.
+   *
+   * @param clazz the given class.
+   * @param annotationClass the annotation class.
+   * @return the optional of annotation.
+   */
+  public static <T extends Annotation> Optional<T> isAnnotatedWith(
+      Class<?> clazz, Class<T> annotationClass) {
+    if (clazz == null) {
+      return Optional.empty();
+    }
+    T annotation = clazz.getAnnotation(annotationClass);
+    if (annotation != null) {
+      return Optional.of(annotation);
+    }
+    return isAnnotatedWith(clazz.getSuperclass(), annotationClass);
+  }
+
+  /**
+   * Prints the stack for called function
+   *
+   * @return printable string of stack information.
+   */
+  public static String getStackTraceHere() {
+    String rVal;
+    rVal = "***Stack trace Here****:\n";
+    StackTraceElement[] elements = Thread.currentThread().getStackTrace();
+    int depth = elements.length;
+    if (depth > 10) depth = 10; // limit stack trace length
+    for (int i = 2; i < depth; i++) {
+      StackTraceElement s = elements[i];
+      rVal += "\tat " + s.getClassName() + "." + s.getMethodName();
+      rVal += "(" + s.getFileName() + ":" + s.getLineNumber() + ")\n";
+    }
+    return rVal;
   }
 }

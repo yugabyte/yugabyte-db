@@ -53,6 +53,7 @@
 #include <google/protobuf/util/message_differencer.h>
 
 #include "yb/gutil/callback.h"
+#include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/fastmem.h"
@@ -121,9 +122,9 @@ namespace {
 // protobuf implementation but is more likely caused by concurrent modification
 // of the message.  This function attempts to distinguish between the two and
 // provide a useful error message.
-void ByteSizeConsistencyError(int byte_size_before_serialization,
-                              int byte_size_after_serialization,
-                              int bytes_produced_by_serialization) {
+void ByteSizeConsistencyError(size_t byte_size_before_serialization,
+                              size_t byte_size_after_serialization,
+                              size_t bytes_produced_by_serialization) {
   CHECK_EQ(byte_size_before_serialization, byte_size_after_serialization)
       << "Protocol message was modified concurrently during serialization.";
   CHECK_EQ(bytes_produced_by_serialization, byte_size_before_serialization)
@@ -164,7 +165,7 @@ uint8_t* GetUInt8Ptr(uint8_t* buffer) {
 
 template <class Out>
 void DoAppendPartialToString(const MessageLite &msg, Out* output) {
-  int old_size = output->size();
+  auto old_size = output->size();
   int byte_size = msg.ByteSize();
 
   output->resize(old_size + byte_size);
@@ -201,8 +202,8 @@ bool ParseFromSequentialFile(MessageLite *msg, SequentialFile *rfile) {
   return msg->ParseFromZeroCopyStream(&istream);
 }
 
-Status ParseFromArray(MessageLite* msg, const uint8_t* data, uint32_t length) {
-  CodedInputStream in(data, length);
+Status ParseFromArray(MessageLite* msg, const uint8_t* data, size_t length) {
+  CodedInputStream in(data, narrow_cast<uint32_t>(length));
   in.SetTotalBytesLimit(511 * 1024 * 1024, -1);
   // Parse data into protobuf message
   if (!msg->ParseFromCodedStream(&in)) {
@@ -248,7 +249,7 @@ Status ReadPBFromPath(Env* env, const std::string& path, MessageLite* msg) {
   return Status::OK();
 }
 
-static void TruncateString(string* s, int max_len) {
+static void TruncateString(string* s, size_t max_len) {
   if (s->size() > max_len) {
     s->resize(max_len);
     s->append("<truncated>");
@@ -541,7 +542,7 @@ Status ReadablePBContainerFile::ReadNextPB(Message* msg) {
   // CodedInputStream and bump the byte limit. The SetTotalBytesLimit() docs
   // say that 512MB is the shortest theoretical message length that may produce
   // integer overflow warnings, so that's what we'll use.
-  ArrayInputStream ais(body.data(), body.size());
+  ArrayInputStream ais(body.data(), narrow_cast<int>(body.size()));
   CodedInputStream cis(&ais);
   cis.SetTotalBytesLimit(512 * 1024 * 1024, -1);
   if (PREDICT_FALSE(!msg->ParseFromCodedStream(&cis))) {

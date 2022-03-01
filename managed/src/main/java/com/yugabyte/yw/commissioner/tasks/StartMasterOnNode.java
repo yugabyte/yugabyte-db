@@ -111,7 +111,8 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
 
       // Set gflags for master.
-      createGFlagsOverrideTasks(ImmutableList.of(currentNode), ServerType.MASTER);
+      createGFlagsOverrideTasks(
+          ImmutableList.of(currentNode), ServerType.MASTER, true /* isShell */);
 
       // Update master configuration on the node.
       createConfigureServerTasks(
@@ -158,14 +159,16 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
       hitException = true;
       throw t;
     } finally {
-      // Reset the state, on any failure, so that the actions can be retried.
-      if (currentNode != null && hitException) {
-        setNodeState(taskParams().nodeName, currentNode.state);
+      try {
+        // Reset the state, on any failure, so that the actions can be retried.
+        if (currentNode != null && hitException) {
+          setNodeState(taskParams().nodeName, currentNode.state);
+        }
+      } finally {
+        // Mark the update of the universe as done. This will allow future updates to
+        // the universe.
+        unlockUniverseForUpdate();
       }
-
-      // Mark the update of the universe as done. This will allow future updates to
-      // the universe.
-      unlockUniverseForUpdate();
     }
     log.info(
         "Finished {} task for node {} in univ uuid={}",

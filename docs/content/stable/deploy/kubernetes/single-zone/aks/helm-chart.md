@@ -244,7 +244,7 @@ $ helm search repo yugabytedb/yugabyte
 
 ```output
 NAME                    CHART VERSION   APP VERSION     DESCRIPTION
-yugabytedb/yugabyte     2.8.1           2.8.1.0-b37    YugabyteDB is the high-performance distributed ...
+yugabytedb/yugabyte     2.12.1           2.12.1.0-b41    YugabyteDB is the high-performance distributed ...
 ```
 
 #### Create the namespace

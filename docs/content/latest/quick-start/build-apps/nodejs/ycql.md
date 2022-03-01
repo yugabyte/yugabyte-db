@@ -1,12 +1,11 @@
 ---
 title: Build a Node.js application that uses YCQL
 headerTitle: Build a Node.js application
-linkTitle: Node.js
 description: Build a sample Node.js application with the Yugabyte Node.js driver for YCQL.
 menu:
   latest:
     parent: build-apps
-    name: NodeJS
+    name: Node.js
     identifier: nodejs-3
     weight: 551
 type: page
@@ -37,7 +36,7 @@ showAsideToc: true
 
 ## Install the Yugabyte Node.js Driver for YCQL
 
-To install the [YugabyteDB Node.js driver for YCQL](https://github.com/yugabyte/cassandra-nodejs-driver), run the following `npm install` command:
+To install the [YugabyteDB Node.js driver for YCQL](https://github.com/yugabyte/cassandra-nodejs-driver), run the following command:
 
 ```sh
 $ npm install yb-ycql-driver
@@ -49,7 +48,7 @@ $ npm install yb-ycql-driver
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow these steps in [Quick start YCQL guide](../../../explore/ycql/).
+- installed YugabyteDB and created a cluster. Refer to [Quick start](../../../../quick-start).
 - installed a recent version of [Node.js](https://nodejs.org/en/download/).
 - installed the [async](https://github.com/caolan/async) utility to work with asynchronous Javascript.
 
@@ -95,7 +94,7 @@ async.series([
   },
   function insert(next) {
     // Create a variable with the insert statement.
-    const insert = "INSERT INTO ybdemo.employee (id, name, age, language) " +
+    const insert = "INSERT INTO ybdemo.employee (id, name, age, language, location) " +
                                         "VALUES (1, 'John', 35, 'NodeJS', '{ \"city\": \"San Francisco\", \"state\": \"California\", \"lat\": 37.77, \"long\": 122.42 }');";
     // Insert a row with the employee data.
     console.log('Inserting row with: %s', insert)
@@ -108,7 +107,7 @@ async.series([
     client.execute(select, function (err, result) {
       if (err) return next(err);
       var row = result.first();
-      const city = JSON.parse(row.location).city;
+      const city = row.location.city;
       console.log('Query for id=1 returned: name=%s, age=%d, language=%s, city=%s',
                                             row.name, row.age, row.language, city);
       next();

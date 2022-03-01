@@ -62,7 +62,7 @@ To build a sample Java application with the [Yugabyte Java Driver for YCQL](http
     <dependency>
       <groupId>com.yugabyte</groupId>
       <artifactId>cassandra-driver-core</artifactId>
-      <version>3.8.0-yb-5</version>
+      <version>3.10.3-yb-2</version>
     </dependency>
   </dependencies>
 ```

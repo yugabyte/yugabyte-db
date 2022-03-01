@@ -184,6 +184,14 @@ class AdminCliTest : public client::KeyValueTableTest<MiniCluster> {
     return resp.restorations(0).entry().state();
   }
 
+  Result<string> GetRecentStreamId(MiniCluster* cluster) {
+    const int kStreamUuidLength = 32;
+    string output = VERIFY_RESULT(RunAdminToolCommand(cluster, "list_cdc_streams"));
+    string find_stream_id = "stream_id: \"";
+    string::size_type pos = output.find(find_stream_id);
+    return output.substr((pos + find_stream_id.size()), kStreamUuidLength);
+  }
+
   Result<size_t> NumTables(const string& table_name) const;
   void ImportTableAs(const string& snapshot_file, const string& keyspace, const string& table_name);
   void CheckImportedTable(
@@ -1178,6 +1186,79 @@ TEST_F(XClusterAlterUniverseAdminCliTest, TestAlterUniverseReplicationWithBootst
   ASSERT_OK(CheckTableIsBeingReplicated({producer_table->id(), producer_table2->id()}));
 
   ASSERT_OK(RunAdminToolCommand("delete_universe_replication", kProducerClusterId));
+}
+
+// delete_cdc_stream tests
+TEST_F(XClusterAdminCliTest, TestDeleteCDCStreamWithConsumerSetup) {
+  client::TableHandle producer_table;
+
+  // Create an identical table on the producer.
+  client::kv_table_test::CreateTable(
+      Transactional::kTrue, NumTablets(), producer_cluster_client_.get(), &producer_table);
+
+  // Setup universe replication, this should only return once complete.
+  ASSERT_OK(RunAdminToolCommand("setup_universe_replication",
+                                kProducerClusterId,
+                                producer_cluster_->GetMasterAddresses(),
+                                producer_table->id()));
+  ASSERT_OK(CheckTableIsBeingReplicated({producer_table->id()}));
+
+  string stream_id = ASSERT_RESULT(GetRecentStreamId(producer_cluster_.get()));
+
+  // Should fail as it should meet the conditions to be stopped.
+  ASSERT_NOK(RunAdminToolCommand(producer_cluster_.get(), "delete_cdc_stream", stream_id));
+  // Should pass as we force it.
+  ASSERT_OK(RunAdminToolCommand(producer_cluster_.get(), "delete_cdc_stream", stream_id,
+                                "force_delete"));
+  // Delete universe should fail as we've force deleted the stream.
+  ASSERT_NOK(RunAdminToolCommand("delete_universe_replication", kProducerClusterId));
+  ASSERT_OK(RunAdminToolCommand("delete_universe_replication",
+                                kProducerClusterId,
+                                "ignore-errors"));
+}
+
+TEST_F(XClusterAdminCliTest, TestDeleteCDCStreamWithBootstrap) {
+  const int kStreamUuidLength = 32;
+  client::TableHandle producer_table;
+
+  // Create an identical table on the producer.
+  client::kv_table_test::CreateTable(
+      Transactional::kTrue, NumTablets(), producer_cluster_client_.get(), &producer_table);
+
+  string output = ASSERT_RESULT(RunAdminToolCommand(
+      producer_cluster_.get(), "bootstrap_cdc_producer", producer_table->id()));
+  // Get the bootstrap id (output format is "table id: 123, CDC bootstrap id: 123\n").
+  string bootstrap_id = output.substr(output.find_last_of(' ') + 1, kStreamUuidLength);
+
+  // Setup universe replication, this should only return once complete.
+  ASSERT_OK(RunAdminToolCommand("setup_universe_replication",
+                                kProducerClusterId,
+                                producer_cluster_->GetMasterAddresses(),
+                                producer_table->id(),
+                                bootstrap_id));
+  ASSERT_OK(CheckTableIsBeingReplicated({producer_table->id()}));
+
+  // Should fail as it should meet the conditions to be stopped.
+  ASSERT_NOK(RunAdminToolCommand(producer_cluster_.get(), "delete_cdc_stream", bootstrap_id));
+  // Delete should work fine from deleting from universe.
+  ASSERT_OK(RunAdminToolCommand("delete_universe_replication", kProducerClusterId));
+}
+
+TEST_F(AdminCliTest, TestDeleteCDCStreamWithCreateCDCStream) {
+
+  // Create an identical table on the producer.
+  client::kv_table_test::CreateTable(
+      Transactional::kTrue, NumTablets(), client_.get(), &table_);
+
+  // Create CDC stream
+  ASSERT_OK(RunAdminToolCommand(cluster_.get(),
+                                "create_cdc_stream",
+                                table_->id()));
+
+  string stream_id = ASSERT_RESULT(GetRecentStreamId(cluster_.get()));
+
+  // Should be deleted.
+  ASSERT_OK(RunAdminToolCommand(cluster_.get(), "delete_cdc_stream", stream_id));
 }
 
 }  // namespace tools

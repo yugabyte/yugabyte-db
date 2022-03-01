@@ -64,7 +64,7 @@ class BinaryCallParser {
 // Returns whether we should throttle RPC call based on its size and memory consumption.
 // Uses specified throttle_message when logging a warning about throttling an RPC call.
 bool ShouldThrottleRpc(
-    const MemTrackerPtr& throttle_tracker, size_t call_data_size, const char* throttle_message);
+    const MemTrackerPtr& throttle_tracker, ssize_t call_data_size, const char* throttle_message);
 
 } // namespace rpc
 } // namespace yb

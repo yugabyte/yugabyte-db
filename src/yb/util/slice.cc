@@ -78,7 +78,7 @@ std::string Slice::ToDebugString(size_t max_len) const {
     abbreviated = true;
   }
 
-  int num_not_graph = 0;
+  size_t num_not_graph = 0;
   for (size_t i = 0; i < bytes_to_print; i++) {
     if (!isgraph(begin_[i])) {
       ++num_not_graph;
@@ -93,7 +93,7 @@ std::string Slice::ToDebugString(size_t max_len) const {
 
   std::string ret;
   ret.reserve(size);
-  for (int i = 0; i < bytes_to_print; i++) {
+  for (size_t i = 0; i < bytes_to_print; i++) {
     auto ch = begin_[i];
     if (!isgraph(ch)) {
       if (ch == '\r') {
@@ -199,15 +199,20 @@ size_t SliceParts::SumSizes() const {
   return result;
 }
 
-void SliceParts::CopyAllTo(void* out) const {
-  char* buf = static_cast<char*>(out);
+char* SliceParts::CopyAllTo(char* out) const {
   for (int i = 0; i != num_parts; ++i) {
     if (!parts[i].size()) {
       continue;
     }
-    memcpy(buf, parts[i].data(), parts[i].size());
-    buf += parts[i].size();
+    memcpy(out, parts[i].data(), parts[i].size());
+    out += parts[i].size();
   }
+  return out;
+}
+
+Slice SliceParts::TheOnlyPart() const {
+  CHECK_EQ(num_parts, 1);
+  return parts[0];
 }
 
 }  // namespace yb

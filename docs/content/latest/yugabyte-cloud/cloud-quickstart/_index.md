@@ -6,12 +6,11 @@ description: Get started using Yugabyte Cloud in less than five minutes.
 image: /images/section_icons/index/quick_start.png
 headcontent: Test YugabyteDB's APIs and core features by creating a free cluster on Yugabyte Cloud.
 type: page
-aliases:
+section: YUGABYTE CLOUD
 menu:
   latest:
     identifier: cloud-quickstart
-    parent: yugabyte-cloud
-    weight: 10
+    weight: 15
 ---
 
 The quickest way to get started with YugabyteDB is to [sign up for Yugabyte Cloud](http://cloud.yugabyte.com) and create a free cluster. Although not suitable for production workloads, the free cluster includes enough resources to learn and develop applications with YugabyteDB.
@@ -38,7 +37,7 @@ Get started with YugabyteDB on Yugabyte Cloud in a few steps:
         <div class="title">Connect to the cluster</div>
       </div>
       <div class="body">
-        Connect to your cluster using the cloud shell.
+        Connect to your cluster using Cloud Shell.
       </div>
     </a>
   </div>
@@ -50,7 +49,7 @@ Get started with YugabyteDB on Yugabyte Cloud in a few steps:
         <div class="title">Create a database and load data</div>
       </div>
       <div class="body">
-        Create a database on your cluster and add some data using the cloud shell.
+        Create a database on your cluster and add some data using Cloud Shell.
       </div>
     </a>
   </div>
@@ -63,6 +62,18 @@ Get started with YugabyteDB on Yugabyte Cloud in a few steps:
       </div>
       <div class="body">
         Explore YugabyteDB's PostgreSQL-compatible, fully-relational Yugabyte SQL API.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="cloud-build-apps/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/api-icon.png" aria-hidden="true" />
+        <div class="title">Build an application</div>
+      </div>
+      <div class="body">
+        Build an application in the programming language of your choice.
       </div>
     </a>
   </div>

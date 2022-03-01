@@ -5,9 +5,10 @@ linkTitle: Security
 description: Secure Yugabyte Platform and YugabyteDB universes.
 image: /images/section_icons/index/secure.png
 headcontent: Secure Yugabyte Platform and your YugabyteDB universes.
+type: page
+section: YUGABYTE PLATFORM
 menu:
   latest:
-    parent: yugabyte-platform
     identifier: security
 weight: 645
 ---
@@ -63,7 +64,7 @@ weight: 645
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="create-kms-config.md/aws-kms/">
+    <a class="section-link icon-offset" href="create-kms-config/aws-kms/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/tls-encryption/server-to-server.png" aria-hidden="true" />
         <div class="title">Create a KMS configuration</div>

@@ -3,7 +3,8 @@
     margin-bottom: 25px;
     position: relative;
 
-    &, & > div {
+    &,
+    & > div {
       display: flex;
       align-items: center;
     }
@@ -55,7 +56,8 @@
       padding-right: 62px;
     }
 
-    .btn-copy {
+    .btn-copy,
+    .btn-paste {
       position: absolute;
       right: 12px;
       top: 12px;

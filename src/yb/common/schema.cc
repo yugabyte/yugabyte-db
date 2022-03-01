@@ -40,6 +40,7 @@
 #include "yb/common/ql_type.h"
 #include "yb/common/row.h"
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/join.h"
@@ -334,11 +335,11 @@ void Schema::ResetColumnIds(const vector<ColumnId>& ids) {
   col_ids_ = ids;
   id_to_index_.clear();
   max_col_id_ = 0;
-  for (int i = 0; i < ids.size(); ++i) {
+  for (size_t i = 0; i < ids.size(); ++i) {
     if (ids[i] > max_col_id_) {
       max_col_id_ = ids[i];
     }
-    id_to_index_.set(ids[i], i);
+    id_to_index_.set(ids[i], narrow_cast<int>(i));
   }
 }
 
@@ -393,7 +394,7 @@ Status Schema::Reset(const vector<ColumnSchema>& cols,
   }
 
   // Verify that the key columns are not nullable nor static
-  for (int i = 0; i < key_columns; ++i) {
+  for (size_t i = 0; i < key_columns; ++i) {
     if (PREDICT_FALSE(cols_[i].is_nullable())) {
       return STATUS(InvalidArgument,
         "Bad schema", strings::Substitute("Nullable key columns are not "
@@ -414,11 +415,11 @@ Status Schema::Reset(const vector<ColumnSchema>& cols,
   // Calculate the offset of each column in the row format.
   col_offsets_.reserve(cols_.size() + 1);  // Include space for total byte size at the end.
   size_t off = 0;
-  size_t i = 0;
+  size_t idx = 0;
   name_to_index_.clear();
   for (const ColumnSchema &col : cols_) {
     // The map uses the 'name' string from within the ColumnSchema object.
-    if (!InsertIfNotPresent(&name_to_index_, col.name(), i++)) {
+    if (!InsertIfNotPresent(&name_to_index_, col.name(), idx++)) {
       return STATUS(InvalidArgument, "Duplicate column name", col.name());
     }
 
@@ -448,9 +449,9 @@ Status Schema::CreateProjectionByNames(const std::vector<GStringPiece>& col_name
   vector<ColumnId> ids;
   vector<ColumnSchema> cols;
   for (const GStringPiece& name : col_names) {
-    int idx = find_column(name);
-    if (idx == -1) {
-      return STATUS(NotFound, "column not found", name);
+    auto idx = find_column(name);
+    if (idx == kColumnNotFound) {
+      return STATUS(NotFound, "Column not found", name);
     }
     if (has_column_ids()) {
       ids.push_back(column_id(idx));
@@ -476,18 +477,20 @@ Status Schema::CreateProjectionByIdsIgnoreMissing(const std::vector<ColumnId>& c
 }
 
 namespace {
-vector<ColumnId> DefaultColumnIds(size_t num_columns) {
+
+vector<ColumnId> DefaultColumnIds(ColumnIdRep num_columns) {
   vector<ColumnId> ids;
-  for (int32_t i = 0; i < num_columns; ++i) {
+  for (ColumnIdRep i = 0; i < num_columns; ++i) {
     ids.push_back(ColumnId(kFirstColumnId + i));
   }
   return ids;
 }
+
 }  // namespace
 
 void Schema::InitColumnIdsByDefault() {
   CHECK(!has_column_ids());
-  ResetColumnIds(DefaultColumnIds(cols_.size()));
+  ResetColumnIds(DefaultColumnIds(narrow_cast<ColumnIdRep>(cols_.size())));
 }
 
 Schema Schema::CopyWithoutColumnIds() const {
@@ -504,8 +507,8 @@ Status Schema::VerifyProjectionCompatibility(const Schema& projection) const {
 
   vector<string> missing_columns;
   for (const ColumnSchema& pcol : projection.columns()) {
-    int index = find_column(pcol.name());
-    if (index < 0) {
+    auto index = find_column(pcol.name());
+    if (index == kColumnNotFound) {
       missing_columns.push_back(pcol.name());
     } else if (!pcol.EqualsType(cols_[index])) {
       // TODO: We don't support query with type adaptors yet
@@ -537,7 +540,7 @@ Status Schema::GetMappedReadProjection(const Schema& projection,
   mapped_ids.reserve(projection.num_columns());
 
   for (const ColumnSchema& col : projection.columns()) {
-    int index = find_column(col.name());
+    auto index = find_column(col.name());
     DCHECK_GE(index, 0) << col.name();
     mapped_cols.push_back(cols_[index]);
     mapped_ids.push_back(col_ids_[index]);
@@ -550,7 +553,7 @@ Status Schema::GetMappedReadProjection(const Schema& projection,
 string Schema::ToString() const {
   vector<string> col_strs;
   if (has_column_ids()) {
-    for (int i = 0; i < cols_.size(); ++i) {
+    for (size_t i = 0; i < cols_.size(); ++i) {
       col_strs.push_back(Format("$0:$1", col_ids_[i], cols_[i].ToString()));
     }
   } else {
@@ -632,7 +635,7 @@ size_t Schema::memory_footprint_including_this() const {
   return malloc_usable_size(this) + memory_footprint_excluding_this();
 }
 
-Result<int> Schema::ColumnIndexByName(GStringPiece col_name) const {
+Result<ssize_t> Schema::ColumnIndexByName(GStringPiece col_name) const {
   auto index = find_column(col_name);
   if (index == kColumnNotFound) {
     return STATUS_FORMAT(Corruption, "$0 not found in schema $1", col_name, name_to_index_);
@@ -641,8 +644,8 @@ Result<int> Schema::ColumnIndexByName(GStringPiece col_name) const {
 }
 
 Result<ColumnId> Schema::ColumnIdByName(const std::string& column_name) const {
-  size_t column_index = find_column(column_name);
-  if (column_index == Schema::kColumnNotFound) {
+  auto column_index = find_column(column_name);
+  if (column_index == kColumnNotFound) {
     return STATUS_FORMAT(NotFound, "Couldn't find column $0 in the schema", column_name);
   }
   return ColumnId(column_id(column_index));
@@ -683,7 +686,7 @@ void SchemaBuilder::Reset(const Schema& schema) {
   }
 
   if (col_ids_.empty()) {
-    for (int32_t i = 0; i < cols_.size(); ++i) {
+    for (ColumnIdRep i = 0; i < narrow_cast<ColumnIdRep>(cols_.size()); ++i) {
       col_ids_.push_back(ColumnId(kFirstColumnId + i));
     }
   }
@@ -753,7 +756,7 @@ Status SchemaBuilder::RemoveColumn(const string& name) {
   }
 
   col_names_.erase(it_names);
-  for (int i = 0; i < cols_.size(); ++i) {
+  for (size_t i = 0; i < cols_.size(); ++i) {
     if (name == cols_[i].name()) {
       cols_.erase(cols_.begin() + i);
       col_ids_.erase(col_ids_.begin() + i);

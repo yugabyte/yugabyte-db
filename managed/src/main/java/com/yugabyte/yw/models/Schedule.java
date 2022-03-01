@@ -4,14 +4,25 @@ package com.yugabyte.yw.models;
 
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
+import static com.yugabyte.yw.models.helpers.CommonUtils.performPagedQuery;
+import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.models.filters.ScheduleFilter;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.paging.PagedQuery;
+import com.yugabyte.yw.models.paging.SchedulePagedQuery;
+import com.yugabyte.yw.models.paging.SchedulePagedResponse;
+import com.yugabyte.yw.models.paging.PagedQuery.SortByIF;
+import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.ebean.Query;
+import io.ebean.PersistenceContextScope;
+import io.ebean.ExpressionList;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.EnumValue;
 import io.swagger.annotations.ApiModel;
@@ -44,6 +55,26 @@ public class Schedule extends Model {
 
     @EnumValue("Stopped")
     Stopped,
+  }
+
+  public enum SortBy implements PagedQuery.SortByIF {
+    taskType("taskType"),
+    scheduleUUID("scheduleUUID");
+
+    private final String sortField;
+
+    SortBy(String sortField) {
+      this.sortField = sortField;
+    }
+
+    public String getSortField() {
+      return sortField;
+    }
+
+    @Override
+    public SortByIF getOrderField() {
+      return SortBy.scheduleUUID;
+    }
   }
 
   private static final int MAX_FAIL_COUNT = 3;
@@ -80,10 +111,10 @@ public class Schedule extends Model {
     return frequency;
   }
 
-  @ApiModelProperty(
-      value = "Schedule task parameters",
-      accessMode = READ_WRITE,
-      dataType = "com.yugabyte.yw.commissioner.tasks.MultiTableBackup$Params")
+  public void setFrequency(long frequency) {
+    this.frequency = frequency;
+  }
+
   @Column(nullable = false, columnDefinition = "TEXT")
   @DbJson
   private JsonNode taskParams;
@@ -92,10 +123,7 @@ public class Schedule extends Model {
     return taskParams;
   }
 
-  @ApiModelProperty(
-      value =
-          "Type of task to be scheduled. This can be either a multi-table backup, or a full-universe backup.",
-      accessMode = READ_WRITE)
+  @ApiModelProperty(value = "Type of task to be scheduled.", accessMode = READ_WRITE)
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
   private TaskType taskType;
@@ -133,6 +161,49 @@ public class Schedule extends Model {
     save();
   }
 
+  public void setFailureCount(int count) {
+    this.failureCount = count;
+    if (count >= MAX_FAIL_COUNT) {
+      this.status = State.Paused;
+    }
+    save();
+  }
+
+  public void resetSchedule() {
+    this.status = State.Active;
+    save();
+  }
+
+  public void stopSchedule() {
+    this.status = State.Stopped;
+    save();
+  }
+
+  public void updateFrequency(long frequency) {
+    this.frequency = frequency;
+    this.cronExpression = null;
+    resetSchedule();
+  }
+
+  public void updateCronExpression(String cronExpression) {
+    this.cronExpression = cronExpression;
+    this.frequency = 0L;
+    resetSchedule();
+  }
+
+  @Column(nullable = false)
+  @ApiModelProperty(value = "Running state of the schedule")
+  private boolean runningState = false;
+
+  public boolean getRunningState() {
+    return this.runningState;
+  }
+
+  public void setRunningState(boolean state) {
+    this.runningState = state;
+    save();
+  }
+
   public static final Finder<UUID, Schedule> find = new Finder<UUID, Schedule>(Schedule.class) {};
 
   public static Schedule create(
@@ -164,6 +235,17 @@ public class Schedule extends Model {
     Schedule schedule = get(scheduleUUID);
     if (schedule == null) {
       throw new PlatformServiceException(BAD_REQUEST, "Invalid Schedule UUID: " + scheduleUUID);
+    }
+    return schedule;
+  }
+
+  public static Schedule getOrBadRequest(UUID customerUUID, UUID scheduleUUID) {
+    Schedule schedule =
+        find.query().where().idEq(scheduleUUID).eq("customer_uuid", customerUUID).findOne();
+    if (schedule == null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Invalid Customer UUID: " + customerUUID + ", Schedule UUID: " + scheduleUUID);
     }
     return schedule;
   }
@@ -216,21 +298,24 @@ public class Schedule extends Model {
     return scheduleList;
   }
 
-  public void setFailureCount(int count) {
-    this.failureCount = count;
-    if (count >= MAX_FAIL_COUNT) {
-      this.status = State.Paused;
+  public static SchedulePagedResponse pagedList(SchedulePagedQuery pagedQuery) {
+    if (pagedQuery.getSortBy() == null) {
+      pagedQuery.setSortBy(SortBy.taskType);
+      pagedQuery.setDirection(SortDirection.DESC);
     }
-    save();
+    Query<Schedule> query = createQueryByFilter(pagedQuery.getFilter()).query();
+    SchedulePagedResponse response =
+        performPagedQuery(query, pagedQuery, SchedulePagedResponse.class);
+    return response;
   }
 
-  public void resetSchedule() {
-    this.status = State.Active;
-    save();
-  }
+  public static ExpressionList<Schedule> createQueryByFilter(ScheduleFilter filter) {
+    ExpressionList<Schedule> query =
+        find.query().setPersistenceContextScope(PersistenceContextScope.QUERY).where();
+    query.eq("customer_uuid", filter.getCustomerUUID());
 
-  public void stopSchedule() {
-    this.status = State.Stopped;
-    save();
+    appendInClause(query, "status", filter.getStatus());
+    appendInClause(query, "task_type", filter.getTaskTypes());
+    return query;
   }
 }

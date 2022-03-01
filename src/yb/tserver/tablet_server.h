@@ -118,9 +118,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     return maintenance_manager_.get();
   }
 
-  int GetCurrentMasterIndex() { return master_config_index_; }
+  int64_t GetCurrentMasterIndex() { return master_config_index_; }
 
-  void SetCurrentMasterIndex(int index) { master_config_index_ = index; }
+  void SetCurrentMasterIndex(int64_t index) { master_config_index_ = index; }
 
   // Update in-memory list of master addresses that this tablet server pings to.
   // If the update is from master leader, we use that list directly. If not, we
@@ -184,7 +184,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     }
   }
 
-  void UpdateTxnTableVersionsHash(uint64_t new_hash);
+  void UpdateTransactionTablesVersion(uint64_t new_version);
 
   virtual Env* GetEnv();
 
@@ -256,7 +256,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::shared_ptr<MaintenanceManager> maintenance_manager_;
 
   // Index at which master sent us the last config
-  int master_config_index_;
+  int64_t master_config_index_;
 
   // List of tservers that are alive from the master's perspective.
   std::vector<master::TSInformationPB> live_tservers_;

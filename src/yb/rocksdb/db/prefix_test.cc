@@ -43,6 +43,7 @@ int main() {
 #include "yb/rocksdb/util/histogram.h"
 #include "yb/rocksdb/util/stop_watch.h"
 #include "yb/rocksdb/util/testharness.h"
+#include "yb/rocksdb/util/testutil.h"
 
 #include "yb/util/string_util.h"
 #include "yb/util/test_util.h"
@@ -166,7 +167,7 @@ std::string Get(DB* db, const ReadOptions& read_options, uint64_t prefix,
 }
 }  // namespace
 
-class PrefixTest : public testing::Test {
+class PrefixTest : public RocksDBTest {
  public:
   std::shared_ptr<DB> OpenDb() {
     DB* db;

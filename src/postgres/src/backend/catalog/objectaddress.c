@@ -886,7 +886,6 @@ get_object_address(ObjectType objtype, Node *object,
 				break;
 			case OBJECT_DATABASE:
 			case OBJECT_EXTENSION:
-			case OBJECT_YBTABLEGROUP:
 			case OBJECT_TABLESPACE:
 			case OBJECT_ROLE:
 			case OBJECT_SCHEMA:
@@ -897,6 +896,7 @@ get_object_address(ObjectType objtype, Node *object,
 			case OBJECT_ACCESS_METHOD:
 			case OBJECT_PUBLICATION:
 			case OBJECT_SUBSCRIPTION:
+			case OBJECT_YBTABLEGROUP:
 				address = get_object_address_unqualified(objtype,
 														 (Value *) object, missing_ok);
 				break;

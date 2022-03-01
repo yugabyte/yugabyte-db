@@ -3,10 +3,10 @@ title: JanusGraph
 linkTitle: JanusGraph
 description: JanusGraph
 aliases:
+section: INTEGRATIONS
 menu:
   latest:
     identifier: janusgraph
-    parent: integrations
     weight: 573
 isTocNested: true
 showAsideToc: true
@@ -113,7 +113,7 @@ gremlin> g = graph.traversal()
 
 ## 5. Graph traversal examples
 
-For reference, here is the graph data loaded by the Graph of the Gods. You can find a lot more useful information about this in the [JanusGraph getting started page](http://docs.janusgraph.org/latest/getting-started.html).
+For reference, here is the graph data loaded by the Graph of the Gods. You can find a lot more useful information about this in the [JanusGraph getting started page](https://docs.janusgraph.org/getting-started/basic-usage/).
 
 ![Graph of the Gods](/images/develop/ecosystem-integrations/janusgraph/graph-of-the-gods-2.png)
 

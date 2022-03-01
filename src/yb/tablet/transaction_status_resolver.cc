@@ -46,7 +46,7 @@ namespace tablet {
 class TransactionStatusResolver::Impl {
  public:
   Impl(TransactionParticipantContext* participant_context, rpc::Rpcs* rpcs,
-       size_t max_transactions_per_request, TransactionStatusResolverCallback callback)
+       int max_transactions_per_request, TransactionStatusResolverCallback callback)
       : participant_context_(*participant_context), rpcs_(*rpcs),
         max_transactions_per_request_(max_transactions_per_request), callback_(std::move(callback)),
         log_prefix_(participant_context->LogPrefix()), handle_(rpcs_.InvalidHandle()) {}
@@ -140,7 +140,7 @@ class TransactionStatusResolver::Impl {
 
   void StatusReceived(Status status,
                       const tserver::GetTransactionStatusResponsePB& response,
-                      size_t request_size) {
+                      int request_size) {
     VLOG_WITH_PREFIX(2) << "Received statuses: " << status << ", " << response.ShortDebugString();
 
     rpcs_.Unregister(&handle_);
@@ -163,8 +163,7 @@ class TransactionStatusResolver::Impl {
       participant_context_.UpdateClock(HybridTime(response.propagated_hybrid_time()));
     }
 
-    if ((response.status().size() != 1 &&
-            response.status().size() != request_size) ||
+    if ((response.status().size() != 1 && response.status().size() != request_size) ||
         (response.aborted_subtxn_set().size() != 1 &&
             response.aborted_subtxn_set().size() != request_size)) {
       // Node with old software version would always return 1 status.
@@ -179,7 +178,7 @@ class TransactionStatusResolver::Impl {
     status_infos_.resize(response.status().size());
     auto it = queues_.begin();
     auto& queue = it->second;
-    for (size_t i = 0; i != response.status().size(); ++i) {
+    for (int i = 0; i != response.status().size(); ++i) {
       auto& status_info = status_infos_[i];
       status_info.transaction_id = queue.front();
       status_info.status = response.status(i);
@@ -229,7 +228,7 @@ class TransactionStatusResolver::Impl {
 
   TransactionParticipantContext& participant_context_;
   rpc::Rpcs& rpcs_;
-  const size_t max_transactions_per_request_;
+  const int max_transactions_per_request_;
   TransactionStatusResolverCallback callback_;
 
   const std::string log_prefix_;
@@ -245,7 +244,7 @@ class TransactionStatusResolver::Impl {
 
 TransactionStatusResolver::TransactionStatusResolver(
     TransactionParticipantContext* participant_context, rpc::Rpcs* rpcs,
-    size_t max_transactions_per_request, TransactionStatusResolverCallback callback)
+    int max_transactions_per_request, TransactionStatusResolverCallback callback)
     : impl_(new Impl(
         participant_context, rpcs, max_transactions_per_request, std::move(callback))) {
 }

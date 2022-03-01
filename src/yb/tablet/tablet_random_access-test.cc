@@ -260,7 +260,7 @@ TEST_F(TestRandomAccess, Test) {
   flush_thread->Join();
 }
 
-void GenerateTestCase(vector<TestOp>* ops, int len) {
+void GenerateTestCase(vector<TestOp>* ops, size_t len) {
   bool exists = false;
   bool ops_pending = false;
   ops->clear();

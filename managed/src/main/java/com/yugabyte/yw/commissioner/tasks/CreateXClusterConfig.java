@@ -40,10 +40,6 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
 
       setXClusterConfigStatus(XClusterConfigStatusType.Running);
 
-      if (shouldIncrementVersion()) {
-        getUniverse().incrementVersion();
-      }
-
     } catch (Exception e) {
       setXClusterConfigStatus(XClusterConfigStatusType.Failed);
       log.error("{} hit error : {}", getName(), e.getMessage());

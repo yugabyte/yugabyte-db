@@ -47,9 +47,14 @@
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/raft_consensus.h"
 
+#include "yb/docdb/docdb_rocksdb_util.h"
+
 #include "yb/fs/fs_manager.h"
 
 #include "yb/master/master_heartbeat.pb.h"
+
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/rate_limiter.h"
 
 #include "yb/tablet/tablet-harness.h"
 #include "yb/tablet/tablet.h"
@@ -71,6 +76,9 @@
   ASSERT_NO_FATALS(AssertMonotonicReportSeqno(report_seqno, tablet_report))
 
 DECLARE_bool(TEST_pretend_memory_exceeded_enforce_flush);
+DECLARE_bool(TEST_tserver_disable_heartbeat);
+DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
+DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
 
 namespace yb {
 namespace tserver {
@@ -80,15 +88,18 @@ using consensus::RaftConfigPB;
 using consensus::ConsensusRound;
 using consensus::ConsensusRoundPtr;
 using consensus::ReplicateMsg;
+using docdb::RateLimiterSharingMode;
 using master::ReportedTabletPB;
 using master::TabletReportPB;
 using master::TabletReportUpdatesPB;
+using strings::Substitute;
 using tablet::TabletPeer;
 using gflags::FlagSaver;
 
 static const char* const kTableId = "my-table-id";
 static const char* const kTabletId = "my-tablet-id";
 static const int kConsensusRunningWaitMs = 10000;
+static const int kDrivesNum = 4;
 
 class TsTabletManagerTest : public YBTest {
  public:
@@ -96,14 +107,29 @@ class TsTabletManagerTest : public YBTest {
     : schema_({ ColumnSchema("key", UINT32) }, 1) {
   }
 
+  string GetDrivePath(int index) {
+    return JoinPathSegments(test_data_root_, Substitute("drive-$0", index + 1));
+  }
+
   void CreateMiniTabletServer() {
-    auto mini_ts = MiniTabletServer::CreateMiniTabletServer(test_data_root_, 0);
-    ASSERT_OK(mini_ts);
-    mini_server_ = std::move(*mini_ts);
+    auto options_result = TabletServerOptions::CreateTabletServerOptions();
+    ASSERT_OK(options_result);
+    std::vector<std::string> paths;
+    for (int i = 0; i < kDrivesNum; ++i) {
+      auto s = GetDrivePath(i);
+      ASSERT_OK(env_->CreateDirs(s));
+      paths.push_back(s);
+    }
+    mini_server_ = std::make_unique<MiniTabletServer>(paths, paths, 0, *options_result, 0);
   }
 
   void SetUp() override {
     YBTest::SetUp();
+
+    // Requred before tserver creation as using of `mini_server_->FailHeartbeats()`
+    // does not guarantee the heartbeat events is off immediately and a couple of events
+    // may happen until heartbeat's thread sees the effect of `mini_server_->FailHeartbeats()`
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_disable_heartbeat) = true;
 
     test_data_root_ = GetTestPath("TsTabletManagerTest-fsroot");
     CreateMiniTabletServer();
@@ -142,6 +168,39 @@ class TsTabletManagerTest : public YBTest {
           MonoDelta::FromMilliseconds(kConsensusRunningWaitMs)));
 
     return tablet_peer->consensus()->EmulateElection();
+  }
+
+  void Reload() {
+    LOG(INFO) << "Shutting down tablet manager";
+    mini_server_->Shutdown();
+    LOG(INFO) << "Restarting tablet manager";
+    ASSERT_NO_FATAL_FAILURE(CreateMiniTabletServer());
+    ASSERT_OK(mini_server_->Start());
+    ASSERT_OK(mini_server_->WaitStarted());
+    tablet_manager_ = mini_server_->server()->tablet_manager();
+  }
+
+  void AddTablets(size_t num, TSTabletManager::TabletPeers* peers = nullptr) {
+    // Add series of tablets
+    ASSERT_NE(num, 0);
+    for (size_t i = 0; i < num; ++i) {
+      std::shared_ptr<TabletPeer> peer;
+      const auto tid = Format("tablet-$0", peers->size());
+      ASSERT_OK(CreateNewTablet(kTableId, tid, schema_, &peer));
+      ASSERT_EQ(tid, peer->tablet()->tablet_id());
+      if (peers) {
+        peers->push_back(peer);
+      }
+    }
+  }
+
+  Result<TSTabletManager::TabletPeers> GetPeers(
+      boost::optional<size_t> expected_count = boost::none) {
+    auto peers = tablet_manager_->GetTabletPeers(nullptr);
+    if (expected_count.has_value()) {
+      SCHECK_EQ(*expected_count, peers.size(), IllegalState, "Unexpected number of peers");
+    }
+    return std::move(peers);
   }
 
  protected:
@@ -313,7 +372,7 @@ TEST_F(TsTabletManagerTest, TestProperBackgroundFlushOnStartup) {
   }
 }
 
-static void AssertMonotonicReportSeqno(int64_t* report_seqno,
+static void AssertMonotonicReportSeqno(int32_t* report_seqno,
                                        const TabletReportPB& report) {
   ASSERT_LT(*report_seqno, report.sequence_number());
   *report_seqno = report.sequence_number();
@@ -356,7 +415,7 @@ static void CopyReportToUpdates(const TabletReportPB& req, TabletReportUpdatesPB
 TEST_F(TsTabletManagerTest, TestTabletReports) {
   TabletReportPB report;
   TabletReportUpdatesPB updates;
-  int64_t seqno = -1;
+  int32_t seqno = -1;
 
   // Generate a tablet report before any tablets are loaded. Should be empty.
   tablet_manager_->StartFullTabletReport(&report);
@@ -441,7 +500,7 @@ TEST_F(TsTabletManagerTest, TestTabletReports) {
 TEST_F(TsTabletManagerTest, TestTabletReportLimit) {
   TabletReportPB report;
   TabletReportUpdatesPB updates;
-  int64_t seqno = -1;
+  int32_t seqno = -1;
 
   // Generate a tablet report before any tablets are loaded. Should be empty.
   tablet_manager_->StartFullTabletReport(&report);
@@ -480,7 +539,7 @@ TEST_F(TsTabletManagerTest, TestTabletReportLimit) {
     }
     CopyReportToUpdates(report, &updates);
     tablet_manager_->MarkTabletReportAcknowledged(seqno, updates);
-}
+  }
 
   // Generate a Full Report and ensure that the same batching occurs.
   tablet_manager_->StartFullTabletReport(&report);
@@ -495,6 +554,143 @@ TEST_F(TsTabletManagerTest, TestTabletReportLimit) {
     tablet_manager_->GenerateTabletReport(&report);
   }
   ASSERT_EQ(0, report.updated_tablets().size()); // Last incremental report is empty.
+}
+
+namespace {
+
+void SetRateLimiterSharingMode(RateLimiterSharingMode mode) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_compact_flush_rate_limit_sharing_mode) = ToString(mode);
+}
+
+Result<size_t> CountUniqueLimiters(const TSTabletManager::TabletPeers& peers,
+                                   const size_t start_idx = 0) {
+  SCHECK_LT(start_idx, peers.size(), IllegalState,
+            "Start index must be less than number of peers");
+  std::unordered_set<rocksdb::RateLimiter*> unique;
+  for (size_t i = start_idx; i < peers.size(); ++i) {
+    auto db = peers[i]->tablet()->TEST_db();
+    SCHECK_NOTNULL(db);
+    auto rl = db->GetDBOptions().rate_limiter.get();
+    if (rl) {
+      unique.insert(rl);
+    }
+  }
+  return unique.size();
+}
+
+} // namespace
+
+TEST_F(TsTabletManagerTest, RateLimiterSharing) {
+  // The test checks rocksdb::RateLimiter is correctly shared between RocksDB instances
+  // depending on the flags `FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec` and
+  // `FLAGS_rocksdb_compact_flush_rate_limit_sharing_mode`, inlcuding possible effect
+  // of changing flags on-the-fly (emulating forced changed)
+
+  // No tablets exist, reset flags and reload
+  size_t peers_num = 0;
+  constexpr auto kBPS = 128_MB;
+  SetRateLimiterSharingMode(RateLimiterSharingMode::NONE);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec) = kBPS;
+  ASSERT_NO_FATAL_FAILURE(Reload());
+  TSTabletManager::TabletPeers peers = ASSERT_RESULT(GetPeers(peers_num));
+
+  // `NONE`: add tablets and make sure they have unique limiters
+  ASSERT_NO_FATAL_FAILURE(AddTablets(2, &peers));
+  ASSERT_EQ(peers_num + 2, ASSERT_RESULT(CountUniqueLimiters(peers)));
+  peers_num = peers.size();
+
+  // `NONE`: emulating forced change for bps flag: make sure new unique limiters are created
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec) = kBPS / 2;
+  ASSERT_NO_FATAL_FAILURE(AddTablets(2, &peers));
+  ASSERT_EQ(peers_num + 2, ASSERT_RESULT(CountUniqueLimiters(peers)));
+  peers_num = peers.size();
+
+  // `NONE`: emulating forced reset for bps flag: make sure new tablets are added with no limiters
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec) = 0;
+  ASSERT_NO_FATAL_FAILURE(AddTablets(2, &peers));
+  ASSERT_EQ(0, ASSERT_RESULT(CountUniqueLimiters(peers, peers_num)));
+  peers_num = peers.size();
+
+  // `NONE` + no bps: reload the cluster with bps flag unset to make sure no limiters are created
+  ASSERT_NO_FATAL_FAILURE(Reload());
+  peers = ASSERT_RESULT(GetPeers(peers_num));
+  ASSERT_EQ(0, ASSERT_RESULT(CountUniqueLimiters(peers)));
+
+  // `NONE` + no bps: add tablets and make sure limiters are not created
+  ASSERT_NO_FATAL_FAILURE(AddTablets(2, &peers));
+  ASSERT_EQ(0, ASSERT_RESULT(CountUniqueLimiters(peers)));
+  peers_num = peers.size();
+
+  // `NONE`: reload the cluster with bps flag set and make sure all limiter are unique
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec) = kBPS;
+  ASSERT_NO_FATAL_FAILURE(Reload());
+  peers = ASSERT_RESULT(GetPeers(peers_num));
+  ASSERT_EQ(peers_num, ASSERT_RESULT(CountUniqueLimiters(peers)));
+
+  // `NONE`: emulating forced change for mode flag: should act as if `NONE` is still set
+  SetRateLimiterSharingMode(RateLimiterSharingMode::TSERVER);
+  ASSERT_NO_FATAL_FAILURE(AddTablets(2, &peers));
+  ASSERT_EQ(peers_num + 2, ASSERT_RESULT(CountUniqueLimiters(peers)));
+  peers_num = peers.size();
+
+  // `TSERVER`: reload the cluster to apply `TSERVER` sharing mode
+  // and make sure all tablets share the same rate limiter
+  ASSERT_NO_FATAL_FAILURE(Reload());
+  peers = ASSERT_RESULT(GetPeers(peers_num));
+  ASSERT_EQ(1, ASSERT_RESULT(CountUniqueLimiters(peers)));
+
+  // `TSERVER`: emulating forced change for bps flag: make sure this has no effect on sharing
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec) = kBPS / 2;
+  ASSERT_NO_FATAL_FAILURE(AddTablets(2, &peers));
+  ASSERT_EQ(1, ASSERT_RESULT(CountUniqueLimiters(peers)));
+  peers_num = peers.size();
+
+  // `TSERVER`: emulating forced reset for bps flag: make sure this has no effect on sharing
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec) = 0;
+  ASSERT_NO_FATAL_FAILURE(AddTablets(2, &peers));
+  ASSERT_EQ(1, ASSERT_RESULT(CountUniqueLimiters(peers)));
+  peers_num = peers.size();
+
+  // `TSERVER`: emulating forced change for mode flag:
+  // should act as if `TSERVER` is still set
+  SetRateLimiterSharingMode(RateLimiterSharingMode::NONE);
+  ASSERT_NO_FATAL_FAILURE(AddTablets(2, &peers));
+  ASSERT_EQ(1, ASSERT_RESULT(CountUniqueLimiters(peers)));
+  peers_num = peers.size();
+
+  // `TSERVER` + no bps: reload the cluster
+  //  with bps flag unset to make sure no limiters are created
+  SetRateLimiterSharingMode(RateLimiterSharingMode::TSERVER);
+  ASSERT_NO_FATAL_FAILURE(Reload());
+  peers = ASSERT_RESULT(GetPeers(peers_num));
+  ASSERT_EQ(0, ASSERT_RESULT(CountUniqueLimiters(peers)));
+
+  // `TSERVER` + no bps: add tablets and make sure no limiters are created
+  ASSERT_NO_FATAL_FAILURE(AddTablets(2, &peers));
+  ASSERT_EQ(0, ASSERT_RESULT(CountUniqueLimiters(peers)));
+  peers_num = peers.size();
+
+  // `TSERVER` + no bps: emulating forced change for both flags:
+  // should act as a `NONE` is applied with some bps set
+  SetRateLimiterSharingMode(RateLimiterSharingMode::NONE);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec) = kBPS;
+  ASSERT_NO_FATAL_FAILURE(AddTablets(2, &peers));
+  ASSERT_EQ(2, ASSERT_RESULT(CountUniqueLimiters(peers, peers_num)));
+  peers_num = peers.size();
+}
+
+TEST_F(TsTabletManagerTest, DataAndWalFilesLocations) {
+  std::string wal;
+  std::string data;
+  auto drive_path_len = GetDrivePath(0).size();
+  for (int i = 0; i < kDrivesNum; ++i) {
+    tablet_manager_->GetAndRegisterDataAndWalDir(fs_manager_,
+                                                 kTableId,
+                                                 Substitute("tablet-$0", i + 1),
+                                                 &data,
+                                                 &wal);
+    ASSERT_EQ(data.substr(0, drive_path_len), wal.substr(0, drive_path_len));
+  }
 }
 
 } // namespace tserver

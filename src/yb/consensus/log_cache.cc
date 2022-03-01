@@ -282,7 +282,7 @@ namespace {
 // Calculate the total byte size that will be used on the wire to replicate this message as part of
 // a consensus update request. This accounts for the length delimiting and tagging of the message.
 int64_t TotalByteSizeForMessage(const ReplicateMsg& msg) {
-  int msg_size = google::protobuf::internal::WireFormatLite::LengthDelimitedSize(
+  auto msg_size = google::protobuf::internal::WireFormatLite::LengthDelimitedSize(
     msg.ByteSize());
   msg_size += 1; // for the type tag
   return msg_size;
@@ -290,14 +290,13 @@ int64_t TotalByteSizeForMessage(const ReplicateMsg& msg) {
 
 } // anonymous namespace
 
-Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
-                                        int max_size_bytes) {
+Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index, size_t max_size_bytes) {
   return ReadOps(after_op_index, 0 /* to_op_index */, max_size_bytes);
 }
 
 Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
                                         int64_t to_op_index,
-                                        int max_size_bytes,
+                                        size_t max_size_bytes,
                                         CoarseTimePoint deadline) {
   DCHECK_GE(after_op_index, 0);
 
@@ -335,7 +334,7 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
         up_to = to_index - 1;
       } else {
         // Read up to the next entry that's in the cache or to_index whichever is lesser.
-        up_to = std::min(iter->first - 1, static_cast<uint64_t>(to_index - 1));
+        up_to = std::min(iter->first - 1, to_index - 1);
       }
 
       l.unlock();
@@ -544,7 +543,7 @@ void LogCache::TrackOperationsMemory(const OpIds& op_ids) {
 
   std::lock_guard<simple_spinlock> lock(lock_);
 
-  int mem_required = 0;
+  size_t mem_required = 0;
   for (const auto& op_id : op_ids) {
     auto it = cache_.find(op_id.index);
     if (it != cache_.end() && it->second.msg->id().term() == op_id.term) {
@@ -559,8 +558,8 @@ void LogCache::TrackOperationsMemory(const OpIds& op_ids) {
 
   // Try to consume the memory. If it can't be consumed, we may need to evict.
   if (!tracker_->TryConsume(mem_required)) {
-    int spare = tracker_->SpareCapacity();
-    int need_to_free = mem_required - spare;
+    auto spare = tracker_->SpareCapacity();
+    auto need_to_free = mem_required - spare;
     VLOG_WITH_PREFIX_UNLOCKED(1)
         << "Memory limit would be exceeded trying to append "
         << HumanReadableNumBytes::ToString(mem_required)

@@ -3,10 +3,10 @@ title: KairosDB
 linkTitle: KairosDB
 description: KairosDB
 aliases:
+section: INTEGRATIONS
 menu:
   latest:
     identifier: kairosdb
-    parent: integrations
     weight: 574
 isTocNested: true
 showAsideToc: true
@@ -23,21 +23,21 @@ Follow [Quick start](../../quick-start/) to run a local YugabyteDB cluster and t
 Download KairosDB as stated below. Latest releases are available in [releases](https://github.com/kairosdb/kairosdb/releases) of the KairosDB repository.
 
 ```sh
-$ wget https://github.com/kairosdb/kairosdb/releases/download/v1.2.0-beta3/kairosdb-1.2.0-0.3beta.tar.gz
-$ tar xvfz kairosdb-1.2.0-0.3beta.tar.gz
+$ wget https://github.com/kairosdb/kairosdb/releases/download/v1.3.0/kairosdb-1.3.0-1.tar.gz
+$ tar xvfz tar xvfz kairosdb-1.3.0-1.tar.gz
 $ cd kairosdb/
 ```
 
 You can follow the [Getting started](http://kairosdb.github.io/docs/build/html/GettingStarted.html) to see how to configure KairosDB in general. For the purpose of integrating with the local YugabyteDB cluster running at `localhost:9042`, open `conf/kairosdb.properties` and comment out the default in-memory datastore, as follows:
 
 ```cfg
-#kairosdb.service.datastore=org.kairosdb.datastore.h2.H2Module
+#service.datastore: "org.kairosdb.datastore.h2.H2Module"
 ```
 
 Uncomment the following line to make Cassandra the datastore:
 
 ```cfg
-kairosdb.service.datastore=org.kairosdb.datastore.cassandra.CassandraModule
+service.datastore: "org.kairosdb.datastore.cassandra.CassandraModule"
 ```
 
 ## 3. Start KairosDB
@@ -97,8 +97,8 @@ row_key_index  service_index  row_key_time_index
 
 ### Push data
 
-Push metric data into KairosDB as per the instructions [here](http://kairosdb.github.io/docs/build/html/PushingData.html).
+Push metric data into KairosDB as per the instructions [here](https://kairosdb.github.io/docs/PushingData.html).
 
 ### Query data
 
-Query metric data into KairosDB as per the instructions [here](http://kairosdb.github.io/docs/build/html/QueryingData.html).
+Query metric data into KairosDB as per the instructions [here](https://kairosdb.github.io/docs/QueryingData.html).

@@ -82,6 +82,7 @@
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
+#include "yb/util/opid.h"
 
 using namespace std::literals;
 
@@ -92,6 +93,8 @@ class HostPort;
 class MonoDelta;
 class Schema;
 class Status;
+
+using yb::OpId;
 
 namespace itest {
 
@@ -175,6 +178,13 @@ vector<TServerDetails*> TServerDetailsVector(const TabletServerMapUnowned& table
 TabletServerMapUnowned CreateTabletServerMapUnowned(const TabletServerMap& tablet_servers,
                                                     const std::set<std::string>& exclude = {});
 
+// Wait until the latest op on the target replica is from the current term.
+Status WaitForOpFromCurrentTerm(TServerDetails* replica,
+                                const std::string& tablet_id,
+                                consensus::OpIdType opid_type,
+                                const MonoDelta& timeout,
+                                yb::OpId* opid = nullptr);
+
 // Wait until all of the servers have converged on the same log index.
 // The converged index must be at least equal to 'minimum_index'.
 //
@@ -235,7 +245,7 @@ Status GetConsensusState(const TServerDetails* replica,
 
 // Wait until the number of servers with the specified member type in the committed consensus
 // configuration is equal to config_size.
-Status WaitUntilCommittedConfigMemberTypeIs(int config_size,
+Status WaitUntilCommittedConfigMemberTypeIs(size_t config_size,
                                             const TServerDetails* replica,
                                             const TabletId& tablet_id,
                                             const MonoDelta& timeout,
@@ -243,10 +253,26 @@ Status WaitUntilCommittedConfigMemberTypeIs(int config_size,
 
 // Wait until the number of voters in the committed consensus configuration is
 // 'quorum_size', according to the specified replica.
-Status WaitUntilCommittedConfigNumVotersIs(int config_size,
+Status WaitUntilCommittedConfigNumVotersIs(size_t config_size,
                                            const TServerDetails* replica,
                                            const TabletId& tablet_id,
                                            const MonoDelta& timeout);
+
+enum WaitForLeader {
+  DONT_WAIT_FOR_LEADER = 0,
+  WAIT_FOR_LEADER = 1
+};
+
+// Wait for the specified number of replicas to be reported by the master for
+// the given tablet. Fails when leader is not found or number of replicas
+// did not match up, or timeout waiting for leader.
+Status WaitForReplicasReportedToMaster(
+    ExternalMiniCluster* cluster,
+    int num_replicas, const std::string& tablet_id,
+    const MonoDelta& timeout,
+    WaitForLeader wait_for_leader,
+    bool* has_leader,
+    master::TabletLocationsPB* tablet_locations);
 
 // Used to specify committed entry type.
 enum class CommittedEntryType {
@@ -317,6 +343,12 @@ Status FindTabletLeader(const vector<TServerDetails*>& tservers,
                         const string& tablet_id,
                         const MonoDelta& timeout,
                         TServerDetails** leader);
+
+// Grabs list of followers using FindTabletLeader() above.
+Status FindTabletFollowers(const TabletServerMapUnowned& tablet_servers,
+                           const string& tablet_id,
+                           const MonoDelta& timeout,
+                           vector<TServerDetails*>* followers);
 
 // Start an election on the specified tserver.
 // 'timeout' only refers to the RPC asking the peer to start an election. The
@@ -423,7 +455,7 @@ Status WaitForNumVotersInConfigOnMaster(
 // specified 'count' number of replicas.
 Status WaitForNumTabletsOnTS(
     TServerDetails* ts,
-    int count,
+    size_t count,
     const MonoDelta& timeout,
     std::vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB>* tablets);
 

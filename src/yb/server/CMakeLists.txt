@@ -31,6 +31,7 @@
 #
 
 set(YB_PCH_PREFIX server)
+set(YB_PCH_DEP_LIBS opid_proto)
 
 YB_INCLUDE_EXTENSIONS()
 

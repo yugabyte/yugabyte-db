@@ -41,6 +41,7 @@
 #endif
 
 #include "yb/consensus/log_util.h"
+#include "yb/consensus/consensus_queue.h"
 
 #include "yb/encryption/header_manager_impl.h"
 #include "yb/encryption/encrypted_file_factory.h"
@@ -68,8 +69,11 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/status_log.h"
+#include "yb/util/debug/trace_event.h"
 
 #include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
+
+#include "yb/tserver/server_main_util.h"
 
 using namespace std::placeholders;
 
@@ -163,35 +167,9 @@ int TabletServerMain(int argc, char** argv) {
   } else {
     LOG(INFO) << "Failed to get tablet's host name, keeping default metric_node_name";
   }
-  // Do not sync GLOG to disk for INFO, WARNING.
-  // ERRORs, and FATALs will still cause a sync to disk.
-  FLAGS_logbuflevel = google::GLOG_WARNING;
 
-  server::SkewedClock::Register();
-
-  // Only write FATALs by default to stderr.
-  FLAGS_stderrthreshold = google::FATAL;
-
-  ParseCommandLineFlags(&argc, &argv, true);
-  if (argc != 1) {
-    std::cerr << "usage: " << argv[0] << std::endl;
-    return 1;
-  }
-  LOG_AND_RETURN_FROM_MAIN_NOT_OK(log::ModifyDurableWriteFlagIfNotODirect());
-  LOG_AND_RETURN_FROM_MAIN_NOT_OK(InitYB(TabletServerOptions::kServerType, argv[0]));
-
-  LOG(INFO) << "NumCPUs determined to be: " << base::NumCPUs();
-
-  if (FLAGS_remote_boostrap_rate_limit_bytes_per_sec > 0) {
-    LOG(WARNING) << "Flag remote_boostrap_rate_limit_bytes_per_sec has been deprecated. "
-                 << "Use remote_bootstrap_rate_limit_bytes_per_sec flag instead";
-    FLAGS_remote_bootstrap_rate_limit_bytes_per_sec =
-        FLAGS_remote_boostrap_rate_limit_bytes_per_sec;
-  }
-
-  MemTracker::SetTCMallocCacheMemory();
-
-  CHECK_OK(GetPrivateIpMode());
+  LOG_AND_RETURN_FROM_MAIN_NOT_OK(MasterTServerParseFlagsAndInit(
+      TabletServerOptions::kServerType, &argc, &argv));
 
   SetProxyAddresses();
 

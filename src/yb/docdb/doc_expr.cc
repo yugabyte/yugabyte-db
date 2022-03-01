@@ -262,24 +262,9 @@ CHECKED_STATUS DocExprExecutor::EvalTSCall(const PgsqlBCallPB& tscall,
     }
 
     case bfpg::TSOpcode::kPgEvalExprCall: {
-      const std::string& expr_str = tscall.operands(0).value().string_value();
-
-      std::vector<DocPgParamDesc> params;
-      int num_params = (tscall.operands_size() - 1) / 3;
-      params.reserve(num_params);
-      for (int i = 0; i < num_params; i++) {
-        int32_t attno = tscall.operands(3*i + 1).value().int32_value();
-        int32_t typid = tscall.operands(3*i + 2).value().int32_value();
-        int32_t typmod = tscall.operands(3*i + 3).value().int32_value();
-        params.emplace_back(attno, typid, typmod);
-      }
-
-      RETURN_NOT_OK(DocPgEvalExpr(expr_str,
-                                  params,
-                                  table_row,
-                                  schema,
-                                  result));
-
+      // Support for serialized Postgres expression evaluation has been moved to separate class
+      // DocPgExprExecutor, it should be instantiated to handle kPgEvalExprCall type of expressions
+      DCHECK(false);
       return Status::OK();
     }
 
@@ -454,7 +439,7 @@ void UnpackUDTAndFrozen(const QLType::SharedPtr& type, QLValuePB* value) {
       DCHECK_EQ(seq.elems_size(), field_names.size());
       QLMapValuePB* map = value->mutable_map_value();
 
-      if (seq.elems_size() == field_names.size()) {
+      if (implicit_cast<size_t>(seq.elems_size()) == field_names.size()) {
         for (int i = 0; i < seq.elems_size(); ++i) {
           map->add_keys()->set_string_value(field_names[i]);
           *(map->add_values()) = seq.elems(i);

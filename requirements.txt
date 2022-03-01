@@ -17,3 +17,4 @@ sys_detection
 wheel
 yugabyte_pycommon
 compiler-identification
+pytest

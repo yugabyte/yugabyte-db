@@ -18,6 +18,7 @@
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/rocksdb_writer.h"
 
 #include "yb/rocksutil/write_batch_formatter.h"
 #include "yb/rocksutil/yb_rocksdb.h"
@@ -91,9 +92,30 @@ void DocDBRocksDBUtil::ResetMonotonicCounter() {
   monotonic_counter_.store(0);
 }
 
+namespace {
+
+class DirectWriteToWriteBatchHandler : public rocksdb::DirectWriteHandler {
+ public:
+  explicit DirectWriteToWriteBatchHandler(rocksdb::WriteBatch *write_batch)
+      : write_batch_(write_batch) {}
+
+  void Put(const SliceParts& key, const SliceParts& value) override {
+    write_batch_->Put(key, value);
+  }
+
+  void SingleDelete(const Slice& key) override {
+    write_batch_->SingleDelete(key);
+  }
+
+ private:
+  rocksdb::WriteBatch *write_batch_;
+};
+
+} // namespace
+
 Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
     const DocWriteBatch& dwb,
-    rocksdb::WriteBatch *rocksdb_write_batch,
+    rocksdb::WriteBatch* rocksdb_write_batch,
     HybridTime hybrid_time,
     bool decode_dockey,
     bool increment_write_id,
@@ -119,11 +141,14 @@ Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
     }
     KeyValueWriteBatchPB kv_write_batch;
     dwb.TEST_CopyToWriteBatchPB(&kv_write_batch);
-    PrepareTransactionWriteBatch(
-        kv_write_batch, hybrid_time, rocksdb_write_batch, *current_txn_id_, txn_isolation_level_,
-        partial_range_key_intents, /* replicated_batches_state= */ Slice(), &intra_txn_write_id_);
+    TransactionalWriter writer(
+        kv_write_batch, hybrid_time, *current_txn_id_, txn_isolation_level_,
+        partial_range_key_intents, /* replicated_batches_state= */ Slice(), intra_txn_write_id_);
+    DirectWriteToWriteBatchHandler handler(rocksdb_write_batch);
+    RETURN_NOT_OK(writer.Apply(&handler));
+    intra_txn_write_id_ = writer.intra_txn_write_id();
   } else {
-    // TODO: this block has common code with docdb::PrepareNonTransactionWriteBatch and probably
+    // TODO: this block has common code with docdb::PrepareExternalWriteBatch and probably
     // can be refactored, so common code is reused.
     IntraTxnWriteId write_id = 0;
     for (const auto& entry : dwb.key_value_pairs()) {
@@ -290,7 +315,9 @@ Status DocDBRocksDBUtil::AddExternalIntents(
       kv_pair.set_key(key_.ToStringBuffer());
       kv_pair.set_value(value_.ToStringBuffer());
       ExternalTxnApplyState external_txn_apply_state;
-      AddPairToWriteBatch(kv_pair, hybrid_time_, 0, &external_txn_apply_state, nullptr, batch);
+      AddExternalPairToWriteBatch(
+          kv_pair, hybrid_time_, /* write_id= */ 0, &external_txn_apply_state,
+          /* regular_write_batch= */ nullptr, batch);
     }
 
     boost::optional<std::pair<Slice, Slice>> Next() override {

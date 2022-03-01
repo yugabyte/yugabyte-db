@@ -4,13 +4,14 @@ package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
+import static com.yugabyte.yw.common.ThrownMatcher.thrown;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.anyList;
@@ -64,7 +65,7 @@ public class AccessManagerTest extends FakeDBApplication {
   ArgumentCaptor<List<String>> command;
   ArgumentCaptor<Map<String, String>> cloudCredentials;
 
-  static final String TMP_STORAGE_PATH = "/tmp/yugaware_tests";
+  static final String TMP_STORAGE_PATH = "/tmp/yugaware_tests/amt";
   static final String TMP_KEYS_PATH = TMP_STORAGE_PATH + "/keys";
   static final String TEST_KEY_CODE = "test-key";
   static final String TEST_KEY_CODE_WITH_PATH = "../../test-key";
@@ -189,6 +190,7 @@ public class AccessManagerTest extends FakeDBApplication {
 
   @Test
   public void testManageAddKeyCommandWithoutProviderConfig() {
+    createTempFile(TMP_KEYS_PATH, "private.key", "test data");
     JsonNode json = runCommand(defaultRegion.uuid, "add-key", false);
     Mockito.verify(shellProcessHandler, times(2))
         .run(command.capture(), cloudCredentials.capture(), anyString());
@@ -227,6 +229,8 @@ public class AccessManagerTest extends FakeDBApplication {
     config.put("accessSecret", "ACCESS-SECRET");
     defaultProvider.setConfig(config);
     defaultProvider.save();
+
+    createTempFile(TMP_KEYS_PATH, "private.key", "test data");
 
     JsonNode json = runCommand(defaultRegion.uuid, "add-key", false);
     Mockito.verify(shellProcessHandler, times(2))
@@ -435,7 +439,7 @@ public class AccessManagerTest extends FakeDBApplication {
 
   @Test
   public void testCreateVaultWithValidFile() {
-    createTempFile("keys/vault-private.key", "PRIVATE_KEY_FILE");
+    createTempFile(TMP_KEYS_PATH, "vault-private.key", "PRIVATE_KEY_FILE");
     JsonNode result = runCommand(defaultRegion.uuid, "create-vault", false);
     Mockito.verify(shellProcessHandler, times(1))
         .run(command.capture(), cloudCredentials.capture(), anyString());
@@ -454,17 +458,13 @@ public class AccessManagerTest extends FakeDBApplication {
 
   @Test
   public void testKeysBasePathCreateFailure() {
-    String tmpFilePath = TMP_KEYS_PATH + "/" + defaultProvider.uuid;
-    createTempFile(tmpFilePath, "RANDOM DATA");
+    createTempFile(TMP_KEYS_PATH, defaultProvider.uuid.toString(), "RANDOM DATA");
 
     Mockito.verify(shellProcessHandler, times(0)).run(command.capture(), anyMap());
-    try {
-      runCommand(defaultRegion.uuid, "add-key", false);
-    } catch (RuntimeException re) {
-      assertThat(
-          re.getMessage(),
-          allOf(notNullValue(), equalTo("Unable to create key file path " + tmpFilePath)));
-    }
+    String tmpFilePath = TMP_KEYS_PATH + "/" + defaultProvider.uuid;
+    assertThat(
+        () -> runCommand(defaultRegion.uuid, "add-key", false),
+        thrown(RuntimeException.class, "Unable to create key file path " + tmpFilePath));
   }
 
   @Test
@@ -502,7 +502,8 @@ public class AccessManagerTest extends FakeDBApplication {
             + " --key_pair_name foo --key_file_path "
             + TMP_KEYS_PATH
             + "/"
-            + defaultProvider.uuid;
+            + defaultProvider.uuid
+            + " --delete_remote";
     String commandStr = String.join(" ", command.getValue());
     assertThat(commandStr, allOf(notNullValue(), equalTo(expectedCmd)));
     assertTrue(cloudCredentials.getValue().isEmpty());
@@ -548,7 +549,10 @@ public class AccessManagerTest extends FakeDBApplication {
       String configFile =
           accessManager.createKubernetesConfig(defaultProvider.uuid.toString(), config, false);
       assertEquals(
-          "/tmp/yugaware_tests/keys/" + defaultProvider.uuid + "/" + Util.getFileName(configName),
+          "/tmp/yugaware_tests/amt/keys/"
+              + defaultProvider.uuid
+              + "/"
+              + Util.getFileName(configName),
           configFile);
       List<String> lines = Files.readAllLines(Paths.get(configFile));
       assertEquals("hello world", lines.get(0));
@@ -593,7 +597,7 @@ public class AccessManagerTest extends FakeDBApplication {
       credentials.put("hello", "world");
       String configFile = accessManager.createCredentialsFile(defaultProvider.uuid, credentials);
       assertEquals(
-          "/tmp/yugaware_tests/keys/" + defaultProvider.uuid + "/credentials.json", configFile);
+          "/tmp/yugaware_tests/amt/keys/" + defaultProvider.uuid + "/credentials.json", configFile);
       List<String> lines = Files.readAllLines(Paths.get(configFile));
       assertEquals("{\"foo\":\"bar\",\"hello\":\"world\"}", lines.get(0));
     } catch (IOException e) {

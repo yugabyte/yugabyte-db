@@ -59,6 +59,7 @@
 #include "yb/util/test_util.h"
 
 DECLARE_bool(catalog_manager_check_ts_count_for_create_table);
+DECLARE_bool(TEST_disable_cdc_state_insert_on_setup);
 
 namespace yb {
 namespace master {
@@ -76,6 +77,8 @@ void MasterTestBase::SetUp() {
   // In this test, we create tables to test catalog manager behavior,
   // but we have no tablet servers. Typically this would be disallowed.
   FLAGS_catalog_manager_check_ts_count_for_create_table = false;
+  // Since this is a master-only test, don't do any operations on cdc state for xCluster tests.
+  FLAGS_TEST_disable_cdc_state_insert_on_setup = true;
 
   // Start master with the create flag on.
   mini_master_.reset(new MiniMaster(Env::Default(), GetTestPath("Master"),
@@ -243,7 +246,8 @@ Status MasterTestBase::DeleteTable(const NamespaceName& namespace_name,
 
 Status MasterTestBase::CreateTablegroup(const TablegroupId& tablegroup_id,
                                         const NamespaceId& namespace_id,
-                                        const NamespaceName& namespace_name) {
+                                        const NamespaceName& namespace_name,
+                                        const TablespaceId& tablespace_id) {
   CreateTablegroupRequestPB req, *request;
   request = &req;
   CreateTablegroupResponsePB resp;
@@ -251,6 +255,7 @@ Status MasterTestBase::CreateTablegroup(const TablegroupId& tablegroup_id,
   request->set_id(tablegroup_id);
   request->set_namespace_id(namespace_id);
   request->set_namespace_name(namespace_name);
+  request->set_tablespace_id(tablespace_id);
 
   // Dereferencing as the RPCs require const ref for request. Keeping request param as pointer
   // though, as that helps with readability and standardization.

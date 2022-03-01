@@ -392,7 +392,7 @@ class ServicePoolImpl final : public InboundCallHandler {
       YB_LOG_EVERY_N_SECS(DFATAL, 5) << "Negative number of queued calls: " << queued_calls;
     }
 
-    if (queued_calls >= max_queued_calls_) {
+    if (implicit_cast<size_t>(queued_calls) >= max_queued_calls_) {
       queued_calls_.fetch_sub(1, std::memory_order_relaxed);
       return false;
     }

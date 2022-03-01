@@ -11,14 +11,14 @@
 
 package com.yugabyte.yw.common.kms.util.hashicorpvault;
 
-import com.bettercloud.vault.VaultException;
-import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.KeyType;
-
-import java.util.HashMap;
-import java.util.Map;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
-import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Map;
+
+import com.bettercloud.vault.VaultException;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.KeyType;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,16 +36,21 @@ public class VaultTransit extends VaultSecretEngineBase {
    * @param kType
    */
   public VaultTransit(VaultAccessor vault, String mPath, KeyType kType) throws Exception {
-    super(vault, SecretEngineType.TRANSIT, mPath, kType);
+    super(vault, KMSEngineType.TRANSIT, mPath, kType);
     LOG.debug("Calling VaultTransit");
 
     checkForPermissions();
   }
 
   @Override
-  public void checkForPermissions() throws Exception {
+  public void checkForPermissions() {
     final String path = buildPath(VaultOperations.KEYS, "");
-    String returnVal = vAccessor.listAt(path);
+    String returnVal = "";
+    try {
+      returnVal = vAccessor.listAt(path);
+    } catch (Exception e) {
+      LOG.warn("List operation at {} failed. Reason: {}", path, e.toString());
+    }
     LOG.debug("checkForPermissions called with path: {} and Returns {}", path, returnVal);
   }
 
@@ -157,7 +162,7 @@ public class VaultTransit extends VaultSecretEngineBase {
   public Map<byte[], byte[]> reWrapString(String engineKey, ArrayList<byte[]> dataList)
       throws VaultException {
 
-    LOG.debug("_YD:reWrapString called, entries : {}", dataList.size());
+    LOG.debug("reWrapString called, entries : {}", dataList.size());
     final String path = buildPath(VaultOperations.RERWAP, engineKey);
 
     final Map<String, Object> mapToWrite = new HashMap<>();

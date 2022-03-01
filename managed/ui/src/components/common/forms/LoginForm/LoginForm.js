@@ -59,7 +59,7 @@ class LoginForm extends Component {
     } = this.props;
 
     const validationSchema = Yup.object().shape({
-      email: Yup.string().required('Enter email'),
+      email: Yup.string().required('Enter Email or Username'),
 
       password: Yup.string().required('Enter password')
     });
@@ -104,7 +104,7 @@ class LoginForm extends Component {
                         <YBLabel {...props} name="email">
                           <input
                             className="form-control"
-                            placeholder="Email Address"
+                            placeholder="Email or Username"
                             type="text"
                             {...props.field}
                           />

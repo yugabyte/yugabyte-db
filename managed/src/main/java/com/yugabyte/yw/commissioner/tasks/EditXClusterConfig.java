@@ -60,10 +60,6 @@ public class EditXClusterConfig extends XClusterConfigTaskBase {
         setXClusterConfigStatus(initialStatus);
       }
 
-      if (shouldIncrementVersion()) {
-        getUniverse().incrementVersion();
-      }
-
     } catch (Exception e) {
       setXClusterConfigStatus(XClusterConfigStatusType.Failed);
       log.error("{} hit error : {}", getName(), e.getMessage());

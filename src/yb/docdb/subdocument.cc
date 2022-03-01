@@ -21,6 +21,8 @@
 
 #include "yb/docdb/value_type.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/util/status.h"
 
 using std::endl;
@@ -312,7 +314,7 @@ void SubDocumentToStreamInternal(ostream& out,
       if (subdoc.container_allocated()) {
         out << (subdoc.GetExtendOrder() == ListExtendOrder::APPEND ? "APPEND" : "PREPEND") << "\n";
         const auto& list = subdoc.array_container();
-        int i = 0;
+        size_t i = 0;
         for (; i < list.size(); i++) {
           if (i != 0) {
             out << ",";
@@ -508,8 +510,7 @@ int SubDocument::object_num_keys() const {
   if (!has_valid_object_container()) {
     return 0;
   }
-  assert(object_container().size() <= std::numeric_limits<int>::max());
-  return static_cast<int>(object_container().size());
+  return narrow_cast<int>(object_container().size());
 }
 
 bool SubDocument::container_allocated() const {

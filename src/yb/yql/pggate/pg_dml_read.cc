@@ -111,12 +111,24 @@ PgsqlExpressionPB *PgDmlRead::AllocColumnBindConditionExprPB(PgColumn *col) {
 
 PgsqlExpressionPB *PgDmlRead::AllocColumnAssignPB(PgColumn *col) {
   // SELECT statement should not have an assign expression (SET clause).
-  LOG(FATAL) << "Pure virtual function is being call";
+  LOG(FATAL) << "Pure virtual function is being called";
   return nullptr;
 }
 
 PgsqlExpressionPB *PgDmlRead::AllocTargetPB() {
   return read_req_->add_targets();
+}
+
+PgsqlExpressionPB *PgDmlRead::AllocQualPB() {
+  return read_req_->add_where_clauses();
+}
+
+PgsqlColRefPB *PgDmlRead::AllocColRefPB() {
+  return read_req_->add_col_refs();
+}
+
+void PgDmlRead::ClearColRefPBs() {
+  read_req_->clear_col_refs();
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -129,6 +141,9 @@ void PgDmlRead::SetColumnRefs() {
     DCHECK(!has_aggregate_targets()) << "Aggregate pushdown should not happen with index";
   }
   read_req_->set_is_aggregate(has_aggregate_targets());
+  // Populate column references in the read request
+  ColRefsToPB();
+  // Compatibility: set column ids in a form that is expected by legacy nodes
   ColumnRefsToPB(read_req_->mutable_column_refs());
 }
 
@@ -176,7 +191,7 @@ Status PgDmlRead::ProcessEmptyPrimaryBinds() {
     preceding_key_column_missed = true;
   }
 
-  size_t num_bound_range_columns = 0;
+  int num_bound_range_columns = 0;
 
   const auto range_columns_end = bind_.columns().begin() + bind_->num_columns();
   const auto range_columns_begin = bind_.columns().begin() + bind_->num_hash_key_columns();
@@ -232,7 +247,8 @@ bool PgDmlRead::IsConcreteRowRead() const {
          (ybctid_bind_ ||
           (secondary_index_query_ && secondary_index_query_->has_doc_op()) ||
           (bind_->num_key_columns() ==
-              (read_req_->partition_column_values_size() + read_req_->range_column_values_size())));
+              static_cast<size_t>(read_req_->partition_column_values_size() +
+                                  read_req_->range_column_values_size())));
 }
 
 Status PgDmlRead::Exec(const PgExecParameters *exec_params) {

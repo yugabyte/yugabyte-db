@@ -28,12 +28,14 @@
 #include "yb/rocksdb/util/arena.h"
 #include "yb/rocksdb/util/random.h"
 
+#include "yb/rocksdb/util/testutil.h"
+
 namespace rocksdb {
 
 namespace {
 const size_t kHugePageSize = 2 * 1024 * 1024;
 }  // namespace
-class ArenaTest : public testing::Test {};
+class ArenaTest : public RocksDBTest {};
 
 TEST_F(ArenaTest, Empty) { Arena arena0; }
 

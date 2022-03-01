@@ -101,7 +101,6 @@ public class AccessManager extends DevopsBase {
     throw new RuntimeException("Unable to create key file path " + keyFilePath.getAbsolutePath());
   }
 
-  // This method would upload the provided key file to the provider key file path.
   public AccessKey uploadKeyFile(
       UUID regionUUID,
       File uploadedFile,
@@ -111,6 +110,30 @@ public class AccessManager extends DevopsBase {
       Integer sshPort,
       boolean airGapInstall,
       boolean skipProvisioning)
+      throws IOException {
+    return uploadKeyFile(
+        regionUUID,
+        uploadedFile,
+        keyCode,
+        keyType,
+        sshUser,
+        sshPort,
+        airGapInstall,
+        skipProvisioning,
+        true);
+  }
+
+  // This method would upload the provided key file to the provider key file path.
+  public AccessKey uploadKeyFile(
+      UUID regionUUID,
+      File uploadedFile,
+      String keyCode,
+      KeyType keyType,
+      String sshUser,
+      Integer sshPort,
+      boolean airGapInstall,
+      boolean skipProvisioning,
+      boolean deleteRemote)
       throws IOException {
     Region region = Region.get(regionUUID);
     String keyFilePath = getOrCreateKeyFilePath(region.provider.uuid);
@@ -156,6 +179,7 @@ public class AccessManager extends DevopsBase {
     keyInfo.sshPort = sshPort;
     keyInfo.airGapInstall = airGapInstall;
     keyInfo.skipProvisioning = skipProvisioning;
+    keyInfo.deleteRemote = deleteRemote;
     return AccessKey.create(region.provider.uuid, keyCode, keyInfo);
   }
 
@@ -167,7 +191,8 @@ public class AccessManager extends DevopsBase {
       String sshUser,
       Integer sshPort,
       boolean airGapInstall,
-      boolean skipProvisioning) {
+      boolean skipProvisioning,
+      boolean overrideKeyValidate) {
     AccessKey key = null;
     Path tempFile = null;
 
@@ -175,6 +200,7 @@ public class AccessManager extends DevopsBase {
       tempFile = Files.createTempFile(keyCode, keyType.getExtension());
       Files.write(tempFile, keyContents.getBytes());
 
+      // Initially set delete to false because we don't know if this KeyPair exists in AWS
       key =
           uploadKeyFile(
               regionUUID,
@@ -184,10 +210,15 @@ public class AccessManager extends DevopsBase {
               sshUser,
               sshPort,
               airGapInstall,
-              skipProvisioning);
+              skipProvisioning,
+              false);
 
       File pemFile = new File(key.getKeyInfo().privateKey);
-      key = addKey(regionUUID, keyCode, pemFile, sshUser, sshPort, airGapInstall, skipProvisioning);
+      // Delete is always false and we don't even try to make AWS calls.
+      if (!overrideKeyValidate) {
+        key =
+            addKey(regionUUID, keyCode, pemFile, sshUser, sshPort, airGapInstall, skipProvisioning);
+      }
     } catch (NoSuchFileException ioe) {
       LOG.error(ioe.getMessage(), ioe);
     } catch (IOException ioe) {
@@ -284,6 +315,15 @@ public class AccessManager extends DevopsBase {
       keyInfo.skipProvisioning = skipProvisioning;
       accessKey = AccessKey.create(region.provider.uuid, keyCode, keyInfo);
     }
+
+    // Save if key needs to be deleted
+    AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
+    if (response.has("delete_remote")) {
+      keyInfo.deleteRemote = response.get("delete_remote").asBoolean();
+      accessKey.setKeyInfo(keyInfo);
+      accessKey.save();
+    }
+
     return accessKey;
   }
 
@@ -319,7 +359,7 @@ public class AccessManager extends DevopsBase {
     }
   }
 
-  public JsonNode deleteKeyByProvider(Provider provider, String keyCode) {
+  public JsonNode deleteKeyByProvider(Provider provider, String keyCode, boolean deleteRemote) {
     List<Region> regions = Region.getByProvider(provider.uuid);
     if (regions == null || regions.isEmpty()) {
       return null;
@@ -330,16 +370,21 @@ public class AccessManager extends DevopsBase {
       ArrayNode ret = mapper.getNodeFactory().arrayNode();
       regions
           .stream()
-          .map(r -> deleteKey(provider.uuid, r.uuid, keyCode))
+          .map(r -> deleteKey(provider.uuid, r.uuid, keyCode, deleteRemote))
           .collect(Collectors.toList())
           .forEach(ret::add);
       return ret;
     } else {
-      return deleteKey(provider.uuid, regions.get(0).uuid, keyCode);
+      return deleteKey(provider.uuid, regions.get(0).uuid, keyCode, deleteRemote);
     }
   }
 
   private JsonNode deleteKey(UUID providerUUID, UUID regionUUID, String keyCode) {
+    return deleteKey(providerUUID, regionUUID, keyCode, true);
+  }
+
+  private JsonNode deleteKey(
+      UUID providerUUID, UUID regionUUID, String keyCode, boolean deleteRemote) {
     List<String> commandArgs = new ArrayList<String>();
     String keyFilePath = getOrCreateKeyFilePath(providerUUID);
 
@@ -347,6 +392,9 @@ public class AccessManager extends DevopsBase {
     commandArgs.add(keyCode);
     commandArgs.add("--key_file_path");
     commandArgs.add(keyFilePath);
+    if (deleteRemote) {
+      commandArgs.add("--delete_remote");
+    }
     JsonNode response = execAndParseCommandRegion(regionUUID, "delete-key", commandArgs);
     if (response.has("error")) {
       throw new RuntimeException(response.get("error").asText());

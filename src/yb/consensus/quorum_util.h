@@ -86,21 +86,21 @@ bool RemoveFromRaftConfig(RaftConfigPB* config, const ChangeConfigRequestPB& req
 
 // Helper function to count number of peers of type member_type whose uuid doesn't match
 // ignore_uuid. We assume that peer's uuids are never empty strings.
-int CountMemberType(const RaftConfigPB& config,
-                    const PeerMemberType member_type,
-                    const std::string& ignore_uuid = "");
+size_t CountMemberType(const RaftConfigPB& config,
+                       const PeerMemberType member_type,
+                       const std::string& ignore_uuid = "");
 
 // Counts the number of voters in the configuration.
-int CountVoters(const RaftConfigPB& config);
+size_t CountVoters(const RaftConfigPB& config);
 
 // Counts the number of servers that are in transition (being bootstrapped) to become voters.
-int CountVotersInTransition(const RaftConfigPB& config);
+size_t CountVotersInTransition(const RaftConfigPB& config);
 
 // Counts the number of servers that are in transition to become voters or observers.
-int CountServersInTransition(const RaftConfigPB& config, const std::string& ignore_uuid = "");
+size_t CountServersInTransition(const RaftConfigPB& config, const std::string& ignore_uuid = "");
 
 // Calculates size of a configuration majority based on # of voters.
-int MajoritySize(int num_voters);
+size_t MajoritySize(size_t num_voters);
 
 // Determines the role that the peer with uuid 'uuid' plays in the cluster.
 // If the peer uuid is not a voter in the configuration, this function will return

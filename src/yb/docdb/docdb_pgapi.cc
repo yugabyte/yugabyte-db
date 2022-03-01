@@ -61,6 +61,7 @@ class DocPgTypeAnalyzer {
     if (iter != type_map_.end()) {
       return iter->second;
     }
+    LOG(FATAL) << "Could not find type entity for oid " << type_oid;
     return nullptr;
   }
 
@@ -92,73 +93,82 @@ const YBCPgTypeEntity* DocPgGetTypeEntity(YbgTypeDesc pg_type) {
     return Singleton<DocPgTypeAnalyzer>::get()->GetTypeEntity(pg_type.type_id);
 }
 
-Status DocPgEvalExpr(const std::string& expr_str,
-                     std::vector<DocPgParamDesc> params,
-                     const QLTableRow& table_row,
-                     const Schema *schema,
-                     QLValue* result) {
-  PG_RETURN_NOT_OK(YbgPrepareMemoryContext());
+Status DocPgAddVarRef(const ColumnId& column_id,
+                      int32_t attno,
+                      int32_t typid,
+                      int32_t typmod,
+                      int32_t collid,
+                      std::map<int, const DocPgVarRef> *var_map) {
+  if (var_map->find(attno) != var_map->end()) {
+    VLOG(1) << "Attribute " << attno << " is already processed";
+    return Status::OK();
+  }
+  const YBCPgTypeEntity *arg_type = DocPgGetTypeEntity({typid, typmod});
+  var_map->emplace(std::piecewise_construct,
+                   std::forward_as_tuple(attno),
+                   std::forward_as_tuple(column_id.rep(), arg_type, typmod));
+  VLOG(1) << "Attribute " << attno << " has been processed";
+  return Status::OK();
+}
 
+Status DocPgPrepareExpr(const std::string& expr_str,
+                        YbgPreparedExpr *expr,
+                        DocPgVarRef *ret_type) {
   char *expr_cstring = const_cast<char *>(expr_str.c_str());
+  VLOG(1) << "Deserialize " << expr_cstring;
+  PG_RETURN_NOT_OK(YbgPrepareExpr(expr_cstring, expr));
+  if (ret_type != nullptr) {
+    int32_t typid;
+    int32_t typmod;
+    PG_RETURN_NOT_OK(YbgExprType(*expr, &typid));
+    PG_RETURN_NOT_OK(YbgExprTypmod(*expr, &typmod));
+    YbgTypeDesc pg_arg_type = {typid, typmod};
+    const YBCPgTypeEntity *arg_type = DocPgGetTypeEntity(pg_arg_type);
+    *ret_type = DocPgVarRef(0, arg_type, typmod);
+    VLOG(1) << "Processed expression return type";
+  }
+  return Status::OK();
+}
 
-  // Create the context expression evaluation.
-  // Since we currently only allow referencing the target col just set min/max attr to col_attno.
-  // TODO Eventually this context should be created once per row and contain all (referenced)
-  //      column values. Then the context can be reused for all expressions.
-  YbgExprContext expr_ctx;
-  int32_t min_attno = params[0].attno;
-  int32_t max_attno = params[0].attno;
-
-  for (int i = 1; i < params.size(); i++) {
-    min_attno = std::min(min_attno, params[i].attno);
-    max_attno = std::max(max_attno, params[i].attno);
+Status DocPgCreateExprCtx(const std::map<int, const DocPgVarRef>& var_map,
+                          YbgExprContext *expr_ctx) {
+  if (var_map.empty()) {
+    return Status::OK();
   }
 
-  PG_RETURN_NOT_OK(YbgExprContextCreate(min_attno, max_attno, &expr_ctx));
+  int32_t min_attno = var_map.begin()->first;
+  int32_t max_attno = var_map.rbegin()->first;
 
+  VLOG(2) << "Allocating expr context: (" << min_attno << ", " << max_attno << ")";
+  PG_RETURN_NOT_OK(YbgExprContextCreate(min_attno, max_attno, expr_ctx));
+  return Status::OK();
+}
+
+Status DocPgPrepareExprCtx(const QLTableRow& table_row,
+                           const std::map<int, const DocPgVarRef>& var_map,
+                           YbgExprContext expr_ctx) {
+  PG_RETURN_NOT_OK(YbgExprContextReset(expr_ctx));
   // Set the column values (used to resolve scan variables in the expression).
-  for (const ColumnId& col_id : schema->column_ids()) {
-    auto column = schema->column_by_id(col_id);
-    SCHECK(column.ok(), InternalError, "Invalid Schema");
-
-    // Loop here is ok as params.size() will always be 1 for user tables,
-    // and 2 for some internal queries (catalog version increment).
-    // TODO Rethink this if we ever allow more params here.
-    DCHECK_LT(params.size(), 3);
-    for (int i = 0; i < params.size(); i++) {
-      if (column->order() == params[i].attno) {
-        const QLValuePB* val = table_row.GetColumn(col_id.rep());
-        bool is_null = false;
-        uint64_t datum = 0;
-        YbgTypeDesc pg_arg_type = {params[i].typid, params[i].typmod};
-        const YBCPgTypeEntity *arg_type = DocPgGetTypeEntity(pg_arg_type);
-        YBCPgTypeAttrs arg_type_attrs = { pg_arg_type.type_mod };
-
-        Status s = PgValueFromPB(arg_type, arg_type_attrs, *val, &datum, &is_null);
-        if (!s.ok()) {
-          PG_RETURN_NOT_OK(YbgResetMemoryContext());
-          return s;
-        }
-
-        PG_RETURN_NOT_OK(YbgExprContextAddColValue(expr_ctx, column->order(), datum, is_null));
-        break;
-      }
-    }
+  for (auto it = var_map.begin(); it != var_map.end(); it++) {
+    const int& attno = it->first;
+    const DocPgVarRef& arg_ref = it->second;
+    const QLValuePB* val = table_row.GetColumn(arg_ref.var_colid);
+    bool is_null = false;
+    uint64_t datum = 0;
+    RETURN_NOT_OK(PgValueFromPB(arg_ref.var_type, arg_ref.var_type_attrs, *val, &datum, &is_null));
+    VLOG(1) << "Adding value for attno " << attno;
+    PG_RETURN_NOT_OK(YbgExprContextAddColValue(expr_ctx, attno, datum, is_null));
   }
+  return Status::OK();
+}
 
+Status DocPgEvalExpr(YbgPreparedExpr expr,
+                     YbgExprContext expr_ctx,
+                     uint64_t *datum,
+                     bool *is_null) {
   // Evaluate the expression and get the result.
-  bool is_null = false;
-  uint64_t datum;
-  PG_RETURN_NOT_OK(YbgEvalExpr(expr_cstring, expr_ctx, &datum, &is_null));
-
-  // Assuming first arg is the target column, so using it for the return type.
-  // YSQL layer should guarantee this when producing the params.
-  YbgTypeDesc pg_type = {params[0].typid, params[0].typmod};
-  const YBCPgTypeEntity *ret_type = DocPgGetTypeEntity(pg_type);
-
-  Status s = PgValueToPB(ret_type, datum, is_null, result);
-  PG_RETURN_NOT_OK(YbgResetMemoryContext());
-  return s;
+  PG_RETURN_NOT_OK(YbgEvalExpr(expr, expr_ctx, datum, is_null));
+  return Status::OK();
 }
 
 Status ExtractTextArrayFromQLBinaryValue(const QLValuePB& ql_value,

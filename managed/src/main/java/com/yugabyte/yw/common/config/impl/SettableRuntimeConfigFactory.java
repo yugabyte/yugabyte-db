@@ -27,6 +27,7 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import play.db.ebean.EbeanDynamicEvolutions;
 
 /** Factory to create RuntimeConfig for various scopes */
 @Singleton
@@ -36,7 +37,8 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
   private final Config appConfig;
 
   @Inject
-  public SettableRuntimeConfigFactory(Config appConfig) {
+  public SettableRuntimeConfigFactory(
+      Config appConfig, EbeanDynamicEvolutions ebeanDynamicEvolutions) {
     this.appConfig = appConfig;
   }
 

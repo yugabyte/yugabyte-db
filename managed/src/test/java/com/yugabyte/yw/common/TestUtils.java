@@ -12,6 +12,9 @@ package com.yugabyte.yw.common;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import org.apache.commons.io.IOUtils;
 
 public class TestUtils {
@@ -28,5 +31,13 @@ public class TestUtils {
     char[] chars = uuid.toString().toCharArray();
     chars[0] = firstChar;
     return UUID.fromString(new String(chars));
+  }
+
+  public static <T> T deserialize(String json, Class<T> type) {
+    try {
+      return new ObjectMapper().readValue(json, type);
+    } catch (Exception e) {
+      throw new RuntimeException("Error deserializing object: ", e);
+    }
   }
 }

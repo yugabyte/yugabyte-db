@@ -13,15 +13,17 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Applications connect to and interact with YugabyteDB using API client libraries, also called client drivers. Before you can connect an application, you need to install the correct driver. For information on available drivers, refer to [Build an application](../../../quick-start/build-apps).
+Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). Before you can connect an application, you need to install the correct driver.
 
-For examples of connecting applications to Yugabyte Cloud, refer to [Develop](../../cloud-develop/).
+Yugabyte Cloud clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters.
 
-Clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters.
+For examples of applications that connect to Yugabyte Cloud using common drivers, refer to [Build an application](../../cloud-quickstart/cloud-build-apps).
+
+For examples of connecting applications to Yugabyte Cloud, refer to [Example applications](../../cloud-examples/).
 
 {{< note title="Note" >}}
 
-Before you can connect, your application has to be able to reach your Yugabyte Cloud cluster. To add inbound network access from your application environment to a cluster, you must add the public IP addresses to the [cluster IP access list](../../cloud-secure-clusters/add-connections). If you are using [VPC peering](../../cloud-secure-clusters/cloud-vpcs/) you must add the public IP addresses of the application VPC to the cluster IP allow list.
+Before you can connect, your application has to be able to reach your Yugabyte Cloud cluster. To add inbound network access from your application environment to a cluster, you need to add the public IP addresses to the [cluster IP access list](../../cloud-secure-clusters/add-connections). If you are using [VPC peering](../../cloud-basics/cloud-vpcs/), you need to add the public IP addresses of the peered application VPC to the cluster IP allow list.
 
 {{< /note >}}
 
@@ -66,9 +68,9 @@ sslmode=verify-full&sslrootcert=~/.postgresql/root.crt
 
 The connection string includes parameters for TLS settings (`ssl`, `sslmode` and `sslrootcert`). The generated `ysqlsh` connection string uses the `verify-full` SSL mode by default.
 
-If you're connecting to a Hasura Cloud project, which doesn't use the CA certificate, select **Optimize for Hasura Cloud** to modify the string. Before using the string to connect in a Hasura project, be sure to encode any special characters. For an example of connecting a Hasura Cloud project to Yugabyte Cloud, refer to [Connect Hasura Cloud to Yugabyte Cloud](../../cloud-develop/hasura-cloud/).
+If you're connecting to a Hasura Cloud project, which doesn't use the CA certificate, select **Optimize for Hasura Cloud** to modify the string. Before using the string to connect in a Hasura project, be sure to encode any special characters. For an example of connecting a Hasura Cloud project to Yugabyte Cloud, refer to [Connect Hasura Cloud to Yugabyte Cloud](../../cloud-examples/hasura-cloud/).
 
-For information on using other SSL modes, refer to [SSL modes in YSQL](../connect-client-shell/#ssl-modes-in-ysql).
+For information on using other SSL modes, refer to [SSL modes in YSQL](../../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql).
 
 ### YCQL
 
@@ -84,7 +86,7 @@ To connect your application, do the following:
 - Add the YCQL java driver to your dependencies.
 - Initialize SSLContext using the downloaded root certificate.
 
-For an example of building a Java application connected to Yugabyte Cloud using the Yugabyte Java Driver for YCQL v4.6, refer to [Connect a YCQL Java application](../../cloud-develop/connect-ycql-application/).
+For an example of building a Java application connected to Yugabyte Cloud using the Yugabyte Java Driver for YCQL v4.6, refer to [Connect a YCQL Java application](../../cloud-examples/connect-ycql-application/).
 
 <!--
 ## Run the sample application
@@ -104,7 +106,7 @@ To run the sample application:
 1. Run the command in docker from your computer, replacing `<path to CA cert>`, `<db user>`, and `<db password>` with the path to the CA certificate for the cluster and your database credentials.
 -->
 
-## Next steps
+## Learn more
 
 - [Add database users](../../cloud-secure-clusters/add-users/)
-- [Develop applications](../../../develop/)
+- [Build an application](../../cloud-quickstart/cloud-build-apps)

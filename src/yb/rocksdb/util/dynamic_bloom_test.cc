@@ -61,7 +61,7 @@ static Slice Key(uint64_t i, char* buffer) {
   return Slice(buffer, sizeof(i));
 }
 
-class DynamicBloomTest : public testing::Test {};
+class DynamicBloomTest : public RocksDBTest {};
 
 TEST_F(DynamicBloomTest, EmptyFilter) {
   Arena arena;

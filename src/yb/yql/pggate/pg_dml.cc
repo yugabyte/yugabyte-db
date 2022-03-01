@@ -96,6 +96,47 @@ Status PgDml::AppendTargetPB(PgExpr *target) {
   return Status::OK();
 }
 
+Status PgDml::AppendQual(PgExpr *qual) {
+  // Append to quals_.
+  quals_.push_back(qual);
+
+  // Allocate associated protobuf.
+  PgsqlExpressionPB *expr_pb = AllocQualPB();
+
+  // Populate the expr_pb with data from the qual expression.
+  // Side effect of PrepareForRead is to call PrepareColumnForRead on "this" being passed in
+  // for any column reference found in the expression. However, the serialized Postgres expressions,
+  // the only kind of Postgres expressions supported as quals, can not be searched.
+  // Their column references should be explicitly appended with AppendColumnRef()
+  return qual->PrepareForRead(this, expr_pb);
+}
+
+Status PgDml::AppendColumnRef(PgExpr *colref) {
+  DCHECK(colref->is_colref()) << "Colref is expected";
+  // Postgres attribute number, this is column id to refer the column from Postgres code
+  int attr_num = static_cast<PgColumnRef *>(colref)->attr_num();
+  // Retrieve column metadata from the target relation metadata
+  PgColumn& col = VERIFY_RESULT(target_.ColumnForAttr(attr_num));
+  if (!col.is_virtual_column()) {
+    // Do not overwrite Postgres
+    if (!col.has_pg_type_info()) {
+      // Postgres type information is required to get column value to evaluate serialized Postgres
+      // expressions. For other purposes it is OK to use InvalidOids (zeroes). That would not make
+      // the column to appear like it has Postgres type information.
+      // Note, that for expression kinds other than serialized Postgres expressions column
+      // references are set automatically: when the expressions are being appended they call either
+      // PrepareColumnForRead or PrepareColumnForWrite for each column reference expression they
+      // contain.
+      col.set_pg_type_info(colref->get_pg_typid(),
+                           colref->get_pg_typmod(),
+                           colref->get_pg_collid());
+    }
+    // Flag column as used, so it is added to the request
+    col.set_read_requested(true);
+  }
+  return Status::OK();
+}
+
 Result<const PgColumn&> PgDml::PrepareColumnForRead(int attr_num, PgsqlExpressionPB *target_pb) {
   // Find column from targeted table.
   PgColumn& col = VERIFY_RESULT(target_.ColumnForAttr(attr_num));
@@ -130,6 +171,28 @@ void PgDml::ColumnRefsToPB(PgsqlColumnRefsPB *column_refs) {
   for (const PgColumn& col : target_.columns()) {
     if (col.read_requested() || col.write_requested()) {
       column_refs->add_ids(col.id());
+    }
+  }
+}
+
+void PgDml::ColRefsToPB() {
+  // Remove previously set column references in case if the statement is being reexecuted
+  ClearColRefPBs();
+  for (const PgColumn& col : target_.columns()) {
+    // Only used columns are added to the request
+    if (col.read_requested() || col.write_requested()) {
+      // Allocate a protobuf entry
+      PgsqlColRefPB *col_ref = AllocColRefPB();
+      // Add DocDB identifier
+      col_ref->set_column_id(col.id());
+      // Add Postgres identifier
+      col_ref->set_attno(col.attr_num());
+      // Add Postgres type information, if defined
+      if (col.has_pg_type_info()) {
+        col_ref->set_typid(col.pg_typid());
+        col_ref->set_typmod(col.pg_typmod());
+        col_ref->set_collid(col.pg_collid());
+      }
     }
   }
 }
@@ -386,10 +449,11 @@ Result<bool> PgDml::GetNextRow(PgTuple *pg_tuple) {
 }
 
 bool PgDml::has_aggregate_targets() {
-  int num_aggregate_targets = 0;
+  size_t num_aggregate_targets = 0;
   for (const auto& target : targets_) {
-    if (target->is_aggregate())
+    if (target->is_aggregate()) {
       num_aggregate_targets++;
+    }
   }
 
   CHECK(num_aggregate_targets == 0 || num_aggregate_targets == targets_.size())

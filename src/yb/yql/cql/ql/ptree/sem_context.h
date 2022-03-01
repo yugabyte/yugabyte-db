@@ -200,7 +200,7 @@ class SemContext : public ProcessContext {
 
   bool selecting_from_index() const;
 
-  int index_select_prefix_length() const;
+  size_t index_select_prefix_length() const;
 
   bool processing_column_definition() const;
 

@@ -6,9 +6,9 @@ description: Using Hasura with YugabyteDB
 headcontent: Using Hasura with YugabyteDB
 aliases:
 image: /images/develop/graphql/hasura/hasura.png
+section: INTEGRATIONS
 menu:
   latest:
-    parent: integrations
     identifier: hasura
     weight: 645
 ---

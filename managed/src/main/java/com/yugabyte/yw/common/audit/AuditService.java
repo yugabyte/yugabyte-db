@@ -42,6 +42,8 @@ public class AuditService {
           // GCP private key
           "$..['config.config_file_contents.private_key_id']",
           "$..['config.config_file_contents.private_key']",
+          "$..config.private_key_id",
+          "$..config.private_key",
           // Azure client secret
           "$..['config.AZURE_CLIENT_SECRET']",
           // Kubernetes secrets
@@ -63,7 +65,8 @@ public class AuditService {
           // SMTP password
           "$..smtpPassword",
           // Hashicorp token
-          "$..HC_VAULT_TOKEN");
+          "$..HC_VAULT_TOKEN",
+          "$..vaultToken");
 
   public static final List<JsonPath> SECRET_JSON_PATHS =
       SECRET_PATHS.stream().map(JsonPath::compile).collect(Collectors.toList());
@@ -75,7 +78,7 @@ public class AuditService {
           .build();
 
   public void createAuditEntry(Http.Context ctx, Http.Request request) {
-    createAuditEntry(ctx, request, null, null);
+    createAuditEntry(ctx, request, null, null, null, null, null);
   }
 
   /**
@@ -88,11 +91,45 @@ public class AuditService {
    * @param params request body
    */
   public void createAuditEntry(Http.Context ctx, Http.Request request, JsonNode params) {
-    createAuditEntry(ctx, request, params, null);
+    createAuditEntry(ctx, request, null, null, null, params, null);
+  }
+
+  public void createAuditEntry(
+      Http.Context ctx,
+      Http.Request request,
+      Audit.TargetType target,
+      UUID targetUUID,
+      Audit.ActionType action,
+      JsonNode params) {
+    createAuditEntry(ctx, request, target, targetUUID, action, params, null);
   }
 
   public void createAuditEntry(Http.Context ctx, Http.Request request, UUID taskUUID) {
-    createAuditEntry(ctx, request, null, taskUUID);
+    createAuditEntry(ctx, request, null, null, null, null, taskUUID);
+  }
+
+  public void createAuditEntry(
+      Http.Context ctx,
+      Http.Request request,
+      Audit.TargetType target,
+      UUID targetUUID,
+      Audit.ActionType action) {
+    createAuditEntry(ctx, request, target, targetUUID, action, null, null);
+  }
+
+  public void createAuditEntry(
+      Http.Context ctx, Http.Request request, JsonNode params, UUID taskUUID) {
+    createAuditEntry(ctx, request, null, null, null, params, taskUUID);
+  }
+
+  public void createAuditEntry(
+      Http.Context ctx,
+      Http.Request request,
+      Audit.TargetType target,
+      UUID targetUUID,
+      Audit.ActionType action,
+      UUID taskUUID) {
+    createAuditEntry(ctx, request, target, targetUUID, action, null, taskUUID);
   }
 
   public void createAuditEntryWithReqBody(Http.Context ctx) {
@@ -100,18 +137,25 @@ public class AuditService {
   }
 
   public void createAuditEntryWithReqBody(Http.Context ctx, UUID taskUUID) {
-    createAuditEntry(ctx, ctx.request(), ctx.request().body().asJson(), taskUUID);
+    createAuditEntry(ctx, ctx.request(), null, null, null, ctx.request().body().asJson(), taskUUID);
   }
 
   // TODO make this internal method and use createAuditEntryWithReqBody
   @Deprecated
   public void createAuditEntry(
-      Http.Context ctx, Http.Request request, JsonNode params, UUID taskUUID) {
+      Http.Context ctx,
+      Http.Request request,
+      Audit.TargetType target,
+      UUID targetUUID,
+      Audit.ActionType action,
+      JsonNode params,
+      UUID taskUUID) {
     UserWithFeatures user = (UserWithFeatures) ctx.args.get("user");
     String method = request.method();
     String path = request.path();
     JsonNode redactedParams = filterSecretFields(params);
-    Audit.create(user.getUser(), path, method, redactedParams, taskUUID);
+    Audit.create(
+        user.getUser(), path, method, target, targetUUID, action, redactedParams, taskUUID);
   }
 
   public List<Audit> getAll(UUID customerUUID) {

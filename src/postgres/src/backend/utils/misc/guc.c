@@ -1991,6 +1991,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_binary_restore", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enter a special mode designed specifically for YSQL binary restore."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_binary_restore,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_test_system_catalogs_creation", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Relaxes some internal sanity checks for system catalogs to "
 						 "allow creating them."),
@@ -2030,6 +2041,26 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&yb_disable_transactional_writes,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"suppress_nonpg_logs", PGC_SIGHUP, LOGGING_WHAT,
+			gettext_noop("Suppresses non-Postgres logs from appearing in the Postgres log file."),
+			NULL
+		},
+		&suppress_nonpg_logs,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_expression_pushdown", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Push supported expressions down to DocDB for evaluation."),
+			NULL
+		},
+		&yb_enable_expression_pushdown,
 		false,
 		NULL, NULL, NULL
 	},

@@ -209,7 +209,6 @@ check_xact_readonly(Node *parsetree)
 		case T_ViewStmt:
 		case T_DropStmt:
 		case T_DropdbStmt:
-		case T_DropTableGroupStmt:
 		case T_DropTableSpaceStmt:
 		case T_DropRoleStmt:
 		case T_GrantStmt:
@@ -550,11 +549,6 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 		case T_CreateTableGroupStmt:
 			PreventInTransactionBlock(isTopLevel, "CREATE TABLEGROUP");
 			CreateTableGroup((CreateTableGroupStmt *) parsetree);
-			break;
-
-		case T_DropTableGroupStmt:
-			PreventInTransactionBlock(isTopLevel, "DROP TABLEGROUP");
-			DropTableGroup((DropTableGroupStmt *) parsetree);
 			break;
 
 		case T_CreateTableSpaceStmt:
@@ -2301,10 +2295,6 @@ CreateCommandTag(Node *parsetree)
 			tag = "CREATE TABLEGROUP";
 			break;
 
-		case T_DropTableGroupStmt:
-			tag = "DROP TABLEGROUP";
-			break;
-
 		case T_CreateTableSpaceStmt:
 			tag = "CREATE TABLESPACE";
 			break;
@@ -2472,6 +2462,9 @@ CreateCommandTag(Node *parsetree)
 					break;
 				case OBJECT_STATISTIC_EXT:
 					tag = "DROP STATISTICS";
+					break;
+				case OBJECT_YBTABLEGROUP:
+					tag = "DROP TABLEGROUP";
 					break;
 				default:
 					tag = "???";
@@ -3561,10 +3554,6 @@ GetCommandLogLevel(Node *parsetree)
 			break;
 
 		case T_CreateTableGroupStmt:
-			lev = LOGSTMT_DDL;
-			break;
-
-		case T_DropTableGroupStmt:
 			lev = LOGSTMT_DDL;
 			break;
 

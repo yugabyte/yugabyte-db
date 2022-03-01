@@ -6,7 +6,6 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.alerts.SmtpData;
-import com.yugabyte.yw.forms.AlertingFormData.AlertingData;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Date;

@@ -91,10 +91,10 @@ TEST_F(ClientFailoverITest, TestDeleteLeaderWhileScanning) {
   const string& tablet_id = tablets[0];
 
   // Record the locations of the tablet replicas and the one TS that doesn't have a replica.
-  int missing_replica_index = -1;
-  set<int> replica_indexes;
+  ssize_t missing_replica_index = -1;
+  std::set<ssize_t> replica_indexes;
   unordered_map<string, itest::TServerDetails*> active_ts_map;
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     if (inspect_->ListTabletsOnTS(i).empty()) {
       missing_replica_index = i;
     } else {
@@ -106,7 +106,7 @@ TEST_F(ClientFailoverITest, TestDeleteLeaderWhileScanning) {
                                        kTimeout));
     }
   }
-  int leader_index = *replica_indexes.begin();
+  auto leader_index = *replica_indexes.begin();
   TServerDetails* leader = ts_map_[cluster_->tablet_server(leader_index)->uuid()].get();
   for (auto retries_left = kNumberOfRetries; ;) {
     TServerDetails *current_leader = nullptr;
@@ -155,7 +155,7 @@ TEST_F(ClientFailoverITest, TestDeleteLeaderWhileScanning) {
   ASSERT_OK(itest::DeleteTablet(leader, tablet_id, TABLET_DATA_TOMBSTONED,
                                 boost::none, kTimeout));
 
-  int old_leader_index = leader_index;
+  ssize_t old_leader_index = leader_index;
   // old_leader - node that was leader before we started to elect a new leader
   TServerDetails* old_leader = leader;
 

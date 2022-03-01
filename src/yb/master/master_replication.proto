@@ -24,8 +24,9 @@ import "yb/rpc/service.proto";
 
 message CDCStreamInfoPB {
   optional bytes stream_id = 1;
-  optional bytes table_id = 2;
+  repeated bytes table_id = 2;
   repeated CDCStreamOptionsPB options = 3;
+  optional bytes namespace_id = 4;
 }
 
 message ValidateReplicationInfoRequestPB {
@@ -44,6 +45,7 @@ message CreateCDCStreamRequestPB {
   optional string table_id = 1;
   repeated CDCStreamOptionsPB options = 3;
   optional SysCDCStreamEntryPB.State initial_state = 4;
+  optional string db_stream_id = 5;
 }
 
 message CreateCDCStreamResponsePB {
@@ -54,7 +56,8 @@ message CreateCDCStreamResponsePB {
 
 message DeleteCDCStreamRequestPB {
   repeated bytes stream_id = 1;
-  optional bool force = 2 [default = false];
+  optional bool ignore_errors = 2 [default = false];
+  optional bool force_delete = 3 [default = false];
 }
 
 message DeleteCDCStreamResponsePB {
@@ -63,8 +66,15 @@ message DeleteCDCStreamResponsePB {
   repeated bytes not_found_stream_ids = 2;
 }
 
+enum IdTypePB {
+  TABLE_ID = 1;
+  NAMESPACE_ID = 2;
+}
+
 message ListCDCStreamsRequestPB {
   optional string table_id = 1;
+  optional string namespace_id = 2;
+  optional IdTypePB id_type = 3 [default = TABLE_ID];
 }
 
 message ListCDCStreamsResponsePB {
@@ -81,6 +91,21 @@ message GetCDCStreamResponsePB {
   // The error, if an error occurred with this request.
   optional MasterErrorPB error = 1;
   optional CDCStreamInfoPB stream = 2;
+}
+
+message GetCDCDBStreamInfoRequestPB {
+  optional bytes db_stream_id = 1;
+}
+
+message GetCDCDBStreamInfoResponsePB {
+  message TableInfo {
+    optional bytes stream_id = 1;
+    optional bytes table_id = 2;
+  }
+
+  optional MasterErrorPB error = 1;
+  repeated TableInfo table_info = 2;
+  optional bytes namespace_id = 3;
 }
 
 message UpdateCDCStreamRequestPB {
@@ -107,7 +132,7 @@ message SetupUniverseReplicationResponsePB {
 
 message DeleteUniverseReplicationRequestPB {
   optional string producer_id = 1;
-  optional bool force = 2 [default = false];
+  optional bool ignore_errors = 2 [default = false];
 }
 
 message DeleteUniverseReplicationResponsePB {
@@ -162,6 +187,28 @@ message IsSetupUniverseReplicationDoneResponsePB {
   optional AppStatusPB replication_error = 3;
 }
 
+message ProducerSplitTabletInfoPB {
+  required bytes tablet_id = 1;
+
+  required bytes new_tablet1_id = 2;
+
+  required bytes new_tablet2_id = 3;
+
+  required bytes split_partition_key = 4;
+
+  required bytes split_encoded_key = 5;
+}
+
+message UpdateConsumerOnProducerSplitRequestPB {
+  optional string producer_id = 1;
+  optional string stream_id = 2;
+  optional ProducerSplitTabletInfoPB producer_split_tablet_info = 3;
+}
+
+message UpdateConsumerOnProducerSplitResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 service MasterReplication {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -173,6 +220,7 @@ service MasterReplication {
   rpc DeleteCDCStream(DeleteCDCStreamRequestPB) returns (DeleteCDCStreamResponsePB);
   rpc ListCDCStreams(ListCDCStreamsRequestPB) returns (ListCDCStreamsResponsePB);
   rpc GetCDCStream(GetCDCStreamRequestPB) returns (GetCDCStreamResponsePB);
+  rpc GetCDCDBStreamInfo(GetCDCDBStreamInfoRequestPB) returns (GetCDCDBStreamInfoResponsePB);
   rpc UpdateCDCStream (UpdateCDCStreamRequestPB)
       returns (UpdateCDCStreamResponsePB);
 
@@ -188,4 +236,7 @@ service MasterReplication {
       returns (GetUniverseReplicationResponsePB);
   rpc IsSetupUniverseReplicationDone(IsSetupUniverseReplicationDoneRequestPB)
       returns (IsSetupUniverseReplicationDoneResponsePB);
+  rpc UpdateConsumerOnProducerSplit(UpdateConsumerOnProducerSplitRequestPB)
+      returns (UpdateConsumerOnProducerSplitResponsePB);
+
 }

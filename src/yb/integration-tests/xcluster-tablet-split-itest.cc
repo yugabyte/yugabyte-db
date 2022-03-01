@@ -21,13 +21,16 @@
 #include "yb/integration-tests/tablet-split-itest-base.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_defaults.h"
+#include "yb/tablet/tablet_peer.h"
 #include "yb/tools/admin-test-base.h"
 #include "yb/tserver/mini_tablet_server.h"
+#include "yb/util/thread.h"
 
-DECLARE_uint64(cdc_state_table_num_tablets);
+DECLARE_int32(cdc_state_table_num_tablets);
 DECLARE_bool(enable_tablet_split_of_xcluster_replicated_tables);
 DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_bool(TEST_validate_all_tablet_candidates);
+DECLARE_bool(TEST_xcluster_consumer_fail_after_process_split_op);
 
 namespace yb {
 
@@ -152,18 +155,18 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
     consumer_client_ = ASSERT_RESULT(consumer_cluster_->CreateClient());
 
     ASSERT_OK(tools::RunAdminToolCommand(
-        consumer_cluster_->GetMasterAddresses(), "setup_universe_replication", "producer",
+        consumer_cluster_->GetMasterAddresses(), "setup_universe_replication", kProducerClusterId,
         cluster_->GetMasterAddresses(), table_->id()));
   }
 
  protected:
   void DoBeforeTearDown() override {
-    if (consumer_cluster_) {
-      consumer_cluster_->Shutdown();
-    } else {
-      producer_cluster_->Shutdown();
-    }
+    SwitchToConsumer();
+    ASSERT_OK(tools::RunAdminToolCommand(
+        cluster_->GetMasterAddresses(), "delete_universe_replication", kProducerClusterId));
 
+    // Shutdown producer cluster here, CdcTabletSplitITest will shutdown cluster_ (consumer).
+    producer_cluster_->Shutdown();
     CdcTabletSplitITest::DoBeforeTearDown();
   }
 
@@ -195,6 +198,42 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
     LOG(INFO) << "Swapped to the consumer cluster.";
   }
 
+  CHECKED_STATUS CheckForNumRowsOnConsumer(size_t expected_num_rows) {
+    client::YBClient* consumer_client(consumer_cluster_ ? consumer_client_.get() : client_.get());
+    client::TableHandle* consumer_table(consumer_cluster_ ? &consumer_table_ : &table_);
+
+    client::YBSessionPtr consumer_session = consumer_client->NewSession();
+    consumer_session->SetTimeout(60s);
+    size_t num_rows = 0;
+    Status s = WaitFor([&]() -> Result<bool> {
+      num_rows = VERIFY_RESULT(SelectRowsCount(consumer_session, *consumer_table));
+      return num_rows == expected_num_rows;
+    }, MonoDelta::FromSeconds(60), "Wait for data to be replicated");
+
+    LOG(INFO) << "Found " << num_rows << " rows on consumer, expected " << expected_num_rows;
+
+    return s;
+  }
+
+  CHECKED_STATUS SplitAllTablets(
+      int cur_num_tablets, bool parent_tablet_protected_from_deletion = true) {
+    // Splits all tablets for cluster_.
+    auto* catalog_mgr = VERIFY_RESULT(catalog_manager());
+    auto tablet_peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id());
+    EXPECT_EQ(tablet_peers.size(), cur_num_tablets);
+    for (const auto& peer : tablet_peers) {
+      const auto source_tablet_ptr = peer->tablet();
+      EXPECT_NE(source_tablet_ptr, nullptr);
+      const auto& source_tablet = *source_tablet_ptr;
+      RETURN_NOT_OK(SplitTablet(catalog_mgr, source_tablet));
+    }
+    size_t expected_non_split_tablets = cur_num_tablets * 2;
+    size_t expected_split_tablets = parent_tablet_protected_from_deletion
+                                    ? cur_num_tablets * 2 - 1
+                                    : 0;
+    return WaitForTabletSplitCompletion(expected_non_split_tablets, expected_split_tablets);
+  }
+
   // Only one set of these is valid at any time.
   // The other cluster is accessible via cluster_ / client_ / table_.
   std::unique_ptr<MiniCluster> consumer_cluster_;
@@ -204,20 +243,19 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
   std::unique_ptr<MiniCluster> producer_cluster_;
   std::unique_ptr<client::YBClient> producer_client_;
   client::TableHandle producer_table_;
+
+  const string kProducerClusterId = "producer";
 };
 
 TEST_F(XClusterTabletSplitITest, SplittingWithXClusterReplicationOnConsumer) {
+  // Perform a split on the consumer side and ensure replication still works.
+
   // To begin with, cluster_ will be our producer.
   // Write some rows to the producer.
   auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kDefaultNumRows));
 
   // Wait until the rows are all replicated on the consumer.
-  client::YBSessionPtr consumer_session = consumer_client_->NewSession();
-  consumer_session->SetTimeout(60s);
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    int num_rows = VERIFY_RESULT(SelectRowsCount(consumer_session, consumer_table_));
-    return num_rows == kDefaultNumRows;
-  }, MonoDelta::FromSeconds(60), "Wait for data to be replicated"));
+  ASSERT_OK(CheckForNumRowsOnConsumer(kDefaultNumRows));
 
   SwitchToConsumer();
 
@@ -229,10 +267,213 @@ TEST_F(XClusterTabletSplitITest, SplittingWithXClusterReplicationOnConsumer) {
   // Write another set of rows, and make sure the new poller picks up on the changes.
   ASSERT_RESULT(WriteRows(kDefaultNumRows, kDefaultNumRows + 1));
 
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    int num_rows = VERIFY_RESULT(SelectRowsCount(consumer_session, consumer_table_));
-    return num_rows == 2 * kDefaultNumRows;
-  }, MonoDelta::FromSeconds(60), "Wait for data to be replicated"));
+  ASSERT_OK(CheckForNumRowsOnConsumer(2 * kDefaultNumRows));
+}
+
+TEST_F(XClusterTabletSplitITest, SplittingWithXClusterReplicationOnProducer) {
+  // Perform a split on the producer side and ensure replication still works.
+
+  // Default cluster_ will be our producer.
+  auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kDefaultNumRows));
+
+  // Wait until the rows are all replicated on the consumer.
+  ASSERT_OK(CheckForNumRowsOnConsumer(kDefaultNumRows));
+
+  // Split the tablet on the producer. Note that parent tablet will only be HIDDEN and not deleted.
+  ASSERT_OK(SplitTabletAndValidate(
+      split_hash_code, kDefaultNumRows, /* parent_tablet_protected_from_deletion */ true));
+
+  // Write another set of rows, and make sure the consumer picks up on the changes.
+  ASSERT_RESULT(WriteRows(kDefaultNumRows, kDefaultNumRows + 1));
+
+  ASSERT_OK(CheckForNumRowsOnConsumer(2 * kDefaultNumRows));
+}
+
+TEST_F(XClusterTabletSplitITest, MultipleSplitsDuringPausedReplication) {
+  // Simulate network partition with paused replication, then perform multiple splits on producer
+  // before re-enabling replication. Should be able to handle all of the splits.
+
+  // Default cluster_ will be our producer.
+  // Start with replication disabled.
+  ASSERT_OK(tools::RunAdminToolCommand(
+      consumer_cluster_->GetMasterAddresses(), "set_universe_replication_enabled",
+      kProducerClusterId, "0"));
+
+  // Perform one tablet split.
+  auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kDefaultNumRows));
+  ASSERT_OK(SplitTabletAndValidate(
+      split_hash_code, kDefaultNumRows, /* parent_tablet_protected_from_deletion */ true));
+
+  // Write some more rows, and then perform another split on both children.
+  ASSERT_RESULT(WriteRows(kDefaultNumRows, kDefaultNumRows + 1));
+  ASSERT_OK(SplitAllTablets(/* cur_num_tablets */ 2));
+  ASSERT_RESULT(WriteRows(kDefaultNumRows, 2 * kDefaultNumRows + 1));
+  ASSERT_OK(SplitAllTablets(/* cur_num_tablets */ 4));
+
+  // Now re-enable replication.
+  ASSERT_OK(tools::RunAdminToolCommand(
+      consumer_cluster_->GetMasterAddresses(), "set_universe_replication_enabled",
+      kProducerClusterId, "1"));
+
+  // Ensure all the rows are all replicated on the consumer.
+  ASSERT_OK(CheckForNumRowsOnConsumer(3 * kDefaultNumRows));
+
+  // Write another set of rows, and make sure the consumer picks up on the changes.
+  ASSERT_RESULT(WriteRows(kDefaultNumRows, 3 * kDefaultNumRows + 1));
+
+  ASSERT_OK(CheckForNumRowsOnConsumer(4 * kDefaultNumRows));
+}
+
+TEST_F(XClusterTabletSplitITest, MultipleSplitsInSequence) {
+  // Handle case where there are multiple SPLIT_OPs immediately after each other.
+  // This is to test when we receive an older SPLIT_OP that has already been processed, and its
+  // children have also been processed - see the "Unable to find matching source tablet" warning.
+
+  // Default cluster_ will be our producer.
+  ASSERT_RESULT(WriteRowsAndFlush(kDefaultNumRows));
+
+  ASSERT_OK(CheckForNumRowsOnConsumer(kDefaultNumRows));
+
+  // Perform one tablet split.
+  ASSERT_OK(SplitAllTablets(/* cur_num_tablets */ 1));
+
+  // Perform another tablet split immediately after.
+  ASSERT_OK(SplitAllTablets(/* cur_num_tablets */ 2));
+
+  // Write some more rows and check that everything is replicated correctly.
+  ASSERT_RESULT(WriteRows(kDefaultNumRows, kDefaultNumRows + 1));
+  ASSERT_OK(CheckForNumRowsOnConsumer(2 * kDefaultNumRows));
+}
+
+TEST_F(XClusterTabletSplitITest, SplittingOnProducerAndConsumer) {
+  // Test splits on both producer and consumer while writes to the producer are happening.
+
+  // Default cluster_ will be our producer.
+  // Start by writing some rows and waiting for them to be replicated.
+  ASSERT_RESULT(WriteRowsAndFlush(kDefaultNumRows));
+  ASSERT_OK(CheckForNumRowsOnConsumer(kDefaultNumRows));
+
+  // Setup a new thread for continuous writing to producer.
+  std::atomic<bool> stop(false);
+  std::thread write_thread([this, &stop] {
+    CDSAttacher attacher;
+    client::TableHandle producer_table;
+    ASSERT_OK(producer_table.Open(table_->name(), client_.get()));
+    auto producer_session = client_->NewSession();
+    producer_session->SetTimeout(60s);
+    int32_t key = kDefaultNumRows;
+    while (!stop) {
+      key = (key + 1);
+      ASSERT_RESULT(client::kv_table_test::WriteRow(
+          &producer_table, producer_session, key, key,
+          client::WriteOpType::INSERT, client::Flush::kTrue));
+    }
+  });
+
+  // Perform tablet splits on both sides.
+  ASSERT_OK(SplitAllTablets(/* cur_num_tablets */ 1));
+  SwitchToConsumer();
+  ASSERT_OK(SplitAllTablets(
+      /* cur_num_tablets */ 1, /* parent_tablet_protected_from_deletion */ false));
+  SwitchToProducer();
+  ASSERT_OK(SplitAllTablets(/* cur_num_tablets */ 2));
+  SwitchToConsumer();
+  ASSERT_OK(SplitAllTablets(
+      /* cur_num_tablets */ 2, /* parent_tablet_protected_from_deletion */ false));
+  SwitchToProducer();
+
+  // Stop writes.
+  stop.store(true, std::memory_order_release);
+  write_thread.join();
+
+  // Verify that both sides have the same number of rows.
+  client::YBSessionPtr producer_session = client_->NewSession();
+  producer_session->SetTimeout(60s);
+  size_t num_rows = ASSERT_RESULT(SelectRowsCount(producer_session, table_));
+
+  ASSERT_OK(CheckForNumRowsOnConsumer(num_rows));
+}
+
+TEST_F(XClusterTabletSplitITest, ConsumerClusterFailureWhenProcessingSplitOp) {
+  ASSERT_RESULT(WriteRowsAndFlush(kDefaultNumRows));
+  ASSERT_OK(CheckForNumRowsOnConsumer(kDefaultNumRows));
+
+  // Force consumer to fail after processing the split op.
+  SetAtomicFlag(true, &FLAGS_TEST_xcluster_consumer_fail_after_process_split_op);
+
+  // Perform a split.
+  ASSERT_OK(SplitAllTablets(/* cur_num_tablets */ 1));
+  // Write some additional rows.
+  ASSERT_RESULT(WriteRows(kDefaultNumRows, kDefaultNumRows + 1));
+
+  // Wait for a bit, as the consumer keeps trying to process the split_op but fails.
+  SleepFor(10s);
+  // Check that these new rows aren't replicated since we're stuck on the split_op.
+  ASSERT_OK(CheckForNumRowsOnConsumer(kDefaultNumRows));
+
+  // Allow for the split op to be processed properly, and check that everything is replicated.
+  SetAtomicFlag(false, &FLAGS_TEST_xcluster_consumer_fail_after_process_split_op);
+  ASSERT_OK(CheckForNumRowsOnConsumer(2 * kDefaultNumRows));
+
+  ASSERT_RESULT(WriteRows(kDefaultNumRows, 2 * kDefaultNumRows + 1));
+  ASSERT_OK(CheckForNumRowsOnConsumer(3 * kDefaultNumRows));
+}
+
+class XClusterBootstrapTabletSplitITest : public XClusterTabletSplitITest {
+ public:
+  void SetUp() override {
+    CdcTabletSplitITest::SetUp();
+
+    // Create the consumer cluster, but don't setup the universe replication yet.
+    consumer_cluster_ = ASSERT_RESULT(CreateNewUniverseAndTable("consumer", &consumer_table_));
+    consumer_client_ = ASSERT_RESULT(consumer_cluster_->CreateClient());
+  }
+
+ protected:
+  Result<string> BootstrapProducer() {
+    const int kStreamUuidLength = 32;
+    string output = VERIFY_RESULT(tools::RunAdminToolCommand(
+        cluster_->GetMasterAddresses(), "bootstrap_cdc_producer", table_->id()));
+    // Get the bootstrap id (output format is "table id: 123, CDC bootstrap id: 123\n").
+    string bootstrap_id = output.substr(output.find_last_of(' ') + 1, kStreamUuidLength);
+    return bootstrap_id;
+  }
+
+  CHECKED_STATUS SetupReplication(const string& bootstrap_id = "") {
+    VERIFY_RESULT(tools::RunAdminToolCommand(
+        consumer_cluster_->GetMasterAddresses(), "setup_universe_replication", kProducerClusterId,
+        cluster_->GetMasterAddresses(), table_->id(), bootstrap_id));
+    return Status::OK();
+  }
+};
+
+TEST_F(XClusterBootstrapTabletSplitITest, BootstrapWithSplits) {
+  // Start by writing some rows to the producer.
+  ASSERT_RESULT(WriteRowsAndFlush(kDefaultNumRows));
+
+  string bootstrap_id = ASSERT_RESULT(BootstrapProducer());
+
+  // Instead of doing a backup, we'll just rewrite the same rows to the consumer.
+  SwitchToConsumer();
+  ASSERT_RESULT(WriteRowsAndFlush(kDefaultNumRows));
+  SwitchToProducer();
+
+  // Now before setting up replication, lets perform some splits and write some more rows.
+  ASSERT_OK(SplitAllTablets(/* cur_num_tablets */ 1));
+  ASSERT_RESULT(WriteRows(kDefaultNumRows, kDefaultNumRows + 1));
+  ASSERT_OK(SplitAllTablets(/* cur_num_tablets */ 2));
+
+  // Now setup replication.
+  ASSERT_OK(SetupReplication(bootstrap_id));
+
+  // Replication should work fine.
+  ASSERT_OK(CheckForNumRowsOnConsumer(2 * kDefaultNumRows));
+
+  // Perform an additional write + split afterwards.
+  ASSERT_RESULT(WriteRows(kDefaultNumRows, 2 * kDefaultNumRows + 1));
+  ASSERT_OK(SplitAllTablets(/* cur_num_tablets */ 4));
+
+  ASSERT_OK(CheckForNumRowsOnConsumer(3 * kDefaultNumRows));
 }
 
 class NotSupportedTabletSplitITest : public CdcTabletSplitITest {

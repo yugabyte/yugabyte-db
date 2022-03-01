@@ -132,7 +132,7 @@ struct GetRedisSubDocumentData {
   const IndexBound* low_index = &IndexBound::Empty();
   const IndexBound* high_index = &IndexBound::Empty();
   // Maximum number of children to add for this subdocument (0 means no limit).
-  int32_t limit = 0;
+  size_t limit = 0;
   // Only store a count of the number of records found, but don't store the records themselves.
   bool count_only = false;
   // Stores the count of records found, if count_only option is set.

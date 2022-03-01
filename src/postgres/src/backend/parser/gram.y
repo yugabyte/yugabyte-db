@@ -290,7 +290,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 		CreatedbStmt DeclareCursorStmt DefineStmt DeleteStmt DiscardStmt DoStmt
 		DropOpClassStmt DropOpFamilyStmt DropPLangStmt DropStmt
 		DropAssertStmt DropCastStmt DropRoleStmt
-		DropdbStmt DropTableGroupStmt DropTableSpaceStmt
+		DropdbStmt DropTableSpaceStmt
 		DropTransformStmt
 		DropUserMappingStmt ExplainStmt FetchStmt
 		GrantStmt GrantRoleStmt ImportForeignSchemaStmt IndexStmt InsertStmt
@@ -979,7 +979,6 @@ stmt :
 			| CreateTableGroupStmt { parser_ybc_beta_feature(@1, "tablegroup", true); }
 			| CreateUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
 			| DropUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
-			| DropTableGroupStmt { parser_ybc_beta_feature(@1, "tablegroup", true); }
 			| ImportForeignSchemaStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
 			| VacuumStmt { parser_ybc_beta_feature(@1, "vacuum", false); }
 
@@ -4827,22 +4826,6 @@ OptTableGroupOwner: OWNER RoleSpec		{ $$ = $2; }
 			| /*EMPTY */				{ $$ = NULL; }
 		;
 
-/*****************************************************************************
- *
- *		QUERY:
- *             DROP TABLEGROUP tablegroup
- *
- *****************************************************************************/
-
-DropTableGroupStmt: DROP TABLEGROUP name
- 				{
- 					parser_ybc_beta_feature(@1, "tablegroup", true);
- 					DropTableGroupStmt *n = makeNode(DropTableGroupStmt);
- 					n->tablegroupname = $3;
- 					$$ = (Node *) n;
- 				}
- 		;
-
 
 /*****************************************************************************
  *
@@ -6893,6 +6876,11 @@ drop_type_name:
 			| PUBLICATION	{ parser_ybc_not_support(@1, "DROP PUBLICATION"); $$ = OBJECT_PUBLICATION; }
 			| SCHEMA { $$ = OBJECT_SCHEMA; }
 			| SERVER { $$ = OBJECT_FOREIGN_SERVER; }
+			| TABLEGROUP
+				{
+					parser_ybc_beta_feature(@1, "tablegroup", true);
+					$$ = OBJECT_YBTABLEGROUP;
+				}
 		;
 
 /* object types attached to a table */
@@ -6940,8 +6928,8 @@ TruncateStmt:
 		;
 
 opt_restart_seqs:
-			CONTINUE_P IDENTITY_P		{ $$ = false; parser_ybc_not_support(@1, "sequences"); }
-			| RESTART IDENTITY_P		{ $$ = true; parser_ybc_not_support(@1, "sequences"); }
+			CONTINUE_P IDENTITY_P		{ $$ = false;  }
+			| RESTART IDENTITY_P		{ $$ = true; }
 			| /* EMPTY */				{ $$ = false; }
 		;
 
@@ -15870,7 +15858,11 @@ SignedIconst: Iconst								{ $$ = $1; }
 			| '-' Iconst							{ $$ = - $2; }
 		;
 
-Oid:		ICONST									{ $$ = $1; };
+/*
+ * Iconst does not accept large OID such as 2147500041, use SignedIconst to convert
+ * it to -2147467255 instead. See process_integer_literal and strtoint for details.
+ */
+Oid:		SignedIconst							{ $$ = $1; };
 
 /* Role specifications */
 RoleId:		RoleSpec

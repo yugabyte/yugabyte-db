@@ -20,6 +20,8 @@
 #include "yb/encryption/header_manager.h"
 #include "yb/encryption/universe_key_manager.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/util/status_fwd.h"
 #include "yb/util/errno.h"
 #include "yb/util/pb_util.h"
@@ -53,11 +55,12 @@ class HeaderManagerImpl : public HeaderManager {
     // 3. Serialize the universe key id.
     auto universe_key_id_str = universe_params.version_id;
     char universe_key_size[sizeof(uint32_t)];
-    BigEndian::Store32(universe_key_size, universe_key_id_str.size());
+    BigEndian::Store32(universe_key_size, narrow_cast<uint32_t>(universe_key_id_str.size()));
 
     // 4. Serialize the encrypted encryption params.
     char encrypted_data_key_size[sizeof(uint32_t)];
-    BigEndian::Store32(encrypted_data_key_size, encryption_params_pb_str.size());
+    BigEndian::Store32(
+        encrypted_data_key_size, narrow_cast<uint32_t>(encryption_params_pb_str.size()));
 
     // 5. Generate the encryption metadata string.
     auto metadata_str = string(universe_key_size, sizeof(universe_key_size)) + universe_key_id_str +
@@ -66,7 +69,7 @@ class HeaderManagerImpl : public HeaderManager {
 
     // 6. Serialize the header size.
     char header_size[sizeof(uint32_t)];
-    BigEndian::Store32(header_size, metadata_str.size());
+    BigEndian::Store32(header_size, narrow_cast<uint32_t>(metadata_str.size()));
 
     return kEncryptionMagic + string(header_size, sizeof(header_size)) + metadata_str;
   }
@@ -109,7 +112,7 @@ class HeaderManagerImpl : public HeaderManager {
   }
 
   uint32_t GetEncryptionMetadataStartIndex() override {
-    return kEncryptionMagic.size() + sizeof(uint32_t);
+    return narrow_cast<uint32_t>(kEncryptionMagic.size() + sizeof(uint32_t));
   }
 
   Result<FileEncryptionStatus> GetFileEncryptionStatusFromPrefix(

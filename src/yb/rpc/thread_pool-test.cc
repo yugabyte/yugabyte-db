@@ -337,7 +337,7 @@ TEST_F(ThreadPoolTest, StrandShutdownAndDestroyRace) {
 
   auto task = []{};
 
-  for (auto iter = 0; iter < kNumIters; ++iter) {
+  for (size_t iter = 0; iter < kNumIters; ++iter) {
     Strand strand(&pool);
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_strand_done_inject_delay_ms) = 0;

@@ -3,10 +3,11 @@ title: Apache Kafka
 linkTitle: Apache Kafka
 description: Apache Kafka
 aliases:
+  - /latest/integrations
+section: INTEGRATIONS
 menu:
   latest:
     identifier: apache-kafka
-    parent: integrations
     weight: 571
 isTocNested: true
 showAsideToc: true
@@ -22,7 +23,7 @@ Before you can start using Kafka Connect Sink, ensure that you have the followin
 
   For more information and installation instructions, see [On-Premises Deployments](https://docs.confluent.io/platform/current/installation/installing_cp/overview.html) in the Confluent Platform documentation.
 
-- YugabyteDB cluster. 
+- YugabyteDB cluster.
 
   For more information and instructions, see [YugabyteDB Quick Start Guide](/latest/quick-start/).
 
@@ -52,7 +53,7 @@ You configure Kafka Connect Sink as follows:
   ```output
   The local commands are intended for a single-node development environment only,
   NOT for production usage. https://docs.confluent.io/current/cli/index.html
-  
+
   Using CONFLUENT_CURRENT: /var/folders/_1/ltd94t1x2nsdrwj302jl85vc0000gn/T/confluent.127538
   Starting ZooKeeper
   ZooKeeper is [UP]
@@ -79,7 +80,7 @@ You configure Kafka Connect Sink as follows:
   ```output
   The local commands are intended for a single-node development environment only,
   NOT for production usage. https://docs.confluent.io/current/cli/index.html
-  
+
   Using CONFLUENT_CURRENT: /var/folders/_1/ltd94t1x2nsdrwj302jl85vc0000gn/T/confluent.127538
   Stopping Connect
   Connect is [DOWN]

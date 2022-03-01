@@ -330,18 +330,11 @@ Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::GetTableFromMap() const
 }
 
 bool YQLPartitionsVTable::CheckTableIsPresent(
-    const TableId& table_id, int expected_num_tablets) const {
+    const TableId& table_id, size_t expected_num_tablets) const {
   SharedLock<std::shared_timed_mutex> read_lock(mutex_);
   auto it = table_to_partition_start_to_row_map_.find(table_id);
-  int tablets_found = 0;
-  if (it != table_to_partition_start_to_row_map_.end()) {
-    tablets_found = table_to_partition_start_to_row_map_.at(table_id).size();
-    if (tablets_found == expected_num_tablets) {
-      return true;
-    }
-  }
-
-  return false;
+  return it != table_to_partition_start_to_row_map_.end() &&
+         it->second.size() == expected_num_tablets;
 }
 
 void YQLPartitionsVTable::ResetAndRegenerateCache() const {

@@ -278,7 +278,7 @@ class Log : public RefCountedThreadSafe<Log> {
   CHECKED_STATUS TEST_SubmitFuncToAppendToken(const std::function<void()>& func);
 
   // Returns the number of segments.
-  int num_segments() const;
+  size_t num_segments() const;
 
   const std::string& LogPrefix() const {
     return log_prefix_;

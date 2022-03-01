@@ -563,7 +563,7 @@ class SpecialEnv : public EnvWrapper {
   std::atomic<bool> is_wal_sync_thread_safe_{true};
 };
 
-class DBTestBase : public testing::Test {
+class DBHolder {
  protected:
   // Sequence of option configurations to try
   enum OptionConfig {
@@ -637,9 +637,9 @@ class DBTestBase : public testing::Test {
     kSkipMmapReads = 128,
   };
 
-  explicit DBTestBase(const std::string path, bool encryption_enabled = false);
+  explicit DBHolder(std::string path, bool encryption_enabled = false);
 
-  ~DBTestBase();
+  virtual ~DBHolder();
 
   void CreateEncryptedEnv();
 
@@ -830,6 +830,13 @@ class DBTestBase : public testing::Test {
 
   std::unordered_map<std::string, uint64_t> GetAllSSTFiles(
       uint64_t* total_size = nullptr);
+};
+
+class DBTestBase : public RocksDBTest, public DBHolder {
+ public:
+  explicit DBTestBase(std::string path, bool encryption_enabled = false)
+    : DBHolder(std::move(path), encryption_enabled)
+  {}
 };
 
 }  // namespace rocksdb

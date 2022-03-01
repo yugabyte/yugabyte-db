@@ -168,7 +168,7 @@ IndexOnlyNext(IndexOnlyScanState *node)
 		 *
 		 * YugaByte index tuple is always visible.
 		 */
-		if (!IsYugaByteEnabled() &&
+		if (!IsYBRelation(node->ss.ss_currentRelation) &&
 			!VM_ALL_VISIBLE(scandesc->heapRelation,
 							ItemPointerGetBlockNumber(tid),
 							&node->ioss_VMBuffer))

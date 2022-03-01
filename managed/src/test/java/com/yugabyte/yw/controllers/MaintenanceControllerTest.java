@@ -175,6 +175,7 @@ public class MaintenanceControllerTest extends FakeDBApplication {
     assertThat(window.getStartTime(), equalTo(maintenanceWindow.getStartTime()));
     assertThat(window.getEndTime(), equalTo(maintenanceWindow.getEndTime()));
     assertThat(window.getName(), equalTo(maintenanceWindow.getName()));
+    assertThat(window.getDescription(), equalTo(maintenanceWindow.getDescription()));
     assertThat(window.getCustomerUUID(), equalTo(maintenanceWindow.getCustomerUUID()));
     assertThat(
         window.getAlertConfigurationFilter(),

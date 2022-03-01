@@ -34,6 +34,7 @@
 #ifndef YB_TOOLS_DATA_GEN_UTIL_H_
 #define YB_TOOLS_DATA_GEN_UTIL_H_
 
+#include <stddef.h>
 #include <stdint.h>
 
 namespace yb {
@@ -55,7 +56,7 @@ namespace tools {
 // For the numbers / bool, the value is truncated to fit the data type.
 // For the string, we encode the number as hex.
 void WriteValueToColumn(const client::YBSchema& schema,
-                        int col_idx,
+                        size_t col_idx,
                         uint64_t value,
                         QLValuePB* out);
 

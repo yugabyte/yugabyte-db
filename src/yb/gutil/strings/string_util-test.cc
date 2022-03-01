@@ -202,4 +202,11 @@ TEST_F(StringUtilTest, TestStringStartsWithOrEquals) {
   ASSERT_FALSE(StringStartsWithOrEquals("abc", "abcd"));
 }
 
+TEST_F(StringUtilTest, TestSplitAndFlatten) {
+  ASSERT_EQ("[foo, bar, baz]", VectorToString(SplitAndFlatten(
+      {"foo,bar", "baz"})));
+  ASSERT_EQ("[foo, bar, baz, foo]", VectorToString(SplitAndFlatten(
+      {"foo", "bar:baz", "foo"}, ":")));
+}
+
 } // namespace yb

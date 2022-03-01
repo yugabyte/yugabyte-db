@@ -20,6 +20,7 @@
 
 #include "yb/common/pgsql_error.h"
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/endian.h"
 
 #include "yb/util/enums.h"
@@ -274,6 +275,8 @@ CHECKED_STATUS PGConn::StartTransaction(IsolationLevel isolation_level) {
   switch (isolation_level) {
     case IsolationLevel::NON_TRANSACTIONAL:
       return Status::OK();
+    case IsolationLevel::READ_COMMITTED:
+      return Execute("START TRANSACTION ISOLATION LEVEL READ COMMITTED");
     case IsolationLevel::SNAPSHOT_ISOLATION:
       return Execute("START TRANSACTION ISOLATION LEVEL REPEATABLE READ");
     case IsolationLevel::SERIALIZABLE_ISOLATION:
@@ -355,7 +358,7 @@ bool PGConn::CopyFlushBuffer() {
   }
   ptrdiff_t len = copy_data_->pos - copy_data_->buffer;
   if (len) {
-    int res = PQputCopyData(impl_.get(), copy_data_->buffer, len);
+    int res = PQputCopyData(impl_.get(), copy_data_->buffer, narrow_cast<int>(len));
     if (res < 0) {
       copy_data_->error = STATUS_FORMAT(NetworkError, "Put copy data failed: $0", res);
       return false;
@@ -426,7 +429,7 @@ Result<PGResultPtr> PGConn::CopyEnd() {
 }
 
 Result<char*> GetValueWithLength(PGresult* result, int row, int column, size_t size) {
-  auto len = PQgetlength(result, row, column);
+  size_t len = PQgetlength(result, row, column);
   if (len != size) {
     return STATUS_FORMAT(Corruption, "Bad column length: $0, expected: $1, row: $2, column: $3",
                          len, size, row, column);

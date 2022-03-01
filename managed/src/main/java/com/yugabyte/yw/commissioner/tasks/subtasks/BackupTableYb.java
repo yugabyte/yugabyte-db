@@ -11,21 +11,14 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.TableManagerYb;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Universe;
-import play.libs.Json;
-
-import com.fasterxml.jackson.databind.ObjectWriter;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
-import javax.inject.Inject;
-
-import java.util.List;
 import java.util.Map;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -52,53 +45,41 @@ public class BackupTableYb extends AbstractTaskBase {
     try {
       Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
       Map<String, String> config = universe.getConfig();
-      if (taskParams().controller == null || taskParams().controller.equals("yb_backup")) {
-        if (config.isEmpty() || config.getOrDefault(Universe.TAKE_BACKUPS, "true").equals("true")) {
-          if (taskParams().backupList != null) {
-            for (BackupTableParams backupParams : taskParams().backupList) {
-              ShellResponse response = tableManagerYb.createBackup(backupParams);
-              JsonNode jsonNode = null;
-              try {
-                jsonNode = Json.parse(response.message);
-              } catch (Exception e) {
-                log.error("Response code={}, output={}.", response.code, response.message);
-                throw e;
-              }
-              if (response.code != 0 || jsonNode.has("error")) {
-                log.error("Response code={}, hasError={}.", response.code, jsonNode.has("error"));
-                throw new RuntimeException(response.message);
-              } else {
-                log.info("[" + getName() + "] STDOUT: " + response.message);
-              }
-            }
-
-            backup.transitionState(Backup.BackupState.Completed);
-          } else {
-            ShellResponse response = tableManagerYb.createBackup(taskParams());
-            JsonNode jsonNode = null;
-            try {
-              jsonNode = Json.parse(response.message);
-            } catch (Exception e) {
-              log.error("Response code={}, output={}.", response.code, response.message);
-              throw e;
-            }
-            if (response.code != 0 || jsonNode.has("error")) {
-              log.error("Response code={}, hasError={}.", response.code, jsonNode.has("error"));
-              throw new RuntimeException(response.message);
-            } else {
-              log.info("[" + getName() + "] STDOUT: " + response.message);
-              backup.transitionState(Backup.BackupState.Completed);
-            }
+      if (config.isEmpty() || config.getOrDefault(Universe.TAKE_BACKUPS, "true").equals("true")) {
+        long totalBackupSize = 0L;
+        int backupIdx = 0;
+        for (BackupTableParams backupParams : taskParams().backupList) {
+          ShellResponse response = tableManagerYb.createBackup(backupParams);
+          processShellResponse(response);
+          JsonNode jsonNode = null;
+          try {
+            jsonNode = Json.parse(response.message);
+          } catch (Exception e) {
+            log.error("Response code={}, output={}.", response.code, response.message);
+            throw e;
           }
-        } else {
-          log.info("Skipping table {}:{}", taskParams().getKeyspace(), taskParams().getTableName());
-          backup.transitionState(Backup.BackupState.Skipped);
+          if (response.code != 0 || jsonNode.has("error")) {
+            log.error("Response code={}, hasError={}.", response.code, jsonNode.has("error"));
+            throw new RuntimeException(response.message);
+          }
+
+          log.info("[" + getName() + "] STDOUT: " + response.message);
+          long backupSize = BackupUtil.extractBackupSize(jsonNode);
+          backup.setBackupSizeInBackupList(backupIdx, backupSize);
+          totalBackupSize += backupSize;
+          backupIdx++;
         }
+
+        backup.setTotalBackupSize(totalBackupSize);
+        backup.transitionState(Backup.BackupState.Completed);
+      } else {
+        backup.transitionState(Backup.BackupState.Skipped);
       }
     } catch (Exception e) {
       log.error("Errored out with: " + e);
       backup.transitionState(Backup.BackupState.Failed);
-      throw new RuntimeException(e);
+      // Do not lose the actual exception.
+      Throwables.propagate(e);
     }
   }
 }

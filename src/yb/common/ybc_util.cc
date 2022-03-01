@@ -45,6 +45,10 @@ bool yb_format_funcs_include_yb_metadata = false;
 
 bool yb_force_global_transaction = false;
 
+bool suppress_nonpg_logs = false;
+
+bool yb_binary_restore = false;
+
 namespace yb {
 
 namespace {
@@ -110,7 +114,14 @@ Status InitGFlags(const char* argv0) {
   // Use InitGoogleLoggingSafeBasic() instead of InitGoogleLoggingSafe() to avoid calling
   // google::InstallFailureSignalHandler(). This will prevent interference with PostgreSQL's
   // own signal handling.
-  yb::InitGoogleLoggingSafeBasic(executable_path);
+  // Use InitGoogleLoggingSafeBasicSuppressNonNativePostgresLogs() over
+  // InitGoogleLoggingSafeBasic() when the "suppress_nonpg_logs" flag is set.
+  // This will suppress non-Postgres logs from the Postgres log file.
+  if (suppress_nonpg_logs) {
+    yb::InitGoogleLoggingSafeBasicSuppressNonNativePostgresLogs(executable_path);
+  } else {
+    yb::InitGoogleLoggingSafeBasic(executable_path);
+  }
 
   if (VLOG_IS_ON(1)) {
     for (auto& flag_info : flag_infos) {
@@ -253,6 +264,10 @@ bool YBCIsTxnConflictError(uint16_t txn_errcode) {
 
 bool YBCIsTxnSkipLockingError(uint16_t txn_errcode) {
   return txn_errcode == to_underlying(TransactionErrorCode::kSkipLocking);
+}
+
+uint16_t YBCGetTxnConflictErrorCode() {
+  return to_underlying(TransactionErrorCode::kConflict);
 }
 
 YBCStatus YBCInit(const char* argv0,

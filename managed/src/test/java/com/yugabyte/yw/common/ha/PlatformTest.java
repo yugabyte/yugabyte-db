@@ -38,6 +38,7 @@ import io.ebean.EbeanServer;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
@@ -76,7 +77,7 @@ public class PlatformTest extends FakeDBApplication {
 
   @Rule public TemporaryFolder remoteStorage = new TemporaryFolder();
 
-  private static final String LOCAL_ACME_ORG = "http://local.acme.org";
+  private static final String LOCAL_ACME_ORG = "http://local.acme.org/";
   private static final String REMOTE_ACME_ORG = "http://remote.acme.org";
   private FakeApi fakeApi;
   EbeanServer localEBeanServer;
@@ -222,6 +223,9 @@ public class PlatformTest extends FakeDBApplication {
         .thenAnswer(
             invocation -> {
               String url = invocation.getArgument(0);
+              if (url.matches("(http://|https://).*//.*")) {
+                throw new MalformedURLException("URL contains double slashes: " + url);
+              }
               Map<String, String> headers = invocation.getArgument(1);
               List<Http.MultipartFormData.Part<Source<ByteString, ?>>> parts =
                   invocation.getArgument(2);

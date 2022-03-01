@@ -89,7 +89,7 @@ class DateTime {
   static Result<MonoDelta> IntervalFromString(const std::string& str);
 
   //----------------------------------------------------------------------------------------------
-  static int64_t AdjustPrecision(int64_t val, int input_precision, int output_precision);
+  static int64_t AdjustPrecision(int64_t val, size_t input_precision, size_t output_precision);
   static constexpr int64_t kInternalPrecision = 6; // microseconds
   static constexpr int64_t kMillisecondPrecision = 3; // milliseconds
 };

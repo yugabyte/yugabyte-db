@@ -16,6 +16,7 @@
 #include "yb/encryption/cipher_stream.h"
 #include "yb/encryption/encryption_util.h"
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/endian.h"
 
 #include "yb/util/status_format.h"
@@ -130,16 +131,16 @@ bool BlockAccessCipherStream::UseOpensslCompatibleCounterOverflow() {
 Status BlockAccessCipherStream::EncryptByBlock(
     uint64_t block_index, const Slice& input, void* output,
     EncryptionOverflowWorkaround counter_overflow_workaround) {
-  const uint64_t data_size = input.size();
-  if (data_size == 0) {
+  if (input.size() == 0) {
     return Status::OK();
   }
-  if (data_size > std::numeric_limits<int>::max()) {
+  if (input.size() > implicit_cast<size_t>(std::numeric_limits<int>::max())) {
     return STATUS_FORMAT(InternalError,
                          "Cannot encrypt/decrypt $0 bytes at once (it is more than $1 bytes). "
                          "Encryption block index: $2.",
-                         data_size, std::numeric_limits<int>::max(), block_index);
+                         input.size(), std::numeric_limits<int>::max(), block_index);
   }
+  int data_size = narrow_cast<int>(input.size());
 
   // Set the last 4 bytes of the iv based on counter + block_index.
   uint8_t iv[EncryptionParams::kBlockSize];
@@ -186,7 +187,7 @@ Status BlockAccessCipherStream::EncryptByBlock(
 void BlockAccessCipherStream::IncrementCounter(
     const uint64_t start_idx, uint8_t* iv,
     EncryptionOverflowWorkaround counter_overflow_workaround) {
-  BigEndian::Store32(iv + EncryptionParams::kBlockSize - 4, start_idx);
+  BigEndian::Store32(iv + EncryptionParams::kBlockSize - 4, static_cast<uint32_t>(start_idx));
   if (start_idx <= std::numeric_limits<uint32_t>::max() ||
       (!UseOpensslCompatibleCounterOverflow() && !counter_overflow_workaround)) {
     return;

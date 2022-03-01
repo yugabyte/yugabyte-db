@@ -545,7 +545,7 @@ class SubDocKey {
 
   void RemoveLastSubKey();
 
-  void KeepPrefix(int num_sub_keys_to_keep);
+  void KeepPrefix(size_t num_sub_keys_to_keep);
 
   void remove_hybrid_time() {
     doc_ht_ = DocHybridTime::kInvalid;
@@ -660,7 +660,7 @@ class SubDocKey {
     return doc_key_;
   }
 
-  int num_subkeys() const {
+  size_t num_subkeys() const {
     return subkeys_.size();
   }
 

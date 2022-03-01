@@ -276,7 +276,7 @@ MaintenanceOp* MaintenanceManager::FindBestOp() {
   MaintenanceOp* most_mem_anchored_op = nullptr;
 
   int64_t most_logs_retained_bytes = 0;
-  int64_t most_logs_retained_bytes_ram_anchored = 0;
+  uint64_t most_logs_retained_bytes_ram_anchored = 0;
   MaintenanceOp* most_logs_retained_bytes_op = nullptr;
 
   double best_perf_improvement = 0;
@@ -419,7 +419,8 @@ void MaintenanceManager::GetMaintenanceManagerStatusDump(MaintenanceManagerStatu
     if (!completed_op.name.empty()) {
       MaintenanceManagerStatusPB_CompletedOpPB* completed_pb = out_pb->add_completed_operations();
       completed_pb->set_name(completed_op.name);
-      completed_pb->set_duration_millis(completed_op.duration.ToMilliseconds());
+      completed_pb->set_duration_millis(
+          narrow_cast<int32_t>(completed_op.duration.ToMilliseconds()));
 
       MonoDelta delta(MonoTime::Now().GetDeltaSince(completed_op.start_mono_time));
       completed_pb->set_secs_since_start(delta.ToSeconds());

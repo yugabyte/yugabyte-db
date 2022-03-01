@@ -65,6 +65,7 @@
 
 #include "access/transam.h"
 #include "access/xact.h"
+#include "common/pg_yb_common.h"
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
 #include "mb/pg_wchar.h"
@@ -151,6 +152,8 @@ static int	recursion_depth = 0;	/* to detect actual recursion */
  */
 static struct timeval saved_timeval;
 static bool saved_timeval_set = false;
+
+#define MAX_HOSTNAME_LENGTH 128
 
 #define FORMATTED_TS_LEN 128
 static char formatted_start_time[FORMATTED_TS_LEN];
@@ -2707,6 +2710,67 @@ log_line_prefix(StringInfo buf, ErrorData *edata)
 				else
 					appendStringInfoString(buf, unpack_sql_state(edata->sqlerrcode));
 				break;
+			case 'C': {
+				const char* cloud = YBGetCurrentCloud();
+				if (cloud) {
+					if (padding != 0)
+						appendStringInfo(buf, "%*s", padding, cloud);
+					else
+						appendStringInfoString(buf, cloud);
+				}
+				break;
+			}
+			case 'R': {
+				const char* region = YBGetCurrentRegion();
+				if (region) {
+					if (padding != 0)
+						appendStringInfo(buf, "%*s", padding, region);
+					else
+						appendStringInfoString(buf, region);
+				}
+				break;
+			}
+			case 'Z': {
+				const char* zone = YBGetCurrentZone();
+				if (zone) {
+					if (padding != 0)
+						appendStringInfo(buf, "%*s", padding, zone);
+					else
+						appendStringInfoString(buf, zone);
+				}
+				break;
+			}
+			case 'U': {
+				const char* uuid = YBGetCurrentUUID();
+				if (uuid) {
+					if (padding != 0)
+						appendStringInfo(buf, "%*s", padding, uuid);
+					else
+						appendStringInfoString(buf, uuid);
+				}
+				break;
+			}
+			case 'N': {
+				const char* node = YBGetCurrentMetricNodeName();
+				if (node) {
+					if (padding != 0)
+						appendStringInfo(buf, "%*s", padding, node);
+					else
+						appendStringInfoString(buf, node);
+				}
+				break;
+			}
+			case 'H': {
+				char name[MAX_HOSTNAME_LENGTH];
+				const int ret = gethostname(name, sizeof(name));
+				if (!ret) {
+					if (padding != 0)
+						appendStringInfo(buf, "%*s", padding, name);
+					else
+						appendStringInfoString(buf, name);
+				}
+				break;
+			}
 			default:
 				/* format error - ignore it */
 				break;

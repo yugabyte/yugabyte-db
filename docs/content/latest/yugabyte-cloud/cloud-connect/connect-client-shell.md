@@ -53,22 +53,6 @@ When connecting via Yugabyte Client Shell, ensure you are running the latest ver
   </div>
 </div>
 
-## SSL modes in YSQL
-
-Yugabyte Cloud requires SSL connections. The generated `ysqlsh` shell command and application connection string use the `verify-full` SSL mode by default to verify the cluster’s identity. This mode encrypts the data in transit to ensure a secure connection to your cluster, and prevents man in the middle (MITM) attacks, impersonation attacks, and eavesdropping. Connections using SSL mode `disable` will fail. You can use other SSL modes to connect to clusters as described in the following table.
-
-| sslmode | MITM protection | Notes |
-|---|---|---|
-| allow | No | Effectively works as _require_ (always uses the SSL connection without verification). |
-| prefer | No | Effectively works as _require_ (always uses the SSL connection without verification). |
-| require | No | Uses the SSL connection without verification. You do not need to provide the _sslrootcert_ parameter. |
-| verify-ca | Yes | Uses the SSL connection and verifies that the server certificate is issued by a trusted certificate authority (CA). Requires the _sslrootcert_ parameter with the path to the cluster certificate. |
-| verify-full | Yes | Uses the SSL connection and verifies that the server certificate is issued by a trusted CA and that the requested server host name matches that in the certificate. Requires the _sslrootcert_ parameter with the path to the cluster certificate. |
-
-If you don't provide an `sslmode`, the connection defaults to `prefer`.
-
-For information on SSL modes, refer to [Protection Provided in Different Modes](https://www.postgresql.org/docs/11/libpq-ssl.html#LIBPQ-SSL-PROTECTION) in the PostgreSQL documentation.
-
 ## Connect using psql
 
 To connect using [psql](https://www.postgresql.org/docs/current/app-psql.html), first download the CA certificate for your cluster by clicking **Connect**, selecting **YugabyteDB Client Shell**, and clicking **Download CA Cert**. Then use the following connection string:
@@ -87,6 +71,8 @@ Replace the following:
 - `<DB USER>` with your database username.
 - `yugabyte` with the database name, if you're connecting to a database other than the default (yugabyte).
 - `<ROOT_CERT_PATH>` with the path to the root certificate on your computer.
+
+For information on using other SSL modes, refer to [SSL modes in YSQL](../../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql).
 
 ## Connect using third party clients
 

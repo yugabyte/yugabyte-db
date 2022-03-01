@@ -44,6 +44,12 @@ public class CustomerTaskFormData {
   @ApiModelProperty(value = "Customer task status", example = "Complete")
   public String status;
 
-  @ApiModelProperty(value = "Customer Task details", example = "2.4.3.0 => 2.7.1.1")
+  @ApiModelProperty(value = "Customer task details", example = "2.4.3.0 => 2.7.1.1")
   public JsonNode details;
+
+  @ApiModelProperty(value = "Customer task abortable")
+  public boolean abortable;
+
+  @ApiModelProperty(value = "Customer task retryable")
+  public boolean retryable;
 }

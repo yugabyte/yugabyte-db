@@ -220,7 +220,7 @@ class ColumnSchema {
       case kDescendingNullsLast:
         return "desc nulls last";
     }
-    LOG (FATAL) << "Invalid sorting type: " << sorting_type_;
+    LOG(FATAL) << "Invalid sorting type: " << sorting_type_;
   }
 
   const std::string &name() const {
@@ -466,7 +466,7 @@ class TableProperties {
 class Schema {
  public:
 
-  static const int kColumnNotFound = -1;
+  static const ssize_t kColumnNotFound = -1;
 
   Schema()
     : num_key_columns_(0),
@@ -635,18 +635,18 @@ class Schema {
 
   // Return the column index corresponding to the given column,
   // or kColumnNotFound if the column is not in this schema.
-  int find_column(const GStringPiece col_name) const {
+  ssize_t find_column(const GStringPiece col_name) const {
     auto iter = name_to_index_.find(col_name);
     if (PREDICT_FALSE(iter == name_to_index_.end())) {
       return kColumnNotFound;
     } else {
-      return (*iter).second;
+      return iter->second;
     }
   }
 
   Result<ColumnId> ColumnIdByName(const std::string& name) const;
 
-  Result<int> ColumnIndexByName(GStringPiece col_name) const;
+  Result<ssize_t> ColumnIndexByName(GStringPiece col_name) const;
 
   // Returns true if the schema contains nullable columns
   bool has_nullables() const {
@@ -961,7 +961,7 @@ class Schema {
       // try to lookup the column by ID if present or just by name.
       // Unit tests and Iter-Projections are probably always using the
       // lookup by name. The IDs are generally set by the server on AlterTable().
-      int base_idx;
+      ssize_t base_idx;
       if (use_column_ids) {
         base_idx = base_schema.find_column_by_id(col_ids_[i]);
       } else {
@@ -1018,7 +1018,7 @@ class Schema {
   // Return a stringified version of the first 'num_columns' columns of the
   // row.
   template<class RowType>
-  std::string DebugRowColumns(const RowType& row, int num_columns) const {
+  std::string DebugRowColumns(const RowType& row, size_t num_columns) const {
     std::string ret;
     ret.append("(");
 
@@ -1050,7 +1050,7 @@ class Schema {
   // The map is instrumented with a counting allocator so that we can accurately
   // measure its memory footprint.
   int64_t name_to_index_bytes_ = 0;
-  typedef STLCountingAllocator<std::pair<const GStringPiece, size_t> > NameToIndexMapAllocator;
+  typedef STLCountingAllocator<std::pair<const GStringPiece, size_t>> NameToIndexMapAllocator;
   typedef std::unordered_map<
       GStringPiece,
       size_t,

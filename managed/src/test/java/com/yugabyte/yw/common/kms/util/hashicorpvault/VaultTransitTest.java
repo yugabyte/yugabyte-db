@@ -12,7 +12,7 @@ package com.yugabyte.yw.common.kms.util.hashicorpvault;
 
 import com.yugabyte.yw.common.kms.util.HashicorpEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.KeyType;
-import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultSecretEngineBase.SecretEngineType;
+import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultSecretEngineBase.KMSEngineType;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultSecretEngineBase.VaultOperations;
 import com.yugabyte.yw.common.FakeDBApplication;
 
@@ -68,16 +68,12 @@ public class VaultTransitTest extends FakeDBApplication {
     validPath = "transit/encrypt/key1";
     path =
         VaultSecretEngineBase.buildPath(
-            SecretEngineType.TRANSIT.toString() + "/", VaultOperations.ENCRYPT, "key1");
+            KMSEngineType.TRANSIT.toString() + "/", VaultOperations.ENCRYPT, "key1");
     assertEquals(validPath, path);
 
     validPath = "transit/decrypt/key2";
     path =
-        SecretEngineType.TRANSIT.toString()
-            + "/"
-            + VaultOperations.DECRYPT.toString()
-            + "/"
-            + "key2";
+        KMSEngineType.TRANSIT.toString() + "/" + VaultOperations.DECRYPT.toString() + "/" + "key2";
     assertEquals(validPath, path);
   }
 
@@ -122,7 +118,7 @@ public class VaultTransitTest extends FakeDBApplication {
   public void testCreateAndDeleteNewKey() throws Exception {
     UUID universeUUID = UUID.randomUUID();
     UUID configUUID = UUID.randomUUID();
-    String keyName = "key_" + configUUID.toString() + "_" + universeUUID.toString();
+    String keyName = "key_yugabyte"; // HC_VAULT_EKE_NAME
 
     VaultAccessor vAccessor;
     VaultTransit transitEngine;

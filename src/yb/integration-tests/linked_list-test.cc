@@ -125,7 +125,7 @@ static const int64_t kNoParticularCountExpected = -1;
 class LinkedListTester {
  public:
   LinkedListTester(client::YBClient* client,
-                   client::YBTableName table_name, int num_chains, int num_tablets,
+                   client::YBTableName table_name, uint8_t num_chains, int num_tablets,
                    int num_replicas, bool enable_mutation)
       : verify_projection_({kKeyColumnName, kLinkColumnName, kUpdatedColumnName}),
         table_name_(std::move(table_name)),
@@ -220,7 +220,7 @@ class LinkedListTester {
   client::YBSchema schema_;
   const std::vector<std::string> verify_projection_;
   const client::YBTableName table_name_;
-  const int num_chains_;
+  const uint8_t num_chains_;
   const int num_tablets_;
   const int num_replicas_;
   const bool enable_mutation_;
@@ -423,7 +423,7 @@ class PeriodicWebUIChecker {
     ts_pages.push_back(strings::Substitute("/transactions?tablet_id=$0", tablet_id));
 
     // Generate list of urls for each master and tablet server
-    for (int i = 0; i < cluster.num_masters(); i++) {
+    for (size_t i = 0; i < cluster.num_masters(); i++) {
       for (std::string page : master_pages) {
         urls_.push_back(strings::Substitute(
             "http://$0$1",
@@ -431,7 +431,7 @@ class PeriodicWebUIChecker {
             page));
       }
     }
-    for (int i = 0; i < cluster.num_tablet_servers(); i++) {
+    for (size_t i = 0; i < cluster.num_tablet_servers(); i++) {
       for (std::string page : ts_pages) {
         urls_.push_back(strings::Substitute(
             "http://$0$1",
@@ -488,7 +488,7 @@ class PeriodicWebUIChecker {
 // verification step on the data.
 class LinkedListVerifier {
  public:
-  LinkedListVerifier(int num_chains, bool enable_mutation, int64_t expected,
+  LinkedListVerifier(uint8_t num_chains, bool enable_mutation, int64_t expected,
                      std::vector<int64_t> split_key_ints);
 
   // Start the scan timer. The duration between starting the scan and verifying
@@ -506,7 +506,7 @@ class LinkedListVerifier {
   // Print a summary of the broken links to the log.
   void SummarizeBrokenLinks(const std::vector<int64_t>& broken_links);
 
-  const int num_chains_;
+  const uint8_t num_chains_;
   const int64_t expected_;
   const bool enable_mutation_;
   const std::vector<int64_t> split_key_ints_;
@@ -570,7 +570,7 @@ Status LinkedListTester::LoadLinkedList(
 
   ScopedRowUpdater updater(table);
   std::vector<std::unique_ptr<LinkedListChainGenerator>> chains;
-  for (int i = 0; i < num_chains_; i++) {
+  for (uint8_t i = 0; i < num_chains_; i++) {
     chains.push_back(std::make_unique<LinkedListChainGenerator>(i));
   }
 
@@ -591,7 +591,7 @@ Status LinkedListTester::LoadLinkedList(
     if (deadline < now) {
       LOG(INFO) << "Finished inserting list. Added " << (*written_count) << " in chain";
       LOG(INFO) << "Last entries inserted had keys:";
-      for (int i = 0; i < num_chains_; i++) {
+      for (uint8_t i = 0; i < num_chains_; i++) {
         LOG(INFO) << i << ": " << chains[i]->prev_key();
       }
       return Status::OK();
@@ -665,7 +665,7 @@ void LinkedListTester::DumpInsertHistogram(bool print_flags) {
 // will be logged.
 static void VerifyNoDuplicateEntries(const std::vector<int64_t>& ints, int* errors,
                                      const string& message) {
-  for (int i = 1; i < ints.size(); i++) {
+  for (size_t i = 1; i < ints.size(); i++) {
     if (ints[i] == ints[i - 1]) {
       LOG(ERROR) << message << ": " << ints[i];
       (*errors)++;
@@ -820,7 +820,7 @@ Status LinkedListTester::WaitAndVerify(
 // LinkedListVerifier
 /////////////////////////////////////////////////////////////
 
-LinkedListVerifier::LinkedListVerifier(int num_chains, bool enable_mutation,
+LinkedListVerifier::LinkedListVerifier(uint8_t num_chains, bool enable_mutation,
                                        int64_t expected,
                                        std::vector<int64_t> split_key_ints)
     : num_chains_(num_chains),
@@ -860,7 +860,7 @@ void LinkedListVerifier::SummarizeBrokenLinks(const std::vector<int64_t>& broken
   const int kMaxToLog = 100;
 
   for (int64_t broken : broken_links) {
-    int tablet = std::upper_bound(split_key_ints_.begin(),
+    auto tablet = std::upper_bound(split_key_ints_.begin(),
                                   split_key_ints_.end(),
                                   broken) - split_key_ints_.begin();
     DCHECK_GE(tablet, 0);
@@ -878,7 +878,7 @@ void LinkedListVerifier::SummarizeBrokenLinks(const std::vector<int64_t>& broken
 
   // Summarize the broken links by which tablet they fell into.
   if (!broken_links.empty()) {
-    for (int tablet = 0; tablet < errors_by_tablet.size(); tablet++) {
+    for (size_t tablet = 0; tablet < errors_by_tablet.size(); tablet++) {
       LOG(ERROR) << "Error count for tablet #" << tablet << ": " << errors_by_tablet[tablet];
     }
   }

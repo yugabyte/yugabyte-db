@@ -32,7 +32,7 @@ void StringKeyTestSetup::BuildRowKey(QLWriteRequestPB *req, int64_t key_idx) {
   QLAddStringHashValue(req, buf);
 }
 
-void StringKeyTestSetup::BuildRow(QLWriteRequestPB *req, int64_t key_idx, int32_t val) {
+void StringKeyTestSetup::BuildRow(QLWriteRequestPB *req, int32_t key_idx, int32_t val) {
   BuildRowKey(req, key_idx);
   QLAddInt32ColumnValue(req, kFirstColumnId + 1, key_idx);
   QLAddInt32ColumnValue(req, kFirstColumnId + 2, val);
@@ -51,8 +51,8 @@ string StringKeyTestSetup::FormatDebugRow(int64_t key_idx, int32_t val, bool upd
     buf, key_idx, val);
 }
 
-uint64_t StringKeyTestSetup::GetMaxRows() {
-  return std::numeric_limits<uint64_t>::max() - 1;
+uint32_t StringKeyTestSetup::GetMaxRows() {
+  return std::numeric_limits<uint32_t>::max() - 1;
 }
 
 Schema CompositeKeyTestSetup::CreateSchema() {
@@ -77,18 +77,18 @@ string CompositeKeyTestSetup::FormatDebugRow(int64_t key_idx, int32_t val, bool 
 
 // Slices can be arbitrarily large
 // but in practice tests won't overflow a uint64_t
-uint64_t CompositeKeyTestSetup::GetMaxRows() {
-  return std::numeric_limits<uint64_t>::max() - 1;
+uint32_t CompositeKeyTestSetup::GetMaxRows() {
+  return std::numeric_limits<uint32_t>::max() - 1;
 }
 
-void TabletTestPreBase::InsertTestRows(int64_t first_row,
-                                       int64_t count,
+void TabletTestPreBase::InsertTestRows(int32_t first_row,
+                                       int32_t count,
                                        int32_t val,
                                        TimeSeries *ts) {
   LocalTabletWriter writer(tablet().get());
 
   uint64_t inserted_since_last_report = 0;
-  for (int64_t i = first_row; i < first_row + count; i++) {
+  for (int32_t i = first_row; i < first_row + count; i++) {
     QLWriteRequestPB req;
     BuildRow(&req, i, val);
     CHECK_OK(writer.Write(&req));
@@ -105,7 +105,7 @@ void TabletTestPreBase::InsertTestRows(int64_t first_row,
 }
 
 CHECKED_STATUS TabletTestPreBase::InsertTestRow(LocalTabletWriter* writer,
-                                                int64_t key_idx,
+                                                int32_t key_idx,
                                                 int32_t val) {
   QLWriteRequestPB req;
   req.set_type(QLWriteRequestPB::QL_STMT_INSERT);
@@ -114,8 +114,8 @@ CHECKED_STATUS TabletTestPreBase::InsertTestRow(LocalTabletWriter* writer,
 }
 
 CHECKED_STATUS TabletTestPreBase::UpdateTestRow(LocalTabletWriter* writer,
-                             int64_t key_idx,
-                             int32_t new_val) {
+                                                int32_t key_idx,
+                                                int32_t new_val) {
   QLWriteRequestPB req;
   req.set_type(QLWriteRequestPB::QL_STMT_UPDATE);
   BuildRowKey(&req, key_idx);
@@ -125,7 +125,7 @@ CHECKED_STATUS TabletTestPreBase::UpdateTestRow(LocalTabletWriter* writer,
   return writer->Write(&req);
 }
 
-CHECKED_STATUS TabletTestPreBase::UpdateTestRowToNull(LocalTabletWriter* writer, int64_t key_idx) {
+CHECKED_STATUS TabletTestPreBase::UpdateTestRowToNull(LocalTabletWriter* writer, int32_t key_idx) {
   QLWriteRequestPB req;
   req.set_type(QLWriteRequestPB::QL_STMT_UPDATE);
   BuildRowKey(&req, key_idx);
@@ -133,14 +133,14 @@ CHECKED_STATUS TabletTestPreBase::UpdateTestRowToNull(LocalTabletWriter* writer,
   return writer->Write(&req);
 }
 
-CHECKED_STATUS TabletTestPreBase::DeleteTestRow(LocalTabletWriter* writer, int64_t key_idx) {
+CHECKED_STATUS TabletTestPreBase::DeleteTestRow(LocalTabletWriter* writer, int32_t key_idx) {
   QLWriteRequestPB req;
   req.set_type(QLWriteRequestPB::QL_STMT_DELETE);
   BuildRowKey(&req, key_idx);
   return writer->Write(&req);
 }
 
-void TabletTestPreBase::VerifyTestRows(int64_t first_row, uint64_t expected_count) {
+void TabletTestPreBase::VerifyTestRows(int32_t first_row, int32_t expected_count) {
   auto iter = tablet()->NewRowIterator(client_schema_);
   ASSERT_OK(iter);
 
@@ -190,12 +190,12 @@ CHECKED_STATUS TabletTestPreBase::IterateToStringList(vector<string> *out) {
   return yb::tablet::IterateToStringList(iter->get(), out);
 }
 
-uint64_t TabletTestPreBase::ClampRowCount(uint64_t proposal) const {
-  uint64_t num_rows = min(max_rows_, proposal);
-  if (num_rows < proposal) {
-    LOG(WARNING) << "Clamping max rows to " << num_rows << " to prevent overflow";
+uint32_t TabletTestPreBase::ClampRowCount(uint32_t proposal) const {
+  if (max_rows_ < proposal) {
+    LOG(WARNING) << "Clamping max rows to " << max_rows_ << " to prevent overflow";
+    return max_rows_;
   }
-  return num_rows;
+  return proposal;
 }
 
 } // namespace tablet

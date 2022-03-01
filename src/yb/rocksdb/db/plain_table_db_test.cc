@@ -58,7 +58,7 @@
 using std::unique_ptr;
 
 namespace rocksdb {
-class PlainTableKeyDecoderTest : public testing::Test {};
+class PlainTableKeyDecoderTest : public RocksDBTest {};
 
 TEST_F(PlainTableKeyDecoderTest, ReadNonMmap) {
   std::string tmp;
@@ -112,7 +112,7 @@ TEST_F(PlainTableKeyDecoderTest, ReadNonMmap) {
   }
 }
 
-class PlainTableDBTest : public testing::Test,
+class PlainTableDBTest : public RocksDBTest,
                          public testing::WithParamInterface<bool> {
  protected:
  private:

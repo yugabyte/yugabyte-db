@@ -2132,13 +2132,13 @@ void PrimitiveValue::ToQLValuePB(const PrimitiveValue& primitive_value,
         case MAP: {
           const std::shared_ptr<QLType>& keys_type = type->param_type(0);
           const std::shared_ptr<QLType>& values_type = type->param_type(1);
-          for (int i = 0; i < primitive_value.frozen_val_->size(); i++) {
+          for (size_t i = 0; i < primitive_value.frozen_val_->size(); i++) {
             if (i % 2 == 0) {
               QLValuePB *key = frozen_value->add_elems();
-              PrimitiveValue::ToQLValuePB(primitive_value.frozen_val_->at(i), keys_type, key);
+              PrimitiveValue::ToQLValuePB((*primitive_value.frozen_val_)[i], keys_type, key);
             } else {
               QLValuePB *value = frozen_value->add_elems();
-              PrimitiveValue::ToQLValuePB(primitive_value.frozen_val_->at(i), values_type, value);
+              PrimitiveValue::ToQLValuePB((*primitive_value.frozen_val_)[i], values_type, value);
             }
           }
           return;
@@ -2153,10 +2153,10 @@ void PrimitiveValue::ToQLValuePB(const PrimitiveValue& primitive_value,
           return;
         }
         case USER_DEFINED_TYPE: {
-          for (int i = 0; i < primitive_value.frozen_val_->size(); i++) {
+          for (size_t i = 0; i < primitive_value.frozen_val_->size(); i++) {
             QLValuePB *value = frozen_value->add_elems();
-            PrimitiveValue::ToQLValuePB(primitive_value.frozen_val_->at(i), type->param_type(i),
-                value);
+            PrimitiveValue::ToQLValuePB(
+                (*primitive_value.frozen_val_)[i], type->param_type(i), value);
           }
           return;
         }

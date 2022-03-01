@@ -39,6 +39,7 @@ namespace master {
 
 Result<std::shared_ptr<CDCRpcTasks>> CDCRpcTasks::CreateWithMasterAddrs(
     const std::string& universe_id, const std::string& master_addrs) {
+  // NOTE: This is currently an expensive call (5+ sec). Encountered during Task #10611.
   auto cdc_rpc_tasks = std::make_shared<CDCRpcTasks>();
   std::string dir;
 

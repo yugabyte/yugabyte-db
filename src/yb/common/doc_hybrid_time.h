@@ -32,7 +32,7 @@ constexpr IntraTxnWriteId kMaxWriteId = std::numeric_limits<IntraTxnWriteId>::ma
 // An aggressive upper bound on the length of a DocDB-encoded hybrid time with a write id.
 // This could happen in the degenerate case when all three VarInts in encoded representation of a
 // DocHybridTime take 10 bytes (the maximum length for a VarInt-encoded int64_t).
-constexpr int kMaxBytesPerEncodedHybridTime = 30;
+constexpr size_t kMaxBytesPerEncodedHybridTime = 30;
 
 // This is a point in time before any YugaByte clusters are in production that has a round enough
 // decimal representation when expressed as microseconds since the UNIX epoch.
@@ -115,7 +115,7 @@ class DocHybridTime {
 
   // Stores the encoded size of the DocHybridTime from the end of the given DocDB-encoded
   // key in *encoded_ht_size, and verifies that it is within the allowed limits.
-  static CHECKED_STATUS CheckAndGetEncodedSize(const Slice& encoded_key, int* encoded_ht_size);
+  static CHECKED_STATUS CheckAndGetEncodedSize(const Slice& encoded_key, size_t* encoded_ht_size);
 
   bool is_valid() const { return hybrid_time_.is_valid(); }
 
@@ -130,7 +130,7 @@ class DocHybridTime {
   // 1 and is strictly less than the size of the whole key (encoded_key_size). The latter strict
   // inequality is because we must also leave room for a ValueType::kHybridTime. In practice,
   // the preceding DocKey will also take a non-zero number of bytes.
-  static CHECKED_STATUS CheckEncodedSize(int encoded_ht_size, size_t encoded_key_size);
+  static CHECKED_STATUS CheckEncodedSize(size_t encoded_ht_size, size_t encoded_key_size);
 
   // Retrieves the size of the encode DocHybridTime from the end of the given DocDB-encoded
   // RocksDB key. There is no error checking here. This returns 0 if the slice is empty.

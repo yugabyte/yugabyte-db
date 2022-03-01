@@ -173,7 +173,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTCollectionExpr *expr, QLExpressionPB
       auto field_values = expr->udtype_field_values();
       if (is_frozen) {
         bcall_pb->set_opcode(static_cast<int32_t>(BFOpcode::OPCODE_UDT_FROZEN));
-        for (int i = 0; i < field_values.size(); i++) {
+        for (size_t i = 0; i < field_values.size(); i++) {
           // Add values for all attributes in frozen UDT, including NULL values.
           arg_pb = bcall_pb->add_operands();
           if (field_values[i] != nullptr) {
@@ -183,12 +183,12 @@ CHECKED_STATUS Executor::PTExprToPB(const PTCollectionExpr *expr, QLExpressionPB
 
       } else {
         bcall_pb->set_opcode(static_cast<int32_t>(BFOpcode::OPCODE_UDT_CONSTRUCTOR));
-        for (int i = 0; i < field_values.size(); i++) {
+        for (size_t i = 0; i < field_values.size(); i++) {
           // Add [key, value] pairs to attributes if the value is not NULL.
           if (field_values[i] != nullptr) {
             // Add key.
             arg_pb = bcall_pb->add_operands();
-            arg_pb->mutable_value()->set_int16_value(i);
+            arg_pb->mutable_value()->set_int16_value(narrow_cast<int16_t>(i));
 
             // Add value.
             arg_pb = bcall_pb->add_operands();

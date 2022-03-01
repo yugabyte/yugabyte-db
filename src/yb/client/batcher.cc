@@ -163,7 +163,7 @@ bool Batcher::HasPendingOperations() const {
   return !ops_.empty();
 }
 
-int Batcher::CountBufferedOperations() const {
+size_t Batcher::CountBufferedOperations() const {
   if (state_ == BatcherState::kGatheringOps) {
     return ops_.size();
   } else {
@@ -663,15 +663,15 @@ void Batcher::ProcessWriteResponse(const WriteRpc &rpc, const Status &s) {
     // TODO: handle case where we get one of the more specific TS errors
     // like the tablet not being hosted?
 
-    if (err_pb.row_index() >= rpc.ops().size()) {
+    size_t row_index = err_pb.row_index();
+    if (row_index >= rpc.ops().size()) {
       LOG_WITH_PREFIX(ERROR) << "Received a per_row_error for an out-of-bound op index "
-                             << err_pb.row_index() << " (sent only "
-                             << rpc.ops().size() << " ops)";
+                             << row_index << " (sent only " << rpc.ops().size() << " ops)";
       LOG_WITH_PREFIX(ERROR) << "Response from tablet " << rpc.tablet().tablet_id() << ":\n"
-                 << rpc.resp().DebugString();
+                             << rpc.resp().DebugString();
       continue;
     }
-    shared_ptr<YBOperation> yb_op = rpc.ops()[err_pb.row_index()].yb_op;
+    shared_ptr<YBOperation> yb_op = rpc.ops()[row_index].yb_op;
     VLOG_WITH_PREFIX(1) << "Error on op " << yb_op->ToString() << ": "
                         << err_pb.error().ShortDebugString();
     rpc.ops()[err_pb.row_index()].error = StatusFromPB(err_pb.error());

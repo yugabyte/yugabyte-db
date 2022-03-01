@@ -12,7 +12,7 @@ section: YUGABYTEDB CORE
 menu:
   latest:
     identifier: quick-start
-    weight: 100
+    weight: 5
 ---
 
 {{< note title="Note" >}}

@@ -32,125 +32,176 @@ show_help() {
 yb_build.sh (or "ybd") is the main build tool for Yugabyte Database.
 Usage: ${0##*/} [<options>] [<build_type>] [<target_keywords>] [<yb_env_var_settings>]
 Options:
+
   --help, -h
     Show help.
-  --verbose
-    Show debug output
-  --bash-debug
-    Show detailed debug information for each command executed by this script.
-  --force-run-cmake, --frcm
-    Ensure that we explicitly invoke CMake from this script. CMake may still run as a result of
-    changes made to CMakeLists.txt files if we just invoke make on the CMake-generated Makefile.
-  --force-no-run-cmake, --fnrcm
-    The opposite of --force-run-cmake. Makes sure we do not run CMake.
-  --cmake-only
-    Only run CMake, don't run any other build steps.
+
+Build options:
+
+  --arch <architecture>
+    Build for the given architecture. Currently only relevant for Apple Silicon where we can build
+    for x86_64 and arm64 (no cross-compilation support yet).
+
+  --compiler-type
+    Specify compiler type, e.g. gcc, clang, or a specific version, e.g. gcc10 or clang12.
+  --gcc, --gcc<version>, --clang, --clang<version>
+    A shorter way to achieve the same thing as --compiler-type.
+
+  -j <parallelism>, -j<parallelism>
+    Build using the given number of concurrent jobs (defaults to the number of CPUs).
+
   --clean
     Remove the build directory before building.
   --clean-force, --cf, -cf
     A combination of --clean and --force.
   --clean-thirdparty
     Remove previously built third-party dependencies and rebuild them. Implies --clean.
-  --no-ccache
-    Do not use ccache. Useful when debugging build scripts or compiler/linker options.
-  --clang
-    Use the clang C/C++ compiler.
+  --force, -f, -y
+    Run a clean build without asking for confirmation even if a clean build was recently done.
+
   --skip-build, --sb
     Skip all kinds of build (C++, Java)
   --skip-java-build, --skip-java, --sjb, --sj
     Do not package and install java source code.
-  --java-tests, run-java-tests
-    Run the java unit tests when build is enabled.
-  --static
-    Force a static build.
-  --target, --targets
-    Pass the given target or set of targets to make.
-  --cxx-test <cxx_test_program_name>
-    Build and run the given C++ test program. We run the test using ctest. Specific tests within the
-    test program can be chosen using --gtest_filter.
-  --java-test <java_test_name>
-    Build and run the given Java test. Test name format is e.g.
-    org.yb.loadtester.TestRF1Cluster[#testRF1toRF3].
+  --skip-cxx-build, --scb
+    Skip C++ build. This is useful when repeatedly debugging tests using this tool and not making
+    any changes to the code.
+  --no-postgres, --skip-postgres, --np, --sp
+    Skip PostgreSQL build
+  --no-latest-symlink
+    Disable the creation/overwriting of the "latest" symlink in the build directory.
+  --no-tests
+    Do not build tests
   --no-tcmalloc
     Do not use tcmalloc.
-  --no-rebuild-thirdparty, --nbtp, --nb3p, --nrtp, --nr3p
-    Skip building third-party libraries, even if the thirdparty directory has changed in git.
-  --show-compiler-cmd-line, --sccl
-    Show compiler command line.
-  --{no,skip}-{test-existence-check,check-test-existence}
-    Don't check that all test binaries referenced by CMakeLists.txt files exist.
-  --gtest_filter
-    Use the given filter to select Google Test tests to run. Uses with --cxx-test.
-  --test-args
-    Extra arguments to pass to the test. Used with --cxx-test.
+
+  --clean-postgres
+    Do a clean build of the PostgreSQL subtree.
+  --rebuild-postgres
+    Clean and rebuild PostgeSQL code
+
+  --java-only, --jo
+    Only build Java code
+  --resolve-java-dependencies
+    Force Maven to download all Java dependencies to the local repository
+
+  --target, --targets
+    Pass the given target or set of targets to make.
   --rebuild-file <source_file_to_rebuild>
     The .o file corresponding to the given source file will be deleted from the build directory
     before the build.
   --rebuild-file <target_name>
     Combines --target and --rebuild-file. Currently only works if target name matches the object
     file name to be deleted.
+
+  --cmake-only
+    Only run CMake, don't run any other build steps.
+  --force-run-cmake, --frcm
+    Ensure that we explicitly invoke CMake from this script. CMake may still run as a result of
+    changes made to CMakeLists.txt files if we just invoke make on the CMake-generated Makefile.
+  --force-no-run-cmake, --fnrcm
+    The opposite of --force-run-cmake. Makes sure we do not run CMake.
+  --cmake-args
+    Additional CMake arguments
+  --make
+    Use the Make backend (as opposed to Ninja).
+  --ninja
+    Use the Ninja backend instead of Make for CMake. This provides faster build speed in case
+    most part of the code is already built.
+  --make-ninja-extra-args <extra_args>
+    Extra arguments for the build tool such as Unix Make or Ninja.
+
+  --thirdparty-dir <thirdparty_dir>
+    Use a third-party directory other than <source_tree_root>/thirdparty. This is useful when using
+    multiple build directories with different versions of YB code so we can avoid building
+    third-party code multiple times.
+  --download-thirdparty, --dltp  (This is the default.)
+    Use prebuilt third-party dependencies, downloadable e.g. from a GitHub release. Also records the
+    third-party URL in the build root so that further invocations of yb_build.sh don't reqiure
+    this option (this could be reset by --clean).
+  --no-download-thirdparty|--ndltp)
+    Disable downloading pre-built third-party dependencies.
+  --no-rebuild-thirdparty, --nbtp, --nb3p, --nrtp, --nr3p
+    Skip building third-party libraries, even if the thirdparty directory has changed in git.
+
+  --no-ccache
+    Do not use ccache. Useful when debugging build scripts or compiler/linker options.
+  --static
+    Force a static build.
   --generate-build-debug-scripts, --gen-build-debug-scripts, --gbds
     Specify this to generate one-off shell scripts that could be used to re-run and understand
     failed compilation commands.
+  --write-build-descriptor <build_descriptor_path>
+    Write a "build descriptor" file. A "build descriptor" is a YAML file that provides information
+    about the build root, compiler used, etc.
+  --remote
+    Prefer a remote build on an auto-scaling cluster of build workers. The parallelism is picked
+    automatically based on the current number of build workers.
+  --build-root
+    The build root directory, e.g. build/debug-gcc-dynamic-enterprise. This is used in scripting
+    and is checked against other parameters.
+  --show-compiler-cmd-line, --sccl
+    Show compiler command line.
+  --export-compile-commands, --ccmds
+    Export the C/C++ compilation database. Equivalent to setting YB_EXPORT_COMPILE_COMMANDS to 1.
+  --linuxbrew, --no-linuxbrew
+    Specify in order to do a Linuxbrew based build, or specifically prohibit doing so. This
+    influences the choice of prebuilt third-party archive. This can also be specified using the
+    YB_USE_LINUXBREW environment variable.
+  --cotire
+    Enable precompiled headers using cotire.
+  --static-analyzer
+    Enable Clang static analyzer
+
+Test options:
+
   --ctest
     Runs ctest in the build directory after the build. This is mutually exclusive with --cxx-test.
     This will also skip building Java code, unless --run-java-tests is specified.
   --ctest-args
     Specifies additional arguments to ctest. Implies --ctest.
-  --skip-cxx-build, --scb
-    Skip C++ build. This is useful when repeatedly debugging tests using this tool and not making
-    any changes to the code.
-  --num-repetitions, --num-reps, -n
-    Repeat a C++ test this number of times. This delegates to the repeat_unit_test.sh script.
-  --write-build-descriptor <build_descriptor_path>
-    Write a "build descriptor" file. A "build descriptor" is a YAML file that provides information
-    about the build root, compiler used, etc.
-  --force, -f, -y
-    Run a clean build without asking for confirmation even if a clean build was recently done.
-  -j <parallelism>, -j<parallelism>
-    Build using the given number of concurrent jobs (defaults to the number of CPUs).
-  --remote
-    Prefer a remote build on an auto-scaling cluster of build workers. The parallelism is picked
-    automatically based on the current number of build workers.
-  --thirdparty-dir <thirdparty_dir>
-    Use a third-party directory other than <source_tree_root>/thirdparty. This is useful when using
-    multiple build directories with different versions of YB code so we can avoid building
-    third-party code multiple times.
-  --mvn-opts <maven_options>
-    Specify additional Maven options for Java build/tests.
-  --java-only, --jo
-    Only build Java code
-  --ninja
-    Use the Ninja backend instead of Make for CMake. This provides faster build speed in case
-    most part of the code is already built.
-  --make
-    Use the Make backend (as opposed to Ninja).
-  --build-root
-    The build root directory, e.g. build/debug-gcc-dynamic-enterprise. This is used in scripting
-    and is checked against other parameters.
+
+  --cxx-test <cxx_test_program_name>
+    Build and run the given C++ test program. We run the test using ctest. Specific tests within the
+    test program can be chosen using --gtest_filter.
+  --gtest_filter
+    Use the given filter to select Google Test tests to run. Uses with --cxx-test.
+  --test-args
+    Extra arguments to pass to the test. Used with --cxx-test.
+
+  --sanitizer-extra-options, --extra-sanitizer-options
+    Extra options to pass to ASAN/LSAN/UBSAN/TSAN. See https://goo.gl/VbTjHH for possible values.
+  --sanitizers-enable-coredump
+    When running tests with LLVM sanitizers (ASAN/TSAN/etc.), enable core dump.
+  --sanitizer-verbosity
+    Use the given verbosity value for clang sanitizers. The default is 0.
+
+  --collect-java-tests
+    Collect the set of Java test methods into a file
+  --java-tests, run-java-tests
+    Run the java unit tests when build is enabled.
+  --java-test <java_test_name>
+    Build and run the given Java test. Test name format is e.g.
+    org.yb.loadtester.TestRF1Cluster[#testRF1toRF3].
+  --run-java-test-methods-separately, --rjtms
+    Run each Java test (test method or a parameterized instantiation of a test method) separately
+    as its own top-level Maven invocation, writing output to a separate file.
+
   --python-tests
     Run various Python tests (doctest, unit test) and exit.
-  --shellcheck
-    Check various Bash scripts in the codebase.
-  --java-lint
-    Run a simple shell-based "linter" on our Java code that verifies that we are importing the right
-    methods for assertions and using the right test runners. We exit the script after this step.
-  --cotire
-    Enable precompiled headers using cotire.
-  --cmake-args
-    Additional CMake arguments
+
+  --{no,skip}-{test-existence-check,check-test-existence}
+    Don't check that all test binaries referenced by CMakeLists.txt files exist.
+  --num-repetitions, --num-reps, -n
+    Repeat a C++ test this number of times. This delegates to the repeat_unit_test.sh script.
+  --test-parallelism, --tp N
+    When running tests repeatedly, run up to N instances of the test in parallel. Equivalent to the
+    --parallelism argument of repeat_unit_test.sh.
   --host-for-tests
     Use this host for running tests. Could also be set using the YB_HOST_FOR_RUNNING_TESTS env
     variable.
   --test-timeout-sec
     Test timeout in seconds
-  --sanitizer-extra-options, --extra-sanitizer-options
-    Extra options to pass to ASAN/LSAN/UBSAN/TSAN. See https://goo.gl/VbTjHH for possible values.
-  --sanitizer-verbosity
-    Use the given verbosity value for clang sanitizers. The default is 0.
-  --test-parallelism, --tp N
-    When running tests repeatedly, run up to N instances of the test in parallel. Equivalent to the
-    --parallelism argument of repeat_unit_test.sh.
   --remove-successful-test-logs
     Remove logs after a successful test run.
   --stop-at-failure, --stop-on-failure
@@ -162,57 +213,29 @@ Options:
   --stack-trace-error-status-re, --stesr
     When running tests, print stack traces when error statuses matching the given regex are
     generated. Only works in non-release mode.
-  --clean-postgres
-    Do a clean build of the PostgreSQL subtree.
-  --no-postgres, --skip-postgres, --np, --sp
-    Skip PostgreSQL build
-  --make-ninja-extra-args <extra_args>
-    Extra arguments for the build tool such as Unix Make or Ninja.
-  --run-java-test-methods-separately, --rjtms
-    Run each Java test (test method or a parameterized instantiation of a test method) separately
-    as its own top-level Maven invocation, writing output to a separate file.
-  --rebuild-postgres
-    Clean and rebuild PostgeSQL code
-  --sanitizers-enable-coredump
-    When running tests with LLVM sanitizers (ASAN/TSAN/etc.), enable core dump.
+  --cmake-unit-tests
+    Run our unit tests for CMake code. This should be much faster than running the build.
+  --
+    Pass all arguments after -- to repeat_unit_test.
+
+General options:
+
+  --verbose
+    Show debug output
+  --bash-debug
+    Show detailed debug information for each command executed by this script.
+  --mvn-opts <maven_options>
+    Specify additional Maven options for Java build/tests.
+  --shellcheck
+    Check various Bash scripts in the codebase.
+  --java-lint
+    Run a simple shell-based "linter" on our Java code that verifies that we are importing the right
+    methods for assertions and using the right test runners. We exit the script after this step.
   --extra-daemon-flags, --extra-daemon-args <extra_daemon_flags>
     Extra flags to pass to mini-cluster daemons (master/tserver). Note that bash-style quoting won't
     work here -- they are naively split on spaces.
-  --no-latest-symlink
-    Disable the creation/overwriting of the "latest" symlink in the build directory.
-  --static-analyzer
-    Enable Clang static analyzer
-  --download-thirdparty, --dltp  (This is the default.)
-    Use prebuilt third-party dependencies, downloadable e.g. from a GitHub release. Also records the
-    third-party URL in the build root so that further invocations of yb_build.sh don't reqiure
-    this option (this could be reset by --clean).
-  --no-download-thirdparty|--ndltp)
-    Disable downloading pre-built third-party dependencies.
-  --collect-java-tests
-    Collect the set of Java test methods into a file
-  --resolve-java-dependencies
-    Force Maven to download all Java dependencies to the local repository
   --super-bash-debug
     Log the location of every command executed in this script
-  --no-tests
-    Do not build tests
-  --cmake-unit-tests
-    Run our unit tests for CMake code. This should be much faster than running the build.
-  --compiler-type
-    Specify compiler type, e.g. gcc, clang, or a specific version, e.g. gcc10 or clang12.
-  --gcc, --gcc<version> --clang, --clang<version>
-    A shorter way to achieve the same thing as --compiler-type.
-  --export-compile-commands, --ccmds
-    Export the C/C++ compilation database. Equivalent to setting YB_EXPORT_COMPILE_COMMANDS to 1.
-  --arch <architecture>
-    Build for the given architecture. Currently only relevant for Apple Silicon where we can build
-    for x86_64 and arm64 (no cross-compilation support yet).
-  --linuxbrew, --no-linuxbrew
-    Specify in order to do a Linuxbrew based build, or specifically prohibit doing so. This
-    influences the choice of prebuilt third-party archive. This can also be specified using the
-    YB_USE_LINUXBREW environment variable.
-  --
-    Pass all arguments after -- to repeat_unit_test.
 
 Build types:
   ${VALID_BUILD_TYPES[*]}
@@ -1442,6 +1465,8 @@ fi
 if "$build_cxx" || "$force_run_cmake" || "$cmake_only"; then
   run_cxx_build
 fi
+
+export YB_JAVA_TEST_OFFLINE_MODE=0
 
 # Check if the Java build is needed, and skip Java unit test runs if requested.
 if "$build_java"; then

@@ -33,6 +33,7 @@ import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.ListTabletServersResponse;
 import org.yb.master.CatalogEntityInfo;
+import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class CreateUniverseTest extends UniverseModifyBaseTest {
@@ -193,6 +194,8 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(UNIVERSE_CREATE_TASK_SEQUENCE, subTasksByPosition);
+    taskInfo = TaskInfo.getOrBadRequest(taskInfo.getTaskUUID());
+    taskParams = Json.fromJson(taskInfo.getTaskDetails(), UniverseDefinitionTaskParams.class);
     taskParams.previousTaskUUID = taskInfo.getTaskUUID();
     taskParams.firstTry = false;
     // Retry the task.
@@ -213,6 +216,8 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(UNIVERSE_CREATE_TASK_SEQUENCE, subTasksByPosition);
+    taskInfo = TaskInfo.getOrBadRequest(taskInfo.getTaskUUID());
+    taskParams = Json.fromJson(taskInfo.getTaskDetails(), UniverseDefinitionTaskParams.class);
     taskParams.previousTaskUUID = taskInfo.getTaskUUID();
     taskParams.firstTry = false;
     primaryCluster.userIntent.enableYCQL = true;

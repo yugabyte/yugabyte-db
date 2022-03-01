@@ -11,7 +11,8 @@
 from ybops.cloud.common.method import ListInstancesMethod, CreateInstancesMethod, \
     ProvisionInstancesMethod, DestroyInstancesMethod, AbstractMethod, \
     AbstractAccessMethod, AbstractNetworkMethod, AbstractInstancesMethod, AccessDeleteKeyMethod, \
-    CreateRootVolumesMethod, ReplaceRootVolumeMethod, ChangeInstanceTypeMethod
+    CreateRootVolumesMethod, ReplaceRootVolumeMethod, ChangeInstanceTypeMethod, \
+    UpdateMountedDisksMethod
 from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
 from ybops.cloud.aws.utils import get_yb_sg_name, create_dns_record_set, edit_dns_record_set, \
     delete_dns_record_set, list_dns_record_set, ROOT_VOLUME_LABEL
@@ -259,8 +260,10 @@ class AwsAccessAddKeyMethod(AbstractAccessMethod):
 
     def callback(self, args):
         (private_key_file, public_key_file) = self.validate_key_files(args)
-        self.cloud.add_key_pair(args)
-        print(json.dumps({"private_key": private_key_file, "public_key": public_key_file}))
+        delete_remote = self.cloud.add_key_pair(args)
+        print(json.dumps({"private_key": private_key_file,
+                          "public_key": public_key_file,
+                          "delete_remote": delete_remote}))
 
 
 class AwsAccessDeleteKeyMethod(AccessDeleteKeyMethod):
@@ -482,3 +485,13 @@ class AwsChangeInstanceTypeMethod(ChangeInstanceTypeMethod):
     # We have to use this to uniform accessing host_info for AWS and GCP
     def _host_info(self, args, host_info):
         return host_info
+
+
+class AwsUpdateMountedDisksMethod(UpdateMountedDisksMethod):
+    def __init__(self, base_command):
+        super(AwsUpdateMountedDisksMethod, self).__init__(base_command)
+
+    def add_extra_args(self):
+        super(AwsUpdateMountedDisksMethod, self).add_extra_args()
+        self.parser.add_argument("--volume_type", choices=["gp3", "gp2", "io1"], default="gp2",
+                                 help="Volume type for volumes on EBS-backed instances.")

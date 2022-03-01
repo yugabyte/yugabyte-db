@@ -52,6 +52,7 @@ service CDCService {
       returns (UpdateCdcReplicatedIndexResponsePB);
   rpc BootstrapProducer (BootstrapProducerRequestPB) returns (BootstrapProducerResponsePB);
   rpc GetLatestEntryOpId (GetLatestEntryOpIdRequestPB) returns (GetLatestEntryOpIdResponsePB);
+  rpc GetCDCDBStreamInfo (GetCDCDBStreamInfoRequestPB) returns (GetCDCDBStreamInfoResponsePB);
 }
 
 message CDCErrorPB {
@@ -92,6 +93,17 @@ enum CDCRecordType {
 enum CDCRecordFormat {
   JSON = 1;
   WAL = 2; // Used for 2DC.
+  PROTO = 3; // Used for CDCSDK in case of Debezium
+}
+
+enum CDCRequestSource {
+  XCLUSTER = 1; // Used for 2DC
+  CDCSDK = 2; // Used for CDC
+}
+
+enum CDCCheckpointType {
+  IMPLICIT = 1; // Used for 2DC
+  EXPLICIT = 2; // Used for CDC
 }
 
 message CreateCDCStreamRequestPB {
@@ -99,16 +111,21 @@ message CreateCDCStreamRequestPB {
   optional string table_id = 1;
   optional CDCRecordType record_type = 2 [default = CHANGE];
   optional CDCRecordFormat record_format = 3 [default = JSON];
+  optional string namespace_name = 4;
+  optional CDCRequestSource source_type = 5 [default = XCLUSTER];
+  optional CDCCheckpointType checkpoint_type = 6 [default = IMPLICIT];
 }
 
 message CreateCDCStreamResponsePB {
   optional CDCErrorPB error = 1;
   optional bytes stream_id = 2;
+  optional bytes db_stream_id = 3;
 }
 
 message DeleteCDCStreamRequestPB {
   repeated bytes stream_id = 1;
-  optional bool force = 2 [default = false];
+  optional bool ignore_errors = 2 [default = false];
+  optional bool force_delete = 3 [default = false];
 }
 
 message DeleteCDCStreamResponsePB {
@@ -167,6 +184,7 @@ message CDCRecordPB {
     WRITE = 1;
     DELETE = 2;
     APPLY = 3;
+    SPLIT_OP = 4;
   }
   optional uint64 time = 1;
   optional OperationType operation = 2;
@@ -184,6 +202,9 @@ message CDCRecordPB {
   // If transaction_state.status is APPLYING, then partitions will contain the partition for the
   // tablet being polled.
   optional PartitionPB partition = 9;
+
+  // If operation type is a SPLIT_OP, then include the split request.
+  optional tablet.SplitTabletRequestPB split_tablet_request = 10;
 }
 
 message GetChangesResponsePB {
@@ -238,4 +259,19 @@ message GetLatestEntryOpIdRequestPB {
 message GetLatestEntryOpIdResponsePB {
   optional CDCErrorPB error = 1;
   optional OpIdPB op_id = 2;
+}
+
+message TableInfo {
+  optional bytes stream_id = 1;
+  optional bytes table_id = 2;
+}
+
+message GetCDCDBStreamInfoRequestPB {
+  optional bytes db_stream_id = 1;
+}
+
+message GetCDCDBStreamInfoResponsePB {
+  optional CDCErrorPB error = 1;
+  optional bytes namespace_id = 2;
+  repeated TableInfo table_info = 3;
 }

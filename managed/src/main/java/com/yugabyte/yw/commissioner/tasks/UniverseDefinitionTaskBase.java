@@ -7,7 +7,6 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
@@ -16,12 +15,13 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PrecheckNode;
+import com.yugabyte.yw.commissioner.tasks.subtasks.PreflightNodeCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
-import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
+import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -32,6 +32,7 @@ import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
@@ -154,10 +155,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       if (cluster != null) {
         universeDetails.rootCA = null;
         universeDetails.clientRootCA = null;
-        if (CertificateHelper.isRootCARequired(taskParams)) {
+        if (EncryptionInTransitUtil.isRootCARequired(taskParams)) {
           universeDetails.rootCA = taskParams.rootCA;
         }
-        if (CertificateHelper.isClientRootCARequired(taskParams)) {
+        if (EncryptionInTransitUtil.isClientRootCARequired(taskParams)) {
           universeDetails.clientRootCA = taskParams.clientRootCA;
         }
         universeDetails.upsertPrimaryCluster(cluster.userIntent, cluster.placementInfo);
@@ -1076,8 +1077,20 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
     Set<NodeDetails> nodes = taskParams().getNodesInCluster(cluster.uuid);
     Collection<NodeDetails> nodesToProvision = PlacementInfoUtil.getNodesToProvision(nodes);
+    UserIntent userIntent = cluster.userIntent;
+    Boolean rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
+    Boolean rootCARequired =
+        EncryptionInTransitUtil.isRootCARequired(userIntent, rootAndClientRootCASame);
+    Boolean clientRootCARequired =
+        EncryptionInTransitUtil.isClientRootCARequired(userIntent, rootAndClientRootCASame);
+
     for (NodeDetails currentNode : nodesToProvision) {
-      String preflightStatus = performPreflightCheck(cluster, currentNode);
+      String preflightStatus =
+          performPreflightCheck(
+              cluster,
+              currentNode,
+              rootCARequired ? taskParams().rootCA : null,
+              clientRootCARequired ? taskParams().clientRootCA : null);
       if (preflightStatus != null) {
         failedNodes.put(currentNode.nodeName, preflightStatus);
       }
@@ -1185,6 +1198,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     return wasCallbackRun;
   }
 
+  /** Sets the task params from the DB. */
+  public void fetchTaskDetailsFromDB() {
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(userTaskUUID);
+    taskParams = Json.fromJson(taskInfo.getTaskDetails(), UniverseDefinitionTaskParams.class);
+  }
+
   /**
    * Update the task details for the task info in the DB.
    *
@@ -1203,6 +1222,61 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public static Set<NodeDetails> getNodesInCluster(UUID uuid, Set<NodeDetails> nodes) {
     return nodes.stream().filter(n -> n.isInPlacement(uuid)).collect(Collectors.toSet());
+  }
+
+  // Create preflight node check tasks for on-prem nodes in the cluster and add them to the
+  // SubTaskGroup.
+  private void createPreflightNodeCheckTasks(
+      SubTaskGroup subTaskGroup, Cluster cluster, Set<NodeDetails> nodesToBeProvisioned) {
+    if (cluster.userIntent.providerType == CloudType.onprem) {
+      for (NodeDetails node : nodesToBeProvisioned) {
+        PreflightNodeCheck.Params params = new PreflightNodeCheck.Params();
+        UserIntent userIntent = cluster.userIntent;
+        params.nodeName = node.nodeName;
+        params.deviceInfo = userIntent.deviceInfo;
+        params.azUuid = node.azUuid;
+        params.universeUUID = taskParams().universeUUID;
+        UniverseTaskParams.CommunicationPorts.exportToCommunicationPorts(
+            params.communicationPorts, node);
+        params.extraDependencies.installNodeExporter =
+            taskParams().extraDependencies.installNodeExporter;
+        PreflightNodeCheck task = createTask(PreflightNodeCheck.class);
+        task.initialize(params);
+        subTaskGroup.addTask(task);
+      }
+    }
+  }
+
+  /**
+   * Create preflight node check tasks for on-prem nodes in the universe if the nodes are in
+   * ToBeAdded state.
+   *
+   * @param universe the universe
+   * @param clusters the clusters
+   */
+  public void createPreflightNodeCheckTasks(Universe universe, Collection<Cluster> clusters) {
+    Set<Cluster> onPremClusters =
+        clusters
+            .stream()
+            .filter(cluster -> cluster.userIntent.providerType == CloudType.onprem)
+            .collect(Collectors.toSet());
+    if (onPremClusters.isEmpty()) {
+      return;
+    }
+    SubTaskGroup subTaskGroup = new SubTaskGroup("SetNodeStatus", executor);
+    for (Cluster cluster : onPremClusters) {
+      Set<NodeDetails> nodesToProvision =
+          PlacementInfoUtil.getNodesToProvision(taskParams().getNodesInCluster(cluster.uuid));
+      applyOnNodesWithStatus(
+          universe,
+          nodesToProvision,
+          false,
+          NodeStatus.builder().nodeState(NodeState.ToBeAdded).build(),
+          filteredNodes -> {
+            createPreflightNodeCheckTasks(subTaskGroup, cluster, filteredNodes);
+          });
+    }
+    subTaskGroupQueue.add(subTaskGroup);
   }
 
   /**
@@ -1310,7 +1384,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                 if (!primaryClusterNodes.isEmpty()) {
                   // Override master (on primary cluster only) and tserver flags as necessary.
                   // These are idempotent operations.
-                  createGFlagsOverrideTasks(primaryClusterNodes, ServerType.MASTER);
+                  createGFlagsOverrideTasks(primaryClusterNodes, ServerType.MASTER, isShellMode);
                 }
               }
               createGFlagsOverrideTasks(nodesToBeConfigured, ServerType.TSERVER);

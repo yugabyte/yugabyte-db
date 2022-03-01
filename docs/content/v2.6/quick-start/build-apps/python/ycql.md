@@ -46,8 +46,12 @@ showAsideToc: true
 To install the [Yugabyte Python Driver for YCQL](https://github.com/yugabyte/cassandra-python-driver), run the following command:
 
 ```sh
-$ pip install yb-cassandra-driver
+$ pip3 install yb-cassandra-driver --install-option="--no-cython"
 ```
+
+{{< note title="Note">}}
+The flag `--no-cython` is necessary on MacOS Catalina and further MacOS releases to avoid a failure while building the `yb-cassandra-driver`.
+{{< /note >}}
 
 ## Create a sample Python application
 
@@ -104,7 +108,7 @@ cluster.shutdown()
 To run the application, type the following:
 
 ```sh
-$ python yb-cql-helloworld.py
+$ python3 yb-cql-helloworld.py
 ```
 
 You should see the following output.

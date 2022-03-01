@@ -217,12 +217,12 @@ std::shared_ptr<MemTracker> CreateMemTrackerForServer();
 YB_STRONGLY_TYPED_BOOL(Private);
 
 // Returns public/private address for test server with specified index.
-std::string TEST_RpcAddress(int index, Private priv);
+std::string TEST_RpcAddress(size_t index, Private priv);
 // Returns bind endpoint for test server with specified index and specified port.
-std::string TEST_RpcBindEndpoint(int index, uint16_t port);
+std::string TEST_RpcBindEndpoint(size_t index, uint16_t port);
 
 // Sets up connectivity in test for specified messenger of server with index.
-void TEST_SetupConnectivity(rpc::Messenger* messenger, int index);
+void TEST_SetupConnectivity(rpc::Messenger* messenger, size_t index);
 // Isolates specific messenger, i.e. breaks any of this messengers connections with all other
 // servers.
 void TEST_Isolate(rpc::Messenger* messenger);

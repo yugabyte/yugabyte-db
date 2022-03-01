@@ -3,10 +3,10 @@ title: Using SQLAlchemy with YugabyteDB
 linkTitle: SQLAlchemy
 description: Using SQLAlchemy with YugabyteDB
 aliases:
+section: INTEGRATIONS
 menu:
   latest:
     identifier: sqlalchemy
-    parent: integrations
     weight: 650
 isTocNested: true
 showAsideToc: true

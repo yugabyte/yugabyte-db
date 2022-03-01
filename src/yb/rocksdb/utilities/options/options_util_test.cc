@@ -47,7 +47,7 @@ DEFINE_bool(enable_print, false, "Print options generated to console.");
 #endif  // GFLAGS
 
 namespace rocksdb {
-class OptionsUtilTest : public testing::Test {
+class OptionsUtilTest : public RocksDBTest {
  public:
   OptionsUtilTest() : rnd_(0xFB) {
     env_.reset(new test::StringEnv(Env::Default()));

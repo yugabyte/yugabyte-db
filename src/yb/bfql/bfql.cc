@@ -55,11 +55,11 @@ inline bool IsCompatible(DataType left, DataType right) {
 static bool HasExactTypeSignature(const std::vector<DataType>& signature,
                                   const std::vector<DataType>& actual_types) {
   // Check parameter count.
-  const int formal_count = signature.size();
-  const int actual_count = actual_types.size();
+  const auto formal_count = signature.size();
+  const auto actual_count = actual_types.size();
 
   // Check for exact match.
-  int index;
+  size_t index;
   for (index = 0; index < formal_count; index++) {
     // Check if the signature accept varargs which can be matched with the rest of arguments.
     if (signature[index] == DataType::TYPEARGS) {
@@ -98,11 +98,11 @@ static bool HasExactTypeSignature(const std::vector<DataType>& signature,
 
 static bool HasSimilarTypeSignature(const std::vector<DataType>& signature,
                                     const std::vector<DataType>& actual_types) {
-  const int formal_count = signature.size();
-  const int actual_count = actual_types.size();
+  const auto formal_count = signature.size();
+  const auto actual_count = actual_types.size();
 
   // Check for exact match.
-  int index;
+  size_t index;
   for (index = 0; index < formal_count; index++) {
     // Check if the signature accept varargs which can be matched with the rest of arguments.
     if (signature[index] == DataType::TYPEARGS) {
@@ -139,11 +139,11 @@ static bool HasSimilarTypeSignature(const std::vector<DataType>& signature,
 static bool HasCompatibleTypeSignature(const std::vector<DataType>& signature,
                                        const std::vector<DataType>& actual_types) {
 
-  const int formal_count = signature.size();
-  const int actual_count = actual_types.size();
+  const auto formal_count = signature.size();
+  const auto actual_count = actual_types.size();
 
   // Check for compatible match.
-  int index;
+  size_t index;
   for (index = 0; index < formal_count; index++) {
     // Check if the signature accept varargs which can be matched with the rest of arguments.
     if (signature[index] == DataType::TYPEARGS) {

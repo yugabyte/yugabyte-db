@@ -611,6 +611,24 @@ if [[ $YB_BUILD_JAVA == "1" && $YB_SKIP_BUILD != "1" ]]; then
   log "Finished building Java code (see timing information above)"
 fi
 
+# It is important to do these LTO linking steps before building the package.
+if should_use_lto; then
+  log "Using LTO. Replacing the yb-tserver binary with an LTO-enabled one."
+  log "See below for the file size and linked shared libraries."
+  (
+    set -x
+    "$YB_SRC_ROOT/python/yb/dependency_graph.py" \
+        --build-root "$BUILD_ROOT" \
+        --file-regex "^.*/yb-tserver$" \
+        --lto-output-suffix="" \
+        link-whole-program
+    ls -l "$BUILD_ROOT/bin/yb-tserver"
+    ldd "$BUILD_ROOT/bin/yb-tserver"
+  )
+else
+  log "Not using LTO: YB_COMPILER_TYPE=${YB_COMPILER_TYPE}, build_type=${build_type}"
+fi
+
 # -------------------------------------------------------------------------------------------------
 # Now that that all C++ and Java code has been built, test creating a package.
 #
@@ -740,11 +758,14 @@ if [[ $YB_COMPILE_ONLY != "1" ]]; then
         test_conf_path="$BUILD_ROOT/test_conf.json"
         # YB_GIT_COMMIT_FOR_DETECTING_TESTS allows overriding the commit to use to detect the set
         # of tests to run. Useful when testing this script.
-        "$YB_SRC_ROOT/python/yb/dependency_graph.py" \
-            --build-root "$BUILD_ROOT" \
-            --git-commit "${YB_GIT_COMMIT_FOR_DETECTING_TESTS:-$current_git_commit}" \
-            --output-test-config "$test_conf_path" \
-            affected
+        (
+          set -x
+          "$YB_SRC_ROOT/python/yb/dependency_graph.py" \
+              --build-root "$BUILD_ROOT" \
+              --git-commit "${YB_GIT_COMMIT_FOR_DETECTING_TESTS:-$current_git_commit}" \
+              --output-test-config "$test_conf_path" \
+              affected
+        )
         run_tests_extra_args+=( "--test_conf" "$test_conf_path" )
         unset test_conf_path
       fi

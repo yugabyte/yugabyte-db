@@ -93,7 +93,6 @@
     .add-config-margin {
       margin-bottom: 6px;
     }
-
   }
 
   .btn-add-region {
@@ -146,7 +145,7 @@
       border: 1px solid desaturate($YB_ERROR_TEXT_COLOR, 20%);
     }
 
-    &+.standart-error {
+    & + .standart-error {
       color: $YB_ERROR_TEXT_COLOR;
       display: block;
       margin-top: 5px;
@@ -175,12 +174,12 @@
         }
       }
 
-      &>div:first-child {
+      & > div:first-child {
         padding: 0 10px 0 20px;
         border-radius: 7px 0 0 7px;
       }
 
-      &>div:last-child {
+      & > div:last-child {
         border-radius: 0 7px 7px 0;
         width: 50px;
       }
@@ -193,7 +192,7 @@
           padding-bottom: 6px;
         }
 
-        &>*:first-child * {
+        & > *:first-child * {
           font-weight: 700;
           color: $YB_ORANGE !important;
         }
@@ -218,7 +217,7 @@
         font-weight: 500;
       }
 
-      &>div {
+      & > div {
         display: table-cell;
       }
 
@@ -344,34 +343,33 @@
 
 .config-tabs .nav-tabs {
   @media screen and (max-width: 1620px) {
-    >li {
-      width: calc(100%/7);
+    > li {
+      width: calc(100% / 7);
 
-      >a {
+      > a {
         margin-right: 0px;
       }
     }
   }
 
   @media screen and (min-width: 768px) {
-    >li>a {
+    > li > a {
       min-width: unset;
     }
   }
 
   li:not(.active) {
-
     img,
     svg {
       filter: grayscale(1) brightness(1.2);
     }
 
     :before {
-      filter: sepia(.6);
+      filter: sepia(0.6);
     }
   }
 
-  >li>a {
+  > li > a {
     height: 52px;
     padding: 0 15px;
     display: flex;
@@ -385,12 +383,11 @@
       overflow: hidden;
 
       @media screen and (max-width: 980px) {
-        >span {
+        > span {
           display: none;
         }
       }
     }
-
 
     img {
       height: 28px;
@@ -423,7 +420,7 @@
     }
 
     .tab-logo {
-      font-size: x-large;
+      font-size: medium;
       vertical-align: middle;
       margin-right: 5px;
     }

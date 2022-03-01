@@ -205,7 +205,8 @@ Status LogReader::Init(const string& tablet_wal_path) {
     for (const SegmentSequence::value_type& entry : read_segments) {
       VLOG_WITH_PREFIX(1) << " Log Reader Indexed: " << entry->footer().ShortDebugString();
       // Check that the log segments are in sequence.
-      if (previous_seg_seqno != -1 && entry->header().sequence_number() != previous_seg_seqno + 1) {
+      if (previous_seg_seqno != -1 &&
+          entry->header().sequence_number() != implicit_cast<size_t>(previous_seg_seqno) + 1) {
         return STATUS(Corruption, Substitute("Segment sequence numbers are not consecutive. "
             "Previous segment: seqno $0, path $1; Current segment: seqno $2, path $3",
             previous_seg_seqno, previous_seg_path,
@@ -264,7 +265,8 @@ bool LogReader::ViolatesMinSpacePolicy(const scoped_refptr<ReadableLogSegment>& 
     return false;
   } else {
     uint64_t free_space = *free_space_result;
-    if ((free_space + *potential_reclaimed_space) / 1024 < FLAGS_log_stop_retaining_min_disk_mb) {
+    if (free_space + *potential_reclaimed_space <
+            implicit_cast<size_t>(FLAGS_log_stop_retaining_min_disk_mb) * 1024) {
       YB_LOG_EVERY_N_SECS(WARNING, 300)
           << "Segment " << segment->path() << " violates minimum free space policy "
           << "specified by log_stop_retaining_min_disk_mb: "
@@ -351,8 +353,8 @@ scoped_refptr<ReadableLogSegment> LogReader::GetSegmentBySequenceNumber(int64_t 
   // We always have a contiguous set of log segments, so we can find the requested
   // segment in our vector by calculating its offset vs the first element.
   int64_t first_seqno = segments_[0]->header().sequence_number();
-  int64_t relative = seq - first_seqno;
-  if (relative < 0 || relative >= segments_.size()) {
+  size_t relative = seq - first_seqno;
+  if (relative >= segments_.size()) {
     return nullptr;
   }
 
@@ -499,7 +501,7 @@ Status LogReader::GetSegmentsSnapshot(SegmentSequence* segments) const {
   return Status::OK();
 }
 
-Status LogReader::TrimSegmentsUpToAndIncluding(int64_t segment_sequence_number) {
+Status LogReader::TrimSegmentsUpToAndIncluding(uint64_t segment_sequence_number) {
   std::lock_guard<simple_spinlock> lock(lock_);
   CHECK_EQ(state_, kLogReaderReading);
   auto iter = segments_.begin();
@@ -576,7 +578,7 @@ Status LogReader::AppendEmptySegment(const scoped_refptr<ReadableLogSegment>& se
   return Status::OK();
 }
 
-const int LogReader::num_segments() const {
+size_t LogReader::num_segments() const {
   std::lock_guard<simple_spinlock> lock(lock_);
   return segments_.size();
 }

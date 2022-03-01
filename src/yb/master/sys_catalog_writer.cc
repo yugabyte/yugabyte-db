@@ -181,9 +181,10 @@ Status EnumerateSysCatalog(
 Status EnumerateSysCatalog(
     docdb::DocRowwiseIterator* doc_iter, const Schema& schema, int8_t entry_type,
     const EnumerationCallback& callback) {
-  const int type_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(kSysCatalogTableColType));
-  const int entry_id_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(kSysCatalogTableColId));
-  const int metadata_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(kSysCatalogTableColMetadata));
+  const auto type_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(kSysCatalogTableColType));
+  const auto entry_id_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(kSysCatalogTableColId));
+  const auto metadata_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(
+      kSysCatalogTableColMetadata));
 
   QLConditionPB cond;
   cond.set_op(QL_OP_AND);

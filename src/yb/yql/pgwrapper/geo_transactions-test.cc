@@ -24,16 +24,22 @@
 #include "yb/gutil/strings/join.h"
 
 #include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/catalog_manager.h"
 #include "yb/master/master_defaults.h"
+#include "yb/master/mini_master.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
+DECLARE_int32(ysql_tablespace_info_refresh_secs);
 DECLARE_int32(TEST_nodes_per_cloud);
+DECLARE_bool(enable_ysql_tablespaces_for_placement);
 DECLARE_bool(force_global_transactions);
+DECLARE_bool(auto_create_local_transaction_tables);
 DECLARE_bool(TEST_track_last_transaction);
+DECLARE_bool(TEST_name_transaction_tables_with_tablespace_id);
 DECLARE_string(placement_cloud);
 DECLARE_string(placement_region);
 DECLARE_string(placement_zone);
@@ -47,10 +53,11 @@ namespace {
 YB_DEFINE_ENUM(ExpectedLocality, (kLocal)(kGlobal));
 YB_STRONGLY_TYPED_BOOL(SetGlobalTransactionsGFlag);
 YB_STRONGLY_TYPED_BOOL(SetGlobalTransactionSessionVar);
+YB_STRONGLY_TYPED_BOOL(WaitForHashChange);
 
 constexpr auto kDatabaseName = "yugabyte";
 constexpr auto kTablePrefix = "test";
-const auto kStatusTabletCacheRefreshTimeout = MonoDelta::FromMilliseconds(10000);
+const auto kStatusTabletCacheRefreshTimeout = MonoDelta::FromMilliseconds(20000);
 
 } // namespace
 
@@ -62,6 +69,8 @@ const auto kStatusTabletCacheRefreshTimeout = MonoDelta::FromMilliseconds(10000)
 class GeoTransactionsTest : public pgwrapper::PgMiniTestBase {
  public:
   void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_name_transaction_tables_with_tablespace_id) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql_tablespaces_for_placement) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_track_last_transaction) = true;
     // These don't get set in automatically in tests.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_placement_cloud) = "cloud0";
@@ -69,13 +78,19 @@ class GeoTransactionsTest : public pgwrapper::PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_placement_zone) = "zone";
     // Put everything in the same cloud.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_nodes_per_cloud) = 5;
+    // Reduce time spent waiting for tablespace refresh.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_tablespace_info_refresh_secs) = 1;
+
     pgwrapper::PgMiniTestBase::SetUp();
     client_ = ASSERT_RESULT(cluster_->CreateClient());
     transaction_pool_ = cluster_->mini_tablet_server(0)->server()->TransactionPool();
     transaction_manager_ = cluster_->mini_tablet_server(0)->server()->TransactionManager();
+
+    // Wait for system.transactions to be created.
+    WaitForStatusTabletsVersion(1);
   }
 
-  virtual int NumTabletServers() override {
+  virtual size_t NumTabletServers() override {
     return 3;
   }
 
@@ -97,10 +112,9 @@ class GeoTransactionsTest : public pgwrapper::PgMiniTestBase {
   }
 
   void CreateTransactionTable(int region) {
-    int current_version = transaction_manager_->GetLoadedStatusTabletsVersion();
-    LOG(ERROR) << "TXN" << current_version;
+    auto current_version = transaction_manager_->GetLoadedStatusTabletsVersion();
 
-    std::string name = strings::Substitute("transactions_$0", region);
+    std::string name = strings::Substitute("transactions_region$0", region);
     ASSERT_OK(client_->CreateTransactionsStatusTable(name));
 
     WaitForStatusTabletsVersion(current_version + 1);
@@ -118,69 +132,155 @@ class GeoTransactionsTest : public pgwrapper::PgMiniTestBase {
     WaitForStatusTabletsVersion(current_version + 2);
   }
 
+  void CreateMultiRegionTransactionTable() {
+    auto current_version = transaction_manager_->GetLoadedStatusTabletsVersion();
+
+    std::string name = strings::Substitute("transactions_multiregion");
+    ASSERT_OK(client_->CreateTransactionsStatusTable(name));
+
+    WaitForStatusTabletsVersion(current_version + 1);
+
+    YBTableName table_name(YQL_DATABASE_CQL, yb::master::kSystemNamespaceName, name);
+    auto replicas = new master::PlacementInfoPB;
+    replicas->set_num_replicas(3);
+    auto pb = replicas->add_placement_blocks();
+    pb->mutable_cloud_info()->set_placement_cloud("cloud0");
+    pb->mutable_cloud_info()->set_placement_region("rack1");
+    pb->mutable_cloud_info()->set_placement_zone("zone");
+    pb->set_min_num_replicas(1);
+    pb = replicas->add_placement_blocks();
+    pb->mutable_cloud_info()->set_placement_cloud("cloud0");
+    pb->mutable_cloud_info()->set_placement_region("rack2");
+    pb->mutable_cloud_info()->set_placement_zone("zone");
+    pb->set_min_num_replicas(1);
+    ASSERT_OK(client_->ModifyTablePlacementInfo(table_name, replicas));
+
+    WaitForStatusTabletsVersion(current_version + 2);
+  }
+
   void SetupTables() {
     // Create tablespaces and tables.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = true;
     auto conn = ASSERT_RESULT(Connect());
-    for (int i = 1; i <= NumTabletServers(); ++i) {
-        EXPECT_OK(conn.ExecuteFormat(R"#(
-            CREATE TABLESPACE region$0 WITH (replica_placement='{
-              "num_replicas": 1,
-              "placement_blocks":[{
-                "cloud": "cloud0",
-                "region": "rack$0",
-                "zone": "zone",
-                "min_num_replicas": 1
-              }]
-            }')
-        )#", i));
-        EXPECT_OK(conn.ExecuteFormat(
-            "CREATE TABLE $0$1(value int) TABLESPACE region$1", kTablePrefix, i));
+    bool wait_for_hash = ANNOTATE_UNPROTECTED_READ(FLAGS_auto_create_local_transaction_tables);
+    auto current_version = transaction_manager_->GetLoadedStatusTabletsVersion();
+    for (size_t i = 1; i <= NumTabletServers(); ++i) {
+      ASSERT_OK(conn.ExecuteFormat(R"#(
+          CREATE TABLESPACE tablespace$0 WITH (replica_placement='{
+            "num_replicas": 1,
+            "placement_blocks":[{
+              "cloud": "cloud0",
+              "region": "rack$0",
+              "zone": "zone",
+              "min_num_replicas": 1
+            }]
+          }')
+      )#", i));
+      ASSERT_OK(conn.ExecuteFormat(
+          "CREATE TABLE $0$1(value int) TABLESPACE tablespace$1", kTablePrefix, i));
+
+      if (wait_for_hash) {
+        WaitForStatusTabletsVersion(current_version + 1);
+        ++current_version;
+      }
     }
   }
 
-  std::vector<TabletId> GetStatusTablets(int region, bool global) {
+  void DropTables() {
+    // Drop tablespaces and tables.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = true;
+    auto conn = ASSERT_RESULT(Connect());
+    bool wait_for_hash = ANNOTATE_UNPROTECTED_READ(FLAGS_auto_create_local_transaction_tables);
+    uint64_t current_version = transaction_manager_->GetLoadedStatusTabletsVersion();
+    for (size_t i = 1; i <= NumTabletServers(); ++i) {
+      auto table_id = ASSERT_RESULT(GetTableIdForRegion(i));
+      ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0$1", kTablePrefix, i));
+      ASSERT_OK(conn.ExecuteFormat("DROP TABLESPACE tablespace$0", i));
+
+      if (wait_for_hash) {
+        WaitForStatusTabletsVersion(current_version + 1);
+        ++current_version;
+      }
+    }
+  }
+
+  Result<TableId> GetTableIdForRegion(size_t region) {
+    auto conn = VERIFY_RESULT(Connect());
+    uint32_t database_oid = VERIFY_RESULT(conn.FetchValue<int32_t>(strings::Substitute(
+        "SELECT oid FROM pg_catalog.pg_database WHERE datname = '$0'", kDatabaseName)));
+    uint32_t table_oid = VERIFY_RESULT(conn.FetchValue<int32_t>(strings::Substitute(
+        "SELECT oid FROM pg_catalog.pg_class WHERE relname = '$0$1'", kTablePrefix, region)));
+    return GetPgsqlTableId(database_oid, table_oid);
+  }
+
+  Result<uint32_t> GetTablespaceOidForRegion(int region) {
+    auto conn = EXPECT_RESULT(Connect());
+    uint32_t tablespace_oid = EXPECT_RESULT(conn.FetchValue<int32_t>(strings::Substitute(
+        "SELECT oid FROM pg_catalog.pg_tablespace WHERE spcname = 'tablespace$0'", region)));
+    return tablespace_oid;
+  }
+
+  Result<std::vector<TabletId>> GetStatusTablets(int region, bool global) {
     YBTableName table_name;
     if (global) {
       table_name = YBTableName(
           YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
+    } else if (ANNOTATE_UNPROTECTED_READ(FLAGS_auto_create_local_transaction_tables)) {
+      auto tablespace_oid = EXPECT_RESULT(GetTablespaceOidForRegion(region));
+      table_name = YBTableName(
+          YQL_DATABASE_CQL, master::kSystemNamespaceName,
+          yb::Format("transactions_$0", tablespace_oid));
     } else {
       table_name = YBTableName(
           YQL_DATABASE_CQL, master::kSystemNamespaceName,
-          yb::Format("transactions_$0", region));
+          yb::Format("transactions_region$0", region));
     }
     std::vector<TabletId> tablet_uuids;
-    EXPECT_OK(client_->GetTablets(
+    RETURN_NOT_OK(client_->GetTablets(
         table_name, 1000 /* max_tablets */, &tablet_uuids, nullptr /* ranges */));
     return tablet_uuids;
   }
 
   void CheckInsert(int to_region, SetGlobalTransactionsGFlag set_global_transactions_gflag,
                    SetGlobalTransactionSessionVar session_var, ExpectedLocality expected) {
-    auto expected_status_tablets = GetStatusTablets(
-        to_region, expected != ExpectedLocality::kLocal);
+    auto expected_status_tablets = ASSERT_RESULT(GetStatusTablets(
+        to_region, expected != ExpectedLocality::kLocal));
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) =
         (set_global_transactions_gflag == SetGlobalTransactionsGFlag::kTrue);
 
     auto conn = ASSERT_RESULT(Connect());
-    EXPECT_OK(conn.ExecuteFormat("SET force_global_transaction = $0", ToString(session_var)));
-    EXPECT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
-    EXPECT_OK(conn.ExecuteFormat("INSERT INTO $0$1(value) VALUES (0)", kTablePrefix, to_region));
-    EXPECT_OK(conn.CommitTransaction());
+    ASSERT_OK(conn.ExecuteFormat("SET force_global_transaction = $0", ToString(session_var)));
+    ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0$1(value) VALUES (0)", kTablePrefix, to_region));
+    ASSERT_OK(conn.CommitTransaction());
 
     auto last_transaction = transaction_pool_->GetLastTransaction();
     auto metadata = last_transaction->GetMetadata().get();
-    EXPECT_OK(metadata);
+    ASSERT_OK(metadata);
     ASSERT_FALSE(expected_status_tablets.empty());
     ASSERT_TRUE(std::find(expected_status_tablets.begin(),
                           expected_status_tablets.end(),
                           metadata->status_tablet) != expected_status_tablets.end());
   }
 
-  void WaitForStatusTabletsVersion(int version) {
+  void CheckAbort(int to_region, SetGlobalTransactionsGFlag set_global_transactions_gflag,
+                  SetGlobalTransactionSessionVar session_var, size_t num_aborts) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) =
+        (set_global_transactions_gflag == SetGlobalTransactionsGFlag::kTrue);
+
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.ExecuteFormat("SET force_global_transaction = $0", ToString(session_var)));
+    for (size_t i = 0; i < num_aborts; ++i) {
+      ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+      ASSERT_NOK(conn.ExecuteFormat("INSERT INTO $0$1(value) VALUES (0)", kTablePrefix, to_region));
+      ASSERT_OK(conn.RollbackTransaction());
+    }
+  }
+
+  void WaitForStatusTabletsVersion(uint64_t version) {
     constexpr auto error =
         "Timed out waiting for transaction manager to update status tablet cache version to $0";
-    EXPECT_OK(WaitFor(
+    ASSERT_OK(WaitFor(
         [this, version] {
             return transaction_manager_->GetLoadedStatusTabletsVersion() == version;
         },
@@ -195,6 +295,7 @@ class GeoTransactionsTest : public pgwrapper::PgMiniTestBase {
 };
 
 TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionTabletSelection)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = false;
   SetupTables();
 
   // No local transaction tablets yet.
@@ -261,6 +362,118 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionTabletSelecti
   CheckInsert(
       1, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
       ExpectedLocality::kLocal);
+  CheckAbort(
+      2, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      1 /* num_aborts */);
+  CheckInsert(
+      1, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kGlobal);
+  CheckInsert(
+      2, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kGlobal);
+  CheckInsert(
+      1, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
+      ExpectedLocality::kGlobal);
+  CheckInsert(
+      2, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
+      ExpectedLocality::kGlobal);
+  CheckInsert(
+      1, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      ExpectedLocality::kGlobal);
+  CheckInsert(
+      2, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      ExpectedLocality::kGlobal);
+}
+
+TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestNonlocalAbort)) {
+  constexpr size_t kNumAborts = 1000;
+
+  SetupTables();
+
+  CheckInsert(
+      2, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      ExpectedLocality::kGlobal);
+
+  // Create region 1 local transaction table.
+  CreateTransactionTable(1);
+
+  CheckAbort(
+      2, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse, kNumAborts);
+}
+
+TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestMultiRegionTransactionTable)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = false;
+
+  SetupTables();
+
+  CreateMultiRegionTransactionTable();
+
+  // Should be treated the same as no transaction table.
+  CheckInsert(
+      1, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kGlobal);
+  CheckInsert(
+      2, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kGlobal);
+  CheckInsert(
+      1, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kGlobal);
+  CheckInsert(
+      2, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kGlobal);
+  CheckInsert(
+      1, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
+      ExpectedLocality::kGlobal);
+  CheckInsert(
+      2, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
+      ExpectedLocality::kGlobal);
+  CheckInsert(
+      1, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      ExpectedLocality::kGlobal);
+  CheckInsert(
+      2, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      ExpectedLocality::kGlobal);
+}
+
+TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestAutomaticLocalTransactionTableCreation)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = true;
+  SetupTables();
+
+  // The case of connecting to TS2 with force_global_transactions = false will error out
+  // because it is a global transaction, see #10537.
+  CheckInsert(
+      1, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kLocal);
+  CheckInsert(
+      1, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kGlobal);
+  CheckInsert(
+      2, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kGlobal);
+  CheckInsert(
+      1, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
+      ExpectedLocality::kGlobal);
+  CheckInsert(
+      2, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
+      ExpectedLocality::kGlobal);
+  CheckInsert(
+      1, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      ExpectedLocality::kGlobal);
+  CheckInsert(
+      2, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      ExpectedLocality::kGlobal);
+
+  DropTables();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = false;
+  SetupTables();
+
+  // Transaction tables created earlier should no longer have a placement and should be unused.
+  CheckInsert(
+      1, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kGlobal);
+  CheckInsert(
+      2, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kGlobal);
   CheckInsert(
       1, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
       ExpectedLocality::kGlobal);

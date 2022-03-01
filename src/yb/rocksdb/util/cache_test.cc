@@ -32,6 +32,7 @@
 
 #include "yb/util/string_util.h"
 #include "yb/util/test_macros.h"
+#include "yb/rocksdb/util/testutil.h"
 
 DECLARE_double(cache_single_touch_ratio);
 
@@ -52,7 +53,7 @@ static int DecodeValue(void* v) {
   return static_cast<int>(reinterpret_cast<uintptr_t>(v));
 }
 
-class CacheTest : public testing::Test {
+class CacheTest : public RocksDBTest {
  public:
   static CacheTest* current_;
 

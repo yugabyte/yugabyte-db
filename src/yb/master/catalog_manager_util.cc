@@ -174,16 +174,31 @@ bool CatalogManagerUtil::IsCloudInfoEqual(const CloudInfoPB& lhs, const CloudInf
           lhs.placement_zone() == rhs.placement_zone());
 }
 
-Status CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(const PlacementInfoPB& placement_info,
-                                                             const CloudInfoPB& cloud_info) {
+bool CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(const PlacementInfoPB& placement_info,
+                                                           const CloudInfoPB& cloud_info) {
   for (const auto& placement_block : placement_info.placement_blocks()) {
     if (IsCloudInfoEqual(placement_block.cloud_info(), cloud_info)) {
-      return Status::OK();
+      return true;
     }
   }
-  return STATUS_SUBSTITUTE(InvalidArgument, "Placement info $0 does not contain cloud info $1",
-                           placement_info.DebugString(),
-                           TSDescriptor::generate_placement_id(cloud_info));
+  return false;
+}
+
+bool CatalogManagerUtil::DoesPlacementInfoSpanMultipleRegions(
+    const PlacementInfoPB& placement_info) {
+  int num_blocks = placement_info.placement_blocks_size();
+  if (num_blocks < 2) {
+    return false;
+  }
+  const auto& first_block = placement_info.placement_blocks(0).cloud_info();
+  for (int i = 1; i < num_blocks; ++i) {
+    const auto& cur_block = placement_info.placement_blocks(i).cloud_info();
+    if (first_block.placement_cloud() != cur_block.placement_cloud() ||
+        first_block.placement_region() != cur_block.placement_region()) {
+      return true;
+    }
+  }
+  return false;
 }
 
 Result<std::string> CatalogManagerUtil::GetPlacementUuidFromRaftPeer(
@@ -200,7 +215,7 @@ Result<std::string> CatalogManagerUtil::GetPlacementUuidFromRaftPeer(
       std::vector<std::string> placement_uuid_matches;
       for (const auto& placement_info : replication_info.read_replicas()) {
         if (CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(
-            placement_info, peer.cloud_info()).ok()) {
+            placement_info, peer.cloud_info())) {
           placement_uuid_matches.push_back(placement_info.placement_uuid());
         }
       }
@@ -224,6 +239,9 @@ Result<std::string> CatalogManagerUtil::GetPlacementUuidFromRaftPeer(
 
 CHECKED_STATUS CatalogManagerUtil::CheckIfCanDeleteSingleTablet(
     const scoped_refptr<TabletInfo>& tablet) {
+  static const auto stringify_partition_key = [](const Slice& key) {
+    return key.empty() ? "{empty}" : key.ToDebugString();
+  };
   const auto& tablet_id = tablet->tablet_id();
 
   const auto tablet_lock = tablet->LockForRead();
@@ -261,8 +279,9 @@ CHECKED_STATUS CatalogManagerUtil::CheckIfCanDeleteSingleTablet(
       return STATUS_FORMAT(
           IllegalState,
           "Can't delete tablet $0 not covered by child tablets. Partition gap: $1 ... $2",
-          tablet_id, Slice(partition_key).ToDebugString(),
-          Slice(inner_partition.partition_key_start()).ToDebugString());
+          tablet_id,
+          stringify_partition_key(partition_key),
+          stringify_partition_key(inner_partition.partition_key_start()));
     }
     partition_key = inner_partition.partition_key_end();
     if (!partition.partition_key_end().empty() && partition_key >= partition.partition_key_end()) {
@@ -273,8 +292,9 @@ CHECKED_STATUS CatalogManagerUtil::CheckIfCanDeleteSingleTablet(
     return STATUS_FORMAT(
         IllegalState,
         "Can't delete tablet $0 not covered by child tablets. Partition gap: $1 ... $2",
-        tablet_id, Slice(partition_key).ToDebugString(),
-        Slice(partition.partition_key_end()).ToDebugString());
+        tablet_id,
+        stringify_partition_key(partition_key),
+        stringify_partition_key(partition.partition_key_end()));
   }
   return Status::OK();
 }
@@ -379,6 +399,21 @@ CHECKED_STATUS CatalogManagerUtil::IsPlacementInfoValid(const PlacementInfoPB& p
     }
   }
   return Status::OK();
+}
+
+bool CMPerTableLoadState::CompareLoads(const TabletServerId &ts1, const TabletServerId &ts2) {
+  if (per_ts_load_[ts1] != per_ts_load_[ts2]) {
+    return per_ts_load_[ts1] < per_ts_load_[ts2];
+  }
+  if (global_load_state_->GetGlobalLoad(ts1) == global_load_state_->GetGlobalLoad(ts2)) {
+    return ts1 < ts2;
+  }
+  return global_load_state_->GetGlobalLoad(ts1) < global_load_state_->GetGlobalLoad(ts2);
+}
+
+void CMPerTableLoadState::SortLoad() {
+  Comparator comp(this);
+  std::sort(sorted_load_.begin(), sorted_load_.end(), comp);
 }
 
 } // namespace master

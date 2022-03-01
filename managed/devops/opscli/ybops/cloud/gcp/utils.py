@@ -605,10 +605,12 @@ class GoogleCloudAdmin():
     def delete_instance(self, region, zone, instance_name, has_static_ip=False):
         if has_static_ip:
             address = "ip-" + instance_name
-            logging.info("Deleting static ip {} attached to VM {}".format(address, instance_name))
+            logging.info("[app] Deleting static ip {} attached to VM {}".format(
+                address, instance_name))
             self.compute.addresses().delete(
                 project=self.project, region=region, address=address).execute()
-            logging.info("Deleted static ip {} attached to VM {}".format(address, instance_name))
+            logging.info("[app] Deleted static ip {} attached to VM {}".format(
+                address, instance_name))
         operation = self.compute.instances().delete(
             project=self.project, zone=zone, instance=instance_name).execute()
         self.waiter.wait(operation, zone=zone)
@@ -677,9 +679,9 @@ class GoogleCloudAdmin():
     def get_instances(self, zone, instance_name, get_all=False, filters=None):
         # TODO: filter should work to do (zone eq args.zone), but it doesn't right now...
         if not filters:
-            filters = "(status eq RUNNING)"
+            filters = "(status = \"RUNNING\")"
         if instance_name is not None:
-            filters += " (name eq {})".format(instance_name)
+            filters += " AND (name = \"{}\")".format(instance_name)
         instances = self.compute.instances().aggregatedList(
             project=self.project,
             filter=filters,
@@ -712,12 +714,14 @@ class GoogleCloudAdmin():
             if data.get("networkInterfaces"):
                 interface = data.get("networkInterfaces")
                 if len(interface):
+                    # Interface names are of form
+                    # nic0, nic1, nic2, etc.
                     for i in interface:
-                        # Interface names are of form
-                        # nic0, nic1, nic2, etc.
+                        # This will only be true for one of the NICs.
+                        access_config = i.get("accessConfigs", [None])[0]
+                        if access_config:
+                            public_ip = access_config.get("natIP")
                         if i.get("name") == 'nic0':
-                            access_config = i.get("accessConfigs", [None])[0]
-                            public_ip = access_config.get("natIP") if access_config else None
                             private_ip = i.get("networkIP")
                             primary_subnet = i.get("subnetwork").split("/")[-1]
                         elif i.get("name") == 'nic1':
@@ -770,7 +774,8 @@ class GoogleCloudAdmin():
             boot_disk_init_params["diskSizeGb"] = boot_disk_size_gb
         boot_disk_json["initializeParams"] = boot_disk_init_params
 
-        access_configs = [{"natIP": None}] if assign_public_ip else None
+        access_configs = [{"natIP": None}
+                          ] if assign_public_ip and not cloud_subnet_secondary else None
 
         if assign_static_public_ip:
             # Create external static ip.
@@ -824,7 +829,7 @@ class GoogleCloudAdmin():
         # Attach a secondary network interface if present.
         if cloud_subnet_secondary:
             body["networkInterfaces"].append({
-                "accessConfigs": None,
+                "accessConfigs": [{"natIP": None}],
                 "subnetwork": "projects/{}/regions/{}/subnetworks/{}".format(
                     host_project, region, cloud_subnet_secondary)
             })
@@ -876,9 +881,9 @@ class GoogleCloudAdmin():
     def get_console_output(self, zone, instance_name):
         try:
             return self.compute.instances().getSerialPortOutput(
-                        project=self.project,
-                        zone=zone,
-                        instance=instance_name).execute().get('contents', '')
+                project=self.project,
+                zone=zone,
+                instance=instance_name).execute().get('contents', '')
         except HttpError:
             logging.exception('Failed to get console output from {}'.format(instance_name))
             return ''

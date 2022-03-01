@@ -10,7 +10,10 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.api.client.util.Throwables;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Sets;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.DrainableMap;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.password.RedactingService;
@@ -19,6 +22,7 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.prometheus.client.CollectorRegistry;
@@ -124,7 +128,7 @@ public class TaskExecutor {
   private final ExecutorServiceProvider executorServiceProvider;
 
   // A map from task UUID to its RunnableTask while it is running.
-  private final Map<UUID, RunnableTask> runnableTasks = new ConcurrentHashMap<>();
+  private final DrainableMap<UUID, RunnableTask> runnableTasks = new DrainableMap<>();
 
   // A utility for Platform HA.
   private final PlatformReplicationManager replicationManager;
@@ -132,6 +136,9 @@ public class TaskExecutor {
   private final AtomicBoolean isShutdown = new AtomicBoolean();
 
   private final String taskOwner;
+
+  // Skip or perform abortable check for subtasks.
+  private final boolean skipSubTaskAbortableCheck;
 
   private static final String COMMISSIONER_TASK_WAITING_SEC_METRIC =
       "ybp_commissioner_task_waiting_sec";
@@ -196,6 +203,35 @@ public class TaskExecutor {
         .observe(getDurationSeconds(startTime, endTime));
   }
 
+  static Class<? extends ITask> getTaskClass(TaskType taskType) {
+    checkNotNull(taskType, "Task type must be non-null");
+    return TASK_TYPE_TO_CLASS_MAP.get(taskType);
+  }
+
+  // It looks for the annotation starting from the current class to its super classes until it
+  // finds. If it is not found, it returns false, else the value of enabled is returned. It is
+  // possible to override an annotation already defined in the superclass.
+  static boolean isTaskAbortable(Class<? extends ITask> taskClass) {
+    checkNotNull(taskClass, "Task class must be non-null");
+    Optional<Abortable> optional = CommonUtils.isAnnotatedWith(taskClass, Abortable.class);
+    if (optional.isPresent()) {
+      return optional.get().enabled();
+    }
+    return false;
+  }
+
+  // It looks for the annotation starting from the current class to its super classes until it
+  // finds. If it is not found, it returns false, else the value of enabled is returned. It is
+  // possible to override an annotation already defined in the superclass.
+  static boolean isTaskRetryable(Class<? extends ITask> taskClass) {
+    checkNotNull(taskClass, "Task class must be non-null");
+    Optional<Retryable> optional = CommonUtils.isAnnotatedWith(taskClass, Retryable.class);
+    if (optional.isPresent()) {
+      return optional.get().enabled();
+    }
+    return false;
+  }
+
   @Inject
   public TaskExecutor(
       ApplicationLifecycle lifecycle,
@@ -204,6 +240,7 @@ public class TaskExecutor {
     this.executorServiceProvider = executorServiceProvider;
     this.replicationManager = replicationManager;
     this.taskOwner = Util.getHostname();
+    this.skipSubTaskAbortableCheck = true;
     lifecycle.addStopHook(
         () ->
             CompletableFuture.supplyAsync(() -> TaskExecutor.this.shutdown(Duration.ofMinutes(5))));
@@ -213,29 +250,26 @@ public class TaskExecutor {
   // It assumes that the executor services will
   // also be shutdown gracefully.
   public boolean shutdown(Duration timeout) {
-    if (!isShutdown.compareAndSet(false, true)) {
-      return false;
-    }
-    Instant abortTime = Instant.now();
-    runnableTasks.forEach(
-        (uuid, runnable) -> {
-          runnable.setAbortTime(abortTime);
-        });
-    // TODO replace with wait-notify to be notified when the runnableTasks is empty.
-    while (!runnableTasks.isEmpty()) {
-      try {
-        Thread.sleep(TASK_SPIN_WAIT_INTERVAL_MS);
-      } catch (InterruptedException e) {
-        return false;
-      }
-      if (timeout != null && !timeout.isZero()) {
-        Duration elapsed = Duration.between(abortTime, Instant.now());
-        if (elapsed.compareTo(timeout) > 0) {
-          return false;
-        }
+    if (isShutdown.compareAndSet(false, true)) {
+      log.info("TaskExecutor is shutting down");
+      runnableTasks.sealMap();
+      Instant abortTime = Instant.now();
+      synchronized (runnableTasks) {
+        runnableTasks.forEach(
+            (uuid, runnable) -> {
+              runnable.setAbortTime(abortTime);
+            });
       }
     }
-    return true;
+    try {
+      // Wait for all the RunnableTask to be done.
+      // A task in runnableTasks map is removed when it is cancelled due to executor shutdown or
+      // when it is completed.
+      return runnableTasks.waitForEmpty(timeout);
+    } catch (InterruptedException e) {
+      log.error("Wait for task completion interrupted", e);
+    }
+    return false;
   }
 
   private void checkTaskExecutorState() {
@@ -347,7 +381,7 @@ public class TaskExecutor {
     }
     RunnableTask runnableTask = optional.get();
     ITask task = runnableTask.task;
-    if (!task.isAbortable()) {
+    if (!isTaskAbortable(task.getClass())) {
       throw new RuntimeException("Task " + task.getName() + " is not abortable");
     }
     // Signal abort to the task.
@@ -494,22 +528,10 @@ public class TaskExecutor {
       return executorService;
     }
 
-    private void setParentRunnableTask(RunnableTask runnableTask) {
+    private void setRunnableTaskContext(RunnableTask runnableTask, int position) {
       this.runnableTask = runnableTask;
       for (RunnableSubTask runnable : subTasks) {
-        runnable.setParentRunnableTask(runnableTask);
-      }
-    }
-
-    private void setPosition(int position) {
-      for (RunnableSubTask runnable : subTasks) {
-        runnable.setPosition(position);
-      }
-    }
-
-    private void saveSubTasks() {
-      for (RunnableSubTask runnable : subTasks) {
-        runnable.saveTask();
+        runnable.setRunnableTaskContext(runnableTask, position);
       }
     }
 
@@ -558,12 +580,17 @@ public class TaskExecutor {
             Duration timeout = runnableSubTask.getTimeLimit();
             Instant abortTime = runnableTask.getAbortTime();
             // If the subtask execution takes long, it is interrupted.
-            if ((!timeout.isZero() && elapsed.compareTo(timeout) > 0)
-                || (abortTime != null
-                    && Duration.between(abortTime, Instant.now()).compareTo(defaultAbortTaskTimeout)
-                        > 0
-                    && runnableSubTask.task.isAbortable())) {
+            if (!timeout.isZero() && elapsed.compareTo(timeout) > 0) {
+              // Report failure to the parent task.
               t = e;
+            } else if (abortTime != null
+                && Duration.between(abortTime, Instant.now()).compareTo(defaultAbortTaskTimeout) > 0
+                && (skipSubTaskAbortableCheck
+                    || isTaskAbortable(runnableSubTask.task.getClass()))) {
+              // Report aborted to the parent task.
+              t = new CancellationException(e.getMessage());
+            }
+            if (t != null) {
               future.cancel(true);
               // Update the subtask state to aborted if the execution timed out.
               runnableSubTask.setTaskState(TaskInfo.State.Aborted);
@@ -571,6 +598,10 @@ public class TaskExecutor {
             }
           } catch (CancellationException e) {
             t = e;
+            runnableSubTask.setTaskState(TaskInfo.State.Aborted);
+            runnableSubTask.updateTaskDetailsOnError(e);
+          } catch (InterruptedException e) {
+            t = new CancellationException(e.getMessage());
             runnableSubTask.setTaskState(TaskInfo.State.Aborted);
             runnableSubTask.updateTaskDetailsOnError(e);
           } catch (Exception e) {
@@ -719,9 +750,12 @@ public class TaskExecutor {
       return taskInfo.getTaskUUID();
     }
 
+    // This is invoked from tasks to save the updated task details generally in transaction with
+    // other DB updates.
     public synchronized void setTaskDetails(JsonNode taskDetails) {
+      taskInfo.refresh();
       taskInfo.setTaskDetails(taskDetails);
-      taskInfo.save();
+      taskInfo.update();
     }
 
     protected abstract Instant getAbortTime();
@@ -740,10 +774,6 @@ public class TaskExecutor {
       return taskInfo.getTaskType();
     }
 
-    synchronized void saveTask() {
-      taskInfo.save();
-    }
-
     synchronized void setPosition(int position) {
       taskInfo.setPosition(position);
     }
@@ -754,7 +784,7 @@ public class TaskExecutor {
 
     synchronized void setTaskState(TaskInfo.State state) {
       taskInfo.setTaskState(state);
-      taskInfo.save();
+      taskInfo.update();
     }
 
     synchronized boolean compareAndSetTaskState(TaskInfo.State expected, TaskInfo.State state) {
@@ -765,8 +795,7 @@ public class TaskExecutor {
         Set<TaskInfo.State> expectedStates, TaskInfo.State state) {
       TaskInfo.State currentState = taskInfo.getTaskState();
       if (expectedStates.contains(currentState)) {
-        taskInfo.setTaskState(state);
-        taskInfo.save();
+        setTaskState(state);
         return true;
       }
       return false;
@@ -783,7 +812,6 @@ public class TaskExecutor {
               + ", hit error:\n\n"
               + StringUtils.abbreviateMiddle(t.getMessage(), "...", 3000)
               + ".";
-
       log.error(
           "Failed to execute task type {} UUID {} details {}, hit error.",
           taskInfo.getTaskType(),
@@ -793,8 +821,7 @@ public class TaskExecutor {
 
       ObjectNode details = taskDetails.deepCopy();
       details.put("errorString", errorString);
-      taskInfo.setTaskDetails(details);
-      taskInfo.save();
+      setTaskDetails(details);
     }
 
     void publishBeforeTask() {
@@ -888,8 +915,10 @@ public class TaskExecutor {
     }
 
     public synchronized void doHeartbeat() {
+      log.trace("Heartbeating task {}", getTaskUUID());
+      TaskInfo taskInfo = TaskInfo.getOrBadRequest(getTaskUUID());
       taskInfo.markAsDirty();
-      taskInfo.save();
+      taskInfo.update();
     }
 
     /**
@@ -899,9 +928,7 @@ public class TaskExecutor {
      */
     public void addSubTaskGroup(SubTaskGroup subTaskGroup) {
       log.info("Adding SubTaskGroup #{}: {}", subTaskGroups.size(), subTaskGroup.name);
-      subTaskGroup.setParentRunnableTask(this);
-      subTaskGroup.setPosition(subTaskPosition);
-      subTaskGroup.saveSubTasks();
+      subTaskGroup.setRunnableTaskContext(this, subTaskPosition);
       subTaskGroups.add(subTaskGroup);
       subTaskPosition++;
     }
@@ -997,9 +1024,12 @@ public class TaskExecutor {
       }
     }
 
-    private synchronized void setParentRunnableTask(RunnableTask parentRunnableTask) {
+    private synchronized void setRunnableTaskContext(
+        RunnableTask parentRunnableTask, int position) {
       this.parentRunnableTask = parentRunnableTask;
-      this.taskInfo.setParentUuid(parentRunnableTask.getTaskUUID());
+      taskInfo.setParentUuid(parentRunnableTask.getTaskUUID());
+      taskInfo.setPosition(position);
+      taskInfo.save();
     }
   }
 }

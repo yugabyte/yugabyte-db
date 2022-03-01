@@ -1,3 +1,5 @@
+import json
+import logging
 import re
 import os
 import typing
@@ -8,6 +10,8 @@ TEST_SUFFIX = "_test"
 CMAKE_FILE = "CMakeLists.txt"
 IGNORED_HEADERS = re.compile(
     R"^google/protobuf/generated_enum_reflection\.h$")
+SRC_DIRS = ['src/yb', 'ent/src/yb']
+BUILD_DIR = os.path.join('build', 'latest')
 
 parsed_files = {}
 
@@ -32,9 +36,8 @@ class Headers:
         merge_headers(self.project, rhs.project)
 
     # Generate precompiled headers file for specified library.
-    def generate(self, path, libname):
-        if len(self.system) == 0:
-            return
+    def generate(self, path) -> typing.List[str]:
+        libname = make_lib_name(path)
         categories = ([], [], [], [])
         for header in sorted(self.system.keys()):
             if IGNORED_HEADERS.match(header) or not self.system[header]:
@@ -65,22 +68,7 @@ class Headers:
             lines.append('')
             for include in category:
                 lines.append(include)
-
-        body = ''
-        for i in range(len(lines)):
-            body += lines[i]
-            body += '\n'
-
-        pch_name = os.path.join(path, libname + '_pch.h')
-        # Don't overwrite file with the same content.
-        if os.path.exists(pch_name):
-            with open(pch_name) as inp:
-                if inp.read() == body:
-                    print("Skip", path, libname)
-                    return
-        with open(pch_name, 'w') as out:
-            out.write(body)
-        print("Generate", path, libname)
+        return lines
 
 
 # Get headers for specified file.
@@ -96,7 +84,7 @@ def process_file(fname: str) -> Headers:
             else:
                 result.project[include.name] = include.trivial
             if include.trivial and not include.system:
-                for path in ('src', 'build/latest/src'):
+                for path in ('src', os.path.join(BUILD_DIR, 'src')):
                     include_path = os.path.join(path, include.name)
                     if os.path.exists(include_path):
                         result.extend(process_file(include_path))
@@ -110,64 +98,157 @@ def process_file(fname: str) -> Headers:
 def split_path(path: str) -> typing.List[str]:
     result = []
     while len(path) != 0:
-        result.append(os.path.basename(path))
+        file_name = os.path.basename(path)
+        if file_name == 'CMakeFiles':
+            result.clear()
+        else:
+            result.append(file_name)
         path = os.path.dirname(path)
     return result
 
 
-def main():
-    libs = {}
-    # Enumerate all files and group them by library.
-    for root in ['src', 'ent/src']:
-        for (path, dirs, files) in os.walk(root):
-            if path.startswith("src/yb/rocksdb/port/win") or \
-                    path.startswith("src/yb/rocksdb/examples") or \
-                    path.startswith("src/yb/rocksdb/tools/rdb"):
-                continue
-            has_cmake = CMAKE_FILE in files
-            lib = None
-            for check_path in ('src/yb/yql/cql/ql', 'src/yb/yql/pggate'):
-                if path.startswith(check_path):
-                    if check_path not in libs:
-                        libs[check_path] = []
-                    lib = libs[check_path]
-                    break
-            if lib is None:
-                if has_cmake:
-                    libs[path] = []
-                    lib = libs[path]
-                else:
-                    libpath = path
-                    while len(libpath) != 0:
-                        if libpath.startswith('ent/'):
-                            libpath = libpath[4:]
-                        else:
-                            libpath = os.path.dirname(libpath)
-                        if libpath in libs:
-                            lib = libs[libpath]
-                            break
-            print(path, lib)
-            if lib is None:
-                continue
-            for file in files:
-                if file.endswith('.cc'):
-                    lib.append(os.path.join(path, file))
+def make_lib_name(path: str) -> str:
+    path_tokens = split_path(path)
+    for i in range(len(path_tokens)):
+        if path_tokens[i] in {'yb', 'cql', 'yql', 'redis'}:
+            return '_'.join(reversed(path_tokens[:i]))
+    raise ValueError("Unable to determine library for {}".format(path))
 
-    print(libs.keys())
 
-    # Generate precompiled header for each library.
-    for path, files in libs.items():
+class LibraryData:
+    def __init__(self):
+        self.num_files = 0
+        self.instantiations: typing.Dict[str, int] = {}
+        self.sources: typing.List[str] = []
+
+    def generate(self, path: str):
         headers = Headers()
 
-        for file in files:
+        for file in self.sources:
             headers.extend(process_file(file))
 
-        path_tokens = split_path(path)
-        for i in range(len(path_tokens)):
-            if path_tokens[i] in {'yb', 'cql', 'yql', 'redis'}:
-                libname = '_'.join(reversed(path_tokens[:i]))
-                break
-        headers.generate(path, libname)
+        if len(headers.system) == 0:
+            return
+        lines = headers.generate(path)
+        first = True
+        for inst, count in sorted(self.instantiations.items()):
+            if count * 10 < self.num_files:
+                continue
+            if first:
+                lines.append('')
+                first = False
+            lines.append('template class {};'.format(inst))
+
+        body = ''
+        for i in range(len(lines)):
+            body += lines[i]
+            body += '\n'
+
+        libname = make_lib_name(path)
+        pch_name = os.path.join(path, libname + '_pch.h')
+        # Don't overwrite file with the same content.
+        if os.path.exists(pch_name):
+            with open(pch_name) as inp:
+                if inp.read() == body:
+                    logging.info("Skip {} {}".format(path, libname))
+                    return
+        with open(pch_name, 'w') as out:
+            out.write(body)
+        logging.info("Generate {} {}".format(path, libname))
+
+
+class GenPch:
+    def __init__(self):
+        self.libs: typing.Dict[str, LibraryData] = dict()
+
+    def execute(self):
+        self.collect_libs()
+        logging.info(self.libs.keys())
+
+        # Generate precompiled header for each library.
+        for path, lib in self.libs.items():
+            lib.generate(path)
+
+    def collect_instantiations(self):
+        for root in SRC_DIRS:
+            for (path, dirs, files) in os.walk(os.path.join(BUILD_DIR, root)):
+                library: typing.Union[None, LibraryData] = None
+                for file in files:
+                    if not file.endswith('.json'):
+                        continue
+                    if library is None:
+                        lib_path = self.lib_for_path(path, strip=True)
+                        if lib_path not in self.libs:
+                            raise ValueError("Library not yet defined for {}: {}".format(
+                                path, lib_path))
+                        library = self.libs[lib_path]
+                    library.num_files += 1
+                    with open(os.path.join(path, file), 'r') as inp:
+                        times = json.load(inp)
+                    current: typing.List[typing.Tuple[int, int, str]] = []
+                    for evt in times['traceEvents']:
+                        if evt['name'] != 'InstantiateClass' or 'args' not in evt:
+                            continue
+                        current.append((evt['ts'], evt['dur'], evt['args']['detail']))
+                    finish = 0
+                    for entry in sorted(current):
+                        if entry[0] >= finish:
+                            finish = entry[0] + entry[1]
+                            if entry[2] in library.instantiations:
+                                library.instantiations[entry[2]] += 1
+                            else:
+                                library.instantiations[entry[2]] = 1
+
+    def lib_for_path(self, path: str, **kwargs) -> typing.Union[None, str]:
+        if 'strip' in kwargs and kwargs['strip']:
+            if path.startswith(BUILD_DIR):
+                path = path[len(BUILD_DIR) + 1:]
+            while len(path) > 0:
+                basename = os.path.basename(path)
+                path = os.path.dirname(path)
+                if basename == 'CMakeFiles':
+                    break
+
+        for check_path in ('src/yb/yql/cql/ql', 'src/yb/yql/pggate'):
+            if path.startswith(check_path):
+                return check_path
+        if path in self.libs or ('has_cmake' in kwargs and kwargs['has_cmake']):
+            return path
+
+        while len(path) != 0:
+            if path.startswith('ent/'):
+                path = path[4:]
+            else:
+                path = os.path.dirname(path)
+            if path in self.libs:
+                return path
+        return None
+
+    def collect_libs(self):
+        # Enumerate all files and group them by library.
+        for root in SRC_DIRS:
+            for (path, dirs, files) in os.walk(root):
+                if path.startswith(("src/yb/rocksdb/port/win", "src/yb/rocksdb/examples",
+                                    "src/yb/rocksdb/tools/rdb")):
+                    continue
+                lib_path = self.lib_for_path(path, has_cmake=CMAKE_FILE in files)
+                logging.info("Library determined for {}: {}".format(path, lib_path))
+                if lib_path is None:
+                    continue
+                if lib_path not in self.libs:
+                    self.libs[lib_path] = LibraryData()
+                lib = self.libs[lib_path]
+                for file in files:
+                    if file.endswith('.cc'):
+                        lib.sources.append(os.path.join(path, file))
+
+
+def main():
+    logging.basicConfig(
+        level=logging.INFO,
+        format="[%(filename)s:%(lineno)d] %(asctime)s %(levelname)s: %(message)s")
+    gen_pch = GenPch()
+    gen_pch.execute()
 
 
 if __name__ == '__main__':

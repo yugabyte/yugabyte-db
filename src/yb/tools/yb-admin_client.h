@@ -151,8 +151,8 @@ class ClusterAdminClient {
   CHECKED_STATUS ChangeMasterConfig(
       const std::string& change_type,
       const std::string& peer_host,
-      int16 peer_port,
-      bool use_hostport);
+      uint16_t peer_port,
+      const std::string& peer_uuid = "");
 
   CHECKED_STATUS DumpMasterState(bool to_console);
 
@@ -162,7 +162,10 @@ class ClusterAdminClient {
                             bool include_table_type);
 
   // List all tablets of this table
-  CHECKED_STATUS ListTablets(const client::YBTableName& table_name, int max_tablets, bool json);
+  CHECKED_STATUS ListTablets(const client::YBTableName& table_name,
+                             int max_tablets,
+                             bool json,
+                             bool followers);
 
   // Per Tablet list of all tablet servers
   CHECKED_STATUS ListPerTabletTabletServers(const PeerId& tablet_id);
@@ -286,6 +289,12 @@ class ClusterAdminClient {
   // Note: Works with a tserver but is placed here (and not in yb-ts-cli) because it doesn't
   //       look like this workflow is a good fit there.
   CHECKED_STATUS UpgradeYsql();
+
+  // Set WAL retention time in secs for a table name.
+  CHECKED_STATUS SetWalRetentionSecs(
+    const client::YBTableName& table_name, const uint32_t wal_ret_secs);
+
+  CHECKED_STATUS GetWalRetentionSecs(const client::YBTableName& table_name);
 
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.

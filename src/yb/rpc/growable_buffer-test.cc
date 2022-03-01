@@ -77,10 +77,10 @@ TEST_F(GrowableBufferTest, TestConsume) {
     size_t appended = 0;
     {
       auto iov = ASSERT_RESULT(buffer.PrepareAppend());
-      auto idx = 0;
+      size_t idx = 0;
       auto* data = static_cast<uint8_t*>(iov[0].iov_base);
       int start = 0;
-      for (int j = 0; j != step; ++j) {
+      for (size_t j = 0; j != step; ++j) {
         if (j - start >= iov[idx].iov_len) {
           start += iov[idx].iov_len;
           ++idx;
@@ -100,10 +100,10 @@ TEST_F(GrowableBufferTest, TestConsume) {
     consumed += consume_size;
     ASSERT_EQ(consumed + buffer.size(), counter);
     auto iovs = buffer.AppendedVecs();
-    int value = consumed;
+    auto value = consumed;
     for (const auto& iov : iovs) {
       const auto* data = static_cast<const uint8_t*>(iov.iov_base);
-      for (int j = 0; j != iov.iov_len; ++j) {
+      for (size_t j = 0; j != iov.iov_len; ++j) {
         ASSERT_EQ(data[j], static_cast<uint8_t>(value++));
       }
     }

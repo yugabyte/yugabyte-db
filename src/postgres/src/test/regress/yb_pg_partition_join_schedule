@@ -1,0 +1,7 @@
+# src/test/regress/yb_pg_partition_join_schedule
+#
+###########################################################################
+# This testsuite contains testcases ported from postgres partitionwise join
+# regression tests.
+###########################################################################
+test: yb_pg_partition_join

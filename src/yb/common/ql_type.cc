@@ -271,7 +271,7 @@ std::shared_ptr<QLType> QLType::values_type() const {
   }
 }
 
-const QLType::SharedPtr& QLType::param_type(int member_index) const {
+const QLType::SharedPtr& QLType::param_type(size_t member_index) const {
   DCHECK_LT(member_index, params_.size());
   return params_[member_index];
 }
@@ -331,7 +331,7 @@ void QLType::ToString(std::stringstream& os) const {
     os << ToCQLString(id_);
     if (!params_.empty()) {
       os << "<";
-      for (int i = 0; i < params_.size(); i++) {
+      for (size_t i = 0; i < params_.size(); i++) {
         if (i > 0) {
           os << ", ";
         }
@@ -380,11 +380,11 @@ void QLType::GetUserDefinedTypeIds(const QLTypePB& type_pb,
 
 Result<QLType::SharedPtr> QLType::GetUDTFieldTypeByName(const std::string& field_name) const {
   SCHECK(IsUserDefined(), InternalError, "Can only be called on UDT");
-  const int idx = GetUDTypeFieldIdxByName(field_name);
-  if (idx == -1) {
+  const auto idx = GetUDTypeFieldIdxByName(field_name);
+  if (!idx) {
     return nullptr;
   }
-  return param_type(idx);
+  return param_type(*idx);
 }
 
 const TypeInfo* QLType::type_info() const {
@@ -506,6 +506,16 @@ bool QLType::IsPotentiallyConvertible(DataType left, DataType right) {
 
 bool QLType::IsSimilar(DataType left, DataType right) {
   return GetConversionMode(left, right) <= ConversionMode::kSimilar;
+}
+
+boost::optional<size_t> QLType::GetUDTypeFieldIdxByName(const std::string &field_name) const {
+  const auto& field_names = udtype_field_names();
+  for (size_t i = 0; i != field_names.size(); ++i) {
+    if (field_names[i] == field_name) {
+      return i;
+    }
+  }
+  return boost::none;
 }
 
 }  // namespace yb

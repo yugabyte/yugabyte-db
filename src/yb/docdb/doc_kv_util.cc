@@ -14,7 +14,7 @@
 #include "yb/docdb/doc_kv_util.h"
 
 #include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/docdb-internal.h"
+#include "yb/docdb/docdb.h"
 #include "yb/docdb/value_type.h"
 
 #include "yb/util/bytes_formatter.h"
@@ -32,7 +32,7 @@ namespace docdb {
 
 bool KeyBelongsToDocKeyInTest(const rocksdb::Slice &key, const string &encoded_doc_key) {
   if (key.starts_with(encoded_doc_key)) {
-    const int encoded_doc_key_size = encoded_doc_key.size();
+    const auto encoded_doc_key_size = encoded_doc_key.size();
     const char* key_data = key.cdata();
     return key.size() >= encoded_doc_key_size + 2 &&
            key_data[encoded_doc_key_size] == '\0' &&
@@ -55,9 +55,7 @@ Status DecodeHybridTimeFromEndOfKey(
 // Given a DocDB key stored in RocksDB, validate the DocHybridTime size stored as the
 // last few bits of the final byte of the key, and ensure that the ValueType byte preceding that
 // encoded DocHybridTime is ValueType::kHybridTime.
-Status CheckHybridTimeSizeAndValueType(
-    const rocksdb::Slice& key,
-    int* ht_byte_size_dest) {
+Status CheckHybridTimeSizeAndValueType(const rocksdb::Slice& key, size_t* ht_byte_size_dest) {
   RETURN_NOT_OK(
       DocHybridTime::CheckAndGetEncodedSize(key, ht_byte_size_dest));
   const size_t hybrid_time_value_type_offset = key.size() - *ht_byte_size_dest - 1;
@@ -198,12 +196,9 @@ Result<DocHybridTime> DecodeInvertedDocHt(Slice key_slice) {
         "Invalid doc hybrid time in reverse intent record suffix: $0",
         key_slice.ToDebugHexString());
   }
-  size_t doc_ht_buffer[kMaxWordsPerEncodedHybridTimeWithValueType];
-  memcpy(doc_ht_buffer, key_slice.data(), key_slice.size());
-  for (size_t i = 0; i != kMaxWordsPerEncodedHybridTimeWithValueType; ++i) {
-    doc_ht_buffer[i] = ~doc_ht_buffer[i];
-  }
-  key_slice = Slice(pointer_cast<char*>(doc_ht_buffer), key_slice.size());
+
+  DocHybridTimeWordBuffer doc_ht_buffer;
+  key_slice = InvertEncodedDocHT(key_slice, &doc_ht_buffer);
 
   if (static_cast<ValueType>(key_slice[0]) != ValueType::kHybridTime) {
     return STATUS_FORMAT(
@@ -215,6 +210,14 @@ Result<DocHybridTime> DecodeInvertedDocHt(Slice key_slice) {
   DocHybridTime doc_ht;
   RETURN_NOT_OK(doc_ht.DecodeFrom(&key_slice));
   return doc_ht;
+}
+
+Slice InvertEncodedDocHT(const Slice& input, DocHybridTimeWordBuffer* buffer) {
+  memcpy(buffer->data(), input.data(), input.size());
+  for (size_t i = 0; i != kMaxWordsPerEncodedHybridTimeWithValueType; ++i) {
+    (*buffer)[i] = ~(*buffer)[i];
+  }
+  return {pointer_cast<char*>(buffer->data()), input.size()};
 }
 
 }  // namespace docdb

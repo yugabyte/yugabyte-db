@@ -96,7 +96,7 @@ bool ParseFromSequentialFile(MessageLite *msg, SequentialFile *rfile);
 
 // Similar to MessageLite::ParseFromArray, with the difference that it returns
 // Status::kCorruption if the message could not be parsed.
-Status ParseFromArray(MessageLite* msg, const uint8_t* data, uint32_t length);
+Status ParseFromArray(MessageLite* msg, const uint8_t* data, size_t length);
 
 template<class T>
 Result<T> ParseFromSlice(const Slice& slice) {

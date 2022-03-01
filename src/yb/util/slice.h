@@ -304,7 +304,13 @@ struct SliceParts {
   size_t SumSizes() const;
 
   // Copy content of all slice to specified buffer.
-  void CopyAllTo(void* out) const;
+  void* CopyAllTo(void* out) const {
+    return CopyAllTo(static_cast<char*>(out));
+  }
+
+  char* CopyAllTo(char* out) const;
+
+  Slice TheOnlyPart() const;
 
   const Slice* parts;
   int num_parts;

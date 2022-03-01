@@ -261,8 +261,8 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; HT{ physica
   // Checks bloom filter useful counter increment to be in range [1;expected_max_increment] and
   // table iterators number increment to be expected_num_iterators_increment.
   // Updates total_useful, total_iterators
-  void CheckBloom(const int expected_max_increment, int *total_useful,
-      const int expected_num_iterators_increment, int *total_iterators) {
+  void CheckBloom(const int expected_max_increment, uint64_t *total_useful,
+                  const int expected_num_iterators_increment, uint64_t *total_iterators) {
     if (FLAGS_use_docdb_aware_bloom_filter) {
       const auto total_useful_updated =
           regular_db_options().statistics->getTickerCount(rocksdb::BLOOM_FILTER_USEFUL);
@@ -2690,7 +2690,8 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_c"; HT{ physica
   // (2) after a compaction at hybrid_time 5000, and (3) after a compaction at hybrid_time 6000.
   // We are going through snapshots in reverse order so that we end with the initial snapshot that
   // does not have any history trimming done yet.
-  for (int i = num_logical_snapshots() - 1; i >= 0; --i) {
+  for (auto i = num_logical_snapshots(); i > 0;) {
+    --i;
     RestoreToRocksDBLogicalSnapshot(i);
     // Test overwriting an entire document with an empty object. This should ideally happen with no
     // reads.
@@ -2741,7 +2742,7 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_c"; HT{ physica
   CaptureLogicalSnapshot();
   // Starting with each snapshot, perform the final history compaction and verify we always get the
   // same result.
-  for (int i = 0; i < logical_snapshots().size(); ++i) {
+  for (size_t i = 0; i < logical_snapshots().size(); ++i) {
     RestoreToRocksDBLogicalSnapshot(i);
     FullyCompactHistoryBefore(8000_usec_ht);
     ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
@@ -2880,8 +2881,8 @@ TEST_P(DocDBTestWrapper, BloomFilterTest) {
 
   SubDocument doc_from_rocksdb;
   bool subdoc_found_in_rocksdb = false;
-  int total_bloom_useful = 0;
-  int total_table_iterators = 0;
+  uint64_t total_bloom_useful = 0;
+  uint64_t total_table_iterators = 0;
 
   auto flush_rocksdb = [this, &total_table_iterators]() {
     ASSERT_OK(FlushRocksDbAndWait());

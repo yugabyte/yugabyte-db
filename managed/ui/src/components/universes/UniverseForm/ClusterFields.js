@@ -31,6 +31,7 @@ import AZSelectorTable from './AZSelectorTable';
 import './UniverseForm.scss';
 import AZPlacementInfo from './AZPlacementInfo';
 import GFlagArrayComponent from './GFlagArrayComponent';
+import GFlagComponent from './GFlagComponent';
 import {
   getPrimaryCluster,
   getReadOnlyCluster,
@@ -648,6 +649,7 @@ export default class ClusterFields extends Component {
 
         const currentProviderUuid = currentCluster.userIntent.provider;
         updateFormField(`${clusterType}.provider`, currentProviderUuid);
+        if (type === 'Async') this.providerChanged(currentProviderUuid);
       } else {
         const firstProviderUuid = cloud.providers.data[0]?.uuid;
         updateFormField(`${clusterType}.provider`, firstProviderUuid);
@@ -764,6 +766,33 @@ export default class ClusterFields extends Component {
     const { updateFormField, clusterType } = this.props;
     this.setState({ nodeSetViaAZList: true, numNodes: value });
     updateFormField(`${clusterType}.numNodes`, value);
+    this.resetVolumeSizeIfNeeded();
+  }
+
+  resetVolumeSizeIfNeeded() {
+    const { hasInstanceTypeChanged, deviceInfo } = this.state;
+    const {
+      clusterType,
+      universe: { currentUniverse }
+    } = this.props;
+    if (
+      isEmptyObject(currentUniverse.data) ||
+      isEmptyObject(currentUniverse.data.universeDetails)
+    ) {
+      return;
+    }
+    if (!hasInstanceTypeChanged) {
+      const curCluster = getClusterByType(
+        currentUniverse.data.universeDetails.clusters,
+        clusterType
+      );
+      if (
+        !isEmptyObject(curCluster) &&
+        curCluster.userIntent.deviceInfo.volumeSize !== deviceInfo.volumeSize
+      ) {
+        this.volumeSizeChanged(curCluster.userIntent.deviceInfo.volumeSize);
+      }
+    }
   }
 
   setDeviceInfo(instanceTypeCode, instanceTypeList) {
@@ -1294,6 +1323,8 @@ export default class ClusterFields extends Component {
 
     const allowGeoPartitioning =
       featureFlags.test['enableGeoPartitioning'] || featureFlags.released['enableGeoPartitioning'];
+    console.log("####### allowGeoPartitioning: " + allowGeoPartitioning);
+    universeTaskParams.allowGeoPartitioning = allowGeoPartitioning;
 
     const cluster = getClusterByType(universeTaskParams.clusters, clusterType);
     if (
@@ -1301,11 +1332,10 @@ export default class ClusterFields extends Component {
       isNonEmptyObject(cluster.placementInfo) &&
       isNonEmptyArray(cluster.placementInfo.cloudList)
     ) {
-      universeTaskParams.allowGeoPartitioning = allowGeoPartitioning;
       if (allowGeoPartitioning && this.state.defaultRegion !== '') {
         cluster.placementInfo.cloudList[0].defaultRegion = this.state.defaultRegion;
       } else {
-        delete cluster.placementInfo.defaultRegion;
+        delete cluster.placementInfo.cloudList[0].defaultRegion;
       }
     }
 
@@ -1316,6 +1346,7 @@ export default class ClusterFields extends Component {
     const { updateFormField, clusterType } = this.props;
     this.setState({ numNodes: value, nodeSetViaAZList: false });
     updateFormField(`${clusterType}.numNodes`, value);
+    this.resetVolumeSizeIfNeeded();
   }
 
   getCurrentProvider(providerUUID) {
@@ -1567,7 +1598,12 @@ export default class ClusterFields extends Component {
         );
       });
 
-    const configList = cloud.authConfig.data ?? [];
+    let configList = cloud.authConfig.data ?? [];
+    //feature flagging
+    const isHCVaultEnabled = featureFlags.test.enableHCVault || featureFlags.released.enableHCVault;
+    if (!isHCVaultEnabled)
+      configList = configList.filter((config) => config.metadata.provider !== 'HASHICORP');
+    //feature flagging
     const kmsConfigList = [
       <option value="" key={`kms-option-0`}>
         Select Configuration
@@ -1688,6 +1724,10 @@ export default class ClusterFields extends Component {
             />
           </span>
         );
+        const smartResizePossible =
+          isDefinedNotNull(currentProvider) &&
+          (currentProvider.code === 'aws' || currentProvider.code === 'gcp') &&
+          clusterType !== 'async';
         const volumeSize = (
           <span className="volume-info-field volume-info-size">
             <Field
@@ -1696,7 +1736,7 @@ export default class ClusterFields extends Component {
               label="Volume Size"
               valueFormat={volumeTypeFormat}
               onInputChanged={self.volumeSizeChanged}
-              readOnly={fixedVolumeInfo || !hasInstanceTypeChanged}
+              readOnly={fixedVolumeInfo || (!hasInstanceTypeChanged && !smartResizePossible)}
             />
           </span>
         );
@@ -1736,12 +1776,14 @@ export default class ClusterFields extends Component {
                   readOnlySelect={isFieldReadOnly}
                 />
               </span>
-              {/* this.state.gcpInstanceWithEphemeralStorage && (
-                <span className="gcp-ephemeral-storage-warning">
-                  ! Selected type is ephemeral storage, If you will pause this universe your data
-                  will get lost.
-                </span>
-              ) */}
+              {this.state.gcpInstanceWithEphemeralStorage &&
+               (featureFlags.test['pausedUniverse'] ||
+                featureFlags.released['pausedUniverse']) && (
+                  <span className="gcp-ephemeral-storage-warning">
+                    ! Selected instance type is with ephemeral storage, If you will pause this
+                    universe your data will get lost.
+                  </span>
+              )}
             </>
           );
         } else if (isInAzu) {
@@ -2259,27 +2301,17 @@ export default class ClusterFields extends Component {
       </div>
     );
 
-    if (clusterType === 'primary') {
+    if (clusterType === 'primary' && this.state.ybSoftwareVersion) {
       gflagArray = (
         <Row>
           <Col md={12}>
             <h4>G-Flags</h4>
           </Col>
-          <Col md={6}>
+          <Col md={12}>
             <FieldArray
-              component={GFlagArrayComponent}
-              name={`${clusterType}.masterGFlags`}
-              flagType="master"
-              operationType="Create"
-              isReadOnly={isFieldReadOnly}
-            />
-          </Col>
-          <Col md={6}>
-            <FieldArray
-              component={GFlagArrayComponent}
-              name={`${clusterType}.tserverGFlags`}
-              flagType="tserver"
-              operationType="Create"
+              component={GFlagComponent}
+              name={`${clusterType}.gFlags`}
+              dbVersion={this.state.ybSoftwareVersion}
               isReadOnly={isFieldReadOnly}
             />
           </Col>

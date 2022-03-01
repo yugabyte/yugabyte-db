@@ -7,11 +7,23 @@
 .cluster_action {
   display: flex;
   justify-content: center;
-  align-items: center;
+  align-items: flex-end;
+  flex-direction: column;
+
+  .configure-max-lag {
+    margin-right: 10px;
+    background-color: #FFF;
+    border: 1px solid #C8C8C8;
+  }
 }
 
 .cluster_support_text {
   text-align: right;
+  margin-top: 20px;
+  font-weight: lighter;
+  a {
+    text-decoration: underline;
+  }
 }
 
 .replication-list {
@@ -30,7 +42,7 @@
 
     .replication-meta-details {
       display: flex;
-      justify-content: end;
+      justify-content: flex-end;
       align-items: center;
       margin-top: 8px;
 
@@ -71,6 +83,7 @@
 
     .replication-status {
       font-size: 16px;
+      text-align: end;
     }
   }
 
@@ -91,19 +104,20 @@
   }
 
   .replication-lag-details {
-    text-align: end;
-    font-weight: 500;
-
-    .lag-text {
-      text-align: right;
-    }
+    margin-top: 15px;
 
     .lag {
       margin-left: 14px;
 
       .lag-time {
-        color: green;
         font-size: 24px;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+
+      .withinThreshold {
+        color: green;
       }
     }
   }
@@ -116,12 +130,15 @@
 .noPadding {
   padding: 0;
 }
+
 .noPaddingLeft {
   padding-left: 0;
 }
+
 .noPaddingRight {
   padding-right: 0;
 }
+
 .replication-cluster-graph {
   display: flex;
   align-items: center;
@@ -131,8 +148,10 @@
   border-radius: 50%;
   border: 1px solid #d7dde1;
   padding: 6px;
-  font-size: 16px;
   text-align: center;
+  width: 30px;
+  height: 30px;
+  display: inline-block;
 }
 
 .replication-name-card {
@@ -162,6 +181,7 @@
     margin-top: 10px;
   }
 }
+
 .center-align-text {
   text-align: center;
 }

@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.MASTER;
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.TSERVER;
+import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
@@ -16,8 +17,8 @@ import static org.mockito.Mockito.verify;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
-import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -45,6 +46,7 @@ import org.mockito.InjectMocks;
 import org.mockito.MockitoAnnotations;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 
 @RunWith(JUnitParamsRunner.class)
 public class CertsRotateTest extends UpgradeTaskTest {
@@ -211,6 +213,8 @@ public class CertsRotateTest extends UpgradeTaskTest {
       UUID rootCA,
       UUID clientRootCA)
       throws IOException, NoSuchAlgorithmException {
+    createTempFile("cert_rotate_test_ca.crt", "test data");
+
     CertificateInfo.create(
         rootCA,
         defaultCustomer.uuid,
@@ -218,8 +222,8 @@ public class CertsRotateTest extends UpgradeTaskTest {
         new Date(),
         new Date(),
         "privateKey",
-        TestHelper.TMP_PATH + "/ca.crt",
-        CertificateInfo.Type.SelfSigned);
+        TestHelper.TMP_PATH + "/cert_rotate_test_ca.crt",
+        CertConfigType.SelfSigned);
 
     CertificateInfo.create(
         clientRootCA,
@@ -228,8 +232,8 @@ public class CertsRotateTest extends UpgradeTaskTest {
         new Date(),
         new Date(),
         "privateKey",
-        TestHelper.TMP_PATH + "/ca.crt",
-        CertificateInfo.Type.SelfSigned);
+        TestHelper.TMP_PATH + "/cert_rotate_test_ca.crt",
+        CertConfigType.SelfSigned);
 
     defaultUniverse =
         Universe.saveDetails(
@@ -243,12 +247,12 @@ public class CertsRotateTest extends UpgradeTaskTest {
               universeDetails.allowInsecure = true;
               universeDetails.rootAndClientRootCASame = rootAndClientRootCASame;
               universeDetails.rootCA = null;
-              if (CertificateHelper.isRootCARequired(
+              if (EncryptionInTransitUtil.isRootCARequired(
                   nodeToNode, clientToNode, rootAndClientRootCASame)) {
                 universeDetails.rootCA = rootCA;
               }
               universeDetails.clientRootCA = null;
-              if (CertificateHelper.isClientRootCARequired(
+              if (EncryptionInTransitUtil.isClientRootCARequired(
                   nodeToNode, clientToNode, rootAndClientRootCASame)) {
                 universeDetails.clientRootCA = clientRootCA;
               }
@@ -278,8 +282,8 @@ public class CertsRotateTest extends UpgradeTaskTest {
           new Date(),
           new Date(),
           "privateKey",
-          TestHelper.TMP_PATH + "/ca.crt",
-          CertificateInfo.Type.SelfSigned);
+          TestHelper.TMP_PATH + "/cert_rotate_test_ca.crt",
+          CertConfigType.SelfSigned);
     }
     if (rotateClientRootCA) {
       taskParams.clientRootCA = UUID.randomUUID();
@@ -290,8 +294,8 @@ public class CertsRotateTest extends UpgradeTaskTest {
           new Date(),
           new Date(),
           "privateKey",
-          TestHelper.TMP_PATH + "/ca.crt",
-          CertificateInfo.Type.SelfSigned);
+          TestHelper.TMP_PATH + "/cert_rotate_test_ca.crt",
+          CertConfigType.SelfSigned);
     }
     if (rotateRootCA && rotateClientRootCA && rootAndClientRootCASame) {
       taskParams.clientRootCA = taskParams.rootCA;
@@ -411,10 +415,10 @@ public class CertsRotateTest extends UpgradeTaskTest {
     }
 
     boolean isRootCARequired =
-        CertificateHelper.isRootCARequired(
+        EncryptionInTransitUtil.isRootCARequired(
             currentNodeToNode, currentClientToNode, rootAndClientRootCASame);
     boolean isClientRootCARequired =
-        CertificateHelper.isClientRootCARequired(
+        EncryptionInTransitUtil.isClientRootCARequired(
             currentNodeToNode, currentClientToNode, rootAndClientRootCASame);
 
     // Expected failure scenarios
@@ -575,10 +579,10 @@ public class CertsRotateTest extends UpgradeTaskTest {
     }
 
     boolean isRootCARequired =
-        CertificateHelper.isRootCARequired(
+        EncryptionInTransitUtil.isRootCARequired(
             currentNodeToNode, currentClientToNode, rootAndClientRootCASame);
     boolean isClientRootCARequired =
-        CertificateHelper.isClientRootCARequired(
+        EncryptionInTransitUtil.isClientRootCARequired(
             currentNodeToNode, currentClientToNode, rootAndClientRootCASame);
 
     // Expected failure scenarios

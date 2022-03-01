@@ -47,7 +47,7 @@ CHECKED_STATUS DecodeHybridTimeFromEndOfKey(const rocksdb::Slice &key, DocHybrid
 // encoded DocHybridTime is ValueType::kHybridTime.
 CHECKED_STATUS CheckHybridTimeSizeAndValueType(
     const rocksdb::Slice& key,
-    int* ht_byte_size_dest);
+    size_t* ht_byte_size_dest);
 
 // Consumes hybrid time from the given slice, decreasing the slice size by the hybrid time size.
 // Hybrid time is stored in a "key-appropriate" format (bits inverted for reverse sorting).
@@ -145,6 +145,14 @@ inline std::string ToShortDebugStr(const std::string& raw_str) {
 }
 
 Result<DocHybridTime> DecodeInvertedDocHt(Slice key_slice);
+
+constexpr size_t kMaxWordsPerEncodedHybridTimeWithValueType =
+    ((kMaxBytesPerEncodedHybridTime + 1) + sizeof(size_t) - 1) / sizeof(size_t);
+
+// Puts inverted encoded doc hybrid time specified by input to buffer.
+// And returns slice to it.
+using DocHybridTimeWordBuffer = std::array<size_t, kMaxWordsPerEncodedHybridTimeWithValueType>;
+Slice InvertEncodedDocHT(const Slice& input, DocHybridTimeWordBuffer* buffer);
 
 }  // namespace docdb
 }  // namespace yb

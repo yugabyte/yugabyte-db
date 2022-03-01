@@ -473,7 +473,7 @@ Status ThreadPool::DoSubmit(const std::shared_ptr<Runnable> task, ThreadPoolToke
   int threads_from_this_submit =
       token->IsActive() && token->mode() == ExecutionMode::SERIAL ? 0 : 1;
   int inactive_threads = num_threads_ - active_threads_;
-  int additional_threads = (queue_.size() + threads_from_this_submit) - inactive_threads;
+  int64_t additional_threads = (queue_.size() + threads_from_this_submit) - inactive_threads;
   if (additional_threads > 0 && num_threads_ < max_threads_) {
     Status status = CreateThreadUnlocked();
     if (!status.ok()) {

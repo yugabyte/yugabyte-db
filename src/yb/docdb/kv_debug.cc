@@ -24,6 +24,8 @@
 #include "yb/docdb/value.h"
 #include "yb/docdb/value_type.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/fast_varint.h"
 #include "yb/util/result.h"
@@ -115,7 +117,7 @@ Result<std::string> DocDBValueToDebugStr(KeyType key_type, Slice key, Slice valu
   switch (key_type) {
     case KeyType::kTransactionMetadata: {
       TransactionMetadataPB metadata_pb;
-      if (!metadata_pb.ParseFromArray(value.cdata(), value.size())) {
+      if (!metadata_pb.ParseFromArray(value.cdata(), narrow_cast<int>(value.size()))) {
         return STATUS_FORMAT(Corruption, "Bad metadata: $0", value.ToDebugHexString());
       }
       return ToString(VERIFY_RESULT(TransactionMetadata::FromPB(metadata_pb)));

@@ -29,6 +29,26 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/thread.h"
 #include "yb/util/unique_lock.h"
+#include "yb/util/compare_util.h"
+
+METRIC_DEFINE_gauge_uint64(server, rocksdb_compaction_active_tasks, "Active Tasks",
+                            yb::MetricUnit::kTasks, "Number of Active Tasks");
+METRIC_DEFINE_gauge_uint64(server, rocksdb_compaction_paused_tasks, "Paused Tasks",
+                            yb::MetricUnit::kTasks, "Number of Paused Tasks");
+METRIC_DEFINE_gauge_uint64(server, rocksdb_compaction_queued_tasks, "Queued Tasks",
+                            yb::MetricUnit::kTasks, "Number of Queued Tasks");
+METRIC_DEFINE_gauge_uint64(server, rocksdb_compaction_active_files, "Active Files",
+                            yb::MetricUnit::kFiles, "Number of Active Files");
+METRIC_DEFINE_gauge_uint64(server, rocksdb_compaction_paused_files, "Paused Files",
+                            yb::MetricUnit::kFiles, "Number of Paused Files");
+METRIC_DEFINE_gauge_uint64(server, rocksdb_compaction_queued_files, "Queued Files",
+                            yb::MetricUnit::kFiles, "Number of Queued Files");
+METRIC_DEFINE_gauge_uint64(server, rocksdb_compaction_active_bytes, "Active Bytes",
+                            yb::MetricUnit::kBytes, "Number of Active Bytes");
+METRIC_DEFINE_gauge_uint64(server, rocksdb_compaction_paused_bytes, "Paused Bytes",
+                            yb::MetricUnit::kBytes, "Number of Paused Bytes");
+METRIC_DEFINE_gauge_uint64(server, rocksdb_compaction_queued_bytes, "Queued Bytes",
+                            yb::MetricUnit::kBytes, "Number of Queued Bytes");
 
 using namespace std::placeholders;
 
@@ -48,6 +68,45 @@ static constexpr int kEmptyQueuePriority = -1;
 YB_STRONGLY_TYPED_BOOL(PickTask);
 
 YB_DEFINE_ENUM(PriorityThreadPoolTaskState, (kPaused)(kNotStarted)(kRunning));
+
+bool operator==(const CompactionInfo& lhs, const CompactionInfo& rhs) {
+  return YB_STRUCT_EQUALS(file_count, byte_count);
+}
+
+// ------------------------------------------------------------------------------------------------
+// PriorityThreadPoolMetrics
+// ------------------------------------------------------------------------------------------------
+
+// PriorityThreadPoolMetrics objects contain 3 metrics corresponding to
+// tasks, files, and bytes involved in the compactions tasks in the
+// state corresponding to the object.
+// Each object of this class is intended for a different state (Queued, Active, Paused)
+
+class PriorityThreadPoolMetrics {
+ public:
+      PriorityThreadPoolMetrics(scoped_refptr<AtomicGauge<uint64_t>> tasks,
+                              scoped_refptr<AtomicGauge<uint64_t>> files,
+                              scoped_refptr<AtomicGauge<uint64_t>> bytes) :
+                              tasks_(tasks), files_(files), bytes_(bytes) {
+      }
+
+      void IncrementBy(CompactionInfo info) {
+        tasks_->IncrementBy(1);
+        files_->IncrementBy(info.file_count);
+        bytes_->IncrementBy(info.byte_count);
+      }
+
+      void DecrementBy(CompactionInfo info) {
+        tasks_->DecrementBy(1);
+        files_->DecrementBy(info.file_count);
+        bytes_->DecrementBy(info.byte_count);
+      }
+
+ private:
+      scoped_refptr<AtomicGauge<uint64_t>> tasks_;
+      scoped_refptr<AtomicGauge<uint64_t>> files_;
+      scoped_refptr<AtomicGauge<uint64_t>> bytes_;
+};
 
 // ------------------------------------------------------------------------------------------------
 // PriorityThreadPoolInternalTask
@@ -368,8 +427,13 @@ PriorityThreadPoolTask::PriorityThreadPoolTask()
 // If the queue is empty, the worker is added to the vector of free workers.
 class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
  public:
-  explicit Impl(int64_t max_running_tasks) : max_running_tasks_(max_running_tasks) {
+  explicit Impl(size_t max_running_tasks,
+      const scoped_refptr<MetricEntity>& metric_entity = nullptr) :
+      max_running_tasks_(max_running_tasks) {
     CHECK_GE(max_running_tasks, 1);
+    if (metric_entity) {
+      SetMetrics(metric_entity);
+    }
   }
 
   ~Impl() {
@@ -405,6 +469,7 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
       }
 
       internal_task = AddTask(priority, std::move(*task), worker);
+      IncreaseMetricsIfCompactionTask(internal_task);
     }
 
     if (worker) {
@@ -422,6 +487,7 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
       for (auto it = tasks_.begin(); it != tasks_.end();) {
         if (it->state() == PriorityThreadPoolTaskState::kNotStarted &&
             it->task()->ShouldRemoveWithKey(key)) {
+          DecreaseMetricsIfCompactionTask(&*it);
           abort_tasks.push_back(std::move(it->task()));
           it = tasks_.erase(it);
         } else {
@@ -445,6 +511,7 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
       for (auto it = tasks_.begin(); it != tasks_.end();) {
         auto state = it->state();
         if (state == PriorityThreadPoolTaskState::kNotStarted) {
+          DecreaseMetricsIfCompactionTask(&*it);
           abort_tasks.push_back(std::move(it->task()));
           it = tasks_.erase(it);
         } else {
@@ -547,8 +614,12 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
 
             return;
           }
+          // Decrease Metrics For Paused Tasks
+          DecreaseMetricsIfCompactionTask(&*(tasks_.project<PriorityTag>(it)));
           task = &*it;
           SetWorker(tasks_.project<PriorityTag>(it), higher_pri_worker);
+          // Increase Metrics For Active Tasks
+          IncreaseMetricsIfCompactionTask(&*(tasks_.project<PriorityTag>(it)));
           break;
         case PriorityThreadPoolTaskState::kRunning:
           --paused_workers_;
@@ -650,9 +721,13 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
         ResumeWorker(tasks_.project<PriorityTag>(it));
         return false;
       case PriorityThreadPoolTaskState::kNotStarted:
+        // Decrease Metrics For Queued Tasks
+        DecreaseMetricsIfCompactionTask(&*it);
         worker->SetTask(&*it);
         SetWorker(tasks_.project<PriorityTag>(it), worker);
         VLOG(4) << "Picked task " << it->task()->ToString() << " for " << worker;
+        // Increase Metrics For Active Tasks
+        IncreaseMetricsIfCompactionTask(&*it);
         return true;
       case PriorityThreadPoolTaskState::kRunning:
         VLOG(4) << "Only running tasks left, nothing for " << worker;
@@ -665,6 +740,7 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
   // Task finished, adjust desired and unwanted tasks.
   void TaskFinished(const PriorityThreadPoolInternalTask* task) REQUIRES(mutex_) {
     VLOG(4) << "Finished " << task->ToString();
+    DecreaseMetricsIfCompactionTask(task);
     tasks_.erase(tasks_.iterator_to(*task));
     UpdateMaxPriorityToDefer();
   }
@@ -687,8 +763,7 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
   }
 
   PriorityThreadPoolWorker* PickWorker() REQUIRES(mutex_) {
-    if (static_cast<int64_t>(workers_.size()) - paused_workers_ -
-        static_cast<int64_t>(free_workers_.size()) >= max_running_tasks_) {
+    if (workers_.size() - paused_workers_ - free_workers_.size() >= max_running_tasks_) {
       VLOG(1) << "We already have " << workers_.size() << " - " << paused_workers_ << " - "
               << free_workers_.size() << " >= " << max_running_tasks_
                           << " workers running, we could not run a new worker.";
@@ -742,13 +817,64 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
         ? kEmptyQueuePriority
         : tasks_.nth(max_running_tasks_)->priority();
     max_priority_to_defer_.store(priority, std::memory_order_release);
+
+  }
+
+  void IncreaseMetricsIfCompactionTask
+      (const PriorityThreadPoolInternalTask* task) REQUIRES(mutex_) {
+    if (!metrics_enabled) {
+      return;
+    }
+    auto state = task->state();
+    const CompactionInfo info = task->task()->GetFileAndByteInfoIfCompaction();
+    if (info == kNoCompactionInfo) {
+      return;
+    }
+    switch (state) {
+      case PriorityThreadPoolTaskState::kNotStarted:
+        queued_metrics_->IncrementBy(info);
+        break;
+      case PriorityThreadPoolTaskState::kPaused:
+        paused_metrics_->IncrementBy(info);
+        break;
+      case PriorityThreadPoolTaskState::kRunning:
+        active_metrics_->IncrementBy(info);
+        break;
+    }
+  }
+
+  void DecreaseMetricsIfCompactionTask
+      (const PriorityThreadPoolInternalTask* task) REQUIRES(mutex_) {
+    if (!metrics_enabled) {
+      return;
+    }
+    auto state = task->state();
+    const CompactionInfo info = task->task()->GetFileAndByteInfoIfCompaction();
+    if (info == kNoCompactionInfo) {
+      return;
+    }
+    switch (state) {
+      case PriorityThreadPoolTaskState::kNotStarted:
+        queued_metrics_->DecrementBy(info);
+        break;
+      case PriorityThreadPoolTaskState::kPaused:
+        paused_metrics_->DecrementBy(info);
+        break;
+      case PriorityThreadPoolTaskState::kRunning:
+        active_metrics_->DecrementBy(info);
+        break;
+    }
   }
 
   template <class It>
   void ModifyState(It it, PriorityThreadPoolTaskState new_state) REQUIRES(mutex_) {
+    // Decrease Metrics For Previous State
+    DecreaseMetricsIfCompactionTask(&*(tasks_.project<PriorityTag>(it)));
     tasks_.modify(it, [new_state](PriorityThreadPoolInternalTask& task) {
       task.SetState(new_state);
     });
+    // Increase Metrics For New State
+    IncreaseMetricsIfCompactionTask(&*(tasks_.project<PriorityTag>(it)));
   }
 
   template <class It>
@@ -760,11 +886,33 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
     });
   }
 
-  const int64_t max_running_tasks_;
+  void SetMetrics(const scoped_refptr<MetricEntity>& metric_entity_) {
+    active_metrics_ = std::make_unique<PriorityThreadPoolMetrics>(
+        metric_entity_->FindOrCreateGauge(&METRIC_rocksdb_compaction_active_tasks, uint64_t(0)),
+        metric_entity_->FindOrCreateGauge(&METRIC_rocksdb_compaction_active_files, uint64_t(0)),
+        metric_entity_->FindOrCreateGauge(&METRIC_rocksdb_compaction_active_bytes, uint64_t(0)));
+    paused_metrics_ = std::make_unique<PriorityThreadPoolMetrics>(
+        metric_entity_->FindOrCreateGauge(&METRIC_rocksdb_compaction_paused_tasks, uint64_t(0)),
+        metric_entity_->FindOrCreateGauge(&METRIC_rocksdb_compaction_paused_files, uint64_t(0)),
+        metric_entity_->FindOrCreateGauge(&METRIC_rocksdb_compaction_paused_bytes, uint64_t(0)));
+    queued_metrics_ = std::make_unique<PriorityThreadPoolMetrics>(
+        metric_entity_->FindOrCreateGauge(&METRIC_rocksdb_compaction_queued_tasks, uint64_t(0)),
+        metric_entity_->FindOrCreateGauge(&METRIC_rocksdb_compaction_queued_files, uint64_t(0)),
+        metric_entity_->FindOrCreateGauge(&METRIC_rocksdb_compaction_queued_bytes, uint64_t(0)));
+    metrics_enabled = true;
+  }
+
+  const size_t max_running_tasks_;
   std::mutex mutex_;
 
   // Number of paused workers.
-  int64_t paused_workers_ GUARDED_BY(mutex_) = 0;
+  size_t paused_workers_ GUARDED_BY(mutex_) = 0;
+
+  // Metrics
+  bool metrics_enabled = false;
+  std::unique_ptr<PriorityThreadPoolMetrics> active_metrics_;
+  std::unique_ptr<PriorityThreadPoolMetrics> paused_metrics_;
+  std::unique_ptr<PriorityThreadPoolMetrics> queued_metrics_;
 
   std::vector<yb::ThreadPtr> threads_ GUARDED_BY(mutex_);
   boost::container::stable_vector<PriorityThreadPoolWorker> workers_ GUARDED_BY(mutex_);
@@ -814,8 +962,9 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
 // Forwarding method calls for the "pointer to impl" idiom
 // ------------------------------------------------------------------------------------------------
 
-PriorityThreadPool::PriorityThreadPool(int64_t max_running_tasks)
-    : impl_(new Impl(max_running_tasks)) {
+PriorityThreadPool::PriorityThreadPool(size_t max_running_tasks,
+                                      const scoped_refptr<MetricEntity>& metric_entity)
+    : impl_(new Impl(max_running_tasks, metric_entity)) {
 }
 
 PriorityThreadPool::~PriorityThreadPool() {

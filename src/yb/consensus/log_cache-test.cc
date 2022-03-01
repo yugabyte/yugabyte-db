@@ -278,7 +278,7 @@ TEST_F(LogCacheTest, TestMemoryLimit) {
 
   // Verify the size is right. It's not exactly kPayloadSize because of in-memory
   // overhead, etc.
-  int size_with_one_msg = cache_->BytesUsed();
+  auto size_with_one_msg = cache_->BytesUsed();
   ASSERT_GT(size_with_one_msg, 300_KB);
   ASSERT_LT(size_with_one_msg, 500_KB);
 
@@ -287,7 +287,7 @@ TEST_F(LogCacheTest, TestMemoryLimit) {
   ASSERT_OK(log_->WaitUntilAllFlushed());
   ASSERT_EQ(2, cache_->num_cached_ops());
 
-  int size_with_two_msgs = cache_->BytesUsed();
+  auto size_with_two_msgs = cache_->BytesUsed();
   ASSERT_GT(size_with_two_msgs, 2 * 300_KB);
   ASSERT_LT(size_with_two_msgs, 2 * 500_KB);
 
@@ -359,7 +359,7 @@ TEST_F(LogCacheTest, TestReplaceMessages) {
   ASSERT_EQ(0, tracker->consumption());
 
   ASSERT_OK(AppendReplicateMessagesToCache(1, 1, kPayloadSize));
-  int size_with_one_msg = tracker->consumption();
+  auto size_with_one_msg = tracker->consumption();
 
   for (int i = 0; i < 10; i++) {
     ASSERT_OK(AppendReplicateMessagesToCache(1, 1, kPayloadSize));

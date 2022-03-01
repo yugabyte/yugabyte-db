@@ -4,10 +4,10 @@ linkTitle: Yugabyte Cloud FAQ
 description: Yugabyte Cloud frequently asked questions.
 headcontent:
 image: /images/section_icons/index/quick_start.png
+section: YUGABYTE CLOUD
 menu:
   latest:
     identifier: cloud-faq
-    parent: yugabyte-cloud
     weight: 900
 isTocNested: true
 showAsideToc: true
@@ -23,7 +23,7 @@ You access your Yugabyte Cloud clusters via [YSQL](../../api/ysql) and [YCQL](..
 
 See also [Yugabyte Cloud](https://www.yugabyte.com/cloud/) at yugabyte.com.
 
-Yugabyte Cloud runs on top of [Yugabyte Platform](../../yugabyte-platform/).
+Yugabyte Cloud runs on top of [Yugabyte Platform](../../yugabyte-platform/overview/).
 
 ### How is Yugabyte Cloud priced?
 
@@ -41,32 +41,13 @@ Refer to [Cloud provider regions](../release-notes#cloud-provider-regions) for a
 
 Yugabyte Cloud supports all the regions that have robust infrastructure and sufficient demand from customers. We are continuously improving region coverage, so if there are any regions you would like us to support, reach out to [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
 
-### What version of YugabyteDB does Yugabyte Cloud run on
-
-Yugabyte Cloud runs on the YugabyteDB 2.8 [stable release](../../releases/whats-new/stable-release/).
-
-To see the version you are running, connect in cloud shell using YSQL and run the following command:
-
-```sh
-yugabyte=> SELECT version();
-```
-
-```output
-                                                  version                                                   
-------------------------------------------------------------------------------------------------------------
- PostgreSQL 11.2-YB-2.8.0.0-b0 on x86_64-pc-linux-gnu, compiled by gcc (Homebrew gcc 5.5.0_4) 5.5.0, 64-bit
-(1 row)
-```
-
-### Can I test YugabyteDB locally?
-
-To test locally, [download](https://download.yugabyte.com) and install YugabyteDB on a local machine. Refer to [Quick Start](../../quick-start). For accurate comparison with cloud, be sure to download the version that is running on Yugabyte Cloud.
+## Clusters
 
 ### What are the differences between free and standard clusters?
 
-Use the free cluster to get started with YugabyteDB. The free cluster is limited to a single node and 10GB of storage, and although not suitable for production workloads, the cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB. You can only have one free cluster.
+Use the free cluster to get started with YugabyteDB. The free cluster is limited to a single node and 10GB of storage. Although not suitable for production workloads, the cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB. Free clusters are provisioned with an [edge release](#what-version-of-yugabytedb-does-my-cluster-run-on). You can only have one free cluster. Free clusters that are inactive for 21 days are [paused](#why-is-my-free-cluster-paused); after 30 days they are deleted.
 
-Standard clusters can have unlimited nodes and storage and are suitable for production workloads. They also support horizontal and vertical scaling - nodes and storage can be added or removed to suit your production loads. Standard clusters also support VPC peering, and scheduled and manual backups.
+Standard clusters can have unlimited nodes and storage and are suitable for production workloads. They also support horizontal and vertical scaling - nodes and storage can be added or removed to suit your production loads. Standard clusters also support VPC peering, and scheduled and manual backups. By default, standard clusters are provisioned using a [stable release](#what-version-of-yugabytedb-does-my-cluster-run-on).
 
 A Yugabyte Cloud account is limited to a single free cluster; you can add as many standard clusters as you need.
 
@@ -74,12 +55,13 @@ A Yugabyte Cloud account is limited to a single free cluster; you can add as man
 | :----------- | :---------- | :---------- |
 | Cluster | Single Node | Any |
 | vCPU/Storage | Up to 2 vCPU / 2 GB RAM / 10 GB storage | Any |
-| Regions | All | All |
+| [Regions](../release-notes#cloud-provider-regions) | All | All |
 | Upgrades | Automatic | Automatic |
 | VPC Peering | No | Yes |
 | Fault Tolerance | None (Single node, RF-1) | Multi node RF-3 clusters with Availability zone and Node level |
 | Scaling | None | Horizontal and Vertical |
 | Backups | None | Scheduled and on-demand |
+| [YugabyteDB version](#what-version-of-yugabytedb-does-my-cluster-run-on) | Edge | Stable |
 | Support | Slack Community | Enterprise Support |
 
 ### What can I do if I run out of resources on my free cluster?
@@ -92,6 +74,37 @@ If you want to continue testing YugabyteDB with more resource-intensive scenario
 ### Can I migrate my free cluster to a standard cluster?
 
 Currently self-service migration is not supported. Contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) for help with migration.
+
+### What is the upgrade policy for clusters?
+
+Upgrades are automatically handled by Yugabyte. There are two types of upgrades:
+
+Cloud console
+: During a maintenance window, the Yugabyte Cloud console may be in read-only mode and not allow any edit changes. The upgrade has no impact on running clusters. We'll notify you in advance of the maintenance schedule.
+
+Cluster (YugabyteDB) version upgrade
+: To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte will upgrade your cluster to the [latest version](#what-version-of-yugabytedb-does-my-cluster-run-on).
+
+: Yugabyte will notify you in advance of any upcoming upgrade via email. The email includes the date and time of the upgrade window. An Upcoming Upgrade badge is also displayed on the cluster. You can start the upgrade any time by signing in to Yugabyte Cloud, selecting the cluster, clicking the **Upcoming Upgrade** badge, and clicking **Upgrade Now**. To change the upgrade window, contact {{<support-cloud>}}.
+
+: The database is upgraded to the latest release in the [release track](#what-version-of-yugabytedb-does-my-cluster-run-on) that was selected when the cluster was created (either edge or stable). Free clusters are always in the edge track.
+: Database upgrades of high-availability (multi-node) clusters are done on a rolling basis to avoid any downtime.
+
+## YugabyteDB
+
+### What version of YugabyteDB does my cluster run on?
+
+Free clusters are provisioned with an **edge** release, most often from the YugabyteDB [latest release](../../releases/whats-new/latest-release/) series; it may also be a recent stable release.
+
+By default, new standard clusters are provisioned with a **stable** release, from the YugabyteDB [stable release](../../releases/whats-new/stable-release/) series. <!--You can choose the edge track when you create the cluster.-->
+
+Once a cluster is created, it is upgraded with releases from the release track that was assigned at creation (that is, either edge or stable).
+
+To view the database version running on a particular cluster, navigate to the **Clusters** page; the database version is displayed next to the cluster name; hover over the version to see the release track.
+
+### Can I test YugabyteDB locally?
+
+To test locally, [download](https://download.yugabyte.com) and install YugabyteDB on a local machine. Refer to [Quick Start](../../quick-start). For accurate comparison with cloud, be sure to download the version that is running on Yugabyte Cloud.
 
 ## Support
 
@@ -109,7 +122,7 @@ The Yugabyte Cloud SLA, terms of service, acceptable use policy, and more can be
 
 The [Yugabyte Cloud Status](https://status.yugabyte.cloud/) page displays the current uptime status of Yugabyte Cloud and the [Yugabyte Support Portal](https://support.yugabyte.com/).
 
-The status page also provides notices of scheduled maintenace and current and past incidents.
+The status page also provides notices of scheduled maintenance and current and past incidents.
 
 Subscribe to the status page by clicking **Subscribe to Updates**. Email notifications are sent when incidents are created, updated, and resolved.
 
@@ -119,9 +132,9 @@ Subscribe to the status page by clicking **Subscribe to Updates**. Email notific
 
 Your data is processed at the Yugabyte Cloud account level, and each cloud account is a single tenant, meaning it runs its components for only one customer. Clusters in your cloud are isolated from each other in a separate VPC, and access is limited to the IP addresses you specify in allow lists assigned to each cluster. Resources are not shared between clusters.
 
-Yugabyte Cloud uses both encryption in transit and encryption at rest to protect clusters and cloud infrastructure, and provides DDoS and application layer protection, and automatically blocks network protocol and volumetric DDoS attacks.
+Yugabyte Cloud uses both encryption in transit and encryption at rest to protect clusters and cloud infrastructure. Yugabyte Cloud also provides DDoS and application layer protection, and automatically blocks network protocol and volumetric DDoS attacks.
 
-Yugabyte Cloud uses a shared responsibility model for cloud security. For more information on Yugabyte Cloud security, refer to [Cloud security](../cloud-security/).
+Yugabyte Cloud uses a shared responsibility model for cloud security. For more information on Yugabyte Cloud security, refer to [Security architecture](../cloud-security/).
 
 ## Cluster configuration and management
 
@@ -129,7 +142,7 @@ Yugabyte Cloud uses a shared responsibility model for cloud security. For more i
 
 From the cloud console you can create single region clusters that can be deployed across multiple and single availability zones.
 
-The Fault Tolerance of a cluster determines how resilient the cluster is to node and cloud zone failues and, by extension, the cluster configuration. You can configure clusters with the following fault tolerances in Yugabyte Cloud:
+The Fault Tolerance of a cluster determines how resilient the cluster is to node and cloud zone failures and, by extension, the cluster configuration. You can configure clusters with the following fault tolerances in Yugabyte Cloud:
 
 - **None** - single node, with no replication or resiliency. Recommended for development and testing only.
 - **Node Level** - a minimum of 3 nodes deployed in a single availability zone with a [replication factor](../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to cloud availability zone outages. For horizontal scaling, you can scale nodes in increments of 1.
@@ -139,20 +152,12 @@ Free clusters are limited to a single node in a single region.
 
 For multi-region deployments, including [synchronous replication](../../explore/multi-region-deployments/synchronous-replication-ysql/), [asynchronous replication](../../explore/multi-region-deployments/asynchronous-replication-ysql/), and [geo-level partitioning](../../explore/multi-region-deployments/row-level-geo-partitioning/), contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
 
-### What is the upgrade policy for clusters?
-
-Upgrades are automatically handled by Yugabyte. There are two types of upgrades:
-
-- Cloud console - During a maintenance window, Yugabyte Cloud console may be in read-only mode and not allow any edit changes. The upgrade has no impact on running clusters. Customers will be notified in advance of the maintenance schedule.
-
-- Cluster (yugabyteDB) version upgrade - To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte will upgrade your cluster to the latest version. We will notify you of any upcoming upgrade schedule via email and Slack. All database upgrades are done on a rolling basis to avoid any downtime.
-
 ### How do I connect to my cluster?
 
 You can connect to clusters in the following ways:
 
 Cloud Shell
-: Run the [ysqlsh](../../admin/ysqlsh) or [ycqlsh](../../admin/ycqlsh) shell from your browser to connect to and interact with your YugabyteDB database. Cloud shell does not require a CA certificate or any special network access configured.
+: Run the [ysqlsh](../../admin/ysqlsh) or [ycqlsh](../../admin/ycqlsh) shell from your browser to connect to and interact with your YugabyteDB database. Cloud Shell does not require a CA certificate or any special network access configured.
 
 Client Shell
 : Connect to your YugabyteDB cluster using the YugabyteDB [ysqlsh](../../admin/ysqlsh) and [ycqlsh](../../admin/ycqlsh) client shells installed on your computer.
@@ -184,11 +189,35 @@ psql
 : For detailed steps for configuring other popular third party tools, see [Third party tools](../../tools/).
 
 Applications
-: Applications connect to and interact with YugabyteDB using API client libraries, also called client drivers. Before you can connect an application, you need to install the correct driver. Clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters. For information on available drivers, refer to [Build an application](../../quick-start/build-apps).
+: Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). Before you can connect an application, you need to install the correct driver. Clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters. For information on available drivers, refer to [Build an application](../../quick-start/build-apps).
 
-: Before you can connect, your application has to be able to reach your Yugabyte Cloud. To add inbound network access from your application environment to Yugabyte Cloud, add the public IP addresses to the [cluster IP access list](../cloud-secure-clusters/add-connections/), or use [VPC peering](../cloud-secure-clusters/cloud-vpcs/) to add private IP addresses.
+: Before you can connect, your application has to be able to reach your Yugabyte Cloud. To add inbound network access from your application environment to Yugabyte Cloud, add the public IP addresses to the [cluster IP access list](../cloud-secure-clusters/add-connections/), or use [VPC peering](../cloud-basics/cloud-vpcs/) to add private IP addresses.
 
 For more details, refer to [Connect to clusters](../cloud-connect).
+
+### Why is my free cluster paused?
+
+Free clusters are paused after 21 days of [inactivity](#what-qualifies-as-activity-on-a-cluster).
+
+For more details, refer to [Inactive free clusters](../cloud-basics/create-clusters-free/#inactive-free-clusters).
+
+### How do I keep my free cluster from being paused or deleted?
+
+Free clusters are paused after 21 days of inactivity. To keep a cluster from being paused, perform an action as described in [What qualifies as activity on a cluster?](#what-qualifies-as-activity-on-a-cluster)
+
+To keep a paused cluster from being deleted, sign in to Yugabyte Cloud, select the cluster on the **Clusters** page, and click **Resume**.
+
+### What qualifies as activity on a cluster?
+
+Free clusters are paused after 21 days of inactivity. To keep your cluster from being paused, you (or, where applicable, an application connected to the database) can perform any of the following actions:
+
+- Any SELECT, UPDATE, INSERT, or DELETE database operation.
+
+- Create or delete tables.
+
+- Add or remove IP allow lists.
+
+- If the cluster is already paused, resume the cluster by signing in to Yugabyte Cloud, selecting the cluster on the **Clusters** page, and clicking **Resume**.
 
 ## Backups
 
@@ -200,7 +229,7 @@ Yugabyte Cloud runs full backups, not incremental.
 
 Backups are retained in the same region as the cluster.
 
-Backups for AWS clusters are encrypted using AWS S3’s server-side encryption and backups for GCP clusters are encrypted using Google-managed server-side encryption keys.
+Backups for AWS clusters are encrypted using AWS S3 server-side encryption. Backups for GCP clusters are encrypted using Google-managed server-side encryption keys.
 
 Currently, Yugabyte Cloud does not support backups of free clusters.
 

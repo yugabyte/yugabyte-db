@@ -43,6 +43,11 @@ struct SnapshotScheduleOperation {
   }
 };
 
+struct CreatingSnapshotData {
+  CoarseTimePoint start_time;
+  TxnSnapshotId snapshot_id = TxnSnapshotId::Nil();
+};
+
 using SnapshotScheduleOperations = std::vector<SnapshotScheduleOperation>;
 
 class SnapshotScheduleState {
@@ -66,6 +71,10 @@ class SnapshotScheduleState {
     return options_;
   }
 
+  SnapshotScheduleOptionsPB& mutable_options() {
+    return options_;
+  }
+
   AsyncTaskTracker& CleanupTracker() {
     return cleanup_tracker_;
   }
@@ -85,6 +94,10 @@ class SnapshotScheduleState {
   CHECKED_STATUS ToPB(SnapshotScheduleInfoPB* pb) const;
   std::string ToString() const;
 
+  const CreatingSnapshotData& creating_snapshot_data() const {
+    return creating_snapshot_data_;
+  }
+
  private:
   std::string LogPrefix() const;
 
@@ -96,7 +109,7 @@ class SnapshotScheduleState {
 
   // When snapshot is being created for this schedule, this field contains id of this snapshot.
   // To prevent creating other snapshots during that time.
-  TxnSnapshotId creating_snapshot_id_ = TxnSnapshotId::Nil();
+  CreatingSnapshotData creating_snapshot_data_;
 
   AsyncTaskTracker cleanup_tracker_;
 };

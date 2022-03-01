@@ -143,4 +143,6 @@ This is a list of people who have contributed code to the [YugabyteDB](https://g
 * [vjr](https://github.com/vjr)
 * [rthallamko3](https://github.com/rthallamko3)
 * [SteveSong](https://github.com/SteveXiSong)
+* [viko600](https://github.com/viko600)
 * [lnguyen](https://github.com/lnguyen-yugabyte)
+* [def-](https://github.com/def-)

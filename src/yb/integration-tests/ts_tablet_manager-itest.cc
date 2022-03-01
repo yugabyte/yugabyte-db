@@ -210,7 +210,7 @@ TEST_F(TsTabletManagerITest, TestReportNewLeaderOnLeaderChange) {
       TSTabletManager* tablet_manager =
           cluster_->mini_tablet_server(replica)->server()->tablet_manager();
       for (int retry = 0; retry <= 12; retry++) {
-        if (tablet_manager->GetNumDirtyTabletsForTests() > 0) break;
+        if (tablet_manager->TEST_GetNumDirtyTablets() > 0) break;
         SleepFor(MonoDelta::FromMilliseconds(1 << retry));
       }
 

@@ -46,7 +46,7 @@ void CqlTestBase<ExternalMiniCluster>::SetUp() {
   ASSERT_OK(MiniClusterTestWithClient<ExternalMiniCluster>::CreateClient());
 
   std::vector<std::string> hosts;
-  for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
     hosts.push_back(cluster_->tablet_server(i)->bind_host());
   }
 

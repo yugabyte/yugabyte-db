@@ -17,9 +17,11 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
+import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.PlatformResults;
@@ -29,10 +31,12 @@ import com.yugabyte.yw.forms.TableDefinitionTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.helpers.ColumnDetails;
 import com.yugabyte.yw.models.helpers.TableDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -483,7 +487,7 @@ public class TablesController extends AuthenticatedController {
         name = "Backup",
         value = "Backup data to be created",
         required = true,
-        dataType = "com.yugabyte.yw.forms.BackupTableParams",
+        dataType = "com.yugabyte.yw.forms.BackupRequestParams",
         paramType = "body")
   })
   // Rename this to createBackup on completion
@@ -491,24 +495,36 @@ public class TablesController extends AuthenticatedController {
     // Validate customer UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
-    Form<BackupTableParams> formData = formFactory.getFormDataOrBadRequest(BackupTableParams.class);
-    BackupTableParams taskParams = formData.get();
+    Form<BackupRequestParams> formData =
+        formFactory.getFormDataOrBadRequest(BackupRequestParams.class);
+    BackupRequestParams taskParams = formData.get();
 
     // Validate universe UUID
     Universe universe = Universe.getOrBadRequest(taskParams.universeUUID);
-    taskParams.customerUuid = customerUUID;
+    taskParams.customerUUID = customerUUID;
 
-    if (taskParams.tableUUIDList == null) {
-      taskParams.tableUUIDList = new ArrayList<>();
+    if (taskParams.keyspaceTableList != null) {
+      for (BackupRequestParams.KeyspaceTable keyspaceTable : taskParams.keyspaceTableList) {
+        if (keyspaceTable.tableUUIDList == null) {
+          keyspaceTable.tableUUIDList = new ArrayList<UUID>();
+        }
+        validateTables(
+            keyspaceTable.tableUUIDList, universe, keyspaceTable.keyspace, taskParams.backupType);
+      }
+    } else {
+      validateTables(null, universe, null, taskParams.backupType);
     }
-    validateTables(
-        taskParams.tableUUIDList, universe, taskParams.getKeyspace(), taskParams.backupType);
 
     if (taskParams.storageConfigUUID == null) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Missing StorageConfig UUID: " + taskParams.storageConfigUUID);
     }
-    customerConfigService.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
+    CustomerConfig customerConfig =
+        customerConfigService.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
+    if (!customerConfig.getState().equals(ConfigState.Active)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot create backup as config is queued for deletion.");
+    }
     if (universe.getUniverseDetails().updateInProgress
         || universe.getUniverseDetails().backupInProgress) {
       throw new PlatformServiceException(
@@ -612,6 +628,74 @@ public class TablesController extends AuthenticatedController {
       auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
       return new YBPTask(taskUUID).asResult();
     }
+  }
+
+  @ApiOperation(
+      value = "Create Backup Schedule",
+      response = Schedule.class,
+      nickname = "createbackupSchedule")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "backup",
+          value = "Parameters of the backup to be restored",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.BackupRequestParams",
+          required = true))
+  public Result createBackupSchedule(UUID customerUUID) {
+    Customer.getOrBadRequest(customerUUID);
+    Form<BackupRequestParams> formData =
+        formFactory.getFormDataOrBadRequest(BackupRequestParams.class);
+    BackupRequestParams taskParams = formData.get();
+    if (taskParams.storageConfigUUID == null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Missing StorageConfig UUID: " + taskParams.storageConfigUUID);
+    }
+    if (taskParams.schedulingFrequency == 0L && taskParams.cronExpression == null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Provide Cron Expression or Scheduling frequency");
+    } else if (taskParams.schedulingFrequency != 0L && taskParams.cronExpression != null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot provide both Cron Expression and Scheduling frequency");
+    } else if (taskParams.schedulingFrequency != 0L) {
+      BackupUtil.validateBackupFrequency(taskParams.schedulingFrequency);
+    } else if (taskParams.cronExpression != null) {
+      BackupUtil.validateBackupCronExpression(taskParams.cronExpression);
+    }
+
+    CustomerConfig customerConfig =
+        customerConfigService.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
+    if (!customerConfig.getState().equals(ConfigState.Active)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot create backup as config is queued for deletion.");
+    }
+    // Validate universe UUID
+    Universe universe = Universe.getOrBadRequest(taskParams.universeUUID);
+    taskParams.customerUUID = customerUUID;
+
+    if (taskParams.keyspaceTableList != null) {
+      for (BackupRequestParams.KeyspaceTable keyspaceTable : taskParams.keyspaceTableList) {
+        if (keyspaceTable.tableUUIDList == null) {
+          keyspaceTable.tableUUIDList = new ArrayList<UUID>();
+        }
+        validateTables(
+            keyspaceTable.tableUUIDList, universe, keyspaceTable.keyspace, taskParams.backupType);
+      }
+    } else {
+      validateTables(null, universe, null, taskParams.backupType);
+    }
+
+    Schedule schedule =
+        Schedule.create(
+            customerUUID,
+            taskParams,
+            TaskType.CreateBackup,
+            taskParams.schedulingFrequency,
+            taskParams.cronExpression);
+    UUID scheduleUUID = schedule.getScheduleUUID();
+    LOG.info(
+        "Created backup schedule for customer {}, schedule uuid = {}.", customerUUID, scheduleUUID);
+    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+    return PlatformResults.withData(schedule);
   }
 
   /**

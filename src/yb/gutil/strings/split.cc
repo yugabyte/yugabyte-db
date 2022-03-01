@@ -60,7 +60,7 @@ GStringPiece GenericFind(
     // GStringPiece referring to the item at position 1.
     return GStringPiece(text.begin() + 1, 0);
   }
-  int found_pos = GStringPiece::npos;
+  auto found_pos = GStringPiece::npos;
   GStringPiece found(text.end(), 0);  // By default, not found
   found_pos = find_policy.Find(text, delimiter);
   if (found_pos != GStringPiece::npos) {
@@ -72,10 +72,10 @@ GStringPiece GenericFind(
 // Finds using GStringPiece::find(), therefore the length of the found delimiter
 // is delimiter.length().
 struct LiteralPolicy {
-  int Find(GStringPiece text, GStringPiece delimiter) {
+  size_t Find(GStringPiece text, GStringPiece delimiter) {
     return text.find(delimiter);
   }
-  int Length(GStringPiece delimiter) {
+  size_t Length(GStringPiece delimiter) {
     return delimiter.length();
   }
 };
@@ -86,7 +86,7 @@ struct AnyOfPolicy {
   size_t Find(GStringPiece text, GStringPiece delimiter) {
     return text.find_first_of(delimiter);
   }
-  int Length(GStringPiece delimiter) {
+  size_t Length(GStringPiece delimiter) {
     return 1;
   }
 };
@@ -215,17 +215,17 @@ void AppendTo(Container* container, Splitter splitter) {
 static const int kMaxOverCut = 12;
 // The ellipsis to add to strings that are too long
 static const char kCutStr[] = "...";
-static const int kCutStrSize = sizeof(kCutStr) - 1;
+static const size_t kCutStrSize = sizeof(kCutStr) - 1;
 
 // ----------------------------------------------------------------------
 // Return the place to clip the string at, or -1
 // if the string doesn't need to be clipped.
 // ----------------------------------------------------------------------
-static int ClipStringHelper(const char* str, int max_len, bool use_ellipsis) {
+static size_t ClipStringHelper(const char* str, size_t max_len, bool use_ellipsis) {
   if (strlen(str) <= max_len)
-    return -1;
+    return std::numeric_limits<size_t>::max();
 
-  int max_substr_len = max_len;
+  auto max_substr_len = max_len;
 
   if (use_ellipsis && max_len > kCutStrSize) {
     max_substr_len -= kCutStrSize;
@@ -252,9 +252,9 @@ static int ClipStringHelper(const char* str, int max_len, bool use_ellipsis) {
 //    ellipsis.
 // ----------------------------------------------------------------------
 
-void ClipString(char* str, int max_len) {
-  int cut_at = ClipStringHelper(str, max_len, true);
-  if (cut_at != -1) {
+void ClipString(char* str, size_t max_len) {
+  auto cut_at = ClipStringHelper(str, max_len, true);
+  if (cut_at != std::numeric_limits<size_t>::max()) {
     if (max_len > kCutStrSize) {
       strcpy(str+cut_at, kCutStr); // NOLINT
     } else {
@@ -267,9 +267,9 @@ void ClipString(char* str, int max_len) {
 // ClipString
 //    Version of ClipString() that uses string instead of char*.
 // ----------------------------------------------------------------------
-void ClipString(string* full_str, int max_len) {
-  int cut_at = ClipStringHelper(full_str->c_str(), max_len, true);
-  if (cut_at != -1) {
+void ClipString(string* full_str, size_t max_len) {
+  auto cut_at = ClipStringHelper(full_str->c_str(), max_len, true);
+  if (cut_at != std::numeric_limits<size_t>::max()) {
     full_str->erase(cut_at);
     if (max_len > kCutStrSize) {
       full_str->append(kCutStr);
@@ -294,12 +294,12 @@ template <typename StringType, typename ITR>
 static inline
 void SplitStringToIteratorAllowEmpty(const StringType& full,
                                      const char* delim,
-                                     int pieces,
+                                     size_t pieces,
                                      ITR& result) { // NOLINT
   string::size_type begin_index, end_index;
   begin_index = 0;
 
-  for (int i = 0; (i < pieces-1) || (pieces == 0); i++) {
+  for (size_t i = 0; (i < pieces-1) || (pieces == 0); i++) {
     end_index = full.find_first_of(delim, begin_index);
     if (end_index == string::npos) {
       *result++ = full.substr(begin_index);
@@ -313,7 +313,7 @@ void SplitStringToIteratorAllowEmpty(const StringType& full,
 
 void SplitStringIntoNPiecesAllowEmpty(const string& full,
                                       const char* delim,
-                                      int pieces,
+                                      size_t pieces,
                                       vector<string>* result) {
   if (pieces == 0) {
     // No limit when pieces is 0.
@@ -323,7 +323,7 @@ void SplitStringIntoNPiecesAllowEmpty(const string& full,
     // be. However, the argument to the Limit() delimiter is the max number of
     // delimiters, which should be one less than "pieces". Example: "a,b,c" has
     // 3 pieces and two comma delimiters.
-    int limit = std::max(pieces - 1, 0);
+    auto limit = std::max<size_t>(pieces - 1, 0);
     AppendTo(result, strings::Split(full, Limit(AnyOf(delim), limit)));
   }
 }
@@ -350,8 +350,8 @@ void SplitStringAllowEmpty(const string& full, const char* delim,
 // SplitStringToIteratorUsing. I could have written my own counting iterator,
 // and use the existing template function, but probably this is more clear
 // and more sure to get optimized to reasonable code.
-static int CalculateReserveForVector(const string& full, const char* delim) {
-  int count = 0;
+static size_t CalculateReserveForVector(const string& full, const char* delim) {
+  size_t count = 0;
   if (delim[0] != '\0' && delim[1] == '\0') {
     // Optimize the common case where delim is a single character.
     char c = delim[0];
@@ -880,7 +880,7 @@ bool SplitStructuredLineInternal(GStringPiece line,
 
   CHECK_NOTNULL(cols);
   cols->push_back(line);
-  for (int i = 0; i < line.size(); ++i) {
+  for (size_t i = 0; i < line.size(); ++i) {
     char c = line[i];
     if (in_escape) {
       in_escape = false;
@@ -1036,7 +1036,7 @@ const char* SplitLeadingDec32Values(const char *str, vector<int32> *result) {
     } else if (value < numeric_limits<int32>::min()) {
       value = numeric_limits<int32>::min();
     }
-    result->push_back(value);
+    result->push_back(narrow_cast<int32>(value));
     str = end;
     if (!ascii_isspace(*end))
       break;
@@ -1059,16 +1059,16 @@ const char* SplitLeadingDec64Values(const char *str, vector<int64> *result) {
 }
 
 void SplitStringToLines(const char* full,
-                        int max_len,
-                        int num_lines,
+                        size_t max_len,
+                        size_t num_lines,
                         vector<string>* result) {
   if (max_len <= 0) {
     return;
   }
-  int pos = 0;
-  for (int i = 0; (i < num_lines || num_lines <= 0); i++) {
-    int cut_at = ClipStringHelper(full+pos, max_len, (i == num_lines - 1));
-    if (cut_at == -1) {
+  size_t pos = 0;
+  for (size_t i = 0; (i < num_lines || num_lines <= 0); i++) {
+    auto cut_at = ClipStringHelper(full+pos, max_len, (i == num_lines - 1));
+    if (cut_at == std::numeric_limits<size_t>::max()) {
       result->push_back(string(full+pos));
       return;
     }

@@ -204,16 +204,20 @@ public class UniverseInfoHandler {
     return targetFile;
   }
 
-  public Path downloadUniverseLogs(Customer customer, Universe universe, Path basePath) {
-    List<NodeDetails> nodes = universe.getNodes().stream().collect(Collectors.toList());
+  public Path downloadNodeFile(
+      Customer customer,
+      Universe universe,
+      NodeDetails node,
+      String ybHomeDir,
+      String sourceNodeFile,
+      Path targetFile) {
+    ShellResponse response =
+        nodeUniverseManager.downloadNodeFile(
+            node, universe, ybHomeDir, sourceNodeFile, targetFile.toString());
 
-    for (NodeDetails node : nodes) {
-      String nodeName = node.getNodeName();
-      Path nodeTargetFile = Paths.get(basePath.toString() + "/" + nodeName + ".tar.gz");
-      log.debug("Node target file {}", nodeTargetFile.toString());
-
-      Path targetFile = downloadNodeLogs(customer, universe, node, nodeTargetFile);
+    if (response.code != 0) {
+      throw new PlatformServiceException(Http.Status.INTERNAL_SERVER_ERROR, response.message);
     }
-    return basePath;
+    return targetFile;
   }
 }

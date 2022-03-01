@@ -3,10 +3,10 @@ title: Presto
 linkTitle: Presto
 description: Presto
 aliases:
+section: INTEGRATIONS
 menu:
   latest:
     identifier: presto
-    parent: integrations
     weight: 575
 isTocNested: true
 showAsideToc: true

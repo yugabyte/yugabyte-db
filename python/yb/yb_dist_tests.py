@@ -321,6 +321,7 @@ ARCHIVED_PATHS_IN_BUILD_DIR = [
     'thirdparty_url.txt',
     'postgres_build/contrib',
     'postgres_build/src/test/regress',
+    'postgres_build/src/test/isolation',
 ]
 
 ARCHIVED_PATHS_IN_SRC_DIR = [

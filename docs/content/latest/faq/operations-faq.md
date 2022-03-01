@@ -3,10 +3,10 @@ title: FAQs about operating YugabyteDB clusters
 headerTitle: Operations FAQ
 linkTitle: Operations FAQ
 description: Answers to common questions about operating YugabyteDB clusters
+section: FAQ
 menu:
   latest:
     identifier: faq-operations
-    parent: faq
     weight: 2720
 isTocNested: false
 showAsideToc: true

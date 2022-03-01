@@ -1011,6 +1011,12 @@ bool Erase(const Value& value, Collection* collection) {
   return true;
 }
 
+template <class Collection1, class Collection2>
+void MoveCollection(Collection1* source, Collection2* destination) {
+  destination->reserve(destination->size() + source->size());
+  std::move(source->begin(), source->end(), std::back_inserter(*destination));
+}
+
 template <class Collection>
 void Unique(Collection* collection) {
   collection->erase(std::unique(collection->begin(), collection->end()), collection->end());

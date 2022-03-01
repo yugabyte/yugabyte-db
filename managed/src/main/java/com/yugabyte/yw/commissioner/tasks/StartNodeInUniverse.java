@@ -101,7 +101,8 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
         // Set gflags for master.
-        createGFlagsOverrideTasks(ImmutableList.of(currentNode), ServerType.MASTER);
+        createGFlagsOverrideTasks(
+            ImmutableList.of(currentNode), ServerType.MASTER, true /*isShell */);
 
         // Start a master process.
         createStartMasterTasks(new HashSet<NodeDetails>(Arrays.asList(currentNode)))

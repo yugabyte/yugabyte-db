@@ -934,6 +934,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	relationId = heap_create_with_catalog(relname,
 										  namespaceId,
 										  tablespaceId,
+										  tablegroupId,
 										  relationId,
 										  rowTypeId,
 										  ofTypeId,
@@ -8376,6 +8377,9 @@ ATExecAddIndex(AlteredTableInfo *tab, Relation *mutable_rel,
 	{
 		/* Table will be re-created, along with the dummy PK index. */
 		address = YBCloneRelationSetPrimaryKey(mutable_rel, stmt);
+
+		/* Update the table relid so that further passes will operate on the new table. */
+		tab->relid = (*mutable_rel)->rd_id;
 	}
 
 	/*
@@ -13045,8 +13049,8 @@ ATExecSetTableSpaceNoStorage(Relation rel, Oid newTableSpace)
 		int num_options;
 		yb_get_tablespace_options(&options, &num_options, newTableSpace);
 		/*
-		 * Validation should only happen on tablespaces that have a defined replica
-		 * placement
+		 * Validation should only happen on tablespaces that have a defined
+		 * replica placement
 		 */
 		for (int i = 0; i < num_options; i++) {
 			char *option = VARDATA(options[i]);

@@ -61,8 +61,8 @@ class YBTableTestBase : public YBTest {
   virtual bool use_external_mini_cluster();
   virtual bool use_yb_admin_client();
   virtual int session_timeout_ms();
-  virtual int num_masters();
-  virtual int num_tablet_servers();
+  virtual size_t num_masters();
+  virtual size_t num_tablet_servers();
   virtual int num_drives();
   virtual int num_tablets();
   virtual int client_rpc_timeout_ms();
@@ -112,9 +112,9 @@ class YBTableTestBase : public YBTest {
 
   vector<string> master_rpc_addresses_as_strings() {
     vector<string> host_ports;
-    int num_masters = use_external_mini_cluster() ? external_mini_cluster()->num_masters()
-                                                  : mini_cluster()->num_masters();
-    for (int i = 0; i < num_masters; i++) {
+    size_t num_masters = use_external_mini_cluster() ? external_mini_cluster()->num_masters()
+                                                     : mini_cluster()->num_masters();
+    for (size_t i = 0; i < num_masters; i++) {
       auto sock_addr = use_external_mini_cluster()
                            ? external_mini_cluster()->master(i)->bound_rpc_addr()
                            : mini_cluster()->mini_master(i)->bound_rpc_addr();

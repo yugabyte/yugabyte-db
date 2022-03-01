@@ -21,6 +21,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include "yb/gutil/casts.h"
+
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/ts_descriptor.h"
 
@@ -286,10 +288,10 @@ class PerTableLoadState {
   };
 
   // Get the load for a certain TS.
-  int GetLoad(const TabletServerId& ts_uuid) const;
+  size_t GetLoad(const TabletServerId& ts_uuid) const;
 
   // Get the load for a certain TS.
-  int GetLeaderLoad(const TabletServerId& ts_uuid) const;
+  size_t GetLeaderLoad(const TabletServerId& ts_uuid) const;
 
   void SetBlacklist(const BlacklistPB& blacklist) { blacklist_ = blacklist; }
   void SetLeaderBlacklist(const BlacklistPB& leader_blacklist) {
@@ -343,7 +345,7 @@ class PerTableLoadState {
 
   inline bool IsLeaderLoadBelowThreshold(const TabletServerId& ts_uuid) {
     return ((leader_balance_threshold_ > 0) &&
-            (GetLeaderLoad(ts_uuid) <= leader_balance_threshold_));
+            (GetLeaderLoad(ts_uuid) <= implicit_cast<size_t>(leader_balance_threshold_)));
   }
 
   void AdjustLeaderBalanceThreshold();

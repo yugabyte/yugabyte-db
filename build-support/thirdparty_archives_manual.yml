@@ -1,7 +1,7 @@
 # Unlike thirdpaty_archives.yml, this file is maintained manually.
-# Note that the aarch64 gcc build is probably not very usable due to libunwind issues, and we
-# prefer to use the clang11 build for aarch64, which is listed in thirdparty-archives.yml.
 archives:
+  # Note that the aarch64 gcc build is probably not very usable due to libunwind issues, and we
+  # prefer to use the clang11 build for aarch64.
   - os_type: centos8
     architecture: aarch64
     compiler_type: gcc9

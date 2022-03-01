@@ -9,15 +9,19 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
+import static org.junit.Assert.assertEquals;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.common.EmailFixtures;
 import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
 import java.util.Collections;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
+import java.util.Optional;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import play.libs.Json;
@@ -136,5 +140,35 @@ public class CommonUtilsTest {
   public void testReleaseEqualOrAfter(
       String thresholdRelease, String actualRelease, boolean result) {
     assertThat(CommonUtils.isReleaseEqualOrAfter(thresholdRelease, actualRelease), equalTo(result));
+  }
+
+  @Abortable
+  abstract static class Base {}
+
+  @Retryable
+  static class SubClass1 extends Base {}
+
+  static class SubClass2 extends Base {}
+
+  @Retryable(enabled = false)
+  static class SubClass3 extends SubClass1 {}
+
+  @Test
+  public void testIsAnnotatedWith() {
+    Optional<Abortable> op1 = CommonUtils.isAnnotatedWith(SubClass1.class, Abortable.class);
+    assertEquals(true, op1.isPresent());
+    assertEquals(true, op1.get().enabled());
+    // On subclass
+    op1 = CommonUtils.isAnnotatedWith(SubClass1.class, Abortable.class);
+    assertEquals(true, op1.isPresent());
+    assertEquals(true, op1.get().enabled());
+    Optional<Retryable> op2 = CommonUtils.isAnnotatedWith(SubClass1.class, Retryable.class);
+    assertEquals(true, op2.isPresent());
+    assertEquals(true, op2.get().enabled());
+    op2 = CommonUtils.isAnnotatedWith(SubClass2.class, Retryable.class);
+    assertEquals(false, op2.isPresent());
+    op2 = CommonUtils.isAnnotatedWith(SubClass3.class, Retryable.class);
+    assertEquals(true, op2.isPresent());
+    assertEquals(false, op2.get().enabled());
   }
 }

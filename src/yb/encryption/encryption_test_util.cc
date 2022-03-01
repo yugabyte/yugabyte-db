@@ -21,10 +21,10 @@ namespace encryption {
 
 constexpr uint32_t kEncryptionTestNumIterations = 10;
 
-void DoTest(std::function<void(uint32_t, uint32_t)> file_op, int32_t size) {
-  std::vector<int32_t> indices = RandomUniformVector(0, size - 1, kEncryptionTestNumIterations);
+void DoTest(const std::function<void(size_t, size_t)>& file_op, size_t size) {
+  auto indices = RandomUniformVector<size_t>(0, size - 1, kEncryptionTestNumIterations);
   std::sort(indices.begin(), indices.end());
-  int last_idx = 0;
+  size_t last_idx = 0;
   for (auto i : indices) {
     if (last_idx == i) {
       continue;

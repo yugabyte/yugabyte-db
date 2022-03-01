@@ -86,8 +86,7 @@ CHECKED_STATUS ServerOperator(PTypePtr arg1, PTypePtr arg2, RTypePtr result) {
 template<typename PTypePtr, typename RTypePtr>
 uint16_t YBHash(const vector<PTypePtr>& params, RTypePtr result) {
   string encoded_key = "";
-  for (int i = 0; i < params.size(); i++) {
-    const PTypePtr& param = params[i];
+  for (const PTypePtr& param : params) {
     param->AppendToKeyBytes(&encoded_key);
   }
 
@@ -341,7 +340,7 @@ template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS MapConstructor(const vector<PTypePtr>& params, RTypePtr result) {
   auto *qlmap = result->mutable_map_value();
   RSTATUS_DCHECK(params.size()%2 == 0, RuntimeError, "Unexpected argument count for map::map");
-  for (int i = 0; i < params.size(); i++) {
+  for (size_t i = 0; i < params.size(); i++) {
     *qlmap->add_keys() = params[i]->value();
     *qlmap->add_values() = params[++i]->value();
   }
@@ -352,8 +351,8 @@ CHECKED_STATUS MapConstructor(const vector<PTypePtr>& params, RTypePtr result) {
 template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS SetConstructor(const vector<PTypePtr>& params, RTypePtr result) {
   auto *qlset = result->mutable_set_value();
-  for (int i = 0; i < params.size(); i++) {
-    *qlset->add_elems() = params[i]->value();
+  for (const auto& param : params) {
+    *qlset->add_elems() = param->value();
   }
   return Status::OK();
 }
@@ -362,8 +361,8 @@ CHECKED_STATUS SetConstructor(const vector<PTypePtr>& params, RTypePtr result) {
 template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS ListConstructor(const vector<PTypePtr>& params, RTypePtr result) {
   auto *qllist = result->mutable_list_value();
-  for (int i = 0; i < params.size(); i++) {
-    *qllist->add_elems() = params[i]->value();
+  for (const auto& param : params) {
+    *qllist->add_elems() = param->value();
   }
   return Status::OK();
 }
@@ -372,8 +371,8 @@ CHECKED_STATUS ListConstructor(const vector<PTypePtr>& params, RTypePtr result) 
 template<typename PType>
 std::map<PType, PType> MapFromVector(const std::vector<PType*>& params) {
   std::map<PType, PType> ordered_values;
-  for (int vidx = 0; vidx < params.size(); vidx++) {
-    int kidx = vidx++;
+  for (size_t vidx = 0; vidx < params.size(); vidx++) {
+    auto kidx = vidx++;
     ordered_values[*params[kidx]] = *params[vidx];
   }
   return ordered_values;
@@ -382,8 +381,8 @@ std::map<PType, PType> MapFromVector(const std::vector<PType*>& params) {
 template<typename PType>
 std::map<PType, PType> MapFromVector(const std::vector<std::shared_ptr<PType>>& params) {
   std::map<PType, PType> ordered_values;
-  for (int vidx = 0; vidx < params.size(); vidx++) {
-    int kidx = vidx++;
+  for (size_t vidx = 0; vidx < params.size(); vidx++) {
+    auto kidx = vidx++;
     ordered_values[*params[kidx]] = *params[vidx];
   }
   return ordered_values;
@@ -405,7 +404,7 @@ CHECKED_STATUS MapFrozen(const vector<PTypePtr>& params, RTypePtr result) {
 template<typename PType>
 std::set<PType> SetFromVector(const std::vector<PType*>& params) {
   std::set<PType> ordered_values;
-  for (int i = 0; i < params.size(); i++) {
+  for (size_t i = 0; i < params.size(); i++) {
     ordered_values.insert(*params[i]);
   }
   return ordered_values;
@@ -414,8 +413,8 @@ std::set<PType> SetFromVector(const std::vector<PType*>& params) {
 template<typename PType>
 std::set<PType> SetFromVector(const std::vector<std::shared_ptr<PType>>& params) {
   std::set<PType> ordered_values;
-  for (int i = 0; i < params.size(); i++) {
-    ordered_values.insert(*params[i]);
+  for (const auto& param : params) {
+    ordered_values.insert(*param);
   }
   return ordered_values;
 }
@@ -435,8 +434,8 @@ CHECKED_STATUS SetFrozen(const vector<PTypePtr>& params, RTypePtr result) {
 template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS ListFrozen(const vector<PTypePtr>& params, RTypePtr result) {
   auto *frozen_value = result->mutable_frozen_value();
-  for (int i = 0; i < params.size(); i++) {
-    *frozen_value->add_elems() = params[i]->value();
+  for (const auto& param : params) {
+    *frozen_value->add_elems() = param->value();
   }
   return Status::OK();
 }

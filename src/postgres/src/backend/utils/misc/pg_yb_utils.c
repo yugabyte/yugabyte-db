@@ -27,6 +27,7 @@
 #include "pg_yb_utils.h"
 
 #include <assert.h>
+#include <inttypes.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -912,6 +913,7 @@ PowerWithUpperLimit(double base, int exp, double upper_limit)
 
 bool yb_enable_create_with_table_oid = false;
 int yb_index_state_flags_update_delay = 1000;
+bool yb_enable_expression_pushdown = false;
 
 //------------------------------------------------------------------------------
 // YB Debug utils.
@@ -1024,6 +1026,10 @@ YBDecrementDdlNestingLevel(bool is_catalog_version_increment, bool is_breaking_c
 		if (increment_done)
 		{
 			yb_catalog_cache_version += 1;
+			if (YBCGetLogYsqlCatalogVersions())
+				ereport(LOG,
+						(errmsg("%s: set local catalog version: %" PRIu64,
+								__func__, yb_catalog_cache_version)));
 		}
 
 		List *handles = YBGetDdlHandles();
@@ -1227,7 +1233,6 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		case T_DropReplicationSlotCmd:
 		case T_DropRoleStmt:
 		case T_DropSubscriptionStmt:
-		case T_DropTableGroupStmt:
 		case T_DropTableSpaceStmt:
 		case T_DropUserMappingStmt:
 			return true;
@@ -1482,7 +1487,7 @@ yb_servers(PG_FUNCTION_ARGS)
     funcctx->tuple_desc = BlessTupleDesc(tupdesc);
 
     YBCServerDescriptor *servers = NULL;
-    int numservers = 0;
+    size_t numservers = 0;
     HandleYBStatus(YBCGetTabletServerHosts(&servers, &numservers));
     funcctx->max_calls = numservers;
     funcctx->user_fctx = servers;

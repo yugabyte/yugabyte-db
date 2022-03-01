@@ -405,7 +405,7 @@ class PeerMessageQueue {
   static const char* StateToStr(State state);
   friend std::ostream& operator <<(std::ostream& out, State mode);
 
-  static constexpr int kUninitializedMajoritySize = -1;
+  static constexpr ssize_t kUninitializedMajoritySize = -1;
 
   struct QueueState {
 
@@ -438,7 +438,7 @@ class PeerMessageQueue {
     int64_t current_term = OpId::Min().term;
 
     // The size of the majority for the queue.
-    int majority_size_ = kUninitializedMajoritySize;
+    ssize_t majority_size_ = kUninitializedMajoritySize;
 
     State state = State::kQueueConstructed;
 
@@ -522,7 +522,7 @@ class PeerMessageQueue {
   Result<ReadOpsResult> ReadFromLogCache(
     int64_t after_index,
     int64_t to_index,
-    int max_batch_size,
+    size_t max_batch_size,
     const std::string& peer_uuid,
     const CoarseTimePoint deadline = CoarseTimePoint::max());
 
@@ -617,6 +617,8 @@ class PeerMessageQueueObserver {
 
   virtual ~PeerMessageQueueObserver() {}
 };
+
+Status ValidateFlags();
 
 }  // namespace consensus
 }  // namespace yb

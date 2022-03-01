@@ -89,7 +89,7 @@ class UniverseDetail extends Component {
       }
     }
 
-    this.props.bindShortcut(['ctrl+e', 'e'], this.onEditUniverseButtonClick);
+    this.props.bindShortcut(['ctrl+e'], this.onEditUniverseButtonClick);
 
     if (this.props.location.pathname !== '/universes/create') {
       let uuid = this.props.uuid;

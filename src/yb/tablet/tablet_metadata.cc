@@ -279,17 +279,16 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateNew(
   auto wal_top_dir = wal_root_dir;
   auto data_top_dir = data_root_dir;
   // Use the original randomized logic if the indices are not explicitly passed in
-  yb::Random rand(GetCurrentTimeMicros());
   if (data_root_dir.empty()) {
     auto data_root_dirs = fs_manager->GetDataRootDirs();
     CHECK(!data_root_dirs.empty()) << "No data root directories found";
-    data_top_dir = data_root_dirs[rand.Uniform(data_root_dirs.size())];
+    data_top_dir = RandomElement(data_root_dirs);
   }
 
   if (wal_root_dir.empty()) {
     auto wal_root_dirs = fs_manager->GetWalRootDirs();
     CHECK(!wal_root_dirs.empty()) << "No wal root directories found";
-    wal_top_dir = wal_root_dirs[rand.Uniform(wal_root_dirs.size())];
+    wal_top_dir = RandomElement(wal_root_dirs);
   }
 
   const string table_dir_name = Substitute("table-$0", data.table_info->table_id);
@@ -562,10 +561,11 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
     if (superblock.has_split_op_id()) {
       split_op_id_ = OpId::FromPB(superblock.split_op_id());
 
-      SCHECK_EQ(superblock.split_child_tablet_ids().size(), split_child_tablet_ids_.size(),
+      SCHECK_EQ(implicit_cast<size_t>(superblock.split_child_tablet_ids().size()),
+                split_child_tablet_ids_.size(),
                 Corruption, "Expected exact number of child tablet ids");
       for (size_t i = 0; i != split_child_tablet_ids_.size(); ++i) {
-        split_child_tablet_ids_[i] = superblock.split_child_tablet_ids(i);
+        split_child_tablet_ids_[i] = superblock.split_child_tablet_ids(narrow_cast<int>(i));
       }
     }
 
@@ -666,7 +666,7 @@ void RaftGroupMetadata::ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* super
   if (!split_op_id_.empty()) {
     split_op_id_.ToPB(pb.mutable_split_op_id());
     auto& split_child_table_ids = *pb.mutable_split_child_tablet_ids();
-    split_child_table_ids.Reserve(split_child_tablet_ids_.size());
+    split_child_table_ids.Reserve(narrow_cast<int>(split_child_tablet_ids_.size()));
     for (const auto& split_child_tablet_id : split_child_tablet_ids_) {
       *split_child_table_ids.Add() = split_child_tablet_id;
     }
@@ -674,7 +674,7 @@ void RaftGroupMetadata::ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* super
 
   if (!active_restorations_.empty()) {
     auto& active_restorations = *pb.mutable_active_restorations();
-    active_restorations.Reserve(active_restorations_.size());
+    active_restorations.Reserve(narrow_cast<int>(active_restorations_.size()));
     for (const auto& id : active_restorations_) {
       active_restorations.Add()->assign(id.AsSlice().cdata(), id.size());
     }

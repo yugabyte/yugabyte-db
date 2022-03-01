@@ -3,10 +3,10 @@ title: YSQL Loader
 linkTitle: YSQL Loader
 description: YSQL Loader
 aliases:
+section: INTEGRATIONS
 menu:
   latest:
     identifier: ysql-loader
-    parent: integrations
     weight: 577
 isTocNested: true
 showAsideToc: true
@@ -20,7 +20,7 @@ This document describes how to migrate MySQL schema and data to YugabyteDB.
 
 Before starting the migration, ensure that you have the following:
 
-- Access to the MySQL database that is a subject of migration. 
+- Access to the MySQL database that is a subject of migration.
 
 - [ysqlsh](/latest/admin/ysqlsh/) command-line connectivity to a running YugabyteDB cluster that is a target of migration.
 
@@ -42,43 +42,43 @@ Before starting the migration, ensure that you have the following:
 
     1. Install Docker. The installation procedure depends on your OS. For more information, see [Install Docker Engine](https://docs.docker.com/engine/install/).
 
-    2. Start Docker by running the following command: 
-  
+    2. Start Docker by running the following command:
+
         ```shell
         sudo systemctl start docker
         ```
 
-    3. Verify the Docker installation by running the following command: 
-  
+    3. Verify the Docker installation by running the following command:
+
         ```shell
-        sudo docker run hello-world 
+        sudo docker run hello-world
         ```
-  
+
   - Verify that the migration computer connects to the MySQL server over port 3306 by using the following command:
-  
+
     ```shell
     telnet <MySQL_ip> 3306
     ```
-  
+
   - Grant the YSQL Loader IP the permissions to access the MySQL database using the following command:
-  
+
     ```sql
     GRANT ALL PRIVILEGES ON *.* TO 'root'@'<pgloader_instance_ip>' WITH GRANT OPTION;
-        
+
     flush PRIVILEGES;
     ```
-  
+
   - Add a password for the IP and User combination using the following command:
-  
+
     ```sql
     SET PASSWORD FOR 'root'@'<pgloader_instance_ip>' =
         PASSWORD('<password>');
     ```
-  
+
     If, after completing the preceding steps, you encounter "Failed to connect" error message, check the access permissions with your MySQL DBA:
-  
+
   - Verify that YSQL Loader instance can reach the target YugabyeDB cluster and communicate with one of the YugabyteDB nodes across port 5433, as follows:
-  
+
     ```sh
     telnet <YugabyteDB_node_ip> 5433
     ```
@@ -86,7 +86,7 @@ Before starting the migration, ensure that you have the following:
 - YSQL Loader itself, which you can install using Docker, as follows:
 
   ```sh
-  docker pull yugabytedb/pgloader:v1.1   
+  docker pull yugabytedb/pgloader:v1.1
   docker run --rm --name pgloader yugabytedb/pgloader:v1.0 pgloader --version
   ```
 
@@ -164,8 +164,8 @@ In addition, you can check the live queries by navigating to the **Queries** sec
 To load both schema and data from MySQL, use a file similar to the following:
 
 ```sql
-load database 
-  from mysql://root:password@localhost:3306/northwind 
+load database
+  from mysql://root:password@localhost:3306/northwind
   into postgresql://yugabyte:yugabyte@localhost:5433/northwindmysql
 WITH
   max parallel create index=1;
@@ -176,8 +176,8 @@ You do not have to specify any other options in your command file, as they funct
 To migrate only schema, use a file similar to the following:
 
 ```sql
-load database 
-  from mysql://root:password@localhost:3306/northwind 
+load database
+  from mysql://root:password@localhost:3306/northwind
   into postgresql://yugabyte:yugabyte@localhost:5433/northwindmysql
 WITH
   max parallel create index=1, schema only;
@@ -190,20 +190,20 @@ You can modify the DDL by performing the following steps:
 1. Dump the DDL using a command file, as follows:
 
    ```sql
-   load database 
-     from mysql://root:password@localhost:3306/northwind 
+   load database
+     from mysql://root:password@localhost:3306/northwind
      into postgresql://yugabyte:yugabyte@localhost:5433/northwindmysql
    WITH
      max parallel create index=1, dumpddl only;
    ```
-   
-1. Modify the the `ddl.sql` DDL file and run it using the [ysqlsh](/latest/admin/ysqlsh/) command-line tool.
+
+1. Modify the `ddl.sql` DDL file and run it using the [ysqlsh](/latest/admin/ysqlsh/) command-line tool.
 
 1. Provide the DDL file using a command file similar to the following:
 
    ```sql
-   load database 
-    from mysql://root:password@localhost:3306/northwind 
+   load database
+    from mysql://root:password@localhost:3306/northwind
     into postgresql://yugabyte:yugabyte@localhost:5433/northwindmysql
    WITH
     max parallel create index=1, data only;
@@ -212,12 +212,12 @@ You can modify the DDL by performing the following steps:
 Alternatively, you can execute a command file similar to the following, in which case you do need to run the `ddl.sql` file using the ysqlsh tool:
 
 ```sql
-load database 
-  from mysql://root:password@localhost:3306/northwind 
+load database
+  from mysql://root:password@localhost:3306/northwind
   into postgresql://yugabyte:yugabyte@localhost:5433/northwindmysql
 WITH
   max parallel create index=1, data only
-  
+
 BEFORE LOAD EXECUTE
   '/Users/myname/quicklisp/local-projects/pgloader/ddl.sql';
 ```

@@ -149,12 +149,13 @@ class ConsensusPeersTest : public YBTest {
     return proxy_ptr;
   }
 
-  void CheckLastLogEntry(int term, int index) {
-    ASSERT_EQ(log_->GetLatestEntryOpId(), yb::OpId(term, index));
+  void CheckLastLogEntry(int64_t term, int64_t index) {
+    ASSERT_EQ(log_->GetLatestEntryOpId(), OpId(term, index));
   }
 
-  void CheckLastRemoteEntry(DelayablePeerProxy<NoOpTestPeerProxy>* proxy, int term, int index) {
-    ASSERT_EQ(yb::OpId::FromPB(proxy->proxy()->last_received()), yb::OpId(term, index));
+  void CheckLastRemoteEntry(
+      DelayablePeerProxy<NoOpTestPeerProxy>* proxy, int64_t term, int64_t index) {
+    ASSERT_EQ(OpId::FromPB(proxy->proxy()->last_received()), OpId(term, index));
   }
 
  protected:

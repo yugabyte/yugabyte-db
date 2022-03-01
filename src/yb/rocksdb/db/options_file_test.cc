@@ -27,8 +27,10 @@
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/util/testharness.h"
 
+#include "yb/rocksdb/util/testutil.h"
+
 namespace rocksdb {
-class OptionsFileTest : public testing::Test {
+class OptionsFileTest : public RocksDBTest {
  public:
   OptionsFileTest() : dbname_(test::TmpDir() + "/options_file_test") {}
 

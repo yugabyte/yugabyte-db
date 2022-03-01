@@ -3,10 +3,10 @@ title: Build a Java application using Apache Spark and YugabyteDB
 headerTitle: Apache Spark
 linkTitle: Apache Spark
 description: Build a Java-based application using Apache Spark and YugabyteDB.
+section: INTEGRATIONS
 menu:
   latest:
     identifier: apache-spark-2-java
-    parent: integrations
     weight: 572
 showAsideToc: true
 isTocNested: true

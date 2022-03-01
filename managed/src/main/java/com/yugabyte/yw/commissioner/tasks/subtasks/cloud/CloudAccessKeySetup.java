@@ -65,7 +65,8 @@ public class CloudAccessKeySetup extends CloudTaskBase {
           taskParams().sshUser,
           taskParams().sshPort,
           taskParams().airGapInstall,
-          false);
+          false,
+          taskParams().overrideKeyValidate);
     } else {
       accessManager.addKey(
           region.uuid,

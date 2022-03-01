@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include "yb/common/common_flags.h"
+
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_heartbeat.service.h"
@@ -176,13 +178,18 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
     if (s.ok()) {
       resp->set_ysql_catalog_version(catalog_version);
       resp->set_ysql_last_breaking_catalog_version(last_breaking_version);
+      if (FLAGS_log_ysql_catalog_versions) {
+        VLOG_WITH_FUNC(1) << "responding (to ts " << req->common().ts_instance().permanent_uuid()
+                          << ") catalog version: " << catalog_version
+                          << ", breaking version: " << last_breaking_version;
+      }
     } else {
       LOG(WARNING) << "Could not get YSQL catalog version for heartbeat response: "
                    << s.ToUserMessage();
     }
 
-    uint64_t txn_table_versions_hash = server_->catalog_manager()->GetTxnTableVersionsHash();
-    resp->set_txn_table_versions_hash(txn_table_versions_hash);
+    uint64_t transaction_tables_version = server_->catalog_manager()->GetTransactionTablesVersion();
+    resp->set_transaction_tables_version(transaction_tables_version);
 
     rpc.RespondSuccess();
   }

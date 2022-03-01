@@ -432,3 +432,40 @@ def arg_str_to_bool(v: Any) -> bool:
     if v.lower() in ('no', 'false', 'f', 'n', '0'):
         return False
     raise argparse.ArgumentTypeError('Boolean value expected, got: %s' % v)
+
+
+g_home_dir: Optional[str] = None
+
+
+def get_home_dir() -> str:
+    global g_home_dir
+    if g_home_dir is not None:
+        return g_home_dir
+    g_home_dir = os.path.realpath(os.path.expanduser('~'))
+    return g_home_dir
+
+
+def get_relative_path_or_none(abs_path: str, relative_to: str) -> Optional[str]:
+    """
+    If the given path starts with another directory path, return the relative path, or else None.
+    """
+    if not relative_to.endswith('/'):
+        relative_to += '/'
+    if abs_path.startswith(relative_to):
+        return abs_path[len(relative_to):]
+    return None
+
+
+K = TypeVar('K')
+V = TypeVar('V')
+
+
+def append_to_list_in_dict(dest: Dict[K, List[V]], key: K, new_item: V) -> None:
+    """
+    Append the given element to the list that the given key in the given dict points to. If the key
+    does not point to anything, create a new list at that key.
+    """
+    if key in dest:
+        dest[key].append(new_item)
+    else:
+        dest[key] = [new_item]

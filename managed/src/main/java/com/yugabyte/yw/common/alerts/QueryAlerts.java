@@ -99,10 +99,9 @@ public class QueryAlerts {
     this.alertDefinitionService = alertDefinitionService;
     this.alertConfigurationService = alertConfigurationService;
     this.alertManager = alertManager;
-    this.initialize();
   }
 
-  private void initialize() {
+  public void start() {
     this.actorSystem
         .scheduler()
         .schedule(
@@ -130,9 +129,8 @@ public class QueryAlerts {
         resolveAlerts(activeAlertsUuids);
         metricService.setOkStatusMetric(buildMetricTemplate(PlatformMetrics.ALERT_QUERY_STATUS));
       } catch (Exception e) {
-        metricService.setStatusMetric(
-            buildMetricTemplate(PlatformMetrics.ALERT_QUERY_STATUS),
-            "Error querying for alerts: " + e.getMessage());
+        metricService.setFailureStatusMetric(
+            buildMetricTemplate(PlatformMetrics.ALERT_QUERY_STATUS));
         log.error("Error querying for alerts", e);
       }
       alertManager.sendNotifications();

@@ -199,7 +199,7 @@ void LeaderMasterCallback(Synchronizer* sync,
 
 void RepeatGetLeaderMaster(ExternalMiniCluster* cluster) {
   server::MasterAddresses master_addrs;
-  for (auto i = 0; i != cluster->num_masters(); ++i) {
+  for (size_t i = 0; i != cluster->num_masters(); ++i) {
     master_addrs.push_back({cluster->master(i)->bound_rpc_addr()});
   }
   auto stop_time = std::chrono::steady_clock::now() + 60s;
@@ -304,7 +304,7 @@ TEST_F(ClientStressTest_LowMemory, TestMemoryThrottling) {
     // appear on every server. Rather than explicitly wait for that above,
     // we'll just treat the lack of a metric as non-fatal. If the entity
     // or metric is truly missing, we'll eventually timeout and fail.
-    for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
       for (const auto* metric : { &METRIC_leader_memory_pressure_rejections,
                                   &METRIC_follower_memory_pressure_rejections }) {
         auto result = cluster_->tablet_server(i)->GetInt64Metric(

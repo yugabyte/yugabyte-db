@@ -319,7 +319,7 @@ There are two ways to install PostGIS on macOS:
 * Or, install with Homebrew:
 
     ```sh
-    $ brew install postgres && brew install postgis
+    $ brew install postgres postgis
     ```
 
 #### Ubuntu
@@ -335,7 +335,7 @@ sudo apt-get install postgresql-11 postgresql-11-postgis-3
 Get the YUM repository from the [PostgreSQL website](https://www.postgresql.org/download/linux/redhat/). Then, use `yum` or `dnf` to install:
 
 ```sh
-sudo yum install postgresql11-server postgis31_11
+sudo yum install postgresql11-server postgis31_11 postgis31_11-client
 ```
 
 {{< note title="Note" >}}
@@ -379,7 +379,7 @@ extensions option to the post-install tool, available in YugabyteDB 2.3.2 and la
 Then, create the extension:
 
 ```sh
-./bin/ysqlsh -c "CREATE EXTENSION postgis";
+./bin/ysqlsh -c "CREATE EXTENSION postgis;"
 ```
 
 This might take a couple of minutes.
@@ -482,7 +482,7 @@ Once you've installed the extension in PostgreSQL, copy the files to your Yugaby
 $ cp -v "$(pg_config --pkglibdir)"/*hll*.so "$(yb_pg_config --pkglibdir)" &&
   cp -v "$(pg_config --sharedir)"/extension/*hll*.sql "$(yb_pg_config --sharedir)"/extension &&
   cp -v "$(pg_config --sharedir)"/extension/*hll*.control "$(yb_pg_config --sharedir)"/extension &&
-  ./bin/ysqlsh -c "CREATE EXTENSION \"hll\"";
+  ./bin/ysqlsh -c "CREATE EXTENSION \"hll\";"
 ```
 
 #### postgresql-hll example
@@ -521,7 +521,7 @@ The easiest way to install the extension is to copy the files from an existing P
 $ cp -v "$(pg_config --pkglibdir)"/*uuid-ossp*.so "$(yb_pg_config --pkglibdir)" && 
   cp -v "$(pg_config --sharedir)"/extension/*uuid-ossp*.sql "$(yb_pg_config --sharedir)"/extension && 
   cp -v "$(pg_config --sharedir)"/extension/*uuid-ossp*.control "$(yb_pg_config --sharedir)"/extension &&
-  ./bin/ysqlsh -c "CREATE EXTENSION \"uuid-ossp\"";
+  ./bin/ysqlsh -c "CREATE EXTENSION \"uuid-ossp\";"
 ```
 
 #### uuid-ossp example

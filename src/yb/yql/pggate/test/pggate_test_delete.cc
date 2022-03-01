@@ -191,8 +191,8 @@ TEST_F(PggateTestDelete, TestDelete) {
 
     // Check result.
     int col_index = 0;
-    int32_t hash_id = values[col_index++];  // id : int32
-    int32_t id = values[col_index++];  // id : int32
+    auto hash_id = values[col_index++];  // id : int32
+    auto id = values[col_index++];  // id : int32
     CHECK_EQ(hash_id, id) << "Expect hash and range key share the same value";
     CHECK(id%2 == 0) << "Odd rows should have been deleted";
     CHECK_EQ(values[col_index++], id);  // dependent_count : int16

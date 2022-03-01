@@ -90,7 +90,7 @@ Options PrintAndGetOptions(size_t total_write_buffer_limit,
   return options;
 }
 
-class OptionsTest : public testing::Test {};
+class OptionsTest : public RocksDBTest {};
 
 TEST_F(OptionsTest, LooseCondition) {
   Options options;
@@ -881,7 +881,7 @@ TEST_F(OptionsTest, ConvertOptionsTest) {
 }
 
 #ifndef ROCKSDB_LITE
-class OptionsParserTest : public testing::Test {
+class OptionsParserTest : public RocksDBTest {
  public:
   OptionsParserTest() { env_.reset(new test::StringEnv(Env::Default())); }
 

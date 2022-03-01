@@ -180,7 +180,7 @@ TEST_F(RpcStubTest, RandomTimeout) {
   const size_t kTotalCalls = 1000;
   const MonoDelta kMaxTimeout = 2s;
 
-  FLAGS_TEST_delay_connect_ms = kMaxTimeout.ToMilliseconds() / 2;
+  FLAGS_TEST_delay_connect_ms = narrow_cast<int>(kMaxTimeout.ToMilliseconds() / 2);
   CalculatorServiceProxy p(proxy_cache_.get(), server_hostport_);
 
   struct CallData {
@@ -193,7 +193,7 @@ TEST_F(RpcStubTest, RandomTimeout) {
 
   for (auto& call : calls) {
     auto timeout = MonoDelta::FromMilliseconds(
-        RandomUniformInt<int>(0, kMaxTimeout.ToMilliseconds()));
+        RandomUniformInt<int64_t>(0, kMaxTimeout.ToMilliseconds()));
     call.controller.set_timeout(timeout);
     call.req.set_x(RandomUniformInt(-1000, 1000));
     call.req.set_y(RandomUniformInt(-1000, 1000));
@@ -384,8 +384,7 @@ TEST_F(RpcStubTest, TestCallWithInvalidParam) {
   Proxy p(client_messenger_.get(), server_hostport_);
 
   AddRequestPartialPB req;
-  unsigned int seed = time(nullptr);
-  req.set_x(rand_r(&seed));
+  req.set_x(RandomUniformInt<uint32_t>());
   // AddRequestPartialPB is missing the 'y' field.
   AddResponsePB resp;
   RpcController controller;
@@ -1036,6 +1035,26 @@ TEST_F(RpcStubTest, CustomServiceName) {
   rpc_test::AbacusServiceProxy proxy(proxy_cache_.get(), server_hostport_);
   ASSERT_OK(proxy.Concat(req, &resp, &controller));
   ASSERT_EQ(resp.result(), "yugabyte");
+}
+
+TEST_F(RpcStubTest, Trivial) {
+  CalculatorServiceProxy proxy(proxy_cache_.get(), server_hostport_);
+
+  RpcController controller;
+  controller.set_timeout(30s);
+
+  rpc_test::TrivialRequestPB req;
+  req.set_value(42);
+  rpc_test::TrivialResponsePB resp;
+  ASSERT_OK(proxy.Trivial(req, &resp, &controller));
+  ASSERT_EQ(resp.value(), req.value());
+
+  req.set_value(-1);
+  controller.Reset();
+  controller.set_timeout(30s);
+  ASSERT_OK(proxy.Trivial(req, &resp, &controller));
+  ASSERT_TRUE(resp.has_error());
+  ASSERT_EQ(resp.error().code(), Status::Code::kInvalidArgument);
 }
 
 } // namespace rpc

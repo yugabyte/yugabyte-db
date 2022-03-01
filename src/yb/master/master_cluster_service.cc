@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include "yb/gutil/casts.h"
+
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_cluster.service.h"
 #include "yb/master/master_heartbeat.pb.h"
@@ -58,7 +60,8 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
       auto ts_info = *desc->GetTSInformationPB();
       *entry->mutable_instance_id() = std::move(*ts_info.mutable_tserver_instance());
       *entry->mutable_registration() = std::move(*ts_info.mutable_registration());
-      entry->set_millis_since_heartbeat(desc->TimeSinceHeartbeat().ToMilliseconds());
+      entry->set_millis_since_heartbeat(
+          narrow_cast<int>(desc->TimeSinceHeartbeat().ToMilliseconds()));
       entry->set_alive(desc->IsLive());
       desc->GetMetrics(entry->mutable_metrics());
     }

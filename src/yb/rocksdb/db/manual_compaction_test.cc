@@ -28,6 +28,7 @@
 #include "yb/rocksdb/util/testharness.h"
 
 #include "yb/util/test_macros.h"
+#include "yb/rocksdb/util/testutil.h"
 #include "yb/util/tsan_util.h"
 
 using namespace rocksdb;  // NOLINT
@@ -46,7 +47,7 @@ std::string Key2(int i) {
   return Key1(i) + "_xxx";
 }
 
-class ManualCompactionTest : public testing::Test {
+class ManualCompactionTest : public RocksDBTest {
  public:
   ManualCompactionTest() {
     // Get rid of any state from an old run.

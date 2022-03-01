@@ -21,10 +21,9 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
-import com.yugabyte.yw.common.CertificateHelper;
-import com.yugabyte.yw.common.KubernetesManager;
+import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -43,6 +42,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
@@ -52,6 +52,10 @@ import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.yaml.snakeyaml.Yaml;
+
+import io.fabric8.kubernetes.api.model.Pod;
+import io.fabric8.kubernetes.api.model.PodCondition;
+import io.fabric8.kubernetes.api.model.Service;
 import play.libs.Json;
 
 @Slf4j
@@ -98,13 +102,14 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
   }
 
-  private final KubernetesManager kubernetesManager;
+  private final KubernetesManagerFactory kubernetesManagerFactory;
 
   @Inject
   protected KubernetesCommandExecutor(
-      BaseTaskDependencies baseTaskDependencies, KubernetesManager kubernetesManager) {
+      BaseTaskDependencies baseTaskDependencies,
+      KubernetesManagerFactory kubernetesManagerFactory) {
     super(baseTaskDependencies);
-    this.kubernetesManager = kubernetesManager;
+    this.kubernetesManagerFactory = kubernetesManagerFactory;
   }
 
   static final Pattern nodeNamePattern = Pattern.compile(".*-n(\\d+)+");
@@ -145,7 +150,6 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
   @Override
   public void run() {
     String overridesFile;
-    boolean flag = false;
 
     // In case no config is provided, assume it is at the provider level
     // (for backwards compatibility).
@@ -158,103 +162,70 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
 
     // TODO: add checks for the shell process handler return values.
-    ShellResponse response = null;
     switch (taskParams().commandType) {
       case CREATE_NAMESPACE:
-        response = kubernetesManager.createNamespace(config, taskParams().namespace);
+        kubernetesManagerFactory.getManager().createNamespace(config, taskParams().namespace);
         break;
       case APPLY_SECRET:
         String pullSecret = this.getPullSecret();
         if (pullSecret != null) {
-          response = kubernetesManager.applySecret(config, taskParams().namespace, pullSecret);
+          kubernetesManagerFactory
+              .getManager()
+              .applySecret(config, taskParams().namespace, pullSecret);
         } else {
           log.debug("Pull secret is missing, skipping the pull secret creation.");
         }
         break;
       case HELM_INSTALL:
         overridesFile = this.generateHelmOverride();
-        response =
-            kubernetesManager.helmInstall(
+        kubernetesManagerFactory
+            .getManager()
+            .helmInstall(
                 taskParams().ybSoftwareVersion,
                 config,
                 taskParams().providerUUID,
                 taskParams().nodePrefix,
                 taskParams().namespace,
                 overridesFile);
-        flag = true;
         break;
       case HELM_UPGRADE:
         overridesFile = this.generateHelmOverride();
-        response =
-            kubernetesManager.helmUpgrade(
+        kubernetesManagerFactory
+            .getManager()
+            .helmUpgrade(
                 taskParams().ybSoftwareVersion,
                 config,
                 taskParams().nodePrefix,
                 taskParams().namespace,
                 overridesFile);
-        flag = true;
         break;
       case UPDATE_NUM_NODES:
         int numNodes = this.getNumNodes();
         if (numNodes > 0) {
           // TODO(bhavin192): we might also need nodePrefix later, so
           // that we can have multiple releases in one namespace.
-          response = kubernetesManager.updateNumNodes(config, taskParams().namespace, numNodes);
+          kubernetesManagerFactory
+              .getManager()
+              .updateNumNodes(config, taskParams().namespace, numNodes);
         }
         break;
       case HELM_DELETE:
-        kubernetesManager.helmDelete(config, taskParams().nodePrefix, taskParams().namespace);
+        kubernetesManagerFactory
+            .getManager()
+            .helmDelete(config, taskParams().nodePrefix, taskParams().namespace);
         break;
       case VOLUME_DELETE:
-        kubernetesManager.deleteStorage(config, taskParams().nodePrefix, taskParams().namespace);
+        kubernetesManagerFactory
+            .getManager()
+            .deleteStorage(config, taskParams().nodePrefix, taskParams().namespace);
         break;
       case NAMESPACE_DELETE:
-        kubernetesManager.deleteNamespace(config, taskParams().namespace);
+        kubernetesManagerFactory.getManager().deleteNamespace(config, taskParams().namespace);
         break;
       case POD_INFO:
         processNodeInfo();
         break;
     }
-    if (response != null) {
-      if (response.code != 0 && flag) {
-        response = getPodError(config);
-      }
-      processShellResponse(response);
-    }
-  }
-
-  private ShellResponse getPodError(Map<String, String> config) {
-    ShellResponse response = new ShellResponse();
-    response.code = -1;
-    ShellResponse podResponse =
-        kubernetesManager.getPodInfos(config, taskParams().nodePrefix, taskParams().namespace);
-    JsonNode podInfos = parseShellResponseAsJson(podResponse);
-    boolean flag = false;
-    for (JsonNode podInfo : podInfos.path("items")) {
-      flag = true;
-      ObjectNode pod = Json.newObject();
-      JsonNode statusNode = podInfo.path("status");
-      String podStatus = statusNode.path("phase").asText();
-      if (!podStatus.equals("Running")) {
-        JsonNode podConditions = statusNode.path("conditions");
-        ArrayList conditions = Json.fromJson(podConditions, ArrayList.class);
-        Iterator iter = conditions.iterator();
-        while (iter.hasNext()) {
-          JsonNode info = Json.toJson(iter.next());
-          String status = info.path("status").asText();
-          if (status.equals("False")) {
-            response.message = info.path("message").asText();
-            return response;
-          }
-        }
-      }
-    }
-    if (!flag) {
-      response.message = "No pods even scheduled. Previous step(s) incomplete";
-    } else {
-      response.message = "Pods are ready. Services still not running";
-    }
-    return response;
   }
 
   private Map<String, String> getClusterIpForLoadBalancer() {
@@ -277,22 +248,20 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       // here, and still selecting services for only one AZ governed
       // by the taskParams().nodePrefix. Is it even required to
       // iterate in that case?
-      ShellResponse svcResponse =
-          kubernetesManager.getServices(config, taskParams().nodePrefix, taskParams().namespace);
-      JsonNode svcInfos = parseShellResponseAsJson(svcResponse);
+      List<Service> services =
+          kubernetesManagerFactory
+              .getManager()
+              .getServices(config, taskParams().nodePrefix, taskParams().namespace);
 
-      for (JsonNode svcInfo : svcInfos.path("items")) {
-        JsonNode serviceMetadata = svcInfo.path("metadata");
-        JsonNode serviceSpec = svcInfo.path("spec");
-        String serviceType = serviceSpec.path("type").asText();
-        // TODO(bhavin192): this will need an update when we have
-        // multiple releases in one namespace, the generated service
-        // name will be different and not just yb-masters, yb-tservers
-        // etc. Values file will still have yb-masters, yb-tservers
-        // etc.
-        serviceToIP.put(
-            serviceMetadata.path("name").asText(), serviceSpec.path("clusterIP").asText());
-      }
+      // TODO(bhavin192): this will need an update when we have
+      // multiple releases in one namespace, the generated service
+      // name will be different and not just yb-masters, yb-tservers
+      // etc. Values file will still have yb-masters, yb-tservers
+      // etc.
+      services.forEach(
+          service -> {
+            serviceToIP.put(service.getMetadata().getName(), service.getSpec().getClusterIP());
+          });
     }
     return serviceToIP;
   }
@@ -321,15 +290,12 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           PlacementInfoUtil.getKubernetesNamespace(
               isMultiAz, taskParams().nodePrefix, azName, config);
 
-      ShellResponse podResponse = kubernetesManager.getPodInfos(config, nodePrefix, namespace);
-      JsonNode podInfos = parseShellResponseAsJson(podResponse);
-
-      for (JsonNode podInfo : podInfos.path("items")) {
+      List<Pod> podInfos =
+          kubernetesManagerFactory.getManager().getPodInfos(config, nodePrefix, namespace);
+      for (Pod podInfo : podInfos) {
         ObjectNode pod = Json.newObject();
-        JsonNode statusNode = podInfo.path("status");
-        JsonNode podSpec = podInfo.path("spec");
-        pod.put("startTime", statusNode.path("startTime").asText());
-        pod.put("status", statusNode.path("phase").asText());
+        pod.put("startTime", podInfo.getStatus().getStartTime());
+        pod.put("status", podInfo.getStatus().getPhase());
         pod.put("az_uuid", azUUID.toString());
         pod.put("az_name", azName);
         pod.put("region_name", regionName);
@@ -337,9 +303,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         // the hostname of the pod in case of multi-az.
         String podName =
             isMultiAz
-                ? String.format("%s_%s", podSpec.path("hostname").asText(), azName)
-                : podSpec.path("hostname").asText();
-        String podNamespace = podInfo.path("metadata").path("namespace").asText();
+                ? String.format("%s_%s", podInfo.getSpec().getHostname(), azName)
+                : podInfo.getSpec().getHostname();
+        String podNamespace = podInfo.getMetadata().getNamespace();
         if (StringUtils.isBlank(podNamespace)) {
           throw new IllegalArgumentException(
               "metadata.namespace of pod " + podName + " is empty. This shouldn't happen");

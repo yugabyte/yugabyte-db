@@ -60,15 +60,16 @@ DECLARE_uint64(redis_max_queued_bytes);
 DECLARE_int64(redis_rpc_block_size);
 DECLARE_bool(redis_safe_batch);
 DECLARE_bool(emulate_redis_responses);
+DECLARE_bool(enable_direct_local_tablet_server_call);
 DECLARE_bool(TEST_tserver_timeout);
 DECLARE_bool(TEST_enable_backpressure_mode_for_testing);
 DECLARE_bool(yedis_enable_flush);
 DECLARE_int32(redis_service_yb_client_timeout_millis);
-DECLARE_int32(redis_max_value_size);
-DECLARE_int32(redis_max_command_size);
+DECLARE_uint64(redis_max_value_size);
+DECLARE_uint64(redis_max_command_size);
 DECLARE_int32(redis_password_caching_duration_ms);
-DECLARE_int32(rpc_max_message_size);
-DECLARE_int32(consensus_max_batch_size_bytes);
+DECLARE_uint64(rpc_max_message_size);
+DECLARE_uint64(consensus_max_batch_size_bytes);
 DECLARE_int32(consensus_rpc_timeout_ms);
 DECLARE_int64(max_time_in_queue_ms);
 
@@ -340,7 +341,7 @@ class TestRedisService : public RedisTableTestBase {
   CHECKED_STATUS Send(const std::string& cmd);
 
   CHECKED_STATUS SendCommandAndGetResponse(
-      const string& cmd, int expected_resp_length, int timeout_in_millis = kDefaultTimeoutMs);
+      const string& cmd, size_t expected_resp_length, int timeout_in_millis = kDefaultTimeoutMs);
 
   size_t CountSessions(const GaugePrototype<uint64_t>& proto) {
     constexpr uint64_t kInitialValue = 0UL;
@@ -349,7 +350,11 @@ class TestRedisService : public RedisTableTestBase {
   }
 
   virtual Endpoint RedisProxyEndpoint() {
-    return Endpoint(IpAddress(), server_port());
+    if (use_external_mini_cluster()) {
+      return Endpoint(IpAddress(), server_port());
+    }
+    auto server = mini_cluster()->mini_tablet_server(0)->server();
+    return Endpoint(server->first_rpc_address().address(), redis_server_port_);
   }
 
   void TestTSTtl(const std::string& expire_command, int64_t ttl_sec, int64_t expire_val,
@@ -468,10 +473,14 @@ class TestRedisService : public RedisTableTestBase {
   RedisClient& client() {
     if (!test_client_) {
       io_thread_pool_.emplace("test", 1);
-      auto endpoint = RedisProxyEndpoint();
-      test_client_ = std::make_shared<RedisClient>(endpoint.address().to_string(), endpoint.port());
+      test_client_ = CreateClient();
     }
     return *test_client_;
+  }
+
+  std::shared_ptr<RedisClient> CreateClient() {
+    auto endpoint = RedisProxyEndpoint();
+    return std::make_shared<RedisClient>(endpoint.address().to_string(), endpoint.port());
   }
 
   void UseClient(std::shared_ptr<RedisClient> client) {
@@ -753,9 +762,18 @@ class TestRedisService : public RedisTableTestBase {
   std::shared_ptr<RedisClient> test_client_;
 };
 
+class NoLocalCallsRedisServiceTest : public TestRedisService {
+ public:
+  void SetUp() override {
+    FLAGS_enable_direct_local_tablet_server_call = false;
+    TestRedisService::SetUp();
+  }
+};
+
+
 void TestRedisService::SetUp() {
   FLAGS_redis_service_yb_client_timeout_millis = kDefaultTimeoutMs;
-  if (IsTsan()) {
+  if (IsSanitizer()) {
     FLAGS_redis_max_value_size = 1_MB;
     FLAGS_rpc_max_message_size = FLAGS_redis_max_value_size * 4 - 1;
     FLAGS_redis_max_command_size = FLAGS_rpc_max_message_size - 2_KB;
@@ -787,7 +805,7 @@ void TestRedisService::StartServer() {
 
   redis_server_port_ = GetFreePort(&redis_port_lock_);
   RedisServerOptions opts;
-  opts.rpc_opts.rpc_bind_addresses = strings::Substitute("0.0.0.0:$0", redis_server_port_);
+  opts.rpc_opts.rpc_bind_addresses = AsString(RedisProxyEndpoint());
   // No need to save the webserver port, as we don't plan on using it. Just use a unique free port.
   opts.webserver_opts.port = GetFreePort(&redis_webserver_lock_);
   string fs_root = GetTestPath("RedisServerTest-fsroot");
@@ -862,8 +880,7 @@ void TestRedisService::TearDown() {
 
 Status TestRedisService::Send(const std::string& cmd) {
   // Send the command.
-  int32_t bytes_written = 0;
-  EXPECT_OK(client_sock_.Write(to_uchar_ptr(cmd.c_str()), cmd.length(), &bytes_written));
+  auto bytes_written = EXPECT_RESULT(client_sock_.Write(to_uchar_ptr(cmd.c_str()), cmd.length()));
 
   EXPECT_EQ(cmd.length(), bytes_written);
 
@@ -871,19 +888,18 @@ Status TestRedisService::Send(const std::string& cmd) {
 }
 
 Status TestRedisService::SendCommandAndGetResponse(
-    const string& cmd, int expected_resp_length, int timeout_in_millis) {
+    const string& cmd, size_t expected_resp_length, int timeout_in_millis) {
   RETURN_NOT_OK(Send(cmd));
 
   // Receive the response.
   MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(MonoDelta::FromMilliseconds(timeout_in_millis));
-  size_t bytes_read = 0;
   resp_.resize(expected_resp_length);
   if (expected_resp_length) {
     memset(resp_.data(), 0, expected_resp_length);
   }
-  RETURN_NOT_OK(client_sock_.BlockingRecv(
-      resp_.data(), expected_resp_length, &bytes_read, deadline));
+  auto bytes_read = VERIFY_RESULT(client_sock_.BlockingRecv(
+      resp_.data(), expected_resp_length, deadline));
   resp_.resize(bytes_read);
   if (expected_resp_length != bytes_read) {
     return STATUS(
@@ -1065,7 +1081,7 @@ TEST_F_EX(TestRedisService, TooBigCommand, TestTooBigCommand) {
   ASSERT_TRUE(status.IsNetworkError()) << "Status: " << status;
 }
 
-TEST_F(TestRedisService, HugeCommandInline) {
+TEST_F_EX(TestRedisService, HugeCommandInline, NoLocalCallsRedisServiceTest) {
   // Set a larger timeout for the yql layer : 1 min vs 10 min for tsan/asan.
   FLAGS_redis_service_yb_client_timeout_millis = 6 * kDefaultTimeoutMs;
 
@@ -1573,7 +1589,7 @@ TEST_F(TestRedisService, TestEmptyValue) {
 void ConnectWithPassword(
     TestRedisService* test, const char* password, bool auth_should_succeed,
     bool get_should_succeed) {
-  auto rc1 = std::make_shared<RedisClient>("127.0.0.1", test->server_port());
+  auto rc1 = test->CreateClient();
   test->UseClient(rc1);
 
   if (auth_should_succeed) {
@@ -1595,9 +1611,9 @@ void ConnectWithPassword(
 }
 
 TEST_F(TestRedisService, TestSelect) {
-  auto rc1 = std::make_shared<RedisClient>("127.0.0.1", server_port());
-  auto rc2 = std::make_shared<RedisClient>("127.0.0.1", server_port());
-  auto rc3 = std::make_shared<RedisClient>("127.0.0.1", server_port());
+  auto rc1 = CreateClient();
+  auto rc2 = CreateClient();
+  auto rc3 = CreateClient();
 
   const string default_db("0");
   const string second_db("2");
@@ -1820,10 +1836,10 @@ TEST_F(TestRedisService, TestDeleteDB) {
 TEST_F(TestRedisService, TestMonitor) {
   constexpr uint32 kDelayMs = NonTsanVsTsan(100, 1000);
   expected_no_sessions_ = true;
-  auto rc1 = std::make_shared<RedisClient>("127.0.0.1", server_port());
-  auto rc2 = std::make_shared<RedisClient>("127.0.0.1", server_port());
-  auto mc1 = std::make_shared<RedisClient>("127.0.0.1", server_port());
-  auto mc2 = std::make_shared<RedisClient>("127.0.0.1", server_port());
+  auto rc1 = CreateClient();
+  auto rc2 = CreateClient();
+  auto mc1 = CreateClient();
+  auto mc2 = CreateClient();
 
   UseClient(rc1);
   DoRedisTestBulkString(__LINE__, {"PING", "cmd1"}, "cmd1");  // Excluded from both mc1 and mc2.
@@ -2828,8 +2844,8 @@ TEST_F(TestRedisService, TestAuth) {
   FLAGS_redis_password_caching_duration_ms = 0;
   const char* kRedisAuthPassword = "redis-password";
   // Expect new connections to require authentication
-  auto rc1 = std::make_shared<RedisClient>("127.0.0.1", server_port());
-  auto rc2 = std::make_shared<RedisClient>("127.0.0.1", server_port());
+  auto rc1 = CreateClient();
+  auto rc2 = CreateClient();
   UseClient(rc1);
   DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
   SyncClient();
@@ -2897,7 +2913,7 @@ TEST_F(TestRedisService, TestPasswordChangeWithDelay) {
   FLAGS_redis_password_caching_duration_ms = kCachingDurationMs;
   const char* kRedisAuthPassword = "redis-password";
   auto start = std::chrono::steady_clock::now();
-  auto rc1 = std::make_shared<RedisClient>("127.0.0.1", server_port());
+  auto rc1 = CreateClient();
 
   UseClient(rc1);
   DoRedisTestOk(__LINE__, {"CONFIG", "SET", "REQUIREPASS", kRedisAuthPassword});

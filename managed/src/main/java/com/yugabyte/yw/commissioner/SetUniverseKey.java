@@ -59,14 +59,13 @@ public class SetUniverseKey {
     this.actorSystem = actorSystem;
     this.executionContext = executionContext;
     this.ybService = ybService;
-    this.initialize();
   }
 
   public void setRunningState(AtomicBoolean state) {
     this.running = state;
   }
 
-  private void initialize() {
+  public void start() {
     this.actorSystem
         .scheduler()
         .schedule(
@@ -77,7 +76,14 @@ public class SetUniverseKey {
   }
 
   private void setKeyInMaster(Universe u, HostAndPort masterAddr, byte[] keyRef, byte[] keyVal) {
+
     YBClient client = null;
+
+    if (u.getUniverseDetails().universePaused) {
+      log.info("Skipping setting universe keys as {} is paused", u.universeUUID.toString());
+      return;
+    }
+
     String hostPorts = u.getMasterAddresses();
     String certificate = u.getCertificateNodetoNode();
     try {

@@ -191,13 +191,13 @@ TEST(DocKVUtilTest, MaxExpirationFromValueAndTableTTL) {
 TEST(DocKVUtilTest, FloatEncoding) {
   vector<float> numbers = {-123.45f, -0.00123f, -0.0f, 0.0f, 0.00123f, 123.45f};
   vector<string> strings;
-  for (int i = 0; i < numbers.size(); i++) {
+  for (size_t i = 0; i < numbers.size(); i++) {
     string s;
     util::AppendFloatToKey(numbers[i], &s);
     strings.push_back(s);
     EXPECT_EQ(numbers[i], util::DecodeFloatFromKey(rocksdb::Slice(s)));
   }
-  for (int i = 1; i < numbers.size(); i++) {
+  for (size_t i = 1; i < numbers.size(); i++) {
     EXPECT_LT(strings[i-1], strings[i]);
   }
 }
@@ -205,13 +205,13 @@ TEST(DocKVUtilTest, FloatEncoding) {
 TEST(DocKVUtilTest, DoubleEncoding) {
   vector<double> numbers = {-123.45f, -0.00123f, -0.0f, 0.0f, 0.00123f, 123.45f};
   vector<string> strings;
-  for (int i = 0; i < numbers.size(); i++) {
+  for (size_t i = 0; i < numbers.size(); i++) {
     string s;
     util::AppendDoubleToKey(numbers[i], &s);
     strings.push_back(s);
     EXPECT_EQ(numbers[i], util::DecodeDoubleFromKey(rocksdb::Slice(s)));
   }
-  for (int i = 1; i < numbers.size(); i++) {
+  for (size_t i = 1; i < numbers.size(); i++) {
     EXPECT_LT(strings[i-1], strings[i]);
   }
 }
@@ -219,13 +219,13 @@ TEST(DocKVUtilTest, DoubleEncoding) {
 TEST(DocKVUtilTest, UInt64Encoding) {
   vector<uint64_t> numbers = {0, 1, 100, 9223372036854775807ULL, 18446744073709551615ULL};
   vector<string> strings;
-  for (int i = 0; i < numbers.size(); i++) {
+  for (size_t i = 0; i < numbers.size(); i++) {
     string s;
     AppendUInt64ToKey(numbers[i], &s);
     strings.push_back(s);
     EXPECT_EQ(numbers[i], BigEndian::Load64(s.c_str()));
   }
-  for (int i = 1; i < numbers.size(); i++) {
+  for (size_t i = 1; i < numbers.size(); i++) {
     EXPECT_LT(strings[i-1], strings[i]);
   }
 }

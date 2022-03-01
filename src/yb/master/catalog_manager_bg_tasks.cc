@@ -38,6 +38,7 @@
 #include "yb/master/cluster_balance.h"
 #include "yb/master/master.h"
 #include "yb/master/ts_descriptor.h"
+#include "yb/master/tablet_split_manager.h"
 
 #include "yb/util/flag_tags.h"
 #include "yb/util/mutex.h"
@@ -147,11 +148,17 @@ void CatalogManagerBgTasks::Run() {
 
       bool processed_tablets = false;
       if (!to_process.empty()) {
+        // For those tablets which need to be created in this round, assign replicas.
+        TSDescriptorVector ts_descs = catalog_manager_->GetAllLiveNotBlacklistedTServers();
+        CMGlobalLoadState global_load_state;
+        catalog_manager_->InitializeGlobalLoadState(ts_descs, &global_load_state);
         // Transition tablet assignment state from preparing to creating, send
         // and schedule creation / deletion RPC messages, etc.
+        // This is done table by table.
         for (const auto& entries : to_process) {
           LOG(INFO) << "Processing pending assignments for table: " << entries.first;
-          Status s = catalog_manager_->ProcessPendingAssignments(entries.second);
+          Status s = catalog_manager_->ProcessPendingAssignmentsPerTable(
+              entries.first, entries.second, &global_load_state);
           WARN_NOT_OK(s, "Assignment failed");
           // Set processed_tablets as true if the call succeeds for at least one table.
           processed_tablets = processed_tablets || s.ok();
@@ -167,6 +174,13 @@ void CatalogManagerBgTasks::Run() {
           catalog_manager_->load_balance_policy_->RunLoadBalancer();
         }
       }
+
+      TableInfoMap table_info_map;
+      {
+        CatalogManager::SharedLock lock(catalog_manager_->mutex_);
+        table_info_map = *catalog_manager_->table_ids_map_;
+      }
+      catalog_manager_->tablet_split_manager()->MaybeDoSplitting(table_info_map);
 
       if (!to_delete.empty() || catalog_manager_->AreTablesDeleting()) {
         catalog_manager_->CleanUpDeletedTables();

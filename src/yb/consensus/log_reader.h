@@ -120,7 +120,7 @@ class LogReader {
   Result<yb::OpId> LookupOpId(int64_t op_index) const;
 
   // Returns the number of segments.
-  const int num_segments() const;
+  size_t num_segments() const;
 
   std::string ToString() const;
 
@@ -153,7 +153,7 @@ class LogReader {
   CHECKED_STATUS AppendEmptySegment(const scoped_refptr<ReadableLogSegment>& segment);
 
   // Removes segments with sequence numbers less than or equal to 'seg_seqno' from this reader.
-  CHECKED_STATUS TrimSegmentsUpToAndIncluding(int64_t seg_seqno);
+  CHECKED_STATUS TrimSegmentsUpToAndIncluding(uint64_t seg_seqno);
 
   // Replaces the last segment in the reader with 'segment'.
   // Used to replace a segment that was still in the process of being written

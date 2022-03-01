@@ -8,6 +8,7 @@
 
 dependencies:
   - role: server_base
+    tags: yb-prebuilt-ami
 
   - role: mount_ephemeral_drives
     when: cloud_type != "onprem"
@@ -29,16 +30,20 @@ dependencies:
   - role: swamper
     prometheus_components:
       - node_exporter
+    tags: yb-prebuilt-ami
 
   - role: install_backup_util
     when: ansible_architecture != "aarch64"
     util:
       name: "azcopy"
+    tags: yb-prebuilt-ami
 
   - role: install_backup_util
     util:
       name: "gsutil"
+    tags: yb-prebuilt-ami
 
   - role: install_backup_util
     util:
       name: "s3cmd"
+    tags: yb-prebuilt-ami

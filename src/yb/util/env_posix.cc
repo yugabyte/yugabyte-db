@@ -106,8 +106,8 @@ TAG_FLAG(writable_file_use_fsync, advanced);
 #endif
 
 DEFINE_bool(never_fsync, FLAGS_never_fsync_default,
-            "Never fsync() anything to disk. This is used by certain test cases to "
-            "speed up runtime. This is very unsafe to use in production.");
+            "Never fsync() anything to disk. This is used by tests to speed up runtime and improve "
+            "stability. This is very unsafe to use in production.");
 
 TAG_FLAG(never_fsync, advanced);
 TAG_FLAG(never_fsync, unsafe);
@@ -125,6 +125,8 @@ DEFINE_test_flag(bool, simulate_fs_without_fallocate, false,
 
 DEFINE_test_flag(int64, simulate_free_space_bytes, -1,
     "If a non-negative value, GetFreeSpaceBytes will return the specified value.");
+
+DECLARE_bool(never_fsync);
 
 using namespace std::placeholders;
 using base::subtle::Atomic64;
@@ -198,7 +200,9 @@ class ScopedFdCloser {
 
 static Status DoSync(int fd, const string& filename) {
   ThreadRestrictions::AssertIOAllowed();
-  if (FLAGS_never_fsync) return Status::OK();
+  if (FLAGS_never_fsync) {
+    return Status::OK();
+  }
   if (FLAGS_writable_file_use_fsync) {
     if (fsync(fd) < 0) {
       return STATUS_IO_ERROR(filename, errno);
@@ -393,6 +397,9 @@ class PosixWritableFile : public WritableFile {
   Status Flush(FlushMode mode) override {
     TRACE_EVENT1("io", "PosixWritableFile::Flush", "path", filename_);
     ThreadRestrictions::AssertIOAllowed();
+    if (FLAGS_never_fsync) {
+      return Status::OK();
+    }
 #if defined(__linux__)
     int flags = SYNC_FILE_RANGE_WRITE;
     if (mode == FLUSH_SYNC) {
@@ -441,7 +448,7 @@ class PosixWritableFile : public WritableFile {
     DCHECK_LE(n, IOV_MAX);
 
     struct iovec iov[n];
-    size_t nbytes = 0;
+    ssize_t nbytes = 0;
 
     for (size_t i = 0; i < n; ++i) {
       const Slice& data = slices[i];
@@ -450,7 +457,7 @@ class PosixWritableFile : public WritableFile {
       nbytes += data.size();
     }
 
-    ssize_t written = writev(fd_, iov, n);
+    ssize_t written = writev(fd_, iov, narrow_cast<int>(n));
 
     if (PREDICT_FALSE(written == -1)) {
       int err = errno;
@@ -628,12 +635,12 @@ class PosixDirectIOWritableFile final : public PosixWritableFile {
     CHECK_LE(blocks_to_write, IOV_MAX);
 
     struct iovec iov[blocks_to_write];
-    for (int j = 0; j < blocks_to_write; j++) {
+    for (size_t j = 0; j < blocks_to_write; j++) {
       iov[j].iov_base = block_ptr_vec_[j].get();
       iov[j].iov_len = block_size_;
     }
-    auto bytes_to_write = blocks_to_write * block_size_;
-    ssize_t written = pwritev(fd_, iov, blocks_to_write, next_write_offset_);
+    ssize_t bytes_to_write = blocks_to_write * block_size_;
+    ssize_t written = pwritev(fd_, iov, narrow_cast<int>(blocks_to_write), next_write_offset_);
 
     if (PREDICT_FALSE(written == -1)) {
       int err = errno;
@@ -677,7 +684,7 @@ class PosixDirectIOWritableFile final : public PosixWritableFile {
 
     if (blocks_to_write > block_ptr_vec_.size()) {
       auto nblocks = blocks_to_write - block_ptr_vec_.size();
-      for (auto i = 0; i < nblocks; i++) {
+      for (size_t i = 0; i < nblocks; i++) {
         void *temp_buf = nullptr;
         auto err = posix_memalign(&temp_buf, FLAGS_o_direct_block_alignment_bytes, block_size_);
         if (err) {
@@ -697,7 +704,7 @@ class PosixDirectIOWritableFile final : public PosixWritableFile {
   vector<std::shared_ptr<uint8_t>> block_ptr_vec_;
   size_t last_block_used_bytes_;
   size_t last_block_idx_;
-  int block_size_;
+  size_t block_size_;
   bool has_new_data_;
   size_t real_size_;
 };
@@ -722,7 +729,7 @@ class PosixRWFile final : public RWFile {
   virtual Status Read(uint64_t offset, size_t length,
                       Slice* result, uint8_t* scratch) const override {
     ThreadRestrictions::AssertIOAllowed();
-    int rem = length;
+    auto rem = length;
     uint8_t* dst = scratch;
     while (rem > 0) {
       ssize_t r = pread(fd_, dst, rem, offset);
@@ -754,7 +761,7 @@ class PosixRWFile final : public RWFile {
       return STATUS_IO_ERROR(filename_, err);
     }
 
-    if (PREDICT_FALSE(written != data.size())) {
+    if (PREDICT_FALSE(written != implicit_cast<ssize_t>(data.size()))) {
       return STATUS(IOError,
           Substitute("pwrite error: expected to write $0 bytes, wrote $1 bytes instead",
                      data.size(), written));
@@ -795,6 +802,9 @@ class PosixRWFile final : public RWFile {
   Status Flush(FlushMode mode, uint64_t offset, size_t length) override {
     TRACE_EVENT1("io", "PosixRWFile::Flush", "path", filename_);
     ThreadRestrictions::AssertIOAllowed();
+    if (FLAGS_never_fsync) {
+      return Status::OK();
+    }
 #if defined(__linux__)
     int flags = SYNC_FILE_RANGE_WRITE;
     if (mode == FLUSH_SYNC) {
@@ -1201,11 +1211,11 @@ class PosixEnv : public Env {
 
   Status GetExecutablePath(string* path) override {
     uint32_t size = 64;
-    uint32_t len = 0;
+    size_t len = 0;
     while (true) {
       std::unique_ptr<char[]> buf(new char[size]);
 #if defined(__linux__)
-      int rc = readlink("/proc/self/exe", buf.get(), size);
+      auto rc = readlink("/proc/self/exe", buf.get(), size);
       if (rc == -1) {
         return STATUS(IOError, "Unable to determine own executable path", "", Errno(errno));
       } else if (rc >= size) {

@@ -28,7 +28,7 @@ The optional _(p)_ qualifier, where _p_ is a literal integer value in _0..6_, sp
 
 The spelling _timestamptz_ is an alias, defined by PostgreSQL and inherited by YSQL, for what the SQL Standard spells as _timestamp with time zone_. The unadorned spelling, _timestamp_, is defined by the SQL Standard and may, optionally, be spelled as _timestamp without time zone_. A corresponding account applies to _timetz_ and _time_.
 
-Because of their brevity, the forms (plain) _time_, _timetz_, (plain) _timestamp_, and _timestamptz_ are used throughout this _"Date and time data data types"_ main section rather than the verbose forms that spell the names using _without time zone_ and _with time zone_.
+Because of their brevity, the forms (plain) _time_, _timetz_, (plain) _timestamp_, and _timestamptz_ are used throughout this _"Date and time data types"_ main section rather than the verbose forms that spell the names using _without time zone_ and _with time zone_.
 
 A value of the _interval_ data type represents a _duration_. In contrast, a value of one of the other five data types each represents a _point in time_ (a.k.a. a _moment_).
 
@@ -41,11 +41,73 @@ The <a href="https://www.postgresql.org/docs/11/datatype-datetime.html#DATATYPE-
 
 The thinking is that a notion that expresses only what a clock might read in a particular timezone gives only part of the picture. For example when a clock reads 20:00 in _UTC_, it reads 03:00 in China Standard Time. But 20:00 _UTC_ is the evening of one day and 03:00 is in the small hours of the morning of the _next day_ in China Standard Time. (Neither _UTC_ nor China Standard Time adjusts its clocks for Daylight Savings.) The data type _timestamptz_ represents both the time of day and the date and so it handles the present use case naturally. No further reference will be made to _timetz_.
 {{< /tip >}}
-
+<a name="maximum-and-minimum-supported-values"></br></a>
 {{< note title="Maximum and minimum supported values." >}}
-You might discover that you can define an earlier _timestamp_ value than _4713-01-01 00:00:00 BC_, or a later one than  _294276-01-01 00:00:00_, without error. But you should not rely on this. Rather, you should accept that the values in the "Min" and "Max" columns in the table above specify the _supported_ range.
+You can discover that you can define an earlier _timestamp[tz]_ value than _4713-01-01 00:00:00 BC_, or a later one than  _294276-01-01 00:00:00_, without error. Try this:
 
-Notice the "approx" qualifier by the minimum and maximum _interval_ values.You need to understand how an _interval_ value is represented internally as a three-field _[mm, dd, ss]_ tuple to appreciate that the limits must be expressed individually in terms of these fields. The section [_interval_ value limits](./date-time-data-types-semantics/type-interval/interval-limits/) explains all this.
+```plpgsql
+-- The domain "ts_t" is a convenient single point of maintenance to allow
+-- choosing between "plain timestamp" and "timestamptz" for the test.
+drop domain if exists ts_t cascade;
+create domain ts_t as timestamptz;
+
+drop function if exists ts_limits() cascade;
+create function ts_limits()
+  returns table(z text)
+  language plpgsql
+as $body$
+declare
+  one_sec  constant interval not null := make_interval(secs=>1);
+
+  max_ts   constant ts_t     not null := '294276-12-31 23:59:59 UTC AD';
+  min_ts   constant ts_t     not null :=   '4714-11-24 00:00:00 UTC BC';
+  t                 ts_t     not null :=  max_ts;
+begin
+  z := 'max_ts: '||max_ts::text;                          return next;
+  begin
+    t := max_ts + one_sec;
+  exception when datetime_field_overflow
+    -- 22008: timestamp out of range
+    then
+      z := 'max_ts overflowed';                           return next;
+  end;
+
+  z := '';                                                return next;
+
+  z := 'min_ts: '||min_ts::text;                          return next;
+  begin
+    t := min_ts - one_sec;
+  exception when datetime_field_overflow
+    -- 22008: timestamp out of range
+    then
+      z := 'min_ts underflowed';    return next;
+  end;
+end;
+$body$;
+
+set timezone = 'UTC';
+select z from ts_limits();
+```
+
+This is the result:
+
+```output
+ max_ts: 294276-12-31 23:59:59+00
+ max_ts overflowed
+
+ min_ts: 4714-11-24 00:00:00+00 BC
+ min_ts underflowed
+```
+
+You see the same date and time-of-day values, but without the timezone offset of course, if you define the _ts_t_ domain type using plain _timestamp_.
+
+This test is shown for completeness. Its outcome is of little practical consequence. You can rely on the values in the "Min" and "Max" columns in the table above, copied from the <a href="https://www.postgresql.org/docs/11/datatype-datetime.html#DATATYPE-DATETIME-TABLE" target="_blank">PostgreSQL documentation <i class="fas fa-external-link-alt"></i></a>, to specify the _supported_ range. Yugabyte recommends that, as a practical compromise, you take these to be the limits for _timestamp[tz]_ values:
+
+```output
+['4713-01-01 00:00:00 BC', '294276-12-31 23:59:59 AD']
+```
+
+Notice that the minimum and maximum _interval_ values are not specified in the table above. You need to understand how an _interval_ value is represented internally as a three-field _[mm, dd, ss]_ tuple to appreciate that the limits must be expressed individually in terms of these fields. The section [_interval_ value limits](./date-time-data-types-semantics/type-interval/interval-limits/) explains all this.
 {{< /note >}}
 
 Modern applications almost always are designed for global deployment. This means that they must accommodate timezones—and that it will be the norm therefore to use the _timestamptz_ data type and not _date_, plain _time_, or plain _timestamp_. Application code will therefore need to be aware of, and to set, the timezone. It's not uncommon to expose the ability to set the timezone to the user so that _date-time_ moments can be shown differently according to the user's present purpose.
@@ -75,7 +137,7 @@ The constants _'infinity'_ and _'-infinity'_ can be also used to define _range_ 
 
 The remaining special constants have different kinds of non-obvious results. See the recommendation [Don't use the special manifest constant 'now'](./functions/current-date-time-moment/#avoid-constant-now) on the 'Functions that return the current date-time moment' page. The constants _'today'_, _'tomorrow'_. and _'yesterday'_ all bring analogous risks to those brought by _'now'_. And the intended effects of _'epoch'_ and _'allballs'_ are brought with optimal clarity for the reader by typecasting an appropriately spelled literal value to the required data type, whatever it might be.
 
-Yugabyte recommends that you avoid using all of the special manifest _text_ _date-time_ constants except for for _'infinity'_ and _'-infinity'_.
+Yugabyte recommends that you avoid using all of the special manifest _text_ _date-time_ constants except for _'infinity'_ and _'-infinity'_.
 {{< /tip >}}
 
 {{< note title="Even 'infinity' and '-infinity' can't be used everywhere that you might expect." >}}

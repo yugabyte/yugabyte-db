@@ -17,6 +17,9 @@
 #include "yb/common/common.pb.h"
 #include "yb/common/json_util.h"
 #include "yb/common/ql_value.h"
+
+#include "yb/gutil/casts.h"
+
 #include "yb/util/kv_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
@@ -104,7 +107,7 @@ std::pair<size_t, size_t> Jsonb::ComputeOffsetsAndJsonbHeader(size_t num_entries
   jsonb->resize(metadata_offset + jsonb_metadata_size);
 
   // Store the jsonb header at the appropriate place.
-  JsonbHeader jsonb_header = GetCount(num_entries) | container_type;
+  JsonbHeader jsonb_header = GetCount(narrow_cast<JsonbHeader>(num_entries)) | container_type;
   BigEndian::Store32(&((*jsonb)[metadata_offset]), jsonb_header);
   metadata_offset += sizeof(JsonbHeader);
 
@@ -129,7 +132,7 @@ CHECKED_STATUS Jsonb::ToJsonbProcessObject(const rapidjson::Value& document,
   size_t data_begin_offset = jsonb->size();
   for (const auto& entry : kv_pairs) {
     jsonb->append(entry.first);
-    auto key_offset = jsonb->size() - data_begin_offset;
+    JEntry key_offset = narrow_cast<JEntry>(jsonb->size() - data_begin_offset);
     JEntry jentry = GetOffset(key_offset) | kJEIsString; // keys are always strings.
     BigEndian::Store32(&((*jsonb)[metadata_offset]), jentry);
     metadata_offset += sizeof(JEntry);
@@ -201,7 +204,7 @@ CHECKED_STATUS Jsonb::ProcessJsonValueAndMetadata(const rapidjson::Value& value,
   }
 
   // Store the offset.
-  size_t offset = jsonb->size() - data_begin_offset;
+  auto offset = narrow_cast<JEntry>(jsonb->size() - data_begin_offset);
   jentry |= GetOffset(offset);
 
   // Store the JEntry.
@@ -262,11 +265,15 @@ CHECKED_STATUS Jsonb::ToJsonbInternal(const rapidjson::Value& document, std::str
 
 namespace {
 
+rapidjson::Value ValueFromSlice(rapidjson::Document* document, const Slice& value) {
+  return rapidjson::Value(
+      value.cdata(), narrow_cast<rapidjson::SizeType>(value.size()), document->GetAllocator());
+}
+
 template <typename T>
 void AddNumericMember(rapidjson::Document* document, const Slice& key, T value) {
-  document->AddMember(rapidjson::Value(key.cdata(), key.size(), document->GetAllocator()),
-                      rapidjson::Value(value),
-                      document->GetAllocator());
+  document->AddMember(
+      ValueFromSlice(document, key), rapidjson::Value(value), document->GetAllocator());
 }
 
 template <typename T>
@@ -342,19 +349,18 @@ Status Jsonb::FromJsonbProcessObject(const Slice& jsonb,
 
   // Now read the kv pairs and build the json.
   document->SetObject();
-  for (int i = 0; i < nelems; i++) {
+  for (size_t i = 0; i < nelems; i++) {
     Slice key;
     RETURN_NOT_OK(GetObjectKey(i, jsonb, metadata_begin_offset, data_begin_offset, &key));
     Slice json_value;
     JEntry value_metadata;
     RETURN_NOT_OK(GetObjectValue(i, jsonb, metadata_begin_offset, data_begin_offset, nelems,
                                  &json_value, &value_metadata));
-    rapidjson::Value json_key(key.cdata(), key.size(), document->GetAllocator());
+    rapidjson::Value json_key = ValueFromSlice(document, key);
     switch (GetJEType(value_metadata)) {
       case kJEIsString: {
-        document->AddMember(json_key, rapidjson::Value(json_value.cdata(), json_value.size(),
-                                                       document->GetAllocator()),
-                            document->GetAllocator());
+        document->AddMember(
+            json_key, ValueFromSlice(document, json_value), document->GetAllocator());
         break;
       }
       case kJEIsInt: {
@@ -521,16 +527,14 @@ Status Jsonb::FromJsonbProcessArray(const Slice& jsonb,
 
   // Now read the array members.
   document->SetArray();
-  for (int i = 0; i < nelems; i++) {
+  for (size_t i = 0; i < nelems; i++) {
     Slice result;
     JEntry element_metadata;
     RETURN_NOT_OK(GetArrayElement(i, jsonb, metadata_begin_offset, data_begin_offset, &result,
                                   &element_metadata));
     switch (GetJEType(element_metadata)) {
       case kJEIsString: {
-        document->PushBack(rapidjson::Value(result.cdata(), result.size(),
-                                            document->GetAllocator()),
-                           document->GetAllocator());
+        document->PushBack(ValueFromSlice(document, result), document->GetAllocator());
         break;
       }
       case kJEIsInt: {
@@ -602,8 +606,9 @@ Status Jsonb::FromJsonbInternal(const Slice& jsonb, rapidjson::Document* documen
 
   if ((jsonb_header & kJBObject) == kJBObject) {
     return FromJsonbProcessObject(jsonb, jsonb_header, document);
-  } else if ((jsonb_header & kJBArray) == kJBArray) {
-    rapidjson::Document array_doc;
+  }
+  if ((jsonb_header & kJBArray) == kJBArray) {
+    rapidjson::Document array_doc(&document->GetAllocator());
     RETURN_NOT_OK(FromJsonbProcessArray(jsonb, jsonb_header, &array_doc));
 
     if ((jsonb_header & kJBScalar) && array_doc.GetArray().Size() == 1) {
@@ -668,7 +673,7 @@ Status Jsonb::ApplyJsonbOperatorToArray(const Slice& jsonb, const QLJsonOperatio
   RETURN_NOT_OK(varint.DecodeFromComparable(json_op.operand().value().varint_value()));
   int64_t array_index = VERIFY_RESULT(varint.ToInt64());
 
-  if (array_index < 0 || array_index >= num_array_entries) {
+  if (array_index < 0 || implicit_cast<size_t>(array_index) >= num_array_entries) {
     return STATUS_SUBSTITUTE(NotFound, "Array index: $0 out of bounds [0, $1)",
                              array_index, num_array_entries);
   }
@@ -803,8 +808,8 @@ Status Jsonb::CreateScalar(const Slice& scalar, const JEntry& original_jentry,
   scalar_jsonb->append(scalar.cdata(), scalar.size());
 
   JsonbHeader jsonb_header = (1 & kJBCountMask) | kJBArray | kJBScalar;
-  JEntry jentry = (GetOffset(scalar_jsonb->size() - data_begin_offset)) |
-      GetJEType(original_jentry);
+  JEntry jentry = GetOffset(narrow_cast<JEntry>(scalar_jsonb->size() - data_begin_offset))
+                  | GetJEType(original_jentry);
 
   // Store the header.
   BigEndian::Store32(&((*scalar_jsonb)[0]), jsonb_header);

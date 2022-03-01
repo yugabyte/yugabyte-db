@@ -1,20 +1,33 @@
 #!/usr/bin/env python
 
+# Copyright (c) Yugabyte, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.  You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software distributed under the License
+# is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+# or implied.  See the License for the specific language governing permissions and limitations
+# under the License.
+
 """
 Post-processes results of running a single YugabyteDB unit test (e.g. a C++ or Java test) and
 creates a structured output file with a summary of those results. This includes test running time
 and possible causes of test failure.
 """
-
+import subprocess
 import sys
 import os
 import logging
-import yugabyte_pycommon
+import yugabyte_pycommon  # type: ignore
 import argparse
 import xml.etree.ElementTree as ET
 import json
 import signal
 import glob
+from typing import Any, Dict, AnyStr
 
 # Example test failure (from C++)
 # <?xml version="1.0" ?><testsuites disabled="0" errors="0" failures="1" name="AllTests" tests="1
@@ -64,22 +77,44 @@ import glob
 # https://raw.githubusercontent.com/windyroad/JUnit-Schema/master/JUnit.xsd
 
 
-def rename_key(d, key, new_key):
+# Create list of signals to search for from signal module.
+SIGNALS = [name for name in dir(signal) if name.startswith('SIG') and 'SIG_' not in name]
+SIGNAL_FORMAT_STRING = 'signal_{}'
+
+# Derived from build-support/common-test-env.sh:did_test_succeed()
+FAIL_TAG_AND_PATTERN = {
+    'timeout': 'Timeout reached',
+    'memory_leak': 'LeakSanitizer: detected memory leaks',
+    'asan_heap_use_after_free': 'AddressSanitizer: heap-use-after-free',
+    'asan_undefined': 'AddressSanitizer: undefined-behavior',
+    'undefined_behavior': 'UndefinedBehaviorSanitizer: undefined-behavior',
+    'tsan': 'ThreadSanitizer',
+    'leak_check_failure': 'Leak check.*detected leaks',
+    'segmentation_fault': 'Segmentation fault: ',
+    'gtest': '^\[  FAILED  \]',  # noqa
+    SIGNAL_FORMAT_STRING: '|'.join(SIGNALS),
+    'check_failed': 'Check failed: ',
+    'java_build': '^\[INFO\] BUILD FAILURE$'  # noqa
+}
+
+
+def rename_key(d: Dict[str, Any], key: str, new_key: str) -> None:
     if key in d:
         d[new_key] = d[key]
         del d[key]
 
 
-def del_default_value(d, key, default_value):
+def del_default_value(d: Dict[str, Any], key: str, default_value: Any) -> None:
     if key in d and d[key] == default_value:
         del d[key]
 
 
-def count_subelements(root, el_name):
+def count_subelements(root: ET.Element, el_name: str) -> int:
     return len(list(root.iter(el_name)))
 
 
-def set_element_count_property(test_kvs, root, el_name, field_name, increment_by=0):
+def set_element_count_property(test_kvs: Dict[str, Any], root: ET.Element, el_name: str,
+                               field_name: str, increment_by: int = 0) -> None:
     count = count_subelements(root, el_name) + increment_by
     if count != 0:
         test_kvs[field_name] = count
@@ -87,7 +122,8 @@ def set_element_count_property(test_kvs, root, el_name, field_name, increment_by
 
 class Postprocessor:
 
-    def __init__(self):
+    #  Use custom_args for unit testing
+    def __init__(self, custom_args=None):  # type: ignore
         parser = argparse.ArgumentParser(
             description=__doc__)
         parser.add_argument(
@@ -108,7 +144,7 @@ class Postprocessor:
             required=True)
         parser.add_argument(
             '--language',
-            help='The langugage this unit test is written in',
+            help='The language this unit test is written in',
             choices=['cxx', 'java'],
             required=True)
         parser.add_argument(
@@ -138,7 +174,8 @@ class Postprocessor:
         parser.add_argument(
             '--extra-error-log-path',
             help='Extra error log path (stdout/stderr of the outermost test invocation)')
-        self.args = parser.parse_args()
+        # By default, argparse picks sys.argv[1:]
+        self.args = parser.parse_args(sys.argv[1:] if not custom_args else custom_args)
         self.test_log_path = self.args.test_log_path
         if not os.path.exists(self.test_log_path) and os.path.exists(self.test_log_path + '.gz'):
             self.test_log_path += '.gz'
@@ -180,13 +217,13 @@ class Postprocessor:
 
         self.test_descriptor_str = os.environ.get('YB_TEST_DESCRIPTOR')
 
-    def path_rel_to_build_root(self, path):
+    def path_rel_to_build_root(self, path: AnyStr) -> AnyStr:
         return os.path.relpath(os.path.realpath(path), self.real_build_root)
 
-    def path_rel_to_src_root(self, path):
+    def path_rel_to_src_root(self, path: AnyStr) -> AnyStr:
         return os.path.relpath(os.path.realpath(path), self.real_yb_src_root)
 
-    def set_common_test_kvs(self, test_kvs):
+    def set_common_test_kvs(self, test_kvs: Dict[str, Any]) -> None:
         """
         Set common data for all tests produced by this invocation of the script. In practice there
         won't be too much duplication as this script will be invoked for one test at a time.
@@ -204,16 +241,43 @@ class Postprocessor:
         if self.rel_extra_error_log_path:
             test_kvs["extra_error_log_path"] = self.rel_extra_error_log_path
 
-    def run(self):
+    def set_fail_tags(self, test_kvs: Dict[str, Any]) -> None:
+        if test_kvs.get('num_errors', 0) > 0 or test_kvs.get('num_failures', 0) > 0:
+            # Parse for fail tags
+            for tag, pattern in FAIL_TAG_AND_PATTERN.items():
+                # When using zgrep, given files are uncompressed if necessary and fed to grep
+                grep_command = subprocess.run(['zgrep', '-Eoh', pattern, self.test_log_path],
+                                              capture_output=True)
+                if grep_command.returncode == 0:
+                    # When grep-ing for a signal, there can be multiple matches.
+                    # Filter stdout to get unique, non-empty matches and append a tag for each.
+                    grep_stdout = sorted(set(grep_command.stdout.decode('utf-8').split('\n')))
+                    grep_stdout = [match for match in grep_stdout if match != '']
+
+                    if tag == SIGNAL_FORMAT_STRING:
+                        # Get the matching signals from stdout
+                        fail_tags = [tag.format(match) for match in grep_stdout]
+                    else:
+                        fail_tags = [tag]
+
+                    test_kvs['fail_tags'] = test_kvs.get('fail_tags', []) + fail_tags
+
+                elif grep_command.returncode > 1:
+                    logging.warning("Error running '{}': \n{}".format(
+                        ' '.join(grep_command.args), grep_command.stderr.decode('utf-8'))
+                    )
+                    test_kvs['processing_errors'] = grep_command.stderr.decode('utf-8').split()
+
+    def run(self) -> None:
         junit_xml = ET.parse(self.args.junit_xml_path)
         tests = []
         for test_case_element in junit_xml.iter('testcase'):
-            test_kvs = dict(test_case_element.attrib)
+            test_kvs = dict(test_case_element.attrib)  # type: Dict[str, Any]
             set_element_count_property(test_kvs, test_case_element, 'error', 'num_errors')
             set_element_count_property(test_kvs, test_case_element, 'failure', 'num_failures')
 
             # In C++ tests, we don't get the "skipped" attribute, but we get the status="notrun"
-            # attibute.
+            # attribute.
             set_element_count_property(
                 test_kvs, test_case_element, 'skipped', 'num_skipped',
                 increment_by=1 if test_kvs.get('status') == 'notrun' else 0)
@@ -234,11 +298,12 @@ class Postprocessor:
             rename_key(test_kvs, 'name', 'test_name')
             rename_key(test_kvs, 'classname', 'class_name')
             self.set_common_test_kvs(test_kvs)
+            self.set_fail_tags(test_kvs)
             tests.append(test_kvs)
 
         output_path = os.path.splitext(self.args.junit_xml_path)[0] + '_test_report.json'
         if len(tests) == 1:
-            tests = tests[0]
+            tests = tests[0]  # type: ignore
         with open(output_path, 'w') as output_file:
             output_file.write(
                 json.dumps(tests, indent=2)
@@ -246,8 +311,8 @@ class Postprocessor:
         logging.info("Wrote JSON test report file: %s", output_path)
 
 
-def main():
-    postprocessor = Postprocessor()
+def main() -> None:
+    postprocessor = Postprocessor()  # type: ignore
     postprocessor.run()
 
 

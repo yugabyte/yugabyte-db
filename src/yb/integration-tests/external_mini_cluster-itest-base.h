@@ -66,7 +66,7 @@ class ExternalMiniClusterITestBase : public YBTest {
     if (cluster_) {
       if (HasFatalFailure()) {
         LOG(INFO) << "Found fatal failure";
-        for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+        for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
           if (!cluster_->tablet_server(i)->IsProcessAlive()) {
             LOG(INFO) << "Tablet server " << i << " is not running. Cannot dump its stacks.";
             continue;

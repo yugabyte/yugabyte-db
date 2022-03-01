@@ -20,7 +20,9 @@
 #include <memory>
 #include <string>
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/macros.h"
+
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
@@ -75,7 +77,7 @@ Status CompressLevel(Slice input, int level, ostream* out) {
                               8 /* memory level, max is 9 */,
                               Z_DEFAULT_STRATEGY));
 
-  zs.avail_in = input.size();
+  zs.avail_in = narrow_cast<uInt>(input.size());
   zs.next_in = const_cast<uint8_t*>(input.data());
   const int kChunkSize = 64 * 1024;
   unique_ptr<unsigned char[]> chunk(new unsigned char[kChunkSize]);
@@ -89,7 +91,7 @@ Status CompressLevel(Slice input, int level, ostream* out) {
       deflateEnd(&zs);
       return s;
     }
-    int out_size = zs.next_out - chunk.get();
+    auto out_size = zs.next_out - chunk.get();
     if (out_size > 0) {
       out->write(reinterpret_cast<char *>(chunk.get()), out_size);
     }
@@ -105,7 +107,7 @@ Status Uncompress(const Slice& compressed, std::ostream* out) {
   z_stream zs;
   memset(&zs, 0, sizeof(zs));
   zs.next_in = const_cast<uint8_t*>(compressed.data());
-  zs.avail_in = compressed.size();
+  zs.avail_in = narrow_cast<uInt>(compressed.size());
   // Initialize inflation with the windowBits set to be GZIP compatible.
   // The documentation (https://www.zlib.net/manual.html#Advanced) describes that
   // Adding 16 configures inflate to decode the gzip format.

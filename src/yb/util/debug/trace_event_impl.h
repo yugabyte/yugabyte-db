@@ -127,7 +127,7 @@ class BASE_EXPORT TraceEvent {
   void CopyFrom(const TraceEvent& other);
 
   void Initialize(
-      int thread_id,
+      int64_t thread_id,
       MicrosecondsInt64 timestamp,
       MicrosecondsInt64 thread_timestamp,
       char phase,
@@ -156,7 +156,7 @@ class BASE_EXPORT TraceEvent {
   MicrosecondsInt64 timestamp() const { return timestamp_; }
   MicrosecondsInt64 thread_timestamp() const { return thread_timestamp_; }
   char phase() const { return phase_; }
-  int thread_id() const { return thread_id_; }
+  int64_t thread_id() const { return thread_id_; }
   MicrosecondsInt64 duration() const { return duration_; }
   MicrosecondsInt64 thread_duration() const { return thread_duration_; }
   uint64_t id() const { return id_; }
@@ -192,7 +192,7 @@ class BASE_EXPORT TraceEvent {
   const unsigned char* category_group_enabled_;
   const char* name_;
   scoped_refptr<yb::RefCountedString> parameter_copy_storage_;
-  int thread_id_;
+  int64_t thread_id_;
   char phase_;
   unsigned char flags_;
   unsigned char arg_types_[kTraceMaxNumArgs];
@@ -525,7 +525,7 @@ class BASE_EXPORT TraceLog {
       const unsigned char* category_group_enabled,
       const char* name,
       uint64_t id,
-      int thread_id,
+      int64_t thread_id,
       const MicrosecondsInt64& timestamp,
       int num_args,
       const char** arg_names,
@@ -606,7 +606,7 @@ class BASE_EXPORT TraceLog {
   // the category group, or event_callback_ is not null and
   // event_callback_category_filter_ matches the category group.
   void UpdateCategoryGroupEnabledFlags();
-  void UpdateCategoryGroupEnabledFlag(int category_index);
+  void UpdateCategoryGroupEnabledFlag(AtomicWord category_index);
 
   // Configure synthetic delays based on the values set in the current
   // category filter.
@@ -681,10 +681,10 @@ class BASE_EXPORT TraceLog {
   std::unordered_map<int, std::string> process_labels_;
   int process_sort_index_;
   std::unordered_map<int, int> thread_sort_indices_;
-  std::unordered_map<int, std::string> thread_names_;
+  std::unordered_map<int64_t, std::string> thread_names_;
 
   // The following two maps are used only when ECHO_TO_CONSOLE.
-  std::unordered_map<int, std::stack<MicrosecondsInt64> > thread_event_start_times_;
+  std::unordered_map<int64_t, std::stack<MicrosecondsInt64> > thread_event_start_times_;
   std::unordered_map<std::string, int> thread_colors_;
 
   // XORed with TraceID to make it unlikely to collide with other processes.
@@ -737,6 +737,14 @@ class BASE_EXPORT TraceLog {
 
   DISALLOW_COPY_AND_ASSIGN(TraceLog);
 };
+
+extern std::atomic<bool> trace_events_enabled;
+
+inline bool TraceEventsEnabled() {
+  return trace_events_enabled.load(std::memory_order_relaxed);
+}
+
+void EnableTraceEvents();
 
 }  // namespace debug
 }  // namespace yb

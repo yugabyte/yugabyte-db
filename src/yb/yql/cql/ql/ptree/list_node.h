@@ -151,7 +151,7 @@ class TreeListNode : public TreeNode {
   }
 
   // List count.
-  int size() const {
+  size_t size() const {
     return node_list_.size();
   }
 
@@ -165,15 +165,13 @@ class TreeListNode : public TreeNode {
   }
 
   // Returns the nth element.
-  MCSharedPtr<NodeType> element(int n) const {
-    DCHECK_GE(n, 0);
-    for (const MCSharedPtr<NodeType>& tnode : node_list_) {
-      if (n == 0) {
-        return tnode;
-      }
-      n--;
+  MCSharedPtr<NodeType> element(size_t n) const {
+    if (node_list_.size() <= n) {
+      return nullptr;
     }
-    return nullptr;
+    auto it = node_list_.begin();
+    std::advance(it, n);
+    return *it;
   }
 
  private:

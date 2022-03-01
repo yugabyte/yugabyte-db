@@ -352,7 +352,7 @@ HybridTime HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(
 HybridTime HybridClock::AddPhysicalTimeToHybridTime(const HybridTime& original,
                                                     const MonoDelta& to_add) {
   uint64_t new_physical = GetPhysicalValueMicros(original) + to_add.ToMicroseconds();
-  uint64_t old_logical = GetLogicalValue(original);
+  auto old_logical = GetLogicalValue(original);
   return HybridTimeFromMicrosecondsAndLogicalValue(new_physical, old_logical);
 }
 

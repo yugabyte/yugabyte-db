@@ -20,6 +20,8 @@ test: yb_pg_prepare
 test: yb_sequence
 test: yb_pg_identity
 test: yb_pg_namespace
+test: yb_pg_truncate
+test: yb_truncate
 
 # Features that are explicitly disabled and therefore should not work
 test: yb_disabled

@@ -95,6 +95,12 @@ public class MaintenanceWindow extends Model {
   private String name;
 
   @NotNull
+  @Size(min = 1)
+  @Column(columnDefinition = "Text")
+  @ApiModelProperty(value = "Description", accessMode = READ_WRITE)
+  private String description;
+
+  @NotNull
   @Column(nullable = false)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
   @ApiModelProperty(value = "Creation time", accessMode = READ_ONLY)

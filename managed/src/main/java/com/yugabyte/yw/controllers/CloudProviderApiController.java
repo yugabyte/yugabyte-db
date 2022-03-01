@@ -47,8 +47,9 @@ public class CloudProviderApiController extends AuthenticatedController {
       response = Provider.class,
       responseContainer = "List",
       nickname = "getListOfProviders")
-  public Result list(UUID customerUUID) {
-    return PlatformResults.withData(Provider.getAll(customerUUID));
+  public Result list(UUID customerUUID, String name, String code) {
+    CloudType providerCode = code == null ? null : CloudType.valueOf(code);
+    return PlatformResults.withData(Provider.getAll(customerUUID, name, providerCode));
   }
 
   @ApiOperation(
@@ -64,7 +65,10 @@ public class CloudProviderApiController extends AuthenticatedController {
     return YBPSuccess.withMessage("Deleted provider: " + providerUUID);
   }
 
-  @ApiOperation(value = "Refresh pricing", notes = "Refresh provider pricing info")
+  @ApiOperation(
+      value = "Refresh pricing",
+      notes = "Refresh provider pricing info",
+      response = YBPSuccess.class)
   public Result refreshPricing(UUID customerUUID, UUID providerUUID) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     cloudProviderHandler.refreshPricing(customerUUID, provider);

@@ -30,7 +30,8 @@ const awsRegionList = regionsData.map((region, index) => {
 
 // TODO: (Daniel) - Replace this hard-coding with an API that returns a list of supported KMS Configurations
 let kmsConfigTypes = [
-  { value: 'SMARTKEY', label: 'Equinix SmartKey' },
+  // Equinix KMS support is deprecated from 2.12.1
+  // { value: 'SMARTKEY', label: 'Equinix SmartKey' },
   { value: 'AWS', label: 'AWS KMS' },
   { value: 'HASHICORP', label: 'Hashicorp Vault' }
 ];
@@ -41,7 +42,9 @@ class KeyManagementConfiguration extends Component {
     enabledIAMProfile: false,
     useCmkPolicy: false,
     mode: 'NEW',
-    formData: {}
+    formData: {
+      kmsProvider: { value: 'AWS', label: 'AWS KMS' }
+    }
   };
 
   isEditMode = () => {
@@ -379,6 +382,12 @@ class KeyManagementConfiguration extends Component {
               className={'kube-provider-input-field'}
             />
           </Col>
+          <Col lg={1} className="config-zone-tooltip">
+            <YBInfoTip
+              title="Vault Address"
+              content="Vault Address must be a valid URL with port number, Ex:- http://0.0.0.0:0000"
+            />
+          </Col>
         </Row>
         <Row className="config-provider-row" key={'v-token-field'}>
           <Col lg={3}>
@@ -432,7 +441,7 @@ class KeyManagementConfiguration extends Component {
 
   displayFormContent = (provider) => {
     if (!provider) {
-      return this.getSmartKeyForm();
+      return this.getAWSForm();
     }
     switch (provider.value) {
       case 'SMARTKEY':
@@ -442,7 +451,7 @@ class KeyManagementConfiguration extends Component {
       case 'HASHICORP':
         return this.getHCVaultForm();
       default:
-        return this.getSmartKeyForm();
+        return this.getAWSForm();
     }
   };
 
@@ -483,133 +492,144 @@ class KeyManagementConfiguration extends Component {
     const { configList, featureFlags, currentUserInfo } = this.props;
     const { listView, enabledIAMProfile, formData } = this.state;
     const isAdmin = ['Admin', 'SuperAdmin'].includes(currentUserInfo.role);
-    const isHCVaultEnabled = featureFlags.test.enableHCVault || featureFlags.released.enableHCVault;
-    if (!isHCVaultEnabled)
-      kmsConfigTypes = kmsConfigTypes.filter((config) => config.value !== 'HASHICORP');
-
     const isEdit = this.isEditMode();
 
     if (getPromiseState(configList).isInit() || getPromiseState(configList).isLoading()) {
       return <YBLoadingCircleIcon />;
-    }
-    if (listView) {
+    } else {
+      //feature flagging
+      const isHCVaultEnabled =
+        featureFlags.test.enableHCVault || featureFlags.released.enableHCVault;
+      let configs = configList.data;
+      if (!isHCVaultEnabled) {
+        kmsConfigTypes = kmsConfigTypes.filter((config) => config.value !== 'HASHICORP');
+        configs = configs.filter((config) => config.metadata.provider !== 'HASHICORP');
+      }
+      //feature flagging
+
+      if (listView) {
+        return (
+          <ListKeyManagementConfigurations
+            configs={configs}
+            onCreate={this.openCreateConfigForm}
+            onDelete={this.deleteAuthConfig}
+            onEdit={this.handleEdit}
+            isAdmin={isAdmin}
+          />
+        );
+      }
+
+      const validationSchema = Yup.object().shape({
+        name: Yup.string().required('Name is Required'),
+        kmsProvider: Yup.object().required('Provider name is Required'),
+        base_url: Yup.string(),
+        api_key: Yup.mixed().when('kmsProvider', {
+          is: (provider) => provider?.value === 'SMARTKEY',
+          then: Yup.mixed().required('API key is Required')
+        }),
+
+        AWS_ACCESS_KEY_ID: Yup.string().when('kmsProvider', {
+          is: (provider) => provider?.value === 'AWS' && !enabledIAMProfile,
+          then: Yup.string().required('Access Key ID is Required')
+        }),
+
+        AWS_SECRET_ACCESS_KEY: Yup.string().when('kmsProvider', {
+          is: (provider) => provider?.value === 'AWS' && !enabledIAMProfile,
+          then: Yup.string().required('Secret Key ID is Required')
+        }),
+
+        region: Yup.mixed().when('kmsProvider', {
+          is: (provider) => provider?.value === 'AWS',
+          then: Yup.mixed().required('AWS Region is Required')
+        }),
+
+        HC_VAULT_ADDRESS: Yup.mixed().when('kmsProvider', {
+          is: (provider) => provider?.value === 'HASHICORP',
+          then: Yup.string()
+            .matches(/^(?:http(s)?:\/\/)?[\w.-]+(?:[\w-]+)+:\d+/, {
+              message: 'Vault Address must be a valid URL with port number'
+            })
+            .required('Vault Address is Required')
+        }),
+
+        HC_VAULT_TOKEN: Yup.mixed().when('kmsProvider', {
+          is: (provider) => provider?.value === 'HASHICORP',
+          then: Yup.mixed().required('Secret Token is Required')
+        }),
+
+        cmkPolicyContent: Yup.string(),
+        cmk_id: Yup.string()
+      });
+
       return (
-        <ListKeyManagementConfigurations
-          configs={configList}
-          onCreate={this.openCreateConfigForm}
-          onDelete={this.deleteAuthConfig}
-          onEdit={this.handleEdit}
-          isAdmin={isAdmin}
-        />
+        <div className="provider-config-container">
+          <Formik
+            initialValues={formData}
+            validationSchema={validationSchema}
+            onSubmit={(values) => {
+              isEdit ? this.onEditSubmit(values) : this.onSubmit(values);
+            }}
+          >
+            {({ handleSubmit, values, touched }) => {
+              const isSaveDisabled = isEdit && !Object.keys(touched).length;
+              return (
+                <form onSubmit={handleSubmit}>
+                  <Row>
+                    <Col lg={8}>
+                      <Row className="config-name-row" key={'name-field'}>
+                        <Col lg={3}>
+                          <div className="form-item-custom-label">Configuration Name</div>
+                        </Col>
+                        <Col lg={7}>
+                          <Field
+                            name={'name'}
+                            component={YBFormInput}
+                            placeholder={'Configuration Name'}
+                            className={'kube-provider-input-field'}
+                            disabled={isEdit}
+                          />
+                        </Col>
+                        <Col lg={1} className="config-zone-tooltip">
+                          <YBInfoTip
+                            title="Confriguration Name"
+                            content="The name of the KMS configuration (Required)."
+                          />
+                        </Col>
+                      </Row>
+                      <Row className="config-provider-row" key={'provider-field'}>
+                        <Col lg={3}>
+                          <div className="form-item-custom-label">KMS Provider</div>
+                        </Col>
+                        <Col lg={7}>
+                          <Field
+                            name="kmsProvider"
+                            placeholder="Provider name"
+                            component={YBFormSelect}
+                            options={kmsConfigTypes}
+                            className={'kube-provider-input-field'}
+                            isDisabled={isEdit}
+                          />
+                        </Col>
+                      </Row>
+                      {this.displayFormContent(values.kmsProvider)}
+                    </Col>
+                  </Row>
+                  <div className="form-action-button-container">
+                    <YBButton
+                      disabled={isSaveDisabled}
+                      btnText="Save"
+                      btnClass="btn btn-orange"
+                      btnType="submit"
+                    />
+                    <YBButton btnText="Cancel" btnClass="btn" onClick={this.showListView} />
+                  </div>
+                </form>
+              );
+            }}
+          </Formik>
+        </div>
       );
     }
-
-    const validationSchema = Yup.object().shape({
-      name: Yup.string().required('Name is Required'),
-      kmsProvider: Yup.object().required('Provider name is Required'),
-      base_url: Yup.string(),
-      api_key: Yup.mixed().when('kmsProvider', {
-        is: (provider) => provider?.value === 'SMARTKEY',
-        then: Yup.mixed().required('API key is Required')
-      }),
-
-      AWS_ACCESS_KEY_ID: Yup.string().when('kmsProvider', {
-        is: (provider) => provider?.value === 'AWS' && !enabledIAMProfile,
-        then: Yup.string().required('Access Key ID is Required')
-      }),
-
-      AWS_SECRET_ACCESS_KEY: Yup.string().when('kmsProvider', {
-        is: (provider) => provider?.value === 'AWS' && !enabledIAMProfile,
-        then: Yup.string().required('Secret Key ID is Required')
-      }),
-
-      region: Yup.mixed().when('kmsProvider', {
-        is: (provider) => provider?.value === 'AWS',
-        then: Yup.mixed().required('AWS Region is Required')
-      }),
-
-      HC_VAULT_ADDRESS: Yup.mixed().when('kmsProvider', {
-        is: (provider) => provider?.value === 'HASHICORP',
-        then: Yup.mixed().required('Vault Address is Required')
-      }),
-
-      HC_VAULT_TOKEN: Yup.mixed().when('kmsProvider', {
-        is: (provider) => provider?.value === 'HASHICORP',
-        then: Yup.mixed().required('Secret Token is Required')
-      }),
-
-      cmkPolicyContent: Yup.string(),
-      cmk_id: Yup.string()
-    });
-
-    return (
-      <div className="provider-config-container">
-        <Formik
-          initialValues={formData}
-          validationSchema={validationSchema}
-          onSubmit={(values) => {
-            isEdit ? this.onEditSubmit(values) : this.onSubmit(values);
-          }}
-        >
-          {({ handleSubmit, values, touched }) => {
-            const isSaveDisabled = isEdit && !Object.keys(touched).length;
-            return (
-              <form onSubmit={handleSubmit}>
-                <Row>
-                  <Col lg={8}>
-                    <Row className="config-name-row" key={'name-field'}>
-                      <Col lg={3}>
-                        <div className="form-item-custom-label">Configuration Name</div>
-                      </Col>
-                      <Col lg={7}>
-                        <Field
-                          name={'name'}
-                          component={YBFormInput}
-                          placeholder={'Configuration Name'}
-                          className={'kube-provider-input-field'}
-                          disabled={isEdit}
-                        />
-                      </Col>
-                      <Col lg={1} className="config-zone-tooltip">
-                        <YBInfoTip
-                          title="Confriguration Name"
-                          content="The name of the KMS configuration (Required)."
-                        />
-                      </Col>
-                    </Row>
-                    <Row className="config-provider-row" key={'provider-field'}>
-                      <Col lg={3}>
-                        <div className="form-item-custom-label">KMS Provider</div>
-                      </Col>
-                      <Col lg={7}>
-                        <Field
-                          name="kmsProvider"
-                          placeholder="Provider name"
-                          component={YBFormSelect}
-                          options={kmsConfigTypes}
-                          className={'kube-provider-input-field'}
-                          isDisabled={isEdit}
-                        />
-                      </Col>
-                    </Row>
-                    {this.displayFormContent(values.kmsProvider)}
-                  </Col>
-                </Row>
-                <div className="form-action-button-container">
-                  <YBButton
-                    disabled={isSaveDisabled}
-                    btnText="Save"
-                    btnClass="btn btn-orange"
-                    btnType="submit"
-                  />
-                  <YBButton btnText="Cancel" btnClass="btn" onClick={this.showListView} />
-                </div>
-              </form>
-            );
-          }}
-        </Formik>
-      </div>
-    );
   }
 }
 export default KeyManagementConfiguration;

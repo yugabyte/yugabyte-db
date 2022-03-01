@@ -66,7 +66,7 @@ $ wget --trust-server-names https://get.replicated.com/airgap
 Download the `yugaware` binary and change the following number, as required:
 
 ```sh
-$ wget https://downloads.yugabyte.com/releases/2.8.1.0/yugaware-2.8.1.0-b37-linux-x86_64.airgap
+$ wget https://downloads.yugabyte.com/releases/2.12.1.0/yugaware-2.12.1.0-b41-linux-x86_64.airgap
 ```
 
 Switch to the following directory:
@@ -99,7 +99,7 @@ You should see an output similar to the following:
 
 ![Replicated successfully installed](/images/replicated/replicated-success.png)
 
-The next step is to install Yugabyte Platform..
+The next step is to install Yugabyte Platform.
 
 ## Set Up HTTPS (optional)
 

@@ -17,6 +17,8 @@
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/wire_format_lite.h>
 
+#include "yb/gutil/casts.h"
+
 #include "yb/rpc/serialization.h"
 
 #include "yb/util/memory/arena.h"
@@ -160,13 +162,15 @@ class LightweightSerialization<google::protobuf::internal::WireFormatLite::TYPE_
   }
 
   static uint8_t* Write(const T& value, uint8_t* out) {
-    out = google::protobuf::io::CodedOutputStream::WriteVarint32ToArray(value.cached_size(), out);
+    out = google::protobuf::io::CodedOutputStream::WriteVarint32ToArray(
+        narrow_cast<uint32_t>(value.cached_size()), out);
     return value.SerializeToArray(out);
   }
 
   static size_t Size(const T& value) {
     size_t size = value.SerializedSize();
-    return google::protobuf::io::CodedOutputStream::VarintSize32(size) + size;
+    return google::protobuf::io::CodedOutputStream::VarintSize32(narrow_cast<uint32_t>(size))
+           + size;
   }
 };
 
@@ -207,13 +211,16 @@ inline size_t PackedSize(const Value& value, size_t* out_body_size) {
     body_size += Serialization::Size(entry);
   }
   *out_body_size = body_size;
-  return TagSize + google::protobuf::io::CodedOutputStream::VarintSize32(body_size) + body_size;
+  return TagSize
+         + google::protobuf::io::CodedOutputStream::VarintSize32(narrow_cast<uint32_t>(body_size))
+         + body_size;
 }
 
 template <class Serialization, uint32_t Tag, class Value>
 inline uint8_t* PackedWrite(const Value& value, size_t body_size, uint8_t* out) {
   out = google::protobuf::io::CodedOutputStream::WriteTagToArray(Tag, out);
-  out = google::protobuf::io::CodedOutputStream::WriteVarint32ToArray(body_size, out);
+  out = google::protobuf::io::CodedOutputStream::WriteVarint32ToArray(
+      narrow_cast<uint32_t>(body_size), out);
   for (const auto& entry : value) {
     out = Serialization::Write(entry, out);
   }
@@ -265,6 +272,8 @@ std::shared_ptr<T> SharedField(std::shared_ptr<S> ptr, T* field) {
 }
 
 void AppendFieldTitle(const char* name, const char* suffix, bool* first, std::string* out);
+
+void SetupLimit(google::protobuf::io::CodedInputStream* in);
 
 } // namespace rpc
 } // namespace yb

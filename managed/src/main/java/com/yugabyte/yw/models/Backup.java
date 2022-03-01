@@ -5,14 +5,34 @@ package com.yugabyte.yw.models;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 import static java.lang.Math.abs;
+import static com.yugabyte.yw.models.helpers.CommonUtils.performPagedQuery;
+import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
+import static com.yugabyte.yw.models.helpers.CommonUtils.appendLikeClause;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.collect.Sets;
+import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.models.paging.BackupPagedQuery;
+import com.yugabyte.yw.models.paging.BackupPagedResponse;
+import com.yugabyte.yw.models.paging.BackupPagedApiResponse;
+import com.yugabyte.yw.models.BackupResp;
+import com.yugabyte.yw.models.BackupResp.BackupRespBuilder;
+import com.yugabyte.yw.models.paging.PagedQuery;
+import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
+import com.yugabyte.yw.models.paging.PagedQuery.SortByIF;
+import com.yugabyte.yw.models.filters.BackupFilter;
+import com.yugabyte.yw.models.helpers.KeyspaceTablesList;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.ebean.Query;
+import io.ebean.Junction;
+import io.ebean.PersistenceContextScope;
+import io.ebean.ExpressionList;
 import io.ebean.annotation.CreatedTimestamp;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.EnumValue;
@@ -26,14 +46,18 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.apache.commons.collections.CollectionUtils;
+import play.api.Play;
 
 @ApiModel(
     description =
@@ -65,6 +89,51 @@ public class Backup extends Model {
 
     @EnumValue("Stopped")
     Stopped,
+
+    @EnumValue("DeleteInProgress")
+    DeleteInProgress,
+
+    @EnumValue("QueuedForDeletion")
+    QueuedForDeletion
+  }
+
+  public enum BackupCategory {
+    @EnumValue("YB_BACKUP_SCRIPT")
+    YB_BACKUP_SCRIPT,
+
+    @EnumValue("YB_CONTROLLER")
+    YB_CONTROLLER
+  }
+
+  public enum BackupVersion {
+    @EnumValue("V1")
+    V1,
+
+    @EnumValue("V2")
+    V2
+  }
+
+  public static final Set<BackupState> IN_PROGRESS_STATES =
+      Sets.immutableEnumSet(
+          BackupState.InProgress, BackupState.QueuedForDeletion, BackupState.DeleteInProgress);
+
+  public enum SortBy implements PagedQuery.SortByIF {
+    createTime("createTime");
+
+    private final String sortField;
+
+    SortBy(String sortField) {
+      this.sortField = sortField;
+    }
+
+    public String getSortField() {
+      return sortField;
+    }
+
+    @Override
+    public SortByIF getOrderField() {
+      return SortBy.createTime;
+    }
   }
 
   @ApiModelProperty(value = "Backup UUID", accessMode = READ_ONLY)
@@ -74,6 +143,18 @@ public class Backup extends Model {
   @ApiModelProperty(value = "Customer UUID that owns this backup", accessMode = READ_WRITE)
   @Column(nullable = false)
   public UUID customerUUID;
+
+  @ApiModelProperty(value = "Universe UUID that created this backup", accessMode = READ_WRITE)
+  @Column(nullable = false)
+  public UUID universeUUID;
+
+  @ApiModelProperty(value = "Storage Config UUID that created this backup", accessMode = READ_WRITE)
+  @Column(nullable = false)
+  public UUID storageConfigUUID;
+
+  @ApiModelProperty(value = "Universe name that created this backup", accessMode = READ_WRITE)
+  @Column
+  public String universeName;
 
   @ApiModelProperty(value = "State of the backup", example = "DELETED", accessMode = READ_ONLY)
   @Column(nullable = false)
@@ -107,6 +188,15 @@ public class Backup extends Model {
     return expiry;
   }
 
+  private void setExpiry(long timeBeforeDeleteFromPresent) {
+    this.expiry = new Date(System.currentTimeMillis() + timeBeforeDeleteFromPresent);
+  }
+
+  public void updateExpiryTime(long timeBeforeDeleteFromPresent) {
+    setExpiry(timeBeforeDeleteFromPresent);
+    save();
+  }
+
   public void setBackupInfo(BackupTableParams params) {
     this.backupInfo = params;
   }
@@ -126,6 +216,14 @@ public class Backup extends Model {
   public Date getUpdateTime() {
     return updateTime;
   }
+
+  @ApiModelProperty(value = "Category of the backup")
+  @Column(nullable = false)
+  public BackupCategory category = BackupCategory.YB_BACKUP_SCRIPT;
+
+  @ApiModelProperty(value = "Version of the backup in a category")
+  @Column(nullable = false)
+  public BackupVersion version = BackupVersion.V1;
 
   public static final Finder<UUID, Backup> find = new Finder<UUID, Backup>(Backup.class) {};
 
@@ -179,11 +277,20 @@ public class Backup extends Model {
     }
   }
 
-  public static Backup create(UUID customerUUID, BackupTableParams params) {
+  public static Backup create(
+      UUID customerUUID, BackupTableParams params, BackupCategory category, BackupVersion version) {
     Backup backup = new Backup();
     backup.backupUUID = UUID.randomUUID();
     backup.customerUUID = customerUUID;
+    backup.universeUUID = params.universeUUID;
+    backup.storageConfigUUID = params.storageConfigUUID;
+    Universe universe = Universe.maybeGet(params.universeUUID).orElse(null);
+    if (universe != null) {
+      backup.universeName = universe.name;
+    }
     backup.state = BackupState.InProgress;
+    backup.category = category;
+    backup.version = version;
     if (params.scheduleUUID != null) {
       backup.scheduleUUID = params.scheduleUUID;
     }
@@ -206,6 +313,10 @@ public class Backup extends Model {
     return backup;
   }
 
+  public static Backup create(UUID customerUUID, BackupTableParams params) {
+    return create(customerUUID, params, BackupCategory.YB_BACKUP_SCRIPT, BackupVersion.V1);
+  }
+
   // We need to set the taskUUID right after commissioner task is submitted.
 
   /**
@@ -221,6 +332,11 @@ public class Backup extends Model {
     return false;
   }
 
+  public void updateBackupInfo(BackupTableParams params) {
+    this.backupInfo = params;
+    save();
+  }
+
   public static List<Backup> fetchByUniverseUUID(UUID customerUUID, UUID universeUUID) {
     List<Backup> backupList =
         find.query()
@@ -234,6 +350,25 @@ public class Backup extends Model {
         .collect(Collectors.toList());
   }
 
+  public static List<Backup> fetchBackupToDeleteByUniverseUUID(
+      UUID customerUUID, UUID universeUUID) {
+    return fetchByUniverseUUID(customerUUID, universeUUID)
+        .stream()
+        .filter(b -> b.backupInfo.actionType == BackupTableParams.ActionType.CREATE)
+        .collect(Collectors.toList());
+  }
+
+  public static BackupPagedApiResponse pagedList(BackupPagedQuery pagedQuery) {
+    if (pagedQuery.getSortBy() == null) {
+      pagedQuery.setSortBy(SortBy.createTime);
+      pagedQuery.setDirection(SortDirection.DESC);
+    }
+    Query<Backup> query = createQueryByFilter(pagedQuery.getFilter()).query();
+    BackupPagedResponse response = performPagedQuery(query, pagedQuery, BackupPagedResponse.class);
+    BackupPagedApiResponse resp = createResponse(response);
+    return resp;
+  }
+
   @Deprecated
   public static Backup get(UUID customerUUID, UUID backupUUID) {
     return find.query().where().idEq(backupUUID).eq("customer_uuid", customerUUID).findOne();
@@ -245,6 +380,10 @@ public class Backup extends Model {
       throw new PlatformServiceException(BAD_REQUEST, "Invalid customer or backup UUID");
     }
     return backup;
+  }
+
+  public static Optional<Backup> maybeGet(UUID customerUUID, UUID backupUUID) {
+    return Optional.ofNullable(get(customerUUID, backupUUID));
   }
 
   public static List<Backup> fetchAllBackupsByTaskUUID(UUID taskUUID) {
@@ -277,19 +416,45 @@ public class Backup extends Model {
     return ret;
   }
 
-  public void transitionState(BackupState newState) {
-    // We only allow state transition from InProgress to a valid state
-    // Or completed to deleted state.
-    if ((this.state == BackupState.InProgress && this.state != newState)
+  public synchronized void transitionState(BackupState newState) {
+    // Need updated backup state as multiple threads can access backup object.
+    this.refresh();
+
+    if (this.state == newState) {
+      LOG.error("Skipping state transition as no change in previous and new state");
+    } else if ((this.state == BackupState.InProgress || newState == BackupState.QueuedForDeletion)
+        || (this.state == BackupState.QueuedForDeletion && newState == BackupState.DeleteInProgress)
+        || (this.state == BackupState.QueuedForDeletion && newState == BackupState.FailedToDelete)
+        || (this.state == BackupState.DeleteInProgress && newState == BackupState.FailedToDelete)
+        || (this.state == BackupState.Completed && newState == BackupState.Stopped)
+        || (this.state == BackupState.Failed && newState == BackupState.Stopped)) {
+      LOG.debug("New Backup API: transitioned from {} to {}", this.state, newState);
+      this.state = newState;
+      save();
+    } else if ((this.state == BackupState.InProgress && this.state != newState)
         || (this.state == BackupState.Completed && newState == BackupState.Deleted)
         || (this.state == BackupState.Completed && newState == BackupState.FailedToDelete)
         || (this.state == BackupState.Failed && newState == BackupState.Deleted)
         || (this.state == BackupState.Failed && newState == BackupState.FailedToDelete)) {
+      LOG.debug("Old Backup API: transitioned from {} to {}", this.state, newState);
       this.state = newState;
       save();
     } else {
       LOG.error("Ignored INVALID STATE TRANSITION  {} -> {}", state, newState);
     }
+  }
+
+  public void setBackupSizeInBackupList(int idx, long backupSize) {
+    int backupListLen = this.backupInfo.backupList.size();
+    if (idx >= backupListLen) {
+      LOG.error("Index {} not present in backup list of length {}", idx, backupListLen);
+      return;
+    }
+    this.backupInfo.backupList.get(idx).backupSizeInBytes = backupSize;
+  }
+
+  public void setTotalBackupSize(long backupSize) {
+    this.backupInfo.backupSizeInBytes = backupSize;
   }
 
   public static List<Backup> getInProgressAndCompleted(UUID customerUUID) {
@@ -302,6 +467,16 @@ public class Backup extends Model {
         .eq("state", BackupState.InProgress)
         .endOr()
         .findList();
+  }
+
+  public static List<Backup> findAllBackupsQueuedForDeletion(UUID customerUUID) {
+    List<Backup> backupList =
+        find.query()
+            .where()
+            .eq("customer_uuid", customerUUID)
+            .eq("state", BackupState.QueuedForDeletion)
+            .findList();
+    return backupList;
   }
 
   public static List<Backup> findAllFinishedBackupsWithCustomerConfig(UUID customerConfigUUID) {
@@ -317,6 +492,33 @@ public class Backup extends Model {
         backupList
             .stream()
             .filter(b -> b.backupInfo.actionType == BackupTableParams.ActionType.CREATE)
+            .filter(b -> b.getBackupInfo().storageConfigUUID.equals(customerConfigUUID))
+            .collect(Collectors.toList());
+    return backupList;
+  }
+
+  public static List<Backup> findAllBackupsQueuedForDeletionWithCustomerConfig(
+      UUID customerConfigUUID, UUID customerUUID) {
+    List<Backup> backupList = findAllBackupsQueuedForDeletion(customerUUID);
+    backupList =
+        backupList
+            .stream()
+            .filter(b -> b.getBackupInfo().storageConfigUUID.equals(customerConfigUUID))
+            .collect(Collectors.toList());
+    return backupList;
+  }
+
+  public static List<Backup> findAllNonProgressBackupsWithCustomerConfig(
+      UUID customerConfigUUID, UUID customerUUID) {
+    List<Backup> backupList =
+        find.query()
+            .where()
+            .eq("customer_uuid", customerUUID)
+            .notIn("state", IN_PROGRESS_STATES)
+            .findList();
+    backupList =
+        backupList
+            .stream()
             .filter(b -> b.getBackupInfo().storageConfigUUID.equals(customerConfigUUID))
             .collect(Collectors.toList());
     return backupList;
@@ -382,5 +584,143 @@ public class Backup extends Model {
         .eq("schedule_uuid", scheduleUUID)
         .eq("state", BackupState.Completed)
         .findList();
+  }
+
+  public static ExpressionList<Backup> createQueryByFilter(BackupFilter filter) {
+    ExpressionList<Backup> query =
+        find.query().setPersistenceContextScope(PersistenceContextScope.QUERY).where();
+
+    query.eq("customer_uuid", filter.getCustomerUUID());
+    appendActionTypeClause(query);
+    if (!CollectionUtils.isEmpty(filter.getScheduleUUIDList())) {
+      appendInClause(query, "schedule_uuid", filter.getScheduleUUIDList());
+    }
+    if (!CollectionUtils.isEmpty(filter.getUniverseUUIDList())) {
+      appendInClause(query, "universe_uuid", filter.getUniverseUUIDList());
+    }
+    if (!CollectionUtils.isEmpty(filter.getStorageConfigUUIDList())) {
+      appendInClause(query, "storage_config_uuid", filter.getStorageConfigUUIDList());
+    }
+    if (!CollectionUtils.isEmpty(filter.getUniverseNameList())) {
+      appendLikeClause(query, "universe_name", filter.getUniverseNameList());
+    }
+    if (filter.getDateRangeStart() != null && filter.getDateRangeEnd() != null) {
+      query.between("create_time", filter.getDateRangeStart(), filter.getDateRangeEnd());
+    }
+    if (!CollectionUtils.isEmpty(filter.getStates())) {
+      appendInClause(query, "state", filter.getStates());
+    }
+    if (!CollectionUtils.isEmpty(filter.getKeyspaceList())) {
+      Junction<Backup> orExpr = query.or();
+      String queryStringInner =
+          "t0.backup_uuid in "
+              + "(select B.backup_uuid from backup B,"
+              + "json_array_elements(B.backup_info -> 'backupList') bl "
+              + "where json_typeof(B.backup_info -> 'backupList')='array' "
+              + "and bl ->> 'keyspace' = any(?)) ";
+      String queryStringOuter =
+          "t0.backup_uuid in "
+              + "(select B.backup_uuid from backup B "
+              + "where B.backup_info ->> 'keyspace' = any(?))";
+      orExpr.raw(queryStringInner, filter.getKeyspaceList());
+      orExpr.raw(queryStringOuter, filter.getKeyspaceList());
+      query.endOr();
+    }
+    return query;
+  }
+
+  public static <T> ExpressionList<T> appendActionTypeClause(ExpressionList<T> query) {
+    Junction<T> andExpr = query.and();
+    BackupUtil.OMIT_ACTION_TYPES
+        .stream()
+        .forEach(aT -> andExpr.jsonNotEqualTo("backup_info", "actionType", aT.name()));
+    query.endAnd();
+    return query;
+  }
+
+  public static BackupPagedApiResponse createResponse(BackupPagedResponse response) {
+
+    CustomerConfigService customerConfigService =
+        Play.current().injector().instanceOf(CustomerConfigService.class);
+    List<Backup> backups = response.getEntities();
+    List<BackupResp> backupList =
+        backups
+            .parallelStream()
+            .map(b -> toBackupResp(b, customerConfigService))
+            .collect(Collectors.toList());
+    BackupPagedApiResponse responseMin;
+    try {
+      responseMin = BackupPagedApiResponse.class.newInstance();
+    } catch (Exception e) {
+      throw new IllegalStateException(
+          "Failed to create " + BackupPagedApiResponse.class.getSimpleName() + " instance", e);
+    }
+    responseMin.setEntities(backupList);
+    responseMin.setHasPrev(response.isHasPrev());
+    responseMin.setHasNext(response.isHasNext());
+    responseMin.setTotalCount(response.getTotalCount());
+    return responseMin;
+  }
+
+  public static BackupResp toBackupResp(
+      Backup backup, CustomerConfigService customerConfigService) {
+
+    Boolean isStorageConfigPresent = true;
+    Boolean isUniversePresent = true;
+    try {
+      CustomerConfig config =
+          customerConfigService.getOrBadRequest(
+              backup.customerUUID, backup.backupInfo.storageConfigUUID);
+    } catch (PlatformServiceException e) {
+      isStorageConfigPresent = false;
+    }
+    try {
+      Universe universe = Universe.getOrBadRequest(backup.universeUUID);
+    } catch (PlatformServiceException e) {
+      isUniversePresent = false;
+    }
+    Boolean onDemand = (backup.scheduleUUID == null);
+    BackupRespBuilder builder =
+        BackupResp.builder()
+            .createTime(backup.createTime)
+            .updateTime(backup.updateTime)
+            .expiryTime(backup.getExpiry())
+            .onDemand(onDemand)
+            .universeName(backup.universeName)
+            .backupUUID(backup.backupUUID)
+            .scheduleUUID(backup.scheduleUUID)
+            .customerUUID(backup.customerUUID)
+            .universeUUID(backup.universeUUID)
+            .storageConfigUUID(backup.storageConfigUUID)
+            .isStorageConfigPresent(isStorageConfigPresent)
+            .isUniversePresent(isUniversePresent)
+            .backupType(backup.backupInfo.backupType)
+            .state(backup.state);
+    if (backup.backupInfo.backupList == null) {
+      KeyspaceTablesList kTList =
+          KeyspaceTablesList.builder()
+              .keyspace(backup.backupInfo.getKeyspace())
+              .tablesList(backup.backupInfo.getTableNames())
+              .storageLocation(backup.backupInfo.storageLocation)
+              .build();
+      builder.responseList(Stream.of(kTList).collect(Collectors.toSet()));
+    } else {
+      Set<KeyspaceTablesList> kTLists =
+          backup
+              .backupInfo
+              .backupList
+              .stream()
+              .map(
+                  b -> {
+                    return KeyspaceTablesList.builder()
+                        .keyspace(b.getKeyspace())
+                        .tablesList(b.getTableNames())
+                        .storageLocation(b.storageLocation)
+                        .build();
+                  })
+              .collect(Collectors.toSet());
+      builder.responseList(kTLists);
+    }
+    return builder.build();
   }
 }

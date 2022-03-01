@@ -31,6 +31,7 @@
 #
 
 set(YB_PCH_PREFIX tablet)
+set(YB_PCH_DEP_LIBS opid_proto)
 
 set(TABLET_SRCS
   abstract_tablet.cc

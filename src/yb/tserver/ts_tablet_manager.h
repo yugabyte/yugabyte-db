@@ -241,7 +241,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // 'seq_num' - only remove tablets unchanged since the acknowledged report sequence number.
   // 'updates' - explicitly ACK'd updates from the Master, may be a subset of request tablets.
   // 'dirty_check' - DEBUG. Confirm we've processed all dirty tablets after a full sweep.
-  void MarkTabletReportAcknowledged(int32_t seq_num,
+  void MarkTabletReportAcknowledged(uint32_t seq_num,
                                     const master::TabletReportUpdatesPB& updates,
                                     bool dirty_check = false);
 
@@ -277,7 +277,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   void UnmarkTabletBeingRemoteBootstrapped(const TabletId& tablet_id, const TableId& table_id);
 
   // Returns the number of tablets in the "dirty" map, for use by unit tests.
-  int GetNumDirtyTabletsForTests() const;
+  size_t TEST_GetNumDirtyTablets() const;
 
   // Return the number of tablets in RUNNING or BOOTSTRAPPING state.
   int GetNumLiveTablets() const;
@@ -326,6 +326,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Background task that verifies the data on each tablet for consistency.
   void VerifyTabletData();
 
+  // Background task that Retires old metrics.
+  void CleanupOldMetrics();
+
   client::YBClient& client();
 
   const std::shared_future<client::YBClient*>& client_future();
@@ -348,7 +351,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   typedef std::unordered_set<TabletId> TabletIdUnorderedSet;
 
   // Maps directory to set of tablets (IDs) using that directory.
-  typedef std::unordered_map<std::string, TabletIdUnorderedSet> TabletIdSetByDirectoryMap;
+  typedef std::map<std::string, TabletIdUnorderedSet> TabletIdSetByDirectoryMap;
 
   // This is a map that takes a table id and maps it to a map of directory and
   // set of tablets using that directory.
@@ -572,6 +575,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Used for verifying tablet data integrity.
   std::unique_ptr<rpc::Poller> verify_tablet_data_poller_;
+
+  // Used for cleaning up old metrics.
+  std::unique_ptr<rpc::Poller> metrics_cleaner_;
 
   // For block cache and memory monitor shared across tablets
   tablet::TabletOptions tablet_options_;

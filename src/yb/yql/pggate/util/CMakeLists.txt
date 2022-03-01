@@ -11,7 +11,7 @@
 # under the License.
 #
 
-set(YB_PCH_PATH "../")
+set(YB_PCH_PATH ../)
 
 set(PGGATE_UTIL_SRCS
     pg_wire.cc

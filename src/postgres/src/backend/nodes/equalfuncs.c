@@ -1798,13 +1798,6 @@ _equalCreateTableGroupStmt(const CreateTableGroupStmt *a, const CreateTableGroup
 }
 
 static bool
-_equalDropTableGroupStmt(const DropTableGroupStmt *a, const DropTableGroupStmt *b)
-{
-	COMPARE_STRING_FIELD(tablegroupname);
-	return true;
-}
-
-static bool
 _equalOptTableGroup(const OptTableGroup *a, const OptTableGroup *b)
 {
 	COMPARE_STRING_FIELD(tablegroup_name);
@@ -3034,6 +3027,16 @@ _equalRowBounds(const RowBounds *a, const RowBounds *b)
 	return true;
 }
 
+static bool
+_equalYbExprParamDesc(const YbExprParamDesc *a, const YbExprParamDesc *b)
+{
+	COMPARE_SCALAR_FIELD(attno);
+	COMPARE_SCALAR_FIELD(typid);
+	COMPARE_SCALAR_FIELD(typmod);
+	COMPARE_SCALAR_FIELD(collid);
+	return true;
+}
+
 /*
  * equal
  *	  returns whether two nodes are equal
@@ -3479,9 +3482,6 @@ equal(const void *a, const void *b)
 		case T_CreateTableGroupStmt:
 			retval = _equalCreateTableGroupStmt(a, b);
 			break;
-		case T_DropTableGroupStmt:
-			retval = _equalDropTableGroupStmt(a, b);
-			break;
 		case T_CreateTableSpaceStmt:
 			retval = _equalCreateTableSpaceStmt(a, b);
 			break;
@@ -3778,6 +3778,10 @@ equal(const void *a, const void *b)
 			break;
 		case T_RowBounds:
 			retval = _equalRowBounds(a, b);
+			break;
+
+		case T_YbExprParamDesc:
+			retval = _equalYbExprParamDesc(a, b);
 			break;
 
 		default:

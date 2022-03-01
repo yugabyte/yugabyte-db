@@ -176,6 +176,7 @@ message SnapshotScheduleOptionsPB {
   optional uint64 interval_sec = 2; // interval for taking snapshot in seconds.
   optional uint64 retention_duration_sec = 3; // how long store snapshots in seconds.
   optional fixed64 delete_time = 4; // hybrid time when this schedule was deleted.
+  repeated fixed64 restoration_times = 5; // list of all restorations of this schedule.
 }
 
 message CreateSnapshotScheduleRequestPB {

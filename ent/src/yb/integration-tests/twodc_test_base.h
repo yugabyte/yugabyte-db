@@ -82,7 +82,7 @@ class TwoDCTestBase : public YBTest {
     FLAGS_flush_rocksdb_on_shutdown = false;
   }
 
-  void Destroy();
+  void TearDown() override;
 
   CHECKED_STATUS SetupUniverseReplication(
       MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
@@ -110,7 +110,7 @@ class TwoDCTestBase : public YBTest {
   CHECKED_STATUS DeleteUniverseReplication(
       const std::string& universe_id, YBClient* client, MiniCluster* cluster);
 
-  uint32_t NumProducerTabletsPolled(MiniCluster* cluster);
+  size_t NumProducerTabletsPolled(MiniCluster* cluster);
 
   CHECKED_STATUS CorrectlyPollingAllTablets(MiniCluster* cluster, uint32_t num_producer_tablets);
 

@@ -33,6 +33,7 @@
 #include "yb/rocksdb/util/random.h"
 #include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/testharness.h"
+#include "yb/rocksdb/util/testutil.h"
 
 #include "yb/util/test_util.h"
 
@@ -41,7 +42,7 @@ using std::string;
 
 namespace rocksdb {
 
-class WriteCallbackTest : public testing::Test {
+class WriteCallbackTest : public RocksDBTest {
  public:
   string dbname;
 

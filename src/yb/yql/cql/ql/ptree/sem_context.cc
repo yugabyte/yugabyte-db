@@ -84,13 +84,13 @@ std::string SemContext::CurrentRoleName() const {
 Status SemContext::LoadSchema(const shared_ptr<YBTable>& table,
                               MCVector<ColumnDesc>* col_descs) {
   const YBSchema& schema = table->schema();
-  const int num_columns = schema.num_columns();
-  const int num_key_columns = schema.num_key_columns();
-  const int num_hash_key_columns = schema.num_hash_key_columns();
+  const auto num_columns = schema.num_columns();
+  const auto num_key_columns = schema.num_key_columns();
+  const auto num_hash_key_columns = schema.num_hash_key_columns();
 
   if (col_descs != nullptr) {
     col_descs->reserve(num_columns);
-    for (int idx = 0; idx < num_columns; idx++) {
+    for (size_t idx = 0; idx < num_columns; idx++) {
       // Find the column descriptor.
       const YBColumnSchema col = schema.Column(idx);
       col_descs->emplace_back(idx,
@@ -433,7 +433,7 @@ bool SemContext::selecting_from_index() const {
   return sem_state_->selecting_from_index();
 }
 
-int SemContext::index_select_prefix_length() const {
+size_t SemContext::index_select_prefix_length() const {
   DCHECK(sem_state_) << "State variable is not set";
   return sem_state_->index_select_prefix_length();
 }

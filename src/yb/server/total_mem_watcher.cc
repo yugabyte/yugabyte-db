@@ -154,7 +154,7 @@ class LinuxTotalMemWatcher : public TotalMemWatcher {
     if (rss_termination_limit_bytes_ == 0) {
       return std::string();
     }
-    int64_t non_shared_rss_bytes = (statm_.resident - statm_.shared) * page_size_;
+    size_t non_shared_rss_bytes = (statm_.resident - statm_.shared) * page_size_;
     if (non_shared_rss_bytes <= rss_termination_limit_bytes_) {
       return std::string();
     }

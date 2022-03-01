@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+  Alert,
   DropdownButton,
   MenuItem,
   Button,
@@ -17,6 +18,11 @@ import AddGFlag from './AddGFlag';
 import EditorGFlag from './EditorGFlag';
 import { validateGFlags } from '../../../actions/universe';
 import { useWhenMounted } from '../../../redesign/helpers/hooks';
+//Icons
+import Edit from '../images/edit_pen.svg';
+import Close from '../images/close.svg';
+import Plus from '../images/plus.svg';
+import MoreIcon from '../images/ellipsis.svg';
 
 //server
 const MASTER = 'MASTER';
@@ -37,7 +43,7 @@ const OPTIONS = [
         Add Flags
       </>
     ),
-    className: 'btn btn-orange',
+    className: 'btn btn-orange mr-10',
     bsStyle: 'danger'
   },
   {
@@ -45,7 +51,7 @@ const OPTIONS = [
     title: (
       <>
         <span className="fa fa-edit" />
-        Add as Free text
+        Add as JSON
       </>
     ),
     className: 'btn btn-default'
@@ -54,41 +60,44 @@ const OPTIONS = [
 //server list - TO DRY THE CODE
 const SERVER_LIST = [
   {
-    serverName: MASTER,
-    label: 'Add to Master'
-  },
-  {
     serverName: TSERVER,
     label: 'Add to T-Server'
+  },
+  {
+    serverName: MASTER,
+    label: 'Add to Master'
   }
 ];
 
 export default function GFlagComponent(props) {
-  const { fields, dbVersion } = props;
+  const { fields, dbVersion, isReadOnly, editMode } = props;
   const [selectedProps, setSelectedProps] = useState(null);
   const [toggleModal, setToggleModal] = useState(false);
   const [validationError, setValidationError] = useState([]);
+  const [formError, setFormError] = useState(null);
+  const [versionError, setVersionError] = useState(null);
   const whenMounted = useWhenMounted();
 
   //handlers
   const handleSelectedOption = (serverProps) => {
     setSelectedProps(serverProps);
     setToggleModal(true);
+    setFormError(null);
   };
 
   const callValidation = async (flagArr) => {
     try {
-      let currentArr = fields.getAll() || [];
-      let duplicateArr = _.remove(currentArr, (e) => flagArr.some((f) => f.Name === e.Name));
-      let transformedArr = flagArr.map((e) => {
-        let dupEl = duplicateArr.find((f) => f.Name === e.Name) || {};
+      const currentArr = fields.getAll() || [];
+      const duplicateArr = _.remove(currentArr, (e) => flagArr.some((f) => f.Name === e.Name));
+      const transformedArr = flagArr.map((e) => {
+        const dupEl = duplicateArr.find((f) => f.Name === e.Name) || {};
         return { ...dupEl, ...e };
       });
       const payload = { gflags: [...currentArr, ...transformedArr] };
-      let validationResponse = await validateGFlags(dbVersion, payload);
+      const validationResponse = await validateGFlags(dbVersion, payload);
       setValidationError(validationResponse?.data);
     } catch (e) {
-      console.error(e);
+      setVersionError(e?.error);
     }
   };
 
@@ -105,27 +114,36 @@ export default function GFlagComponent(props) {
     }
   };
 
-  const handleSubmit = (values, actions) => {
-    setToggleModal(false);
+  const handleFormSubmit = (values, actions) => {
     switch (values.option) {
       case FREE_TEXT: {
-        const formValues = JSON.parse(values?.flagvalue);
-        let newFlagArr = [];
-        if (Object.keys(formValues).length > 0) {
-          Object.entries(formValues).forEach(([key, val]) => {
-            let obj = { Name: key, [values?.server]: val };
-            checkExistsAndPush(obj);
-            newFlagArr.push(obj);
-          });
-          callValidation(newFlagArr);
+        try {
+          const formValues = JSON.parse(values?.flagvalue);
+          const newFlagArr = [];
+          if (Object.keys(formValues).length > 0) {
+            Object.entries(formValues).forEach(([key, val]) => {
+              const obj = { Name: key, [values?.server]: val };
+              checkExistsAndPush(obj);
+              newFlagArr.push(obj);
+            });
+            callValidation(newFlagArr);
+            setToggleModal(false);
+          }
+        } catch (e) {
+          setFormError('Fix all the errors shown below to proceed');
+          setTimeout(() => {
+            setFormError(null);
+            actions.setSubmitting(false);
+          }, 5000);
         }
         break;
       }
 
       case ADD_GFLAG: {
-        let obj = { Name: values?.flagname, [values?.server]: values?.flagvalue };
+        const obj = { Name: values?.flagname, [values?.server]: values?.flagvalue };
         checkExistsAndPush(obj);
         callValidation([obj]);
+        setToggleModal(false);
         break;
       }
 
@@ -135,14 +153,15 @@ export default function GFlagComponent(props) {
   };
 
   const onVersionChange = () => {
+    setVersionError(null);
     whenMounted(async () => {
       if (fields.length > 0) {
         try {
           const payload = { gflags: fields.getAll() };
-          let validationResponse = await validateGFlags(dbVersion, payload);
+          const validationResponse = await validateGFlags(dbVersion, payload);
           setValidationError(validationResponse?.data);
         } catch (e) {
-          console.error(e);
+          setVersionError(e?.error);
         }
       }
     });
@@ -164,7 +183,7 @@ export default function GFlagComponent(props) {
         </Popover>
       }
     >
-      <Button bsClass="flag-icon-button">
+      <Button bsClass="flag-icon-button ml-10 mt-2">
         <i className="fa fa-exclamation-triangle error-icon" />
       </Button>
     </OverlayTrigger>
@@ -175,10 +194,11 @@ export default function GFlagComponent(props) {
     const flagDoesNotExists =
       eInfo && eInfo[MASTER]?.exist === false && eInfo[TSERVER]?.exist === false;
 
+    if (isReadOnly) return <span className="cell-font">{cell}</span>;
     return (
       <div className={clsx('name-container', flagDoesNotExists && 'error-val-column')}>
-        <span className="cell-font">{cell}</span>
-        <FlexContainer className="icons" direction="row">
+        <div className="cell-font">{cell}</div>
+        <div className="icons">
           <div className="flag-icons">
             <OverlayTrigger
               placement="top"
@@ -188,17 +208,25 @@ export default function GFlagComponent(props) {
                 </Tooltip>
               }
             >
-              <Button bsClass="flag-icon-button" onClick={() => fields.remove(index)}>
-                <i className="fa fa-close" />
+              <Button bsClass="flag-icon-button mb-2" onClick={() => fields.remove(index)}>
+                <img alt="Remove" src={Close} width="22" />
               </Button>
             </OverlayTrigger>
             &nbsp;
           </div>
           {flagDoesNotExists &&
             errorPopover('Incorrect flag name', 'Flag name is incorrect. Remove Flag')}
-        </FlexContainer>
+        </div>
       </div>
     );
+  };
+
+  const handleRemoveFlag = (rowObj, i, serverType, removeFlag) => {
+    if (removeFlag) {
+      fields.remove(i);
+      const newObj = _.pick(rowObj, ['Name', serverType === MASTER ? TSERVER : MASTER]);
+      fields.insert(i, newObj);
+    } else fields.remove(i);
   };
 
   const valueFormatter = (cell, row, index, server) => {
@@ -207,12 +235,14 @@ export default function GFlagComponent(props) {
     const isError = eInfo && eInfo[server]?.error;
     const isFlagExist = eInfo && eInfo[server]?.exist === true;
     const notExists = eInfo && eInfo[server]?.exist === false;
+
     let modalProps = {
       server,
       option: ADD_GFLAG,
       mode: EDIT
     };
 
+    if (isReadOnly) return <span className="cell-font">{valueExists ? `${cell}` : ''}</span>;
     if (valueExists) {
       modalProps = {
         ...modalProps,
@@ -221,13 +251,24 @@ export default function GFlagComponent(props) {
       };
       if (isError) modalProps['errorMsg'] = eInfo[server]?.error;
 
+      const checkFlagExistsOnOtherServer = (serverType) => {
+        return (
+          eInfo &&
+          (eInfo[MASTER]?.exist === true || eInfo[TSERVER]?.exist === true) &&
+          row?.hasOwnProperty(serverType === MASTER ? TSERVER : MASTER)
+        );
+      };
+
       return (
         <div className={clsx('table-val-column', isError && 'error-val-column')}>
-          <span className="cell-font">{`${cell}`}</span>
-          <FlexContainer className="icons" direction="row">
+          <div className="cell-font">{`${cell}`}</div>
+          <div className="icons">
             <div className="more-icon">
-              <Button bsClass="flag-icon-button" onClick={() => handleSelectedOption(modalProps)}>
-                <i className="fa fa-ellipsis-h"></i>
+              <Button
+                bsClass="flag-icon-button mb-2"
+                onClick={() => handleSelectedOption(modalProps)}
+              >
+                <img alt="More" src={MoreIcon} width="20" />
               </Button>
             </div>
             <div className="flag-icons">
@@ -241,10 +282,10 @@ export default function GFlagComponent(props) {
                   }
                 >
                   <Button
-                    bsClass="flag-icon-button"
+                    bsClass="flag-icon-button mr-10 mb-2"
                     onClick={() => handleSelectedOption(modalProps)}
                   >
-                    <i className="fa fa-pencil"></i>
+                    <img alt="Edit" src={Edit} width="20" />
                   </Button>
                 </OverlayTrigger>
               )}
@@ -253,12 +294,17 @@ export default function GFlagComponent(props) {
                 placement="top"
                 overlay={
                   <Tooltip className="high-index" id="remove-flag">
-                    Remove Flag
+                    {checkFlagExistsOnOtherServer(server) ? 'Remove Value' : 'Remove Flag'}
                   </Tooltip>
                 }
               >
-                <Button bsClass="flag-icon-button" onClick={() => fields.remove(index)}>
-                  <i className="fa fa-close" />
+                <Button
+                  bsClass="flag-icon-button mb-2"
+                  onClick={() =>
+                    handleRemoveFlag(row, index, server, checkFlagExistsOnOtherServer(server))
+                  }
+                >
+                  <img alt="Remove" src={Close} width="22" />
                 </Button>
               </OverlayTrigger>
             </div>
@@ -270,7 +316,7 @@ export default function GFlagComponent(props) {
                   ? eInfo[server]?.error
                   : `This Flag does not belong to ${server}. Remove Flag`
               )}
-          </FlexContainer>
+          </div>
         </div>
       );
     } else {
@@ -281,9 +327,12 @@ export default function GFlagComponent(props) {
       return (
         <div className="table-val-column">
           {isFlagExist && (
-            <Button bsClass="flag-icon-button" onClick={() => handleSelectedOption(modalProps)}>
-              <i className="fa fa-plus"></i>
-              <span className="add-label cell-font">Add value</span>
+            <Button
+              bsClass="flag-icon-button display-inline-flex mb-2"
+              onClick={() => handleSelectedOption(modalProps)}
+            >
+              <img alt="Add" src={Plus} width="20" />
+              <span className="add-label">Add value</span>
             </Button>
           )}
           {notExists && <span className="cell-font muted-text">n/a</span>}
@@ -294,24 +343,29 @@ export default function GFlagComponent(props) {
 
   const renderTable = () => {
     return (
-      <div className="table-container">
-        <BootstrapTable data={fields.getAll()}>
+      <div className={isReadOnly ? 'gflag-read-table' : 'gflag-edit-table'}>
+        <BootstrapTable
+          data={fields.getAll()}
+          height={editMode ? '420px' : 'auto'}
+          maxHeight="420px"
+          tableStyle={{ overflow: 'scroll' }}
+        >
           <TableHeaderColumn width="40%" dataField="Name" dataFormat={nameFormatter} isKey>
-            FLAG NAME
-          </TableHeaderColumn>
-          <TableHeaderColumn
-            dataField="MASTER"
-            width="30%"
-            dataFormat={(cell, row, e, index) => valueFormatter(cell, row, index, MASTER)}
-          >
-            MASTER VALUE
+            <span className="header-title">FLAG NAME</span>
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="TSERVER"
             width="30%"
             dataFormat={(cell, row, e, index) => valueFormatter(cell, row, index, TSERVER)}
           >
-            T-SERVER VALUE
+            <span className="header-title">T-SERVER VALUE</span>
+          </TableHeaderColumn>
+          <TableHeaderColumn
+            dataField="MASTER"
+            width="30%"
+            dataFormat={(cell, row, e, index) => valueFormatter(cell, row, index, MASTER)}
+          >
+            <span className="header-title">MASTER VALUE</span>
           </TableHeaderColumn>
         </BootstrapTable>
       </div>
@@ -336,35 +390,56 @@ export default function GFlagComponent(props) {
     const gflagSchema = Yup.object().shape({
       flagvalue: Yup.mixed().required('This field is required')
     });
+    const modalTitle = selectedProps?.mode === CREATE ? selectedProps?.label : 'Edit Flag Value';
+    const modalLabel = selectedProps?.mode === CREATE ? 'Add Flag' : 'Confirm';
     return (
       <YBModalForm
-        title={SERVER_LIST.find((e) => e.serverName === selectedProps?.server).label}
+        title={modalTitle}
         visible={toggleModal}
-        size="lg"
-        submitLabel="Add Flag"
+        submitLabel={modalLabel}
         formName="ADDGFlagForm"
         cancelLabel="Cancel"
+        error={formError}
         validationSchema={gflagSchema}
         showCancelButton={true}
         onHide={() => setToggleModal(false)}
-        onFormSubmit={handleSubmit}
-        render={(props) => renderOption(props)}
+        onFormSubmit={handleFormSubmit}
+        render={(properties) => renderOption(properties)}
+        dialogClassName={toggleModal ? 'gflag-modal modal-fade in' : 'modal-fade'}
+        headerClassName="add-flag-header"
+        showBackButton={true}
       />
+    );
+  };
+  const renderBanner = () => {
+    return (
+      <div className="gflag-empty-banner">
+        <span className="empty-text">There are no flags assigned to this universe </span>
+      </div>
     );
   };
 
   return (
     <FlexContainer direction="column">
+      {versionError && (
+        <Alert bsStyle="danger" variant="danger">
+          {versionError} (Selected DB Version : <b>{dbVersion}</b>)
+        </Alert>
+      )}
       <FlexShrink>
-        {OPTIONS.map((option) => {
-          const { optionName, ...rest } = option;
-          return (
-            <>
-              <DropdownButton {...rest} id={optionName} key={optionName}>
+        {!isReadOnly &&
+          OPTIONS.map((option) => {
+            const { optionName, ...rest } = option;
+            return (
+              <DropdownButton {...rest} bsSize="small" id={optionName} key={optionName}>
                 {SERVER_LIST.map((server) => {
-                  //DRY
                   const { serverName, label } = server;
-                  const serverProps = { option: optionName, server: serverName, mode: CREATE };
+                  const serverProps = {
+                    option: optionName,
+                    server: serverName,
+                    mode: CREATE,
+                    label
+                  };
                   return (
                     <MenuItem
                       key={optionName + '-' + serverName}
@@ -375,11 +450,10 @@ export default function GFlagComponent(props) {
                   );
                 })}
               </DropdownButton>
-              &nbsp;&nbsp;
-            </>
-          );
-        })}
+            );
+          })}
       </FlexShrink>
+      {fields.length <= 0 && editMode && renderBanner()}
       {fields.length > 0 && renderTable()}
       {toggleModal && renderModal()}
     </FlexContainer>

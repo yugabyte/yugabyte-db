@@ -143,7 +143,7 @@ TEST_F(LoadBalancerMultiTableTest, MultipleLeaderTabletMovesPerTable) {
     ASSERT_EQ(initial_leader_counts[tn.table_name()][ts0_uuid], 0);
   }
 
-  for (int i = 0; i < num_masters(); ++i) {
+  for (size_t i = 0; i < num_masters(); ++i) {
     ASSERT_OK(external_mini_cluster_->SetFlag(external_mini_cluster_->master(i),
                                               "catalog_manager_bg_task_wait_ms",
                                               std::to_string(test_bg_task_wait_ms)));
@@ -183,7 +183,7 @@ TEST_F(LoadBalancerMultiTableTest, GlobalLoadBalancing) {
   ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", rf, ""));
 
   // Disable global load balancing.
-  for (int i = 0; i < num_masters(); ++i) {
+  for (size_t i = 0; i < num_masters(); ++i) {
     ASSERT_OK(external_mini_cluster_->SetFlag(external_mini_cluster_->master(i),
                                               "enable_global_load_balancing", "false"));
   }
@@ -212,7 +212,7 @@ TEST_F(LoadBalancerMultiTableTest, GlobalLoadBalancing) {
   ASSERT_FALSE(AreLoadsBalanced(z0_tserver_loads));
 
   // Enable global load balancing.
-  for (int i = 0; i < num_masters(); ++i) {
+  for (size_t i = 0; i < num_masters(); ++i) {
     ASSERT_OK(external_mini_cluster_->SetFlag(external_mini_cluster_->master(i),
                                               "enable_global_load_balancing", "true"));
   }
@@ -228,7 +228,7 @@ TEST_F(LoadBalancerMultiTableTest, GlobalLoadBalancing) {
 
   //// Three tservers:
   // Disable global load balancing.
-  for (int i = 0; i < num_masters(); ++i) {
+  for (size_t i = 0; i < num_masters(); ++i) {
     ASSERT_OK(external_mini_cluster_->SetFlag(external_mini_cluster_->master(i),
                                               "enable_global_load_balancing", "false"));
   }
@@ -250,7 +250,7 @@ TEST_F(LoadBalancerMultiTableTest, GlobalLoadBalancing) {
   ASSERT_FALSE(AreLoadsBalanced(z0_tserver_loads));
 
   // Enable global load balancing.
-  for (int i = 0; i < num_masters(); ++i) {
+  for (size_t i = 0; i < num_masters(); ++i) {
     ASSERT_OK(external_mini_cluster_->SetFlag(external_mini_cluster_->master(i),
                                               "enable_global_load_balancing", "true"));
   }
@@ -324,7 +324,7 @@ TEST_F(LoadBalancerMultiTableTest, TestDeadNodesLeaderBalancing) {
   // on the dead tserver, ~3x time (3s*3).
   static const int tserver_unresponsive_timeout_ms = 10000*kTimeMultiplier;
   bool allow_dead_node_lb = true;
-  for (int i = 0; i < num_masters(); ++i) {
+  for (size_t i = 0; i < num_masters(); ++i) {
     ASSERT_OK(external_mini_cluster_->SetFlag(external_mini_cluster_->master(i),
                                               "tserver_unresponsive_timeout_ms",
                                               std::to_string(tserver_unresponsive_timeout_ms)));
@@ -336,7 +336,7 @@ TEST_F(LoadBalancerMultiTableTest, TestDeadNodesLeaderBalancing) {
                                               "3000"));
   }
 
-  for (int i = 0; i < num_tablet_servers(); ++i) {
+  for (size_t i = 0; i < num_tablet_servers(); ++i) {
     ASSERT_OK(external_mini_cluster_->SetFlag(external_mini_cluster_->tablet_server(i),
                                               "after_stepdown_delay_election_multiplier",
                                               "1"));
@@ -423,11 +423,11 @@ TEST_F(LoadBalancerMultiTableTest, TestDeadNodesLeaderBalancing) {
 
 TEST_F(LoadBalancerMultiTableTest, TestLBWithDeadBlacklistedTS) {
   const int rf = 3;
-  int num_ts = num_tablet_servers();
+  auto num_ts = num_tablet_servers();
 
   // Reduce the time after which a TS is marked DEAD.
   int tserver_unresponsive_timeout_ms = 5000;
-  for (int i = 0; i < num_masters(); ++i) {
+  for (size_t i = 0; i < num_masters(); ++i) {
     ASSERT_OK(external_mini_cluster_->SetFlag(external_mini_cluster_->master(i),
                                               "tserver_unresponsive_timeout_ms",
                                               std::to_string(tserver_unresponsive_timeout_ms)));
@@ -517,7 +517,7 @@ TEST_F(LoadBalancerMultiTableTest, TestLBWithDeadBlacklistedTS) {
 }
 
 TEST_F(LoadBalancerMultiTableTest, GlobalLeaderBalancing) {
-  int num_ts = num_tablet_servers();
+  auto num_ts = num_tablet_servers();
 
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     return client_->IsLoadBalancerIdle();

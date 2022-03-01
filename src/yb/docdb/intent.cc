@@ -35,7 +35,7 @@ Result<DecodedIntentKey> DecodeIntentKey(const Slice &encoded_intent_key) {
   auto& intent_prefix = result.intent_prefix;
   intent_prefix = encoded_intent_key;
 
-  int doc_ht_size = 0;
+  size_t doc_ht_size = 0;
   RETURN_NOT_OK(DocHybridTime::CheckAndGetEncodedSize(intent_prefix, &doc_ht_size));
   // There should always be 3 bytes present before teh start of the doc_ht:
   // 1. ValueType::kIntentTypeSet
@@ -129,6 +129,7 @@ IntentTypeSet GetStrongIntentTypeSet(
   }
 
   switch (level) {
+    case IsolationLevel::READ_COMMITTED:
     case IsolationLevel::SNAPSHOT_ISOLATION:
       return IntentTypeSet({IntentType::kStrongRead, IntentType::kStrongWrite});
     case IsolationLevel::SERIALIZABLE_ISOLATION:
@@ -160,7 +161,8 @@ bool HasStrong(IntentTypeSet inp) {
                                    transaction_id_slice.ToDebugHexString()))
 
 Result<DecodedIntentValue> DecodeIntentValue(
-    const Slice& encoded_intent_value, const Slice* verify_transaction_id_slice) {
+    const Slice& encoded_intent_value, const Slice* verify_transaction_id_slice,
+    bool has_strong_intent) {
   DecodedIntentValue decoded_value;
   auto intent_value = encoded_intent_value;
   auto transaction_id_slice = Slice();
@@ -183,10 +185,12 @@ Result<DecodedIntentValue> DecodeIntentValue(
     decoded_value.subtransaction_id = kMinSubTransactionId;
   }
 
-  RETURN_NOT_OK(intent_value.consume_byte(ValueTypeAsChar::kWriteId));
-  INTENT_VALUE_SCHECK(intent_value.size(), GE, sizeof(IntraTxnWriteId), "write id expected");
-  decoded_value.write_id = BigEndian::Load32(intent_value.data());
-  intent_value.remove_prefix(sizeof(IntraTxnWriteId));
+  if (has_strong_intent) {
+    RETURN_NOT_OK(intent_value.consume_byte(ValueTypeAsChar::kWriteId));
+    INTENT_VALUE_SCHECK(intent_value.size(), GE, sizeof(IntraTxnWriteId), "write id expected");
+    decoded_value.write_id = BigEndian::Load32(intent_value.data());
+    intent_value.remove_prefix(sizeof(IntraTxnWriteId));
+  }
 
   decoded_value.body = intent_value;
 

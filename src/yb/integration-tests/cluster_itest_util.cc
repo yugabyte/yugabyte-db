@@ -217,6 +217,41 @@ TabletServerMapUnowned CreateTabletServerMapUnowned(const TabletServerMap& table
   return result;
 }
 
+Status WaitForOpFromCurrentTerm(TServerDetails* replica,
+                                const string& tablet_id,
+                                consensus::OpIdType opid_type,
+                                const MonoDelta& timeout,
+                                OpId* opid) {
+  const MonoTime kStart = MonoTime::Now();
+  const MonoTime kDeadline = kStart + timeout;
+
+  Status s;
+  while (MonoTime::Now() < kDeadline) {
+    ConsensusStatePB cstate;
+    s = GetConsensusState(replica, tablet_id, CONSENSUS_CONFIG_ACTIVE, kDeadline - MonoTime::Now(),
+                          &cstate);
+    if (s.ok()) {
+      Result<OpId> tmp_opid =
+          GetLastOpIdForReplica(tablet_id, replica, opid_type, kDeadline - MonoTime::Now());
+      if (tmp_opid) {
+        if (tmp_opid->term == cstate.current_term()) {
+          if (opid) {
+            *opid = *tmp_opid;
+          }
+          return Status::OK();
+        }
+        s = STATUS(IllegalState, Substitute("Terms don't match. Current term: $0. Latest OpId: $1",
+                                 cstate.current_term(), tmp_opid->ToString()));
+      }
+    }
+    SleepFor(MonoDelta::FromMilliseconds(10));
+  }
+
+  return STATUS(TimedOut, Substitute("Timed out after $0 waiting for op from current term: $1",
+                                     (MonoTime::Now() - kStart).ToString(),
+                                     s.ToString()));
+}
+
 Status WaitForServersToAgree(const MonoDelta& timeout,
                              const TabletServerMap& tablet_servers,
                              const string& tablet_id,
@@ -484,7 +519,7 @@ Status GetConsensusState(const TServerDetails* replica,
   return Status::OK();
 }
 
-Status WaitUntilCommittedConfigNumVotersIs(int config_size,
+Status WaitUntilCommittedConfigNumVotersIs(size_t config_size,
                                            const TServerDetails* replica,
                                            const std::string& tablet_id,
                                            const MonoDelta& timeout) {
@@ -492,11 +527,11 @@ Status WaitUntilCommittedConfigNumVotersIs(int config_size,
                                               consensus::PeerMemberType::VOTER);
 }
 
-Status WaitUntilCommittedConfigMemberTypeIs(int config_size,
-                                           const TServerDetails* replica,
-                                           const std::string& tablet_id,
-                                           const MonoDelta& timeout,
-                                           consensus::PeerMemberType member_type) {
+Status WaitUntilCommittedConfigMemberTypeIs(size_t config_size,
+                                            const TServerDetails* replica,
+                                            const std::string& tablet_id,
+                                            const MonoDelta& timeout,
+                                            consensus::PeerMemberType member_type) {
   DCHECK_ONLY_NOTNULL(replica);
 
   MonoTime start = MonoTime::Now();
@@ -514,12 +549,15 @@ Status WaitUntilCommittedConfigMemberTypeIs(int config_size,
       if (CountMemberType(cstate.config(), member_type) == config_size) {
         return Status::OK();
       }
+      LOG(INFO) << "Got " << yb::ToString(cstate) << " from " << replica->ToString();
+    } else {
+      LOG(INFO) << "Got " << s.ToString() << " from " << replica->ToString();
     }
 
     if (MonoTime::Now().GetDeltaSince(start).MoreThan(timeout)) {
       break;
     }
-    SleepFor(MonoDelta::FromMilliseconds(1 << backoff_exp));
+    SleepFor(MonoDelta::FromMilliseconds(1LLU << backoff_exp));
     backoff_exp = min(backoff_exp + 1, kMaxBackoffExp);
   }
   return STATUS(TimedOut, Substitute("Number of replicas of type $0 does not equal $1 after "
@@ -620,6 +658,51 @@ class WaitUntilCommittedOpIdIndexIsContext : public WaitUntilCommittedOpIdIndexC
  private:
   int64_t value_;
 };
+
+Status WaitForReplicasReportedToMaster(
+    ExternalMiniCluster* cluster,
+    int num_replicas, const string& tablet_id,
+    const MonoDelta& timeout,
+    WaitForLeader wait_for_leader,
+    bool* has_leader,
+    master::TabletLocationsPB* tablet_locations) {
+  MonoTime deadline(MonoTime::Now() + timeout);
+  while (true) {
+    RETURN_NOT_OK(GetTabletLocations(cluster, tablet_id, timeout, tablet_locations));
+    *has_leader = false;
+    if (tablet_locations->replicas_size() == num_replicas) {
+      for (const master::TabletLocationsPB_ReplicaPB& replica :
+                    tablet_locations->replicas()) {
+        if (replica.role() == PeerRole::LEADER) {
+          *has_leader = true;
+        }
+      }
+      if (wait_for_leader == DONT_WAIT_FOR_LEADER ||
+          (wait_for_leader == WAIT_FOR_LEADER && *has_leader)) {
+        break;
+      }
+    }
+    if (deadline < MonoTime::Now()) {
+      return STATUS(TimedOut, Substitute("Timed out after waiting "
+          "for tablet $1 expected to report master with $2 replicas, has_leader: $3",
+          tablet_id, num_replicas, *has_leader));
+    }
+    SleepFor(MonoDelta::FromMilliseconds(20));
+  }
+  if (num_replicas != tablet_locations->replicas_size()) {
+      return STATUS(NotFound, Substitute("Number of replicas for tablet $0 "
+          "reported to master $1:$2",
+          tablet_id, tablet_locations->replicas_size(),
+          yb::ToString(*tablet_locations)));
+  }
+  if (wait_for_leader == WAIT_FOR_LEADER && !(*has_leader)) {
+    return STATUS(NotFound, Substitute("Leader for tablet $0 not found on master, "
+                                       "number of replicas $1:$2",
+                                       tablet_id, tablet_locations->replicas_size(),
+                                       yb::ToString(*tablet_locations)));
+  }
+  return Status::OK();
+}
 
 Status WaitUntilCommittedOpIdIndexIs(int64_t opid_index,
                                      TServerDetails* replica,
@@ -778,6 +861,21 @@ Status FindTabletLeader(const vector<TServerDetails*>& tservers,
                                      "Status message: $2", tablet_id,
                                      MonoTime::Now().GetDeltaSince(start).ToString(),
                                      s.ToString()));
+}
+
+Status FindTabletFollowers(const TabletServerMapUnowned& tablet_servers,
+                           const string& tablet_id,
+                           const MonoDelta& timeout,
+                           vector<TServerDetails*>* followers) {
+  TServerDetails* leader;
+  RETURN_NOT_OK(FindTabletLeader(tablet_servers, tablet_id, timeout, &leader));
+  for (const auto& entry : tablet_servers) {
+    TServerDetails* ts = entry.second;
+    if (ts->uuid() != leader->uuid()) {
+      followers->push_back(ts);
+    }
+  }
+  return Status::OK();
 }
 
 Status StartElection(const TServerDetails* replica,
@@ -1076,7 +1174,7 @@ Status WaitForNumVotersInConfigOnMaster(
 }
 
 Status WaitForNumTabletsOnTS(TServerDetails* ts,
-                             int count,
+                             size_t count,
                              const MonoDelta& timeout,
                              vector<ListTabletsResponsePB::StatusAndSchemaPB>* tablets) {
   Status s;

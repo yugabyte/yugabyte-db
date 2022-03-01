@@ -329,15 +329,15 @@ typedef struct PgCallbacks {
 } YBCPgCallbacks;
 
 typedef struct PgTableProperties {
-  uint32_t num_tablets;
-  uint32_t num_hash_key_columns;
+  uint64_t num_tablets;
+  uint64_t num_hash_key_columns;
   bool is_colocated;
 } YBCPgTableProperties;
 
 typedef struct PgYBTupleIdDescriptor {
   YBCPgOid database_oid;
   YBCPgOid table_oid;
-  int32_t nattrs;
+  size_t nattrs;
   YBCPgAttrValueDescriptor *attrs;
 } YBCPgYBTupleIdDescriptor;
 

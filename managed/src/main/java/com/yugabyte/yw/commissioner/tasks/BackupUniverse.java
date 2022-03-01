@@ -18,6 +18,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BackupTableParams.ActionType;
@@ -40,6 +41,7 @@ import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 
 @Slf4j
+@Abortable
 public class BackupUniverse extends UniverseTaskBase {
 
   // Counter names
@@ -181,16 +183,18 @@ public class BackupUniverse extends UniverseTaskBase {
         }
       }
     } catch (Throwable t) {
-      log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
-
-      if (taskParams().actionType == ActionType.CREATE) {
-        BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
-        metricService.setStatusMetric(
-            buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe), t.getMessage());
+      try {
+        log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+        if (taskParams().actionType == ActionType.CREATE) {
+          BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+          metricService.setFailureStatusMetric(
+              buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
+        }
+      } finally {
+        // Run an unlock in case the task failed before getting to the unlock. It is okay if it
+        // errors out.
+        unlockUniverseForUpdate();
       }
-      // Run an unlock in case the task failed before getting to the unlock. It is okay if it
-      // errors out.
-      unlockUniverseForUpdate();
       throw t;
     }
 

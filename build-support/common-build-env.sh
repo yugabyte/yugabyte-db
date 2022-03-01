@@ -292,6 +292,11 @@ if [[ -n ${YB_LINUXBREW_DIR:-} ]]; then
   yb_linuxbrew_dir_origin=" (from environment)"
 fi
 
+yb_llvm_toolchain_url_origin=""
+if [[ -n ${YB_LLVM_TOOLCHAIN_URL:-} ]]; then
+  yb_llvm_toolchain_url_origin=" (from environment)"
+fi
+
 yb_llvm_toolchain_dir_origin=""
 if [[ -n ${YB_LLVM_TOOLCHAIN_DIR:-} ]]; then
   yb_llvm_toolchain_dir_origin=" (from environment)"
@@ -1146,7 +1151,9 @@ save_var_to_file_in_build_dir() {
     if [[ ! -d $BUILD_ROOT ]]; then
       mkdir -p "$BUILD_ROOT"
     fi
-    echo "$value" >"$BUILD_ROOT/$file_name"
+    if ! echo "$value" >"$BUILD_ROOT/$file_name"; then
+      fatal "Could not save value '$value' to file '$BUILD_ROOT/$file_name'"
+    fi
   fi
 }
 
@@ -1217,14 +1224,16 @@ download_thirdparty() {
 
 download_toolchain() {
   local toolchain_urls=()
-  if [[ -n ${YB_THIRDPARTY_URL:-} && ${YB_THIRDPARTY_URL##*/} == *linuxbrew* ]]; then
-    # TODO: get rid of this and always include linuxbrew_url.txt in the thirdparty archives that are
-    # built for Linuxbrew.
-    toolchain_urls+=( "https://github.com/yugabyte/brew-build/releases/download/\
-20181203T161736v9/linuxbrew-20181203T161736v9.tar.gz" )
-    if [[ -f $BUILD_ROOT/llvm_url.txt ]]; then
-      toolchain_urls+=( "$(<"$BUILD_ROOT/llvm_url.txt")" )
-    fi
+  local linuxbrew_url=""
+  if [[ -n ${YB_THIRDPARTY_DIR:-} && -f "$YB_THIRDPARTY_DIR/linuxbrew_url.txt" ]]; then
+    local linuxbrew_url_file_path="${YB_THIRDPARTY_DIR}/linuxbrew_url.txt"
+    linuxbrew_url="$(<"${linuxbrew_url_file_path}")"
+  elif [[ -n ${YB_THIRDPARTY_URL:-} && ${YB_THIRDPARTY_URL##*/} == *linuxbrew* ||
+          -n ${YB_THIRDPARTY_DIR:-} && ${YB_THIRDPARTY_DIR##*/} == *linuxbrew* ]]; then
+    # TODO: get rid of the hard-coded URL below and always include linuxbrew_url.txt in the
+    # thirdparty archives that are built for Linuxbrew.
+    local linuxbrew_url="https://github.com/yugabyte/brew-build/releases/download/"
+    linuxbrew_url+="20181203T161736v9/linuxbrew-20181203T161736v9.tar.gz"
   else
     for file_name_part in linuxbrew toolchain; do
       local url_file_path="$YB_THIRDPARTY_DIR/${file_name_part}_url.txt"
@@ -1234,6 +1243,14 @@ download_toolchain() {
       fi
     done
   fi
+
+  if [[ -n ${linuxbrew_url:-} ]]; then
+    toolchain_urls+=( "$linuxbrew_url" )
+  fi
+  if [[ -n ${YB_LLVM_TOOLCHAIN_URL:-} ]]; then
+    toolchain_urls+=( "${YB_LLVM_TOOLCHAIN_URL}" )
+  fi
+
   if [[ ${#toolchain_urls[@]} -eq 0 ]]; then
     return
   fi
@@ -1250,7 +1267,7 @@ download_toolchain() {
       is_linuxbrew=true
     else
       fatal "Unable to determine the installation parent directory for the toolchain archive" \
-            "named '$toolchain_url_basename'. Toolchain URL: '$toolchain_url'."
+            "named '$toolchain_url_basename'. Toolchain URL: '${toolchain_url}'."
     fi
 
     download_and_extract_archive "$toolchain_url" "$toolchain_dir_parent"
@@ -1890,6 +1907,9 @@ log_thirdparty_and_toolchain_details() {
     if is_linux && [[ -n ${YB_LINUXBREW_DIR:-} ]]; then
       echo "    YB_LINUXBREW_DIR: $YB_LINUXBREW_DIR$yb_linuxbrew_dir_origin"
     fi
+    if [[ -n ${YB_LLVM_TOOLCHAIN_URL:-} ]]; then
+      echo "    YB_LLVM_TOOLCHAIN_URL: $YB_LLVM_TOOLCHAIN_URL$yb_llvm_toolchain_url_origin"
+    fi
     if [[ -n ${YB_LLVM_TOOLCHAIN_DIR:-} ]]; then
       echo "    YB_LLVM_TOOLCHAIN_DIR: $YB_LLVM_TOOLCHAIN_DIR$yb_llvm_toolchain_dir_origin"
     fi
@@ -2437,8 +2457,16 @@ set_prebuilt_thirdparty_url() {
         fatal "Could not automatically determine the third-party archive URL to download."
       fi
       log "Setting third-party URL to $YB_THIRDPARTY_URL"
-
       save_var_to_file_in_build_dir "$YB_THIRDPARTY_URL" thirdparty_url.txt
+
+      if [[ -f $llvm_url_file_path ]]; then
+        YB_LLVM_TOOLCHAIN_URL=$(<"$llvm_url_file_path")
+        export YB_LLVM_TOOLCHAIN_URL
+        yb_llvm_toolchain_url_origin=" (determined automatically based on the OS and compiler type)"
+        log "Setting LLVM toolchain URL to $YB_LLVM_TOOLCHAIN_URL"
+        save_var_to_file_in_build_dir "$YB_LLVM_TOOLCHAIN_URL" llvm_url.txt
+      fi
+
     else
       log "YB_THIRDPARTY_URL is already set to '$YB_THIRDPARTY_URL', not trying to set it" \
           "automatically."
@@ -2551,6 +2579,10 @@ is_apple_silicon() {
   fi
 
   return 1
+}
+
+should_use_lto() {
+  using_linuxbrew && [[ "${YB_COMPILER_TYPE}" == "clang12" && "${build_type}" == "release" ]]
 }
 
 # -------------------------------------------------------------------------------------------------

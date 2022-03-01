@@ -4,6 +4,8 @@ linkTitle: Troubleshoot
 description: Troubleshoot
 image: /images/section_icons/troubleshoot/troubleshoot.png
 headcontent: Diagnose and troubleshoot universe and Yugabyte Platform issues.
+type: page
+section: YUGABYTE PLATFORM
 aliases:
   - /troubleshoot/enterprise-edition/
   - /latest/troubleshoot/enterprise-edition/
@@ -11,7 +13,6 @@ aliases:
 menu:
   latest:
     identifier: troubleshoot-yp
-    parent: yugabyte-platform
     weight: 648
 ---
 

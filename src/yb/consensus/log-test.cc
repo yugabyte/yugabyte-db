@@ -140,7 +140,7 @@ class LogTest : public LogTestBase {
     return Status::OK();
   }
 
-  void GenerateTestSequence(Random* rng, int seq_len,
+  void GenerateTestSequence(size_t seq_len,
                             vector<TestLogSequenceElem>* ops,
                             vector<int64_t>* terms_by_index);
   void AppendTestSequence(const vector<TestLogSequenceElem>& seq);
@@ -158,7 +158,7 @@ class LogTest : public LogTestBase {
 
   Result<std::vector<OpId>> AppendAndCopy(size_t num_batches, size_t num_entries_per_batch);
 
-  std::string GetLogCopyPath(int copy_idx) {
+  std::string GetLogCopyPath(size_t copy_idx) {
     return Format("$0.copy-$1", tablet_wal_path_, copy_idx);
   }
 
@@ -304,7 +304,7 @@ TEST_F(LogTest, TestFsyncDataSize) {
   opid.set_term(0);
   opid.set_index(1);
 
-  int size = 0;
+  ssize_t size = 0;
   ASSERT_OK(AppendNoOps(&opid, 100 * 1024, &size));
   SleepFor(MonoDelta::FromMilliseconds(1));
   ASSERT_OK(AppendNoOp(&opid));
@@ -392,7 +392,7 @@ void LogTest::DoCorruptionTest(CorruptionType type, CorruptionPosition place,
   ASSERT_OK(log_->Close());
 
   // Corrupt the log as specified.
-  int offset = 0;
+  ssize_t offset = 0;
   switch (place) {
     case IN_HEADER:
       offset = entry.offset_in_segment + 1;
@@ -527,7 +527,7 @@ TEST_F(LogTest, TestWriteAndReadToAndFromInProgressSegment) {
   ASSERT_EQ(segments.size(), 1);
   scoped_refptr<ReadableLogSegment> readable_segment = segments[0];
 
-  int header_size = log_->active_segment_->written_offset();
+  auto header_size = log_->active_segment_->written_offset();
   ASSERT_GT(header_size, 0);
   readable_segment->UpdateReadableToOffset(header_size);
 
@@ -550,9 +550,9 @@ TEST_F(LogTest, TestWriteAndReadToAndFromInProgressSegment) {
   repl->set_hybrid_time(0L);
 
   // Entries are prefixed with a header.
-  int single_entry_size = batch.ByteSize() + kEntryHeaderSize;
+  auto single_entry_size = batch.ByteSize() + kEntryHeaderSize;
 
-  int written_entries_size = header_size;
+  ssize_t written_entries_size = header_size;
   ASSERT_OK(AppendNoOps(&op_id, kNumEntries, &written_entries_size));
   ASSERT_EQ(written_entries_size, log_->active_segment_->written_offset());
   ASSERT_EQ(single_entry_size * kNumEntries, written_entries_size - header_size);
@@ -736,7 +736,7 @@ TEST_F(LogTest, TestWaitUntilAllFlushed) {
   auto read_entries = segments[0]->ReadEntries();
   ASSERT_OK(read_entries.status);
   ASSERT_EQ(read_entries.entries.size(), 2);
-  for (int i = 0; i < read_entries.entries.size(); i++) {
+  for (size_t i = 0; i < read_entries.entries.size(); i++) {
     ASSERT_TRUE(read_entries.entries[i]->has_replicate());
   }
 }
@@ -960,30 +960,31 @@ std::ostream& operator<<(std::ostream& os, const TestLogSequenceElem& elem) {
 // consensus log, but our API supports them. In the future we may want to add assertions
 // to the Log implementation that prevent such aberrations, in which case we'd need to
 // modify this.
-void LogTest::GenerateTestSequence(Random* rng, int seq_len,
+void LogTest::GenerateTestSequence(size_t seq_len,
                                    vector<TestLogSequenceElem>* ops,
                                    vector<int64_t>* terms_by_index) {
+  auto rng = &ThreadLocalRandom();
   terms_by_index->assign(seq_len + 1, -1);
   int64_t committed_index = 0;
   int64_t max_repl_index = 0;
 
   OpIdPB id = MakeOpId(1, 0);
-  for (int i = 0; i < seq_len; i++) {
-    if (rng->OneIn(5)) {
+  for (size_t i = 0; i < seq_len; i++) {
+    if (RandomUniformInt(0, 4, rng) == 0) {
       // Reset term - it may stay the same, or go up/down
-      id.set_term(std::max(static_cast<int64_t>(1), id.term() + rng->Uniform(5) - 2));
+      id.set_term(std::max(static_cast<int64_t>(1), id.term() + RandomUniformInt(0, 4, rng) - 2));
     }
 
     // Advance index by exactly one
     id.set_index(id.index() + 1);
 
-    if (rng->OneIn(5)) {
+    if (RandomUniformInt(0, 4, rng) == 0) {
       // Move index backward a bit, but not past the committed index
-      id.set_index(std::max(committed_index + 1, id.index() - rng->Uniform(5)));
+      id.set_index(std::max(committed_index + 1, id.index() - RandomUniformInt(0, 4, rng)));
     }
 
     // Roll the log sometimes
-    if (i != 0 && rng->OneIn(15)) {
+    if (i != 0 && RandomUniformInt(0, 14, rng) == 0) {
       TestLogSequenceElem op;
       op.type = TestLogSequenceElem::ROLL;
       ops->push_back(op);
@@ -1017,11 +1018,6 @@ void LogTest::AppendTestSequence(const vector<TestLogSequenceElem>& seq) {
   }
 }
 
-static int RandInRange(Random* r, int min_inclusive, int max_inclusive) {
-  int width = max_inclusive - min_inclusive + 1;
-  return min_inclusive + r->Uniform(width);
-}
-
 // Test that if multiple REPLICATE entries are written for the same index,
 // that we read the latest one.
 //
@@ -1032,10 +1028,9 @@ static int RandInRange(Random* r, int min_inclusive, int max_inclusive) {
 TEST_F(LogTest, TestReadLogWithReplacedReplicates) {
   const int kSequenceLength = AllowSlowTests() ? 1000 : 50;
 
-  Random rng(SeedRandom());
   vector<int64_t> terms_by_index;
   vector<TestLogSequenceElem> seq;
-  GenerateTestSequence(&rng, kSequenceLength, &seq, &terms_by_index);
+  GenerateTestSequence(kSequenceLength, &seq, &terms_by_index);
   LOG(INFO) << "test sequence: " << seq;
   const int64_t max_repl_index = terms_by_index.size() - 1;
   LOG(INFO) << "max_repl_index: " << max_repl_index;
@@ -1057,15 +1052,15 @@ TEST_F(LogTest, TestReadLogWithReplacedReplicates) {
     // Test reading random ranges of indexes and verifying that we get back the
     // REPLICATE messages with the correct terms
     for (int random_read = 0; random_read < kNumRandomReads; random_read++) {
-      int start_index = RandInRange(&rng, gc_index, max_repl_index - 1);
-      int end_index = RandInRange(&rng, start_index, max_repl_index);
+      auto start_index = RandomUniformInt<int64_t>(gc_index, max_repl_index - 1);
+      auto end_index = RandomUniformInt<int64_t>(start_index, max_repl_index);
       {
         SCOPED_TRACE(Substitute("Reading $0-$1", start_index, end_index));
         consensus::ReplicateMsgs repls;
         ASSERT_OK(reader->ReadReplicatesInRange(
                     start_index, end_index, LogReader::kNoSizeLimit, &repls));
         ASSERT_EQ(end_index - start_index + 1, repls.size());
-        int expected_index = start_index;
+        auto expected_index = start_index;
         for (const auto& repl : repls) {
           ASSERT_EQ(expected_index, repl->id().index());
           ASSERT_EQ(terms_by_index[expected_index], repl->id().term());
@@ -1081,7 +1076,7 @@ TEST_F(LogTest, TestReadLogWithReplacedReplicates) {
       EXPECT_GT(log_->reader_->read_batch_latency_->TotalCount(), 0);
 
       // Test a size-limited read.
-      int size_limit = RandInRange(&rng, 1, 1000);
+      int size_limit = RandomUniformInt(1, 1000);
       {
         SCOPED_TRACE(Substitute("Reading $0-$1 with size limit $2",
                                 start_index, end_index, size_limit));
@@ -1089,7 +1084,7 @@ TEST_F(LogTest, TestReadLogWithReplacedReplicates) {
         ASSERT_OK(reader->ReadReplicatesInRange(start_index, end_index, size_limit, &repls));
         ASSERT_LE(repls.size(), end_index - start_index + 1);
         int total_size = 0;
-        int expected_index = start_index;
+        auto expected_index = start_index;
         for (const auto& repl : repls) {
           ASSERT_EQ(expected_index, repl->id().index());
           ASSERT_EQ(terms_by_index[expected_index], repl->id().term());
@@ -1110,7 +1105,7 @@ TEST_F(LogTest, TestReadLogWithReplacedReplicates) {
 
     int num_gced = 0;
     ASSERT_OK(log_->GC(gc_index, &num_gced));
-    gc_index += rng.Uniform(10);
+    gc_index += RandomUniformInt(0, 9);
   }
 }
 
@@ -1178,7 +1173,7 @@ TEST_F(LogTest, ConcurrentAllocateSegmentAndRollOver) {
 Result<std::vector<OpId>> LogTest::AppendAndCopy(size_t num_batches, size_t num_entries_per_batch) {
   std::vector<OpId> last_op_id_before_copy;
   last_op_id_before_copy.reserve(num_batches);
-  for (auto i = 0; i < num_batches; ++i) {
+  for (size_t i = 0; i < num_batches; ++i) {
     AppendReplicateBatchToLog(
         num_entries_per_batch, i % 2 == 0 ? AppendSync::kFalse : AppendSync::kTrue);
     last_op_id_before_copy.push_back(log_->GetLatestEntryOpId());
@@ -1229,7 +1224,7 @@ TEST_F(LogTest, CopyTo) {
     ASSERT_LE(copied_segments.size(), segments.size());
 
     // Copied log segments should match log segments of the original log.
-    for (int seg_idx = 0; seg_idx < copied_segments.size(); ++seg_idx) {
+    for (size_t seg_idx = 0; seg_idx < copied_segments.size(); ++seg_idx) {
       auto& segment = segments[seg_idx];
       auto& segment_copy = copied_segments[seg_idx];
 
@@ -1242,7 +1237,7 @@ TEST_F(LogTest, CopyTo) {
       ASSERT_EQ(entries_copy_result.end_offset, entries_result.end_offset);
       ASSERT_EQ(entries_copy_result.entry_metadata, entries_result.entry_metadata);
       ASSERT_EQ(entries_copy_result.entries.size(), entries_result.entries.size());
-      for (int entry_idx = 0; entry_idx < entries_copy_result.entries.size(); ++entry_idx) {
+      for (size_t entry_idx = 0; entry_idx < entries_copy_result.entries.size(); ++entry_idx) {
         ASSERT_EQ(
             entries_copy_result.entries[entry_idx]->DebugString(),
             entries_result.entries[entry_idx]->DebugString());
@@ -1285,7 +1280,7 @@ TEST_F(LogTest, CopyToWithConcurrentGc) {
 
     // Make sure copied log contains a sequence of entries without gaps in index.
     int64_t last_index = -1;
-    for (int seg_idx = 0; seg_idx < copied_segments.size(); ++seg_idx) {
+    for (size_t seg_idx = 0; seg_idx < copied_segments.size(); ++seg_idx) {
       auto& segment_copy = copied_segments[seg_idx];
       auto entries_copy_result = segment_copy->ReadEntries();
       ASSERT_OK(entries_copy_result.status);

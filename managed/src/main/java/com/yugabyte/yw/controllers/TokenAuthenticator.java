@@ -7,6 +7,7 @@ import static com.yugabyte.yw.models.Users.Role;
 import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.user.UserService;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
@@ -30,9 +31,12 @@ public class TokenAuthenticator extends Action.Simple {
   public static final Set<String> READ_POST_ENDPOINTS =
       ImmutableSet.of(
           "/alerts/page",
+          "/alerts/count",
           "/alert_templates",
           "/alert_configurations/page",
-          "/alert_configurations/list");
+          "/alert_configurations/list",
+          "/maintenance_windows/page",
+          "/maintenance_windows/list");
   public static final String COOKIE_AUTH_TOKEN = "authToken";
   public static final String AUTH_TOKEN_HEADER = "X-AUTH-TOKEN";
   public static final String COOKIE_API_TOKEN = "apiToken";
@@ -45,25 +49,32 @@ public class TokenAuthenticator extends Action.Simple {
 
   private final UserService userService;
 
+  private final RuntimeConfigFactory runtimeConfigFactory;
+
   @Inject
   public TokenAuthenticator(
-      Config config, PlaySessionStore playSessionStore, UserService userService) {
+      Config config,
+      PlaySessionStore playSessionStore,
+      UserService userService,
+      RuntimeConfigFactory runtimeConfigFactory) {
     this.config = config;
     this.playSessionStore = playSessionStore;
     this.userService = userService;
+    this.runtimeConfigFactory = runtimeConfigFactory;
   }
 
   private Users getCurrentAuthenticatedUser(Http.Context ctx) {
     String token;
     Users user = null;
-    boolean useOAuth = config.getBoolean("yb.security.use_oauth");
+    boolean useOAuth = runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth");
     Http.Cookie cookieValue = ctx.request().cookie(COOKIE_PLAY_SESSION);
 
     if (useOAuth) {
       final PlayWebContext context = new PlayWebContext(ctx, playSessionStore);
       final ProfileManager<CommonProfile> profileManager = new ProfileManager<>(context);
       if (profileManager.isAuthenticated()) {
-        String emailAttr = config.getString("yb.security.oidcEmailAttribute");
+        String emailAttr =
+            runtimeConfigFactory.globalRuntimeConf().getString("yb.security.oidcEmailAttribute");
         String email;
         if (emailAttr.equals("")) {
           email = profileManager.get(true).get().getEmail();

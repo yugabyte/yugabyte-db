@@ -22,7 +22,7 @@
 
 #include <gtest/gtest.h>
 
-DECLARE_int32(rate_limiter_min_rate);
+DECLARE_uint64(rate_limiter_min_rate);
 
 namespace yb {
 

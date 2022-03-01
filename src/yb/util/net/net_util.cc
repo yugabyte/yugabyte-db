@@ -58,7 +58,7 @@
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/socket.h"
-#include "yb/util/random.h"
+#include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
@@ -551,10 +551,9 @@ uint16_t GetFreePort(std::unique_ptr<FileLock>* file_lock) {
   // Now, find a unused port in the [kMinPort..kMaxPort] range.
   constexpr uint16_t kMinPort = 15000;
   constexpr uint16_t kMaxPort = 30000;
-  static yb::Random rand(GetCurrentTimeMicros());
   Status s;
   for (int i = 0; i < 1000; ++i) {
-    const uint16_t random_port = kMinPort + rand.Next() % (kMaxPort - kMinPort + 1);
+    const uint16_t random_port = RandomUniformInt(kMinPort, kMaxPort);
     VLOG(1) << "Trying to bind to port " << random_port;
 
     Endpoint sock_addr(boost::asio::ip::address_v4::loopback(), random_port);

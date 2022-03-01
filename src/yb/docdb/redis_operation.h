@@ -110,7 +110,6 @@ class RedisReadOperation {
 
   Result<RedisValue> GetValue(int subkey_index = kNilSubkeyIndex);
 
-  int ApplyIndex(int32_t index, const int32_t len);
   CHECKED_STATUS ExecuteGet();
   CHECKED_STATUS ExecuteGet(const RedisGetRequestPB& get_request);
   CHECKED_STATUS ExecuteGet(RedisGetRequestPB::GetRequestType type);

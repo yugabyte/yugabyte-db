@@ -210,9 +210,9 @@ Status TransactionImpl::LockBatch(WriteBatch* batch,
       }
     }
 
-    virtual Status PutCF(uint32_t column_family_id, const Slice& key,
-                         const Slice& value) override {
-      RecordKey(column_family_id, key);
+    virtual Status PutCF(uint32_t column_family_id, const SliceParts& key,
+                         const SliceParts& value) override {
+      RecordKey(column_family_id, key.TheOnlyPart());
       return Status::OK();
     }
     virtual Status MergeCF(uint32_t column_family_id, const Slice& key,

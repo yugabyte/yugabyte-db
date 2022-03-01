@@ -3,19 +3,18 @@
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
+import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValues;
-import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
-import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.models.CustomerTask.TaskType.Restore;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.Mockito.any;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -31,8 +30,8 @@ import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
@@ -53,12 +52,17 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
+import junitparams.naming.TestCaseName;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import play.libs.Json;
 import play.mvc.Result;
 
+@RunWith(JUnitParamsRunner.class)
 public class BackupsControllerTest extends FakeDBApplication {
 
   private Universe defaultUniverse;
@@ -218,11 +222,25 @@ public class BackupsControllerTest extends FakeDBApplication {
     return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
   }
 
+  private Result deleteBackupYb(ObjectNode bodyJson, Users user) {
+    String authToken = user == null ? defaultUser.createAuthToken() : user.createAuthToken();
+    String method = "DELETE";
+    String url = "/api/customers/" + defaultCustomer.uuid + "/delete_backups";
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
+  }
+
   private Result stopBackup(Users user, UUID backupUUID) {
     String authToken = user == null ? defaultUser.createAuthToken() : user.createAuthToken();
     String method = "POST";
     String url = "/api/customers/" + defaultCustomer.uuid + "/backups/" + backupUUID + "/stop";
     return FakeApiHelper.doRequestWithAuthToken(method, url, authToken);
+  }
+
+  private Result editBackup(Users user, ObjectNode bodyJson, UUID backupUUID) {
+    String authToken = user == null ? defaultUser.createAuthToken() : user.createAuthToken();
+    String method = "PUT";
+    String url = "/api/customers/" + defaultCustomer.uuid + "/backups/" + backupUUID;
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
   }
 
   @Test
@@ -241,6 +259,7 @@ public class BackupsControllerTest extends FakeDBApplication {
   public void testRestoreBackupWithInvalidParams() {
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = UUID.randomUUID();
+    bp.universeUUID = UUID.randomUUID();
     Backup.create(defaultCustomer.uuid, bp);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("actionType", "RESTORE");
@@ -257,6 +276,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST2");
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = UUID.randomUUID();
     Backup.create(defaultCustomer.uuid, bp);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("keyspace", "mock_ks");
@@ -275,6 +295,7 @@ public class BackupsControllerTest extends FakeDBApplication {
   public void testRestoreBackupWithInvalidStorageUUID() {
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = UUID.randomUUID();
+    bp.universeUUID = UUID.randomUUID();
     Backup b = Backup.create(defaultCustomer.uuid, bp);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("keyspace", "mock_ks");
@@ -295,6 +316,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     Users user = ModelFactory.testUser(defaultCustomer, "tc@test.com", Users.Role.ReadOnly);
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = UUID.randomUUID();
+    bp.universeUUID = UUID.randomUUID();
     Backup b = Backup.create(defaultCustomer.uuid, bp);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("keyspace", "mock_ks");
@@ -313,6 +335,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST3");
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = defaultUniverse.universeUUID;
     Backup b = Backup.create(defaultCustomer.uuid, bp);
     ObjectNode bodyJson = Json.newObject();
 
@@ -327,7 +350,6 @@ public class BackupsControllerTest extends FakeDBApplication {
     // now a default for play.http.parser.maxMemoryBuffer)
     String largeKeyspace = new String(new char[keyspaceSz]).replace("\0", "#");
     bodyJson.put("keyspace", largeKeyspace);
-    bodyJson.put("tableName", "mock_table");
     bodyJson.put("actionType", "RESTORE");
     bodyJson.put("storageConfigUUID", bp.storageConfigUUID.toString());
     bodyJson.put("storageLocation", "s3://foo/bar");
@@ -359,6 +381,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST5");
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = UUID.randomUUID();
     Backup.create(defaultCustomer.uuid, bp);
     ObjectNode bodyJson = Json.newObject();
 
@@ -366,7 +389,6 @@ public class BackupsControllerTest extends FakeDBApplication {
         app.config().getMemorySize("play.http.parser.maxMemoryBuffer").toBytes();
     String largeKeyspace = new String(new char[(int) (maxReqSizeInBytes)]).replace("\0", "#");
     bodyJson.put("keyspace", largeKeyspace);
-    bodyJson.put("tableName", "mock_table");
     bodyJson.put("actionType", "RESTORE");
     bodyJson.put("storageConfigUUID", bp.storageConfigUUID.toString());
     bodyJson.put("storageLocation", "s3://foo/bar");
@@ -380,6 +402,98 @@ public class BackupsControllerTest extends FakeDBApplication {
     Result result = restoreBackup(defaultUniverse.universeUUID, bodyJson, null);
     assertEquals(413, result.status());
     verify(mockCommissioner, never()).submit(any(), any());
+  }
+
+  @Test
+  public void testRestoreBackupWithInvalidOwner() {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST5");
+    BackupTableParams bp = new BackupTableParams();
+    bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = defaultUniverse.universeUUID;
+    Backup.create(defaultCustomer.uuid, bp);
+    ObjectNode bodyJson = Json.newObject();
+
+    bodyJson.put("keyspace", "keyspace");
+    bodyJson.put("actionType", "RESTORE");
+    bodyJson.put("storageConfigUUID", bp.storageConfigUUID.toString());
+    bodyJson.put("storageLocation", "s3://foo/bar");
+    bodyJson.put("newOwner", "asgjf;jdsnc");
+
+    Result result =
+        assertPlatformException(() -> restoreBackup(defaultUniverse.universeUUID, bodyJson, null));
+    assertEquals(BAD_REQUEST, result.status());
+    verify(mockCommissioner, never()).submit(any(), any());
+
+    bodyJson.put("newOwner", "$jdsnc");
+    result =
+        assertPlatformException(() -> restoreBackup(defaultUniverse.universeUUID, bodyJson, null));
+    assertEquals(BAD_REQUEST, result.status());
+    verify(mockCommissioner, never()).submit(any(), any());
+
+    bodyJson.put("newOwner", "jdsn$c");
+    result =
+        assertPlatformException(() -> restoreBackup(defaultUniverse.universeUUID, bodyJson, null));
+    assertEquals(BAD_REQUEST, result.status());
+    verify(mockCommissioner, never()).submit(any(), any());
+
+    bodyJson.put("newOwner", "jdsnc*");
+    result =
+        assertPlatformException(() -> restoreBackup(defaultUniverse.universeUUID, bodyJson, null));
+    assertEquals(BAD_REQUEST, result.status());
+    verify(mockCommissioner, never()).submit(any(), any());
+
+    bodyJson.put("newOwner", "&");
+    result =
+        assertPlatformException(() -> restoreBackup(defaultUniverse.universeUUID, bodyJson, null));
+    assertEquals(BAD_REQUEST, result.status());
+    verify(mockCommissioner, never()).submit(any(), any());
+
+    bodyJson.put("newOwner", "sjdachk|dkjsbfc");
+    result =
+        assertPlatformException(() -> restoreBackup(defaultUniverse.universeUUID, bodyJson, null));
+    assertEquals(BAD_REQUEST, result.status());
+    verify(mockCommissioner, never()).submit(any(), any());
+
+    bodyJson.put("newOwner", "sjdachk dkjsbfc");
+    result =
+        assertPlatformException(() -> restoreBackup(defaultUniverse.universeUUID, bodyJson, null));
+    assertEquals(BAD_REQUEST, result.status());
+    verify(mockCommissioner, never()).submit(any(), any());
+
+    bodyJson.put("newOwner", "sjdachk\ndkjsbfc");
+    result =
+        assertPlatformException(() -> restoreBackup(defaultUniverse.universeUUID, bodyJson, null));
+    assertEquals(BAD_REQUEST, result.status());
+    verify(mockCommissioner, never()).submit(any(), any());
+
+    bodyJson.put("newOwner", "sjdachk\tdkjsbfc");
+    result =
+        assertPlatformException(() -> restoreBackup(defaultUniverse.universeUUID, bodyJson, null));
+    assertEquals(BAD_REQUEST, result.status());
+    verify(mockCommissioner, never()).submit(any(), any());
+
+    bodyJson.put("newOwner", "sjdachk\tdkjsbfc");
+    result =
+        assertPlatformException(() -> restoreBackup(defaultUniverse.universeUUID, bodyJson, null));
+    assertEquals(BAD_REQUEST, result.status());
+    verify(mockCommissioner, never()).submit(any(), any());
+
+    ArgumentCaptor<TaskType> taskType = ArgumentCaptor.forClass(TaskType.class);
+    ArgumentCaptor<BackupTableParams> taskParams = ArgumentCaptor.forClass(BackupTableParams.class);
+
+    bodyJson.put("newOwner", "yugabyte");
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    result = restoreBackup(defaultUniverse.universeUUID, bodyJson, null);
+    verify(mockCommissioner, times(1)).submit(taskType.capture(), taskParams.capture());
+    assertEquals(TaskType.BackupUniverse, taskType.getValue());
+    assertOk(result);
+    JsonNode resultJson = Json.parse(contentAsString(result));
+    assertValue(resultJson, "taskUUID", fakeTaskUUID.toString());
+    CustomerTask ct = CustomerTask.findByTaskUUID(fakeTaskUUID);
+    assertNotNull(ct);
+    assertEquals(Restore, ct.getType());
+    assertAuditEntry(1, defaultCustomer.uuid);
   }
 
   @Test
@@ -436,6 +550,93 @@ public class BackupsControllerTest extends FakeDBApplication {
     assertEquals(customerTask.getTargetUUID(), backup.getBackupInfo().universeUUID);
     assertEquals(json.get("taskUUID").size(), 1);
     assertAuditEntry(1, defaultCustomer.uuid);
+  }
+
+  @Test
+  @Parameters({"Failed", "Skipped", "FailedToDelete", "Stopped", "Completed"})
+  @TestCaseName("testDeleteBackupYbWithValidStateWhenState:{0} ")
+  public void testDeleteBackupYbWithValidState(BackupState state) {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST6");
+    BackupTableParams bp = new BackupTableParams();
+    bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = UUID.randomUUID();
+    Backup backup = Backup.create(defaultCustomer.uuid, bp);
+    backup.transitionState(state);
+    List<String> backupUUIDList = new ArrayList<>();
+    backupUUIDList.add(backup.backupUUID.toString());
+    UUID fakeTaskUUID = UUID.randomUUID();
+    ObjectNode resultNode = Json.newObject();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    ArrayNode arrayNode = resultNode.putArray("backups");
+    for (String item : backupUUIDList) {
+      ObjectNode deleteBackupObject = Json.newObject();
+      deleteBackupObject.put("backupUUID", item);
+      arrayNode.add(deleteBackupObject);
+    }
+    Result result = deleteBackupYb(resultNode, null);
+    assertEquals(200, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    CustomerTask customerTask = CustomerTask.findByTaskUUID(fakeTaskUUID);
+    assertEquals(customerTask.getTargetUUID(), backup.backupUUID);
+    assertEquals(json.get("taskUUID").size(), 1);
+    assertAuditEntry(1, defaultCustomer.uuid);
+  }
+
+  @Test
+  @Parameters({"InProgress", "DeleteInProgress", "QueuedForDeletion"})
+  @TestCaseName("testDeleteBackupYbWithInvalidStateWhenState:{0}")
+  public void testDeleteBackupYbWithInvalidState(BackupState state) {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST6");
+    BackupTableParams bp = new BackupTableParams();
+    bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = UUID.randomUUID();
+    Backup backup = Backup.create(defaultCustomer.uuid, bp);
+    backup.transitionState(state);
+    List<String> backupUUIDList = new ArrayList<>();
+    backupUUIDList.add(backup.backupUUID.toString());
+    ObjectNode resultNode = Json.newObject();
+    ArrayNode arrayNode = resultNode.putArray("backups");
+    for (String item : backupUUIDList) {
+      ObjectNode deleteBackupObject = Json.newObject();
+      deleteBackupObject.put("backupUUID", item);
+      arrayNode.add(deleteBackupObject);
+    }
+    Result result = deleteBackupYb(resultNode, null);
+    assertEquals(200, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals(json.get("taskUUID").size(), 0);
+  }
+
+  @Test
+  public void testDeleteBackupYbWithCustomCustomerStorageConfig() {
+    UUID invalidStorageConfigUUID = UUID.randomUUID();
+    BackupTableParams bp = new BackupTableParams();
+    bp.storageConfigUUID = invalidStorageConfigUUID;
+    bp.universeUUID = UUID.randomUUID();
+    Backup backup = Backup.create(defaultCustomer.uuid, bp);
+    backup.transitionState(BackupState.Completed);
+    List<String> backupUUIDList = new ArrayList<>();
+    backupUUIDList.add(backup.backupUUID.toString());
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    ObjectNode resultNode = Json.newObject();
+    ArrayNode arrayNode = resultNode.putArray("backups");
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST6");
+    for (String item : backupUUIDList) {
+      ObjectNode deleteBackupObject = Json.newObject();
+      deleteBackupObject.put("backupUUID", item);
+      deleteBackupObject.put("storageConfigUUID", customerConfig.configUUID.toString());
+      arrayNode.add(deleteBackupObject);
+    }
+    Result result = deleteBackupYb(resultNode, null);
+    assertEquals(200, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    CustomerTask customerTask = CustomerTask.findByTaskUUID(fakeTaskUUID);
+    assertEquals(customerTask.getTargetUUID(), backup.backupUUID);
+    assertEquals(json.get("taskUUID").size(), 1);
+    assertAuditEntry(1, defaultCustomer.uuid);
+    backup = Backup.getOrBadRequest(defaultCustomer.uuid, backup.backupUUID);
+    assertEquals(customerConfig.configUUID, backup.getBackupInfo().storageConfigUUID);
   }
 
   @Test
@@ -527,5 +728,51 @@ public class BackupsControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(
         json.get("error").asText(), "WaitFor task exceeded maxRetries! Task state is Created");
+  }
+
+  @Test
+  public void testEditBackupWithStateNotComplete() throws Exception {
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("timeBeforeDeleteFromPresentInMillis", 86400000L);
+
+    Result result =
+        assertPlatformException(() -> editBackup(defaultUser, bodyJson, defaultBackup.backupUUID));
+    assertEquals(BAD_REQUEST, result.status());
+  }
+
+  @Test
+  public void testEditBackupWithNonPositiveDeletionTime() throws Exception {
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("timeBeforeDeleteFromPresentInMillis", -1L);
+
+    Result result =
+        assertPlatformException(() -> editBackup(defaultUser, bodyJson, defaultBackup.backupUUID));
+    assertEquals(BAD_REQUEST, result.status());
+
+    bodyJson.put("timeBeforeDeleteFromPresentInMillis", 0L);
+    result =
+        assertPlatformException(() -> editBackup(defaultUser, bodyJson, defaultBackup.backupUUID));
+    assertEquals(BAD_REQUEST, result.status());
+  }
+
+  @Test
+  public void testEditBackup() throws Exception {
+
+    defaultBackup.state = BackupState.Completed;
+    defaultBackup.update();
+    Backup backup = Backup.getOrBadRequest(defaultCustomer.uuid, defaultBackup.backupUUID);
+    // assertTrue(backup.state.equals(BackupState.Completed));
+
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("timeBeforeDeleteFromPresentInMillis", 86400000L);
+
+    Result result = editBackup(defaultUser, bodyJson, defaultBackup.backupUUID);
+    backup = Backup.getOrBadRequest(defaultCustomer.uuid, defaultBackup.backupUUID);
+    long afterTimeInMillis = System.currentTimeMillis() + 86400000L;
+    long beforeTimeInMillis = System.currentTimeMillis() + 85400000L;
+
+    long expiryTimeInMillis = backup.getExpiry().getTime();
+    assertTrue(expiryTimeInMillis > beforeTimeInMillis);
+    assertTrue(afterTimeInMillis > expiryTimeInMillis);
   }
 }

@@ -57,7 +57,7 @@ public class TestFullMoveWithHeartBeatDelay extends TestClusterBase {
 
     // Disable heartbeats for all tservers.
     for (HostAndPort hp : miniCluster.getTabletServers().keySet()) {
-      status = client.setFlag(hp, "tserver_disable_heartbeat_test_only", "true");
+      status = client.setFlag(hp, "TEST_tserver_disable_heartbeat", "true");
       assertTrue(status);
     }
     removeMaster(oldMaster);
@@ -66,7 +66,7 @@ public class TestFullMoveWithHeartBeatDelay extends TestClusterBase {
 
     // Enable heartbeats for old masters again.
     for (HostAndPort hp : miniCluster.getTabletServers().keySet()) {
-      status = client.setFlag(hp, "tserver_disable_heartbeat_test_only", "false");
+      status = client.setFlag(hp, "TEST_tserver_disable_heartbeat", "false");
       assertTrue(status);
     }
 

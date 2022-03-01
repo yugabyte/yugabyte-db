@@ -3,10 +3,10 @@ title: Using Liquibase with YugabyteDB
 linkTitle: Liquibase
 description: Using Liquibase with YugabyteDB
 aliases:
+section: INTEGRATIONS
 menu:
   latest:
     identifier: liquibase
-    parent: integrations
     weight: 650
 isTocNested: true
 showAsideToc: true

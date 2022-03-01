@@ -28,6 +28,7 @@
 
 #include "yb/util/debug-util.h"
 #include "yb/util/format.h"
+#include "yb/util/logging.h"
 #include "yb/util/random_util.h"
 #include "yb/util/shared_mem.h"
 #include "yb/util/status.h"
@@ -195,6 +196,10 @@ Status PgTxnManager::SetIsolationLevel(int level) {
   return Status::OK();
 }
 
+PgIsolationLevel PgTxnManager::GetIsolationLevel() {
+  return pg_isolation_level_;
+}
+
 Status PgTxnManager::SetReadOnly(bool read_only) {
   read_only_ = read_only;
   VLOG(2) << __func__ << " set to " << read_only_ << " from " << GetStackTrace();
@@ -212,11 +217,11 @@ Status PgTxnManager::EnableFollowerReads(bool enable_follower_reads, int32_t ses
 
 Status PgTxnManager::UpdateReadTimeForFollowerReadsIfRequired() {
   if (enable_follower_reads_ && read_only_ && !updated_read_time_for_follower_reads_) {
-    constexpr int32_t kMargin = 2;
+    constexpr uint64_t kMargin = 2;
     RSTATUS_DCHECK(
         follower_read_staleness_ms_ * 1000 > kMargin * GetAtomicFlag(&FLAGS_max_clock_skew_usec),
         InvalidArgument,
-        yb::Format("Setting follower read staleness less than the $0 x max_clock_skew.", kMargin));
+        Format("Setting follower read staleness less than the $0 x max_clock_skew.", kMargin));
     // Add a delta to the start point to lower the read point.
     session_->SetReadPoint(ReadHybridTime::SingleTime(
         clock_->Now().AddMilliseconds(-1 * follower_read_staleness_ms_)));
@@ -246,22 +251,29 @@ void PgTxnManager::StartNewSession() {
   updated_read_time_for_follower_reads_ = false;
 }
 
-uint64_t PgTxnManager::GetPriority(const NeedsPessimisticLocking needs_pessimistic_locking) {
+uint64_t PgTxnManager::GetPriority(TxnPriorityRequirement txn_priority_requirement) {
+
+  VLOG_WITH_FUNC(1) << "txn_priority_requirement=" << txn_priority_requirement;
+
   if (use_saved_priority_) {
     return saved_priority_;
   }
 
-  // Use high priority for transactions that need pessimistic locking.
-  if (needs_pessimistic_locking) {
+  if (txn_priority_requirement == kHighestPriority) {
+    return txn_priority_highpri_upper_bound;
+  }
+
+  if (txn_priority_requirement == kHigherPriorityRange) {
     return RandomUniformInt(txn_priority_highpri_lower_bound,
                             txn_priority_highpri_upper_bound);
   }
+
   return RandomUniformInt(txn_priority_regular_lower_bound,
                           txn_priority_regular_upper_bound);
 }
 
-Status PgTxnManager::BeginWriteTransactionIfNecessary(bool read_only_op,
-                                                      bool needs_pessimistic_locking) {
+Status PgTxnManager::BeginWriteTransactionIfNecessary(
+    bool read_only_op, TxnPriorityRequirement txn_priority_requirement) {
   if (ddl_txn_) {
     VLOG_TXN_STATE(2);
     return Status::OK();
@@ -283,7 +295,9 @@ Status PgTxnManager::BeginWriteTransactionIfNecessary(bool read_only_op,
   const IsolationLevel docdb_isolation =
       (pg_isolation_level_ == PgIsolationLevel::SERIALIZABLE) && !read_only_
           ? IsolationLevel::SERIALIZABLE_ISOLATION
-          : IsolationLevel::SNAPSHOT_ISOLATION;
+          : (pg_isolation_level_ == PgIsolationLevel::READ_COMMITTED
+              ? IsolationLevel::READ_COMMITTED
+              : IsolationLevel::SNAPSHOT_ISOLATION);
   const bool defer = read_only_ && deferrable_;
 
   VLOG_TXN_STATE(2) << "DocDB isolation level: " << IsolationLevel_Name(docdb_isolation);
@@ -298,7 +312,9 @@ Status PgTxnManager::BeginWriteTransactionIfNecessary(bool read_only_op,
           txn_->isolation(), IsolationLevel_Name(docdb_isolation), pg_isolation_level_,
           read_only_);
     }
-  } else if (read_only_op && docdb_isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
+  } else if (read_only_op &&
+             (docdb_isolation == IsolationLevel::SNAPSHOT_ISOLATION ||
+              docdb_isolation == IsolationLevel::READ_COMMITTED)) {
     if (defer) {
       // This call is idempotent, meaning it has no effect after the first call.
       session_->DeferReadPoint();
@@ -333,9 +349,10 @@ Status PgTxnManager::BeginWriteTransactionIfNecessary(bool read_only_op,
       txn_ = std::make_shared<YBTransaction>(GetOrCreateTransactionManager());
     }
 
-    txn_->SetPriority(GetPriority(NeedsPessimisticLocking(needs_pessimistic_locking)));
+    txn_->SetPriority(GetPriority(txn_priority_requirement));
 
-    if (docdb_isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
+    if (docdb_isolation == IsolationLevel::SNAPSHOT_ISOLATION ||
+        docdb_isolation == IsolationLevel::READ_COMMITTED) {
       txn_->InitWithReadPoint(docdb_isolation, std::move(*session_->read_point()));
     } else {
       DCHECK_EQ(docdb_isolation, IsolationLevel::SERIALIZABLE_ISOLATION);
@@ -351,8 +368,12 @@ Status PgTxnManager::BeginWriteTransactionIfNecessary(bool read_only_op,
 }
 
 Status PgTxnManager::SetActiveSubTransaction(SubTransactionId id) {
+  auto txn_priority_requirement = kLowerPriorityRange;
+  if (pg_isolation_level_ == PgIsolationLevel::READ_COMMITTED)
+    txn_priority_requirement = kHighestPriority;
+
   RETURN_NOT_OK(BeginWriteTransactionIfNecessary(
-      false /* read_only_op */, false /* needs_pessimistic_locking */));
+      false /* read_only_op */, txn_priority_requirement));
   SCHECK(
       txn_, InternalError, "Attempted to set active subtransaction on uninitialized transaciton.");
   txn_->SetActiveSubTransaction(id);
@@ -391,17 +412,29 @@ Status PgTxnManager::RestartTransaction() {
 }
 
 /* This is called at the start of each statement in READ COMMITTED isolation level */
-Status PgTxnManager::MaybeResetTransactionReadPoint() {
+Status PgTxnManager::ResetTransactionReadPoint() {
   CHECK_NOTNULL(session_);
   // If a txn_ has been created, session_->read_point() returns the read point stored in txn_.
   ConsistentReadPoint* rp = session_->read_point();
-  if (rp->RecentlyRestartedReadPoint()) {
-    rp->UnSetRecentlyRestartedReadPoint();
-    return Status::OK();
-  }
   rp->SetCurrentReadTime();
 
   VLOG(1) << "Setting current ht as read point " << rp->GetReadTime();
+  return Status::OK();
+}
+
+/* This is called when a read committed transaction wants to restart its read point */
+Status PgTxnManager::RestartReadPoint() {
+  CHECK_NOTNULL(session_);
+
+  // If a txn_ has been created, session_->read_point() returns the read point stored in txn_.
+  ConsistentReadPoint* rp = session_->read_point();
+
+  if (!rp->IsRestartRequired()) {
+    return STATUS(IllegalState, "Restart of read point that does not require restart");
+  }
+  rp->Restart();
+
+  VLOG(1) << "Restarting read point to " << rp->GetReadTime();
   return Status::OK();
 }
 

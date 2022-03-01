@@ -46,7 +46,6 @@
 
 #include <boost/container/small_vector.hpp>
 
-
 #include "yb/gutil/stringprintf.h"
 #include "yb/util/string_util.h"
 #include "yb/util/scope_exit.h"
@@ -234,6 +233,7 @@ class DBImpl::ThreadPoolTask : public yb::PriorityThreadPoolTask {
 
 constexpr int kShuttingDownPriority = 200;
 constexpr int kFlushPriority = 100;
+constexpr int kNoJobId = -1;
 
 class DBImpl::CompactionTask : public ThreadPoolTask {
  public:
@@ -241,6 +241,7 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
       : ThreadPoolTask(db_impl), manual_compaction_(manual_compaction),
         compaction_(manual_compaction->compaction.get()), priority_(CalcPriority()) {
     db_impl->mutex_.AssertHeld();
+    SetFileAndByteCount();
   }
 
   CompactionTask(DBImpl* db_impl, std::unique_ptr<Compaction> compaction)
@@ -248,6 +249,7 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
         compaction_holder_(std::move(compaction)), compaction_(compaction_holder_.get()),
         priority_(CalcPriority()) {
     db_impl->mutex_.AssertHeld();
+    SetFileAndByteCount();
   }
 
   bool ShouldRemoveWithKey(void* key) override {
@@ -292,9 +294,19 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
   }
 
   std::string ToString() const override {
-    return yb::Format(
-        "{ compact db: $0 is_manual: $1 serial_no: $2 }", db_impl_->GetName(),
-        manual_compaction_ != nullptr, SerialNo());
+      int job_id_value = job_id_.Load();
+      return yb::Format(
+          "{ compact db: $0 is_manual: $1 serial_no: $2 job_id: $3}", db_impl_->GetName(),
+          manual_compaction_ != nullptr, SerialNo(),
+          ((job_id_value == kNoJobId) ? "None" : std::to_string(job_id_value)));
+  }
+
+  yb::CompactionInfo GetFileAndByteInfoIfCompaction() const override {
+    return yb::CompactionInfo{file_count_, byte_count_};
+  }
+
+  void SetJobID(JobContext* job_context) {
+    job_id_.Store(job_context->job_id);
   }
 
   bool UpdatePriority() override {
@@ -347,10 +359,23 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
     return result;
   }
 
+  void SetFileAndByteCount() {
+    size_t levels = compaction_->num_input_levels();
+    uint64_t file_count = 0;
+    for (size_t i = 0; i < levels; i++) {
+        file_count += compaction_->num_input_files(i);
+    }
+    file_count_ = file_count;
+    byte_count_ = compaction_->CalculateTotalInputSize();
+  }
+
   DBImpl::ManualCompaction* const manual_compaction_;
   std::unique_ptr<Compaction> compaction_holder_;
   Compaction* compaction_;
   int priority_;
+  yb::AtomicInt<int> job_id_{kNoJobId};
+  uint64_t file_count_;
+  uint64_t byte_count_;
 };
 
 class DBImpl::FlushTask : public ThreadPoolTask {
@@ -3327,7 +3352,9 @@ void DBImpl::BackgroundCallCompaction(ManualCompaction* m, std::unique_ptr<Compa
   bool made_progress = false;
   JobContext job_context(next_job_id_.fetch_add(1), true);
   LogBuffer log_buffer(InfoLogLevel::INFO_LEVEL, db_options_.info_log.get());
-
+  if (compaction_task) {
+    compaction_task->SetJobID(&job_context);
+  }
   InstrumentedMutexLock l(&mutex_);
   num_total_running_compactions_++;
 
@@ -5180,6 +5207,9 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
           // in case the write callback returned a non-ok status.
           status = w.FinalStatus();
         }
+        for (const auto& writer : write_group) {
+          last_sequence += writer->batch->DirectEntries();
+        }
 
       } else {
         WriteThread::ParallelGroup pg;
@@ -5995,12 +6025,22 @@ UserFrontierPtr DBImpl::GetMutableMemTableFrontier(UpdateUserValueType type) {
 
 Status DBImpl::ApplyVersionEdit(VersionEdit* edit) {
   auto cfd = versions_->GetColumnFamilySet()->GetDefault();
+  std::unique_ptr<SuperVersion> superversion_to_free_after_unlock_because_of_install;
+  std::unique_ptr<SuperVersion> superversion_to_free_after_unlock_because_of_unref;
   InstrumentedMutexLock lock(&mutex_);
-  auto status = versions_->LogAndApply(cfd, *cfd->GetCurrentMutableCFOptions(), edit, &mutex_);
+  auto current_sv = cfd->GetSuperVersion()->Ref();
+  auto se = yb::ScopeExit([&superversion_to_free_after_unlock_because_of_unref, current_sv]() {
+    if (current_sv->Unref()) {
+      current_sv->Cleanup();
+      superversion_to_free_after_unlock_because_of_unref.reset(current_sv);
+    }
+  });
+  auto status = versions_->LogAndApply(cfd, current_sv->mutable_cf_options, edit, &mutex_);
   if (!status.ok()) {
     return status;
   }
-  cfd->InstallSuperVersion(new SuperVersion(), &mutex_);
+  superversion_to_free_after_unlock_because_of_install = cfd->InstallSuperVersion(
+      new SuperVersion(), &mutex_);
 
   return Status::OK();
 }

@@ -2,10 +2,10 @@
 title: Prisma
 linkTitle: Prisma
 description: Prisma
+section: INTEGRATIONS
 menu:
   latest:
     identifier: prisma
-    parent: integrations
     weight: 579
 isTocNested: true
 showAsideToc: true

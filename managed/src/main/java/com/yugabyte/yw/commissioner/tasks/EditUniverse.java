@@ -13,6 +13,8 @@ package com.yugabyte.yw.commissioner.tasks;
 import static com.yugabyte.yw.forms.UniverseTaskParams.isFirstTryForTask;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.DnsManager;
@@ -41,6 +43,8 @@ import lombok.extern.slf4j.Slf4j;
 // Tracks edit intents to the cluster and then performs the sequence of configuration changes on
 // this universe to go from the current set of master/tserver nodes to the final configuration.
 @Slf4j
+@Abortable
+@Retryable
 public class EditUniverse extends UniverseDefinitionTaskBase {
 
   @Inject
@@ -71,6 +75,9 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
                 // The universe parameter in this callback has local changes which may be needed by
                 // the methods inside e.g updateInProgress field.
                 if (isFirstTryForTask(taskParams())) {
+                  // Fetch the task params from the DB to start from fresh on retry.
+                  // Otherwise, some operations like name assignment can fail.
+                  fetchTaskDetailsFromDB();
                   // TODO Transaction is required mainly because validations are done here.
                   // Set all the node names.
                   setNodeNames(u);
@@ -80,10 +87,6 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
                   updateOnPremNodeUuidsOnTaskParams();
                   // Perform pre-task actions.
                   preTaskActions(u);
-                  // Run preflight checks on onprem nodes to be added.
-                  if (!performUniversePreflightChecks(taskParams().clusters)) {
-                    throw new RuntimeException("Preflight checks failed.");
-                  }
                   // Select master nodes, if needed. Changes in masters are not automatically
                   // applied.
                   SelectMastersResult selection = selectMasters(u.getMasterLeaderHostText());
@@ -111,6 +114,9 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
                   updateTaskDetailsInDB(taskParams());
                 }
               });
+
+      // Create preflight node check tasks for on-prem nodes.
+      createPreflightNodeCheckTasks(universe, taskParams().clusters);
 
       Set<NodeDetails> addedMasters =
           taskParams()
@@ -393,6 +399,9 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
     // Finally send destroy to the old set of nodes and remove them from this universe.
     if (!nodesToBeRemoved.isEmpty()) {
+      // Set the node states to Removing.
+      createSetNodeStateTasks(nodesToBeRemoved, NodeDetails.NodeState.Removing)
+          .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
       createDestroyServerTasks(nodesToBeRemoved, false /* isForceDelete */, true /* deleteNode */)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
     }

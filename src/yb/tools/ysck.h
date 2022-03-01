@@ -329,7 +329,7 @@ class Ysck {
   bool VerifyTableWithTimeout(const std::shared_ptr<YsckTable>& table,
                               const MonoDelta& timeout,
                               const MonoDelta& retry_interval);
-  bool VerifyTablet(const std::shared_ptr<YsckTablet>& tablet, int table_num_replicas);
+  bool VerifyTablet(const std::shared_ptr<YsckTablet>& tablet, size_t table_num_replicas);
 
   const std::shared_ptr<YsckCluster> cluster_;
   DISALLOW_COPY_AND_ASSIGN(Ysck);

@@ -528,7 +528,7 @@ Status GetRangeComponents(
     const Schema& schema, const google::protobuf::RepeatedPtrField<PgsqlExpressionPB>& range_cols,
     std::vector<docdb::PrimitiveValue>* range_components) {
   int i = 0;
-  int num_range_key_columns = schema.num_range_key_columns();
+  auto num_range_key_columns = narrow_cast<int>(schema.num_range_key_columns());
   for (const auto& col_id : schema.column_ids()) {
     if (!schema.is_range_column(col_id)) {
       continue;
@@ -571,7 +571,8 @@ CHECKED_STATUS GetRangePartitionBounds(const YBPgsqlReadOp& op,
   const auto& request = op.request();
   const auto& range_cols = request.range_column_values();
   const auto& condition_expr = request.condition_expr();
-  if (condition_expr.has_condition() && range_cols.size() < schema.num_range_key_columns()) {
+  if (condition_expr.has_condition() &&
+      implicit_cast<size_t>(range_cols.size()) < schema.num_range_key_columns()) {
     auto prefixed_range_components = VERIFY_RESULT(docdb::InitKeyColumnPrimitiveValues(
         range_cols, schema, schema.num_hash_key_columns()));
     QLScanRange scan_range(schema, condition_expr.condition());
@@ -1073,7 +1074,7 @@ CHECKED_STATUS ReviewResponsePagingState(YBPgsqlReadOp* op) {
   const auto partitions = op->table()->GetPartitionsShared();
   const auto idx = FindPartitionStartIndex(*partitions, current_next_partition_key);
   SCHECK_GT(
-      idx, 0,
+      idx, 0U,
       IllegalState, "Paging state for backward scan cannot point to first partition");
   SCHECK_EQ(
       (*partitions)[idx], current_next_partition_key,

@@ -137,9 +137,9 @@ enum PRIVATE_ThrottleMsg {THROTTLE_MSG};
 #define YB_SOME_KIND_OF_LOG_FIRST_N(severity, n, what_to_do) \
   static uint64_t LOG_OCCURRENCES = 0; \
   ANNOTATE_BENIGN_RACE(&LOG_OCCURRENCES, "Logging the first N is approximate"); \
-  if (LOG_OCCURRENCES++ < n) \
+  if (LOG_OCCURRENCES++ < (n)) \
     google::LogMessage( \
-      __FILE__, __LINE__, google::GLOG_ ## severity, LOG_OCCURRENCES, \
+      __FILE__, __LINE__, google::GLOG_ ## severity, static_cast<int>(LOG_OCCURRENCES), \
       &what_to_do).stream()
 
 // The direct user-facing macros.
@@ -199,6 +199,9 @@ void InitGoogleLoggingSafe(const char* arg);
 //
 // These properties make it attractive for us in libraries.
 void InitGoogleLoggingSafeBasic(const char* arg);
+
+// Like InitGoogleLoggingSafeBasic() but nothing will be written to stderr.
+void InitGoogleLoggingSafeBasicSuppressNonNativePostgresLogs(const char* arg);
 
 // Check if Google Logging has been initialized. Can be used e.g. to determine whether to print
 // something to stderr or log it. The implementation takes the logging mutex, so should not be used

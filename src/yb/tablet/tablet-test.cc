@@ -69,10 +69,10 @@ namespace tablet {
 DEFINE_int32(testiterator_num_inserts, 1000,
              "Number of rows inserted in TestRowIterator/TestInsert");
 
-static_assert(to_underlying(TableType::YQL_TABLE_TYPE) ==
+static_assert(static_cast<int>(to_underlying(TableType::YQL_TABLE_TYPE)) ==
                   to_underlying(client::YBTableType::YQL_TABLE_TYPE),
               "Numeric code for YQL_TABLE_TYPE table type must be consistent");
-static_assert(to_underlying(TableType::REDIS_TABLE_TYPE) ==
+static_assert(static_cast<int>(to_underlying(TableType::REDIS_TABLE_TYPE)) ==
                   to_underlying(client::YBTableType::REDIS_TABLE_TYPE),
               "Numeric code for REDIS_TABLE_TYPE table type must be consistent");
 
@@ -118,7 +118,7 @@ bool TestSetupExpectsNulls<NullableValueTestSetup>(int32_t key_idx) {
 
 // Test iterating over a tablet after updates to many of the existing rows.
 TYPED_TEST(TestTablet, TestRowIteratorComplex) {
-  uint64_t max_rows = this->ClampRowCount(FLAGS_testiterator_num_inserts);
+  int32_t max_rows = this->ClampRowCount(FLAGS_testiterator_num_inserts);
 
   // Put a row in (insert and flush).
   LocalTabletWriter writer(this->tablet().get());

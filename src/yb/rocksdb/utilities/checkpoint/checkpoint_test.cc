@@ -37,12 +37,13 @@
 #include "yb/rocksdb/utilities/checkpoint.h"
 #include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/testharness.h"
+#include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/util/xfunc.h"
 
 #include "yb/util/test_util.h"
 
 namespace rocksdb {
-class DBTest : public testing::Test {
+class DBTest : public RocksDBTest {
  protected:
   // Sequence of option configurations to try
   enum OptionConfig {

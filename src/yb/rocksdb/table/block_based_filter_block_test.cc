@@ -32,6 +32,8 @@
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/env.h"
 
+#include "yb/rocksdb/util/testutil.h"
+
 namespace rocksdb {
 
 // For testing: emit an array with one hash value per key
@@ -61,7 +63,7 @@ class TestHashFilter : public FilterPolicy {
   virtual FilterType GetFilterType() const override { return kBlockBasedFilter; }
 };
 
-class FilterBlockTest : public testing::Test {
+class FilterBlockTest : public RocksDBTest {
  public:
   TestHashFilter policy_;
   BlockBasedTableOptions table_options_;
@@ -154,7 +156,7 @@ TEST_F(FilterBlockTest, MultiChunk) {
 
 // Test for block based filter block
 // use new interface in FilterPolicy to create filter builder/reader
-class BlockBasedFilterBlockTest : public testing::Test {
+class BlockBasedFilterBlockTest : public RocksDBTest {
  public:
   BlockBasedTableOptions table_options_;
 

@@ -61,4 +61,5 @@ def get_llvm_url(compiler_type: str) -> Optional[str]:
         raise ValueError("Ambiguous LLVM URLs: %s" % candidate_urls)
     if not candidate_urls:
         return None
-    return candidate_urls[0]
+    candidate_url = candidate_urls[0]
+    return candidate_url

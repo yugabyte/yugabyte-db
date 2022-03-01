@@ -15,6 +15,7 @@
 
 #include <mutex>
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/catalog_manager-internal.h"
@@ -704,18 +705,21 @@ void PermissionsManager::BuildResourcePermissionsUnlocked() {
             resource.canonical_resource() != kRolesRoleResource) {
           auto* resource_permissions = role_permissions->add_resource_permissions();
           resource_permissions->set_canonical_resource(resource.canonical_resource());
-          resource_permissions->set_permissions(resource_permissions_bitset.to_ullong());
+          resource_permissions->set_permissions(
+              narrow_cast<uint32_t>(resource_permissions_bitset.to_ullong()));
           recursive_granted_permissions_[role_name][resource.canonical_resource()] =
               resource_permissions_bitset.to_ullong();
         }
       }
 
-      role_permissions->set_all_keyspaces_permissions(all_keyspaces_permissions_bitset.to_ullong());
+      role_permissions->set_all_keyspaces_permissions(
+          narrow_cast<uint32_t>(all_keyspaces_permissions_bitset.to_ullong()));
       VLOG(2) << "Setting all_keyspaces_permissions to "
               << role_permissions->all_keyspaces_permissions()
               << " for role " << role_name;
 
-      role_permissions->set_all_roles_permissions(all_roles_permissions_bitset.to_ullong());
+      role_permissions->set_all_roles_permissions(
+          narrow_cast<uint32_t>(all_roles_permissions_bitset.to_ullong()));
       VLOG(2) << "Setting all_roles_permissions to "
               << role_permissions->all_roles_permissions()
               << " for role " << role_name;
@@ -730,8 +734,10 @@ void PermissionsManager::BuildResourcePermissionsUnlocked() {
         // Set all the bits to 1.
         superuser_bitset.set();
 
-        role_permissions->set_all_keyspaces_permissions(superuser_bitset.to_ullong());
-        role_permissions->set_all_roles_permissions(superuser_bitset.to_ullong());
+        role_permissions->set_all_keyspaces_permissions(
+            narrow_cast<uint32_t>(superuser_bitset.to_ullong()));
+        role_permissions->set_all_roles_permissions(
+            narrow_cast<uint32_t>(superuser_bitset.to_ullong()));
       }
     }
   }

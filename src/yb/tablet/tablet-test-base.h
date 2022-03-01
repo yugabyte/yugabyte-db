@@ -75,7 +75,7 @@ struct StringKeyTestSetup {
 
   void BuildRowKey(QLWriteRequestPB *req, int64_t key_idx);
 
-  void BuildRow(QLWriteRequestPB *req, int64_t key_idx, int32_t val = 0);
+  void BuildRow(QLWriteRequestPB *req, int32_t key_idx, int32_t val = 0);
 
   static void FormatKey(char *buf, size_t buf_size, int64_t key_idx);
 
@@ -83,7 +83,7 @@ struct StringKeyTestSetup {
 
   // Slices can be arbitrarily large
   // but in practice tests won't overflow a uint64_t
-  static uint64_t GetMaxRows();
+  static uint32_t GetMaxRows();
 };
 
 // Setup for testing composite keys
@@ -96,7 +96,7 @@ struct CompositeKeyTestSetup {
 
   // Slices can be arbitrarily large
   // but in practice tests won't overflow a uint64_t
-  static uint64_t GetMaxRows();
+  static uint32_t GetMaxRows();
 };
 
 // Setup for testing integer keys
@@ -118,7 +118,7 @@ struct IntKeyTestSetup {
     CHECK(false) << "Unsupported type";
   }
 
-  void BuildRow(QLWriteRequestPB* req, int64_t key_idx, int32_t val = 0) {
+  void BuildRow(QLWriteRequestPB* req, int32_t key_idx, int32_t val = 0) {
     BuildRowKey(req, key_idx);
     QLAddInt32ColumnValue(req, kFirstColumnId + 1, key_idx);
     QLAddInt32ColumnValue(req, kFirstColumnId + 2, val);
@@ -129,8 +129,13 @@ struct IntKeyTestSetup {
     return "";
   }
 
-  static uint64_t GetMaxRows() {
-    return std::numeric_limits<typename DataTypeTraits<Type>::cpp_type>::max() - 1;
+  static uint32_t GetMaxRows() {
+    using CppType = typename DataTypeTraits<Type>::cpp_type;
+    uint64_t max = std::numeric_limits<CppType>::max();
+    if (max > std::numeric_limits<uint32_t>::max()) {
+      max = static_cast<CppType>(std::numeric_limits<uint32_t>::max());
+    }
+    return static_cast<uint32_t>(max - 1);
   }
 };
 
@@ -146,7 +151,7 @@ void IntKeyTestSetup<INT16>::BuildRowKey(QLWriteRequestPB *req, int64_t i) {
 
 template<>
 void IntKeyTestSetup<INT32>::BuildRowKey(QLWriteRequestPB *req, int64_t i) {
-  QLAddInt32HashValue(req, i * (i % 2 == 0 ? -1 : 1));
+  QLAddInt32HashValue(req, narrow_cast<int32_t>(i * (i % 2 == 0 ? -1 : 1)));
 }
 
 template<>
@@ -213,7 +218,7 @@ struct NullableValueTestSetup {
                     ColumnSchema("val", INT32, true) }, 1);
   }
 
-  void BuildRowKey(QLWriteRequestPB *req, int64_t i) {
+  void BuildRowKey(QLWriteRequestPB *req, int32_t i) {
     QLAddInt32HashValue(req, i);
   }
 
@@ -223,7 +228,7 @@ struct NullableValueTestSetup {
     CHECK_OK(row->SetInt32(0, *reinterpret_cast<const int32_t*>(src_row.cell_ptr(0))));
   }
 
-  void BuildRow(QLWriteRequestPB *req, int64_t key_idx, int32_t val = 0) {
+  void BuildRow(QLWriteRequestPB *req, int32_t key_idx, int32_t val = 0) {
     BuildRowKey(req, key_idx);
     QLAddInt32ColumnValue(req, kFirstColumnId + 1, key_idx);
 
@@ -248,7 +253,7 @@ struct NullableValueTestSetup {
     return (key_idx & 2) != 0;
   }
 
-  static uint64_t GetMaxRows() {
+  static uint32_t GetMaxRows() {
     return std::numeric_limits<uint32_t>::max() - 1;
   }
 };
@@ -265,26 +270,26 @@ typedef ::testing::Types<
 
 class TabletTestPreBase : public YBTabletTest {
  public:
-  TabletTestPreBase(const Schema& schema, uint64_t max_rows)
+  TabletTestPreBase(const Schema& schema, uint32_t max_rows)
       : YBTabletTest(schema), max_rows_(max_rows), arena_(1_KB, 4_MB) {
   }
 
   // Inserts "count" rows.
-  void InsertTestRows(int64_t first_row,
-                      int64_t count,
+  void InsertTestRows(int32_t first_row,
+                      int32_t count,
                       int32_t val,
                       TimeSeries *ts = nullptr);
 
   // Inserts a single test row within a transaction.
-  CHECKED_STATUS InsertTestRow(LocalTabletWriter* writer, int64_t key_idx, int32_t val);
+  CHECKED_STATUS InsertTestRow(LocalTabletWriter* writer, int32_t key_idx, int32_t val);
 
-  CHECKED_STATUS UpdateTestRow(LocalTabletWriter* writer, int64_t key_idx, int32_t new_val);
+  CHECKED_STATUS UpdateTestRow(LocalTabletWriter* writer, int32_t key_idx, int32_t new_val);
 
-  CHECKED_STATUS UpdateTestRowToNull(LocalTabletWriter* writer, int64_t key_idx);
+  CHECKED_STATUS UpdateTestRowToNull(LocalTabletWriter* writer, int32_t key_idx);
 
-  CHECKED_STATUS DeleteTestRow(LocalTabletWriter* writer, int64_t key_idx);
+  CHECKED_STATUS DeleteTestRow(LocalTabletWriter* writer, int32_t key_idx);
 
-  void VerifyTestRows(int64_t first_row, uint64_t expected_count);
+  void VerifyTestRows(int32_t first_row, int32_t expected_count);
 
   // Iterate through the full table, stringifying the resulting rows
   // into the given vector. This is only useful in tests which insert
@@ -294,13 +299,13 @@ class TabletTestPreBase : public YBTabletTest {
   // Because some types are small we need to
   // make sure that we don't overflow the type on inserts
   // or else we get errors because the key already exists
-  uint64_t ClampRowCount(uint64_t proposal) const;
+  uint32_t ClampRowCount(uint32_t proposal) const;
 
-  virtual void BuildRow(QLWriteRequestPB* row, int64_t key_idx, int32_t value) = 0;
-  virtual void BuildRowKey(QLWriteRequestPB* row, int64_t key_idx) = 0;
+  virtual void BuildRow(QLWriteRequestPB* row, int32_t key_idx, int32_t value) = 0;
+  virtual void BuildRowKey(QLWriteRequestPB* row, int32_t key_idx) = 0;
 
  private:
-  const uint64_t max_rows_;
+  const uint32_t max_rows_;
   Arena arena_;
 };
 
@@ -316,11 +321,11 @@ class TabletTestBase : public TabletTestPreBase {
     ASSERT_EQ(setup_.FormatDebugRow(key_idx, val, false), schema_.DebugRow(row));
   }
 
-  void BuildRow(QLWriteRequestPB* row, int64_t key_idx, int32_t value) override {
+  void BuildRow(QLWriteRequestPB* row, int32_t key_idx, int32_t value) override {
     setup_.BuildRow(row, key_idx, value);
   }
 
-  void BuildRowKey(QLWriteRequestPB* row, int64_t key_idx) override {
+  void BuildRowKey(QLWriteRequestPB* row, int32_t key_idx) override {
     setup_.BuildRowKey(row, key_idx);
   }
 

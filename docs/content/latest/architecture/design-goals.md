@@ -35,10 +35,12 @@ YugabyteDB supports single-row linearizable writes. Linearizability is one of th
 
 ### Multi-row ACID transactions
 
-YugabyteDB supports multi-row transactions with two isolation levels: `Serializable` isolation, and `Snapshot Isolation` (also called "repeatable read").
+YugabyteDB supports multi-row transactions with three isolation levels: `Serializable`, `Snapshot` (same as "repeatable read") and `Read Committed` isolation.
 
-- The [YSQL](../../api/ysql/) API supports both `Serializable` and `Snapshot Isolation` (default) using the PostgreSQL isolation level syntax of `SERIALIZABLE` and `REPEATABLE READ` respectively. 
+- The [YSQL](../../api/ysql/) API supports `Serializable`, `Snapshot` (default<sup>$</sup>) and `Read Committed` Isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE`, `REPEATABLE READ` and `READ COMMITTED` respectively.
 - The [YCQL](../../api/ycql/dml_transaction/) API supports only `Snapshot Isolation` (default) using the `BEGIN TRANSACTION` syntax.
+
+<sup>$</sup> - `READ COMMITTED` is the default isolation level in PostgreSQL and YSQL. If `yb_enable_read_committed_isolation=true`, `READ COMMITTED` is mapped to Read Committed of YugabyteDB's transactional layer (i.e., a statement will see all rows that are committed before it begins). But, by default `yb_enable_read_committed_isolation=false` and in this case Read Committed of YugabyteDB's transactional layer maps to Snapshot Isolation. Essentially this boils down to the fact that Snapshot Isolation is the default in YSQL.
 
 {{< tip title="YSQL vs PostgreSQL isolation levels" >}}
 
@@ -73,7 +75,7 @@ YugabyteDB does not reinvent data client APIs. It is wire-compatible with existi
   - Joins (inner join, outer join, full outer join, cross join, natural join)
   - Constraints (primary key, foreign key, unique, not null, check)
   - Secondary indexes (including multi-column and covering columns)
-  - Distributed transactions (Serializable and Snapshot Isolation)
+  - Distributed transactions (Serializable, Snapshot, and Read Committed Isolation)
   - Views
   - Stored procedures
   - Triggers

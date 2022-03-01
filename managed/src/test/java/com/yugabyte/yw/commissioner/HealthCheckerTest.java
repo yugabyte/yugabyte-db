@@ -36,7 +36,7 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.metrics.MetricService;
-import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
+import com.yugabyte.yw.forms.AlertingData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AccessKey;
@@ -50,7 +50,6 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
-import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
@@ -636,9 +635,6 @@ public class HealthCheckerTest extends FakeDBApplication {
                 .targetUuid(u.getUniverseUUID())
                 .build(),
             0.0);
-    assertEquals(
-        "Error sending Health check email: TestException",
-        hcNotificationMetric.getLabelValue(KnownAlertLabels.ERROR_MESSAGE));
   }
 
   @Test
@@ -679,12 +675,12 @@ public class HealthCheckerTest extends FakeDBApplication {
     setupAlertingData(YB_ALERT_TEST_EMAIL, false, false);
     mockGoodHealthResponse();
 
-    metricService.setStatusMetric(
-        buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_STATUS, u), "Some error");
-    metricService.setStatusMetric(
-        buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_NOTIFICATION_STATUS, u), "Some error");
-    metricService.setStatusMetric(
-        buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, u), "Some error");
+    metricService.setFailureStatusMetric(
+        buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_STATUS, u));
+    metricService.setFailureStatusMetric(
+        buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_NOTIFICATION_STATUS, u));
+    metricService.setFailureStatusMetric(
+        buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, u));
 
     healthChecker.checkSingleUniverse(
         new HealthChecker.CheckSingleUniverseParams(
@@ -746,10 +742,6 @@ public class HealthCheckerTest extends FakeDBApplication {
                 .targetUuid(u.getUniverseUUID())
                 .build(),
             0.0);
-
-    assertEquals(
-        metric.getLabelValue(KnownAlertLabels.ERROR_MESSAGE),
-        "Can't run health check for the universe due to unprovisioned node test.");
   }
 
   @Test
@@ -779,10 +771,6 @@ public class HealthCheckerTest extends FakeDBApplication {
                 .targetUuid(u.getUniverseUUID())
                 .build(),
             0.0);
-
-    assertEquals(
-        metric.getLabelValue(KnownAlertLabels.ERROR_MESSAGE),
-        String.format("Can't run health check for the universe due to unprovisioned node."));
   }
 
   @Test

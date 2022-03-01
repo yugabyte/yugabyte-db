@@ -35,6 +35,8 @@ public enum TaskType {
 
   BackupUniverse("BackupUniverse"),
 
+  RestoreBackup("RestoreBackup"),
+
   MultiTableBackup("MultiTableBackup"),
 
   CreateBackup("CreateBackup"),
@@ -155,7 +157,11 @@ public enum TaskType {
 
   DeleteBackup("subtasks.DeleteBackup"),
 
+  DeleteBackupYb("subtasks.DeleteBackupYb"),
+
   DeleteCustomerConfig("DeleteCustomerConfig"),
+
+  DeleteCustomerStorageConfig("DeleteCustomerStorageConfig"),
 
   UpdateNodeProcess("subtasks.nodes.UpdateNodeProcess"),
 
@@ -239,7 +245,11 @@ public enum TaskType {
 
   BackupUniverseKeys("subtasks.BackupUniverseKeys"),
 
+  RestoreBackupYb("subtasks.RestoreBackupYb"),
+
   RestoreUniverseKeys("subtasks.RestoreUniverseKeys"),
+
+  RestoreUniverseKeysYb("subtasks.RestoreUniverseKeysYb"),
 
   WaitForLeadersOnPreferredOnly("subtasks.WaitForLeadersOnPreferredOnly"),
 
@@ -284,7 +294,15 @@ public enum TaskType {
 
   WaitForTServerHBs("subtasks.check.WaitForTServerHBs"),
 
-  CreatePrometheusSwamperConfig("subtasks.CreatePrometheusSwamperConfig");
+  CreatePrometheusSwamperConfig("subtasks.CreatePrometheusSwamperConfig"),
+
+  PreflightNodeCheck("subtasks.PreflightNodeCheck"),
+
+  RunYsqlUpgrade("subtasks.RunYsqlUpgrade"),
+
+  ResizeNode("upgrade.ResizeNode"),
+
+  UpdateMountedDisks("subtasks.UpdateMountedDisks");
 
   private String relativeClassPath;
 

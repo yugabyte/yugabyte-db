@@ -257,7 +257,7 @@ TEST_F(PgWrapperTest, YB_DISABLE_TEST_IN_TSAN(InsertSelect)) {
   ASSERT_NO_FATALS(CreateTable("CREATE TABLE mytbl (k INT, v TEXT)"));
 
   ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (1, 'abc')"));
-  for (size_t i = 0; i != RegularBuildVsSanitizers(7, 1); ++i) {
+  for (size_t i = 0; i != RegularBuildVsSanitizers(7U, 1U); ++i) {
      ASSERT_NO_FATALS(InsertRows(
          "INSERT INTO mytbl SELECT * FROM mytbl", 1 << i /* expected_rows */));
   }

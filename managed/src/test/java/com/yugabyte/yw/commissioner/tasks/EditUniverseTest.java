@@ -76,6 +76,40 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForTServerHeartBeats,
           TaskType.UniverseUpdateSucceeded);
 
+  private static final List<TaskType> UNIVERSE_EXPAND_TASK_SEQUENCE_ON_PREM =
+      ImmutableList.of(
+          TaskType.PreflightNodeCheck,
+          TaskType.SetNodeStatus, // ToBeAdded to Adding
+          TaskType.AnsibleCreateServer,
+          TaskType.AnsibleUpdateNodeInfo,
+          TaskType.AnsibleSetupServer,
+          TaskType.AnsibleConfigureServers,
+          TaskType.AnsibleConfigureServers, // GFlags
+          TaskType.AnsibleConfigureServers, // GFlags
+          TaskType.SetNodeStatus,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.WaitForServer,
+          TaskType.ModifyBlackList,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.WaitForServer,
+          TaskType.SetNodeState,
+          TaskType.ModifyBlackList,
+          TaskType.UpdatePlacementInfo,
+          TaskType.SwamperTargetsFileUpdate,
+          TaskType.WaitForLoadBalance,
+          TaskType.ChangeMasterConfig, // Add
+          TaskType.ChangeMasterConfig, // Remove
+          TaskType.AnsibleClusterServerCtl, // Stop master
+          TaskType.WaitForMasterLeader,
+          TaskType.UpdateNodeProcess,
+          TaskType.AnsibleConfigureServers, // Tservers
+          TaskType.SetFlagInMemory,
+          TaskType.AnsibleConfigureServers, // Masters
+          TaskType.SetFlagInMemory,
+          TaskType.ModifyBlackList,
+          TaskType.WaitForTServerHeartBeats,
+          TaskType.UniverseUpdateSucceeded);
+
   private void assertTaskSequence(
       List<TaskType> sequence, Map<Integer, List<TaskInfo>> subTasksByPosition) {
     int position = 0;
@@ -157,7 +191,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertTaskSequence(UNIVERSE_EXPAND_TASK_SEQUENCE, subTasksByPosition);
+    assertTaskSequence(UNIVERSE_EXPAND_TASK_SEQUENCE_ON_PREM, subTasksByPosition);
     universe = Universe.getOrBadRequest(universe.universeUUID);
     assertEquals(5, universe.getUniverseDetails().nodeDetailsSet.size());
   }

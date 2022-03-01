@@ -22,6 +22,8 @@
 #include <boost/range/iterator_range_core.hpp>
 #include <glog/logging.h>
 
+#include "yb/gutil/casts.h"
+
 #include "yb/master/master_fwd.h"
 #include "yb/master/catalog_entity_info.pb.h"
 
@@ -88,7 +90,7 @@ class StateWithTablets {
 
   template <class PB>
   void TabletsToPB(google::protobuf::RepeatedPtrField<PB>* out) {
-    out->Reserve(tablets_.size());
+    out->Reserve(narrow_cast<int>(tablets_.size()));
     for (const auto& tablet : tablets_) {
       auto* tablet_state = out->Add();
       tablet_state->set_id(tablet.id);

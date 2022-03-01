@@ -10,13 +10,14 @@ dependencies:
   - role: get_prometheus_user_group
     become: yes
     become_method: sudo
+    tags: yb-prebuilt-ami
 
   - role: ansible-prometheus
     become: yes
     become_method: sudo
     prometheus_go_version: 1.7
     prometheus_use_service: true
-    prometheus_node_exporter_version: 1.2.2
+    prometheus_node_exporter_version: 1.3.1
     prometheus_node_exporter_opts: "--web.listen-address=:{{ node_exporter_port }} \
                                     --collector.textfile.directory=/tmp/yugabyte/metrics"
     prometheus_node_exporter_use_systemd: true
@@ -25,3 +26,4 @@ dependencies:
     prometheus_user: "{{ node_exporter_user }}"
     prometheus_group: "{{ node_exporter_group }}"
     when: install_node_exporter is not defined or install_node_exporter|bool
+    tags: yb-prebuilt-ami

@@ -24,9 +24,11 @@
 #include <gtest/gtest.h>
 #include "yb/rocksdb/env.h"
 
+#include "yb/rocksdb/util/testutil.h"
+
 namespace rocksdb {
 
-class EventLoggerTest : public testing::Test {};
+class EventLoggerTest : public RocksDBTest {};
 
 class StringLogger : public Logger {
  public:

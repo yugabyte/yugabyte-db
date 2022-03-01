@@ -61,6 +61,10 @@ using base::SpinLockHolder;
 using strings::SubstituteAndAppend;
 using std::string;
 
+// This is used to avoid generating trace events during global initialization. If we allow that to
+// happen, it may lead to segfaults (https://github.com/yugabyte/yugabyte-db/issues/11033).
+std::atomic<bool> trace_events_enabled{false};
+
 __thread TraceLog::PerThreadInfo* TraceLog::thread_local_info_ = nullptr;
 
 namespace {
@@ -369,7 +373,7 @@ class TraceBufferVector : public TraceBuffer {
 
 template <typename T>
 void InitializeMetadataEvent(TraceEvent* trace_event,
-                             int thread_id,
+                             int64_t thread_id,
                              const char* metadata_name, const char* arg_name,
                              const T& value) {
   if (!trace_event)
@@ -548,7 +552,7 @@ void TraceEvent::CopyFrom(const TraceEvent& other) {
 }
 
 void TraceEvent::Initialize(
-    int thread_id,
+    int64_t thread_id,
     MicrosecondsInt64 timestamp,
     MicrosecondsInt64 thread_timestamp,
     char phase,
@@ -768,7 +772,7 @@ void TraceEvent::AppendAsJSON(std::string* out) const {
   // Category group checked at category creation time.
   DCHECK(!strchr(name_, '"'));
   StringAppendF(out,
-      "{\"cat\":\"%s\",\"pid\":%i,\"tid\":%i,\"ts\":%" PRId64 ","
+      "{\"cat\":\"%s\",\"pid\":%i,\"tid\":%" PRId64 ",\"ts\":%" PRId64 ","
       "\"ph\":\"%c\",\"name\":\"%s\",\"args\":{",
       TraceLog::GetCategoryGroupName(category_group_enabled_),
       process_id,
@@ -1193,7 +1197,7 @@ const char* TraceLog::GetCategoryGroupName(
   return g_category_groups[category_index];
 }
 
-void TraceLog::UpdateCategoryGroupEnabledFlag(int category_index) {
+void TraceLog::UpdateCategoryGroupEnabledFlag(AtomicWord category_index) {
   unsigned char enabled_flag = 0;
   const char* category_group = g_category_groups[category_index];
   if (mode_ == RECORDING_MODE &&
@@ -1209,8 +1213,8 @@ void TraceLog::UpdateCategoryGroupEnabledFlag(int category_index) {
 }
 
 void TraceLog::UpdateCategoryGroupEnabledFlags() {
-  int category_index = base::subtle::NoBarrier_Load(&g_category_index);
-  for (int i = 0; i < category_index; i++)
+  auto category_index = base::subtle::NoBarrier_Load(&g_category_index);
+  for (AtomicWord i = 0; i < category_index; i++)
     UpdateCategoryGroupEnabledFlag(i);
 }
 
@@ -1249,10 +1253,10 @@ const unsigned char* TraceLog::GetCategoryGroupEnabledInternal(
   DCHECK(!strchr(category_group, '"')) <<
       "Category groups may not contain double quote";
   // The g_category_groups is append only, avoid using a lock for the fast path.
-  int current_category_index = base::subtle::Acquire_Load(&g_category_index);
+  auto current_category_index = base::subtle::Acquire_Load(&g_category_index);
 
   // Search for pre-existing category group.
-  for (int i = 0; i < current_category_index; ++i) {
+  for (AtomicWord i = 0; i < current_category_index; ++i) {
     if (strcmp(g_category_groups[i], category_group) == 0) {
       return &g_category_group_enabled[i];
     }
@@ -1264,8 +1268,8 @@ const unsigned char* TraceLog::GetCategoryGroupEnabledInternal(
   // Only hold to lock when actually appending a new category, and
   // check the categories groups again.
   SpinLockHolder lock(&lock_);
-  int category_index = base::subtle::Acquire_Load(&g_category_index);
-  for (int i = 0; i < category_index; ++i) {
+  auto category_index = base::subtle::Acquire_Load(&g_category_index);
+  for (AtomicWord i = 0; i < category_index; ++i) {
     if (strcmp(g_category_groups[i], category_group) == 0) {
       return &g_category_group_enabled[i];
     }
@@ -1299,8 +1303,8 @@ const unsigned char* TraceLog::GetCategoryGroupEnabledInternal(
 void TraceLog::GetKnownCategoryGroups(
     std::vector<std::string>* category_groups) {
   SpinLockHolder lock(&lock_);
-  int category_index = base::subtle::NoBarrier_Load(&g_category_index);
-  for (int i = g_num_builtin_categories; i < category_index; i++)
+  auto category_index = base::subtle::NoBarrier_Load(&g_category_index);
+  for (AtomicWord i = g_num_builtin_categories; i < category_index; i++)
     category_groups->push_back(g_category_groups[i]);
 }
 
@@ -1709,7 +1713,7 @@ TraceEventHandle TraceLog::AddTraceEvent(
     const uint64_t* arg_values,
     const scoped_refptr<ConvertableToTraceFormat>* convertable_values,
     unsigned char flags) {
-  int thread_id = static_cast<int>(yb::Thread::UniqueThreadId());
+  auto thread_id = Thread::UniqueThreadId();
   MicrosecondsInt64 now = GetMonoTimeMicros();
   return AddTraceEventWithThreadIdAndTimestamp(phase, category_group_enabled,
                                                name, id, thread_id, now,
@@ -1769,7 +1773,7 @@ TraceEventHandle TraceLog::AddTraceEventWithThreadIdAndTimestamp(
     const unsigned char* category_group_enabled,
     const char* name,
     uint64_t id,
-    int thread_id,
+    int64_t thread_id,
     const MicrosecondsInt64& timestamp,
     int num_args,
     const char** arg_names,
@@ -1829,7 +1833,7 @@ TraceEventHandle TraceLog::AddTraceEventWithThreadIdAndTimestamp(
 
   // Check and update the current thread name only if the event is for the
   // current thread to avoid locks in most cases.
-  if (thread_id == static_cast<int>(Thread::UniqueThreadId())) {
+  if (thread_id == Thread::UniqueThreadId()) {
     Thread* yb_thr = Thread::current_thread();
     if (yb_thr) {
       const char* new_name = yb_thr->name().c_str();
@@ -1933,8 +1937,7 @@ std::string TraceLog::EventToConsoleMessage(unsigned char phase,
   DCHECK(phase != TRACE_EVENT_PHASE_COMPLETE);
 
   MicrosecondsInt64 duration = 0;
-  int thread_id = trace_event ?
-      trace_event->thread_id() : Thread::UniqueThreadId();
+  auto thread_id = trace_event ? trace_event->thread_id() : Thread::UniqueThreadId();
   if (phase == TRACE_EVENT_PHASE_END) {
     duration = timestamp - thread_event_start_times_[thread_id].top();
     thread_event_start_times_[thread_id].pop();
@@ -2401,6 +2404,10 @@ void CategoryFilter::Clear() {
 const CategoryFilter::StringList&
     CategoryFilter::GetSyntheticDelayValues() const {
   return delays_;
+}
+
+void EnableTraceEvents() {
+  trace_events_enabled.store(true);
 }
 
 }  // namespace debug

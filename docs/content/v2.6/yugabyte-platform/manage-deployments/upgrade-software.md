@@ -12,14 +12,23 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The YugabyteDB release that is powering a universe can be upgraded to get the new features and fixes in a release.
+The YugabyteDB release that is powering a universe can be upgraded to obtain new features and bug fixes.
 
 A rolling upgrade can be performed on a live universe deployment by following these steps:
 
-1. Go to the **Universe Detail** page.
-2. From the **More** drop-down list, select **Upgrade Software**.
-3. In the confirmation dialog, select the new YugabyteDB version from the drop-down list. The Yugabyte Platform console will upgrade the universe in a rolling manner.
+1. Open your universe.
 
-![Upgrade Universe Dropdown](/images/ee/upgrade-univ-1.png)
+2. Click **More > Upgrade Software**, as per the following illustration:<br><br>
 
-![Upgrade Universe Confirmation](/images/ee/upgrade-univ-2.png)
+   ![Upgrade Universe Dropdown](/images/ee/upgrade-univ-1.png)<br><br>
+
+3. In the confirmation dialog, select the new YugabyteDB version to start the upgrade of the universe in a rolling manner, as per the following illustration:<br><br>
+
+   ![Upgrade Universe Confirmation](/images/ee/upgrade-univ-2.png)<br><br><br>
+
+{{< note title="Note" >}}
+
+If you have upgraded the YugabyteDB software to version 2.8.0.0 or later, you need to manually run the `upgrade_sql` command on your universes.
+
+{{< /note >}}  
+

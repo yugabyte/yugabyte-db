@@ -247,7 +247,7 @@ class CQLMessage {
 
    private:
     CHECKED_STATUS GetBindVariableValue(const std::string& name,
-                                        const int64_t pos,
+                                        size_t pos,
                                         const Value** value) const;
   };
 

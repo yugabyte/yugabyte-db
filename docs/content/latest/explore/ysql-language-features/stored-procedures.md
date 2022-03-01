@@ -2,7 +2,6 @@
 title: Stored Procedures
 linkTitle: Stored Procedures
 description: Stored Procedures in YSQL
-headcontent: Stored Procedures in YSQL
 image: /images/section_icons/index/explore.png
 menu:
   latest:

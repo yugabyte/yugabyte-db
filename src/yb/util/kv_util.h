@@ -81,7 +81,7 @@ void AppendDoubleToKey(double val, Buffer* dest, bool descending = false) {
   dest->append(buf, sizeof(buf));
 }
 
-inline int64_t DecodeInt32FromKey(const rocksdb::Slice& slice) {
+inline int32_t DecodeInt32FromKey(const rocksdb::Slice& slice) {
   uint32_t v = BigEndian::Load32(slice.data());
   return v ^ kInt32SignBitFlipMask;
 }
