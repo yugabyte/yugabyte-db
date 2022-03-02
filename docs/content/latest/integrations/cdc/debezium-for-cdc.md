@@ -16,11 +16,17 @@ Debezium is an open-source distributed platform used to capture the changes in a
 
 ## Get the Debezium connector for YugabyteDB
 
+### Pull the connector from Docker
+
 Using Docker, get the connector from Quay:
 
 ```sh
 docker pull quay.io/yugabyte/debezium-connector:1.1-beta
 ```
+
+### Build the Debezium connector on your own
+
+In case you want to build the connector image yourself, follow the steps listed on the [README for debezium-connector-yugabytedb](https://github.com/yugabyte/debezium/blob/final-connector-ybdb/debezium-connector-yugabytedb2/README.md).
 
 ## Run Debezium locally
 
