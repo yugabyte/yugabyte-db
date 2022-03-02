@@ -393,8 +393,8 @@ static void process_delete_list(CustomScanState *node)
         original_entity_value = extract_entity(node, scanTupleSlot,
                                                entity_position);
 
-        id = get_agtype_value_object_value(original_entity_value, "id");
-        label = get_agtype_value_object_value(original_entity_value, "label");
+        id = GET_AGTYPE_VALUE_OBJECT_VALUE(original_entity_value, "id");
+        label = GET_AGTYPE_VALUE_OBJECT_VALUE(original_entity_value, "label");
         label_name = pnstrdup(label->val.string.val, label->val.string.len);
 
         resultRelInfo = create_entity_result_rel_info(estate, css->delete_data->graph_name, label_name);

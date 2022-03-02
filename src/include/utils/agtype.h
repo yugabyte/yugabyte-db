@@ -490,8 +490,24 @@ Datum get_numeric_datum_from_agtype_value(agtype_value *agtv);
 bool is_numeric_result(agtype_value *lhs, agtype_value *rhs);
 
 /* agtype.c support functions */
+/*
+ * This is a shortcut for when using string constants to call
+ * get_agtype_value_object_value.
+ *
+ * Note: sizeof() works here because we use string constants. Normally,
+ * however, you should not use sizeof() in place of strlen().
+ *
+ * Note: We also subtract 1 from the value because sizeof() a string constant
+ * includes the null terminator whereas strlen() does not and neither does
+ * the string representation in agtype_value.
+ */
+#define GET_AGTYPE_VALUE_OBJECT_VALUE(agtv_object, search_key) \
+        get_agtype_value_object_value(agtv_object, search_key, \
+                                      sizeof(search_key) - 1)
+
 agtype_value *get_agtype_value_object_value(const agtype_value *agtv_object,
-                                            char *key);
+                                            char *search_key,
+                                            int search_key_length);
 char *agtype_to_cstring(StringInfo out, agtype_container *in,
                         int estimated_len);
 char *agtype_to_cstring_indent(StringInfo out, agtype_container *in,
@@ -505,10 +521,12 @@ void uniqueify_agtype_object(agtype_value *object);
 char *agtype_value_type_to_string(enum agtype_value_type type);
 bool is_decimal_needed(char *numstr);
 int compare_agtype_scalar_values(agtype_value *a, agtype_value *b);
-agtype_value *alter_property_value(agtype_value *properties, char *var_name, agtype *new_v, bool remove_property);
+agtype_value *alter_property_value(agtype_value *properties, char *var_name,
+                                   agtype *new_v, bool remove_property);
 
-agtype *get_one_agtype_from_variadic_args(FunctionCallInfo fcinfo, int variadic_offset, int expected_nargs);
-
+agtype *get_one_agtype_from_variadic_args(FunctionCallInfo fcinfo,
+                                          int variadic_offset,
+                                          int expected_nargs);
 Datum make_vertex(Datum id, Datum label, Datum properties);
 Datum make_edge(Datum id, Datum startid, Datum endid, Datum label,
                    Datum properties);
@@ -526,8 +544,6 @@ agtype_value *string_to_agtype_value(char *s);
 agtype_value *integer_to_agtype_value(int64 int_value);
 void add_agtype(Datum val, bool is_null, agtype_in_state *result, Oid val_type,
                 bool key_scalar);
-agtype_value *get_agtype_key(agtype_value *agtv, char *search_key,
-                             int search_key_len);
 // OID of agtype and _agtype
 #define AGTYPEOID \
     (GetSysCacheOid2(TYPENAMENSP, CStringGetDatum("agtype"), \

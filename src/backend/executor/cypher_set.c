@@ -187,7 +187,7 @@ static bool check_path(agtype_value *path, graphid updated_id)
     {
         agtype_value *elem = &path->val.array.elems[i];
 
-        agtype_value *id = get_agtype_value_object_value(elem, "id");
+        agtype_value *id = GET_AGTYPE_VALUE_OBJECT_VALUE(elem, "id");
 
         if (updated_id == id->val.int_value)
             return true;
@@ -227,7 +227,7 @@ static agtype_value *replace_entity_in_path(agtype_value *path,
             ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
                             errmsg("unsupported agtype found in a path")));
 
-        id = get_agtype_value_object_value(elem, "id");
+        id = GET_AGTYPE_VALUE_OBJECT_VALUE(elem, "id");
 
         if (updated_id == id->val.int_value)
             parsed_agtype_value = push_agtype_value(&parse_state, WAGT_ELEM,
@@ -359,12 +359,12 @@ static void process_update_list(CustomScanState *node)
                             clause_name)));
 
         /* get the id and label for later */
-        id = get_agtype_value_object_value(original_entity_value, "id");
-        label = get_agtype_value_object_value(original_entity_value, "label");
+        id = GET_AGTYPE_VALUE_OBJECT_VALUE(original_entity_value, "id");
+        label = GET_AGTYPE_VALUE_OBJECT_VALUE(original_entity_value, "label");
         label_name = pnstrdup(label->val.string.val, label->val.string.len);
 
         /* get the properties we need to update */
-        original_properties = get_agtype_value_object_value(original_entity_value,
+        original_properties = GET_AGTYPE_VALUE_OBJECT_VALUE(original_entity_value,
                                                             "properties");
 
         /*
@@ -417,8 +417,8 @@ static void process_update_list(CustomScanState *node)
         }
         else if (original_entity_value->type == AGTV_EDGE)
         {
-            agtype_value *startid = get_agtype_value_object_value(original_entity_value, "start_id");
-            agtype_value *endid = get_agtype_value_object_value(original_entity_value, "end_id");
+            agtype_value *startid = GET_AGTYPE_VALUE_OBJECT_VALUE(original_entity_value, "start_id");
+            agtype_value *endid = GET_AGTYPE_VALUE_OBJECT_VALUE(original_entity_value, "end_id");
 
             new_entity = make_edge(GRAPHID_GET_DATUM(id->val.int_value),
                                    GRAPHID_GET_DATUM(startid->val.int_value),

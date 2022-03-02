@@ -323,9 +323,9 @@ static bool is_an_edge_match(VLE_local_context *vlelctx, edge_entry *ee)
             agtype_value *condition_value = NULL;
 
             /* get the condition_value for the specified edge_property_key */
-            condition_value = get_agtype_key(agtv_edge_conditions,
-                                             edge_property_key.val.string.val,
-                                             edge_property_key.val.string.len);
+            condition_value = get_agtype_value_object_value(agtv_edge_conditions,
+                                  edge_property_key.val.string.val,
+                                  edge_property_key.val.string.len);
 
             /* if one exists, we have a key match */
             if (condition_value != NULL)
@@ -526,7 +526,7 @@ static VLE_local_context *build_local_vle_context(FunctionCallInfo fcinfo)
                                      AGTV_VERTEX, false);
         if (agtv_temp != NULL && agtv_temp->type == AGTV_VERTEX)
         {
-            agtv_temp = get_agtype_value_object_value(agtv_temp, "id");
+            agtv_temp = GET_AGTYPE_VALUE_OBJECT_VALUE(agtv_temp, "id");
         }
         else if (agtv_temp == NULL || agtv_temp->type != AGTV_INTEGER)
         {
@@ -559,7 +559,7 @@ static VLE_local_context *build_local_vle_context(FunctionCallInfo fcinfo)
                                      AGTV_VERTEX, false);
         if (agtv_temp != NULL && agtv_temp->type == AGTV_VERTEX)
         {
-            agtv_temp = get_agtype_value_object_value(agtv_temp, "id");
+            agtv_temp = GET_AGTYPE_VALUE_OBJECT_VALUE(agtv_temp, "id");
         }
         else if (agtv_temp == NULL || agtv_temp->type != AGTV_INTEGER)
         {
@@ -576,10 +576,10 @@ static VLE_local_context *build_local_vle_context(FunctionCallInfo fcinfo)
                                  AGTV_EDGE, true);
 
     /* get the edge prototype's property conditions */
-    vlelctx->edge_conditions = get_agtype_value_object_value(agtv_temp,
+    vlelctx->edge_conditions = GET_AGTYPE_VALUE_OBJECT_VALUE(agtv_temp,
                                                              "properties");
     /* get the edge prototype's label name */
-    agtv_temp = get_agtype_value_object_value(agtv_temp, "label");
+    agtv_temp = GET_AGTYPE_VALUE_OBJECT_VALUE(agtv_temp, "label");
     if (agtv_temp->type == AGTV_STRING &&
         agtv_temp->val.string.len != 0)
     {

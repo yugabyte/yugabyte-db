@@ -1436,7 +1436,7 @@ void agtype_hash_scalar_value_extended(const agtype_value *scalar_val,
     case AGTV_VERTEX:
     {
         graphid id;
-        agtype_value *id_agt = get_agtype_value_object_value(scalar_val, "id");
+        agtype_value *id_agt = GET_AGTYPE_VALUE_OBJECT_VALUE(scalar_val, "id");
         id = id_agt->val.int_value;
         tmp = DatumGetUInt64(DirectFunctionCall2(
             hashint8extended, Float8GetDatum(id), UInt64GetDatum(seed)));
@@ -1445,7 +1445,7 @@ void agtype_hash_scalar_value_extended(const agtype_value *scalar_val,
     case AGTV_EDGE:
     {
         graphid id;
-        agtype_value *id_agt = get_agtype_value_object_value(scalar_val, "id");
+        agtype_value *id_agt = GET_AGTYPE_VALUE_OBJECT_VALUE(scalar_val, "id");
         id = id_agt->val.int_value;
         tmp = DatumGetUInt64(DirectFunctionCall2(
             hashint8extended, Float8GetDatum(id), UInt64GetDatum(seed)));
@@ -1607,8 +1607,8 @@ int compare_agtype_scalar_values(agtype_value *a, agtype_value *b)
             agtype_value *a_id, *b_id;
             graphid a_graphid, b_graphid;
 
-            a_id = get_agtype_value_object_value(a, "id");
-            b_id = get_agtype_value_object_value(b, "id");
+            a_id = GET_AGTYPE_VALUE_OBJECT_VALUE(a, "id");
+            b_id = GET_AGTYPE_VALUE_OBJECT_VALUE(b, "id");
 
             a_graphid = a_id->val.int_value;
             b_graphid = b_id->val.int_value;

@@ -2776,8 +2776,9 @@ static agtype_value *execute_map_access_operator(agtype *map,
     /* if we were passed an agtype_value OBJECT */
     else if (map_value != NULL && map_value->type == AGTV_OBJECT)
     {
-        map_value = get_agtype_key(map_value, key_value->val.string.val,
-                                   key_value->val.string.len);
+        map_value = get_agtype_value_object_value(map_value,
+                                                  key_value->val.string.val,
+                                                  key_value->val.string.len);
     }
     /* otherwise, we don't know how to process it */
     else
@@ -2861,38 +2862,89 @@ static agtype_value *execute_array_access_operator(agtype *array,
 }
 
 /*
- * Helper function to iterate through all object pairs, looking for a specific
- * key. It will return the key or NULL if not found.
+ * Helper function to do a binary search through an object's key/value pairs,
+ * looking for a specific key. It will return the key or NULL if not found.
  */
-agtype_value *get_agtype_key(agtype_value *agtv, char *search_key,
-                             int search_key_len)
+agtype_value *get_agtype_value_object_value(const agtype_value *agtv_object,
+                                            char *search_key,
+                                            int search_key_length)
 {
-    int i = 0;
+    agtype_value *agtv_key = NULL;
+    int current_key_length = 0;
+    int middle = 0;
+    int num_pairs = 0;
+    int left = 0;
+    int right = 0;
+    int result = 0;
 
-    if (agtv == NULL || search_key == NULL || search_key_len <= 0)
+    if (agtv_object == NULL || search_key == NULL || search_key_length <= 0)
     {
         return NULL;
     }
 
-    /* iterate through all pairs */
-    for (i = 0; i < agtv->val.object.num_pairs; i++)
+    /* get the number of object pairs */
+    num_pairs = agtv_object->val.object.num_pairs;
+
+    /* do a binary search through the pairs */
+    right = num_pairs - 1;
+    middle = num_pairs / 2;
+
+    /* while middle is within the constraints */
+    while (middle >= left && middle <= right)
     {
-        agtype_value *agtv_key = &agtv->val.object.pairs[i].key;
-        agtype_value *agtv_value = &agtv->val.object.pairs[i].value;
+        /* get the current key length */
+        agtv_key = &agtv_object->val.object.pairs[middle].key;
+        current_key_length = agtv_key->val.string.len;
 
-        char *current_key = agtv_key->val.string.val;
-        int current_key_len = agtv_key->val.string.len;
-
-        Assert(agtv_key->type == AGTV_STRING);
-
-        /* check for an id of type integer */
-        if (current_key_len == search_key_len &&
-            pg_strcasecmp(current_key, search_key) == 0)
+        /* if not the same length, divide the search space and continue */
+        if (current_key_length != search_key_length)
         {
-            return agtv_value;
+            /* if we need to search in the lower half */
+            if (search_key_length < current_key_length)
+            {
+                middle -= 1;
+                right = middle;
+                middle = ((middle - left) / 2) + left;
+            }
+            /* else we need to search in the upper half */
+            else
+            {
+                middle += 1;
+                left = middle;
+                middle = ((right - middle) / 2) + left;
+            }
+            continue;
         }
+
+        /* they are the same length so compare the keys */
+        result = strncmp(search_key, agtv_key->val.string.val,
+                         search_key_length);
+
+        /* if they don't match */
+        if (result != 0)
+        {
+            /* if smaller */
+            if (result < 0)
+            {
+                middle -= 1;
+                right = middle;
+                middle = ((middle - left) / 2) + left;
+            }
+            /* if larger */
+            else
+            {
+                middle += 1;
+                left = middle;
+                middle = ((right - middle) / 2) + left;
+            }
+            continue;
+        }
+
+        /* they match */
+        return (&agtv_object->val.object.pairs[middle].value);
     }
 
+    /* they don't match */
     return NULL;
 }
 
@@ -3982,35 +4034,6 @@ Datum agtype_typecast_path(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(path.res));
 }
 
-/* helper function to retrieve a value, given a key, from an agtype_value */
-agtype_value *get_agtype_value_object_value(const agtype_value *agtv_object,
-                                             char *key)
-{
-    int i;
-    int length;
-
-    Assert(agtv_object != NULL);
-    Assert(agtv_object->type != AGTV_OBJECT);
-    Assert(key != NULL);
-
-    length = strlen(key);
-    for (i = 0; i < agtv_object->val.object.num_pairs; i++)
-    {
-        agtype_value *agtv_key = &agtv_object->val.object.pairs[i].key;
-        agtype_value *agtv_value = &agtv_object->val.object.pairs[i].value;
-
-        Assert(agtv_key != NULL);
-        Assert(agtv_key->type == AGTV_STRING);
-
-        if (agtv_key->val.string.len == length &&
-            strncmp(agtv_key->val.string.val, key,
-                    agtv_key->val.string.len)== 0)
-            return agtv_value;
-    }
-
-    return NULL;
-}
-
 PG_FUNCTION_INFO_V1(_property_constraint_check);
 
 Datum _property_constraint_check(PG_FUNCTION_ARGS)
@@ -4060,7 +4083,7 @@ Datum age_id(PG_FUNCTION_ARGS)
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("id() argument must be a vertex, an edge or null")));
 
-    agtv_result = get_agtype_value_object_value(agtv_object, "id");
+    agtv_result = GET_AGTYPE_VALUE_OBJECT_VALUE(agtv_object, "id");
 
     Assert(agtv_result != NULL);
     Assert(agtv_result->type = AGTV_INTEGER);
@@ -4098,7 +4121,7 @@ Datum age_start_id(PG_FUNCTION_ARGS)
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("start_id() argument must be an edge or null")));
 
-    agtv_result = get_agtype_value_object_value(agtv_object, "start_id");
+    agtv_result = GET_AGTYPE_VALUE_OBJECT_VALUE(agtv_object, "start_id");
 
     Assert(agtv_result != NULL);
     Assert(agtv_result->type = AGTV_INTEGER);
@@ -4136,7 +4159,7 @@ Datum age_end_id(PG_FUNCTION_ARGS)
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("end_id() argument must be an edge or null")));
 
-    agtv_result = get_agtype_value_object_value(agtv_object, "end_id");
+    agtv_result = GET_AGTYPE_VALUE_OBJECT_VALUE(agtv_object, "end_id");
 
     Assert(agtv_result != NULL);
     Assert(agtv_result->type = AGTV_INTEGER);
@@ -4356,7 +4379,7 @@ Datum age_startnode(PG_FUNCTION_ARGS)
                         errmsg("startNode() argument must be an edge or null")));
 
     /* get the graphid for start_id */
-    agtv_value = get_agtype_value_object_value(agtv_object, "start_id");
+    agtv_value = GET_AGTYPE_VALUE_OBJECT_VALUE(agtv_object, "start_id");
     /* it must not be null and must be an integer */
     Assert(agtv_value != NULL);
     Assert(agtv_value->type = AGTV_INTEGER);
@@ -4421,7 +4444,7 @@ Datum age_endnode(PG_FUNCTION_ARGS)
                         errmsg("endNode() argument must be an edge or null")));
 
     /* get the graphid for the end_id */
-    agtv_value = get_agtype_value_object_value(agtv_object, "end_id");
+    agtv_value = GET_AGTYPE_VALUE_OBJECT_VALUE(agtv_object, "end_id");
     /* it must not be null and must be an integer */
     Assert(agtv_value != NULL);
     Assert(agtv_value->type = AGTV_INTEGER);
@@ -4537,7 +4560,7 @@ Datum age_properties(PG_FUNCTION_ARGS)
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("properties() argument must be a vertex, an edge or null")));
 
-    agtv_result = get_agtype_value_object_value(agtv_object, "properties");
+    agtv_result = GET_AGTYPE_VALUE_OBJECT_VALUE(agtv_object, "properties");
 
     Assert(agtv_result != NULL);
     Assert(agtv_result->type = AGTV_OBJECT);
@@ -5138,7 +5161,7 @@ Datum age_type(PG_FUNCTION_ARGS)
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("type() argument must be an edge or null")));
 
-    agtv_result = get_agtype_value_object_value(agtv_object, "label");
+    agtv_result = GET_AGTYPE_VALUE_OBJECT_VALUE(agtv_object, "label");
 
     Assert(agtv_result != NULL);
     Assert(agtv_result->type = AGTV_STRING);
@@ -5218,7 +5241,7 @@ Datum age_label(PG_FUNCTION_ARGS)
     }
 
     // extract the label agtype value from the vertex or edge
-    label = get_agtype_value_object_value(agtv_value, "label");
+    label = GET_AGTYPE_VALUE_OBJECT_VALUE(agtv_value, "label");
 
     PG_RETURN_POINTER(agtype_value_to_agtype(label));
 }
@@ -9013,7 +9036,8 @@ Datum age_keys(PG_FUNCTION_ARGS)
         if (agtv_result->type == AGTV_EDGE ||
             agtv_result->type == AGTV_VERTEX)
         {
-            agtv_result = get_agtype_value_object_value(agtv_result, "properties");
+            agtv_result = GET_AGTYPE_VALUE_OBJECT_VALUE(agtv_result,
+                                                        "properties");
 
             Assert(agtv_result != NULL);
             Assert(agtv_result->type = AGTV_OBJECT);
@@ -9158,7 +9182,7 @@ Datum age_labels(PG_FUNCTION_ARGS)
     }
 
     /* get the label from the vertex */
-    agtv_label = get_agtype_value_object_value(agtv_temp, "label");
+    agtv_label = GET_AGTYPE_VALUE_OBJECT_VALUE(agtv_temp, "label");
     /* it cannot be NULL */
     Assert(agtv_label != NULL);
 
