@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: false
 ---
 
-You can create an admin account via `http://<yugabyteplatform-host-private-ip>/register`, replacing *yugabyteplatform-host-private-ip* with the IP address hosting your Yugabyte Platform instance, as per the following example:
+You can create an admin account via `http://<yugabyteplatform-host-ip>/register`, replacing *yugabyteplatform-host-ip* with the IP address hosting your Yugabyte Platform instance, as per the following example:
 
 ```output
 http://10.170.1.192/register
@@ -31,6 +31,6 @@ You proceed with the account creation as follows:
 - Confirm the user agreement.
 - Click **Register**. 
 
-You are now redirected to the login page located at `http://<yugabyteplatform-host-private-ip>/login`. This page allows you to login to Yugabyte Platform using your new credentials.
+You are now redirected to the login page located at `http://<yugabyteplatform-host-ip>/login`. This page allows you to login to Yugabyte Platform using your new credentials.
 
 Once logged in, you may change the information related to your account by clicking **User > User Profile** at the top right.
