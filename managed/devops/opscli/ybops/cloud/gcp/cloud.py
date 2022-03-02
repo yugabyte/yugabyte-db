@@ -121,14 +121,14 @@ class GcpCloud(AbstractCloud):
             return
         self.admin.stop_instance(instance['zone'], instance['name'])
 
-    def start_instance(self, args, ssh_port):
+    def start_instance(self, args, ssh_ports):
         instance = self.get_admin().get_instances(args.zone, args.search_pattern,
                                                   filters="(status = \"TERMINATED\")")
         if not instance:
             logging.error("Host {} does not exist or not stopped".format(args.search_pattern))
             return
         self.admin.start_instance(instance['zone'], instance['name'])
-        self.wait_for_ssh_port(instance['private_ip'], instance['name'], ssh_port)
+        self.wait_for_ssh_ports(instance['private_ip'], instance['name'], ssh_ports)
 
     def delete_instance(self, args, filters=None):
         host_info = self.get_host_info(args, filters=filters)
