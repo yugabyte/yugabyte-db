@@ -120,6 +120,7 @@ public class BackupUtil {
             .storageConfigUUID(backup.storageConfigUUID)
             .isStorageConfigPresent(isStorageConfigPresent)
             .isUniversePresent(isUniversePresent)
+            .totalBackupSizeInBytes(Long.valueOf(backup.getBackupInfo().backupSizeInBytes))
             .backupType(backup.getBackupInfo().backupType)
             .state(backup.state);
     if (backup.getBackupInfo().backupList == null) {
@@ -127,6 +128,7 @@ public class BackupUtil {
           KeyspaceTablesList.builder()
               .keyspace(backup.getBackupInfo().getKeyspace())
               .tablesList(backup.getBackupInfo().getTableNames())
+              .backupSizeInBytes(Long.valueOf(backup.getBackupInfo().backupSizeInBytes))
               .storageLocation(backup.getBackupInfo().storageLocation)
               .build();
       builder.responseList(Stream.of(kTList).collect(Collectors.toSet()));
@@ -141,6 +143,7 @@ public class BackupUtil {
                     return KeyspaceTablesList.builder()
                         .keyspace(b.getKeyspace())
                         .tablesList(b.getTableNames())
+                        .backupSizeInBytes(b.backupSizeInBytes)
                         .storageLocation(b.storageLocation)
                         .build();
                   })

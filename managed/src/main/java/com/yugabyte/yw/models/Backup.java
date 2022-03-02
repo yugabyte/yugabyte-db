@@ -451,10 +451,12 @@ public class Backup extends Model {
       return;
     }
     this.backupInfo.backupList.get(idx).backupSizeInBytes = backupSize;
+    this.save();
   }
 
   public void setTotalBackupSize(long backupSize) {
     this.backupInfo.backupSizeInBytes = backupSize;
+    this.save();
   }
 
   public static List<Backup> getInProgressAndCompleted(UUID customerUUID) {

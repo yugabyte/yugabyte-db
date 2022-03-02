@@ -1475,6 +1475,10 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "totalBackupSizeInBytes" : {
+          "format" : "int64",
+          "type" : "integer"
+        },
         "universeName" : {
           "type" : "string"
         },
@@ -1487,7 +1491,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "backupType", "backupUUID", "createTime", "customerUUID", "expiryTime", "isStorageConfigPresent", "isUniversePresent", "onDemand", "responseList", "scheduleUUID", "sse", "state", "storageConfigUUID", "universeName", "universeUUID", "updateTime" ],
+      "required" : [ "backupType", "backupUUID", "createTime", "customerUUID", "expiryTime", "isStorageConfigPresent", "isUniversePresent", "onDemand", "responseList", "scheduleUUID", "sse", "state", "storageConfigUUID", "totalBackupSizeInBytes", "universeName", "universeUUID", "updateTime" ],
       "type" : "object"
     },
     "BackupStorageInfo" : {
@@ -3354,6 +3358,10 @@
     },
     "KeyspaceTablesList" : {
       "properties" : {
+        "backupSizeInBytes" : {
+          "format" : "int64",
+          "type" : "integer"
+        },
         "keyspace" : {
           "type" : "string"
         },
@@ -3368,7 +3376,7 @@
           "uniqueItems" : true
         }
       },
-      "required" : [ "keyspace", "storageLocation", "tablesList" ],
+      "required" : [ "backupSizeInBytes", "keyspace", "storageLocation", "tablesList" ],
       "type" : "object"
     },
     "LogData" : {

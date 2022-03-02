@@ -28,5 +28,6 @@ public class BackupResp {
   Date createTime;
   Date updateTime;
   Date expiryTime;
+  Long totalBackupSizeInBytes;
   Set<KeyspaceTablesList> responseList;
 }
