@@ -16,7 +16,7 @@ Yugabyte Cloud clusters include the following security features:
 
 Network authorization
 : Access to Yugabyte Cloud clusters is limited to IP addresses that you explicitly allow using IP allow lists.
-: You can further enhance security and lower network latencies by deploying clusters in a virtual private cloud (VPC) network.
+: You can further enhance security and lower network latencies by deploying clusters in a [virtual private cloud (VPC) network](../cloud-basics/cloud-vpcs/).
 
 Database authorization
 : YugabyteDB uses role-based access control for database authorization. Using the default admin user that is created when a cluster is deployed, you can add additional roles and users to provide custom access to database resources to other team members and database clients.
@@ -37,18 +37,6 @@ Auditing
       </div>
       <div class="body">
         Whitelist IP addresses to control who can connect to your clusters.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="cloud-vpcs/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">VPC networks</div>
-      </div>
-      <div class="body">
-        VPC networking in Yugabyte Cloud.
       </div>
     </a>
   </div>

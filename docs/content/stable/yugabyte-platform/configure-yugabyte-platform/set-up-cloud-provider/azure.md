@@ -186,7 +186,7 @@ You set up a shared gallery image on Azure as follows:
 
     ![description](/images/yb-platform/install/azure/shared-gallery-replication.png)
 
-1. To use the image in Yugabyte Platform, enter the image version's resource ID into the **Marketplace Image URN/Shared Gallery Image ID** field of the **Specify Region Info** dialog.
+1. To use the image in Platform, put the image version's resource ID into the Marketplace Image URN/Shared Gallery Image ID field of the Region Info popup.
 
-    
+    <br>The gallery image ID could be defined by a full URL containing a subscription ID, a resource group name, and the resource name itself. If the subscription ID or the resource group is different from the default values, Yugabyte Platform will use them instead.
 

@@ -1,6 +1,6 @@
 ---
 title: VPC network overview
-headerTitle:
+headerTitle: 
 linkTitle: Overview
 description: Requirements and considerations for setting up a VPC network.
 menu:
@@ -12,9 +12,9 @@ isTocNested: true
 showAsideToc: true
 ---
 
-A virtual private cloud (VPC) is a virtual network that you can define within a cloud provider. Once you create a VPC on a cloud provider, you can then connect it with other VPCs on the same provider. This is called peering. A VPC peering connection is a networking connection between two VPCs on the same cloud provider that enables you to route traffic between them privately, without traversing the public internet. VPC networks provide more secure connections between resources because the network is inaccessible from the public internet and other VPC networks.
+A virtual private cloud (VPC) is a virtual network that you can define in a cloud provider. After you create a VPC on a cloud provider, you can then connect it with other VPCs on the same provider. This is called peering. A VPC peering connection is a networking connection between two VPCs on the same cloud provider that enables you to route traffic between them privately, without traversing the public internet. VPC networks provide more secure connections between resources because the network is inaccessible from the public internet and other VPC networks.
 
-In the context of Yugabyte Cloud, when a Yugabyte cluster is deployed in a VPC, it can connect to an application running on a peered VPC as though it was located on the same network; all traffic stays within the cloud provider's network. The VPCs can be in different regions.
+In the context of Yugabyte Cloud, when a Yugabyte cluster is deployed in a VPC, it can connect to an application running on a peered VPC as though it was located on the same network; all traffic stays in the cloud provider's network. The VPCs can be in different regions.
 
 ![Peered VPCs](/images/yb-cloud/cloud-vpc-diagram.png)
 
@@ -24,7 +24,7 @@ Deploying your cluster in a VPC network has the following advantages:
 
 - Lower network latency. Traffic uses only internal addresses, which provides lower latency than connectivity that uses external addresses.
 - Better security. Your services are never exposed to the public Internet.
-- Lower data transfer costs. By staying in the provider's network, you won't have any Internet data transfer traffic. (Same region and cross region overages may still apply. Refer to [Data transfer costs](../../cloud-admin/cloud-billing-costs/#data-transfer-costs).)
+- Lower data transfer costs. By staying in the provider's network, you won't have any Internet data transfer traffic. (Same region and cross region overages may still apply. Refer to [Data transfer costs](../../../cloud-admin/cloud-billing-costs/#data-transfer-costs).)
 
 ## Pricing
 
@@ -40,7 +40,7 @@ For AWS, you can only define a single region per VPC.
 
 ## Setting the CIDR and sizing your VPC
 
-A VPC is defined by a block of IP addresses, entered in [CIDR notation](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing). Because you can't resize a VPC once it is created, you need to decide on an appropriate size before creating it. Ideally, you want the network to be as small as possible while accomodating potential growth. Calculate how many applications will be connecting to it, and estimate how that is expected to grow over time. Although you may want to create a large network to cover all contingencies, an over-sized network can impact network performance. If your traffic experiences spikes, you'll need to take that into account.
+A VPC is defined by a block of IP addresses, entered in [CIDR notation](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing). Because you can't resize a VPC once it is created, you need to decide on an appropriate size before creating it. Ideally, you want the network to be as small as possible while accommodating potential growth. Calculate how many applications will be connecting to it, and estimate how that is expected to grow over time. Although you may want to create a large network to cover all contingencies, an over-sized network can impact network performance. If your traffic experiences spikes, you'll need to take that into account.
 
 When entering the range for your VPC in Yugabyte Cloud, the size of the network is determined by the prefix length (the number after the `/`). Yugabyte Cloud supports network sizes from `/26` to `/16` as shown in the following table. For typical applications, `/26` is more than sufficient.
 
@@ -68,7 +68,7 @@ Addresses have the following restrictions:
   | AWS | 10.3.0.0/16<br>10.4.0.0/16 |
   | GCP | 10.21.0.0/16 |
 
-You can calculate ranges beforehand using [IP Address Guide’s CIDR to IPv4 Conversion calculator](https://www.ipaddressguide.com/cidr).
+You can calculate ranges beforehand using [IP Address Guide's CIDR to IPv4 Conversion calculator](https://www.ipaddressguide.com/cidr).
 
 ## Limitations
 
@@ -79,7 +79,7 @@ You can calculate ranges beforehand using [IP Address Guide’s CIDR to IPv4 Con
 - You can create a maximum of 3 GCP VPCs.
 - VPCs are not supported on free clusters.
 
-If you need additional VPCs, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
+If you need additional VPCs, contact {{<support-cloud>}}.
 
 ## Next steps
 
