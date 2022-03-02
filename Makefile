@@ -60,7 +60,11 @@ OBJS = src/backend/age.o \
        src/backend/utils/adt/ag_float8_supp.o \
        src/backend/utils/adt/graphid.o \
        src/backend/utils/ag_func.o \
-       src/backend/utils/cache/ag_cache.o
+       src/backend/utils/cache/ag_cache.o \
+       src/backend/utils/load/ag_load_labels.o \
+       src/backend/utils/load/ag_load_edges.o \
+       src/backend/utils/load/age_load.o \
+       src/backend/utils/load/libcsv.o
 
 EXTENSION = age
 
@@ -83,6 +87,7 @@ REGRESS = scan \
           cypher_vle \
           cypher_union \
           cypher_merge \
+          age_load \
           drop
 
 srcdir=`pwd`

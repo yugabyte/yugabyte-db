@@ -50,15 +50,15 @@ SELECT load_edges_from_file('agload_test_graph', 'has_city',
  
 (1 row)
 
-SELECT table_catalog, table_schema, table_name, table_type
+SELECT table_catalog, table_schema, lower(table_name) as table_name, table_type
 FROM information_schema.tables
 WHERE table_schema = 'agload_test_graph' ORDER BY table_name ASC;
    table_catalog    |   table_schema    |    table_name    | table_type 
 --------------------+-------------------+------------------+------------
- contrib_regression | agload_test_graph | City             | BASE TABLE
- contrib_regression | agload_test_graph | Country          | BASE TABLE
  contrib_regression | agload_test_graph | _ag_label_edge   | BASE TABLE
  contrib_regression | agload_test_graph | _ag_label_vertex | BASE TABLE
+ contrib_regression | agload_test_graph | city             | BASE TABLE
+ contrib_regression | agload_test_graph | country          | BASE TABLE
  contrib_regression | agload_test_graph | has_city         | BASE TABLE
 (5 rows)
 

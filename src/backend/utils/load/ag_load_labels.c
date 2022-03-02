@@ -64,24 +64,29 @@
 #include "utils/load/age_load.h"
 #include "utils/load/csv.h"
 
-void vertex_field_cb(void *field, size_t field_len, void *data) {
+void vertex_field_cb(void *field, size_t field_len, void *data)
+{
 
     csv_vertex_reader *cr = (csv_vertex_reader *) data;
 
-    if (cr->error) {
+    if (cr->error)
+    {
         cr->error = 1;
         ereport(NOTICE,(errmsg("There is some unknown error")));
     }
 
     // check for space to store this field
-    if (cr->cur_field == cr->alloc) {
+    if (cr->cur_field == cr->alloc)
+    {
         cr->alloc *= 2;
         cr->fields = realloc(cr->fields, sizeof(char *) * cr->alloc);
         cr->fields_len = realloc(cr->header, sizeof(size_t *) * cr->alloc);
-        if (cr->fields == NULL) {
+        if (cr->fields == NULL)
+        {
             cr->error = 1;
             ereport(ERROR,
-                    (errmsg("field_cb: failed to reallocate %zu bytes\n", sizeof(char *) * cr->alloc)));
+                    (errmsg("field_cb: failed to reallocate %zu bytes\n",
+                            sizeof(char *) * cr->alloc)));
         }
     }
     cr->fields_len[cr->cur_field] = field_len;
@@ -90,7 +95,8 @@ void vertex_field_cb(void *field, size_t field_len, void *data) {
     cr->cur_field += 1;
 }
 
-void vertex_row_cb(int delim __attribute__((unused)), void *data) {
+void vertex_row_cb(int delim __attribute__((unused)), void *data)
+{
 
     csv_vertex_reader *cr = (csv_vertex_reader*)data;
     agtype *props = NULL;
@@ -101,36 +107,47 @@ void vertex_row_cb(int delim __attribute__((unused)), void *data) {
     n_fields = cr->cur_field;
 
 
-    if (cr->row == 0) {
+    if (cr->row == 0)
+    {
         cr->header_num = cr->cur_field;
         cr->header_row_length = cr->curr_row_length;
         cr->header_len = (size_t* )malloc(sizeof(size_t *) * cr->cur_field);
         cr->header = malloc((sizeof (char*) * cr->cur_field));
 
-        for (i = 0; i<cr->cur_field; i++) {
+        for (i = 0; i<cr->cur_field; i++)
+        {
             cr->header_len[i] = cr->fields_len[i];
             cr->header[i] = strndup(cr->fields[i], cr->header_len[i]);
         }
     } else {
         if (cr->id_field_exists)
+        {
             label_id_int = strtol(cr->fields[0], NULL, 10);
+        }
         else
+        {
             label_id_int = (int64)cr->row;
+        }
 
         object_graph_id = make_graphid(cr->object_id, label_id_int);
 
-        props = create_agtype_from_list(cr->header, cr->fields, n_fields, label_id_int);
-        insert_vertex_simple(cr->graph_id, cr->object_name, object_graph_id, props);
+        props = create_agtype_from_list(cr->header, cr->fields,
+                                        n_fields, label_id_int);
+        insert_vertex_simple(cr->graph_id, cr->object_name,
+                             object_graph_id, props);
     }
 
 
-    for (i = 0; i < n_fields; ++i) {
+    for (i = 0; i < n_fields; ++i)
+    {
         free(cr->fields[i]);
     }
 
 
     if (cr->error)
+    {
         ereport(NOTICE,(errmsg("THere is some error")));
+    }
 
 
     cr->cur_field = 0;
@@ -138,19 +155,14 @@ void vertex_row_cb(int delim __attribute__((unused)), void *data) {
     cr->row += 1;
 }
 
-static int is_space(unsigned char c) {
+static int is_space(unsigned char c)
+{
     if(c == CSV_SPACE || c == CSV_TAB) return 1;
     return 0;
 }
 
-/*
-static int is_comma(unsigned char c) {
-    if (c == '\t') return 1;
-    return 0;
-}
- */
-
-static int is_term(unsigned char c) {
+static int is_term(unsigned char c)
+{
     if (c == CSV_CR || c == CSV_LF) return 1;
     return 0;
 }
@@ -159,7 +171,8 @@ int create_labels_from_csv_file(char *file_path,
                                 Oid graph_id,
                                 char *object_name,
                                 int object_id,
-                                bool id_field_exists) {
+                                bool id_field_exists)
+{
 
     FILE *fp;
     struct csv_parser p;
@@ -168,7 +181,8 @@ int create_labels_from_csv_file(char *file_path,
     unsigned char options = 0;
     csv_vertex_reader cr;
 
-    if (csv_init(&p, options) != 0) {
+    if (csv_init(&p, options) != 0)
+    {
         ereport(ERROR,
                 (errmsg("Failed to initialize csv parser\n")));
     }
@@ -177,7 +191,8 @@ int create_labels_from_csv_file(char *file_path,
     csv_set_term_func(&p, is_term);
 
     fp = fopen(file_path, "rb");
-    if (!fp) {
+    if (!fp)
+    {
         ereport(ERROR,
                 (errmsg("Failed to open %s\n", file_path)));
     }
@@ -198,16 +213,22 @@ int create_labels_from_csv_file(char *file_path,
 
 
 
-    while ((bytes_read=fread(buf, 1, 1024, fp)) > 0) {
-        if (csv_parse(&p, buf, bytes_read, vertex_field_cb, vertex_row_cb, &cr) != bytes_read) {
-            ereport(ERROR, (errmsg("Error while parsing file: %s\n", csv_strerror(csv_error(&p)))));
+    while ((bytes_read=fread(buf, 1, 1024, fp)) > 0)
+    {
+        if (csv_parse(&p, buf, bytes_read, vertex_field_cb,
+                      vertex_row_cb, &cr) != bytes_read)
+        {
+            ereport(ERROR, (errmsg("Error while parsing file: %s\n",
+                                   csv_strerror(csv_error(&p)))));
         }
     }
 
     csv_fini(&p, vertex_field_cb, vertex_row_cb, &cr);
 
-    if (ferror(fp)) {
-        ereport(ERROR, (errmsg("Error while reading file %s\n", file_path)));
+    if (ferror(fp))
+    {
+        ereport(ERROR, (errmsg("Error while reading file %s\n",
+                               file_path)));
     }
 
     fclose(fp);

@@ -258,7 +258,7 @@ RangeVar *get_label_range_var(char *graph_name, Oid graph_oid,
 
     relname = get_rel_name(label_cache->relation);
 
-    return makeRangeVar(graph_name, relname, -1);
+    return makeRangeVar(graph_name, relname, 2);
 }
 
 /*

@@ -58,62 +58,90 @@
 #include "utils/load/ag_load_labels.h"
 #include "utils/load/ag_load_edges.h"
 
-static agtype* create_empty_agtype(void) {
+static agtype* create_empty_agtype(void)
+{
     agtype_in_state result;
 
     memset(&result, 0, sizeof(agtype_in_state));
 
-    result.res = push_agtype_value(&result.parse_state, WAGT_BEGIN_OBJECT, NULL);
-    result.res = push_agtype_value(&result.parse_state, WAGT_END_OBJECT, NULL);
+    result.res = push_agtype_value(&result.parse_state,
+                                   WAGT_BEGIN_OBJECT, NULL);
+    result.res = push_agtype_value(&result.parse_state,
+                                   WAGT_END_OBJECT, NULL);
 
     return agtype_value_to_agtype(result.res);
 }
 
-agtype* create_agtype_from_list(char **header, char **fields, size_t fields_len, int64 vertex_id) {
+agtype* create_agtype_from_list(char **header, char **fields,
+                                size_t fields_len, int64 vertex_id)
+{
     agtype_in_state result;
     int i;
 
     memset(&result, 0, sizeof(agtype_in_state));
 
-    result.res = push_agtype_value(&result.parse_state, WAGT_BEGIN_OBJECT, NULL);
+    result.res = push_agtype_value(&result.parse_state,
+                                   WAGT_BEGIN_OBJECT, NULL);
 
-    result.res = push_agtype_value(&result.parse_state, WAGT_KEY, string_to_agtype_value("id"));
-    result.res = push_agtype_value(&result.parse_state, WAGT_VALUE, integer_to_agtype_value(vertex_id));
+    result.res = push_agtype_value(&result.parse_state,
+                                   WAGT_KEY,
+                                   string_to_agtype_value("__id__"));
+    result.res = push_agtype_value(&result.parse_state,
+                                   WAGT_VALUE,
+                                   integer_to_agtype_value(vertex_id));
 
-    for (i = 0; i<fields_len; i++) {
-        result.res = push_agtype_value(&result.parse_state, WAGT_KEY, string_to_agtype_value(header[i]));
-        result.res = push_agtype_value(&result.parse_state, WAGT_VALUE, string_to_agtype_value(fields[i]));
+    for (i = 0; i<fields_len; i++)
+    {
+        result.res = push_agtype_value(&result.parse_state,
+                                       WAGT_KEY,
+                                       string_to_agtype_value(header[i]));
+        result.res = push_agtype_value(&result.parse_state,
+                                       WAGT_VALUE,
+                                       string_to_agtype_value(fields[i]));
     }
 
-    result.res = push_agtype_value(&result.parse_state, WAGT_END_OBJECT, NULL);
+    result.res = push_agtype_value(&result.parse_state,
+                                   WAGT_END_OBJECT, NULL);
 
     return agtype_value_to_agtype(result.res);
 }
 
-agtype* create_agtype_from_list_i(char **header, char **fields, size_t fields_len, size_t start_index) {
+agtype* create_agtype_from_list_i(char **header, char **fields,
+                                  size_t fields_len, size_t start_index)
+{
 
     agtype_in_state result;
     size_t i;
 
     if (start_index + 1 == fields_len)
+    {
         return create_empty_agtype();
-
-
+    }
     memset(&result, 0, sizeof(agtype_in_state));
 
-    result.res = push_agtype_value(&result.parse_state, WAGT_BEGIN_OBJECT, NULL);
+    result.res = push_agtype_value(&result.parse_state,
+                                   WAGT_BEGIN_OBJECT, NULL);
 
-    for (i = start_index; i<fields_len; i++) {
-        result.res = push_agtype_value(&result.parse_state, WAGT_KEY, string_to_agtype_value(header[i]));
-        result.res = push_agtype_value(&result.parse_state, WAGT_VALUE, string_to_agtype_value(fields[i]));
+    for (i = start_index; i<fields_len; i++)
+    {
+        result.res = push_agtype_value(&result.parse_state,
+                                       WAGT_KEY,
+                                       string_to_agtype_value(header[i]));
+        result.res = push_agtype_value(&result.parse_state,
+                                       WAGT_VALUE,
+                                       string_to_agtype_value(fields[i]));
     }
 
-    result.res = push_agtype_value(&result.parse_state, WAGT_END_OBJECT, NULL);
+    result.res = push_agtype_value(&result.parse_state,
+                                   WAGT_END_OBJECT, NULL);
 
     return agtype_value_to_agtype(result.res);
 }
 
-void insert_edge_simple(Oid graph_id, char* label_name, graphid edge_id, graphid start_id, graphid end_id, agtype* edge_properties) {
+void insert_edge_simple(Oid graph_id, char* label_name, graphid edge_id,
+                        graphid start_id, graphid end_id,
+                        agtype* edge_properties)
+{
 
     Datum values[6];
     bool nulls[4] = {false, false, false, false};
@@ -126,15 +154,22 @@ void insert_edge_simple(Oid graph_id, char* label_name, graphid edge_id, graphid
     values[2] = GRAPHID_GET_DATUM(end_id);
     values[3] = AGTYPE_P_GET_DATUM((edge_properties));
 
-    label_relation = heap_open(get_label_relation(label_name, graph_id), RowExclusiveLock);
-    tuple = heap_form_tuple(RelationGetDescr(label_relation), values, nulls);
+    label_relation = heap_open(get_label_relation(label_name,
+                                                  graph_id),
+                               RowExclusiveLock);
+
+    tuple = heap_form_tuple(RelationGetDescr(label_relation),
+                            values, nulls);
     heap_insert(label_relation, tuple,
                 GetCurrentCommandId(true), 0, NULL);
     heap_close(label_relation, RowExclusiveLock);
     CommandCounterIncrement();
 }
 
-void insert_vertex_simple(Oid graph_id, char* label_name, graphid vertex_id, agtype* vertex_properties) {
+void insert_vertex_simple(Oid graph_id, char* label_name,
+                          graphid vertex_id,
+                          agtype* vertex_properties)
+{
 
     Datum values[2];
     bool nulls[2] = {false, false};
@@ -144,8 +179,11 @@ void insert_vertex_simple(Oid graph_id, char* label_name, graphid vertex_id, agt
     values[0] = GRAPHID_GET_DATUM(vertex_id);
     values[1] = AGTYPE_P_GET_DATUM((vertex_properties));
 
-    label_relation = heap_open(get_label_relation(label_name, graph_id), RowExclusiveLock);
-    tuple = heap_form_tuple(RelationGetDescr(label_relation), values, nulls);
+    label_relation = heap_open(get_label_relation(label_name,
+                                                  graph_id),
+                               RowExclusiveLock);
+    tuple = heap_form_tuple(RelationGetDescr(label_relation),
+                            values, nulls);
     heap_insert(label_relation, tuple,
                 GetCurrentCommandId(true), 0, NULL);
     heap_close(label_relation, RowExclusiveLock);
@@ -154,7 +192,8 @@ void insert_vertex_simple(Oid graph_id, char* label_name, graphid vertex_id, agt
 
 
 PG_FUNCTION_INFO_V1(load_labels_from_file);
-Datum load_labels_from_file(PG_FUNCTION_ARGS) {
+Datum load_labels_from_file(PG_FUNCTION_ARGS)
+{
 
     Name graph_name;
     Name label_name;
@@ -198,13 +237,15 @@ Datum load_labels_from_file(PG_FUNCTION_ARGS) {
     label_id = get_label_id(label_name_str, graph_id);
 
     create_labels_from_csv_file(file_path_str, graph_name_str,
-                                graph_id, label_name_str, label_id, id_field_exists);
+                                graph_id, label_name_str,
+                                label_id, id_field_exists);
     PG_RETURN_VOID();
 
 }
 
 PG_FUNCTION_INFO_V1(load_edges_from_file);
-Datum load_edges_from_file(PG_FUNCTION_ARGS) {
+Datum load_edges_from_file(PG_FUNCTION_ARGS)
+{
 
     Name graph_name;
     Name label_name;
@@ -244,7 +285,8 @@ Datum load_edges_from_file(PG_FUNCTION_ARGS) {
     graph_id = get_graph_oid(graph_name_str);
     label_id = get_label_id(label_name_str, graph_id);
 
-    create_edges_from_csv_file(file_path_str, graph_name_str, graph_id, label_name_str, label_id);
+    create_edges_from_csv_file(file_path_str, graph_name_str,
+                               graph_id, label_name_str, label_id);
     PG_RETURN_VOID();
 
 }

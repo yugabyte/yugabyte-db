@@ -17,7 +17,7 @@ SELECT create_elabel('agload_test_graph','has_city');
 SELECT load_edges_from_file('agload_test_graph', 'has_city',
      'age_load/edges.csv');
 
-SELECT table_catalog, table_schema, table_name, table_type
+SELECT table_catalog, table_schema, lower(table_name) as table_name, table_type
 FROM information_schema.tables
 WHERE table_schema = 'agload_test_graph' ORDER BY table_name ASC;
 
