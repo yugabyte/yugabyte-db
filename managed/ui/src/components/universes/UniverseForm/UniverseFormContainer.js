@@ -21,8 +21,6 @@ import {
 } from '../../../actions/cloud';
 import { getTlsCertificates, getTlsCertificatesResponse } from '../../../actions/customers';
 import {
-  rollingUpgrade,
-  rollingUpgradeResponse,
   createUniverse,
   createUniverseResponse,
   editUniverse,
@@ -144,15 +142,6 @@ const mapDispatchToProps = (dispatch) => {
       });
     },
 
-    submitUniverseNodeResize: (values, universeUUID) => {
-      return dispatch(rollingUpgrade(values, universeUUID)).then((response) => {
-        if (!response.error) {
-          dispatch(closeUniverseDialog());
-        }
-        return dispatch(rollingUpgradeResponse(response.payload));
-      });
-    },
-
     getInstanceTypeListItems: (provider, zones) => {
       dispatch(getInstanceTypeListLoading());
       dispatch(getInstanceTypeList(provider, zones)).then((response) => {
@@ -203,14 +192,6 @@ const mapDispatchToProps = (dispatch) => {
 
     showFullMoveModal: () => {
       dispatch(openDialog('fullMoveModal'));
-    },
-
-    showSmartResizeModal: () => {
-      dispatch(openDialog('smartResizeModal'));
-    },
-
-    showUpgradeNodesModal: () => {
-      dispatch(openDialog('resizeNodesModal'));
     },
 
     fetchNodeInstanceList: (providerUUID) => {
