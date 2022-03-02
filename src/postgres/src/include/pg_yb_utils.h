@@ -558,4 +558,9 @@ void YBSetParentDeathSignal();
  */
 Oid YbGetStorageRelid(Relation relation);
 
+/*
+ * Check whether the user ID is of a user who has the yb_db_admin role.
+ */
+bool IsYbDbAdminUser(Oid member);
+
 #endif /* PG_YB_UTILS_H */
