@@ -34,7 +34,7 @@ To connect to your cluster, do the following:
     Cloud Shell opens in a separate browser window. Cloud Shell can take up to 30 seconds to be ready.
 
     ```output
-    Password for user admin: 
+    Enter the password for your database user: 
     ```
 
 1. Enter the password for the admin user credentials that you saved when you created the cluster.\
@@ -63,4 +63,4 @@ For information on other ways to connect to your cluster, refer to [Connect to c
 
 ## Next step
 
-[Create a database and load data](../qs-data)
+[Explore distributed SQL](../qs-explore)
