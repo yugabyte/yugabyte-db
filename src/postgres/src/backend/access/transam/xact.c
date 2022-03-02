@@ -308,7 +308,6 @@ typedef struct SubXactCallbackItem
 
 static SubXactCallbackItem *SubXact_callbacks = NULL;
 
-
 /* local function prototypes */
 static void AssignTransactionId(TransactionState s);
 static void AbortTransaction(void);
@@ -2884,10 +2883,10 @@ CleanupTransaction(void)
 }
 
 /*
- *	StartTransactionCommand
+ *	StartTransactionCommandInternal
  */
-void
-StartTransactionCommand(void)
+static void
+StartTransactionCommandInternal(bool yb_skip_read_committed_handling)
 {
 	TransactionState s = CurrentTransactionState;
 
@@ -2932,7 +2931,7 @@ StartTransactionCommand(void)
 			 * Read restart retries are handled transparently for every statement in the txn in
 			 * yb_attempt_to_restart_on_error().
 			 */
-			if (YBTransactionsEnabled() && IsYBReadCommitted())
+			if (YBTransactionsEnabled() && IsYBReadCommitted() && !yb_skip_read_committed_handling)
 			{
 				/*
 				 * Reset field ybDataSentForCurrQuery (indicates whether any data was sent as part of the
@@ -3002,6 +3001,15 @@ StartTransactionCommand(void)
 	 */
 	Assert(CurTransactionContext != NULL);
 	MemoryContextSwitchTo(CurTransactionContext);
+}
+
+/*
+ *	StartTransactionCommand
+ */
+void
+StartTransactionCommand(void)
+{
+	StartTransactionCommandInternal(false /* yb_skip_read_committed_handling */);
 }
 
 void
@@ -4500,7 +4508,8 @@ BeginInternalSubTransaction(const char *name)
 	}
 
 	CommitTransactionCommand();
-	StartTransactionCommand();
+
+	StartTransactionCommandInternal(true /* yb_skip_read_committed_handling */);
 }
 
 /*
@@ -4515,6 +4524,8 @@ BeginInternalSubTransaction(const char *name)
  */
 void
 BeginInternalSubTransactionForReadCommittedStatement() {
+	elog(DEBUG2, "Begin internal sub txn for statement in READ COMMITTED isolation");
+
 	YBFlushBufferedOperations();
 	TransactionState s = CurrentTransactionState;
 
