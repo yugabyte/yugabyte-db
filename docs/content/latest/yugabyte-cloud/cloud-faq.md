@@ -56,7 +56,7 @@ A Yugabyte Cloud account is limited to a single free cluster; you can add as man
 | Cluster | Single Node | Any |
 | vCPU/Storage | Up to 2 vCPU / 2 GB RAM / 10 GB storage | Any |
 | [Regions](../release-notes#cloud-provider-regions) | All | All |
-| Upgrades | Automatic | Automatic |
+| Upgrades | Automatic | Automatic with customizable [maintenance windows](../cloud-clusters/cloud-maintenance/) |
 | VPC Peering | No | Yes |
 | Fault Tolerance | None (Single node, RF-1) | Multi node RF-3 clusters with Availability zone and Node level |
 | Scaling | None | Horizontal and Vertical |
@@ -80,7 +80,7 @@ Currently self-service migration is not supported. Contact [Yugabyte Support](ht
 Upgrades are automatically handled by Yugabyte. There are two types of upgrades:
 
 Cloud console
-: During a [maintenance window](../cloud-clusters/cloud-maintenance/), the Yugabyte Cloud console may be in read-only mode and not allow any edit changes. The upgrade has no impact on running clusters. We'll notify you in advance of the maintenance schedule.
+: During a [maintenance window](../cloud-clusters/cloud-maintenance/), the Yugabyte Cloud console may be in read-only mode and not allow any edit changes. The upgrade has no impact on running clusters. Yugabyte will notify you in advance of the maintenance schedule.
 
 Cluster (YugabyteDB) version upgrade
 : To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte will upgrade your cluster to the [latest version](#what-version-of-yugabytedb-does-my-cluster-run-on).
