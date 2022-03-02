@@ -499,8 +499,8 @@ config:
         title: Support Origin URL
         type: text
         value: ""
-        default: localhost:9000
-        help_text: Specify a support origin URL to be whitelisted in the CORS filter
+        default: http://localhost:9000
+        help_text: Specify protocol-host-port to be whitelisted in the CORS filter. Omit port if default
       - name: nginx_external_port
         title: Yugaware UI Port
         type: text
