@@ -150,6 +150,12 @@ IsYBBackedRelation(Relation relation)
 		relation->rd_rel->relpersistence != RELPERSISTENCE_TEMP);
 }
 
+bool
+YbIsTempRelation(Relation relation)
+{
+	return relation->rd_rel->relpersistence == RELPERSISTENCE_TEMP;
+}
+
 bool IsRealYBColumn(Relation rel, int attrNum)
 {
 	return (attrNum > 0 && !TupleDescAttr(rel->rd_att, attrNum - 1)->attisdropped) ||
