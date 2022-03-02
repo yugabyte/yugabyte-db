@@ -9,5 +9,6 @@ import lombok.Value;
 public class KeyspaceTablesList {
   String keyspace;
   Set<String> tablesList;
+  Long backupSizeInBytes;
   String storageLocation;
 }
