@@ -16333,8 +16333,10 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			else if (properties.num_tablets > 1)
 			{
 				/* For range-table. */
-				fprintf(stderr, "Pre-split range tables are not supported yet.\n");
-				exit_nicely(1);
+				write_msg(NULL, "WARNING: exporting SPLIT clause for range-split relations is not "
+								"yet supported. Table '%s' will be created with default (1) "
+								"tablets instead of %u.\n",
+						  qualrelname, properties.num_tablets);
 			}
 			/* else - single shard table - supported, no need to add anything */
 		}

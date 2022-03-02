@@ -891,9 +891,11 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYCQLBackupWithDefi
 // constraint as 1 hash tablet. Restore should restore the unique constraint index as 3 tablets
 // since the tablet snapshot files are already split into 3 tablets.
 //
-// TODO(jason): enable test when issue #4873 ([YSQL] Support backup for pre-split multi-tablet range
-// tables) is fixed.
-TEST_F(YBBackupTest, YB_DISABLE_TEST(TestYSQLRangeSplitConstraint)) {
+// TODO(yguan): after the SPLIT AT clause is fully supported by ysql_dump this test needs to
+//              be revisited as the table may no longer need re-partitioning.
+//              Therefore, to exercise CatalogManager::RepartitionTable this test may need
+//              to be updated similar to TestYSQLManualTabletSplit.
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLRangeSplitConstraint)) {
   const string table_name = "mytbl";
   const string index_name = "myidx";
 
@@ -903,21 +905,29 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST(TestYSQLRangeSplitConstraint)) {
   ASSERT_NO_FATALS(CreateIndex(
       Format("CREATE UNIQUE INDEX $0 ON $1 (v ASC) SPLIT AT VALUES (('foo'), ('qux'))",
              index_name, table_name)));
+
+  // Commenting out the ALTER .. ADD UNIQUE constraint case as this case is not supported.
+  // Vanilla Postgres disallows adding indexes with non-default (DESC) sort option as constraints.
+  // In YB we have added HASH and changed default (for first column) from ASC to HASH.
+  //
+  // See #11583 for details -- we should revisit this test after that is fixed.
+  /*
   ASSERT_NO_FATALS(RunPsqlCommand(
       Format("ALTER TABLE $0 ADD UNIQUE USING INDEX $1", table_name, index_name),
       "ALTER TABLE"));
+  */
 
   // Write data in each partition of the index.
   ASSERT_NO_FATALS(InsertRows(
-      Format("INSERT INTO $0 (v) VALUES ('bar'), ('jar'), ('tar')", table_name), 3));
+      Format("INSERT INTO $0 (v) VALUES ('tar'), ('bar'), ('jar')", table_name), 3));
   ASSERT_NO_FATALS(RunPsqlCommand(
-      Format("SELECT * FROM $0 ORDER BY k", table_name),
+      Format("SELECT * FROM $0 ORDER BY v", table_name),
       R"#(
          k |  v
         ---+-----
-         1 | bar
-         2 | jar
-         3 | tar
+         2 | bar
+         3 | jar
+         1 | tar
         (3 rows)
       )#"
   ));
@@ -937,13 +947,13 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST(TestYSQLRangeSplitConstraint)) {
 
   // Verify data.
   ASSERT_NO_FATALS(RunPsqlCommand(
-      Format("SELECT * FROM $0 ORDER BY k", table_name),
+      Format("SELECT * FROM $0 ORDER BY v", table_name),
       R"#(
          k |  v
         ---+-----
-         1 | bar
-         2 | jar
-         3 | tar
+         2 | bar
+         3 | jar
+         1 | tar
         (3 rows)
       )#"
   ));
