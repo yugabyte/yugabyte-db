@@ -61,7 +61,10 @@ public class ScheduleController extends AuthenticatedController {
     return PlatformResults.withData(schedules);
   }
 
-  @ApiOperation(value = "List schedules", response = SchedulePagedResponse.class)
+  @ApiOperation(
+      value = "List schedules V2",
+      response = SchedulePagedResponse.class,
+      nickname = "listSchedulesV2")
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "PageScheduleRequest",
@@ -104,9 +107,9 @@ public class ScheduleController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Edit a backup schedule",
+      value = "Edit a backup schedule V2",
       response = Schedule.class,
-      nickname = "editBackupSchedule")
+      nickname = "editBackupScheduleV2")
   @ApiImplicitParams({
     @ApiImplicitParam(
         required = true,

@@ -45,6 +45,7 @@ import com.google.protobuf.ByteString;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -706,6 +707,7 @@ public class TablesControllerTest extends FakeDBApplication {
     doThrow(new PlatformServiceException(BAD_REQUEST, "bad request"))
         .when(mockTablesController)
         .validateTables(any(), any());
+
     UUID uuid = UUID.randomUUID();
     Result r =
         assertPlatformException(

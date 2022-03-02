@@ -8408,7 +8408,7 @@
       },
       "post" : {
         "description" : "",
-        "operationId" : "createbackup",
+        "operationId" : "createBackupV2",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -8435,14 +8435,14 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Create a backup",
+        "summary" : "Create a backup V2",
         "tags" : [ "Table management" ]
       }
     },
     "/api/v1/customers/{cUUID}/backups/page" : {
       "post" : {
         "description" : "",
-        "operationId" : "pageBackupList",
+        "operationId" : "listBackupsV2",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -8468,14 +8468,14 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List Backups (paginated)",
+        "summary" : "List Backups (paginated) V2",
         "tags" : [ "Backups" ]
       }
     },
     "/api/v1/customers/{cUUID}/backups/{backupUUID}" : {
       "get" : {
         "description" : "",
-        "operationId" : "get",
+        "operationId" : "getBackupV2",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -8500,12 +8500,12 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Get Backup",
+        "summary" : "Get Backup V2",
         "tags" : [ "Backups" ]
       },
       "put" : {
         "description" : "Edit a backup",
-        "operationId" : "editBackup",
+        "operationId" : "editBackupV2",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -8538,7 +8538,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Edit a backup",
+        "summary" : "Edit a backup V2",
         "tags" : [ "Backups" ]
       }
     },
@@ -9122,7 +9122,7 @@
     "/api/v1/customers/{cUUID}/create_backup_schedule" : {
       "post" : {
         "description" : "",
-        "operationId" : "createbackupSchedule",
+        "operationId" : "createBackupScheduleV2",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -9149,7 +9149,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Create Backup Schedule",
+        "summary" : "Create Backup Schedule V2",
         "tags" : [ "Table management" ]
       }
     },
@@ -9288,6 +9288,9 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
+              "additionalProperties" : {
+                "type" : "object"
+              },
               "type" : "object"
             }
           }
@@ -10196,53 +10199,6 @@
         "tags" : [ "Cloud providers" ]
       }
     },
-    "/api/v1/customers/{cUUID}/providers/{pUUID}/region/{rUUID}/releases/" : {
-      "get" : {
-        "description" : "",
-        "operationId" : "getListOfRegionReleases",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "pUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "rUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "default" : false,
-          "in" : "query",
-          "name" : "includeMetadata",
-          "required" : false,
-          "type" : "boolean"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "additionalProperties" : {
-                "type" : "object"
-              },
-              "type" : "object"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "List all releases valid in region",
-        "tags" : [ "Release management" ]
-      }
-    },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/regions" : {
       "get" : {
         "description" : "",
@@ -10358,6 +10314,53 @@
         } ],
         "summary" : "Delete a region",
         "tags" : [ "Region management" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/providers/{pUUID}/regions/{rUUID}/releases" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "getListOfRegionReleases",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "pUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "rUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "default" : false,
+          "in" : "query",
+          "name" : "includeMetadata",
+          "required" : false,
+          "type" : "boolean"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "additionalProperties" : {
+                "type" : "object"
+              },
+              "type" : "object"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List all releases valid in region",
+        "tags" : [ "Release management" ]
       }
     },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/regions/{rUUID}/zones" : {
@@ -10683,7 +10686,7 @@
     "/api/v1/customers/{cUUID}/restore" : {
       "post" : {
         "description" : "",
-        "operationId" : "restoreBackup",
+        "operationId" : "restoreBackupV2",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -10710,7 +10713,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Restore from a backup",
+        "summary" : "Restore from a backup V2",
         "tags" : [ "Backups" ]
       }
     },
@@ -10927,7 +10930,7 @@
     "/api/v1/customers/{cUUID}/schedules/page" : {
       "post" : {
         "description" : "",
-        "operationId" : "pageScheduleList",
+        "operationId" : "listSchedulesV2",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -10953,7 +10956,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List schedules",
+        "summary" : "List schedules V2",
         "tags" : [ "Schedule management" ]
       }
     },
@@ -11020,7 +11023,7 @@
       },
       "put" : {
         "description" : "",
-        "operationId" : "editBackupSchedule",
+        "operationId" : "editBackupScheduleV2",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -11052,7 +11055,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Edit a backup schedule",
+        "summary" : "Edit a backup schedule V2",
         "tags" : [ "Schedule management" ]
       }
     },
@@ -11109,9 +11112,6 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "additionalProperties" : {
-                "type" : "object"
-              },
               "type" : "object"
             }
           }

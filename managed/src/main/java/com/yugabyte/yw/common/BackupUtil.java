@@ -2,6 +2,10 @@
 
 package com.yugabyte.yw.common;
 
+import static com.cronutils.model.CronType.UNIX;
+import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.cronutils.model.Cron;
 import com.cronutils.model.definition.CronDefinitionBuilder;
 import com.cronutils.model.time.ExecutionTime;
@@ -18,14 +22,19 @@ import com.yugabyte.yw.models.helpers.KeyspaceTablesList;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
+import java.util.Collections;
+import java.util.List;
+import java.util.UUID;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import static com.cronutils.model.CronType.UNIX;
-import static play.mvc.Http.Status.BAD_REQUEST;
+import org.yb.client.YBClient;
+import org.yb.CommonTypes.TableType;
+import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
+import org.yb.master.MasterTypes.RelationType;
+import play.api.Play;
 
 public class BackupUtil {
 
