@@ -18,6 +18,7 @@ import static org.yb.AssertionWrappers.assertTrue;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.util.Collections;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -283,8 +284,7 @@ public class TestDropTableWithConcurrentTxn extends BasePgSQLTest {
   -- Always use snapshot isolation
   -- DML operation always affects exactly one row
   */
-  @Test
-  public void testDmlTxnDrop() throws Exception {
+  public void testDmlTxnDropInternal() throws Exception {
     boolean withCachedMetadata = true;
 
     //------------------------------------------------------------------------------------------
@@ -393,5 +393,18 @@ public class TestDropTableWithConcurrentTxn extends BasePgSQLTest {
     LOG.info("Run INSERT transaction AFTER drop on another resource");
     runInsertTxnWithDropOnUnrelatedResource(viewDrop, !withCachedMetadata, executeDmlAfterDrop);
     runInsertTxnWithDropOnUnrelatedResource(viewDrop, withCachedMetadata, executeDmlAfterDrop);
+  }
+
+  @Test
+  public void testDmlTxnDrop() throws Exception {
+    testDmlTxnDropInternal();
+  }
+
+  @Test
+  public void testDmlTxnDropWithReadCommitted() throws Exception {
+    restartClusterWithFlags(Collections.emptyMap(),
+                            Collections.singletonMap("yb_enable_read_committed_isolation",
+                                                     "true"));
+    testDmlTxnDropInternal();
   }
 }
