@@ -16,11 +16,13 @@ showAsideToc: true
 
 After [creating a free cluster](../qs-add/) and [connecting to the cluster](../qs-connect/) using Cloud Shell, you can start exploring YugabyteDB's PostgreSQL-compatible, fully-relational Yugabyte SQL API.
 
-## Explore YugabyteDB
-
 When you connect to your cluster using Cloud Shell with the YSQL API, the shell window incorporates a quick start guide, with a series of pre-built queries for you to run.
 
-To start, create a database by entering the following command:
+## Create a database
+
+While optional, it's good practise to create separate databases for different applications.
+
+To create a database, enter the following command:
 
 ```sql
 yugabyte=# CREATE DATABASE yb_demo;
@@ -32,14 +34,18 @@ Next, connect to the new database using the ysqlsh `\c` meta-command:
 yugabyte=# \c yb_demo;
 ```
 
-Begin the tutorial by selecting the steps in the left navigation panel. The tutorial starts with the following tasks:
+## Run the tutorial
 
-1. Create a Table.
-1. Insert Data.
+Begin the tutorial by selecting the steps in the left navigation panel, then clicking the **Run** button for the corresponding SQL statements. The tutorial starts with the following tasks:
 
-The tutorial database includes two tables: `dept` for Departments, and `emp` for Employees.
+1. Create a Table.\
+\
+    The tutorial database includes two tables: `dept` for Departments, and `emp` for Employees. The employees table references the departments table through a foreign key constraint. The employees table also references itself through a foreign key constraint to ensure that an employee's manager is in turn an employee themselves. The table uses these constraints to ensure integrity of data, such as uniqueness and validity of email addresses.
+1. Insert Data.\
+\
+    Data is added to the tables using multi-value inserts to reduce client-server round trips.
 
-After you create the tables and insert the data, you can begin the tutorial scenarios. The quick start includes the following:
+After you create the tables and insert the data, click **Let's get started with the tutorials** to begin the tutorial scenarios. The quick start includes the following:
 
 | Scenario | Description |
 | :--- | :--- |
@@ -47,13 +53,13 @@ After you create the tables and insert the data, you can begin the tutorial scen
 | With Recursive | List the manager hierarchy using a recursive query. |
 | LAG Window Function | Compare employee hiring time interval by department using an analytical window function. |
 | CROSSTABVIEW | Display the sum of salary per job and department using a cross tab pivot query. |
-| Regexp | List all employees matching Gmail and org email domains using text pattern matching with regexp. |
+| Regexp | List all employees matching Gmail and org email domains using regular expressions for text pattern matching. |
 | GIN Index | Query employee skills using a GIN index on a JSON document. |
 | Text Search Index | Create a GIN text search index on the description column and query for words. |
 | Arithmetic Date Intervals | Find employees with overlapping evaluation periods using arithmetic date intervals. |
 | SQL Update | Update the salary of all employees who are not managers and display the new results. |
 | Prepared Statement | Get the salary for an employee using a prepared statement. |
-| Stored Procedure | Transfer a commission from one employee to another. |
+| Stored Procedure | Transfer a commission from one employee to another using a stored procedure. |
 | Trigger | Record the last update time of each row automatically. |
 | Create Index | Create and analyze an index on the fly. |
 
