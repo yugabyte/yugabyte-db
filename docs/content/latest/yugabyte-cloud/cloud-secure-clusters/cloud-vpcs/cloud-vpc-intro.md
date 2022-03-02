@@ -1,6 +1,6 @@
 ---
 title: VPC network overview
-headerTitle: 
+headerTitle:
 linkTitle: Overview
 description: Requirements and considerations for setting up a VPC network.
 menu:
@@ -83,4 +83,4 @@ If you need additional VPCs, contact [Yugabyte Support](https://support.yugabyte
 
 ## Next steps
 
-- [Set up a VPC network](../cloud-vpc-setup).
+- [Set up a VPC network](../cloud-vpc-setup/).

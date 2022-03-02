@@ -44,7 +44,7 @@ If you prefer, you can install a standalone version using any of the following m
 - Using a shell script:
 
     ```sh
-    wget -q -O - https://downloads.yugabyte.com/get_clients.sh | sh 
+    wget -q -O - https://downloads.yugabyte.com/get_clients.sh | sh
     yugabyte*/bin/ysqlsh
     ```
 
@@ -1349,7 +1349,7 @@ The port number at which the database server is listening.
 
 ##### %n
 
-The database session user name. (The expansion of this value might change during a database session as the result of the [`SET SESSION AUTHORIZATION`](../../api/ysql/the-sql-language/statements/dcl_set_session_authorization) statement.)
+The database session user name. (The expansion of this value might change during a database session as the result of the [`SET SESSION AUTHORIZATION`](../../api/ysql/the-sql-language/statements/dcl_set_session_authorization/) statement.)
 
 ##### %/
 
@@ -1361,7 +1361,7 @@ Like `%/`, but the output is `~` (tilde) if the database is your default databas
 
 ##### %#
 
-If the session user is a database superuser, then a `#`, otherwise a `>`. (The expansion of this value might change during a database session as the result of the [`SET SESSION AUTHORIZATION`](../../api/ysql/the-sql-language/statements/dcl_set_session_authorization) statement.)
+If the session user is a database superuser, then a `#`, otherwise a `>`. (The expansion of this value might change during a database session as the result of the [`SET SESSION AUTHORIZATION`](../../api/ysql/the-sql-language/statements/dcl_set_session_authorization/) statement.)
 
 ##### %p
 
@@ -1516,7 +1516,7 @@ testdb=> \d my_table
  Column |  Type   | Collation | Nullable | Default
 --------+---------+-----------+----------+---------
  first  | integer |           | not null | 0
- second | text    |           |          | 
+ second | text    |           |          |
 ```
 
 Now you change the prompt to something more interesting:
@@ -1611,7 +1611,7 @@ When suitable, query results can be shown in a crosstab representation with the 
 
 ```plpgsql
 testdb=> SELECT first, second, first > 2 AS gt2 FROM my_table;
- first | second | gt2 
+ first | second | gt2
 -------+--------+-----
      1 | one    | f
      2 | two    | f
@@ -1620,11 +1620,11 @@ testdb=> SELECT first, second, first > 2 AS gt2 FROM my_table;
 (4 rows)
 
 testdb=> \crosstabview first second
- first | one | two | three | four 
+ first | one | two | three | four
 -------+-----+-----+-------+------
-     1 | f   |     |       | 
-     2 |     | f   |       | 
-     3 |     |     | t     | 
+     1 | f   |     |       |
+     2 |     | f   |       |
+     3 |     |     | t     |
      4 |     |     |       | t
 (4 rows)
 ```
@@ -1636,7 +1636,7 @@ testdb=> SELECT t1.first as "A", t2.first+100 AS "B", t1.first*(t2.first+100) as
 testdb(> row_number() over(order by t2.first) AS ord
 testdb(> FROM my_table t1 CROSS JOIN my_table t2 ORDER BY 1 DESC
 testdb(> \crosstabview "A" "B" "AxB" ord
- A | 101 | 102 | 103 | 104 
+ A | 101 | 102 | 103 | 104
 ---+-----+-----+-----+-----
  4 | 404 | 408 | 412 | 416
  3 | 303 | 306 | 309 | 312

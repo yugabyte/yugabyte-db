@@ -136,6 +136,6 @@ Now you are ready to create a local YugabyteDB cluster.
 
 {{<tip title="Next step" >}}
 
-[Create a local cluster](../../create-local-cluster/kubernetes)
+[Create a local cluster](../../create-local-cluster/kubernetes/)
 
 {{< /tip >}}

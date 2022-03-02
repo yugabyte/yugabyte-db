@@ -4,8 +4,6 @@ headerTitle: Select Cloud Provider
 linkTitle: Configure
 description: Configuring Yugabyte Platform on On-Premises
 image: /images/section_icons/deploy/enterprise.png
-aliases:
-  - /latest/yugabyte-platform/overview/configure/
 menu:
   latest:
     identifier: configure-1-aws
@@ -20,35 +18,35 @@ Select your cloud provider to see the steps for configuration of database nodes.
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/latest/yugabyte-platform/overview/configure/aws" class="nav-link active">
+    <a href="../aws/" class="nav-link active">
       <i class="fab fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/overview/configure/gcp" class="nav-link">
+    <a href="../gcp/" class="nav-link">
       <i class="fab fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/overview/configure/azure" class="nav-link">
+    <a href="../azure/" class="nav-link">
       <i class="fab fa-windows" aria-hidden="true"></i>
       Azure
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/overview/configure/kubernetes" class="nav-link">
+    <a href="../kubernetes/" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/overview/configure/onprem" class="nav-link">
+    <a href="../onprem/" class="nav-link">
       <i class="fas fa-building"></i>
       On-premises
     </a>

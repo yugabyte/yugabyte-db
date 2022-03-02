@@ -3,8 +3,6 @@ title: Start YB-Master nodes of YugabyteDB cluster
 headerTitle: Start YB-Masters
 linkTitle: 3. Start YB-Masters
 description: Start YB-Master servers of your YugabyteDB cluster
-aliases:
-  - /deploy/manual-deployment/start-masters
 menu:
   latest:
     identifier: deploy-manual-deployment-start-masters
@@ -29,7 +27,7 @@ This section covers deployment for a single region or data center in a multi-zon
 - Create a six-node cluster with replication factor of `3`.
       - YB-Master server should run on only three nodes, but as noted in the next section, the YB-TServer server should run on all six nodes.
       - Assume the three YB-Master private IP addresses are `172.151.17.130`, `172.151.17.220` and `172.151.17.140`.
-      - Cloud will be `aws`, region will be `us-west`, and the three AZs will be `us-west-2a`, `us-west-2b`, and `us-west-2c`. Two nodes will be placed in each AZ in such a way that one replica for each tablet (aka shard) gets placed in any one node for each AZ. 
+      - Cloud will be `aws`, region will be `us-west`, and the three AZs will be `us-west-2a`, `us-west-2b`, and `us-west-2c`. Two nodes will be placed in each AZ in such a way that one replica for each tablet (aka shard) gets placed in any one node for each AZ.
 - Multiple data drives mounted on `/home/centos/disk1`, `/home/centos/disk2`.
 
 ## Run YB-Master servers with command line flags
@@ -57,9 +55,9 @@ Alternatively, you can also create a `master.conf` file with the following flags
 --master_addresses=172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100
 --rpc_bind_addresses=172.151.17.130:7100
 --fs_data_dirs=/home/centos/disk1,/home/centos/disk2
---placement_cloud=aws 
---placement_region=us-west 
---placement_zone=us-west-2a 
+--placement_cloud=aws
+--placement_region=us-west
+--placement_zone=us-west-2a
 ```
 
 ```sh

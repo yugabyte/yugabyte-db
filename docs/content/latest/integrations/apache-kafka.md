@@ -229,7 +229,7 @@ You can configure the JDBC Sink connector as follows:
   yugabyte=# select * from orders;
   ```
 
-  The following ouput demonstrates that the `orders` table was automatically created and that it contains the record:
+  The following output demonstrates that the `orders` table was automatically created and that it contains the record:
 
   ```output
   id | product | quantity | price
@@ -277,7 +277,7 @@ You can configure the YCQL Sink connector as follows:
   ycqlsh> select * from demo.orders;
   ```
 
-  Expect to see the following ouput:
+  Expect to see the following output:
 
   ```output
    id | product | quantity | price

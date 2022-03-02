@@ -11,7 +11,6 @@ menu:
     weight: 628
 aliases:
   - /latest/deploy/kubernetes/multi-cluster/gke
-  - /latest/deploy/kubernetes/multi-cluster/gke/helm-chart
 type: page
 isTocNested: true
 showAsideToc: true
@@ -19,7 +18,7 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/deploy/kubernetes/multi-cluster/gke/helm-chart" class="nav-link active">
+    <a href="../helm-chart/" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Helm chart
     </a>

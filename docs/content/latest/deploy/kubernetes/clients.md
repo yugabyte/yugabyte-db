@@ -19,7 +19,7 @@ This document describes options available for connecting to a Yugabyte cluster d
 
 ## Prerequisites
 
-You must have a Yugabyte cluster set up according to the [Kubernetes deployment instructions.](../../kubernetes)
+You must have a Yugabyte cluster set up according to the [Kubernetes deployment instructions.](../../kubernetes/)
 
 ## Connecting from Within the Kubernetes Cluster
 
@@ -210,4 +210,3 @@ Use HELP for help.
 cqlsh> SHOW HOST
 Connected to local cluster at 35.200.205.208:9042.
 ```
-

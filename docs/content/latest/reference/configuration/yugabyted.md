@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-YugabyteDB uses a 2-server architecture with YB-TServers managing the data and YB-Masters managing the metadata. However, this can introduce a burden on new users who want to get started right away. To manage YugabyteDB for testing and learning purposes, you can use `yugabyted`, which is a database server that acts as a parent server across the [`yb-tserver`](../yb-tserver) and [`yb-master`](../yb-master) servers. yugabyted also provides a UI similar to the Yugabyte Platform UI, with a data placement map and metrics dashboard.
+YugabyteDB uses a 2-server architecture with YB-TServers managing the data and YB-Masters managing the metadata. However, this can introduce a burden on new users who want to get started right away. To manage YugabyteDB for testing and learning purposes, you can use `yugabyted`, which is a database server that acts as a parent server across the [`yb-tserver`](../yb-tserver/) and [`yb-master`](../yb-master/) servers. yugabyted also provides a UI similar to the Yugabyte Platform UI, with a data placement map and metrics dashboard.
 
 The `yugabyted` executable file is located in the YugabyteDB home's `bin` directory.
 
@@ -20,7 +20,7 @@ The `yugabyted` executable file is located in the YugabyteDB home's `bin` direct
 
 - yugabyted supports both single-node and multi-node clusters (using the `join` option in the `start` command). However, the ability to create multi-node clusters is currently in [BETA](../../../faq/general/#what-is-the-definition-of-the-beta-feature-tag).
 
-- yugabyted is not recommended for production deployments. For production deployments with fully-distributed multi-node clusters, use [`yb-tserver`](../yb-tserver) and [`yb-master`](../yb-master) directly. Refer to [Deploy YugabyteDB](../../../deploy).
+- yugabyted is not recommended for production deployments. For production deployments with fully-distributed multi-node clusters, use [`yb-tserver`](../yb-tserver/) and [`yb-master`](../yb-master/) directly. Refer to [Deploy YugabyteDB](../../../deploy).
 
 {{< /note >}}
 
@@ -74,7 +74,7 @@ The following commands are available:
 
 ### start
 
-Use the `yugabyted start` command to start a one-node YugabyteDB cluster in your local environment. This one-node cluster includes [`yb-tserver`](../yb-tserver) and [`yb-master`](../yb-master) services.
+Use the `yugabyted start` command to start a one-node YugabyteDB cluster in your local environment. This one-node cluster includes [`yb-tserver`](../yb-tserver/) and [`yb-master`](../yb-master/) services.
 
 #### Syntax
 

@@ -1,6 +1,6 @@
 ---
 title: Set up a VPC network
-headerTitle: 
+headerTitle:
 linkTitle: Set up a VPC network
 description: How to set up and VPC network in Yugabyte Cloud.
 menu:
@@ -42,7 +42,7 @@ To create a VPC network, you need to complete the following tasks:
 
 1. [Create a peering connection](../cloud-add-peering/) between the VPC and the application VPC on the cloud provider network.
 
-    - Peering connections are configured on the [Peering Connections](../cloud-add-peering) page of the **VPC Network** tab on the **Network Access** page.
+    - Peering connections are configured on the [Peering Connections](../cloud-add-peering/) page of the **VPC Network** tab on the **Network Access** page.
 
     - The status of the peering connection is _Pending_ when done; to make the connection active, you must configure your cloud provider.
 

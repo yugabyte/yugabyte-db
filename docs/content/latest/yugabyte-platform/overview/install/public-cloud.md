@@ -20,21 +20,21 @@ Select your installation type to see the installation flow. Click on the element
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/yugabyte-platform/overview/install/public-cloud" class="nav-link active">
+    <a href="../public-cloud/" class="nav-link active">
       <i class="fas fa-cloud"></i>
       Public Cloud
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/overview/install/kubernetes" class="nav-link">
+    <a href="../kubernetes/" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li >
-    <a href="/latest/yugabyte-platform/overview/install/private-cloud" class="nav-link">
+    <a href="../private-cloud/" class="nav-link">
       <i class="fas fa-unlink"></i>
       Private Cloud
     </a>

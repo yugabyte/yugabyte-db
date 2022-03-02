@@ -3,8 +3,6 @@ title: Back up data for YSQL
 headerTitle: Back up data
 linkTitle: Back up data
 description: Back up data in YugabyteDB for YSQL.
-aliases:
-  - /manage/backup-restore/backing-up-data
 menu:
   latest:
     identifier: back-up-data
@@ -16,13 +14,13 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/manage/backup-restore/back-up-data" class="nav-link active">
+    <a href="../back-up-data/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
   <li >
-    <a href="/latest/manage/backup-restore/back-up-data-ycql" class="nav-link">
+    <a href="../back-up-data-ycql/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -36,7 +34,7 @@ YugabyteDB is designed for reliability, providing high fault tolerance and redun
 The YugabyteDB [`ysql_dump`](../../../admin/ysql-dump) backup utility, derived from PostgreSQL `pg_dump`,
 can be used to extract a single YugabyteDB database into a SQL script file.  `ysql_dump` will make a consistent backup for a database, even if it is being used concurrently, and does not block other database users (readers or writers).
 
-The SQL script dump is a plain-text file that include the SQL statements required to restore the database to the state it was in at the time it was saved. To restore a database from the SQL script file, use [`ysqlsh`](../../../admin/ysqlsh). For details on restoring an individual YugabyteDB database, see [Restore data](../restore-data).
+The SQL script dump is a plain-text file that include the SQL statements required to restore the database to the state it was in at the time it was saved. To restore a database from the SQL script file, use [`ysqlsh`](../../../admin/ysqlsh). For details on restoring an individual YugabyteDB database, see [Restore data](../restore-data/).
 
 To back up all of the databases in a YugabyteDB universe or cluster, including metadata (roles, sequences, and other database objects), use the `ysql_dumpall` utility.
 
