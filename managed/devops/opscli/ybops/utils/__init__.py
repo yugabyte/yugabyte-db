@@ -96,7 +96,19 @@ class ReleasePackage(object):
         obj.build_type = build_type
         obj.system = platform.system().lower()
         if obj.system == "linux":
-            obj.system = distro.linux_distribution(full_distribution_name=False)[0].lower()
+            # We recently moved from centos7 to almalinux8 as the build host for our universal
+            # x86_64 linux build.  This changes the name of the release tarball we create.
+            # Unfortunately, we have a lot of hard coded references to the centos package names
+            # in our downsstream release code.  So here we munge the name to 'centos' to keep things
+            # working while we fix downstream code.
+            # TODO(jharveymsith): Remove the almalinux to centos mapping once downstream is fixed.
+            if distro.id() == "centos" and distro.major_version() == 7 \
+                    or distro.id() == "almalinux" and platform.machine().lower() == "x86_64":
+                obj.system = "centos"
+            elif distro.id == "ubuntu":
+                obj.system = distro.id() + str(distro.version())
+            else:
+                obj.system = distro.id() + str(distro.major_version())
         if len(obj.system) == 0:
             raise YBOpsRuntimeError("Cannot release on this system type: " + platform.system())
         obj.machine = platform.machine().lower()
