@@ -128,7 +128,7 @@ $ git clone https://github.com/yugabyte/orm-examples.git && cd orm-examples/java
 sbt.version=1.2.8
 ```
 
-Build the REST API server using:
+Build the REST API server from the `ebeans` directory using:
 
 ```sh
 $ sbt compile
@@ -146,6 +146,8 @@ libraryDependencies += "com.xenoamess" % "nashorn" % "jdk8u265-b01-x3"
 {{< /note >}}
 
 ## Run the application
+
+- Run the application from the `ebeans` directory using:
 
 ```sh
 $ sbt run
@@ -179,10 +181,14 @@ $ curl \
   -v -X POST -H 'Content-Type:application/json' http://localhost:8080/products
 ```
 
-Verify the `userId` and `productId` from the database using the following YSQL commands.
+Verify the `userId` and `productId` from the `ysql_ebeans`database using the following YSQL commands.
 
 ```sh
-yugabyte=# select * from users;
+yugabyte=# \c ysql_ebeans;
+```
+
+```sh
+ysql_ebeans=# select * from users;
 ```
 
 ```output
@@ -194,7 +200,7 @@ yugabyte=# select * from users;
 ```
 
 ```sh
-yugabyte=# select * from products;
+ysql_ebeans=# select * from products;
 ```
 
 ```output
@@ -324,16 +330,16 @@ $ curl http://localhost:8080/users
 {
   "content": [
     {
-      "userId": 2,
-      "firstName": "Tom",
-      "lastName": "Stewart",
-      "email": "tstewart@example.com"
-    },
-    {
       "userId": 1,
       "firstName": "John",
       "lastName": "Smith",
       "email": "jsmith@example.com"
+    },
+    {
+      "userId": 101,
+      "firstName": "Tom",
+      "lastName": "Stewart",
+      "email": "tstewart@example.com"
     }
   ],
   ...
@@ -348,16 +354,16 @@ $ curl http://localhost:8080/products
 {
   "content": [
     {
-      "productId": 2,
-      "productName": "Pencil",
-      "description": "Mechanical pencil",
-      "price": 2.5
-    },
-    {
       "productId": 1,
       "productName": "Notebook",
       "description": "200 page notebook",
       "price": 7.5
+    },
+    {
+      "productId": 2,
+      "productName": "Pencil",
+      "description": "Mechanical pencil",
+      "price": 2.5
     }
   ],
   ...
@@ -374,28 +380,28 @@ $ curl http://localhost:8080/orders
     {
       "orderTime": "2019-05-10T04:26:54.590+0000",
       "orderId": "999ae272-f2f4-46a1-bede-5ab765bb27fe",
-      "user": {
+      "orderOwner": {
         "userId": 1,
         "firstName": "John",
         "lastName": "Smith",
         "email": "jsmith@example.com"
       },
       "userId": null,
-      "orderTotal": 25,
-      "products": []
+      "orderTotal": 25.0,
+      "products": null
     },
     {
       "orderTime": "2019-05-10T04:26:48.074+0000",
       "orderId": "1598c8d4-1857-4725-a9ab-14deb089ab4e",
-      "user": {
+      "orderOwner": {
         "userId": 1,
         "firstName": "John",
         "lastName": "Smith",
         "email": "jsmith@example.com"
       },
       "userId": null,
-      "orderTotal": 15,
-      "products": []
+      "orderTotal": 15.0,
+      "products": null
     }
   ],
   ...
