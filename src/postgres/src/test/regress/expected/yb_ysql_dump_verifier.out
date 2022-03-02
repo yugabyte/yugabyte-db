@@ -47,6 +47,7 @@
  regress_rls_alice    | Cannot login                                               | {}
  rls_user             | Cannot login                                               | {}
  tablegroup_test_user | Superuser                                                  | {}
+ yb_db_admin          | No inheritance, Cannot login                               | {}
  yb_extension         | Cannot login                                               | {}
  yb_fdw               | Cannot login                                               | {}
  yugabyte             | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
