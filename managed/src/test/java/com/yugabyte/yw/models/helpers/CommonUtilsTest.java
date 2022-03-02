@@ -136,10 +136,24 @@ public class CommonUtilsTest {
     "1.2.3.5sdfdsf, 1.2.3.4wqerq, false",
     "1.2.2.6sdfdsf, 1.2.3.4wqerq, true",
     "1.2.4.1sdfdsf, 1.2.3.4wqerq, false",
+    "1.2.4.1sdfdsf, asdfdsaf, true",
   })
   public void testReleaseEqualOrAfter(
       String thresholdRelease, String actualRelease, boolean result) {
     assertThat(CommonUtils.isReleaseEqualOrAfter(thresholdRelease, actualRelease), equalTo(result));
+  }
+
+  @Test
+  @Parameters({
+    "1.2.3.4sdfdsf, 1.2.3.4wqerq, false",
+    "1.2.3.3sdfdsf, 1.2.3.4wqerq, false",
+    "1.2.3.5sdfdsf, 1.2.3.4wqerq, true",
+    "1.2.2.6sdfdsf, 1.2.3.4wqerq, false",
+    "1.2.4.1sdfdsf, 1.2.3.4wqerq, true",
+    "1.2.4.1sdfdsf, asdfdsaf, false",
+  })
+  public void testReleaseBefore(String thresholdRelease, String actualRelease, boolean result) {
+    assertThat(CommonUtils.isReleaseBefore(thresholdRelease, actualRelease), equalTo(result));
   }
 
   @Abortable
