@@ -34,13 +34,13 @@ The Retail Analytics dataset includes sample data in the following tables:
 
 ## Install the Retail Analytics sample database
 
-The Retail Analytics SQL scripts reside in the `share` folder of your YugabyteDB or client shell installation. They can also be found in the [`sample` directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample). The following files will be used for this exercise:
+The Retail Analytics SQL scripts reside in the `share` folder of your YugabyteDB or client shell installation. They can also be found in the `sample` directory of the [YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample). The following files will be used for this exercise:
 
-- [`schema.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/schema.sql) — Creates the tables and constraints
-- [`orders.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/orders.sql) — Loads product orders
-- [`products.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/products.sql) — Loads products
-- [`reviews.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/reviews.sql) — Loads product reviews
-- [`users.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/users.sql) — Loads customer information
+- [schema.sql](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/schema.sql) — Creates the tables and constraints
+- [orders.sql](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/orders.sql) — Loads product orders
+- [products.sql](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/products.sql) — Loads products
+- [reviews.sql](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/reviews.sql) — Loads product reviews
+- [users.sql](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/users.sql) — Loads customer information
 
 Follow the steps here to install the Retail Analytics sample database.
 

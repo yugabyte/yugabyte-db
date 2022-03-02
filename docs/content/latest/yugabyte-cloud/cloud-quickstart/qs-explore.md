@@ -14,211 +14,48 @@ isTocNested: true
 showAsideToc: true
 ---
 
-After [creating a free cluster](../qs-add/), [connecting to the cluster](../qs-connect/) using Cloud Shell, and [creating a database (yb_demo) and loading some data](../qs-data/), you can start exploring YugabyteDB's PostgreSQL-compatible, fully-relational Yugabyte SQL API.
-
-This exercise assumes you are already connected to your cluster using the `ysqlsh` shell, have created the `yb_demo` database, and loaded the sample data.
+After [creating a free cluster](../qs-add/) and [connecting to the cluster](../qs-connect/) using Cloud Shell, you can start exploring YugabyteDB's PostgreSQL-compatible, fully-relational Yugabyte SQL API.
 
 ## Explore YugabyteDB
 
-To display the schema of the `products` table, enter the following command:
+When you connect to your cluster using Cloud Shell with the YSQL API, the shell window incorporates a quick start guide, with a series of pre-built queries for you to run.
+
+To start, create a database by entering the following command:
 
 ```sql
-yb_demo=# \d products
+yugabyte=# CREATE DATABASE yb_demo;
 ```
 
-```output
-                                        Table "public.products"
-   Column   |            Type             | Collation | Nullable |               Default                
-------------+-----------------------------+-----------+----------+--------------------------------------
- id         | bigint                      |           | not null | nextval('products_id_seq'::regclass)
- created_at | timestamp without time zone |           |          | 
- category   | text                        |           |          | 
- ean        | text                        |           |          | 
- price      | double precision            |           |          | 
- quantity   | integer                     |           |          | 5000
- rating     | double precision            |           |          | 
- title      | text                        |           |          | 
- vendor     | text                        |           |          | 
-Indexes:
-    "products_pkey" PRIMARY KEY, lsm (id HASH)
-```
-
-### Simple queries
-
-To see how many products there are in this table, run the following query.
+Next, connect to the new database using the ysqlsh `\c` meta-command:
 
 ```sql
-yb_demo=# SELECT count(*) FROM products;
+yugabyte=# \c yb_demo;
 ```
 
-```output
- count
--------
-   15
-(1 row)
-```
+Begin the tutorial by selecting the steps in the left navigation panel. The tutorial starts with the following tasks:
 
-The following query selects the `id`, `title`, `category`, and `price` columns for the first five products.
+1. Create a Table.
+1. Insert Data.
 
-```sql
-yb_demo=# SELECT id, title, category, price, rating
-          FROM products
-          LIMIT 5;
-```
+The tutorial database includes two tables: `dept` for Departments, and `emp` for Employees.
 
-```output
- id |           title           | category  |      price       | rating 
-----+---------------------------+-----------+------------------+--------
-  3 | Synergistic Granite Chair | Doohickey | 35.3887448815391 |      4
- 14 | Awesome Concrete Shoes    | Widget    | 25.0987635927189 |      4
-  9 | Practical Bronze Computer | Widget    | 58.3131209852614 |    4.2
- 12 | Sleek Paper Toucan        | Gizmo     | 77.3428505441222 |    4.4
-  5 | Enormous Marble Wallet    | Gadget    | 82.7450976850356 |      4
-(5 rows)
-```
+After you create the tables and insert the data, you can begin the tutorial scenarios. The quick start includes the following:
 
-### The JOIN clause
-
-Use a JOIN clause to combine rows from two or more tables, based on a related column between them.
-
-The following JOIN query selects the `total` column from the `orders` table, and for each of these orders, fetches the `id`, `name`, and `email` from the `users` table of the corresponding users that placed those orders. The related column between the two tables is the user's id.
-
-```sql
-yb_demo=# SELECT users.id, users.name, users.email, orders.id, orders.total
-          FROM orders INNER JOIN users ON orders.user_id=users.id
-          LIMIT 5;
-```
-
-```output
- id |     name           |         email                | id |      total       
-----+--------------------+------------------------------+----+------------------
-  4 | Arnold Adams       | adams.arnold@gmail.com       | 22 | 49.0560710142838
- 15 | Bertrand Romaguera | romaguera.bertrand@gmail.com | 76 | 28.0989026289413
-  1 | Hudson Borer       | borer-hudson@yahoo.com       |  9 | 81.6742695904106
- 10 | Tressa White       | white.tressa@yahoo.com       | 54 | 122.116378514938
-  4 | Arnold Adams       | adams.arnold@gmail.com       | 23 | 56.5115886738793
-(5 rows)
-```
-
-### Distributed transactions
-
-To track quantities accurately, each product being ordered in some quantity by a user has to decrement the corresponding product inventory quantity. These operations should be performed inside a transaction.
-
-Imagine the user with id `1` wants to order `10` units of the product with id `2`.
-
-Before running the transaction, you can verify the quantity of product `2` in stock by running the following query:
-
-```sql
-yb_demo=# SELECT id, category, price, quantity FROM products WHERE id=2;
-```
-
-```output
-SELECT id, category, price, quantity FROM products WHERE id=2;
- id | category  |      price       | quantity
-----+-----------+------------------+----------
-  2 | Doohickey | 70.0798961307176 |     5000
-(1 row)
-```
-
-To place the order, you can run the following transaction:
-
-```sql
-yb_demo=# BEGIN TRANSACTION;
-
-/* First insert a new order into the orders table. */
-INSERT INTO orders
-  (id, created_at, user_id, product_id, discount, quantity, subtotal, tax, total)
-VALUES (
-  (SELECT max(id)+1 FROM orders)                 /* id */,
-  now()                                          /* created_at */,
-  1                                              /* user_id */,
-  2                                              /* product_id */, 
-  0                                              /* discount */,
-  10                                             /* quantity */,
-  (10 * (SELECT price FROM products WHERE id=2)) /* subtotal */,
-  0                                              /* tax */,
-  (10 * (SELECT price FROM products WHERE id=2)) /* total */
-) RETURNING id;
-
-/* Next decrement the total quantity from the products table. */
-UPDATE products SET quantity = quantity - 10 WHERE id = 2;
-
-COMMIT;
-```
-
-Verify that the order got inserted by running the following command:
-
-```sql
-yb_demo=# SELECT * FROM orders WHERE id = (SELECT max(id) FROM orders);
-```
-
-```output
- id |         created_at         | user_id | product_id | discount | quantity |     subtotal     | tax |      total       
-----+----------------------------+---------+------------+----------+----------+------------------+-----+------------------
- 77 | 2021-09-08 20:03:12.308302 |       1 |          2 |        0 |       10 | 700.798961307176 |   0 | 700.798961307176
-(1 row)
-```
-
-To verify that total quantity of product id `2` in the inventory has been updated, run the following query:
-
-```sql
-yb_demo=# SELECT id, category, price, quantity FROM products WHERE id=2;
-```
-
-```output
- id | category  |      price       | quantity
-----+-----------+------------------+----------
-  2 | Doohickey | 70.0798961307176 |     4990
-(1 row)
-```
-
-### Create a view
-
-To answer questions such as what percentage of the total sales is from the Facebook channel, you can create a view.
-
-```sql
-yb_demo=# CREATE VIEW channel AS
-            (SELECT source, ROUND(SUM(orders.total)) AS total_sales
-             FROM users LEFT JOIN orders ON users.id=orders.user_id
-             GROUP BY source
-             ORDER BY total_sales DESC);
-```
-
-Now that the view is created, you can see it in the list of relations.
-
-```sql
-yb_demo=# \d
-```
-
-```output
-               List of relations
- Schema |      Name       |   Type   |  Owner
---------+-----------------+----------+----------
- public | channel         | view     | yugabyte
- public | orders          | table    | yugabyte
- public | orders_id_seq   | sequence | yugabyte
- public | products        | table    | yugabyte
- public | products_id_seq | sequence | yugabyte
- public | reviews         | table    | yugabyte
- public | reviews_id_seq  | sequence | yugabyte
- public | users           | table    | yugabyte
- public | users_id_seq    | sequence | yugabyte
-(9 rows)
-```
-
-```sql
-yb_demo=# SELECT source, 
-            total_sales * 100.0 / (SELECT SUM(total_sales) FROM channel) AS percent_sales
-          FROM channel
-          WHERE source='Facebook';
-```
-
-```output
-  source  |  percent_sales   
-----------+------------------
- Facebook | 31.3725490196078
-(1 row)
-```
+| Scenario | Description |
+| :--- | :--- |
+| Self Join | List all employees earning more than their managers using a self-join query. |
+| With Recursive | List the manager hierarchy using a recursive query. |
+| LAG Window Function | Compare employee hiring time interval by department using an analytical window function. |
+| CROSSTABVIEW | Display the sum of salary per job and department using a cross tab pivot query. |
+| Regexp | List all employees matching Gmail and org email domains using text pattern matching with regexp. |
+| GIN Index | Query employee skills using a GIN index on a JSON document. |
+| Text Search Index | Create a GIN text search index on the description column and query for words. |
+| Arithmetic Date Intervals | Find employees with overlapping evaluation periods using arithmetic date intervals. |
+| SQL Update | Update the salary of all employees who are not managers and display the new results. |
+| Prepared Statement | Get the salary for an employee using a prepared statement. |
+| Stored Procedure | Transfer a commission from one employee to another. |
+| Trigger | Record the last update time of each row automatically. |
+| Create Index | Create and analyze an index on the fly. |
 
 ## Next step
 
