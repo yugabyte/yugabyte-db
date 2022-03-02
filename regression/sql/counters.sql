@@ -13,9 +13,6 @@ SELECT a,b,c,d FROM t1, t2, t3, t4 WHERE t1.a = t2.b AND t3.c = t4.d ORDER BY a;
 SELECT a,b,c,d FROM t1, t2, t3, t4 WHERE t1.a = t2.b AND t3.c = t4.d ORDER BY a;
 SELECT query,calls FROM pg_stat_monitor ORDER BY query COLLATE "C";
 
-ALTER SYSTEM SET pg_stat_monitor.track TO 'all';
-SELECT pg_reload_conf();
-SELECT pg_sleep(1);
 SELECT pg_stat_monitor_reset();
 
 do $$
@@ -29,11 +26,6 @@ begin
 	end loop;
 end $$;
 SELECT query,calls FROM pg_stat_monitor ORDER BY query COLLATE "C";
-
-ALTER SYSTEM SET pg_stat_monitor.track TO 'top';
-SELECT pg_reload_conf();
-SELECT pg_sleep(1);
-SELECT pg_stat_monitor_reset();
 
 DROP TABLE t1;
 DROP TABLE t2;
