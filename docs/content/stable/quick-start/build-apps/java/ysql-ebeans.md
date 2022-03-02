@@ -122,7 +122,7 @@ $ git clone https://github.com/yugabyte/orm-examples.git && cd orm-examples/java
 
 ## Build the application
 
-- Create the `build.properties` file under the `project` directory and add the sbt version.
+- Create a `build.properties` file under the `project` directory and add the sbt version.
 
 ```sh
 sbt.version=1.2.8
