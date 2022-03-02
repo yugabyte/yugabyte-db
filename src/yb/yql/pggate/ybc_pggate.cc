@@ -367,13 +367,16 @@ YBCStatus YBCPgNewCreateTable(const char *database_name,
                               const bool colocated,
                               const YBCPgOid tablegroup_oid,
                               const YBCPgOid tablespace_oid,
+                              const YBCPgOid matview_pg_table_oid,
                               YBCPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_oid);
   const PgObjectId tablegroup_id(database_oid, tablegroup_oid);
   const PgObjectId tablespace_id(database_oid, tablespace_oid);
+  const PgObjectId matview_pg_table_id(database_oid, matview_pg_table_oid);
   return ToYBCStatus(pgapi->NewCreateTable(
       database_name, schema_name, table_name, table_id, is_shared_table,
-      if_not_exist, add_primary_key, colocated, tablegroup_id, tablespace_id, handle));
+      if_not_exist, add_primary_key, colocated, tablegroup_id, tablespace_id, matview_pg_table_id,
+      handle));
 }
 
 YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,

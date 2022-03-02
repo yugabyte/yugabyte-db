@@ -25,6 +25,7 @@
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_operator.h"
 #include "commands/cluster.h"
+#include "commands/dbcommands.h"
 #include "commands/matview.h"
 #include "commands/tablecmds.h"
 #include "commands/tablespace.h"
@@ -337,7 +338,20 @@ ExecRefreshMatView(RefreshMatViewStmt *stmt, const char *queryString,
 	else
 	{
 		refresh_by_heap_swap(matviewOid, OIDNewHeap, relpersistence);
-
+		/*
+		 * In YB mode, we must also rename the relation in DocDB.
+		 *
+		 */
+		if (IsYugaByteEnabled()) {
+			YBCPgStatement	handle     = NULL;
+			Oid				databaseId = YBCGetDatabaseOidByRelid(matviewOid);
+			char		   *db_name	   = get_database_name(databaseId);
+			HandleYBStatus(YBCPgNewAlterTable(databaseId,
+											  OIDNewHeap,
+											  &handle));
+			HandleYBStatus(YBCPgAlterTableRenameTable(handle, db_name, RelationGetRelationName(matviewRel)));
+			HandleYBStatus(YBCPgExecAlterTable(handle));
+		}
 		/*
 		 * Inform stats collector about our activity: basically, we truncated
 		 * the matview and inserted some new data.  (The concurrent code path

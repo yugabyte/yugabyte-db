@@ -966,7 +966,8 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	if (IsYugaByteEnabled())
 	{
 		CheckIsYBSupportedRelationByKind(relkind);
-		YBCCreateTable(stmt, relkind, descriptor, relationId, namespaceId, tablegroupId, tablespaceId);
+		YBCCreateTable(stmt, relkind, descriptor, relationId, namespaceId, tablegroupId, tablespaceId, 
+		               InvalidOid /* matviewPgTableId */ );
 	}
 
 	/* For testing purposes, user might ask us to fail a DLL. */

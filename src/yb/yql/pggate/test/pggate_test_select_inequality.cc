@@ -41,6 +41,7 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
                                        false /* add_primary_key */, true /* colocated */,
                                        kInvalidOid /* tablegroup_id */,
                                        kInvalidOid /* tablespace_id */,
+                                       kInvalidOid /* matview_pg_table_id */,
                                        &pg_stmt));
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "h", ++col_count,
                                                DataType::STRING, true, false));
