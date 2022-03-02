@@ -28,15 +28,18 @@ class InstanceComponent implements SupportBundleComponent {
   private final UniverseInfoHandler universeInfoHandler;
   private final NodeUniverseManager nodeUniverseManager;
   protected final Config config;
+  private final SupportBundleUtil supportBundleUtil;
 
   @Inject
   InstanceComponent(
       UniverseInfoHandler universeInfoHandler,
       NodeUniverseManager nodeUniverseManager,
-      Config config) {
+      Config config,
+      SupportBundleUtil supportBundleUtil) {
     this.universeInfoHandler = universeInfoHandler;
     this.nodeUniverseManager = nodeUniverseManager;
     this.config = config;
+    this.supportBundleUtil = supportBundleUtil;
   }
 
   @Override
@@ -53,7 +56,7 @@ class InstanceComponent implements SupportBundleComponent {
     for (NodeDetails node : nodes) {
       // Get source file path prefix
       String mountPath =
-          SupportBundleUtil.getDataDirPath(universe, node, nodeUniverseManager, config);
+          supportBundleUtil.getDataDirPath(universe, node, nodeUniverseManager, config);
       String nodeHomeDir = mountPath + "/yb-data";
 
       // Get target file path

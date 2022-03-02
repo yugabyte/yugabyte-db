@@ -38,6 +38,7 @@ public class SupportBundleController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(SupportBundleController.class);
 
   @Inject Commissioner commissioner;
+  @Inject SupportBundleUtil supportBundleUtil;
 
   @ApiOperation(
       value = "Create support bundle for specific universe",
@@ -128,7 +129,7 @@ public class SupportBundleController extends AuthenticatedController {
     SupportBundle.delete(bundleUUID);
 
     // Delete the actual archive file
-    SupportBundleUtil.deleteFile(supportBundle.getPathObject());
+    supportBundleUtil.deleteFile(supportBundle.getPathObject());
 
     auditService().createAuditEntry(ctx(), request());
     log.info("Successfully deleted the support bundle: " + bundleUUID.toString());

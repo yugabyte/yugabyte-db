@@ -84,6 +84,25 @@ public class SupportBundle extends Model {
     }
   }
 
+  public SupportBundle() {}
+
+  public SupportBundle(
+      UUID bundleUUID,
+      UUID scopeUUID,
+      String path,
+      Date startDate,
+      Date endDate,
+      BundleDetails bundleDetails,
+      SupportBundleStatusType status) {
+    this.bundleUUID = bundleUUID;
+    this.scopeUUID = scopeUUID;
+    this.path = path;
+    this.startDate = startDate;
+    this.endDate = endDate;
+    this.bundleDetails = bundleDetails;
+    this.status = status;
+  }
+
   @JsonIgnore
   public Path getPathObject() {
     return Paths.get(this.path);
