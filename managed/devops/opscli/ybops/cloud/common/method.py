@@ -397,7 +397,10 @@ class CreateInstancesMethod(AbstractInstancesMethod):
             while not self.cloud.wait_for_startup_script(args, host_info) and retries < 5:
                 retries += 1
                 time.sleep(2 ** retries)
-            self.cloud.verify_startup_script(args, host_info)
+
+            # For clusters with secondary subnets, the start-up script is expected to fail.
+            if not args.cloud_subnet_secondary:
+                self.cloud.verify_startup_script(args, host_info)
 
             logging.info('Startup script finished on {}'.format(args.search_pattern))
 

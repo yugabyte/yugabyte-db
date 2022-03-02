@@ -205,12 +205,14 @@ class AbstractCloud(AbstractCommandParser):
         self.wait_for_ssh_port(extra_vars["ssh_host"], args.search_pattern,
                                extra_vars["ssh_port"])
         dest_path = os.path.join("/tmp", os.path.basename(args.boot_script))
-        scp_to_tmp(
-            args.boot_script, extra_vars["ssh_host"],
-            extra_vars["ssh_user"], extra_vars["ssh_port"], args.private_key_file)
+
         # Make it executable, in case it isn't one.
         st = os.stat(args.boot_script)
         os.chmod(args.boot_script, st.st_mode | stat.S_IEXEC)
+
+        scp_to_tmp(
+            args.boot_script, extra_vars["ssh_host"],
+            extra_vars["ssh_user"], extra_vars["ssh_port"], args.private_key_file)
 
         cmd = "sudo {}".format(dest_path)
         rc, stdout, stderr = remote_exec_command(
