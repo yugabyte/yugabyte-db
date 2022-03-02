@@ -20,7 +20,7 @@ showAsideToc: true
       YSQL
     </a>
   </li>
- <li>
+  <li>
     <a href="../ysql-entity-framework/" class="nav-link ">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - Entity Framework
