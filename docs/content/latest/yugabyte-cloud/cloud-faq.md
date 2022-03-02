@@ -68,8 +68,8 @@ A Yugabyte Cloud account is limited to a single free cluster; you can add as man
 
 If you want to continue testing YugabyteDB with more resource-intensive scenarios, you can:
 
-- Download and run YugabyteDB on a local machine. For instructions, refer to [Quick Start](../../quick-start).
-- Upgrade to a [standard cluster](../cloud-basics/create-clusters) to access bigger clusters with more resources.
+- Download and run YugabyteDB on a local machine. For instructions, refer to [Quick Start](../../quick-start/).
+- Upgrade to a [standard cluster](../cloud-basics/create-clusters/) to access bigger clusters with more resources.
 
 ### Can I migrate my free cluster to a standard cluster?
 
@@ -104,7 +104,7 @@ To view the database version running on a particular cluster, navigate to the **
 
 ### Can I test YugabyteDB locally?
 
-To test locally, [download](https://download.yugabyte.com) and install YugabyteDB on a local machine. Refer to [Quick Start](../../quick-start). For accurate comparison with cloud, be sure to download the version that is running on Yugabyte Cloud.
+To test locally, [download](https://download.yugabyte.com) and install YugabyteDB on a local machine. Refer to [Quick Start](../../quick-start/). For accurate comparison with cloud, be sure to download the version that is running on Yugabyte Cloud.
 
 ## Support
 

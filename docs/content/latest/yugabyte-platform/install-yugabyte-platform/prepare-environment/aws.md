@@ -81,7 +81,7 @@ You should see something like the screenshot below. Click **Create** next.
 
 ## Create an IAM role (optional)
 
-In order for Yugabyte Platform to manage YugabyteDB nodes, limited access to your AWS infrastructure is required. To grant the required access, you can provide a set of credentials when configuring the AWS provider, as described in [Configure the AWS cloud provider](../../../configure-yugabyte-platform/set-up-cloud-provider/aws). Alternatively, the EC2 instance where the Yugabyte Platform will be running can be brought up with an IAM role with enough permissions to take all the actions required by Yugabyte Platform. Here is a sample of such a role:
+In order for Yugabyte Platform to manage YugabyteDB nodes, limited access to your AWS infrastructure is required. To grant the required access, you can provide a set of credentials when configuring the AWS provider, as described in [Configure the AWS cloud provider](../../../configure-yugabyte-platform/set-up-cloud-provider/aws/). Alternatively, the EC2 instance where the Yugabyte Platform will be running can be brought up with an IAM role with enough permissions to take all the actions required by Yugabyte Platform. Here is a sample of such a role:
 
 ```sh
 {
@@ -197,7 +197,7 @@ aws ec2 modify-instance-metadata-options --instance-id i-NNNNNNN --http-put-resp
 
 For more information, see [Configure the instance metadata service](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-service.html).
 
-When you create an AWS cloud provider, as described in [Configure the AWS cloud provider](../../../configure-yugabyte-platform/set-up-cloud-provider/aws), you need to  complete the following fields in the **Cloud Provider Configuration > AWS** screen:
+When you create an AWS cloud provider, as described in [Configure the AWS cloud provider](../../../configure-yugabyte-platform/set-up-cloud-provider/aws/), you need to  complete the following fields in the **Cloud Provider Configuration > AWS** screen:
 
 - Set the **Credential Type** field to Use IAM Role on instance.
 - Set the **VPC Setup** field to Create a new VPC.

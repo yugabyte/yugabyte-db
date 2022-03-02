@@ -44,7 +44,7 @@ Statement | Description |
 ----------|-------------|
 [`ALTER TABLE`](ddl_alter_table) | Alter a table |
 [`ALTER KEYSPACE`](ddl_alter_keyspace) | Alter a keyspace |
-[`CREATE INDEX`](ddl_create_index) | Create a new index on a table |
+[`CREATE INDEX`](ddl_create_index/) | Create a new index on a table |
 [`CREATE KEYSPACE`](ddl_create_keyspace) | Create a new keyspace |
 [`CREATE TABLE`](ddl_create_table) | Create a new table |
 [`CREATE TYPE`](ddl_create_type) | Create a user-defined data type |
@@ -87,9 +87,9 @@ Data manipulation language (DML) statements are used to read from and write to t
 Statement | Description |
 ----------|-------------|
 [`INSERT`](dml_insert) | Insert rows into a table |
-[`SELECT`](dml_select) | Select rows from a table |
-[`UPDATE`](dml_update) | Update rows in a table |
-[`DELETE`](dml_delete) | Delete specific rows from a table |
+[`SELECT`](dml_select/) | Select rows from a table |
+[`UPDATE`](dml_update/) | Update rows in a table |
+[`DELETE`](dml_delete/) | Delete specific rows from a table |
 [`TRANSACTION`](dml_transaction) | Makes changes to multiple rows in one or more tables in a transaction |
 [`TRUNCATE`](dml_truncate) | Remove all rows from a table |
 
@@ -97,11 +97,11 @@ Statement | Description |
 
 An expression is a finite combination of one or more values, operators, functions, and expressions that specifies a computation. Expressions can be used in the following components.
 
-- The select list of [`SELECT`](dml_select) statement. For example, `SELECT id + 1 FROM sample_table;`.
-- The WHERE clause in [`SELECT`](dml_select), [`DELETE`](dml_delete), [`INSERT`](dml_insert), or [`UPDATE`](dml_update).
-- The IF clause in [`DELETE`](dml_delete), [`INSERT`](dml_insert), or [`UPDATE`](dml_update).
+- The select list of [`SELECT`](dml_select/) statement. For example, `SELECT id + 1 FROM sample_table;`.
+- The WHERE clause in [`SELECT`](dml_select/), [`DELETE`](dml_delete/), [`INSERT`](dml_insert), or [`UPDATE`](dml_update/).
+- The IF clause in [`DELETE`](dml_delete/), [`INSERT`](dml_insert), or [`UPDATE`](dml_update/).
 - The VALUES clause in [`INSERT`](dml_insert).
-- The SET clause in [`UPDATE`](dml_update).
+- The SET clause in [`UPDATE`](dml_update/).
 
 Currently, the following expressions are supported.
 
@@ -110,7 +110,7 @@ Expression | Description |
 [Simple Value](expr_simple) | Column, constant, or null. Column alias cannot be used in expression yet. |
 [Subscript `[]`](expr_subscript) | Subscripting columns of collection data types |
 [Operator Call](expr_ocall) | Builtin operators only |
-[Function Call](expr_fcall) | Builtin function calls only |
+[Function Call](expr_fcall/) | Builtin function calls only |
 
 ## Data types
 

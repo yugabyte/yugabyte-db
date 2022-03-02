@@ -20,7 +20,7 @@ The following table lists the primitive and compound data types in YSQL.
 
 | Data type | Alias | Description |
 |-----------|-------|-------------|
-| [`array`](type_array) |  | One-dimensional or multidimensional rectilinear array of any data type payload |
+| [`array`](type_array/) |  | One-dimensional or multidimensional rectilinear array of any data type payload |
 | [`bigint`](type_numeric) | [`int8`](type_numeric) | Signed eight-byte integer |
 | [`bigserial`](type_serial) | [`serial8`](type_serial) | Autoincrementing eight-byte integer |
 | `bit [ (n) ]` <sup>1</sup> | | Fixed-length bit string |
@@ -37,8 +37,8 @@ The following table lists the primitive and compound data types in YSQL.
 | `inet` <sup>1</sup> | | IPv4 or IPv6 host address |
 | [`integer`](type_numeric) | [`int`, `int4`](type_numeric) | Signed four-byte integer |
 | [`interval [ fields ] [ (p) ]`](type_datetime/) | | Time span |
-| [`json`](type_json) <sup>1</sup> | | Textual JSON data |
-| [`jsonb`](type_json) <sup>1</sup> | | Binary JSON data, decomposed |
+| [`json`](type_json/) <sup>1</sup> | | Textual JSON data |
+| [`jsonb`](type_json/) <sup>1</sup> | | Binary JSON data, decomposed |
 | `line` <sup>1</sup> | | Infinite line on a plane |
 | `lseg` <sup>1</sup> | | Line segment on a plane |
 | `macaddr` <sup>1</sup> | | Media Access Control (MAC) address |

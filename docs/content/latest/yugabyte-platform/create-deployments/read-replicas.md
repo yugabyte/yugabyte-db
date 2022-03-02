@@ -23,7 +23,7 @@ You can create a universe that includes both a primary cluster and a [read repli
 
 ## Create the universe
 
-You start by navigating to **Dashboard** and clicking **Create Universe**. Use the **Primary Cluster > Cloud Configuration** page to enter the following values to create a primary cluster on [GCP](../../configure-yugabyte-platform/set-up-cloud-provider/gcp) provider:
+You start by navigating to **Dashboard** and clicking **Create Universe**. Use the **Primary Cluster > Cloud Configuration** page to enter the following values to create a primary cluster on [GCP](../../configure-yugabyte-platform/set-up-cloud-provider/gcp/) provider:
 
 - Enter a universe name as helloworld3.
 - Enter the set of regions as Oregon.

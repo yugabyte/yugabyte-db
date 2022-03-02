@@ -86,7 +86,7 @@ showAsideToc: true
 
 #### New features
 
-- Ability to [create clusters](../cloud-basics/create-clusters) suitable for production workloads. Yugabyte Cloud clusters support horizontal and vertical scaling, VPC peering, and scheduled and manual backups.
+- Ability to [create clusters](../cloud-basics/create-clusters/) suitable for production workloads. Yugabyte Cloud clusters support horizontal and vertical scaling, VPC peering, and scheduled and manual backups.
 - Billing support. Set up a billing profile, manage payment methods, and review invoices on the [Billing](../cloud-admin/cloud-billing-profile) tab. (You must create a billing profile and add a payment method before you can create any clusters apart from your free cluster.)
 
 ### September 8, 2021

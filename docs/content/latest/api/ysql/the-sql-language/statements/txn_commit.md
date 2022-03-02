@@ -70,7 +70,7 @@ CREATE TABLE sample(k1 int, k2 int, v1 int, v2 text, PRIMARY KEY (k1, k2));
 Begin a transaction and insert some rows.
 
 ```plpgsql
-BEGIN TRANSACTION; SET TRANSACTION ISOLATION LEVEL REPEATABLE READ; 
+BEGIN TRANSACTION; SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 ```
 
 ```plpgsql
@@ -80,7 +80,7 @@ INSERT INTO sample(k1, k2, v1, v2) VALUES (1, 2.0, 3, 'a'), (1, 3.0, 4, 'b');
 Start a new shell  with `ysqlsh` and begin another transaction to insert some more rows.
 
 ```plpgsql
-yugabyte=# BEGIN TRANSACTION; SET TRANSACTION ISOLATION LEVEL REPEATABLE READ; 
+yugabyte=# BEGIN TRANSACTION; SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 ```
 
 ```plpgsql
@@ -156,5 +156,5 @@ yugabyte=# SELECT * FROM sample; -- run in second shell.
 
 ## See also
 
-- [`BEGIN`](../txn_begin)
+- [`BEGIN`](../txn_begin/)
 - [`ROLLBACK`](../txn_rollback)
