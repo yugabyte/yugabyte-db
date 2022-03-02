@@ -584,7 +584,7 @@ typedef struct EState
 	 * YugaByte-specific fields
 	 */
 
-	bool es_yb_is_single_row_modify_txn; /* Is this query a single-row modify
+	bool yb_es_is_single_row_modify_txn; /* Is this query a single-row modify
 																				* and the only stmt in this txn. */
 	TupleTableSlot *yb_conflict_slot; /* If a conflict is to be resolved when inserting data,
 																		 * we cache the conflict tuple here when processing and

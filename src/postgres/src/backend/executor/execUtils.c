@@ -169,9 +169,8 @@ CreateExecutorState(void)
 
 	/*
 	 * YugaByte-specific fields
-	 * TODO(neil) Rename "es_yb" to "yb_es".  Not sure why they are named this way in the past.
 	 */
-	estate->es_yb_is_single_row_modify_txn = false;
+	estate->yb_es_is_single_row_modify_txn = false;
 	estate->yb_conflict_slot = NULL;
 	/*
 	 * The read hybrid time used for this query. This will be initialized
