@@ -27,6 +27,8 @@ import lombok.extern.slf4j.Slf4j;
 public class RunYsqlUpgrade extends AbstractTaskBase {
 
   private static final String MIN_YSQL_UPGRADE_RELEASE = "2.8.0.0";
+  private static final String NO_YSQL_UPGRADE_RELEASE = "2.9.0.0";
+  private static final String NEXT_YSQL_UPGRADE_RELEASE = "2.11.0.0";
   private static final long TIMEOUT_SEC = TimeUnit.MINUTES.toSeconds(3);
 
   private final NodeUniverseManager nodeUniverseManager;
@@ -52,6 +54,11 @@ public class RunYsqlUpgrade extends AbstractTaskBase {
   public void run() {
     if (!CommonUtils.isReleaseEqualOrAfter(
         MIN_YSQL_UPGRADE_RELEASE, taskParams().ybSoftwareVersion)) {
+      log.info("Skipping YSQL upgrade as current YB version is {}", taskParams().ybSoftwareVersion);
+      return;
+    }
+    if (CommonUtils.isReleaseBetween(
+        NO_YSQL_UPGRADE_RELEASE, NEXT_YSQL_UPGRADE_RELEASE, taskParams().ybSoftwareVersion)) {
       log.info("Skipping YSQL upgrade as current YB version is {}", taskParams().ybSoftwareVersion);
       return;
     }
