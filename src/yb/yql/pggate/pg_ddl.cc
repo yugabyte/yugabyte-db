@@ -176,7 +176,8 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
                              bool add_primary_key,
                              const bool colocated,
                              const PgObjectId& tablegroup_oid,
-                             const PgObjectId& tablespace_oid)
+                             const PgObjectId& tablespace_oid,
+                             const PgObjectId& matview_pg_table_oid)
     : PgDdl(pg_session) {
   table_id.ToPB(req_.mutable_table_id());
   req_.set_database_name(database_name);
@@ -189,6 +190,7 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
   req_.set_colocated(colocated);
   tablegroup_oid.ToPB(req_.mutable_tablegroup_oid());
   tablespace_oid.ToPB(req_.mutable_tablespace_oid());
+  matview_pg_table_oid.ToPB(req_.mutable_matview_pg_table_oid());
 
   // Add internal primary key column to a Postgres table without a user-specified primary key.
   if (add_primary_key) {

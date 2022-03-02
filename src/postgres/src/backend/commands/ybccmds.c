@@ -451,7 +451,8 @@ static void CreateTableHandleSplitOptions(YBCPgStatement handle,
 
 void
 YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
-							 Oid relationId, Oid namespaceId, Oid tablegroupId, Oid tablespaceId)
+							 Oid relationId, Oid namespaceId, Oid tablegroupId, Oid tablespaceId,
+							 Oid matviewPgTableId)
 {
 	if (relkind != RELKIND_RELATION && relkind != RELKIND_PARTITIONED_TABLE &&
 		relkind != RELKIND_MATVIEW)
@@ -605,6 +606,7 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 									   colocated,
 									   tablegroupId,
 									   tablespaceId,
+									   matviewPgTableId,
 									   &handle));
 
 	CreateTableAddColumns(handle, desc, primary_key, colocated, tablegroupId);
