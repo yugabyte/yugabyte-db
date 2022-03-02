@@ -238,7 +238,7 @@ class AwsResumeInstancesMethod(AbstractInstancesMethod):
         if not host_info:
             logging.error("Host {} does not exist.".format(args.search_pattern))
             return
-        self.cloud.start_instance(host_info, int(args.custom_ssh_port))
+        self.cloud.start_instance(host_info, [int(args.custom_ssh_port)])
 
 
 class AwsTagsMethod(AbstractInstancesMethod):

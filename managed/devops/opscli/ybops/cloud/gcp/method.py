@@ -302,7 +302,7 @@ class GcpResumeInstancesMethod(AbstractInstancesMethod):
                                  help="The ip of the instance to resume.")
 
     def callback(self, args):
-        self.cloud.start_instance(args, args.custom_ssh_port)
+        self.cloud.start_instance(args, [args.custom_ssh_port])
 
 
 class GcpPauseInstancesMethod(AbstractInstancesMethod):
