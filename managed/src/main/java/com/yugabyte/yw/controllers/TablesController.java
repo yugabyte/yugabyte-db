@@ -481,7 +481,7 @@ public class TablesController extends AuthenticatedController {
     }
   }
 
-  @ApiOperation(value = "Create a backup", nickname = "createbackup", response = YBPTask.class)
+  @ApiOperation(value = "Create a backup V2", nickname = "createBackupV2", response = YBPTask.class)
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Backup",
@@ -631,9 +631,9 @@ public class TablesController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Create Backup Schedule",
+      value = "Create Backup Schedule V2",
       response = Schedule.class,
-      nickname = "createbackupSchedule")
+      nickname = "createBackupScheduleV2")
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "backup",
