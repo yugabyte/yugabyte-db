@@ -7,7 +7,7 @@ menu:
   stable:
     identifier: unique-index-ycql
     parent: explore-indexes-constraints
-    weight: 211
+    weight: 231
 isTocNested: true
 showAsideToc: true
 ---

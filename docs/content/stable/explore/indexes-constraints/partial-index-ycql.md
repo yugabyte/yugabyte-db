@@ -7,7 +7,7 @@ menu:
   stable:
     identifier: partial-index-ycql
     parent: explore-indexes-constraints
-    weight: 221
+    weight: 251
 isTocNested: true
 showAsideToc: true
 ---

@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: partial-index-ycql
     parent: explore-indexes-constraints
-    weight: 221
+    weight: 241
 aliases:
    - /latest/explore/ysql-language-features/indexes-1/
    - /latest/explore/indexes-constraints/indexes-1/

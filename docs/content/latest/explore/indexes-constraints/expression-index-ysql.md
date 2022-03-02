@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: expression-index-ysql
     parent: explore-indexes-constraints
-    weight: 230
+    weight: 250
 aliases:
    - /latest/explore/ysql-language-features/indexes-1/
    - /latest/explore/indexes-constraints/indexes-1/

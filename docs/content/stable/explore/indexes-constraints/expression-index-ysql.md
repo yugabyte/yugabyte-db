@@ -7,7 +7,7 @@ menu:
   stable:
     identifier: expression-index-ysql
     parent: explore-indexes-constraints
-    weight: 230
+    weight: 240
 isTocNested: true
 showAsideToc: true
 ---

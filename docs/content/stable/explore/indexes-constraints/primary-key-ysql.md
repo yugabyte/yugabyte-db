@@ -7,7 +7,7 @@ menu:
   stable:
     identifier: primary-key-ysql
     parent: explore-indexes-constraints
-    weight: 250
+    weight: 200
 isTocNested: true
 showAsideToc: true
 ---
@@ -49,7 +49,7 @@ CREATE TABLE (
 );
 ```
 
-The following example creates the `employee` table with `employee_no` as the primary key, which uniquely identifies an employee. Try the examples using the YSQL shell and
+The following example creates the `employee` table with `employee_no` as the primary key, which uniquely identifies an employee.
 
 ```sql
 CREATE TABLE employees (

@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: foreign-key-ysql
     parent: explore-indexes-constraints
-    weight: 260
+    weight: 210
 isTocNested: true
 showAsideToc: true
 aliases:

@@ -1,13 +1,13 @@
 ---
 title: Generalized inverted indexes
-linkTitle: Generalized Inverted Indexes
+linkTitle: GIN Indexes
 description: Generalized inverted indexes in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   stable:
     identifier: indexes-constraints-gin
     parent: explore-indexes-constraints
-    weight: 240
+    weight: 260
 isTocNested: true
 showAsideToc: true
 ---

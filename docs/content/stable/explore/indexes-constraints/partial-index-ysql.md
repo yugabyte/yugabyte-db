@@ -7,7 +7,7 @@ menu:
   stable:
     identifier: partial-index-ysql
     parent: explore-indexes-constraints
-    weight: 220
+    weight: 250
 isTocNested: true
 showAsideToc: true
 ---

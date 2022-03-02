@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: primary-key-ycql
     parent: explore-indexes-constraints
-    weight: 251
+    weight: 201
 isTocNested: true
 showAsideToc: true
 aliases:

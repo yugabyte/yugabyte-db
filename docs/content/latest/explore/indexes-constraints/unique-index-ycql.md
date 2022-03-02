@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: unique-index-ycql
     parent: explore-indexes-constraints
-    weight: 211
+    weight: 231
 aliases:
    - /latest/explore/ysql-language-features/indexes-1/
    - /latest/explore/indexes-constraints/indexes-1/

@@ -7,7 +7,7 @@ menu:
   stable:
     identifier: unique-index-ysql
     parent: explore-indexes-constraints
-    weight: 210
+    weight: 230
 isTocNested: true
 showAsideToc: true
 ---
