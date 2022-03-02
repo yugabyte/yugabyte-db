@@ -179,6 +179,7 @@ YBCStatus YBCPgNewCreateTable(const char *database_name,
                               const bool colocated,
                               YBCPgOid tablegroup_oid,
                               YBCPgOid tablespace_oid,
+                              YBCPgOid matview_pg_table_oid,
                               YBCPgStatement *handle);
 
 YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,

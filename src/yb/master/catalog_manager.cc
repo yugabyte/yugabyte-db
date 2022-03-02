@@ -3481,6 +3481,9 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         colocated_tablet_ids_map_[ns->id()] = tablet_map_->find(tablets[0]->id())->second;
       }
     }
+    if (req.has_matview_pg_table_id()) {
+      matview_pg_table_ids_map_[req.table_id()] = req.matview_pg_table_id();
+    }
   }
 
   // For create transaction table requests with tablespace id, save the tablespace id.
@@ -3618,24 +3621,10 @@ Status CatalogManager::VerifyTablePgLayer(scoped_refptr<TableInfo> table, bool r
   const uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTableId(table->id()));
   const auto pg_table_id = GetPgsqlTableId(database_oid, kPgClassTableOid);
   auto table_storage_id = GetPgsqlTableOid(table->id());
-
-  // In the scenario where we create a new relation during a REFRESH MATERIALIZED VIEW command,
-  // the new relation's name is of the form pg_temp_<matview_oid>. When the refresh has completed,
-  // the matview's relfilenode is swapped with the new relation's relfilenode, and the sys catalog
-  // entries of the new relation are deleted. Any subsequent scans of the matview will map to scans
-  // of the new relation in DocDB.
-  // Therefore, the correct pg_class entry to look for is matview_oid in pg_temp_<matview_oid>.
-  // TODO (fizaa): https://github.com/yugabyte/yugabyte-db/issues/10816
-  std::string matview_table_prefix = "pg_temp_";
-  if (table->name().find(matview_table_prefix) == 0) {
-    try {
-      table_storage_id = narrow_cast<uint32_t>(std::stol(
-          table->name().substr(matview_table_prefix.length())));
-    }
-    catch (...) {
-      string msg = Substitute("Unexpected materialized view table name ($0), assuming user table",
-                              table->name());
-      LOG(WARNING) << msg;
+  {
+    SharedLock lock(mutex_);
+    if (matview_pg_table_ids_map_.find(table->id()) != matview_pg_table_ids_map_.end()) {
+      table_storage_id = GetPgsqlTableOid(matview_pg_table_ids_map_[table->id()]);
     }
   }
   auto entry_exists = VERIFY_RESULT(
@@ -4550,7 +4539,12 @@ Result<string> CatalogManager::GetPgSchemaName(const TableInfoPtr& table_info) {
       Format("Expected YSQL table, got: $0", table_info->GetTableType()));
 
   const uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(table_info->namespace_id()));
-  const uint32_t table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_info->id()));
+  uint32_t table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_info->id()));
+  {
+    if (matview_pg_table_ids_map_.find(table_info->id()) != matview_pg_table_ids_map_.end()) {
+      table_oid = VERIFY_RESULT(GetPgsqlTableOid(matview_pg_table_ids_map_[table_info->id()]));
+    }
+  }
   const uint32_t relnamespace_oid = VERIFY_RESULT(
       sys_catalog_->ReadPgClassRelnamespace(database_oid, table_oid));
   return sys_catalog_->ReadPgNamespaceNspname(database_oid, relnamespace_oid);
@@ -4948,6 +4942,9 @@ Status CatalogManager::DeleteTableInternal(
 
         // Also remove from the system.partitions table.
         GetYqlPartitionsVtable().RemoveFromCache(table.info->id());
+
+        // Remove matviews from matview to pg table id map
+        matview_pg_table_ids_map_.erase(table.info->id());
       }
     }
     // We commit another map to increment its version and reset cache.
