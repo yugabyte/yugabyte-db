@@ -12,18 +12,25 @@ isTocNested: true
 showAsideToc: false
 ---
 
-You can create an admin account via [http://yugaware-host-public-ip/register](http://yugaware-host-public-ip/register). 
+You can create an admin account via `http://<yugabyteplatform-host-private-ip>/register`, replacing *yugabyteplatform-host-private-ip* with the IP address hosting your Yugabyte Platform instance, as per the following example:
+
+```output
+http://10.170.1.192/register
+```
+
+The following illustration shows the admin console:
 
 ![Register](/images/ee/register.png)
 
-By default, Yugabyte Platform runs as a single-tenant application.
+Note that by default, Yugabyte Platform runs as a single-tenant application.
 
-After you click **Submit**, you are automatically logged into the Yugabyte Platform console. Proceed to [configuring cloud providers](../set-up-cloud-provider/aws).
+You proceed with the account creation as follows: 
 
-By default, [http://yugaware-host-public-ip](http://yugaware-host-public-ip) redirects to [http://yugaware-host-public-ip/login](http://yugaware-host-public-ip/login). Login to the application using the credentials you had provided during the Register customer step.
+- Select the environment.
+- Enter your new user credentials.
+- Confirm the user agreement.
+- Click **Register**. 
 
-![Login](/images/ee/login.png)
+You are now redirected to the login page located at `http://<yugabyteplatform-host-private-ip>/login`. This page allows you to login to Yugabyte Platform using your new credentials.
 
-Click on the top-right drop-down list or go directly to [http://yugaware-host-public-ip/profile](http://yugaware-host-public-ip/profile) to change the profile of the customer provided during the **Register customer** step.
-
-![Profile](/images/ee/profile.png)
+Once logged in, you may change the information related to your account by clicking **User > User Profile** at the top right.
