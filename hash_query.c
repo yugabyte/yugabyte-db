@@ -135,13 +135,13 @@ hash_entry_alloc(pgssSharedState *pgss, pgssHashKey *key, int encoding)
 
 	if (hash_get_num_entries(pgss_hash) >= MAX_BUCKET_ENTRIES)
 	{
-		elog(DEBUG1, "%s", "pg_stat_monitor: out of memory");
+		elog(DEBUG1, "pg_stat_monitor: out of memory");
 		return NULL;
 	}
 	/* Find or create an entry with desired hash code */
 	entry = (pgssEntry *) hash_search(pgss_hash, key, HASH_ENTER_NULL, &found);
 	if (entry == NULL)
-		pgsm_log_error("hash_entry_alloc: OUT OF MEMORY");
+		elog(DEBUG1, "hash_entry_alloc: OUT OF MEMORY");
 	else if (!found)
 	{
 		pgss->bucket_entry[pg_atomic_read_u64(&pgss->current_wbucket)]++;
@@ -216,7 +216,7 @@ hash_entry_dealloc(int new_bucket_id, int old_bucket_id, unsigned char *query_bu
 				pgssEntry *bkp_entry = malloc(sizeof(pgssEntry));
 				if (!bkp_entry)
 				{
-					pgsm_log_error("hash_entry_dealloc: out of memory");
+					elog(DEBUG1, "hash_entry_dealloc: out of memory");
 					/*
 					 * No memory, If the entry has calls > 1 then we change the state to finished,
 					 * as the pending query will likely finish execution during the new bucket

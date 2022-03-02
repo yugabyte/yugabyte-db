@@ -49,12 +49,6 @@ SELECT pg_stat_monitor_reset();
  
 (1 row)
 
-SELECT pg_stat_monitor_reset();
- pg_stat_monitor_reset 
------------------------
- 
-(1 row)
-
 do $$
 declare
    n integer:= 1;
@@ -82,12 +76,6 @@ SELECT query,calls FROM pg_stat_monitor ORDER BY query COLLATE "C";
          end loop;                                                                                +| 
  end $$                                                                                            | 
 (4 rows)
-
-SELECT pg_stat_monitor_reset();
- pg_stat_monitor_reset 
------------------------
- 
-(1 row)
 
 DROP TABLE t1;
 DROP TABLE t2;

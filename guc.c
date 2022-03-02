@@ -20,7 +20,12 @@
 
 GucVariable conf[MAX_SETTINGS];
 static void DefineIntGUC(GucVariable *conf);
+static void DefineIntGUCWithCheck(GucVariable *conf, GucIntCheckHook check);
 static void DefineBoolGUC(GucVariable *conf);
+
+/* Check hooks to ensure histogram_min < histogram_max */
+static bool check_histogram_min(int *newval, void **extra, GucSource source);
+static bool check_histogram_max(int *newval, void **extra, GucSource source);
 
 /*
  * Define (or redefine) custom GUC variables.
@@ -123,7 +128,7 @@ init_guc(void)
 		.guc_unit = 0,
 		.guc_value = &PGSM_HISTOGRAM_MIN
 	};
-	DefineIntGUC(&conf[i++]);
+	DefineIntGUCWithCheck(&conf[i++], check_histogram_min);
 
 	conf[i] = (GucVariable) {
 		.guc_name = "pg_stat_monitor.pgsm_histogram_max",
@@ -135,7 +140,7 @@ init_guc(void)
 		.guc_unit = 0,
 		.guc_value = &PGSM_HISTOGRAM_MAX
 	};
-	DefineIntGUC(&conf[i++]);
+	DefineIntGUCWithCheck(&conf[i++], check_histogram_max);
 
 	conf[i] = (GucVariable) {
 		.guc_name = "pg_stat_monitor.pgsm_histogram_buckets",
@@ -201,8 +206,7 @@ init_guc(void)
 #endif
 }
 
-static void
-DefineIntGUC(GucVariable *conf)
+static void DefineIntGUCWithCheck(GucVariable *conf, GucIntCheckHook check)
 {
 	DefineCustomIntVariable(conf->guc_name,
 							conf->guc_desc,
@@ -213,10 +217,17 @@ DefineIntGUC(GucVariable *conf)
 							conf->guc_max,
 							conf->guc_restart ? PGC_POSTMASTER : PGC_USERSET,
 							conf->guc_unit,
-							NULL,
+							check,
 							NULL,
 							NULL);
 }
+
+static void
+DefineIntGUC(GucVariable *conf)
+{
+	DefineIntGUCWithCheck(conf, NULL);
+}
+
 static void
 DefineBoolGUC(GucVariable *conf)
 {
@@ -238,3 +249,16 @@ get_conf(int i)
 	return  &conf[i];
 }
 
+static bool check_histogram_min(int *newval, void **extra, GucSource source)
+{
+	/*
+	 * During module initialization PGSM_HISTOGRAM_MIN is initialized before
+	 * PGSM_HISTOGRAM_MAX, in this case PGSM_HISTOGRAM_MAX will be zero.
+	 */
+	return (PGSM_HISTOGRAM_MAX == 0 || *newval < PGSM_HISTOGRAM_MAX);
+}
+
+static bool check_histogram_max(int *newval, void **extra, GucSource source)
+{
+	return (*newval > PGSM_HISTOGRAM_MIN);
+}
