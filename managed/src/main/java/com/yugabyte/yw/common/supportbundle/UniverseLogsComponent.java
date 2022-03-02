@@ -36,15 +36,18 @@ class UniverseLogsComponent implements SupportBundleComponent {
   private final UniverseInfoHandler universeInfoHandler;
   private final NodeUniverseManager nodeUniverseManager;
   protected final Config config;
+  private final SupportBundleUtil supportBundleUtil;
 
   @Inject
   UniverseLogsComponent(
       UniverseInfoHandler universeInfoHandler,
       NodeUniverseManager nodeUniverseManager,
-      Config config) {
+      Config config,
+      SupportBundleUtil supportBundleUtil) {
     this.universeInfoHandler = universeInfoHandler;
     this.nodeUniverseManager = nodeUniverseManager;
     this.config = config;
+    this.supportBundleUtil = supportBundleUtil;
   }
 
   @Override
@@ -61,7 +64,7 @@ class UniverseLogsComponent implements SupportBundleComponent {
     for (NodeDetails node : nodes) {
       // Get source file path prefix
       String mountPath =
-          SupportBundleUtil.getDataDirPath(universe, node, nodeUniverseManager, config);
+          supportBundleUtil.getDataDirPath(universe, node, nodeUniverseManager, config);
       String nodeHomeDir = mountPath + "/yb-data";
 
       // Get target file path
@@ -95,7 +98,7 @@ class UniverseLogsComponent implements SupportBundleComponent {
     for (NodeDetails node : nodes) {
       // Get source file path prefix
       String mountPath =
-          SupportBundleUtil.getDataDirPath(universe, node, nodeUniverseManager, config);
+          supportBundleUtil.getDataDirPath(universe, node, nodeUniverseManager, config);
       String nodeHomeDir = mountPath + "/yb-data";
 
       // Get target file path
@@ -175,7 +178,7 @@ class UniverseLogsComponent implements SupportBundleComponent {
       List<String> logFilePaths, String universeLogsRegexPattern, Date startDate, Date endDate)
       throws ParseException {
     // Filtering the file names based on regex
-    logFilePaths = SupportBundleUtil.filterList(logFilePaths, universeLogsRegexPattern);
+    logFilePaths = supportBundleUtil.filterList(logFilePaths, universeLogsRegexPattern);
 
     // Sort the files in descending order of date (done implicitly as date format is yyyyMMdd)
     Collections.sort(logFilePaths, Collections.reverseOrder());
@@ -203,7 +206,7 @@ class UniverseLogsComponent implements SupportBundleComponent {
         // Uses capturing and non capturing groups in regex pattern for easier retrieval of
         // neccessary info. Group 3 = the "yyyyMMdd" format in the file name.
         Date fileDate = new SimpleDateFormat(fileNameSdfPattern).parse(fileNameMatcher.group(3));
-        if (SupportBundleUtil.checkDateBetweenDates(fileDate, startDate, endDate)) {
+        if (supportBundleUtil.checkDateBetweenDates(fileDate, startDate, endDate)) {
           filteredLogFilePaths.add(trimmedFilePath);
         } else if ((minDate == null && fileDate.before(startDate))
             || (minDate != null && fileDate.equals(minDate))) {
