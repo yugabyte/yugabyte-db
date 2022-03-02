@@ -354,7 +354,47 @@ CREATE TABLE transactions_us
 
 ## Bootstrapping a sink cluster
 
-Documentation coming soon. More details in [#6870](https://github.com/yugabyte/yugabyte-db/issues/6870).
+These instructions detail setting up xCluster for the following purposes:
+* Setting up replication on a table that has existing data.
+* Catching up an existing stream where the target has fallen too far behind.
+
+1. First, we need to create a checkpoint on the source side for all the tables we want to replicate:
+    ```sh
+    ./bin/yb-admin -master_addresses <source_universe_master_addresses> \
+    bootstrap_cdc_producer <comma_separated_source_universe_table_ids>
+    ```
+
+    For Example:
+    ```sh
+    ./bin/yb-admin -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+    bootstrap_cdc_producer 00004000000030008000000000004001
+    ```
+
+    This command returns a list of bootstrap_ids, one per table id as below:
+    ```sh
+    table id: 00004000000030008000000000004001, CDC bootstrap id: 293e0e873879458486cba4b99fee4391
+    ```
+
+{{< note title="Note" >}}
+It is important that the bootstrap_ids are in the same order as their corresponding table_ids!
+{{< /note >}}
+
+
+2. Take the backup of the tables on the source universe and restore at target universe. [Backup-Restore](../../../latest/manage/backup-restore/)
+3. Then, set up the replication stream, using the bootstrap_ids generated in step 1
+
+  ```sh
+  ./bin/yb-admin -master_addresses <target_universe_master_addresses> setup_universe_replication \
+  <source_universe_uuid>_<replication_stream_name> <source_universe_master_addresses> \
+  <comma_separated_source_universe_table_ids> <bootstrap_ids>
+  ```
+
+  For Example:
+  ```sh
+  ./bin/yb-admin-master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 setup_universe_replication \
+  00000000-1111-2222-3333-444444444444_xCluster1 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+  00004000000030008000000000004001 293e0e873879458486cba4b99fee4391
+  ```
 
 ## Schema migration
 
