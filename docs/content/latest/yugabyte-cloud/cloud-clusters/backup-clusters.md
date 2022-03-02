@@ -62,7 +62,7 @@ To schedule backups for a cluster:
 Before performing a restore, ensure the following:
 
 - the target cluster is sized appropriately; refer to [Scale and configure clusters](../configure-clusters/)
-- the target cluster doesn’t have the same namespace(s) as the source cluster
+- the target cluster doesn't have the same namespace(s) as the source cluster
 
 To review previous restores, click **Restore**.
 

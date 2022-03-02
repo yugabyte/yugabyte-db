@@ -80,12 +80,12 @@ Currently self-service migration is not supported. Contact [Yugabyte Support](ht
 Upgrades are automatically handled by Yugabyte. There are two types of upgrades:
 
 Cloud console
-: During a maintenance window, the Yugabyte Cloud console may be in read-only mode and not allow any edit changes. The upgrade has no impact on running clusters. We'll notify you in advance of the maintenance schedule.
+: During a [maintenance window](../cloud-clusters/cloud-maintenance/), the Yugabyte Cloud console may be in read-only mode and not allow any edit changes. The upgrade has no impact on running clusters. We'll notify you in advance of the maintenance schedule.
 
 Cluster (YugabyteDB) version upgrade
 : To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte will upgrade your cluster to the [latest version](#what-version-of-yugabytedb-does-my-cluster-run-on).
 
-: Yugabyte will notify you in advance of any upcoming upgrade via email. The email includes the date and time of the upgrade window. An Upcoming Upgrade badge is also displayed on the cluster. You can start the upgrade any time by signing in to Yugabyte Cloud, selecting the cluster, clicking the **Upcoming Upgrade** badge, and clicking **Upgrade Now**. To change the upgrade window, contact {{<support-cloud>}}.
+: Yugabyte will only upgrade clusters during scheduled maintenance windows. Yugabyte will notify you in advance of any upcoming upgrade via email. The email includes the date and time of the maintenance window. An Upcoming Maintenance badge is also displayed on the cluster. You can start the upgrade any time by signing in to Yugabyte Cloud, selecting the cluster, clicking the **Upcoming Maintenance** badge, and clicking **Upgrade Now**. To delay the maintenance, click **Delay to next available window**. To manage maintenance windows, select the cluster [Maintenance tab](../cloud-clusters/cloud-maintenance/).
 
 : The database is upgraded to the latest release in the [release track](#what-version-of-yugabytedb-does-my-cluster-run-on) that was selected when the cluster was created (either edge or stable). Free clusters are always in the edge track.
 : Database upgrades of high-availability (multi-node) clusters are done on a rolling basis to avoid any downtime.
