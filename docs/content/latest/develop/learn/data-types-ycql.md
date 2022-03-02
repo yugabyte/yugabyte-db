@@ -30,7 +30,7 @@ showAsideToc: true
 
 </ul>
 
-This topic lists the various data types available in YugabyteDB's [Cassandra-compatible YCQL API](../../../api/ycql).
+This topic lists the various data types available in YugabyteDB's [Cassandra-compatible YCQL API](../../../api/ycql/).
 
 ## JSONB
 

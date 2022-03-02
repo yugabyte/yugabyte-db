@@ -167,7 +167,7 @@ To encrypt column data, you use the `PGP_SYM_ENCRYPT` function when inserting da
 yugabyte=# insert into employees values (1, 'joe', '56 grove st',  20000, PGP_SYM_ENCRYPT('AC-22001', 'AES_KEY'));
 ```
 
-Read more about enabling [column-level encryption](../../../secure/column-level-encryption) in YugabyteDB.
+Read more about enabling [column-level encryption](../../../secure/column-level-encryption/) in YugabyteDB.
 
 ## Auditing
 
@@ -175,7 +175,7 @@ Use audit logging to produce audit logs needed to comply with government, financ
 
 You enable audit logging using the `--ysql_pg_conf` TServer flag.
 
-Read more about [audit logging](../../../secure/audit-logging) in YugabyteDB.
+Read more about [audit logging](../../../secure/audit-logging/) in YugabyteDB.
 
 ### Session logging
 

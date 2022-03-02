@@ -27,7 +27,7 @@ showAsideToc: true
   </li>
 </ul>
 
-To restore your YugabyteDB databases that were backed up using the `ysql_dump` and `ysql_dumpall` backup utilities, you can use the [`ysqlsh`](../../../admin/ysqlsh) to restore one or all databases.
+To restore your YugabyteDB databases that were backed up using the `ysql_dump` and `ysql_dumpall` backup utilities, you can use the [`ysqlsh`](../../../admin/ysqlsh/) to restore one or all databases.
 
 ## Restore databases using `ysqlsh \i`
 
@@ -54,7 +54,7 @@ yugabyte=# \i <db-sql-script>
 
 - *db-sql-script*: the SQL script file dumped using `ysql_dump` or `ysql_dumpall`.
 
-For details about using this command, see [`\i`](../../../admin/ysqlsh/#-i-filename-include-filename) in the [`ysqlsh`](../../../admin/ysqlsh) documentation.
+For details about using this command, see [`\i`](../../../admin/ysqlsh/#-i-filename-include-filename) in the [`ysqlsh`](../../../admin/ysqlsh/) documentation.
 
 {{< note title="Note" >}}
 
@@ -72,4 +72,4 @@ $ ysqlsh -f <db-sql-script>
 
 - *db-sql-script*: the SQL script file dumped using `ysql_dump` or `ysql_dumpall`.
 
-For details about using this command, see [`-f, -file`](../../../admin/ysqlsh/#-f-filename-file-filename) in the [`ysqlsh`](../../../admin/ysqlsh) documentation.
+For details about using this command, see [`-f, -file`](../../../admin/ysqlsh/#-f-filename-file-filename) in the [`ysqlsh`](../../../admin/ysqlsh/) documentation.

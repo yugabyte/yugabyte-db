@@ -48,7 +48,7 @@ showAsideToc: true
 
 YugabyteDB can automatically handle failures and therefore provides [high availability](../../../architecture/core-functions/high-availability/). In this section, you'll see how YugabyteDB can continue to do reads and writes even in case of node failures. You will create YSQL tables with a replication factor (RF) of `3` that allows a [fault tolerance](../../../architecture/docdb-replication/replication/) of 1. This means the cluster will remain available for both reads and writes even if one node fails. However, if another node fails bringing the number of failures to two, then writes will become unavailable on the cluster in order to preserve data consistency.
 
-This tutorial uses the [yugabyted](../../../reference/configuration/yugabyted) cluster management utility.
+This tutorial uses the [yugabyted](../../../reference/configuration/yugabyted/) cluster management utility.
 
 ## 1. Create a universe
 
@@ -60,7 +60,7 @@ Start a new local three-node cluster with a replication factor of `3`. First cre
                 --base_dir=/tmp/ybd1
 ```
 
-Next, create a 3 node cluster by joining two more nodes with the previous node. By default, [yugabyted](../../../reference/configuration/yugabyted) creates a cluster with a replication factor of `3` on starting a 3 node cluster.
+Next, create a 3 node cluster by joining two more nodes with the previous node. By default, [yugabyted](../../../reference/configuration/yugabyted/) creates a cluster with a replication factor of `3` on starting a 3 node cluster.
 
 ```sh
 ./bin/yugabyted start \

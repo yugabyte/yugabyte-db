@@ -20,7 +20,7 @@ showAsideToc: true
 
 ## Introduction
 
-Yugabyte Cloud Query Language (YCQL) is a semi-relational SQL API that is best fit for internet-scale OLTP and HTAP applications needing massive data ingestion and blazing-fast queries. It supports strongly consistent secondary indexes, a native JSON column type, and distributed transactions. It has its roots in the [Cassandra Query Language (CQL)](http://cassandra.apache.org/doc/latest/cql/index.html). 
+Yugabyte Cloud Query Language (YCQL) is a semi-relational SQL API that is best fit for internet-scale OLTP and HTAP applications needing massive data ingestion and blazing-fast queries. It supports strongly consistent secondary indexes, a native JSON column type, and distributed transactions. It has its roots in the [Cassandra Query Language (CQL)](http://cassandra.apache.org/doc/latest/cql/index.html).
 
 This page covers the following YCQL features.
 
@@ -123,7 +123,7 @@ Primitive Type | Allowed in Key | Type Parameters | Description |
 [`BOOLEAN`](type_bool) | Yes | - | Boolean |
 [`COUNTER`](type_int) | No | - | 64-bit signed integer |
 [`DECIMAL`](type_number) | Yes | - | Exact, arbitrary-precision number, no upper-bound on decimal precision |
-[`DATE`](type_datetime) | Yes | - | Date |
+[`DATE`](type_datetime/) | Yes | - | Date |
 [`DOUBLE`](type_number) | Yes | - | 64-bit, inexact, floating-point number |
 [`FLOAT`](type_number) | Yes | - | 64-bit, inexact, floating-point number |
 [`FROZEN`](type_frozen) | Yes | 1 | Collection in binary format |
@@ -134,8 +134,8 @@ Primitive Type | Allowed in Key | Type Parameters | Description |
 [`SET`](type_collection) | No | 1 | Collection of unique elements |
 [`SMALLINT`](type_int) | Yes | - | 16-bit signed integer |
 [`TEXT` &#124; `VARCHAR`](type_text) | Yes | - | String of Unicode characters |
-[`TIME`](type_datetime) | Yes | - | Time of day |
-[`TIMESTAMP`](type_datetime) | Yes | - | Date-and-time |
+[`TIME`](type_datetime/) | Yes | - | Time of day |
+[`TIMESTAMP`](type_datetime/) | Yes | - | Date-and-time |
 [`TIMEUUID`](type_uuid) | Yes | - | Timed UUID |
 [`TINYINT`](type_int) | Yes | - | 8-bit signed integer |
 [`UUID`](type_uuid) | Yes | - | Standard UUID |

@@ -16,7 +16,7 @@ To convert the PostgreSQL schema to YugabyteDB schema, the following changes nee
 
 {{< tip title="Tip" >}}
 
-Using `ysql_dump` tool can simplify some steps of your schema migration, [read more here](#use-ysql-dump).
+Using `ysql_dump` tool can simplify some steps of your schema migration, [read more here](#use-ysql-dump/).
 
 {{< /tip >}}
 
@@ -167,6 +167,6 @@ CREATE TABLE contacts (
 
 The PostgreSQL utility `pg_dump` can be used to dump the schema of a database, as described in the preceding sections of this document.
 
-The [`ysql_dump`](../../../admin/ysql-dump) tool (a YugabyteDB-specific version of the `pg_dump` tool) can connect to an existing PostgreSQL database and export a YugabyteDB-friendly version of the schema and, therefore, includes some of the schema modifications. Other changes might need to be performed manually, depending on the use case.
+The [`ysql_dump`](../../../admin/ysql-dump/) tool (a YugabyteDB-specific version of the `pg_dump` tool) can connect to an existing PostgreSQL database and export a YugabyteDB-friendly version of the schema and, therefore, includes some of the schema modifications. Other changes might need to be performed manually, depending on the use case.
 
 Keep in mind that `ysql_dump` has been tested with PostgreSQL versions up to 11.2 and might not work on newer versions of PostgreSQL.

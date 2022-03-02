@@ -13,7 +13,7 @@ showAsideToc: true
 ---
 
 {{< tip title="Download and [re]install the date-time utilities code." >}}
-The code on this page depends on the code presented in the section [User-defined _interval_ utility functions](../interval-utilities/) and on the [function interval_mm_dd_ss (interval_parameterization_t)](../interval-representation/internal-representation-model/#function-interval-mm-dd-ss-interval-parameterization-t-returns-interval-mm-dd-ss-t), explained in the section [Modeling the internal representation and comparing the model with the actual implementation](../interval-representation/internal-representation-model/). This is all included in the larger [code kit](../../../download-date-time-utilities/) that includes all of the reusable code that the overall _[date-time](../../../../type_datetime)_ section describes and uses.
+The code on this page depends on the code presented in the section [User-defined _interval_ utility functions](../interval-utilities/) and on the [function interval_mm_dd_ss (interval_parameterization_t)](../interval-representation/internal-representation-model/#function-interval-mm-dd-ss-interval-parameterization-t-returns-interval-mm-dd-ss-t), explained in the section [Modeling the internal representation and comparing the model with the actual implementation](../interval-representation/internal-representation-model/). This is all included in the larger [code kit](../../../download-date-time-utilities/) that includes all of the reusable code that the overall _[date-time](../../../../type_datetime/)_ section describes and uses.
 
 Even if you have already installed the code kit, install it again now. Do this because a code example in the section [How does YSQL represent an _interval_ value?](../interval-representation/) redefines one of the _interval_ utility functions.
 {{< /tip >}}
@@ -303,7 +303,7 @@ declare
   i_hour   constant interval hour   not null := i_bare;
   i_minute constant interval minute not null := i_bare;
   i_second constant interval second not null := i_bare;
-begin  
+begin
   return
     case mode
       when 'bare'   then i_bare

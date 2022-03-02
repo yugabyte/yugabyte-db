@@ -36,7 +36,7 @@ showAsideToc: true
 
 Data modeling is a process that involves identifying the entities (items to be stored) and the relationships between entities. To create your data model, identify the patterns used to access data and the types of queries to be performed. These two ideas inform the organization and structure of the data, and the design and creation of the database's tables.
 
-This topic documents data modeling with [Yugabyte Cloud Query Language (YCQL)](../../../api/ycql), YugabyteDB's Cassandra-compatible API.
+This topic documents data modeling with [Yugabyte Cloud Query Language (YCQL)](../../../api/ycql/), YugabyteDB's Cassandra-compatible API.
 
 ## Keyspaces, tables, rows, and columns
 

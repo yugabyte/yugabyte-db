@@ -20,7 +20,7 @@ For details on using Hasura, see the [Hasura GraphQL engine documentation](https
 
 Before using Hasura with YugabyteDB, perform the following:
 
-- Install and start YugabyteDB, as described in [Quick Start Guide](../../quick-start/).
+- Install and start YugabyteDB, as described in [Quick Start Guide](../../../quick-start/macos/).
 
 - Install and start Hasura by following instructions provided in the Hasura [Quick Start with Docker](https://hasura.io/docs/latest/graphql/core/deployment/deployment-guides/docker.html). The configuration should be similar to PostgreSQL, except that the port should be `5433`. For a local Mac setup, the configuration should be as follows:
 
@@ -32,13 +32,13 @@ Before using Hasura with YugabyteDB, perform the following:
   ```
   <br>In the preceding command, `v1.3.3` refers to the version of `hasura/graphql-engine` you are using; you can change it to a different version as per your needs. `@host.docker.internal:5433` is a directive to Hasura to connect to the 5433 port of the host that is running the Hasura container.
 
-  <br><br>Alternatively, you can connect YugabyteDB to [Hasura Cloud](https://cloud.hasura.io/). For more information, see [Getting Started with Hasura Cloud](https://hasura.io/docs/latest/graphql/cloud/getting-started/index.html). 
+  <br><br>Alternatively, you can connect YugabyteDB to [Hasura Cloud](https://cloud.hasura.io/). For more information, see [Getting Started with Hasura Cloud](https://hasura.io/docs/latest/graphql/cloud/getting-started/index.html).
 
   <br>Example provided in this document are based on a local installation of Hasura.
 
 ## Creating Tables
 
-You can add tables to the database that you specified in the `HASURA_GRAPHQL_DATABASE_URL` setting in your Hasura installation. You can also create relationships between these tables. To do this, open Hasura on http://localhost:8080 and perform the following: 
+You can add tables to the database that you specified in the `HASURA_GRAPHQL_DATABASE_URL` setting in your Hasura installation. You can also create relationships between these tables. To do this, open Hasura on http://localhost:8080 and perform the following:
 
 1. Select **DATA** and click **Create Table**, as per the following illustration:
 
@@ -48,7 +48,7 @@ You can add tables to the database that you specified in the `HASURA_GRAPHQL_DAT
 
    ![author table form](/images/develop/graphql/hasura/author-table.png)
 
-3. Click **Add Table**. 
+3. Click **Add Table**.
 
 4. Navigate back to **DATA** and click **Create Table** again.
 
@@ -62,7 +62,7 @@ You can add tables to the database that you specified in the `HASURA_GRAPHQL_DAT
 
 7. Click **Save** on the foreign key configuration.
 
-8. Click **Add Table** at the bottom. 
+8. Click **Add Table** at the bottom.
 
 9. Navigate back to **DATA**.
 
@@ -85,16 +85,16 @@ Finally, load sample data, as follows:
 - Copy and paste the following YSQL statements into the shell and then press **Enter**:
 
   ```sql
-  INSERT INTO author(name) VALUES ('John Doe'), ('Jane Doe'); 
-  INSERT INTO article(title, content, rating, author_id) 
+  INSERT INTO author(name) VALUES ('John Doe'), ('Jane Doe');
+  INSERT INTO article(title, content, rating, author_id)
   VALUES ('Jane''s First Book', 'Lorem ipsum', 10, 2);
-  INSERT INTO article(title, content, rating, author_id) 
+  INSERT INTO article(title, content, rating, author_id)
   VALUES ('John''s First Book', 'dolor sit amet', 8, 1);
-  INSERT INTO article(title, content, rating, author_id) 
+  INSERT INTO article(title, content, rating, author_id)
   VALUES ('Jane''s Second Book', 'consectetur adipiscing elit', 7, 2);
-  INSERT INTO article(title, content, rating, author_id) 
+  INSERT INTO article(title, content, rating, author_id)
   VALUES ('Jane''s Third Book', 'sed do eiusmod tempor', 8, 2);
-  INSERT INTO article(title, content, rating, author_id) 
+  INSERT INTO article(title, content, rating, author_id)
   VALUES ('John''s Second Book', 'incididunt ut labore', 9, 1);
   SELECT * FROM author ORDER BY id;
   SELECT * FROM article ORDER BY id;

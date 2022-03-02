@@ -56,7 +56,7 @@ This guide explains how to snapshot and restore data on YugabyteDB. Yugabyte Pla
 
 1. Create a new cluster.
 
-    For more information on creating a local cluster, refer to [Create a local cluster](../../../quick-start/create-local-cluster). For details on flags, refer to the [yb-ctl reference](../../../admin/yb-ctl).
+    For more information on creating a local cluster, refer to [Create a local cluster](../../../quick-start/create-local-cluster). For details on flags, refer to the [yb-ctl reference](../../../admin/yb-ctl/).
 
     ```sh
     $ ./bin/yb-ctl create
