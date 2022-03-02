@@ -28,7 +28,7 @@ Before you can start using Liquibase, ensure that you have the following install
   ./bin/yugabyted status
   ```
 
-- Liquibase (see [Download Liquibase](https://www.liquibase.org/download)). For information on how to extract the package and configure Liquibase, see [Configuring Liquibase](configuring-liquibase).
+- Liquibase (see [Download Liquibase](https://www.liquibase.org/download)). For information on how to extract the package and configure Liquibase, see [Configuring Liquibase](#configuring-liquibase).
 
 - Liquibase-YugabyteDB extension JAR (access [liquibase-yugabytedb repository](https://github.com/liquibase/liquibase-yugabytedb) and download the latest `liquibase-yugabytedb-.jar`). The driver must be located in the `/lib` sub-directory of the directory to which you extracted Liquibase.
 

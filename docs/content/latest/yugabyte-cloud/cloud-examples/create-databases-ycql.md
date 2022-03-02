@@ -38,7 +38,7 @@ Using the `ycqlsh` shell, you can interact with your YugabyteDB database using t
 
 To create a keyspace and add a table, do the following:
 
-1. Connect to your cluster using `ycqlsh` using the [Client Shell](../connect-client-shell/) from your computer. You can also do this exercise from the [Cloud Shell](../connect-cloud-shell/).
+1. Connect to your cluster using `ycqlsh` using the [Client Shell](../../cloud-connect/connect-client-shell/) from your computer. You can also do this exercise from the [Cloud Shell](../../cloud-connect/connect-cloud-shell/).
 
 1. Create a keyspace called 'myapp'.
 
@@ -112,4 +112,4 @@ ycqlsh> SELECT * FROM myapp.stock_market WHERE stock_symbol in ('FB', 'GOOG');
 ## Next steps
 
 - [Add database users](../../cloud-secure-clusters/add-users/)
-- [Connect a YCQL Java application](../../cloud-develop/connect-ycql-application/)
+- [Connect a YCQL Java application](../connect-ycql-application/)

@@ -22,7 +22,7 @@ When this happens, new Master leaders are elected for the underlying data shards
 
 - Step 1: [Remove node](#remove-node)
 - Step 2: [Release instance](#release-instance)
-- Step 3: [Delete node](delete-node)
+- Step 3: [Delete node](#delete-node)
 
 {{< note title="Note" >}}
 

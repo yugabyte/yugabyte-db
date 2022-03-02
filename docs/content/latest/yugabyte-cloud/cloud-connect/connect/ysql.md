@@ -7,7 +7,7 @@ To connect to a cluster using `ysqlsh`:
 1. Click **Download CA Cert** to download the root.crt certificate for TLS encryption, and install the certificate on your computer. If you are using Docker, copy the certificate to your Docker container.
 1. Copy the **YSQL** connection string.
     \
-    The connection string includes flags specifying the host (`host`), username (`user`), database (`dbname`), and TLS settings (`sslmode` and `sslrootcert`). The command specifies that the connection will use the CA certificate you installed on your computer. For information on using other SSL modes, refer to [SSL modes in YSQL](../../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql).
+    The connection string includes flags specifying the host (`host`), username (`user`), database (`dbname`), and TLS settings (`sslmode` and `sslrootcert`). The command specifies that the connection will use the CA certificate you installed on your computer. For information on using other SSL modes, refer to [SSL modes in YSQL](../../../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql).
 
     \
     Here's an example of the generated `ysqlsh` command:

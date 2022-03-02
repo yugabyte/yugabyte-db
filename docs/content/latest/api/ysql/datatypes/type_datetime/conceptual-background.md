@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The following subsections provide the conceptual background for the accounts of the _date-time_ data types that the table shown in the [Synopsis](../intro/#synopsis) lists and for the operations that the _date-time_ operators and built-in SQL functions perform.
+The following subsections provide the conceptual background for the accounts of the _date-time_ data types that the table shown in the [Synopsis](../#synopsis) lists and for the operations that the _date-time_ operators and built-in SQL functions perform.
 
 - [Absolute time and the UTC Time Standard](#absolute-time-and-the-utc-time-standard)
 - [Wall-clock-time and local time](#wall-clock-time-and-local-time)
@@ -73,7 +73,7 @@ It quietly succeeds and produces the obvious result. (The _::text_ typecast of a
  4713-01-01 00:00:00 BC | 294276-01-01 00:00:00
 ```
 
-The values, _4713 BC_ and _294276_ AD, are given in the [table](../intro/#synopsis) in the _"Introduction"_ section to the present _date-time_ data types major section.
+The values, _4713 BC_ and _294276_ AD, are given in the [table](../#synopsis) in the _"Introduction"_ section to the present _date-time_ data types major section.
 
 ## Wall-clock-time and local time
 

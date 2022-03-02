@@ -61,7 +61,7 @@ There are different ways to create a dashboard in Grafana. For this tutorial, yo
 
   ![Grafana dashboard](/images/ce/graf-server-status.png)
 
-- Since this example uses the `CassandraKeyValue` workload generator from the [Prometheus Integration](../../../../observability/prometheus-integration/macos/) page, you can see different YCQL related metrics in addition to the master and t-server statuses. The [source code](https://github.com/yugabyte/yugabyte-db/blob/master/java/yb-loadtester/src/main/java/com/yugabyte/sample/apps/CassandraSparkKeyValueCopy.java) of the application uses only SELECT statements for reads and INSERT statements for writes (aside from the initial CREATE TABLE). This means that throughput and latency can be measured using the metrics corresponding to the SELECT and INSERT statements.
+- Since this example uses the `CassandraKeyValue` workload generator from the [Prometheus Integration](../../../../explore/observability/prometheus-integration/macos/) page, you can see different YCQL related metrics in addition to the master and t-server statuses. The [source code](https://github.com/yugabyte/yugabyte-db/blob/master/java/yb-loadtester/src/main/java/com/yugabyte/sample/apps/CassandraSparkKeyValueCopy.java) of the application uses only SELECT statements for reads and INSERT statements for writes (aside from the initial CREATE TABLE). This means that throughput and latency can be measured using the metrics corresponding to the SELECT and INSERT statements.
 The following is a YCQL OPS and latency metrics :
 
   ![Grafana YCQL-OPS](/images/ce/graf-ycql-ops.png "YCQL-OPS")

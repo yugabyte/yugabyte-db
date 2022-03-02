@@ -15,7 +15,7 @@ showAsideToc: true
 
 Deploy a Spring application connected to Yugabyte Cloud on Google Kubernetes Engine (GKE) by following the steps below.
 
-This example uses the PetClinic application, connected to Yugabyte Cloud and containerized using Docker; refer to [Connect a Spring Boot application](../../../cloud-basics/connect-application/).
+This example uses the PetClinic application, connected to Yugabyte Cloud and containerized using Docker; refer to [Connect a Spring Boot application](../../../cloud-examples/connect-application/).
 
 ## Prerequisites
 
