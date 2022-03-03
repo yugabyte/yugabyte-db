@@ -1,5 +1,5 @@
 ---
-title: Universe 
+title: Universe
 headerTitle: Universe
 linkTitle: Universe
 description: Learn about the YugabyteDB universe (or cluster).
@@ -59,13 +59,13 @@ These serve different purposes as described below.
 
 The **YB-TServer** (aka the *YugabyteDB Tablet Server*) service is responsible for hosting/serving user data (for example, tables). They deal with all the user queries.
 
-For details, see [YB-TServer](../yb-tserver).
+For details, see [YB-TServer](../yb-tserver/).
 
 ### YB-Master
 
 The **YB-Master** (aka the *YugabyteDB Master Server*) service is responsible for keeping system metadata, coordinating system-wide operations, such as create/alter/drop tables, and initiating maintenance operations such as load balancing.
 
-For details, see [YB-Master](../yb-master).
+For details, see [YB-Master](../yb-master/).
 
 Below is an illustration of a simple 4-node YugabyteDB universe:
 
@@ -73,7 +73,7 @@ Below is an illustration of a simple 4-node YugabyteDB universe:
 
 ## Universe vs cluster
 
-A YugabyteDB universe comprises of exactly one primary cluster and zero or more read replica clusters. 
+A YugabyteDB universe comprises of exactly one primary cluster and zero or more read replica clusters.
 
 - A primary cluster can perform both writes and reads. Replication between nodes in a primary cluster is performed synchronously.
 

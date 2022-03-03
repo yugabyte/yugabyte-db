@@ -19,47 +19,47 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws" class="nav-link active">
+    <a href="../aws/" class="nav-link active">
       <i class="fab fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp" class="nav-link">
+    <a href="../gcp/" class="nav-link">
       <i class="fab fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure" class="nav-link">
+    <a href="../azure/" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
       &nbsp;&nbsp; Azure
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes" class="nav-link">
+    <a href="../kubernetes/" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/vmware-tanzu" class="nav-link">
+    <a href="../vmware-tanzu/" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       VMware Tanzu
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/openshift" class="nav-link">
+    <a href="../openshift/" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>OpenShift</a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises" class="nav-link">
+    <a href="../on-premises/" class="nav-link">
       <i class="fas fa-building"></i>
       On-premises
     </a>
@@ -88,7 +88,7 @@ Provider name is an internal tag used for organizing your providers, so you know
 In order to deploy YugabyteDB nodes in your AWS account, Yugabyte Platform requires access to a set of cloud credentials which can be provided in one of the following ways:
 
 - Directly provide your [AWS Access Key ID and Secret Key](http://docs.aws.amazon.com/general/latest/gr/managing-aws-access-keys.html).
-- Attach an [IAM role](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html) to the Yugabyte Platform VM in the **EC2** tab. For more information, see [Deploy the YugabyteDB universe using an IAM role](../../../install-yugabyte-platform/prepare-environment/aws/#deploy-the-yugabytedb-universe-using-an-iam-role). 
+- Attach an [IAM role](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html) to the Yugabyte Platform VM in the **EC2** tab. For more information, see [Deploy the YugabyteDB universe using an IAM role](../../../install-yugabyte-platform/prepare-environment/aws/#deploy-the-yugabytedb-universe-using-an-iam-role).
 
 ### SSH Key Pairs
 
@@ -109,7 +109,7 @@ For deployment, Yugabyte Platform aims to provide you with easy access to the ma
 
 ### Yugabyte Platform-managed configuration
 
-If you choose to use Yugabyte Platform to configure, own, and manage a full cross-region deployment of Virtual Private Cloud (VPC), Yugabyte Platform will generate a YugabyteDB-specific VPC in each selected region, then interconnect them, as well as the VPC in which Yugabyte Platform was deployed, using [VPC Peering](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-peering.html). This mode also sets up all other relevant subcomponents in all regions, such as Subnets, Security Groups, and Routing Table entries. 
+If you choose to use Yugabyte Platform to configure, own, and manage a full cross-region deployment of Virtual Private Cloud (VPC), Yugabyte Platform will generate a YugabyteDB-specific VPC in each selected region, then interconnect them, as well as the VPC in which Yugabyte Platform was deployed, using [VPC Peering](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-peering.html). This mode also sets up all other relevant subcomponents in all regions, such as Subnets, Security Groups, and Routing Table entries.
 
 You have an option to provide the following:
 
@@ -118,7 +118,6 @@ You have an option to provide the following:
 - A custom Amazon Machine Image (AMI) ID to use in each region. For a non-exhaustive list of options, see [Ubuntu 18 and Oracle 8 support](#ubuntu-18-and-oracle-8-support). If you do not provide any values, a recent [AWS Marketplace CentOS AMI](https://wiki.centos.org/Cloud/AWS) is used.<br><br>
 
   ![New Region Modal](/images/ee/aws-setup/aws_new_region.png)
-
 
 ### Self-managed configuration
 
@@ -141,7 +140,7 @@ If you choose to provide your own VPC information, you will be responsible for h
 
 ### Ubuntu 18 and Oracle 8 support
 
-In addition to CentOS, Yugabyte Platform allows you to bring up universes on the following host nodes: 
+In addition to CentOS, Yugabyte Platform allows you to bring up universes on the following host nodes:
 
 - Ubuntu 18.04, which requires Python 2 or later installed on the host, as well as the provider created with a custom AMI and custom SSH user.
 - Oracle 8, which requires the provider created with a custom AMI and custom SSH user, assumes that gtar or gunzip is present on the host AMI, and uses the firewall-cmd client to set default target `ACCEPT`. Yugabyte Platform support for Oracle 8 has the following limitations:

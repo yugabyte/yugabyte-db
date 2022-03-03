@@ -8,7 +8,6 @@ aliases:
   - /latest/develop/client-drivers/java/
   - /latest/develop/build-apps/java/
   - /latest/quick-start/build-apps/java/
-  - /latest/integrations/jdbc-driver
 menu:
   latest:
     parent: build-apps
@@ -64,7 +63,7 @@ showAsideToc: true
 
 This tutorial assumes that:
 
-- YugabyteDB is up and running. Using the [yb-ctl](/latest/admin/yb-ctl/#root) utility, create a universe with a 3-node RF-3 cluster with some fictitious geo-locations assigned. 
+- YugabyteDB is up and running. Using the [yb-ctl](/latest/admin/yb-ctl/#root) utility, create a universe with a 3-node RF-3 cluster with some fictitious geo-locations assigned.
 
   ```sh
   $ cd <path-to-yugabytedb-installation>
@@ -125,7 +124,7 @@ This tutorial assumes that:
 
 ## Create the sample Java application
 
-You’ll create two java applications, `UniformLoadBalance` and `TopologyAwareLoadBalance`. In each, you can create connections in two ways: using the `DriverManager.getConnection()` API, or using `YBClusterAwareDataSource` and `HikariPool`. This example shows both approaches.
+You'll create two java applications, `UniformLoadBalance` and `TopologyAwareLoadBalance`. In each, you can create connections in two ways: using the `DriverManager.getConnection()` API, or using `YBClusterAwareDataSource` and `HikariPool`. This example shows both approaches.
 
 ### Uniform load balancing
 
@@ -214,7 +213,7 @@ You’ll create two java applications, `UniformLoadBalance` and `TopologyAwareLo
         int x = new Scanner(System.in).nextInt();
 
         System.out.println("Closing the Hikari Connection Pool!!");
-        hikariDataSource.close();   
+        hikariDataSource.close();
 
       }
 
@@ -291,7 +290,7 @@ When using `DriverManager.getConnection()`, you need to include the `load-balanc
         }
         catch (SQLException exception) {
           exception.printStackTrace();
-        } 
+        }
 
       }
 
@@ -327,9 +326,9 @@ When using `DriverManager.getConnection()`, you need to include the `load-balanc
 
         System.out.println("Closing the Hikari Connection Pool!!");
         hikariDataSource.close();
-        
+
       }
-  
+
     }
     ```
 
@@ -345,4 +344,4 @@ When using `DriverManager.getConnection()`, you need to include the `load-balanc
 
 ## Explore the driver
 
-Learn more about the [Yugabyte JDBC driver](/latest/integrations/jdbc-driver) and explore the [demo apps](https://github.com/yugabyte/pgjdbc/tree/master/examples) to understand the driver's features in depth.
+Learn more about the [Yugabyte JDBC driver](../../../../integrations/jdbc-driver/) and explore the [demo apps](https://github.com/yugabyte/pgjdbc/tree/master/examples) to understand the driver's features in depth.
