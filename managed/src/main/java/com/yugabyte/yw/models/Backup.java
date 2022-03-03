@@ -217,6 +217,18 @@ public class Backup extends Model {
     return updateTime;
   }
 
+  @ApiModelProperty(value = "Backup completion time", accessMode = READ_WRITE)
+  @Column
+  private Date completionTime;
+
+  public void setCompletionTime(Date completionTime) {
+    this.completionTime = completionTime;
+  }
+
+  public Date getCompletionTime() {
+    return this.completionTime;
+  }
+
   @ApiModelProperty(value = "Category of the backup")
   @Column(nullable = false)
   public BackupCategory category = BackupCategory.YB_BACKUP_SCRIPT;

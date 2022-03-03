@@ -1100,6 +1100,11 @@
           "enum" : [ "YB_BACKUP_SCRIPT", "YB_CONTROLLER" ],
           "type" : "string"
         },
+        "completionTime" : {
+          "description" : "Backup completion time",
+          "format" : "date-time",
+          "type" : "string"
+        },
         "createTime" : {
           "format" : "date-time",
           "type" : "string"
@@ -1435,6 +1440,10 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "completionTime" : {
+          "format" : "date-time",
+          "type" : "string"
+        },
         "createTime" : {
           "format" : "date-time",
           "type" : "string"
@@ -1478,6 +1487,10 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "taskUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
         "totalBackupSizeInBytes" : {
           "format" : "int64",
           "type" : "integer"
@@ -1494,7 +1507,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "backupType", "backupUUID", "createTime", "customerUUID", "expiryTime", "isStorageConfigPresent", "isUniversePresent", "onDemand", "responseList", "scheduleUUID", "sse", "state", "storageConfigUUID", "totalBackupSizeInBytes", "universeName", "universeUUID", "updateTime" ],
+      "required" : [ "backupType", "backupUUID", "completionTime", "createTime", "customerUUID", "expiryTime", "isStorageConfigPresent", "isUniversePresent", "onDemand", "responseList", "scheduleUUID", "sse", "state", "storageConfigUUID", "taskUUID", "totalBackupSizeInBytes", "universeName", "universeUUID", "updateTime" ],
       "type" : "object"
     },
     "BackupStorageInfo" : {
