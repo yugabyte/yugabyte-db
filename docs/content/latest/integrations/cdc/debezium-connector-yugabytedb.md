@@ -639,6 +639,12 @@ The following properties are *required* unless a default value is available:
 | database.sslcert | N/A | Path to the file containing the client's SSL certificate. |
 | database.sslkey | N/A | Path to the file containing the client's private key. |
 
+{{< warning title="Warning" >}}
+
+Note that the APIs we use for fetching the changes are set up to work with the TLS protocol TLSv1.2 only. So you have to make sure that you are using the proper environment properties for Kafka Connect.
+
+{{< /warning >}}
+
 ## Behavior when things go wrong
 
 Debezium is a distributed system that captures all changes in multiple upstream databases; it never misses or loses an event. When the system is operating normally or being managed carefully then Debezium provides exactly once delivery of every change event record.
