@@ -3,7 +3,6 @@ title: Enable Yugabyte Platform authentication via LDAP
 headerTitle: Enable Yugabyte Platform authentication via LDAP
 description: Use LDAP to enable login to Yugabyte Platform.
 linkTitle: Authenticate with LDAP
-aliases:
 menu:
   latest:
     identifier: ldap-authentication
@@ -15,7 +14,7 @@ showAsideToc: true
 
 LDAP provides means for querying directory services. A directory typically stores credentials and permissions assigned to a user, therefore allowing to maintain a single repository of user information for all applications across the organization. In addition, having a hierarchical structure, LDAP allows creation of user groups requiring the same credentials.
 
-LDAP authentication is similar to a direct password authentication, except that it employs the LDAP protocol to verify the password. This means that only users who already exist in the database and have appropriate permissions can be authenticated via LDAP. 
+LDAP authentication is similar to a direct password authentication, except that it employs the LDAP protocol to verify the password. This means that only users who already exist in the database and have appropriate permissions can be authenticated via LDAP.
 
 Yugabyte Platform's integration with LDAP enables you to use your LDAP server for authentication purposes instead of having to create user accounts on Yugabyte Platform.
 
@@ -27,7 +26,7 @@ If configured by the LDAP server, Yugabyte Platform can prevent the user from be
 
 You can use the Yugabyte Platform UI console to enable LDAP authentication for Yugabyte Platform login, as follows:
 
-- Navigate to **Admin > User Management > User Authentication**. 
+- Navigate to **Admin > User Management > User Authentication**.
 
 - Complete the fields in the **LDAP Configuration** page shown in the following illustration:<br><br>
 
@@ -49,7 +48,6 @@ To enable LDAP authentication for Yugabyte Platform login, you can perform a num
   --header 'Cookie: csrfCookie=d5cdb2b36b00fcad1f4fdb24605aee412f8dfaa0-1641544510767-641be933bf684abcade3c592' \
   --data-raw 'true'
   ```
-
 
 - Your LDAP server endpoint `yb.security.ldap.ldap_url`, set using the *0.0.0.0* format, as follows:
 
@@ -124,7 +122,7 @@ To enable LDAP authentication for Yugabyte Platform login, you can perform a num
   --data-raw 'true'
   ```
 
-  <br>If the port is configured for an SSL connection, then you can enable SSL when you configure the LDAP server on Yugabyte Platform. 
+  <br>If the port is configured for an SSL connection, then you can enable SSL when you configure the LDAP server on Yugabyte Platform.
 
 - TLS usage with LDAP `yb.security.ldap.enable_ldap_start_tls`, set to `true` or `false` (default), as follows:
 
@@ -136,7 +134,7 @@ To enable LDAP authentication for Yugabyte Platform login, you can perform a num
   --data-raw 'true'
   ```
 
-  <br>If the port is configured for a TLS connection, then you can enable StartTLS when you configure the LDAP server on Yugabyte Platform. 
+  <br>If the port is configured for a TLS connection, then you can enable StartTLS when you configure the LDAP server on Yugabyte Platform.
 
   By default, if neither `ldap.enable_ldaps` or `ldap.enable_ldap_start_tls` is enabled, the connection will be unsecured.
 

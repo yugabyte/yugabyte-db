@@ -16,14 +16,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/secure/authorization/create-roles" class="nav-link active">
+    <a href="../create-roles/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/secure/authorization/create-roles-ycql" class="nav-link">
+    <a href="../create-roles-ycql/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -89,7 +89,7 @@ yugabyte=# SELECT rolname, rolcanlogin, rolsuper, memberof FROM pg_roles;
 
 You should see the following output:
 
-```
+```output
  rolname     | rolcanlogin | rolsuper | memberof
 -------------+-------------+----------+-----------------
  john        | t           | f        | {engineering}
@@ -123,7 +123,7 @@ Listing all the roles now shows that `john` no longer inherits from the `enginee
 yugabyte=# SELECT rolname, rolcanlogin, rolsuperuser, memberof FROM pg_roles;
 ```
 
-```
+```output
  rolname     | rolcanlogin | rolsuper | memberof
 -------------+-------------+----------+-----------------
 john         | t           | f        | {}
@@ -150,7 +150,7 @@ The `developer` role would no longer be present upon listing all the roles:
 yugabyte=# SELECT rolname, rolcanlogin, rolsuper, memberof FROM pg_roles;
 ```
 
-```
+```output
  rolname     | rolcanlogin | rolsuper | memberof
 -------------+-------------+----------+-----------
  john        | t           | f        | {}

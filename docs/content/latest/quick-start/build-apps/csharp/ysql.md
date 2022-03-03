@@ -46,7 +46,7 @@ Are you using Yugabyte Cloud? Install the [prerequisites](#prerequisites), then 
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe, and are able to interact with it using the YSQL shell (`ysqlsh`). If not, follow the steps in [Quick start](../../../../quick-start).
+- installed YugabyteDB, created a universe, and are able to interact with it using the YSQL shell (`ysqlsh`). If not, follow the steps in [Quick start](../../../../quick-start/).
 - installed Visual Studio.
 
 {{< warning title="Warning" >}}

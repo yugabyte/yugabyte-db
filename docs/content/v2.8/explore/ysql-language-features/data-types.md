@@ -278,7 +278,7 @@ Expect the following output:
 
 ## Enumerations - `ENUM` Type
 
-YugabyteDB supports the `ENUM` type in PostgreSQL. The following examples are adapted from [Enums](http://postgresguide.com/sexy/enums.html):
+YugabyteDB supports the `ENUM` type in PostgreSQL. The following examples are adapted from [Enums](http://postgresguide.com/cool/enums.html):
 
 ### 1. Create `ENUM`
 

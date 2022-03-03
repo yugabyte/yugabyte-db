@@ -44,7 +44,7 @@ This section goes into details of backing up data and restoring it from Yugabyte
 </div>
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="snapshot-ysql">
+    <a class="section-link icon-offset" href="snapshot-ysql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
         <div class="title">Distributed snapshot and restore data</div>
@@ -55,7 +55,7 @@ This section goes into details of backing up data and restoring it from Yugabyte
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="point-in-time-recovery">
+    <a class="section-link icon-offset" href="point-in-time-recovery/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise/create_universe.png" aria-hidden="true" />
         <div class="title">Point-in-time recovery</div>
