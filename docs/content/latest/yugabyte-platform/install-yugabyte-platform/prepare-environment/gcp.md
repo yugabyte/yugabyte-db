@@ -86,8 +86,6 @@ To create a service account, perform the following:
 
 - Click **ADD KEY** and select **Create new key**.
 
-- Select **JSON** as the **Key type** and click **Create**.
-
 - In the **Create private key** dialog, select **JSON** as the key type, and then click **Create** to download a service account key file. Note that after you download the key, you need to store this file, as you cannot download it again and this key is required for configuring the Yugabyte Platform UI.
 
   For additional information, see [Creating and managing service account keys](https://cloud.google.com/iam/docs/creating-managing-service-account-keys) in the GCP documentation. 
@@ -116,37 +114,35 @@ Next, you need to create a firewall entry, as follows:
 
 ## Provision instance for Yugabyte Platform
 
-You need to create an instance to run Yugabyte Platform. To do this, from your project's main page, navigate to **Compute Engine > VM instances**, click **Create**, and then following instructions provided in [Virtual machine instances](https://cloud.google.com/compute/docs/instances) in the GCP documentation. When creating instances:
+You need to create an instance to run Yugabyte Platform. To do this, from your project's main page, navigate to **Compute Engine > VM instances**, click **Create**, and then follow instructions provided in [Virtual machine instances](https://cloud.google.com/compute/docs/instances) in the GCP documentation. When creating instances:
 
-- Provide a region or zone as, for example, `us-west1-b`.
-
+- Select a region as, for example, `us-west1`. 
+- Select a zone as, for example, `us-west1-b`.
 - Select `4 vCPUs` (`n1-standard-4`) as the machine type.
-
-- Change the boot disk image to `Ubuntu 16.04` and increase the boot disk size to `100`.
-
+- Change the boot disk image to `Ubuntu 18.04 TLS` and increase the boot disk size to `100`.
+- Specify whether to use the default or your own service account.
+- Specify whether to use the default or your own VPC.
 - Use the **Networking** tab to add `yugabyte-server` as the network tag (or the custom name you chose when setting up the firewall rules).
 
-- Use the **SSH Keys** tab and add a custom public key as well as a login user to this instance. To do so, you start by creating a key-pair, as follows:
+Once the instance has been created, use the **SSH Keys** tab to add a custom public key and a login user to this instance. To do so, you start by creating a key-pair, as follows:
 
-  ```sh
-  $ ssh-keygen -t rsa -f ~/.ssh/yugabyte-1-gcp -C centos
-  ```
+```sh
+$ ssh-keygen -t rsa -f ~/.ssh/yugabyte-1-gcp -C centos
+```
 
-  <br>You can set the appropriate credentials for the SSH key as follows:
+<br>You can set the appropriate credentials for the SSH key as follows:
 
-  ```sh
-  $ chmod 400 ~/.ssh/yugabye-1-gcp
-  ```
+```sh
+$ chmod 400 ~/.ssh/yugabyte-1-gcp
+```
 
-  <br>Enter the contents of `yugabyte-1-gcp.pub` as the value for this field.
+<br>Enter the contents of `yugabyte-1-gcp.pub` as the value for this field.
 
-  For more information, see the following GCP documentation: 
+For more information, see the following GCP documentation: 
 
-  -  [Cloud Key Management Service](https://cloud.google.com/blog/products/gcp/protect-your-compute-engine-resources-with-keys-managed-in-cloud-key-management-service) 
+-  [Cloud Key Management Service](https://cloud.google.com/blog/products/gcp/protect-your-compute-engine-resources-with-keys-managed-in-cloud-key-management-service) 
 
-  -  [Choosing an access method](https://cloud.google.com/compute/docs/instances/access-overview#metadatavalues) provides details on how to create a new SSH key pair, as well as the expected format for this field: `ssh-rsa [KEY_VALUE] [USERNAME]`.
-
-When you click **Create**, the Yugabyte Platform server will be launched.
+-  [Choosing an access method](https://cloud.google.com/compute/docs/instances/access-overview#metadatavalues) provides details on how to create a new SSH key pair, as well as the expected format for this field: `ssh-rsa [KEY_VALUE] [USERNAME]`.
 
 ## Connect to the Yugabyte Platform server
 
