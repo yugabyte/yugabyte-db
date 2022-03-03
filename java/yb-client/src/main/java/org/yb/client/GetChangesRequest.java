@@ -24,29 +24,43 @@ import org.yb.cdc.CdcService.GetChangesResponsePB;
 
 public class GetChangesRequest extends YRpc<GetChangesResponse> {
   private final String streamId;
+
+  public String getTabletId() {
+    return tabletId;
+  }
+
   private final String tabletId;
   private final long term;
   private final long index;
+  private final byte[] key;
+  private final int write_id;
+  private final long time;
 
-  public GetChangesRequest(YBTable table, String streamId, String tabletId, long term, long index) {
+  public GetChangesRequest(YBTable table, String streamId, String tabletId,
+   long term, long index, byte[] key, int write_id, long time) {
     super(table);
     this.streamId = streamId;
     this.tabletId = tabletId;
     this.term = term;
     this.index = index;
+    this.key = key;
+    this.write_id = write_id;
+    this.time = time;
   }
 
   @Override
   ChannelBuffer serialize(Message header) {
     assert header.isInitialized();
     final GetChangesRequestPB.Builder builder = GetChangesRequestPB.newBuilder();
-    builder.setStreamId(ByteString.copyFromUtf8(this.streamId));
+    builder.setDbStreamId(ByteString.copyFromUtf8(this.streamId));
     builder.setTabletId(ByteString.copyFromUtf8(this.tabletId));
     if (term != 0 || index != 0) {
-      CdcService.CDCCheckpointPB.Builder checkpointBuilder =
-              CdcService.CDCCheckpointPB.newBuilder();
-      checkpointBuilder.setOpId(Opid.OpIdPB.newBuilder().setIndex(this.index).setTerm(this.term));
-      builder.setFromCheckpoint(checkpointBuilder);
+      CdcService.CDCSDKCheckpointPB.Builder checkpointBuilder =
+              CdcService.CDCSDKCheckpointPB.newBuilder();
+      checkpointBuilder.setIndex(this.index).setTerm(this.term)
+      .setKey(ByteString.copyFrom(this.key)).setWriteId(this.write_id)
+        .setSnapshotTime(this.time);
+      builder.setFromCdcSdkCheckpoint(checkpointBuilder.build());
     }
     return toChannelBuffer(header, builder.build());
   }
@@ -65,7 +79,9 @@ public class GetChangesRequest extends YRpc<GetChangesResponse> {
     final GetChangesResponsePB.Builder respBuilder = GetChangesResponsePB.newBuilder();
     readProtobuf(callResponse.getPBMessage(), respBuilder);
     GetChangesResponse response = new GetChangesResponse(
-            deadlineTracker.getElapsedMillis(), uuid, respBuilder.build());
+            deadlineTracker.getElapsedMillis(), uuid, respBuilder.build(),
+      respBuilder.getCdcSdkCheckpointBuilder().getKey().toByteArray(),
+      respBuilder.getCdcSdkCheckpointBuilder().getWriteId());
     return new Pair<GetChangesResponse, Object>(
             response, respBuilder.hasError() ? respBuilder.getError() : null);
   }
