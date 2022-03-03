@@ -40,7 +40,9 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
                                        false /* is_shared_table */, true /* if_not_exist */,
                                        false /* add_primary_key */, true /* colocated */,
                                        kInvalidOid /* tablegroup_id */,
-                                       kInvalidOid /* tablespace_id */, &pg_stmt));
+                                       kInvalidOid /* tablespace_id */,
+                                       kInvalidOid /* matview_pg_table_id */,
+                                       &pg_stmt));
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "hash_key", ++col_count,
                                                DataType::INT64, true, true));
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "id", ++col_count,

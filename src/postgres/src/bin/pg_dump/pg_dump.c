@@ -16364,8 +16364,16 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			PQExpBuffer result;
 
 			result = createViewAsClause(fout, tbinfo);
-			appendPQExpBuffer(q, " AS\n%s\n  WITH NO DATA;\n",
-							  result->data);
+			if (dopt->include_yb_metadata)
+			{
+				appendPQExpBuffer(q, " AS\n%s;\n", result->data);
+			}
+			else
+			{
+				appendPQExpBuffer(q, " AS\n%s\n  WITH NO DATA;\n",
+								  result->data);
+			}
+
 			destroyPQExpBuffer(result);
 		}
 		else

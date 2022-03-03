@@ -245,6 +245,7 @@ class PgApiImpl {
                                 const bool colocated,
                                 const PgObjectId& tablegroup_oid,
                                 const PgObjectId& tablespace_oid,
+                                const PgObjectId& matview_pg_table_oid,
                                 PgStatement **handle);
 
   CHECKED_STATUS CreateTableAddColumn(PgStatement *handle, const char *attr_name, int attr_num,

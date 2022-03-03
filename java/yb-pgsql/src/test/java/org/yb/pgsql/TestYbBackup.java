@@ -1041,4 +1041,42 @@ public class TestYbBackup extends BasePgSQLTest {
       stmt.execute("DROP DATABASE yb2");
     }
   }
+
+  private void testMaterializedViewsHelper(boolean matviewOnMatview) throws Exception {
+    String backupDir = null;
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS test_tbl");
+      stmt.execute("CREATE TABLE test_tbl (t int)");
+      stmt.execute("CREATE MATERIALIZED VIEW test_mv AS SELECT * FROM test_tbl");
+      if (matviewOnMatview) {
+        stmt.execute("CREATE MATERIALIZED VIEW test_mv_2 AS SELECT * FROM test_mv");
+      }
+      stmt.execute("INSERT INTO test_tbl VALUES (1)");
+      stmt.execute("REFRESH MATERIALIZED VIEW test_mv");
+      if (matviewOnMatview) {
+        stmt.execute("REFRESH MATERIALIZED VIEW test_mv_2");
+      }
+      YBBackupUtil.runYbBackupCreate("--keyspace", "ysql.yugabyte");
+    }
+
+    YBBackupUtil.runYbBackupRestore("--keyspace", "ysql.yb2");
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection2.createStatement()) {
+        assertQuery(stmt, "SELECT * FROM test_mv WHERE t=1", new Row(1));
+        if (matviewOnMatview) {
+          assertQuery(stmt, "SELECT * FROM test_mv_2 WHERE t=1", new Row(1));
+        }
+    }
+  }
+
+  @Test
+  public void testRefreshedMaterializedViewsBackup() throws Exception {
+    testMaterializedViewsHelper(false);
+  }
+
+  @Test
+  public void testRefreshedMaterializedViewsOnMaterializedViewsBackup() throws Exception {
+    testMaterializedViewsHelper(true);
+  }
 }

@@ -45,6 +45,7 @@ TEST_F(PggateTestCatalog, TestDml) {
                                        false /* add_primary_key */, true /* colocated */,
                                        kInvalidOid /* tablegroup_id */,
                                        kInvalidOid /* tablespace_id */,
+                                       kInvalidOid /* matview_pg_table_id */,
                                        &pg_stmt));
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "company_id", ++col_count,
                                              DataType::INT64, false, true));
@@ -392,6 +393,7 @@ TEST_F(PggateTestCatalog, TestCopydb) {
                                        false /* add_primary_key */, true /* colocated */,
                                        kInvalidOid /* tablegroup_id */,
                                        kInvalidOid /* tablespace_id */,
+                                       kInvalidOid /* matview_pg_table_id */,
                                        &pg_stmt));
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "key", 1, DataType::INT32, false, true));
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "value", 2, DataType::INT32, false, false));

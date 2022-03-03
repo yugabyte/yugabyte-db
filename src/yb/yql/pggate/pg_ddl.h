@@ -148,7 +148,8 @@ class PgCreateTable : public PgDdl {
                 bool add_primary_key,
                 const bool colocated,
                 const PgObjectId& tablegroup_oid,
-                const PgObjectId& tablespace_oid);
+                const PgObjectId& tablespace_oid,
+                const PgObjectId& matview_pg_table_oid);
 
   void SetupIndex(
       const PgObjectId& base_table_id, bool is_unique_index, bool skip_index_backfill);

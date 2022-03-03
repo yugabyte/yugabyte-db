@@ -57,7 +57,8 @@ extern void YBCCreateTable(CreateStmt *stmt,
 						   Oid relationId,
 						   Oid namespaceId,
 						   Oid tablegroupId,
-						   Oid tablespaceId);
+						   Oid tablespaceId,
+						   Oid matviewPgTableId);
 
 extern void YBCDropTable(Oid relationId);
 

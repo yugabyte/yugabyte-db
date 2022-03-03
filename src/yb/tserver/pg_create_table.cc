@@ -116,6 +116,11 @@ Status PgCreateTable::Exec(
     table_creator->tablespace_id(tablespace_oid.GetYBTablespaceId());
   }
 
+  auto matview_pg_table_oid = PgObjectId::FromPB(req_.matview_pg_table_oid());
+  if (matview_pg_table_oid.IsValid()) {
+    table_creator->matview_pg_table_id(matview_pg_table_oid.GetYBTableId());
+  }
+
   // For index, set indexed (base) table id.
   if (indexed_table_id_.IsValid()) {
     table_creator->indexed_table_id(indexed_table_id_.GetYBTableId());

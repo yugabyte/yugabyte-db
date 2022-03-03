@@ -578,11 +578,12 @@ Status PgApiImpl::NewCreateTable(const char *database_name,
                                  const bool colocated,
                                  const PgObjectId& tablegroup_oid,
                                  const PgObjectId& tablespace_oid,
+                                 const PgObjectId& matview_pg_table_oid,
                                  PgStatement **handle) {
   auto stmt = std::make_unique<PgCreateTable>(
       pg_session_, database_name, schema_name, table_name,
       table_id, is_shared_table, if_not_exist, add_primary_key, colocated, tablegroup_oid,
-      tablespace_oid);
+      tablespace_oid, matview_pg_table_oid);
   if (pg_txn_manager_->IsDdlMode()) {
     stmt->UseTransaction(VERIFY_RESULT(Copy(pg_txn_manager_->GetDdlTxnMetadata().get())));
   }
@@ -810,7 +811,8 @@ Status PgApiImpl::NewCreateIndex(const char *database_name,
   auto stmt = std::make_unique<PgCreateTable>(
       pg_session_, database_name, schema_name, index_name, index_id, is_shared_index,
       if_not_exist, false /* add_primary_key */,
-      tablegroup_oid.IsValid() ? false : true /* colocated */, tablegroup_oid, tablespace_oid);
+      tablegroup_oid.IsValid() ? false : true /* colocated */, tablegroup_oid, tablespace_oid,
+      PgObjectId() /* matview_pg_table_id */);
   stmt->SetupIndex(base_table_id, is_unique_index, skip_index_backfill);
   if (pg_txn_manager_->IsDdlMode()) {
     stmt->UseTransaction(VERIFY_RESULT(Copy(pg_txn_manager_->GetDdlTxnMetadata().get())));
