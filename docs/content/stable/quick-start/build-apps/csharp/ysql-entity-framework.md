@@ -169,24 +169,6 @@ $ curl \
 
 ### Using the YSQL shell
 
-```sh
-$ ./bin/ysqlsh
-```
-
-```output
-ysqlsh (11.2)
-Type "help" for help.
-yugabyte=#
-```
-
-```sh
-yugabyte=# \c ysql_entityframework
-```
-
-```output
-You are now connected to database "ysql_entityframework" as user "yugabyte".
-```
-
 ```sql
 ysql_entityframework=# SELECT count(*) FROM users;
 ```
@@ -222,11 +204,13 @@ ysql_entityframework=# SELECT count(*) FROM orders;
 
 ### Using the REST API
 
+Verify the users, products, and orders created in the `ysql_entityframework` database from the REST API server.
+
 ```sh
 $ curl http://localhost:8080/users
 ```
 
-```json
+```output.json
 {
   "content": [
     {
@@ -250,7 +234,7 @@ $ curl http://localhost:8080/users
 $ curl http://localhost:8080/products
 ```
 
-```json
+```output.json
 {
   "content": [
     {
@@ -274,26 +258,26 @@ $ curl http://localhost:8080/products
 $ curl http://localhost:8080/orders
 ```
 
-```json
+```output.json
 {
   "content": [
-   {
+    {
       "orderId":"2692e1e9-0bbd-40e8-bf51-4fbcc4e9fea2",
       "orderTime":"2022-02-24T02:32:52.60555",
       "orderTotal":15.00,
       "userId":1,
       "users":null,
       "products":null
-   },
-   {
+    },
+    {
       "orderId":"f7343f22-7dfc-4a18-b4d3-9fcd17161518",
       "orderTime":"2022-02-24T02:33:06.832663",
       "orderTotal":25.00,
       "userId":1,
       "users":null,
       "products":null
-   }
-]
+    }
+  ]
 }
 ```
 
