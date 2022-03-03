@@ -11,23 +11,17 @@
 // under the License.
 
 #include <algorithm>
-#include <string>
-#include <utility>
 #include <chrono>
+#include <utility>
 #include <boost/assign.hpp>
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
 
-#include "yb/common/common.pb.h"
-#include "yb/common/entity_ids.h"
-#include "yb/common/ql_value.h"
-
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.pb.h"
-#include "yb/cdc/cdc_service.proxy.h"
 
-#include "yb/client/client.h"
 #include "yb/client/client-test-util.h"
+#include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
@@ -38,22 +32,22 @@
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/common/common.pb.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/ql_value.h"
+
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 
-#include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/cdcsdk_test_base.h"
+#include "yb/integration-tests/mini_cluster.h"
 
-#include "yb/master/cdc_consumer_registry_service.h"
+#include "yb/master/master.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
-#include "yb/master/master_ddl.proxy.h"
-#include "yb/master/mini_master.h"
-#include "yb/master/master.h"
 #include "yb/master/master_replication.proxy.h"
-#include "yb/master/master-test-util.h"
-#include "yb/master/sys_catalog_initialization.h"
+#include "yb/master/mini_master.h"
 
 #include "yb/rpc/rpc_controller.h"
 
@@ -65,23 +59,12 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
-#include "yb/util/format.h"
 #include "yb/util/monotime.h"
-#include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
-
-DECLARE_int32(replication_factor);
-DECLARE_int32(cdc_max_apply_batch_num_records);
-DECLARE_int32(client_read_write_timeout_ms);
-DECLARE_int32(pgsql_proxy_webserver_port);
-DECLARE_bool(enable_ysql);
-DECLARE_bool(hide_pg_catalog_table_creation_logs);
-DECLARE_bool(master_auto_run_initdb);
-DECLARE_int32(pggate_rpc_timeout_secs);
 
 namespace yb {
 
@@ -112,228 +95,12 @@ using rpc::RpcController;
 
 namespace cdc {
 namespace enterprise {
-constexpr static const char* const kTableName = "test_table";
-constexpr static const char* const kKeyColumnName = "key";
-constexpr static const char* const kValueColumnName = "value";
-
 class CDCSDKStreamTest : public CDCSDKTestBase {
  public:
-  // Every test needs to initialize this cdc_proxy_.
-  std::unique_ptr<CDCServiceProxy> cdc_proxy_;
-
   struct ExpectedRecord {
     std::string key;
     std::string value;
   };
-
-  // Set up a cluster with the specified parameters.
-  Status SetUpWithParams(
-      uint32_t replication_factor, uint32_t num_masters = 1, bool colocated = false) {
-    master::SetDefaultInitialSysCatalogSnapshotFlags();
-    CDCSDKTestBase::SetUp();
-    FLAGS_enable_ysql = true;
-    FLAGS_master_auto_run_initdb = true;
-    FLAGS_hide_pg_catalog_table_creation_logs = true;
-    FLAGS_pggate_rpc_timeout_secs = 120;
-    FLAGS_cdc_max_apply_batch_num_records = 1;
-    FLAGS_cdc_enable_replicate_intents = true;
-    FLAGS_replication_factor = replication_factor;
-
-    MiniClusterOptions opts;
-    opts.num_masters = num_masters;
-    opts.num_tablet_servers = replication_factor;
-    opts.cluster_id = "cdcsdk_cluster";
-
-    test_cluster_.mini_cluster_ = std::make_unique<MiniCluster>(opts);
-
-    RETURN_NOT_OK(test_cluster()->StartSync());
-    RETURN_NOT_OK(test_cluster()->WaitForTabletServerCount(replication_factor));
-    RETURN_NOT_OK(WaitForInitDb(test_cluster()));
-    test_cluster_.client_ = VERIFY_RESULT(test_cluster()->CreateClient());
-    RETURN_NOT_OK(InitPostgres(&test_cluster_));
-    RETURN_NOT_OK(CreateDatabase(&test_cluster_, kNamespaceName, colocated));
-
-    cdc_proxy_ = GetCdcProxy();
-
-    LOG(INFO) << "Cluster created successfully for CDCSDK";
-    return Status::OK();
-  }
-
-  Status InitPostgres(Cluster* cluster) {
-    auto pg_ts = RandomElement(cluster->mini_cluster_->mini_tablet_servers());
-    auto port = cluster->mini_cluster_->AllocateFreePort();
-    pgwrapper::PgProcessConf pg_process_conf =
-        VERIFY_RESULT(pgwrapper::PgProcessConf::CreateValidateAndRunInitDb(
-            AsString(Endpoint(pg_ts->bound_rpc_addr().address(), port)),
-            pg_ts->options()->fs_opts.data_paths.front() + "/pg_data",
-            pg_ts->server()->GetSharedMemoryFd()));
-    pg_process_conf.master_addresses = pg_ts->options()->master_addresses_flag;
-    pg_process_conf.force_disable_log_file = true;
-    FLAGS_pgsql_proxy_webserver_port = cluster->mini_cluster_->AllocateFreePort();
-
-    LOG(INFO) << "Starting PostgreSQL server listening on " << pg_process_conf.listen_addresses
-              << ":" << pg_process_conf.pg_port << ", data: " << pg_process_conf.data_dir
-              << ", pgsql webserver port: " << FLAGS_pgsql_proxy_webserver_port;
-    cluster->pg_supervisor_ = std::make_unique<pgwrapper::PgSupervisor>(pg_process_conf);
-    RETURN_NOT_OK(cluster->pg_supervisor_->Start());
-
-    cluster->pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
-    return Status::OK();
-  }
-
-  // Create a test database to work on.
-  Status CreateDatabase(
-      Cluster* cluster,
-      const std::string& namespace_name = kNamespaceName,
-      bool colocated = false) {
-    auto conn = VERIFY_RESULT(cluster->Connect());
-    RETURN_NOT_OK(conn.ExecuteFormat(
-        "CREATE DATABASE $0$1", namespace_name, colocated ? " colocated = true" : ""));
-    return Status::OK();
-  }
-
-  Result<std::string> GetNamespaceId(const std::string& namespace_name) {
-    master::GetNamespaceInfoResponsePB namespace_info_resp;
-
-    RETURN_NOT_OK(test_client()->GetNamespaceInfo(
-        std::string(), kNamespaceName, YQL_DATABASE_PGSQL, &namespace_info_resp));
-
-    // Return namespace_id.
-    return namespace_info_resp.namespace_().id();
-  }
-
-  Result<YBTableName> CreateTable(
-      Cluster* cluster,
-      const std::string& namespace_name,
-      const std::string& table_name,
-      const uint32_t num_tablets,
-      const bool add_primary_key = true,
-      bool colocated = false,
-      const int table_oid = 0) {
-    auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
-    std::string table_oid_string = "";
-    if (table_oid > 0) {
-      // Need to turn on session flag to allow for CREATE WITH table_oid.
-      RETURN_NOT_OK(conn.Execute("set yb_enable_create_with_table_oid=true"));
-      table_oid_string = Format("table_oid = $0,", table_oid);
-    }
-    RETURN_NOT_OK(conn.ExecuteFormat(
-        "CREATE TABLE $0($1 int $2, $3 int) WITH ($4colocated = $5) "
-        "SPLIT INTO $6 TABLETS",
-        table_name, kKeyColumnName, (add_primary_key) ? "PRIMARY KEY" : "", kValueColumnName,
-        table_oid_string, colocated, num_tablets));
-    return GetTable(cluster, namespace_name, table_name);
-  }
-
-  Result<std::string> GetTableId(
-      Cluster* cluster,
-      const std::string& namespace_name,
-      const std::string& table_name,
-      bool verify_table_name = true,
-      bool exclude_system_tables = true) {
-    master::ListTablesRequestPB req;
-    master::ListTablesResponsePB resp;
-
-    req.set_name_filter(table_name);
-    req.mutable_namespace_()->set_name(namespace_name);
-    req.mutable_namespace_()->set_database_type(YQL_DATABASE_PGSQL);
-    if (!exclude_system_tables) {
-      req.set_exclude_system_tables(true);
-      req.add_relation_type_filter(master::USER_TABLE_RELATION);
-    }
-
-    master::MasterDdlProxy master_proxy(
-        &cluster->client_->proxy_cache(),
-        VERIFY_RESULT(cluster->mini_cluster_->GetLeaderMasterBoundRpcAddr()));
-
-    rpc::RpcController rpc;
-    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
-    RETURN_NOT_OK(master_proxy.ListTables(req, &resp, &rpc));
-    if (resp.has_error()) {
-      return STATUS(IllegalState, "Failed listing tables");
-    }
-
-    // Now need to find the table and return it.
-    for (const auto& table : resp.tables()) {
-      // If !verify_table_name, just return the first table.
-      if (!verify_table_name ||
-          (table.name() == table_name && table.namespace_().name() == namespace_name)) {
-        return table.id();
-      }
-    }
-    return STATUS_FORMAT(
-        IllegalState, "Unable to find table id for $0 in $1", table_name, namespace_name);
-  }
-
-  Result<YBTableName> GetTable(
-      Cluster* cluster,
-      const std::string& namespace_name,
-      const std::string& table_name,
-      bool verify_table_name = true,
-      bool exclude_system_tables = true) {
-    master::ListTablesRequestPB req;
-    master::ListTablesResponsePB resp;
-
-    req.set_name_filter(table_name);
-    req.mutable_namespace_()->set_name(namespace_name);
-    req.mutable_namespace_()->set_database_type(YQL_DATABASE_PGSQL);
-    if (!exclude_system_tables) {
-      req.set_exclude_system_tables(true);
-      req.add_relation_type_filter(master::USER_TABLE_RELATION);
-    }
-
-    master::MasterDdlProxy master_proxy(
-        &cluster->client_->proxy_cache(),
-        VERIFY_RESULT(cluster->mini_cluster_->GetLeaderMasterBoundRpcAddr()));
-
-    rpc::RpcController rpc;
-    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
-    RETURN_NOT_OK(master_proxy.ListTables(req, &resp, &rpc));
-    if (resp.has_error()) {
-      return STATUS(IllegalState, "Failed listing tables");
-    }
-
-    // Now need to find the table and return it.
-    for (const auto& table : resp.tables()) {
-      // If !verify_table_name, just return the first table.
-      if (!verify_table_name ||
-          (table.name() == table_name && table.namespace_().name() == namespace_name)) {
-        YBTableName yb_table;
-        yb_table.set_table_id(table.id());
-        yb_table.set_namespace_id(table.namespace_().id());
-        return yb_table;
-      }
-    }
-    return STATUS_FORMAT(
-        IllegalState, "Unable to find table $0 in namespace $1", table_name, namespace_name);
-  }
-
-  // Initialize a CreateCDCStreamRequest to be used while creating a DB stream ID.
-  void InitCreateStreamRequest(
-      CreateCDCStreamRequestPB* create_req,
-      const CDCCheckpointType& checkpoint_type = CDCCheckpointType::EXPLICIT,
-      const std::string& namespace_name = kNamespaceName) {
-    create_req->set_namespace_name(namespace_name);
-    create_req->set_checkpoint_type(checkpoint_type);
-    create_req->set_record_type(CDCRecordType::CHANGE);
-    create_req->set_record_format(CDCRecordFormat::PROTO);
-    create_req->set_source_type(CDCSDK);
-  }
-
-  Result<std::string> CreateDBStream(
-      CDCCheckpointType checkpoint_type = CDCCheckpointType::EXPLICIT) {
-    CreateCDCStreamRequestPB req;
-    CreateCDCStreamResponsePB resp;
-
-    RpcController rpc;
-    rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
-
-    InitCreateStreamRequest(&req, checkpoint_type);
-
-    RETURN_NOT_OK(cdc_proxy_->CreateCDCStream(req, &resp, &rpc));
-
-    return resp.db_stream_id();
-  }
 
   CHECKED_STATUS DeleteCDCStream(const std::string& db_stream_id) {
     RpcController delete_rpc;
@@ -361,13 +128,21 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
     return created_streams;
   }
 
-  Result<google::protobuf::RepeatedPtrField<yb::master::CDCStreamInfoPB>> ListDBStreams() {
+  Result<google::protobuf::RepeatedPtrField<yb::master::CDCStreamInfoPB>> ListDBStreams(
+      const std::string& namespace_name = kNamespaceName, const TableId table_id = "") {
     // Listing the streams now.
     master::ListCDCStreamsRequestPB list_req;
     master::ListCDCStreamsResponsePB list_resp;
 
-    list_req.set_id_type(master::IdTypePB::NAMESPACE_ID);
-    list_req.set_namespace_id(VERIFY_RESULT(GetNamespaceId(kNamespaceName)));
+    // If table_id is passed i.e. it is not empty, it means that now the xCluster streams are being
+    // requested, so we will be doing further operations based on the same check.
+    if (!table_id.empty()) {
+      list_req.set_id_type(master::IdTypePB::TABLE_ID);
+      list_req.set_table_id(table_id);
+    } else {
+      list_req.set_id_type(master::IdTypePB::NAMESPACE_ID);
+      list_req.set_namespace_id(VERIFY_RESULT(GetNamespaceId(kNamespaceName)));
+    }
 
     RpcController list_rpc;
     list_rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
@@ -404,12 +179,11 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
 
   void TestListDBStreams(bool with_table) {
     // Create one table.
-    uint32_t num_tablets = 1;
     std::string table_id;
 
     if (with_table) {
       auto table =
-          ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+          ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
 
       // Get the table_id of the created table.
       table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
@@ -436,7 +210,6 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
         // Since there are no tables in DB, there would be no table_ids in the response.
         ASSERT_EQ(0, list_streams.Get(i).table_id_size());
       }
-
       resp_stream_ids.push_back(list_streams.Get(i).stream_id());
     }
     // Sorting to simplify assertion.
@@ -450,15 +223,15 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
 
   void TestDBStreamInfo(
       const vector<std::string>& table_with_pk, const vector<std::string>& table_without_pk) {
-    uint32_t num_tablets = 1;
     std::vector<std::string>::size_type num_of_tables_with_pk = table_with_pk.size();
 
     for (const auto& table_name : table_with_pk) {
-      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, table_name, num_tablets));
+      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, table_name));
     }
 
     for (const auto& table_name : table_without_pk) {
-      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, table_name, num_tablets, false));
+      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, table_name,
+                                1 /* num_tablets */, false));
     }
 
     std::vector<std::string> created_table_ids_with_pk;
@@ -528,14 +301,12 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(TestStreamCreation)) {
   // Create a cluster.
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
-  uint32_t num_tablets = 1;
-
   // Create a table with primary key.
   auto table1 =
-      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "table_with_pk", num_tablets));
+      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "table_with_pk"));
   // Create another table without primary key.
   auto table2 = ASSERT_RESULT(
-      CreateTable(&test_cluster_, kNamespaceName, "table_without_pk", num_tablets, false));
+      CreateTable(&test_cluster_, kNamespaceName, "table_without_pk", 1 /* num_tablets */, false));
 
   // We have a table with primary key and one without primary key so while creating
   // the DB Stream ID, the latter one will be ignored and will not be a part of streaming with CDC.
@@ -630,6 +401,126 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(DBStreamInfoTest_AllTablesWitho
 
   TestDBStreamInfo({}, table_names_without_pk);
 }
+
+TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(CDCWithXclusterEnabled)) {
+  // Set up an RF 3 cluster.
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+
+  // We not need to create both xcluster and cdc streams on a table,
+  // and we will list them to check that they are not the same.
+
+  const uint32_t num_of_streams = 100;
+
+  // Creating CDC DB streams on the table.
+  // We get a sorted vector from CreateDBStreams() function already.
+  std::vector<CDCStreamId> created_db_streams = ASSERT_RESULT(CreateDBStreams(num_of_streams));
+
+  // Creating xCluster streams now.
+  std::vector<CDCStreamId> created_xcluster_streams;
+  for (uint32_t i = 0; i < num_of_streams; ++i) {
+    RpcController rpc;
+    CreateCDCStreamRequestPB create_req;
+    CreateCDCStreamResponsePB create_resp;
+
+    create_req.set_table_id(table.table_id());
+    ASSERT_OK(cdc_proxy_->CreateCDCStream(create_req, &create_resp, &rpc));
+
+    // Assert that there is no DB stream ID in the response while creating xCluster stream.
+    ASSERT_FALSE(create_resp.has_db_stream_id());
+
+    created_xcluster_streams.push_back(create_resp.stream_id());
+  }
+  std::sort(created_xcluster_streams.begin(), created_xcluster_streams.end());
+
+  // Ensure that created streams are all different.
+  for (uint32_t i = 0; i < num_of_streams; ++i) {
+    ASSERT_NE(created_db_streams[i], created_xcluster_streams[i]);
+  }
+
+  // List streams for CDC and xCluster. They both should not be the same.
+  google::protobuf::RepeatedPtrField<yb::master::CDCStreamInfoPB> list_cdc_resp =
+      ASSERT_RESULT(ListDBStreams(kNamespaceName));
+  std::vector<std::string> db_streams;
+  for (int32_t i = 0; i < list_cdc_resp.size(); ++i) {
+    db_streams.push_back(list_cdc_resp.Get(i).stream_id());
+  }
+  std::sort(db_streams.begin(), db_streams.end());
+
+  // List the streams for xCluster.
+  google::protobuf::RepeatedPtrField<yb::master::CDCStreamInfoPB> list_xcluster_resp =
+      ASSERT_RESULT(ListDBStreams(kNamespaceName, table.table_id()));
+  std::vector<std::string> xcluster_streams;
+  for (int32_t i = 0; i < list_xcluster_resp.size(); ++i) {
+    xcluster_streams.push_back(list_xcluster_resp.Get(i).stream_id());
+  }
+  std::sort(xcluster_streams.begin(), xcluster_streams.end());
+
+  // Ensuring that the streams we got in both the cases are different in order to make sure that
+  // there are no clashes.
+  for (uint32_t i = 0; i < num_of_streams; ++i) {
+    ASSERT_NE(db_streams[i], xcluster_streams[i]);
+  }
+}
+
+TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(ImplicitCheckPointValidate)) {
+  // Create a cluster.
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+
+  // Create a DB Stream.
+  std::string db_stream_id = ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT));
+  ASSERT_NE(0, db_stream_id.length());
+
+  // Get the list of dbstream.
+  google::protobuf::RepeatedPtrField<yb::master::CDCStreamInfoPB> list_streams =
+      ASSERT_RESULT(ListDBStreams(kNamespaceName));
+  const uint32_t num_streams = list_streams.size();
+
+  for (uint32_t i = 0; i < num_streams; ++i) {
+    // Validate the streamid.
+    ASSERT_EQ(db_stream_id, list_streams.Get(i).stream_id());
+
+    const uint32_t options_sz = list_streams.Get(i).options_size();
+    for (uint32_t j = 0; j < options_sz; j++) {
+      // Validate the checkpoint type IMPLICIT.
+      string cur_key = list_streams.Get(i).options(j).key();
+      string cur_value = list_streams.Get(i).options(j).value();
+      if (cur_key == string("checkpoint_type")) {
+        ASSERT_EQ(cur_value, string("IMPLICIT"));
+      }
+    }
+  }
+}
+
+TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(ExplicitCheckPointValidate)) {
+    // Create a cluster.
+    ASSERT_OK(SetUpWithParams(3, 1, false));
+
+    // Create a DB Stream.
+    std::string db_stream_id = ASSERT_RESULT(CreateDBStream(CDCCheckpointType::EXPLICIT));
+    ASSERT_NE(0, db_stream_id.length());
+
+    // Get the list of dbstream.
+    google::protobuf::RepeatedPtrField<yb::master::CDCStreamInfoPB> list_streams =
+        ASSERT_RESULT(ListDBStreams(kNamespaceName));
+    const uint32_t num_streams = list_streams.size();
+
+    for (uint32_t i = 0; i < num_streams; ++i) {
+      // Validate the streamid.
+      ASSERT_EQ(db_stream_id, list_streams.Get(i).stream_id());
+
+      const uint32_t options_sz = list_streams.Get(i).options_size();
+      for (uint32_t j = 0; j < options_sz; j++) {
+        // Validate the checkpoint type EXPLICIT.
+        string cur_key = list_streams.Get(i).options(j).key();
+        string cur_value = list_streams.Get(i).options(j).value();
+        if (cur_key == string("checkpoint_type")) {
+          ASSERT_EQ(cur_value, string("EXPLICIT"));
+        }
+      }
+    }
+}
+
 }  // namespace enterprise
 }  // namespace cdc
 }  // namespace yb
