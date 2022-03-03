@@ -28,3 +28,9 @@ YbgSamplerCreate
 YbgSamplerGetState
 YbgSamplerRandomFract
 YbgReservoirGetNextS
+
+DecodeDatum
+DecodeTZDatum
+DecodeArrayDatum
+DecodeRangeDatum
+DecodeRangeArrayDatum

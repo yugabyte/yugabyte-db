@@ -202,6 +202,47 @@ CHECKED_STATUS EnumerateIntents(
     KeyBytes* encoded_key_buffer, PartialRangeKeyIntents partial_range_key_intents,
     LastKey last_key = LastKey::kFalse);
 
+// replicated_batches_state format does not matter at this point, because it is just
+// appended to appropriate value.
+void PrepareTransactionWriteBatch(
+    const docdb::KeyValueWriteBatchPB& put_batch,
+    HybridTime hybrid_time,
+    rocksdb::WriteBatch* rocksdb_write_batch,
+    const TransactionId& transaction_id,
+    IsolationLevel isolation_level,
+    PartialRangeKeyIntents partial_range_key_intents,
+    const Slice& replicated_batches_state,
+    IntraTxnWriteId* write_id);
+
+
+struct IntentKeyValueForCDC {
+  Slice key;
+  Slice value;
+  std::string key_buf, value_buf;
+  std::string reverse_index_key;
+  IntraTxnWriteId write_id = 0;
+
+  std::string ToString() const;
+
+  template <class PB>
+  void ToPB(PB* pb) const {
+    pb->set_key(key);
+    pb->set_value(value);
+    pb->set_reverse_index_key(reverse_index_key);
+    pb->set_write_id(write_id);
+  }
+
+  template <class PB>
+  static IntentKeyValueForCDC FromPB(const PB& pb) {
+    return IntentKeyValueForCDC {
+        .key = pb.key(),
+        .value = pb.value(),
+        .reverse_index_key = pb.reverse_index_key(),
+        .write_id = pb.write_id(),
+    };
+  }
+};
+
 // See ApplyTransactionStatePB for details.
 struct ApplyTransactionState {
   std::string key;
@@ -230,6 +271,13 @@ struct ApplyTransactionState {
     };
   }
 };
+
+Result<ApplyTransactionState> GetIntentsBatch(
+    const TransactionId& transaction_id,
+    const KeyBounds* key_bounds,
+    const ApplyTransactionState* stream_state,
+    rocksdb::DB* intents_db,
+    std::vector<IntentKeyValueForCDC>* keyValueIntents);
 
 void AppendTransactionKeyPrefix(const TransactionId& transaction_id, docdb::KeyBytes* out);
 
