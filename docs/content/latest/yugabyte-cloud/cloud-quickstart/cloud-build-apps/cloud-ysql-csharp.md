@@ -152,11 +152,11 @@ try
 {
     NpgsqlTransaction tx = conn.BeginTransaction();
 
-    NpgsqlCommand query = new NpgsqlCommand("UPDATE DemoAccount SET balance = balance - " + 
+    NpgsqlCommand query = new NpgsqlCommand("UPDATE DemoAccount SET balance = balance - " +
         amount + " WHERE name = \'Jessica\'", conn, tx);
     query.ExecuteNonQuery();
 
-    query = new NpgsqlCommand("UPDATE DemoAccount SET balance = balance + " + 
+    query = new NpgsqlCommand("UPDATE DemoAccount SET balance = balance + " +
         amount + " WHERE name = \'John\'", conn, tx);
     query.ExecuteNonQuery();
 
@@ -164,9 +164,9 @@ try
 
     Console.WriteLine(">>>> Transferred " + amount + " between accounts");
 
-} catch (NpgsqlException ex) 
+} catch (NpgsqlException ex)
 {
-    if (ex.SqlState != null && ex.SqlState.Equals("40001")) 
+    if (ex.SqlState != null && ex.SqlState.Equals("40001"))
     {
         Console.WriteLine("The operation is aborted due to a concurrent transaction that is modifying the same set of rows." +
                 "Consider adding retry logic for production-grade applications.");
@@ -180,7 +180,7 @@ try
 
 [Npgsql driver](../../../../reference/drivers/ysql-client-drivers/#npgsql)
 
-[Explore more applications](../../../cloud-examples)
+[Explore more applications](../../../cloud-examples/)
 
 [Deploy clusters in Yugabyte Cloud](../../../cloud-basics)
 

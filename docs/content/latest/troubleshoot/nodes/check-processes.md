@@ -3,8 +3,6 @@ title: Check servers
 linkTitle: Check servers
 headerTitle: Check YugabyteDB servers
 description: How to check if your YugabyteDB servers are running
-aliases:
-  - /troubleshoot/nodes/check-processes/
 menu:
   latest:
     parent: troubleshoot-nodes

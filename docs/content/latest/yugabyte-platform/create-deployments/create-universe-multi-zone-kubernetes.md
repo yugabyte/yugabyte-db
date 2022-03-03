@@ -15,13 +15,13 @@ showAsideToc: true
   <ul class="nav nav-tabs-alt nav-tabs-yb">
 
 <li>
-    <a href="/latest/yugabyte-platform/create-deployments/create-universe-multi-zone" class="nav-link">
+    <a href="../create-universe-multi-zone/" class="nav-link">
       <i class="fas fa-building" aria-hidden="true"></i>
 Generic</a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/create-deployments/create-universe-multi-zone-kubernetes" class="nav-link active">
+    <a href="../create-universe-multi-zone-kubernetes/" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
@@ -29,7 +29,7 @@ Generic</a>
 
 </ul>
 
-This section describes how to create a YugabyteDB universe in one geographic region across multiple availability zones using Kubernetes as a cloud provider. 
+This section describes how to create a YugabyteDB universe in one geographic region across multiple availability zones using Kubernetes as a cloud provider.
 
 ## Prerequisites
 
@@ -57,11 +57,11 @@ To start, click **Create Universe** and complete the first two fields of the **C
 
 Complete the rest of the **Cloud Configuration** section as follows:
 
-- Use the **Region** field to select the region. This enables the **Availability Zones** option that allows you to see zones belonging to that region. 
+- Use the **Region** field to select the region. This enables the **Availability Zones** option that allows you to see zones belonging to that region.
 
 - Provide the value in the **Pods** field. This value should be equal to or greater than the replication factor. The default value is 3. When this value is supplied, the pods are automatically placed across all the availability zones to guarantee the maximum availability.
 
-- In the **Replication Factor** field, define the replication factor. The default is 3. 
+- In the **Replication Factor** field, define the replication factor. The default is 3.
 
   ![img](/images/yb-platform/kubernetes-config5.png)
 
@@ -87,9 +87,9 @@ Complete the **Advanced** section as follows:
 
 - In the **DB Version** field, specify the YugabyteDB version. The default is either the same as the Yugabyte Platform version or the latest YugabyteDB version available for Yugabyte Platform.
 
-- Use the **Enable IPV6** to enable the use of IPV6 networking for connections between the database servers. This setting is enbled by default.
+- Use the **Enable IPV6** to enable the use of IPV6 networking for connections between the database servers. This setting is enabled by default.
 
-- Use the **Enable Public Network Access** field to assign a load balancer or nodePort for connecting to the database endpoints over the internet. This setting is enbled by default.
+- Use the **Enable Public Network Access** field to assign a load balancer or nodePort for connecting to the database endpoints over the internet. This setting is enabled by default.
 
   ![img](/images/yb-platform/kubernetes-config7.png)
 
@@ -101,7 +101,7 @@ Complete the **G-Flags** section as follows:
 
   ![img](/images/yb-platform/kubernetes-config8.png)
 
-Accept default values for all of the remaining fields. 
+Accept default values for all of the remaining fields.
 
 The following illustration shows the completed **Cloud Configuration** page:
 
@@ -130,9 +130,11 @@ You can create a connection to a pod as follows:
 - Click **Connect** to access the universe's endpoints to connect, as shown in the following illustration:
 
 ![img](/images/yb-platform/kubernetes-config13.png)
+
 - Click **Actions** on a specific pod, as per the following illustration:
 
 ![img](/images/yb-platform/kubernetes-config14.png)
+
 - Click **Actions > Connect** to access the `kubectl` commands that allow you to connect to the pods, as shown in the following illustration:
 
 ![img](/images/yb-platform/kubernetes-config15.png)
