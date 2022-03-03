@@ -116,13 +116,13 @@ $ git clone https://github.com/yugabyte/orm-examples.git && cd orm-examples/java
 
 - Create the `ysql_ebeans` database using:
 
-  ```sh
+  ```sql
   yugabyte=# CREATE DATABASE ysql_ebeans;
   ```
 
 ## Build the application
 
-- Create a `build.properties` file under the `project` directory and add the sbt version.
+Create a `build.properties` file under the `project` directory and add the sbt version.
 
 ```sh
 sbt.version=1.2.8
@@ -136,7 +136,7 @@ $ sbt compile
 
 {{< note title="Note" >}}
 
-- Some subversions of JDK 1.8 would require the `nashorn` package. If you get a compile error due to a missing `jdk.nashorn` package, add the dependency to the `build.sbt` file.
+- Some subversions of JDK 1.8 require the `nashorn` package. If you get a compile error due to a missing `jdk.nashorn` package, add the dependency to the `build.sbt` file.
 
 ```sh
 libraryDependencies += "com.xenoamess" % "nashorn" % "jdk8u265-b01-x3"
@@ -147,7 +147,7 @@ libraryDependencies += "com.xenoamess" % "nashorn" % "jdk8u265-b01-x3"
 
 ## Run the application
 
-- Run the application from the `ebeans` directory using:
+Run the application from the `ebeans` directory using:
 
 ```sh
 $ sbt run
@@ -181,13 +181,9 @@ $ curl \
   -v -X POST -H 'Content-Type:application/json' http://localhost:8080/products
 ```
 
-Verify the `userId` and `productId` from the `ysql_ebeans`database using the following YSQL commands.
+In your YSQL shell, verify the `userId` and `productId` from the `ysql_ebeans` database using the following YSQL commands.
 
-```sh
-yugabyte=# \c ysql_ebeans;
-```
-
-```sh
+```sql
 ysql_ebeans=# select * from users;
 ```
 
@@ -199,7 +195,7 @@ ysql_ebeans=# select * from users;
 (2 rows)
 ```
 
-```sh
+```sql
 ysql_ebeans=# select * from products;
 ```
 
@@ -229,24 +225,7 @@ $ curl \
 
 ### Using the YSQL shell
 
-- Connect to the `ysql_ebeans` database.
-
-```sh
-$ ./bin/ysqlsh
-```
-
-```output
-ysqlsh (11.2)
-Type "help" for help.
-
-yugabyte=#
-```
-
-```sql
-yugabyte=# \c ysql_ebeans;
-```
-
-- List the tables created by the application.
+In your YSQL shell, list the tables created by the application.
 
 ```sql
 ysql_ebeans=#  \d
@@ -314,13 +293,11 @@ ysql_ebeans=# SELECT * FROM orderline;
 (3 rows)
 ```
 
-{{< note title="Note" >}}
-
-- `orderline` is a child table of the parent `orders` table connected using a foreign key constraint.
-- `users` are connected with `orders` using a foreign Key constraint so that no order can be placed with an invalid user, and that user has to be present in the users table.
-{{< /note >}}
+`orderline` is a child table of the parent `orders` table, and is connected using a foreign key constraint. The `users` table are connected with `orders` using a foreign key constraint so that no order can be placed with an invalid user, and that user has to be present in the users table.
 
 ### Using the REST API
+
+Verify the users, products, and orders created in the `ysql_ebeans` database from the REST API server.
 
 ```sh
 $ curl http://localhost:8080/users
