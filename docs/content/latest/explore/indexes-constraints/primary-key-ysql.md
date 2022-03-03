@@ -1,7 +1,7 @@
 ---
-title: Primary Key
-linkTitle: Primary Key
-description: Defining Primary Key Constraint in YSQL
+title: Primary key
+linkTitle: Primary key
+description: Defining Primary key constraint in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   latest:

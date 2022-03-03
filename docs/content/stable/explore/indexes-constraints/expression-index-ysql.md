@@ -1,7 +1,7 @@
 ---
-title: Expression Indexes
-linkTitle: Expression Indexes
-description: Using Expression Indexes in YSQL
+title: Expression indexes
+linkTitle: Expression indexes
+description: Using Expression indexes in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   stable:
