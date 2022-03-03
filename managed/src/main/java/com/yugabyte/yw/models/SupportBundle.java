@@ -173,7 +173,7 @@ public class SupportBundle extends Model {
   public static void delete(UUID bundleUUID) {
     SupportBundle supportBundle = SupportBundle.getOrBadRequest(bundleUUID);
     if (supportBundle.getStatus() == SupportBundleStatusType.Running) {
-      throw new PlatformServiceException(BAD_REQUEST, "The certificate is in running state.");
+      throw new PlatformServiceException(BAD_REQUEST, "The support bundle is in running state.");
     } else {
       if (supportBundle.delete()) {
         LOG.info("Successfully deleted the db entry for support bundle: " + bundleUUID.toString());
