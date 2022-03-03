@@ -161,6 +161,7 @@ public enum Type {
       case INT16: return INT16;
       case INT32: return INT32;
       case INT64: return INT64;
+      case UINT64: return INT64;
       case STRING: return STRING;
       case BOOL: return BOOL;
       case FLOAT: return FLOAT;

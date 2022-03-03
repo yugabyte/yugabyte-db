@@ -34,6 +34,7 @@ package org.yb.client;
 import com.google.common.base.Charsets;
 import com.google.protobuf.ByteString;
 import com.stumbleupon.async.Deferred;
+import com.stumbleupon.async.TimeoutException;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -64,6 +65,7 @@ public class TestAsyncYBClient extends BaseYBClientTest {
   @Test
   public void testBadHostnames() throws Exception {
     String badHostname = "some-unknown-host-hopefully";
+    String timedOutExceptionMessage = "Timed out after 1000ms";
 
     // Test that a bad hostname for the master makes us error out quickly.
     AsyncYBClient invalidClient = new AsyncYBClient.AsyncYBClientBuilder(badHostname).build();
@@ -71,8 +73,8 @@ public class TestAsyncYBClient extends BaseYBClientTest {
       invalidClient.listTabletServers().join(1000);
       fail("This should have failed quickly");
     } catch (Exception ex) {
-      assertTrue(ex instanceof NonRecoverableException);
-      assertTrue(ex.getMessage().contains(badHostname));
+      assertTrue(ex instanceof TimeoutException);
+      assertTrue(ex.getMessage().contains(timedOutExceptionMessage));
     }
 
     MasterClientOuterClass.GetTableLocationsResponsePB.Builder builder =

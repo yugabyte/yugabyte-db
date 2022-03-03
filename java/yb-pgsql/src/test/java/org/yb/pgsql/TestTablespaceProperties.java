@@ -57,6 +57,8 @@ public class TestTablespaceProperties extends BasePgSQLTest {
 
   private static final int MASTER_LOAD_BALANCER_WAIT_TIME_MS = 60 * 1000;
 
+  private static final int TRANSACTION_TABLE_NUM_TABLETS = 4;
+
   private static final int LOAD_BALANCER_MAX_CONCURRENT = 10;
 
   private static final String tablespaceName = "testTablespace";
@@ -90,6 +92,11 @@ public class TestTablespaceProperties extends BasePgSQLTest {
     builder.addMasterFlag("auto_create_local_transaction_tables", "true");
     builder.addMasterFlag("TEST_name_transaction_tables_with_tablespace_id", "true");
 
+    // Default behavior is to scale based on number of CPU cores, which will make
+    // load balancing transaction tables too much time and time out tests.
+    builder.addMasterFlag("transaction_table_num_tablets",
+                          Integer.toString(TRANSACTION_TABLE_NUM_TABLETS));
+
     // We wait for the load balancer whenever it gets triggered anyways, so there's
     // no concerns about the load balancer taking too many resources.
     builder.addMasterFlag("load_balancer_max_concurrent_tablet_remote_bootstraps",
@@ -111,7 +118,6 @@ public class TestTablespaceProperties extends BasePgSQLTest {
   @Before
   public void setupTablespaces() throws Exception {
     try (Statement setupStatement = connection.createStatement()) {
-      setupStatement.execute("DROP TABLESPACE IF EXISTS " + tablespaceName);
       setupStatement.execute(
           " CREATE TABLESPACE " + tablespaceName +
           "  WITH (replica_placement=" +
@@ -200,36 +206,6 @@ public class TestTablespaceProperties extends BasePgSQLTest {
     // tables are placed incorrectly at creation time.
     LOG.info("Run load balancer tablespace placement tests");
     testLBTablespacePlacement();
-  }
-
-  @Test
-  public void testTablesOptOutOfColocation() throws Exception {
-    final String dbname = "testdatabase";
-    try (Statement stmt = connection.createStatement()) {
-      stmt.execute(String.format("CREATE DATABASE %s COLOCATED=TRUE", dbname));
-    }
-    final String colocatedTableName = "colocated_table";
-    final String nonColocatedTable = "colocation_opt_out_table";
-    try (Connection connection2 = getConnectionBuilder().withDatabase(dbname).connect();
-         Statement stmt = connection2.createStatement()) {
-      stmt.execute(String.format("CREATE TABLE %s (h INT PRIMARY KEY, a INT, b FLOAT) " +
-                                 "WITH (colocated = false) TABLESPACE testTablespace",
-                                 nonColocatedTable));
-      stmt.execute(String.format("CREATE TABLE %s (h INT PRIMARY KEY, a INT, b FLOAT)",
-                                 colocatedTableName));
-    }
-    verifyDefaultPlacement(colocatedTableName);
-    verifyCustomPlacement(nonColocatedTable);
-
-    // Wait for tablespace info to be refreshed in load balancer.
-    Thread.sleep(5 * MASTER_REFRESH_TABLESPACE_INFO_SECS);
-
-    // Verify that load balancer is indeed idle.
-    assertTrue(miniCluster.getClient().waitForLoadBalancerIdle(
-               MASTER_LOAD_BALANCER_WAIT_TIME_MS));
-
-    verifyDefaultPlacement(colocatedTableName);
-    verifyCustomPlacement(nonColocatedTable);
   }
 
   public void executeAndAssertErrorThrown(String statement, String err_msg) throws Exception{
