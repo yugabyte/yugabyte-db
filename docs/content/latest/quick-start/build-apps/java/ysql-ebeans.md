@@ -120,6 +120,12 @@ $ git clone https://github.com/yugabyte/orm-examples.git && cd orm-examples/java
   yugabyte=# CREATE DATABASE ysql_ebeans;
   ```
 
+- Connect to the database using:
+
+  ```sql
+  yugabyte=# \c ysql_ebeans;
+  ```
+
 ## Build the application
 
 Create a `build.properties` file under the `project` directory and add the sbt version.
@@ -293,11 +299,11 @@ ysql_ebeans=# SELECT * FROM orderline;
 (3 rows)
 ```
 
-`orderline` is a child table of the parent `orders` table, and is connected using a foreign key constraint. The `users` table are connected with `orders` using a foreign key constraint so that no order can be placed with an invalid user, and that user has to be present in the users table.
+`orderline` is a child table of the parent `orders` table, and is connected using a foreign key constraint. The `users` table is connected with `orders` using a foreign key constraint so that no order can be placed with an invalid user, and that user has to be present in the users table.
 
 ### Using the REST API
 
-Verify the users, products, and orders created in the `ysql_ebeans` database from the REST API server.
+To use the REST API server to verify that the users, products, and orders were created in the `ysql_ebeans` database, enter the following commands. The results are output in JSON format.
 
 ```sh
 $ curl http://localhost:8080/users
