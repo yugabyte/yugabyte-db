@@ -553,59 +553,258 @@ When a row is deleted, the *delete* event value still works with log compaction,
 
 ## Datatype mappings
 
+The YugabyteDB connector represents changes to rows with events that are structured like the table in which the row exists. The event contains a field for each column value. How that value is represented in the event depends on the YugabyteDB data type of the column. The following sections describe how the connector maps YugabyteDB data types to a literal type and a semantic type in event fields.
+
+* `literal type` describes how the value is literally represented using Kafka Connect schema types: `INT8`, `INT16`, `INT32`, `INT64`, `FLOAT32`, `FLOAT64`, `BOOLEAN`, `STRING`, `BYTES`, `ARRAY`, `MAP`, and `STRUCT`.
+* `semantic type` describes how the Kafka Connect schema captures the meaning of the field using the name of the Kafka Connect schema for the field.
+
+### Basic types
+
+*Mappings for YugabyteDB basic data types:*
+
+| YugabyteDB data type| Literal type (schema type) | Semantic type (schema name) |
+| :--- | :--- | :--- |
+| BOOLEAN | BOOLEAN | N/A |
+| BIT(1) | STRING | N/A |
+| BIT( > 1) | STRING | N/A |
+| VARBIT[(M)] | STRING | N/A |
+| SMALLINT, SMALLSERIAL | INT16 | N/A |
+| INTEGER, SERIAL | INT32 | N/A |
+| BIGINT, BIGSERIAL | INT64 | N/A |
+| REAL | FLOAT32 | N/A |
+| DOUBLE PRECISION | FLOAT64 | N/A |
+| CHAR [(M)] | STRING | N/A |
+| VARCHAR [(M)] | STRING | N/A |
+| TEXT | STRING | N/A |
+| TIMESTAMPTZ | STRING | `io.debezium.time.ZonedTimestamp` <br/><br/> A string representation of a timestamp with timezone information, where the timezone is GMT. |
+| TIMETZ | STRING | `io.debezium.time.ZonedTime` <br/><br/> A string representation of a time value with timezone information, where the timezone is GMT. |
+| INTERVAL [P] | INT64 | `io.debezium.time.MicroDuration` <br/> (default) <br/><br/> The approximate number of microseconds for a time interval using the 365.25 / 12.0 formula for days per month average. |
+| INTERVAL [P] | STRING | `io.debezium.time.Interval` <br/> (when `interval.handling.mode` is set to `string`) <br/><br/> The string representation of the interval value that follows the pattern <br/> `P<years>Y<months>M<days>DT<hours>H<minutes>M<seconds>S`, for example, `P1Y2M3DT4H5M6.78S`. |
+| BYTEA | STRING | A hex encoded string. |
+| JSON, JSONB | STRING | `io.debezium.data.Json` <br/><br/> Contains the string representation of a JSON document, array, or scalar. |
+| UUID | STRING | `io.debezium.data.Uuid` <br/><br/> Contains the string representation of a YugabyteDB UUID value. |
+| DATE | INT32 | Number of days since UNIX epoch i.e. `1970-01-01` |
+| TIME | INT32 | Milliseconds since midnight. |
+| TIMESTAMP | INT64 | Milliseconds since UNIX epoch i.e. `1970-01-01 00:00:00` |
+| INT4RANGE | STRING | Range of integer. |
+| INT8RANGE | STRING | Range of `bigint`. |
+| NUMRANGE | STRING | Range of `numeric`. |
+| TSRANGE | STRING | Contains the string representation of a timestamp range without a time zone. |
+| TSTZRANGE | STRING | Contains the string representation of a timestamp range with the local system time zone. |
+| DATERANGE | STRING | Contains the string representation of a date range. It always has an exclusive upper-bound. |
+| ARRAY | ARRAY | N/A |
+| UDT | | **Not supported currently** |
+
+### Temporal types
+
+Other than YugabyteDB's `TIMESTAMPTZ` and `TIMETZ` data types, which contain time zone information, how temporal types are mapped depends on the value of the `time.precision.mode` connector configuration property. The following sections describe these mappings:
+* [`time.precision.mode=adaptive`](#timeprecisionmodeadaptive)
+* [`time.precision.mode=adaptive_time_microseconds`](#timeprecisionmodeadaptive_time_microseconds)
+* [`time.precision.mode=connect`](#timeprecisionmodeconnect)
+
+#### `time.precision.mode=adaptive`
+When the `time.precision.mode` property is set to adaptive, the default, the connector determines the literal type and semantic type based on the column’s data type definition. This ensures that events exactly represent the values in the database.
+
+*Mappings when **time.precision.mode** is **adaptive**:*
+
+| YugabyteDB data type| Literal type (schema type) | Semantic type (schema name) |
+| :--- | :--- | :--- |
+| DATE | INT32 | `io.debezium.time.Date` <br/><br/> Represents the number of days since the epoch. |
+| TIME([P]) | INT32 | `io.debezium.time.Time` <br/><br/> Represents the number of milliseconds past midnight, and does not include timezone information. |
+| TIMESTAMP([P]) | INT64 | `io.debezium.time.Timestamp` <br/><br/> Represents the number of milliseconds since the epoch, and does not include timezone information. |
+
+#### `time.precision.mode=adaptive_time_microseconds`
+When the `time.precision.mode` configuration property is set to `adaptive_time_microseconds`, the connector determines the literal type and semantic type for temporal types based on the column’s data type definition. This ensures that events exactly represent the values in the database, except all `TIME` fields are captured as microseconds.
+
+*Mappings when **time.precision.mode** is **adaptive_time_microseconds**:*
+
+| YugabyteDB data type| Literal type (schema type) | Semantic type (schema name) |
+| :--- | :--- | :--- |
+| DATE | INT32 | `io.debezium.time.Date` <br/><br/> Represents the number of days since the epoch. |
+| TIME([P]) | INT64 | `io.debezium.time.MicroTime` <br/><br/> Represents the time value in microseconds and does not include timezone information. YugabyteDB allows precision P to be in the range 0-6 to store up to microsecond precision. |
+| TIMESTAMP([P]) | INT64 | `io.debezium.time.Timestamp` <br/><br/> Represents the number of milliseconds since the epoch, and does not include timezone information. |
+
+#### `time.precision.mode=connect`
+When the `time.precision.mode` configuration property is set to `connect`, the connector uses Kafka Connect logical types. This may be useful when consumers can handle only the built-in Kafka Connect logical types and are unable to handle variable-precision time values. However, since YugabyteDB supports microsecond precision, the events generated by a connector with the `connect` time precision mode **results in a loss of precision** when the database column has a fractional second precision value that is greater than 3.
+
+*Mappings when **time.precision.mode** is **connect**:*
+
+| YugabyteDB data type| Literal type (schema type) | Semantic type (schema name) |
+| :--- | :--- | :--- |
+| DATE| INT32 | `org.apache.kafka.connect.data.Date` <br/><br/> Represents the number of days since the epoch. |
+| TIME([P]) | INT64 | `org.apache.kafka.connect.data.Time` <br/><br/> Represents the number of milliseconds since midnight, and does not include timezone information. YugabyteDB allows P to be in the range 0-6 to store up to microsecond precision, though this mode results in a loss of precision when P is greater than 3. |
+| TIMESTAMP([P]) | INT64 | `org.apache.kafka.connect.data.Timestamp` <br/><br/> Represents the number of milliseconds since the epoch, and does not include timezone information. YugabyteDB allows P to be in the range 0-6 to store up to microsecond precision, though this mode results in a loss of precision when P is greater than 3. |
+
+### TIMESTAMP type
+
+The TIMESTAMP type represents a timestamp without time zone information. Such columns are converted into an equivalent Kafka Connect value based on UTC. For example, the TIMESTAMP value "2022-03-03 16:51:30" is represented by an `io.debezium.time.Timestamp` with the value "1646326290000" when time.precision.mode is not set to `connect`.
+
+The timezone of the JVM running Kafka Connect and Debezium does not affect this conversion.
+
+YugabyteDB supports using `+/-infinity` values in `TIMESTAMP` columns. These special values are converted to timestamps with value 9223372036825200000 in case of positive infinity or -9223372036832400000 in case of negative infinity.
+
+### Decimal types
+
+The setting of the YugabyteDB connector configuration property `decimal.handling.mode` determines how the connector maps decimal types.
+
+{{< note title="Note" >}}
+
+Currently we do not support the `decimal.handling.mode` property value `precise`, if that is set, we automatically default to `double`.
+
+{{< /note >}}
+
+When the `decimal.handling.mode` property is set to `double`, the connector represents all `DECIMAL`, `NUMERIC` and `MONEY` values as Java double values and encodes them as shown in the following table.
+
+*Mappings when **decimal.handling.mode** is **double**:*
+
+| YugabyteDB data type| Literal type (schema type) | Semantic type (schema name) |
+| :--- | :--- | :--- |
+| NUMERIC [(M[,D])] | FLOAT64 | |
+| DECIMAL [(M[,D])] | FLOAT64 | |
+| MONEY [(M[,D])] | FLOAT64 | |
+
+The other possible setting for the `decimal.handling.mode` configuration property is `string`. In this case, the connector represents `DECIMAL`, `NUMERIC` and `MONEY` values as their formatted string representation, and encodes them as shown in the following table.
+
+*Mappings when **decimal.handling.mode** is **string**:*
+
+| YugabyteDB data type| Literal type (schema type) | Semantic type (schema name) |
+| :--- | :--- | :--- |
+| NUMERIC [(M[,D])] | STRING | |
+| DECIMAL [(M[,D])] | STRING | |
+| MONEY [(M[,D])] | STRING | |
+
+### Network address types
+
+YugabyteDB has data types that can store IPv4, IPv6, and MAC addresses. It is better to use these types instead of plain text types to store network addresses. Network address types offer input error checking and specialized operators and functions.
+
+*Mappings for network address types:*
+
+| YugabyteDB data type| Literal type (schema type) | Semantic type (schema name) |
+| :--- | :--- | :--- |
+| INET | STRING | IPv4 and IPv6 networks. |
+| CIDR | STRING | IPv4 and IPv6 hosts and networks. |
+| MACADDR | STRING | MAC addresses. |
+| MACADDR8 | STRING | MAC addresses in EUI-64 format. | 
+
+### Default values
+If there is a default value for any column in a the YugabyteDB database schema, the YugabyteDB Debezium connector will propagate the same value to the Kafka schema.
+
+### Example of data type behaviour
+
 | Dataype | What we insert in YSQL | What we get in the Kafka topic | Notes |
 | :------ | :--------------------- | :----------------------------- | :---- |
-| bigint | 123456 | 123456 | |
-| bigserial | Cannot insert explicitly | | |
-| bit [ (n) ] | '11011' | "11011" | |
-| bit varying [ (n) ] | '11011' | "11011" | |
-| boolean | FALSE | false | |
-| bytea | E'\\001' | "\x01" | |
-| character [ (n) ] | 'five5' | "five5" | |
-| character varying [ (n) ] | 'sampletext' | "sampletext" | |
-| cidr | '10.1.0.0/16' | "10.1.0.0/16" | |
-| date | '2021-11-25' | 18956 | The value in the Kafka topic is the number of days since the Unix epoch eg. 1970-01-01 |
-| double precision | 567.89 | 567.89 | |
-| inet | '192.166.1.1' | "192.166.1.1" | |
-| integer | 1 | 1 | |
-| interval [ fields ] [ (p) ] | '2020-03-10 00:00:00':: timestamp - '2020-02-10 00:00:00':: timestamp | 2505600000000 | The output value coming up is the equivalent of the interval value in microseconds. So here 2505600000000 means 29 days. |
-| json | '{"first_name":"vaibhav"}' | "{\"first_name\":\"vaibhav\"}" | |
-| jsonb | '{"first_name":"vaibhav"}' | "{\"first_name\": \"vaibhav\"}" | |
-| macaddr | '2C:54:91:88:C9:E3' | "2c:54:91:88:c9:e3" | |
-| macaddr8 | '22:00:5c:03:55:08:01:02' | "22:00:5c:03:55:08:01:02" | |
-| money | '$100.5' | 100.5 | |
-| numeric | 34.56 | 34.56 | |
-| real | 123.4567 | 123.4567 | |
-| smallint | 12 | 12 | |
-| int4range | '(4, 14)' | "[5,14)" | |
-| int8range | '(4, 150000)' | "[5,150000)" | |
-| numrange | '(10.45, 21.32)' | "(10.45,21.32)" | |
-| tsrange | '(1970-01-01 00:00:00, 2000-01-01 12:00:00)' | "(\"1970-01-01 00:00:00\",\"2000-01-01 12:00:00\")" | |
-| tstzrange | '(2017-07-04 12:30:30 UTC, 2021-07-04 12:30:30+05:30)' | "(\"2017-07-04 12:30:30+00\",\"2021-07-04 07:00:30+00\")" | |
-| daterange | '(2019-10-07, 2021-10-07)' | "[2019-10-08,2021-10-07)" | |
-| smallserial | Cannot insert explicitly | | |
-| serial | Cannot insert explicitly | | |
-| text | 'text to verify behaviour' | "text to verify behaviour" | |
-| time [ (p) ] [ without time zone ] | '12:47:32' | 46052000 | The output value is the number of milliseconds since midnight. |
-| time [ (p) ] with time zone | '12:00:00+05:30' | "06:30:00Z" | The output value is the equivalent of the inserted time in UTC. The Z stands for Zero Timezone |
-| timestamp [ (p) ] [ without time zone ] | '2021-11-25 12:00:00' | 1637841600000 | The output value is the number of milliseconds since the UNIX epoch i.e. 1970-01-01 midnight. |
-| timestamp [ (p) ] with time zone | '2021-11-25 12:00:00+05:30' | "2021-11-25T06:30:00Z" | This output value is the timestamp value in UTC wherein the Z stands for Zero Timezone and T acts as a seperator between the date and time. This format is defined by the sensible practical standard ISO 8601. |
-| uuid | 'ffffffff-ffff-ffff-ffff-ffffffffffff' | "ffffffff-ffff-ffff-ffff-ffffffffffff" | |
-| tsquery | | | Not currently supported |
-| tsvector | | | Not currently supported |
-| txid_snapshot | | | Not currently supported |
-| box | | | Not currently supported |
-| circle | | | Not currently supported |
-| line | | | Not currently supported |
-| lseg | | | Not currently supported |
-| path | | | Not currently supported |
-| pg_lsn | | | Not currently supported |
-| point | | | Not currently supported |
-| polygon | | | Not currently supported |
+| BIGINT | 123456 | 123456 | |
+| BIGSERIAL | Cannot insert explicitly | | |
+| BIT [ (N) ] | '11011' | "11011" | |
+| BIT VARYING [ (n) ] | '11011' | "11011" | |
+| BOOLEAN | FALSE | false | |
+| BYTEA | E'\\001' | "\x01" | |
+| CHARACTER [ (N) ] | 'five5' | "five5" | |
+| CHARACTER VARYING [ (n) ] | 'sampletext' | "sampletext" | |
+| CIDR | '10.1.0.0/16' | "10.1.0.0/16" | |
+| DATE | '2021-11-25' | 18956 | The value in the Kafka topic is the number of days since the Unix epoch eg. 1970-01-01 |
+| DOUBLE PRECISION | 567.89 | 567.89 | |
+| INET | '192.166.1.1' | "192.166.1.1" | |
+| INTEGER | 1 | 1 | |
+| INTERVAL [ fields ] [ (p) ] | '2020-03-10 00:00:00'::timestamp - '2020-02-10 00:00:00'::timestamp | 2505600000000 | The output value coming up is the equivalent of the interval value in microseconds. So here 2505600000000 means 29 days. |
+| JSON | '{"first_name":"vaibhav"}' | "{\"first_name\":\"vaibhav\"}" | |
+| JSONB | '{"first_name":"vaibhav"}' | "{\"first_name\": \"vaibhav\"}" | |
+| MACADDR | '2C:54:91:88:C9:E3' | "2c:54:91:88:c9:e3" | |
+| MACADDR8 | '22:00:5c:03:55:08:01:02' | "22:00:5c:03:55:08:01:02" | |
+| MONEY | '$100.5' | 100.5 | |
+| NUMERIC | 34.56 | 34.56 | |
+| REAL | 123.4567 | 123.4567 | |
+| SMALLINT | 12 | 12 | |
+| INT4RANGE | '(4, 14)' | "[5,14)" | |
+| INT8RANGE | '(4, 150000)' | "[5,150000)" | |
+| NUMRANGE | '(10.45, 21.32)' | "(10.45,21.32)" | |
+| TSRANGE | '(1970-01-01 00:00:00, 2000-01-01 12:00:00)' | "(\"1970-01-01 00:00:00\",\"2000-01-01 12:00:00\")" | |
+| TSTZRANGE | '(2017-07-04 12:30:30 UTC, 2021-07-04 12:30:30+05:30)' | "(\"2017-07-04 12:30:30+00\",\"2021-07-04 07:00:30+00\")" | |
+| DATERANGE | '(2019-10-07, 2021-10-07)' | "[2019-10-08,2021-10-07)" | |
+| SMALLSERIAL | Cannot insert explicitly | | |
+| SERIAL | Cannot insert explicitly | | |
+| TEXT | 'text to verify behaviour' | "text to verify behaviour" | |
+| TIME [ (P) ] [ WITHOUT TIME ZONE ] | '12:47:32' | 46052000 | The output value is the number of milliseconds since midnight. |
+| TIME [ (p) ] WITH TIME ZONE | '12:00:00+05:30' | "06:30:00Z" | The output value is the equivalent of the inserted time in UTC. The Z stands for Zero Timezone |
+| TIMESTAMP [ (p) ] [ WITHOUT TIME ZONE ] | '2021-11-25 12:00:00' | 1637841600000 | The output value is the number of milliseconds since the UNIX epoch i.e. 1970-01-01 midnight. |
+| TIMESTAMP [ (p) ] WITH TIME ZONE | '2021-11-25 12:00:00+05:30' | "2021-11-25T06:30:00Z" | This output value is the timestamp value in UTC wherein the Z stands for Zero Timezone and T acts as a seperator between the date and time. This format is defined by the sensible practical standard ISO 8601. |
+| UUID | 'ffffffff-ffff-ffff-ffff-ffffffffffff' | "ffffffff-ffff-ffff-ffff-ffffffffffff" | |
+
+### Unsupported data types in Debezium
+
+The following YugabyteDB data types are currently unsupported in Debezium YugabyteDB connector, the support for them will be enabled in future releases:
+
+* `BOX`
+* `CIRCLE`
+* `LINE`
+* `LSEG`
+* `PATH`
+* `PG_LSN`
+* `POINT`
+* `POLYGON`
+* `TSQUERY`
+* `TSVECTOR`
+* `TXID_SNAPSHOT`
+
+## Set up
+
+### Creating a DB stream ID
+
+Before using the YugabyteDB connector to monitor the changes committed on a YugabyteDB server, you have to create a stream ID using the [yb-admin](../../admin/yb-admin.md#change-data-capture-cdc-commands) tool.
+
+### Making sure the master ports are open
+
+The YugabyteDB connector connects to the master processes running on the YugabyteDB server. Make sure the ports on which the YugabyteDB server's master processes are running are open. The default port on which the process runs is `7100`.
+
+### Impact on disk space
+
+The change records for CDC are read from the WAL. CDC module maintains checkpoint internally for each of the DB stream ID and garbage collects the WAL entries if those have been streamed to the cdc clients.
+
+In case CDC is lagging or away for some time, the disk usage may grow and may cause YugabyteDB cluster instability. To avoid a scenario like this if a stream is inactive for a configured amount of time we garbage collect the WAL. This is configurable by a [GFLAG](../../cdc/change-data-capture.md#gflags-affecting-change-data-capture).
 
 ## Deployment
 
 To deploy a Debezium YugabyteDB connector, you install the Debezium YugabyteDB connector archive, configure the connector, and start the connector by adding its configuration to Kafka Connect. For complete steps follow our guide to start the [Debezium connector for YugabyteDB](debezium-for-cdc.md).
+
+### Connector configuration example
+Following is an example of the configuration for a YugabyteDB connector that connects to a YugabyteDB server on port 5433 at 127.0.0.1, whose logical name is `dbserver1`. Typically, you configure the Debezium YugabyteDB connector in a JSON file by setting the configuration properties available for the connector.
+
+You can choose to produce events for a subset of the schemas and tables in a database. Optionally, you can ignore, mask, or truncate columns that contain sensitive data, are larger than a specified size, or that you do not need.
+
+```json
+{
+  "name": "ybconnector", --> 1
+  "config": {
+    "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBConnector", --> 2
+    "database.hostname": "127.0.0.1", --> 3
+    "database.port": "5433", --> 4
+    "database.master.addresses": "127.0.0.1:7100", --> 5
+    "database.streamid": "d540f5e4890c4d3b812933cbfd703ed3", --> 6
+    "database.user": "yugabyte", --> 7
+    "database.password": "yugabyte", --> 8
+    "database.dbname": "yugabyte", --> 9
+    "database.server.name": "dbserver1", --> 10
+    "table.include.list": "public.test" --> 11
+  }
+}
+```
+
+1. The name of the connector when registered with a Kafka Connect service.
+2. The name of this YugabyteDB connector class.
+3. The address of this YugabyteDB server.
+4. The port number of the YugabyteDB YSQL process.
+5. List of comma separated values of master nodes of the YugabyteDB server. Usually in the form `host`:`port`.
+6. The DB stream ID created using [yb-admin](../../admin/yb-admin.md#change-data-capture-cdc-commands).
+7. The name of the YugabyteDB user having the privileges to connect to the database.
+8. The password for the above specified YugabyteDB user.
+9. The name of the YugabyteDB database to connect to.
+10. The logical name of the YugabyteDB server/cluster, which forms a namespace and is used in all the names of the Kafka topics to which the connector writes and the Kafka Connect schema names.
+11. A list of all tables hosted by this server that this connector will monitor. This is optional, and there are other properties for listing the schemas and tables to include or exclude from monitoring.
+
+You can send this configuration with a `POST` command to a running Kafka Connect service. The service records the configuration and starts one connector task that performs the following actions:
+* Connects to the YugabyteDB database.
+* Reads the transaction log.
+* Streams change event records to Kafka topics.
 
 ### Connector configuration properties
 
@@ -626,22 +825,37 @@ The following properties are *required* unless a default value is available:
 | table.include.list | N/A | Comma-separated list of table names and schema names, such as `public.test` or `test_schema.test_table_name`. |
 | snapshot.mode | N/A | `never` - Don't take a snapshot <br/><br/> `initial` - Take a snapshot when the connector is first started <br/><br/> `always` - Always take a snapshot <br/><br/> |
 | table.max.num.tablets | 10 | Maximum number of tablets the connector can poll for. This should be greater than or equal to the number of tablets the table is split into. |
-| cdc.poll.interval.ms | 200 | The interval at which the connector will poll the database for the changes. |
-| admin.operation.timeout.ms | 60000 | Specifies the timeout for the admin operations to complete. |
-| operation.timeout.ms | 60000 | |
-| socket.read.timeout.ms | 60000 | |
-| decimal.handling.mode | double | The `precise` mode is not currently supported. <br/><br/>  `double` maps all the numeric, double, and money types as Java double values (FLOAT64) <br/><br/>  `string` represents the numeric, double, and money types as their string-formatted form <br/><br/> |
-| binary.handling.mode | hex | `hex` is the only supported mode. All binary strings are converted to their respective hex format and emitted as their string representation . |
 | database.sslmode | disable | Whether to use an encrypted connection to the YugabyteDB cluster. Supported options are:<br/><br/> `disable` uses an unencrypted connection <br/><br/> `require` uses an encrypted connection and fails if it can't be established <br/><br/> `verify-ca` uses an encrypted connection, verifies the server TLS certificate against the configured Certificate Authority (CA) certificates, and fails if no valid matching CA certificates are found. |
 | database.sslrootcert | N/A | The path to the file which contains the root certificate against which the server is to be validated. |
 | database.sslcert | N/A | Path to the file containing the client's SSL certificate. |
 | database.sslkey | N/A | Path to the file containing the client's private key. |
+| schema.include.list | N/A | An optional, comma-separated list of regular expressions that match names of schemas for which you **want** to capture changes. Any schema name not included in `schema.include.list` is excluded from having its changes captured. By default, all non-system schemas have their changes captured. Do not also set the `schema.exclude.list` property. |
+| schema.exclude.list | N/A | An optional, comma-separated list of regular expressions that match names of schemas for which you **do not** want to capture changes. Any schema whose name is not included in `schema.exclude.list` has its changes captured, with the exception of system schemas. Do not also set the `schema.include.list` property. |
+| table.include.list | N/A | An optional, comma-separated list of regular expressions that match fully-qualified table identifiers for tables whose changes you want to capture. Any table not included in `table.include.list` does not have its changes captured. Each identifier is of the form *schemaName.tableName*. By default, the connector captures changes in every non-system table in each schema whose changes are being captured. Do not also set the `table.exclude.list` property. |
+| table.exclude.list | N/A | An optional, comma-separated list of regular expressions that match fully-qualified table identifiers for tables whose changes you **do not** want to capture. Any table not included in `table.exclude.list` has it changes captured. Each identifier is of the form *schemaName.tableName*. Do not also set the `table.include.list` property. |
+| column.include.list | N/A | An optional, comma-separated list of regular expressions that match the fully-qualified names of columns that should be included in change event record values. Fully-qualified names for columns are of the form `schemaName.tableName.columnName`. Do not also set the `column.exclude.list` property. |
+| column.exclude.list | N/A | An optional, comma-separated list of regular expressions that match the fully-qualified names of columns that should be excluded from change event record values. Fully-qualified names for columns are of the form *schemaName.tableName*.columnName. Do not also set the `column.include.list` property. |
 
 {{< warning title="Warning" >}}
 
 Note that the APIs we use for fetching the changes are set up to work with the TLS protocol TLSv1.2 only. So you have to make sure that you are using the proper environment properties for Kafka Connect.
 
 {{< /warning >}}
+
+*Advanced connector configuration properties:*
+| Property | Default | Description |
+| :--- | :--- | :--- |
+| snapshot.mode | | |
+| cdc.poll.interval.ms | 200 | The interval at which the connector will poll the database for the changes. |
+| admin.operation.timeout.ms | 60000 | Specifies the timeout for the admin operations to complete. |
+| operation.timeout.ms | 60000 | |
+| socket.read.timeout.ms | 60000 | |
+| time.precision.mode | adaptive | Time, date, and timestamps can be represented with different kinds of precision: <br/><br/> `adaptive` captures the time and timestamp values exactly as in the database using millisecond precision values based on the database column’s type. <br/><br/> `adaptive_time_microseconds` captures the date, datetime and timestamp values exactly as in the database using millisecond precision values based on the database column’s type. An exception is `TIME` type fields, which are always captured as microseconds. <br/><br/> `connect` always represents time and timestamp values by using Kafka Connect’s built-in representations for Time, Date, and Timestamp, which use millisecond precision regardless of the database columns' precision. See temporal values. |
+| decimal.handling.mode | double | The `precise` mode is not currently supported. <br/><br/>  `double` maps all the numeric, double, and money types as Java double values (FLOAT64) <br/><br/>  `string` represents the numeric, double, and money types as their string-formatted form <br/><br/> |
+| binary.handling.mode | hex | `hex` is the only supported mode. All binary strings are converted to their respective hex format and emitted as their string representation . |
+| interval.handling.mode | numeric | Specifies how the connector should handle values for interval columns:<br/><br/> `numeric` represents intervals using approximate number of microseconds. <br/><br/> `string` represents intervals exactly by using the string pattern representation<br/> `P<years>Y<months>M<days>DT<hours>H<minutes>M<seconds>S`.<br/> For example: P1Y2M3DT4H5M6.78S. See [YugabyteDB data types](../../api/ysql/datatypes/_index.md). |
+| transaction.topic | `${database.server.name}.transaction` | Controls the name of the topic to which the connector sends transaction metadata messages. The placeholder `${database.server.name}` can be used for referring to the connector’s logical name; defaults to `${database.server.name}.transaction`, for example `dbserver1.transaction` |
+| provide.transaction.metadata | `false` | Determines whether the connector generates events with transaction boundaries and enriches change event envelopes with transaction metadata. Specify `true` if you want the connector to do this. See [Transaction metadata](#transaction-metadata) for details. |
 
 ## Behavior when things go wrong
 
@@ -650,6 +864,14 @@ Debezium is a distributed system that captures all changes in multiple upstream 
 If a fault does happen then the system does not lose any events. However, while it is recovering from the fault, it might repeat some change events. In these abnormal situations, Debezium, like Kafka, provides at least once delivery of change events.
 
 The rest of this section describes how Debezium handles various kinds of faults and problems.
+
+### TServer becomes unavailable
+
+In case one of the tserver crashes, the replicas on other TServer nodes will become the leader for the tablets that were hosted on the crashed server. The YugabyteDB connector will figure out the new tablet leaders and start streaming from the checkpoint the debezium maintains.
+
+### YugabyteDB server failures
+
+In case of YugabyteDB server failures, the Debezium YugabyteDB connector will try for a configurable amount (configurable using a [GFLAG](../../cdc/change-data-capture.md#gflags-affecting-change-data-capture)) of time for the availability of the TServer and will stop if the cluster cannot start. When the cluster is restarted, the connector can be run again and it will start processing the changes with the committed checkpoint.
 
 ### Configuration and startup errors
 
