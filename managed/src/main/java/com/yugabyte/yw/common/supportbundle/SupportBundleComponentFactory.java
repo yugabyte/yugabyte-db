@@ -3,14 +3,6 @@ package com.yugabyte.yw.common.supportbundle;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.models.helpers.BundleDetails.ComponentType;
-import com.yugabyte.yw.common.supportbundle.ApplicationLogsComponent;
-import com.yugabyte.yw.common.supportbundle.UniverseLogsComponent;
-import com.yugabyte.yw.common.supportbundle.OutputFilesComponent;
-import com.yugabyte.yw.common.supportbundle.ErrorFilesComponent;
-import com.yugabyte.yw.common.supportbundle.GFlagsComponent;
-import com.yugabyte.yw.common.supportbundle.InstanceComponent;
-import com.yugabyte.yw.common.supportbundle.ConsensusMetaComponent;
-import com.yugabyte.yw.common.supportbundle.TabletMetaComponent;
 
 @Singleton
 public class SupportBundleComponentFactory {
