@@ -303,7 +303,7 @@ Verify the users, products, and orders created in the `ysql_ebeans` database fro
 $ curl http://localhost:8080/users
 ```
 
-```json
+```output.json
 {
   "content": [
     {
@@ -327,7 +327,7 @@ $ curl http://localhost:8080/users
 $ curl http://localhost:8080/products
 ```
 
-```json
+```output.json
 {
   "content": [
     {
@@ -351,7 +351,7 @@ $ curl http://localhost:8080/products
 $ curl http://localhost:8080/orders
 ```
 
-```json
+```output.json
 {
   "content": [
     {
