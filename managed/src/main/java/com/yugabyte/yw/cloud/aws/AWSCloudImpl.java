@@ -17,16 +17,28 @@ import com.amazonaws.services.ec2.model.DryRunResult;
 import com.amazonaws.services.ec2.model.Filter;
 import com.amazonaws.services.ec2.model.InstanceTypeOffering;
 import com.amazonaws.services.ec2.model.LocationType;
+import com.amazonaws.services.kms.AWSKMS;
+import com.amazonaws.services.kms.model.CreateKeyRequest;
+import com.amazonaws.services.kms.model.CreateKeyResult;
+import com.amazonaws.services.kms.model.DisableKeyRequest;
+import com.amazonaws.services.kms.model.ScheduleKeyDeletionRequest;
+import com.amazonaws.services.kms.model.Tag;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Strings;
 import com.yugabyte.yw.cloud.CloudAPI;
+import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import play.libs.Json;
 
 // TODO - Better handling of UnauthorizedOperation. Ideally we should trigger alert so that
 // site admin knows about it
@@ -114,6 +126,51 @@ class AWSCloudImpl implements CloudAPI {
         return false;
       }
       return dryRunResult.isSuccessful();
+    } catch (Exception e) {
+      LOG.error(e.getMessage());
+      return false;
+    }
+  }
+
+  @Override
+  public boolean isValidCredsKms(ObjectNode config, UUID customerUUID) {
+    try {
+      AWSKMS kmsClient = AwsEARServiceUtil.getKMSClient(null, config);
+      // Create a key.
+      String keyDescription =
+          "Fake key to test the authenticity of the credentials. It is scheduled to be deleted. "
+              + "DO NOT USE.";
+      ObjectNode keyPolicy = Json.newObject().put("Version", "2012-10-17");
+      ObjectNode keyPolicyStatement = Json.newObject();
+      keyPolicyStatement.put("Effect", "Allow");
+      keyPolicyStatement.put("Resource", "*");
+      ArrayNode keyPolicyActions =
+          Json.newArray()
+              .add("kms:Create*")
+              .add("kms:Put*")
+              .add("kms:DisableKey")
+              .add("kms:ScheduleKeyDeletion");
+      keyPolicyStatement.set("Principal", Json.newObject().put("AWS", "*"));
+      keyPolicyStatement.set("Action", keyPolicyActions);
+      keyPolicy.set("Statement", Json.newArray().add(keyPolicyStatement));
+      CreateKeyRequest keyReq =
+          new CreateKeyRequest()
+              .withDescription(keyDescription)
+              .withPolicy(new ObjectMapper().writeValueAsString(keyPolicy))
+              .withTags(
+                  new Tag().withTagKey("customer-uuid").withTagValue(customerUUID.toString()),
+                  new Tag().withTagKey("usage").withTagValue("validate-aws-key-authenticity"),
+                  new Tag().withTagKey("status").withTagValue("deleted"));
+      CreateKeyResult result = kmsClient.createKey(keyReq);
+      // Disable and schedule the key for deletion. The minimum waiting period for deletion is 7
+      // days on AWS.
+      String keyArn = result.getKeyMetadata().getArn();
+      DisableKeyRequest req = new DisableKeyRequest().withKeyId(keyArn);
+      kmsClient.disableKey(req);
+      ScheduleKeyDeletionRequest scheduleKeyDeletionRequest =
+          new ScheduleKeyDeletionRequest().withKeyId(keyArn).withPendingWindowInDays(7);
+      kmsClient.scheduleKeyDeletion(scheduleKeyDeletionRequest);
+      return true;
     } catch (Exception e) {
       LOG.error(e.getMessage());
       return false;

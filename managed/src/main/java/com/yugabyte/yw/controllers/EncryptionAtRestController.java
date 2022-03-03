@@ -93,18 +93,13 @@ public class EncryptionAtRestController extends AuthenticatedController {
 
   private void validateKMSProviderConfigFormData(
       ObjectNode formData, String keyProvider, UUID customerUUID) {
-    if (keyProvider.toUpperCase().equals(KeyProvider.AWS.toString())
-        && (formData.get(AWS_ACCESS_KEY_ID_FIELDNAME) != null
-            || formData.get(AWS_SECRET_ACCESS_KEY_FIELDNAME) != null)) {
+    if (keyProvider.toUpperCase().equals(KeyProvider.AWS.toString())) {
       CloudAPI cloudAPI = cloudAPIFactory.get(KeyProvider.AWS.toString().toLowerCase());
-      Map<String, String> config = new HashMap<>();
-      config.put(
-          AWS_ACCESS_KEY_ID_FIELDNAME, formData.get(AWS_ACCESS_KEY_ID_FIELDNAME).textValue());
-      config.put(
-          AWS_SECRET_ACCESS_KEY_FIELDNAME,
-          formData.get(AWS_SECRET_ACCESS_KEY_FIELDNAME).textValue());
-      if (cloudAPI != null
-          && !cloudAPI.isValidCreds(config, formData.get(AWS_REGION_FIELDNAME).textValue())) {
+      if (cloudAPI == null) {
+        throw new PlatformServiceException(
+            SERVICE_UNAVAILABLE, "Cloud not create CloudAPI to validate the credentials");
+      }
+      if (!cloudAPI.isValidCredsKms(formData, customerUUID)) {
         throw new PlatformServiceException(BAD_REQUEST, "Invalid AWS Credentials.");
       }
     } else if (keyProvider.toUpperCase().equals(KeyProvider.SMARTKEY.toString())) {
