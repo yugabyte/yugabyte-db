@@ -34,7 +34,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.alerts.SmtpData;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.metrics.MetricService;
-import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
+import com.yugabyte.yw.forms.AlertingData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AccessKey;
@@ -613,6 +613,10 @@ public class HealthChecker {
     Map<UUID, HealthManager.ClusterInfo> clusterMetadata = new HashMap<>();
     boolean invalidUniverseData = false;
     String providerCode;
+    boolean testReadWrite =
+        runtimeConfigFactory
+            .forUniverse(params.universe)
+            .getBoolean("yb.metrics.db_read_write_test");
     for (UniverseDefinitionTaskParams.Cluster cluster : details.clusters) {
       HealthManager.ClusterInfo info = new HealthManager.ClusterInfo();
       clusterMetadata.put(cluster.uuid, info);
@@ -698,6 +702,7 @@ public class HealthChecker {
       }
 
       info.collectMetricsScript = generateMetricsCollectionScript(cluster);
+      info.testReadWrite = testReadWrite;
     }
 
     // If any clusters were invalid, abort for this universe.

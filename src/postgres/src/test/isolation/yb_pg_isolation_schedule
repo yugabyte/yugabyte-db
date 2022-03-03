@@ -1,4 +1,18 @@
+test: yb_pg_eval-plan-qual
+test: yb_read_committed_update_and_explicit_locking
+test: yb_read_committed_insert
+test: yb_read_committed_test_internal_savepoint
+
+# Skip locked related tests from Pg
 test: yb_pg_skip-locked
 test: yb_pg_skip-locked-2
+
+# Skip locked related tests newly added at YB
 test: yb-modification-followed-by-lock
 test: yb-skip-locked-after-update
+
+# TODO:
+# 1. Test to ensure that new sub txns inherit ybDataSentForCurrQuery and parent txns
+#    inherit it back from nested sub txns once they are removed.
+# 2. Test to ensure clean-up of partial intents using savepoints.
+# 3. Test all skip locked specs with REPEATABLE READ isolation as well.

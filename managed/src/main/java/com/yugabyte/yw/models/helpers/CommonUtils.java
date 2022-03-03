@@ -84,7 +84,8 @@ public class CommonUtils {
         || ucFieldname.contains("CREDENTIALS")
         || ucFieldname.contains("API")
         || ucFieldname.contains("POLICY")
-        || ucFieldname.contains("HC_VAULT_TOKEN");
+        || ucFieldname.contains("HC_VAULT_TOKEN")
+        || ucFieldname.contains("vaultToken");
   }
 
   /**
@@ -476,6 +477,25 @@ public class CommonUtils {
   }
 
   public static boolean isReleaseEqualOrAfter(String thresholdRelease, String actualRelease) {
+    return compareReleases(thresholdRelease, actualRelease, false, true, true);
+  }
+
+  public static boolean isReleaseBefore(String thresholdRelease, String actualRelease) {
+    return compareReleases(thresholdRelease, actualRelease, true, false, false);
+  }
+
+  public static boolean isReleaseBetween(
+      String minRelease, String maxRelease, String actualRelease) {
+    return isReleaseEqualOrAfter(minRelease, actualRelease)
+        && isReleaseBefore(maxRelease, actualRelease);
+  }
+
+  private static boolean compareReleases(
+      String thresholdRelease,
+      String actualRelease,
+      boolean beforeMatches,
+      boolean afterMatches,
+      boolean equalMatches) {
     Matcher thresholdMatcher = RELEASE_REGEX.matcher(thresholdRelease);
     Matcher actualMatcher = RELEASE_REGEX.matcher(actualRelease);
     if (!thresholdMatcher.matches()) {
@@ -486,20 +506,20 @@ public class CommonUtils {
       log.warn(
           "Actual release {} does not match release pattern - handle as latest release",
           actualRelease);
-      return true;
+      return afterMatches;
     }
     for (int i = 1; i < 5; i++) {
       int thresholdPart = Integer.parseInt(thresholdMatcher.group(i));
       int actualPart = Integer.parseInt(actualMatcher.group(i));
       if (actualPart > thresholdPart) {
-        return true;
+        return afterMatches;
       }
       if (actualPart < thresholdPart) {
-        return false;
+        return beforeMatches;
       }
     }
     // Equal releases.
-    return true;
+    return equalMatches;
   }
 
   @FunctionalInterface

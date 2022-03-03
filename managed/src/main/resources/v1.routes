@@ -130,6 +130,7 @@ DELETE  /customers/:cUUID/releases/:name                                       c
 
 # Certificate API
 POST    /customers/:cUUID/certificates                                         com.yugabyte.yw.controllers.CertificateController.upload(cUUID: java.util.UUID)
+POST    /customers/:cUUID/certificates/create_self_signed_cert          com.yugabyte.yw.controllers.CertificateController.createSelfSignedCert(cUUID: java.util.UUID)
 GET     /customers/:cUUID/certificates                                         com.yugabyte.yw.controllers.CertificateController.list(cUUID: java.util.UUID)
 DELETE  /customers/:cUUID/certificates/:rUUID                                  com.yugabyte.yw.controllers.CertificateController.delete(cUUID: java.util.UUID, rUUID: java.util.UUID)
 GET     /customers/:cUUID/certificates/:name                                   com.yugabyte.yw.controllers.CertificateController.get(cUUID: java.util.UUID, name: String)
@@ -386,7 +387,10 @@ PUT    /customers/:cUUID/universes/:uniUUID/update_scheduled_script            c
 
 # Support Bundle API
 POST   /customers/:cUUID/universes/:uniUUID/support_bundle                     com.yugabyte.yw.controllers.SupportBundleController.create(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+GET    /customers/:cUUID/universes/:uniUUID/support_bundle                     com.yugabyte.yw.controllers.SupportBundleController.list(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET    /customers/:cUUID/universes/:uniUUID/support_bundle/:sbUUID             com.yugabyte.yw.controllers.SupportBundleController.get(cUUID: java.util.UUID, uniUUID: java.util.UUID, sbUUID: java.util.UUID)
+GET    /customers/:cUUID/universes/:uniUUID/support_bundle/:sbUUID/download    com.yugabyte.yw.controllers.SupportBundleController.download(cUUID: java.util.UUID, uniUUID: java.util.UUID, sbUUID: java.util.UUID)
+DELETE /customers/:cUUID/universes/:uniUUID/support_bundle/:sbUUID             com.yugabyte.yw.controllers.SupportBundleController.delete(cUUID: java.util.UUID, uniUUID: java.util.UUID, sbUUID: java.util.UUID)
 
 # GFlags Validation Ui Only API
 GET   /metadata/version/:version/list_gflags                                   com.yugabyte.yw.controllers.GFlagsValidationUiOnlyController.listGFlags(version: String, name: String ?= "", server: String ?= "", mostUsedGFlags: Boolean ?= false)

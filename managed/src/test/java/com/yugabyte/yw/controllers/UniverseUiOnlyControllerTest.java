@@ -1249,7 +1249,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
   @Test
   public void testExpandDiskSizeFailureInvalidStorage() {
-    Universe u = createUniverse(customer.getCustomerId());
+    Universe u = createUniverse("Test universe", customer.getCustomerId(), Common.CloudType.gcp);
     customer.addUniverseUUID(u.universeUUID);
     customer.save();
     setupDiskUpdateTest(100, "c4.xlarge", PublicCloudConstants.StorageType.Scratch, u);
@@ -1263,7 +1263,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     Result result =
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
-    assertBadRequest(result, "Scratch type disk cannot be modified.");
+    assertBadRequest(result, "Cannot modify instance volumes.");
   }
 
   @Test
@@ -1319,7 +1319,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
           UniverseDefinitionTaskParams.UserIntent userIntent =
               new UniverseDefinitionTaskParams.UserIntent();
           userIntent.instanceType = instanceType;
-          userIntent.providerType = Common.CloudType.aws;
+          userIntent.providerType = storageType.getCloudType();
           DeviceInfo di = new DeviceInfo();
           di.volumeSize = diskSize;
           di.numVolumes = 2;

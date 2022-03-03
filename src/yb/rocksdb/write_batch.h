@@ -60,6 +60,7 @@ class UserFrontiers;
 class DirectWriteHandler {
  public:
   virtual void Put(const SliceParts& key, const SliceParts& value) = 0;
+  virtual void SingleDelete(const Slice& key) = 0;
 
   virtual ~DirectWriteHandler() = default;
 };

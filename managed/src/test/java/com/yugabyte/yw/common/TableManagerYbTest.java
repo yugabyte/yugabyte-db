@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.BackupUtil.K8S_CERT_PATH;
+import static com.yugabyte.yw.common.BackupUtil.VM_CERT_DIR;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.TableManagerYb.CommandSubType.BACKUP;
 import static com.yugabyte.yw.common.TableManagerYb.PY_WRAPPER;
@@ -17,6 +19,7 @@ import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -47,9 +50,6 @@ import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class TableManagerYbTest extends FakeDBApplication {
-
-  private static final String K8S_CERT_PATH = "/opt/certs/yugabyte/";
-  private static final String VM_CERT_PATH = "/home/yugabyte/yugabyte-tls-config/";
 
   @Mock play.Configuration mockAppConfig;
 
@@ -233,7 +233,10 @@ public class TableManagerYbTest extends FakeDBApplication {
     }
     if (userIntent.enableNodeToNodeEncrypt) {
       cmd.add("--certs_dir");
-      cmd.add(testProvider.code.equals("kubernetes") ? K8S_CERT_PATH : VM_CERT_PATH);
+      cmd.add(
+          testProvider.code.equals("kubernetes")
+              ? K8S_CERT_PATH
+              : testProvider.getYbHome() + VM_CERT_DIR);
     }
     if (backupTableParams.enableVerboseLogs) {
       cmd.add("--verbose");

@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The [Yugabyte Structured Query Language (YSQL) API](../../../api/ysql) builds upon and extends a fork of the query layer from PostgreSQL 11.2, with the intent of supporting most PostgreSQL functionality and adding new functionality to supported distributed SQL databases.
+The [Yugabyte Structured Query Language (YSQL) API](../../../api/ysql/) builds upon and extends a fork of the query layer from PostgreSQL 11.2, with the intent of supporting most PostgreSQL functionality and adding new functionality to supported distributed SQL databases.
 
 For details on PostgreSQL feature support in YSQL, see [What Features Does YSQL Support?](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/YSQL-Features-Supported.md)
 
@@ -117,7 +117,7 @@ connStringBuilder.ServerCompatibilityMode = ServerCompatibilityMode.NoTypeLoadin
 
 The [Go PostgreSQL driver package (pq)](https://pkg.go.dev/github.com/lib/pq?tab=doc) is a Go PostgreSQL driver for the `database/sql` package. pq is not based on [libpq](#libpq), but supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For a tutorial on building a sample Go application with pq, see [Build a Go application](../../../quick-start/build-apps/go/ysql-pq).
+For a tutorial on building a sample Go application with pq, see [Build a Go application](../../../quick-start/build-apps/go/ysql-pq/).
 
 #### Install the pq driver
 
@@ -175,11 +175,19 @@ $ npm install pg
 
 The [php-pgsql](https://www.php.net/manual/en/book.pgsql.php) driver is a collection of the official PostgreSQL module for PHP. php-pgsql is based on [libpq](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For a tutorial on building a sample Node.js application with php-pgsql, see [Build a Node.js application](../../../quick-start/build-apps/php/ysql/).
+For details on installing and using php-pgsql, see the [php-pgsql documentation](https://www.php.net/manual/en/book.pgsql.php).
+
+For a tutorial on building a sample PHP application with php-pgsql, see [Build a PHP application](../../../quick-start/build-apps/php/ysql/).
 
 #### Install the php-pgsql driver
 
 To enable PostgreSQL support using php-pgsql, see [Installing/Configuring](https://www.php.net/manual/en/pgsql.setup.php) in the PHP documentation.
+
+Homebrew users on macOS can install PHP using `brew install php`; the php-pgsql driver is installed automatically.
+
+Ubuntu users can install the driver using the `sudo apt-get install php-pgsql` command.
+
+CentOS users can install the driver using the `sudo yum install php-pgsql` command.
 
 ## Python
 

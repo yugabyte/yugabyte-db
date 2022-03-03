@@ -18,19 +18,19 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/secure/enable-authentication/ysql" class="nav-link">
+    <a href="../ysql/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
   <li >
-    <a href="/latest/secure/enable-authentication/ycql" class="nav-link active">
+    <a href="../ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
   </li>
   <li>
-    <a href="/latest/secure/enable-authentication/yedis" class="nav-link">
+    <a href="../yedis/" class="nav-link">
       <i class="icon-redis" aria-hidden="true"></i>
       YEDIS
     </a>
@@ -43,7 +43,7 @@ YCQL authentication is based on roles. Roles can be created with superuser, non-
 
 You can enable access control by starting the `yb-tserver` processes with the `--use_cassandra_authentication=true` flag. Your command should look similar to that shown below:
 
-```
+```sh
 ./bin/yb-tserver \
   --tserver_master_addrs <master addresses> \
   --fs_data_dirs <data directories> \
@@ -63,7 +63,7 @@ $ ycqlsh -u cassandra -p cassandra
 
 You should see the cluster connect and the following prompt:
 
-```
+```output
 Connected to local cluster at 127.0.0.1:9042.
 [ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.
@@ -74,7 +74,7 @@ cassandra@ycqlsh>
 
 Use the [CREATE ROLE command](../../../api/ycql/ddl_create_role/) to create a new role. Users are roles that have the `LOGIN` privilege granted to them. Roles created with the `SUPERUSER` option in addition to the `LOGIN` option have full access to the database. Superusers can run all the YCQL commands on any of the database resources.
 
-**NOTE** By default, creating a role does not grant the `LOGIN` or the `SUPERUSER` privileges, these need to be explicitly granted.
+**NOTE:** By default, creating a role does not grant the `LOGIN` or the `SUPERUSER` privileges, these need to be explicitly granted.
 
 ### Creating a user
 
@@ -92,7 +92,7 @@ cassandra@ycqlsh> SELECT role, can_login, is_superuser, member_of FROM system_au
 
 You should see the following output.
 
-```
+```output
  role      | can_login | is_superuser | member_of
 -----------+-----------+--------------+-----------
       john |      True |        False |          []
@@ -121,7 +121,7 @@ cassandra@ycqlsh> SELECT role, can_login, is_superuser, member_of FROM system_au
 
 You should see the following output.
 
-```
+```output
  role      | can_login | is_superuser | member_of
 -----------+-----------+--------------+-----------
      admin |      True |         True |          []
@@ -173,7 +173,7 @@ In the example above, you can verify that `john` is not a superuser:
 cassandra@ycqlsh> SELECT role, can_login, is_superuser, member_of FROM system_auth.roles WHERE role='john';
 ```
 
-```
+```output
  role | can_login | is_superuser | member_of
 ------+-----------+--------------+-----------
  john |      True |        False |          []
@@ -193,7 +193,7 @@ We can now verify that john is now a superuser.
 cassandra@ycqlsh> SELECT role, can_login, is_superuser, member_of FROM system_auth.roles WHERE role='john';
 ```
 
-```
+```output
  role | can_login | is_superuser | member_of
 ------+-----------+--------------+-----------
  john |      True |         True |          []
@@ -215,7 +215,7 @@ In the example above, you can verify that `john` is can login to the database by
 cassandra@ycqlsh> SELECT role, can_login, is_superuser, member_of FROM system_auth.roles WHERE role='john';
 ```
 
-```
+```output
  role | can_login | is_superuser | member_of
 ------+-----------+--------------+-----------
  john |      True |        False |          []
@@ -235,7 +235,7 @@ You can verify this as follows.
 cassandra@ycqlsh> SELECT role, can_login, is_superuser, member_of FROM system_auth.roles WHERE role='john';
 ```
 
-```
+```output
  role | can_login | is_superuser | member_of
 ------+-----------+--------------+-----------
  john |     False |        False |          []
@@ -270,7 +270,7 @@ cassandra@ycqlsh> ALTER ROLE cassandra WITH PASSWORD = 'new_password';
 
 Connecting to the cluster with the default password would no longer work:
 
-```
+```output
 $ bin/ycqlsh -u cassandra -p cassandra
 Connection error:
   ... Provided username 'cassandra' and/or password are incorrect ...
@@ -298,7 +298,7 @@ You can verify that the `john` role was dropped as follows:
 cassandra@ycqlsh> SELECT role, can_login, is_superuser, member_of FROM system_auth.roles;
 ```
 
-```
+```output
  role      | can_login | is_superuser | member_of
 -----------+-----------+--------------+-----------
      admin |      True |         True |          []

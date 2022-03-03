@@ -179,6 +179,7 @@ YBCStatus YBCPgNewCreateTable(const char *database_name,
                               const bool colocated,
                               YBCPgOid tablegroup_oid,
                               YBCPgOid tablespace_oid,
+                              YBCPgOid matview_pg_table_oid,
                               YBCPgStatement *handle);
 
 YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
@@ -447,7 +448,8 @@ YBCStatus YBCPgExecSelect(YBCPgStatement handle, const YBCPgExecParameters *exec
 YBCStatus YBCPgBeginTransaction();
 YBCStatus YBCPgRecreateTransaction();
 YBCStatus YBCPgRestartTransaction();
-YBCStatus YBCPgMaybeResetTransactionReadPoint();
+YBCStatus YBCPgResetTransactionReadPoint();
+YBCStatus YBCPgRestartReadPoint();
 YBCStatus YBCPgCommitTransaction();
 void YBCPgAbortTransaction();
 YBCStatus YBCPgSetTransactionIsolationLevel(int isolation);

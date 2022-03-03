@@ -19,6 +19,7 @@ import string
 import sys
 import time
 
+from pprint import pprint
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.utils import get_ssh_host_port, wait_for_ssh, get_path_from_yb, \
   generate_random_password, validated_key_file, format_rsa_key, validate_cron_status, \
@@ -54,6 +55,7 @@ class AbstractMethod(object):
         self.parser = base_command.parser
         # Set this to False if the respective method does not need credential validation.
         self.need_validation = True
+        self.error_handler = None
 
     def prepare(self):
         """Hook for setting up parser options.
@@ -162,6 +164,10 @@ class AbstractInstancesMethod(AbstractMethod):
                                  required=False,
                                  help="The machine image (e.g. an AMI on AWS) to install, "
                                       "this depends on the region.")
+        self.parser.add_argument("--boot_script", required=False,
+                                 help="Custom boot script to execute on the instance.")
+        self.parser.add_argument("--boot_script_token", required=False,
+                                 help="Custom boot script token in /etc/yb-boot-script-complete")
 
         mutex_group = self.parser.add_mutually_exclusive_group()
         mutex_group.add_argument("--num_volumes", type=int, default=0,
@@ -369,9 +375,6 @@ class CreateInstancesMethod(AbstractInstancesMethod):
                                  default=True,
                                  help="Delete the root volume on VM termination")
 
-        self.parser.add_argument("--boot_script", required=False,
-                                 help="Custom boot script to execute on the instance.")
-
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
         if host_info:
@@ -394,6 +397,10 @@ class CreateInstancesMethod(AbstractInstancesMethod):
             while not self.cloud.wait_for_startup_script(args, host_info) and retries < 5:
                 retries += 1
                 time.sleep(2 ** retries)
+
+            # For clusters with secondary subnets, the start-up script is expected to fail.
+            if not args.cloud_subnet_secondary:
+                self.cloud.verify_startup_script(args, host_info)
 
             logging.info('Startup script finished on {}'.format(args.search_pattern))
 
@@ -458,6 +465,12 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
             self.cloud.configure_secondary_interface(
                 args, self.extra_vars, self.cloud.get_subnet_cidr(args,
                                                                   host_info['secondary_subnet']))
+
+        # The bootscript MIGHT fail due to no access to public internet
+        # Re-run it.
+        if host_info.get('secondary_subnet') and args.boot_script:
+            # copy and run the script
+            self.cloud.execute_boot_script(args, self.extra_vars)
 
         if not args.skip_preprovision:
             self.preprovision(args)
@@ -596,6 +609,28 @@ class UpdateDiskMethod(AbstractInstancesMethod):
         }
         ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
         self.cloud.expand_file_system(args, ssh_options)
+
+
+class UpdateMountedDisksMethod(AbstractInstancesMethod):
+    """Superclass for updating fstab for disks, see PLAT-2547.
+    """
+
+    def __init__(self, base_command):
+        super(UpdateMountedDisksMethod, self).__init__(base_command, "update_mounted_disks")
+
+    def update_ansible_vars_with_args(self, args):
+        super(UpdateMountedDisksMethod, self).update_ansible_vars_with_args(args)
+        self.extra_vars["device_names"] = self.cloud.get_device_names(args)
+
+    def callback(self, args):
+        # Need to verify that all disks are mounted by UUUID
+        host_info = self.cloud.get_host_info(args)
+        ansible = self.cloud.setup_ansible(args)
+        self.update_ansible_vars_with_args(args)
+        self.extra_vars.update(get_ssh_host_port(host_info, args.custom_ssh_port))
+        ansible.playbook_args["remote_role"] = "mount_ephemeral_drives"
+        logging.debug(pprint(self.extra_vars))
+        ansible.run("remote_role.yml", self.extra_vars, host_info)
 
 
 class ChangeInstanceTypeMethod(AbstractInstancesMethod):
@@ -924,6 +959,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                 return
             if args.cert_rotate_action == "ROTATE_CERTS":
                 rotate_certs = True
+                # Clean up client certs to remove old cert traces
+                self.cloud.cleanup_client_certs(ssh_options)
 
         # Copying Server Certs
         logging.info("Copying certificates to {}.".format(args.search_pattern))

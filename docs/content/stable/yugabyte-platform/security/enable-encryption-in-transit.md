@@ -136,7 +136,7 @@ In addition, ensure the following:
 
 3. Select **CA Signed**, as per the following illustration:<br><br>
 
-   ![add-cert](/images/yp/encryption-in-transit/add-cert.png)
+   ![add-cert](/images/yp/encryption-in-transit/add-cert.png)<br><br>
 
 4. Upload the custom CA root certificate as the root certificate. If you do not have the root certificate, contact your CA.
 
@@ -178,7 +178,7 @@ You rotate the existing custom certificates and replace them with new database n
 
 - Select **Actions > Edit Security**, as shown in the following illustration:<br><br>
 
-  ![edit-security](/images/yp/encryption-in-transit/edit-security.png)   
+  ![edit-security](/images/yp/encryption-in-transit/edit-security.png)<br>   
 
 - Select **Encryption in-Transit** to open the **TLS Configuration** dialog. 
 
@@ -189,7 +189,7 @@ You rotate the existing custom certificates and replace them with new database n
 
   - Click **OK**.<br> 
 
-    Typically, this process takes time, as it needs to wait for the specified delay interval after each node is upgraded.
+    Typically, this process takes time, as it needs to wait for the specified delay interval after each node is upgraded.<br><br>
 
   ![Configure TLS](/images/yp/encryption-in-transit/edit-tls-new.png)
 
@@ -238,7 +238,7 @@ If you created your universe with the Client-to-Node TLS option enabled, then yo
   yugabyte=#
   ```
 
-To use TLS from a different client, consult the client-specific documentation. For example, if you are using a Postgres JDBC driver to connect to YugabyteDB, see [Configuring the Client](https://jdbc.postgresql.org/documentation/head/ssl-client.html) for more details.
+To use TLS from a different client, consult the client-specific documentation. For example, if you are using a PostgreSQL JDBC driver to connect to YugabyteDB, see [Configuring the Client](https://jdbc.postgresql.org/documentation/head/ssl-client.html) for more details.
 
 ### How to Connect to a YCQL Endpoint with TLS
 
@@ -299,10 +299,22 @@ When configuring and using certificates, SSL issues may occasionally arise. You 
 
 ## Enforcing TLS Versions
 
-As TLS 1.0 and 1.1 are no longer accepted by PCI compliance, and considering significant vulnerabilities around these versions of the protocol, it is recommended that you migrate to TLS 1.2 (default).
+As TLS 1.0 and 1.1 are no longer accepted by PCI compliance, and considering significant vulnerabilities around these versions of the protocol, it is recommended that you migrate to TLS 1.2 or later versions.
 
-You can set the TLS version for node-to-node and client-node communication. To enforce the minimum TLS version of 1.2, add the following flag for T-Server: 
+You can set the TLS version for node-to-node and client-node communication. To enforce TLS 1.2, add the following flag for T-Server: 
 
-```
+```shell
 ssl_protocols = tls12
+```
+
+To enforce the minimum TLS version of 1.2, you need to specify all available subsequent versions for T-Server, as follows: 
+
+```shell
+ssl_protocols = tls12,tls13
+```
+
+In additioin, since the `ssl_protocols` setting does not propagate to PostgreSQL, it is recommended that you specify the minimum TLS version ( `ssl_min_protocol_version` ) for PostgreSQL by setting the following T-Server gflag:
+
+```shell
+--ysql_pg_conf_csv="ssl_min_protocol_version=TLSv1.2"
 ```

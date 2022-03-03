@@ -14,37 +14,50 @@ import java.util.Comparator;
 import java.util.Collections;
 import java.util.Date;
 import java.util.UUID;
+import java.io.File;
+import java.nio.file.Path;
 import java.text.SimpleDateFormat;
 import java.text.ParseException;
 import java.text.DateFormat;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.io.FileUtils;
 import org.joda.time.DateTime;
 
 @Slf4j
 @Singleton
 public class SupportBundleUtil {
 
-  public static Date getDateNDaysAgo(Date currDate, int days) {
+  public Date getDateNDaysAgo(Date currDate, int days) {
     Date dateNDaysAgo = new DateTime(currDate).minusDays(days).toDate();
     return dateNDaysAgo;
   }
 
-  public static Date getTodaysDate() throws ParseException {
+  public Date getTodaysDate() throws ParseException {
     SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
     Date dateToday = sdf.parse(sdf.format(new Date()));
     return dateToday;
   }
 
-  public static boolean isValidDate(Date date) {
+  public Date getDateFromBundleFileName(String fileName) throws ParseException {
+    SimpleDateFormat bundleSdf = new SimpleDateFormat("yyyyMMddHHmmss.SSS");
+    SimpleDateFormat newSdf = new SimpleDateFormat("yyyy-MM-dd");
+
+    String[] fileNameSplit = fileName.split("-");
+    String fileDateStr = fileNameSplit[fileNameSplit.length - 2];
+
+    return newSdf.parse(newSdf.format(bundleSdf.parse(fileDateStr)));
+  }
+
+  public boolean isValidDate(Date date) {
     return date != null;
   }
 
   // Checks if a given date is between 2 other given dates (startDate and endDate both inclusive)
-  public static boolean checkDateBetweenDates(Date dateToCheck, Date startDate, Date endDate) {
+  public boolean checkDateBetweenDates(Date dateToCheck, Date startDate, Date endDate) {
     return !dateToCheck.before(startDate) && !dateToCheck.after(endDate);
   }
 
-  public static List<String> sortDatesWithPattern(List<String> datesList, String sdfPattern) {
+  public List<String> sortDatesWithPattern(List<String> datesList, String sdfPattern) {
     // Sort the list of dates based on the given 'SimpleDateFormat' pattern
     List<String> sortedList = new ArrayList<String>(datesList);
     Collections.sort(
@@ -65,7 +78,7 @@ public class SupportBundleUtil {
     return sortedList;
   }
 
-  public static List<String> filterList(List<String> list, String regex) {
+  public List<String> filterList(List<String> list, String regex) {
     // Filter and return only the strings which match a given regex pattern
     List<String> result = new ArrayList<String>();
     for (String entry : list) {
@@ -77,7 +90,7 @@ public class SupportBundleUtil {
   }
 
   // Gets the path to "yb-data/" folder on the node (Ex: "/mnt/d0", "/mnt/disk0")
-  public static String getDataDirPath(
+  public String getDataDirPath(
       Universe universe, NodeDetails node, NodeUniverseManager nodeUniverseManager, Config config) {
     String dataDirPath = "";
 
@@ -104,5 +117,13 @@ public class SupportBundleUtil {
     }
 
     return dataDirPath;
+  }
+
+  public void deleteFile(Path filePath) {
+    if (FileUtils.deleteQuietly(new File(filePath.toString()))) {
+      log.info("Successfully deleted file with path: " + filePath.toString());
+    } else {
+      log.info("Failed to delete file with path: " + filePath.toString());
+    }
   }
 }

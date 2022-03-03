@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CertsRotateParams;
@@ -20,12 +21,10 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
-import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.HashMap;
 import java.util.Map;
@@ -129,14 +128,7 @@ public class UpgradeUniverseHandler {
         customer,
         universe);
   }
-  /**
-   * Called when TLS CONFIG is toggeled.
-   *
-   * @param requestParams
-   * @param customer
-   * @param universe
-   * @return
-   */
+
   public UUID rotateCerts(CertsRotateParams requestParams, Customer customer, Universe universe) {
     log.debug(
         "rotateCerts called with rootCA: {}",
@@ -181,14 +173,7 @@ public class UpgradeUniverseHandler {
         TaskType.ResizeNode, CustomerTask.TaskType.ResizeNode, requestParams, customer, universe);
   }
 
-  /**
-   * Enable/Disable TLS on Cluster
-   *
-   * @param requestParams
-   * @param customer
-   * @param universe
-   * @return
-   */
+  // Enable/Disable TLS on Cluster
   public UUID toggleTls(TlsToggleParams requestParams, Customer customer, Universe universe) {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;

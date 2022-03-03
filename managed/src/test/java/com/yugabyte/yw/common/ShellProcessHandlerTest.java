@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.ShellProcessHandler.YB_LOGS_MAX_MSG_SIZE;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.equalTo;
@@ -48,6 +49,7 @@ public class ShellProcessHandlerTest extends TestCase {
     when(appConfig.getString("yb.devops.home")).thenReturn(TMP_STORAGE_PATH);
     when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
     when(mockConfig.getBoolean(COMMAND_OUTPUT_LOGS_DELETE)).thenReturn(true);
+    when(appConfig.getBytes(YB_LOGS_MAX_MSG_SIZE)).thenReturn(2000L);
   }
 
   @After

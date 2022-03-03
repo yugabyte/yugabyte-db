@@ -3,8 +3,6 @@ title: SQL vs NoSQL in YugabyteDB
 headerTitle: SQL vs NoSQL
 linkTitle: 1. SQL vs NoSQL
 description: Learn how YugabyteDB brings the best of SQL and NoSQL together into one unified platform to simplify development of scalable cloud services.
-aliases:
-  - /develop/learn/sql-nosql/
 menu:
   latest:
     identifier: sql-nosql
@@ -58,7 +56,7 @@ Applications and cloud services depend on databases for a variety of built-in fe
 
 Here is a table that lists some of the important features that YugabyteDB supports, and which of YugabyteDB's APIs to use in order to achieve these features. Note that typically, multiple databases are deployed in order to achieve these features.
 
-| Database features  | [Yugabyte SQL API](../../../api/ysql) | [Yugabyte Cloud QL API](../../../api/ycql) |
+| Database features  | [Yugabyte SQL API](../../../api/ysql/) | [Yugabyte Cloud QL API](../../../api/ycql/) |
 | --------------- | ---------------- | ------------------ |
 | Multi-row transactions | Yes | Yes |
 | Consistent secondary indexes | Yes | Yes |

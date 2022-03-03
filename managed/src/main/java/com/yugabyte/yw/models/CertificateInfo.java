@@ -7,20 +7,6 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
-import com.fasterxml.jackson.annotation.JsonFormat;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.annotations.VisibleForTesting;
-import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.Util.UniverseDetailSubset;
-import com.yugabyte.yw.common.certmgmt.CertConfigType;
-import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
-import com.yugabyte.yw.forms.CertificateParams;
-import io.ebean.Finder;
-import io.ebean.Model;
-import io.ebean.annotation.DbJson;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
@@ -32,14 +18,35 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
 import javax.persistence.Id;
 import javax.persistence.Transient;
+
+import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.annotations.VisibleForTesting;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.Util.UniverseDetailSubset;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
+import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
+import com.yugabyte.yw.forms.CertificateParams;
+import com.yugabyte.yw.models.helpers.CommonUtils;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import io.ebean.Finder;
+import io.ebean.Model;
+import io.ebean.annotation.DbJson;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 import play.data.validation.Constraints;
 import play.libs.Json;
 
@@ -136,6 +143,7 @@ public class CertificateInfo extends Model {
   @ApiModelProperty(value = "Details about the certificate", accessMode = READ_WRITE)
   @Column(columnDefinition = "TEXT", nullable = true)
   @DbJson
+  // @JsonIgnore
   public JsonNode customCertInfo;
 
   public CertificateParams.CustomCertInfo getCustomCertPathParams() {
@@ -165,14 +173,39 @@ public class CertificateInfo extends Model {
     return null;
   }
 
+  /**
+   * To be called to return response to API calls, for java.lang.reflect
+   *
+   * @return
+   */
   public HashicorpVaultConfigParams getCustomHCPKICertInfo() {
     if (this.certType != CertConfigType.HashicorpVault) {
       return null;
     }
-    if (this.customCertInfo != null) {
-      return new HashicorpVaultConfigParams(this.customCertInfo);
+    if (this.customCertInfo == null) {
+      return null;
     }
-    return null;
+
+    HashicorpVaultConfigParams params = getCustomHCPKICertInfoInternal();
+    params.vaultToken = CommonUtils.getMaskedValue("HC_VAULT_TOKEN", params.vaultToken);
+    return params;
+  }
+
+  @JsonIgnore
+  public HashicorpVaultConfigParams getCustomHCPKICertInfoInternal() {
+    if (this.certType != CertConfigType.HashicorpVault) {
+      return null;
+    }
+    if (this.customCertInfo == null) {
+      return null;
+    }
+
+    HashicorpVaultConfigParams params = new HashicorpVaultConfigParams(this.customCertInfo);
+    String token =
+        EncryptionInTransitUtil.unmaskCertConfigData(this.customerUUID, params.vaultToken);
+    if (token != null) params.vaultToken = token;
+
+    return params;
   }
 
   public static final Logger LOG = LoggerFactory.getLogger(CertificateInfo.class);
@@ -371,11 +404,13 @@ public class CertificateInfo extends Model {
   public static List<CertificateInfo> getAll(UUID customerUUID) {
     List<CertificateInfo> certificateInfoList =
         find.query().where().eq("customer_uuid", customerUUID).findList();
+
     certificateInfoList =
         certificateInfoList
             .stream()
             .filter(certificateInfo -> !CertificateInfo.isTemporary(certificateInfo))
             .collect(Collectors.toList());
+
     populateUniverseData(customerUUID, certificateInfoList);
     return certificateInfoList;
   }

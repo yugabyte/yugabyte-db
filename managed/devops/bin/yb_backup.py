@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2021 YugaByte, Inc. and Contributors
+# Copyright 2022 YugaByte, Inc. and Contributors
 #
 # Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
 # may not use this file except in compliance with the License. You
@@ -16,7 +16,6 @@ import copy
 import logging
 import pipes
 import random
-import shutil
 import string
 import subprocess
 import traceback
@@ -29,6 +28,7 @@ from argparse import RawDescriptionHelpFormatter
 from boto.utils import get_instance_metadata
 from datetime import timedelta
 from multiprocessing.pool import ThreadPool
+from contextlib import contextmanager
 
 import os
 import re
@@ -92,6 +92,14 @@ PLATFORM_VERSION_FILE_PATH = os.path.join(SCRIPT_DIR, '../../yugaware/conf/versi
 YB_VERSION_RE = re.compile(r'^version (\d+\.\d+\.\d+\.\d+).*')
 
 DEFAULT_TS_WEB_PORT = 9000
+
+
+@contextmanager
+def terminating(thing):
+    try:
+        yield thing
+    finally:
+        thing.terminate()
 
 
 class BackupException(Exception):
@@ -346,10 +354,6 @@ def get_db_name_cmd(dump_file):
     return "sed -n '/CREATE DATABASE/{s|CREATE DATABASE||;s|WITH.*||;p}' " + pipes.quote(dump_file)
 
 
-def get_grep_enums_cmd(dump_file):
-    return "egrep '^CREATE TYPE ' " + pipes.quote(dump_file) + " || [[ $? == 1 ]]"
-
-
 def apply_sed_edit_reg_exp_cmd(dump_file, reg_exp):
     return "sed -i '{}' {}".format(reg_exp, pipes.quote(dump_file))
 
@@ -490,6 +494,13 @@ class AzBackupStorage(AbstractBackupStorage):
         dest = "'{}'".format(dest + os.getenv('AZURE_STORAGE_SAS_TOKEN'))
         return ["{} {} {} {}".format(self._command_list_prefix(), "rm", dest, "--recursive=true")]
 
+    def backup_obj_size_cmd(self, backup_obj_location):
+        sas_token = os.getenv('AZURE_STORAGE_SAS_TOKEN')
+        backup_obj_location = "'{}'".format(backup_obj_location + sas_token)
+        return ["{} {} {} {} {} {} {} {} {}".format(self._command_list_prefix(), "list",
+                backup_obj_location, "--machine-readable", "--running-tally", "|",
+                "grep 'Total file size:'", "|", "grep -Eo '[0-9]*'")]
+
 
 class GcsBackupStorage(AbstractBackupStorage):
     def __init__(self, options):
@@ -519,6 +530,9 @@ class GcsBackupStorage(AbstractBackupStorage):
         if dest is None or dest == '/' or dest == '':
             raise BackupException("Destination needs to be well formed.")
         return self._command_list_prefix() + ["rm", "-r", dest]
+
+    def backup_obj_size_cmd(self, backup_obj_location):
+        return self._command_list_prefix() + ["du", "-s", "-a", backup_obj_location]
 
 
 class S3BackupStorage(AbstractBackupStorage):
@@ -557,6 +571,9 @@ class S3BackupStorage(AbstractBackupStorage):
         if dest is None or dest == '/' or dest == '':
             raise BackupException("Destination needs to be well formed.")
         return self._command_list_prefix() + ["del", "-r", dest]
+
+    def backup_obj_size_cmd(self, backup_obj_location):
+        return self._command_list_prefix() + ["du", backup_obj_location]
 
 
 class NfsBackupStorage(AbstractBackupStorage):
@@ -599,6 +616,9 @@ class NfsBackupStorage(AbstractBackupStorage):
         if dest is None or dest == '/' or dest == '':
             raise BackupException("Destination needs to be well formed.")
         return ["rm", "-rf", pipes.quote(dest)]
+
+    def backup_obj_size_cmd(self, backup_obj_location):
+        return ["du", "-sb", backup_obj_location]
 
 
 BACKUP_STORAGE_ABSTRACTIONS = {
@@ -774,6 +794,7 @@ class YBManifest:
         properties['pg-based-backup'] = pg_based_backup
         properties['start-time'] = self.backup.timer.start_time_str()
         properties['end-time'] = self.backup.timer.end_time_str()
+        properties['size-in-bytes'] = self.backup.calc_size_in_bytes(snapshot_bucket)
 
     def init_locations(self, tablet_leaders, snapshot_bucket):
         locations = self.body['locations']
@@ -788,6 +809,8 @@ class YBManifest:
                 location_data['region'] = tserver_region
 
             locations[tablet_location]['tablet-directories'][tablet_id] = {}
+
+        self.body['properties']['size-in-bytes'] += len(self.to_string())
 
     # Data saving/loading/printing.
     def to_string(self):
@@ -833,11 +856,15 @@ class YBManifest:
             pg_based_backup = False
         return pg_based_backup
 
+    def get_backup_size(self):
+        return self.body['properties'].get('size-in-bytes')
+
 
 class YBBackup:
     def __init__(self):
         signal.signal(signal.SIGINT, self.cleanup_on_exit)
         signal.signal(signal.SIGTERM, self.cleanup_on_exit)
+        signal.signal(signal.SIGQUIT, self.cleanup_on_exit)
         self.pools = []
         self.leader_master_ip = ''
         self.ysql_ip = ''
@@ -854,14 +881,20 @@ class YBBackup:
         self.parse_arguments()
 
     def cleanup_on_exit(self, signum, frame):
+        self.terminate_pools()
+        # Runs clean-up callbacks registered to atexit.
+        sys.exit()
+
+    def terminate_pools(self):
         for pool in self.pools:
             logging.info("Terminating threadpool ...")
             try:
+                pool.close()
                 pool.terminate()
+                pool.join()
+                logging.info("Terminated threadpool ...")
             except Exception as ex:
                 logging.error("Failed to terminate pool: {}".format(ex))
-        # Runs clean-up callbacks registered to atexit.
-        sys.exit()
 
     def sleep_or_raise(self, num_retry, timeout, ex):
         if num_retry > 0:
@@ -972,9 +1005,6 @@ class YBBackup:
         parser.add_argument(
             '--pg_based_backup', action='store_true', default=False, help="Use it to trigger "
                                                                           "pg based backup.")
-        parser.add_argument(
-            '--detect_enums', action='store_true', default=True, help="Use it to detect enums "
-                                                                      "in schema.")
         parser.add_argument(
             '--ssh_key_path', required=False, help="Path to the ssh key file")
         parser.add_argument(
@@ -1097,23 +1127,23 @@ class YBBackup:
 
         if self.args.storage_type == 'nfs':
             logging.info('Checking whether NFS backup storage path mounted on TServers or not')
-            pool = ThreadPool(self.args.parallelism)
-            self.pools.append(pool)
-            tablets_by_leader_ip = []
+            with terminating(ThreadPool(self.args.parallelism)) as pool:
+                self.pools.append(pool)
+                tablets_by_leader_ip = []
 
-            output = self.run_yb_admin(['list_all_tablet_servers'])
-            for line in output.splitlines():
-                if LEADING_UUID_RE.match(line):
-                    fields = split_by_space(line)
-                    ip_port = fields[1]
-                    state = fields[3]
-                    (ip, port) = ip_port.split(':')
-                    if state == 'ALIVE':
-                        if self.ts_secondary_to_primary_ip_map:
-                            ip = self.ts_secondary_to_primary_ip_map[ip]
-                        tablets_by_leader_ip.append(ip)
-            tserver_ips = list(tablets_by_leader_ip)
-            SingleArgParallelCmd(self.find_nfs_storage, tserver_ips).run(pool)
+                output = self.run_yb_admin(['list_all_tablet_servers'])
+                for line in output.splitlines():
+                    if LEADING_UUID_RE.match(line):
+                        fields = split_by_space(line)
+                        ip_port = fields[1]
+                        state = fields[3]
+                        (ip, port) = ip_port.split(':')
+                        if state == 'ALIVE':
+                            if self.ts_secondary_to_primary_ip_map:
+                                ip = self.ts_secondary_to_primary_ip_map[ip]
+                            tablets_by_leader_ip.append(ip)
+                tserver_ips = list(tablets_by_leader_ip)
+                SingleArgParallelCmd(self.find_nfs_storage, tserver_ips).run(pool)
 
         self.args.backup_location = self.args.backup_location or self.args.s3bucket
         options = BackupOptions(self.args)
@@ -1446,6 +1476,24 @@ class YBBackup:
             self.get_ysql_dump_std_args() + ['--dbname=template1'],
             cmd_line_args,
             run_ip=run_at_ip)
+
+    def calc_size_in_bytes(self, snapshot_bucket):
+        """
+        Fetches the backup object size by making a call to respective data source.
+        :param snapshot_bucket: the bucket directory under which data directories were uploaded
+        :return: backup size in bytes
+        """
+        snapshot_filepath = self.snapshot_location(snapshot_bucket)
+        backup_size = 0
+        backup_size_cmd = self.storage.backup_obj_size_cmd(snapshot_filepath)
+        try:
+            resp = self.run_ssh_cmd(backup_size_cmd, self.get_main_host_ip())
+            backup_size = int(resp.strip().split()[0])
+            logging.info('Backup size in bytes: {}'.format(backup_size))
+        except Exception as ex:
+            logging.error(
+                'Failed to get backup size, cmd: {}, exception: {}'.format(backup_size_cmd, ex))
+        return backup_size
 
     def create_snapshot(self):
         """
@@ -1954,55 +2002,55 @@ class YBBackup:
         :param snapshot_id: self-explanatory
         :param snapshot_bucket: the bucket directory under which to upload the data directories
         """
-        pool = ThreadPool(self.args.parallelism)
-        self.pools.append(pool)
+        with terminating(ThreadPool(self.args.parallelism)) as pool:
+            self.pools.append(pool)
 
-        tablets_by_leader_ip = {}
-        location_by_tablet = {}
-        for (tablet_id, leader_ip, tserver_region) in tablet_leaders:
-            tablets_by_leader_ip.setdefault(leader_ip, set()).add(tablet_id)
-            location_by_tablet[tablet_id] = self.snapshot_location(snapshot_bucket, tserver_region)
+            tablets_by_leader_ip = {}
+            location_by_tablet = {}
+            for (tablet_id, leader_ip, tserver_region) in tablet_leaders:
+                tablets_by_leader_ip.setdefault(leader_ip, set()).add(tablet_id)
+                location_by_tablet[tablet_id] = self.snapshot_location(snapshot_bucket, tserver_region)
 
-        tserver_ips = sorted(tablets_by_leader_ip.keys())
-        data_dir_by_tserver = SingleArgParallelCmd(self.find_data_dirs, tserver_ips).run(pool)
+            tserver_ips = sorted(tablets_by_leader_ip.keys())
+            data_dir_by_tserver = SingleArgParallelCmd(self.find_data_dirs, tserver_ips).run(pool)
 
-        for tserver_ip in tserver_ips:
-            data_dir_by_tserver[tserver_ip] = copy.deepcopy(data_dir_by_tserver[tserver_ip])
+            for tserver_ip in tserver_ips:
+                data_dir_by_tserver[tserver_ip] = copy.deepcopy(data_dir_by_tserver[tserver_ip])
 
-        # Upload config to every TS here to prevent parallel uploading of the config
-        # in 'find_snapshot_directories' below.
-        if self.has_cfg_file():
-            SingleArgParallelCmd(self.upload_cloud_config, tserver_ips).run(pool)
+            # Upload config to every TS here to prevent parallel uploading of the config
+            # in 'find_snapshot_directories' below.
+            if self.has_cfg_file():
+                SingleArgParallelCmd(self.upload_cloud_config, tserver_ips).run(pool)
 
-        parallel_find_snapshots = MultiArgParallelCmd(self.find_snapshot_directories)
-        tservers_processed = []
-        while len(tserver_ips) > len(tservers_processed):
-            for tserver_ip in list(tserver_ips):
-                if tserver_ip not in tservers_processed:
-                    data_dirs = data_dir_by_tserver[tserver_ip]
-                    if len(data_dirs) > 0:
-                        data_dir = data_dirs[0]
-                        parallel_find_snapshots.add_args(data_dir, snapshot_id, tserver_ip)
-                        data_dirs.remove(data_dir)
+            parallel_find_snapshots = MultiArgParallelCmd(self.find_snapshot_directories)
+            tservers_processed = []
+            while len(tserver_ips) > len(tservers_processed):
+                for tserver_ip in list(tserver_ips):
+                    if tserver_ip not in tservers_processed:
+                        data_dirs = data_dir_by_tserver[tserver_ip]
+                        if len(data_dirs) > 0:
+                            data_dir = data_dirs[0]
+                            parallel_find_snapshots.add_args(data_dir, snapshot_id, tserver_ip)
+                            data_dirs.remove(data_dir)
 
-                        if len(data_dirs) == 0:
+                            if len(data_dirs) == 0:
+                                tservers_processed += [tserver_ip]
+                        else:
                             tservers_processed += [tserver_ip]
-                    else:
-                        tservers_processed += [tserver_ip]
 
-        find_snapshot_dir_results = parallel_find_snapshots.run(pool)
+            find_snapshot_dir_results = parallel_find_snapshots.run(pool)
 
-        leader_ip_to_tablet_id_to_snapshot_dirs = self.rearrange_snapshot_dirs(
-            find_snapshot_dir_results, snapshot_id, tablets_by_leader_ip)
+            leader_ip_to_tablet_id_to_snapshot_dirs = self.rearrange_snapshot_dirs(
+                find_snapshot_dir_results, snapshot_id, tablets_by_leader_ip)
 
-        parallel_uploads = SequencedParallelCmd(
-            self.run_ssh_cmd, preprocess_args_fn=self.join_ssh_cmds)
-        self.prepare_cloud_ssh_cmds(
-             parallel_uploads, leader_ip_to_tablet_id_to_snapshot_dirs, location_by_tablet,
-             snapshot_id, tablets_by_leader_ip, upload=True, snapshot_metadata=None)
+            parallel_uploads = SequencedParallelCmd(
+                self.run_ssh_cmd, preprocess_args_fn=self.join_ssh_cmds)
+            self.prepare_cloud_ssh_cmds(
+                 parallel_uploads, leader_ip_to_tablet_id_to_snapshot_dirs, location_by_tablet,
+                 snapshot_id, tablets_by_leader_ip, upload=True, snapshot_metadata=None)
 
-        # Run a sequence of steps for each tablet, handling different tablets in parallel.
-        parallel_uploads.run(pool)
+            # Run a sequence of steps for each tablet, handling different tablets in parallel.
+            parallel_uploads.run(pool)
 
     def rearrange_snapshot_dirs(
             self, find_snapshot_dir_results, snapshot_id, tablets_by_tserver_ip):
@@ -2027,9 +2075,11 @@ class YBBackup:
             for snapshot_dir in snapshot_dirs:
                 suffix_match = SNAPSHOT_DIR_SUFFIX_RE.match(snapshot_dir)
                 if not suffix_match:
-                    raise BackupException(
+                    logging.warning(
                         ("Could not parse tablet id and snapshot id out of snapshot "
                          "directory: '{}'").format(snapshot_dir))
+                    continue
+
                 if snapshot_id != suffix_match.group(2):
                     raise BackupException(
                         "Snapshot directory does not end with snapshot id: '{}'".format(
@@ -2372,13 +2422,6 @@ class YBBackup:
                     "'Version: <number>' in the end: {}".format(output))
         return matched.group('version')
 
-    def is_enum_present(self, sql_dump_path):
-        """
-        Detects the presence of enum in schema of a YSQL database.
-        """
-        resp = self.run_cli_tool(get_grep_enums_cmd(sql_dump_path))
-        return ' AS ENUM (' in resp if resp else False
-
     def create_metadata_files(self):
         """
         :return: snapshot_id and list of sql_dump files
@@ -2404,10 +2447,6 @@ class YBBackup:
             logging.info("[app] Creating ysql dump for DB '{}' to {}".format(
                             db_name, sql_dump_path))
             self.run_ysql_dump(ysql_dump_args)
-
-            if not pg_based_backup and self.args.detect_enums:
-                logging.info('Detecting enum in {}'.format(sql_dump_path))
-                pg_based_backup = self.is_enum_present(sql_dump_path)
 
             dump_files.append(sql_dump_path)
             if pg_based_backup:
@@ -2608,6 +2647,7 @@ class YBBackup:
                             region, regional_filepath))
                         snapshot_locations[region] = regional_filepath
 
+            snapshot_locations["backup_size_in_bytes"] = self.manifest.get_backup_size()
         else:
             snapshot_locations["snapshot_url"] = "UPLOAD_SKIPPED"
 
@@ -2904,45 +2944,45 @@ class YBBackup:
 
     def download_snapshot_directories(self, snapshot_meta, tablets_by_tserver_to_download,
                                       snapshot_id, table_ids):
-        pool = ThreadPool(self.args.parallelism)
-        self.pools.append(pool)
-        self.timer.log_new_phase("Find all table/tablet data dirs on all tservers")
-        tserver_ips = list(tablets_by_tserver_to_download.keys())
-        data_dir_by_tserver = SingleArgParallelCmd(self.find_data_dirs, tserver_ips).run(pool)
+        with terminating(ThreadPool(self.args.parallelism)) as pool:
+            self.pools.append(pool)
+            self.timer.log_new_phase("Find all table/tablet data dirs on all tservers")
+            tserver_ips = list(tablets_by_tserver_to_download.keys())
+            data_dir_by_tserver = SingleArgParallelCmd(self.find_data_dirs, tserver_ips).run(pool)
 
-        if self.args.verbose:
-            logging.info('Found data directories: {}'.format(data_dir_by_tserver))
+            if self.args.verbose:
+                logging.info('Found data directories: {}'.format(data_dir_by_tserver))
 
-        (tserver_to_tablet_to_snapshot_dirs, tserver_to_deleted_tablets) =\
-            self.generate_snapshot_dirs(
-                data_dir_by_tserver, snapshot_id, tablets_by_tserver_to_download, table_ids)
+            (tserver_to_tablet_to_snapshot_dirs, tserver_to_deleted_tablets) =\
+                self.generate_snapshot_dirs(
+                    data_dir_by_tserver, snapshot_id, tablets_by_tserver_to_download, table_ids)
 
-        # Remove deleted tablets from the list of planned to be downloaded tablets.
-        for tserver_ip in tserver_to_deleted_tablets:
-            deleted_tablets = tserver_to_deleted_tablets[tserver_ip]
-            tablets_by_tserver_to_download[tserver_ip] -= deleted_tablets
+            # Remove deleted tablets from the list of planned to be downloaded tablets.
+            for tserver_ip in tserver_to_deleted_tablets:
+                deleted_tablets = tserver_to_deleted_tablets[tserver_ip]
+                tablets_by_tserver_to_download[tserver_ip] -= deleted_tablets
 
-        self.timer.log_new_phase("Download data")
-        parallel_downloads = SequencedParallelCmd(
-            self.run_ssh_cmd, preprocess_args_fn=self.join_ssh_cmds, handle_errors=True)
-        self.prepare_cloud_ssh_cmds(
-            parallel_downloads, tserver_to_tablet_to_snapshot_dirs,
-            None, snapshot_id, tablets_by_tserver_to_download,
-            upload=False, snapshot_metadata=snapshot_meta)
+            self.timer.log_new_phase("Download data")
+            parallel_downloads = SequencedParallelCmd(
+                self.run_ssh_cmd, preprocess_args_fn=self.join_ssh_cmds, handle_errors=True)
+            self.prepare_cloud_ssh_cmds(
+                parallel_downloads, tserver_to_tablet_to_snapshot_dirs,
+                None, snapshot_id, tablets_by_tserver_to_download,
+                upload=False, snapshot_metadata=snapshot_meta)
 
-        # Run a sequence of steps for each tablet, handling different tablets in parallel.
-        results = parallel_downloads.run(pool)
+            # Run a sequence of steps for each tablet, handling different tablets in parallel.
+            results = parallel_downloads.run(pool)
 
-        for k in results:
-            v = results[k]
-            if isinstance(v, tuple) and v[0] == 'failed-cmd':
-                assert len(v) == 2
-                (tablet_id, tserver_ip) = v[1]
-                # In case we fail a cmd, don't mark this tablet-tserver pair as succeeded, instead
-                # we will retry in the next round of downloads.
-                tserver_to_deleted_tablets.setdefault(tserver_ip, set()).add(tablet_id)
+            for k in results:
+                v = results[k]
+                if isinstance(v, tuple) and v[0] == 'failed-cmd':
+                    assert len(v) == 2
+                    (tablet_id, tserver_ip) = v[1]
+                    # In case we fail a cmd, don't mark this tablet-tserver pair as succeeded,
+                    # instead we will retry in the next round of downloads.
+                    tserver_to_deleted_tablets.setdefault(tserver_ip, set()).add(tablet_id)
 
-        return tserver_to_deleted_tablets
+            return tserver_to_deleted_tablets
 
     def restore_table(self):
         """
@@ -3152,16 +3192,16 @@ if __name__ == "__main__":
     # Setup logging. By default in the config the output stream is: stream=sys.stderr.
     # Set custom output format and logging level=INFO (DEBUG messages will not be printed).
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
-
     # Registers the signal handlers.
     yb_backup = YBBackup()
-    pool = ThreadPool(1)
-    try:
-        # Main thread cannot be blocked to handle signals.
-        future = pool.apply_async(yb_backup.run)
-        while not future.ready():
-            # Prevent blocking by waiting with timeout.
-            future.wait(timeout=1)
-    finally:
-        logging.info("Terminating parent threadpool ...")
-        pool.terminate()
+    with terminating(ThreadPool(1)) as pool:
+        try:
+            # Main thread cannot be blocked to handle signals.
+            future = pool.apply_async(yb_backup.run)
+            while not future.ready():
+                # Prevent blocking by waiting with timeout.
+                future.wait(timeout=1)
+        finally:
+            logging.info("Terminating all threadpool ...")
+            yb_backup.terminate_pools()
+            logging.shutdown()

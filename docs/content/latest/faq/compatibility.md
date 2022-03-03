@@ -17,15 +17,15 @@ showAsideToc: true
 
 ## What does API compatibility exactly mean?
 
-API compatibility refers to the fact that the database APIs offered by YugabyteDB servers implement the same wire protocol and modeling/query language as that of an existing database. Since client drivers, command line shells, IDE integrations and other ecosystem integrations of the existing database rely on this wire protocol and modeling/query language, they are expected to work with YugabyteDB without major modifications. 
+API compatibility refers to the fact that the database APIs offered by YugabyteDB servers implement the same wire protocol and modeling/query language as that of an existing database. Since client drivers, command line shells, IDE integrations and other ecosystem integrations of the existing database rely on this wire protocol and modeling/query language, they are expected to work with YugabyteDB without major modifications.
 
 {{< note title="Note" >}}
-The [YSQL](../../api/ysql) API is compatible with PostgreSQL. This means PostgreSQL client drivers, psql command line shell, IDE integrations such as TablePlus and DBWeaver and more can be used with YugabyteDB. The same concept applies to [YCQL](../../api/ycql) in the context of the Apache Cassandra Query Language.
+The [YSQL](../../api/ysql/) API is compatible with PostgreSQL. This means PostgreSQL client drivers, psql command line shell, IDE integrations such as TablePlus and DBWeaver and more can be used with YugabyteDB. The same concept applies to [YCQL](../../api/ycql/) in the context of the Apache Cassandra Query Language.
 {{< /note >}}
 
 ## Why are YugabyteDB APIs compatible with popular DB languages?
 
-- YugabyteDB's API compatibility is aimed at accelerating developer onboarding. By integrating well with the existing ecosystem, YugabyteDB ensures that developers can get started easily using a language they are already comfortable with. 
+- YugabyteDB's API compatibility is aimed at accelerating developer onboarding. By integrating well with the existing ecosystem, YugabyteDB ensures that developers can get started easily using a language they are already comfortable with.
 
 - YugabyteDB's API compatibility is not aimed at lift-and-shift porting of existing applications written for the original language. This is because existing applications are not written to take advantage of the distributed, strongly-consistent storage architecture that YugabyteDB provides. For such existing applications, developers should expect to modify their previously monolithic PostgreSQL and/or non-transactional Cassandra data access logic as they look to migrate to YugabyteDB.
 
@@ -80,8 +80,8 @@ By default, inserts overwrite data on primary key collisions. So INSERTs do an u
 Here is an example from CQL:
 
 ```sql
-INSERT INTO mycompany.users (id, lastname, firstname) 
-   VALUES (100, ‘Smith’, ‘John’) 
+INSERT INTO mycompany.users (id, lastname, firstname)
+   VALUES (100, ‘Smith’, ‘John’)
 IF NOT EXISTS;
 ```
 
@@ -114,7 +114,7 @@ INSERT at the current timestamp does not overwrite previous value which was writ
 timestamp.
 
 ```sql
-> INSERT INTO table (c1, c2, c3) VALUES (1, 2, 4); 
+> INSERT INTO table (c1, c2, c3) VALUES (1, 2, 4);
 > SELECT * FROM table;
 ```
 
@@ -155,7 +155,7 @@ INSERT with timestamp far in the future, this would overwrite old value.
 INSERT without 'USING TIMESTAMP' will always overwrite.
 
 ```sql
-> INSERT INTO table (c1, c2, c3) VALUES (1, 2, 5); 
+> INSERT INTO table (c1, c2, c3) VALUES (1, 2, 5);
 > SELECT * FROM table;
 ```
 

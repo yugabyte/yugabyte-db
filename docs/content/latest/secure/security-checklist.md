@@ -20,13 +20,13 @@ Below are a list of security measures that can be implemented to protect your Yu
 
 Authentication requires that all clients provide valid credentials before they can connect to a YugabyteDB cluster. YugabyteDB stores authentication credentials internally in the YB-Master system tables. The authentication mechanisms available to clients depend on what is supported and exposed by the YSQL, YCQL, and YEDIS APIs.
 
-Read more about [how to enable authentication in YugabyteDB](../authentication).
+Read more about [how to enable authentication in YugabyteDB](../authentication/).
 
 ## Configure role-based access control
 
 Roles can be modified to grant users or applications only the essential privileges based on the operations they need to perform against the database. Typically, an administrator role is created first. The administrator then creates additional roles for users.
 
-See the [authorization](../authorization) section to enable role-based access control in YugabyteDB.
+See the [authorization](../authorization/) section to enable role-based access control in YugabyteDB.
 
 ## Run as a dedicated user
 
@@ -58,7 +58,7 @@ Limit the interfaces on which YugabyteDB instances listen for incoming connectio
 
 [TLS encryption](https://en.wikipedia.org/wiki/Transport_Layer_Security) ensures that network communication between servers is secure. You can configure YugabyteDB to use TLS to encrypt intra-cluster and client to server network communication. Yugabyte recommends enabling encryption in transit in YugabyteDB clusters and clients to ensure privacy and integrity of data transferred over the network.
 
-Read more about enabling [Encryption in transit](../tls-encryption) in YugabyteDB.
+Read more about enabling [Encryption in transit](../tls-encryption/) in YugabyteDB.
 
 ## Enable encryption at rest
 

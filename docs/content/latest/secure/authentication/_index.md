@@ -20,7 +20,6 @@ The authentication methods do not require any external security infrastructure a
 
 The various methods for authenticating users supported by YugabyteDB are listed below.
 
-
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">

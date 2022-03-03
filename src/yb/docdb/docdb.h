@@ -231,18 +231,6 @@ struct ApplyTransactionState {
   }
 };
 
-Result<ApplyTransactionState> PrepareApplyIntentsBatch(
-    const TabletId& tablet_id,
-    const TransactionId& transaction_id,
-    const AbortedSubTransactionSet& aborted,
-    HybridTime commit_ht,
-    const KeyBounds* key_bounds,
-    const ApplyTransactionState* apply_state,
-    HybridTime log_ht,
-    rocksdb::WriteBatch* regular_batch,
-    rocksdb::DB* intents_db,
-    rocksdb::WriteBatch* intents_batch);
-
 void AppendTransactionKeyPrefix(const TransactionId& transaction_id, docdb::KeyBytes* out);
 
 // Class that is used while combining external intents into single key value pair.

@@ -85,14 +85,6 @@ class ConsistentReadPoint {
   // Sets in transaction limit.
   void SetInTxnLimit(HybridTime value) EXCLUDES(mutex_);
 
-  bool RecentlyRestartedReadPoint() const {
-    return recently_restarted_read_point_;
-  }
-
-  void UnSetRecentlyRestartedReadPoint() {
-    recently_restarted_read_point_ = false;
-  }
-
  private:
   void UpdateLimitsMapUnlocked(
       const TabletId& tablet, const HybridTime& local_limit, HybridTimeMap* map) REQUIRES(mutex_);
@@ -114,10 +106,6 @@ class ConsistentReadPoint {
   // Restarts that happen during a consistent read. Used to initialise local_limits for restarted
   // read.
   HybridTimeMap restarts_ GUARDED_BY(mutex_);
-  // This field is useful in READ COMMITTED isolation to indicate that the read point has already
-  // been restarted as part of a transparent read restart retry and we need not pick a new read
-  // point based on current time in StartTransactionCommand().
-  bool recently_restarted_read_point_ = false;
 };
 
 } // namespace yb
