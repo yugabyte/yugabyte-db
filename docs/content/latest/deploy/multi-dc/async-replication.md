@@ -187,12 +187,12 @@ Create 2 universes (source and target) with same configurations (with same regio
 * **Regions:** EU(Paris), Asia Pacific(Mumbai) and US West(Oregon)
 * **Zones:** eu-west-3a, ap-south-1a and us-west-2a
 
-```.sh
+```sh
 ./bin/yb-ctl --rf 3 create --placement_info "cloud1.region1.zone1,cloud2.region2.zone2,cloud3.region3.zone3"
 ```
 
 For Example:
-```.sh
+```sh
 ./bin/yb-ctl --rf 3 create --placement_info "aws.us-west-2.us-west-2a,aws.ap-south-1.ap-south-1a,aws.eu-west-3.eu-west-3a"
 ```
 
@@ -247,21 +247,21 @@ CREATE TABLE transactions_us
 ### Steps to create Replication(Unidirectional):
 1. Collect child table UUIDs from source universe (partition tables, here transactions_eu, transactions_in and transactions_us) - these will be used while setting up replication. To collect table UUIDs, go to the `Tables` section in the Admin UI (127.0.0.1:7000).
 
-  ![xCluster_with_GP](docs/static/images/explore/yb_example_table_UUID.png)
+  ![xCluster_with_GP](docs/static/images/explore/yb_xcluster_table_uuids.png)
 
 2. Run the replication setup command for the source universe:
-    ```.sh
+    ```sh
     ./bin/yb-admin -master_addresses <consumer_master_addresses> \
-    setup_universe_replication <producer universe UUID>_<stream_name> \
+    setup_universe_replication <producer universe UUID>_<replication_stream_name> \
     <producer_master_addresses> <comma_separated_table_ids>
     ```
 
     For Example:
-    ```.sh
+    ```sh
     ./bin/yb-admin -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
-    setup_universe_replication e260b8b6-e89f-4505-bb8e-b31f74aa29f3_xClusterSetup1 \
+    setup_universe_replication 00000000-1111-2222-3333-444444444444_xClusterSetup1 \
     127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
-    000030a5000030008000000000004000,000030a5000030008000000000004005,dfef757c415c4b2cacc9315b8acb539a
+    000033e1000030008000000000004007,000033e100003000800000000000400d,000033e1000030008000000000004013
     ```
 3. Observe replication setup(`xClusterSetup1`) in Platform UI (At Replication tab in source universe and target universe)
 
