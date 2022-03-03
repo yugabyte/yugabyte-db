@@ -102,7 +102,7 @@ Debezium can generate events that represent transaction boundaries and that enri
 
 {{< note title="Note" >}}
 
-*Limits on when Debezium receives transaction metadata* 
+*Limits on when Debezium receives transaction metadata* <br/>
 Debezium registers and receives metadata only for transactions that occur after you deploy the connector. Metadata for transactions that occur before you deploy the connector is not available.
 
 {{< /note >}}
@@ -202,8 +202,6 @@ The YugabyteDB connector ensures that all Kafka Connect schema names adhere to t
 This can lead to unexpected conflicts if the logical server name, a schema name, or a table name contains invalid characters, and the only characters that distinguish names from one another are invalid and thus replaced with underscores.
 
 {{< /warning >}}
-
-create table customers (id serial primary key, name varchar(255), email text);
 
 ### *create* events
 
