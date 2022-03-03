@@ -538,6 +538,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
 
 
 class CreateRootVolumesMethod(AbstractInstancesMethod):
+    """Superclass for create root volumes.
+    """
     def __init__(self, base_command):
         super(CreateRootVolumesMethod, self).__init__(base_command, "create_root_volumes")
         self.create_method = CreateInstancesMethod(self.base_command)
@@ -567,6 +569,19 @@ class CreateRootVolumesMethod(AbstractInstancesMethod):
 
         logging.info("==> Created volumes {}".format(output))
         print(json.dumps(output))
+
+
+class DeleteRootVolumesMethod(AbstractInstancesMethod):
+    """Superclass for deleting root volumes.
+    """
+    def __init__(self, base_command):
+        super(DeleteRootVolumesMethod, self).__init__(base_command, "delete_root_volumes")
+
+    def delete_volumes(self, tags):
+        pass
+
+    def callback(self, args):
+        self.delete_volumes(args)
 
 
 class ListInstancesMethod(AbstractInstancesMethod):

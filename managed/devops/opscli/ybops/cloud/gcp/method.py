@@ -14,7 +14,8 @@ from ybops.cloud.common.method import (AbstractInstancesMethod, AbstractAccessMe
                                        AbstractMethod, UpdateMountedDisksMethod,
                                        ChangeInstanceTypeMethod, CreateInstancesMethod,
                                        CreateRootVolumesMethod, DestroyInstancesMethod,
-                                       ProvisionInstancesMethod, ReplaceRootVolumeMethod)
+                                       ProvisionInstancesMethod, ReplaceRootVolumeMethod,
+                                       DeleteRootVolumesMethod)
 from ybops.cloud.gcp.utils import GCP_PERSISTENT, GCP_SCRATCH
 from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
 from ybops.utils import format_rsa_key, validated_key_file
@@ -93,6 +94,8 @@ class GcpProvisionInstancesMethod(ProvisionInstancesMethod):
 
 
 class GcpCreateRootVolumesMethod(CreateRootVolumesMethod):
+    """Subclass for creating root volumes in GCP.
+    """
     def __init__(self, base_command):
         super(GcpCreateRootVolumesMethod, self).__init__(base_command)
         self.create_method = GcpCreateInstancesMethod(base_command)
@@ -110,6 +113,16 @@ class GcpCreateRootVolumesMethod(CreateRootVolumesMethod):
         name = args.search_pattern[:63] if len(args.search_pattern) > 63 else args.search_pattern
         self.cloud.get_admin().delete_instance(
             args.region, args.zone, name, has_static_ip=args.assign_static_public_ip)
+
+
+class GcpDeleteRootVolumesMethod(DeleteRootVolumesMethod):
+    """Subclass for deleting root volumes in GCP.
+    """
+    def __init__(self, base_command):
+        super(GcpDeleteRootVolumesMethod, self).__init__(base_command)
+
+    def delete_volumes(self, args):
+        self.cloud.delete_volumes(args)
 
 
 class GcpDestroyInstancesMethod(DestroyInstancesMethod):

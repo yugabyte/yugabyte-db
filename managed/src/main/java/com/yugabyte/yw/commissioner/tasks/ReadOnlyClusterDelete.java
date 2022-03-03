@@ -80,7 +80,10 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
       createSetNodeStateTasks(nodesToBeRemoved, NodeDetails.NodeState.Removing)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
       createDestroyServerTasks(
-              nodesToBeRemoved, params().isForceDelete, true /* deleteNodeFromDB */)
+              nodesToBeRemoved,
+              params().isForceDelete,
+              true /* deleteNodeFromDB */,
+              true /* deleteRootVolumes */)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
       // Remove the cluster entry from the universe db entry.

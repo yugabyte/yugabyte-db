@@ -9,7 +9,7 @@
 from ybops.cloud.common.method import ListInstancesMethod, CreateInstancesMethod, \
     ProvisionInstancesMethod, DestroyInstancesMethod, AbstractMethod, \
     AbstractAccessMethod, AbstractNetworkMethod, AbstractInstancesMethod, \
-    DestroyInstancesMethod, AbstractInstancesMethod
+    DestroyInstancesMethod, AbstractInstancesMethod, DeleteRootVolumesMethod
 import logging
 import json
 import glob
@@ -246,3 +246,11 @@ class AzureTagsMethod(AbstractInstancesMethod):
 
     def callback(self, args):
         self.cloud.modify_tags(args)
+
+
+class AzureDeleteRootVolumesMethod(DeleteRootVolumesMethod):
+    def __init__(self, base_command):
+        super(AzureDeleteRootVolumesMethod, self).__init__(base_command)
+
+    def delete_volumes(self, args):
+        pass
