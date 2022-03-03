@@ -125,5 +125,9 @@ void YBTableName::set_table_id(const std::string& table_id) {
   table_id_ = table_id;
 }
 
+void YBTableName::set_pgschema_name(const std::string& pgschema_name) {
+  pgschema_name_ = pgschema_name;
+}
+
 } // namespace client
 } // namespace yb
