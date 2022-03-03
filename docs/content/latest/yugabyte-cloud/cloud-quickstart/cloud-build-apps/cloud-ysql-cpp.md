@@ -61,7 +61,7 @@ Build the application with gcc or clang.
 ```sh
 g++ -std=c++17 sample-app.cpp -o sample-app -lpqxx -lpq \
 -I<path-to-libpq>/libpq/include -I<path-to-libpqxx>/libpqxx/include \
--L<path-to-libpq>/libpq/lib -L<path-to-libpqxx>/libpqxx/lib 
+-L<path-to-libpq>/libpq/lib -L<path-to-libpqxx>/libpqxx/lib
 ```
 
 Replace `<path-to-libpq>` with the path to the libpq installation, and `<path-to-libpqxx>` with the path to the libpqxx installation; for example, `/usr/local/opt`.
@@ -146,7 +146,7 @@ The `selectAccounts` method queries your distributed data using the SQL `SELECT`
 res = txn.exec("SELECT name, age, country, balance FROM DemoAccount");
 
 for (auto row: res) {
-    std::cout 
+    std::cout
         << "name=" << row["name"].c_str() << ", "
         << "age=" << row["age"].as<int>() << ", "
         << "country=" << row["country"].c_str() << ", "
@@ -162,10 +162,10 @@ The `transferMoneyBetweenAccounts` method updates your data consistently with di
 try {
     pqxx::work txn(*conn);
 
-    txn.exec("UPDATE DemoAccount SET balance = balance -" + std::to_string(amount) 
+    txn.exec("UPDATE DemoAccount SET balance = balance -" + std::to_string(amount)
         + " WHERE name = \'Jessica\'");
 
-    txn.exec("UPDATE DemoAccount SET balance = balance +" + std::to_string(amount) 
+    txn.exec("UPDATE DemoAccount SET balance = balance +" + std::to_string(amount)
         + " WHERE name = \'John\'");
 
     txn.commit();
@@ -173,10 +173,10 @@ try {
     std::cout << ">>>> Transferred " << amount << " between accounts." << std::endl;
 } catch (pqxx::sql_error const &e) {
     if (e.sqlstate().compare("40001") == 0) {
-        std::cerr << "The operation is aborted due to a concurrent transaction that is modifying the same set of rows." 
+        std::cerr << "The operation is aborted due to a concurrent transaction that is modifying the same set of rows."
                     << "Consider adding retry logic for production-grade applications." << std::endl;
     }
-    throw e;   
+    throw e;
 }
 ```
 
@@ -186,7 +186,7 @@ try {
 
 [libpqxx driver](../../../../reference/drivers/ysql-client-drivers/#libpqxx)
 
-[Explore more applications](../../../cloud-examples)
+[Explore more applications](../../../cloud-examples/)
 
 [Deploy clusters in Yugabyte Cloud](../../../cloud-basics)
 

@@ -29,7 +29,7 @@ Like PostgreSQL, YugabyteDB provides security in multiple ways:
 * **Network access restriction** - limit connections to the database using RPC binding
 
 ## Authentication
- 
+
 Using client authentication, you can define how the database server establishes the identity of the client, and whether the client application (or the user who runs the client application) is allowed to connect with the database user name that was requested. YugabyteDB offers a number of different client authentication methods, all of which can be configured using the YB-TServer [`--ysql_hba_conf_csv`](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv) configuration flag.
 
 The methods include the following:
@@ -50,13 +50,13 @@ You can choose the method to use to authenticate a particular client connection 
 
 YugabyteDB stores authentication credentials internally in the YB-Master system tables. The authentication mechanisms available to clients depend on what is supported and exposed by the YSQL, YCQL, and YEDIS APIs.
 
-Read more about [how to enable authentication in YugabyteDB](../../../secure/authentication).
+Read more about [how to enable authentication in YugabyteDB](../../../secure/authentication/).
 
 ## Authorization
 
-YugabyteDB provides role-based access control (RBAC), consisting of a collection of privileges on resources given to roles. 
+YugabyteDB provides role-based access control (RBAC), consisting of a collection of privileges on resources given to roles.
 
-Read more about [authorization in YugabyteDB](../../../secure/authorization).
+Read more about [authorization in YugabyteDB](../../../secure/authorization/).
 
 ### Roles
 
@@ -149,7 +149,7 @@ Server-to-server encryption is enabled using the `--use_node_to_node_encryption`
 
 Client-to-server encryption requires that server-to-server encryption be enabled, and is enabled using the `--use_client_to_server_encryption` flag.
 
-Read more about enabling [Encryption in transit](../../../secure/tls-encryption) in YugabyteDB.
+Read more about enabling [Encryption in transit](../../../secure/tls-encryption/) in YugabyteDB.
 
 ### Encryption at rest
 
@@ -167,7 +167,7 @@ To encrypt column data, you use the `PGP_SYM_ENCRYPT` function when inserting da
 yugabyte=# insert into employees values (1, 'joe', '56 grove st',  20000, PGP_SYM_ENCRYPT('AC-22001', 'AES_KEY'));
 ```
 
-Read more about enabling [column-level encryption](../../../secure/column-level-encryption) in YugabyteDB.
+Read more about enabling [column-level encryption](../../../secure/column-level-encryption/) in YugabyteDB.
 
 ## Auditing
 
@@ -175,7 +175,7 @@ Use audit logging to produce audit logs needed to comply with government, financ
 
 You enable audit logging using the `--ysql_pg_conf` TServer flag.
 
-Read more about [audit logging](../../../secure/audit-logging) in YugabyteDB.
+Read more about [audit logging](../../../secure/audit-logging/) in YugabyteDB.
 
 ### Session logging
 
@@ -195,7 +195,7 @@ Object logging logs statements that affect a particular relation, and is intende
 
 YugabyteDB implements object-level audit logging by reusing the PostgreSQL role system. The `pgaudit.role` setting defines the role that will be used for audit logging. A relation (such as `TABLE` or `VIEW`) will be audit logged when the audit role has permissions for the command executed or inherits the permissions from another role. This allows you to effectively have multiple audit roles even though there is a single master role in any context.
 
-For example, to enable object logging for the `auditor` role: 
+For example, to enable object logging for the `auditor` role:
 
 ```sql
 yugabyte=# set pgaudit.role = 'auditor';

@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The [start page](../../../type_datetime) of the overall _date-time_ section explains why _timetz_ is not covered. So there are five _date-time_ data types to consider here and therefore twenty-five overloads to test. The following code implements all of the tests. The design of the code (it tests the legal subtractions and the illegal subtractions separately) was informed by _ad hoc_ tests during its development.
+The [start page](../../../type_datetime/) of the overall _date-time_ section explains why _timetz_ is not covered. So there are five _date-time_ data types to consider here and therefore twenty-five overloads to test. The following code implements all of the tests. The design of the code (it tests the legal subtractions and the illegal subtractions separately) was informed by _ad hoc_ tests during its development.
 
 Try this:
 
@@ -195,22 +195,22 @@ This is the result:
  date-ts:           interval
  date-tstz:         interval
  date-interval:     timestamp without time zone
- 
+
  time-time:         interval
  time-interval:     time without time zone
- 
+
  ts-date:           interval
  ts-time:           timestamp without time zone
  ts-ts:             interval
  ts-tstz:           interval
  ts-interval:       timestamp without time zone
- 
+
  tstz-date:         interval
  tstz-time:         timestamp with time zone
  tstz-ts:           interval
  tstz-tstz:         interval
  tstz-interval:     timestamp with time zone
- 
+
  interval-time:     interval
  interval-interval: interval
 ```

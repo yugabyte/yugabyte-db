@@ -768,7 +768,7 @@ class CatalogManager :
   Result<TableDescription> DescribeTable(
       const TableInfoPtr& table_info, bool succeed_if_create_in_progress);
 
-  Result<std::string> GetPgSchemaName(const TableInfoPtr& table_info);
+  Result<std::string> GetPgSchemaName(const TableInfoPtr& table_info) REQUIRES_SHARED(mutex_);
 
   void AssertLeaderLockAcquiredForReading() const override {
     leader_lock_.AssertAcquiredForReading();
@@ -1280,6 +1280,10 @@ class CatalogManager :
                                     const Status& s,
                                     CreateTableResponsePB* resp);
 
+  CHECKED_STATUS CreateTransactionStatusTablesForTablespaces(
+      const TablespaceIdToReplicationInfoMap& tablespace_info,
+      const TableToTablespaceIdMap& table_to_tablespace_map);
+
   void StartTablespaceBgTaskIfStopped();
 
   std::shared_ptr<YsqlTablespaceManager> GetTablespaceManager() const;
@@ -1532,6 +1536,9 @@ class CatalogManager :
       GUARDED_BY(mutex_);
 
   std::unordered_map<TablegroupId, scoped_refptr<TablegroupInfo>> tablegroup_ids_map_
+      GUARDED_BY(mutex_);
+
+  std::unordered_map<TableId, TableId> matview_pg_table_ids_map_
       GUARDED_BY(mutex_);
 
   boost::optional<std::future<Status>> initdb_future_;

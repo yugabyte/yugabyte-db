@@ -3,8 +3,6 @@ title: Benchmark scaling YSQL queries
 headerTitle: Scaling YSQL queries
 linkTitle: Scaling queries
 description: Benchmark scaling YSQL queries in YugabyteDB
-aliases:
-  - /latest/benchmark/scalability/scaling-queries/
 menu:
   latest:
     identifier: scaling-queries-1-ysql
@@ -18,14 +16,14 @@ isTocNested: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/benchmark/scalability/scaling-queries-ysql" class="nav-link active">
+    <a href="../scaling-queries-ysql/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/benchmark/scalability/scaling-queries-ycql" class="nav-link">
+    <a href="../scaling-queries-ycql/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>

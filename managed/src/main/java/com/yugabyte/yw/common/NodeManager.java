@@ -678,7 +678,10 @@ public class NodeManager extends DevopsBase {
   }
 
   private Map<String, String> getMasterDefaultGFlags(
-      AnsibleConfigureServers.Params taskParam, Boolean useHostname, Boolean useSecondaryIp) {
+      AnsibleConfigureServers.Params taskParam,
+      Boolean useHostname,
+      Boolean useSecondaryIp,
+      Boolean isDualNet) {
     Map<String, String> gflags = new HashMap<>();
     Universe universe = Universe.getOrBadRequest(taskParam.universeUUID);
     NodeDetails node = universe.getNode(taskParam.nodeName);
@@ -710,6 +713,8 @@ public class NodeManager extends DevopsBase {
           String.format("%s:%s", node.cloudInfo.secondary_private_ip, node.masterRpcPort);
       String bindAddresses = bindAddressSecondary + "," + bindAddressPrimary;
       gflags.put("rpc_bind_addresses", bindAddresses);
+    } else if (isDualNet) {
+      gflags.put("use_private_ip", "cloud");
     }
 
     gflags.put("webserver_port", Integer.toString(node.masterHttpPort));
@@ -813,7 +818,8 @@ public class NodeManager extends DevopsBase {
       extra_gflags.putAll(
           getTServerDefaultGflags(taskParam, useHostname, useSecondaryIp, isDualNet));
     } else {
-      extra_gflags.putAll(getMasterDefaultGFlags(taskParam, useHostname, useSecondaryIp));
+      extra_gflags.putAll(
+          getMasterDefaultGFlags(taskParam, useHostname, useSecondaryIp, isDualNet));
     }
 
     UserIntent userIntent = getUserIntentFromParams(taskParam);
