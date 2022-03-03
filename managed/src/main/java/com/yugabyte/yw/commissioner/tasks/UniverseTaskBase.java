@@ -666,9 +666,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param nodes : a collection of nodes that need to be removed
    * @param isForceDelete if this is true, ignore ansible errors
    * @param deleteNode if true, the node info is deleted from the universe db.
+   * @param deleteRootVolumes if true, the volumes are deleted.
    */
   public SubTaskGroup createDestroyServerTasks(
-      Collection<NodeDetails> nodes, boolean isForceDelete, boolean deleteNode) {
+      Collection<NodeDetails> nodes,
+      boolean isForceDelete,
+      boolean deleteNode,
+      boolean deleteRootVolumes) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleDestroyServers", executor);
     for (NodeDetails node : nodes) {
       // Check if the private ip for the node is set. If not, that means we don't have
@@ -708,6 +712,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       params.isForceDelete = isForceDelete;
       // Flag to track if node info should be deleted from universe db.
       params.deleteNode = deleteNode;
+      // Flag to track if volumes should be deleted from universe.
+      params.deleteRootVolumes = deleteRootVolumes;
       // Add the instance type
       params.instanceType = node.cloudInfo.instance_type;
       // Assign the node IP to ensure deletion of the correct node.

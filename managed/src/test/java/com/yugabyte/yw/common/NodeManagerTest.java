@@ -149,6 +149,7 @@ public class NodeManagerTest extends FakeDBApplication {
           "--skip_cert_validation");
 
   private class TestData {
+    public final Customer customer;
     public final Common.CloudType cloudType;
     public final PublicCloudConstants.StorageType storageType;
     public final Provider provider;
@@ -161,7 +162,12 @@ public class NodeManagerTest extends FakeDBApplication {
     public final String NewInstanceType = "test-c5.2xlarge";
 
     public TestData(
-        Provider p, Common.CloudType cloud, PublicCloudConstants.StorageType storageType, int idx) {
+        Customer customer,
+        Provider p,
+        Common.CloudType cloud,
+        PublicCloudConstants.StorageType storageType,
+        int idx) {
+      this.customer = customer;
       cloudType = cloud;
       this.storageType = storageType;
       provider = p;
@@ -203,11 +209,13 @@ public class NodeManagerTest extends FakeDBApplication {
     List<TestData> testDataList = new ArrayList<>();
     Provider provider = ModelFactory.newProvider(customer, cloud);
     if (cloud.equals(Common.CloudType.aws)) {
-      testDataList.add(new TestData(provider, cloud, PublicCloudConstants.StorageType.GP2, 1));
+      testDataList.add(
+          new TestData(customer, provider, cloud, PublicCloudConstants.StorageType.GP2, 1));
     } else if (cloud.equals(Common.CloudType.gcp)) {
-      testDataList.add(new TestData(provider, cloud, PublicCloudConstants.StorageType.IO1, 2));
+      testDataList.add(
+          new TestData(customer, provider, cloud, PublicCloudConstants.StorageType.IO1, 2));
     } else {
-      testDataList.add(new TestData(provider, cloud, null, 3));
+      testDataList.add(new TestData(customer, provider, cloud, null, 3));
     }
     return testDataList;
   }
@@ -660,13 +668,30 @@ public class NodeManagerTest extends FakeDBApplication {
     return nodeCommand(type, params, testData, new UserIntent());
   }
 
-  void addAdditionalInstanceTags(NodeTaskParams nodeTaskParam, Map<String, String> tags) {
-    if (nodeTaskParam.nodeUuid != null) {
-      tags.put("node-uuid", nodeTaskParam.nodeUuid.toString());
+  private void addInstanceTags(
+      TestData testData,
+      NodeTaskParams nodeTaskParam,
+      Map<String, String> customTags,
+      List<String> commandArgs) {
+    if (testData.cloudType != Common.CloudType.onprem) {
+      Map<String, String> instanceTags =
+          (nodeTaskParam.clusters.isEmpty() || nodeTaskParam.clusters.get(0) == null)
+              ? new TreeMap<>()
+              : new TreeMap<>(nodeTaskParam.clusters.get(0).userIntent.instanceTags);
+      if (customTags != null) {
+        instanceTags.putAll(customTags);
+      }
+      addAdditionalInstanceTags(testData, nodeTaskParam, instanceTags);
+      commandArgs.add("--instance_tags");
+      commandArgs.add(Json.stringify(Json.toJson(instanceTags)));
     }
-    if (nodeTaskParam.universeUUID != null) {
-      tags.put("universe-uuid", nodeTaskParam.universeUUID.toString());
-    }
+  }
+
+  void addAdditionalInstanceTags(
+      TestData testData, NodeTaskParams nodeTaskParam, Map<String, String> tags) {
+    tags.put("customer-uuid", testData.customer.uuid.toString());
+    tags.put("universe-uuid", nodeTaskParam.universeUUID.toString());
+    tags.put("node-uuid", nodeTaskParam.nodeUuid.toString());
   }
 
   private List<String> nodeCommand(
@@ -676,7 +701,6 @@ public class NodeManagerTest extends FakeDBApplication {
       UserIntent userIntent) {
     Common.CloudType cloud = testData.cloudType;
     List<String> expectedCommand = new ArrayList<>();
-
     expectedCommand.add("instance");
     expectedCommand.add(type.toString().toLowerCase());
     switch (type) {
@@ -716,13 +740,7 @@ public class NodeManagerTest extends FakeDBApplication {
           if (createParams.assignPublicIP) {
             expectedCommand.add("--assign_public_ip");
           }
-          Map<String, String> instanceTags =
-              (createParams.clusters.isEmpty() || createParams.clusters.get(0) == null)
-                  ? new TreeMap<>()
-                  : new TreeMap<>(createParams.clusters.get(0).userIntent.instanceTags);
-          addAdditionalInstanceTags(createParams, instanceTags);
-          expectedCommand.add("--instance_tags");
-          expectedCommand.add(Json.stringify(Json.toJson(instanceTags)));
+          addInstanceTags(testData, params, null, expectedCommand);
         }
 
         if (cloud.equals(Common.CloudType.aws)) {
@@ -971,17 +989,7 @@ public class NodeManagerTest extends FakeDBApplication {
       case Tags:
         InstanceActions.Params tagsParams = (InstanceActions.Params) params;
         if (Provider.InstanceTagsEnabledProviders.contains(cloud)) {
-          Map<String, String> instanceTags =
-              (tagsParams.clusters.isEmpty() || tagsParams.clusters.get(0) == null)
-                  ? new TreeMap<>()
-                  : new TreeMap<>(tagsParams.clusters.get(0).userIntent.instanceTags);
-
-          instanceTags.put("Cust", "Test");
-          addAdditionalInstanceTags(tagsParams, instanceTags);
-
-          expectedCommand.add("--instance_tags");
-          expectedCommand.add(Json.stringify(Json.toJson(instanceTags)));
-
+          addInstanceTags(testData, params, ImmutableMap.of("Cust", "Test"), expectedCommand);
           if (!tagsParams.deleteTags.isEmpty()) {
             expectedCommand.add("--remove_tags");
             expectedCommand.add(tagsParams.deleteTags);
@@ -997,6 +1005,11 @@ public class NodeManagerTest extends FakeDBApplication {
         ChangeInstanceType.Params citTaskParams = (ChangeInstanceType.Params) params;
         expectedCommand.add("--instance_type");
         expectedCommand.add(citTaskParams.instanceType);
+        break;
+      case Delete_Root_Volumes:
+        if (Provider.InstanceTagsEnabledProviders.contains(cloud)) {
+          addInstanceTags(testData, params, null, expectedCommand);
+        }
         break;
     }
     if (params.deviceInfo != null) {
@@ -1054,7 +1067,6 @@ public class NodeManagerTest extends FakeDBApplication {
         }
       }
     }
-
     expectedCommand.add(params.nodeName);
     return expectedCommand;
   }
@@ -3270,6 +3282,23 @@ public class NodeManagerTest extends FakeDBApplication {
         cert.getCustomCertInfo().nodeKeyPath,
         "--skip_cert_validation",
         "HOSTNAME");
+  }
+
+  @Test
+  public void testDeleteRootVolumes() {
+    for (TestData t : testData) {
+      NodeTaskParams params = new NodeTaskParams();
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+      List<String> expectedCommand = new ArrayList<>(t.baseCommand);
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Delete_Root_Volumes, params, t));
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Delete_Root_Volumes, params);
+      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+    }
   }
 
   private void checkArguments(

@@ -46,6 +46,7 @@ import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.CertificateInfo.Type;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
@@ -62,6 +63,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -117,7 +119,8 @@ public class NodeManager extends DevopsBase {
     Pause,
     Resume,
     Create_Root_Volumes,
-    Replace_Root_Volume
+    Replace_Root_Volume,
+    Delete_Root_Volumes
   }
 
   public enum CertRotateAction {
@@ -143,7 +146,11 @@ public class NodeManager extends DevopsBase {
   private UserIntent getUserIntentFromParams(Universe universe, NodeTaskParams nodeTaskParam) {
     NodeDetails nodeDetails = universe.getNode(nodeTaskParam.nodeName);
     if (nodeDetails == null) {
-      nodeDetails = universe.getUniverseDetails().nodeDetailsSet.iterator().next();
+      Iterator<NodeDetails> nodeIter = universe.getUniverseDetails().nodeDetailsSet.iterator();
+      if (!nodeIter.hasNext()) {
+        throw new RuntimeException("No node is found in universe " + universe.name);
+      }
+      nodeDetails = nodeIter.next();
       LOG.info("Node {} not found, so using {}.", nodeTaskParam.nodeName, nodeDetails.nodeName);
     }
     return universe.getUniverseDetails().getClusterByUuid(nodeDetails.placementUuid).userIntent;
@@ -1216,13 +1223,31 @@ public class NodeManager extends DevopsBase {
         Collections.emptyMap());
   }
 
+  private void addInstanceTags(
+      Universe universe,
+      UserIntent userIntent,
+      NodeTaskParams nodeTaskParam,
+      List<String> commandArgs) {
+    if (Provider.InstanceTagsEnabledProviders.contains(userIntent.providerType)) {
+      // Create an ordered shallow copy of the tags.
+      Map<String, String> useTags =
+          MapUtils.isEmpty(userIntent.instanceTags)
+              ? new TreeMap<>()
+              : new TreeMap<>(userIntent.getInstanceTagsForInstanceOps());
+      addAdditionalInstanceTags(universe, nodeTaskParam, useTags);
+      if (!useTags.isEmpty()) {
+        commandArgs.add("--instance_tags");
+        commandArgs.add(Json.stringify(Json.toJson(useTags)));
+      }
+    }
+  }
+
   public ShellResponse nodeCommand(NodeCommandType type, NodeTaskParams nodeTaskParam) {
     Universe universe = Universe.getOrBadRequest(nodeTaskParam.universeUUID);
     List<String> commandArgs = new ArrayList<>();
     UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
     Path bootScriptFile = null;
     Map<String, String> sensitiveData = new HashMap<>();
-
     switch (type) {
       case Replace_Root_Volume:
         if (!(nodeTaskParam instanceof ReplaceRootVolume.Params)) {
@@ -1322,20 +1347,7 @@ public class NodeManager extends DevopsBase {
               commandArgs.add("--assign_static_public_ip");
             }
           }
-
-          if (Provider.InstanceTagsEnabledProviders.contains(cloudType)) {
-            // Create an ordered shallow copy of the tags.
-            Map<String, String> useTags =
-                MapUtils.isEmpty(userIntent.instanceTags)
-                    ? new TreeMap<>()
-                    : new TreeMap<>(userIntent.getInstanceTagsForInstanceOps());
-            addAdditionalInstanceTags(nodeTaskParam, useTags);
-            if (!useTags.isEmpty()) {
-              commandArgs.add("--instance_tags");
-              commandArgs.add(Json.stringify(Json.toJson(useTags)));
-            }
-          }
-
+          addInstanceTags(universe, userIntent, nodeTaskParam, commandArgs);
           if (cloudType.equals(Common.CloudType.aws)) {
             if (taskParam.cmkArn != null) {
               commandArgs.add("--cmk_res_name");
@@ -1567,13 +1579,7 @@ public class NodeManager extends DevopsBase {
             if (MapUtils.isEmpty(userIntent.instanceTags)) {
               throw new RuntimeException("Invalid instance tags");
             }
-            // Create an ordered shallow copy of the tags.
-            Map<String, String> useTags = new TreeMap<>(userIntent.getInstanceTagsForInstanceOps());
-            addAdditionalInstanceTags(nodeTaskParam, useTags);
-            if (!useTags.isEmpty()) {
-              commandArgs.add("--instance_tags");
-              commandArgs.add(Json.stringify(Json.toJson(useTags)));
-            }
+            addInstanceTags(universe, userIntent, nodeTaskParam, commandArgs);
             if (!taskParam.deleteTags.isEmpty()) {
               commandArgs.add("--remove_tags");
               commandArgs.add(taskParam.deleteTags);
@@ -1668,6 +1674,11 @@ public class NodeManager extends DevopsBase {
             commandArgs.add(skipType.name());
           }
 
+          break;
+        }
+      case Delete_Root_Volumes:
+        {
+          addInstanceTags(universe, userIntent, nodeTaskParam, commandArgs);
           break;
         }
     }
@@ -1775,13 +1786,22 @@ public class NodeManager extends DevopsBase {
     return lowMemInstanceTypePrefixes.contains(instanceTypePrefix);
   }
 
-  private void addAdditionalInstanceTags(NodeTaskParams nodeTaskParam, Map<String, String> tags) {
-    if (nodeTaskParam.nodeUuid != null) {
-      tags.put("node-uuid", nodeTaskParam.nodeUuid.toString());
+  private void addAdditionalInstanceTags(
+      Universe universe, NodeTaskParams nodeTaskParam, Map<String, String> tags) {
+    Customer customer = Customer.get(universe.customerId);
+    tags.put("customer-uuid", customer.uuid.toString());
+    tags.put("universe-uuid", universe.universeUUID.toString());
+    if (nodeTaskParam.nodeUuid == null) {
+      NodeDetails nodeDetails = universe.getNode(nodeTaskParam.nodeName);
+      if (nodeDetails != null) {
+        nodeTaskParam.nodeUuid = nodeDetails.nodeUuid;
+      }
     }
-    if (nodeTaskParam.universeUUID != null) {
-      tags.put("universe-uuid", nodeTaskParam.universeUUID.toString());
+    if (nodeTaskParam.nodeUuid == null) {
+      // This is for backward compatibility where node UUID is not set in the Universe.
+      nodeTaskParam.nodeUuid = Util.generateNodeUUID(universe.universeUUID, nodeTaskParam.nodeName);
     }
+    tags.put("node-uuid", nodeTaskParam.nodeUuid.toString());
   }
 
   private Map<String, String> getReleaseSensitiveData(AnsibleConfigureServers.Params taskParam) {
