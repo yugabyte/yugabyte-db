@@ -40,6 +40,12 @@ showAsideToc: true
     </a>
   </li>
   <li>
+    <a href="../ysql-ebeans/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - Ebeans
+    </a>
+  </li>
+  <li>
     <a href="../ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
@@ -172,7 +178,7 @@ public class YBCqlHelloWorld {
 
       // Insert a row.
       String insert = "INSERT INTO ybdemo.employee (id, name, age, language)" +
-                                          " VALUES (1, 'John', 35, 'Java');"; 
+                                          " VALUES (1, 'John', 35, 'Java');";
       ResultSet insertResult = session.execute(insert);
       System.out.println("Inserted data: " + insert);
 

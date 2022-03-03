@@ -204,7 +204,7 @@ ysql_entityframework=# SELECT count(*) FROM orders;
 
 ### Using the REST API
 
-Verify the users, products, and orders created in the `ysql_entityframework` database from the REST API server.
+To use the REST API server to verify that the users, products, and orders were created in the `ysql_entityframework` database, enter the following commands. The results are output in JSON format.
 
 ```sh
 $ curl http://localhost:8080/users
