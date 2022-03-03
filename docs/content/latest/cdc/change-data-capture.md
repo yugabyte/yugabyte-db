@@ -68,6 +68,14 @@ As of the current implementation: if you want to use CDC, you need to use Debezi
 
 {{< /note >}}
 
+{{< warning title="Warning" >}}
+
+Do note that we do NOT support DROP TABLE and TRUNCATE TABLE commands yet, the behavior of these commands while streaming data from CDC is not defined. If dropping or truncating a table is necessarily needed, delete the stream ID using [yb-admin](../admin/yb-admin.md/../../cdc/change-data-capture.md).<br/><br/>
+
+See [limitations](#limitations) to see what else is not supported currently.
+
+{{< /warning >}}
+
 ### yb-admin commands for Change Data Capture
 
 The commands used to manipulate CDC DB streams can be found under the [yb-admin](../admin/yb-admin.md#change-data-capture-cdc-commands).
