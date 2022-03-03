@@ -137,6 +137,7 @@ message PgCreateColumnPB {
   bool is_hash = 4;
   bool is_range = 5;
   int32 sorting_type = 6;
+  int32 attr_pgoid = 7;
 }
 
 message PgCreateSplitBoundaryPB {
@@ -166,6 +167,7 @@ message PgCreateTableRequestPB {
   bool skip_index_backfill = 17;
 
   PgObjectIdPB matview_pg_table_oid = 18;
+  string schema_name = 19;
 }
 
 message PgCreateTableResponsePB {

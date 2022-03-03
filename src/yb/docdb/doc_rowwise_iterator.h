@@ -68,8 +68,7 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
   virtual ~DocRowwiseIterator();
 
   // Init scan iterator.
-  CHECKED_STATUS Init(TableType table_type);
-
+  CHECKED_STATUS Init(TableType table_type, const Slice& sub_doc_key = Slice());
   // Init QL read scan.
   CHECKED_STATUS Init(const QLScanSpec& spec);
   CHECKED_STATUS Init(const PgsqlScanSpec& spec);

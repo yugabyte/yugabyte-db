@@ -39,5 +39,9 @@ static const std::string kCDCErrorCategoryName = "CDC error";
 static StatusCategoryRegisterer cdc_error_category_registerer(
     StatusCategoryDescription::Make<CDCErrorTag>(&kCDCErrorCategoryName));
 
+void SetupError(::yb::cdc::CDCErrorPB* error, const Status& status) {
+  StatusToPB(status, error->mutable_status());
+}
+
 } // namespace cdc
 } // namespace yb

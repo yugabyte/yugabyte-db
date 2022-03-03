@@ -980,8 +980,11 @@ TEST_F_EX(QLStressTest, LongRemoteBootstrap, QLStressTestLongRemoteBootstrap) {
 
     // Check that first log was garbage collected, so remote bootstrap will be required.
     consensus::ReplicateMsgs replicates;
+    int64_t starting_op_segment_seq_num;
+    yb::SchemaPB schema;
+    uint32_t schema_version;
     return !leaders.front()->log()->GetLogReader()->ReadReplicatesInRange(
-        100, 101, 0, &replicates).ok();
+        100, 101, 0, &replicates, &starting_op_segment_seq_num, &schema, &schema_version).ok();
   }, 30s, "Logs cleaned"));
 
   LOG(INFO) << "Bring replica back, keys written: " << key.load(std::memory_order_acquire);

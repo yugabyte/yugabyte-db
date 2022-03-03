@@ -40,6 +40,7 @@
 #include "yb/util/enums.h"
 #include "yb/util/math_util.h"
 #include "yb/util/opid.h"
+#include "yb/util/opid.pb.h"
 
 namespace rocksdb {
 
@@ -82,6 +83,11 @@ struct TransactionApplyData {
 
 struct RemoveIntentsData {
   OpId op_id;
+  HybridTime log_ht;
+};
+
+struct GetIntentsData {
+  OpIdPB op_id;
   HybridTime log_ht;
 };
 

@@ -44,10 +44,12 @@ void AssertIntKey(const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>&
 
 void CreateCDCStream(const std::unique_ptr<CDCServiceProxy>& cdc_proxy,
                      const TableId& table_id,
-                     CDCStreamId* stream_id) {
+                     CDCStreamId* stream_id,
+                     cdc::CDCRequestSource source_type) {
   CreateCDCStreamRequestPB req;
   CreateCDCStreamResponsePB resp;
   req.set_table_id(table_id);
+  req.set_source_type(source_type);
 
   rpc::RpcController rpc;
   ASSERT_OK(cdc_proxy->CreateCDCStream(req, &resp, &rpc));

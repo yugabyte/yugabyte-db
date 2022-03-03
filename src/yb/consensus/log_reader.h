@@ -107,17 +107,25 @@ class LogReader {
   // all, then will read exactly one operation.
   //
   // Requires that a LogIndex was passed into LogReader::Open().
+  // The parameters starting_op_segment_seq_num, modified_schema, schema_version are used to read
+  // appropriate schema corresponding to the from_op_id in the segment header or from the segment
+  // itself if there is a DDL log
   CHECKED_STATUS ReadReplicatesInRange(
       const int64_t starting_at,
       const int64_t up_to,
       int64_t max_bytes_to_read,
       consensus::ReplicateMsgs* replicates,
+      int64_t *starting_op_segment_seq_num,
+      yb::SchemaPB* modified_schema,
+      uint32_t *schema_version,
       CoarseTimePoint deadline = CoarseTimePoint::max()) const;
+
   static const int64_t kNoSizeLimit;
 
   // Look up the OpId for the given operation index.
   // Returns a bad Status if the log index fails to load (eg. due to an IO error).
   Result<yb::OpId> LookupOpId(int64_t op_index) const;
+  Result<int64_t> LookupHeader(int64_t op_index) const;
 
   // Returns the number of segments.
   size_t num_segments() const;

@@ -552,7 +552,8 @@ class YBClient {
 
   // Retrieve a CDC stream.
   CHECKED_STATUS GetCDCStream(const CDCStreamId &stream_id,
-                              TableId* table_id,
+                              NamespaceId* ns_id,
+                              std::vector<TableId>* table_ids,
                               std::unordered_map<std::string, std::string>* options);
 
   void GetCDCStream(const CDCStreamId& stream_id,

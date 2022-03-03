@@ -59,17 +59,30 @@ struct StreamMetadata {
   }
 };
 
-CHECKED_STATUS GetChanges(const std::string& stream_id,
-                          const std::string& tablet_id,
-                          const OpId& op_id,
-                          const StreamMetadata& record,
-                          const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-                          const std::shared_ptr<MemTracker>& mem_tracker,
-                          consensus::ReplicateMsgsHolder* msgs_holder,
-                          GetChangesResponsePB* resp,
-                          int64_t* last_readable_opid_index = nullptr,
-                          const CoarseTimePoint deadline = CoarseTimePoint::max());
+CHECKED_STATUS GetChangesForCDCSDK(const std::string& stream_id,
+                                   const std::string& tablet_id,
+                                   const CDCSDKCheckpointPB& op_id,
+                                   const StreamMetadata& record,
+                                   const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+                                   const std::shared_ptr<MemTracker>& mem_tracker,
+                                   consensus::ReplicateMsgsHolder* msgs_holder,
+                                   GetChangesResponsePB* resp,
+                                   std::string* commit_timestamp,
+                                   std::shared_ptr<Schema>* cached_schema,
+                                   OpId* last_streamed_op_id,
+                                   int64_t* last_readable_opid_index = nullptr,
+                                   const CoarseTimePoint deadline = CoarseTimePoint::max());
 
+CHECKED_STATUS GetChangesForXCluster(const std::string& stream_id,
+                                     const std::string& tablet_id,
+                                     const OpId& op_id,
+                                     const StreamMetadata& record,
+                                     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+                                     const std::shared_ptr<MemTracker>& mem_tracker,
+                                     consensus::ReplicateMsgsHolder* msgs_holder,
+                                     GetChangesResponsePB* resp,
+                                     int64_t* last_readable_opid_index = nullptr,
+                                     const CoarseTimePoint deadline = CoarseTimePoint::max());
 }  // namespace cdc
 }  // namespace yb
 

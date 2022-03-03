@@ -48,6 +48,8 @@
 
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/log_fwd.h"
+#include "yb/consensus/log_util.h"
+#include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_types.pb.h"
 
 #include "yb/gutil/macros.h"
@@ -73,6 +75,8 @@ class ReplicateMsg;
 struct ReadOpsResult {
   ReplicateMsgs messages;
   yb::OpId preceding_op;
+  yb::SchemaPB header_schema;
+  uint32_t header_schema_version;
   bool have_more_messages = false;
   int64_t read_from_disk_size = 0;
 };

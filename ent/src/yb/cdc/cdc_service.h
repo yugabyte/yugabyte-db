@@ -21,7 +21,6 @@
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/cdc/cdc_service.service.h"
 #include "yb/cdc/cdc_util.h"
-
 #include "yb/client/async_initializer.h"
 
 #include "yb/common/schema.h"
@@ -118,6 +117,8 @@ class CDCServiceImpl : public CDCServiceIf {
                           GetCDCDBStreamInfoResponsePB* resp,
                           rpc::RpcContext context) override;
 
+  Result<SetCDCCheckpointResponsePB> SetCDCCheckpoint(
+      const SetCDCCheckpointRequestPB& req, CoarseTimePoint deadline) override;
 
   void Shutdown() override;
 
@@ -125,6 +126,12 @@ class CDCServiceImpl : public CDCServiceIf {
   std::shared_ptr<CDCTabletMetrics> GetCDCTabletMetrics(
       const ProducerTabletInfo& producer,
       std::shared_ptr<tablet::TabletPeer> tablet_peer = nullptr);
+
+  void UpdateCDCTabletMetrics(const GetChangesResponsePB* resp,
+                              const ProducerTabletInfo& producer_tablet,
+                              const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+                              const OpId& op_id,
+                              int64_t last_readable_index);
 
   std::shared_ptr<CDCServerMetrics> GetCDCServerMetrics() {
     return server_metrics_;
@@ -147,6 +154,9 @@ class CDCServiceImpl : public CDCServiceIf {
   Result<std::vector<pair<std::string, std::string>>> GetDBStreamInfo(
           const std::string& db_stream_id,
           const client::YBSessionPtr& session);
+
+  Result<std::string> GetCdcStreamId(const ProducerTabletInfo& producer_tablet,
+                                     const std::shared_ptr<client::YBSession>& session);
 
   CHECKED_STATUS UpdateCheckpoint(const ProducerTabletInfo& producer_tablet,
                                   const OpId& sent_op_id,
@@ -193,7 +203,17 @@ class CDCServiceImpl : public CDCServiceIf {
 
   std::shared_ptr<CDCServiceProxy> GetCDCServiceProxy(client::internal::RemoteTabletServer* ts);
 
-  CHECKED_STATUS UpdatePeersCdcMinReplicatedIndex(const TabletId& tablet_id, int64_t min_index);
+  OpId GetMinSentCheckpointForTablet(const std::string& tablet_id);
+
+  std::shared_ptr<MemTracker> GetMemTracker(
+      const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+      const ProducerTabletInfo& producer_info);
+
+  OpId GetMinAppliedCheckpointForTablet(const std::string& tablet_id,
+                                        const client::YBSessionPtr& session);
+
+  CHECKED_STATUS UpdatePeersCdcMinReplicatedIndex(const TabletId& tablet_id, int64_t min_index,
+                                                  int64_t min_term = -1);
 
   void ComputeLagMetric(int64_t last_replicated_micros, int64_t metric_last_timestamp_micros,
                         int64_t cdc_state_last_replication_time_micros,

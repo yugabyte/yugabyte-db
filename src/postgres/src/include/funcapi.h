@@ -48,6 +48,44 @@ typedef struct AttInMetadata
 	int32	   *atttypmods;
 } AttInMetadata;
 
+/* This struct holds the info required to decode the values corresponding to various data types
+ * using the pg out functions*/
+typedef struct DatumDecodeOptions
+{
+  /* if the info is needed for decoding array types */
+  bool         is_array;
+
+  /* if the elem is passed by val, used by pg out function */
+  bool         elem_by_val;
+
+  /* used to make sure that the call is from yb layer. As of now it is true always */
+  bool         from_YB;
+
+  /* Alignment info used by pg out function */
+  char         elem_align;
+
+  /* Delimiter info used by pg out function */
+  char         elem_delim;
+
+  /* indicates if it is decoding is associated with range datatype */
+  char         option;
+
+  /* element length used by pg out function */
+  int16_t      elem_len;
+
+  /* data type corresponding to range */
+  int          range_type;
+
+  /* Fmgr info needed by the pg out function */
+  FmgrInfo*    elem_finfo;
+
+  /* Timezone info needed by pg out function in case of timezone associated data types */
+  const char*  timezone;
+
+  /* Used in case of range arrays to get pass the info needed to decode range data types*/
+  struct DatumDecodeOptions* range_datum_decode_options;
+} DatumDecodeOptions;
+
 /*-------------------------------------------------------------------------
  *		Support struct to ease writing Set Returning Functions (SRFs)
  *-------------------------------------------------------------------------

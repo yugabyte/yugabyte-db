@@ -25,8 +25,8 @@ set(CDC_SRCS_EXTENSIONS
   ${YB_ENT_CURRENT_SOURCE_DIR}/cdc_service.cc
   ${YB_ENT_CURRENT_SOURCE_DIR}/cdc_metrics.cc
   ${YB_ENT_CURRENT_SOURCE_DIR}/cdc_producer.cc
-  ${YB_ENT_CURRENT_SOURCE_DIR}/cdc_rpc.cc
-  ${YB_ENT_CURRENT_SOURCE_DIR}/cdc_error.cc)
+  ${YB_ENT_CURRENT_SOURCE_DIR}/cdcsdk_producer.cc
+  ${YB_ENT_CURRENT_SOURCE_DIR}/cdc_rpc.cc)
 
 ADD_YB_LIBRARY(
     cdc

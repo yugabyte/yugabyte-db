@@ -508,6 +508,11 @@ void RunningTransaction::SetApplyData(const docdb::ApplyTransactionState& apply_
   }
 }
 
+void RunningTransaction::SetOpId(const OpId& id) {
+  opId.index = id.index;
+  opId.term = id.term;
+}
+
 bool RunningTransaction::ProcessingApply() const {
   return processing_apply_.load(std::memory_order_acquire);
 }

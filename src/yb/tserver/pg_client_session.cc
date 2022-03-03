@@ -105,7 +105,8 @@ Status PgClientSession::AlterTable(
   }
   for (const auto& add_column : req.add_columns()) {
     auto yb_type = QLType::Create(static_cast<DataType>(add_column.attr_ybtype()));
-    alterer->AddColumn(add_column.attr_name())->Type(yb_type)->Order(add_column.attr_num());
+    alterer->AddColumn(add_column.attr_name())
+           ->Type(yb_type)->Order(add_column.attr_num())->PgTypeOid(add_column.attr_pgoid());
     // Do not set 'nullable' attribute as PgCreateTable::AddColumn() does not do it.
   }
   for (const auto& rename_column : req.rename_columns()) {

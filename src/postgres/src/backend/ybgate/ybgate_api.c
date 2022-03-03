@@ -31,6 +31,9 @@
 #include "utils/memutils.h"
 #include "utils/numeric.h"
 #include "utils/sampling.h"
+#include "utils/syscache.h"
+#include "utils/lsyscache.h"
+#include "funcapi.h"
 
 //-----------------------------------------------------------------------------
 // Memory Context
@@ -407,17 +410,323 @@ YbgStatus YbgSplitArrayDatum(uint64_t datum,
 	if (ARR_NDIM(arr) != 1 || ARR_HASNULL(arr) || ARR_ELEMTYPE(arr) != type)
 		return PG_STATUS(ERROR, "Type of given datum array does not match the given type");
 
-	int elmlen;
+	int32 elmlen;
 	bool elmbyval;
 	char elmalign;
 	/*
 	 * Ideally this information should come from pg_type or from caller instead of hardcoding
 	 * here. However this could be okay as PG also has this harcoded in few places.
 	 */
-	switch (type) {
+	switch (type)
+	{
 		case TEXTOID:
 			elmlen = -1;
 			elmbyval = false;
+			elmalign = 'i';
+			break;
+		case XMLOID:
+			elmlen = -1;
+			elmbyval = false;
+			elmalign = 'i';
+			break;
+		case LINEOID:
+			elmlen = -1;
+			elmbyval = false;
+			elmalign = 'i';
+			break;
+		case CIRCLEOID:
+			elmlen = -1;
+			elmbyval = false;
+			elmalign = 'i';
+			break;
+		case CASHOID:
+			elmlen = sizeof(int64);
+			elmbyval = true;
+			elmalign = 'i';
+			break;
+		case BOOLOID:
+			elmlen = sizeof(bool);
+			elmbyval = true;
+			elmalign = 'i';
+			break;
+		case BYTEAOID:
+			elmlen = -1;
+			elmbyval = false;
+			elmalign = 'i';
+			break;
+		case CHAROID:
+			elmlen = -1;
+			elmbyval = false;
+			elmalign = 'i';
+			break;
+		case NAMEOID:
+			elmlen = -1;
+			elmbyval = false;
+			elmalign = 'i';
+			break;
+		case INT2OID:
+			elmlen = 2;
+			elmbyval = true;
+			elmalign = 's';
+			break;
+		case INT2VECTOROID:
+			elmlen = -1;
+			elmbyval = false;
+			elmalign = 'i';
+			break;
+		case INT4OID:
+			elmlen = sizeof(int32);
+			elmbyval = true;
+			elmalign = 'i';
+			break;
+		case REGPROCOID:
+			elmlen = sizeof(Oid);
+			elmbyval = true;
+			elmalign = 'i';
+			break;
+		case OIDOID:
+			elmlen = sizeof(Oid);
+			elmbyval = true;
+			elmalign = 'i';
+			break;
+		case TIDOID:
+			elmlen = sizeof(ItemPointerData);
+			elmbyval = true;
+			elmalign = 'i';
+			break;
+		case XIDOID:
+			elmlen = sizeof(TransactionId);
+			elmbyval = true;
+			elmalign = 'i';
+			break;
+		case CIDOID:
+			elmlen = sizeof(CommandId);
+			elmbyval = true;
+			elmalign = 'i';
+			break;
+		case OIDVECTOROID:
+			elmlen = -1;
+			elmbyval = false;
+			elmalign = 'i';
+			break;
+		case BPCHAROID:
+			elmlen = -1;
+			elmbyval = false;
+			elmalign = 'i';
+			break;
+		case VARCHAROID:
+			elmlen = -1;
+			elmbyval = false;
+			elmalign = 'i';
+			break;
+		case INT8OID:
+			elmlen = sizeof(int64);
+			elmbyval = true;
+			elmalign = 'i';
+			break;
+		case POINTOID:
+			elmlen = -1;
+			elmbyval = false;
+			elmalign = 'i';
+			break;
+		case LSEGOID:
+			elmlen = -1;
+			elmbyval = false;
+			elmalign = 'i';
+			break;
+		case PATHOID:
+			elmlen = -1;
+			elmbyval = false;
+			elmalign = 'i';
+			break;
+		case BOXOID:
+			elmlen = -1;
+			elmbyval = false;
+			elmalign = 'i';
+			break;
+		case FLOAT4OID:
+			elmlen = sizeof(int64);
+			elmbyval = false;
+			elmalign = 'i';
+			break;
+		case FLOAT8OID:
+			elmlen = 8;
+			elmbyval = FLOAT8PASSBYVAL;
+			elmalign = 'd';
+			break;
+		case ABSTIMEOID:
+			elmlen = sizeof(int32);
+			elmbyval = true;
+			elmalign = 'i';
+			break;
+		case RELTIMEOID:
+			elmlen = -1;
+			elmbyval = false;
+			elmalign = 'i';
+			break;
+		case TINTERVALOID:
+			elmlen = -1;
+			elmbyval = false;
+			elmalign = 'i';
+			break;
+		case ACLITEMOID:
+			elmlen = sizeof(AclItem);
+			elmbyval = true;
+			elmalign = 'i';
+			break;
+		case MACADDROID:
+			elmlen = -1;
+			elmbyval = false;
+			elmalign = 'i';
+			break;
+		case MACADDR8OID:
+			elmlen = -1;
+			elmbyval = false;
+			elmalign = 'i';
+			break;
+		case INETOID:
+			elmlen = -1;
+			elmbyval = false;
+			elmalign = 'i';
+			break;
+		case CSTRINGOID:
+			elmlen = -1;
+			elmbyval = false;
+			elmalign = 'c';
+			break;
+		case TIMESTAMPOID:
+			elmlen = sizeof(int64);
+			elmbyval = true;
+			elmalign = 'i';
+			break;
+		case DATEOID:
+			elmlen = sizeof(int32);
+			elmbyval = true;
+			elmalign = 'i';
+			break;
+		case TIMEOID:
+			elmlen = sizeof(int64);
+			elmbyval = true;
+			elmalign = 'i';
+			break;
+		case TIMESTAMPTZOID:
+			elmlen = sizeof(int64);
+			elmbyval = true;
+			elmalign = 'i';
+			break;
+		case INTERVALOID:
+			elmlen = sizeof(Interval);
+			elmbyval = false;
+			elmalign = 'd';
+			break;
+		case NUMERICOID:
+			elmlen = -1;
+			elmbyval = false;
+			elmalign = 'i';
+			break;
+		case TIMETZOID:
+			elmlen = -1;
+			elmbyval = false;
+			elmalign = 'i';
+			break;
+		case BITOID:
+			elmlen = -1;
+			elmbyval = false;
+			elmalign = 'i';
+			break;
+		case VARBITOID:
+			elmlen = -1;
+			elmbyval = false;
+			elmalign = 'i';
+			break;
+		case REGPROCEDUREOID:
+			elmlen = sizeof(Oid);
+			elmbyval = true;
+			elmalign = 'i';
+			break;
+		case REGOPEROID:
+			elmlen = sizeof(Oid);
+			elmbyval = true;
+			elmalign = 'i';
+			break;
+		case REGOPERATOROID:
+			elmlen = sizeof(Oid);
+			elmbyval = true;
+			elmalign = 'i';
+			break;
+		case REGCLASSOID:
+			elmlen = sizeof(Oid);
+			elmbyval = true;
+			elmalign = 'i';
+			break;
+		case REGTYPEOID:
+			elmlen = sizeof(Oid);
+			elmbyval = true;
+			elmalign = 'i';
+			break;
+		case REGROLEOID:
+			elmlen = sizeof(Oid);
+			elmbyval = true;
+			elmalign = 'i';
+			break;
+		case REGNAMESPACEOID:
+			elmlen = sizeof(Oid);
+			elmbyval = true;
+			elmalign = 'i';
+			break;
+		case UUIDOID:
+			elmlen = -1;
+			elmbyval = false;
+			elmalign = 'i';
+			break;
+		case LSNOID:
+			elmlen = sizeof(uint64);
+			elmbyval = true;
+			elmalign = 'i';
+			break;
+		case TSVECTOROID:
+			elmlen = -1;
+			elmbyval = false;
+			elmalign = 'i';
+			break;
+		case GTSVECTOROID:
+			elmlen = -1;
+			elmbyval = false;
+			elmalign = 'i';
+			break;
+		case TSQUERYOID:
+			elmlen = -1;
+			elmbyval = false;
+			elmalign = 'i';
+			break;
+		case REGCONFIGOID:
+			elmlen = sizeof(Oid);
+			elmbyval = true;
+			elmalign = 'i';
+			break;
+		case REGDICTIONARYOID:
+			elmlen = sizeof(Oid);
+			elmbyval = true;
+			elmalign = 'i';
+			break;
+		case JSONBOID:
+			elmlen = -1;
+			elmbyval = false;
+			elmalign = 'i';
+			break;
+		case TXID_SNAPSHOTOID:
+			elmlen = -1;
+			elmbyval = false;
+			elmalign = 'i';
+			break;
+		case RECORDOID:
+			elmlen = -1;
+			elmbyval = false;
+			elmalign = 'i';
+			break;
+		case ANYOID:
+			elmlen = sizeof(int32);
+			elmbyval = true;
 			elmalign = 'i';
 			break;
 		/* TODO: Extend support to other types as well. */
@@ -468,4 +777,143 @@ YbgStatus YbgReservoirGetNextS(YbgReservoirState yb_rs, double t, int n, double 
 	PG_SETUP_ERROR_REPORTING();
 	*s = reservoir_get_next_S(&yb_rs->rs, t, n);
 	return PG_STATUS_OK;
+}
+
+char* DecodeDatum(char const* fn_name, uintptr_t datum)
+{
+	FmgrInfo   *finfo;
+	finfo = palloc0(sizeof(FmgrInfo));
+	Oid id = fmgr_internal_function(fn_name);
+	fmgr_info(id, finfo);
+	char* tmp = OutputFunctionCall(finfo, (uintptr_t)datum);
+	return tmp;
+}
+
+char* DecodeTZDatum(char const* fn_name, uintptr_t datum, const char *timezone, bool from_YB)
+{
+	FmgrInfo   *finfo;
+	finfo = palloc0(sizeof(FmgrInfo));
+	Oid id = fmgr_internal_function(fn_name);
+	fmgr_info(id, finfo);
+
+	DatumDecodeOptions decodeOptions;
+	decodeOptions.timezone = timezone;
+	decodeOptions.from_YB = from_YB;
+	decodeOptions.range_datum_decode_options = NULL;
+	return DatumGetCString(FunctionCall2(finfo, (uintptr_t)datum,
+				PointerGetDatum(&decodeOptions)));
+}
+
+char* DecodeArrayDatum(char const* arr_fn_name, uintptr_t datum,
+		int16_t elem_len, bool elem_by_val, char elem_align, char elem_delim, bool from_YB,
+		char const* fn_name, const char *timezone, char option)
+{
+	FmgrInfo   *arr_finfo;
+	arr_finfo = palloc0(sizeof(FmgrInfo));
+	Oid arr_id = fmgr_internal_function(arr_fn_name);
+	fmgr_info(arr_id, arr_finfo);
+
+	FmgrInfo   *elem_finfo;
+	elem_finfo = palloc0(sizeof(FmgrInfo));
+	Oid elem_id = fmgr_internal_function(fn_name);
+	fmgr_info(elem_id, elem_finfo);
+
+	DatumDecodeOptions decodeOptions;
+	decodeOptions.is_array = true;
+	decodeOptions.elem_by_val = elem_by_val;
+	decodeOptions.from_YB = from_YB;
+	decodeOptions.elem_align = elem_align;
+	decodeOptions.elem_delim = elem_delim;
+	decodeOptions.option = option;
+	decodeOptions.elem_len = elem_len;
+	//decodeOptions.datum = datum;
+	decodeOptions.elem_finfo = elem_finfo;
+	decodeOptions.timezone = timezone;
+	decodeOptions.range_datum_decode_options = NULL;
+
+	char* tmp = DatumGetCString(FunctionCall2(arr_finfo, (uintptr_t)datum,
+				PointerGetDatum(&decodeOptions)));
+	return tmp;
+}
+
+char* DecodeRangeDatum(char const* range_fn_name, uintptr_t datum,
+		int16_t elem_len, bool elem_by_val, char elem_align, char option, bool from_YB,
+		char const* elem_fn_name, int range_type, const char *timezone)
+{
+	FmgrInfo   *range_finfo;
+	range_finfo = palloc0(sizeof(FmgrInfo));
+	Oid range_id = fmgr_internal_function(range_fn_name);
+	fmgr_info(range_id, range_finfo);
+
+	FmgrInfo   *elem_finfo;
+	elem_finfo = palloc0(sizeof(FmgrInfo));
+	Oid elem_id = fmgr_internal_function(elem_fn_name);
+	fmgr_info(elem_id, elem_finfo);
+
+	DatumDecodeOptions decodeOptions;
+	decodeOptions.is_array = false;
+	decodeOptions.elem_by_val = elem_by_val;
+	decodeOptions.from_YB = from_YB;
+	decodeOptions.elem_align = elem_align;
+	decodeOptions.option = option;
+	decodeOptions.elem_len = elem_len;
+	decodeOptions.range_type = range_type;
+	//decodeOptions.datum = datum;
+	decodeOptions.elem_finfo = elem_finfo;
+	decodeOptions.timezone = timezone;
+	decodeOptions.range_datum_decode_options = NULL;
+
+	char* tmp = DatumGetCString(FunctionCall2(range_finfo, (uintptr_t)datum,
+				PointerGetDatum(&decodeOptions)));
+	return tmp;
+}
+
+char* DecodeRangeArrayDatum(char const* arr_fn_name, uintptr_t datum,
+		int16_t elem_len, int16_t range_len, bool elem_by_val, bool range_by_val,
+		char elem_align, char range_align, char elem_delim, char option, char range_option,
+		bool from_YB, char const* elem_fn_name, char const* range_fn_name, int range_type,
+		const char *timezone)
+{
+	FmgrInfo   *arr_finfo;
+	arr_finfo = palloc0(sizeof(FmgrInfo));
+	Oid arr_id = fmgr_internal_function(arr_fn_name);
+	fmgr_info(arr_id, arr_finfo);
+
+	FmgrInfo   *range_finfo;
+	range_finfo = palloc0(sizeof(FmgrInfo));
+	Oid range_id = fmgr_internal_function(range_fn_name);
+	fmgr_info(range_id, range_finfo);
+
+	FmgrInfo   *elem_finfo;
+	elem_finfo = palloc0(sizeof(FmgrInfo));
+	Oid elem_id = fmgr_internal_function(elem_fn_name);
+	fmgr_info(elem_id, elem_finfo);
+
+	DatumDecodeOptions range_decodeOptions;
+	range_decodeOptions.is_array = false;
+	range_decodeOptions.elem_by_val = range_by_val;
+	range_decodeOptions.from_YB = from_YB;
+	range_decodeOptions.elem_align = range_align;
+	range_decodeOptions.option = range_option;
+	range_decodeOptions.elem_len = range_len;
+	range_decodeOptions.range_type = range_type;
+	range_decodeOptions.elem_finfo = range_finfo;
+	range_decodeOptions.timezone = timezone;
+	range_decodeOptions.range_datum_decode_options = NULL;
+
+	DatumDecodeOptions arr_decodeOptions;
+	arr_decodeOptions.is_array = true;
+	arr_decodeOptions.elem_by_val = elem_by_val;
+	arr_decodeOptions.from_YB = from_YB;
+	arr_decodeOptions.elem_align = elem_align;
+	arr_decodeOptions.elem_delim = elem_delim;
+	arr_decodeOptions.option = option;
+	arr_decodeOptions.elem_len = elem_len;
+	arr_decodeOptions.elem_finfo = elem_finfo;
+	arr_decodeOptions.timezone = timezone;
+	arr_decodeOptions.range_datum_decode_options = &range_decodeOptions;
+
+	char* tmp = DatumGetCString(FunctionCall2(arr_finfo, (uintptr_t)datum,
+				PointerGetDatum(&arr_decodeOptions)));
+	return tmp;
 }

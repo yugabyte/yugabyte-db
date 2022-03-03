@@ -45,6 +45,7 @@ class YQLRowwiseIteratorIf;
 class YQLStorageIf;
 
 struct ApplyTransactionState;
+struct IntentKeyValueForCDC;
 struct DocDB;
 struct KeyBounds;
 struct LockBatchEntry;

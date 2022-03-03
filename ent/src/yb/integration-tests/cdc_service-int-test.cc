@@ -481,10 +481,11 @@ TEST_P(CDCServiceTest, TestCompoundKey) {
 TEST_P(CDCServiceTest, TestCreateCDCStream) {
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
 
-  TableId table_id;
+  NamespaceId ns_id;
+  std::vector<TableId> table_ids;
   std::unordered_map<std::string, std::string> options;
-  ASSERT_OK(client_->GetCDCStream(stream_id_, &table_id, &options));
-  ASSERT_EQ(table_id, table_.table()->id());
+  ASSERT_OK(client_->GetCDCStream(stream_id_, &ns_id, &table_ids, &options));
+  ASSERT_EQ(table_ids.front(), table_.table()->id());
 }
 
 TEST_P(CDCServiceTest, TestCreateCDCStreamWithDefaultRententionTime) {
@@ -493,9 +494,11 @@ TEST_P(CDCServiceTest, TestCreateCDCStreamWithDefaultRententionTime) {
 
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
 
-  TableId table_id;
+  NamespaceId ns_id;
+  std::vector<TableId> table_ids;
   std::unordered_map<std::string, std::string> options;
-  ASSERT_OK(client_->GetCDCStream(stream_id_, &table_id, &options));
+  ASSERT_OK(client_->GetCDCStream(stream_id_, &ns_id, &table_ids, &options));
+
 
   // Verify that the wal retention time was set at the tablet level.
   VerifyWalRetentionTime(cluster_.get(), kCDCTestTableName, FLAGS_cdc_wal_retention_time_secs);
@@ -505,10 +508,12 @@ TEST_P(CDCServiceTest, TestDeleteCDCStream) {
   FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
 
-  TableId table_id;
+  NamespaceId ns_id;
+  std::vector<TableId> table_ids;
   std::unordered_map<std::string, std::string> options;
-  ASSERT_OK(client_->GetCDCStream(stream_id_, &table_id, &options));
-  ASSERT_EQ(table_id, table_.table()->id());
+  ASSERT_OK(client_->GetCDCStream(stream_id_, &ns_id, &table_ids, &options));
+  ASSERT_EQ(table_ids.front(), table_.table()->id());
+
 
   std::vector<std::string> tablet_ids;
   std::vector<std::string> ranges;
@@ -528,9 +533,10 @@ TEST_P(CDCServiceTest, TestDeleteCDCStream) {
   ASSERT_OK(client_->DeleteCDCStream(stream_id_));
 
   // Check that the stream still no longer exists.
-  table_id.clear();
+  ns_id.clear();
+  table_ids.clear();
   options.clear();
-  Status s = client_->GetCDCStream(stream_id_, &table_id, &options);
+  Status s = client_->GetCDCStream(stream_id_, &ns_id, &table_ids, &options);
   ASSERT_TRUE(s.IsNotFound());
 
   for (const auto& tablet_id : tablet_ids) {
