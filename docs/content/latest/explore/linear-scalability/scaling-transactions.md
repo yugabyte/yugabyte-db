@@ -9,7 +9,7 @@ menu:
     name: Scaling Transactions
     identifier: explore-transactions-scaling-transactions-1-ysql
     parent: explore-scalability
-    weight: 210
+    weight: 200
 isTocNested: true
 showAsideToc: true
 ---
