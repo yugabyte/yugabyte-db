@@ -17,13 +17,13 @@ Applications connect to and interact with YugabyteDB using API client libraries 
 
 Yugabyte Cloud clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters.
 
-For examples of applications that connect to Yugabyte Cloud using common drivers, refer to [Build an application](../../cloud-quickstart/cloud-build-apps).
+For examples of applications that connect to Yugabyte Cloud using common drivers, refer to [Build an application](../../cloud-quickstart/cloud-build-apps/).
 
 For examples of connecting applications to Yugabyte Cloud, refer to [Example applications](../../cloud-examples/).
 
 {{< note title="Note" >}}
 
-Before you can connect, your application has to be able to reach your Yugabyte Cloud cluster. To add inbound network access from your application environment to a cluster, you must add the public IP addresses to the [cluster IP access list](../../cloud-secure-clusters/add-connections). If you are using [VPC peering](../../cloud-secure-clusters/cloud-vpcs/) you must add the public IP addresses of the application VPC to the cluster IP allow list.
+Before you can connect, your application has to be able to reach your Yugabyte Cloud cluster. To add inbound network access from your application environment to a cluster, you need to add the public IP addresses to the [cluster IP access list](../../cloud-secure-clusters/add-connections). If you are using [VPC peering](../../cloud-basics/cloud-vpcs/), you need to add the public IP addresses of the peered application VPC to the cluster IP allow list.
 
 {{< /note >}}
 
@@ -109,4 +109,4 @@ To run the sample application:
 ## Learn more
 
 - [Add database users](../../cloud-secure-clusters/add-users/)
-- [Build an application](../../cloud-quickstart/cloud-build-apps)
+- [Build an application](../../cloud-quickstart/cloud-build-apps/)

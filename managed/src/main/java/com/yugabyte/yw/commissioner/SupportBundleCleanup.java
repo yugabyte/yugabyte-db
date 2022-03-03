@@ -33,12 +33,18 @@ public class SupportBundleCleanup {
 
   private final Config config;
 
+  private SupportBundleUtil supportBundleUtil;
+
   @Inject
   public SupportBundleCleanup(
-      ActorSystem actorSystem, ExecutionContext executionContext, Config config) {
+      ActorSystem actorSystem,
+      ExecutionContext executionContext,
+      Config config,
+      SupportBundleUtil supportBundleUtil) {
     this.actorSystem = actorSystem;
     this.executionContext = executionContext;
     this.config = config;
+    this.supportBundleUtil = supportBundleUtil;
   }
 
   public void setRunningState(AtomicBoolean state) {
@@ -99,16 +105,16 @@ public class SupportBundleCleanup {
     } else {
       // Case where support bundle status = Success
       String bundleFileName = supportBundle.getPathObject().getFileName().toString();
-      Date bundleDate = SupportBundleUtil.getDateFromBundleFileName(bundleFileName);
+      Date bundleDate = supportBundleUtil.getDateFromBundleFileName(bundleFileName);
 
-      Date dateToday = SupportBundleUtil.getTodaysDate();
-      Date dateNDaysAgo = SupportBundleUtil.getDateNDaysAgo(dateToday, default_delete_days);
+      Date dateToday = supportBundleUtil.getTodaysDate();
+      Date dateNDaysAgo = supportBundleUtil.getDateNDaysAgo(dateToday, default_delete_days);
 
       if (bundleDate.before(dateNDaysAgo)) {
         // Deletes row from the support_bundle db table
         SupportBundle.delete(supportBundle.getBundleUUID());
         // Delete the actual archive file
-        SupportBundleUtil.deleteFile(supportBundle.getPathObject());
+        supportBundleUtil.deleteFile(supportBundle.getPathObject());
 
         log.info(
             "Automatically deleted Support Bundle with UUID: "

@@ -99,6 +99,8 @@ message CreateTableRequestPB {
 
   // This field should be used to create or restore table with a fixed set of partitions.
   repeated PartitionPB partitions = 22;
+
+  optional bytes matview_pg_table_id = 24;
 }
 
 message CreateTableResponsePB {
@@ -147,6 +149,7 @@ message ListTablesResponsePB {
     optional NamespaceIdentifierPB namespace = 4;
     optional RelationType relation_type = 5 [default = USER_TABLE_RELATION];
     optional SysTablesEntryPB.State state = 6;
+    optional string pgschema_name = 7;
   }
 
   repeated TableInfo tables = 2;

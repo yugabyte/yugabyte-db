@@ -35,7 +35,7 @@ showAsideToc: true
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe, and are able to interact with it using the YSQL shell (`ysqlsh`). If not, follow the steps in [Quick start](../../../../quick-start).
+- installed YugabyteDB, created a universe, and are able to interact with it using the YSQL shell (`ysqlsh`). If not, follow the steps in [Quick start](../../../../quick-start/).
 - installed Visual Studio
 
 ## Create the sample C# application
@@ -86,7 +86,7 @@ namespace Yugabyte_CSharp_Demo
                 empPrepCmd.Parameters["@EmployeeId"].Value = 1;
                 NpgsqlDataReader reader = empPrepCmd.ExecuteReader();
 
-                Console.WriteLine("Query returned:\nName\tAge\tLanguage"); 
+                Console.WriteLine("Query returned:\nName\tAge\tLanguage");
                 while (reader.Read())
                 {
                     Console.WriteLine("{0}\t{1}\t{2}", reader.GetString(0), reader.GetInt32(1), reader.GetString(2));

@@ -26,19 +26,19 @@ Learn the basics of using YugabyteDB clusters in Yugabyte Cloud.
 
 [Deploy](../cloud-basics/)
 : Create single region clusters that can be deployed across multiple and single availability zones. (To deploy multi-region clusters, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).)
-
-[Secure](../cloud-secure-clusters)
-: Manage the security features of your clusters, including network authorization, database authorization, encryption, and auditing.
-: Use IP allow lists to manage access to clusters.
 : Create virtual private cloud (VPC) networks to peer clusters with application VPCs.
 
-[Connect](../cloud-connect)
+[Secure](../cloud-secure-clusters/)
+: Manage the security features of your clusters, including network authorization, database authorization, encryption, and auditing.
+: Use IP allow lists to manage access to clusters.
+
+[Connect](../cloud-connect/)
 : Connect to clusters from a browser using Cloud Shell, from your desktop using a shell, and from applications.
 
-[Alerts and monitoring](../cloud-monitor)
+[Alerts and monitoring](../cloud-monitor/)
 : Monitor cluster performance and get notified of potential problems.
 
-[Manage](../cloud-clusters)
+[Manage](../cloud-clusters/)
 : Scale vertically and horizontally to match your performance requirements.
 : Back up and restore clusters.
 
@@ -46,22 +46,22 @@ Learn the basics of using YugabyteDB clusters in Yugabyte Cloud.
 
 Learn about managing your Yugabyte Cloud account.
 
-[Add cloud users](../cloud-admin/manage-access)
+[Add cloud users](../cloud-admin/manage-access/)
 : Invite team members to your cloud.
 
-[Manage billing](../cloud-admin/cloud-billing-profile)
+[Manage billing](../cloud-admin/cloud-billing-profile/)
 : Create your billing profile, manage your payment methods, and review invoices.
 
 ## Reference
 
-[What's new](../release-notes)
+[What's new](../release-notes/)
 : See what's new in Yugabyte Cloud, what regions are supported, and known issues.
 
-[Troubleshooting](../cloud-troubleshoot)
+[Troubleshooting](../cloud-troubleshoot/)
 : Get solutions to common problems.
 
-[FAQ](../cloud-faq)
+[FAQ](../cloud-faq/)
 : Get answers to frequently asked questions.
 
-[Security architecture](../cloud-security)
+[Security architecture](../cloud-security/)
 : Review Yugabyte Cloud's security architecture and shared responsibility model.

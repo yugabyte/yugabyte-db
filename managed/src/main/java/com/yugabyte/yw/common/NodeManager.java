@@ -34,6 +34,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateMountedDisks;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CertificateParams;
@@ -120,6 +121,7 @@ public class NodeManager extends DevopsBase {
     Tags,
     InitYSQL,
     Disk_Update,
+    Update_Mounted_Disks,
     Change_Instance_Type,
     Pause,
     Resume,
@@ -414,7 +416,11 @@ public class NodeManager extends DevopsBase {
               serverKeyPath = String.format("%s/%s", tempStorageDirectory, serverKeyFile);
               certsLocation = CERT_LOCATION_PLATFORM;
 
-              if (taskParam.enableClientToNodeEncrypt && taskParam.rootAndClientRootCASame) {
+              if (taskParam.rootAndClientRootCASame && taskParam.enableClientToNodeEncrypt) {
+                // These client certs are used for node to postgres communication
+                // These are separate from clientRoot certs which are used for server to client
+                // communication These are not required anymore as this is not mandatory now and
+                // can be removed. The code is still here to maintain backward compatibility
                 subcommandStrings.add("--client_cert_path");
                 subcommandStrings.add(CertificateHelper.getClientCertFile(taskParam.rootCA));
                 subcommandStrings.add("--client_key_path");
@@ -512,14 +518,6 @@ public class NodeManager extends DevopsBase {
               serverCertPath = String.format("%s/%s", tempStorageDirectory, serverCertFile);
               serverKeyPath = String.format("%s/%s", tempStorageDirectory, serverKeyFile);
               certsLocation = CERT_LOCATION_PLATFORM;
-
-              if (taskParam.enableClientToNodeEncrypt && taskParam.rootAndClientRootCASame) {
-                subcommandStrings.add("--client_cert_path");
-                subcommandStrings.add(CertificateHelper.getClientCertFile(taskParam.rootCA));
-                subcommandStrings.add("--client_key_path");
-                subcommandStrings.add(CertificateHelper.getClientKeyFile(taskParam.rootCA));
-              }
-
             } catch (IOException e) {
               LOG.error(e.getMessage(), e);
               throw new RuntimeException(e);
@@ -680,7 +678,10 @@ public class NodeManager extends DevopsBase {
   }
 
   private Map<String, String> getMasterDefaultGFlags(
-      AnsibleConfigureServers.Params taskParam, Boolean useHostname, Boolean useSecondaryIp) {
+      AnsibleConfigureServers.Params taskParam,
+      Boolean useHostname,
+      Boolean useSecondaryIp,
+      Boolean isDualNet) {
     Map<String, String> gflags = new HashMap<>();
     Universe universe = Universe.getOrBadRequest(taskParam.universeUUID);
     NodeDetails node = universe.getNode(taskParam.nodeName);
@@ -712,6 +713,8 @@ public class NodeManager extends DevopsBase {
           String.format("%s:%s", node.cloudInfo.secondary_private_ip, node.masterRpcPort);
       String bindAddresses = bindAddressSecondary + "," + bindAddressPrimary;
       gflags.put("rpc_bind_addresses", bindAddresses);
+    } else if (isDualNet) {
+      gflags.put("use_private_ip", "cloud");
     }
 
     gflags.put("webserver_port", Integer.toString(node.masterHttpPort));
@@ -815,7 +818,8 @@ public class NodeManager extends DevopsBase {
       extra_gflags.putAll(
           getTServerDefaultGflags(taskParam, useHostname, useSecondaryIp, isDualNet));
     } else {
-      extra_gflags.putAll(getMasterDefaultGFlags(taskParam, useHostname, useSecondaryIp));
+      extra_gflags.putAll(
+          getMasterDefaultGFlags(taskParam, useHostname, useSecondaryIp, isDualNet));
     }
 
     UserIntent userIntent = getUserIntentFromParams(taskParam);
@@ -1024,6 +1028,7 @@ public class NodeManager extends DevopsBase {
                           universe.getUniverseDetails().getPrimaryCluster().userIntent.provider))
                   .getYbHome();
           String certsNodeDir = getCertsNodeDir(ybHomeDir);
+          String certsForClientDir = getCertsForClientDir(ybHomeDir);
 
           subcommand.add("--cert_rotate_action");
           subcommand.add(taskParam.certRotateAction.toString());
@@ -1086,14 +1091,21 @@ public class NodeManager extends DevopsBase {
               }
               break;
             case UPDATE_CERT_DIRS:
+              {
+                Map<String, String> gflags = new HashMap<>();
+                if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
+                  gflags.put("certs_dir", certsNodeDir);
+                }
+                if (EncryptionInTransitUtil.isClientRootCARequired(taskParam)) {
+                  gflags.put("certs_for_client_dir", certsForClientDir);
+                }
+                subcommand.add("--gflags");
+                subcommand.add(Json.stringify(Json.toJson(gflags)));
+                subcommand.add("--tags");
+                subcommand.add("override_gflags");
+                break;
+              }
           }
-
-          Map<String, String> gflags = new HashMap<>(taskParam.gflags);
-          subcommand.add("--gflags");
-          subcommand.add(Json.stringify(Json.toJson(gflags)));
-
-          subcommand.add("--tags");
-          subcommand.add("override_gflags");
         }
         break;
       case ToggleTls:
@@ -1727,6 +1739,22 @@ public class NodeManager extends DevopsBase {
           if (taskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(taskParam));
           }
+          break;
+        }
+      case Update_Mounted_Disks:
+        {
+          if (!(nodeTaskParam instanceof UpdateMountedDisks.Params)) {
+            throw new RuntimeException("NodeTaskParams is not UpdateMountedDisksTask.Params");
+          }
+          UpdateMountedDisks.Params taskParam = (UpdateMountedDisks.Params) nodeTaskParam;
+          commandArgs.add("--instance_type");
+          commandArgs.add(taskParam.instanceType);
+          if (nodeTaskParam.deviceInfo != null) {
+            commandArgs.add("--volume_type");
+            commandArgs.add(nodeTaskParam.deviceInfo.storageType.toString().toLowerCase());
+            commandArgs.addAll(getDeviceArgs(nodeTaskParam));
+          }
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           break;
         }
       case Change_Instance_Type:

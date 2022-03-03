@@ -149,7 +149,8 @@ class PgCreateTable : public PgDdl {
                 bool add_primary_key,
                 const bool colocated,
                 const PgObjectId& tablegroup_oid,
-                const PgObjectId& tablespace_oid);
+                const PgObjectId& tablespace_oid,
+                const PgObjectId& matview_pg_table_oid);
 
   void SetupIndex(
       const PgObjectId& base_table_id, bool is_unique_index, bool skip_index_backfill);
@@ -162,7 +163,8 @@ class PgCreateTable : public PgDdl {
                            bool is_hash,
                            bool is_range,
                            SortingType sorting_type = SortingType::kNotSpecified) {
-    return AddColumnImpl(attr_name, attr_num, attr_ybtype, is_hash, is_range, sorting_type);
+    return AddColumnImpl(attr_name, attr_num, attr_ybtype, 20 /*INT8OID*/,
+                         is_hash, is_range, sorting_type);
   }
 
   CHECKED_STATUS AddColumn(const char *attr_name,
@@ -171,7 +173,8 @@ class PgCreateTable : public PgDdl {
                            bool is_hash,
                            bool is_range,
                            SortingType sorting_type = SortingType::kNotSpecified) {
-    return AddColumnImpl(attr_name, attr_num, attr_type->yb_type, is_hash, is_range, sorting_type);
+    return AddColumnImpl(attr_name, attr_num, attr_type->yb_type, attr_type->type_oid,
+                         is_hash, is_range, sorting_type);
   }
 
   // Specify the number of tablets explicitly.
@@ -188,8 +191,8 @@ class PgCreateTable : public PgDdl {
 
  protected:
   virtual CHECKED_STATUS AddColumnImpl(
-      const char *attr_name, int attr_num, int attr_ybtype, bool is_hash, bool is_range,
-      SortingType sorting_type = SortingType::kNotSpecified);
+      const char *attr_name, int attr_num, int attr_ybtype, int pg_type_oid, bool is_hash,
+      bool is_range, SortingType sorting_type = SortingType::kNotSpecified);
 
  private:
   tserver::PgCreateTableRequestPB req_;

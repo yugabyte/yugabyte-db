@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The following subsections provide the conceptual background for the accounts of the _date-time_ data types that the table shown in the [Synopsis](../intro/#synopsis) lists and for the operations that the _date-time_ operators and built-in SQL functions perform.
+The following subsections provide the conceptual background for the accounts of the _date-time_ data types that the table shown in the [Synopsis](../../type_datetime/) lists and for the operations that the _date-time_ operators and built-in SQL functions perform.
 
 - [Absolute time and the UTC Time Standard](#absolute-time-and-the-utc-time-standard)
 - [Wall-clock-time and local time](#wall-clock-time-and-local-time)
@@ -68,12 +68,12 @@ select
 It quietly succeeds and produces the obvious result. (The _::text_ typecast of a _timestamp_ value uses only as much precision as the value requires.)
 
 ```output
-         min_ts         |        max_ts         
+         min_ts         |        max_ts
 ------------------------+-----------------------
  4713-01-01 00:00:00 BC | 294276-01-01 00:00:00
 ```
 
-The values, _4713 BC_ and _294276_ AD, are given in the [table](../intro/#synopsis) in the _"Introduction"_ section to the present _date-time_ data types major section.
+The values, _4713 BC_ and _294276_ AD, are given in the [table](../../type_datetime/) in the _"Introduction"_ section to the present _date-time_ data types major section.
 
 ## Wall-clock-time and local time
 
@@ -231,7 +231,7 @@ This is the result. (The blank lines were added manually to improve the readabil
 
 You can see that, just as the Wikipedia article said, a conventional adjustment was edicted for clocks in the United States during the period from 16:00 _UTC_ through 20:00 _UTC_ on Sunday 18-Nov-1883. During that period (in fact, successively from region to region) everybody "gained" a little time—just as, now, people "gain" one hour on the "fall back" day when Daylight Savings Time ends. For example, people in the _America/Los_Angeles_ zone gained seven minutes and two seconds. Moreover, the offset between these regions and Greenwich UK was adjusted by a small compensating amount at the same transition moment to make it an integral multiple of one hour.
 
-Notice that the time in London was always right—by definition! Meanwhile, other cities in Europe made their corresponding conventional adjustments at later dates. 
+Notice that the time in London was always right—by definition! Meanwhile, other cities in Europe made their corresponding conventional adjustments at later dates.
 
 By the year 2000, all the cities or regions that the query selects, whose timezones the function uses, have settled down to have timezone offsets that are integral multiples of one hour. Notably, some timezones have offsets that are integral multiples of fifteen minutes. Try this:
 
@@ -276,7 +276,7 @@ It was eventually decided that an atomic clock should define the ultimate standa
 
 It is now understood that the observable phenomena like day, month, and year cannot be defined as constant integral numbers of seconds.
 
-This realization is formalized in PostgreSQL (and therefore in YSQL) as the so-called _proleptic Gregorian calendar_. 
+This realization is formalized in PostgreSQL (and therefore in YSQL) as the so-called _proleptic Gregorian calendar_.
 
 {{< note title="The proleptic Gregorian calendar." >}}
 <a href="https://www.postgresql.org/docs/11/datetime-units-history.html" target="_blank">The proleptic Gregorian calendar <i class="fas fa-external-link-alt"></i></a> implements the notion of the Western calendar month with its  idiosyncrasies: February has 29 days in a  leap year and otherwise 28 days; and the other months have either 30 or 31 days. (Lunar months have vanished from the discourse.) So, while one year is usually 365 days, it is sometimes 366 days. The calendar is a mapping between the number of seconds before or after midnight 1970, on the Greenwich Meridian, and the year, calendar month, date, and time of day (in hours, minutes, and seconds) on that same meridian. The mapping cannot be a formula. Rather, it can only be an elaborate look-up table.
@@ -305,7 +305,7 @@ Treating one day as exactly 24 hours, one month as 30 days, and one year as 12 m
 
 ### Clock-time
 
-Briefly, _clock-time_ is caesium units—or, by convention, seconds, minutes, and hours.  
+Briefly, _clock-time_ is caesium units—or, by convention, seconds, minutes, and hours.
 
 **Note**: Some calendar implementations support [leap seconds](https://www.timeanddate.com/time/leapseconds.html). (When a leap second occurs, its containing minute is 61 seconds and not 60 seconds.) But the implementation that PostgreSQL and YSQL use does not support this notion. The implementation, therefore, can treat hours, minutes, and seconds with strict _clock-time-semantics_ and needs to treat only the larger units with _calendar-time-semantics_.
 
@@ -331,7 +331,7 @@ with v as (
   select (
       -- The 'America/Los_Angeles' timezone adopted Standard Time at
       -- some moment between these two timestamptz values.
-      extract(epoch from '1883-11-19 08:00:00 America/Los_Angeles'::timestamptz) - 
+      extract(epoch from '1883-11-19 08:00:00 America/Los_Angeles'::timestamptz) -
       extract(epoch from '1883-11-18 08:00:00 America/Los_Angeles'::timestamptz)
     ) as delta
   )
@@ -343,7 +343,7 @@ from v;
 This is the result:
 
 ```output
- delta (hh:mi:ss) 
+ delta (hh:mi:ss)
 ------------------
  24:07:02
 ```
@@ -362,7 +362,7 @@ select
 This is the result:
 
 ```output
-     t0 + 24 hours      |       t0 + 1 day       
+     t0 + 24 hours      |       t0 + 1 day
 ------------------------+------------------------
  1883-11-19 07:52:58-08 | 1883-11-19 08:00:00-08
 ```

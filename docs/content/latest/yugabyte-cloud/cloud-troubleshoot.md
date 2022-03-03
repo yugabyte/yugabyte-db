@@ -81,7 +81,7 @@ If you are unable to successfully create the VPC, contact {{<support-cloud>}}.
 
 #### Peering connection status is Pending
 
-A peering connection status of _Pending_ indicates that you need to configure your cloud provider to accept the connection. Refer to [Create a peering connection](../cloud-secure-clusters/cloud-vpcs/cloud-add-peering).
+A peering connection status of _Pending_ indicates that you need to configure your cloud provider to accept the connection. Refer to [Create a peering connection](../cloud-basics/cloud-vpcs/cloud-add-peering/).
 
 #### Peering connection status is Expired (AWS only)
 

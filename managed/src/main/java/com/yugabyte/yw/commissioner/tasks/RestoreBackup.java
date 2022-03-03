@@ -83,6 +83,7 @@ public class RestoreBackup extends UniverseTaskBase {
     RestoreBackupParams restoreParams = new RestoreBackupParams();
     restoreParams.customerUUID = params.customerUUID;
     restoreParams.universeUUID = params.universeUUID;
+    restoreParams.storageConfigUUID = params.storageConfigUUID;
     restoreParams.restoreTimeStamp = params.restoreTimeStamp;
     restoreParams.kmsConfigUUID = params.kmsConfigUUID;
     restoreParams.backupStorageInfoList = new ArrayList<>();

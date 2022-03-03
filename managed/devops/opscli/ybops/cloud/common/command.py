@@ -14,7 +14,8 @@ from ybops.cloud.common.method import CreateInstancesMethod, ProvisionInstancesM
     DestroyInstancesMethod, ListInstancesMethod, ConfigureInstancesMethod, \
     ControlInstanceMethod, AbstractMethod, AccessCreateVaultMethod, InitYSQLMethod, \
     UpdateDiskMethod, CronCheckMethod, AccessEditVaultMethod, AccessDeleteKeyMethod, \
-    CreateRootVolumesMethod, ReplaceRootVolumeMethod, ChangeInstanceTypeMethod
+    CreateRootVolumesMethod, ReplaceRootVolumeMethod, ChangeInstanceTypeMethod, \
+    UpdateMountedDisksMethod
 
 
 class InstanceCommand(AbstractPerCloudCommand):
@@ -38,6 +39,7 @@ class InstanceCommand(AbstractPerCloudCommand):
         self.add_method(ConfigureInstancesMethod(self))
         self.add_method(InitYSQLMethod(self))
         self.add_method(UpdateDiskMethod(self))
+        self.add_method(UpdateMountedDisksMethod(self))
         self.add_method(CronCheckMethod(self))
         self.add_method(ChangeInstanceTypeMethod(self))
 

@@ -102,15 +102,15 @@ The `create_database` method uses PostgreSQL-compliant DDL commands to create a 
 ```php
 $conn->exec('DROP TABLE IF EXISTS DemoAccount');
 
-$conn->exec('CREATE TABLE DemoAccount ( 
-                id int PRIMARY KEY, 
-                name varchar, 
-                age int, 
-                country varchar, 
+$conn->exec('CREATE TABLE DemoAccount (
+                id int PRIMARY KEY,
+                name varchar,
+                age int,
+                country varchar,
                 balance int)');
 
-$conn->exec("INSERT INTO DemoAccount VALUES 
-                (1, 'Jessica', 28, 'USA', 10000), 
+$conn->exec("INSERT INTO DemoAccount VALUES
+                (1, 'Jessica', 28, 'USA', 10000),
                 (2, 'John', 28, 'Canada', 9000)");
 ```
 
@@ -142,7 +142,7 @@ try {
         print "The operation is aborted due to a concurrent transaction that is modifying the same set of rows.
                 Consider adding retry logic for production-grade applications.\n";
     }
-    
+
     throw $e;
 }
 ```
@@ -151,7 +151,7 @@ try {
 
 [php-pgsql driver](../../../../reference/drivers/ysql-client-drivers/#php-pgsql)
 
-[Explore more applications](../../../cloud-examples)
+[Explore more applications](../../../cloud-examples/)
 
 [Deploy clusters in Yugabyte Cloud](../../../cloud-basics)
 

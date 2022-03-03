@@ -3,8 +3,6 @@ title: Create a multi-region universe
 headerTitle: Create a multi-region universe
 linkTitle: Multi-region universe
 description: Create a YugabyteDB universe that spans multiple geographic regions using Yugabyte Platform.
-aliases:
-  - /latest/manage/enterprise-edition/create-universe-multi-region
 menu:
   latest:
     identifier: create-universe-multi-region
@@ -23,7 +21,7 @@ This section will describe how to create a universe spanning multiple geographic
 
 ## 1. Create the universe
 
-We are going to enter the following values to create a multi-region universe on [GCP](../../configure-yugabyte-platform/set-up-cloud-provider/gcp) provider. Click **Create Universe** and enter the following intent.
+We are going to enter the following values to create a multi-region universe on [GCP](../../configure-yugabyte-platform/set-up-cloud-provider/gcp/) provider. Click **Create Universe** and enter the following intent.
 
 - Enter a universe name: **helloworld2**
 - Enter the set of regions: **Oregon**, **Northern Virginia**, **Tokyo**
@@ -76,27 +74,29 @@ On each of the terminals, do the following.
 
 1. Install Java.
 
-```sh
-$ sudo yum install java-1.8.0-openjdk.x86_64 -y
-```
+    ```sh
+    $ sudo yum install java-1.8.0-openjdk.x86_64 -y
+    ```
 
-2. Switch to the `yugabyte` user.
+1. Switch to the `yugabyte` user.
 
-```sh
-$ sudo su - yugabyte
-```
+    ```sh
+    $ sudo su - yugabyte
+    ```
 
-3. Export the `YCQL_ENDPOINTS` environment variable.
+1. Export the `YCQL_ENDPOINTS` environment variable.
 
-Export an environment variable telling us the IP addresses for nodes in the cluster. Browse to the **Universe Overview** tab in Yugabyte Platform console and click **YCQL Endpoints**. A new tab opens displaying a list of IP addresses.
+    \
+    Export an environment variable telling us the IP addresses for nodes in the cluster. Browse to the **Universe Overview** tab in Yugabyte Platform console and click **YCQL Endpoints**. A new tab opens displaying a list of IP addresses.
 
-![YCQL end points](/images/ee/multi-zone-universe-ycql-endpoints.png)
+    ![YCQL end points](/images/ee/multi-zone-universe-ycql-endpoints.png)
 
-Export this into a shell variable on the database node `yb-dev-helloworld1-n1` you connected to. Remember to replace the IP addresses below with those shown in the Yugabyte Platform console.
+    \
+    Export this into a shell variable on the database node `yb-dev-helloworld1-n1` you connected to. Remember to replace the IP addresses below with those shown in the Yugabyte Platform console.
 
-```sh
-$ export YCQL_ENDPOINTS="10.138.0.3:9042,10.138.0.4:9042,10.138.0.5:9042"
-```
+    ```sh
+    $ export YCQL_ENDPOINTS="10.138.0.3:9042,10.138.0.4:9042,10.138.0.5:9042"
+    ```
 
 ### Run the workload
 
@@ -126,7 +126,7 @@ You can find the region codes for each of the nodes by browsing to the **Nodes**
 Recall that we expect the app to have the following characteristics based on its deployment configuration:
 
 - Global consistency on writes, which would cause higher latencies in order to replicate data across multiple geographic regions.
-- Low latency reads from the nearest data center, which offers timeline consistency (similar to async replication).
+- Low latency reads from the nearest data center, which offers timeline consistency (similar to asynchronous replication).
 
 Let us verify this by browse to the **Metrics** tab of the universe in the Yugabyte Platform console to see the overall performance of the app. It should look similar to the screenshot below.
 
@@ -134,7 +134,7 @@ Let us verify this by browse to the **Metrics** tab of the universe in the Yugab
 
 Note the following:
 
-* Write latency is **139ms** because it has to replicate data to a quorum of nodes across multiple geographic regions.
-* Read latency is **0.23 ms** across all regions. Note that the app is performing **100K reads/sec** across the regions (about 33K reads/sec in each region).
+- Write latency is **139ms** because it has to replicate data to a quorum of nodes across multiple geographic regions.
+- Read latency is **0.23 ms** across all regions. Note that the app is performing **100K reads/sec** across the regions (about 33K reads/sec in each region).
 
 It is possible to repeat the same experiment with the `RedisKeyValue` app and get similar results.

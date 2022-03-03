@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Each of the comparison operators, `<`, `<=`, `=`, `>=`, `>`, and `<>`, each of the arithmetic operators, `+`, `-`, `*`, and `/`, and, of course, the `::` typecast operator has one or several overloads whose two operands are among the _date_, _time_, plain _timestamp_, _timestamptz_, and _interval_ data types. The [parent section](../../type_datetime) explains why _timetz_ is not covered in this overall _date-time_ section. This is why there are _five_ interesting _date-time_ data types.
+Each of the comparison operators, `<`, `<=`, `=`, `>=`, `>`, and `<>`, each of the arithmetic operators, `+`, `-`, `*`, and `/`, and, of course, the `::` typecast operator has one or several overloads whose two operands are among the _date_, _time_, plain _timestamp_, _timestamptz_, and _interval_ data types. The [parent section](../../type_datetime/) explains why _timetz_ is not covered in this overall _date-time_ section. This is why there are _five_ interesting _date-time_ data types.
 
 The section [Typecasting between values of different date-time datatypes](../typecasting-between-date-time-values/) shows which of the twenty potential typecasts between pairs of _different_ interesting date-time data types are legal. (It's meaningless to think about typecasting between a pair of values of the _same_ data type.) And for each of those _ten_ that is legal, the section describes its semantics. Further, the typecast operator, `::`, has an overload from/to each of the five listed interesting _date-time_ data types to/from _text_. In other words, there are _ten_ typecasts from/to the interesting _date-time_ data types to/from _text_. The section [Typecasting between date-time values and text values](../typecasting-between-date-time-and-text/) describes these.
 
@@ -73,7 +73,7 @@ from c;
 It runs without error and produces these two values:
 
 ```output
- ts > t | tstz > t 
+ ts > t | tstz > t
 --------+----------
  false  | true
 ```
@@ -125,7 +125,7 @@ select
 This is the result:
 
 ```output
- data type | result 
+ data type | result
 -----------+--------
  integer   |      5
 ```
@@ -141,7 +141,7 @@ select
 This is the result:
 
 ```output
- data type |   result   
+ data type |   result
 -----------+------------
  date      | 2020-01-06
 ```
