@@ -290,7 +290,7 @@ class NodeChecker():
         return output
 
     def get_disk_utilization(self):
-        remote_cmd = 'df -hl 2>/dev/null'
+        remote_cmd = 'df -hl -x squashfs -x overlay 2>/dev/null'
         return self._remote_check_output(remote_cmd)
 
     def check_disk_utilization(self):
