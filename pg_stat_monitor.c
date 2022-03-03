@@ -1347,8 +1347,8 @@ pgss_update_entry(pgssEntry *entry,
 		e->counters.calls.usage += USAGE_EXEC(total_time);
 		if (sys_info)
 		{
-			e->counters.sysinfo.utime = sys_info->utime;
-			e->counters.sysinfo.stime = sys_info->stime;
+			e->counters.sysinfo.utime += sys_info->utime;
+			e->counters.sysinfo.stime += sys_info->stime;
 		}
 		if (walusage)
 		{
