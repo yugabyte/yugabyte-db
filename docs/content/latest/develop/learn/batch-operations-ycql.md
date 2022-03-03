@@ -21,12 +21,13 @@ showAsideToc: true
   </li>
 
   <li >
-    <a href="" class="nav-link active">
+    <a href="{{< relref "./batch-operations-ycql.md" >}}" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
   </li>
 </ul>
+
 Batch operations let you send multiple operations in a single RPC call to the database. The larger the batch size, the higher the latency for the entire batch. Although the latency for the entire batch of operations is higher than the latency of any single operation, the throughput of the batch of operations is much higher.
 
 ## Inserting data

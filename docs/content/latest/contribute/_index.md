@@ -31,7 +31,7 @@ There are a few areas you can get involved in depending on your interests.
 
 ### Core database
 
-This is the C++ code and the unit tests that comprise the core of YugabyteDB. You can [follow the steps outlined here](core-database/checklist) to get going with steps such as building the codebase and running the unit tests.
+This is the C++ code and the unit tests that comprise the core of YugabyteDB. You can [follow the steps outlined here](core-database/checklist/) to get going with steps such as building the codebase and running the unit tests.
 
 ### Docs
 

@@ -23,9 +23,9 @@ For information on two data center (2DC) deployment architecture and supported r
 
 You can create source and target universes as follows:
 
-1. Create the yugabyte-source universe by following the procedure from [Manual deployment](../../manual-deployment).
+1. Create the yugabyte-source universe by following the procedure from [Manual deployment](../../manual-deployment/).
 1. Create tables for the APIs being used by the source universe.
-1. Create the yugabyte-target universe by following the procedure from [Manual deployment](../../manual-deployment).
+1. Create the yugabyte-target universe by following the procedure from [Manual deployment](../../manual-deployment/).
 1. Create tables for the APIs being used by the target universe. These should be the same tables as you created for the source universe.
 1. Proceed to setting up [unidirectional](#seting-up-unidirectional-replication) or [bidirectional](#setting-up-bidirectional-replication) replication.
 
@@ -35,9 +35,9 @@ After you created the required tables, you can set up asynchronous replication a
 
 - Look up the source universe UUID and the table IDs for the two tables and the index table:
 
-    - To find a universe's UUID, check `/varz` for `--cluster_uuid`. If it is not available in this location, check the same field in the cluster configuration.
+  - To find a universe's UUID, check `/varz` for `--cluster_uuid`. If it is not available in this location, check the same field in the cluster configuration.
 
-    - To find a table ID, execute the following command as an admin user:
+  - To find a table ID, execute the following command as an admin user:
 
       ```shell
       yb-admin list_tables include_table_id
@@ -63,7 +63,6 @@ After you created the required tables, you can set up asynchronous replication a
         000030a5000030008000000000004000,000030a5000030008000000000004005,dfef757c415c4b2cacc9315b8acb539a
     ```
 
-
 The preceding command contains three table IDs: the first two are YSQL for the base table and index, and the third is the YCQL table.
 
 Also, be sure to specify all master addresses for source and target universes in the command.
@@ -86,16 +85,17 @@ Once you have set up replication, load data into the source universe as follows:
 
   - YSQL:
 
-  ```sh
-  java -jar yb-sample-apps.jar --workload SqlSecondaryIndex --nodes 127.0.0.1:5433
-  ```
+    ```sh
+    java -jar yb-sample-apps.jar --workload SqlSecondaryIndex --nodes 127.0.0.1:5433
+    ```
 
   - YCQL:
 
-  ```sh
-  java -jar yb-sample-apps.jar --workload CassandraBatchKeyValue --nodes 127.0.0.1:9042
-  ```
+    ```sh
+    java -jar yb-sample-apps.jar --workload CassandraBatchKeyValue --nodes 127.0.0.1:9042
+    ```
 
+  \
   Note that the IP address needs to correspond to the IP of any T-Servers in the cluster.
 
 - For bidirectional replication, repeat the preceding step in the yugabyte-target universe.

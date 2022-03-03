@@ -15,7 +15,7 @@ menu:
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="connect-ycql">
+    <a class="section-link icon-offset" href="connect-ycql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />
         <div class="title">Cannot connect to YCQL API</div>
@@ -27,7 +27,7 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="connect-yedis">
+    <a class="section-link icon-offset" href="connect-yedis/">
       <div class="head">
         <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />
         <div class="title">Cannot connect to YEDIS API</div>
@@ -41,7 +41,7 @@ menu:
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="recover_server">
+    <a class="section-link icon-offset" href="recover_server/">
       <div class="head">
         <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />
         <div class="title">Recover failed tserver/master/node</div>

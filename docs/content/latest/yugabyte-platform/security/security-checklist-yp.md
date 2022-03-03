@@ -35,4 +35,4 @@ To enable role-based access control in Yugabyte Platform, see [Authorization pla
 
 Authentication requires that all clients provide valid credentials before they can connect to a YugabyteDB cluster. The authentication credentials in YugabyteDB are stored internally in the YB-Master system tables. The authentication mechanisms available to users depends on what is supported and exposed by the YSQL, YCQL, and YEDIS APIs.
 
-Read more about how to [enable authentication](../../../secure/enable-authentication) in YugabyteDB.
+Read more about how to [enable authentication](../../../secure/enable-authentication/) in YugabyteDB.

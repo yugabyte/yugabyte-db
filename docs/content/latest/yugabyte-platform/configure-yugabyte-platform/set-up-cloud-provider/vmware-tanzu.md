@@ -18,47 +18,47 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws" class="nav-link">
+    <a href="../aws/" class="nav-link">
       <i class="fab fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp" class="nav-link">
+    <a href="../gcp/" class="nav-link">
       <i class="fab fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure" class="nav-link">
+    <a href="../azure/" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
       &nbsp;&nbsp; Azure
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes" class="nav-link">
+    <a href="../kubernetes/" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/vmware-tanzu" class="nav-link active">
+    <a href="../vmware-tanzu/" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       VMware Tanzu
     </a>
   </li>
 
 <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/openshift" class="nav-link">
+    <a href="../openshift/" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>OpenShift</a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises" class="nav-link">
+    <a href="../on-premises/" class="nav-link">
       <i class="fas fa-building"></i>
       On-premises
     </a>
@@ -66,7 +66,7 @@ showAsideToc: true
 
 </ul>
 
-This document explains how to configure VMware Tanzu Kubernetes Grid (TKG) for a YugabyteDB universe using Yugabyte Platform. 
+This document explains how to configure VMware Tanzu Kubernetes Grid (TKG) for a YugabyteDB universe using Yugabyte Platform.
 
 ## Configuring the VMware Tanzu Provider
 
@@ -89,12 +89,11 @@ To start configuring any TKG edition (that is, either TKG-Integrated, TKG-Servic
 - Use the **Image Registry** field to specify the location of the YugabyteDB image. You should accept the default setting, unless you are hosting your own registry.
 - The **Pull Secret** field indicates that the Enterprise YugabyteDB image is in a private repository. Use this field to upload the pull secret for downloading the images. The secret should be supplied by your organization's sales team.
 
-![Tanzu Configuratioin](/images/deploy/pivotal-cloud-foundry/tanzu-config-1.png)
+  ![Tanzu Configuration](/images/deploy/pivotal-cloud-foundry/tanzu-config-1.png)
 
 ### How to Configure Region and Zones
 
 - On the **Create VMware Tanzu Configuration** page, click **Add Region** to open the **Add new region** dialog shown in the following illustration: <br><br>
-
 
   ![Add Region](/images/deploy/pivotal-cloud-foundry/add-region-1.png)
 
@@ -116,7 +115,7 @@ To start configuring any TKG edition (that is, either TKG-Integrated, TKG-Servic
       app: "yb-master"
       ports:
         ui: "7000"
-  
+
     - name: "yb-tserver-service"
       type: "LoadBalancer"
       annotations:
@@ -150,13 +149,11 @@ To start configuring any TKG edition (that is, either TKG-Integrated, TKG-Servic
 
 - Add a new zone by clicking **Add Zone**. Your configuration may have multiple zones, as shown in the following illustration:
 
-
-![Add Region](/images/deploy/pivotal-cloud-foundry/add-region-2.png)
+  ![Add Region](/images/deploy/pivotal-cloud-foundry/add-region-2.png)
 
 - Click **Add Region**.
 
 - Click **Save**. If your configuration is successful, you are redirected to **VMware Tanzu configs**, as shown in the following illustration:<br><br>
-
 
   ![Finish Tanzu Configuration](/images/deploy/pivotal-cloud-foundry/tanzu-config-finish.png)
 
@@ -164,10 +161,10 @@ To start configuring any TKG edition (that is, either TKG-Integrated, TKG-Servic
 
 VMware Tanzu Application Service is no longer actively supported and the following information is considered legacy.
 
-If you choose to use VMware Tanzu Application Service, before creating the service instance, ensure that the following is available: 
+If you choose to use VMware Tanzu Application Service, before creating the service instance, ensure that the following is available:
 
 - The YugabyteDB tile is installed in your PCF marketplace.
-- The cloud provider is configured in the Yugabyte Platform instance in your PCF environment . 
+- The cloud provider is configured in the Yugabyte Platform instance in your PCF environment .
 
 ### Creating a YugabyteDB Service Instance
 
@@ -175,15 +172,15 @@ You can create a YugabyteDB service instance via the App Manager UI or Cloud Fou
 
 #### How to Use the PCF App Manager
 
-- In your PCF App manager, navigate to the marketplace and select **YugabyteDB**. 
+- In your PCF App manager, navigate to the marketplace and select **YugabyteDB**.
 - Read descriptions of the available service plans to identify the resource requirements and intended environment, as shown in the following illustration.
 
-![Yugabyte Service Plans](/images/deploy/pivotal-cloud-foundry/service-plan-choices.png)
+  ![Yugabyte Service Plans](/images/deploy/pivotal-cloud-foundry/service-plan-choices.png)
 
-- Select the service plan. 
+- Select the service plan.
 - Complete the service instance configuration, as shown in the following illustration:
 
-![App Manager Config](/images/deploy/pivotal-cloud-foundry/apps-manager-config.png)
+  ![App Manager Config](/images/deploy/pivotal-cloud-foundry/apps-manager-config.png)
 
 #### How to Use the Cloud Foundry CLI
 
@@ -193,9 +190,9 @@ You can view the marketplace and plan description in the cf CLI by executing the
 $ cf marketplace -s yugabyte-db
 ```
 
-The ouput should be simiar to the following:
+The output should be similar to the following:
 
-```
+```output
 service plan   description                  free or paid
 x-small        Cores: 2, Memory (GB): 4     paid
 small          Cores: 4, Memory (GB): 7     paid
@@ -285,4 +282,3 @@ To override the YugabyteDB software version to be used, include `yb_version` wit
  "yb_version": "1.1.6.0-b4"
 }
 ```
-

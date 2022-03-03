@@ -2,7 +2,7 @@
 title: CREATE VIEW statement [YSQL]
 headerTitle: CREATE VIEW
 linkTitle: CREATE VIEW
-description: Use the CREATE VIEW statement to create a view in a database. 
+description: Use the CREATE VIEW statement to create a view in a database.
 menu:
   latest:
     identifier: ddl_create_view
@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Use the `CREATE VIEW` statement to create a view in a database. It defines the view name and the (select) statement defining it.  
+Use the `CREATE VIEW` statement to create a view in a database. It defines the view name and the (select) statement defining it.
 
 ## Syntax
 
@@ -99,4 +99,4 @@ yugabyte=# SELECT * FROM sample_view;
 
 ## See also
 
-- [`SELECT`](../dml_select)
+- [`SELECT`](../dml_select/)

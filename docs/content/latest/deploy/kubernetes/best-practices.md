@@ -2,8 +2,6 @@
 title: Best practices
 linkTitle: Best practices
 description: Best practices
-aliases:
-  - /latest/deploy/kubernetes/local-ssd/
 menu:
   latest:
     identifier: best-practices
@@ -14,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-## Local vs remote SSDs 
+## Local vs remote SSDs
 
 Kubernetes gives users the option of using remote disks using dynamic provisioning or local storage which has to be pre-provisioned.
 
@@ -27,12 +25,12 @@ Below is a table that summarizes the features and when to use local or remote st
 <table>
   <tr>
     <th></th>
-    <th>Local SSD storage</th> 
+    <th>Local SSD storage</th>
     <th>Remote SSD storage</th>
   </tr>
   <tr>
     <td>Provision large disk capacity per node</td>
-    <td>Depends on cloud-provider</td> 
+    <td>Depends on cloud-provider</td>
     <td>Yes</td>
   </tr>
   <tr>
@@ -42,30 +40,29 @@ Below is a table that summarizes the features and when to use local or remote st
   </tr>
   <tr>
     <td>Disk storage resilient to failures</td>
-    <td>No</td> 
+    <td>No</td>
     <td>Yes</td>
   </tr>
   <tr>
     <td>Performance - latency</td>
-    <td>Lower</td> 
+    <td>Lower</td>
     <td>Higher</td>
   </tr>
   <tr>
     <td>Performance - throughput</td>
-    <td>Higher</td> 
+    <td>Higher</td>
     <td>Lower</td>
   </tr>
   <tr>
     <td>Typical cost characteristics</td>
-    <td>Lower</td> 
+    <td>Lower</td>
     <td>Higher</td>
   </tr>
   <tr>
     <td>Kubernetes provisioning scheme</td>
-    <td>Pre-provisioned</td> 
+    <td>Pre-provisioned</td>
     <td>Dynamic provisioning</td>
   </tr>
 </table>
 
 Thus, it is generally preferable to use local storage where possible for higher performance and lower costs. The [GKE section](../gke/statefulset-yaml/) shows how to deploy YugabyteDB on Kubernetes using local SSDs.
-

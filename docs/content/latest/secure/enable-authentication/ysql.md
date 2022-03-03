@@ -18,19 +18,19 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/secure/enable-authentication/ysql" class="nav-link active">
+    <a href="../ysql/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
   <li >
-    <a href="/latest/secure/enable-authentication/ycql" class="nav-link">
+    <a href="../ycql/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
   </li>
   <li>
-    <a href="/latest/secure/enable-authentication/yedis" class="nav-link">
+    <a href="../yedis/" class="nav-link">
       <i class="icon-redis" aria-hidden="true"></i>
       YEDIS
     </a>
@@ -91,7 +91,7 @@ $ ./bin/yb-ctl restart --tserver_flags "ysql_enable_auth=true"
 
 ### Start YB-TServer services
 
-To enable YSQL authentication in deployable YugabyteDB clusters, you need to start your `yb-tserver` services using the [`--ysql_enable_auth` flag](../../../reference/configuration/yb-tserver#ysql-enable-auth). Your command should look similar to the following:
+To enable YSQL authentication in deployable YugabyteDB clusters, you need to start your `yb-tserver` services using the [`--ysql_enable_auth` flag](../../../reference/configuration/yb-tserver/#ysql-enable-auth). Your command should look similar to the following:
 
 ```sh
 ./bin/yb-tserver \
@@ -122,9 +122,9 @@ yugabyte=#
 
 ## Common user authorization tasks
 
-Here are some common authorization-related tasks. For more detailed information on authorization, refer to [Role-Based Access Control](../../authorization).
+Here are some common authorization-related tasks. For more detailed information on authorization, refer to [Role-Based Access Control](../../authorization/).
 
-For information on configuring authentication, refer to [Authentication](../../authentication).
+For information on configuring authentication, refer to [Authentication](../../authentication/).
 
 ### Creating users
 

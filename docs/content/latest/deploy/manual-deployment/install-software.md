@@ -3,8 +3,6 @@ title: Install YugabyteDB software
 headerTitle: Install software
 linkTitle: 2. Install software
 description: Download and install YugabyteDB software to each node
-aliases:
-  - /deploy/manual-deployment/install-software
 menu:
   latest:
     identifier: deploy-manual-deployment-install-software

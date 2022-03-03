@@ -395,7 +395,7 @@ created_at    | 2020-11-07 21:28:11.056236
 
 ## Step 5. Running distributed transactions
 
-So far, we have only been running `SELECT` and [single-row transactions](../../architecture/transactions/transactions-overview/#single-row-transactions). Geo-partitioning introduces a new complication for general distributed transactions.
+So far, we have only been running `SELECT` and [single-row transactions](../../../architecture/transactions/transactions-overview/#single-row-transactions). Geo-partitioning introduces a new complication for general distributed transactions.
 
 Let's say we want to run the following transaction:
 
@@ -532,6 +532,7 @@ Next, create the transaction table and adjust the placement. (Replace the IP add
     -master_addresses 127.0.0.1:7100,127.0.0.4:7100,127.0.0.7:7100 \
     create_transaction_table transactions_sa_east_1
 ```
+
 ```sh
 ./bin/yb-admin \
     -master_addresses 127.0.0.1:7100,127.0.0.4:7100,127.0.0.7:7100 \

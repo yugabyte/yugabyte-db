@@ -18,14 +18,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/develop/learn/strings-and-text-ysql" class="nav-link active">
+    <a href="{{< relref "./strings-and-text-ysql.md" >}}" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/develop/learn/strings-and-text-ycql" class="nav-link">
+    <a href="{{< relref "./strings-and-text-ycql.md" >}}" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -115,7 +115,7 @@ yugabyte=# select cast(123 AS TEXT), cast('123' AS TEXT), 123::text, '123'::text
 yugabyte=# select tablename, hasindexes AS nocast, hasindexes::text AS casted
   from pg_catalog.pg_tables
   where tablename in('pg_default_acl', 'sql_features');
-  
+
    tablename    | nocast | casted
 ----------------+--------+--------
  pg_default_acl | t      | true
@@ -133,7 +133,7 @@ The focus here was to quickly show how each of the functions could be used, alon
 ### Altering the appearance of text
 
 ```sh
-yugabyte=# \c yb_demo  
+yugabyte=# \c yb_demo
 You are now connected to database "yb_demo" as user "yugabyte".
 
 yb_demo =# select lower('hELLO world') AS LOWER,
@@ -242,11 +242,11 @@ yb_demo=# select repeat(' ', ((x.maxlen-length(u.name))/2)::int) || rpad(u.name,
       Rahul Kreiger
     Wilhelmine Erdman
       Elwin Okuneva
-  Maximillian Dickinson  
+  Maximillian Dickinson
       Lucie Cormier
-  Alexandrine Rosenbaum  
+  Alexandrine Rosenbaum
     Jayne Breitenberg
-  Alexandria Schowalter  
+  Alexandria Schowalter
  Augustine Runolfsdottir
     Mathilde Weissnat
       Theresa Grant
@@ -257,7 +257,7 @@ yb_demo=# select x.RawDay, length(x.RawDay) AS RawLen, x.TrimDay, length(x.TrimD
           from (select to_char(generate_series, 'Day') AS RawDay,
                 trim(to_char(generate_series, 'Day')) AS TrimDay,
                 ltrim(to_char(generate_series, 'Day')) AS LTrimDay,
-                rtrim(to_char(generate_series, 'Day')) AS RTrimDay  
+                rtrim(to_char(generate_series, 'Day')) AS RTrimDay
                 from generate_series(current_date, current_date+6, '1 day')) AS x;
 
   rawday   | rawlen |  trimday  | trimlen | ltrimday  | ltrimlen | rtrimday  | rtrimlen
@@ -347,7 +347,7 @@ yb_demo=# select concat_ws(':', 1,2,3) AS "123 WS";
 
 yb_demo =# select left(vendor,1) AS V, string_agg(distinct(category), ', ' ORDER BY category) AS CATEGORIES
   from products group by left(vendor,1) order by 1;
-  
+
  v |            categories
 ---+----------------------------------
  A | Doohickey, Gadget, Gizmo
@@ -420,7 +420,7 @@ The treatment of nulls in mathematical operations is often problematic, as is st
 ```
 yb_demo=# select trunc(avg(coalesce(discount,0))::numeric,3) AS "COALESCED", trunc(avg(discount)::numeric,3) AS "RAW" from orders;
 
- COALESCED |  RAW  
+ COALESCED |  RAW
 -----------+-------
      0.530 | 5.195
 
@@ -605,7 +605,7 @@ Rather than format or change the contents of text, you often might want to under
 yb_demo=# select x.c AS CHAR, ascii(x.c) AS ASCII
           from (select regexp_split_to_table(i.input, '') AS "c"
                 from (select 'hello' AS input) AS i) AS x;
-  
+
  char | ascii
 ------+-------
  h    |   104
@@ -623,7 +623,7 @@ yb_demo=# select bit_length('hello'), char_length('hello'), octet_length('hello'
 yb_demo=# select array_agg(chr(ascii(x.c))) AS "CHAR"
           from (select regexp_split_to_table(i.input, '') AS "c"
                 from (select 'hello' AS input) AS i) AS x;
-  
+
     CHAR
 -------------
  {h,e,l,l,o}
@@ -683,9 +683,9 @@ yb_demo=# select m.name
 
    name
 -----------
- January  
+ January
  June
- July  
+ July
 ```
 
 ## Something a bit more advanced

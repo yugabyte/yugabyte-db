@@ -3,8 +3,6 @@ title: Start YB-TServer servers
 headerTitle: Start YB-TServers
 linkTitle: 4. Start YB-TServers
 description: Steps to start YB-TServers when deploying for a single region or data center in a multi-zone/multi-rack configuration.
-aliases:
-  - /deploy/manual-deployment/start-tservers
 menu:
   latest:
     identifier: deploy-manual-deployment-start-tservers
@@ -21,14 +19,14 @@ showAsideToc: true
 
 {{< /note >}}
 
-This section covers deployment for a single region or data center in a multi-zone/multi-rack configuration. Note that single zone configuration is a special case of multi-zone where all placement related flags are set to the same value across every node. 
+This section covers deployment for a single region or data center in a multi-zone/multi-rack configuration. Note that single zone configuration is a special case of multi-zone where all placement related flags are set to the same value across every node.
 
 ## Example scenario
 
 - Create a 6-node cluster with replication factor of 3.
       - YB-TServer server should on all the six nodes, but as noted in the previous section, the YB-Master server should run on only three of these nodes.
       - Assume the three YB-Master private IP addresses are `172.151.17.130`, `172.151.17.220` and `172.151.17.140`.
-      - Cloud will be `aws`, region will be `us-west` and the 3 AZs will be `us-west-2a`, `us-west-2b`, and `us-west-2c`. Two nodes will be placed in each AZ in such a way that 1 replica for each tablet (aka shard) gets placed in any 1 node for each AZ. 
+      - Cloud will be `aws`, region will be `us-west` and the 3 AZs will be `us-west-2a`, `us-west-2b`, and `us-west-2c`. Two nodes will be placed in each AZ in such a way that 1 replica for each tablet (aka shard) gets placed in any 1 node for each AZ.
 - Multiple data drives mounted on `/home/centos/disk1`, `/home/centos/disk2`
 
 ## Run YB-TServer with command line flags
@@ -68,9 +66,9 @@ Alternatively, you can also create a `tserver.conf` file with the following flag
 --pgsql_proxy_bind_address=172.151.17.130:5433
 --cql_proxy_bind_address=172.151.17.130:9042
 --fs_data_dirs=/home/centos/disk1,/home/centos/disk2
---placement_cloud=aws 
---placement_region=us-west 
---placement_zone=us-west-2a 
+--placement_cloud=aws
+--placement_region=us-west
+--placement_zone=us-west-2a
 ```
 
 ```sh

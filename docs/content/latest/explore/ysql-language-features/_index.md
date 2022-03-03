@@ -14,7 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-YugabyteDB's YSQL API reuses a fork of the query layer of PostgreSQL as its starting point and runs on top of YugabyteDB’s distributed storage layer called DocDB. This architecture allows YSQL to support most PostgreSQL features such as data types, queries, expressions, operators and functions, stored procedures, triggers, extensions, and so on, all of which are expected to work identically on both database systems.
+YugabyteDB's YSQL API reuses a fork of the query layer of PostgreSQL as its starting point and runs on top of YugabyteDB's distributed storage layer called DocDB. This architecture allows YSQL to support most PostgreSQL features such as data types, queries, expressions, operators and functions, stored procedures, triggers, extensions, and so on, all of which are expected to work identically on both database systems.
 
 {{< tip title="Tip" >}}
 A large portion of the documentation and examples written for PostgreSQL would work against YSQL.
@@ -65,6 +65,6 @@ Since YugabyteDB is a distributed SQL database, YSQL has a number of features th
 | YSQL Feature                                                 | Description                                                  |
 | :----------------------------------------------------------- | :----------------------------------------------------------- |
 | <span style="font-size:16px">[Data distribution with `HASH`](../linear-scalability/sharding-data/)</span> | Enables the use of `HASH` sort order, in addition to `ASC` and `DESC` for indexes |
-| <span style="font-size:16px">[`Tablespaces`](going-beyond-sql/tablespaces)</span> | Enables pinning of data in tables and table partitions to different geographic locations |
+| <span style="font-size:16px">[`Tablespaces`](going-beyond-sql/tablespaces/)</span> | Enables pinning of data in tables and table partitions to different geographic locations |
 | <span style="font-size:16px">[`Follower Reads`](going-beyond-sql/follower-reads-ysql/)</span> | Enables more read IOPS with low latencies in YugabyteDB clusters |
 | <span style="font-size:16px">`Tablegroups`</span> | Enables colocation of multiple smaller tables into one tablet for better performance |

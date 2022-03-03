@@ -21,7 +21,7 @@ This page demonstrates how to deploy a GraphQL application on Hasura Cloud and Y
 The example has the following prerequisites:
 
 * You have created a cluster on Yugabyte Cloud
-  * For instructions, refer to [Create a cluster](../../cloud-basics/create-clusters).
+  * For instructions, refer to [Create a cluster](../../cloud-basics/create-clusters/).
 * You have created a Hasura project and connected it to your cluster
   * For instructions, refer to [Connect Hasura Cloud to Yugabyte Cloud](../hasura-cloud/).
 
@@ -136,7 +136,7 @@ Next, add a new Array relationship for the `poll_results` table called `option` 
 To run the Realtime Poll application, on your local computer, navigate to the application root (`realtime-poll`) directory and run the following commands:
 
 ```sh
-$ npm install 
+$ npm install
 $ npm start
 ```
 

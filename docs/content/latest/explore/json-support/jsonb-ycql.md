@@ -20,14 +20,14 @@ JSON data types are for storing JSON (JavaScript Object Notation) data, as speci
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/json-support/jsonb-ysql/" class="nav-link">
+    <a href="../jsonb-ysql/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/json-support/jsonb-ycql/" class="nav-link active">
+    <a href="../jsonb-ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -67,13 +67,13 @@ Insert JSONB documents
 ```sql
 INSERT INTO store.books (id, details) VALUES
   (1, '{ "name": "Macbeth", "author": { "first_name": "William", "last_name": "Shakespeare" }, "year": 1623, "editors": ["John", "Elizabeth", "Jeff"] }');
-INSERT INTO store.books (id, details) VALUES 
+INSERT INTO store.books (id, details) VALUES
   (2, '{ "name": "Hamlet", "author": { "first_name": "William", "last_name": "Shakespeare" }, "year": 1603, "editors": ["Lysa", "Mark", "Robert"] }');
-INSERT INTO store.books (id, details) VALUES 
+INSERT INTO store.books (id, details) VALUES
   (3, '{ "name": "Oliver Twist", "author": { "first_name": "Charles", "last_name": "Dickens" }, "year": 1838, "genre": "novel", "editors": ["Mark", "Tony", "Britney"] }');
-INSERT INTO store.books (id, details) VALUES 
+INSERT INTO store.books (id, details) VALUES
   (4, '{ "name": "Great Expectations", "author": { "first_name": "Charles", "last_name": "Dickens" }, "year": 1950, "genre": "novel", "editors": ["Robert", "John", "Melisa"] }');
-INSERT INTO store.books (id, details) VALUES 
+INSERT INTO store.books (id, details) VALUES
   (5, '{ "name": "A Brief History of Time", "author": { "first_name": "Stephen", "last_name": "Hawking" }, "year": 1988, "genre": "science", "editors": ["Melisa", "Mark", "John"] }');
 ```
 

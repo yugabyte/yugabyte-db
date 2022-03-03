@@ -20,7 +20,7 @@ YugabyteDB clusters can be configured to use client-to-server encryption to prot
 
 ## Prerequisites
 
-Before you can enable client-to-server encryption, you first must [enable server-to-server encryption](../server-to-server).
+Before you can enable client-to-server encryption, you first must [enable server-to-server encryption](../server-to-server/).
 
 ## Configure YB-TServer nodes
 

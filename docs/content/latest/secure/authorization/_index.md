@@ -38,7 +38,7 @@ menu:
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="ysql-grant-permissions">
+    <a class="section-link icon-offset" href="ysql-grant-permissions/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/grant-permissions.png" aria-hidden="true" />
         <div class="title">Grant privileges</div>
@@ -49,7 +49,7 @@ menu:
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="row-level-security">
+    <a class="section-link icon-offset" href="row-level-security/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/grant-permissions.png" aria-hidden="true" />
         <div class="title">Row-Level Security (RLS)</div>
@@ -60,7 +60,7 @@ menu:
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="column-level-security">
+    <a class="section-link icon-offset" href="column-level-security/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/grant-permissions.png" aria-hidden="true" />
         <div class="title">Column-Level Security</div>

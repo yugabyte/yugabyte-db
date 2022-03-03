@@ -19,14 +19,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/tools/dbeaver-ysql/" class="nav-link active">
+    <a href="../dbeaver-ysql/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/tools/dbeaver-ycql/" class="nav-link">
+    <a href="../dbeaver-ycql/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -42,13 +42,13 @@ showAsideToc: true
 
 Before you can start using DBeaver with YSQL, you need to perform the following:
 
-- Start YugabyteDB. 
+- Start YugabyteDB.
 
   For more information, see [Quick Start](/quick-start/install).
 
-- Install JRE or JDK for Java 8 or later. 
+- Install JRE or JDK for Java 8 or later.
 
-  Installers can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/). Note that some of the installers include a JRE accessible only to DBeaver. 
+  Installers can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/). Note that some of the installers include a JRE accessible only to DBeaver.
 
 - Install DBeaver as follows:
   - Download the distribution package for your OS from [DBeaver Downloads](https://dbeaver.io/download/).
@@ -68,7 +68,7 @@ You can create a connection as follows:
   - **Host**: localhost
   - **Port**: 5433
   - **Database**: replace the default value postgres with yugabyte .
-  - **User**: yugabyte 
+  - **User**: yugabyte
   - **Password**: leave blank if YSQL authentication is not enabled. If enabled, add the password for yugabyte (default is yugabyte).
   - Select **Show all databases**.
 

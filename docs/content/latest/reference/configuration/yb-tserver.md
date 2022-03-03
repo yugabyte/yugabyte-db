@@ -2,7 +2,7 @@
 title: yb-tserver configuration reference
 headerTitle: yb-tserver
 linkTitle: yb-tserver
-description: YugabyteDB Tablet Server (yb-tserver) binary and configuration flags to store and manage data for client applications.
+description: YugabyteDB Tablet Server (yb-tserver/) binary and configuration flags to store and manage data for client applications.
 menu:
   latest:
     identifier: yb-tserver
@@ -452,7 +452,7 @@ Default: `13000`
 
 Specifies a comma-separated list of PostgreSQL client authentication settings that is written to the `ysql_hba.conf` file.
 
-For details on using `--ysql_hba_conf` to specify client authentication, see [Host-based authentication](../../../secure/authentication/host-based-authentication).
+For details on using `--ysql_hba_conf` to specify client authentication, see [Host-based authentication](../../../secure/authentication/host-based-authentication/).
 
 Default: `"host all all 0.0.0.0/0 trust,host all all ::0/0 trust"`
 
@@ -480,7 +480,7 @@ Now the fields can be joined with the `,` and the final flag value is set inside
 --ysql_hba_conf_csv='host all all 127.0.0.1/0 password,"host all all 0.0.0.0/0 ldap ldapserver=***** ldapsearchattribute=cn ldapport=3268 ldapbinddn=***** ldapbindpasswd=""*****"""'
 ```
 
-For details on using `--ysql_hba_conf_csv` to specify client authentication, see [Host-based authentication](../../../secure/authentication/host-based-authentication).
+For details on using `--ysql_hba_conf_csv` to specify client authentication, see [Host-based authentication](../../../secure/authentication/host-based-authentication/).
 
 Default: `"host all all 0.0.0.0/0 trust,host all all ::0/0 trust"`
 
@@ -712,7 +712,7 @@ To upgrade from an older version that doesn't support RPC compression (such as 2
 
 ### Security flags
 
-For details on enabling client-server encryption, see [Client-server encryption](../../../secure/tls-encryption/client-to-server).
+For details on enabling client-server encryption, see [Client-server encryption](../../../secure/tls-encryption/client-to-server/).
 
 ##### --certs_dir
 

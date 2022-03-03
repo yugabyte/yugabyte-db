@@ -186,4 +186,4 @@ To add additional users to your database, refer to [Add database users](../../cl
 
 ## Next step
 
-[Explore distributed SQL](../qs-explore)
+[Explore distributed SQL](../qs-explore/)

@@ -14,7 +14,7 @@ showAsideToc: true
 
 This document describes the data types supported in YSQL, from the basic data types to the `SERIAL` pseudo-type (for implementing an auto-incrementing primary key column in a table), arrays, composite types, and range types.
 
-The [JSONB document data type](../../json-support/jsonb-ysql) is described in a separate section.
+The [JSONB document data type](../../json-support/jsonb-ysql/) is described in a separate section.
 
 ## Strings
 
@@ -277,7 +277,7 @@ Expect the following output:
 
 ## Enumerations - `ENUM` Type
 
-YugabyteDB supports the `ENUM` type in PostgreSQL. The following examples are adapted from [Enums](http://postgresguide.com/sexy/enums.html):
+YugabyteDB supports the `ENUM` type in PostgreSQL. The following examples are adapted from [Enums](http://postgresguide.com/cool/enums.html):
 
 ### 1. Create `ENUM`
 

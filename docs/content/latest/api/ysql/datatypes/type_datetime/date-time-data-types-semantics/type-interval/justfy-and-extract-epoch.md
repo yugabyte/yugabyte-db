@@ -13,7 +13,7 @@ showAsideToc: true
 ---
 
 {{< tip title="Download and install the date-time utilities code." >}}
-The code on this page depends on the code presented in the section [User-defined _interval_ utility functions](../interval-utilities/). This is included in the larger [code kit](../../../download-date-time-utilities/) that includes all of the reusable code that the overall _[date-time](../../../../type_datetime)_ section describes and uses.
+The code on this page depends on the code presented in the section [User-defined _interval_ utility functions](../interval-utilities/). This is included in the larger [code kit](../../../download-date-time-utilities/) that includes all of the reusable code that the overall _[date-time](../../../../type_datetime/)_ section describes and uses.
 {{< /tip >}}
 
 ## The justify_hours(), justify_days(), and justify_interval() built-in functions

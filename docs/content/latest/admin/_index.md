@@ -15,7 +15,7 @@ menu:
 
 {{< note title="Note" >}}
 
-Information about configuring the [YB-Master](../reference/configuration/yb-master) and [YB-TServer](../reference/configuration/yb-tserver) services is in the [Configuration](../reference/configuration/) section.
+Information about configuring the [YB-Master](../reference/configuration/yb-master/) and [YB-TServer](../reference/configuration/yb-tserver/) services is in the [Configuration](../reference/configuration/) section.
 
 {{< /note >}}
 

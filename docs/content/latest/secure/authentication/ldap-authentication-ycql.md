@@ -27,7 +27,7 @@ showAsideToc: true
   </li>
 </ul>
 
-The LDAP authentication method is similar to the password method, except that it uses LDAP to verify the password. Therefore, before LDAP can be used for authentication, the user must already exist in the database (and have appropriate permissions). 
+The LDAP authentication method is similar to the password method, except that it uses LDAP to verify the password. Therefore, before LDAP can be used for authentication, the user must already exist in the database (and have appropriate permissions).
 
 LDAP Authentication for YCQL can be enabled in the YugabyteDB cluster by setting the LDAP configuration with a set of tserver gflags. YugabyteDB supports two modes for LDAP authentication for YCQL (described in detail below):
 
@@ -45,7 +45,7 @@ A prerequisite to using LDAP for YCQL is that the `use_cassandra_authentication`
 
 ## Simple Bind Mode
 
-In **simple-bind** mode, YB-TServer will bind to the Distinguished Name (“DN”) constructed with “prefix username suffix” format. Here is an example for Simple bind mode:
+In **simple-bind** mode, YB-TServer will bind to the Distinguished Name ("DN") constructed with "prefix username suffix" format. Here is an example for Simple bind mode:
 
 ```sh
 --use_cassandra_authentication=true --ycql_use_ldap=true --ycql_ldap_server=ldap://ldap.yugabyte.com:389 --ycql_ldap_user_prefix=uid= --ycql_ldap_user_suffix=, ou=DBAs, dc=example, dc=com --ycql_ldap_users_to_skip_csv=cassandra
@@ -127,7 +127,7 @@ In the above sample configuration, we are using an [online LDAP test server](htt
 
 1. Connect using LDAP authentication.
 
-    Connect ycqlsh using the `riemann` LDAP user and password specified in the [Online LDAP Test Server](https://www.forumsys.com/tutorials/integration-how-to/ldap/online-ldap-test-server/) page. 
+    Connect ycqlsh using the `riemann` LDAP user and password specified in the [Online LDAP Test Server](https://www.forumsys.com/tutorials/integration-how-to/ldap/online-ldap-test-server/) page.
 
     ```sh
     $ ./ycqlsh -u riemann

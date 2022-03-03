@@ -53,7 +53,7 @@ ycqlsh:example> DROP TABLE users;
 
 - [`ALTER TABLE`](../ddl_alter_table)
 - [`CREATE TABLE`](../ddl_create_table)
-- [`DELETE`](../dml_delete)
+- [`DELETE`](../dml_delete/)
 - [`INSERT`](../dml_insert)
-- [`SELECT`](../dml_select)
-- [`UPDATE`](../dml_update)
+- [`SELECT`](../dml_select/)
+- [`UPDATE`](../dml_update/)

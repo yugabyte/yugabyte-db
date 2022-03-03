@@ -3,8 +3,6 @@ title: Inspect logs
 linkTitle: Inspect logs
 headerTitle: Inspect YugabyteDB logs
 description: Inspect YugabyteDB logs
-aliases:
-  - /troubleshoot/nodes/check-logs/
 menu:
   latest:
     parent: troubleshoot-nodes
@@ -17,7 +15,7 @@ showAsideToc: true
 
 The logs for each node are written to a subdirectory of the YugabyteDB `yugabyte-data` directory and may vary depending on your deployment:
 
-- When you use `yb-ctl` to create local YugabyteDB clusters on a single host (for example, your laptop), the default location for each node is `/yugabyte-data/node-<node_nr>/`. 
+- When you use `yb-ctl` to create local YugabyteDB clusters on a single host (for example, your laptop), the default location for each node is `/yugabyte-data/node-<node_nr>/`.
 For a 3-node cluster, the `yb-ctl` utility creates three directories: `node-1`, `node-2` and `node-3`.
 - For a multi-node cluster deployment to multiple hosts, the location where YugabyteDB disks are set up can vary (for example, `/home/centos/`, `/mnt/`, or another directory) on each node (host).
 - When using the `--fs_data_dirs` flag with multiple directories, logs will be saved in the first directory in the list.

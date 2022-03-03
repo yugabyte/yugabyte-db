@@ -92,6 +92,6 @@ ycqlsh:example> SELECT * FROM employees;
 
 - [`CREATE TABLE`](../ddl_create_table)
 - [`INSERT`](../dml_insert)
-- [`SELECT`](../dml_select)
-- [`UPDATE`](../dml_update)
-- [`DELETE`](../dml_delete)
+- [`SELECT`](../dml_select/)
+- [`UPDATE`](../dml_update/)
+- [`DELETE`](../dml_delete/)

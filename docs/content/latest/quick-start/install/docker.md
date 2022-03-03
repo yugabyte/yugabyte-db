@@ -78,6 +78,6 @@ $ docker pull yugabytedb/yugabyte
 
 {{<tip title="Next step" >}}
 
-[Create a local cluster](../../create-local-cluster/docker)
+[Create a local cluster](../../create-local-cluster/docker/)
 
 {{< /tip >}}

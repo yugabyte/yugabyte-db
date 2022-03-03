@@ -115,7 +115,7 @@ The 'DROP' now succeeds and the `\d` metacommand shows that the table _"children
 
 - [`CREATE TABLE`](../ddl_create_table)
 - [`INSERT`](../dml_insert)
-- [`SELECT`](../dml_select)
+- [`SELECT`](../dml_select/)
 
 ```
 

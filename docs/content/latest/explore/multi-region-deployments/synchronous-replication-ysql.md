@@ -39,7 +39,7 @@ YugabyteDB can easily be deployed in a globally distributed manner to serve appl
 
 This tutorial will simulate AWS regions on a local machine. First, you will deploy YugabyteDB in the `us-west-2` region across multiple availability zones (`a`, `b`, `c`). We will start a key-value workload against this universe. Next, you will change this setup to run across multiple geographic regions in US East (`us-east-1`) and Tokyo (`ap-northeast-1`), with the workload running uninterrupted during the entire transition.
 
-This tutorial uses the [yb-ctl](../../../admin/yb-ctl) local cluster management utility.
+This tutorial uses the [yb-ctl](../../../admin/yb-ctl/) local cluster management utility.
 
 ## 1. Create a multi-zone universe in US West
 
@@ -88,7 +88,7 @@ You should now see some read and write load on the [tablet servers page](http://
 
 ### Add new nodes
 
-Add a node in the zone `us-east-1a` of region `us-east-1`. 
+Add a node in the zone `us-east-1a` of region `us-east-1`.
 
 ```sh
 $ ./bin/yb-ctl add_node --placement_info "aws.us-east-1.us-east-1a"

@@ -16,7 +16,7 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/secure/authentication/trust-authentication" class="nav-link active">
+    <a href="../trust-authentication/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
@@ -29,12 +29,11 @@ showAsideToc: true
 
 When `trust` authentication is specified, YugabyteDB assumes that any user trying to connect with the YB-TServer can access the database with the database user name they specify. This method is appropriate and very convenient for local connections to the YugabyteDB cluster.
 
-By default, YugabyteDB cluster uses `trust `authentication. One can explicitly specify `trust` authentication by 
-setting with the following <code>[--ysql_hba_conf_csv](/latest/reference/configuration/yb-tserver/#ysql-hba-conf-csv)</code> flag.
+By default, YugabyteDB cluster uses `trust `authentication. One can explicitly specify `trust` authentication by
+setting with the following [`--ysql_hba_conf_csv`](/latest/reference/configuration/yb-tserver/#ysql-hba-conf-csv) flag.
 
-
-```
+```sh
 --ysql_hba_conf_csv='host all all 0.0.0.0/0 trust, host all all ::0/0 trust'
 ```
 
-This enables `trust` authentication for all users. 
+This enables `trust` authentication for all users.

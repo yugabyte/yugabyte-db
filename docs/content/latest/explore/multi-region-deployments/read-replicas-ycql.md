@@ -33,10 +33,10 @@ showAsideToc: true
 
 </ul>
 
-YugabyteDB supports the following types of reads: 
+YugabyteDB supports the following types of reads:
 
 - [Follower reads](../../multi-region-deployments/follower-reads-ycql/) that enable spreading the read workload across all replicas in the primary cluster.
-- Observer reads that use read replicas. The latter obtain their data via [asynchronous replication](../asynchronous-replication-ycql) which allows for the read workload to be offloaded from the primary cluster. Read replicas are created as a separate cluster that may be located in a different region, possibly closer to the consumers of the data which would result in lower-latency access and enhanced support of analytics workloads. 
+- Observer reads that use read replicas. The latter obtain their data via [asynchronous replication](../asynchronous-replication-ycql/) which allows for the read workload to be offloaded from the primary cluster. Read replicas are created as a separate cluster that may be located in a different region, possibly closer to the consumers of the data which would result in lower-latency access and enhanced support of analytics workloads.
 
 A datacenter (also known as universe) can have one primary cluster and several read replica clusters.
 
@@ -52,7 +52,7 @@ This document uses a client application based on the [yb-sample-apps](https://gi
 
 {{< /note >}}
 
-Also, since you cannot use read replicas without a primary cluster, ensure that you have the latter available. The following command sets up a primary cluster of three nodes in cloud `c`, region `r` and zones `z1`, `z2`, and `z3`: 
+Also, since you cannot use read replicas without a primary cluster, ensure that you have the latter available. The following command sets up a primary cluster of three nodes in cloud `c`, region `r` and zones `z1`, `z2`, and `z3`:
 
 ```shell
 $ ./bin/yb-ctl create --rf 3 --placement_info "c.r.z1,c.r.z2,c.r.z3" --tserver_flags "placement_uuid=live,max_stale_read_bound_time_ms=60000000”
@@ -91,12 +91,12 @@ The following illustration demonstrates the primary cluster visible via [Yugabyt
 The following command runs the sample application and starts a YCQL workload:
 
 ```shell
-java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \ 
+java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
                                --nodes 127.0.0.1:9042,127.0.0.2:9042,127.0.0.3:9042 \
-                               --nouuid \ 
-                               --num_unique_keys 2 \ 
-                               --num_threads_write 1 \ 
-                               --num_threads_read 1 \ 
+                               --nouuid \
+                               --num_unique_keys 2 \
+                               --num_threads_write 1 \
+                               --num_threads_read 1 \
                                --value_size 1024
 ```
 
@@ -123,8 +123,8 @@ Output:
 48 [main] INFO com.yugabyte.sample.apps.AppBase  - Creating Cassandra tables...
 92 [main] INFO com.yugabyte.sample.apps.AppBase  - Connecting with 4 clients to nodes: /127.0.0.1:9042,/127.0.0.2:9042,/127.0.0.3:9042
 1139 [main] INFO com.yugabyte.sample.apps.AppBase  - Created a Cassandra table using query: [CREATE TABLE IF NOT EXISTS CassandraKeyValue (k varchar, v blob, primary key (k));]
-6165 [Thread-1] INFO com.yugabyte.sample.common.metrics.MetricsTracker - Read: 4009.75 ops/sec (0.24 ms/op), 20137 total ops | Write: 1650.50 ops/sec (0.60 ms/op), 8260 total ops | Uptime: 5025 ms | maxWrittenKey: 1 | maxGeneratedKey: 2 | 
-11166 [Thread-1] INFO com.yugabyte.sample.common.metrics.MetricsTracker - Read: 5066.60 ops/sec (0.20 ms/op), 45479 total ops | Write: 1731.19 ops/sec (0.58 ms/op), 16918 total ops | Uptime: 10026 ms | maxWrittenKey: 1 | maxGeneratedKey: 2 | 
+6165 [Thread-1] INFO com.yugabyte.sample.common.metrics.MetricsTracker - Read: 4009.75 ops/sec (0.24 ms/op), 20137 total ops | Write: 1650.50 ops/sec (0.60 ms/op), 8260 total ops | Uptime: 5025 ms | maxWrittenKey: 1 | maxGeneratedKey: 2 |
+11166 [Thread-1] INFO com.yugabyte.sample.common.metrics.MetricsTracker - Read: 5066.60 ops/sec (0.20 ms/op), 45479 total ops | Write: 1731.19 ops/sec (0.58 ms/op), 16918 total ops | Uptime: 10026 ms | maxWrittenKey: 1 | maxGeneratedKey: 2 |
 ```
 
 The following illustration demonstrates the read and write statistics in the primary cluster visible via [Yugabyte Platform](/latest/yugabyte-platform/):
@@ -136,12 +136,12 @@ As per the preceding illustration, using the default workload directs reads and 
 The following is a modified command that enables follower reads. Specifying `--local_reads` changes the consistency level to `ONE`. The `--with_local_dc` option defines in which datacenter the application is at any given time. When specified, the read traffic is routed to the same region:
 
 ```shell
-$ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \ 
-                                 --nodes 127.0.0.1:9042,127.0.0.2:9042,127.0.0.3:9042 \ 
-                                 --nouuid \ 
-                                 --num_unique_keys 2 \ 
-                                 --num_threads_write 1 \ 
-                                 --num_threads_read 1 \ 
+$ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
+                                 --nodes 127.0.0.1:9042,127.0.0.2:9042,127.0.0.3:9042 \
+                                 --nouuid \
+                                 --num_unique_keys 2 \
+                                 --num_threads_write 1 \
+                                 --num_threads_read 1 \
                                  --value_size 1024 --local_reads --with_local_dc r
 ```
 
@@ -168,8 +168,8 @@ Output:
 30 [main] INFO com.yugabyte.sample.apps.AppBase - Creating Cassandra tables...
 67 [main] INFO com.yugabyte.sample.apps.AppBase - Connecting with 4 clients to nodes: /127.0.0.1:9042,/127.0.0.2:9042,/127.0.0.3:9042
 751 [main] INFO com.yugabyte.sample.apps.AppBase - Created a Cassandra table using query: [CREATE TABLE IF NOT EXISTS CassandraKeyValue (k varchar, v blob, primary key (k));]
-5773 [Thread-1] INFO com.yugabyte.sample.common.metrics.MetricsTracker - Read: 4029.25 ops/sec (0.24 ms/op), 20221 total ops | Write: 1486.29 ops/sec (0.67 ms/op), 7440 total ops | Uptime: 5021 ms | maxWrittenKey: 1 | maxGeneratedKey: 2 | 
-10778 [Thread-1] INFO com.yugabyte.sample.common.metrics.MetricsTracker - Read: 4801.54 ops/sec (0.21 ms/op), 44256 total ops | Write: 1637.30 ops/sec (0.61 ms/op), 15635 total ops | Uptime: 10026 ms | maxWrittenKey: 1 | maxGeneratedKey: 2 | 
+5773 [Thread-1] INFO com.yugabyte.sample.common.metrics.MetricsTracker - Read: 4029.25 ops/sec (0.24 ms/op), 20221 total ops | Write: 1486.29 ops/sec (0.67 ms/op), 7440 total ops | Uptime: 5021 ms | maxWrittenKey: 1 | maxGeneratedKey: 2 |
+10778 [Thread-1] INFO com.yugabyte.sample.common.metrics.MetricsTracker - Read: 4801.54 ops/sec (0.21 ms/op), 44256 total ops | Write: 1637.30 ops/sec (0.61 ms/op), 15635 total ops | Uptime: 10026 ms | maxWrittenKey: 1 | maxGeneratedKey: 2 |
 ```
 
 The following illustration demonstrates the reads spread across all the replicas for the tablet visible via [Yugabyte Platform](/latest/yugabyte-platform/):
@@ -195,12 +195,12 @@ The following illustration demonstrates the setup of two clusters, one of which 
 The following command directs `CL.ONE` reads to the primary cluster (as follower reads) in region `r`:
 
 ```shell
-java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \ 
-                               --nodes 127.0.0.1:9042,127.0.0.2:9042,127.0.0.3:9042 \ 
-                               --nouuid \ 
-                               --num_unique_keys 2 \ 
-                               --num_threads_write 1 \ 
-                               --num_threads_read 1 \ 
+java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
+                               --nodes 127.0.0.1:9042,127.0.0.2:9042,127.0.0.3:9042 \
+                               --nouuid \
+                               --num_unique_keys 2 \
+                               --num_threads_write 1 \
+                               --num_threads_read 1 \
                                --value_size 1024 --local_reads --with_local_dc r
 ```
 
@@ -211,12 +211,12 @@ The following illustration demonstrates the result of exectuting the preceding c
 The following command directs the `CL.ONE` reads to the read replica cluster (as observer reads) in region `r2`:
 
 ```shell
-java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \ 
-                               --nodes 127.0.0.1:9042,127.0.0.2:9042,127.0.0.3:9042 \ 
-                               --nouuid \ 
-                               --num_unique_keys 2 \ 
-                               --num_threads_write 1 \ 
-                               --num_threads_read 1 \ 
+java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
+                               --nodes 127.0.0.1:9042,127.0.0.2:9042,127.0.0.3:9042 \
+                               --nouuid \
+                               --num_unique_keys 2 \
+                               --num_threads_write 1 \
+                               --num_threads_read 1 \
                                --value_size 1024 --local_reads --with_local_dc r2
 ```
 
@@ -224,7 +224,7 @@ The following illustration demonstrates the result of exectuting the preceding c
 
 ![img](/images/explore/multi-region-deployments/read-replicas6.png)
 
-For information on deploying read replicas, see [Read Replica Clusters](../../../deploy/multi-dc/read-replica-clusters/). 
+For information on deploying read replicas, see [Read Replica Clusters](../../../deploy/multi-dc/read-replica-clusters/).
 
 ## Fault Tolerance
 
@@ -233,12 +233,12 @@ In the strong consistency mode (default), more failures can be tolerated by incr
 The following command starts a read-only workload:
 
 ```shell
-java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \ 
-  --nodes 127.0.0.1:9042,127.0.0.2:9042,127.0.0.3:9042 \ 
-  --nouuid \ 
-  --max_written_key 2 \ 
-  --read_only \ 
-  --num_threads_read 1 \ 
+java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
+  --nodes 127.0.0.1:9042,127.0.0.2:9042,127.0.0.3:9042 \
+  --nouuid \
+  --max_written_key 2 \
+  --read_only \
+  --num_threads_read 1 \
   --value_size 1024 --local_reads --with_local_dc r2 --skip_ddl
 ```
 
@@ -252,7 +252,7 @@ The following illustration demonstrates the stopped node visible via [Yugabyte P
 
 ![img](/images/explore/multi-region-deployments/read-replicas7.png)
 
-Stopping one node redistributes the load onto the two remaining nodes. 
+Stopping one node redistributes the load onto the two remaining nodes.
 
 The following command stops another node in the read replica cluster:
 

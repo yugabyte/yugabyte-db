@@ -83,4 +83,4 @@ If you need additional VPCs, contact {{<support-cloud>}}.
 
 ## Next steps
 
-- [Set up a VPC network](../cloud-vpc-setup).
+- [Set up a VPC network](../cloud-vpc-setup/).

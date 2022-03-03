@@ -37,7 +37,7 @@ showAsideToc: true
 
 Use Yugabyte Platform to back up your YugabyteDB universe YSQL data.
 
-To schedule backups for a later time, or as a recurring task, see [Schedule universe YSQL data backups](../../schedule-data-backups/ysql).
+To schedule backups for a later time, or as a recurring task, see [Schedule universe YSQL data backups](../../schedule-data-backups/ysql/).
 
 To immediately back up your YugabyteDB universe YSQL data, perform the following:
 

@@ -89,7 +89,7 @@ Starting from Ubuntu 20.04, `python` isn't available anymore. An easy fix is to 
     * CentOS: `yum install curl`
     * Ubuntu: `apt install curl`
 
-1. Each tablet maps to its own file, so if you experiment with a few hundred tables and a few tablets per table, you can soon end up creating a large number of files in the current shell. Make sure to [configure ulimit values](../../../deploy/manual-deployment/system-config#ulimits).
+1. Each tablet maps to its own file, so if you experiment with a few hundred tables and a few tablets per table, you can soon end up creating a large number of files in the current shell. Make sure to [configure ulimit values](../../../deploy/manual-deployment/system-config/#ulimits).
 
 ## Download YugabyteDB
 
@@ -129,6 +129,6 @@ $ ./bin/post_install.sh
 
 {{<tip title="Next step" >}}
 
-[Create a local cluster](../../create-local-cluster/linux)
+[Create a local cluster](../../create-local-cluster/linux/)
 
 {{< /tip >}}

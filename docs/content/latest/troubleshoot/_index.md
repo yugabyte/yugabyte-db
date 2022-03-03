@@ -5,8 +5,6 @@ linkTitle: Troubleshoot
 description: Diagnose and solve YugabyteDB cluster and node issues.
 image: /images/section_icons/index/troubleshoot.png
 headcontent:
-aliases:
-  - /troubleshoot/
 section: YUGABYTEDB CORE
 menu:
   latest:
@@ -16,9 +14,9 @@ menu:
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="overview">
+    <a class="section-link icon-offset" href="overview/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/introduction/overview.png" aria-hidden="true" />  
+        <img class="icon" src="/images/section_icons/introduction/overview.png" aria-hidden="true" />
         <div class="title">Overview</div>
       </div>
       <div class="body">
@@ -28,7 +26,7 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="cluster">
+    <a class="section-link icon-offset" href="cluster/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/create_cluster.png" aria-hidden="true" />
         <div class="articles">2 articles</div>
@@ -41,7 +39,7 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="nodes">
+    <a class="section-link icon-offset" href="nodes/">
       <div class="head">
         <img class="icon" src="/images/section_icons/architecture/concepts/universe.png" aria-hidden="true" />
         <div class="articles">3 articles</div>

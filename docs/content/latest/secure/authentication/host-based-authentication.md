@@ -5,8 +5,6 @@ linkTitle: Host-Based Authentication
 description: Manage access control for localhost, remote hosts, and clients.
 headcontent: Configure host-based access control for YSQL clients
 image: /images/section_icons/secure/authentication.png
-aliases:
-  - /latest/secure/authentication/client-authentication/
 menu:
   latest:
     identifier: host-based-authentication
@@ -18,7 +16,7 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/secure/authentication/host-based-authentication" class="nav-link active">
+    <a href="../host-based-authentication/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
@@ -146,7 +144,7 @@ An IP address range is specified using standard numeric notation for the range's
 
 Examples of an IPv4 address range specified this way are `172.20.143.89/32` for a single host, or `172.20.143.0/24` for a small network, or `10.6.0.0/16` for a larger one. `0.0.0.0/0` represents all IPv4 addresses.
 
-An IPv6 address range might look like `::1/128` for a single host (in this case, the IPv6 loopback address) or `fe80::7a31:c1ff:0000:0000/96` for a small network. `::0/0` represents all IPv6 addresses. 
+An IPv6 address range might look like `::1/128` for a single host (in this case, the IPv6 loopback address) or `fe80::7a31:c1ff:0000:0000/96` for a small network. `::0/0` represents all IPv6 addresses.
 
 To specify a single host, use a mask length of 32 for IPv4 or 128 for IPv6. In a network address, do not omit trailing zeroes.
 
@@ -204,13 +202,13 @@ Specify that for a connecting user, the password supplied must match the passwor
 
 #### ident
 
-Obtain the operating system user name of the client by contacting the ident server on the client and check if it matches the requested database user name. Ident authentication can only be used on TCP/IP connections. When specified for local connections, peer authentication will be used instead. 
+Obtain the operating system user name of the client by contacting the ident server on the client and check if it matches the requested database user name. Ident authentication can only be used on TCP/IP connections. When specified for local connections, peer authentication will be used instead.
 
 #### peer
 
-Obtain the client's operating system user name from the operating system and check if it matches the requested database user name. This is only available for local connections. 
+Obtain the client's operating system user name from the operating system and check if it matches the requested database user name. This is only available for local connections.
 
-#### ldap 
+#### ldap
 
 Use LDAP for password authentication. For more information, refer to [LDAP authentication](../ldap-authentication/).
 

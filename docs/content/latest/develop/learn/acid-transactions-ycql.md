@@ -15,14 +15,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/develop/learn/acid-transactions-ysql" class="nav-link">
+    <a href="../acid-transactions-ysql/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/develop/learn/acid-transactions-ycql" class="nav-link active">
+    <a href="../acid-transactions-ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -76,7 +76,7 @@ Here is a code snippet of how you would insert data into this table.
 
 ```java
 // Insert two key values, (key1, value1) and (key2, value2) as a transaction.
-String create_stmt = 
+String create_stmt =
   String.format("BEGIN TRANSACTION" +
                 "  INSERT INTO %s (k, v) VALUES (%s, %s);" +
                 "  INSERT INTO %s (k, v) VALUES (%s, %s);" +
@@ -92,7 +92,7 @@ You can prepare statements with transactions and bind variables to the prepared 
 ### Java example
 
 ```java
-String create_stmt = 
+String create_stmt =
   String.format("BEGIN TRANSACTION" +
                 "  INSERT INTO %s (k, v) VALUES (:k1, :v1);" +
                 "  INSERT INTO %s (k, v) VALUES (:k1, :v2);" +
@@ -262,7 +262,7 @@ ycqlsh> SELECT SUM(balance) as Johns_balance FROM banking.accounts WHERE account
 Further, the checking and savings account balances for John should have been written at the same write timestamp.
 
 ```sql
-ycqlsh> select account_name, account_type, balance, writetime(balance) 
+ycqlsh> select account_name, account_type, balance, writetime(balance)
 from banking.accounts where account_name='John';
 ```
 

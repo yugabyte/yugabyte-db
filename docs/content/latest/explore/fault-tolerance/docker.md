@@ -17,28 +17,28 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/fault-tolerance/macos" class="nav-link">
+    <a href="../macos/" class="nav-link">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/fault-tolerance/linux" class="nav-link">
+    <a href="../linux/" class="nav-link">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/fault-tolerance/docker" class="nav-link active">
+    <a href="../docker/" class="nav-link active">
       <i class="fab fa-docker" aria-hidden="true"></i>
       Docker
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/fault-tolerance/kubernetes" class="nav-link">
+    <a href="../kubernetes/" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
@@ -185,7 +185,7 @@ $ docker exec -it yb-tserver-n4 /home/yugabyte/bin/ycqlsh $YB_TSERVER_N4_ADDR
 Let us insert some data.
 
 ```sql
-ycqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES 
+ycqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES
   (3000, 'austin.powers@yugabyte.com', 'imGroovy',
    {'firstname': 'Austin', 'lastname': 'Powers'});
 ```

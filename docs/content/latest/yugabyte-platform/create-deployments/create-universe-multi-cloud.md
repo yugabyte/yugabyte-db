@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This page describes how to create a YugabyteDB universe spanning multiple geographic regions and cloud providers. In this example, you'll deploy a single Yugabyte universe across AWS (US-West-2), Google Cloud (Central-1), and Microsoft Azure (US-East1). 
+This page describes how to create a YugabyteDB universe spanning multiple geographic regions and cloud providers. In this example, you'll deploy a single Yugabyte universe across AWS (US-West-2), Google Cloud (Central-1), and Microsoft Azure (US-East1).
 
 The universe topology will be as follows:
 
@@ -40,7 +40,7 @@ When you create a universe, you'll need to import nodes that can be managed by Y
 Notes on node instances:
 
 * Your nodes across different cloud providers should be of similar configuration &mdash; vCPUs, DRAM, storage, and networking.
-* For more information on ports used by YugabyteDB, refer to [Default ports](../../../reference/configuration/default-ports).
+* For more information on ports used by YugabyteDB, refer to [Default ports](../../../reference/configuration/default-ports/).
 * Ensure that your YugabyteDB nodes conform to the requirements outlined in the [deployment checklist](../../../deploy/checklist/). This checklist also gives an idea of [recommended instance types across public clouds](../../../deploy/checklist/#running-on-public-clouds).
 
 ## Set up VPC peering
@@ -51,7 +51,7 @@ Yugabyte is a distributed SQL database, and requires TCP/IP communication across
 
 You should use non-overlapping CIDR blocks for each subnet across different clouds.
 
-All public cloud providers enable VPN tunneling across VPCs and their subnet to enable network discovery. As an example, refer to [this tutorial](https://medium.com/google-cloud/vpn-between-two-clouds-e2e3578be773) on connecting an AWS VPC to Google’s Cloud Platform over a VPN.
+All public cloud providers enable VPN tunneling across VPCs and their subnet to enable network discovery. As an example, refer to [this tutorial](https://medium.com/google-cloud/vpn-between-two-clouds-e2e3578be773) on connecting an AWS VPC to Google's Cloud Platform over a VPN.
 
 ## Install Yugabyte Platform
 
@@ -65,7 +65,7 @@ Follow the instructions in the next sub-sections to configure your cloud provide
 
 ### Set up the cloud provider
 
-On the Provider Info tab, configure the cloud provider as follows: 
+On the Provider Info tab, configure the cloud provider as follows:
 
 * **Provider Name** is `multi-cloud-demo`.
 * **SSH User** is the user which will run Yugabyte on the node (yugabyte in this case).
@@ -132,7 +132,7 @@ To create a multi-region universe, do the following:
     Because the data is globally replicated, RPC latencies are higher. This flag increases the failure-detection interval to compensate.
     \
     And because deployments on public clouds require security:
-    
+
     * `use_cassandra_authentication=true`
     * `ysql_enable_auth=true`
 
@@ -164,7 +164,7 @@ To run the TPC-C benchmark on your universe, you can use commands similar to the
 ./tpccbenchmark -c config/workload_all.xml \
     --load=true \
     --nodes=10.9.4.142,10.14.16.8,10.9.13.138,10.14.16.9,10.152.0.14,10.152.0.32 \
-    --warehouses 50 
+    --warehouses 50
 ```
 
 Refer to [Running TPC-C on Yugabyte](../../../benchmark/tpcc-ysql/) for more details.

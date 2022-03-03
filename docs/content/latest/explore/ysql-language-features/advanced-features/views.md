@@ -24,7 +24,7 @@ Regular views allow you to present data in YugabyteDB tables by using a differen
 
 You create views based on the following syntax:
 
-```sql
+```output.sql
 CREATE VIEW view_name AS query_definition;
 ```
 
@@ -64,7 +64,7 @@ SELECT * FROM employees_view;
 
 The preceding query produces the following output:
 
-```
+```output
 employee_no | name
 ------------+---------------------------
 1223        | Lucille Ball
@@ -79,7 +79,7 @@ If you create a view based on multiple tables with joins, using this view in you
 
 You can modify the query based on which a view was created by combining the `CREATE VIEW` statement with `OR REPLACE`, as demonstrated by the following syntax:
 
-```
+```output.sql
 CREATE OR REPLACE VIEW view_name AS query_definition;
 ```
 
@@ -98,7 +98,7 @@ SELECT * FROM employees_view;
 
 The preceding query produces the following output:
 
-```
+```output
  employee_no | name             | department
 -------------+------------------+----------------
  1223        | Lucille Ball     | Operations
@@ -111,7 +111,7 @@ The preceding query produces the following output:
 
 You can remove (drop) an existing view by using the `DROP VIEW` statement, as demonstrated by the following syntax:
 
-```
+```output.sql
 DROP VIEW [ IF EXISTS ] view_name;
 ```
 
@@ -127,7 +127,7 @@ You can also remove more than one view by providing a comma-separated list of vi
 
 ## Using Updatable Views
 
-Some of YSQL views are updatable. The defining query of such views (1) must have only one entry (either a table or another updatable view) in its `FROM` clause, (2) cannot contain `DISTINCT`, `GROUP BY`, `HAVING`, `EXCEPT`, `INTERSECT`, or `LIMIT` clauses at the top level. In addition, the view's selection list cannot contain  window functions, set-returning or aggregate functions.
+Some YSQL views are updatable. The defining query of such views (1) must have only one entry (either a table or another updatable view) in its `FROM` clause; and (2) cannot contain `DISTINCT`, `GROUP BY`, `HAVING`, `EXCEPT`, `INTERSECT`, or `LIMIT` clauses at the top level. In addition, the view's selection list cannot contain  window functions, set-returning or aggregate functions.
 
 The following example shows how to update the `employees` table with a new row via the `employees_view` defined in [Creating Views](#creating-views):
 
@@ -138,7 +138,7 @@ INSERT INTO employees_view (employee_no, name)
 
 If you select everything from the `employees` table by executing `SELECT * FROM employees;` , you should expect the following output:
 
-```
+```output
  employee_no | name             | address        | department
 -------------+------------------+----------------+--------------
  1227        | Lee Bo           |                |
@@ -170,7 +170,7 @@ Materialized views are relations that persist the results of a query. They can b
 The following very simplified example creates a materialized view based on only one table and selects two of its columns:
 
 ```sql
-CREATE MATERIALIZED VIEW employees_mview AS 
+CREATE MATERIALIZED VIEW employees_mview AS
   SELECT employee_no, name FROM employees;
 ```
 
@@ -182,7 +182,7 @@ SELECT * FROM employees_mview;
 
 The preceding query produces the following output:
 
-```
+```output
 employee_no | name
 ------------+---------------------------
 1223        | Lucille Ball
@@ -192,7 +192,7 @@ employee_no | name
 ```
 
 ```sql
-INSERT INTO employees VALUES 
+INSERT INTO employees VALUES
   (1225, 'Jane Doe', '4 Fifth Street', 'Accounting');
 ```
 
@@ -201,13 +201,14 @@ After inserting values into the base relation (`employees`), we will have to `RE
 ```sql
 REFRESH MATERIALIZED VIEW employees;
 ```
+
 ```sql
 SELECT * FROM employees_mview;
 ```
 
 The preceding query produces the following output:
 
-```
+```output
 employee_no | name
 ------------+---------------------------
 1223        | Lucille Ball
@@ -216,8 +217,7 @@ employee_no | name
 1222        | Bette Davis
 ```
 
-
 For detailed documentation on materialized views please refer to the following links:
-- [`CREATE MATERIALIZED VIEW`](../../api/ysql/the-sql-language/statements/ddl_create_matview)
-- [`REFRESH MATERIALIZED VIEW`](../../api/ysql/the-sql-language/statements/ddl_refresh_matview)
-- [`DROP MATERIALIZED VIEW`](../../api/ysql/the-sql-language/statements/ddl_drop_matview)
+- [`CREATE MATERIALIZED VIEW`](../../../../api/ysql/the-sql-language/statements/ddl_create_matview/)
+- [`REFRESH MATERIALIZED VIEW`](../../../../api/ysql/the-sql-language/statements/ddl_refresh_matview/)
+- [`DROP MATERIALIZED VIEW`](../../../../api/ysql/the-sql-language/statements/ddl_drop_matview/)

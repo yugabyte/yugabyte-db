@@ -47,7 +47,7 @@ See the section [The WITH clause and common table expressions](../../with-clause
 
 ## Semantics
 
-Constraints must be satisfied.  
+Constraints must be satisfied.
 
 ### *insert*
 
@@ -238,7 +238,7 @@ yugabyte=# SELECT id, c1, c2 FROM sample ORDER BY id;
 ```
 
 ```
- id |   c1   |    c2     
+ id |   c1   |    c2
 ----+--------+-----------
   1 | cat    | sparrow
   2 | dog    | blackbird
@@ -334,4 +334,4 @@ yugabyte=# SELECT id, c1, c2 FROM sample ORDER BY c1;
 
 - [`COPY`](../cmd_copy)
 - [`CREATE TABLE`](../ddl_create_table)
-- [`SELECT`](../dml_select)
+- [`SELECT`](../dml_select/)

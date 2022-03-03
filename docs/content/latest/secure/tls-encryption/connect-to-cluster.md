@@ -31,8 +31,8 @@ Each client that connects to a YugabyteDB cluster needs the following file to be
 
 For each client, the steps assume that you have performed the following:
 
-- [Enabled client-to-server encryption](../client-to-server) on the YB-TServer nodes of your YugabyteDB cluster.
-- [Enabled server-to-server encryption](../server-to-server) on the YugabyteDB cluster.
+- [Enabled client-to-server encryption](../client-to-server/) on the YB-TServer nodes of your YugabyteDB cluster.
+- [Enabled server-to-server encryption](../server-to-server/) on the YugabyteDB cluster.
 
 ## ysqlsh
 
@@ -84,9 +84,9 @@ UUID_3 		node3:7100     	ALIVE 	FOLLOWER
 
 To enable `ycqlsh` to connect to a YugabyteDB cluster with encryption enabled, you need to set the following environment variables:
 
-Variable       | Description                  
+Variable       | Description
 ---------------|------------------------------
-`SSL_CERTFILE` | The root certificate file (`ca.crt`). 
+`SSL_CERTFILE` | The root certificate file (`ca.crt`).
 
 To set the environment variables, use the following `export` commands:
 

@@ -4,8 +4,6 @@ headerTitle: Snapshot and restore data
 linkTitle: Snapshot and restore data
 description: Snapshot and restore data in YugabyteDB for YSQL.
 image: /images/section_icons/manage/enterprise.png
-aliases:
-  - manage/backup-restore/manage-snapshots
 menu:
   latest:
     identifier: snapshots-1-ysql
@@ -18,14 +16,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/manage/backup-restore/snapshot-ysql" class="nav-link active">
+    <a href="../snapshot-ysql/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/manage/backup-restore/snapshots-ycql" class="nav-link">
+    <a href="../snapshots-ycql/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -166,7 +164,7 @@ Let’s destroy the existing cluster, create a new cluster, and import the snaps
     Target imported table name: test.t2
     Table being imported: test.t2
     Successfully applied snapshot.
-    Object           Old ID                                 New ID                          
+    Object           Old ID                                 New ID
     Keyspace         00004000000030008000000000000000       00004000000030008000000000000000
     Table            00004000000030008000000000004003       00004000000030008000000000004001
     Tablet 0         b0de9bc6a4cb46d4aaacf4a03bcaf6be       50046f422aa6450ca82538e919581048
@@ -196,7 +194,7 @@ Let’s destroy the existing cluster, create a new cluster, and import the snaps
 
     {{< note title="Note" >}}
 
-For each tablet, you need to copy the snapshots folder on all tablet peers and in any configured read replica cluster. 
+For each tablet, you need to copy the snapshots folder on all tablet peers and in any configured read replica cluster.
 
     {{< /note >}}
 

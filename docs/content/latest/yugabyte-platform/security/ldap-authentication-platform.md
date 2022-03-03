@@ -45,11 +45,11 @@ When entering the flag value in Platform, do not enclose it in single quotes as 
 
 The first host-based authentication (HBA) rule `host all yugabyte 127.0.0.1/0 password` allows access to the admin user (yugabyte) from localhost (127.0.0.1) using password authentication. This allows the administrator to login as `yugabyte` to set up the roles (and permissions) for LDAP users.
 
-The second HBA rule configures LDAP authentication for all other user/host pairs using a [search+bind](../../../secure/authentication/ldap-authentication/#search-bind-mode) configuration. The YB-TServer will bind to the LDAP directory using a fixed username and password specified with `ldapbinddn` and `ldapbindpasswd`. The search is performed over the subtree at `ldapbasedn` and tries to find an exact match of the attribute specified in `ldapsearchattribute`. 
+The second HBA rule configures LDAP authentication for all other user/host pairs using a [search+bind](../../../secure/authentication/ldap-authentication/#search-bind-mode) configuration. The YB-TServer will bind to the LDAP directory using a fixed username and password specified with `ldapbinddn` and `ldapbindpasswd`. The search is performed over the subtree at `ldapbasedn` and tries to find an exact match of the attribute specified in `ldapsearchattribute`.
 
 Once the user is found, to verify that the login is correct, the server disconnects and re-binds to the directory as this user using the password specified by the client.
 
-For more information on the `ysql_hba_conf_csv` flag, refer to [--ysql_hba_conf_csv flag](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv). For more information on HBA, refer to [Host-based authentication](../../../secure/authentication/host-based-authentication).
+For more information on the `ysql_hba_conf_csv` flag, refer to [--ysql_hba_conf_csv flag](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv). For more information on HBA, refer to [Host-based authentication](../../../secure/authentication/host-based-authentication/).
 
 ## Example
 
@@ -71,7 +71,7 @@ For more information on the `ysql_hba_conf_csv` flag, refer to [--ysql_hba_conf_
     # base <dc=example,dc=org> with scope subtree
     # filter: uid=adam
     # requesting: ALL
-    
+
     # adam, example.org
     dn: uid=adam,dc=example,dc=org
     objectClass: top
@@ -89,11 +89,11 @@ For more information on the `ysql_hba_conf_csv` flag, refer to [--ysql_hba_conf_
     shadowLastChange: 0
     shadowMax: 0
     shadowWarning: 0
-    
+
     # search result
     search: 2
     result: 0 Success
-    
+
     # numResponses: 2
     # numEntries: 1
     ```

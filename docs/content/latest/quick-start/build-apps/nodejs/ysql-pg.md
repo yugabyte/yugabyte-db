@@ -5,7 +5,7 @@ description: Build a Node.js application with the PostgreSQL driver that uses YS
 aliases:
   - /develop/client-drivers/nodejs/
   - /latest/develop/client-drivers/nodejs/
-  - /latest/develop/build-apps/nodejs/  
+  - /latest/develop/build-apps/nodejs/
   - /latest/quick-start/build-apps/nodejs/
 menu:
   latest:
@@ -49,7 +49,7 @@ Are you using Yugabyte Cloud? Install the [prerequisites](#prerequisites), then 
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB and created a cluster. Refer to [Quick Start](../../../../quick-start).
+- installed YugabyteDB and created a cluster. Refer to [Quick Start](../../../../quick-start/).
 - installed a recent version of [`node`](https://nodejs.org/en/download/).
 - installed the [`node-postgres` driver](../../../../reference/drivers/ysql-client-drivers/#node-postgres).
 - installed the [async](https://github.com/caolan/async) utility to work with asynchronous Javascript.

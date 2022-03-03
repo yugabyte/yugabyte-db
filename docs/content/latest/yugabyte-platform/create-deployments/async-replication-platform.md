@@ -23,9 +23,9 @@ Within the concept of replication, universes are divided into the following cate
 
   Note that in the current release, replicating a source universe that has already been populated with data can be done only by contacting Yugabyte Support.
 
-- A target universe is the recepient of the replicated data. One source universe can replicate to one or more target universes.
+- A target universe is the recipient of the replicated data. One source universe can replicate to one or more target universes.
 
-For additional information on asynchronous replication in YugabyteDB, see the following: 
+For additional information on asynchronous replication in YugabyteDB, see the following:
 
 - [Asynchronous Replication: Overview and Architecture](https://docs.yugabyte.com/latest/architecture/docdb-replication/async-replication/)
 - [Asynchronous Replication Between Universes in YugabyteDB](https://docs.yugabyte.com/latest/deploy/multi-dc/async-replication/)
@@ -86,7 +86,7 @@ This page allows you to do the following:
 
     ![Tables](/images/yp/asynch-replication-7.png)<br><br>
 
-  - Click **Modify Tables**. 
+  - Click **Modify Tables**.
 
   - Use the **Add tables to the replication** dialog to change the table selection, as per the following illustration:<br><br>
 
@@ -120,15 +120,13 @@ This page allows you to do the following:
 
 You can set up bidirectional replication using either the Yugabyte Platform UI or API by creating two separate replication configurations. Under this scenario, a source universe of the first replication becomes the target universe of the second replication, and vice versa.
 
-
-
 <!--
 
 ## Using the REST API
 
 You may choose to use the API to manage universes. You can call the following REST API endpoint on your Yugabyte Platform instance for the source universe and the target universe involved in the asynchronous replication between two data sources:
 
-```sh
+```http
 PUT /api/customers/<customerUUID>/universes/<universeUUID>/setup_universe_2dc
 ```
 

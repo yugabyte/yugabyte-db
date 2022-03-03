@@ -13,7 +13,7 @@ showAsideToc: true
 ---
 
 {{< tip title="Download and install the date-time utilities code." >}}
-The code on this page depends on the code presented in the section [User-defined _interval_ utility functions](../../interval-utilities/). This is included in the larger [code kit](../../../../download-date-time-utilities/) that includes all of the reusable code that the overall _[date-time](../../../../../type_datetime)_ section describes and uses.
+The code on this page depends on the code presented in the section [User-defined _interval_ utility functions](../../interval-utilities/). This is included in the larger [code kit](../../../../download-date-time-utilities/) that includes all of the reusable code that the overall _[date-time](../../../../../type_datetime/)_ section describes and uses.
 {{< /tip >}}
 
 This section presents a PL/pgSQL implementation of the model that explains how adding two _interval_ values or subtracting one _interval_ value from another works.
@@ -88,7 +88,7 @@ This is the result:
  intermediate model mm_dd_ss:          6.0000 months         2.0000 days         0.0000 seconds
  ultimate model mm_dd_ss:              6.0000 months         2.0000 days         0.0000 seconds
  actual mm_dd_ss:                      6.0000 months         2.0000 days         0.0000 seconds
- 
+
  ultimate model result: 6 mons 2 days
 ```
 
@@ -108,7 +108,7 @@ This is the result:
  intermediate model mm_dd_ss:          8.0000 months        56.0000 days    141840.0000 seconds
  ultimate model mm_dd_ss:              8.0000 months        56.0000 days    141840.0000 seconds
  actual mm_dd_ss:                      8.0000 months        56.0000 days    141840.0000 seconds
- 
+
  ultimate model result: 8 mons 56 days 39:24:00
 ```
 

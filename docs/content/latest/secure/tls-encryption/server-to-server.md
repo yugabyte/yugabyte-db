@@ -5,8 +5,6 @@ linkTitle: Enable server-to-server encryption
 description: Enable server-to-server encryption (using TLS) for intranode communication.
 headcontent: Enable server-to-server encryption (using TLS) for intranode communication.
 image: /images/section_icons/secure/tls-encryption/server-to-server.png
-aliases:
-  - /secure/tls-encryption/server-to-server
 menu:
   latest:
     identifier: server-to-server
@@ -15,7 +13,6 @@ menu:
 isTocNested: true
 showAsideToc: true
 ---
-
 
 ## Prerequisites
 
@@ -35,7 +32,7 @@ Flag                           | Node                  | Description            
 
 You can enable access control by starting the `yb-master` services with the `--use_node_to_node_encryption=true` flag as described above. Your command should look similar to this:
 
-```
+```sh
 bin/yb-master                               \
     --fs_data_dirs=<data directories>       \
     --master_addresses=<master addresses>   \
@@ -50,7 +47,7 @@ For information on starting YB-Master nodes for a deployment, see [Start YB-Mast
 
 You can enable access control by starting the `yb-tserver` services using the `--use_node_to_node_encryption=true` flag described above. Your command should look similar to this:
 
-```
+```sh
 bin/yb-tserver                                  \
     --fs_data_dirs=<data directories>           \
     --tserver_master_addrs=<master addresses>   \
@@ -62,7 +59,7 @@ For information on starting YB-TServers for a deployment, see [start YB-TServers
 
 ## Connect to the cluster
 
-Because you have only enabled server-to-server encryption and not [client-to-server encryption](../client-to-server), you can now connect to this cluster using the YSQL shell (`ysqlsh`) or the YCQL shell (`ycqlsh`) without enabling encryption as shown here.
+Because you have only enabled server-to-server encryption and not [client-to-server encryption](../client-to-server/), you can now connect to this cluster using the YSQL shell (`ysqlsh`) or the YCQL shell (`ycqlsh`) without enabling encryption as shown here.
 
 ### YSQL
 
@@ -70,7 +67,7 @@ Because you have only enabled server-to-server encryption and not [client-to-ser
 $ ./bin/ysqlsh
 ```
 
-```
+```output
 ysqlsh (11.2-YB-2.0.11.0-b0)
 Type "help" for help
 
@@ -83,7 +80,7 @@ yugabyte=#
 $ ./bin/ycqlsh
 ```
 
-```
+```output
 Connected to local cluster at 127.0.0.1:9042.
 [ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.
