@@ -551,6 +551,14 @@ A `delete` change event record provides a consumer with the information it needs
 
 When a row is deleted, the *delete* event value still works with log compaction, because Kafka can remove all earlier messages that have that same key. However, for Kafka to remove all messages that have that same key, the message value must be `null`. To make this possible, the YugabyteDB connector follows a *delete* event with a special *tombstone* event that has the same key but a `null` value.
 
+{{< warning title="Warning" >}}
+
+Do note that we do NOT support DROP TABLE and TRUNCATE TABLE commands yet, the behavior of these commands while streaming data from CDC is not defined. If dropping or truncating a table is necessarily needed, delete the stream ID using [yb-admin](../../admin/yb-admin.md#change-data-capture-cdc-commands).<br/><br/>
+
+See [limitations](../../cdc/change-data-capture.md#limitations) to see what else is not supported currently.
+
+{{< /warning >}}
+
 ## Datatype mappings
 
 The YugabyteDB connector represents changes to rows with events that are structured like the table in which the row exists. The event contains a field for each column value. How that value is represented in the event depends on the YugabyteDB data type of the column. The following sections describe how the connector maps YugabyteDB data types to a literal type and a semantic type in event fields.
