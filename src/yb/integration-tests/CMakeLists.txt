@@ -111,6 +111,7 @@ ADD_YB_TEST(cluster_trace-test)
 ADD_YB_TEST(tablet_server-itest)
 ADD_YB_TEST(tablet-split-itest)
 ADD_YB_TEST(xcluster-tablet-split-itest)
+ADD_YB_TEST(cdcsdk_gflag-test)
 
 # Tests which fail on purpose for checking Jenkins test failures reporting, disabled
 # (commented out) by default:
