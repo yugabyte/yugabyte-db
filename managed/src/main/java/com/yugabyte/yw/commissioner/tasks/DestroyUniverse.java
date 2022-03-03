@@ -96,7 +96,10 @@ public class DestroyUniverse extends UniverseTaskBase {
             .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
         // Create tasks to destroy the existing nodes.
         createDestroyServerTasks(
-                universe.getNodes(), params().isForceDelete, true /* delete node */)
+                universe.getNodes(),
+                params().isForceDelete,
+                true /* delete node */,
+                true /* deleteRootVolumes */)
             .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
       }
 

@@ -647,4 +647,9 @@ public class Util {
     }
     return ip;
   }
+
+  // Generate a deterministic node UUID from the universe UUID and the node name.
+  public static UUID generateNodeUUID(UUID universeUuid, String nodeName) {
+    return UUID.nameUUIDFromBytes((universeUuid.toString() + nodeName).getBytes());
+  }
 }
