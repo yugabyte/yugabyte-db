@@ -129,7 +129,7 @@ try {
     stmt = `INSERT INTO DemoAccount VALUES
         (1, 'Jessica', 28, 'USA', 10000),
         (2, 'John', 28, 'Canada', 9000)`;
-    
+
     await client.query(stmt);
 
     console.log('>>>> Successfully created table DemoAccount.');
@@ -186,7 +186,7 @@ try {
 
 [node-postgres module](../../../../reference/drivers/ysql-client-drivers/#node-postgres)
 
-[Explore more applications](../../../cloud-develop)
+[Explore more applications](../../../cloud-examples/)
 
 [Deploy clusters in Yugabyte Cloud](../../../cloud-basics)
 

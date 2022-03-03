@@ -30,7 +30,7 @@ import com.yugabyte.yw.common.alerts.AlertNotificationReport;
 import com.yugabyte.yw.common.alerts.AlertUtils;
 import com.yugabyte.yw.common.alerts.PlatformNotificationException;
 import com.yugabyte.yw.common.alerts.impl.AlertChannelEmail;
-import com.yugabyte.yw.forms.AlertingFormData.AlertingData;
+import com.yugabyte.yw.forms.AlertingData;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.AlertChannel;

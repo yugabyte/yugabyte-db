@@ -103,6 +103,10 @@ class DirectWriteToWriteBatchHandler : public rocksdb::DirectWriteHandler {
     write_batch_->Put(key, value);
   }
 
+  void SingleDelete(const Slice& key) override {
+    write_batch_->SingleDelete(key);
+  }
+
  private:
   rocksdb::WriteBatch *write_batch_;
 };

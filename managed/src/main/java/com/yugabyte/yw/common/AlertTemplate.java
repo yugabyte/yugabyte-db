@@ -504,11 +504,11 @@ public enum AlertTemplate {
   DB_MEMORY_OVERLOAD(
       "DB memory overload",
       "DB memory rejections detected during last 10 minutes",
-      "sum by (node_prefix) (sum_over_time("
+      "sum by (node_prefix) (increase("
           + "leader_memory_pressure_rejections{node_prefix=\"__nodePrefix__\"}[10m])) + "
-          + "sum by (node_prefix) (sum_over_time("
+          + "sum by (node_prefix) (increase("
           + "follower_memory_pressure_rejections{node_prefix=\"__nodePrefix__\"}[10m])) + "
-          + "sum by (node_prefix) (sum_over_time("
+          + "sum by (node_prefix) (increase("
           + "operation_memory_pressure_rejections{node_prefix=\"__nodePrefix__\"}[10m])) "
           + "{{ query_condition }} {{ query_threshold }}",
       "DB memory rejections detected for universe '{{ $labels.source_name }}'.",
@@ -525,7 +525,7 @@ public enum AlertTemplate {
   DB_COMPACTION_OVERLOAD(
       "DB compaction overload",
       "DB compaction rejections detected during last 10 minutes",
-      "sum by (node_prefix) (sum_over_time("
+      "sum by (node_prefix) (increase("
           + "majority_sst_files_rejections{node_prefix=\"__nodePrefix__\"}[10m])) "
           + "{{ query_condition }} {{ query_threshold }}",
       "DB compaction rejections detected for universe '{{ $labels.source_name }}'.",
@@ -542,9 +542,9 @@ public enum AlertTemplate {
   DB_QUEUES_OVERFLOW(
       "DB queues overflow",
       "DB queues overflow detected during last 10 minutes",
-      "sum by (node_prefix) (sum_over_time("
+      "sum by (node_prefix) (increase("
           + "rpcs_queue_overflow{node_prefix=\"__nodePrefix__\"}[10m])) + "
-          + "sum by (node_prefix) (sum_over_time("
+          + "sum by (node_prefix) (increase("
           + "rpcs_timed_out_in_queue{node_prefix=\"__nodePrefix__\"}[10m])) "
           + "{{ query_condition }} {{ query_threshold }}",
       "DB queues overflow detected for universe '{{ $labels.source_name }}'.",

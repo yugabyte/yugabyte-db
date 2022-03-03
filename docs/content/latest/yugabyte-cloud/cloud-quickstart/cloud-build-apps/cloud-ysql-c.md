@@ -150,7 +150,7 @@ if (PQresultStatus(res) != PGRES_TUPLES_OK) {
 }
 
 for (i = 0; i < PQntuples(res); i++) {
-    printf("name = %s, age = %s, country = %s, balance = %s\n", 
+    printf("name = %s, age = %s, country = %s, balance = %s\n",
         PQgetvalue(res, i, 0), PQgetvalue(res, i, 1), PQgetvalue(res, i, 2), PQgetvalue(res, i, 3));
 }
 ```
@@ -185,7 +185,7 @@ if (PQresultStatus(res) != PGRES_COMMAND_OK) {
 
 [libpq driver](../../../../reference/drivers/ysql-client-drivers/#libpq)
 
-[Explore more applications](../../../cloud-develop)
+[Explore more applications](../../../cloud-examples/)
 
 [Deploy clusters in Yugabyte Cloud](../../../cloud-basics)
 

@@ -111,7 +111,7 @@ client.execute("CREATE TABLE DemoAccount (
                 country varchar,
                 balance int)", &[])?;
 
-client.execute("INSERT INTO DemoAccount VALUES 
+client.execute("INSERT INTO DemoAccount VALUES
                 (1, 'Jessica', 28, 'USA', 10000),
                 (2, 'John', 28, 'Canada', 9000)", &[])?;
 ```
@@ -127,7 +127,7 @@ for row in client.query("SELECT name, age, country, balance FROM DemoAccount", &
     let country: &str = row.get("country");
     let balance: i32 = row.get("balance");
 
-    println!("name = {}, age = {}, country = {}, balance = {}", 
+    println!("name = {}, age = {}, country = {}, balance = {}",
         name, age, country, balance);
 }
 ```
@@ -152,7 +152,7 @@ let exec_txn = || -> Result<(), DBError> {
 
 [Rust-Postgres driver](../../../../reference/drivers/ysql-client-drivers/#rust-postgres)
 
-[Explore more applications](../../../cloud-develop)
+[Explore more applications](../../../cloud-examples/)
 
 [Deploy clusters in Yugabyte Cloud](../../../cloud-basics)
 

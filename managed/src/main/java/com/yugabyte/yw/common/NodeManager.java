@@ -34,6 +34,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateMountedDisks;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CertificateParams;
@@ -54,8 +55,10 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -83,6 +86,9 @@ import play.libs.Json;
 @Slf4j
 public class NodeManager extends DevopsBase {
   static final String BOOT_SCRIPT_PATH = "yb.universe_boot_script";
+  static final String BOOT_SCRIPT_TOKEN = "39666ab2-6633-4806-9685-5134321bd0d1";
+  static final String BOOT_SCRIPT_COMPLETE =
+      "\r\nsync\r\necho " + BOOT_SCRIPT_TOKEN + " >/etc/yb-boot-script-complete\r\n";
   private static final String YB_CLOUD_COMMAND_TYPE = "instance";
   public static final String CERT_LOCATION_NODE = "node";
   public static final String CERT_LOCATION_PLATFORM = "platform";
@@ -115,6 +121,7 @@ public class NodeManager extends DevopsBase {
     Tags,
     InitYSQL,
     Disk_Update,
+    Update_Mounted_Disks,
     Change_Instance_Type,
     Pause,
     Resume,
@@ -671,7 +678,10 @@ public class NodeManager extends DevopsBase {
   }
 
   private Map<String, String> getMasterDefaultGFlags(
-      AnsibleConfigureServers.Params taskParam, Boolean useHostname, Boolean useSecondaryIp) {
+      AnsibleConfigureServers.Params taskParam,
+      Boolean useHostname,
+      Boolean useSecondaryIp,
+      Boolean isDualNet) {
     Map<String, String> gflags = new HashMap<>();
     Universe universe = Universe.getOrBadRequest(taskParam.universeUUID);
     NodeDetails node = universe.getNode(taskParam.nodeName);
@@ -703,6 +713,8 @@ public class NodeManager extends DevopsBase {
           String.format("%s:%s", node.cloudInfo.secondary_private_ip, node.masterRpcPort);
       String bindAddresses = bindAddressSecondary + "," + bindAddressPrimary;
       gflags.put("rpc_bind_addresses", bindAddresses);
+    } else if (isDualNet) {
+      gflags.put("use_private_ip", "cloud");
     }
 
     gflags.put("webserver_port", Integer.toString(node.masterHttpPort));
@@ -712,7 +724,10 @@ public class NodeManager extends DevopsBase {
   }
 
   private Map<String, String> getTServerDefaultGflags(
-      AnsibleConfigureServers.Params taskParam, Boolean useHostname, Boolean useSecondaryIp) {
+      AnsibleConfigureServers.Params taskParam,
+      Boolean useHostname,
+      Boolean useSecondaryIp,
+      Boolean isDualNet) {
     Map<String, String> gflags = new HashMap<>();
     Universe universe = Universe.getOrBadRequest(taskParam.universeUUID);
     NodeDetails node = universe.getNode(taskParam.nodeName);
@@ -739,6 +754,11 @@ public class NodeManager extends DevopsBase {
           String.format("%s:%s", node.cloudInfo.secondary_private_ip, node.tserverRpcPort);
       String bindAddresses = bindAddressSecondary + "," + bindAddressPrimary;
       gflags.put("rpc_bind_addresses", bindAddresses);
+    } else if (isDualNet) {
+      // We want the broadcast address to be secondary so that
+      // it gets populated correctly for the client discovery tables.
+      gflags.put("server_broadcast_addresses", node.cloudInfo.secondary_private_ip);
+      gflags.put("use_private_ip", "cloud");
     }
 
     gflags.put("webserver_port", Integer.toString(node.tserverHttpPort));
@@ -781,9 +801,13 @@ public class NodeManager extends DevopsBase {
     Universe universe = Universe.getOrBadRequest(taskParam.universeUUID);
     NodeDetails node = universe.getNode(taskParam.nodeName);
     boolean useSecondaryIp = false;
-    if (config.getBoolean("yb.cloud.enabled")
-        && node.cloudInfo.secondary_private_ip != null
-        && !node.cloudInfo.secondary_private_ip.equals("null")) {
+    boolean legacyNet =
+        universe.getConfig().getOrDefault(Universe.DUAL_NET_LEGACY, "true").equals("true");
+    boolean isDualNet =
+        config.getBoolean("yb.cloud.enabled")
+            && node.cloudInfo.secondary_private_ip != null
+            && !node.cloudInfo.secondary_private_ip.equals("null");
+    if (isDualNet && !legacyNet) {
       useSecondaryIp = true;
     }
 
@@ -791,9 +815,11 @@ public class NodeManager extends DevopsBase {
     if (processType == null) {
       extra_gflags.put("master_addresses", "");
     } else if (processType.equals(ServerType.TSERVER.name())) {
-      extra_gflags.putAll(getTServerDefaultGflags(taskParam, useHostname, useSecondaryIp));
+      extra_gflags.putAll(
+          getTServerDefaultGflags(taskParam, useHostname, useSecondaryIp, isDualNet));
     } else {
-      extra_gflags.putAll(getMasterDefaultGFlags(taskParam, useHostname, useSecondaryIp));
+      extra_gflags.putAll(
+          getMasterDefaultGFlags(taskParam, useHostname, useSecondaryIp, isDualNet));
     }
 
     UserIntent userIntent = getUserIntentFromParams(taskParam);
@@ -1002,6 +1028,7 @@ public class NodeManager extends DevopsBase {
                           universe.getUniverseDetails().getPrimaryCluster().userIntent.provider))
                   .getYbHome();
           String certsNodeDir = getCertsNodeDir(ybHomeDir);
+          String certsForClientDir = getCertsForClientDir(ybHomeDir);
 
           subcommand.add("--cert_rotate_action");
           subcommand.add(taskParam.certRotateAction.toString());
@@ -1064,14 +1091,21 @@ public class NodeManager extends DevopsBase {
               }
               break;
             case UPDATE_CERT_DIRS:
+              {
+                Map<String, String> gflags = new HashMap<>();
+                if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
+                  gflags.put("certs_dir", certsNodeDir);
+                }
+                if (EncryptionInTransitUtil.isClientRootCARequired(taskParam)) {
+                  gflags.put("certs_for_client_dir", certsForClientDir);
+                }
+                subcommand.add("--gflags");
+                subcommand.add(Json.stringify(Json.toJson(gflags)));
+                subcommand.add("--tags");
+                subcommand.add("override_gflags");
+                break;
+              }
           }
-
-          Map<String, String> gflags = new HashMap<>(taskParam.gflags);
-          subcommand.add("--gflags");
-          subcommand.add(Json.stringify(Json.toJson(gflags)));
-
-          subcommand.add("--tags");
-          subcommand.add("override_gflags");
         }
         break;
       case ToggleTls:
@@ -1295,6 +1329,41 @@ public class NodeManager extends DevopsBase {
         Collections.emptyMap());
   }
 
+  private Path addBootscript(
+      Config config, List<String> commandArgs, NodeTaskParams nodeTaskParam) {
+    Path bootScriptFile = null;
+    String bootScript = config.getString(BOOT_SCRIPT_PATH);
+    commandArgs.add("--boot_script");
+
+    // treat the contents as script body if it starts with a shebang line
+    // otherwise consider the contents to be a path
+    if (bootScript.startsWith("#!")) {
+      try {
+        bootScriptFile = Files.createTempFile(nodeTaskParam.nodeName, "-boot.sh");
+        Files.write(bootScriptFile, bootScript.getBytes());
+        Files.write(bootScriptFile, BOOT_SCRIPT_COMPLETE.getBytes(), StandardOpenOption.APPEND);
+
+      } catch (IOException e) {
+        LOG.error(e.getMessage(), e);
+        throw new RuntimeException(e);
+      }
+    } else {
+      try {
+        bootScriptFile = Files.createTempFile(nodeTaskParam.nodeName, "-boot.sh");
+        Files.write(bootScriptFile, Files.readAllBytes(Paths.get(bootScript)));
+        Files.write(bootScriptFile, BOOT_SCRIPT_COMPLETE.getBytes(), StandardOpenOption.APPEND);
+
+      } catch (IOException e) {
+        LOG.error(e.getMessage(), e);
+        throw new RuntimeException(e);
+      }
+    }
+    commandArgs.add(bootScriptFile.toAbsolutePath().toString());
+    commandArgs.add("--boot_script_token");
+    commandArgs.add(BOOT_SCRIPT_TOKEN);
+    return bootScriptFile;
+  }
+
   public ShellResponse nodeCommand(NodeCommandType type, NodeTaskParams nodeTaskParam) {
     Universe universe = Universe.getOrBadRequest(nodeTaskParam.universeUUID);
     List<String> commandArgs = new ArrayList<>();
@@ -1356,24 +1425,7 @@ public class NodeManager extends DevopsBase {
             }
 
             if (config.hasPath(BOOT_SCRIPT_PATH)) {
-              String bootScript = config.getString(BOOT_SCRIPT_PATH);
-              commandArgs.add("--boot_script");
-
-              // treat the contents as script body if it starts with a shebang line
-              // otherwise consider the contents to be a path
-              if (bootScript.startsWith("#!")) {
-                try {
-                  bootScriptFile = Files.createTempFile(nodeTaskParam.nodeName, "-boot.sh");
-                  Files.write(bootScriptFile, bootScript.getBytes());
-
-                  commandArgs.add(bootScriptFile.toAbsolutePath().toString());
-                } catch (IOException e) {
-                  LOG.error(e.getMessage(), e);
-                  throw new RuntimeException(e);
-                }
-              } else {
-                commandArgs.add(bootScript);
-              }
+              bootScriptFile = addBootscript(config, commandArgs, nodeTaskParam);
             }
 
             // For now we wouldn't add machine image for aws and fallback on the default
@@ -1509,6 +1561,11 @@ public class NodeManager extends DevopsBase {
               commandArgs.add("--remote_package_path");
               commandArgs.add(taskParam.remotePackagePath);
             }
+          }
+
+          Config config = this.runtimeConfigFactory.forProvider(nodeTaskParam.getProvider());
+          if (config.hasPath(BOOT_SCRIPT_PATH)) {
+            bootScriptFile = addBootscript(config, commandArgs, nodeTaskParam);
           }
 
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
@@ -1682,6 +1739,22 @@ public class NodeManager extends DevopsBase {
           if (taskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(taskParam));
           }
+          break;
+        }
+      case Update_Mounted_Disks:
+        {
+          if (!(nodeTaskParam instanceof UpdateMountedDisks.Params)) {
+            throw new RuntimeException("NodeTaskParams is not UpdateMountedDisksTask.Params");
+          }
+          UpdateMountedDisks.Params taskParam = (UpdateMountedDisks.Params) nodeTaskParam;
+          commandArgs.add("--instance_type");
+          commandArgs.add(taskParam.instanceType);
+          if (nodeTaskParam.deviceInfo != null) {
+            commandArgs.add("--volume_type");
+            commandArgs.add(nodeTaskParam.deviceInfo.storageType.toString().toLowerCase());
+            commandArgs.addAll(getDeviceArgs(nodeTaskParam));
+          }
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           break;
         }
       case Change_Instance_Type:

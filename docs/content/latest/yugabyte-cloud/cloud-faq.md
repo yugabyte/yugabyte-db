@@ -19,7 +19,7 @@ showAsideToc: true
 
 Yugabyte Cloud is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on Google Cloud Platform (GCP), Amazon Web Services (AWS), and Microsoft Azure (coming soon).
 
-You access your Yugabyte Cloud clusters via [YSQL](../../api/ysql) and [YCQL](../../api/ycql) client APIs, and administer your clusters using the Yugabyte Cloud console.
+You access your Yugabyte Cloud clusters via [YSQL](../../api/ysql/) and [YCQL](../../api/ycql/) client APIs, and administer your clusters using the Yugabyte Cloud console.
 
 See also [Yugabyte Cloud](https://www.yugabyte.com/cloud/) at yugabyte.com.
 
@@ -68,8 +68,8 @@ A Yugabyte Cloud account is limited to a single free cluster; you can add as man
 
 If you want to continue testing YugabyteDB with more resource-intensive scenarios, you can:
 
-- Download and run YugabyteDB on a local machine. For instructions, refer to [Quick Start](../../quick-start).
-- Upgrade to a [standard cluster](../cloud-basics/create-clusters) to access bigger clusters with more resources.
+- Download and run YugabyteDB on a local machine. For instructions, refer to [Quick Start](../../quick-start/).
+- Upgrade to a [standard cluster](../cloud-basics/create-clusters/) to access bigger clusters with more resources.
 
 ### Can I migrate my free cluster to a standard cluster?
 
@@ -94,9 +94,9 @@ Cluster (YugabyteDB) version upgrade
 
 ### What version of YugabyteDB does my cluster run on?
 
-Free clusters are provisioned with an **edge** release, most often from the YugabyteDB [latest release](../../releases/whats-new/latest-release/) series; it may also be a recent stable release.
+Free clusters are provisioned with an **edge** release, most often from the YugabyteDB [latest release](../../releases/latest-release/) series; it may also be a recent stable release.
 
-By default, new standard clusters are provisioned with a **stable** release, from the YugabyteDB [stable release](../../releases/whats-new/stable-release/) series. <!--You can choose the edge track when you create the cluster.-->
+By default, new standard clusters are provisioned with a **stable** release, from the YugabyteDB [stable release](../../releases/stable-release/) series. <!--You can choose the edge track when you create the cluster.-->
 
 Once a cluster is created, it is upgraded with releases from the release track that was assigned at creation (that is, either edge or stable).
 
@@ -104,7 +104,7 @@ To view the database version running on a particular cluster, navigate to the **
 
 ### Can I test YugabyteDB locally?
 
-To test locally, [download](https://download.yugabyte.com) and install YugabyteDB on a local machine. Refer to [Quick Start](../../quick-start). For accurate comparison with cloud, be sure to download the version that is running on Yugabyte Cloud.
+To test locally, [download](https://download.yugabyte.com) and install YugabyteDB on a local machine. Refer to [Quick Start](../../quick-start/). For accurate comparison with cloud, be sure to download the version that is running on Yugabyte Cloud.
 
 ## Support
 
@@ -157,10 +157,10 @@ For multi-region deployments, including [synchronous replication](../../explore/
 You can connect to clusters in the following ways:
 
 Cloud Shell
-: Run the [ysqlsh](../../admin/ysqlsh) or [ycqlsh](../../admin/ycqlsh) shell from your browser to connect to and interact with your YugabyteDB database. Cloud shell does not require a CA certificate or any special network access configured.
+: Run the [ysqlsh](../../admin/ysqlsh/) or [ycqlsh](../../admin/ycqlsh) shell from your browser to connect to and interact with your YugabyteDB database. Cloud Shell does not require a CA certificate or any special network access configured.
 
 Client Shell
-: Connect to your YugabyteDB cluster using the YugabyteDB [ysqlsh](../../admin/ysqlsh) and [ycqlsh](../../admin/ycqlsh) client shells installed on your computer.
+: Connect to your YugabyteDB cluster using the YugabyteDB [ysqlsh](../../admin/ysqlsh/) and [ycqlsh](../../admin/ycqlsh) client shells installed on your computer.
 
 : Before you can connect using a client shell, you need to add your computer to the cluster IP allow list. Refer to [Assign IP Allow Lists](../cloud-secure-clusters/add-connections/).
 
@@ -189,9 +189,9 @@ psql
 : For detailed steps for configuring other popular third party tools, see [Third party tools](../../tools/).
 
 Applications
-: Applications connect to and interact with YugabyteDB using API client libraries, also called client drivers. Before you can connect an application, you need to install the correct driver. Clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters. For information on available drivers, refer to [Build an application](../../quick-start/build-apps).
+: Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). Before you can connect an application, you need to install the correct driver. Clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters. For information on available drivers, refer to [Build an application](../../quick-start/build-apps/).
 
-: Before you can connect, your application has to be able to reach your Yugabyte Cloud. To add inbound network access from your application environment to Yugabyte Cloud, add the public IP addresses to the [cluster IP access list](../cloud-secure-clusters/add-connections/), or use [VPC peering](../cloud-secure-clusters/cloud-vpcs/) to add private IP addresses.
+: Before you can connect, your application has to be able to reach your Yugabyte Cloud. To add inbound network access from your application environment to Yugabyte Cloud, add the public IP addresses to the [cluster IP access list](../cloud-secure-clusters/add-connections/), or use [VPC peering](../cloud-basics/cloud-vpcs/) to add private IP addresses.
 
 For more details, refer to [Connect to clusters](../cloud-connect).
 

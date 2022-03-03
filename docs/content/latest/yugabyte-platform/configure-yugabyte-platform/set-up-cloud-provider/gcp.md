@@ -17,47 +17,47 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws" class="nav-link">
+    <a href="../aws/" class="nav-link">
       <i class="fab fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp" class="nav-link active">
+    <a href="../gcp/" class="nav-link active">
       <i class="fab fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure" class="nav-link">
+    <a href="../azure/" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
       &nbsp;&nbsp; Azure
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes" class="nav-link">
+    <a href="../kubernetes/" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/vmware-tanzu" class="nav-link">
+    <a href="../vmware-tanzu/" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       VMware Tanzu
     </a>
   </li>
 
 <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/openshift" class="nav-link">
+    <a href="../openshift/" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>OpenShift</a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises" class="nav-link">
+    <a href="../on-premises/" class="nav-link">
       <i class="fas fa-building"></i>
       On-premises
     </a>
@@ -73,7 +73,7 @@ To run YugabyteDB nodes on GCP, all you need to provide on the Yugabyte Platform
 
 ## Configure GCP
 
-You can configure GCP as follows: 
+You can configure GCP as follows:
 
 - Navigate to **Configs > Google Cloud Platform**.
 
@@ -88,10 +88,10 @@ You can configure GCP as follows:
 
     If your Yugabyte Platform instance is running inside GCP, the preferred method for authentication to the GCP APIs is to add a service account role to the GCP instance running Yugabyte Platform and then configure Yugabyte Platform to use the the instance’s service account. To do this, select **Use Service Account on instance** in the **Credential Type** field. 
 
-  - If this is a new deployment, it is recommended that you use the **VPC Setup** field to create a new VPC specifically for YugabyteDB nodes. You have to ensure that the Yugabyte Platform host machine can connect to your Google Cloud account where this new VPC will be created. 
+  - If this is a new deployment, it is recommended that you use the **VPC Setup** field to create a new VPC specifically for YugabyteDB nodes. You have to ensure that the Yugabyte Platform host machine can connect to your Google Cloud account where this new VPC will be created.
 
     <br>Alternatively, you may choose to specify an existing VPC for YugabyteDB nodes, in which case you would need to map regions by providing the following: 
-  
+
     - A region name.
     - A subnet ID.
     - Optionally, a custom machine image. Yugabyte Platform allows you to bring up universes on Ubuntu 18.04 host nodes, assuming you have Python 2 or later installed on the host, as well as the provider created with a custom AMI and custom SSH user.

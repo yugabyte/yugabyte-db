@@ -17,14 +17,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/secure/authorization/create-roles" class="nav-link">
+    <a href="../create-roles/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/secure/authorization/create-roles-ycql" class="nav-link active">
+    <a href="../create-roles-ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -90,7 +90,7 @@ cassandra@ycqlsh> SELECT role, can_login, is_superuser, member_of FROM system_au
 
 You should see the following output:
 
-```
+```output
  role        | can_login | is_superuser | member_of
 -------------+-----------+--------------+-----------------
         john |      True |        False | ['engineering']
@@ -124,7 +124,7 @@ Listing all the roles now shows that `john` no longer inherits from the `enginee
 cassandra@ycqlsh> SELECT role, can_login, is_superuser, member_of FROM system_auth.roles;
 ```
 
-```
+```output
  role        | can_login | is_superuser | member_of
 -------------+-----------+--------------+-----------------
         john |      True |        False |                []
@@ -151,7 +151,7 @@ The `developer` role would no longer be present upon listing all the roles:
 cassandra@ycqlsh> SELECT role, can_login, is_superuser, member_of FROM system_auth.roles;
 ```
 
-```
+```output
  role        | can_login | is_superuser | member_of
 -------------+-----------+--------------+-----------
         john |      True |        False |          []

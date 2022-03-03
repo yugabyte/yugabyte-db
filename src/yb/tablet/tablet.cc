@@ -1690,18 +1690,19 @@ Result<docdb::ApplyTransactionState> Tablet::ApplyIntents(const TransactionApply
   // transaction is done properly in the rare situation where the committed transaction's intents
   // are still in intents db and not yet in regular db.
   AtomicFlagSleepMs(&FLAGS_TEST_inject_sleep_before_applying_intents_ms);
+  docdb::ApplyIntentsContext context(
+      data.transaction_id, data.apply_state, data.aborted, data.commit_ht, data.log_ht,
+      &key_bounds_, intents_db_.get());
+  docdb::IntentsWriter intents_writer(
+      data.apply_state ? data.apply_state->key : Slice(), intents_db_.get(), &context);
   rocksdb::WriteBatch regular_write_batch;
-  auto new_apply_state = VERIFY_RESULT(docdb::PrepareApplyIntentsBatch(
-      tablet_id(), data.transaction_id, data.aborted, data.commit_ht, &key_bounds_,
-      data.apply_state, data.log_ht, &regular_write_batch, intents_db_.get(),
-      nullptr /* intents_write_batch */));
-
+  regular_write_batch.SetDirectWriter(&intents_writer);
   // data.hybrid_time contains transaction commit time.
   // We don't set transaction field of put_batch, otherwise we would write another bunch of intents.
   docdb::ConsensusFrontiers frontiers;
   auto frontiers_ptr = data.op_id.empty() ? nullptr : InitFrontiers(data, &frontiers);
   WriteToRocksDB(frontiers_ptr, &regular_write_batch, StorageDbType::kRegular);
-  return new_apply_state;
+  return context.apply_state();
 }
 
 template <class Ids>
@@ -1713,35 +1714,25 @@ CHECKED_STATUS Tablet::RemoveIntentsImpl(const RemoveIntentsData& data, const Id
   for (const auto& id : ids) {
     boost::optional<docdb::ApplyTransactionState> apply_state;
     for (;;) {
-      auto new_apply_state = VERIFY_RESULT(docdb::PrepareApplyIntentsBatch(
-          tablet_id(),
-          id,
-          AbortedSubTransactionSet(),
-          HybridTime() /* commit_ht */,
-          &key_bounds_,
-          apply_state.get_ptr(),
-          HybridTime(),
-          nullptr /* regular_write_batch */,
-          intents_db_.get(),
-          &intents_write_batch));
-      if (new_apply_state.key.empty()) {
-        break;
-      }
-
+      docdb::RemoveIntentsContext context(id);
+      docdb::IntentsWriter writer(
+          apply_state ? apply_state->key : Slice(), intents_db_.get(), &context);
+      intents_write_batch.SetDirectWriter(&writer);
       docdb::ConsensusFrontiers frontiers;
       auto frontiers_ptr = InitFrontiers(data, &frontiers);
       WriteToRocksDB(frontiers_ptr, &intents_write_batch, StorageDbType::kIntents);
 
-      apply_state = std::move(new_apply_state);
+      if (!context.apply_state().active()) {
+        break;
+      }
+
+      apply_state = std::move(context.apply_state());
       intents_write_batch.Clear();
 
       AtomicFlagSleepMs(&FLAGS_apply_intents_task_injected_delay_ms);
     }
   }
 
-  docdb::ConsensusFrontiers frontiers;
-  auto frontiers_ptr = InitFrontiers(data, &frontiers);
-  WriteToRocksDB(frontiers_ptr, &intents_write_batch, StorageDbType::kIntents);
   return Status::OK();
 }
 

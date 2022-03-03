@@ -957,12 +957,25 @@ public class NodeManagerTest extends FakeDBApplication {
               break;
             case UPDATE_CERT_DIRS:
               {
+                Map<String, String> gflagMap = new HashMap<>();
+                if (EncryptionInTransitUtil.isRootCARequired(configureParams)) {
+                  gflagMap.put("certs_dir", certsNodeDir);
+                }
+                if (EncryptionInTransitUtil.isClientRootCARequired(configureParams)) {
+                  gflagMap.put("certs_for_client_dir", certsForClientDir);
+                }
+                expectedCommand.add("--gflags");
+                expectedCommand.add(Json.stringify(Json.toJson(gflagMap)));
+                expectedCommand.add("--tags");
+                expectedCommand.add("override_gflags");
                 break;
               }
           }
         }
 
-        if (configureParams.type != Everything && configureParams.type != Software) {
+        if (configureParams.type != Everything
+            && configureParams.type != Software
+            && configureParams.type != Certs) {
           expectedCommand.add("--gflags");
           expectedCommand.add(Json.stringify(Json.toJson(gflags)));
 

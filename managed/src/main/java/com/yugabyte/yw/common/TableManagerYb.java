@@ -2,6 +2,11 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.BackupUtil.BACKUP_SCRIPT;
+import static com.yugabyte.yw.common.BackupUtil.EMR_MULTIPLE;
+import static com.yugabyte.yw.common.BackupUtil.K8S_CERT_PATH;
+import static com.yugabyte.yw.common.BackupUtil.VM_CERT_DIR;
+import static com.yugabyte.yw.common.BackupUtil.YB_CLOUD_COMMAND_TYPE;
 import static com.yugabyte.yw.common.TableManagerYb.CommandSubType.BACKUP;
 import static com.yugabyte.yw.common.TableManagerYb.CommandSubType.BULK_IMPORT;
 import static com.yugabyte.yw.common.TableManagerYb.CommandSubType.DELETE;
@@ -9,6 +14,7 @@ import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.BACKUP_LOCATIO
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
@@ -34,11 +40,6 @@ import play.libs.Json;
 
 @Singleton
 public class TableManagerYb extends DevopsBase {
-  private static final int EMR_MULTIPLE = 8;
-  private static final String YB_CLOUD_COMMAND_TYPE = "table";
-  private static final String K8S_CERT_PATH = "/opt/certs/yugabyte/";
-  private static final String VM_CERT_DIR = "/yugabyte-tls-config/";
-  private static final String BACKUP_SCRIPT = "bin/yb_backup.py";
 
   public enum CommandSubType {
     BACKUP(BACKUP_SCRIPT),
@@ -83,8 +84,11 @@ public class TableManagerYb extends DevopsBase {
 
     List<NodeDetails> tservers = universe.getTServers();
     // Verify if secondary IPs exist. If so, create map.
+    boolean legacyNet =
+        universe.getConfig().getOrDefault(Universe.DUAL_NET_LEGACY, "true").equals("true");
     if (tservers.get(0).cloudInfo.secondary_private_ip != null
-        && !tservers.get(0).cloudInfo.secondary_private_ip.equals("null")) {
+        && !tservers.get(0).cloudInfo.secondary_private_ip.equals("null")
+        && !legacyNet) {
       secondaryToPrimaryIP =
           tservers
               .stream()

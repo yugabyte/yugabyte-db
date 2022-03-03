@@ -111,6 +111,114 @@ class TransactionalWriter : public rocksdb::DirectWriter {
   std::unordered_map<KeyBuffer, IntentTypeSet, ByteBufferHash> weak_intents_;
 };
 
+// Base class used by IntentsWriter to handle found intents.
+class IntentsWriterContext {
+ public:
+  explicit IntentsWriterContext(const TransactionId& transaction_id);
+
+  virtual ~IntentsWriterContext() = default;
+
+  // Called at the start of iteration. Passed key of the first found entry, if present.
+  virtual void Start(const boost::optional<Slice>& first_key) {}
+
+  // Called on every reverse index entry.
+  // key - entry key.
+  // value - entry value.
+  // metadata - whether entry is metadata entry or not.
+  // Returns true if we should interrupt iteration, false otherwise.
+  virtual Result<bool> Entry(
+      const Slice& key, const Slice& value, bool metadata,
+      rocksdb::DirectWriteHandler* handler) = 0;
+
+  virtual void Complete(rocksdb::DirectWriteHandler* handler) = 0;
+
+  const TransactionId& transaction_id() const {
+    return transaction_id_;
+  }
+
+  ApplyTransactionState& apply_state() {
+    return apply_state_;
+  }
+
+  bool reached_records_limit() const {
+    return left_records_ <= 0;
+  }
+
+  void RegisterRecord() {
+    --left_records_;
+  }
+
+ protected:
+  void SetApplyState(
+      const Slice& key, IntraTxnWriteId write_id, const AbortedSubTransactionSet& aborted) {
+    apply_state_.key = key.ToBuffer();
+    apply_state_.write_id = write_id;
+    apply_state_.aborted = aborted;
+  }
+
+ private:
+  TransactionId transaction_id_;
+  ApplyTransactionState apply_state_;
+  int64_t left_records_;
+};
+
+class IntentsWriter : public rocksdb::DirectWriter {
+ public:
+  IntentsWriter(const Slice& start_key,
+                rocksdb::DB* intents_db,
+                IntentsWriterContext* context);
+
+  CHECKED_STATUS Apply(rocksdb::DirectWriteHandler* handler) override;
+
+ private:
+  Slice start_key_;
+  rocksdb::DB* intents_db_;
+  IntentsWriterContext& context_;
+};
+
+class ApplyIntentsContext : public IntentsWriterContext {
+ public:
+  ApplyIntentsContext(
+      const TransactionId& transaction_id,
+      const ApplyTransactionState* apply_state,
+      const AbortedSubTransactionSet& aborted,
+      HybridTime commit_ht,
+      HybridTime log_ht,
+      const KeyBounds* key_bounds,
+      rocksdb::DB* intents_db);
+
+  void Start(const boost::optional<Slice>& first_key) override;
+
+  Result<bool> Entry(
+      const Slice& key, const Slice& value, bool metadata,
+      rocksdb::DirectWriteHandler* handler) override;
+
+  void Complete(rocksdb::DirectWriteHandler* handler) override;
+
+ private:
+  Result<bool> StoreApplyState(const Slice& key, rocksdb::DirectWriteHandler* handler);
+
+  const ApplyTransactionState* apply_state_;
+  const AbortedSubTransactionSet& aborted_;
+  HybridTime commit_ht_;
+  HybridTime log_ht_;
+  IntraTxnWriteId write_id_;
+  const KeyBounds* key_bounds_;
+  BoundedRocksDbIterator intent_iter_;
+};
+
+class RemoveIntentsContext : public IntentsWriterContext {
+ public:
+  explicit RemoveIntentsContext(const TransactionId& transaction_id);
+
+  Result<bool> Entry(
+      const Slice& key, const Slice& value, bool metadata,
+      rocksdb::DirectWriteHandler* handler) override;
+
+  void Complete(rocksdb::DirectWriteHandler* handler) override;
+ private:
+};
+
 } // namespace docdb
 } // namespace yb
 

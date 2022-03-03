@@ -178,6 +178,10 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
                               boost::optional<tserver::TabletServerErrorPB::Code>* error_code)
                               override;
 
+  CHECKED_STATUS UnsafeChangeConfig(
+      const UnsafeChangeConfigRequestPB& req,
+      boost::optional<tserver::TabletServerErrorPB::Code>* error_code) override;
+
   PeerRole GetRoleUnlocked() const;
 
   PeerRole role() const override;

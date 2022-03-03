@@ -13,12 +13,6 @@ package com.yugabyte.yw.common.certmgmt;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import java.security.cert.X509Certificate;
-import java.util.Date;
-import java.util.List;
-import java.util.UUID;
-import java.io.File;
-
 import com.google.api.client.util.Strings;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
@@ -31,17 +25,22 @@ import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.CertificateInfo;
-
+import java.io.File;
+import java.util.Date;
+import java.util.List;
+import java.util.UUID;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
 import org.flywaydb.play.FileUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.springframework.security.crypto.encrypt.Encryptors;
+import org.springframework.security.crypto.encrypt.TextEncryptor;
 
+@Slf4j
 public class EncryptionInTransitUtil {
-  public static final Logger LOG = LoggerFactory.getLogger(EncryptionInTransitUtil.class);
+  public static final String SALT_STR = "hashicorpcert";
 
   public static CertificateProviderBase getCertificateProviderInstance(CertificateInfo info) {
-    CertificateProviderBase certProvider = null;
+    CertificateProviderBase certProvider;
     try {
       switch (info.certType) {
         case HashicorpVault:
@@ -55,10 +54,10 @@ public class EncryptionInTransitUtil {
               BAD_REQUEST, "Certificate config type mismatch in createClientCertificate");
       }
     } catch (Exception e) {
-      String message = "Cannot create certificate. " + e.toString();
+      String message = "Cannot create certificate. " + e;
       throw new PlatformServiceException(BAD_REQUEST, message);
     }
-    LOG.debug(
+    log.debug(
         "Returning from getCertificateProviderInstance type is: {}", info.certType.toString());
     return certProvider;
   }
@@ -79,24 +78,24 @@ public class EncryptionInTransitUtil {
         || Strings.isNullOrEmpty(hcVaultParams.mountPath)
         || Strings.isNullOrEmpty(hcVaultParams.role)) {
       String message =
-          String.format(
-              "Hashicorp Vault parameters provided are not valid - %s", hcVaultParams.toString());
+          String.format("Hashicorp Vault parameters provided are not valid - %s", hcVaultParams);
       throw new PlatformServiceException(BAD_REQUEST, message);
     }
 
-    UUID rootCA_UUID = UUID.randomUUID();
+    UUID certConfigUUID = UUID.randomUUID();
     VaultPKI pkiObjValidator = VaultPKI.validateVaultConfigParams(hcVaultParams);
     Pair<String, String> paths =
-        pkiObjValidator.dumpCACertBundle(storagePath, customerUUID, rootCA_UUID);
+        pkiObjValidator.dumpCACertBundle(storagePath, customerUUID, certConfigUUID);
 
     Pair<Date, Date> dates =
         CertificateHelper.extractDatesFromCertBundle(
             CertificateHelper.convertStringToX509CertList(
                 FileUtils.readFileToString(new File(paths.getLeft()))));
 
+    hcVaultParams.vaultToken = maskCertConfigData(customerUUID, hcVaultParams.vaultToken);
     CertificateInfo cert =
         CertificateInfo.create(
-            rootCA_UUID,
+            certConfigUUID,
             customerUUID,
             label,
             dates.getLeft(),
@@ -104,41 +103,102 @@ public class EncryptionInTransitUtil {
             paths.getLeft(),
             hcVaultParams);
 
-    LOG.info("Created Root CA for universe {}.", label);
+    log.info("Created Root CA for universe {}.", label);
 
-    if (!CertificateInfo.isCertificateValid(rootCA_UUID)) {
+    if (!CertificateInfo.isCertificateValid(certConfigUUID)) {
       String errMsg =
           String.format("The certificate %s needs info. Update the cert and retry.", label);
-      LOG.error(errMsg);
+      log.error(errMsg);
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
+
+    List<Object> ttlInfo = pkiObjValidator.getTTL();
+    hcVaultParams.ttl = (long) ttlInfo.get(0);
+    hcVaultParams.ttlExpiry = (long) ttlInfo.get(1);
+
+    CertificateInfo rootCertConfigInfo = CertificateInfo.get(certConfigUUID);
+    rootCertConfigInfo.update(dates.getLeft(), dates.getRight(), paths.getLeft(), hcVaultParams);
+
     return cert.uuid;
   }
 
   public static void editEITHashicorpConfig(
-      UUID caCertUUID, UUID customerUUID, String storagePath, HashicorpVaultConfigParams params) {
+      UUID configCertUUIDparam,
+      UUID customerUUID,
+      String storagePath,
+      HashicorpVaultConfigParams hcVparams) {
 
     try {
-      VaultPKI pkiObjValidator = VaultPKI.validateVaultConfigParams(params);
-      // call dumpCACertBundle which take caCertUUID.
+      VaultPKI pkiObjValidator = VaultPKI.validateVaultConfigParams(hcVparams);
+      // call dumpCACertBundle which take configCertUUIDparam.
       Pair<String, String> certPath =
-          pkiObjValidator.dumpCACertBundle(storagePath, customerUUID, caCertUUID);
+          pkiObjValidator.dumpCACertBundle(storagePath, customerUUID, configCertUUIDparam);
 
       Pair<Date, Date> dates =
           CertificateHelper.extractDatesFromCertBundle(
               CertificateHelper.convertStringToX509CertList(
                   FileUtils.readFileToString(new File(certPath.getLeft()))));
 
-      LOG.info("Updating table with ca certificate: {}", certPath.getLeft());
+      log.info("Updating table with ca certificate: {}", certPath.getLeft());
 
-      CertificateInfo rootCertConfigInfo = CertificateInfo.get(caCertUUID);
-      rootCertConfigInfo.update(dates.getLeft(), dates.getRight(), certPath.getLeft(), params);
+      List<Object> ttlInfo = pkiObjValidator.getTTL();
+      hcVparams.ttl = (long) ttlInfo.get(0);
+      hcVparams.ttlExpiry = (long) ttlInfo.get(1);
+      hcVparams.vaultToken = maskCertConfigData(customerUUID, hcVparams.vaultToken);
+
+      CertificateInfo rootCertConfigInfo = CertificateInfo.get(configCertUUIDparam);
+      rootCertConfigInfo.update(dates.getLeft(), dates.getRight(), certPath.getLeft(), hcVparams);
 
     } catch (Exception e) {
       String message =
           "Error occured while attempting to edit Hashicorp certificate config settings:"
               + e.getMessage();
       throw new PlatformServiceException(BAD_REQUEST, message);
+    }
+  }
+
+  public static String getSaltHashForCert(UUID customerUUID) {
+
+    String salt =
+        String.format(
+            "%s%s",
+            customerUUID.toString().replace("-", ""),
+            String.valueOf(SALT_STR.hashCode()).replace("-", ""));
+
+    if ((salt.length() % 2) != 0) salt += "0";
+    return salt;
+  }
+
+  public static String maskCertConfigData(UUID customerUUID, String data) {
+    try {
+      String salt = getSaltHashForCert(customerUUID);
+
+      final TextEncryptor encryptor = Encryptors.delux(customerUUID.toString(), salt);
+      return encryptor.encrypt(data);
+    } catch (Exception e) {
+      final String errMsg =
+          String.format(
+              "Could not mask CertificateConfig for customer %s", customerUUID.toString());
+      log.error(errMsg, e);
+      return null;
+    }
+  }
+
+  public static String unmaskCertConfigData(UUID customerUUID, String data) {
+
+    if (Strings.isNullOrEmpty(data)) return data;
+
+    try {
+      String salt = getSaltHashForCert(customerUUID);
+      final TextEncryptor encryptor = Encryptors.delux(customerUUID.toString(), salt);
+
+      return encryptor.decrypt(data);
+    } catch (Exception e) {
+      final String errMsg =
+          String.format(
+              "Could not decrypt Cert configuration for customer %s", customerUUID.toString());
+      log.error(errMsg, e);
+      return null;
     }
   }
 

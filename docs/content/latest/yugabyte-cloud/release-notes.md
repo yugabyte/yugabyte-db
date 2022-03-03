@@ -42,13 +42,13 @@ showAsideToc: true
 
 #### Fixes
 
-- Windows and Firefox keyboard shortcuts work correctly in cloud shell.
+- Windows and Firefox keyboard shortcuts work correctly in Cloud Shell.
 
 ### December 16, 2021
 
 #### New features
 
-- Self service [Virtual Private Cloud (VPC) networking](../cloud-secure-clusters/cloud-vpcs/). Use VPC networks to lower network latencies and make your application and database infrastructure more secure. Create VPCs in AWS or GCP and peer them with application VPCs in the same cloud provider. VPC networking is managed on the **VPC Network** tab of the **Network Access** page.
+- Self service [Virtual Private Cloud (VPC) networking](../cloud-basics/cloud-vpcs/). Use VPC networks to lower network latencies and make your application and database infrastructure more secure. Create VPCs in AWS or GCP and peer them with application VPCs in the same cloud provider. VPC networking is managed on the **VPC Network** tab of the **Network Access** page.
 - Ability to [enable pre-bundled extensions](../cloud-clusters/add-extensions/) using the `CREATE EXTENSION` command. YugabyteDB includes [pre-bundled PostgreSQL extensions](../../explore/ysql-language-features/advanced-features/extensions/) that are tested to work with YSQL. Admin users now have additional permissions to allow them to enable these extensions in databases. (If you need to install a database extension that is not pre-bundled, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).)
 
 ### December 2, 2021
@@ -73,7 +73,7 @@ showAsideToc: true
 
 #### Fixes
 
-- Developer users can now use the cloud shell.
+- Developer users can now use Cloud Shell.
 
 ### October 5, 2021
 
@@ -86,7 +86,7 @@ showAsideToc: true
 
 #### New features
 
-- Ability to [create clusters](../cloud-basics/create-clusters) suitable for production workloads. Yugabyte Cloud clusters support horizontal and vertical scaling, VPC peering, and scheduled and manual backups.
+- Ability to [create clusters](../cloud-basics/create-clusters/) suitable for production workloads. Yugabyte Cloud clusters support horizontal and vertical scaling, VPC peering, and scheduled and manual backups.
 - Billing support. Set up a billing profile, manage payment methods, and review invoices on the [Billing](../cloud-admin/cloud-billing-profile) tab. (You must create a billing profile and add a payment method before you can create any clusters apart from your free cluster.)
 
 ### September 8, 2021
@@ -96,7 +96,7 @@ This release includes the following features:
 - Free clusters (one per account)
 - AWS and GCP cloud support
 - IP allow lists for network security
-- Cloud shell for running SQL queries from your browser
+- Cloud Shell for running SQL queries from your browser
 - YSQL and YCQL API support
 - Multiple cloud users - invite additional users to your cloud
 - Encryption at rest and in transit
@@ -146,10 +146,12 @@ The following **AWS regions** are available:
 - **Tables** - In some instances in free clusters, the **Tables** tab will show all tables with a size of 0B.
 - **Clusters** - No support for scaling vCPUs on single node clusters.
 - **Metrics** - The **View Full Screen** option in charts on the cluster **Overview** and **Performance Metrics** pages does not work in some versions of Safari 14.0 (Big Sur).
+- **Metrics** - Some clusters in European regions may show occasional spikes in the YSQL Operations/sec chart. This is due to cluster health checks and can be ignored.
+- **Invoices** - Redundant "Disk Storage (Paused)" entry on invoices for paused clusters. The entry has no effect on your invoice.
 
-### Known issues in cloud shell
+### Known issues in Cloud Shell
 
-- At this time, we recommend running only a single cloud shell session. Running more than one session may produce unexpected results.
-- If the cloud shell stops responding, close the browser tab and restart the cloud shell.
-- Cloud shell is unavailable for clusters in a VPC.
-- Cloud shell is unavailable during any edit and backup/restore operations. Wait until the operations are complete before you launch the shell.
+- At this time, we recommend running only a single Cloud Shell session. Running more than one session may produce unexpected results.
+- If Cloud Shell stops responding, close the browser tab and restart Cloud Shell.
+- Cloud Shell is unavailable for clusters in a VPC.
+- Cloud Shell is unavailable during any edit and backup/restore operations. Wait until the operations are complete before you launch the shell.

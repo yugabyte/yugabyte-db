@@ -411,11 +411,15 @@ Status PgDocReadOp::CreateRequests() {
     VLOG(1) << __PRETTY_FUNCTION__ << ": Preparing sampling requests ";
     return PopulateSamplingOps();
 
-  } else if (template_op_->request().is_aggregate()) {
-    // Optimization for COUNT() operator.
-    // - SELECT count(*) FROM sql_table;
-    // - Multiple requests are created to run sequential COUNT() in parallel.
-    return PopulateParallelSelectCountOps();
+  // Requests pushing down aggregates and/or filter expression tend to do more work on DocDB side,
+  // so it takes longer to return responses, and Postgres side has generally less work to do.
+  // Hence we optimize by sending multiple parallel requests to the nodes, allowing their
+  // simultaneous processing.
+  // Effect may be less than expected if the nodes are already heavily loaded and CPU consumption
+  // is high, or selectivity of the filter is low.
+  } else if (template_op_->request().is_aggregate() ||
+             template_op_->request().where_clauses_size() > 0) {
+    return PopulateParallelSelectOps();
 
   } else if (template_op_->request().partition_column_values_size() > 0) {
     // Optimization for multiple hash keys.
@@ -627,8 +631,8 @@ Status PgDocReadOp::InitializeHashPermutationStates() {
   return Status::OK();
 }
 
-Status PgDocReadOp::PopulateParallelSelectCountOps() {
-  // Create batch operators, one per partition, to SELECT COUNT() in parallel.
+Status PgDocReadOp::PopulateParallelSelectOps() {
+  // Create batch operators, one per partition, to execute in parallel.
   // TODO(tsplit): what if table partition is changed during PgDocReadOp lifecycle before or after
   // the following line?
   RETURN_NOT_OK(ClonePgsqlOps(table_->GetPartitionCount()));
@@ -641,10 +645,10 @@ Status PgDocReadOp::PopulateParallelSelectCountOps() {
     int tserver_count = VERIFY_RESULT(pg_session_->TabletServerCount(true /* primary_only */));
 
     // Establish lower and upper bounds on parallelism.
-    int kMinParSelCountParallelism = 1;
-    int kMaxParSelCountParallelism = 16;
+    int kMinParSelParallelism = 1;
+    int kMaxParSelParallelism = 16;
     parallelism_level_ =
-      std::min(std::max(tserver_count * 2, kMinParSelCountParallelism), kMaxParSelCountParallelism);
+      std::min(std::max(tserver_count * 2, kMinParSelParallelism), kMaxParSelParallelism);
   } else {
     parallelism_level_ = parallelism_level;
   }

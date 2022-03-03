@@ -21,10 +21,8 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.Random;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -942,6 +940,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
           int selectsFirstOpConflictDetected = 0;
           int txnsSucceeded = 0;
           int selectsWithAbortError = 0;
+          int commitOfTxnThatRequiresRestart = 0;
           boolean resultsAlwaysMatched = true;
 
           // We never expect SNAPSHOT ISOLATION/ READ COMMITTED transaction to result in "conflict"
@@ -967,7 +966,19 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
                 if (Thread.interrupted()) return; // Skips all post-loop checks
                 List<Row> rows2 = getRowList(executeQuery(stmt));
                 ++numCompletedOps;
-                selectTxnConn.commit();
+                try {
+                  selectTxnConn.commit();
+                } catch (Exception ex) {
+                  // TODO(Piyush): Once #11514 is fixed, we won't have to handle this rare
+                  // occurrence.
+                  if (ex.getMessage().contains(
+                        "Illegal state: Commit of transaction that requires restart is not " +
+                        "allowed")){
+                    commitOfTxnThatRequiresRestart++;
+                  } else {
+                    throw ex;
+                  }
+                }
                 assertTrue("Two SELECTs done within same transaction mismatch" +
                            ", " + isolation + " transaction isolation breach!",
                            rows1.equals(rows2) || (isolation == IsolationLevel.READ_COMMITTED));
@@ -1006,7 +1017,8 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
               " selectsSecondOpRestartRequired=" + selectsSecondOpRestartRequired +
               " selectsFirstOpConflictDetected=" + selectsFirstOpConflictDetected +
               " txnsSucceeded=" + txnsSucceeded +
-              " selectsWithAbortError=" + selectsWithAbortError);
+              " selectsWithAbortError=" + selectsWithAbortError +
+              " commitOfTxnThatRequiresRestart=" + commitOfTxnThatRequiresRestart);
 
           if (expectReadRestartErrors) {
             assertTrue(selectsFirstOpRestartRequired > 0 && selectsSecondOpRestartRequired > 0);

@@ -58,6 +58,7 @@
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/catalog_manager_util.h"
 #include "yb/master/master_dcl.fwd.h"
 #include "yb/master/master_encryption.fwd.h"
 #include "yb/master/master_defaults.h"
@@ -630,13 +631,17 @@ class CatalogManager :
   CHECKED_STATUS HandlePlacementUsingReplicationInfo(
       const ReplicationInfoPB& replication_info,
       const TSDescriptorVector& all_ts_descs,
-      consensus::RaftConfigPB* config);
+      consensus::RaftConfigPB* config,
+      CMPerTableLoadState* per_table_state,
+      CMGlobalLoadState* global_state);
 
   // Handles the config creation for a given placement.
   CHECKED_STATUS HandlePlacementUsingPlacementInfo(const PlacementInfoPB& placement_info,
                                                    const TSDescriptorVector& ts_descs,
                                                    consensus::PeerMemberType member_type,
-                                                   consensus::RaftConfigPB* config);
+                                                   consensus::RaftConfigPB* config,
+                                                   CMPerTableLoadState* per_table_state,
+                                                   CMGlobalLoadState* global_state);
 
   // Populates ts_descs with all tservers belonging to a certain placement.
   void GetTsDescsFromPlacementInfo(const PlacementInfoPB& placement_info,
@@ -763,7 +768,7 @@ class CatalogManager :
   Result<TableDescription> DescribeTable(
       const TableInfoPtr& table_info, bool succeed_if_create_in_progress);
 
-  Result<std::string> GetPgSchemaName(const TableInfoPtr& table_info);
+  Result<std::string> GetPgSchemaName(const TableInfoPtr& table_info) REQUIRES_SHARED(mutex_);
 
   void AssertLeaderLockAcquiredForReading() const override {
     leader_lock_.AssertAcquiredForReading();
@@ -1098,26 +1103,26 @@ class CatalogManager :
 
   // Task that takes care of the tablet assignments/creations.
   // Loops through the "not created" tablets and sends a CreateTablet() request.
-  CHECKED_STATUS ProcessPendingAssignments(const TabletInfos& tablets);
-
-  // Given 'two_choices', which should be a vector of exactly two elements, select which
-  // one is the better choice for a new replica.
-  std::shared_ptr<TSDescriptor> PickBetterReplicaLocation(const TSDescriptorVector& two_choices);
+  CHECKED_STATUS ProcessPendingAssignmentsPerTable(
+      const TableId& table_id, const TabletInfos& tablets, CMGlobalLoadState* global_load_state);
 
   // Select a tablet server from 'ts_descs' on which to place a new replica.
   // Any tablet servers in 'excluded' are not considered.
   // REQUIRES: 'ts_descs' must include at least one non-excluded server.
   std::shared_ptr<TSDescriptor> SelectReplica(
       const TSDescriptorVector& ts_descs,
-      const std::set<std::shared_ptr<TSDescriptor>>& excluded);
+      std::set<TabletServerId>* excluded,
+      CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state);
 
   // Select N Replicas from online tablet servers (as specified by
   // 'ts_descs') for the specified tablet and populate the consensus configuration
   // object. If 'ts_descs' does not specify enough online tablet
   // servers to select the N replicas, return Status::InvalidArgument.
   //
-  // This method is called by "ProcessPendingAssignments()".
-  CHECKED_STATUS SelectReplicasForTablet(const TSDescriptorVector& ts_descs, TabletInfo* tablet);
+  // This method is called by "ProcessPendingAssignmentsPerTable()".
+  CHECKED_STATUS SelectReplicasForTablet(
+      const TSDescriptorVector& ts_descs, TabletInfo* tablet,
+      CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state);
 
   // Select N Replicas from the online tablet servers that have been chosen to respect the
   // placement information provided. Populate the consensus configuration object with choices and
@@ -1128,8 +1133,10 @@ class CatalogManager :
   void SelectReplicas(
       const TSDescriptorVector& ts_descs,
       size_t nreplicas, consensus::RaftConfigPB* config,
-      std::set<std::shared_ptr<TSDescriptor>>* already_selected_ts,
-      consensus::PeerMemberType member_type);
+      std::set<TabletServerId>* already_selected_ts,
+      consensus::PeerMemberType member_type,
+      CMPerTableLoadState* per_table_state,
+      CMGlobalLoadState* global_state);
 
   void HandleAssignPreparingTablet(TabletInfo* tablet,
                                    DeferredAssignmentActions* deferred);
@@ -1151,7 +1158,7 @@ class CatalogManager :
   // after the timeout, we regenerate a new one and proceed with a new
   // assignment/creation.
   //
-  // This method is part of the "ProcessPendingAssignments()"
+  // This method is part of the "ProcessPendingAssignmentsPerTable()"
   //
   // This must be called after persisting the tablet state as
   // CREATING to ensure coherent state after Master failover.
@@ -1272,6 +1279,10 @@ class CatalogManager :
                                     const TabletInfos& tablets,
                                     const Status& s,
                                     CreateTableResponsePB* resp);
+
+  CHECKED_STATUS CreateTransactionStatusTablesForTablespaces(
+      const TablespaceIdToReplicationInfoMap& tablespace_info,
+      const TableToTablespaceIdMap& table_to_tablespace_map);
 
   void StartTablespaceBgTaskIfStopped();
 
@@ -1434,9 +1445,6 @@ class CatalogManager :
   Master *master_;
   Atomic32 closing_;
 
-  // Random number generator used for selecting replica locations.
-  ThreadSafeRandom rng_;
-
   std::unique_ptr<SysCatalogTable> sys_catalog_;
 
   // Mutex to avoid concurrent remote bootstrap sessions.
@@ -1528,6 +1536,9 @@ class CatalogManager :
       GUARDED_BY(mutex_);
 
   std::unordered_map<TablegroupId, scoped_refptr<TablegroupInfo>> tablegroup_ids_map_
+      GUARDED_BY(mutex_);
+
+  std::unordered_map<TableId, TableId> matview_pg_table_ids_map_
       GUARDED_BY(mutex_);
 
   boost::optional<std::future<Status>> initdb_future_;
@@ -1669,7 +1680,15 @@ class CatalogManager :
 
   size_t GetNumLiveTServersForPlacement(const PlacementId& placement_id);
 
+  TSDescriptorVector GetAllLiveNotBlacklistedTServers() const;
+
   const YQLPartitionsVTable& GetYqlPartitionsVtable() const;
+
+  void InitializeTableLoadState(
+      const TableId& table_id, TSDescriptorVector ts_descs, CMPerTableLoadState* state);
+
+  void InitializeGlobalLoadState(
+      TSDescriptorVector ts_descs, CMGlobalLoadState* state);
 
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};

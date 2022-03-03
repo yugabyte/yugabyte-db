@@ -605,10 +605,12 @@ class GoogleCloudAdmin():
     def delete_instance(self, region, zone, instance_name, has_static_ip=False):
         if has_static_ip:
             address = "ip-" + instance_name
-            logging.info("Deleting static ip {} attached to VM {}".format(address, instance_name))
+            logging.info("[app] Deleting static ip {} attached to VM {}".format(
+                address, instance_name))
             self.compute.addresses().delete(
                 project=self.project, region=region, address=address).execute()
-            logging.info("Deleted static ip {} attached to VM {}".format(address, instance_name))
+            logging.info("[app] Deleted static ip {} attached to VM {}".format(
+                address, instance_name))
         operation = self.compute.instances().delete(
             project=self.project, zone=zone, instance=instance_name).execute()
         self.waiter.wait(operation, zone=zone)
@@ -860,7 +862,8 @@ class GoogleCloudAdmin():
         if tags is not None:
             tags_dict = json.loads(tags)
             body.update({"labels": tags_dict})
-            initial_params.update({"labels": tags_dict})
+            if volume_type != GCP_SCRATCH:
+                initial_params.update({"labels": tags_dict})
             boot_disk_init_params.update({"labels": tags_dict})
             body["metadata"]["items"].append(
                 [{"key": k, "value": v} for (k, v) in tags_dict.items()])

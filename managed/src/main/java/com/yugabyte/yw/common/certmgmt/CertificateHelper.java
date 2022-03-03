@@ -2,20 +2,16 @@
 
 package com.yugabyte.yw.common.certmgmt;
 
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
-import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.forms.CertificateParams;
-import com.yugabyte.yw.forms.TlsToggleParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.CertificateInfo;
-import com.yugabyte.yw.models.helpers.CommonUtils;
-import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
-import com.google.common.base.Strings;
 
+import com.google.common.base.Strings;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.certmgmt.providers.CertificateProviderInterface;
+import com.yugabyte.yw.common.certmgmt.providers.CertificateSelfSigned;
+import com.yugabyte.yw.forms.CertificateParams;
+import com.yugabyte.yw.models.CertificateInfo;
+import io.ebean.annotation.EnumValue;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -24,7 +20,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.StringReader;
 import java.io.StringWriter;
-import java.math.BigInteger;
 import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
@@ -45,61 +40,23 @@ import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-
-import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.certmgmt.CertConfigType;
-import com.yugabyte.yw.common.certmgmt.providers.CertificateProviderInterface;
-import com.yugabyte.yw.common.certmgmt.providers.CertificateSelfSigned;
-import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
-import com.yugabyte.yw.forms.CertificateParams;
-import com.yugabyte.yw.forms.CertsRotateParams;
-import com.yugabyte.yw.forms.TlsToggleParams;
-import com.yugabyte.yw.forms.ToggleTlsParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.CertificateInfo;
-import com.yugabyte.yw.models.helpers.CommonUtils;
-
+import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.commons.validator.routines.InetAddressValidator;
 import org.bouncycastle.asn1.DERSequence;
-import org.apache.commons.lang3.tuple.Pair;
-import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.bouncycastle.asn1.x500.RDN;
 import org.bouncycastle.asn1.x500.X500Name;
-import org.bouncycastle.asn1.x500.X500NameBuilder;
 import org.bouncycastle.asn1.x500.style.BCStyle;
-import org.bouncycastle.asn1.x509.BasicConstraints;
-import org.bouncycastle.asn1.x509.Extension;
 import org.bouncycastle.asn1.x509.GeneralName;
 import org.bouncycastle.asn1.x509.GeneralNames;
-import org.bouncycastle.asn1.x509.KeyUsage;
-import org.bouncycastle.cert.X509CertificateHolder;
-import org.bouncycastle.cert.X509v3CertificateBuilder;
-import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
-import org.bouncycastle.cert.jcajce.JcaX509CertificateHolder;
-import org.bouncycastle.cert.jcajce.JcaX509ExtensionUtils;
-import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.openssl.jcajce.JcaPEMWriter;
-import org.bouncycastle.operator.ContentSigner;
-import org.bouncycastle.operator.OperatorCreationException;
-import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
-import org.bouncycastle.pkcs.PKCS10CertificationRequest;
-import org.bouncycastle.pkcs.PKCS10CertificationRequestBuilder;
-import org.bouncycastle.pkcs.jcajce.JcaPKCS10CertificationRequestBuilder;
 import org.bouncycastle.util.io.pem.PemObject;
 import org.bouncycastle.util.io.pem.PemReader;
-import org.bouncycastle.asn1.x509.GeneralName;
-import org.bouncycastle.asn1.x509.GeneralNames;
-
 import org.flywaydb.play.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import io.ebean.annotation.EnumValue;
 import play.libs.Json;
-
-import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 /** Helper class for Certificates */
 public class CertificateHelper {
@@ -545,6 +502,7 @@ public class CertificateHelper {
   }
 
   public static String getKeyPEM(CertificateInfo cert) {
+    if (cert.certType == CertConfigType.HashicorpVault) return "";
     String privateKeyPEM = FileUtils.readFileToString(new File(cert.privateKey));
     privateKeyPEM = Base64.getEncoder().encodeToString(privateKeyPEM.getBytes());
     return privateKeyPEM;
@@ -552,9 +510,7 @@ public class CertificateHelper {
 
   public static String getKeyPEM(UUID rootCA) {
     CertificateInfo cert = CertificateInfo.get(rootCA);
-    String privateKeyPEM = FileUtils.readFileToString(new File(cert.privateKey));
-    privateKeyPEM = Base64.getEncoder().encodeToString(privateKeyPEM.getBytes());
-    return privateKeyPEM;
+    return getKeyPEM(cert);
   }
 
   public static String getClientCertFile(UUID rootCA) {
@@ -737,17 +693,12 @@ public class CertificateHelper {
     }
   }
 
-  public static KeyPair getKeyPairObject() {
-    try {
-      // Add the security provider in case it was never called.
-      Security.addProvider(new BouncyCastleProvider());
-      KeyPairGenerator keypairGen = KeyPairGenerator.getInstance("RSA");
-      keypairGen.initialize(2048);
-      return keypairGen.generateKeyPair();
-    } catch (Exception e) {
-      LOG.error(e.getMessage());
-    }
-    return null;
+  public static KeyPair getKeyPairObject() throws NoSuchAlgorithmException {
+    // Add the security provider in case it was never called.
+    Security.addProvider(new BouncyCastleProvider());
+    KeyPairGenerator keypairGen = KeyPairGenerator.getInstance("RSA");
+    keypairGen.initialize(2048);
+    return keypairGen.generateKeyPair();
   }
 
   private static boolean verifySignature(X509Certificate cert, String key) {

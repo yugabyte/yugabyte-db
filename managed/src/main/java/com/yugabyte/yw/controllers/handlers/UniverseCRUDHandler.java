@@ -10,13 +10,12 @@
 
 package com.yugabyte.yw.controllers.handlers;
 
-import static org.mockito.ArgumentMatchers.nullable;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
-import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
@@ -25,7 +24,10 @@ import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.certmgmt.providers.VaultPKI;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
@@ -48,13 +50,10 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.common.certmgmt.CertConfigType;
-import com.yugabyte.yw.common.certmgmt.providers.VaultPKI;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -64,7 +63,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.mvc.Http;
 import play.mvc.Http.Status;
-import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 
 public class UniverseCRUDHandler {
 
@@ -175,58 +173,12 @@ public class UniverseCRUDHandler {
     }
   }
 
-  public void checkForHashicorpVaultCertificates(
-      Customer customer, UniverseDefinitionTaskParams taskParams) {
-    Cluster primaryCluster = taskParams.getPrimaryCluster();
-    CertificateInfo certInfo = null;
-
-    try {
-
-      if (primaryCluster.userIntent.enableNodeToNodeEncrypt) {
-        if (taskParams.rootCA != null) certInfo = CertificateInfo.get(taskParams.rootCA);
-
-        if (certInfo != null && certInfo.certType == CertConfigType.HashicorpVault) {
-          VaultPKI certProvider = VaultPKI.getVaultPKIInstance(certInfo);
-          // we don't need to create root certificate for this type just fetch and store
-          certProvider.dumpCACertBundle(appConfig.getString("yb.storage.path"), customer.uuid);
-          checkValidRootCA(taskParams.rootCA);
-        }
-      }
-
-      if (primaryCluster.userIntent.enableClientToNodeEncrypt) {
-
-        if (taskParams.clientRootCA != null) certInfo = CertificateInfo.get(taskParams.rootCA);
-
-        if (certInfo != null && certInfo.certType == CertConfigType.HashicorpVault) {
-          VaultPKI certProvider = VaultPKI.getVaultPKIInstance(certInfo);
-          // getCertificateProviderInstance(certInfo);
-          // we don't need to create root certificate for this type just fetch and store
-          certProvider.dumpCACertBundle(appConfig.getString("yb.storage.path"), customer.uuid);
-          checkValidRootCA(taskParams.rootCA);
-        }
-      }
-    } catch (Exception e) {
-      String message = "Exception occured while processing request. - " + e.getMessage();
-      throw new PlatformServiceException(BAD_REQUEST, message);
-    }
-  }
-  /**
-   * Creates RootCA certificate if not provided and creates client certificate.
-   *
-   * @param customer
-   * @param taskParams
-   * @param primaryCluster
-   */
+  // Creates RootCA certificate if not provided and creates client certificate
   public void checkForCertificates(Customer customer, UniverseDefinitionTaskParams taskParams) {
-
     Cluster primaryCluster = taskParams.getPrimaryCluster();
-    CertificateInfo cert = null;
-
-    // check for hashicorp ca certificate, both n2n and n2c.
-    checkForHashicorpVaultCertificates(customer, taskParams);
+    CertificateInfo cert;
 
     if (primaryCluster.userIntent.enableNodeToNodeEncrypt) {
-
       if (taskParams.rootCA != null) {
         cert = CertificateInfo.get(taskParams.rootCA);
 
@@ -247,27 +199,44 @@ public class UniverseCRUDHandler {
                 "CustomCertHostPath certificates are only supported for onprem providers.");
           }
         }
+
+        if (cert.certType == CertConfigType.HashicorpVault) {
+          try {
+            VaultPKI certProvider = VaultPKI.getVaultPKIInstance(cert);
+            certProvider.dumpCACertBundle(
+                runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"),
+                customer.uuid);
+          } catch (Exception e) {
+            throw new PlatformServiceException(
+                INTERNAL_SERVER_ERROR,
+                String.format(
+                    "Error while dumping certs from Vault for certificate: {}", taskParams.rootCA));
+          }
+        }
       } else {
-        // create self signed rootCA in case it is not provided by the user.
+        // create self-signed rootCA in case it is not provided by the user.
         taskParams.rootCA =
             CertificateHelper.createRootCA(
-                taskParams.nodePrefix, customer.uuid, appConfig.getString("yb.storage.path"));
+                taskParams.nodePrefix,
+                customer.uuid,
+                runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"));
       }
       checkValidRootCA(taskParams.rootCA);
     }
 
     if (primaryCluster.userIntent.enableClientToNodeEncrypt) {
-
       if (taskParams.clientRootCA == null) {
         if (taskParams.rootCA != null && taskParams.rootAndClientRootCASame) {
-          // Setting ClientRootCA to RootCA incase rootAndClientRootCA is true
+          // Setting ClientRootCA to RootCA in case rootAndClientRootCA is true
           taskParams.clientRootCA = taskParams.rootCA;
         } else {
-          // create self signed clientRootCA in case it is not provided by the user
+          // create self-signed clientRootCA in case it is not provided by the user
           // and root and clientRoot CA needs to be different
           taskParams.clientRootCA =
               CertificateHelper.createClientRootCA(
-                  taskParams.nodePrefix, customer.uuid, appConfig.getString("yb.storage.path"));
+                  taskParams.nodePrefix,
+                  customer.uuid,
+                  runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"));
         }
       }
 
@@ -282,11 +251,27 @@ public class UniverseCRUDHandler {
               BAD_REQUEST,
               "CustomCertHostPath certificates are only supported for onprem providers.");
         }
-        checkValidRootCA(taskParams.rootCA);
       }
 
+      if (cert.certType == CertConfigType.HashicorpVault) {
+        try {
+          VaultPKI certProvider = VaultPKI.getVaultPKIInstance(cert);
+          certProvider.dumpCACertBundle(
+              runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"),
+              customer.uuid);
+        } catch (Exception e) {
+          throw new PlatformServiceException(
+              INTERNAL_SERVER_ERROR,
+              String.format(
+                  "Error while dumping certs from Vault for certificate: {}",
+                  taskParams.clientRootCA));
+        }
+      }
+
+      checkValidRootCA(taskParams.clientRootCA);
+
       // Setting rootCA to ClientRootCA in case node to node encryption is disabled.
-      // This is necessary to set to ensure backward compatibity as existing parts of
+      // This is necessary to set to ensure backward compatibility as existing parts of
       // codebase (kubernetes) uses rootCA for Client to Node Encryption
       if (taskParams.rootCA == null && taskParams.rootAndClientRootCASame) {
         taskParams.rootCA = taskParams.clientRootCA;
@@ -302,7 +287,7 @@ public class UniverseCRUDHandler {
               taskParams.rootCA,
               String.format(
                   CertificateHelper.CERT_PATH,
-                  appConfig.getString("yb.storage.path"),
+                  runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"),
                   customer.uuid.toString(),
                   taskParams.rootCA.toString()),
               CertificateHelper.DEFAULT_CLIENT,
@@ -315,8 +300,8 @@ public class UniverseCRUDHandler {
 
   public UniverseResp createUniverse(Customer customer, UniverseDefinitionTaskParams taskParams) {
     LOG.info("Create for {}.", customer.uuid);
-    // Get the user submitted form data.
 
+    // Get the user submitted form data.
     if (taskParams.getPrimaryCluster() != null
         && !Util.isValidUniverseNameFormat(
             taskParams.getPrimaryCluster().userIntent.universeName)) {
@@ -440,6 +425,7 @@ public class UniverseCRUDHandler {
               BAD_REQUEST, "IPV6 not supported for platform deployed VMs.");
         }
       }
+
       checkForCertificates(customer, taskParams);
 
       if (primaryCluster.userIntent.enableNodeToNodeEncrypt
@@ -467,6 +453,16 @@ public class UniverseCRUDHandler {
     }
 
     universe.updateConfig(ImmutableMap.of(Universe.TAKE_BACKUPS, "true"));
+    // If cloud enabled and deployment AZs have two subnets, mark the cluster as a
+    // non legacy cluster for proper operations.
+    if (runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled")) {
+      Provider provider =
+          Provider.getOrBadRequest(UUID.fromString(primaryCluster.userIntent.provider));
+      AvailabilityZone zone = provider.regions.get(0).zones.get(0);
+      if (zone.secondarySubnet != null) {
+        universe.updateConfig(ImmutableMap.of(Universe.DUAL_NET_LEGACY, "false"));
+      }
+    }
 
     // Submit the task to create the universe.
     UUID taskUUID = commissioner.submit(taskType, taskParams);
@@ -930,18 +926,7 @@ public class UniverseCRUDHandler {
               "VM image upgrade is only supported for AWS / GCP, got: " + provider.toString());
         }
 
-        boolean hasEphemeralStorage = false;
-        if (provider == Common.CloudType.gcp) {
-          if (primaryIntent.deviceInfo.storageType == PublicCloudConstants.StorageType.Scratch) {
-            hasEphemeralStorage = true;
-          }
-        } else {
-          if (taskParams.getPrimaryCluster().isAwsClusterWithEphemeralStorage()) {
-            hasEphemeralStorage = true;
-          }
-        }
-
-        if (hasEphemeralStorage) {
+        if (UniverseDefinitionTaskParams.hasEphemeralStorage(primaryIntent)) {
           throw new PlatformServiceException(
               BAD_REQUEST, "Cannot upgrade a universe with ephemeral storage");
         }
@@ -1105,16 +1090,12 @@ public class UniverseCRUDHandler {
     if (taskParams.size == 0) {
       throw new PlatformServiceException(BAD_REQUEST, "Size cannot be 0.");
     }
-
     UniverseDefinitionTaskParams.UserIntent primaryIntent =
         taskParams.getPrimaryCluster().userIntent;
     if (taskParams.size <= primaryIntent.deviceInfo.volumeSize) {
       throw new PlatformServiceException(BAD_REQUEST, "Size can only be increased.");
     }
-    if (primaryIntent.deviceInfo.storageType == PublicCloudConstants.StorageType.Scratch) {
-      throw new PlatformServiceException(BAD_REQUEST, "Scratch type disk cannot be modified.");
-    }
-    if (taskParams.getPrimaryCluster().isAwsClusterWithEphemeralStorage()) {
+    if (UniverseDefinitionTaskParams.hasEphemeralStorage(primaryIntent)) {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot modify instance volumes.");
     }
 

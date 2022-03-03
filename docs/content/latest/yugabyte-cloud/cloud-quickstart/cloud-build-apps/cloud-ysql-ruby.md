@@ -173,7 +173,7 @@ end
 
 [libpq driver](../../../../reference/drivers/ysql-client-drivers/#libpq)
 
-[Explore more applications](../../../cloud-develop)
+[Explore more applications](../../../cloud-examples/)
 
 [Deploy clusters in Yugabyte Cloud](../../../cloud-basics)
 

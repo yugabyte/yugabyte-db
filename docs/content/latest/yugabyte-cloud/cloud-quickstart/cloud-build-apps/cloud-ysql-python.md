@@ -18,7 +18,7 @@ The following tutorial shows a small [Python application](https://github.com/yug
 
 ## Prerequisites
 
-In addition to Python 3.6 or later (Python 3.9.7 or later if running macOS on Apple silicon), this tutorial requires the following.
+- Python 3.6 or later (Python 3.9.7 or later if running macOS on Apple silicon).
 
 ### Yugabyte Cloud
 
@@ -182,7 +182,7 @@ except (Exception, psycopg2.DatabaseError) as e:
 
 [Python psycopg2 PostgreSQL database adapter](../../../../reference/drivers/ysql-client-drivers/#psycopg2)
 
-[Explore more applications](../../../cloud-develop)
+[Explore more applications](../../../cloud-examples/)
 
 [Deploy clusters in Yugabyte Cloud](../../../cloud-basics)
 

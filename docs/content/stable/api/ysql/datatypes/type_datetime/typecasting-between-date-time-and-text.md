@@ -19,7 +19,7 @@ This section and its peer, [Timezones and _UTC offsets_](../timezones/), are pla
 Typecasting between _date-time_ values and _text_ values, rather than using explicit built-in functions like _to_char()_, _to_timestamp()_, or _to_date()_ allows the demonstration code to be uncluttered and easy to understand. However, as this section shows, the typecast semantics is sensitive to the current settings of the _DateStyle_ and _IntervalStyle_ session parameters.
 
 {{< note title="'Date-time' functions and operators in the PostgreSQL documentation." >}}
-PostgreSQL, and therefore YSQL, provide many functions and equivalent syntactical constructs that operate on, or produce, _date-time_ values. These are documented in dthese edicated sections within the main section [Functions and operators](../../../exprs/) and its children:
+PostgreSQL, and therefore YSQL, provide many functions and equivalent syntactical constructs that operate on, or produce, _date-time_ values. These are documented in these dedicated sections within the main section [Functions and operators](../../../exprs/) and its children:
 
 - [Date and time operators](../operators/).
 - [General-purpose date and time functions](../functions/).

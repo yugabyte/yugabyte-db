@@ -13,9 +13,9 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.DeleteBackupParams;
+import com.yugabyte.yw.forms.DeleteBackupParams.DeleteBackupInfo;
 import com.yugabyte.yw.forms.EditBackupParams;
 import com.yugabyte.yw.forms.PlatformResults;
-import com.yugabyte.yw.forms.DeleteBackupParams.DeleteBackupInfo;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
@@ -25,9 +25,9 @@ import com.yugabyte.yw.forms.filters.BackupApiFilter;
 import com.yugabyte.yw.forms.paging.BackupPagedApiQuery;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
-import com.yugabyte.yw.models.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
+import com.yugabyte.yw.models.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -35,9 +35,8 @@ import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.filters.BackupFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
-import com.yugabyte.yw.models.paging.BackupPagedQuery;
-import com.yugabyte.yw.models.paging.BackupPagedResponse;
 import com.yugabyte.yw.models.paging.BackupPagedApiResponse;
+import com.yugabyte.yw.models.paging.BackupPagedQuery;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -49,6 +48,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import javax.inject.Inject;
+import org.apache.commons.collections.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
@@ -182,15 +182,12 @@ public class BackupsController extends AuthenticatedController {
 
     UUID universeUUID = taskParams.universeUUID;
     Universe.getOrBadRequest(universeUUID);
-    if (taskParams.backupData == null
-        && (taskParams.backupStorageInfoList == null
-            || taskParams.backupStorageInfoList.isEmpty())) {
+    if (CollectionUtils.isEmpty(taskParams.backupStorageInfoList)) {
       throw new PlatformServiceException(BAD_REQUEST, "Backup information not provided");
     }
 
     CustomerConfig customerConfig =
-        customerConfigService.getOrBadRequest(
-            customerUUID, taskParams.backupData.storageConfigUUID);
+        customerConfigService.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
     if (!customerConfig.getState().equals(ConfigState.Active)) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot restore backup as config is queued for deletion.");
@@ -410,7 +407,8 @@ public class BackupsController extends AuthenticatedController {
   @ApiOperation(
       value = "Stop a backup",
       notes = "Stop an in-progress backup",
-      nickname = "stopBackup")
+      nickname = "stopBackup",
+      response = YBPSuccess.class)
   public Result stop(UUID customerUUID, UUID backupUUID) {
     Customer.getOrBadRequest(customerUUID);
     Process process = Util.getProcessOrBadRequest(backupUUID);

@@ -179,6 +179,6 @@ lo0: flags=8049<UP,LOOPBACK,RUNNING,MULTICAST> mtu 16384
 
 {{<tip title="Next step" >}}
 
-[Create a local cluster](../../create-local-cluster/macos)
+[Create a local cluster](../../create-local-cluster/macos/)
 
 {{< /tip >}}
