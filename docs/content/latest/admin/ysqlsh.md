@@ -44,7 +44,7 @@ If you prefer, you can install a standalone version using any of the following m
 - Using a shell script:
 
     ```sh
-    wget -q -O - https://downloads.yugabyte.com/get_clients.sh | sh 
+    wget -q -O - https://downloads.yugabyte.com/get_clients.sh | sh
     yugabyte*/bin/ysqlsh
     ```
 
@@ -264,9 +264,9 @@ Set the record separator for unaligned output to a zero byte. This is useful for
 
 ##### -1, --single-transaction
 
-This option can only be used in combination with one or more `-c` and/or `-f` options. It causes `ysqlsh` to issue a [`BEGIN`](../../api/ysql/the-sql-language/statements/txn_begin) statement before the first such option and a [`COMMIT`](../../api/ysql/the-sql-language/statements/txn_commit) statement after the last one, thereby wrapping all the commands into a single transaction. This ensures that either all the commands complete successfully, or no changes are applied.
+This option can only be used in combination with one or more `-c` and/or `-f` options. It causes `ysqlsh` to issue a [`BEGIN`](../../api/ysql/the-sql-language/statements/txn_begin/) statement before the first such option and a [`COMMIT`](../../api/ysql/the-sql-language/statements/txn_commit) statement after the last one, thereby wrapping all the commands into a single transaction. This ensures that either all the commands complete successfully, or no changes are applied.
 
-If the statements themselves contain [`BEGIN`](../../api/ysql/the-sql-language/statements/txn_begin), [`COMMIT`](../../api/ysql/the-sql-language/statements/txn_commit), or [`ROLLBACK`](../../api/ysql/the-sql-language/statements/txn_rollback), this option will not have the desired effects. Also, if an individual statement cannot be executed inside a transaction block, specifying this option will cause the whole transaction to fail.
+If the statements themselves contain [`BEGIN`](../../api/ysql/the-sql-language/statements/txn_begin/), [`COMMIT`](../../api/ysql/the-sql-language/statements/txn_commit), or [`ROLLBACK`](../../api/ysql/the-sql-language/statements/txn_rollback), this option will not have the desired effects. Also, if an individual statement cannot be executed inside a transaction block, specifying this option will cause the whole transaction to fail.
 
 ##### -?, --help[=*topic*]
 
@@ -1150,7 +1150,7 @@ The specially treated variables are:
 
 ##### AUTOCOMMIT
 
-When `on` (the default), each SQL statement is automatically committed upon successful completion. To postpone commit in this mode, you must enter a [`BEGIN`](../../api/ysql/the-sql-language/statements/txn_begin) or [`START TRANSACTION`](../../api/ysql/the-sql-language/statements/) SQL statement. When `off` or unset, SQL statements are not committed until you explicitly issue `COMMIT` or `END` statements. The autocommit-off mode works by issuing an implicit `BEGIN` for you, just before any statement that is not already in a transaction block and is not itself a `BEGIN` or other transaction-control statement, nor a statement that cannot be executed inside a transaction block (such as `VACUUM`).
+When `on` (the default), each SQL statement is automatically committed upon successful completion. To postpone commit in this mode, you must enter a [`BEGIN`](../../api/ysql/the-sql-language/statements/txn_begin/) or [`START TRANSACTION`](../../api/ysql/the-sql-language/statements/) SQL statement. When `off` or unset, SQL statements are not committed until you explicitly issue `COMMIT` or `END` statements. The autocommit-off mode works by issuing an implicit `BEGIN` for you, just before any statement that is not already in a transaction block and is not itself a `BEGIN` or other transaction-control statement, nor a statement that cannot be executed inside a transaction block (such as `VACUUM`).
 
 {{< note title="Note" >}}
 
@@ -1186,7 +1186,7 @@ The current client character set encoding. This is set every time you connect to
 
 ##### FETCH_COUNT
 
-If this variable is set to an integer value greater than `0` (zero), the results of [`SELECT`](../../api/ysql/the-sql-language/statements/dml_select) queries are fetched and displayed in groups of that many rows, rather than the default behavior of collecting the entire result set before display. Therefore, only a limited amount of memory is used, regardless of the size of the result set. Settings of `100` to `1000` are commonly used when enabling this feature. Keep in mind that when using this feature, a query might fail after having already displayed some rows.
+If this variable is set to an integer value greater than `0` (zero), the results of [`SELECT`](../../api/ysql/the-sql-language/statements/dml_select/) queries are fetched and displayed in groups of that many rows, rather than the default behavior of collecting the entire result set before display. Therefore, only a limited amount of memory is used, regardless of the size of the result set. Settings of `100` to `1000` are commonly used when enabling this feature. Keep in mind that when using this feature, a query might fail after having already displayed some rows.
 
 {{< note title="Tip" >}}
 
@@ -1349,7 +1349,7 @@ The port number at which the database server is listening.
 
 ##### %n
 
-The database session user name. (The expansion of this value might change during a database session as the result of the [`SET SESSION AUTHORIZATION`](../../api/ysql/the-sql-language/statements/dcl_set_session_authorization) statement.)
+The database session user name. (The expansion of this value might change during a database session as the result of the [`SET SESSION AUTHORIZATION`](../../api/ysql/the-sql-language/statements/dcl_set_session_authorization/) statement.)
 
 ##### %/
 
@@ -1361,7 +1361,7 @@ Like `%/`, but the output is `~` (tilde) if the database is your default databas
 
 ##### %#
 
-If the session user is a database superuser, then a `#`, otherwise a `>`. (The expansion of this value might change during a database session as the result of the [`SET SESSION AUTHORIZATION`](../../api/ysql/the-sql-language/statements/dcl_set_session_authorization) statement.)
+If the session user is a database superuser, then a `#`, otherwise a `>`. (The expansion of this value might change during a database session as the result of the [`SET SESSION AUTHORIZATION`](../../api/ysql/the-sql-language/statements/dcl_set_session_authorization/) statement.)
 
 ##### %p
 
@@ -1516,7 +1516,7 @@ testdb=> \d my_table
  Column |  Type   | Collation | Nullable | Default
 --------+---------+-----------+----------+---------
  first  | integer |           | not null | 0
- second | text    |           |          | 
+ second | text    |           |          |
 ```
 
 Now you change the prompt to something more interesting:
@@ -1611,7 +1611,7 @@ When suitable, query results can be shown in a crosstab representation with the 
 
 ```plpgsql
 testdb=> SELECT first, second, first > 2 AS gt2 FROM my_table;
- first | second | gt2 
+ first | second | gt2
 -------+--------+-----
      1 | one    | f
      2 | two    | f
@@ -1620,11 +1620,11 @@ testdb=> SELECT first, second, first > 2 AS gt2 FROM my_table;
 (4 rows)
 
 testdb=> \crosstabview first second
- first | one | two | three | four 
+ first | one | two | three | four
 -------+-----+-----+-------+------
-     1 | f   |     |       | 
-     2 |     | f   |       | 
-     3 |     |     | t     | 
+     1 | f   |     |       |
+     2 |     | f   |       |
+     3 |     |     | t     |
      4 |     |     |       | t
 (4 rows)
 ```
@@ -1636,7 +1636,7 @@ testdb=> SELECT t1.first as "A", t2.first+100 AS "B", t1.first*(t2.first+100) as
 testdb(> row_number() over(order by t2.first) AS ord
 testdb(> FROM my_table t1 CROSS JOIN my_table t2 ORDER BY 1 DESC
 testdb(> \crosstabview "A" "B" "AxB" ord
- A | 101 | 102 | 103 | 104 
+ A | 101 | 102 | 103 | 104
 ---+-----+-----+-----+-----
  4 | 404 | 408 | 412 | 416
  3 | 303 | 306 | 309 | 312

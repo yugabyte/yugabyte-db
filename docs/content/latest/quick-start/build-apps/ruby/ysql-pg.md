@@ -42,7 +42,7 @@ showAsideToc: true
 
 ## Install the pg driver
 
-Install the Ruby PostgreSQL driver (`pg`) using the following command. You can get further details for the driver [here](https://bitbucket.org/ged/ruby-pg/wiki/Home).
+Install the Ruby PostgreSQL driver (`pg`) using the following command. You can get further details for the driver in the [pg driver documentation](https://deveiate.org/code/pg/).
 
 ```sh
 $ gem install pg -- --with-pg-config=<yugabyte-install-dir>/postgres/bin/pg_config
