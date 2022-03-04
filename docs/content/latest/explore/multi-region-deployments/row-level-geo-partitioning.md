@@ -359,7 +359,7 @@ created_at    | 2020-11-07 21:28:11.056236
 
 ## Step 5. Running distributed transactions
 
-So far, we have only been running `SELECT` and [single-row transactions](../../architecture/transactions/transactions-overview/#single-row-transactions). Geo-partitioning introduces a new complication for general distributed transactions.
+So far, we have only been running `SELECT` and [single-row transactions](../../../architecture/transactions/transactions-overview/#single-row-transactions). Geo-partitioning introduces a new complication for general distributed transactions.
 
 Let's say we want to run the following transaction:
 

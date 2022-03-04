@@ -286,7 +286,6 @@ class ReplaceRootVolumeMethod(AbstractInstancesMethod):
 
     def _replace_root_volume(self, args, host_info, current_root_volume):
         unmounted = False
-
         try:
             id = args.search_pattern
             logging.info("==> Stopping instance {}".format(id))
@@ -303,7 +302,7 @@ class ReplaceRootVolumeMethod(AbstractInstancesMethod):
             if unmounted:
                 self._mount_root_volume(host_info, current_root_volume)
         finally:
-            self.cloud.start_instance(host_info, 22)
+            self.cloud.start_instance(host_info, [22, args.custom_ssh_port])
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -387,17 +386,27 @@ class CreateInstancesMethod(AbstractInstancesMethod):
         self.run_ansible_create(args)
 
         if args.boot_script:
+            host_info = self.cloud.get_host_info(args)
+            self.extra_vars.update(
+                    get_ssh_host_port(host_info, args.custom_ssh_port, default_port=True))
+            ssh_port_updated = self.update_open_ssh_port(args,)
+            use_default_port = not ssh_port_updated
             logging.info(
                 'Waiting for the startup script to finish on {}'.format(args.search_pattern))
 
             host_info = get_ssh_host_port(
-                self.wait_for_host(args), args.custom_ssh_port, default_port=True)
+                self.wait_for_host(args, use_default_port),
+                args.custom_ssh_port,
+                default_port=use_default_port)
             host_info['ssh_user'] = DEFAULT_SSH_USER
             retries = 0
             while not self.cloud.wait_for_startup_script(args, host_info) and retries < 5:
                 retries += 1
                 time.sleep(2 ** retries)
-            self.cloud.verify_startup_script(args, host_info)
+
+            # For clusters with secondary subnets, the start-up script is expected to fail.
+            if not args.cloud_subnet_secondary:
+                self.cloud.verify_startup_script(args, host_info)
 
             logging.info('Startup script finished on {}'.format(args.search_pattern))
 
@@ -668,7 +677,7 @@ class ChangeInstanceTypeMethod(AbstractInstancesMethod):
             raise YBOpsRuntimeError('error executing \"instance.modify_attribute\": {}'
                                     .format(repr(e)))
         finally:
-            self.cloud.start_instance(host_info, int(args.custom_ssh_port))
+            self.cloud.start_instance(host_info, [int(args.custom_ssh_port)])
             logging.info('Instance {} is started'.format(args.search_pattern))
 
 
@@ -956,6 +965,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                 return
             if args.cert_rotate_action == "ROTATE_CERTS":
                 rotate_certs = True
+                # Clean up client certs to remove old cert traces
+                self.cloud.cleanup_client_certs(ssh_options)
 
         # Copying Server Certs
         logging.info("Copying certificates to {}.".format(args.search_pattern))

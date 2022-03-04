@@ -1033,7 +1033,7 @@ DocRowwiseIterator::DocRowwiseIterator(
 DocRowwiseIterator::~DocRowwiseIterator() {
 }
 
-Status DocRowwiseIterator::Init(TableType table_type) {
+Status DocRowwiseIterator::Init(TableType table_type, const Slice& sub_doc_key) {
   db_iter_ = CreateIntentAwareIterator(
       doc_db_,
       BloomFilterMode::DONT_USE_BLOOM_FILTER,
@@ -1042,8 +1042,12 @@ Status DocRowwiseIterator::Init(TableType table_type) {
       txn_op_context_,
       deadline_,
       read_time_);
-  DocKeyEncoder(&iter_key_).Schema(schema_);
-  row_key_ = iter_key_;
+  if (!sub_doc_key.empty()) {
+    row_key_ = sub_doc_key;
+  } else {
+    DocKeyEncoder(&iter_key_).Schema(schema_);
+    row_key_ = iter_key_;
+  }
   row_hash_key_ = row_key_;
   VLOG(3) << __PRETTY_FUNCTION__ << " Seeking to " << row_key_;
   db_iter_->Seek(row_key_);

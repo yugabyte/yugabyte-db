@@ -2917,6 +2917,8 @@ class YBBackup:
                 if LEADING_UUID_RE.match(line):
                     (ts_uuid, ts_ip_port, role) = split_by_tab(line)
                     (ts_ip, ts_port) = ts_ip_port.split(':')
+                    if self.ts_secondary_to_primary_ip_map:
+                        ts_ip = self.ts_secondary_to_primary_ip_map[ts_ip]
                     tablets_by_tserver_ip.setdefault(ts_ip, set()).add(new_id)
 
         return tablets_by_tserver_ip

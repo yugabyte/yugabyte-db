@@ -331,6 +331,10 @@ class YBClient {
   CHECKED_STATUS GetTableSchemaById(const TableId& table_id, std::shared_ptr<YBTableInfo> info,
                                     StatusCallback callback);
 
+  CHECKED_STATUS GetTablegroupSchemaById(const TablegroupId& parent_tablegroup_table_id,
+                                         std::shared_ptr<std::vector<YBTableInfo>> info,
+                                         StatusCallback callback);
+
   CHECKED_STATUS GetColocatedTabletSchemaById(const TableId& parent_colocated_table_id,
                                               std::shared_ptr<std::vector<YBTableInfo>> info,
                                               StatusCallback callback);
@@ -552,7 +556,8 @@ class YBClient {
 
   // Retrieve a CDC stream.
   CHECKED_STATUS GetCDCStream(const CDCStreamId &stream_id,
-                              TableId* table_id,
+                              NamespaceId* ns_id,
+                              std::vector<TableId>* table_ids,
                               std::unordered_map<std::string, std::string>* options);
 
   void GetCDCStream(const CDCStreamId& stream_id,
@@ -819,6 +824,7 @@ class YBClient {
   friend class YBTableCreator;
   friend class internal::Batcher;
   friend class internal::GetTableSchemaRpc;
+  friend class internal::GetTablegroupSchemaRpc;
   friend class internal::GetColocatedTabletSchemaRpc;
   friend class internal::LookupRpc;
   friend class internal::MetaCache;

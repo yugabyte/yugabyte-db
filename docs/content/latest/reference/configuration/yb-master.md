@@ -15,7 +15,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Use the `yb-master` binary and its flags to configure the [YB-Master](../../../architecture/concepts/yb-master) server. The `yb-master` executable file is located in the `bin` directory of YugabyteDB home.
+Use the `yb-master` binary and its flags to configure the [YB-Master](../../../architecture/concepts/yb-master/) server. The `yb-master` executable file is located in the `bin` directory of YugabyteDB home.
 
 ## Syntax
 
@@ -550,7 +550,7 @@ Default: `true`
 
 ### Security flags
 
-For details on enabling server-to-server encryption, see [Server-server encryption](../../../secure/tls-encryption/server-to-server).
+For details on enabling server-to-server encryption, see [Server-server encryption](../../../secure/tls-encryption/server-to-server/).
 
 ##### --certs_dir
 

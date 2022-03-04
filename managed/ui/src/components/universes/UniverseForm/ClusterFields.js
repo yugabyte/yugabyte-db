@@ -24,7 +24,8 @@ import {
   YBRadioButtonBarWithLabel,
   YBToggle,
   YBUnControlledNumericInput,
-  YBControlledNumericInputWithLabel
+  YBControlledNumericInputWithLabel,
+  YBPassword
 } from '../../../components/common/forms/fields';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import AZSelectorTable from './AZSelectorTable';
@@ -766,33 +767,6 @@ export default class ClusterFields extends Component {
     const { updateFormField, clusterType } = this.props;
     this.setState({ nodeSetViaAZList: true, numNodes: value });
     updateFormField(`${clusterType}.numNodes`, value);
-    this.resetVolumeSizeIfNeeded();
-  }
-
-  resetVolumeSizeIfNeeded() {
-    const { hasInstanceTypeChanged, deviceInfo } = this.state;
-    const {
-      clusterType,
-      universe: { currentUniverse }
-    } = this.props;
-    if (
-      isEmptyObject(currentUniverse.data) ||
-      isEmptyObject(currentUniverse.data.universeDetails)
-    ) {
-      return;
-    }
-    if (!hasInstanceTypeChanged) {
-      const curCluster = getClusterByType(
-        currentUniverse.data.universeDetails.clusters,
-        clusterType
-      );
-      if (
-        !isEmptyObject(curCluster) &&
-        curCluster.userIntent.deviceInfo.volumeSize !== deviceInfo.volumeSize
-      ) {
-        this.volumeSizeChanged(curCluster.userIntent.deviceInfo.volumeSize);
-      }
-    }
   }
 
   setDeviceInfo(instanceTypeCode, instanceTypeList) {
@@ -1323,7 +1297,7 @@ export default class ClusterFields extends Component {
 
     const allowGeoPartitioning =
       featureFlags.test['enableGeoPartitioning'] || featureFlags.released['enableGeoPartitioning'];
-    console.log("####### allowGeoPartitioning: " + allowGeoPartitioning);
+    console.log('####### allowGeoPartitioning: ' + allowGeoPartitioning);
     universeTaskParams.allowGeoPartitioning = allowGeoPartitioning;
 
     const cluster = getClusterByType(universeTaskParams.clusters, clusterType);
@@ -1346,7 +1320,6 @@ export default class ClusterFields extends Component {
     const { updateFormField, clusterType } = this.props;
     this.setState({ numNodes: value, nodeSetViaAZList: false });
     updateFormField(`${clusterType}.numNodes`, value);
-    this.resetVolumeSizeIfNeeded();
   }
 
   getCurrentProvider(providerUUID) {
@@ -1724,10 +1697,6 @@ export default class ClusterFields extends Component {
             />
           </span>
         );
-        const smartResizePossible =
-          isDefinedNotNull(currentProvider) &&
-          (currentProvider.code === 'aws' || currentProvider.code === 'gcp') &&
-          clusterType !== 'async';
         const volumeSize = (
           <span className="volume-info-field volume-info-size">
             <Field
@@ -1736,7 +1705,7 @@ export default class ClusterFields extends Component {
               label="Volume Size"
               valueFormat={volumeTypeFormat}
               onInputChanged={self.volumeSizeChanged}
-              readOnly={fixedVolumeInfo || (!hasInstanceTypeChanged && !smartResizePossible)}
+              readOnly={fixedVolumeInfo || !hasInstanceTypeChanged}
             />
           </span>
         );
@@ -1777,13 +1746,13 @@ export default class ClusterFields extends Component {
                 />
               </span>
               {this.state.gcpInstanceWithEphemeralStorage &&
-               (featureFlags.test['pausedUniverse'] ||
-                featureFlags.released['pausedUniverse']) && (
+                (featureFlags.test['pausedUniverse'] ||
+                  featureFlags.released['pausedUniverse']) && (
                   <span className="gcp-ephemeral-storage-warning">
                     ! Selected instance type is with ephemeral storage, If you will pause this
                     universe your data will get lost.
                   </span>
-              )}
+                )}
             </>
           );
         } else if (isInAzu) {
@@ -1864,8 +1833,7 @@ export default class ClusterFields extends Component {
             <div className="form-right-aligned-labels">
               <Field
                 name={`${clusterType}.ysqlPassword`}
-                type="password"
-                component={YBTextInputWithLabel}
+                component={YBPassword}
                 validate={this.validatePassword}
                 autoComplete="new-password"
                 label="YSQL Auth Password"
@@ -1877,8 +1845,7 @@ export default class ClusterFields extends Component {
             <div className="form-right-aligned-labels">
               <Field
                 name={`${clusterType}.ysqlConfirmPassword`}
-                type="password"
-                component={YBTextInputWithLabel}
+                component={YBPassword}
                 validate={this.validateConfirmPassword}
                 autoComplete="new-password"
                 label="Confirm Password"
@@ -1925,8 +1892,7 @@ export default class ClusterFields extends Component {
             <div className="form-right-aligned-labels">
               <Field
                 name={`${clusterType}.ycqlPassword`}
-                type="password"
-                component={YBTextInputWithLabel}
+                component={YBPassword}
                 validate={this.validatePassword}
                 autoComplete="new-password"
                 label="YCQL Auth Password"
@@ -1938,8 +1904,7 @@ export default class ClusterFields extends Component {
             <div className="form-right-aligned-labels">
               <Field
                 name={`${clusterType}.ycqlConfirmPassword`}
-                type="password"
-                component={YBTextInputWithLabel}
+                component={YBPassword}
                 validate={this.validateConfirmPassword}
                 autoComplete="new-password"
                 label="Confirm Password"

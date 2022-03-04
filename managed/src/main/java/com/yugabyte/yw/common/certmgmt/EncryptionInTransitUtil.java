@@ -13,11 +13,6 @@ package com.yugabyte.yw.common.certmgmt;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import java.io.File;
-import java.util.Date;
-import java.util.List;
-import java.util.UUID;
-
 import com.google.api.client.util.Strings;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
@@ -30,21 +25,22 @@ import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.CertificateInfo;
-
+import java.io.File;
+import java.util.Date;
+import java.util.List;
+import java.util.UUID;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
 import org.flywaydb.play.FileUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.encrypt.Encryptors;
 import org.springframework.security.crypto.encrypt.TextEncryptor;
 
+@Slf4j
 public class EncryptionInTransitUtil {
-  public static final Logger LOG = LoggerFactory.getLogger(EncryptionInTransitUtil.class);
-
   public static final String SALT_STR = "hashicorpcert";
 
   public static CertificateProviderBase getCertificateProviderInstance(CertificateInfo info) {
-    CertificateProviderBase certProvider = null;
+    CertificateProviderBase certProvider;
     try {
       switch (info.certType) {
         case HashicorpVault:
@@ -58,10 +54,10 @@ public class EncryptionInTransitUtil {
               BAD_REQUEST, "Certificate config type mismatch in createClientCertificate");
       }
     } catch (Exception e) {
-      String message = "Cannot create certificate. " + e.toString();
+      String message = "Cannot create certificate. " + e;
       throw new PlatformServiceException(BAD_REQUEST, message);
     }
-    LOG.debug(
+    log.debug(
         "Returning from getCertificateProviderInstance type is: {}", info.certType.toString());
     return certProvider;
   }
@@ -82,8 +78,7 @@ public class EncryptionInTransitUtil {
         || Strings.isNullOrEmpty(hcVaultParams.mountPath)
         || Strings.isNullOrEmpty(hcVaultParams.role)) {
       String message =
-          String.format(
-              "Hashicorp Vault parameters provided are not valid - %s", hcVaultParams.toString());
+          String.format("Hashicorp Vault parameters provided are not valid - %s", hcVaultParams);
       throw new PlatformServiceException(BAD_REQUEST, message);
     }
 
@@ -108,12 +103,12 @@ public class EncryptionInTransitUtil {
             paths.getLeft(),
             hcVaultParams);
 
-    LOG.info("Created Root CA for universe {}.", label);
+    log.info("Created Root CA for universe {}.", label);
 
     if (!CertificateInfo.isCertificateValid(certConfigUUID)) {
       String errMsg =
           String.format("The certificate %s needs info. Update the cert and retry.", label);
-      LOG.error(errMsg);
+      log.error(errMsg);
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
 
@@ -144,7 +139,7 @@ public class EncryptionInTransitUtil {
               CertificateHelper.convertStringToX509CertList(
                   FileUtils.readFileToString(new File(certPath.getLeft()))));
 
-      LOG.info("Updating table with ca certificate: {}", certPath.getLeft());
+      log.info("Updating table with ca certificate: {}", certPath.getLeft());
 
       List<Object> ttlInfo = pkiObjValidator.getTTL();
       hcVparams.ttl = (long) ttlInfo.get(0);
@@ -179,13 +174,12 @@ public class EncryptionInTransitUtil {
       String salt = getSaltHashForCert(customerUUID);
 
       final TextEncryptor encryptor = Encryptors.delux(customerUUID.toString(), salt);
-      final String encryptedConfig = encryptor.encrypt(data);
-      return encryptedConfig;
+      return encryptor.encrypt(data);
     } catch (Exception e) {
       final String errMsg =
           String.format(
               "Could not mask CertificateConfig for customer %s", customerUUID.toString());
-      LOG.error(errMsg, e);
+      log.error(errMsg, e);
       return null;
     }
   }
@@ -203,7 +197,7 @@ public class EncryptionInTransitUtil {
       final String errMsg =
           String.format(
               "Could not decrypt Cert configuration for customer %s", customerUUID.toString());
-      LOG.error(errMsg, e);
+      log.error(errMsg, e);
       return null;
     }
   }

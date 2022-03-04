@@ -15,13 +15,13 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/secure/authorization/ysql-grant-permissions" class="nav-link">
+    <a href="../ysql-grant-permissions/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
   <li >
-    <a href="/latest/secure/authorization/ycql-grant-permissions" class="nav-link active">
+    <a href="../ycql-grant-permissions/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -133,10 +133,10 @@ For the sake of brevity, you will drop the `cassandra` role related entries in t
 
 In this section, you will grant permissions to achieve the following as mentioned in the beginning of this tutorial:
 
-+ All members of engineering should be able to read data from any keyspace and table.
-+ Both developers and qa should be able to modify data in existing tables in the keyspace `dev_keyspace`.
-+ Developers should be able to create, alter and drop tables in the keyspace `dev_keyspace`.
-+ DB admins should be able to perform all operations on any keyspace.
+- All members of engineering should be able to read data from any keyspace and table.
+- Both developers and qa should be able to modify data in existing tables in the keyspace `dev_keyspace`.
+- Developers should be able to create, alter and drop tables in the keyspace `dev_keyspace`.
+- DB admins should be able to perform all operations on any keyspace.
 
 ### Grant read access
 

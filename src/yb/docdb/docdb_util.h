@@ -28,6 +28,11 @@
 namespace yb {
 namespace docdb {
 
+void SetValueFromQLBinaryWrapper(
+  QLValuePB ql_value,
+  const int pg_data_type,
+  DatumMessagePB* cdc_datum_message = NULL);
+
 struct ExternalIntent {
   DocPath doc_path;
   Value value;

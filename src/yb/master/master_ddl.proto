@@ -99,6 +99,8 @@ message CreateTableRequestPB {
 
   // This field should be used to create or restore table with a fixed set of partitions.
   repeated PartitionPB partitions = 22;
+
+  optional bytes matview_pg_table_id = 24;
 }
 
 message CreateTableResponsePB {
@@ -147,6 +149,7 @@ message ListTablesResponsePB {
     optional NamespaceIdentifierPB namespace = 4;
     optional RelationType relation_type = 5 [default = USER_TABLE_RELATION];
     optional SysTablesEntryPB.State state = 6;
+    optional string pgschema_name = 7;
   }
 
   repeated TableInfo tables = 2;
@@ -198,6 +201,18 @@ message GetTableSchemaResponsePB {
   optional bool is_compatible_with_previous_version = 14 [default = false];
 
   optional uint32 wal_retention_secs = 15;
+}
+
+message GetTablegroupSchemaRequestPB {
+  required TablegroupIdentifierPB parent_tablegroup = 1;
+}
+
+message GetTablegroupSchemaResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+
+  // List of all tables in this tablegroup.
+  repeated GetTableSchemaResponsePB get_table_schema_response_pbs = 2;
 }
 
 message GetColocatedTabletSchemaRequestPB {
@@ -583,6 +598,8 @@ service MasterDdl {
 
   rpc ListTables(ListTablesRequestPB) returns (ListTablesResponsePB);
   rpc GetTableSchema(GetTableSchemaRequestPB) returns (GetTableSchemaResponsePB);
+  rpc GetTablegroupSchema(GetTablegroupSchemaRequestPB)
+      returns (GetTablegroupSchemaResponsePB);
   rpc GetColocatedTabletSchema(GetColocatedTabletSchemaRequestPB)
       returns (GetColocatedTabletSchemaResponsePB);
 

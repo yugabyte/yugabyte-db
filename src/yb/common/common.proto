@@ -93,6 +93,9 @@ message ColumnSchemaPB {
   optional bool is_counter = 8 [default = false];
   optional int32 order = 12 [default = 0];
   optional uint32 sorting_type = 9 [default = 0];
+  // Added pg_type_oid for decoding the column value for CDC in 2.13.
+  // If the cluster has been upgraded, the value will be default and not the expected value.
+  optional uint32 pg_type_oid = 14 [default = 0];
   // Reserved for deprecated read_default_value and write_default_value fields.
   reserved 10, 11;
   // The JSON attribute was mistakenly placed here, but it is not used.
@@ -151,6 +154,8 @@ message SchemaPB {
   repeated ColumnSchemaPB columns = 1;
   optional TablePropertiesPB table_properties = 2;
   optional ColocatedTableIdentifierPB colocated_table_id = 3;
+  // Added in 2.13, any upgraded cluster may not have this value so use it appropriately.
+  optional string pgschema_name = 4;
 }
 
 // This message contains the metadata of a secondary index of a table.
