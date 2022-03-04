@@ -19,10 +19,10 @@ menu:
     <a class="section-link icon-offset" href="primary-key-ysql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
-        <div class="title">Primary Keys</div>
+        <div class="title">Primary keys</div>
       </div>
       <div class="body">
-          Explore the use of Primary Keys in YSQL and YCQL with examples.
+          Explore the use of Primary keys in YSQL and YCQL with examples.
       </div>
     </a>
   </div>
@@ -31,10 +31,10 @@ menu:
     <a class="section-link icon-offset" href="foreign-key-ysql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
-        <div class="title">Foreign Keys</div>
+        <div class="title">Foreign keys</div>
       </div>
       <div class="body">
-          Explore the use of Foreign Keys associated with Primary keys in YSQL.
+          Explore the use of Foreign keys associated with Primary keys in YSQL.
       </div>
     </a>
   </div>
@@ -42,7 +42,7 @@ menu:
     <a class="section-link icon-offset" href="secondary-indexes/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
-        <div class="title">Secondary Indexes</div>
+        <div class="title">Secondary indexes</div>
       </div>
       <div class="body">
           Explore Indexes to optimize your database performance.
@@ -54,10 +54,10 @@ menu:
     <a class="section-link icon-offset" href="unique-index-ysql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
-        <div class="title">Unique Indexes</div>
+        <div class="title">Unique indexes</div>
       </div>
       <div class="body">
-          Explore Unique Indexes in YSQL and YCQL with examples.
+          Explore Unique indexes in YSQL and YCQL with examples.
       </div>
     </a>
   </div>
@@ -66,10 +66,10 @@ menu:
     <a class="section-link icon-offset" href="partial-index-ysql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
-        <div class="title">Partial Indexes</div>
+        <div class="title">Partial indexes</div>
       </div>
       <div class="body">
-          Explore Partial Indexes in YSQL and YCQL with examples.
+          Explore Partial indexes in YSQL and YCQL with examples.
       </div>
     </a>
   </div>
@@ -78,10 +78,10 @@ menu:
     <a class="section-link icon-offset" href="expression-index-ysql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
-        <div class="title">Expression Indexes</div>
+        <div class="title">Expression indexes</div>
       </div>
       <div class="body">
-          Explore Expression Indexes in YSQL with examples.
+          Explore Expression indexes in YSQL with examples.
       </div>
     </a>
   </div>
@@ -90,7 +90,7 @@ menu:
     <a class="section-link icon-offset" href="gin/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
-        <div class="title">GIN Indexes</div>
+        <div class="title">GIN indexes</div>
       </div>
       <div class="body">
           Use GIN indexes in YSQL to run efficient queries.
@@ -102,10 +102,10 @@ menu:
     <a class="section-link icon-offset" href="other-constraints/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
-        <div class="title">Other Constraints</div>
+        <div class="title">Other constraints</div>
       </div>
       <div class="body">
-          Explore CHECK and NOT NULL Constraints to optimize your database performance.
+          Explore CHECK and NOT NULL constraints to optimize your database performance.
       </div>
     </a>
  </div>

@@ -1,6 +1,6 @@
 ---
-title: Foreign key
-linkTitle: Foreign key
+title: Foreign keys
+linkTitle: Foreign keys
 description: Defining Foreign key constraint in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:

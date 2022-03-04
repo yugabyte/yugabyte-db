@@ -1,6 +1,6 @@
 ---
-title: Primary key
-linkTitle: Primary key
+title: Primary keys
+linkTitle: Primary keys
 description: Defining Primary key constraint in YCQL
 image: /images/section_icons/secure/create-roles.png
 menu:
