@@ -347,6 +347,16 @@ lazy val pythongen = project.in(file("client/python"))
     openApiConfigFile := "client/python/openapi-python-config.json"
   )
 
+// Generate a Go API client.
+lazy val gogen = project.in(file("client/go"))
+  .settings(
+    openApiInputSpec := "src/main/resources/swagger.json",
+    openApiGeneratorName := "go",
+    openApiOutputDir := "client/go/generated",
+    openApiValidateSpec := SettingDisabled,
+    openApiConfigFile := "client/go/openapi-go-config.json"
+  )
+
 packageZipTarball.in(Universal) := packageZipTarball.in(Universal).dependsOn(versionGenerate).value
 
 runPlatformTask := {
@@ -484,7 +494,8 @@ swaggerGen := Def.taskDyn {
       .toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest $file"),
     (javagen / openApiGenerate),
     compileJavaGenClient,
-    (pythongen / openApiGenerate)
+    (pythongen / openApiGenerate),
+    (gogen / openApiGenerate)
   )
 }.value
 

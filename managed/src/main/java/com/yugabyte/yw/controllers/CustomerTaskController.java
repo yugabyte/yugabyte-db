@@ -216,7 +216,7 @@ public class CustomerTaskController extends AuthenticatedController {
     return PlatformResults.withData(taskList);
   }
 
-  @ApiOperation(value = "Get a task's status", responseContainer = "Map", response = Object.class)
+  @ApiOperation(value = "Get a task's status", response = Object.class)
   public Result taskStatus(UUID customerUUID, UUID taskUUID) {
     Customer.getOrBadRequest(customerUUID);
     CustomerTask.getOrBadRequest(customerUUID, taskUUID);
