@@ -3172,6 +3172,12 @@ Status CatalogManager::SetupUniverseReplication(const SetupUniverseReplicationRe
           req->producer_table_ids(i), tables_info,
           Bind(&enterprise::CatalogManager::GetColocatedTabletSchemaCallback, Unretained(this),
                ri->id(), tables_info, table_id_to_bootstrap_id));
+    } else if (IsTablegroupParentTableId(req->producer_table_ids(i))) {
+      auto tablegroup_info = std::make_shared<std::vector<client::YBTableInfo>>();
+      s = cdc_rpc->client()->GetTablegroupSchemaById(
+          req->producer_table_ids(i), tablegroup_info,
+          Bind(&enterprise::CatalogManager::GetTablegroupSchemaCallback, Unretained(this),
+               ri->id(), tablegroup_info, req->producer_table_ids(i), table_id_to_bootstrap_id));
     } else {
       auto table_info = std::make_shared<client::YBTableInfo>();
       s = cdc_rpc->client()->GetTableSchemaById(
@@ -3210,10 +3216,9 @@ void CatalogManager::MarkUniverseReplicationFailed(
 Status CatalogManager::ValidateTableSchema(
     const std::shared_ptr<client::YBTableInfo>& info,
     const std::unordered_map<TableId, std::string>& table_bootstrap_ids,
-    TableId* consumer_table_id) {
+    GetTableSchemaResponsePB* resp) {
   // Get corresponding table schema on local universe.
   GetTableSchemaRequestPB req;
-  GetTableSchemaResponsePB resp;
 
   auto* table = req.mutable_table();
   table->set_table_name(info->table_name.table_name());
@@ -3248,19 +3253,19 @@ Status CatalogManager::ValidateTableSchema(
         Substitute("Could not find matching table for $0", info->table_name.ToString()));
   }
 
-  // We have a table match.  Now get the table schema and validate
-  status = GetTableSchema(&req, &resp);
-  if (!status.ok() || resp.has_error()) {
+  // We have a table match.  Now get the table schema and validate.
+  status = GetTableSchema(&req, resp);
+  if (!status.ok() || resp->has_error()) {
     return STATUS(NotFound, Substitute("Error while getting table schema: $0", status.ToString()));
   }
 
-  auto result = info->schema.EquivalentForDataCopy(resp.schema());
+  auto result = info->schema.EquivalentForDataCopy(resp->schema());
   if (!result.ok() || !*result) {
     return STATUS(IllegalState,
         Substitute("Source and target schemas don't match: "
                    "Source: $0, Target: $1, Source schema: $2, Target schema: $3",
-                   info->table_id, resp.identifier().table_id(),
-                   info->schema.ToString(), resp.schema().DebugString()));
+                   info->table_id, resp->identifier().table_id(),
+                   info->schema.ToString(), resp->schema().DebugString()));
   }
 
   // Still need to make map of table id to resp table id (to add to validated map)
@@ -3269,17 +3274,13 @@ Status CatalogManager::ValidateTableSchema(
   if (info->colocated) {
     // For now we require that colocated tables have the same table oid.
     auto source_oid = CHECK_RESULT(GetPgsqlTableOid(info->table_id));
-    auto target_oid = CHECK_RESULT(GetPgsqlTableOid(resp.identifier().table_id()));
+    auto target_oid = CHECK_RESULT(GetPgsqlTableOid(resp->identifier().table_id()));
     if (source_oid != target_oid) {
-    return STATUS(IllegalState,
-        Substitute("Source and target table oids don't match for colocated table: "
-                   "Source: $0, Target: $1, Source table oid: $2, Target table oid: $3",
-                   info->table_id, resp.identifier().table_id(), source_oid, target_oid));
+      return STATUS(IllegalState,
+          Substitute("Source and target table oids don't match for colocated table: "
+                    "Source: $0, Target: $1, Source table oid: $2, Target table oid: $3",
+                    info->table_id, resp->identifier().table_id(), source_oid, target_oid));
     }
-    string parent_table_id = resp.identifier().namespace_().id() + kColocatedParentTableIdSuffix;
-    *consumer_table_id = parent_table_id;
-  } else {
-    *consumer_table_id = resp.identifier().table_id();
   }
 
   return Status::OK();
@@ -3389,8 +3390,8 @@ void CatalogManager::GetTableSchemaCallback(
   }
 
   // Validate the table schema.
-  TableId table_id;
-  Status status = ValidateTableSchema(info, table_bootstrap_ids, &table_id);
+  GetTableSchemaResponsePB resp;
+  Status status = ValidateTableSchema(info, table_bootstrap_ids, &resp);
   if (!status.ok()) {
     MarkUniverseReplicationFailed(universe, status);
     LOG(ERROR) << "Found error while validating table schema for table " << info->table_id
@@ -3401,10 +3402,134 @@ void CatalogManager::GetTableSchemaCallback(
   status = AddValidatedTableAndCreateCdcStreams(universe,
                                                 table_bootstrap_ids,
                                                 info->table_id,
-                                                table_id);
+                                                resp.identifier().table_id());
   if (!status.ok()) {
     LOG(ERROR) << "Found error while adding validated table to system catalog: " << info->table_id
                << ": " << status;
+    return;
+  }
+}
+
+void CatalogManager::GetTablegroupSchemaCallback(
+    const std::string& universe_id,
+    const std::shared_ptr<std::vector<client::YBTableInfo>>& infos,
+    const TablegroupId& producer_tablegroup_id,
+    const std::unordered_map<TableId, std::string>& table_bootstrap_ids,
+    const Status& s) {
+  // First get the universe.
+  scoped_refptr<UniverseReplicationInfo> universe;
+  {
+    SharedLock lock(mutex_);
+    TRACE("Acquired catalog manager lock");
+
+    universe = FindPtrOrNull(universe_replication_map_, universe_id);
+    if (universe == nullptr) {
+      LOG(ERROR) << "Universe not found: " << universe_id;
+      return;
+    }
+  }
+
+  if (!s.ok()) {
+    MarkUniverseReplicationFailed(universe, s);
+    std::ostringstream oss;
+    for (size_t i = 0; i < infos->size(); ++i) {
+      oss << ((i == 0) ? "" : ", ") << (*infos)[i].table_id;
+    }
+    LOG(ERROR) << "Error getting schema for tables: [ " << oss.str() << " ]: " << s;
+    return;
+  }
+
+  if (infos->empty()) {
+    LOG(WARNING) << "Received empty list of tables to validate: " << s;
+    return;
+  }
+
+  // validated_consumer_tables contains the table IDs corresponding to that
+  // from the producer tables.
+  std::unordered_set<TableId> validated_consumer_tables;
+  for (const auto& info : *infos) {
+    // Validate each of the member table in the tablegroup.
+    GetTableSchemaResponsePB resp;
+    Status table_status = ValidateTableSchema(std::make_shared<client::YBTableInfo>(info),
+                                              table_bootstrap_ids,
+                                              &resp);
+
+    if (!table_status.ok()) {
+      MarkUniverseReplicationFailed(universe, table_status);
+      LOG(ERROR) << "Found error while validating table schema for table " << info.table_id
+                 << ": " << table_status;
+      return;
+    }
+
+    validated_consumer_tables.insert(resp.identifier().table_id());
+  }
+
+  // Get the consumer tablegroup ID. Since this call is expensive (one needs to reverse lookup
+  // the tablegroup ID from table ID), we only do this call once and do validation afterward.
+  TablegroupId consumer_tablegroup_id;
+  {
+    const auto& result = FindTablegroupByTableId(*validated_consumer_tables.begin());
+    if (!result.has_value()) {
+      std::string message =
+          Format("No consumer tablegroup found for producer tablegroup: $0",
+                 producer_tablegroup_id);
+      MarkUniverseReplicationFailed(universe, STATUS(IllegalState, message));
+      LOG(ERROR) << message;
+      return;
+    }
+    consumer_tablegroup_id = result.value();
+  }
+
+  // tables_in_consumer_tablegroup are the tables listed within the consumer_tablegroup_id.
+  // We need validated_consumer_tables and tables_in_consumer_tablegroup to be identical.
+  std::unordered_set<TableId> tables_in_consumer_tablegroup;
+  {
+    GetTablegroupSchemaRequestPB req;
+    GetTablegroupSchemaResponsePB resp;
+    req.mutable_parent_tablegroup()->set_id(consumer_tablegroup_id);
+    Status status = GetTablegroupSchema(&req, &resp);
+    if (!status.ok() || resp.has_error()) {
+      std::string message = Format("Error when getting consumer tablegroup schema: $0",
+                                   consumer_tablegroup_id);
+      MarkUniverseReplicationFailed(universe, STATUS(IllegalState, message));
+      LOG(ERROR) << message;
+      return;
+    }
+
+    for (const auto& info : resp.get_table_schema_response_pbs()) {
+      tables_in_consumer_tablegroup.insert(info.identifier().table_id());
+    }
+  }
+
+  if (validated_consumer_tables != tables_in_consumer_tablegroup) {
+    std::ostringstream validated_tables_oss;
+    for (auto it = validated_consumer_tables.begin();
+        it != validated_consumer_tables.end(); it++) {
+      validated_tables_oss << (it == validated_consumer_tables.begin() ? "" : ",") << *it;
+    }
+    std::ostringstream consumer_tables_oss;
+    for (auto it = tables_in_consumer_tablegroup.begin();
+        it != tables_in_consumer_tablegroup.end(); it++) {
+      consumer_tables_oss << (it == tables_in_consumer_tablegroup.begin() ? "" : ",") << *it;
+    }
+
+    std::string message =
+        Format("Mismatch between tables associated with producer tablegroup $0 and "
+               "tables in consumer tablegroup $1: ($2) vs ($3).",
+               producer_tablegroup_id, consumer_tablegroup_id,
+               validated_tables_oss.str(), consumer_tables_oss.str());
+    MarkUniverseReplicationFailed(universe, STATUS(IllegalState, message));
+    LOG(ERROR) << message;
+    return;
+  }
+
+  Status status = AddValidatedTableAndCreateCdcStreams(universe,
+                                                       table_bootstrap_ids,
+                                                       producer_tablegroup_id,
+                                                       consumer_tablegroup_id);
+  if (!status.ok()) {
+    LOG(ERROR) << "Found error while adding validated table to system catalog: "
+               << producer_tablegroup_id << ": " << status;
     return;
   }
 }
@@ -3452,10 +3577,10 @@ void CatalogManager::GetColocatedTabletSchemaCallback(
       return;
     }
     // Validate each table, and get the parent colocated table id for the consumer.
-    TableId consumer_parent_table_id;
+    GetTableSchemaResponsePB resp;
     Status table_status = ValidateTableSchema(std::make_shared<client::YBTableInfo>(info),
                                               table_bootstrap_ids,
-                                              &consumer_parent_table_id);
+                                              &resp);
     if (!table_status.ok()) {
       MarkUniverseReplicationFailed(universe, table_status);
       LOG(ERROR) << "Found error while validating table schema for table " << info.table_id
@@ -3465,7 +3590,8 @@ void CatalogManager::GetColocatedTabletSchemaCallback(
     // Store the parent table ids.
     producer_parent_table_ids.insert(
         info.table_name.namespace_id() + kColocatedParentTableIdSuffix);
-    consumer_parent_table_ids.insert(consumer_parent_table_id);
+    consumer_parent_table_ids.insert(
+        resp.identifier().namespace_().id() + kColocatedParentTableIdSuffix);
   }
 
   // Verify that we only found one producer and one consumer colocated parent table id.

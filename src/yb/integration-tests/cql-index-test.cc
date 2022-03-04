@@ -177,7 +177,7 @@ TEST_F(CqlIndexTest, TestSaturatedWorkers) {
 
    * TODO: when switching to a fully asynchronous model, this failure will disappear.
    */
-  FLAGS_cql_prepare_child_threshold_ms = 10;
+  FLAGS_cql_prepare_child_threshold_ms = 1;
 
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
   ASSERT_OK(session.ExecuteQuery(
@@ -190,7 +190,7 @@ TEST_F(CqlIndexTest, TestSaturatedWorkers) {
       "CREATE INDEX i2 ON t(key, v2) WITH "
       "transactions = { 'enabled' : true }"));
 
-  constexpr int kKeys = 1000;
+  constexpr int kKeys = 10000;
   std::string expr = "BEGIN TRANSACTION ";
   for (int i = 0; i < kKeys; i++) {
     expr += Format("INSERT INTO t (key, v1, v2) VALUES ($0, $1, $2); ", i, i, i);
