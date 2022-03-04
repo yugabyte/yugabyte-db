@@ -540,6 +540,12 @@ Determines when to use private IP addresses. Possible values are `never` (defaul
 
 Default: `never`
 
+##### --auto_create_local_transaction_tables
+
+If true, transaction tables will be automatically created for any YSQL tablespace which has a placement and at least one other table in it.
+
+Default: `true`
+
 ---
 
 ### Security flags
