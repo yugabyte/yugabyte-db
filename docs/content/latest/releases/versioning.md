@@ -7,7 +7,7 @@ section: RELEASES
 menu:
   latest:
     identifier: versioning
-    weight: 2586
+    weight: 4000
 isTocNested: true
 showAsideToc: true
 ---

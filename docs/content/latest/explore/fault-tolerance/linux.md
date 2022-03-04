@@ -17,28 +17,28 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/fault-tolerance/macos" class="nav-link">
+    <a href="../macos/" class="nav-link">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/fault-tolerance/linux" class="nav-link active">
+    <a href="../linux/" class="nav-link active">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/fault-tolerance/docker" class="nav-link">
+    <a href="../docker/" class="nav-link">
       <i class="fab fa-docker" aria-hidden="true"></i>
       Docker
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/fault-tolerance/kubernetes" class="nav-link">
+    <a href="../kubernetes/" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
@@ -48,7 +48,7 @@ showAsideToc: true
 
 YugabyteDB can automatically handle failures and therefore provides [high availability](../../../architecture/core-functions/high-availability/). In this section, you'll see how YugabyteDB can continue to do reads and writes even in case of node failures. You will create YSQL tables with a replication factor (RF) of `3` that allows a [fault tolerance](../../../architecture/docdb-replication/replication/) of 1. This means the cluster will remain available for both reads and writes even if one node fails. However, if another node fails bringing the number of failures to two, then writes will become unavailable on the cluster in order to preserve data consistency.
 
-This tutorial uses the [yugabyted](../../../reference/configuration/yugabyted) cluster management utility.
+This tutorial uses the [yugabyted](../../../reference/configuration/yugabyted/) cluster management utility.
 
 ## 1. Create a universe
 
@@ -60,7 +60,7 @@ Start a new local three-node cluster with a replication factor of `3`. First cre
                 --base_dir=/tmp/ybd1
 ```
 
-Next, create a 3 node cluster by joining two more nodes with the previous node. By default, [yugabyted](../../../reference/configuration/yugabyted) creates a cluster with a replication factor of `3` on starting a 3 node cluster.
+Next, create a 3 node cluster by joining two more nodes with the previous node. By default, [yugabyted](../../../reference/configuration/yugabyted/) creates a cluster with a replication factor of `3` on starting a 3 node cluster.
 
 ```sh
 ./bin/yugabyted start \
@@ -81,7 +81,7 @@ Next, create a 3 node cluster by joining two more nodes with the previous node. 
 Download the YugabyteDB workload generator JAR file (`yb-sample-apps.jar`).
 
 ```sh
-$ wget https://github.com/yugabyte/yb-sample-apps/releases/download/1.3.9/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar 
+$ wget https://github.com/yugabyte/yb-sample-apps/releases/download/1.3.9/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
 ```
 
 Run the `SqlInserts` workload against the local universe using the following command.
@@ -119,7 +119,7 @@ Refresh the <a href='http://127.0.0.1:7000/tablet-servers' target="_blank">table
 
 ![Read and write IOPS with 3rd node dead](/images/ce/fault_tolerance_dead_node.png)
 
-## 6. [Optional] Clean up 
+## 6. [Optional] Clean up
 
 Optionally, you can shut down the local cluster you created earlier.
 

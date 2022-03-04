@@ -9,7 +9,7 @@ menu:
     name: Scaling Transactions
     identifier: explore-transactions-scaling-transactions-1-ysql
     parent: explore-scalability
-    weight: 210
+    weight: 200
 isTocNested: true
 showAsideToc: true
 ---
@@ -17,14 +17,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/linear-scalability/scaling-transactions/" class="nav-link active">
+    <a href="../scaling-transactions/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 <!--
   <li >
-    <a href="/latest/explore/linear-scalability/scaling-transactions-ycql/" class="nav-link">
+    <a href="../scaling-transactions-ycql/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -34,7 +34,7 @@ showAsideToc: true
 
 On this page, you'll observe horizontal scale-out and scale-in in action. In particular, you’ll see how in YugabyteDB, you can add nodes to scale your cluster up very efficiently and reliably in order to achieve more read and write IOPS (input/output operations per second). In this tutorial, you will look at how YugabyteDB can scale while a workload is running. You will run a read-write workload using the prepackaged [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) against a 3-node local cluster with a replication factor of 3, and add nodes to it while the workload is running. Next, you can observe how the cluster scales out by verifying that the number of read and write IOPS are evenly distributed across all the nodes at all times.
 
-This tutorial uses the [yugabyted](../../../reference/configuration/yugabyted) cluster management utility.
+This tutorial uses the [yugabyted](../../../reference/configuration/yugabyted/) cluster management utility.
 
 ## 1. Create universe
 
@@ -95,7 +95,7 @@ $ java -jar ./yb-sample-apps.jar --workload SqlInserts \
 The workload application prints some statistics while running, an example is shown here. You can read more details about the output of the sample applications [here](https://github.com/yugabyte/yb-sample-apps).
 
 ```output
-2018-05-10 09:10:19,538 [INFO|...] Read: 8988.22 ops/sec (0.44 ms/op), 818159 total ops  |  Write: 1095.77 ops/sec (0.91 ms/op), 97120 total ops  | ... 
+2018-05-10 09:10:19,538 [INFO|...] Read: 8988.22 ops/sec (0.44 ms/op), 818159 total ops  |  Write: 1095.77 ops/sec (0.91 ms/op), 97120 total ops  | ...
 2018-05-10 09:10:24,539 [INFO|...] Read: 9110.92 ops/sec (0.44 ms/op), 863720 total ops  |  Write: 1034.06 ops/sec (0.97 ms/op), 102291 total ops  | ...
 ```
 

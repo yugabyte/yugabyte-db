@@ -68,6 +68,8 @@ class YBTableCreator {
   // Tablespace ID.
   YBTableCreator& tablespace_id(const std::string& tablespace_id);
 
+  YBTableCreator& matview_pg_table_id(const std::string& matview_pg_table_id);
+
   // Sets the schema with which to create the table. Must remain valid for
   // the lifetime of the builder. Required.
   YBTableCreator& schema(const YBSchema* schema);
@@ -212,6 +214,8 @@ class YBTableCreator {
 
   // The id of the tablespace to which this table is to be associated with.
   std::string tablespace_id_;
+
+  std::string matview_pg_table_id_;
 
   DISALLOW_COPY_AND_ASSIGN(YBTableCreator);
 };

@@ -708,6 +708,17 @@ Status YBClient::GetTableSchemaById(const TableId& table_id, std::shared_ptr<YBT
   return data_->GetTableSchemaById(this, table_id, deadline, info, callback);
 }
 
+Status YBClient::GetTablegroupSchemaById(const TablegroupId& parent_tablegroup_table_id,
+                                         std::shared_ptr<std::vector<YBTableInfo>> info,
+                                         StatusCallback callback) {
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  return data_->GetTablegroupSchemaById(this,
+                                        parent_tablegroup_table_id,
+                                        deadline,
+                                        info,
+                                        callback);
+}
+
 Status YBClient::GetColocatedTabletSchemaById(const TableId& parent_colocated_table_id,
                                               std::shared_ptr<std::vector<YBTableInfo>> info,
                                               StatusCallback callback) {
@@ -1439,7 +1450,8 @@ void YBClient::CreateCDCStream(const TableId& table_id,
 }
 
 Status YBClient::GetCDCStream(const CDCStreamId& stream_id,
-                              ObjectId* object_id,
+                              NamespaceId* ns_id,
+                              std::vector<ObjectId>* object_ids,
                               std::unordered_map<std::string, std::string>* options) {
   // Setting up request.
   GetCDCStreamRequestPB req;
@@ -1451,9 +1463,11 @@ Status YBClient::GetCDCStream(const CDCStreamId& stream_id,
 
   // Filling in return values.
   if (resp.stream().has_namespace_id()) {
-    *object_id = resp.stream().namespace_id();
-  } else {
-    *object_id = resp.stream().table_id().Get(0);
+    *ns_id = resp.stream().namespace_id();
+  }
+
+  for (auto id : resp.stream().table_id()) {
+    object_ids->push_back(id);
   }
 
   options->clear();
@@ -2089,6 +2103,7 @@ Result<std::vector<YBTableName>> YBClient::ListTables(const std::string& filter,
                         table_info.namespace_().name(),
                         table_info.id(),
                         table_info.name(),
+                        table_info.pgschema_name(),
                         table_info.relation_type());
   }
   return result;
@@ -2122,6 +2137,7 @@ Result<std::vector<YBTableName>> YBClient::ListUserTables(const NamespaceId& ns_
                         table_info.namespace_().name(),
                         table_info.id(),
                         table_info.name(),
+                        table_info.pgschema_name(),
                         table_info.relation_type());
   }
   return result;

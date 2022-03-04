@@ -20,7 +20,7 @@ menu:
 
 {{< tip title="Tip" >}}
 
-Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the core features of YugabyteDB.
+Use [yb-ctl](../admin/yb-ctl/) local cluster management utility to explore the core features of YugabyteDB.
 
 {{< /tip >}}
 
@@ -38,7 +38,7 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="fault-tolerance/macos">
+    <a class="section-link icon-offset" href="fault-tolerance/macos/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/fault_tolerance.png" aria-hidden="true" />
         <div class="title">Fault tolerance</div>

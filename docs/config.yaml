@@ -3,7 +3,6 @@ baseurl: https://docs.yugabyte.com
 languageCode: en-us
 title: YugabyteDB Docs
 metadataformat: yaml
-canonifyurls: false
 googleAnalytics: UA-104956980-3
 pygmentsCodefences: true
 pygmentsStyle: "pygments"

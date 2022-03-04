@@ -142,6 +142,11 @@ extern bool IsYBRelation(Relation relation);
 extern bool IsYBBackedRelation(Relation relation);
 
 /*
+ * Returns whether a relation is TEMP table
+ */
+extern bool YbIsTempRelation(Relation relation);
+
+/*
  * Returns whether a relation's attribute is a real column in the backing
  * YugaByte table. (It implies we can both read from and write to it).
  */

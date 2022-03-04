@@ -15,28 +15,28 @@ showAsideToc: true
  <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/observability/prometheus-integration/macos" class="nav-link active">
+    <a href="../macos/" class="nav-link active">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/observability/prometheus-integration/linux" class="nav-link">
+    <a href="../linux/" class="nav-link">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/observability/prometheus-integration/docker" class="nav-link">
+    <a href="../docker/" class="nav-link">
       <i class="fab fa-docker" aria-hidden="true"></i>
       Docker
     </a>
   </li>
 <!--
   <li >
-    <a href="/latest/explore/observability-kubernetes" class="nav-link">
+    <a href="../kubernetes/" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
@@ -46,7 +46,7 @@ showAsideToc: true
 
 You can monitor your local YugabyteDB cluster with a local instance of [Prometheus](https://prometheus.io/), a popular standard for time-series monitoring of cloud native infrastructure. YugabyteDB services and APIs expose metrics in the Prometheus format at the `/prometheus-metrics` endpoint. For details on the metrics targets for YugabyteDB, see [Prometheus monitoring](../../../../reference/configuration/default-ports/#prometheus-monitoring).
 
-This tutorial uses the [yugabyted](../../../../reference/configuration/yugabyted) cluster management utility.
+This tutorial uses the [yugabyted](../../../../reference/configuration/yugabyted/) cluster management utility.
 
 ## Prerequisite
 

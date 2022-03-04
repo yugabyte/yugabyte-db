@@ -86,6 +86,9 @@ Status PgCreateTable::Exec(
   if (set_table_properties) {
     schema_builder_.SetTableProperties(table_properties);
   }
+  if (!req_.schema_name().empty()) {
+    schema_builder_.SetSchemaName(req_.schema_name());
+  }
 
   RETURN_NOT_OK(schema_builder_.Build(&schema));
   const auto split_rows = VERIFY_RESULT(BuildSplitRows(schema));
@@ -116,6 +119,11 @@ Status PgCreateTable::Exec(
   auto tablespace_oid = PgObjectId::FromPB(req_.tablespace_oid());
   if (tablespace_oid.IsValid()) {
     table_creator->tablespace_id(tablespace_oid.GetYBTablespaceId());
+  }
+
+  auto matview_pg_table_oid = PgObjectId::FromPB(req_.matview_pg_table_oid());
+  if (matview_pg_table_oid.IsValid()) {
+    table_creator->matview_pg_table_id(matview_pg_table_oid.GetYBTableId());
   }
 
   // For index, set indexed (base) table id.
@@ -176,6 +184,7 @@ Status PgCreateTable::AddColumn(const PgCreateColumnPB& req) {
     range_columns_.emplace_back(req.attr_name());
   }
   col->SetSortingType(sorting_type);
+  col->PgTypeOid(req.attr_pgoid());
   return Status::OK();
 }
 

@@ -84,7 +84,8 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
 
   CHECKED_STATUS CreateCDCStream(const TableId& table_id);
 
-  CHECKED_STATUS CreateCDCSDKDBStream(const TypedNamespaceName& ns);
+  CHECKED_STATUS CreateCDCSDKDBStream(const TypedNamespaceName& ns,
+                                      const std::string& CheckPointType);
 
   CHECKED_STATUS DeleteCDCStream(const std::string& stream_id, bool force_delete = false);
 
