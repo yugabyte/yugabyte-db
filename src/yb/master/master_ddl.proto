@@ -203,6 +203,18 @@ message GetTableSchemaResponsePB {
   optional uint32 wal_retention_secs = 15;
 }
 
+message GetTablegroupSchemaRequestPB {
+  required TablegroupIdentifierPB parent_tablegroup = 1;
+}
+
+message GetTablegroupSchemaResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+
+  // List of all tables in this tablegroup.
+  repeated GetTableSchemaResponsePB get_table_schema_response_pbs = 2;
+}
+
 message GetColocatedTabletSchemaRequestPB {
   required TableIdentifierPB parent_colocated_table = 1;
 }
@@ -586,6 +598,8 @@ service MasterDdl {
 
   rpc ListTables(ListTablesRequestPB) returns (ListTablesResponsePB);
   rpc GetTableSchema(GetTableSchemaRequestPB) returns (GetTableSchemaResponsePB);
+  rpc GetTablegroupSchema(GetTablegroupSchemaRequestPB)
+      returns (GetTablegroupSchemaResponsePB);
   rpc GetColocatedTabletSchema(GetColocatedTabletSchemaRequestPB)
       returns (GetColocatedTabletSchemaResponsePB);
 

@@ -331,6 +331,10 @@ class CatalogManager :
                                         GetTableSchemaResponsePB* resp,
                                         bool get_fully_applied_indexes = false);
 
+  // Get the information about the specified tablegroup.
+  CHECKED_STATUS GetTablegroupSchema(const GetTablegroupSchemaRequestPB* req,
+                                     GetTablegroupSchemaResponsePB* resp);
+
   // Get the information about the specified colocated databsae.
   CHECKED_STATUS GetColocatedTabletSchema(const GetColocatedTabletSchemaRequestPB* req,
                                           GetColocatedTabletSchemaResponsePB* resp);
@@ -338,6 +342,9 @@ class CatalogManager :
   // List all the running tables.
   CHECKED_STATUS ListTables(const ListTablesRequestPB* req,
                             ListTablesResponsePB* resp) override;
+
+  // Find the tablegroup associated with the given table.
+  boost::optional<TablegroupId> FindTablegroupByTableId(const TableId& table_id);
 
   CHECKED_STATUS GetTableLocations(const GetTableLocationsRequestPB* req,
                                    GetTableLocationsResponsePB* resp) override;
@@ -578,6 +585,9 @@ class CatalogManager :
 
   // Is the table a special sequences system table?
   bool IsSequencesSystemTable(const TableInfo& table) const;
+
+  // Is the table id from a tablegroup?
+  bool IsTablegroupParentTableId(const TableId& table_id) const;
 
   // Is the table id from a table created for colocated database?
   bool IsColocatedParentTableId(const TableId& table_id) const;
