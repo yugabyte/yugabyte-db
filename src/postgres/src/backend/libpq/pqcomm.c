@@ -202,7 +202,7 @@ void
 pq_init(void)
 {
 	/* initialize state variables */
-	PqSendBufferSize = YBCGetOutputBufferSize();
+	PqSendBufferSize = *YBCGetGFlags()->ysql_output_buffer_size;
 	PqSendBuffer = MemoryContextAlloc(TopMemoryContext, PqSendBufferSize);
 	PqSendPointer = PqSendStart = PqRecvPointer = PqRecvLength = 0;
 	PqSendYbSavedBufPos = 0;

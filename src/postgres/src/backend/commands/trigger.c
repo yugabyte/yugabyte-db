@@ -6123,25 +6123,7 @@ AfterTriggerSaveEvent(EState *estate, ResultRelInfo *relinfo,
 		}
 
 		if (IsYBBackedRelation(rel) && RI_FKey_trigger_type(trigger->tgfoid) == RI_TRIGGER_FK)
-		{
-			YBCPgYBTupleIdDescriptor *descr = YBBuildFKTupleIdDescriptor(trigger, rel, newtup);
-			if (descr)
-			{
-				/*
-				 * Foreign key with at least one null value of real (non system) column
-				 * will not be checked, no need to add it into the cache.
-				 */
-				bool null_found = false;
-				for (YBCPgAttrValueDescriptor *attr = descr->attrs,
-					*end = descr->attrs + descr->nattrs;
-					attr != end && !null_found; ++attr)
-					null_found = attr->is_null && (attr->attr_num > 0);
-
-				if (!null_found)
-					HandleYBStatus(YBCAddForeignKeyReferenceIntent(descr));
-				pfree(descr);
-			}
-		}
+			YbAddTriggerFKReferenceIntent(trigger, rel, newtup);
 		afterTriggerAddEvent(
 				&afterTriggers.query_stack[afterTriggers.query_depth].events, &new_event, &new_shared);
 	}
