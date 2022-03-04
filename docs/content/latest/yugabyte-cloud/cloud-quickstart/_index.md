@@ -43,18 +43,6 @@ Get started with YugabyteDB on Yugabyte Cloud in a few steps:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="qs-data/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/quick_start/explore_ysql.png" aria-hidden="true" />
-        <div class="title">Create a database and load data</div>
-      </div>
-      <div class="body">
-        Create a database on your cluster and add some data using Cloud Shell.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="qs-explore/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/api-icon.png" aria-hidden="true" />
