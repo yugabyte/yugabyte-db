@@ -13,6 +13,8 @@
 
 #include "yb/docdb/doc_pgsql_scanspec.h"
 
+#include <boost/optional/optional_io.hpp>
+
 #include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/schema.h"
 
@@ -281,14 +283,11 @@ KeyBytes DocPgsqlScanSpec::bound_key(const Schema& schema, const bool lower_boun
   }
 
   if (has_hash_columns) {
-    DocKeyHash min_hash = hash_code_ ?
-        static_cast<DocKeyHash> (*hash_code_) : std::numeric_limits<DocKeyHash>::min();
-    DocKeyHash max_hash = max_hash_code_ ?
-        static_cast<DocKeyHash> (*max_hash_code_) : std::numeric_limits<DocKeyHash>::max();
+    uint16_t hash = lower_bound
+        ? hash_code_.get_value_or(std::numeric_limits<DocKeyHash>::min())
+        : max_hash_code_.get_value_or(std::numeric_limits<DocKeyHash>::max());
 
-    encoder.HashAndRange(lower_bound ? min_hash : max_hash,
-                         *hashed_components_,
-                         range_components(lower_bound));
+    encoder.HashAndRange(hash, *hashed_components_, range_components(lower_bound));
   } else {
     // If no hash columns use default hash code (0).
     encoder.Hash(false, 0, *hashed_components_).Range(range_components(lower_bound));

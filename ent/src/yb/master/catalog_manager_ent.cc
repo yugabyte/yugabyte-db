@@ -1361,8 +1361,10 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
     ScopedInfoCommitter<TabletInfo> unlocker_old(&old_tablets);
 
     // Change table's partition schema to the external snapshot's.
-    table_lock.mutable_data()->pb.mutable_partition_schema()->CopyFrom(
+    auto& table_pb = table_lock.mutable_data()->pb;
+    table_pb.mutable_partition_schema()->CopyFrom(
         table_data->table_entry_pb.partition_schema());
+    table_pb.set_partition_list_version(table_pb.partition_list_version() + 1);
 
     // Remove old tablets from TableInfo.
     table->RemoveTablets(old_tablets);

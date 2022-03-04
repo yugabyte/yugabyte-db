@@ -285,7 +285,7 @@ class TransactionPool::Impl {
     return transaction;
   }
 
-  YBTransactionPtr GetLastTransaction() EXCLUDES(mutex_) {
+  YBTransactionPtr TEST_GetLastTransaction() EXCLUDES(mutex_) {
     std::lock_guard<std::mutex> lock(mutex_);
     return last_transaction_;
   }
@@ -327,8 +327,8 @@ Result<YBTransactionPtr> TransactionPool::TakeRestarted(const YBTransactionPtr& 
   return result;
 }
 
-YBTransactionPtr TransactionPool::GetLastTransaction() {
-  return impl_->GetLastTransaction();
+YBTransactionPtr TransactionPool::TEST_GetLastTransaction() {
+  return impl_->TEST_GetLastTransaction();
 }
 
 } // namespace client

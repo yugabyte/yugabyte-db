@@ -143,9 +143,6 @@ YBCStatus YBCPgReserveOids(YBCPgOid database_oid,
 // Retrieve the protobuf-based catalog version (now deprecated for new clusters).
 YBCStatus YBCPgGetCatalogMasterVersion(uint64_t *version);
 
-void YBCPgInvalidateTableCache(
-    const YBCPgOid database_oid,
-    const YBCPgOid table_oid);
 YBCStatus YBCPgInvalidateTableCacheByTableId(const char *table_id);
 
 // TABLEGROUP --------------------------------------------------------------------------------------
@@ -451,7 +448,7 @@ YBCStatus YBCPgRestartTransaction();
 YBCStatus YBCPgResetTransactionReadPoint();
 YBCStatus YBCPgRestartReadPoint();
 YBCStatus YBCPgCommitTransaction();
-void YBCPgAbortTransaction();
+YBCStatus YBCPgAbortTransaction();
 YBCStatus YBCPgSetTransactionIsolationLevel(int isolation);
 YBCStatus YBCPgSetTransactionReadOnly(bool read_only);
 YBCStatus YBCPgSetTransactionDeferrable(bool deferrable);
@@ -527,26 +524,7 @@ bool YBCIsInitDbModeEnvVarSet();
 // This is called by initdb. Used to customize some behavior.
 void YBCInitFlags();
 
-// Retrieves value of ysql_max_read_restart_attempts gflag
-int32_t YBCGetMaxReadRestartAttempts();
-
-// Retrieves the value of ysql_max_write_restart_attempts gflag.
-int32_t YBCGetMaxWriteRestartAttempts();
-
-// Retrieves the value of ysql_sleep_before_retry_on_txn_conflict gflag.
-bool YBCShouldSleepBeforeRetryOnTxnConflict();
-
-// Retrieves value of ysql_output_buffer_size gflag
-int32_t YBCGetOutputBufferSize();
-
-// Retrieves value of ysql_sequence_cache_minval gflag
-int32_t YBCGetSequenceCacheMinval();
-
-// Retrieve value of ysql_disable_index_backfill gflag.
-bool YBCGetDisableIndexBackfill();
-
-// Retrieve value of log_ysql_catalog_versions gflag.
-bool YBCGetLogYsqlCatalogVersions();
+const YBCPgGFlagsAccessor* YBCGetGFlags();
 
 bool YBCPgIsYugaByteEnabled();
 

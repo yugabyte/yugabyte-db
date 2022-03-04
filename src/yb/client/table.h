@@ -45,6 +45,8 @@ struct VersionedTablePartitionList {
   TablePartitionList keys;
   // See SysTablesEntryPB::partition_list_version.
   PartitionListVersion version;
+
+  std::string ToString() const;
 };
 
 typedef Result<VersionedTablePartitionListPtr> FetchPartitionsResult;
