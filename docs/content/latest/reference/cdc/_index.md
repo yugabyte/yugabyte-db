@@ -1,12 +1,12 @@
 ---
-title: Change Data Capture (CDC)
+title: Change data capture (CDC)
 headerTitle: CDC
-linkTitle: Change Data Capture
-description: Using Change Data Capture with YugabyteDB
+linkTitle: Change data capture
+description: Using change data capture with YugabyteDB
 headcontent: Use YugabyteDB's CDC feature to enhance
 aliases:
 image: /images/develop/graphql/hasura/hasura.png
-section: INTEGRATIONS
+section: REFERENCE
 menu:
   latest:
     identifier: cdc
