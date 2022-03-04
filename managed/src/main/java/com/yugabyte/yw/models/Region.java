@@ -15,6 +15,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.helpers.ProviderAndRegion;
 import io.ebean.Ebean;
@@ -123,6 +124,7 @@ public class Region extends Model {
 
     public String sg_id; // Security group ID.
     public String vnet; // Vnet key.
+    public Architecture arch; // ybImage architecture.
   }
 
   @DbJson
@@ -160,6 +162,22 @@ public class Region extends Model {
     if (details != null) {
       String vnetNode = details.vnet;
       return vnetNode == null || vnetNode.isEmpty() ? null : vnetNode;
+    }
+    return null;
+  }
+
+  public void setArchitecture(String arch) {
+    if (details == null) {
+      details = new RegionDetails();
+    }
+    details.arch = Architecture.valueOf(arch);
+    save();
+  }
+
+  @ApiModelProperty(required = false)
+  public Architecture getArchitecture() {
+    if (details != null) {
+      return details.arch;
     }
     return null;
   }
