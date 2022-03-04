@@ -87,6 +87,16 @@ public class CloudRegionSetup extends CloudTaskBase {
       region.save();
     }
 
+    // need architecture for AWS providers
+    if (provider.code.equals(Common.CloudType.aws.toString())) {
+      String arch = queryHelper.getImageArchitecture(region);
+      if (arch == null || arch.isEmpty()) {
+        throw new RuntimeException("Could not get architecture for image: " + region.ybImage);
+      }
+      region.setArchitecture(arch);
+      region.save();
+    }
+
     JsonNode zoneInfo;
     switch (Common.CloudType.valueOf(provider.code)) {
       case aws:

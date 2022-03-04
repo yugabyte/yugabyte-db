@@ -376,6 +376,14 @@ def get_spot_pricing(region, zone, instance_type):
     return spot_price['SpotPriceHistory'][0]['SpotPrice']
 
 
+def get_image_arch(region, ami):
+    client = boto3.client("ec2", region_name=region)
+    images = client.describe_images(ImageIds=[ami]).get("Images", [])
+    if len(images) == 0:
+        raise YBOpsRuntimeError('Could not find image for AMI {} in region {}'.format(ami, region))
+    return images[0].get("Architecture")
+
+
 def get_zones(region, dest_vpc_id=None):
     """Method to fetch zones for given region or all the regions if none specified.
     Args:

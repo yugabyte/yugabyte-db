@@ -4428,6 +4428,10 @@
           "readOnly" : true,
           "type" : "boolean"
         },
+        "architecture" : {
+          "enum" : [ "x86_64", "arm64" ],
+          "type" : "string"
+        },
         "code" : {
           "description" : "Cloud provider region code",
           "example" : "us-west-2",

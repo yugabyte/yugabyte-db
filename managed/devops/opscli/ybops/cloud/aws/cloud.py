@@ -25,7 +25,7 @@ from ybops.cloud.aws.utils import (ROOT_VOLUME_LABEL, AwsBootstrapClient, YbVpcC
                                    change_instance_type, create_instance, delete_vpc, get_client,
                                    get_clients, get_device_names, get_spot_pricing,
                                    get_vpc_for_subnet, get_zones, has_ephemerals, modify_tags,
-                                   query_vpc, update_disk)
+                                   query_vpc, update_disk, get_image_arch)
 from ybops.cloud.common.cloud import AbstractCloud
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.utils import (format_rsa_key, is_valid_ip_address, validated_key_file)
@@ -68,6 +68,9 @@ class AwsCloud(AbstractCloud):
         for r in regions:
             output[r] = self.metadata["regions"][r]["image"]
         return output
+
+    def get_image_arch(self, args):
+        return get_image_arch(args.region, args.machine_image)
 
     def get_spot_pricing(self, args):
         return get_spot_pricing(args.region, args.zone, args.instance_type)
