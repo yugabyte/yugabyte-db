@@ -49,3 +49,4 @@ export { default as YBFormSelect } from './YBFormSelect';
 export { default as YBFormInput } from './YBFormInput';
 export { default as YBFormDatePicker } from './YBFormDatePicker';
 export { default as YBFormDropZone } from './YBFormDropZone';
+export { default as YBPassword } from './YBPassword';
