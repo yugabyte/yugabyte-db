@@ -80,7 +80,7 @@ class PgDmlWrite : public PgDml {
   PgsqlExpressionPB *AllocColumnAssignPB(PgColumn *col) override;
 
   // Protobuf code.
-  PgsqlWriteRequestPB *write_req_ = nullptr;
+  std::shared_ptr<PgsqlWriteRequestPB> write_req_;
 
   bool is_single_row_txn_ = false; // default.
 
@@ -89,7 +89,7 @@ class PgDmlWrite : public PgDml {
  private:
   CHECKED_STATUS DeleteEmptyPrimaryBinds();
 
-  virtual std::unique_ptr<client::YBPgsqlWriteOp> AllocWriteOperation() const = 0;
+  virtual PgsqlWriteRequestPB::PgsqlStmtType stmt_type() const = 0;
 };
 
 }  // namespace pggate

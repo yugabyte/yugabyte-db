@@ -25,7 +25,7 @@ public class TestPgPushdownEfficiency extends BasePgSQLTestWithRpcMetric {
         getSingleRow(stmt.getResultSet());
       }
       updateCounter(counter);
-      assertEquals(1, counter.rpc.value() / queryCount);
+      assertEquals(2, counter.rpc.value() / queryCount);
     }
   }
 }

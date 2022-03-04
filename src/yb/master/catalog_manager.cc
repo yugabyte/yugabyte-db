@@ -5653,11 +5653,13 @@ Result<TabletInfoPtr> CatalogManager::RegisterNewTabletForSplit(
   // - Crash or leader failover before sending out the split tasks.
   // - Long enough partition while trying to send out the splits so that they timeout and
   //   not get executed.
+  int new_partition_list_version;
   {
     LockGuard lock(mutex_);
 
     auto& table_pb = table_write_lock->mutable_data()->pb;
-    table_pb.set_partition_list_version(table_pb.partition_list_version() + 1);
+    new_partition_list_version = table_pb.partition_list_version() + 1;
+    table_pb.set_partition_list_version(new_partition_list_version);
 
     tablet_write_lock->mutable_data()->pb.add_split_tablet_ids(new_tablet->id());
     RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), table, new_tablet, source_tablet_info));
@@ -5676,7 +5678,8 @@ Result<TabletInfoPtr> CatalogManager::RegisterNewTabletForSplit(
             << " (" << AsString(partition) << ") to split the tablet "
             << source_tablet_info->tablet_id()
             << " (" << AsString(source_tablet_meta.partition())
-            << ") for table " << table->ToString();
+            << ") for table " << table->ToString()
+            << ", new partition_list_version: " << new_partition_list_version;
 
   return new_tablet;
 }
@@ -5786,6 +5789,55 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
 
   VLOG(1) << "Serviced GetTableSchema request for " << req->ShortDebugString() << " with "
           << yb::ToString(*resp);
+  return Status::OK();
+}
+
+Status CatalogManager::GetTablegroupSchema(const GetTablegroupSchemaRequestPB* req,
+                                           GetTablegroupSchemaResponsePB* resp) {
+  VLOG(1) << "Servicing GetTablegroupSchema request for " << req->ShortDebugString();
+  if (!req->parent_tablegroup().has_id()) {
+    Status s = STATUS(InvalidArgument, "Invalid get tablegroup request (missing fields)");
+    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
+  }
+
+  const std::string& tablegroupId = req->parent_tablegroup().id();
+  if (!IsTablegroupParentTableId(tablegroupId)) {
+    Status s = STATUS(InvalidArgument, "Received a non tablegroup ID");
+    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
+  }
+
+  // Strip the suffix from the tablegroup ID request (since tablegroup_ids_map_
+  // only accepts the plain ID).
+  DCHECK(boost::algorithm::ends_with(tablegroupId, master::kTablegroupParentTableIdSuffix));
+  size_t tgid_len = tablegroupId.size() - strlen(master::kTablegroupParentTableIdSuffix);
+  TablegroupId tgid = tablegroupId.substr(0, tgid_len);
+
+  // Lookup the tablegroup.
+  std::unordered_set<TableId> tablesInTablegroup;
+  {
+    SharedLock lock(mutex_);
+
+    if (tablegroup_ids_map_.find(tgid) == tablegroup_ids_map_.end()) {
+      return STATUS(NotFound, Substitute("Tablegroup not found for tablegroup id: $0",
+                                         req->parent_tablegroup().id()));
+    }
+    scoped_refptr<TablegroupInfo> tginfo = tablegroup_ids_map_[tgid];
+    tablesInTablegroup = tginfo->ChildTables();
+  }
+
+  for (const auto& t : tablesInTablegroup) {
+    TRACE("Looking up table");
+    GetTableSchemaRequestPB schemaReq;
+    GetTableSchemaResponsePB schemaResp;
+    schemaReq.mutable_table()->set_table_id(t);
+    Status s = GetTableSchema(&schemaReq, &schemaResp);
+    if (!s.ok() || schemaResp.has_error()) {
+      LOG(ERROR) << "Error while getting table schema: " << s;
+      return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
+    }
+    resp->add_get_table_schema_response_pbs()->Swap(&schemaResp);
+  }
+
   return Status::OK();
 }
 
@@ -5947,6 +5999,22 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
   return Status::OK();
 }
 
+boost::optional<TablegroupId> CatalogManager::FindTablegroupByTableId(const TableId& table_id) {
+  SharedLock lock(mutex_);
+
+  for (const auto& tablegroup : tablegroup_ids_map_) {
+    const auto& tgid = tablegroup.first;
+    const auto& tginfo = tablegroup.second;
+    for (const auto& t : tginfo->ChildTables()) {
+      if (table_id == t) {
+        return boost::optional<TablegroupId>(tgid + kTablegroupParentTableIdSuffix);
+      }
+    }
+  }
+
+  return boost::none;
+}
+
 scoped_refptr<TableInfo> CatalogManager::GetTableInfo(const TableId& table_id) {
   SharedLock lock(mutex_);
   return FindPtrOrNull(*table_ids_map_, table_id);
@@ -6082,6 +6150,10 @@ bool CatalogManager::IsUserIndex(const TableInfo& table) const {
 
 bool CatalogManager::IsUserIndexUnlocked(const TableInfo& table) const {
   return IsUserCreatedTableUnlocked(table) && !table.indexed_table_id().empty();
+}
+
+bool CatalogManager::IsTablegroupParentTableId(const TableId& table_id) const {
+  return table_id.find(kTablegroupParentTableIdSuffix) != std::string::npos;
 }
 
 bool CatalogManager::IsColocatedParentTableId(const TableId& table_id) const {

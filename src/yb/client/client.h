@@ -96,52 +96,13 @@ class TabletServerForwardServiceProxy;
 }
 
 namespace client {
+
 namespace internal {
 class ClientMasterRpcBase;
 }
 
 using GetTableLocationsCallback =
     std::function<void(const Result<master::GetTableLocationsResponsePB*>&)>;
-
-// This needs to be called by a client app before performing any operations that could result in
-// logging.
-void InitLogging();
-
-//
-// Installs a callback for internal client logging. It is invoked for a
-// log event of any severity, across any YBClient instance.
-//
-// Only the first invocation has any effect; subsequent invocations are
-// a no-op. The caller must ensure that 'cb' stays alive until
-// UninstallLoggingCallback() is called.
-//
-// Before a callback is registered, all internal client log events are
-// logged to stderr.
-void InstallLoggingCallback(YBLoggingCallback* cb);
-
-// Removes a callback installed via InstallLoggingCallback().
-//
-// Only the first invocation has any effect; subsequent invocations are
-// a no-op.
-//
-// Should be called before unloading the client library.
-void UninstallLoggingCallback();
-
-// Set the logging verbosity of the client library. By default, this is 0. Logs become
-// progressively more verbose as the level is increased. Empirically, the highest
-// verbosity level used in YB is 6, which includes very fine-grained tracing
-// information. Most useful logging is enabled at level 1 or 2, with the higher levels
-// used only in rare circumstances.
-//
-// Logs are emitted to stderr, or to the configured log callback at SEVERITY_INFO.
-//
-// This may be called safely at any point during usage of the library.
-void SetVerboseLogLevel(int level);
-
-// The YB client library uses signals internally in some cases. By default, it uses
-// SIGUSR2. If your application makes use of SIGUSR2, this advanced API can help
-// workaround conflicts.
-Status SetInternalSignalNumber(int signum);
 
 using MasterAddressSource = std::function<std::vector<std::string>()>;
 
@@ -286,7 +247,8 @@ class YBClient {
   CHECKED_STATUS TruncateTables(const std::vector<std::string>& table_ids, bool wait = true);
 
   // Backfill the specified index table.  This is only supported for YSQL at the moment.
-  CHECKED_STATUS BackfillIndex(const TableId& table_id, bool wait = true);
+  CHECKED_STATUS BackfillIndex(const TableId& table_id, bool wait = true,
+                               CoarseTimePoint deadline = CoarseTimePoint());
 
   // Delete the specified table.
   // Set 'wait' to true if the call must wait for the table to be fully deleted before returning.
@@ -330,6 +292,10 @@ class YBClient {
 
   CHECKED_STATUS GetTableSchemaById(const TableId& table_id, std::shared_ptr<YBTableInfo> info,
                                     StatusCallback callback);
+
+  CHECKED_STATUS GetTablegroupSchemaById(const TablegroupId& parent_tablegroup_table_id,
+                                         std::shared_ptr<std::vector<YBTableInfo>> info,
+                                         StatusCallback callback);
 
   CHECKED_STATUS GetColocatedTabletSchemaById(const TableId& parent_colocated_table_id,
                                               std::shared_ptr<std::vector<YBTableInfo>> info,
@@ -820,6 +786,7 @@ class YBClient {
   friend class YBTableCreator;
   friend class internal::Batcher;
   friend class internal::GetTableSchemaRpc;
+  friend class internal::GetTablegroupSchemaRpc;
   friend class internal::GetColocatedTabletSchemaRpc;
   friend class internal::LookupRpc;
   friend class internal::MetaCache;

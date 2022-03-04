@@ -96,7 +96,7 @@ Status PgCreateTable::Exec(
   // Create table.
   auto table_creator = client->NewTableCreator();
   table_creator->table_name(table_name_).table_type(client::YBTableType::PGSQL_TABLE_TYPE)
-                .table_id(PgObjectId::FromPB(req_.table_id()).GetYBTableId())
+                .table_id(PgObjectId::GetYBTableIdFromPB(req_.table_id()))
                 .schema(&schema)
                 .colocated(req_.colocated());
   if (req_.is_pg_catalog_table()) {

@@ -261,13 +261,6 @@ YBCStatus YBCPgGetCatalogMasterVersion(uint64_t *version) {
   return ToYBCStatus(pgapi->GetCatalogMasterVersion(version));
 }
 
-void YBCPgInvalidateTableCache(
-    const YBCPgOid database_oid,
-    const YBCPgOid table_oid) {
-  const PgObjectId table_id(database_oid, table_oid);
-  pgapi->InvalidateTableCache(table_id);
-}
-
 YBCStatus YBCPgInvalidateTableCacheByTableId(const char *table_id) {
   if (table_id == NULL) {
     return ToYBCStatus(STATUS(InvalidArgument, "table_id is null"));
@@ -923,8 +916,8 @@ YBCStatus YBCPgCommitTransaction() {
   return ToYBCStatus(pgapi->CommitTransaction());
 }
 
-void YBCPgAbortTransaction() {
-  pgapi->AbortTransaction();
+YBCStatus YBCPgAbortTransaction() {
+  return ToYBCStatus(pgapi->AbortTransaction());
 }
 
 YBCStatus YBCPgSetTransactionIsolationLevel(int isolation) {
@@ -1043,32 +1036,18 @@ YBCStatus YBCGetSharedAuthKey(uint64_t* auth_key) {
   return ExtractValueFromResult(pgapi->GetSharedAuthKey(), auth_key);
 }
 
-int32_t YBCGetMaxReadRestartAttempts() {
-  return FLAGS_ysql_max_read_restart_attempts;
-}
-
-int32_t YBCGetMaxWriteRestartAttempts() {
-  return FLAGS_ysql_max_write_restart_attempts;
-}
-
-bool YBCShouldSleepBeforeRetryOnTxnConflict() {
-  return FLAGS_ysql_sleep_before_retry_on_txn_conflict;
-}
-
-int32_t YBCGetOutputBufferSize() {
-  return FLAGS_ysql_output_buffer_size;
-}
-
-int32_t YBCGetSequenceCacheMinval() {
-  return FLAGS_ysql_sequence_cache_minval;
-}
-
-bool YBCGetDisableIndexBackfill() {
-  return FLAGS_ysql_disable_index_backfill;
-}
-
-bool YBCGetLogYsqlCatalogVersions() {
-  return FLAGS_log_ysql_catalog_versions;
+const YBCPgGFlagsAccessor* YBCGetGFlags() {
+  static YBCPgGFlagsAccessor accessor = {
+      .log_ysql_catalog_versions               = &FLAGS_log_ysql_catalog_versions,
+      .ysql_disable_index_backfill             = &FLAGS_ysql_disable_index_backfill,
+      .ysql_max_read_restart_attempts          = &FLAGS_ysql_max_read_restart_attempts,
+      .ysql_max_write_restart_attempts         = &FLAGS_ysql_max_write_restart_attempts,
+      .ysql_output_buffer_size                 = &FLAGS_ysql_output_buffer_size,
+      .ysql_sequence_cache_minval              = &FLAGS_ysql_sequence_cache_minval,
+      .ysql_session_max_batch_size             = &FLAGS_ysql_session_max_batch_size,
+      .ysql_sleep_before_retry_on_txn_conflict = &FLAGS_ysql_sleep_before_retry_on_txn_conflict
+  };
+  return &accessor;
 }
 
 bool YBCPgIsYugaByteEnabled() {

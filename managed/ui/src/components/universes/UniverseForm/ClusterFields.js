@@ -24,7 +24,8 @@ import {
   YBRadioButtonBarWithLabel,
   YBToggle,
   YBUnControlledNumericInput,
-  YBControlledNumericInputWithLabel
+  YBControlledNumericInputWithLabel,
+  YBPassword
 } from '../../../components/common/forms/fields';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import AZSelectorTable from './AZSelectorTable';
@@ -1296,7 +1297,7 @@ export default class ClusterFields extends Component {
 
     const allowGeoPartitioning =
       featureFlags.test['enableGeoPartitioning'] || featureFlags.released['enableGeoPartitioning'];
-    console.log("####### allowGeoPartitioning: " + allowGeoPartitioning);
+    console.log('####### allowGeoPartitioning: ' + allowGeoPartitioning);
     universeTaskParams.allowGeoPartitioning = allowGeoPartitioning;
 
     const cluster = getClusterByType(universeTaskParams.clusters, clusterType);
@@ -1745,13 +1746,13 @@ export default class ClusterFields extends Component {
                 />
               </span>
               {this.state.gcpInstanceWithEphemeralStorage &&
-               (featureFlags.test['pausedUniverse'] ||
-                featureFlags.released['pausedUniverse']) && (
+                (featureFlags.test['pausedUniverse'] ||
+                  featureFlags.released['pausedUniverse']) && (
                   <span className="gcp-ephemeral-storage-warning">
                     ! Selected instance type is with ephemeral storage, If you will pause this
                     universe your data will get lost.
                   </span>
-              )}
+                )}
             </>
           );
         } else if (isInAzu) {
@@ -1832,8 +1833,7 @@ export default class ClusterFields extends Component {
             <div className="form-right-aligned-labels">
               <Field
                 name={`${clusterType}.ysqlPassword`}
-                type="password"
-                component={YBTextInputWithLabel}
+                component={YBPassword}
                 validate={this.validatePassword}
                 autoComplete="new-password"
                 label="YSQL Auth Password"
@@ -1845,8 +1845,7 @@ export default class ClusterFields extends Component {
             <div className="form-right-aligned-labels">
               <Field
                 name={`${clusterType}.ysqlConfirmPassword`}
-                type="password"
-                component={YBTextInputWithLabel}
+                component={YBPassword}
                 validate={this.validateConfirmPassword}
                 autoComplete="new-password"
                 label="Confirm Password"
@@ -1893,8 +1892,7 @@ export default class ClusterFields extends Component {
             <div className="form-right-aligned-labels">
               <Field
                 name={`${clusterType}.ycqlPassword`}
-                type="password"
-                component={YBTextInputWithLabel}
+                component={YBPassword}
                 validate={this.validatePassword}
                 autoComplete="new-password"
                 label="YCQL Auth Password"
@@ -1906,8 +1904,7 @@ export default class ClusterFields extends Component {
             <div className="form-right-aligned-labels">
               <Field
                 name={`${clusterType}.ycqlConfirmPassword`}
-                type="password"
-                component={YBTextInputWithLabel}
+                component={YBPassword}
                 validate={this.validateConfirmPassword}
                 autoComplete="new-password"
                 label="Confirm Password"

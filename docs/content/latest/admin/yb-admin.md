@@ -550,6 +550,13 @@ After the load balancer runs, all tablets of `system.transactions_us_east` shoul
 
 ---
 
+{{< note title="Note" >}}
+
+The preferred way to create transaction status tables with YSQL is to create a tablespace with the appropriate placement. YugabyteDB automatically creates a transaction table using the tablespace's placement when you create the first table using the new tablespace.
+
+{{< /note >}}
+
+
 ### Backup and snapshot commands
 
 The following backup and snapshot commands are available:

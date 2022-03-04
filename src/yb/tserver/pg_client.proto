@@ -19,6 +19,7 @@ option java_package = "org.yb.tserver";
 
 import "yb/common/common.proto";
 import "yb/common/value.proto";
+import "yb/common/pgsql_protocol.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/master/master_ddl.proto";
 import "yb/master/master_types.proto";
@@ -37,6 +38,7 @@ service PgClientService {
   rpc DropDatabase(PgDropDatabaseRequestPB) returns (PgDropDatabaseResponsePB);
   rpc DropTable(PgDropTableRequestPB) returns (PgDropTableResponsePB);
   rpc DropTablegroup(PgDropTablegroupRequestPB) returns (PgDropTablegroupResponsePB);
+  rpc FinishTransaction(PgFinishTransactionRequestPB) returns (PgFinishTransactionResponsePB);
   rpc GetCatalogMasterVersion(PgGetCatalogMasterVersionRequestPB)
       returns (PgGetCatalogMasterVersionResponsePB);
   rpc GetDatabaseInfo(PgGetDatabaseInfoRequestPB) returns (PgGetDatabaseInfoResponsePB);
@@ -44,7 +46,12 @@ service PgClientService {
   rpc ListLiveTabletServers(PgListLiveTabletServersRequestPB)
       returns (PgListLiveTabletServersResponsePB);
   rpc OpenTable(PgOpenTableRequestPB) returns (PgOpenTableResponsePB);
+  rpc Perform(PgPerformRequestPB) returns (PgPerformResponsePB);
   rpc ReserveOids(PgReserveOidsRequestPB) returns (PgReserveOidsResponsePB);
+  rpc RollbackSubTransaction(PgRollbackSubTransactionRequestPB)
+      returns (PgRollbackSubTransactionResponsePB);
+  rpc SetActiveSubTransaction(PgSetActiveSubTransactionRequestPB)
+      returns (PgSetActiveSubTransactionResponsePB);
   rpc TabletServerCount(PgTabletServerCountRequestPB) returns (PgTabletServerCountResponsePB);
   rpc TruncateTable(PgTruncateTableRequestPB) returns (PgTruncateTableResponsePB);
   rpc ValidatePlacement(PgValidatePlacementRequestPB)
@@ -97,7 +104,7 @@ message PgRenameTablePB {
 
 message PgAlterTableRequestPB {
   uint64 session_id = 1;
-  TransactionMetadataPB use_transaction = 2; // TODO(PG_CLIENT) Replace with bool.
+  bool use_transaction = 2;
   PgObjectIdPB table_id = 3;
   repeated PgCreateColumnPB add_columns = 4;
   repeated PgRenameColumnPB rename_columns = 5;
@@ -111,7 +118,7 @@ message PgAlterTableResponsePB {
 
 message PgCreateDatabaseRequestPB {
   uint64 session_id = 1;
-  TransactionMetadataPB use_transaction = 2; // TODO(PG_CLIENT) Replace with bool.
+  bool use_transaction = 2;
   string database_name = 3;
   uint32 database_oid = 4;
   uint32 source_database_oid = 5;
@@ -147,7 +154,7 @@ message PgCreateSplitBoundaryPB {
 message PgCreateTableRequestPB {
   uint64 session_id = 1;
 
-  TransactionMetadataPB use_transaction = 2; // TODO(PG_CLIENT) Replace with bool.
+  bool use_transaction = 2;
   PgObjectIdPB table_id = 3;
   string database_name = 4;
   string table_name = 5;
@@ -219,6 +226,16 @@ message PgDropTablegroupResponsePB {
 message PgGetCatalogMasterVersionRequestPB {
 }
 
+message PgFinishTransactionRequestPB {
+  uint64 session_id = 1;
+  bool commit = 2;
+  bool ddl_mode = 3;
+}
+
+message PgFinishTransactionResponsePB {
+  AppStatusPB status = 1;
+}
+
 message PgGetCatalogMasterVersionResponsePB {
   AppStatusPB status = 1;
   uint64 version = 2;
@@ -265,6 +282,8 @@ message PgListLiveTabletServersResponsePB {
 
 message PgOpenTableRequestPB {
   string table_id = 1;
+  bool reopen = 2;
+  fixed64 invalidate_cache_time_us = 3;
 }
 
 message PgTablePartitionsPB {
@@ -279,6 +298,50 @@ message PgOpenTableResponsePB {
   PgTablePartitionsPB partitions = 3;
 }
 
+message PgPerformOpPB {
+  oneof op {
+    PgsqlWriteRequestPB write = 1;
+    PgsqlReadRequestPB read = 2;
+  }
+  bool read_from_followers = 3;
+}
+
+enum ReadTimeManipulation {
+  NONE = 0;
+  RESET = 1;
+  RESTART = 2;
+}
+
+message PgPerformOptionsPB {
+  // Cannot use IsolationLevel enum, since we cannot use proto2 enum in proto3 messages.
+  // Replace with IsolationLevel after migration to proto3.
+  uint32 isolation = 2;
+  bool ddl_mode = 3;
+  uint64 txn_serial_no = 4;
+  fixed64 in_txn_limit_ht = 5;
+  bool use_existing_priority = 6;
+  fixed64 priority = 7;
+  bool restart_transaction = 8;
+  bool defer_read_point = 9;
+  ReadTimeManipulation read_time_manipulation = 10;
+  ReadHybridTimePB read_time = 11;
+  bool use_catalog_session = 12;
+  bool force_global_transaction = 13;
+}
+
+message PgPerformRequestPB {
+  uint64 session_id = 1;
+  PgPerformOptionsPB options = 2;
+  repeated PgPerformOpPB ops = 3;
+  fixed64 write_time = 4;
+}
+
+message PgPerformResponsePB {
+  AppStatusPB status = 1;
+  repeated PgsqlResponsePB responses = 2;
+  ReadHybridTimePB catalog_read_time = 3;
+}
+
 message PgReserveOidsRequestPB {
   uint32 database_oid = 1;
   uint32 next_oid = 2;
@@ -290,6 +353,26 @@ message PgReserveOidsResponsePB {
 
   uint32 begin_oid = 2;
   uint32 end_oid = 3;
+}
+
+message PgRollbackSubTransactionRequestPB {
+  uint64 session_id = 1;
+  uint32 sub_transaction_id = 2;
+}
+
+message PgRollbackSubTransactionResponsePB {
+  AppStatusPB status = 1;
+}
+
+message PgSetActiveSubTransactionRequestPB {
+  uint64 session_id = 1;
+  uint32 sub_transaction_id = 2;
+  // Used to create transaction when we did not have one yet.
+  PgPerformOptionsPB options = 3;
+}
+
+message PgSetActiveSubTransactionResponsePB {
+  AppStatusPB status = 1;
 }
 
 message PgTabletServerCountRequestPB {

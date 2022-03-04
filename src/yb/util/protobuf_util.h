@@ -69,6 +69,8 @@
     return out << PBEnumToString(value); \
   }
 
+namespace yb {
+
 template<typename T>
 std::vector<T> GetAllPbEnumValues() {
   const auto* desc = google::protobuf::GetEnumDescriptor<T>();
@@ -79,5 +81,15 @@ std::vector<T> GetAllPbEnumValues() {
   }
   return result;
 }
+
+template <class Source, class Dest>
+void AppendToRepeated(const Source& source, Dest* dest) {
+  dest->Reserve(dest->size() + source.size());
+  for (const auto& elem : source) {
+    dest->Add(elem);
+  }
+}
+
+} // namespace yb
 
 #endif  // YB_UTIL_PROTOBUF_UTIL_H

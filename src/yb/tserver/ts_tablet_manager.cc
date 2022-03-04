@@ -2196,6 +2196,7 @@ void TSTabletManager::RegisterDataAndWalDir(FsManager* fs_manager,
     }
   }
   // Increment the count for wal_root_dir.
+  table_wal_assignment_map_[table_id][wal_root_dir].insert(tablet_id);
   table_wal_assignment_iter = table_wal_assignment_map_.find(table_id);
   auto wal_assignment_value_map = table_wal_assignment_iter->second;
   auto wal_assignment_value_iter = table_wal_assignment_map_[table_id].find(wal_root_dir);

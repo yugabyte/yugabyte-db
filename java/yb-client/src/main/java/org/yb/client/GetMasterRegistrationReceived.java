@@ -123,7 +123,6 @@ final class GetMasterRegistrationReceived {
     if (countResponsesReceived.incrementAndGet() == numMasters) {
       if (responseDCalled.compareAndSet(false, true)) {
         boolean allUnrecoverable = true;
-
         // When there are no exceptions, default to retry semantics.
         if (exceptionsReceived.isEmpty()) {
           allUnrecoverable = false;
@@ -131,6 +130,12 @@ final class GetMasterRegistrationReceived {
 
         for (Exception ex : exceptionsReceived) {
           if (!(ex instanceof NonRecoverableException)) {
+            allUnrecoverable = false;
+            break;
+          }
+        }
+        for (Exception ex : exceptionsReceived) {
+          if (!(ex instanceof NoLeaderMasterFoundException)) {
             allUnrecoverable = false;
             break;
           }
@@ -230,7 +235,6 @@ final class GetMasterRegistrationReceived {
 
     @Override
     public Void call(Exception e) throws Exception {
-      LOG.warn("Error receiving a response from: " + hostAndPort);
       exceptionsReceived.add(e);
       incrementCountAndCheckExhausted();
       return null;
