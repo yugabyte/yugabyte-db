@@ -107,7 +107,7 @@ First, expose the tables and relationships to the GraphQL API:
 
 1. Click **Track All** and **OK** to confirm to allow the tables to be exposed over the GraphQL API.
 
-    Once the console refreshes, **Untracked foreign-key relationships** lists the relationships.
+    After the console refreshes, **Untracked foreign-key relationships** lists the relationships.
 
 1. Click **Track All** and **OK** to confirm to allow the relationships to be exposed over the GraphQL API.
 

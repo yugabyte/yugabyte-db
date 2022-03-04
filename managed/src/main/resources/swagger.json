@@ -9266,9 +9266,6 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "additionalProperties" : {
-                "type" : "object"
-              },
               "type" : "object"
             }
           }
