@@ -71,7 +71,11 @@ Along with the Smart drivers, YugabyteDB also provides support for upstream [Pos
 
 | Driver/ORM | Support Level | Example apps |
 | :--------- | :------------ | :----------- |
-
+| [Yugabyte Psycopg2](/latest/drivers-orms/python/yugabyte-psycopg2)(Recommended) | Full | [CRUD Example](/latest/drivers-orms/python/yugabyte-psycopg2)|
+| [Postgres Psycopg2](/latest/drivers-orms/python/postgres-psycopg2) | Full | [CRUD Example](/latest/quick-start/build-apps/python/ysql-psycopg2) |
+| aiopg | Full | [CRUD Example](/latest/quick-start/build-apps/python/ysql-aiopg) |
+| [Django](/latest/drivers-orms/python/django) | Full | [CRUD Example](/latest/quick-start/build-apps/python/ysql-django) |
+| [SQLAlchemy](/latest/drivers-orms/python/sqlalchemy) | Full | [CRUD Example](/latest/quick-start/build-apps/python/ysql-sqlalchemy) |
 ## [Ruby](ruby/)
 
 | Driver/ORM | Support Level | Example apps |
