@@ -120,6 +120,7 @@ namespace internal {
 class AsyncRpc;
 class TxnBatcherIf;
 class GetTableSchemaRpc;
+class GetTablegroupSchemaRpc;
 class GetColocatedTabletSchemaRpc;
 class LookupRpc;
 class MetaCache;
