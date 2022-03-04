@@ -243,7 +243,7 @@ YugabyteDB has had the following major releases:
 - [v1.0](https://blog.yugabyte.com/announcing-yugabyte-db-1-0-%F0%9F%8D%BE-%F0%9F%8E%89/) in May 2018.
 - [v0.9 Beta](https://blog.yugabyte.com/yugabyte-has-arrived/) in November 2017.
 
-Releases, including upcoming releases, are outlined on the [Releases Overview](/latest/releases/releases-overview) page. The roadmap for this release can be found on [GitHub](https://github.com/yugabyte/yugabyte-db#whats-being-worked-on).
+Releases, including upcoming releases, are outlined on the [Releases Overview](/latest/releases/) page. The roadmap for this release can be found on [GitHub](https://github.com/yugabyte/yugabyte-db#whats-being-worked-on).
 
 ## Can I deploy YugabyteDB to production?
 
