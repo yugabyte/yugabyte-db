@@ -126,6 +126,7 @@ using rpc::RpcController;
 namespace client {
 
 using internal::GetTableSchemaRpc;
+using internal::GetTablegroupSchemaRpc;
 using internal::GetColocatedTabletSchemaRpc;
 using internal::RemoteTablet;
 using internal::RemoteTabletServer;
@@ -259,6 +260,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE(DeleteTable);
 YB_CLIENT_SPECIALIZE_SIMPLE(DeleteTablegroup);
 YB_CLIENT_SPECIALIZE_SIMPLE(DeleteUDType);
 YB_CLIENT_SPECIALIZE_SIMPLE(FlushTables);
+YB_CLIENT_SPECIALIZE_SIMPLE(GetTablegroupSchema);
 YB_CLIENT_SPECIALIZE_SIMPLE(GetColocatedTabletSchema);
 YB_CLIENT_SPECIALIZE_SIMPLE(GetMasterClusterConfig);
 YB_CLIENT_SPECIALIZE_SIMPLE(GetNamespaceInfo);
@@ -1142,6 +1144,35 @@ class GetTableSchemaRpc
   master::GetTableSchemaResponsePB* resp_copy_;
 };
 
+// Gets all table schemas for a tablegroup from the leader master. See ClientMasterRpc.
+class GetTablegroupSchemaRpc
+    : public ClientMasterRpc<GetTablegroupSchemaRequestPB, GetTablegroupSchemaResponsePB> {
+ public:
+  GetTablegroupSchemaRpc(YBClient* client,
+                         StatusCallback user_cb,
+                         const TablegroupId& parent_tablegroup_table_id,
+                         vector<YBTableInfo>* info,
+                         CoarseTimePoint deadline);
+
+  std::string ToString() const override;
+
+  virtual ~GetTablegroupSchemaRpc();
+
+ private:
+  GetTablegroupSchemaRpc(YBClient* client,
+                         StatusCallback user_cb,
+                         const master::TablegroupIdentifierPB& parent_tablegroup,
+                         vector<YBTableInfo>* info,
+                         CoarseTimePoint deadline);
+
+  void CallRemoteMethod() override;
+  void ProcessResponse(const Status& status) override;
+
+  StatusCallback user_cb_;
+  master::TablegroupIdentifierPB tablegroup_identifier_;
+  vector<YBTableInfo>* info_;
+};
+
 // Gets all table schemas for a colocated tablet from the leader master. See ClientMasterRpc.
 class GetColocatedTabletSchemaRpc : public ClientMasterRpc<GetColocatedTabletSchemaRequestPB,
     GetColocatedTabletSchemaResponsePB> {
@@ -1187,6 +1218,12 @@ master::TableIdentifierPB ToTableIdentifierPB(const YBTableName& table_name) {
 master::TableIdentifierPB ToTableIdentifierPB(const TableId& table_id) {
   master::TableIdentifierPB id;
   id.set_table_id(table_id);
+  return id;
+}
+
+master::TablegroupIdentifierPB ToTablegroupIdentifierPB(const TablegroupId& tablegroup_id) {
+  master::TablegroupIdentifierPB id;
+  id.set_id(tablegroup_id);
   return id;
 }
 
@@ -1278,6 +1315,63 @@ void GetTableSchemaRpc::ProcessResponse(const Status& status) {
     new_status = CreateTableInfoFromTableSchemaResp(resp_, info_);
     if (resp_copy_) {
       resp_copy_->Swap(&resp_);
+    }
+  }
+  if (!new_status.ok()) {
+    LOG(WARNING) << ToString() << " failed: " << new_status.ToString();
+  }
+  user_cb_.Run(new_status);
+}
+
+GetTablegroupSchemaRpc::GetTablegroupSchemaRpc(
+    YBClient* client,
+    StatusCallback user_cb,
+    const TablegroupId& tablegroup_id,
+    vector<YBTableInfo>* info,
+    CoarseTimePoint deadline)
+    : ClientMasterRpc(client, deadline),
+      user_cb_(std::move(user_cb)),
+      tablegroup_identifier_(ToTablegroupIdentifierPB(tablegroup_id)),
+      info_(DCHECK_NOTNULL(info)) {
+  req_.mutable_parent_tablegroup()->CopyFrom(tablegroup_identifier_);
+}
+
+GetTablegroupSchemaRpc::GetTablegroupSchemaRpc(
+    YBClient* client,
+    StatusCallback user_cb,
+    const master::TablegroupIdentifierPB& tablegroup_identifier,
+    vector<YBTableInfo>* info,
+    CoarseTimePoint deadline)
+    : ClientMasterRpc(client, deadline),
+      user_cb_(std::move(user_cb)),
+      tablegroup_identifier_(tablegroup_identifier),
+      info_(DCHECK_NOTNULL(info)) {
+  req_.mutable_parent_tablegroup()->CopyFrom(tablegroup_identifier_);
+}
+
+GetTablegroupSchemaRpc::~GetTablegroupSchemaRpc() {
+}
+
+void GetTablegroupSchemaRpc::CallRemoteMethod() {
+  master_ddl_proxy()->GetTablegroupSchemaAsync(
+      req_, &resp_, mutable_retrier()->mutable_controller(),
+      std::bind(&GetTablegroupSchemaRpc::Finished, this, Status::OK()));
+}
+
+string GetTablegroupSchemaRpc::ToString() const {
+  return Substitute("GetTablegroupSchemaRpc(table_identifier: $0, num_attempts: $1",
+                    tablegroup_identifier_.ShortDebugString(), num_attempts());
+}
+
+void GetTablegroupSchemaRpc::ProcessResponse(const Status& status) {
+  auto new_status = status;
+  if (new_status.ok()) {
+    for (const auto& resp : resp_.get_table_schema_response_pbs()) {
+      info_->emplace_back();
+      new_status = CreateTableInfoFromTableSchemaResp(resp, &info_->back());
+      if (!new_status.ok()) {
+        break;
+      }
     }
   }
   if (!new_status.ok()) {
@@ -1735,6 +1829,21 @@ Status YBClient::Data::GetTableSchemaById(YBClient* client,
       info.get(),
       deadline,
       nullptr);
+  return Status::OK();
+}
+
+Status YBClient::Data::GetTablegroupSchemaById(
+    YBClient* client,
+    const TablegroupId& parent_tablegroup_table_id,
+    CoarseTimePoint deadline,
+    std::shared_ptr<std::vector<YBTableInfo>> info,
+    StatusCallback callback) {
+  auto rpc = StartRpc<GetTablegroupSchemaRpc>(
+      client,
+      callback,
+      parent_tablegroup_table_id,
+      info.get(),
+      deadline);
   return Status::OK();
 }
 

@@ -42,6 +42,7 @@ class MasterDdlServiceImpl : public MasterServiceBase, public MasterDdlIf {
     (GetBackfillJobs)
     (GetColocatedTabletSchema)
     (GetNamespaceInfo)
+    (GetTablegroupSchema)
     (GetTableSchema)
     (GetUDTypeInfo)
     (IsAlterTableDone)

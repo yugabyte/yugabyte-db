@@ -1341,7 +1341,6 @@ Status ClusterAdminClient::SetupUniverseReplication(
 
   if (resp.has_error()) {
     cout << "Error setting up universe replication: " << resp.error().status().message() << endl;
-
     Status status_from_error = StatusFromPB(resp.error().status());
     CleanupEnvironmentOnSetupUniverseReplicationFailure(producer_uuid, status_from_error);
 
@@ -1352,6 +1351,8 @@ Status ClusterAdminClient::SetupUniverseReplication(
 
   // Clean up config files if setup fails to complete.
   if (!setup_result_status.ok()) {
+    cout << "Error waiting for universe replication setup to complete: "
+         << setup_result_status.message().ToBuffer() << endl;
     CleanupEnvironmentOnSetupUniverseReplicationFailure(producer_uuid, setup_result_status);
     return setup_result_status;
   }

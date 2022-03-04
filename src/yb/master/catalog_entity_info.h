@@ -695,6 +695,7 @@ class TablegroupInfo : public RefCountedThreadSafe<TablegroupInfo>{
   void DeleteChildTable(const TableId& table_id);
   bool HasChildTables() const;
   std::size_t NumChildTables() const;
+  std::unordered_set<TableId> ChildTables() const;
 
  private:
   friend class RefCountedThreadSafe<TablegroupInfo>;

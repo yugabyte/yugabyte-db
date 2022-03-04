@@ -708,6 +708,17 @@ Status YBClient::GetTableSchemaById(const TableId& table_id, std::shared_ptr<YBT
   return data_->GetTableSchemaById(this, table_id, deadline, info, callback);
 }
 
+Status YBClient::GetTablegroupSchemaById(const TablegroupId& parent_tablegroup_table_id,
+                                         std::shared_ptr<std::vector<YBTableInfo>> info,
+                                         StatusCallback callback) {
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  return data_->GetTablegroupSchemaById(this,
+                                        parent_tablegroup_table_id,
+                                        deadline,
+                                        info,
+                                        callback);
+}
+
 Status YBClient::GetColocatedTabletSchemaById(const TableId& parent_colocated_table_id,
                                               std::shared_ptr<std::vector<YBTableInfo>> info,
                                               StatusCallback callback) {

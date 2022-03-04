@@ -924,6 +924,11 @@ std::size_t TablegroupInfo::NumChildTables() const {
   return table_set_.size();
 }
 
+std::unordered_set<TableId> TablegroupInfo::ChildTables() const {
+  std::lock_guard<simple_spinlock> l(lock_);
+  return table_set_;
+}
+
 // ================================================================================================
 // UDTypeInfo
 // ================================================================================================
