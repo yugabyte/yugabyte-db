@@ -2176,6 +2176,36 @@ drop function dump_insert();
 drop function dump_update();
 drop function dump_delete();
 
+--
+-- Rows per transaction should be disabled if table contains non Referential Integrity triggers.
+--
+CREATE TABLE tbl(k INT PRIMARY KEY);
+CREATE TABLE shadow_tbl(k INT PRIMARY KEY);
+
+CREATE OR REPLACE FUNCTION trigger_func() RETURNS trigger AS $$
+BEGIN
+  INSERT INTO shadow_tbl VALUES(NEW.k);
+  RETURN NEW;
+END; $$
+LANGUAGE 'plpgsql';
+
+CREATE TRIGGER tbl_insert_trigger AFTER INSERT
+  ON tbl FOR EACH ROW EXECUTE PROCEDURE trigger_func();
+
+-- A warning should be shown disabling the ROWS_PER_TRANSACTION value.
+COPY tbl FROM STDIN WITH (ROWS_PER_TRANSACTION 2);
+1
+2
+3
+4
+5
+6
+\.
+
+DROP TRIGGER tbl_insert_trigger ON tbl;
+DROP TABLE shadow_tbl;
+DROP TABLE tbl;
+
 -- Leave around some objects for other tests
 create table trigger_parted (a int primary key) partition by list (a);
 create function trigger_parted_trigfunc() returns trigger language plpgsql as
@@ -2190,4 +2220,3 @@ create table trigger_parted_p2 partition of trigger_parted for values in (2)
 create table trigger_parted_p2_2 partition of trigger_parted_p2 for values in (2);
 alter table only trigger_parted_p2 disable trigger aft_row;
 alter table trigger_parted_p2_2 enable always trigger aft_row;
-

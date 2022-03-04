@@ -2394,7 +2394,6 @@ CopyFrom(CopyState cstate)
 	int			nBufferedTuples = 0;
 	int			prev_leaf_part_index = -1;
 	bool		useNonTxnInsert;
-	bool		isBatchTxnCopy;
 
 	/*
 	 * If the batch size is not explicitly set in the query by the user,
@@ -2404,7 +2403,6 @@ CopyFrom(CopyState cstate)
 	{
 		cstate->batch_size = yb_default_copy_from_rows_per_transaction;
 	}
-	isBatchTxnCopy = cstate->batch_size > 0;
 
 #define MAX_BUFFERED_TUPLES 1000
 	HeapTuple  *bufferedTuples = NULL;	/* initialize to silence warning */
@@ -2636,7 +2634,7 @@ CopyFrom(CopyState cstate)
 			ExecSetupChildParentMapForLeaf(proute);
 	}
 
-	if (isBatchTxnCopy)
+	if (cstate->batch_size > 0)
 	{
 		/*
 		 * Batched copy is not supported
@@ -2665,11 +2663,16 @@ CopyFrom(CopyState cstate)
 				 errhint("Either run this COPY outside of a transaction block or set "
 						 "rows_per_transaction option to `0` to disable batching and "
 						 "remove this warning.")));
-
-		else
-		{
+		else if (HasNonRITrigger(cstate->rel->trigdesc))
+			ereport(WARNING,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+			 	 errmsg("Batched COPY is not supported on table with non RI trigger. "
+						"Defaulting to using one transaction for the entire copy."),
+				 errhint("Set rows_per_transaction option to `0` to disable batching "
+				 		 "and remove this warning.")));
+		else			
 			batch_size = cstate->batch_size;
-		}
+
 		cstate->batch_size = batch_size;
 	}
 
@@ -2750,7 +2753,7 @@ CopyFrom(CopyState cstate)
 
 	bool has_more_tuples = true;
 	while (has_more_tuples)
-	{
+	{		
 		/*
 		 * When batch size is not provided from the query option,
 		 * default behavior is to read each line from the file
@@ -3073,15 +3076,25 @@ CopyFrom(CopyState cstate)
 			if (IsYBRelation(cstate->rel))
 				ResetPerTupleExprContext(estate);
 		}
-		/*
-		 * Commit transaction per batch.
-		 * When CopyFrom method is called, we are already inside a transaction block
-		 * and relevant transaction state properties have been previously set.
-		 */
-		if (isBatchTxnCopy)
+
+		if (cstate->batch_size > 0)
 		{
+			/* 
+			 * Handle queued AFTER triggers before committing. If there are errors,
+			 * do not commit the current batch. 
+			 */
+			AfterTriggerEndQuery(estate);
+
+			/*
+			 * Commit transaction per batch.
+ 			 * When CopyFrom method is called, we are already inside a transaction block
+			 * and relevant transaction state properties have been previously set.
+			 */
 			YBCCommitTransaction();
 			YBInitializeTransaction();
+
+			/* Start a new AFTER trigger */
+			AfterTriggerBeginQuery();
 		}
 	}
 
