@@ -16,7 +16,7 @@ showAsideToc: true
 
 After you've gotten the docs site [running locally](../docs-build/), make your changes. If you're going to be doing this a lot, read some [tips on setting up your text editor](../docs-editor-setup/).
 
-If you need to edit syntax diagrams, see [Editing syntax diagrams](../syntax-diagrams/).
+If you need to edit syntax diagrams, see [Edit syntax diagrams](../syntax-diagrams/).
 
 ## Edit an existing page
 

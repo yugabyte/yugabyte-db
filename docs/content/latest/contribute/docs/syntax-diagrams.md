@@ -9,8 +9,8 @@ type: page
 menu:
   latest:
     identifier: docs-syntax-diagrams
-    parent: docs
-    weight: 3000
+    parent: docs-edit
+    weight: 2915
 isTocNested: true
 showAsideToc: true
 ---
