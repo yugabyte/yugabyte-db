@@ -6,6 +6,7 @@ import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.forms.ReleaseFormData;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.swagger.annotations.ApiModel;
@@ -18,6 +19,7 @@ import java.nio.file.Path;
 import java.nio.file.PathMatcher;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -192,19 +194,55 @@ public class ReleaseManager {
     public String toString() {
       return Json.toJson(CommonUtils.maskObject(this)).toString();
     }
+
+    private List<Package> matchPackages(Architecture arch) {
+      // Old style release without packages. No matching packages.
+      if (packages == null) {
+        return Collections.emptyList();
+      }
+      return packages.stream().filter(p -> p.arch == arch).collect(Collectors.toList());
+    }
+
+    public String getFilePath(Region region) {
+      Architecture arch = region.getArchitecture();
+      // Must be old style region or release with no architecture (or packages).
+      if (arch == null || packages == null || packages.isEmpty()) {
+        return filePath;
+      }
+      List<Package> matched = matchPackages(arch);
+      if (matched.size() == 0) {
+        throw new RuntimeException(
+            "Could not find matching package with architecture " + arch.name());
+      } else if (matched.size() > 1) {
+        LOG.warn(
+            "Found more than one package with matching architecture, picking {}.",
+            matched.get(0).path);
+      }
+      return matched.get(0).path;
+    }
+
+    public Boolean matchesRegion(Region region) {
+      Architecture arch = region.getArchitecture();
+      // Must be old style region or release with no architecture (or packages).
+      if (arch == null || packages == null || packages.isEmpty()) {
+        return true;
+      }
+      List<Package> matched = matchPackages(arch);
+      return matched.size() > 0;
+    }
   }
 
   public static final Logger LOG = LoggerFactory.getLogger(ReleaseManager.class);
 
   private Predicate<Path> getPackageFilter(String pathMatchGlob) {
-    PathMatcher ybPackageMatcher = FileSystems.getDefault().getPathMatcher(pathMatchGlob);
-    Predicate<Path> ybPackageFilter = p -> Files.isRegularFile(p) && ybPackageMatcher.matches(p);
-    return ybPackageFilter;
+    return p -> Files.isRegularFile(p) && getPathMatcher(pathMatchGlob).matches(p);
   }
 
-  final PathMatcher ybChartMatcher =
-      FileSystems.getDefault().getPathMatcher("glob:**yugabyte-*-helm.tar.gz");
-  final Predicate<Path> ybChartFilter = p -> Files.isRegularFile(p) && ybChartMatcher.matches(p);
+  private PathMatcher getPathMatcher(String pathMatchGlob) {
+    return FileSystems.getDefault().getPathMatcher(pathMatchGlob);
+  }
+
+  final Predicate<Path> ybChartFilter = getPackageFilter("glob:**yugabyte-*-helm.tar.gz");
 
   // This regex needs to support old style packages with -ee as well as new style packages without.
   // There are previously existing YW deployments that will have the old packages and users will
@@ -249,14 +287,13 @@ public class ReleaseManager {
   }
 
   public Map<String, ReleaseMetadata> getLocalReleases(String releasesPath) {
-    Map<String, String> x86ReleaseFiles =
-        getReleaseFiles(releasesPath, getPackageFilter(Architecture.x86_64.getGlob()));
-    Map<String, String> arm64ReleaseFiles =
-        getReleaseFiles(releasesPath, getPackageFilter(Architecture.arm64.getGlob()));
+    Map<String, String> releaseFiles;
     Map<String, String> releaseCharts = getReleaseFiles(releasesPath, ybChartFilter);
     Map<String, ReleaseMetadata> localReleases = new HashMap<>();
-    updateLocalReleases(localReleases, x86ReleaseFiles, releaseCharts, Architecture.x86_64);
-    updateLocalReleases(localReleases, arm64ReleaseFiles, releaseCharts, Architecture.arm64);
+    for (Architecture arch : Architecture.values()) {
+      releaseFiles = getReleaseFiles(releasesPath, getPackageFilter(arch.getGlob()));
+      updateLocalReleases(localReleases, releaseFiles, releaseCharts, arch);
+    }
     return localReleases;
   }
 
@@ -408,6 +445,32 @@ public class ReleaseManager {
     }
   }
 
+  /** Idempotent method to update all releases with packages if possible. */
+  public synchronized void updateCurrentReleases() {
+    Map<String, Object> currentReleases = getReleaseMetadata();
+    Map<String, Object> updatedReleases = new HashMap<>();
+    currentReleases.forEach(
+        (version, object) -> {
+          ReleaseMetadata rm = metadataFromObject(object);
+          // update packages if possible
+          if (rm.packages == null || rm.packages.isEmpty()) {
+            Path fp = Paths.get(rm.filePath);
+            for (Architecture arch : Architecture.values()) {
+              if (getPathMatcher(arch.getGlob()).matches(fp)) {
+                rm.packages = new ArrayList<>();
+                rm = rm.withPackage(rm.filePath, arch);
+              }
+            }
+            if (rm.packages == null || rm.packages.isEmpty()) {
+              LOG.warn(
+                  "Could not match any available architectures to existing release {}", version);
+            }
+          }
+          updatedReleases.put(version, rm);
+        });
+    configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases, updatedReleases);
+  }
+
   public synchronized void updateReleaseMetadata(String version, ReleaseMetadata newData) {
     Map<String, Object> currentReleases = getReleaseMetadata();
     if (currentReleases.containsKey(version)) {
@@ -462,7 +525,11 @@ public class ReleaseManager {
     if (metadata == null) {
       return null;
     }
-    return Json.fromJson(Json.toJson(metadata), ReleaseMetadata.class);
+    return metadataFromObject(metadata);
+  }
+
+  public ReleaseMetadata metadataFromObject(Object object) {
+    return Json.fromJson(Json.toJson(object), ReleaseMetadata.class);
   }
 
   public Map<String, String> getReleases() {

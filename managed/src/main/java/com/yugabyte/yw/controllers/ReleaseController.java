@@ -5,6 +5,7 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
@@ -13,6 +14,7 @@ import com.yugabyte.yw.forms.ReleaseFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
@@ -97,6 +99,37 @@ public class ReleaseController extends AuthenticatedController {
   }
 
   @ApiOperation(
+      value = "List all releases valid in region",
+      response = Object.class,
+      responseContainer = "Map",
+      nickname = "getListOfRegionReleases")
+  public Result listByRegion(
+      UUID customerUUID, UUID providerUUID, UUID regionUUID, Boolean includeMetadata) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Region region = Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
+    Map<String, Object> releases = releaseManager.getReleaseMetadata();
+    Architecture arch = region.getArchitecture();
+    // Old region without architecture. Return all releases.
+    if (arch == null) {
+      LOG.info(
+          "ReleaseController: Could not determine region {} architecture. Listing all releases.",
+          region.code);
+      return list(customerUUID, includeMetadata);
+    }
+
+    // Filter for active and matching region releases
+    Map<String, Object> filtered =
+        releases
+            .entrySet()
+            .stream()
+            .filter(f -> !Json.toJson(f.getValue()).get("state").asText().equals("DELETED"))
+            .filter(f -> releaseManager.metadataFromObject(f.getValue()).matchesRegion(region))
+            .collect(Collectors.toMap(p -> p.getKey(), p -> p.getValue()));
+    return PlatformResults.withData(
+        includeMetadata ? CommonUtils.maskObject(filtered) : filtered.keySet());
+  }
+
+  @ApiOperation(
       value = "Update a release",
       response = ReleaseManager.ReleaseMetadata.class,
       nickname = "updateRelease")
@@ -138,6 +171,7 @@ public class ReleaseController extends AuthenticatedController {
     LOG.info("ReleaseController: refresh");
     try {
       releaseManager.importLocalReleases();
+      releaseManager.updateCurrentReleases();
     } catch (RuntimeException re) {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, re.getMessage());
     }

@@ -134,6 +134,7 @@ public class AppInit {
 
       // Import new local releases into release metadata
       releaseManager.importLocalReleases();
+      releaseManager.updateCurrentReleases();
 
       // initialize prometheus exports
       DefaultExports.initialize();

@@ -389,6 +389,25 @@ class AwsQueryImageMethod(AbstractMethod):
         except YBOpsRuntimeError as ye:
             print(json.dumps({"error": get_exception_message(ye)}))
 
+class AwsQueryImageMethod(AbstractMethod):
+    def __init__(self, base_command):
+        super(AwsQueryImageMethod, self).__init__(base_command, "image")
+        self.error_handler = ConsoleLoggingErrorHandler(self.cloud)
+
+    def add_extra_args(self):
+        super(AwsQueryImageMethod, self).add_extra_args()
+        self.parser.add_argument("--machine_image",
+                                 required=True,
+                                 help="The machine image (e.g. an AMI on AWS) to query")
+
+    def callback(self, args):
+        try:
+            if args.region is None:
+                raise YBOpsRuntimeError("Must specify a region to query image")
+            print(json.dumps({"architecture": self.cloud.get_image_arch(args)}))
+        except YBOpsRuntimeError as ye:
+            print(json.dumps({"error": get_exception_message(ye)}))
+
 
 class AwsNetworkBootstrapMethod(AbstractNetworkMethod):
     def __init__(self, base_command):
