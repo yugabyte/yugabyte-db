@@ -202,10 +202,6 @@ class AbstractCloud(AbstractCommandParser):
         )
 
     def execute_boot_script(self, args, extra_vars):
-        self.wait_for_ssh_ports(
-            extra_vars["ssh_host"],
-            args.search_pattern,
-            [extra_vars["ssh_port"], extra_vars["custom_ssh_port"]])
         dest_path = os.path.join("/tmp", os.path.basename(args.boot_script))
 
         # Make it executable, in case it isn't one.
@@ -226,10 +222,6 @@ class AbstractCloud(AbstractCommandParser):
 
     def configure_secondary_interface(self, args, extra_vars, subnet_cidr):
         logging.info("[app] Configuring second NIC")
-        self.wait_for_ssh_ports(
-            extra_vars["ssh_host"],
-            args.search_pattern,
-            [extra_vars["ssh_port"], extra_vars["custom_ssh_port"]])
         subnet_network, subnet_netmask = subnet_cidr.split('/')
         # Copy and run script to configure routes
         scp_to_tmp(
@@ -249,10 +241,7 @@ class AbstractCloud(AbstractCommandParser):
         remote_exec_command(
             extra_vars["ssh_host"], extra_vars["ssh_port"], extra_vars["ssh_user"],
             args.private_key_file, 'sudo reboot')
-        self.wait_for_ssh_ports(
-            extra_vars["ssh_host"],
-            args.search_pattern,
-            [extra_vars["ssh_port"], extra_vars["custom_ssh_port"]])
+        self.wait_for_ssh_port(extra_vars["ssh_host"], args.search_pattern, extra_vars["ssh_port"])
         # Verify that the command ran successfully:
         rc, stdout, stderr = remote_exec_command(extra_vars["ssh_host"], extra_vars["ssh_port"],
                                                  extra_vars["ssh_user"], args.private_key_file,

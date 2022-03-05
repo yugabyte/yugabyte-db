@@ -466,17 +466,23 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         self.extra_vars.update(get_ssh_host_port(host_info, args.custom_ssh_port,
                                                  default_port=True))
 
+        # Check if ssh port has already been updated
+        ssh_port_updated = self.update_open_ssh_port(args,)
+        use_default_port = not ssh_port_updated
+
+        self.extra_vars.update(get_ssh_host_port(host_info, args.custom_ssh_port,
+                                                 default_port=use_default_port))
+
         # Check if secondary subnet is present. If so, configure it.
         if host_info.get('secondary_subnet'):
             self.cloud.configure_secondary_interface(
                 args, self.extra_vars, self.cloud.get_subnet_cidr(args,
                                                                   host_info['secondary_subnet']))
-
-        # The bootscript MIGHT fail due to no access to public internet
-        # Re-run it.
-        if host_info.get('secondary_subnet') and args.boot_script:
-            # copy and run the script
-            self.cloud.execute_boot_script(args, self.extra_vars)
+            # The bootscript might have failed due to no access to public internet
+            # Re-run it.
+            if args.boot_script:
+                # copy and run the script
+                self.cloud.execute_boot_script(args, self.extra_vars)
 
         if not args.skip_preprovision:
             self.preprovision(args)
