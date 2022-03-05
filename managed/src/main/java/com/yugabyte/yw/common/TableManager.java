@@ -273,7 +273,7 @@ public class TableManager extends DevopsBase {
           throw new RuntimeException(
               "Unable to fetch yugabyte release for version: " + userIntent.ybSoftwareVersion);
         }
-        String ybServerPackage = metadata.filePath;
+        String ybServerPackage = metadata.getFilePath(region);
         if (bulkImportParams.instanceCount == 0) {
           bulkImportParams.instanceCount = userIntent.numNodes * EMR_MULTIPLE;
         }
