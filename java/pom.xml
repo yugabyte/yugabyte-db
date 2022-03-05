@@ -374,6 +374,11 @@
       </dependency>
       <dependency>
         <groupId>org.yb</groupId>
+        <artifactId>yb-cdc</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.yb</groupId>
         <artifactId>yb-sample</artifactId>
         <version>${project.version}</version>
       </dependency>
