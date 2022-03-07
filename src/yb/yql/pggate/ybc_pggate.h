@@ -341,6 +341,12 @@ YBCStatus YBCPgDmlBindHashCodes(YBCPgStatement handle, bool start_valid,
                                 bool end_valid, bool end_inclusive,
                                 uint64_t end_hash_val);
 
+YBCStatus YBCPgDmlAddRowUpperBound(YBCPgStatement handle, int n_col_values,
+                                    YBCPgExpr *col_values, bool is_inclusive);
+
+YBCStatus YBCPgDmlAddRowLowerBound(YBCPgStatement handle, int n_col_values,
+                                    YBCPgExpr *col_values, bool is_inclusive);
+
 // Binding Tables: Bind the whole table in a statement.  Do not use with BindColumn.
 YBCStatus YBCPgDmlBindTable(YBCPgStatement handle);
 
