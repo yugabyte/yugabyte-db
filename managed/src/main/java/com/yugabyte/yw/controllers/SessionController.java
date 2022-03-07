@@ -476,7 +476,7 @@ public class SessionController extends AbstractPlatformController {
           dataType = "com.yugabyte.yw.forms.CustomerRegisterFormData",
           required = true))
   @Transactional
-  public Result register() {
+  public Result register(Boolean generateApiToken) {
     CustomerRegisterFormData data =
         formFactory.getFormDataOrBadRequest(CustomerRegisterFormData.class).get();
     boolean multiTenant = appConfig.getBoolean("yb.multiTenant", false);
@@ -491,10 +491,10 @@ public class SessionController extends AbstractPlatformController {
           BAD_REQUEST, "Cannot register multiple accounts with SSO enabled platform.");
     }
     if (customerCount == 0) {
-      return withData(registerCustomer(data, true));
+      return withData(registerCustomer(data, true, generateApiToken));
     } else {
       if (TokenAuthenticator.superAdminAuthentication(ctx())) {
-        return withData(registerCustomer(data, false));
+        return withData(registerCustomer(data, false, generateApiToken));
       } else {
         throw new PlatformServiceException(BAD_REQUEST, "Only Super Admins can register tenant.");
       }
@@ -510,7 +510,8 @@ public class SessionController extends AbstractPlatformController {
     throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Failed to get validation policy");
   }
 
-  private SessionInfo registerCustomer(CustomerRegisterFormData data, boolean isSuper) {
+  private SessionInfo registerCustomer(
+      CustomerRegisterFormData data, boolean isSuper, boolean generateApiToken) {
     Customer cust = Customer.create(data.getCode(), data.getName());
     Role role = Role.Admin;
     if (isSuper) {
@@ -523,7 +524,8 @@ public class SessionController extends AbstractPlatformController {
 
     Users user = Users.createPrimary(data.getEmail(), data.getPassword(), role, cust.uuid);
     String authToken = user.createAuthToken();
-    SessionInfo sessionInfo = new SessionInfo(authToken, null, user.customerUUID, user.uuid);
+    String apiToken = generateApiToken ? user.upsertApiToken() : null;
+    SessionInfo sessionInfo = new SessionInfo(authToken, apiToken, user.customerUUID, user.uuid);
     response()
         .setCookie(
             Http.Cookie.builder(AUTH_TOKEN, sessionInfo.authToken)
