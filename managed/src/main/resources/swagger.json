@@ -14343,6 +14343,12 @@
         "description" : "Creates new customer and user",
         "operationId" : "registerCustomer",
         "parameters" : [ {
+          "default" : false,
+          "in" : "query",
+          "name" : "generateApiToken",
+          "required" : false,
+          "type" : "boolean"
+        }, {
           "in" : "body",
           "name" : "CustomerRegisterFormData",
           "required" : true,
