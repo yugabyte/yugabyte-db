@@ -7,19 +7,20 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.SupportBundleFormData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.SupportBundle;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.SupportBundle.SupportBundleStatusType;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Path;
+import java.util.List;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
@@ -67,7 +68,8 @@ public class SupportBundleController extends AuthenticatedController {
 
   @ApiOperation(
       value = "Download support bundle",
-      nickname = "getSupportBundle",
+      nickname = "downloadSupportBundle",
+      response = SupportBundle.class,
       produces = "application/x-compressed")
   public Result get(UUID customerUUID, UUID universeUUID, UUID bundleUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
