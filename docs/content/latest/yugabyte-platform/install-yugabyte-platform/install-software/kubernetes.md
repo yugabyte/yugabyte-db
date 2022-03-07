@@ -133,7 +133,7 @@ You install Yugabyte Platform on a Kubernetes cluster as follows:
     [info] AkkaHttpServer.scala:447 [main] Listening for HTTP on /0.0.0.0:9000
     ```
 
-    <br>If Yugabyte Platform fails to start for the first time, verify that your system meets the installation requirement, as per [Prepare the Kubernetes environment](../../prepare-environment/kubernetes/).
+    <br>If Yugabyte Platform fails to start for the first time, verify that your system meets the installation requirements, as per [Prepare the Kubernetes environment](../../prepare-environment/kubernetes/).
 
 ## Customize Yugabyte Platform
 
