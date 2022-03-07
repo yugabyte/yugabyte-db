@@ -29,7 +29,9 @@ You can create source and target universes as follows:
 1. Create tables for the APIs being used by the target universe. These should be the same tables as you created for the source universe.
 1. Proceed to setting up [unidirectional](#seting-up-unidirectional-replication) or [bidirectional](#setting-up-bidirectional-replication) replication.
 
-In case if you already have existing data in your tables, then you need to follow the bootstrap process [bootstrapping a sink cluster](#bootstrapping-a-sink-cluster)
+{{< note title="Note" >}}
+In case you already have existing data in your tables, you will need to follow the bootstrap process [bootstrapping a sink cluster](#bootstrapping-a-sink-cluster).
+{{< /note >}}
 
 ## Setting Up Unidirectional Replication
 
@@ -361,7 +363,7 @@ These instructions detail setting up xCluster for the following purposes:
 * Catching up an existing stream where the target has fallen too far behind.
 
 {{< note title="Note" >}}
-In order to ensure that the WALs are still available, below steps need to be performed within the cdc_wal_retention_time_secs gflag window.
+In order to ensure that the WALs are still available, the steps below need to be performed within the cdc_wal_retention_time_secs gflag window.
 If the process is going to take more time than the cdc_wal_retention_time_secs, you have to set [cdc_wal_retention_time_secs](../../reference/configuration/yb-master/#cdc-wal-retention-time-secs) flag to a higher value.
 {{< /note >}}
 
@@ -384,7 +386,7 @@ If the process is going to take more time than the cdc_wal_retention_time_secs, 
     table id: 000033e1000030008000000000004006, CDC bootstrap id: c967967523eb4e03bcc201bb464e0679
     ```
 
-2. Take the backup of the tables on the source universe and restore at target universe. [Backup-Restore](../../manage/backup-restore/)
+2. Take the backup of the tables on the source universe and restore at target universe. [Backup-Restore](../../../manage/backup-restore/)
 3. Then, set up the replication stream, using the bootstrap_ids generated in step 1
 
   {{< note title="Note" >}}
