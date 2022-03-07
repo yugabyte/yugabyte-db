@@ -93,29 +93,51 @@ public class SupportBundleUtil {
   public String getDataDirPath(
       Universe universe, NodeDetails node, NodeUniverseManager nodeUniverseManager, Config config) {
     String dataDirPath = "";
-
     UserIntent userIntent = universe.getCluster(node.placementUuid).userIntent;
     CloudType cloudType = userIntent.providerType;
 
     if (cloudType == CloudType.onprem) {
-      String mountPoints = userIntent.deviceInfo.mountPoints;
+      // On prem universes:
+      // Onprem universes have to specify the mount points for the volumes at the time of provider
+      // creation itself.
+      // This is stored at universe.cluster.userIntent.deviceInfo.mountPoints
       try {
+        String mountPoints = userIntent.deviceInfo.mountPoints;
         dataDirPath = mountPoints.split(",")[0];
       } catch (Exception e) {
-        log.debug("On prem invalid mount points: {}", mountPoints);
-        return config.getString("yb.support_bundle.default_mount_point_prefix") + "0";
+        String defaultMountPath =
+            config.getString("yb.support_bundle.default_mount_point_prefix") + "0";
+        log.error(
+            String.format("On prem invalid mount points. Defaulting to %s", defaultMountPath), e);
+        return defaultMountPath;
       }
     } else if (cloudType == CloudType.kubernetes) {
+      // Kubernetes universes:
+      // K8s universes have a default mount path "/mnt/diskX" with X = {0, 1, 2...} based on number
+      // of volumes
+      // This is specified in the charts repo:
+      // https://github.com/yugabyte/charts/blob/master/stable/yugabyte/templates/service.yaml
       String mountPoint = config.getString("yb.support_bundle.k8s_mount_point_prefix");
       dataDirPath = mountPoint + "0";
     } else {
-      String nodeInstanceType = node.cloudInfo.instance_type;
-      String providerUUID = userIntent.provider;
-      InstanceType instanceType =
-          InstanceType.getOrBadRequest(UUID.fromString(providerUUID), nodeInstanceType);
-      dataDirPath = instanceType.instanceTypeDetails.volumeDetailsList.get(0).mountPath;
+      // Other provider based universes:
+      // Providers like GCP, AWS have the mountPath stored in the instance types for the most part.
+      // Some instance types don't have mountPath initialized. In such cases, we default to
+      // "/mnt/d0"
+      try {
+        String nodeInstanceType = node.cloudInfo.instance_type;
+        String providerUUID = userIntent.provider;
+        InstanceType instanceType =
+            InstanceType.getOrBadRequest(UUID.fromString(providerUUID), nodeInstanceType);
+        dataDirPath = instanceType.instanceTypeDetails.volumeDetailsList.get(0).mountPath;
+      } catch (Exception e) {
+        String defaultMountPath =
+            config.getString("yb.support_bundle.default_mount_point_prefix") + "0";
+        log.error(
+            String.format("Could not get mount points. Defaulting to %s", defaultMountPath), e);
+        return defaultMountPath;
+      }
     }
-
     return dataDirPath;
   }
 
