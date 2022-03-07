@@ -46,8 +46,8 @@ public class AuditControllerTest extends FakeDBApplication {
     authToken2 = user2.createAuthToken();
     ObjectNode params = Json.newObject();
     Audit.TargetType target = Audit.TargetType.Universe;
-    UUID targetUUID = UUID.randomUUID();
-    Audit.ActionType action = Audit.ActionType.CreateUniverse;
+    String targetID = "Test TargetID";
+    Audit.ActionType action = Audit.ActionType.Create;
     params.put("foo", "bar");
     audit1 = Audit.create(user1, "/test/call", "GET", null, null, null, params, null);
     taskUUID1 = UUID.randomUUID();
@@ -57,7 +57,7 @@ public class AuditControllerTest extends FakeDBApplication {
     audit3 = Audit.create(user2, "/test/call2", "PUT", null, null, null, params, taskUUID2);
     audit4 = Audit.create(user2, "/test/call4", "GET", null, null, null, params, null);
     audit5 = Audit.create(user1, "/test/call5", "PUT", target, null, action, params, taskUUID3);
-    audit6 = Audit.create(user2, "/test/call6", "POST", target, targetUUID, action, params, null);
+    audit6 = Audit.create(user2, "/test/call6", "POST", target, targetID, action, params, null);
   }
 
   @Test

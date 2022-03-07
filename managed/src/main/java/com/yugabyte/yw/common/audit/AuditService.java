@@ -98,10 +98,10 @@ public class AuditService {
       Http.Context ctx,
       Http.Request request,
       Audit.TargetType target,
-      UUID targetUUID,
+      String targetID,
       Audit.ActionType action,
       JsonNode params) {
-    createAuditEntry(ctx, request, target, targetUUID, action, params, null);
+    createAuditEntry(ctx, request, target, targetID, action, params, null);
   }
 
   public void createAuditEntry(Http.Context ctx, Http.Request request, UUID taskUUID) {
@@ -112,9 +112,9 @@ public class AuditService {
       Http.Context ctx,
       Http.Request request,
       Audit.TargetType target,
-      UUID targetUUID,
+      String targetID,
       Audit.ActionType action) {
-    createAuditEntry(ctx, request, target, targetUUID, action, null, null);
+    createAuditEntry(ctx, request, target, targetID, action, null, null);
   }
 
   public void createAuditEntry(
@@ -126,10 +126,10 @@ public class AuditService {
       Http.Context ctx,
       Http.Request request,
       Audit.TargetType target,
-      UUID targetUUID,
+      String targetID,
       Audit.ActionType action,
       UUID taskUUID) {
-    createAuditEntry(ctx, request, target, targetUUID, action, null, taskUUID);
+    createAuditEntry(ctx, request, target, targetID, action, null, taskUUID);
   }
 
   public void createAuditEntryWithReqBody(Http.Context ctx) {
@@ -140,13 +140,46 @@ public class AuditService {
     createAuditEntry(ctx, ctx.request(), null, null, null, ctx.request().body().asJson(), taskUUID);
   }
 
+  public void createAuditEntryWithReqBody(
+      Http.Context ctx, Audit.TargetType target, String targetID, Audit.ActionType action) {
+    createAuditEntry(ctx, ctx.request(), target, targetID, action, null, null);
+  }
+
+  public void createAuditEntryWithReqBody(
+      Http.Context ctx,
+      Audit.TargetType target,
+      String targetID,
+      Audit.ActionType action,
+      JsonNode params) {
+    createAuditEntry(ctx, ctx.request(), target, targetID, action, params, null);
+  }
+
+  public void createAuditEntryWithReqBody(
+      Http.Context ctx,
+      Audit.TargetType target,
+      String targetID,
+      Audit.ActionType action,
+      UUID taskUUID) {
+    createAuditEntry(ctx, ctx.request(), target, targetID, action, null, taskUUID);
+  }
+
+  public void createAuditEntryWithReqBody(
+      Http.Context ctx,
+      Audit.TargetType target,
+      String targetID,
+      Audit.ActionType action,
+      JsonNode params,
+      UUID taskUUID) {
+    createAuditEntry(ctx, ctx.request(), target, targetID, action, params, taskUUID);
+  }
+
   // TODO make this internal method and use createAuditEntryWithReqBody
   @Deprecated
   public void createAuditEntry(
       Http.Context ctx,
       Http.Request request,
       Audit.TargetType target,
-      UUID targetUUID,
+      String targetID,
       Audit.ActionType action,
       JsonNode params,
       UUID taskUUID) {
@@ -154,8 +187,7 @@ public class AuditService {
     String method = request.method();
     String path = request.path();
     JsonNode redactedParams = filterSecretFields(params);
-    Audit.create(
-        user.getUser(), path, method, target, targetUUID, action, redactedParams, taskUUID);
+    Audit.create(user.getUser(), path, method, target, targetID, action, redactedParams, taskUUID);
   }
 
   public List<Audit> getAll(UUID customerUUID) {
