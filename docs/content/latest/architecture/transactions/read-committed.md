@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-## 1 Introduction
+## Introduction
 
 READ COMMITTED is one of the three isolation levels in PostgreSQL and also its default. A unique property of this isolation level is: clients don’t need retry logic for **serialization errors (40001)** in applications when using this isolation level.
 
@@ -20,9 +20,7 @@ The other two isolation levels (SERIALIZABLE and REPEATABLE READ) require apps t
 
 YSQL now supports READ COMMITTED isolation level as well. The behaviour will be the same as that of PostgreSQL’s READ COMMITTED level as mentioned in section 13.2.1 [here](https://www.postgresql.org/docs/13/transaction-iso.html). Notable points from the section are listed again in the Semantics section below.
 
-NOTE: the semantics ensure that the client doesn't face conflict and read restart errors. YSQL maintains these semantics as long as a statement's output doesn't exceed ysql_output_buffer_size (a gflag with a default of 256KB). If this condition is not met, YSQL will resort to optimistic locking for that statement. Work is in progress to get rid of this constraint.
-
-## 2 Semantics
+## Semantics
 
 To support READ COMMITTED isolation level in YSQL with the same semantics as PostgreSQL, the following requirements follow -
 
@@ -49,7 +47,7 @@ To support READ COMMITTED isolation level in YSQL with the same semantics as Pos
 
 Apart from the above requirements, there is a YSQL specific requirement: ensure that external clients don’t face kReadRestart errors.
 
-## 3 Usage
+## Usage
 
 By setting the gflag `yb_enable_read_committed_isolation=true`, the READ COMMITTED isolation in YSQL will actually map to the READ COMMITTED implementation in docdb. If set to false, it will have the earlier behaviour of mapping READ COMMITTED to REPEATABLE READ.
 
@@ -65,7 +63,7 @@ will wait for other READ COMMITTED transactions to commit/ rollback in case of a
 more transactions could be waiting on each other in a cycle. Hence, to avoid a deadlock, make sure
 to configure a statement timeout (by setting the `statement_timeout` parameter in `ysql_pg_conf_csv` tserver gflag on cluster startup). Statement timeouts will help avoid deadlocks (see example 1).
 
-## 4 Examples
+## Examples
 
 ```sql
 create table test (k int primary key, v int);
@@ -738,8 +736,6 @@ commit;
   </tr>
 </table>
 
-
-
 ### 5) Behavior of INSERTs
 
 
@@ -1197,14 +1193,23 @@ commit;
   </tr>
 </table>
 
-## 5 Cross feature interaction
+## Cross feature interaction
 
 This feature interacts with the following features:
 
 1. **Follower reads (integration in progress):** When follower reads is turned on, the read point for each statement in a READ COMMITTED transaction will be picked as _Now()_ - _yb_follower_read_staleness_ms_ (if the transaction/statement is known to be explicitly/ implicitly read only).
 2. **Pessimistic locking:** READ COMMITTED has a dependency on pessimistic locking to fully work. To be precise, on facing a conflict, a transaction has to wait for the conflicting transaction to rollback/commit. Pessimistic locking behaviour can be seen for READ COMMITTED. An optimized version of pessimistic locking will come in near future, which will give better performance and will also work for REPEATABLE READ and SERIALIZABLE isolation levels. The optimized version will also help detect deadlocks proactively instead of relying on statement timeouts for deadlock avoidance (see example 1).
 
-## 6 Noteworthy Considerations
+## Limitations
+
+1. READ COMMITTED semantics ensure that the client doesn't face conflict and read restart errors. YSQL maintains these semantics as long as a statement's output doesn't exceed `ysql_output_buffer_size` (a gflag with a default of 256KB). If this condition is not met, YSQL will resort to optimistic locking for that statement.
+
+2. PostgreSQL requires the following as mentioned in its docs [here](https://www.postgresql.org/docs/current/xfunc-volatility.html) - _"STABLE and IMMUTABLE functions use a snapshot established as of the start of the calling query, whereas VOLATILE functions obtain a fresh snapshot at the start of each query they execute."_  YSQL uses a single snapshot for the whole procedure instead of one for each
+statement in the procedure.
+
+Work is in progress to get rid of both limitations.
+
+## Noteworthy Considerations
 
 1. This isolation level allows both phantom and non-repeatable reads (example 2).
 2. Adding this new isolation level won’t affect the performance of existing isolation levels.
