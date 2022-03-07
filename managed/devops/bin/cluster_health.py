@@ -30,7 +30,7 @@ from six import string_types, PY2, PY3
 
 # Try to read home dir from environment variable, else assume it's /home/yugabyte.
 ALERT_ENHANCEMENTS_RELEASE_BUILD = "2.6.0.0-b0"
-RELEASE_BUILD_PATTERN = "(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)[-]b(\\d+).*"
+RELEASE_BUILD_PATTERN = "(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)[-]b(\\d+|PRE_RELEASE).*"
 YB_HOME_DIR = os.environ.get("YB_HOME_DIR", "/home/yugabyte")
 YB_TSERVER_DIR = os.path.join(YB_HOME_DIR, "tserver")
 YB_CORES_DIR = os.path.join(YB_HOME_DIR, "cores/")
