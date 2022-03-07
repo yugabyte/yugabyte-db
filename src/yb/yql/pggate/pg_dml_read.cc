@@ -24,6 +24,7 @@
 
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/primitive_value.h"
+#include "yb/docdb/value_type.h"
 
 #include "yb/util/status_format.h"
 
@@ -450,6 +451,128 @@ Status PgDmlRead::BindColumnCondIn(int attr_num, int n_attr_values, PgExpr **att
       }
     }
   }
+  return Status::OK();
+}
+
+Result<docdb::DocKey> PgDmlRead::EncodeRowKeyForBound(YBCPgStatement handle,
+    int n_col_values, PgExpr **col_values, bool for_lower_bound) {
+    google::protobuf::RepeatedPtrField<PgsqlExpressionPB> hashed_values;
+  vector<docdb::PrimitiveValue> hashed_components, range_components;
+  hashed_components.reserve(bind_->num_hash_key_columns());
+  range_components.reserve(bind_->num_key_columns()
+                            - bind_->num_hash_key_columns());
+  size_t i = 0;
+  for (; i < bind_->num_hash_key_columns(); ++i) {
+    auto &col = bind_.columns()[i];
+
+    auto new_val = hashed_values.Add();
+    RETURN_NOT_OK(col_values[i]->Eval(new_val));
+    auto docdbval = docdb::PrimitiveValue::FromQLValuePB(
+                            new_val->value(), col.desc().sorting_type());
+    hashed_components.push_back(std::move(docdbval));
+  }
+
+  auto dockey_builder = VERIFY_RESULT(CreateDocKeyBuilder(
+      hashed_components, hashed_values, bind_->partition_schema()));
+
+  for (; i < bind_->num_key_columns()
+            && (static_cast<int>(i) < n_col_values); ++i) {
+    auto& col = bind_.columns()[i];
+
+    docdb::PrimitiveValue docdbval;
+    if (col_values[i] == nullptr) {
+        if (for_lower_bound) {
+            docdbval = docdb::PrimitiveValue(docdb::ValueType::kLowest);
+        } else {
+            docdbval = docdb::PrimitiveValue(docdb::ValueType::kHighest);
+        }
+    } else {
+        PgsqlExpressionPB temp_val;
+        RETURN_NOT_OK(col_values[i]->Eval(&temp_val));
+        docdbval = docdb::PrimitiveValue::FromQLValuePB(temp_val.value(),
+                                col.desc().sorting_type());
+    }
+    range_components.push_back(std::move(docdbval));
+  }
+  const auto dockey = dockey_builder(range_components);
+  return dockey;
+}
+
+Status PgDmlRead::AddRowUpperBound(YBCPgStatement handle,
+                                    int n_col_values,
+                                    PgExpr **col_values,
+                                    bool is_inclusive) {
+  if (secondary_index_query_) {
+      return secondary_index_query_->AddRowUpperBound(handle,
+                                                        n_col_values,
+                                                        col_values,
+                                                        is_inclusive);
+  }
+
+  auto dockey = VERIFY_RESULT(EncodeRowKeyForBound(handle, n_col_values,
+                                                    col_values, false));
+
+  if (read_req_->has_upper_bound()) {
+      docdb::DocKey current_upper_bound_key;
+      RETURN_NOT_OK(current_upper_bound_key.DecodeFrom(
+                    read_req_->upper_bound().key(),
+                    docdb::DocKeyPart::kWholeDocKey,
+                    docdb::AllowSpecial::kTrue));
+
+      if (current_upper_bound_key < dockey) {
+        return Status::OK();
+      }
+
+      if (current_upper_bound_key == dockey) {
+          is_inclusive = is_inclusive & read_req_->upper_bound().is_inclusive();
+          read_req_->mutable_upper_bound()->set_is_inclusive(is_inclusive);
+          return Status::OK();
+      }
+
+      // current_upper_bound_key > dockey
+  }
+  read_req_->mutable_upper_bound()->set_key(dockey.Encode().ToStringBuffer());
+  read_req_->mutable_upper_bound()->set_is_inclusive(is_inclusive);
+
+  return Status::OK();
+}
+
+Status PgDmlRead::AddRowLowerBound(YBCPgStatement handle,
+                                    int n_col_values,
+                                    PgExpr **col_values,
+                                    bool is_inclusive) {
+
+  if (secondary_index_query_) {
+      return secondary_index_query_->AddRowLowerBound(handle,
+                                                        n_col_values,
+                                                        col_values,
+                                                        is_inclusive);
+  }
+
+  auto dockey = VERIFY_RESULT(EncodeRowKeyForBound(handle, n_col_values,
+                                                    col_values, true));
+  if (read_req_->has_lower_bound()) {
+      docdb::DocKey current_lower_bound_key;
+      RETURN_NOT_OK(current_lower_bound_key.DecodeFrom(
+                    read_req_->lower_bound().key(),
+                    docdb::DocKeyPart::kWholeDocKey,
+                    docdb::AllowSpecial::kTrue));
+
+      if (current_lower_bound_key > dockey) {
+        return Status::OK();
+      }
+
+      if (current_lower_bound_key == dockey) {
+          is_inclusive = is_inclusive & read_req_->lower_bound().is_inclusive();
+          read_req_->mutable_lower_bound()->set_is_inclusive(is_inclusive);
+          return Status::OK();
+      }
+
+      // current_lower_bound_key > dockey
+  }
+  read_req_->mutable_lower_bound()->set_key(dockey.Encode().ToStringBuffer());
+  read_req_->mutable_lower_bound()->set_is_inclusive(is_inclusive);
+
   return Status::OK();
 }
 

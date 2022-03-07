@@ -465,7 +465,7 @@ string PartitionSchema::EncodeMultiColumnHashValue(uint16_t hash_value) {
 }
 
 uint16_t PartitionSchema::DecodeMultiColumnHashValue(const string& partition_key) {
-  DCHECK_EQ(partition_key.size(), kPartitionKeySize);
+  DCHECK_GE(partition_key.size(), kPartitionKeySize);
   const uint8_t *bytes = reinterpret_cast<const uint8_t *>(partition_key.data());
   return (bytes[0] << 8) | bytes[1];
 }

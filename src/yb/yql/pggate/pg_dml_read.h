@@ -72,6 +72,16 @@ class PgDmlRead : public PgDml {
                                 uint64_t start_hash_val, bool end_valid,
                                 bool end_inclusive, uint64_t end_hash_val);
 
+  // Add a lower bound to the scan. If a lower bound has already been added
+  // this call will set the lower bound to the stricter of the two bounds.
+  CHECKED_STATUS AddRowLowerBound(YBCPgStatement handle, int n_col_values,
+                                    PgExpr **col_values, bool is_inclusive);
+
+  // Add an upper bound to the scan. If an upper bound has already been added
+  // this call will set the upper bound to the stricter of the two bounds.
+  CHECKED_STATUS AddRowUpperBound(YBCPgStatement handle, int n_col_values,
+                                    PgExpr **col_values, bool is_inclusive);
+
   // Execute.
   virtual CHECKED_STATUS Exec(const PgExecParameters *exec_params);
 
@@ -113,6 +123,8 @@ class PgDmlRead : public PgDml {
   bool CanBuildYbctidsFromPrimaryBinds();
   Result<std::vector<std::string>> BuildYbctidsFromPrimaryBinds();
   CHECKED_STATUS SubstitutePrimaryBindsWithYbctids(const PgExecParameters* exec_params);
+  Result<docdb::DocKey> EncodeRowKeyForBound(YBCPgStatement handle,
+      int n_col_values, PgExpr **col_values, bool for_lower_bound);
   CHECKED_STATUS MoveBoundKeyInOperator(PgColumn* col, const PgsqlConditionPB& in_operator);
   CHECKED_STATUS CopyBoundValue(
       const PgColumn& col, const PgsqlExpressionPB& src, QLValuePB* dest) const;

@@ -917,6 +917,164 @@ ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 		/* Check if this is primary columns */
 		int bind_key_attnum = scan_plan->bind_key_attnums[i];
 		int idx = YBAttnumToBmsIndex(relation, bind_key_attnum);
+		/* Check if this is full key row comparison expression */
+		if (ybScan->key[i].sk_flags & SK_ROW_HEADER)
+		{
+			int j = 0;
+			ScanKey subkeys = (ScanKey) 
+					DatumGetPointer(ybScan->key[i].sk_argument);
+			int last_att_no = YBFirstLowInvalidAttributeNumber;
+
+			/* 
+				* We can only push down right now if the full primary key
+				* is specified in the correct order and the primary key 
+				* has no hashed columns. We also need to ensure that 
+				* the same comparison operation is done to all subkeys.
+				*/
+			bool can_pushdown = true;
+
+			int strategy = subkeys[0].sk_strategy;
+			int count = 0;
+			do {
+				ScanKey current = &subkeys[j];
+				/* Make sure that the specified keys are in the right order. */
+				if (!(current->sk_attno > last_att_no))
+				{
+					can_pushdown = false;
+					break;
+				}
+
+				/*
+					* Make sure that the same comparator is applied to
+					* all subkeys.
+					*/
+				if (strategy != current->sk_strategy)
+				{
+					can_pushdown = false;
+					break;
+				}
+				last_att_no = current->sk_attno;
+
+				/* Make sure that there are no hash key columns. */
+				if (index->rd_indoption[current->sk_attno - 1] 
+					& INDOPTION_HASH) {
+					can_pushdown = false;
+					break;
+				}
+				count++;
+			}
+			while((subkeys[j++].sk_flags & SK_ROW_END) == 0);
+			
+			/*
+				* Make sure that the full primary key is specified in order
+				* to push down.
+				*/
+
+			if (can_pushdown)
+			{
+
+				YBCPgExpr *col_values = palloc(sizeof(YBCPgExpr)
+											* index->rd_index->indnkeyatts);
+				/*
+					* Prepare upper/lower bound tuples determined from this
+					* clause for bind. Care must be taken in the case 
+					* that primary key columns in the index are ordered
+					* differently from each other. For example, consider
+					* if the underlying index has primary key
+					* (r1 ASC, r2 DESC, r3 ASC) and we are dealing with
+					* a clause like (r1, r2, r3) <= (40, 35, 12).
+					* We cannot simply bind (40, 35, 12) as an upper bound
+					* as that will miss tuples such as (40, 32, 0).
+					* Instead we must push down (40, Inf, 12) in this case 
+					* for correctness. (Note that +Inf in this context
+					* is higher in STORAGE order than all other values not
+					* necessarily logical order, similar to the role of
+					* docdb::ValueType::kHighest.
+					*/
+
+				/*
+					* Is the first column in ascending order in the index?
+					* This is important because whether or not the RHS of a
+					* (row key) >= (row key values) expression is
+					* considered an upper bound is dependent on the answer
+					* to this question. The RHS of such an expression will
+					* be the scan upper bound if the first column is in
+					* descending order and lower if else. Similar logic
+					* applies to the RHS of (row key) <= (row key values)
+					* expressions.
+					*/
+				bool is_direction_asc = 
+									(index->rd_indoption[
+										subkeys[0].sk_attno - 1] 
+										& INDOPTION_DESC) == 0;
+				bool gt = strategy == BTGreaterEqualStrategyNumber
+								|| strategy == BTGreaterStrategyNumber;
+				bool is_inclusive = strategy != BTGreaterStrategyNumber
+										&& strategy != BTLessStrategyNumber;
+				
+				bool is_point_scan = (count == index->rd_index->indnatts)
+										&& (strategy == BTEqualStrategyNumber);
+
+				/* Whether or not the RHS values make up a DocDB upper bound */
+				bool is_upper_bound = gt ^ is_direction_asc;
+				size_t subkey_index = 0;
+
+				for (j = 0; j < index->rd_index->indnkeyatts; j++)
+				{
+					bool is_column_specified = subkey_index < count
+											&& (subkeys[subkey_index]
+												.sk_attno - 1) == j;
+					/*
+						* Is the current column stored in ascending order in the
+						* underlying index?
+						*/
+					bool asc = (index->rd_indoption[j] & INDOPTION_DESC) == 0;
+
+					/*
+						* If this column has different directionality than the
+						* first column then we have to adjust the bounds on this
+						* column.
+						*/
+					if(!is_column_specified
+						|| (asc != is_direction_asc &&
+							!is_point_scan))
+					{
+						col_values[j] = NULL;
+					}
+					else
+					{
+						ScanKey current = &subkeys[subkey_index];
+						col_values[j] = YBCNewConstant(ybScan->handle,
+											ybc_get_atttypid
+												(scan_plan->bind_desc,
+											current->sk_attno),
+											current->sk_collation,
+											current->sk_argument,
+											false);
+					}
+
+					if (is_column_specified)
+					{
+						subkey_index++;
+					}
+				}
+
+				if (is_upper_bound || strategy == BTEqualStrategyNumber)
+				{
+					HandleYBStatus(YBCPgDmlAddRowUpperBound(ybScan->handle,
+												index->rd_index->indnkeyatts,
+												col_values, is_inclusive));
+				}
+
+				if (!is_upper_bound || strategy == BTEqualStrategyNumber)
+				{
+					HandleYBStatus(YBCPgDmlAddRowLowerBound(ybScan->handle,
+												index->rd_index->indnkeyatts,
+												col_values, is_inclusive));
+				}
+			}
+			continue;
+		}
 		if (!IsHashCodeSearch(ybScan->key[i].sk_flags)
 			&& !bms_is_member(idx, scan_plan->sk_cols))
 			continue;
