@@ -52,7 +52,7 @@ You install Yugabyte Platform on a Kubernetes cluster as follows:
     kubectl create -f yugabyte-k8s-secret.yml -n yb-platform
     ```
 
-    Expect the following output notifying you that the secret was created:
+    <br>Expect the following output notifying you that the secret was created:
 
     ```output
     secret/yugabyte-k8s-pull-secret created
@@ -64,19 +64,19 @@ You install Yugabyte Platform on a Kubernetes cluster as follows:
     helm repo add yugabytedb https://charts.yugabyte.com
     ```
 
-    A message similar to the following should appear:
+    <br>A message similar to the following should appear:
 
     ```output
     "yugabytedb" has been added to your repositories
     ```
 
-    To search for the available chart version, run this command:
+    <br>To search for the available chart version, run this command:
 
     ```sh
     helm search repo yugabytedb/yugaware -l
     ```
 
-    The latest Helm Chart version and App version will be displayed:
+    <br>The latest Helm Chart version and App version will be displayed:
 
     ```output
     NAME                 CHART VERSION  APP VERSION  DESCRIPTION
@@ -101,12 +101,39 @@ You install Yugabyte Platform on a Kubernetes cluster as follows:
     kubectl get svc -n yb-platform
     ```
 
-    The following output should appear:
+    <br>The following output should appear:
 
     ```output
     NAME                  TYPE           CLUSTER-IP     EXTERNAL-IP    PORT(S)                       AGE
     yw-test-yugaware-ui   LoadBalancer   10.111.241.9   34.93.169.64   80:32006/TCP,9090:30691/TCP   2m12s
     ```
+
+1. Use the following command to check that all the pods have been initialized and are running:
+
+    ```sh
+    kubectl get pods -n yb-platform
+    ```
+
+    <br>The following output should appear:
+
+    ```output
+    NAME                 READY   STATUS    RESTARTS   AGE 
+    yw-test-yugaware-0   4/4     Running   0          12s
+    ```
+
+    <br>Note that even though the preceding output indicates that the `yw-test-yugaware-0` pod is running, it does not mean that Yugabyte Platform is ready to accept your queries. If you open `localhost:80` and see an error (such as 502), it means that `yugaware` is still being initialized. You can check readiness of `yugaware` by executing the following command:
+
+    ```sh
+    kubectl logs --follow -n yb-platform yw-test-yugaware-0 yugaware
+    ```
+
+    <br>And output similar to the following would confirm that there are no errors and that the server is running:
+
+    ```
+    [info] AkkaHttpServer.scala:447 [main] Listening for HTTP on /0.0.0.0:9000
+    ```
+
+    <br>If Yugabyte Platform fails to start for the first time, verify that your system meets the installation requirements, as per [Prepare the Kubernetes environment](../../prepare-environment/kubernetes/).
 
 ## Customize Yugabyte Platform
 
