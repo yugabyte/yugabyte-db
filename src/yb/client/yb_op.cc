@@ -263,7 +263,7 @@ Result<std::string> GetRangePartitionKey(
   RSTATUS_DCHECK(!schema.num_hash_key_columns(), IllegalState,
       "Cannot get range partition key for hash partitioned table");
 
-  auto range_components = VERIFY_RESULT(client::GetRangeComponents(schema, range_cols));
+  auto range_components = VERIFY_RESULT(client::GetRangeComponents(schema, range_cols, true));
   return docdb::DocKey(std::move(range_components)).Encode().ToStringBuffer();
 }
 
@@ -1003,7 +1003,9 @@ CHECKED_STATUS InitPartitionKey(
 }
 
 Result<std::vector<docdb::PrimitiveValue>> GetRangeComponents(
-    const Schema& schema, const google::protobuf::RepeatedPtrField<PgsqlExpressionPB>& range_cols) {
+    const Schema& schema,
+    const google::protobuf::RepeatedPtrField<PgsqlExpressionPB>& range_cols,
+    bool lower_bound) {
   int i = 0;
   auto num_range_key_columns = narrow_cast<int>(schema.num_range_key_columns());
   std::vector<docdb::PrimitiveValue> result;
@@ -1014,7 +1016,11 @@ Result<std::vector<docdb::PrimitiveValue>> GetRangeComponents(
 
     const ColumnSchema& column_schema = VERIFY_RESULT(schema.column_by_id(col_id));
     if (i >= range_cols.size() || range_cols[i].value().value_case() == QLValuePB::VALUE_NOT_SET) {
-      result.emplace_back(docdb::ValueType::kLowest);
+      if (lower_bound) {
+        result.emplace_back(docdb::ValueType::kLowest);
+      } else {
+        result.emplace_back(docdb::ValueType::kHighest);
+      }
     } else {
       result.push_back(docdb::PrimitiveValue::FromQLValuePB(
           range_cols[i].value(), column_schema.sorting_type()));
@@ -1022,6 +1028,10 @@ Result<std::vector<docdb::PrimitiveValue>> GetRangeComponents(
 
     if (++i == num_range_key_columns) {
       break;
+    }
+
+    if (!lower_bound) {
+      result.emplace_back(docdb::ValueType::kHighest);
     }
   }
   return result;
@@ -1045,9 +1055,8 @@ Status GetRangePartitionBounds(const Schema& schema,
     *upper_bound = docdb::GetRangeKeyScanSpec(
         schema, &prefixed_range_components, &scan_range, false /* upper_bound */);
   } else if (!range_cols.empty()) {
-    *lower_bound = VERIFY_RESULT(GetRangeComponents(schema, range_cols));
-    *upper_bound = *lower_bound;
-    upper_bound->emplace_back(docdb::ValueType::kHighest);
+    *lower_bound = VERIFY_RESULT(GetRangeComponents(schema, range_cols, true));
+    *upper_bound = VERIFY_RESULT(GetRangeComponents(schema, range_cols, false));
   }
   return Status::OK();
 }
