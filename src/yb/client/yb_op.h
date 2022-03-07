@@ -595,7 +595,8 @@ CHECKED_STATUS InitPartitionKey(
     const Schema& schema, const PartitionSchema& partition_schema, PgsqlWriteRequestPB* request);
 
 Result<std::vector<docdb::PrimitiveValue>> GetRangeComponents(
-    const Schema& schema, const google::protobuf::RepeatedPtrField<PgsqlExpressionPB>& range_cols);
+    const Schema& schema, const google::protobuf::RepeatedPtrField<PgsqlExpressionPB>& range_cols,
+    bool lower_bound);
 
 CHECKED_STATUS GetRangePartitionBounds(
     const Schema& schema,
