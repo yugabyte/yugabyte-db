@@ -3,6 +3,8 @@ title: Connect a YCQL Java application
 headerTitle: Connect a YCQL Java application
 linkTitle: Connect a YCQL Java application
 description: Build a sample Java application for Yugabyte Cloud with the Yugabyte Java Driver for YCQL v4.6.
+aliases:
+  - /latest/yugabyte-cloud/cloud-develop/connect-ycql-application/
 menu:
   latest:
     parent: cloud-examples
@@ -49,7 +51,7 @@ You also need to download and install your Yugabyte Cloud cluster CA certificate
 
 1. Click **YCQL** to display the connection parameters. These include:
 
-    - LocalDatacenter - The name of the local datacenter for the cluster.
+    - LocalDatacenter - The name of the local data center for the cluster.
     - Host - The cluster host name.
     - Port - The port number of the YCQL client API on the YugabyteDB database (9042).
 
@@ -219,7 +221,7 @@ public class YBCqlHelloWorld {
 
 Edit the `.withLocalDatacenter` line by replacing "datacenter1" with the LocalDatacenter from your cluster connection parameters.
 
-You can also find the local datacenter name by running the following YCQL query from Yugabyte Cloud Shell:
+You can also find the local data center name by running the following YCQL query from Yugabyte Cloud Shell:
 
 ```sql
 admin@ycqlsh:yugabyte> SELECT * FROM system.local;
