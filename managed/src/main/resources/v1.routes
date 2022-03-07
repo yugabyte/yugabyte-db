@@ -16,7 +16,7 @@ PUT     /customers/:cUUID/security                                             c
 PUT     /customers/:cUUID/api_token                                            com.yugabyte.yw.controllers.SessionController.api_token(cUUID: java.util.UUID)
 GET     /logout                                                                com.yugabyte.yw.controllers.SessionController.logout()
 + nocsrf
-POST    /register                                                              com.yugabyte.yw.controllers.SessionController.register()
+POST    /register                                                              com.yugabyte.yw.controllers.SessionController.register(generateApiToken: Boolean ?= false)
 GET     /customers/:cUUID/password_policy                                      com.yugabyte.yw.controllers.SessionController.getPasswordPolicy(cUUID: java.util.UUID)
 GET     /ui_theme                                                              com.yugabyte.yw.controllers.SessionController.getUITheme()
 

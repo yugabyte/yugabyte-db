@@ -319,11 +319,13 @@ public class SessionControllerTest {
     registerJson.put("password", "pAssw_0rd");
     registerJson.put("name", "Foo");
 
-    Result result = route(fakeRequest("POST", "/api/register").bodyJson(registerJson));
+    Result result =
+        route(fakeRequest("POST", "/api/register?generateApiToken=true").bodyJson(registerJson));
     JsonNode json = Json.parse(contentAsString(result));
 
     assertEquals(OK, result.status());
     assertNotNull(json.get("authToken"));
+    assertNotNull(json.get("apiToken"));
     Customer c1 = Customer.get(UUID.fromString(json.get("customerUUID").asText()));
 
     ObjectNode loginJson = Json.newObject();
