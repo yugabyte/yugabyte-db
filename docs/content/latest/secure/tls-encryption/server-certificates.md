@@ -62,10 +62,10 @@ default_ca = my_ca
 default_days = 3650
 
 # Text file with next hex serial number to use.
-serial = ./serial.txt
+serial = secure-data/serial.txt
 
 # Text database file to use, initially empty.
-database = ./index.txt
+database = secure-data/index.txt
 
 # Message digest algorithm. Do not use MD5.
 default_md = sha256
@@ -75,7 +75,7 @@ policy = my_policy
 
 [ my_policy ]
 
-# Policy for nodes and users. If the value is "match" then 
+# Policy for nodes and users. If the value is "match" then
 # field value must match the same field in the CA certificate.
 # If the value is "supplied" then it must be present. Optional
 # means it may be present.
