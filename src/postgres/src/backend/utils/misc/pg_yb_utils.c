@@ -551,7 +551,7 @@ YBCAbortTransaction()
 		return;
 
 	if (YBTransactionsEnabled())
-		YBCPgAbortTransaction();
+		HandleYBStatus(YBCPgAbortTransaction());
 }
 
 void
@@ -1032,7 +1032,7 @@ YBDecrementDdlNestingLevel(bool is_catalog_version_increment, bool is_breaking_c
 		if (increment_done)
 		{
 			yb_catalog_cache_version += 1;
-			if (YBCGetLogYsqlCatalogVersions())
+			if (*YBCGetGFlags()->log_ysql_catalog_versions)
 				ereport(LOG,
 						(errmsg("%s: set local catalog version: %" PRIu64,
 								__func__, yb_catalog_cache_version)));
@@ -2057,4 +2057,8 @@ Oid YbGetStorageRelid(Relation relation) {
 		return relation->rd_rel->relfilenode;
 	}
 	return RelationGetRelid(relation);
+}
+
+bool IsYbDbAdminUser(Oid member) {
+	return IsYugaByteEnabled() && has_privs_of_role(member, DEFAULT_ROLE_YB_DB_ADMIN);
 }

@@ -574,7 +574,7 @@ ybpgm_ExecutorEnd(QueryDesc *queryDesc)
 
 	ybpgm_Store(type, time, rows_count);
 
-  if (!queryDesc->estate->es_yb_is_single_row_modify_txn) 
+  if (!queryDesc->estate->yb_es_is_single_row_modify_txn) 
   {
     ybpgm_Store(Single_Shard_Transaction, time, rows_count);
     ybpgm_Store(SingleShardTransaction, time, rows_count);

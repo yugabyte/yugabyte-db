@@ -71,25 +71,19 @@ PgCreateDatabase::PgCreateDatabase(PgSession::ScopedRefPtr pg_session,
                                    const PgOid source_database_oid,
                                    const PgOid next_oid,
                                    const bool colocated)
-    : PgDdl(std::move(pg_session)),
-      database_name_(database_name),
-      database_oid_(database_oid),
-      source_database_oid_(source_database_oid),
-      next_oid_(next_oid),
-      colocated_(colocated) {
+    : PgDdl(std::move(pg_session)) {
+  req_.set_database_name(database_name);
+  req_.set_database_oid(database_oid);
+  req_.set_source_database_oid(source_database_oid);
+  req_.set_next_oid(next_oid);
+  req_.set_colocated(colocated);
 }
 
 PgCreateDatabase::~PgCreateDatabase() {
 }
 
 Status PgCreateDatabase::Exec() {
-  boost::optional<TransactionMetadata> txn;
-  if (txn_future_) {
-    // Ensure the future has been executed by this time.
-    txn = VERIFY_RESULT(Copy(txn_future_->get()));
-  }
-  return pg_session_->CreateDatabase(database_name_, database_oid_, source_database_oid_,
-                                     next_oid_, txn, colocated_);
+  return pg_session_->pg_client().CreateDatabase(&req_, DdlDeadline());
 }
 
 PgDropDatabase::PgDropDatabase(PgSession::ScopedRefPtr pg_session,
@@ -246,7 +240,7 @@ Status PgCreateTable::Exec() {
   RETURN_NOT_OK(pg_session_->pg_client().CreateTable(&req_, DdlDeadline()));
   auto base_table_id = PgObjectId::FromPB(req_.base_table_id());
   if (base_table_id.IsValid()) {
-    pg_session_->InvalidateTableCache(base_table_id);
+    pg_session_->InvalidateTableCache(base_table_id, InvalidateOnPgClient::kFalse);
   }
   return Status::OK();
 }
@@ -280,7 +274,7 @@ PgDropTable::~PgDropTable() {
 
 Status PgDropTable::Exec() {
   Status s = pg_session_->DropTable(table_id_);
-  pg_session_->InvalidateTableCache(table_id_);
+  pg_session_->InvalidateTableCache(table_id_, InvalidateOnPgClient::kFalse);
   if (s.ok() || (s.IsNotFound() && if_exist_)) {
     return Status::OK();
   }
@@ -324,8 +318,8 @@ Status PgDropIndex::Exec() {
     RSTATUS_DCHECK(!indexed_table_name.empty(), Uninitialized, "indexed_table_name uninitialized");
     PgObjectId indexed_table_id(indexed_table_name.table_id());
 
-    pg_session_->InvalidateTableCache(table_id_);
-    pg_session_->InvalidateTableCache(indexed_table_id);
+    pg_session_->InvalidateTableCache(table_id_, InvalidateOnPgClient::kFalse);
+    pg_session_->InvalidateTableCache(indexed_table_id, InvalidateOnPgClient::kFalse);
     return Status::OK();
   }
   return s;
@@ -373,7 +367,8 @@ Status PgAlterTable::RenameTable(const char *db_name, const char *newname) {
 
 Status PgAlterTable::Exec() {
   RETURN_NOT_OK(pg_session_->pg_client().AlterTable(&req_, DdlDeadline()));
-  pg_session_->InvalidateTableCache(PgObjectId::FromPB(req_.table_id()));
+  pg_session_->InvalidateTableCache(
+      PgObjectId::FromPB(req_.table_id()), InvalidateOnPgClient::kFalse);
   return Status::OK();
 }
 

@@ -25,7 +25,7 @@ from ybops.cloud.aws.utils import (ROOT_VOLUME_LABEL, AwsBootstrapClient, YbVpcC
                                    change_instance_type, create_instance, delete_vpc, get_client,
                                    get_clients, get_device_names, get_spot_pricing,
                                    get_vpc_for_subnet, get_zones, has_ephemerals, modify_tags,
-                                   query_vpc, update_disk)
+                                   query_vpc, update_disk, get_image_arch)
 from ybops.cloud.common.cloud import AbstractCloud
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.utils import (format_rsa_key, is_valid_ip_address, validated_key_file)
@@ -68,6 +68,9 @@ class AwsCloud(AbstractCloud):
         for r in regions:
             output[r] = self.metadata["regions"][r]["image"]
         return output
+
+    def get_image_arch(self, args):
+        return get_image_arch(args.region, args.machine_image)
 
     def get_spot_pricing(self, args):
         return get_spot_pricing(args.region, args.zone, args.instance_type)
@@ -522,7 +525,7 @@ class AwsCloud(AbstractCloud):
         except ClientError as e:
             logging.error(e)
 
-    def start_instance(self, args, ssh_port):
+    def start_instance(self, args, ssh_ports):
         ec2 = boto3.resource('ec2', args["region"])
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -531,7 +534,7 @@ class AwsCloud(AbstractCloud):
             instance.wait_until_running()
             # The OS boot up may take some time,
             # so retry until the instance allows SSH connection.
-            self.wait_for_ssh_port(args["private_ip"], args["id"], ssh_port)
+            self.wait_for_ssh_ports(args["private_ip"], args["id"], ssh_ports)
         except ClientError as e:
             logging.error(e)
         finally:

@@ -366,6 +366,16 @@ class PgApiImpl {
                                 bool end_valid, bool end_inclusive,
                                 uint64_t end_hash_val);
 
+  CHECKED_STATUS DmlAddRowUpperBound(YBCPgStatement handle,
+                                    int n_col_values,
+                                    YBCPgExpr *col_values,
+                                    bool is_inclusive);
+
+  CHECKED_STATUS DmlAddRowLowerBound(YBCPgStatement handle,
+                                    int n_col_values,
+                                    YBCPgExpr *col_values,
+                                    bool is_inclusive);
+
   // Binding Tables: Bind the whole table in a statement.  Do not use with BindColumn.
   CHECKED_STATUS DmlBindTable(YBCPgStatement handle);
 
@@ -482,7 +492,7 @@ class PgApiImpl {
   CHECKED_STATUS ResetTransactionReadPoint();
   CHECKED_STATUS RestartReadPoint();
   CHECKED_STATUS CommitTransaction();
-  void AbortTransaction();
+  CHECKED_STATUS AbortTransaction();
   CHECKED_STATUS SetTransactionIsolationLevel(int isolation);
   CHECKED_STATUS SetTransactionReadOnly(bool read_only);
   CHECKED_STATUS SetTransactionDeferrable(bool deferrable);

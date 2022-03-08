@@ -54,7 +54,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
 
   @InjectMocks private SoftwareUpgrade softwareUpgrade;
 
-  private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE =
+  private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE_MASTER =
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.AnsibleClusterServerCtl,
@@ -63,6 +63,21 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
           TaskType.WaitForEncryptionKeyInMemory,
+          TaskType.WaitForFollowerLag,
+          TaskType.SetNodeState);
+
+  private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE_TSERVER =
+      ImmutableList.of(
+          TaskType.SetNodeState,
+          TaskType.ModifyBlackList,
+          TaskType.WaitForLeaderBlacklistCompletion,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.AnsibleConfigureServers,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.WaitForServer,
+          TaskType.WaitForServerReady,
+          TaskType.WaitForEncryptionKeyInMemory,
+          TaskType.ModifyBlackList,
           TaskType.WaitForFollowerLag,
           TaskType.SetNodeState);
 
@@ -87,9 +102,13 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     successResponse.message = "YSQL successfully upgraded to the latest version";
 
     ybAdminFuncName = ArgumentCaptor.forClass(String.class);
-    when(mockNodeUniverseManager.runYbAdminCommand(
-            any(), any(), ybAdminFuncName.capture(), anyLong()))
-        .thenReturn(successResponse);
+
+    try {
+      when(mockNodeUniverseManager.runYbAdminCommand(
+              any(), any(), ybAdminFuncName.capture(), anyLong()))
+          .thenReturn(successResponse);
+    } catch (Exception ignored) {
+    }
   }
 
   private TaskInfo submitTask(SoftwareUpgradeParams requestParams) {
@@ -108,12 +127,11 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     int position = startPosition;
     List<TaskType> commonNodeTasks = new ArrayList<>();
 
-    if (isFinalStep) {
-      if (type.name().equals("ROLLING_UPGRADE")
-          || type.name().equals("ROLLING_UPGRADE_TSERVER_ONLY")) {
-        commonNodeTasks.add(TaskType.LoadBalancerStateChange);
-      }
+    if (type.name().equals("ROLLING_UPGRADE_TSERVER_ONLY") && !isFinalStep) {
+      commonNodeTasks.add(TaskType.ModifyBlackList);
+    }
 
+    if (isFinalStep) {
       commonNodeTasks.addAll(
           ImmutableList.of(
               TaskType.RunYsqlUpgrade,
@@ -134,7 +152,10 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
       boolean isRollingUpgrade) {
     int position = startPosition;
     if (isRollingUpgrade) {
-      List<TaskType> taskSequence = ROLLING_UPGRADE_TASK_SEQUENCE;
+      List<TaskType> taskSequence =
+          serverType == MASTER
+              ? ROLLING_UPGRADE_TASK_SEQUENCE_MASTER
+              : ROLLING_UPGRADE_TASK_SEQUENCE_TSERVER;
       List<Integer> nodeOrder = getRollingUpgradeNodeOrder(serverType);
       for (int nodeIdx : nodeOrder) {
         String nodeName = String.format("host-n%d", nodeIdx);
@@ -142,7 +163,9 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
           List<TaskInfo> tasks = subTasksByPosition.get(position);
           TaskType taskType = tasks.get(0).getTaskType();
           UserTaskDetails.SubTaskGroupType subTaskGroupType = tasks.get(0).getSubTaskGroupType();
-          assertEquals(1, tasks.size());
+          // Leader blacklisting adds a ModifyBlackList task at position 0
+          int numTasksToAssert = position == 0 ? 2 : 1;
+          assertEquals(numTasksToAssert, tasks.size());
           assertEquals(type, taskType);
           if (!NON_NODE_TASKS.contains(taskType)) {
             Map<String, Object> assertValues =
@@ -184,7 +207,9 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
                 ImmutableMap.of(
                     "ybSoftwareVersion", version, "processType", serverType.toString()));
           }
-          assertEquals(3, tasks.size());
+          // The task at postion 0 adds a ModifyBlacklist sub-task.
+          int numTasksToAssert = position == 0 ? 4 : 3;
+          assertEquals(numTasksToAssert, tasks.size());
           assertNodeSubTask(tasks, assertValues);
         }
         position++;
@@ -202,9 +227,9 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
     assertEquals(Failure, taskInfo.getTaskState());
     defaultUniverse.refresh();
-    assertEquals(2, defaultUniverse.version);
-    // In case of an exception, no task should be queued.
-    assertEquals(0, taskInfo.getSubTasks().size());
+    assertEquals(3, defaultUniverse.version);
+    // In case of an exception, only the ModifyBalckList task should be queued.
+    assertEquals(1, taskInfo.getSubTasks().size());
   }
 
   @Test
@@ -214,9 +239,9 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
     assertEquals(Failure, taskInfo.getTaskState());
     defaultUniverse.refresh();
-    assertEquals(2, defaultUniverse.version);
-    // In case of an exception, no task should be queued.
-    assertEquals(0, taskInfo.getSubTasks().size());
+    assertEquals(3, defaultUniverse.version);
+    // In case of an exception, only the ModifyBalckList task should be queued.
+    assertEquals(1, taskInfo.getSubTasks().size());
   }
 
   @Test
@@ -233,13 +258,14 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     int position = 0;
     List<TaskInfo> downloadTasks = subTasksByPosition.get(position++);
     assertTaskType(downloadTasks, TaskType.AnsibleConfigureServers);
-    assertEquals(3, downloadTasks.size());
+    assertEquals(4, downloadTasks.size());
     position = assertSequence(subTasksByPosition, MASTER, position, true);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.LoadBalancerStateChange);
-    position = assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false);
+    position =
+        assertCommonTasks(
+            subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE_TSERVER_ONLY, false);
     position = assertSequence(subTasksByPosition, TSERVER, position, true);
     assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true);
-    assertEquals(56, position);
+    assertEquals(65, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }
@@ -294,13 +320,14 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     int position = 0;
     List<TaskInfo> downloadTasks = subTasksByPosition.get(position++);
     assertTaskType(downloadTasks, TaskType.AnsibleConfigureServers);
-    assertEquals(6, downloadTasks.size());
+    assertEquals(7, downloadTasks.size());
     position = assertSequence(subTasksByPosition, MASTER, position, true);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.LoadBalancerStateChange);
-    position = assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false);
+    position =
+        assertCommonTasks(
+            subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE_TSERVER_ONLY, false);
     position = assertSequence(subTasksByPosition, TSERVER, position, true);
     assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true);
-    assertEquals(83, position);
+    assertEquals(101, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }
@@ -321,7 +348,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     int position = 0;
     List<TaskInfo> downloadTasks = subTasksByPosition.get(position++);
     assertTaskType(downloadTasks, TaskType.AnsibleConfigureServers);
-    assertEquals(3, downloadTasks.size());
+    assertEquals(4, downloadTasks.size());
     position = assertSequence(subTasksByPosition, MASTER, position, false);
     position = assertSequence(subTasksByPosition, TSERVER, position, false);
     assertCommonTasks(subTasksByPosition, position, UpgradeType.FULL_UPGRADE, true);

@@ -931,7 +931,7 @@
       "properties" : {
         "action" : {
           "description" : "Action",
-          "enum" : [ "RegisterSession", "CreateCloudProvider", "DeleteCloudProvider", "EditCloudProvider", "RefreshPricingCloudProvider", "CreateKubernetesCloudProvider", "BootstrapCloudProvider", "SetupDockerCloudProvider", "CreateRegion", "DeleteRegion", "CreateAvailabilityZone", "DeleteAvailabilityZone", "CreateInstance", "DeleteInstance", "CreateCustomerConfiguration", "EditCustomerConfiguration", "DeleteCustomerConfiguration", "CreateKmsConfiguration", "EditKmsConfiguration", "DeleteKmsConfiguration", "RetrieveKmsKey", "RemoveKmsKeyReferenceHistory", "DeleteCustomer", "UpsertFeaturesCustomer", "CreateRelease", "UpdateRelease", "UploadCertificate", "DeleteCertificate", "GetRootCertificate", "AddClientCertificate", "CreateAlertConfiguration", "EditAlertConfiguration", "DeleteAlertConfiguration", "CreateAlertChannel", "UpdateAlertChannel", "DeleteAlertChannel", "GetAlertDestination", "UpdateAlertDestination", "DeleteAlertDestination", "CreateMaintenanceWindow", "UpdateMaintenanceWindow", "DeleteMaintenanceWindow", "CreateAccessKey", "DeleteAccessKey", "CreateUniverse", "UpdateUniverse", "UpgradeUniverse", "DestroyUniverse", "ImportUniverse", "PauseUniverse", "ResumeUniverse", "RestartUniverse", "UpgradeSoftware", "UpgradeGFlags", "UpgradeCerts", "UpgradeTLS", "UpgradeVmImage", "UpgradeSystemd", "SetHelm3Compatible", "setBackupFlag", "setUniverseKey", "ToggleTls", "TlsConfigUpdate", "UpdateDiskSize", "CreateCluster", "DeleteCluster", "CreateAllClusters", "UpdatePrimaryCluster", "UpdateReadOnlyCluster", "CreateReadOnlyCluster", "DeleteReadOnlyCluster", "RunYsqlQuery", "EditXClusterConfig", "DeleteXClusterConfig", "SyncXClusterConfig", "CreateTable", "DropTable", "BulkImport", "CreateBackup", "CreateMultiTableBackup", "RestoreBackup", "DeleteBackups", "StopBackup", "EditBackup", "RetryTask", "CreateNodeInstance", "DeleteNodeInstance", "DetachedNodeInstanceAction", "NodeInstanceAction", "DeleteBackupSchedule", "CreateUser", "ChangeUserRole", "UpdateUserProfile", "DeleteUser" ],
+          "enum" : [ "Set", "Create", "Edit", "Update", "Delete", "Register", "Refresh", "Upload", "Upgrade", "Import", "Pause", "Resume", "Restart", "Abort", "Retry", "Restore", "Alter", "Drop", "Stop", "SyncXClusterConfig", "Login", "Promote", "Bootstrap", "Configure", "RefreshPricing", "UpgradeSoftware", "UpgradeGFlags", "ValidateGFlags", "UpgradeCerts", "UpgradeTLS", "UpgradeVmImage", "UpgradeSystemd", "ResizeNode", "AddMetrics", "CreateKubernetes", "SetupDocker", "RetrieveKmsKey", "RemoveKmsKeyReferenceHistory", "UpsertCustomerFeatures", "CreateSelfSignedCert", "UpdateEmptyCustomerCertificate", "GetRootCertificate", "AddClientCertificate", "SetDBCredentials", "CreateUserInDB", "SetHelm3Compatible", "SetBackupFlag", "SetUniverseKey", "ResetUniverseVersion", "ConfigUniverseAlert", "ToggleTls", "TlsConfigUpdate", "UpdateDiskSize", "CreateCluster", "DeleteCluster", "CreateAllClusters", "UpdatePrimaryCluster", "UpdateReadOnlyCluster", "CreateReadOnlyCluster", "DeleteReadOnlyCluster", "RunYsqlQuery", "BulkImport", "CreateMultiTableBackup", "CreateBackupSchedule", "EditBackupSchedule", "StartPeriodicBackup", "StopPeriodicBackup", "DetachedNodeInstanceAction", "NodeInstanceAction", "DeleteBackupSchedule", "ChangeUserRole", "ChangeUserPassword", "SetSecurity", "GenerateApiToken", "ResetSlowQueries", "ExternalScriptSchedule", "StopScheduledScript", "UpdateScheduledScript", "CreateInstanceType", "DeleteInstanceType" ],
           "example" : "Create User",
           "readOnly" : true,
           "type" : "string"
@@ -965,14 +965,13 @@
         },
         "target" : {
           "description" : "Target",
-          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "InstanceType", "CustomerConfig", "EncryptionAtRest", "Customer", "Release", "Certificate", "Alert", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "Schedule", "User" ],
+          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "Alert", "AlertChannel", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "GFlagsValidation" ],
           "example" : "User",
           "readOnly" : true,
           "type" : "string"
         },
-        "targetUUID" : {
-          "description" : "Target UUID",
-          "format" : "uuid",
+        "targetID" : {
+          "description" : "Target ID",
           "readOnly" : true,
           "type" : "string"
         },
@@ -4201,6 +4200,18 @@
       "required" : [ "nodes" ],
       "type" : "object"
     },
+    "Package" : {
+      "properties" : {
+        "arch" : {
+          "enum" : [ "x86_64", "arm64" ],
+          "type" : "string"
+        },
+        "path" : {
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
     "PackagePaths" : {
       "properties" : {
         "x86_64" : {
@@ -4416,6 +4427,10 @@
           "readOnly" : true,
           "type" : "boolean"
         },
+        "architecture" : {
+          "enum" : [ "x86_64", "arm64" ],
+          "type" : "string"
+        },
         "code" : {
           "description" : "Cloud provider region code",
           "example" : "us-west-2",
@@ -4556,6 +4571,13 @@
           "description" : "Release notes",
           "items" : {
             "type" : "string"
+          },
+          "type" : "array"
+        },
+        "packages" : {
+          "description" : "Release packages",
+          "items" : {
+            "$ref" : "#/definitions/Package"
           },
           "type" : "array"
         },
@@ -8386,7 +8408,7 @@
       },
       "post" : {
         "description" : "",
-        "operationId" : "createbackup",
+        "operationId" : "createBackupV2",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -8413,14 +8435,14 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Create a backup",
+        "summary" : "Create a backup V2",
         "tags" : [ "Table management" ]
       }
     },
     "/api/v1/customers/{cUUID}/backups/page" : {
       "post" : {
         "description" : "",
-        "operationId" : "pageBackupList",
+        "operationId" : "listBackupsV2",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -8446,14 +8468,14 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List Backups (paginated)",
+        "summary" : "List Backups (paginated) V2",
         "tags" : [ "Backups" ]
       }
     },
     "/api/v1/customers/{cUUID}/backups/{backupUUID}" : {
       "get" : {
         "description" : "",
-        "operationId" : "get",
+        "operationId" : "getBackupV2",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -8478,12 +8500,12 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Get Backup",
+        "summary" : "Get Backup V2",
         "tags" : [ "Backups" ]
       },
       "put" : {
         "description" : "Edit a backup",
-        "operationId" : "editBackup",
+        "operationId" : "editBackupV2",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -8516,7 +8538,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Edit a backup",
+        "summary" : "Edit a backup V2",
         "tags" : [ "Backups" ]
       }
     },
@@ -9100,7 +9122,7 @@
     "/api/v1/customers/{cUUID}/create_backup_schedule" : {
       "post" : {
         "description" : "",
-        "operationId" : "createbackupSchedule",
+        "operationId" : "createBackupScheduleV2",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -9127,7 +9149,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Create Backup Schedule",
+        "summary" : "Create Backup Schedule V2",
         "tags" : [ "Table management" ]
       }
     },
@@ -10294,6 +10316,53 @@
         "tags" : [ "Region management" ]
       }
     },
+    "/api/v1/customers/{cUUID}/providers/{pUUID}/regions/{rUUID}/releases" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "getListOfRegionReleases",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "pUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "rUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "default" : false,
+          "in" : "query",
+          "name" : "includeMetadata",
+          "required" : false,
+          "type" : "boolean"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "additionalProperties" : {
+                "type" : "object"
+              },
+              "type" : "object"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List all releases valid in region",
+        "tags" : [ "Release management" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/regions/{rUUID}/zones" : {
       "get" : {
         "description" : "",
@@ -10617,7 +10686,7 @@
     "/api/v1/customers/{cUUID}/restore" : {
       "post" : {
         "description" : "",
-        "operationId" : "restoreBackup",
+        "operationId" : "restoreBackupV2",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -10644,7 +10713,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Restore from a backup",
+        "summary" : "Restore from a backup V2",
         "tags" : [ "Backups" ]
       }
     },
@@ -10861,7 +10930,7 @@
     "/api/v1/customers/{cUUID}/schedules/page" : {
       "post" : {
         "description" : "",
-        "operationId" : "pageScheduleList",
+        "operationId" : "listSchedulesV2",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -10887,7 +10956,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List schedules",
+        "summary" : "List schedules V2",
         "tags" : [ "Schedule management" ]
       }
     },
@@ -10954,7 +11023,7 @@
       },
       "put" : {
         "description" : "",
-        "operationId" : "editBackupSchedule",
+        "operationId" : "editBackupScheduleV2",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -10986,7 +11055,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Edit a backup schedule",
+        "summary" : "Edit a backup schedule V2",
         "tags" : [ "Schedule management" ]
       }
     },
@@ -11043,9 +11112,6 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "additionalProperties" : {
-                "type" : "object"
-              },
               "type" : "object"
             }
           }

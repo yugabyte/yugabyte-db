@@ -54,7 +54,9 @@ class DocPgsqlScanSpec : public PgsqlScanSpec {
                    boost::optional<int32_t> max_hash_code,
                    const PgsqlExpressionPB *where_expr,
                    const DocKey& start_doc_key = DefaultStartDocKey(),
-                   bool is_forward_scan = true);
+                   bool is_forward_scan = true,
+                   const DocKey& lower_doc_key = DefaultStartDocKey(),
+                   const DocKey& upper_doc_key = DefaultStartDocKey());
 
   //------------------------------------------------------------------------------------------------
   // Access funtions.

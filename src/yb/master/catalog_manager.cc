@@ -5653,11 +5653,13 @@ Result<TabletInfoPtr> CatalogManager::RegisterNewTabletForSplit(
   // - Crash or leader failover before sending out the split tasks.
   // - Long enough partition while trying to send out the splits so that they timeout and
   //   not get executed.
+  int new_partition_list_version;
   {
     LockGuard lock(mutex_);
 
     auto& table_pb = table_write_lock->mutable_data()->pb;
-    table_pb.set_partition_list_version(table_pb.partition_list_version() + 1);
+    new_partition_list_version = table_pb.partition_list_version() + 1;
+    table_pb.set_partition_list_version(new_partition_list_version);
 
     tablet_write_lock->mutable_data()->pb.add_split_tablet_ids(new_tablet->id());
     RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), table, new_tablet, source_tablet_info));
@@ -5676,7 +5678,8 @@ Result<TabletInfoPtr> CatalogManager::RegisterNewTabletForSplit(
             << " (" << AsString(partition) << ") to split the tablet "
             << source_tablet_info->tablet_id()
             << " (" << AsString(source_tablet_meta.partition())
-            << ") for table " << table->ToString();
+            << ") for table " << table->ToString()
+            << ", new partition_list_version: " << new_partition_list_version;
 
   return new_tablet;
 }

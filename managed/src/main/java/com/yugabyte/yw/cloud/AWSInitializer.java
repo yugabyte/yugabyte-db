@@ -33,6 +33,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.InstanceType;
@@ -127,8 +128,8 @@ public class AWSInitializer extends AbstractInitializer {
       JsonNode onDemandJson = regionJson.get("terms").get("OnDemand");
 
       storeEBSPriceComponents(context, productDetailsListJson, onDemandJson);
-      storeInstancePriceComponents(context, productDetailsListJson, onDemandJson);
-      parseProductDetailsList(context, productDetailsListJson);
+      storeInstancePriceComponents(context, productDetailsListJson, onDemandJson, region);
+      parseProductDetailsList(context, productDetailsListJson, region);
 
       // Create the instance types.
       storeInstanceTypeInfoToDB(context);
@@ -273,10 +274,15 @@ public class AWSInitializer extends AbstractInitializer {
    *
    * @param productDetailsListJson Products sub-document with list of EC2 products along with SKU.
    * @param onDemandJson Price details json object.
+   * @param region The region instance type is in.
    */
   private void storeInstancePriceComponents(
-      InitializationContext context, JsonNode productDetailsListJson, JsonNode onDemandJson) {
+      InitializationContext context,
+      JsonNode productDetailsListJson,
+      JsonNode onDemandJson,
+      Region region) {
 
+    Architecture regionArch = region.getArchitecture();
     // Get SKUs associated with Instances
     LOG.info("Parsing product details list to store pricing info");
     for (JsonNode productDetailsJson : productDetailsListJson) {
@@ -308,6 +314,12 @@ public class AWSInitializer extends AbstractInitializer {
       // Make sure instance type is supported.
       include &= isInstanceTypeSupported(productAttrs);
 
+      // Make sure architecture matches.
+      if (regionArch == Architecture.x86_64) {
+        include &= matches(productAttrs, "physicalProcessor", FilterOp.Contains, "Intel");
+      } else if (regionArch == Architecture.arm64) {
+        include &= matches(productAttrs, "physicalProcessor", FilterOp.Contains, "Graviton");
+      }
       if (include) {
         JsonNode attributesJson = productDetailsJson.get("attributes");
         storeInstancePriceComponent(
@@ -392,11 +404,13 @@ public class AWSInitializer extends AbstractInitializer {
    * "preInstalledSw" : "NA" } }
    *
    * @param productDetailsListJson A JSON blob as described above.
+   * @param region The region EC2 product is in.
    */
   private void parseProductDetailsList(
-      InitializationContext context, JsonNode productDetailsListJson) {
+      InitializationContext context, JsonNode productDetailsListJson, Region region) {
     LOG.info("Parsing product details list");
     Iterator<JsonNode> productDetailsListIter = productDetailsListJson.elements();
+    Architecture regionArch = region.getArchitecture();
     while (productDetailsListIter.hasNext()) {
       JsonNode productDetailsJson = productDetailsListIter.next();
 
@@ -427,6 +441,13 @@ public class AWSInitializer extends AbstractInitializer {
       include &= matches(productAttrs, "preInstalledSw", FilterOp.Equals, "NA");
       // Make sure instance type is supported.
       include &= isInstanceTypeSupported(productAttrs);
+
+      // Make sure architecture matches.
+      if (regionArch == Architecture.x86_64) {
+        include &= matches(productAttrs, "physicalProcessor", FilterOp.Contains, "Intel");
+      } else if (regionArch == Architecture.arm64) {
+        include &= matches(productAttrs, "physicalProcessor", FilterOp.Contains, "Graviton");
+      }
 
       if (!include) {
         if (enableVerboseLogging) {

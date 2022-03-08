@@ -19,7 +19,7 @@ showAsideToc: true
 
 Yugabyte Cloud is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on Google Cloud Platform (GCP), Amazon Web Services (AWS), and Microsoft Azure (coming soon).
 
-You access your Yugabyte Cloud clusters via [YSQL](../../api/ysql/) and [YCQL](../../api/ycql/) client APIs, and administer your clusters using the Yugabyte Cloud console.
+You access your Yugabyte Cloud clusters via [YSQL](../../api/ysql/) and [YCQL](../../api/ycql/) client APIs, and administer your clusters using [Yugabyte Cloud](https://cloud.yugabyte.com/login).
 
 See also [Yugabyte Cloud](https://www.yugabyte.com/cloud/) at yugabyte.com.
 
@@ -79,8 +79,8 @@ Currently self-service migration is not supported. Contact [Yugabyte Support](ht
 
 Upgrades are automatically handled by Yugabyte. There are two types of upgrades:
 
-Cloud console
-: During a maintenance window, the Yugabyte Cloud console may be in read-only mode and not allow any edit changes. The upgrade has no impact on running clusters. We'll notify you in advance of the maintenance schedule.
+Yugabyte Cloud
+: During a maintenance window, Yugabyte Cloud may be in read-only mode and not allow any edit changes. The upgrade has no impact on running clusters. We'll notify you in advance of the maintenance schedule.
 
 Cluster (YugabyteDB) version upgrade
 : To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte will upgrade your cluster to the [latest version](#what-version-of-yugabytedb-does-my-cluster-run-on).
@@ -94,9 +94,9 @@ Cluster (YugabyteDB) version upgrade
 
 ### What version of YugabyteDB does my cluster run on?
 
-Free clusters are provisioned with an **edge** release, most often from the YugabyteDB [latest release](../../releases/latest-release/) series; it may also be a recent stable release.
+Free clusters are provisioned with an **edge** release, most often from the YugabyteDB [latest release](../../releases/release-notes/latest-release/) series; it may also be a recent stable release.
 
-By default, new standard clusters are provisioned with a **stable** release, from the YugabyteDB [stable release](../../releases/stable-release/) series. <!--You can choose the edge track when you create the cluster.-->
+By default, new standard clusters are provisioned with a **stable** release, from the YugabyteDB [stable release](../../releases/release-notes/stable-release/) series. <!--You can choose the edge track when you create the cluster.-->
 
 Once a cluster is created, it is upgraded with releases from the release track that was assigned at creation (that is, either edge or stable).
 
@@ -140,7 +140,7 @@ Yugabyte Cloud uses a shared responsibility model for cloud security. For more i
 
 ### What cluster configurations can I create?
 
-From the cloud console you can create single region clusters that can be deployed across multiple and single availability zones.
+Using Yugabyte Cloud, you can create single region clusters that can be deployed across multiple and single availability zones.
 
 The Fault Tolerance of a cluster determines how resilient the cluster is to node and cloud zone failures and, by extension, the cluster configuration. You can configure clusters with the following fault tolerances in Yugabyte Cloud:
 
