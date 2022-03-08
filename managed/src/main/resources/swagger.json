@@ -931,7 +931,7 @@
       "properties" : {
         "action" : {
           "description" : "Action",
-          "enum" : [ "RegisterSession", "CreateCloudProvider", "DeleteCloudProvider", "EditCloudProvider", "RefreshPricingCloudProvider", "CreateKubernetesCloudProvider", "BootstrapCloudProvider", "SetupDockerCloudProvider", "CreateRegion", "DeleteRegion", "CreateAvailabilityZone", "DeleteAvailabilityZone", "CreateInstance", "DeleteInstance", "CreateCustomerConfiguration", "EditCustomerConfiguration", "DeleteCustomerConfiguration", "CreateKmsConfiguration", "EditKmsConfiguration", "DeleteKmsConfiguration", "RetrieveKmsKey", "RemoveKmsKeyReferenceHistory", "DeleteCustomer", "UpsertFeaturesCustomer", "CreateRelease", "UpdateRelease", "UploadCertificate", "DeleteCertificate", "GetRootCertificate", "AddClientCertificate", "CreateAlertConfiguration", "EditAlertConfiguration", "DeleteAlertConfiguration", "CreateAlertChannel", "UpdateAlertChannel", "DeleteAlertChannel", "GetAlertDestination", "UpdateAlertDestination", "DeleteAlertDestination", "CreateMaintenanceWindow", "UpdateMaintenanceWindow", "DeleteMaintenanceWindow", "CreateAccessKey", "DeleteAccessKey", "CreateUniverse", "UpdateUniverse", "UpgradeUniverse", "DestroyUniverse", "ImportUniverse", "PauseUniverse", "ResumeUniverse", "RestartUniverse", "UpgradeSoftware", "UpgradeGFlags", "UpgradeCerts", "UpgradeTLS", "UpgradeVmImage", "UpgradeSystemd", "SetHelm3Compatible", "setBackupFlag", "setUniverseKey", "ToggleTls", "TlsConfigUpdate", "UpdateDiskSize", "CreateCluster", "DeleteCluster", "CreateAllClusters", "UpdatePrimaryCluster", "UpdateReadOnlyCluster", "CreateReadOnlyCluster", "DeleteReadOnlyCluster", "RunYsqlQuery", "EditXClusterConfig", "DeleteXClusterConfig", "SyncXClusterConfig", "CreateTable", "DropTable", "BulkImport", "CreateBackup", "CreateMultiTableBackup", "RestoreBackup", "DeleteBackups", "StopBackup", "EditBackup", "RetryTask", "CreateNodeInstance", "DeleteNodeInstance", "DetachedNodeInstanceAction", "NodeInstanceAction", "DeleteBackupSchedule", "CreateUser", "ChangeUserRole", "UpdateUserProfile", "DeleteUser" ],
+          "enum" : [ "Set", "Create", "Edit", "Update", "Delete", "Register", "Refresh", "Upload", "Upgrade", "Import", "Pause", "Resume", "Restart", "Abort", "Retry", "Restore", "Alter", "Drop", "Stop", "SyncXClusterConfig", "Login", "Promote", "Bootstrap", "Configure", "RefreshPricing", "UpgradeSoftware", "UpgradeGFlags", "ValidateGFlags", "UpgradeCerts", "UpgradeTLS", "UpgradeVmImage", "UpgradeSystemd", "ResizeNode", "AddMetrics", "CreateKubernetes", "SetupDocker", "RetrieveKmsKey", "RemoveKmsKeyReferenceHistory", "UpsertCustomerFeatures", "CreateSelfSignedCert", "UpdateEmptyCustomerCertificate", "GetRootCertificate", "AddClientCertificate", "SetDBCredentials", "CreateUserInDB", "SetHelm3Compatible", "SetBackupFlag", "SetUniverseKey", "ResetUniverseVersion", "ConfigUniverseAlert", "ToggleTls", "TlsConfigUpdate", "UpdateDiskSize", "CreateCluster", "DeleteCluster", "CreateAllClusters", "UpdatePrimaryCluster", "UpdateReadOnlyCluster", "CreateReadOnlyCluster", "DeleteReadOnlyCluster", "RunYsqlQuery", "BulkImport", "CreateMultiTableBackup", "CreateBackupSchedule", "EditBackupSchedule", "StartPeriodicBackup", "StopPeriodicBackup", "DetachedNodeInstanceAction", "NodeInstanceAction", "DeleteBackupSchedule", "ChangeUserRole", "ChangeUserPassword", "SetSecurity", "GenerateApiToken", "ResetSlowQueries", "ExternalScriptSchedule", "StopScheduledScript", "UpdateScheduledScript", "CreateInstanceType", "DeleteInstanceType" ],
           "example" : "Create User",
           "readOnly" : true,
           "type" : "string"
@@ -965,14 +965,13 @@
         },
         "target" : {
           "description" : "Target",
-          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "InstanceType", "CustomerConfig", "EncryptionAtRest", "Customer", "Release", "Certificate", "Alert", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "Schedule", "User" ],
+          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "Alert", "AlertChannel", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "GFlagsValidation" ],
           "example" : "User",
           "readOnly" : true,
           "type" : "string"
         },
-        "targetUUID" : {
-          "description" : "Target UUID",
-          "format" : "uuid",
+        "targetID" : {
+          "description" : "Target ID",
           "readOnly" : true,
           "type" : "string"
         },
@@ -4201,6 +4200,18 @@
       "required" : [ "nodes" ],
       "type" : "object"
     },
+    "Package" : {
+      "properties" : {
+        "arch" : {
+          "enum" : [ "x86_64", "arm64" ],
+          "type" : "string"
+        },
+        "path" : {
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
     "PackagePaths" : {
       "properties" : {
         "x86_64" : {
@@ -4416,6 +4427,10 @@
           "readOnly" : true,
           "type" : "boolean"
         },
+        "architecture" : {
+          "enum" : [ "x86_64", "arm64" ],
+          "type" : "string"
+        },
         "code" : {
           "description" : "Cloud provider region code",
           "example" : "us-west-2",
@@ -4556,6 +4571,13 @@
           "description" : "Release notes",
           "items" : {
             "type" : "string"
+          },
+          "type" : "array"
+        },
+        "packages" : {
+          "description" : "Release packages",
+          "items" : {
+            "$ref" : "#/definitions/Package"
           },
           "type" : "array"
         },
@@ -10172,6 +10194,53 @@
         } ],
         "summary" : "Refresh pricing",
         "tags" : [ "Cloud providers" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/providers/{pUUID}/region/{rUUID}/releases/" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "getListOfRegionReleases",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "pUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "rUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "default" : false,
+          "in" : "query",
+          "name" : "includeMetadata",
+          "required" : false,
+          "type" : "boolean"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "additionalProperties" : {
+                "type" : "object"
+              },
+              "type" : "object"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List all releases valid in region",
+        "tags" : [ "Release management" ]
       }
     },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/regions" : {

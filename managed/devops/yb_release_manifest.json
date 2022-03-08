@@ -31,7 +31,8 @@
     "bin/yb_platform_backup.sh",
     "bin/ybcloud.sh",
     "bin/edit_universe_details.py",
-    "bin/filtered_logs.sh"
+    "bin/filtered_logs.sh",
+    "bin/node_utils.sh"
   ],
   "filter_plugins": [
     "filter_plugins/*"
