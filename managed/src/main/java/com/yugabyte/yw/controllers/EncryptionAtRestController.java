@@ -27,6 +27,7 @@ import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.KmsConfig;
@@ -233,7 +234,9 @@ public class EncryptionAtRestController extends AuthenticatedController {
       LOG.info(
           "Saved task uuid " + taskUUID + " in customer tasks table for customer: " + customerUUID);
 
-      auditService().createAuditEntry(ctx(), request(), formData);
+      auditService()
+          .createAuditEntryWithReqBody(
+              ctx(), Audit.TargetType.KMSConfig, null, Audit.ActionType.Create, formData, taskUUID);
       return new YBPTask(taskUUID).asResult();
     } catch (Exception e) {
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
@@ -292,7 +295,14 @@ public class EncryptionAtRestController extends AuthenticatedController {
           taskParams.getName());
       LOG.info(
           "Saved task uuid " + taskUUID + " in customer tasks table for customer: " + customerUUID);
-      auditService().createAuditEntry(ctx(), request(), formData);
+      auditService()
+          .createAuditEntryWithReqBody(
+              ctx(),
+              Audit.TargetType.KMSConfig,
+              configUUID.toString(),
+              Audit.ActionType.Edit,
+              formData,
+              taskUUID);
       return new YBPTask(taskUUID).asResult();
     } catch (Exception e) {
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
@@ -382,7 +392,13 @@ public class EncryptionAtRestController extends AuthenticatedController {
           taskParams.getName());
       LOG.info(
           "Saved task uuid " + taskUUID + " in customer tasks table for customer: " + customerUUID);
-      auditService().createAuditEntry(ctx(), request());
+      auditService()
+          .createAuditEntryWithReqBody(
+              ctx(),
+              Audit.TargetType.KMSConfig,
+              configUUID.toString(),
+              Audit.ActionType.Delete,
+              taskUUID);
       return new YBPTask(taskUUID).asResult();
     } catch (Exception e) {
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
@@ -406,7 +422,13 @@ public class EncryptionAtRestController extends AuthenticatedController {
         Json.newObject()
             .put("reference", keyRef)
             .put("value", Base64.getEncoder().encodeToString(recoveredKey));
-    auditService().createAuditEntry(ctx(), request(), formData);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.RetrieveKmsKey,
+            formData);
     return PlatformResults.withRawData(result);
   }
 
@@ -449,7 +471,12 @@ public class EncryptionAtRestController extends AuthenticatedController {
             "Removing key ref for customer %s with universe %s",
             customerUUID.toString(), universeUUID.toString()));
     keyManager.cleanupEncryptionAtRest(customerUUID, universeUUID);
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.RemoveKmsKeyReferenceHistory);
     return YBPSuccess.withMessage("Key ref was successfully removed");
   }
 

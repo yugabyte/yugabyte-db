@@ -230,7 +230,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     ArrayNode nodeDetailJson = (ArrayNode) json.get("nodeDetailsSet");
     assertEquals(15, nodeDetailJson.size());
     assertTrue(areConfigObjectsEqual(nodeDetailJson, azUUIDToNumNodeMap));
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -336,7 +336,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     ArrayNode nodeDetailJson = (ArrayNode) json.get("nodeDetailsSet");
     assertEquals(nodeDetailJson.size(), totalNumNodesAfterExpand);
     assertTrue(areConfigObjectsEqual(nodeDetailJson, azUuidToNumNodes));
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -357,7 +357,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     ObjectNode topJson = (ObjectNode) Json.toJson(taskParams);
     Result result = sendPrimaryCreateConfigureRequest(topJson);
     assertOk(result);
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test

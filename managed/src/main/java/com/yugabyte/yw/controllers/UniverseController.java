@@ -8,6 +8,7 @@ import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import io.swagger.annotations.Api;
@@ -65,7 +66,13 @@ public class UniverseController extends AuthenticatedController {
     UUID taskUUID =
         universeCRUDHandler.destroy(
             customer, universe, isForceDelete, isDeleteBackups, isDeleteAssociatedCerts);
-    auditService().createAuditEntry(ctx(), request(), taskUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.Delete,
+            taskUUID);
     return new YBPTask(taskUUID, universe.universeUUID).asResult();
   }
 }

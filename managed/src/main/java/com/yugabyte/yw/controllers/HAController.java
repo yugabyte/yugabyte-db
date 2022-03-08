@@ -16,8 +16,11 @@ import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.forms.HAConfigFormData;
 import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
+
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -45,7 +48,13 @@ public class HAController extends AuthenticatedController {
       }
 
       HighAvailabilityConfig config = HighAvailabilityConfig.create(formData.get().cluster_key);
-
+      auditService()
+          .createAuditEntryWithReqBody(
+              ctx(),
+              Audit.TargetType.HAConfig,
+              Objects.toString(config.getUUID(), null),
+              Audit.ActionType.Create,
+              Json.toJson(formData));
       return PlatformResults.withData(config);
     } catch (Exception e) {
       LOG.error("Error creating HA config", e);
@@ -85,7 +94,13 @@ public class HAController extends AuthenticatedController {
       replicationManager.stop();
       HighAvailabilityConfig.update(config.get(), formData.get().cluster_key);
       replicationManager.start();
-
+      auditService()
+          .createAuditEntryWithReqBody(
+              ctx(),
+              Audit.TargetType.HAConfig,
+              configUUID.toString(),
+              Audit.ActionType.Edit,
+              Json.toJson(formData));
       return PlatformResults.withData(config);
     } catch (Exception e) {
       LOG.error("Error updating cluster key", e);
@@ -111,7 +126,9 @@ public class HAController extends AuthenticatedController {
       // Stop the backup schedule.
       replicationManager.stopAndDisable();
       HighAvailabilityConfig.delete(configUUID);
-
+      auditService()
+          .createAuditEntryWithReqBody(
+              ctx(), Audit.TargetType.HAConfig, configUUID.toString(), Audit.ActionType.Delete);
       return ok();
     } catch (Exception e) {
       LOG.error("Error deleting HA config", e);

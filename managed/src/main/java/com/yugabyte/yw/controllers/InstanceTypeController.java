@@ -20,6 +20,7 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
@@ -183,7 +184,13 @@ public class InstanceTypeController extends AuthenticatedController {
             formData.get().numCores,
             formData.get().memSizeGB,
             formData.get().instanceTypeDetails);
-    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.rawData()));
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.CloudProvider,
+            providerUUID.toString(),
+            Audit.ActionType.CreateInstanceType,
+            Json.toJson(formData.rawData()));
     return PlatformResults.withData(it);
   }
 
@@ -204,7 +211,13 @@ public class InstanceTypeController extends AuthenticatedController {
     InstanceType instanceType = InstanceType.getOrBadRequest(provider.uuid, instanceTypeCode);
     instanceType.setActive(false);
     instanceType.save();
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.CloudProvider,
+            providerUUID.toString(),
+            Audit.ActionType.DeleteInstanceType,
+            request().body().asJson());
     return YBPSuccess.empty();
   }
 

@@ -16,6 +16,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.filters.ScheduleApiFilter;
 import com.yugabyte.yw.forms.paging.SchedulePagedApiQuery;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Schedule.State;
@@ -102,7 +103,9 @@ public class ScheduleController extends AuthenticatedController {
 
     schedule.stopSchedule();
 
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(), Audit.TargetType.Schedule, scheduleUUID.toString(), Audit.ActionType.Delete);
     return YBPSuccess.empty();
   }
 
@@ -143,7 +146,13 @@ public class ScheduleController extends AuthenticatedController {
         schedule.updateCronExpression(params.cronExpression);
       }
     }
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Schedule,
+            scheduleUUID.toString(),
+            Audit.ActionType.Edit,
+            request().body().asJson());
     return PlatformResults.withData(schedule);
   }
 
@@ -160,7 +169,9 @@ public class ScheduleController extends AuthenticatedController {
     schedule.stopSchedule();
     ScheduleTask.getAllTasks(scheduleUUID).forEach((scheduleTask) -> scheduleTask.delete());
     schedule.delete();
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(), Audit.TargetType.Schedule, scheduleUUID.toString(), Audit.ActionType.Delete);
     return YBPSuccess.empty();
   }
 }

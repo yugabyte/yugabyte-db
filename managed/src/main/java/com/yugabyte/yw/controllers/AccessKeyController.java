@@ -13,6 +13,7 @@ import com.yugabyte.yw.forms.AccessKeyFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -24,6 +25,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -144,7 +146,13 @@ public class AccessKeyController extends AuthenticatedController {
           formData.get().nodeExporterPort,
           formData.get().nodeExporterUser);
     }
-    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.AccessKey,
+            Objects.toString(accessKey.idKey, null),
+            Audit.ActionType.Create,
+            Json.toJson(formData.rawData()));
     return PlatformResults.withData(accessKey);
   }
 
@@ -160,7 +168,12 @@ public class AccessKeyController extends AuthenticatedController {
         "Deleting access key {} for customer {}, provider {}", keyCode, customerUUID, providerUUID);
 
     accessKey.deleteOrThrow();
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.AccessKey,
+            Objects.toString(accessKey.idKey, null),
+            Audit.ActionType.Delete);
     return withMessage("Deleted KeyCode: " + keyCode);
   }
 }

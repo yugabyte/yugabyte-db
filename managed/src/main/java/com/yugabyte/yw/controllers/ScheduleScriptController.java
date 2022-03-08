@@ -15,6 +15,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
@@ -28,6 +29,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import org.apache.commons.lang3.math.NumberUtils;
 import play.mvc.Http;
@@ -84,7 +86,12 @@ public class ScheduleScriptController extends AuthenticatedController {
     // Inserting the set of keys in synchronized way as they are interconnected and the task in
     // execution should not pick up partially inserted keys.
     Util.setLockedMultiKeyConfig(config, configKeysMap);
-
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.ScheduledScript,
+            Objects.toString(schedule.scheduleUUID, null),
+            Audit.ActionType.ExternalScriptSchedule);
     return PlatformResults.withData(schedule);
   }
 
@@ -110,6 +117,12 @@ public class ScheduleScriptController extends AuthenticatedController {
         Arrays.asList(PLT_EXT_SCRIPT_CONTENT, PLT_EXT_SCRIPT_PARAM, PLT_EXT_SCRIPT_SCHEDULE);
     // Deleting the set of keys in synchronized way as they are interconnected and the task in
     // execution should not call partially deleted set of keys.
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.ScheduledScript,
+            Objects.toString(schedule.scheduleUUID, null),
+            Audit.ActionType.StopScheduledScript);
     Util.deleteLockedMultiKeyConfig(config, configKeysList);
     return PlatformResults.withData(schedule);
   }
@@ -153,6 +166,12 @@ public class ScheduleScriptController extends AuthenticatedController {
     // Inserting the set of keys in synchronized way as they are interconnected and the task in
     // execution should not extract partially inserted keys.
     Util.setLockedMultiKeyConfig(config, configKeysMap);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.ScheduledScript,
+            Objects.toString(schedule.scheduleUUID, null),
+            Audit.ActionType.UpdateScheduledScript);
     return PlatformResults.withData(schedule);
   }
 

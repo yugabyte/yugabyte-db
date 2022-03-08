@@ -22,6 +22,7 @@ import com.yugabyte.yw.forms.RuntimeConfigFormData;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ConfigEntry;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
@@ -221,7 +222,13 @@ public class RuntimeConfController extends AuthenticatedController {
         (logValue.length() < 50 ? logValue : "[long value hidden]"),
         logValue.length());
     getMutableRuntimeConfigForScopeOrFail(customerUUID, scopeUUID).setValue(path, newValue);
-
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.RuntimeConfigKey,
+            scopeUUID.toString() + ":" + path,
+            Audit.ActionType.Update,
+            request().body().asJson());
     return YBPSuccess.empty();
   }
 
@@ -231,6 +238,12 @@ public class RuntimeConfController extends AuthenticatedController {
       throw new PlatformServiceException(NOT_FOUND, "No mutable key found: " + path);
 
     getMutableRuntimeConfigForScopeOrFail(customerUUID, scopeUUID).deleteEntry(path);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.RuntimeConfigKey,
+            scopeUUID.toString() + ":" + path,
+            Audit.ActionType.Delete);
     return YBPSuccess.empty();
   }
 

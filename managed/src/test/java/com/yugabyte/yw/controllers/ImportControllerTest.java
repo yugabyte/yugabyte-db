@@ -285,7 +285,7 @@ public class ImportControllerTest extends CommissionerBaseTest {
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "Could not parse host:port from masterAddresseses: incorrect_format");
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -300,7 +300,7 @@ public class ImportControllerTest extends CommissionerBaseTest {
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "Valid universe uuid needs to be set.");
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -326,6 +326,6 @@ public class ImportControllerTest extends CommissionerBaseTest {
     assertEquals(universe.getUniverseDetails().importedState, ImportedState.STARTED);
     assertEquals(universe.getUniverseDetails().capability, Capability.READ_ONLY);
     assertFalse(universe.getUniverseDetails().isUniverseEditable());
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(0, customer.uuid);
   }
 }

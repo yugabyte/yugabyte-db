@@ -23,6 +23,7 @@ import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.RunQueryFormData;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import io.swagger.annotations.Api;
@@ -54,8 +55,14 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
         universe,
         formFactory.getFormDataOrBadRequest(DatabaseSecurityFormData.class).get());
 
-    // TODO: Missing Audit
-    return withMessage("Updated security in DB.");
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.SetDBCredentials,
+            request().body().asJson());
+    return withMessage("Created user in DB.");
   }
 
   @ApiOperation(
@@ -71,7 +78,13 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
 
     universeYbDbAdminHandler.createUserInDB(customer, universe, data);
 
-    // TODO: Missing Audit
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.CreateUserInDB,
+            Json.toJson(data));
     return withMessage("Created user in DB.");
   }
 
@@ -105,7 +118,13 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
 
     JsonNode queryResult =
         universeYbDbAdminHandler.validateRequestAndExecuteQuery(universe, formData.get());
-    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.RunYsqlQuery,
+            Json.toJson(formData.data()));
     return PlatformResults.withRawData(queryResult);
   }
 }

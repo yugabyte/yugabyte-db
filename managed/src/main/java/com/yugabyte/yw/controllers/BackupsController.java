@@ -27,6 +27,7 @@ import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.filters.BackupApiFilter;
 import com.yugabyte.yw.forms.paging.BackupPagedApiQuery;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Customer;
@@ -50,6 +51,7 @@ import io.swagger.annotations.ApiResponses;
 import io.swagger.annotations.Authorization;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -353,7 +355,14 @@ public class BackupsController extends AuthenticatedController {
         CustomerTask.TaskType.Restore,
         taskParams.toString());
 
-    auditService().createAuditEntry(ctx(), request(), Json.toJson(taskParams), taskUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.RestoreBackup,
+            Json.toJson(taskParams),
+            taskUUID);
     return new YBPTask(taskUUID).asResult();
   }
 
@@ -461,7 +470,14 @@ public class BackupsController extends AuthenticatedController {
       }
     }
 
-    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.RestoreBackup,
+            Json.toJson(formData),
+            taskUUID);
     return new YBPTask(taskUUID).asResult();
   }
 
@@ -501,7 +517,14 @@ public class BackupsController extends AuthenticatedController {
               CustomerTask.TaskType.Delete,
               "Backup");
           taskList.add(new YBPTask(taskUUID, taskParams.backupUUID));
-          auditService().createAuditEntry(ctx(), request(), taskUUID);
+          auditService()
+              .createAuditEntryWithReqBody(
+                  ctx(),
+                  Audit.TargetType.Backup,
+                  Objects.toString(backup.backupUUID, null),
+                  Audit.ActionType.Delete,
+                  Json.toJson(formData),
+                  taskUUID);
         }
       }
     }
@@ -548,7 +571,14 @@ public class BackupsController extends AuthenticatedController {
               CustomerTask.TaskType.Delete,
               "Backup");
           taskList.add(new YBPTask(taskUUID, taskParams.backupUUID));
-          auditService().createAuditEntry(ctx(), request(), taskUUID);
+          auditService()
+              .createAuditEntryWithReqBody(
+                  ctx(),
+                  Audit.TargetType.Backup,
+                  Objects.toString(backup.backupUUID, null),
+                  Audit.ActionType.Delete,
+                  request().body().asJson(),
+                  taskUUID);
         }
       }
     }
@@ -583,7 +613,12 @@ public class BackupsController extends AuthenticatedController {
       LOG.info("Error while waiting for the backup task to get finished.");
     }
     backup.transitionState(BackupState.Stopped);
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Backup,
+            Objects.toString(backup.backupUUID, null),
+            Audit.ActionType.Stop);
     return YBPSuccess.withMessage("Successfully stopped the backup process.");
   }
 
@@ -615,7 +650,13 @@ public class BackupsController extends AuthenticatedController {
     }
     backup.updateExpiryTime(taskParams.timeBeforeDeleteFromPresentInMillis);
 
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Backup,
+            Objects.toString(backup.backupUUID, null),
+            Audit.ActionType.Edit,
+            request().body().asJson());
     return PlatformResults.withData(backup);
   }
 

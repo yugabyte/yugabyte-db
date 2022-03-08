@@ -23,6 +23,7 @@ import com.yugabyte.yw.forms.XClusterConfigEditFormData;
 import com.yugabyte.yw.forms.XClusterConfigGetResp;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.CustomerTask.TargetType;
@@ -40,6 +41,7 @@ import java.time.Instant;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -116,7 +118,14 @@ public class XClusterConfigController extends AuthenticatedController {
 
     log.info("Submitted create XClusterConfig({}), task {}", xClusterConfig.uuid, taskUUID);
 
-    auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.XClusterConfig,
+            Objects.toString(xClusterConfig.uuid, null),
+            Audit.ActionType.Create,
+            Json.toJson(createFormData),
+            taskUUID);
     return new YBPTask(taskUUID, xClusterConfig.uuid).asResult();
   }
 
@@ -232,7 +241,14 @@ public class XClusterConfigController extends AuthenticatedController {
 
     log.info("Submitted edit XClusterConfig({}), task {}", xClusterConfig.uuid, taskUUID);
 
-    auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.XClusterConfig,
+            xclusterConfigUUID.toString(),
+            Audit.ActionType.Edit,
+            Json.toJson(editFormData),
+            taskUUID);
     return new YBPTask(taskUUID, xClusterConfig.uuid).asResult();
   }
 
@@ -266,7 +282,13 @@ public class XClusterConfigController extends AuthenticatedController {
 
     log.info("Submitted delete XClusterConfig({}), task {}", xClusterConfig.uuid, taskUUID);
 
-    auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.XClusterConfig,
+            xclusterConfigUUID.toString(),
+            Audit.ActionType.Delete,
+            taskUUID);
     return new YBPTask(taskUUID).asResult();
   }
 
@@ -300,7 +322,13 @@ public class XClusterConfigController extends AuthenticatedController {
     log.info(
         "Submitted sync XClusterConfig for universe({}), task {}", targetUniverseUUID, taskUUID);
 
-    auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            targetUniverseUUID.toString(),
+            Audit.ActionType.SyncXClusterConfig,
+            taskUUID);
     return new YBPTask(taskUUID).asResult();
   }
 

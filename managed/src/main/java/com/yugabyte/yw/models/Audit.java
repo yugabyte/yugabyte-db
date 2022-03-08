@@ -124,8 +124,8 @@ public class Audit extends Model {
     @EnumValue("Support Bundle")
     SupportBundle,
 
-    @EnumValue("GFlags Validation")
-    GFlagsValidation,
+    @EnumValue("GFlags")
+    GFlags,
   }
 
   public enum ActionType {
@@ -186,6 +186,9 @@ public class Audit extends Model {
     @EnumValue("Stop")
     Stop,
 
+    @EnumValue("Validate")
+    Validate,
+
     @EnumValue("Sync XCluster Configuration")
     SyncXClusterConfig,
 
@@ -209,9 +212,6 @@ public class Audit extends Model {
 
     @EnumValue("Upgrade GFlags")
     UpgradeGFlags,
-
-    @EnumValue("Validate GFlags")
-    ValidateGFlags,
 
     @EnumValue("Upgrade Certs")
     UpgradeCerts,
@@ -314,6 +314,15 @@ public class Audit extends Model {
 
     @EnumValue("Bulk Import Data into Table")
     BulkImport,
+
+    @EnumValue("Create Backup")
+    CreateBackup,
+
+    @EnumValue("Restore Backup")
+    RestoreBackup,
+
+    @EnumValue("Create Single Table Backup")
+    CreateSingleTableBackup,
 
     @EnumValue("Create a Multi Table Backup")
     CreateMultiTableBackup,

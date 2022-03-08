@@ -15,6 +15,7 @@ import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.RegionFormData;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -27,6 +28,7 @@ import io.swagger.annotations.Authorization;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -156,7 +158,13 @@ public class RegionController extends AuthenticatedController {
           Region.create(
               provider, regionCode, form.name, form.ybImage, form.latitude, form.longitude);
     }
-    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Region,
+            Objects.toString(region.uuid, null),
+            Audit.ActionType.Create,
+            Json.toJson(formData.rawData()));
     return PlatformResults.withData(region);
   }
 
@@ -172,7 +180,9 @@ public class RegionController extends AuthenticatedController {
   public Result delete(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
     Region region = Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
     region.disableRegionAndZones();
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(), Audit.TargetType.Region, regionUUID.toString(), Audit.ActionType.Delete);
     return YBPSuccess.empty();
   }
 
