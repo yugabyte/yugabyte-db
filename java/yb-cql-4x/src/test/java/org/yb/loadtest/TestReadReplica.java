@@ -19,11 +19,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.ColumnSchema;
 import org.yb.Common;
+import org.yb.CommonTypes;
 import org.yb.Schema;
 import org.yb.Type;
 import org.yb.client.*;
 import org.yb.consensus.Metadata;
-import org.yb.master.Master;
+import org.yb.master.CatalogEntityInfo.PlacementBlockPB;
+import org.yb.master.CatalogEntityInfo.PlacementInfoPB;
 import org.yb.minicluster.BaseMiniClusterTest;
 import org.yb.minicluster.Metrics;
 import org.yb.minicluster.MiniYBCluster;
@@ -84,40 +86,40 @@ public class TestReadReplica extends BaseMiniClusterTest {
         cb.perTServerFlags(perTserverFlags);
       });
     YBClient client = miniCluster.getClient();
-    List<Master.PlacementBlockPB> placementBlocksLive = new ArrayList<Master.PlacementBlockPB>();
+    List<PlacementBlockPB> placementBlocksLive = new ArrayList<PlacementBlockPB>();
     for(int i = 0 ; i < 3; i++){
-      org.yb.Common.CloudInfoPB cloudInfo = org.yb.Common.CloudInfoPB.newBuilder()
+      org.yb.CommonNet.CloudInfoPB cloudInfo = org.yb.CommonNet.CloudInfoPB.newBuilder()
         .setPlacementCloud(PLACEMENT_CLOUD)
         .setPlacementRegion(PLACEMENT_REGION_LIVE+i)
         .setPlacementZone(PLACEMENT_ZONE+i)
         .build();
-      Master.PlacementBlockPB placementBlock = Master.PlacementBlockPB.newBuilder().
+      PlacementBlockPB placementBlock = PlacementBlockPB.newBuilder().
         setCloudInfo(cloudInfo).setMinNumReplicas(1).build();
       placementBlocksLive.add(placementBlock);
     }
 
-    org.yb.Common.CloudInfoPB cloudInfo1 = org.yb.Common.CloudInfoPB.newBuilder()
+    org.yb.CommonNet.CloudInfoPB cloudInfo1 = org.yb.CommonNet.CloudInfoPB.newBuilder()
       .setPlacementCloud(PLACEMENT_CLOUD)
       .setPlacementRegion(PLACEMENT_REGION_READONLY)
       .setPlacementZone(PLACEMENT_ZONE)
       .build();
 
-    Master.PlacementBlockPB placementBlock1 = Master.PlacementBlockPB.newBuilder().
+    PlacementBlockPB placementBlock1 = PlacementBlockPB.newBuilder().
       setCloudInfo(cloudInfo1).setMinNumReplicas(3).build();
 
-    List<Master.PlacementBlockPB> placementBlocksReadOnly =
-      new ArrayList<Master.PlacementBlockPB>();
+    List<PlacementBlockPB> placementBlocksReadOnly =
+      new ArrayList<PlacementBlockPB>();
     placementBlocksReadOnly.add(placementBlock1);
 
-    Master.PlacementInfoPB livePlacementInfo =
-      Master.PlacementInfoPB.newBuilder().addAllPlacementBlocks(placementBlocksLive).
+    PlacementInfoPB livePlacementInfo =
+      PlacementInfoPB.newBuilder().addAllPlacementBlocks(placementBlocksLive).
         setPlacementUuid(ByteString.copyFromUtf8(liveTsPlacement)).build();
 
-    Master.PlacementInfoPB readOnlyPlacementInfo =
-      Master.PlacementInfoPB.newBuilder().addAllPlacementBlocks(placementBlocksReadOnly).
+    PlacementInfoPB readOnlyPlacementInfo =
+      PlacementInfoPB.newBuilder().addAllPlacementBlocks(placementBlocksReadOnly).
         setPlacementUuid(ByteString.copyFromUtf8(readOnlyTsPlacement)).build();
 
-    List<Master.PlacementInfoPB> readOnlyPlacements = Arrays.asList(readOnlyPlacementInfo);
+    List<PlacementInfoPB> readOnlyPlacements = Arrays.asList(readOnlyPlacementInfo);
     ModifyClusterConfigReadReplicas readOnlyOperation =
       new ModifyClusterConfigReadReplicas(client, readOnlyPlacements);
     try {
@@ -140,13 +142,13 @@ public class TestReadReplica extends BaseMiniClusterTest {
   protected void createMiniClusterWithRRandPreferredLeader() throws Exception{
     createMiniClusterwithReadReplicas();
     YBClient client = miniCluster.getClient();
-    org.yb.Common.CloudInfoPB leader = org.yb.Common.CloudInfoPB.newBuilder()
+    org.yb.CommonNet.CloudInfoPB leader = org.yb.CommonNet.CloudInfoPB.newBuilder()
       .setPlacementCloud(PLACEMENT_CLOUD)
       .setPlacementRegion(PLACEMENT_REGION_LIVE+1)
       .setPlacementZone(PLACEMENT_ZONE+1)
       .build();
 
-    List<org.yb.Common.CloudInfoPB> leaders = new ArrayList<org.yb.Common.CloudInfoPB>();
+    List<org.yb.CommonNet.CloudInfoPB> leaders = new ArrayList<org.yb.CommonNet.CloudInfoPB>();
 
     leaders.add(leader);
 
@@ -175,7 +177,7 @@ public class TestReadReplica extends BaseMiniClusterTest {
 
     CreateTableOptions options = new CreateTableOptions();
     options.setNumTablets(1);
-    options.setTableType(Common.TableType.YQL_TABLE_TYPE);
+    options.setTableType(org.yb.CommonTypes.TableType.YQL_TABLE_TYPE);
     ybTable = client.createTable(DEFAULT_TEST_KEYSPACE, TABLE_NAME, new Schema(
       Arrays.asList(hash_column.build(), range_column.build(), regular_column.build())), options);
 
@@ -249,11 +251,11 @@ public class TestReadReplica extends BaseMiniClusterTest {
       long numOpsread = metrics.getHistogram(TSERVER_READ_METRIC).totalCount;
       long numOpswrite = metrics.getHistogram(TSERVER_WRITE_METRIC).totalCount;
       totalOps += numOpsread;
-      if (replica.getRole().equals(Metadata.RaftPeerPB.Role.LEADER.toString())) {
+      if (replica.getRole().equals(CommonTypes.PeerRole.LEADER.toString())) {
         assertEquals(0, numOpsread);
         assertEquals(NUM_OPS, numOpswrite);
       }
-      else if(replica.getRole().equals(Metadata.RaftPeerPB.Role.READ_REPLICA.toString())){
+      else if(replica.getRole().equals(CommonTypes.PeerRole.READ_REPLICA.toString())){
         assertTrue(numOpsread > NUM_OPS/10);
         assertEquals(0, numOpswrite);
       }
@@ -286,11 +288,11 @@ public class TestReadReplica extends BaseMiniClusterTest {
       long numOpsread = metrics.getHistogram(TSERVER_READ_METRIC).totalCount;
       long numOpswrite = metrics.getHistogram(TSERVER_WRITE_METRIC).totalCount;
       totalOps += numOpsread;
-      if (replica.getRole().equals(Metadata.RaftPeerPB.Role.LEADER.toString())) {
+      if (replica.getRole().equals(CommonTypes.PeerRole.LEADER.toString())) {
         assertEquals(0, numOpsread);
         assertEquals(NUM_OPS, numOpswrite);
       }
-      else if(replica.getRole().equals(Metadata.RaftPeerPB.Role.READ_REPLICA.toString())){
+      else if(replica.getRole().equals(CommonTypes.PeerRole.READ_REPLICA.toString())){
         assertTrue(numOpsread > NUM_OPS/10);
         assertEquals(0, numOpswrite);
       }
