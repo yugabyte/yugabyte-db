@@ -31,6 +31,7 @@
 #include "access/reloptions.h"
 #include "catalog/pg_database.h"
 #include "common/pg_yb_common.h"
+#include "nodes/parsenodes.h"
 #include "nodes/plannodes.h"
 #include "utils/relcache.h"
 #include "utils/resowner.h"
@@ -568,8 +569,8 @@ extern const uint32 yb_funcs_safe_for_pushdown[];
  */
 extern const int yb_funcs_safe_for_pushdown_count;
 
-/** 
- * Use the YB_PG_PDEATHSIG environment variable to set the signal to be sent to 
+/**
+ * Use the YB_PG_PDEATHSIG environment variable to set the signal to be sent to
  * the current process in case the parent process dies. This is Linux-specific
  * and can only be done from the child process (the postmaster process). The
  * parent process here is yb-master or yb-tserver.
@@ -587,5 +588,10 @@ Oid YbGetStorageRelid(Relation relation);
  * Check whether the user ID is of a user who has the yb_db_admin role.
  */
 bool IsYbDbAdminUser(Oid member);
+
+/*
+ * Check unsupported system columns and report error.
+ */
+void YbCheckUnsupportedSystemColumns(Var *var, const char *colname, RangeTblEntry *rte);
 
 #endif /* PG_YB_UTILS_H */
