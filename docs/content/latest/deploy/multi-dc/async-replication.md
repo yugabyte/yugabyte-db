@@ -431,4 +431,4 @@ In the event you cannot stop incoming user traffic, then the recommended approac
 - [Setup replication](../../../admin/yb-admin/#setup-universe-replication) again, for all of the relevant tables.
   - Make sure to pass in the `bootstrap_ids`, as described above.
 
-### For users of Yugabyte Platform (2.11+), please visit the [async-replication-platform](../../../yugabyte-platform/create-deployments/async-replication-platform/#using-the-yugabyte-platform-ui)
+### For users of Yugabyte Platform (2.11+), please visit the [async-replication-platform](../../../yugabyte-platform/create-deployments/async-replication-platform/#using-the-yugabyte-platform-ui) to configure replication.
