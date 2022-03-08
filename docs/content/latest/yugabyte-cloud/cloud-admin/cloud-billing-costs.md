@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-There are no set-up charges or commitments to begin using Yugabyte Cloud. At the end of the month, you are automatically charged for that month's usage. You can view your charges for the current billing period at any time by selecting **Invoices** on the **Billing** tab of the **Admin** page. Refer to [Manage your billing profile and payment method](../cloud-billing-profile).
+There are no set-up charges or commitments to begin using Yugabyte Cloud. At the end of the month, you are automatically charged for that month's usage. You can view your charges for the current billing period at any time by selecting **Invoices** on the **Billing** tab of the **Admin** page. Refer to [Manage your billing profile and payment method](../cloud-billing-profile/).
 
 Only the cloud account Admin user (the user who created the Yugabyte Cloud account) can access the billing and payment details.
 
@@ -35,7 +35,7 @@ Instance vCPU capacity makes up the majority of your bill, and is the easiest to
 | Data transfer – Cross Region (Other regions) | 10 GB |
 | Data transfer – Internet | 10 GB |
 
-You can see the approximate cost for your vCPUs when [creating](../../cloud-basics/create-clusters/) and [scaling](../../cloud-clusters/configure-clusters) clusters, as shown in the following illustration. **+ Usage** in this context refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer.
+You can see the approximate cost for your vCPUs when [creating](../../cloud-basics/create-clusters/) and [scaling](../../cloud-clusters/configure-clusters/) clusters, as shown in the following illustration. **+ Usage** in this context refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer.
 
 ![Cloud Cluster Settings Edit Infrastructure](/images/yb-cloud/cloud-clusters-settings-edit.png)
 
@@ -75,7 +75,7 @@ Disk storage costs are tied to the cost of storing the data on disk in the under
 
 {{< tip title="Rate card" >}}
 
-$0.10/GB per month ($0.0001388888889/hr)
+$0.10/GB per month ($0.0001388888889/hr for 30 day month)
 
 {{< /tip >}}
 
@@ -89,7 +89,7 @@ Disk storage size is calculated by metering the storage space (GBs) occupied per
 
 ### Calculating disk storage cost
 
-Yugabyte measures disk storage in "GB-hours," which are added up at the end of the month to generate your monthly charges. The total disk storage capacity cost across all your clusters is the total number of GB-hours multiplied by the base per hour rate card ($0.0001388888889/hr), less the total free allowance based on per month vCPU usage.
+Yugabyte measures disk storage in "GB-hours," which are added up at the end of the month to generate your monthly charges. The total disk storage capacity cost across all your clusters is the total number of GB-hours multiplied by the base per hour rate card ($0.0001388888889/hr in a 30 day month), less the total free allowance based on per month vCPU usage.
 
 Assume you start a cluster for the first 15 days of September with the following configuration:
 
@@ -137,19 +137,19 @@ Backup storage costs are tied to the cost of storing the backup snapshots in the
 
 {{< tip title="Rate card" >}}
 
-Rate card:  $0.025/GB per month ($ 0.00003472222222/hr)
+Rate card:  $0.025/GB per month ($ 0.00003472222222/hr for 30 day month)
 
 {{< /tip >}}
 
 The free allowance for backup storage is 100 GB/month for every 1 vCPU per month used in a cluster. Whenever you exceed the 100 GB/month/vCPU threshold, you are billed for the backup storage used in excess of the free allowance. For example, a 3 node x 2 vCPU (6 vCPUs) cluster includes a total free allowance of 600 GB/month (6 vCPUs x 100 GB).
 
-By default, every cluster is configured with 24 hour backups with an 8 day retention period. You can customize your backup schedule and retention period per cluster. Taking frequent backups and retaining for a long period of time can lead to overages. Refer to [Back up clusters](../../cloud-clusters/backup-clusters).
+By default, every cluster is configured with 24 hour backups with an 8 day retention period. You can customize your backup schedule and retention period per cluster. Taking frequent backups and retaining for a long period of time can lead to overages. Refer to [Back up clusters](../../cloud-clusters/backup-clusters/).
 
 Backup storage size is calculated by metering the storage space (GBs) occupied per cluster. The same unit price applies to all regions and clouds.
 
 ### Calculating backup storage cost
 
-Yugabyte measures backup storage in "GB-hours," which are added up at the end of the month to generate your monthly charges. The total backup storage capacity cost across your clusters is the total number of GB-hours multiplied by the base per hour rate card ($ 0.00003472222222/hr), less the total free allowance based on per month vCPU usage.
+Yugabyte measures backup storage in "GB-hours," which are added up at the end of the month to generate your monthly charges. The total backup storage capacity cost across your clusters is the total number of GB-hours multiplied by the base per hour rate card ($ 0.00003472222222/hr in a 30 day month), less the total free allowance based on per month vCPU usage.
 
 Assume you start a cluster with 3 nodes x 2 vCPUs (6 vCPUs) for the first 15 days in September, and then scale up to 6 nodes x 2 vCPUs (12 vCPUs) for the final 15 days in September.
 
@@ -189,7 +189,7 @@ Yugabyte meters and bills data transfer using the following three dimensions.
 
 This accounts for all regional traffic of the cluster. This includes all cross availability zone inter-node traffic, which YugabyteDB automatically manages, and egress cost to a client in the same region as the cluster.
 
-Single-node ([fault tolerance](../../cloud-basics/create-clusters#cluster-settings) of NONE) and three-node (fault tolerance of Node Level) with single availability zone (AZ) topologies will have much lower usage than clusters with three nodes (fault tolerance of Availability Zone) deployed across multiple AZs.
+Single-node ([fault tolerance](../../cloud-basics/create-clusters/#cluster-settings) of NONE) and three-node (fault tolerance of Node Level) with single availability zone (AZ) topologies will have much lower usage than clusters with three nodes (fault tolerance of Availability Zone) deployed across multiple AZs.
 
 {{< tip title="Rate card" >}}
 
