@@ -725,7 +725,7 @@ class NodeChecker():
         clock_re = re.match(r'((.|\n)*)((NTP enabled: )|(NTP service: )|(Network time on: )|' +
                             r'(systemd-timesyncd\.service active: ))(.*)$', output, re.MULTILINE)
         if clock_re:
-            ntp_enabled_answer = clock_re.group(8)
+            ntp_enabled_answer = clock_re.group(8).strip()
         else:
             return e.fill_and_return_entry(["Error getting NTP state - incorrect answer format"],
                                            True)
@@ -740,7 +740,7 @@ class NodeChecker():
 
         clock_re = re.match(r'((.|\n)*)(NTP service: )(.*)$', output, re.MULTILINE)
         if clock_re:
-            ntp_service_answer = clock_re.group(4)
+            ntp_service_answer = clock_re.group(4).strip()
             # Oracle8 NTP service: n/a not supported anymore
             if ntp_service_answer in ("n/a"):
                 errors = []
@@ -748,7 +748,7 @@ class NodeChecker():
         clock_re = re.match(r'((.|\n)*)((NTP synchronized: )|(System clock synchronized: ))(.*)$',
                             output, re.MULTILINE)
         if clock_re:
-            ntp_synchronized_answer = clock_re.group(6)
+            ntp_synchronized_answer = clock_re.group(6).strip()
         else:
             return e.fill_and_return_entry([
                 "Error getting NTP synchronization state - incorrect answer format"], True)
