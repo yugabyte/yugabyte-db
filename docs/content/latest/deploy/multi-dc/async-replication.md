@@ -265,6 +265,93 @@ CREATE TABLE transactions_us
     ```
 3. Observe replication setup(`xClusterSetup1`) in Platform UI (At Replication tab in source universe and target universe)
 
+## xCluster Setup in K8s ( pod to pod connectivity )
+
+1. Create 2 universes (source and target).
+2. Create tables in both source and target universes
+
+  (At source)
+  ```sh
+  kubectl exec -it -n <source_universe_namespace> -t <source_universe_master_leader> -c <source_universe_container> -- bash
+  /home/yugabyte/bin/ysqlsh -h <source_universe_yqlserver>
+  create table query
+  ```
+
+  For Example:
+  ```sh
+  kubectl exec -it -n xcluster-source -t yb-master-2 -c yb-master -- bash
+  /home/yugabyte/bin/ysqlsh -h yb-tserver-1.yb-tservers.xcluster-source
+  create table employees(id int primary key, name text);
+  ```
+
+  (At target)
+  ```sh
+  kubectl exec -it -n <target_universe_namespace> -t <target_universe_master_leader> -c <target_universe_container> -- bash
+  /home/yugabyte/bin/ysqlsh -h <target_universe_yqlserver>
+  create table query
+  ```
+
+  For Example:
+  ```sh
+  kubectl exec -it -n xcluster-target -t yb-master-2 -c yb-master -- bash
+  /home/yugabyte/bin/ysqlsh -h yb-tserver-1.yb-tservers.xcluster-target
+  create table employees(id int primary key, name text);
+  ```
+
+3. Collect table UUIDs from the `Tables` section in the Admin UI (127.0.0.1:7000).
+4. Setup replication from the source universe:
+
+  (At source)
+  ```sh
+  kubectl exec -it -n <source_universe_namespace> -t <source_universe_master_leader> -c \
+  <source_universe_container> -- bash -c "/home/yugabyte/bin/yb-admin -master_addresses \
+  <target_universe_master_addresses> setup_universe_replication \
+  <source_universe_UUID>_<replication_stream_name> <source_universe_master_addresses> \
+  <comma_separated_table_ids>"
+  ```
+
+  For Example:
+  ```sh
+  kubectl exec -it -n xcluster-source -t yb-master-2 -c yb-master -- bash -c \
+  "/home/yugabyte/bin/yb-admin -master_addresses yb-master-2.yb-masters.xcluster-target.svc.cluster.local, \
+  yb-master-1.yb-masters.xcluster-target.svc.cluster.local,yb-master-0.yb-masters.xcluster-target.svc.cluster.local \
+  setup_universe_replication ac39666d-c183-45d3-945a-475452deac9f_xCluster_1 \
+  yb-master-2.yb-masters.xcluster-source.svc.cluster.local,yb-master-1.yb-masters.xcluster-source.svc.cluster.local, \
+  yb-master-0.yb-masters.xcluster-source.svc.cluster.local 00004000000030008000000000004001"
+  ```
+
+5. Perform some DMLs on the source side and observe the replication at the target side.
+
+  (At source)
+  ```sh
+  kubectl exec -it -n <source_universe_namespace> -t <source_universe_master_leader> -c <source_universe_container> -- bash
+  /home/yugabyte/bin/ysqlsh -h <source_universe_yqlserver>
+  insert query
+  select query
+  ```
+
+  For Example:
+  ```sh
+  kubectl exec -it -n xcluster-source -t yb-master-2 -c yb-master -- bash
+  /home/yugabyte/bin/ysqlsh -h yb-tserver-1.yb-tservers.xcluster-source
+  INSERT INTO employees VALUES(1, 'name');
+  SELECT * FROM employees;
+  ```
+
+  (At target)
+  ```sh
+  kubectl exec -it -n <target_universe_namespace> -t <target_universe_master_leader> -c <target_universe_container> -- bash
+  /home/yugabyte/bin/ysqlsh -h <target_universe_yqlserver>
+  select query
+  ```
+
+  For Example:
+  ```sh
+  kubectl exec -it -n xcluster-target -t yb-master-2 -c yb-master -- bash
+  /home/yugabyte/bin/ysqlsh -h yb-tserver-1.yb-tservers.xcluster-target
+  SELECT * FROM employees;
+  ```
+
 ## Bootstrapping a sink cluster
 
 Documentation coming soon. More details in [#6870](https://github.com/yugabyte/yugabyte-db/issues/6870).
@@ -292,3 +379,5 @@ In the event you cannot stop incoming user traffic, then the recommended approac
 - Restore this backup on the sink cluster.
 - [Setup replication](../../../admin/yb-admin/#setup-universe-replication) again, for all of the relevant tables.
   - Make sure to pass in the `bootstrap_ids`, as described above.
+
+### For users of Yugabyte Platform (2.11+), please visit the [async-replication-platform](../../yugabyte-platform/create-deployments/async-replication-platform) to configure replication.
