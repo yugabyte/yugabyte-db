@@ -65,7 +65,7 @@ Be sure to encode any special characters in your connection string.
 
 Ensure that you have entered the correct password for the cluster database you are trying to access; refer to the cluster database admin credentials file you downloaded when you created the cluster. The file is named `<cluster name> credentials.txt`.
 
-The database admin credentials are separate from your Yugabyte Cloud credentials, which are used exclusively to log in to the Yugabyte Cloud console.
+The database admin credentials are separate from your Yugabyte Cloud credentials, which are used exclusively to log in to Yugabyte Cloud.
 
 If you are a database user who was added to the database by an administrator, ask them to either re-send your credentials or reset your database password.
 
@@ -81,7 +81,7 @@ If you are unable to successfully create the VPC, contact {{<support-cloud>}}.
 
 #### Peering connection status is Pending
 
-A peering connection status of _Pending_ indicates that you need to configure your cloud provider to accept the connection. Refer to [Create a peering connection](../cloud-basics/cloud-vpcs/cloud-add-peering).
+A peering connection status of _Pending_ indicates that you need to configure your cloud provider to accept the connection. Refer to [Create a peering connection](../cloud-basics/cloud-vpcs/cloud-add-peering/).
 
 #### Peering connection status is Expired (AWS only)
 

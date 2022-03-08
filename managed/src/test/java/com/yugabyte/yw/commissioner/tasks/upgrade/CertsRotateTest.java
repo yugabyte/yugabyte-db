@@ -13,6 +13,7 @@ import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -55,7 +56,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
 
   @InjectMocks private CertsRotate certsRotate;
 
-  private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE =
+  private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE_MASTER =
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.AnsibleClusterServerCtl,
@@ -63,6 +64,20 @@ public class CertsRotateTest extends UpgradeTaskTest {
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
           TaskType.WaitForEncryptionKeyInMemory,
+          TaskType.WaitForFollowerLag,
+          TaskType.SetNodeState);
+
+  private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE_TSERVER =
+      ImmutableList.of(
+          TaskType.SetNodeState,
+          TaskType.ModifyBlackList,
+          TaskType.WaitForLeaderBlacklistCompletion,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.WaitForServer,
+          TaskType.WaitForServerReady,
+          TaskType.WaitForEncryptionKeyInMemory,
+          TaskType.ModifyBlackList,
           TaskType.WaitForFollowerLag,
           TaskType.SetNodeState);
 
@@ -93,7 +108,10 @@ public class CertsRotateTest extends UpgradeTaskTest {
       boolean isRollingUpgrade) {
     int position = startPosition;
     if (isRollingUpgrade) {
-      List<TaskType> taskSequence = ROLLING_UPGRADE_TASK_SEQUENCE;
+      List<TaskType> taskSequence =
+          (serverType == MASTER
+              ? ROLLING_UPGRADE_TASK_SEQUENCE_MASTER
+              : ROLLING_UPGRADE_TASK_SEQUENCE_TSERVER);
       List<Integer> nodeOrder = getRollingUpgradeNodeOrder(serverType);
       for (int nodeIdx : nodeOrder) {
         String nodeName = String.format("host-n%d", nodeIdx);
@@ -148,9 +166,11 @@ public class CertsRotateTest extends UpgradeTaskTest {
         assertTaskType(subTasksByPosition.get(position++), TaskType.UniverseSetTlsParams);
       }
     } else {
+      // Non-root CA updates require a ModifyBlackList task at position 0.
+      int numTasksToAssert = position == 0 ? 4 : 3;
       List<TaskInfo> certUpdateTasks = subTasksByPosition.get(position++);
       assertTaskType(certUpdateTasks, TaskType.AnsibleConfigureServers);
-      assertEquals(3, certUpdateTasks.size());
+      assertEquals(numTasksToAssert, certUpdateTasks.size());
     }
     return position;
   }
@@ -159,9 +179,8 @@ public class CertsRotateTest extends UpgradeTaskTest {
       Map<Integer, List<TaskInfo>> subTasksByPosition, int position, boolean isRollingUpgrade) {
     if (isRollingUpgrade) {
       position = assertSequence(subTasksByPosition, MASTER, position, true);
-      assertTaskType(subTasksByPosition.get(position++), TaskType.LoadBalancerStateChange);
+      assertTaskType(subTasksByPosition.get(position++), TaskType.ModifyBlackList);
       position = assertSequence(subTasksByPosition, TSERVER, position, true);
-      assertTaskType(subTasksByPosition.get(position++), TaskType.LoadBalancerStateChange);
     } else {
       position = assertSequence(subTasksByPosition, MASTER, position, false);
       position = assertSequence(subTasksByPosition, TSERVER, position, false);
@@ -315,7 +334,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
     }
 
     assertEquals(Failure, taskInfo.getTaskState());
-    assertEquals(0, taskInfo.getSubTasks().size());
+    assertEquals(1, taskInfo.getSubTasks().size());
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
   }
 
@@ -433,7 +452,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
           && !currentRootAndClientRootCASame
           && rootAndClientRootCASame)) {
         assertEquals(Failure, taskInfo.getTaskState());
-        assertEquals(0, taskInfo.getSubTasks().size());
+        assertEquals(1, taskInfo.getSubTasks().size());
         verify(mockNodeManager, times(0)).nodeCommand(any(), any());
         return;
       }
@@ -455,15 +474,15 @@ public class CertsRotateTest extends UpgradeTaskTest {
     }
     // Cert update tasks
     position = assertCommonTasks(subTasksByPosition, position, false, false);
+    // gflags update tasks
+    position = assertCommonTasks(subTasksByPosition, position, false, false);
+    position = assertCommonTasks(subTasksByPosition, position, false, false);
     // Restart tasks
     position = assertRestartSequence(subTasksByPosition, position, false);
     // RootCA update task
     if (rotateRootCA) {
       position = assertCommonTasks(subTasksByPosition, position, true, false);
     }
-    // gflags update tasks
-    position = assertCommonTasks(subTasksByPosition, position, false, false);
-    position = assertCommonTasks(subTasksByPosition, position, false, false);
     // Update universe params task
     position = assertCommonTasks(subTasksByPosition, position, false, true);
 
@@ -597,7 +616,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
           && !currentRootAndClientRootCASame
           && rootAndClientRootCASame)) {
         assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
-        assertEquals(0, taskInfo.getSubTasks().size());
+        assertEquals(1, taskInfo.getSubTasks().size());
         verify(mockNodeManager, times(0)).nodeCommand(any(), any());
         return;
       }
@@ -611,10 +630,10 @@ public class CertsRotateTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
-    int expectedPosition = 54;
+    int expectedPosition = 62;
     int expectedNumberOfInvocations = 21;
     if (rotateRootCA) {
-      expectedPosition += 104;
+      expectedPosition += 120;
       expectedNumberOfInvocations += 30;
       // RootCA update task
       position = assertCommonTasks(subTasksByPosition, position, true, false);
@@ -638,11 +657,11 @@ public class CertsRotateTest extends UpgradeTaskTest {
     } else {
       // Cert update tasks
       position = assertCommonTasks(subTasksByPosition, position, false, false);
-      // Restart tasks
-      position = assertRestartSequence(subTasksByPosition, position, true);
       // gflags update tasks
       position = assertCommonTasks(subTasksByPosition, position, false, false);
       position = assertCommonTasks(subTasksByPosition, position, false, false);
+      // Restart tasks
+      position = assertRestartSequence(subTasksByPosition, position, true);
       // Update universe params task
       position = assertCommonTasks(subTasksByPosition, position, false, true);
     }

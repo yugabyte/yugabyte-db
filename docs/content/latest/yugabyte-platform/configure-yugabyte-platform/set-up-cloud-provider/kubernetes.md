@@ -17,47 +17,47 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws" class="nav-link">
+    <a href="../aws/" class="nav-link">
       <i class="fab fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp" class="nav-link">
+    <a href="../gcp/" class="nav-link">
       <i class="fab fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure" class="nav-link">
+    <a href="../azure/" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
       &nbsp;&nbsp; Azure
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes" class="nav-link active">
+    <a href="../kubernetes/" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/vmware-tanzu" class="nav-link">
+    <a href="../vmware-tanzu/" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       VMware Tanzu
     </a>
   </li>
 
 <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/openshift" class="nav-link">
+    <a href="../openshift/" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>OpenShift</a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises" class="nav-link">
+    <a href="../on-premises/" class="nav-link">
       <i class="fas fa-building"></i>
       On-premises
     </a>
@@ -192,7 +192,7 @@ You can create a `kubeconfig` file for previously created `yugabyte-platform-uni
 
 ## Select the Kubernetes service
 
-You can use the Pivotal Container Service or Managed Kubernetes Service. 
+You can use the Pivotal Container Service or Managed Kubernetes Service.
 
 Select the tab for the service you are using, as per the following illustration:<br><br>
 <img title="K8s Configuration -- Tabs" alt="K8s Configuration -- Tabs" class="expandable-image" src="/images/ee/k8s-setup/k8s-provider-tabs.png" />
@@ -242,7 +242,7 @@ Continue configuring your Kubernetes provider by clicking **Add Region** and com
         app: "yb-master"
         ports:
           ui: "7000"
-    
+
       - name: "yb-tserver-service"
         type: "LoadBalancer"
         annotations:
@@ -255,17 +255,17 @@ Continue configuring your Kubernetes provider by clicking **Add Region** and com
     ```
 
   - Overrides to disable LoadBalancer:
-  
+
     ```yml
     enableLoadBalancer: False
     ```
-  
+
   - Overrides to change the cluster domain name:
-  
+
     ```yml
     domainName: my.cluster
     ```
-  
+
   - Overrides to add annotations at StatefulSet-level:
 
     ```yml
@@ -275,7 +275,7 @@ Continue configuring your Kubernetes provider by clicking **Add Region** and com
     ```
 
   - Overrides to add custom resource allocation for YB master and TServer pods and it overrides the instance types selected in the Yugabyte universe creation flow:
-  
+
     ```yml
     resource:
       master:
@@ -299,11 +299,11 @@ Continue configuring your Kubernetes provider by clicking **Add Region** and com
     ```yml
     istioCompatibility: enabled: true
     ```
-    
+
   - Overrides to publish Node-IP as the server broadcast address.
-  
+
     By default, Master and T-Server pod fully-qualified domain names (FQDNs) are used within the cluster as the server broadcast address. To publish the IPs of the nodes on which YugabyteDB TServer pods are deployed, add the following YAML to each zone override configuration:
-  
+
     ```yml
     tserver:
       extraEnv:
@@ -322,24 +322,24 @@ Continue configuring your Kubernetes provider by clicking **Add Region** and com
                 values:
                 - "yb-tserver"
             topologyKey: kubernetes.io/hostname
-    
+
     # Required to esure that the Kubernetes FQDNs are used for
     # internal communication between the nodes and node-to-node
     # TLS certificates are validated correctly.
-    
+
     gflags:
       master:
         use_private_ip: cloud
       tserver:
         use_private_ip: cloud
-    
+
     serviceEndpoints:
       - name: "yb-master-ui"
         type: LoadBalancer
         app: "yb-master"
         ports:
           http-ui: "7000"
-    
+
       - name: "yb-tserver-service"
         type: NodePort
         externalTrafficPolicy: "Local"
@@ -349,7 +349,7 @@ Continue configuring your Kubernetes provider by clicking **Add Region** and com
           tcp-yedis-port: "6379"
           tcp-ysql-port: "5433"
     ```
-  
+
 
 Continue configuring your Kubernetes provider by clicking **Add Zone** and notice that there are might be multiple zones, as per the following illustration:
 

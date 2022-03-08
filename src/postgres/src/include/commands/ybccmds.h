@@ -57,7 +57,8 @@ extern void YBCCreateTable(CreateStmt *stmt,
 						   Oid relationId,
 						   Oid namespaceId,
 						   Oid tablegroupId,
-						   Oid tablespaceId);
+						   Oid tablespaceId,
+						   Oid matviewPgTableId);
 
 extern void YBCDropTable(Oid relationId);
 
@@ -80,7 +81,8 @@ extern void YBCDropIndex(Oid relationId);
 extern YBCPgStatement YBCPrepareAlterTable(List** subcmds,
 										   int subcmds_size,
 										   Oid relationId,
-										   YBCPgStatement *rollbackHandle);
+										   YBCPgStatement *rollbackHandle,
+										   bool isPartitionOfAlteredTable);
 
 extern void YBCExecAlterTable(YBCPgStatement handle, Oid relationId);
 

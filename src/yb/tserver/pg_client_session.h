@@ -35,20 +35,30 @@
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/tserver/tserver_fwd.h"
-#include "yb/tserver/pg_client.fwd.h"
+#include "yb/tserver/pg_client.pb.h"
 
 namespace yb {
 namespace tserver {
 
 #define PG_CLIENT_SESSION_METHODS \
     (AlterDatabase)(AlterTable)(BackfillIndex)(CreateDatabase)(CreateTable)(CreateTablegroup) \
-    (DropDatabase)(DropTable)(DropTablegroup)(TruncateTable)
+    (DropDatabase)(DropTable)(DropTablegroup)(FinishTransaction)(RollbackSubTransaction) \
+    (SetActiveSubTransaction)(TruncateTable)
+
+using PgClientSessionOperations = std::vector<std::shared_ptr<client::YBPgsqlOp>>;
+class PgClientSessionLocker;
 
 class PgClientSession {
  public:
-  PgClientSession(client::YBClient* client, uint64_t id);
+  PgClientSession(
+      client::YBClient* client, const scoped_refptr<ClockBase>& clock,
+      std::reference_wrapper<const TransactionPoolProvider> transaction_pool_provider,
+      PgTableCache* table_cache, uint64_t id);
 
   uint64_t id() const;
+
+  CHECKED_STATUS Perform(
+      const PgPerformRequestPB& req, PgPerformResponsePB* resp, rpc::RpcContext* context);
 
   #define PG_CLIENT_SESSION_METHOD_DECLARE(r, data, method) \
   CHECKED_STATUS method( \
@@ -61,16 +71,36 @@ class PgClientSession {
  private:
   friend class PgClientSessionLocker;
 
-  Result<const TransactionMetadata*> GetDdlTransactionMetadata(
-      const TransactionMetadataPB& metadata);
+  std::string LogPrefix();
+
+  Result<const TransactionMetadata*> GetDdlTransactionMetadata(bool use_transaction);
+  CHECKED_STATUS BeginTransactionIfNecessary(const PgPerformOptionsPB& options);
+  Result<client::YBTransactionPtr> RestartTransaction(
+      client::YBSession* session, client::YBTransaction* transaction);
+
+  Result<client::YBSession*> SetupSession(const PgPerformRequestPB& req);
+  CHECKED_STATUS ProcessResponse(
+      const PgClientSessionOperations& operations, const PgPerformRequestPB& req,
+      PgPerformResponsePB* resp, rpc::RpcContext* context);
+  void ProcessReadTimeManipulation(ReadTimeManipulation manipulation);
 
   client::YBClient& client();
 
   client::YBClient& client_;
+  const TransactionPoolProvider& transaction_pool_provider_;
+  PgTableCache& table_cache_;
   const uint64_t id_;
 
   std::mutex mutex_;
-  TransactionMetadata last_txn_metadata_; // TODO(PG_CLIENT) Remove after migration.
+  client::YBSessionPtr session_;
+  client::YBTransactionPtr txn_;
+  uint64_t txn_serial_no_ = 0;
+  boost::optional<uint64_t> saved_priority_;
+  client::YBSessionPtr ddl_session_;
+  client::YBTransactionPtr ddl_txn_;
+  TransactionMetadata ddl_txn_metadata_;
+
+  client::YBSessionPtr catalog_session_;
 };
 
 class PgClientSessionLocker {
@@ -81,6 +111,11 @@ class PgClientSessionLocker {
   PgClientSession* operator->() const {
     return session_;
   }
+
+  void Unlock() {
+    lock_.unlock();
+  }
+
  private:
   PgClientSession* session_;
   std::unique_lock<std::mutex> lock_;

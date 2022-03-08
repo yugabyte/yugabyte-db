@@ -35,7 +35,7 @@ Instance vCPU capacity makes up the majority of your bill, and is the easiest to
 | Data transfer – Cross Region (Other regions) | 10 GB |
 | Data transfer – Internet | 10 GB |
 
-You can see the approximate cost for your vCPUs when [creating](../../cloud-basics/create-clusters) and [scaling](../../cloud-clusters/configure-clusters) clusters, as shown in the following illustration. **+ Usage** in this context refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer.
+You can see the approximate cost for your vCPUs when [creating](../../cloud-basics/create-clusters/) and [scaling](../../cloud-clusters/configure-clusters) clusters, as shown in the following illustration. **+ Usage** in this context refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer.
 
 ![Cloud Cluster Settings Edit Infrastructure](/images/yb-cloud/cloud-clusters-settings-edit.png)
 
@@ -65,7 +65,7 @@ At the end of September, you would have the following usage in instance-minutes:
 [(6 vCPUs * 15 days * 24 hours * 60 min) + (12 vCPUs * 15 days * 24 hours * 60 min)]
 = 388800 instance-minutes
 
-Total vCPU cost/month = Total instance minutes * Per minute base rate 
+Total vCPU cost/month = Total instance minutes * Per minute base rate
 Total vCPU cost/month = 388800 * $.00416666666 ~ $1619.99
 ```
 
@@ -107,15 +107,15 @@ At the end of September, you would have the following total usage cost:
 
 ```output
 Total disk storage
-[(300 GB * 15 days * 24 hours) + (1500 GB* 15 days * 24 hours)] 
+[(300 GB * 15 days * 24 hours) + (1500 GB* 15 days * 24 hours)]
 = 648000 GB-hours
 
 Total instance-minutes
-[(6 vCPUs * 15 days * 24 hours * 60 min) + (12 vCPUs * 15 days * 24 hours * 60 min)] 
+[(6 vCPUs * 15 days * 24 hours * 60 min) + (12 vCPUs * 15 days * 24 hours * 60 min)]
 = 388800 instance-minutes
 
 Total vCPUs
-388800 instance-minutes / ( 30 days * 24 hours * 60 minutes ) 
+388800 instance-minutes / ( 30 days * 24 hours * 60 minutes )
 = 9 vCPUs
 
 Free allowance (GB/month)
@@ -123,7 +123,7 @@ Free allowance (GB/month)
 
 Free allowance (GB-hours)
 450 GB * 30 days * 24 hours = 324000 GB-hours
- 
+
 Disk storage overages
 648000 GB-hours - 324000 GB-hours = 324000 GB-hours
 

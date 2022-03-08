@@ -120,12 +120,7 @@ constexpr static const char* const kKeyColumnName = "key";
 
 class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDCTestParams> {
  public:
-  Result<std::vector<std::shared_ptr<client::YBTable>>>
-      SetUpWithParams(std::vector<uint32_t> num_consumer_tablets,
-                      std::vector<uint32_t> num_producer_tablets,
-                      uint32_t replication_factor,
-                      uint32_t num_masters = 1,
-                      bool colocated = false) {
+  Status Initialize(uint32_t replication_factor, uint32_t num_masters = 1) {
     master::SetDefaultInitialSysCatalogSnapshotFlags();
     TwoDCTestBase::SetUp();
     FLAGS_enable_ysql = true;
@@ -157,6 +152,18 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
     RETURN_NOT_OK(InitPostgres(&producer_cluster_));
     RETURN_NOT_OK(InitPostgres(&consumer_cluster_));
 
+    return Status::OK();
+  }
+
+  Result<std::vector<std::shared_ptr<client::YBTable>>>
+      SetUpWithParams(std::vector<uint32_t> num_consumer_tablets,
+                      std::vector<uint32_t> num_producer_tablets,
+                      uint32_t replication_factor,
+                      uint32_t num_masters = 1,
+                      bool colocated = false,
+                      boost::optional<std::string> tablegroup_name = boost::none) {
+    RETURN_NOT_OK(Initialize(replication_factor, num_masters));
+
     if (num_consumer_tablets.size() != num_producer_tablets.size()) {
       return STATUS(IllegalState,
                     Format("Num consumer tables: $0 num producer tables: $1 must be equal.",
@@ -166,17 +173,22 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
     RETURN_NOT_OK(CreateDatabase(&producer_cluster_, kNamespaceName, colocated));
     RETURN_NOT_OK(CreateDatabase(&consumer_cluster_, kNamespaceName, colocated));
 
+    if (tablegroup_name.has_value()) {
+      RETURN_NOT_OK(CreateTablegroup(&producer_cluster_, kNamespaceName, tablegroup_name.get()));
+      RETURN_NOT_OK(CreateTablegroup(&consumer_cluster_, kNamespaceName, tablegroup_name.get()));
+    }
+
     std::vector<YBTableName> tables;
     std::vector<std::shared_ptr<client::YBTable>> yb_tables;
     for (uint32_t i = 0; i < num_consumer_tablets.size(); i++) {
       RETURN_NOT_OK(CreateTable(i, num_producer_tablets[i], &producer_cluster_,
-                                &tables, colocated));
+                                &tables, tablegroup_name, colocated));
       std::shared_ptr<client::YBTable> producer_table;
       RETURN_NOT_OK(producer_client()->OpenTable(tables[i * 2], &producer_table));
       yb_tables.push_back(producer_table);
 
       RETURN_NOT_OK(CreateTable(i, num_consumer_tablets[i], &consumer_cluster_,
-                                &tables, colocated));
+                                &tables, tablegroup_name, colocated));
       std::shared_ptr<client::YBTable> consumer_table;
       RETURN_NOT_OK(consumer_client()->OpenTable(tables[(i * 2) + 1], &consumer_table));
       yb_tables.push_back(consumer_table);
@@ -237,6 +249,7 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
   Result<YBTableName> CreateTable(Cluster* cluster,
                                   const std::string& namespace_name,
                                   const std::string& table_name,
+                                  const boost::optional<std::string>& tablegroup_name,
                                   uint32_t num_tablets,
                                   bool colocated = false,
                                   const int table_oid = 0) {
@@ -245,20 +258,37 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
     if (table_oid > 0) {
       // Need to turn on session flag to allow for CREATE WITH table_oid.
       EXPECT_OK(conn.Execute("set yb_enable_create_with_table_oid=true"));
-      table_oid_string = Format("table_oid = $0,", table_oid);
+      table_oid_string = Format("table_oid = $0", table_oid);
     }
-    EXPECT_OK(conn.ExecuteFormat(
-        "CREATE TABLE $0($1 int PRIMARY KEY) WITH ($2colocated = $3) SPLIT INTO $4 TABLETS",
-        table_name, kKeyColumnName, table_oid_string, colocated, num_tablets));
+    std::string query = Format("CREATE TABLE $0($1 int PRIMARY KEY) ", table_name, kKeyColumnName);
+    // One cannot use tablegroup together with split into tablets.
+    if (tablegroup_name.has_value()) {
+      std::string with_clause =
+          table_oid_string.empty() ? "" : Format("WITH ($0) ", table_oid_string);
+      std::string tablegroup_clause = Format("TABLEGROUP $0", tablegroup_name.value());
+      query += Format("$0$1", with_clause, tablegroup_clause);
+    } else {
+      std::string colocated_clause = Format("colocated = $0", colocated);
+      std::string with_clause =
+          table_oid_string.empty() ? colocated_clause
+                                   : Format("$0, $1", table_oid_string, colocated_clause);
+      query += Format("WITH ($0) SPLIT INTO $1 TABLETS", with_clause, num_tablets);
+    }
+    EXPECT_OK(conn.Execute(query));
     return GetTable(cluster, namespace_name, table_name);
   }
 
   Status CreateTable(uint32_t idx, uint32_t num_tablets, Cluster* cluster,
-                     std::vector<YBTableName>* tables, bool colocated = false) {
-    // Generate table_oid based on index so that we have the same table_oid for producer/consumer.
-    const int table_oid = colocated ? (idx + 1) * 111111 : 0;
+                     std::vector<YBTableName>* tables,
+                     const boost::optional<std::string>& tablegroup_name,
+                     bool colocated = false) {
+    /*
+     * If we either have tablegroup name or colocated flag
+     * Generate table_oid based on index so that we have the same table_oid for producer/consumer.
+     */
+    const int table_oid = (tablegroup_name.has_value() || colocated) ? (idx + 1) * 111111 : 0;
     auto table = VERIFY_RESULT(CreateTable(cluster, kNamespaceName, Format("test_table_$0", idx),
-                                           num_tablets, colocated, table_oid));
+                                           tablegroup_name, num_tablets, colocated, table_oid));
     tables->push_back(table);
     return Status::OK();
   }
@@ -298,12 +328,83 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
         YBTableName yb_table;
         yb_table.set_table_id(table.id());
         yb_table.set_namespace_id(table.namespace_().id());
+        yb_table.set_pgschema_name(table.pgschema_name());
         return yb_table;
       }
     }
     return STATUS(IllegalState,
                   strings::Substitute("Unable to find table $0 in namespace $1",
                                       table_name, namespace_name));
+  }
+
+  /*
+   * TODO (#11597): Given one is not able to get tablegroup ID by name, currently this works by
+   * getting the first available tablegroup appearing in the namespace.
+   */
+  Result<TablegroupId> GetTablegroup(Cluster* cluster, const std::string& namespace_name) {
+    // Lookup the namespace id from the namespace name.
+    std::string namespace_id;
+    {
+      master::ListNamespacesRequestPB req;
+      master::ListNamespacesResponsePB resp;
+      master::MasterDdlProxy master_proxy(
+          &cluster->client_->proxy_cache(),
+          VERIFY_RESULT(cluster->mini_cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
+
+      rpc::RpcController rpc;
+      rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+
+      RETURN_NOT_OK(master_proxy.ListNamespaces(req, &resp, &rpc));
+      if (resp.has_error()) {
+        return STATUS(IllegalState, "Failed to get namespace info");
+      }
+
+      // Find and return the namespace id.
+      bool namespaceFound = false;
+      for (const auto& entry : resp.namespaces()) {
+        if (entry.name() == namespace_name) {
+          namespaceFound = true;
+          namespace_id = entry.id();
+          break;
+        }
+      }
+
+      if (!namespaceFound) {
+        return STATUS(IllegalState, "Failed to find namespace");
+      }
+    }
+
+    master::ListTablegroupsRequestPB req;
+    master::ListTablegroupsResponsePB resp;
+    master::MasterDdlProxy master_proxy(
+        &cluster->client_->proxy_cache(),
+        VERIFY_RESULT(cluster->mini_cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
+
+    req.set_namespace_id(namespace_id);
+
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+
+    RETURN_NOT_OK(master_proxy.ListTablegroups(req, &resp, &rpc));
+    if (resp.has_error()) {
+      return STATUS(IllegalState, "Failed listing tablegroups");
+    }
+
+    // Find and return the tablegroup.
+    if (resp.tablegroups().empty()) {
+      return STATUS(IllegalState,
+                    Format("Unable to find tablegroup in namespace $0", namespace_name));
+    }
+
+    return resp.tablegroups()[0].id() + master::kTablegroupParentTableIdSuffix;
+  }
+
+  Status CreateTablegroup(Cluster* cluster,
+                          const std::string& namespace_name,
+                          const std::string& tablegroup_name) {
+    auto conn = EXPECT_RESULT(cluster->ConnectToDB(namespace_name));
+    EXPECT_OK(conn.ExecuteFormat("CREATE TABLEGROUP $0", tablegroup_name));
+    return Status::OK();
   }
 
   void WriteWorkload(uint32_t start, uint32_t end, Cluster* cluster, const YBTableName& table,
@@ -681,6 +782,7 @@ TEST_P(TwoDCYsqlTest, ColocatedDatabaseReplication) {
   auto non_colocated_table = ASSERT_RESULT(CreateTable(&producer_cluster_,
                                                        kNamespaceName,
                                                        "test_table_2",
+                                                       boost::none /* tablegroup */,
                                                        kNTabletsPerTable,
                                                        false /* colocated */));
   std::shared_ptr<client::YBTable> non_colocated_producer_table;
@@ -688,6 +790,7 @@ TEST_P(TwoDCYsqlTest, ColocatedDatabaseReplication) {
   non_colocated_table = ASSERT_RESULT(CreateTable(&consumer_cluster_,
                                                   kNamespaceName,
                                                   "test_table_2",
+                                                  boost::none /* tablegroup */,
                                                   kNTabletsPerTable,
                                                   false /* colocated */));
   std::shared_ptr<client::YBTable> non_colocated_consumer_table;
@@ -825,12 +928,14 @@ TEST_P(TwoDCYsqlTest, ColocatedDatabaseDifferentTableOids) {
   auto table_info = ASSERT_RESULT(CreateTable(&producer_cluster_,
                                               kNamespaceName,
                                               "test_table_0",
+                                              boost::none /* tablegroup */,
                                               1 /* num_tablets */,
                                               true /* colocated */,
                                               123456 /* table_oid */));
   ASSERT_RESULT(CreateTable(&consumer_cluster_,
                             kNamespaceName,
                             "test_table_0",
+                            boost::none /* tablegroup */,
                             1 /* num_tablets */,
                             true /* colocated */,
                             123457 /* table_oid */));
@@ -840,6 +945,151 @@ TEST_P(TwoDCYsqlTest, ColocatedDatabaseDifferentTableOids) {
   // Try to setup replication, should fail on schema validation due to different table oids.
   ASSERT_OK(SetupUniverseReplication(producer_cluster(), consumer_cluster(), consumer_client(),
                                      kUniverseId, {producer_table}));
+  master::GetUniverseReplicationResponsePB get_universe_replication_resp;
+  ASSERT_NOK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId,
+      &get_universe_replication_resp));
+}
+
+TEST_P(TwoDCYsqlTest, TablegroupReplication) {
+  YB_SKIP_TEST_IN_TSAN();
+
+  std::vector<uint32_t> tables_vector = {1, 1};
+  boost::optional<std::string> kTablegroupName("mytablegroup");
+  auto tables = ASSERT_RESULT(
+      SetUpWithParams(tables_vector, tables_vector, 1, 1, false /* colocated */, kTablegroupName));
+  const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
+
+  // tables contains both producer and consumer universe tables (alternately).
+  // Pick out just the producer tables from the list.
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  std::vector<std::shared_ptr<client::YBTable>> consumer_tables;
+  producer_tables.reserve(tables.size() / 2);
+  consumer_tables.reserve(tables.size() / 2);
+  for (size_t i = 0; i < tables.size(); ++i) {
+    if (i % 2 == 0) {
+      producer_tables.push_back(tables[i]);
+    } else {
+      consumer_tables.push_back(tables[i]);
+    }
+  }
+
+  // 1. Write some data to all tables.
+  for (const auto& producer_table : producer_tables) {
+    LOG(INFO) << "Writing records for table " << producer_table->name().ToString();
+    WriteWorkload(0, 100, &producer_cluster_, producer_table->name());
+  }
+
+  // 2. Setup replication for the tablegroup.
+  auto tablegroup_id = ASSERT_RESULT(GetTablegroup(&producer_cluster_, kNamespaceName));
+  LOG(INFO) << "Tablegroup id to replicate: " << tablegroup_id;
+
+  rpc::RpcController rpc;
+  master::SetupUniverseReplicationRequestPB setup_universe_req;
+  master::SetupUniverseReplicationResponsePB setup_universe_resp;
+  setup_universe_req.set_producer_id(kUniverseId);
+  string master_addr = producer_cluster()->GetMasterAddresses();
+  auto hp_vec = ASSERT_RESULT(HostPort::ParseStrings(master_addr, 0));
+  HostPortsToPBs(hp_vec, setup_universe_req.mutable_producer_master_addresses());
+  setup_universe_req.mutable_producer_table_ids()->Reserve(1);
+  setup_universe_req.add_producer_table_ids(tablegroup_id);
+
+  auto* consumer_leader_mini_master = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster());
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+      &consumer_client()->proxy_cache(),
+      consumer_leader_mini_master->bound_rpc_addr());
+
+  rpc.Reset();
+  rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+  ASSERT_OK(master_proxy->SetupUniverseReplication(setup_universe_req, &setup_universe_resp, &rpc));
+  ASSERT_FALSE(setup_universe_resp.has_error());
+
+  // 3. Verify everything is setup correctly.
+  master::GetUniverseReplicationResponsePB get_universe_replication_resp;
+  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId,
+      &get_universe_replication_resp));
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 1));
+
+  // 4. Check that tables are being replicated.
+  auto data_replicated_correctly = [&](int num_results) -> Result<bool> {
+    for (const auto& consumer_table : consumer_tables) {
+      LOG(INFO) << "Checking records for table " << consumer_table->name().ToString();
+      auto consumer_results = ScanToStrings(consumer_table->name(), &consumer_cluster_);
+
+      if (num_results != PQntuples(consumer_results.get())) {
+        return false;
+      }
+      int result;
+      for (int i = 0; i < num_results; ++i) {
+        result = VERIFY_RESULT(GetInt32(consumer_results.get(), i, 0));
+        if (i != result) {
+          return false;
+        }
+      }
+    }
+    return true;
+  };
+
+  ASSERT_OK(WaitFor([&]() -> Result<bool> { return data_replicated_correctly(100); },
+                    MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
+
+  // 5. Write more data.
+  for (const auto& producer_table : producer_tables) {
+    WriteWorkload(100, 105, &producer_cluster_, producer_table->name());
+  }
+
+  ASSERT_OK(WaitFor([&]() { return data_replicated_correctly(105); },
+                    MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
+}
+
+TEST_P(TwoDCYsqlTest, TablegroupReplicationMismatch) {
+  YB_SKIP_TEST_IN_TSAN();
+  ASSERT_OK(Initialize(1 /* replication_factor */));
+
+  boost::optional<std::string> tablegroup_name("mytablegroup");
+
+  ASSERT_OK(CreateDatabase(&producer_cluster_, kNamespaceName, false /* colocated */));
+  ASSERT_OK(CreateDatabase(&consumer_cluster_, kNamespaceName, false /* colocated */));
+  ASSERT_OK(CreateTablegroup(&producer_cluster_, kNamespaceName, tablegroup_name.get()));
+  ASSERT_OK(CreateTablegroup(&consumer_cluster_, kNamespaceName, tablegroup_name.get()));
+
+  // We intentionally set up so that the number of producer and consumer tables don't match.
+  // The replication should fail during validation.
+  const uint32_t num_producer_tables = 2;
+  const uint32_t num_consumer_tables = 3;
+  std::vector<YBTableName> tables;
+  for (uint32_t i = 0; i < num_producer_tables; i++) {
+    ASSERT_OK(CreateTable(i, 1 /* num_tablets */, &producer_cluster_,
+                          &tables, tablegroup_name, false /* colocated */));
+  }
+  for (uint32_t i = 0; i < num_consumer_tables; i++) {
+    ASSERT_OK(CreateTable(i, 1 /* num_tablets */, &consumer_cluster_,
+                          &tables, tablegroup_name, false /* colocated */));
+  }
+
+  auto tablegroup_id = ASSERT_RESULT(GetTablegroup(&producer_cluster_, kNamespaceName));
+
+  // Try to set up replication.
+  rpc::RpcController rpc;
+  master::SetupUniverseReplicationRequestPB setup_universe_req;
+  master::SetupUniverseReplicationResponsePB setup_universe_resp;
+  setup_universe_req.set_producer_id(kUniverseId);
+  string master_addr = producer_cluster()->GetMasterAddresses();
+  auto hp_vec = ASSERT_RESULT(HostPort::ParseStrings(master_addr, 0));
+  HostPortsToPBs(hp_vec, setup_universe_req.mutable_producer_master_addresses());
+  setup_universe_req.mutable_producer_table_ids()->Reserve(1);
+  setup_universe_req.add_producer_table_ids(tablegroup_id);
+
+  auto* consumer_leader_mini_master = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster());
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+      &consumer_client()->proxy_cache(),
+      consumer_leader_mini_master->bound_rpc_addr());
+
+  rpc.Reset();
+  rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+  ASSERT_OK(master_proxy->SetupUniverseReplication(setup_universe_req, &setup_universe_resp, &rpc));
+  ASSERT_FALSE(setup_universe_resp.has_error());
+
+  // The schema validation should fail.
   master::GetUniverseReplicationResponsePB get_universe_replication_resp;
   ASSERT_NOK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId,
       &get_universe_replication_resp));

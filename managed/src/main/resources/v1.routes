@@ -127,6 +127,7 @@ PUT     /customers/:cUUID/releases                                             c
 POST    /customers/:cUUID/releases                                             com.yugabyte.yw.controllers.ReleaseController.create(cUUID: java.util.UUID)
 PUT     /customers/:cUUID/releases/:name                                       com.yugabyte.yw.controllers.ReleaseController.update(cUUID: java.util.UUID, name: String)
 DELETE  /customers/:cUUID/releases/:name                                       com.yugabyte.yw.controllers.ReleaseController.delete(cUUID: java.util.UUID, name: String)
+GET     /customers/:cUUID/providers/:pUUID/regions/:rUUID/releases             com.yugabyte.yw.controllers.ReleaseController.listByRegion(cUUID: java.util.UUID, pUUID: java.util.UUID, rUUID: java.util.UUID, includeMetadata: Boolean ?= false)
 
 # Certificate API
 POST    /customers/:cUUID/certificates                                         com.yugabyte.yw.controllers.CertificateController.upload(cUUID: java.util.UUID)
@@ -394,5 +395,5 @@ DELETE /customers/:cUUID/universes/:uniUUID/support_bundle/:sbUUID             c
 
 # GFlags Validation Ui Only API
 GET   /metadata/version/:version/list_gflags                                   com.yugabyte.yw.controllers.GFlagsValidationUiOnlyController.listGFlags(version: String, name: String ?= "", server: String ?= "", mostUsedGFlags: Boolean ?= false)
-POST  /metadata/version/:version/validate_gflags                               com.yugabyte.yw.controllers.GFlagsValidationUiOnlyController.validateGFlags(version: String)  
+POST  /metadata/version/:version/validate_gflags                               com.yugabyte.yw.controllers.GFlagsValidationUiOnlyController.validateGFlags(version: String)
 GET   /metadata/version/:version/gflag                                         com.yugabyte.yw.controllers.GFlagsValidationUiOnlyController.getGFlagMetadata(version: String, name: String ?= "", server: String ?= "")

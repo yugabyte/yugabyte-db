@@ -142,6 +142,11 @@ extern bool IsYBRelation(Relation relation);
 extern bool IsYBBackedRelation(Relation relation);
 
 /*
+ * Returns whether a relation is TEMP table
+ */
+extern bool YbIsTempRelation(Relation relation);
+
+/*
  * Returns whether a relation's attribute is a real column in the backing
  * YugaByte table. (It implies we can both read from and write to it).
  */
@@ -563,5 +568,10 @@ void YBSetParentDeathSignal();
  * filenode has been set to relation B's OID.
  */
 Oid YbGetStorageRelid(Relation relation);
+
+/*
+ * Check whether the user ID is of a user who has the yb_db_admin role.
+ */
+bool IsYbDbAdminUser(Oid member);
 
 #endif /* PG_YB_UTILS_H */

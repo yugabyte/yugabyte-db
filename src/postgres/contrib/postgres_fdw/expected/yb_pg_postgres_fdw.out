@@ -1783,6 +1783,13 @@ HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1131. Click '+' on the
 -- cleanup
 DROP OWNED BY regress_view_owner;
 DROP ROLE regress_view_owner;
+-- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
+select pg_sleep(1);
+ pg_sleep
+----------
+
+(1 row)
+
 -- ===================================================================
 -- Aggregate and grouping queries
 -- ===================================================================
@@ -6197,6 +6204,13 @@ CONTEXT:  remote SQL command: UPDATE "S 1"."T 1" SET c2 = (- c2) WHERE (("C 1" =
 ALTER FOREIGN TABLE ft1 DROP CONSTRAINT ft1_c2positive;
 -- But inconsistent check constraints provide inconsistent results
 ALTER FOREIGN TABLE ft1 ADD CONSTRAINT ft1_c2negative CHECK (c2 < 0);
+-- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
+select pg_sleep(1);
+ pg_sleep
+----------
+
+(1 row)
+
 --EXPLAIN (VERBOSE, COSTS OFF) SELECT count(*) FROM ft1 WHERE c2 >= 0;
 SELECT count(*) FROM ft1 WHERE c2 >= 0;
  count
@@ -6213,8 +6227,6 @@ SELECT count(*) FROM ft1 WHERE c2 >= 0;
 (1 row)
 
 RESET constraint_exclusion;
--- local check constraint is not actually enforced
-INSERT INTO ft1(c1, c2) VALUES(1111, 2);
 -- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
 select pg_sleep(1);
  pg_sleep
@@ -6222,6 +6234,8 @@ select pg_sleep(1);
 
 (1 row)
 
+-- local check constraint is not actually enforced
+INSERT INTO ft1(c1, c2) VALUES(1111, 2);
 UPDATE ft1 SET c2 = c2 + 1 WHERE c1 = 1;
 ALTER FOREIGN TABLE ft1 DROP CONSTRAINT ft1_c2negative;
 -- ===================================================================
@@ -7214,7 +7228,7 @@ select tableoid::regclass, * FROM remp2 order by 1, 2, 3;
 
 -- Copying into foreign partitions directly should work as well
 copy remp1 from stdin;
-WARNING:  Batched COPY is not supported on temporary tables. Defaulting to using one transaction for the entire copy.
+WARNING:  Batched COPY is not supported on foreign tables. Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 select tableoid::regclass, * FROM remp1 order by 1, 2, 3;
  tableoid | a |  b
@@ -7245,7 +7259,7 @@ select pg_sleep(1);
 
 -- Test basic functionality
 copy rem2 from stdin;
-WARNING:  Batched COPY is not supported on temporary tables. Defaulting to using one transaction for the entire copy.
+WARNING:  Batched COPY is not supported on foreign tables. Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 select * from rem2 order by f1;
  f1 | f2
@@ -7267,10 +7281,10 @@ select pg_sleep(1);
 
 -- check constraint is enforced on the remote side, not locally
 copy rem2 from stdin;
-WARNING:  Batched COPY is not supported on temporary tables. Defaulting to using one transaction for the entire copy.
+WARNING:  Batched COPY is not supported on foreign tables. Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 copy rem2 from stdin; -- ERROR
-WARNING:  Batched COPY is not supported on temporary tables. Defaulting to using one transaction for the entire copy.
+WARNING:  Batched COPY is not supported on foreign tables. Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 ERROR:  new row for relation "loc2" violates check constraint "loc2_f1positive"
 DETAIL:  Failing row contains (-1, xyzzy).
@@ -7285,6 +7299,13 @@ select * from rem2 order by f1;
 
 alter foreign table rem2 drop constraint rem2_f1positive;
 alter table loc2 drop constraint loc2_f1positive;
+-- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
+select pg_sleep(1);
+ pg_sleep
+----------
+
+(1 row)
+
 delete from rem2;
 -- Test local triggers
 create trigger trig_stmt_before before insert on rem2
@@ -7307,7 +7328,7 @@ select pg_sleep(1);
 (1 row)
 
 copy rem2 from stdin;
-WARNING:  Batched COPY is not supported on temporary tables. Defaulting to using one transaction for the entire copy.
+WARNING:  Batched COPY is not supported on foreign tables. Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 select * from rem2 order by f1;
  f1 | f2
@@ -7336,7 +7357,7 @@ select pg_sleep(1);
 
 -- The new values are concatenated with ' triggered !'
 copy rem2 from stdin;
-WARNING:  Batched COPY is not supported on temporary tables. Defaulting to using one transaction for the entire copy.
+WARNING:  Batched COPY is not supported on foreign tables. Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 select * from rem2 order by f1;
  f1 |       f2
@@ -7358,7 +7379,7 @@ select pg_sleep(1);
 
 -- Nothing happens
 copy rem2 from stdin;
-WARNING:  Batched COPY is not supported on temporary tables. Defaulting to using one transaction for the entire copy.
+WARNING:  Batched COPY is not supported on foreign tables. Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 select * from rem2 order by f1;
  f1 | f2
@@ -7379,7 +7400,7 @@ select pg_sleep(1);
 
 -- The new values are concatenated with ' triggered !'
 copy rem2 from stdin;
-WARNING:  Batched COPY is not supported on temporary tables. Defaulting to using one transaction for the entire copy.
+WARNING:  Batched COPY is not supported on foreign tables. Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 select * from rem2 order by f1;
  f1 |       f2
@@ -7401,7 +7422,7 @@ select pg_sleep(2);
 
 -- Nothing happens
 copy rem2 from stdin;
-WARNING:  Batched COPY is not supported on temporary tables. Defaulting to using one transaction for the entire copy.
+WARNING:  Batched COPY is not supported on foreign tables. Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 select * from rem2 order by f1;
  f1 | f2
@@ -7427,7 +7448,7 @@ select pg_sleep(1);
 (1 row)
 
 copy rem2 from stdin;
-WARNING:  Batched COPY is not supported on temporary tables. Defaulting to using one transaction for the entire copy.
+WARNING:  Batched COPY is not supported on foreign tables. Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 select * from rem2 order by f1;
  f1 |       f2
@@ -7448,7 +7469,7 @@ begin;
 create foreign table rem3 (f1 int, f2 text)
 	server loopback options(table_name 'loc3');
 copy rem3 from stdin;
-WARNING:  Batched COPY is not supported on temporary tables. Defaulting to using one transaction for the entire copy.
+WARNING:  Batched COPY is not supported on foreign tables. Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 commit;
 select * from rem3 order by f1;

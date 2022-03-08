@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-To manage database access and authorization, YugabyteDB uses [role-based access control](../../../secure/authorization) (RBAC), consisting of a collection of privileges on resources given to roles.
+To manage database access and authorization, YugabyteDB uses [role-based access control](../../../secure/authorization/) (RBAC), consisting of a collection of privileges on resources given to roles.
 
 Clusters in Yugabyte Cloud include a set of default users and roles in YSQL and YCQL.
 

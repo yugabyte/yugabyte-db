@@ -365,10 +365,11 @@ std::map<PartitionKey, Status> Batcher::CollectOpsErrors() {
         const Schema& schema = GetSchema(op.yb_op->table()->schema());
         const PartitionSchema& partition_schema = op.yb_op->table()->partition_schema();
         const auto msg = Format(
-            "Row $0 not in partition $1, partition key: $2",
+            "Row $0 not in partition $1, partition key: $2, tablet: $3",
             op.yb_op->ToString(),
             partition_schema.PartitionDebugString(partition, schema),
-            Slice(partition_key).ToDebugHexString());
+            Slice(partition_key).ToDebugHexString(),
+            op.tablet->tablet_id());
         LOG_WITH_PREFIX(DFATAL) << msg;
         op.error = STATUS(InternalError, msg);
       }

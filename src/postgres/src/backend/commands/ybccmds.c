@@ -451,7 +451,8 @@ static void CreateTableHandleSplitOptions(YBCPgStatement handle,
 
 void
 YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
-							 Oid relationId, Oid namespaceId, Oid tablegroupId, Oid tablespaceId)
+							 Oid relationId, Oid namespaceId, Oid tablegroupId, Oid tablespaceId,
+							 Oid matviewPgTableId)
 {
 	if (relkind != RELKIND_RELATION && relkind != RELKIND_PARTITIONED_TABLE &&
 		relkind != RELKIND_MATVIEW)
@@ -605,6 +606,7 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 									   colocated,
 									   tablegroupId,
 									   tablespaceId,
+									   matviewPgTableId,
 									   &handle));
 
 	CreateTableAddColumns(handle, desc, primary_key, colocated, tablegroupId);
@@ -886,9 +888,32 @@ YBCCreateIndex(const char *indexName,
 
 static void
 YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, YBCPgStatement handle,
-                        int* col, bool* needsYBAlter,
-                        YBCPgStatement* rollbackHandle)
+						int* col, bool* needsYBAlter,
+						YBCPgStatement* rollbackHandle,
+						bool isPartitionOfAlteredTable)
 {
+	if (isPartitionOfAlteredTable)
+	{
+		/*
+		 * This function was invoked on a child partition table to reflect
+		 * the effects of Alter on its parent.
+		 */
+		switch (cmd->subtype)
+		{
+			case AT_AddColumnRecurse:
+			case AT_DropColumnRecurse:
+			case AT_AddConstraintRecurse:
+			case AT_DropConstraintRecurse:
+				break;
+			default:
+				/*
+				 * This is not an alter command on a partitioned table that
+				 * needs to trickle down to its child partitions. Nothing to
+				 * do.
+				 */
+				return;
+		}
+	}
 	Oid relationId = RelationGetRelid(rel);
 	switch (cmd->subtype)
 	{
@@ -914,13 +939,13 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, YBCPgStatement handle,
 
 			typeTuple = typenameType(NULL, colDef->typeName, &typmod);
 			typeOid = HeapTupleGetOid(typeTuple);
+			ReleaseSysCache(typeTuple);
 			order = RelationGetNumberOfAttributes(rel) + *col;
 			const YBCPgTypeEntity *col_type = YbDataTypeFromOidMod(order, typeOid);
 
 			HandleYBStatus(YBCPgAlterTableAddColumn(handle, colDef->colname,
-													order, col_type));
+						   order, col_type));
 			++(*col);
-			ReleaseSysCache(typeTuple);
 			*needsYBAlter = true;
 
 			/*
@@ -1096,7 +1121,8 @@ YBCPgStatement
 YBCPrepareAlterTable(List** subcmds,
 					 int subcmds_size,
 					 Oid relationId,
-					 YBCPgStatement *rollbackHandle)
+					 YBCPgStatement *rollbackHandle,
+					 bool isPartitionOfAlteredTable)
 {
 	/* Appropriate lock was already taken */
 	Relation rel = relation_open(relationId, NoLock);
@@ -1121,7 +1147,8 @@ YBCPrepareAlterTable(List** subcmds,
 		foreach(lcmd, subcmds[cmd_idx])
 		{
 			YBCPrepareAlterTableCmd((AlterTableCmd *) lfirst(lcmd), rel, handle,
-			                        &col, &needsYBAlter, rollbackHandle);
+									 &col, &needsYBAlter, rollbackHandle,
+									 isPartitionOfAlteredTable);
 		}
 	}
 	relation_close(rel, NoLock);
@@ -1257,7 +1284,7 @@ YbBackfillIndex(BackfillIndexStmt *stmt, DestReceiver *dest)
 	TupOutputState *tstate;
 	YbPgExecOutParam *out_param;
 
-	if (YBCGetDisableIndexBackfill())
+	if (*YBCGetGFlags()->ysql_disable_index_backfill)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("backfill is not enabled")));

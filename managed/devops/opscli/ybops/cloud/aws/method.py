@@ -12,7 +12,7 @@ from ybops.cloud.common.method import ListInstancesMethod, CreateInstancesMethod
     ProvisionInstancesMethod, DestroyInstancesMethod, AbstractMethod, \
     AbstractAccessMethod, AbstractNetworkMethod, AbstractInstancesMethod, AccessDeleteKeyMethod, \
     CreateRootVolumesMethod, ReplaceRootVolumeMethod, ChangeInstanceTypeMethod, \
-    UpdateMountedDisksMethod
+    UpdateMountedDisksMethod, ConsoleLoggingErrorHandler
 from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
 from ybops.cloud.aws.utils import get_yb_sg_name, create_dns_record_set, edit_dns_record_set, \
     delete_dns_record_set, list_dns_record_set, ROOT_VOLUME_LABEL
@@ -238,7 +238,7 @@ class AwsResumeInstancesMethod(AbstractInstancesMethod):
         if not host_info:
             logging.error("Host {} does not exist.".format(args.search_pattern))
             return
-        self.cloud.start_instance(host_info, int(args.custom_ssh_port))
+        self.cloud.start_instance(host_info, [int(args.custom_ssh_port)])
 
 
 class AwsTagsMethod(AbstractInstancesMethod):
@@ -366,6 +366,45 @@ class AwsQuerySpotPricingMethod(AbstractMethod):
             if args.region is None or args.zone is None:
                 raise YBOpsRuntimeError("Must specify a region & zone to query spot price")
             print(json.dumps({'SpotPrice': self.cloud.get_spot_pricing(args)}))
+        except YBOpsRuntimeError as ye:
+            print(json.dumps({"error": get_exception_message(ye)}))
+
+
+class AwsQueryImageMethod(AbstractMethod):
+    def __init__(self, base_command):
+        super(AwsQueryImageMethod, self).__init__(base_command, "image")
+        self.error_handler = ConsoleLoggingErrorHandler(self.cloud)
+
+    def add_extra_args(self):
+        super(AwsQueryImageMethod, self).add_extra_args()
+        self.parser.add_argument("--machine_image",
+                                 required=True,
+                                 help="The machine image (e.g. an AMI on AWS) to query")
+
+    def callback(self, args):
+        try:
+            if args.region is None:
+                raise YBOpsRuntimeError("Must specify a region to query image")
+            print(json.dumps({"architecture": self.cloud.get_image_arch(args)}))
+        except YBOpsRuntimeError as ye:
+            print(json.dumps({"error": get_exception_message(ye)}))
+
+class AwsQueryImageMethod(AbstractMethod):
+    def __init__(self, base_command):
+        super(AwsQueryImageMethod, self).__init__(base_command, "image")
+        self.error_handler = ConsoleLoggingErrorHandler(self.cloud)
+
+    def add_extra_args(self):
+        super(AwsQueryImageMethod, self).add_extra_args()
+        self.parser.add_argument("--machine_image",
+                                 required=True,
+                                 help="The machine image (e.g. an AMI on AWS) to query")
+
+    def callback(self, args):
+        try:
+            if args.region is None:
+                raise YBOpsRuntimeError("Must specify a region to query image")
+            print(json.dumps({"architecture": self.cloud.get_image_arch(args)}))
         except YBOpsRuntimeError as ye:
             print(json.dumps({"error": get_exception_message(ye)}))
 

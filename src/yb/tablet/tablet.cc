@@ -1074,7 +1074,8 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
     const ReadHybridTime read_hybrid_time,
     const TableId& table_id,
     CoarseTimePoint deadline,
-    AllowBootstrappingState allow_bootstrapping_state) const {
+    AllowBootstrappingState allow_bootstrapping_state,
+    const Slice& sub_doc_key) const {
   if (state_ != kOpen && (!allow_bootstrapping_state || state_ != kBootstrapping)) {
     return STATUS_FORMAT(IllegalState, "Tablet in wrong state: $0", state_);
   }
@@ -1103,7 +1104,7 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
   auto result = std::make_unique<DocRowwiseIterator>(
       std::move(mapped_projection), schema, txn_op_ctx, doc_db(),
       deadline, read_time, &pending_non_abortable_op_counter_);
-  RETURN_NOT_OK(result->Init(table_type_));
+  RETURN_NOT_OK(result->Init(table_type_, sub_doc_key));
   return std::move(result);
 }
 
@@ -1491,7 +1492,9 @@ Result<bool> Tablet::HasScanReachedMaxPartitionKey(
     const PgsqlReadRequestPB& pgsql_read_request,
     const string& partition_key,
     size_t row_count) const {
-  if (metadata_->schema()->num_hash_key_columns() > 0) {
+  auto schema = metadata_->schema();
+
+  if (schema->num_hash_key_columns() > 0) {
     uint16_t next_hash_code = PartitionSchema::DecodeMultiColumnHashValue(partition_key);
     // For batched index lookup of ybctids, check if the current partition hash is lesser than
     // upper bound. If it is, we can then avoid paging. Paging of batched index lookup of ybctids
@@ -1505,26 +1508,25 @@ Result<bool> Tablet::HasScanReachedMaxPartitionKey(
           PartitionSchema::DecodeMultiColumnHashValue(pgsql_read_request.upper_bound().key());
       uint16_t partition_hash =
           PartitionSchema::DecodeMultiColumnHashValue(partition_key);
-          return pgsql_read_request.upper_bound().is_inclusive() ?
-            partition_hash > upper_bound_hash :
-            partition_hash >= upper_bound_hash;
+      return pgsql_read_request.upper_bound().is_inclusive() ?
+          partition_hash > upper_bound_hash :
+          partition_hash >= upper_bound_hash;
     }
     if (pgsql_read_request.has_max_hash_code() &&
         next_hash_code > pgsql_read_request.max_hash_code()) {
       return true;
     }
   } else if (pgsql_read_request.has_upper_bound()) {
-    docdb::DocKey partition_doc_key(*metadata_->schema());
+    docdb::DocKey partition_doc_key(*schema);
     VERIFY_RESULT(partition_doc_key.DecodeFrom(
         partition_key, docdb::DocKeyPart::kWholeDocKey, docdb::AllowSpecial::kTrue));
-    docdb::DocKey max_partition_doc_key(*metadata_->schema());
+    docdb::DocKey max_partition_doc_key(*schema);
     VERIFY_RESULT(max_partition_doc_key.DecodeFrom(
         pgsql_read_request.upper_bound().key(), docdb::DocKeyPart::kWholeDocKey,
         docdb::AllowSpecial::kTrue));
 
-    return pgsql_read_request.upper_bound().is_inclusive() ?
-      partition_doc_key.CompareTo(max_partition_doc_key) > 0 :
-      partition_doc_key.CompareTo(max_partition_doc_key) >= 0;
+    auto cmp = partition_doc_key.CompareTo(max_partition_doc_key);
+    return pgsql_read_request.upper_bound().is_inclusive() ? cmp > 0 : cmp >= 0;
   }
 
   return false;
@@ -1745,9 +1747,43 @@ Status Tablet::RemoveIntents(const RemoveIntentsData& data, const TransactionIdS
   return RemoveIntentsImpl(data, transactions);
 }
 
+// We batch this as some tx could be very large and may not fit in one batch
+CHECKED_STATUS Tablet::GetIntents(
+    const TransactionId& id,
+    std::vector<docdb::IntentKeyValueForCDC>* key_value_intents,
+    docdb::ApplyTransactionState* stream_state) {
+  auto scoped_read_operation = CreateNonAbortableScopedRWOperation();
+  RETURN_NOT_OK(scoped_read_operation);
+
+  docdb::ApplyTransactionState new_stream_state;
+
+  new_stream_state = VERIFY_RESULT(
+      docdb::GetIntentsBatch(id, &key_bounds_, stream_state, intents_db_.get(), key_value_intents));
+  stream_state->key = new_stream_state.key;
+  stream_state->write_id = new_stream_state.write_id;
+
+  return Status::OK();
+}
+
 Result<HybridTime> Tablet::ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) {
   // We could not use mvcc_ directly, because correct lease should be passed to it.
   return SafeTime(RequireLease::kFalse, min_allowed, deadline);
+}
+
+Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::CreateCDCSnapshotIterator(
+    const Schema& projection, const ReadHybridTime& time, const string& next_key) {
+  VLOG_WITH_PREFIX(2) << "The nextKey is " << next_key;
+
+  Slice next_slice;
+  if (!next_key.empty()) {
+    SubDocKey start_sub_doc_key;
+    docdb::KeyBytes start_key_bytes(next_key);
+    RETURN_NOT_OK(start_sub_doc_key.FullyDecodeFrom(start_key_bytes.AsSlice()));
+    next_slice = start_sub_doc_key.doc_key().Encode().AsSlice();
+    VLOG_WITH_PREFIX(2) << "The nextKey doc is " << next_key;
+  }
+  return NewRowIterator(
+      projection, time, "", CoarseTimePoint::max(), AllowBootstrappingState::kFalse, next_slice);
 }
 
 Status Tablet::CreatePreparedChangeMetadata(

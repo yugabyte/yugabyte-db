@@ -27,7 +27,7 @@ A Yugabyte Cloud user is either an Admin or a Developer.
 
 ### Admin
 
-Admin users have full access to all cloud console features. There must always be at least one Admin account. The primary account user (the user who created the Yugabyte Cloud account) is automatically assigned an Admin role.
+Admin users have full access to all cloud features. There must always be at least one Admin account. The primary account user (the user who created the Yugabyte Cloud account) is automatically assigned an Admin role.
 
 ### Developer
 

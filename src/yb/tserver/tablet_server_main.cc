@@ -154,6 +154,10 @@ void SetProxyAddresses() {
 }
 
 int TabletServerMain(int argc, char** argv) {
+#ifndef NDEBUG
+  HybridTime::TEST_SetPrettyToString(true);
+#endif
+
   // Reset some default values before parsing gflags.
   FLAGS_rpc_bind_addresses = strings::Substitute("0.0.0.0:$0",
                                                  TabletServer::kDefaultPort);

@@ -550,6 +550,13 @@ After the load balancer runs, all tablets of `system.transactions_us_east` shoul
 
 ---
 
+{{< note title="Note" >}}
+
+The preferred way to create transaction status tables with YSQL is to create a tablespace with the appropriate placement. YugabyteDB automatically creates a transaction table using the tablespace's placement when you create the first table using the new tablespace.
+
+{{< /note >}}
+
+
 ### Backup and snapshot commands
 
 The following backup and snapshot commands are available:
@@ -1755,7 +1762,7 @@ The time needed to complete a data move depends on the following:
 
 {{< /note >}}
 
-For an example of performing a data move and the use of this command, refer to [Change cluster configuration](../../manage/change-cluster-config).
+For an example of performing a data move and the use of this command, refer to [Change cluster configuration](../../manage/change-cluster-config/).
 
 **Example**
 

@@ -20,7 +20,12 @@ showAsideToc: true
       YSQL
     </a>
   </li>
-
+  <li>
+    <a href="../ysql-entity-framework/" class="nav-link ">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - Entity Framework
+    </a>
+  </li>
   <li>
     <a href="{{< relref "./ycql.md" >}}" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
