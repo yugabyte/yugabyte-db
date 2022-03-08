@@ -17,12 +17,12 @@ SELECT  ctid, oprcom
 FROM    pg_catalog.pg_operator fk
 WHERE   oprcom != 0 AND
         NOT EXISTS(SELECT 1 FROM pg_catalog.pg_operator pk WHERE pk.oid = fk.oprcom);
-ERROR:  System column with id -1 is not supported yet
+ERROR:  System column "ctid" is not supported yet
 SELECT  ctid, oprnegate
 FROM    pg_catalog.pg_operator fk
 WHERE   oprnegate != 0 AND
         NOT EXISTS(SELECT 1 FROM pg_catalog.pg_operator pk WHERE pk.oid = fk.oprnegate);
-ERROR:  System column with id -1 is not supported yet
+ERROR:  System column "ctid" is not supported yet
 DROP OPERATOR ===(bigint, bigint);
 CREATE OPERATOR <| (
         PROCEDURE = int8lt,
@@ -41,10 +41,10 @@ SELECT  ctid, oprcom
 FROM    pg_catalog.pg_operator fk
 WHERE   oprcom != 0 AND
         NOT EXISTS(SELECT 1 FROM pg_catalog.pg_operator pk WHERE pk.oid = fk.oprcom);
-ERROR:  System column with id -1 is not supported yet
+ERROR:  System column "ctid" is not supported yet
 SELECT  ctid, oprnegate
 FROM    pg_catalog.pg_operator fk
 WHERE   oprnegate != 0 AND
         NOT EXISTS(SELECT 1 FROM pg_catalog.pg_operator pk WHERE pk.oid = fk.oprnegate);
-ERROR:  System column with id -1 is not supported yet
+ERROR:  System column "ctid" is not supported yet
 DROP OPERATOR <|(bigint, bigint);

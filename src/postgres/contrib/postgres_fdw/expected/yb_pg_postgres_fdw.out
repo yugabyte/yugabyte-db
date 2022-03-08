@@ -2994,7 +2994,7 @@ SELECT * FROM ft1 t1 WHERE t1.ctid = '(0,2)';
 
 -- YB note: CTID not supported yet, see issue #11419, reenable commented out part below when fixed
 SELECT * FROM ft1 t1 WHERE t1.ctid = '(0,2)';
-ERROR:  System column with id -1 is not supported yet
+ERROR:  System column "ctid" is not supported yet
 CONTEXT:  remote SQL command: SELECT "C 1", c2, c3, c4, c5, c6, c7, c8 FROM "S 1"."T 1" WHERE ((ctid = '(0,2)'::tid))
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT ctid, * FROM ft1 t1 LIMIT 1;
@@ -4319,38 +4319,18 @@ INSERT INTO ft2 (c1,c2,c3) VALUES (1200,999,'foo') RETURNING tableoid::regclass;
 
 EXPLAIN (verbose, costs off)
 UPDATE ft2 SET c3 = 'bar' WHERE c1 = 1200 RETURNING tableoid::regclass;             -- can be pushed down
-                                     QUERY PLAN
-------------------------------------------------------------------------------------
- Update on public.ft2
-   Output: (tableoid)::regclass
-   ->  Foreign Update on public.ft2
-         Remote Filter: (ft2.c1 = 1200)
-         Remote SQL: UPDATE "S 1"."T 1" SET c3 = 'bar'::text WHERE (("C 1" = 1200))
-(5 rows)
-
+ERROR:  System column "ctid" is not supported yet
+CONTEXT:  remote SQL command: EXPLAIN SELECT "C 1", c2, c4, c5, c6, c7, c8, ctid FROM "S 1"."T 1" WHERE (("C 1" = 1200)) FOR UPDATE
 UPDATE ft2 SET c3 = 'bar' WHERE c1 = 1200 RETURNING tableoid::regclass;
- tableoid
-----------
- ft2
-(1 row)
-
+ERROR:  System column "ctid" is not supported yet
+CONTEXT:  remote SQL command: EXPLAIN SELECT "C 1", c2, c4, c5, c6, c7, c8, ctid FROM "S 1"."T 1" WHERE (("C 1" = 1200)) FOR UPDATE
 EXPLAIN (verbose, costs off)
 DELETE FROM ft2 WHERE c1 = 1200 RETURNING tableoid::regclass;                       -- can be pushed down
-                             QUERY PLAN
---------------------------------------------------------------------
- Delete on public.ft2
-   Output: (tableoid)::regclass
-   ->  Foreign Delete on public.ft2
-         Remote Filter: (ft2.c1 = 1200)
-         Remote SQL: DELETE FROM "S 1"."T 1" WHERE (("C 1" = 1200))
-(5 rows)
-
+ERROR:  System column "ctid" is not supported yet
+CONTEXT:  remote SQL command: EXPLAIN SELECT ctid FROM "S 1"."T 1" WHERE (("C 1" = 1200)) FOR UPDATE
 DELETE FROM ft2 WHERE c1 = 1200 RETURNING tableoid::regclass;
- tableoid
-----------
- ft2
-(1 row)
-
+ERROR:  System column "ctid" is not supported yet
+CONTEXT:  remote SQL command: EXPLAIN SELECT ctid FROM "S 1"."T 1" WHERE (("C 1" = 1200)) FOR UPDATE
 -- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
 select pg_sleep(1);
  pg_sleep
@@ -4367,7 +4347,7 @@ UPDATE ft2 SET c3 = 'foo'
   FROM ft4 INNER JOIN ft5 ON (ft4.c1 = ft5.c1)
   WHERE ft2.c1 > 1200 AND ft2.c2 = ft4.c1
   RETURNING ft2, ft2.*, ft4, ft4.*;       -- can be pushed down
-ERROR:  System column with id -1 is not supported yet
+ERROR:  System column "ctid" is not supported yet
 CONTEXT:  remote SQL command: EXPLAIN SELECT "C 1", c2, c4, c5, c6, c7, c8, ctid FROM "S 1"."T 1" WHERE (("C 1" > 1200)) FOR UPDATE
 --UPDATE ft2 SET c3 = 'foo'
 --  FROM ft4 INNER JOIN ft5 ON (ft4.c1 = ft5.c1)
@@ -6125,6 +6105,7 @@ EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM ft1 ORDER BY c6 DESC NULLS FIRST, c1 
 SELECT * FROM ft1 ORDER BY c6 DESC NULLS FIRST, c1 OFFSET 15 LIMIT 10;
   c1  | c2 |  c3   | c4 | c5 | c6 |     c7     | c8
 ------+----+-------+----+----+----+------------+----
+ 1205 |  5 | 01205 |    |    |    | ft2        |
  1206 |  6 | 01206 |    |    |    | ft2        |
  1207 |  7 | 01207 |    |    |    | ft2        |
  1208 |  8 | 01208 |    |    |    | ft2        |
@@ -6134,7 +6115,6 @@ SELECT * FROM ft1 ORDER BY c6 DESC NULLS FIRST, c1 OFFSET 15 LIMIT 10;
  1212 | 12 | 01212 |    |    |    | ft2        |
  1213 | 13 | 01213 |    |    |    | ft2        |
  1214 | 14 | 01214 |    |    |    | ft2        |
- 1215 | 15 | 01215 |    |    |    | ft2        |
 (10 rows)
 
 -- ORDER BY ASC NULLS FIRST options
@@ -6151,6 +6131,7 @@ EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM ft1 ORDER BY c6 ASC NULLS FIRST, c1 O
 SELECT * FROM ft1 ORDER BY c6 ASC NULLS FIRST, c1 OFFSET 15 LIMIT 10;
   c1  | c2 |  c3   | c4 | c5 | c6 |     c7     | c8
 ------+----+-------+----+----+----+------------+----
+ 1205 |  5 | 01205 |    |    |    | ft2        |
  1206 |  6 | 01206 |    |    |    | ft2        |
  1207 |  7 | 01207 |    |    |    | ft2        |
  1208 |  8 | 01208 |    |    |    | ft2        |
@@ -6160,7 +6141,6 @@ SELECT * FROM ft1 ORDER BY c6 ASC NULLS FIRST, c1 OFFSET 15 LIMIT 10;
  1212 | 12 | 01212 |    |    |    | ft2        |
  1213 | 13 | 01213 |    |    |    | ft2        |
  1214 | 14 | 01214 |    |    |    | ft2        |
- 1215 | 15 | 01215 |    |    |    | ft2        |
 (10 rows)
 
 -- ===================================================================
@@ -6229,7 +6209,7 @@ select pg_sleep(1);
 SELECT count(*) FROM ft1 WHERE c2 >= 0;
  count
 -------
-  1135
+  1136
 (1 row)
 
 SET constraint_exclusion = 'on';
@@ -6476,7 +6456,7 @@ SELECT * from loc1 ORDER BY f1, f2;
 (6 rows)
 
 UPDATE rem1 set f2 = '';
-ERROR:  System column with id -1 is not supported yet
+ERROR:  System column "ctid" is not supported yet
 CONTEXT:  remote SQL command: SELECT f1, f2, ctid FROM public.loc1 FOR UPDATE
 SELECT * from loc1 ORDER BY f1, f2;
  f1 |         f2
@@ -6490,7 +6470,7 @@ SELECT * from loc1 ORDER BY f1, f2;
 (6 rows)
 
 UPDATE rem1 set f2 = 'skidoo' RETURNING f2;
-ERROR:  System column with id -1 is not supported yet
+ERROR:  System column "ctid" is not supported yet
 CONTEXT:  remote SQL command: SELECT f1, f2, ctid FROM public.loc1 FOR UPDATE
 SELECT * from loc1 ORDER BY f1, f2;
  f1 |         f2
@@ -6537,7 +6517,7 @@ SELECT * from loc1 ORDER BY f1, f2;
 (2 rows)
 
 UPDATE rem1 set f2 = '';
-ERROR:  System column with id -1 is not supported yet
+ERROR:  System column "ctid" is not supported yet
 CONTEXT:  remote SQL command: SELECT f1, f2, ctid FROM public.loc1 FOR UPDATE
 SELECT * from loc1 ORDER BY f1, f2;
  f1 |               f2
@@ -6547,7 +6527,7 @@ SELECT * from loc1 ORDER BY f1, f2;
 (2 rows)
 
 UPDATE rem1 set f2 = 'skidoo' RETURNING f2;
-ERROR:  System column with id -1 is not supported yet
+ERROR:  System column "ctid" is not supported yet
 CONTEXT:  remote SQL command: SELECT f1, f2, ctid FROM public.loc1 FOR UPDATE
 SELECT * from loc1 ORDER BY f1, f2;
  f1 |               f2
@@ -6593,7 +6573,7 @@ SELECT * from loc1 order by f1;
 (1 row)
 
 DELETE from rem1;
-ERROR:  System column with id -1 is not supported yet
+ERROR:  System column "ctid" is not supported yet
 CONTEXT:  remote SQL command: SELECT f1, f2, ctid FROM public.loc1 FOR UPDATE
 SELECT * from loc1 order by f1;
  f1 |  f2
@@ -6614,15 +6594,19 @@ FOR EACH ROW EXECUTE PROCEDURE trigger_data(23,'skidoo');
 ERROR:  function trigger_data() does not exist
 CREATE TRIGGER trig_local_before BEFORE INSERT OR UPDATE ON loc1
 FOR EACH ROW EXECUTE PROCEDURE trig_row_before_insupdate();
+-- YB note: triggers don't work immediately, remove once #11555 is fixed
+select pg_sleep(1);
+ pg_sleep
+----------
+
+(1 row)
+
 INSERT INTO rem1(f2) VALUES ('test');
 UPDATE rem1 SET f2 = 'testo';
 -- Test returning a system attribute
 INSERT INTO rem1(f2) VALUES ('test') RETURNING ctid;
-      ctid
-----------------
- (4294967295,0)
-(1 row)
-
+ERROR:  System column "ctid" is not supported yet
+CONTEXT:  remote SQL command: INSERT INTO public.loc1(f1, f2) VALUES ($1, $2) RETURNING ctid
 -- cleanup
 DROP TRIGGER trig_row_before ON rem1;
 ERROR:  trigger "trig_row_before" for table "rem1" does not exist

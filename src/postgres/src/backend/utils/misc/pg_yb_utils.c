@@ -2127,7 +2127,7 @@ void YBSetParentDeathSignal()
 }
 
 Oid YbGetStorageRelid(Relation relation) {
-	if (relation->rd_rel->relkind == RELKIND_MATVIEW && 
+	if (relation->rd_rel->relkind == RELKIND_MATVIEW &&
 		relation->rd_rel->relfilenode != InvalidOid) {
 		return relation->rd_rel->relfilenode;
 	}
@@ -2136,4 +2136,22 @@ Oid YbGetStorageRelid(Relation relation) {
 
 bool IsYbDbAdminUser(Oid member) {
 	return IsYugaByteEnabled() && has_privs_of_role(member, DEFAULT_ROLE_YB_DB_ADMIN);
+}
+
+void YbCheckUnsupportedSystemColumns(Var *var, const char *colname, RangeTblEntry *rte) {
+	if (rte->relkind == RELKIND_FOREIGN_TABLE)
+		return;
+	switch (var->varattno)
+	{
+		case SelfItemPointerAttributeNumber:
+		case MinTransactionIdAttributeNumber:
+		case MinCommandIdAttributeNumber:
+		case MaxTransactionIdAttributeNumber:
+		case MaxCommandIdAttributeNumber:
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					errmsg("System column \"%s\" is not supported yet", colname)));
+		default:
+			break;
+	}
 }
