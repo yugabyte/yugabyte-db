@@ -606,7 +606,7 @@ public class SessionControllerTest {
 
     assertEquals(OK, result.status());
     assertNotNull(json.get("apiToken"));
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -637,7 +637,7 @@ public class SessionControllerTest {
     json = Json.parse(contentAsString(result));
     String apiToken2 = json.get("apiToken").asText();
     assertNotEquals(apiToken1, apiToken2);
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(2, customer.uuid);
   }
 
   @Test

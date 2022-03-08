@@ -30,6 +30,7 @@ import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.TableDefinitionTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.CustomerTask;
@@ -143,7 +144,14 @@ public class TablesController extends AuthenticatedController {
         tableDetails.keyspace,
         tableDetails.tableName);
 
-    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Table,
+            null,
+            Audit.ActionType.Create,
+            Json.toJson(formData.rawData()),
+            taskUUID);
     return new YBPTask(taskUUID).asResult();
   }
 
@@ -209,7 +217,9 @@ public class TablesController extends AuthenticatedController {
         taskParams.tableUUID,
         taskParams.getFullName());
 
-    auditService().createAuditEntry(ctx(), request(), taskUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(), Audit.TargetType.Table, tableUUID.toString(), Audit.ActionType.Drop, taskUUID);
     return new YBPTask(taskUUID).asResult();
   }
 
@@ -463,7 +473,13 @@ public class TablesController extends AuthenticatedController {
           "Submitted universe backup to be scheduled {}, schedule uuid = {}.",
           universeUUID,
           scheduleUUID);
-      auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+      auditService()
+          .createAuditEntryWithReqBody(
+              ctx(),
+              Audit.TargetType.Universe,
+              universeUUID.toString(),
+              Audit.ActionType.CreateMultiTableBackup,
+              Json.toJson(formData.rawData()));
       return PlatformResults.withData(schedule);
     } else {
       UUID taskUUID = commissioner.submit(TaskType.MultiTableBackup, taskParams);
@@ -476,7 +492,14 @@ public class TablesController extends AuthenticatedController {
           CustomerTask.TaskType.Create,
           universe.name);
       LOG.info("Saved task uuid {} in customer tasks for universe {}", taskUUID, universe.name);
-      auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
+      auditService()
+          .createAuditEntryWithReqBody(
+              ctx(),
+              Audit.TargetType.Universe,
+              universeUUID.toString(),
+              Audit.ActionType.CreateMultiTableBackup,
+              Json.toJson(formData.rawData()),
+              taskUUID);
       return new YBPTask(taskUUID).asResult();
     }
   }
@@ -537,7 +560,13 @@ public class TablesController extends AuthenticatedController {
           tableUUID,
           taskParams.getTableName(),
           scheduleUUID);
-      auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+      auditService()
+          .createAuditEntryWithReqBody(
+              ctx(),
+              Audit.TargetType.Table,
+              tableUUID.toString(),
+              Audit.ActionType.CreateSingleTableBackup,
+              Json.toJson(formData.rawData()));
       return PlatformResults.withData(schedule);
     } else {
       UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, taskParams);
@@ -559,7 +588,14 @@ public class TablesController extends AuthenticatedController {
           tableUUID,
           taskParams.getTableNames(),
           taskParams.getTableName());
-      auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
+      auditService()
+          .createAuditEntryWithReqBody(
+              ctx(),
+              Audit.TargetType.Table,
+              tableUUID.toString(),
+              Audit.ActionType.CreateSingleTableBackup,
+              Json.toJson(formData.rawData()),
+              taskUUID);
       return new YBPTask(taskUUID).asResult();
     }
   }
@@ -633,7 +669,14 @@ public class TablesController extends AuthenticatedController {
         taskParams.getTableName(),
         taskParams.getTableName());
 
-    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Table,
+            tableUUID.toString(),
+            Audit.ActionType.BulkImport,
+            Json.toJson(formData.rawData()),
+            taskUUID);
     return new YBPTask(taskUUID, tableUUID).asResult();
   }
 
