@@ -459,86 +459,6 @@ TEST_F(TabletSplitITest, TestLoadBalancerAndSplit) {
           blacklisted_ts_uuid)));
 }
 
-// Start tablet split, create Index to start backfill while split operation in progress
-// and check backfill state.
-TEST_F(TabletSplitITest, TestBackfillDuringSplit) {
-  constexpr auto kNumRows = 10000;
-  FLAGS_TEST_apply_tablet_split_inject_delay_ms = 200 * kTimeMultiplier;
-
-  CreateSingleTablet();
-  const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kNumRows));
-  auto* catalog_mgr = ASSERT_RESULT(catalog_manager());
-  auto table = catalog_mgr->GetTableInfo(table_->id());
-  auto source_tablet_info = ASSERT_RESULT(GetSingleTestTabletInfo(catalog_mgr));
-  const auto source_tablet_id = source_tablet_info->id();
-
-  // Send SplitTablet RPC to the tablet leader.
-  ASSERT_OK(catalog_mgr->TEST_SplitTablet(source_tablet_info, split_hash_code));
-
-  int indexed_column_index = 1;
-  const client::YBTableName index_name(
-        YQL_DATABASE_CQL, table_.name().namespace_name(),
-        table_.name().table_name() + '_' +
-          table_.schema().Column(indexed_column_index).name() + "_idx");
-  // Create index while split operation in progress
-  PrepareIndex(client::Transactional(GetIsolationLevel() != IsolationLevel::NON_TRANSACTIONAL),
-               index_name, indexed_column_index);
-
-  // Check that source table is not backfilling and wait for tablet split completion
-  ASSERT_FALSE(table->IsBackfilling());
-  ASSERT_OK(WaitForTabletSplitCompletion(2));
-  ASSERT_OK(CheckPostSplitTabletReplicasData(kNumRows));
-
-  ASSERT_OK(index_.Open(index_name, client_.get()));
-  ASSERT_OK(WaitFor([&] {
-    auto rows_count = SelectRowsCount(NewSession(), index_);
-    if (!rows_count.ok()) {
-      return false;
-    }
-    return *rows_count == kNumRows;
-  }, 30s * kTimeMultiplier, "Waiting for backfill index"));
-}
-
-// Create Index to start backfill, check split is not working while backfill in progress
-// and check backfill state.
-TEST_F(TabletSplitITest, TestSplitDuringBackfill) {
-  constexpr auto kNumRows = 10000;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_validate_all_tablet_candidates) = false;
-  FLAGS_TEST_slowdown_backfill_alter_table_rpcs_ms = 200 * kTimeMultiplier;
-
-  CreateSingleTablet();
-  const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kNumRows));
-
-  int indexed_column_index = 1;
-  const client::YBTableName index_name(
-        YQL_DATABASE_CQL, table_.name().namespace_name(),
-        table_.name().table_name() + '_' +
-          table_.schema().Column(indexed_column_index).name() + "_idx");
-  // Create index and start backfill
-  PrepareIndex(client::Transactional(GetIsolationLevel() != IsolationLevel::NON_TRANSACTIONAL),
-               index_name, indexed_column_index);
-
-  auto* catalog_mgr = ASSERT_RESULT(catalog_manager());
-  auto table = catalog_mgr->GetTableInfo(table_->id());
-  auto source_tablet_info = ASSERT_RESULT(GetSingleTestTabletInfo(catalog_mgr));
-  const auto source_tablet_id = source_tablet_info->id();
-
-  // Check that source table is backfilling
-  ASSERT_OK(WaitFor([&] {
-    return table->IsBackfilling();
-  }, 30s * kTimeMultiplier, "Waiting for start backfill index"));
-
-  // Send SplitTablet RPC to the tablet leader while backfill in progress
-  ASSERT_NOK(catalog_mgr->TEST_SplitTablet(source_tablet_info, split_hash_code));
-
-  ASSERT_OK(WaitFor([&] {
-    return !table->IsBackfilling();
-  }, 30s * kTimeMultiplier, "Waiting for backfill index"));
-  ASSERT_OK(catalog_mgr->TEST_SplitTablet(source_tablet_info, split_hash_code));
-  ASSERT_OK(WaitForTabletSplitCompletion(2));
-  ASSERT_OK(CheckPostSplitTabletReplicasData(kNumRows));
-}
-
 // Test for https://github.com/yugabyte/yugabyte-db/issues/4312 reproducing a deadlock
 // between TSTabletManager::ApplyTabletSplit and Heartbeater::Thread::TryHeartbeat.
 TEST_F(TabletSplitITest, SlowSplitSingleTablet) {
@@ -1455,6 +1375,88 @@ class TabletSplitSingleServerITest : public TabletSplitITest {
     return peers.at(0);
   }
 };
+
+// Start tablet split, create Index to start backfill while split operation in progress
+// and check backfill state.
+TEST_F(TabletSplitSingleServerITest, TestBackfillDuringSplit) {
+  // TODO(#11695) -- Switch this back to a TabletServerITest
+  constexpr auto kNumRows = 10000;
+  FLAGS_TEST_apply_tablet_split_inject_delay_ms = 200 * kTimeMultiplier;
+
+  CreateSingleTablet();
+  const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kNumRows));
+  auto* catalog_mgr = ASSERT_RESULT(catalog_manager());
+  auto table = catalog_mgr->GetTableInfo(table_->id());
+  auto source_tablet_info = ASSERT_RESULT(GetSingleTestTabletInfo(catalog_mgr));
+  const auto source_tablet_id = source_tablet_info->id();
+
+  // Send SplitTablet RPC to the tablet leader.
+  ASSERT_OK(catalog_mgr->TEST_SplitTablet(source_tablet_info, split_hash_code));
+
+  int indexed_column_index = 1;
+  const client::YBTableName index_name(
+        YQL_DATABASE_CQL, table_.name().namespace_name(),
+        table_.name().table_name() + '_' +
+          table_.schema().Column(indexed_column_index).name() + "_idx");
+  // Create index while split operation in progress
+  PrepareIndex(client::Transactional(GetIsolationLevel() != IsolationLevel::NON_TRANSACTIONAL),
+               index_name, indexed_column_index);
+
+  // Check that source table is not backfilling and wait for tablet split completion
+  ASSERT_FALSE(table->IsBackfilling());
+  ASSERT_OK(WaitForTabletSplitCompletion(2));
+  ASSERT_OK(CheckPostSplitTabletReplicasData(kNumRows));
+
+  ASSERT_OK(index_.Open(index_name, client_.get()));
+  ASSERT_OK(WaitFor([&] {
+    auto rows_count = SelectRowsCount(NewSession(), index_);
+    if (!rows_count.ok()) {
+      return false;
+    }
+    return *rows_count == kNumRows;
+  }, 30s * kTimeMultiplier, "Waiting for backfill index"));
+}
+
+// Create Index to start backfill, check split is not working while backfill in progress
+// and check backfill state.
+TEST_F(TabletSplitSingleServerITest, TestSplitDuringBackfill) {
+  // TODO(#11695) -- Switch this back to a TabletServerITest
+  constexpr auto kNumRows = 10000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_validate_all_tablet_candidates) = false;
+  FLAGS_TEST_slowdown_backfill_alter_table_rpcs_ms = 200 * kTimeMultiplier;
+
+  CreateSingleTablet();
+  const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kNumRows));
+
+  int indexed_column_index = 1;
+  const client::YBTableName index_name(
+        YQL_DATABASE_CQL, table_.name().namespace_name(),
+        table_.name().table_name() + '_' +
+          table_.schema().Column(indexed_column_index).name() + "_idx");
+  // Create index and start backfill
+  PrepareIndex(client::Transactional(GetIsolationLevel() != IsolationLevel::NON_TRANSACTIONAL),
+               index_name, indexed_column_index);
+
+  auto* catalog_mgr = ASSERT_RESULT(catalog_manager());
+  auto table = catalog_mgr->GetTableInfo(table_->id());
+  auto source_tablet_info = ASSERT_RESULT(GetSingleTestTabletInfo(catalog_mgr));
+  const auto source_tablet_id = source_tablet_info->id();
+
+  // Check that source table is backfilling
+  ASSERT_OK(WaitFor([&] {
+    return table->IsBackfilling();
+  }, 30s * kTimeMultiplier, "Waiting for start backfill index"));
+
+  // Send SplitTablet RPC to the tablet leader while backfill in progress
+  ASSERT_NOK(catalog_mgr->TEST_SplitTablet(source_tablet_info, split_hash_code));
+
+  ASSERT_OK(WaitFor([&] {
+    return !table->IsBackfilling();
+  }, 30s * kTimeMultiplier, "Waiting for backfill index"));
+  ASSERT_OK(catalog_mgr->TEST_SplitTablet(source_tablet_info, split_hash_code));
+  ASSERT_OK(WaitForTabletSplitCompletion(2));
+  ASSERT_OK(CheckPostSplitTabletReplicasData(kNumRows));
+}
 
 TEST_F(TabletSplitSingleServerITest, TabletServerGetSplitKey) {
   constexpr auto kNumRows = kDefaultNumRows;
