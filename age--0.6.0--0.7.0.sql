@@ -1,3 +1,22 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 -- complain if script is sourced in psql, rather than via CREATE EXTENSION
 \echo Use "ALTER EXTENSION age UPDATE TO '0.7.0'" to load this file. \quit
 
@@ -74,9 +93,9 @@ STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE OR REPLACE FUNCTION ag_catalog.age_vle(IN agtype, IN agtype, IN agtype, IN agtype,
-                                   IN agtype, IN agtype, IN agtype,
-                                   OUT edges agtype)
+CREATE OR REPLACE FUNCTION ag_catalog.age_vle(IN agtype, IN agtype, IN agtype,
+                                              IN agtype, IN agtype, IN agtype,
+                                              IN agtype, OUT edges agtype)
 RETURNS SETOF agtype
 LANGUAGE C
 STABLE
@@ -100,7 +119,6 @@ STABLE
 CALLED ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
-
 
 -- function to create an AGTV_PATH from a VLE_path_container
 CREATE FUNCTION ag_catalog.age_materialize_vle_path(agtype)
@@ -127,7 +145,6 @@ STABLE
 RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
-
 
 CREATE FUNCTION ag_catalog.age_match_two_vle_edges(agtype, agtype)
 RETURNS boolean
@@ -178,4 +195,3 @@ AS 'MODULE_PATHNAME';
 --
 -- End
 --
-
