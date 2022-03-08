@@ -21,8 +21,12 @@ const mapDispatchToProps = (dispatch) => {
 };
 
 const mapStateToProps = (state) => {
+  const {
+    featureFlags: { test, released }
+  } = state;
   return {
-    customer: state.customer
+    customer: state.customer,
+    enableBackupv2: test.backupv2 || released.backupv2
   };
 };
 

@@ -12,6 +12,7 @@ const initialStateFeatureInTest = {
   enableHCVaultEAT: false,
   enableNodeComparisonModal: false,
   enablePathStyleAccess: false,
+  backupv2: false,
   enableOIDC: false
 };
 
@@ -27,6 +28,7 @@ const initialStateFeatureReleased = {
   enableHCVaultEAT: false,
   enableNodeComparisonModal: false,
   enablePathStyleAccess: false,
+  backupv2: false,
   enableOIDC: false
 };
 

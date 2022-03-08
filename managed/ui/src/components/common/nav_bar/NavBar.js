@@ -10,7 +10,7 @@ export default class NavBar extends Component {
     return (
       <div className="yb-nav-bar">
         <TopNavBar customer={this.props.customer} logoutProfile={this.props.logoutProfile} />
-        <SideNavBar customer={this.props.customer} />
+        <SideNavBar customer={this.props.customer} enableBackupv2={this.props.enableBackupv2}/>
       </div>
     );
   }
