@@ -11,7 +11,8 @@
     "use_custom_ssh_port.yml",
     "yb-server-ctl.yml",
     "yb-server-provision.yml",
-    "send_sudo_pass.yml"
+    "send_sudo_pass.yml",
+    "remote_role.yml"
   ],
   "bin": [
     "bin/cluster_health.py",
