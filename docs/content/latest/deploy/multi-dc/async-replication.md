@@ -267,7 +267,7 @@ CREATE TABLE transactions_us
 
 ## xCluster Setup in K8s ( pod to pod connectivity )
 
-1. Create 2 Universes (source and target)
+1. Create 2 universes (source and target).
 2. Create tables in both source and target universes
 
   (At source)
@@ -291,15 +291,15 @@ CREATE TABLE transactions_us
   create table query
   ```
 
-  For Example
+  For Example:
   ```sh
   kubectl exec -it -n xcluster-target -t yb-master-2 -c yb-master -- bash
   /home/yugabyte/bin/ysqlsh -h yb-tserver-1.yb-tservers.xcluster-target
   create table employees(id int primary key, name text);
   ```
 
-3. Collect table UUIDs, go to the `Tables` section in the Admin UI (127.0.0.1:7000)
-4. Setup Replication from source universe
+3. Collect table UUIDs from the `Tables` section in the Admin UI (127.0.0.1:7000).
+4. Setup replication from the source universe:
 
   (At source)
   ```sh
@@ -310,7 +310,7 @@ CREATE TABLE transactions_us
   <comma_separated_table_ids>"
   ```
 
-  For Example
+  For Example:
   ```sh
   kubectl exec -it -n xcluster-source -t yb-master-2 -c yb-master -- bash -c \
   "/home/yugabyte/bin/yb-admin -master_addresses yb-master-2.yb-masters.xcluster-target.svc.cluster.local, \
@@ -320,7 +320,7 @@ CREATE TABLE transactions_us
   yb-master-0.yb-masters.xcluster-source.svc.cluster.local 00004000000030008000000000004001"
   ```
 
-5. Do some DML at source side and observe the replication at target side
+5. Perform some DMLs on the source side and observe the replication at the target side.
 
   (At source)
   ```sh
@@ -345,7 +345,7 @@ CREATE TABLE transactions_us
   select query
   ```
 
-  For Example
+  For Example:
   ```sh
   kubectl exec -it -n xcluster-target -t yb-master-2 -c yb-master -- bash
   /home/yugabyte/bin/ysqlsh -h yb-tserver-1.yb-tservers.xcluster-target
