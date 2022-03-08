@@ -1640,6 +1640,8 @@ FOR EACH ROW EXECUTE PROCEDURE trigger_data(23,'skidoo');
 
 CREATE TRIGGER trig_local_before BEFORE INSERT OR UPDATE ON loc1
 FOR EACH ROW EXECUTE PROCEDURE trig_row_before_insupdate();
+-- YB note: triggers don't work immediately, remove once #11555 is fixed
+select pg_sleep(1);
 
 INSERT INTO rem1(f2) VALUES ('test');
 UPDATE rem1 SET f2 = 'testo';
