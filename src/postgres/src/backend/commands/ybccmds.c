@@ -1237,7 +1237,7 @@ YbBackfillIndex(BackfillIndexStmt *stmt, DestReceiver *dest)
 	TupOutputState *tstate;
 	YbPgExecOutParam *out_param;
 
-	if (YBCGetDisableIndexBackfill())
+	if (*YBCGetGFlags()->ysql_disable_index_backfill)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("backfill is not enabled")));

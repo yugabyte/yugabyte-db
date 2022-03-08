@@ -8040,7 +8040,7 @@ opt_concurrently:
 				}
 			| /*EMPTY*/
 				{
-					$$ = !YBCGetDisableIndexBackfill();
+					$$ = !*YBCGetGFlags()->ysql_disable_index_backfill;
 				}
 		;
 

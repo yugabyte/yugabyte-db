@@ -3984,7 +3984,7 @@ yb_is_restart_possible(const ErrorData* edata,
 		return false;
 	}
 
-	if (is_conflict_error && attempt >= YBCGetMaxWriteRestartAttempts())
+	if (is_conflict_error && attempt >= *YBCGetGFlags()->ysql_max_write_restart_attempts)
 	{
 		if (yb_debug_log_internal_restarts)
 			elog(LOG, "Restart isn't possible, we're out of write restart attempts (%d)",
@@ -3993,7 +3993,7 @@ yb_is_restart_possible(const ErrorData* edata,
 		return false;
 	}
 
-	if (is_read_restart_error && attempt >= YBCGetMaxReadRestartAttempts())
+	if (is_read_restart_error && attempt >= *YBCGetGFlags()->ysql_max_read_restart_attempts)
 	{
 		if (yb_debug_log_internal_restarts)
 			elog(LOG, "Restart isn't possible, we're out of read restart attempts (%d)",
@@ -4243,7 +4243,7 @@ yb_restart_portal(const char* portal_name)
 static long
 yb_get_sleep_usecs_on_txn_conflict(int attempt) {
 	/* Use exponential backoff to calculate the sleep duration. */
-	if (!YBCShouldSleepBeforeRetryOnTxnConflict())
+	if (!*YBCGetGFlags()->ysql_sleep_before_retry_on_txn_conflict)
 		return 0;
 
 	/*

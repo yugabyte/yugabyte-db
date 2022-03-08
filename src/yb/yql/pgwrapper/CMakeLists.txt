@@ -56,6 +56,7 @@ ADD_YB_LIBRARY(ysql_upgrade
 
 set(YB_TEST_LINK_LIBS yb_pgwrapper yb_client ql-dml-test-base pg_wrapper_test_base tools_test_utils
    ${YB_MIN_TEST_LIBS})
+ADD_YB_TEST(pg_fkey-test)
 ADD_YB_TEST(pg_index_backfill-test)
 ADD_YB_TEST(pg_libpq-test)
 ADD_YB_TEST(pg_libpq_err-test)

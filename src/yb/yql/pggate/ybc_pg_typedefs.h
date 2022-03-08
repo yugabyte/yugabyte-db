@@ -325,6 +325,16 @@ typedef struct PgCallbacks {
   void (*WriteExecOutParam)(PgExecOutParam *, const YbcPgExecOutParamValue *);
 } YBCPgCallbacks;
 
+typedef struct PgGFlagsAccessor {
+  const bool*    ysql_disable_index_backfill;
+  const int32_t* ysql_max_read_restart_attempts;
+  const int32_t* ysql_max_write_restart_attempts;
+  const int32_t* ysql_output_buffer_size;
+  const int32_t* ysql_sequence_cache_minval;
+  const int32_t* ysql_session_max_batch_size;
+  const bool*    ysql_sleep_before_retry_on_txn_conflict;
+} YBCPgGFlagsAccessor;
+
 typedef struct PgTableProperties {
   uint32_t num_tablets;
   uint32_t num_hash_key_columns;
