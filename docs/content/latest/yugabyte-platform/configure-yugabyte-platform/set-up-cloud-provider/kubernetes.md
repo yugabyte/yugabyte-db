@@ -222,7 +222,7 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
 
 - Use **Kube Config** to upload the configuration file. If this file is available at provider level, you are not required to supply it.<br><br>
 
-  ![Add new region](/images/ee/k8s-setup/k8s-az-kubeconfig.png)
+  ![Add new region](/images/ee/k8s-setup/k8s-az-kubeconfig.png)<br><br>
 
 - Complete the **Overrides** field using one of the provided options. If you do not specify anything, Yugabyte Platform would use defaults specified inside the Helm chart. The following overrides are available:
 
@@ -345,8 +345,10 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
           tcp-ysql-port: "5433"
     ```
 
-Continue configuring your Kubernetes provider by clicking **Add Zone** and notice that there are might be multiple zones, as per the following illustration:
+Continue configuring your Kubernetes provider by clicking **Add Zone**, as per the following illustration:
 
 ![Add new region - multiple](/images/ee/k8s-setup/k8s-add-region-flow.png)
+
+Notice that there are might be multiple zones.
 
 Finally, click **Add Region**, and then click **Save** to save the configuration. If successful, you will be redirected to the table view of all configurations.
