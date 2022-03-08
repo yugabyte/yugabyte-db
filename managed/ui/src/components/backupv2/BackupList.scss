@@ -1,0 +1,120 @@
+@import '../../_style/colors.scss';
+
+.backup-v2 {
+  .backup-actions {
+    margin-bottom: 30px;
+
+    .actions-delete-filters {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 8px;
+
+      .time-range {
+        width: 150px;
+      }
+
+      .custom-date-picker {
+        display: flex;
+        align-items: center;
+        color: #333333;
+
+        div.rw-datetime-picker {
+          margin-left: 8px !important;
+        }
+      }
+    }
+  }
+
+  .backup-list-table {
+    background: $YB_BG_WHITE_3;
+    padding: 30px 22px;
+    border: 1px solid #dcdcde;
+    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.15);
+
+    .table-row {
+      cursor: pointer;
+
+      td {
+        font-weight: 400 !important;
+      }
+    }
+
+    .backup-cancel {
+      height: 40px;
+    }
+  }
+
+  #backup-actions-dropdown {
+    width: 50px !important;
+    border: 0;
+    margin-left: 10px !important;
+    font-weight: 500;
+    z-index: 0 !important;
+  }
+
+  .action-danger > a {
+    color: $YB_ERROR_ICON_COLOR !important;
+  }
+
+  .backup-list-table {
+    .react-bs-table .table-bordered > tbody > tr > td {
+      vertical-align: middle;
+      height: 45px;
+      padding: 0 !important;
+    }
+    .table-bordered thead th {
+      font-weight: 700;
+    }
+
+    .react-bs-table-no-data {
+      font-weight: 400 !important;
+    }
+  }
+
+  .no-padding {
+    padding: 0;
+  }
+}
+
+.alert-message {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: 12px;
+  color: $YB_DARKER_GRAY;
+  text-decoration: none !important;
+
+  &.warning {
+    i {
+      color: $YB_WARNING_COLOR;
+    }
+  }
+
+  &.danger {
+    i {
+      color: $YB_ERROR_ICON_COLOR;
+    }
+  }
+}
+
+.delete-table-list {
+  margin-top: 20px;
+  background: #ffffff;
+  border: 1px solid #dcdcde;
+  padding: 20px;
+}
+
+.backup-modal {
+  position: fixed;
+  z-index: 99999 !important;
+}
+
+.align-right {
+  text-align: right;
+}
+
+.select__value-container {
+  max-height: 48px;
+  overflow-y: auto !important;
+}

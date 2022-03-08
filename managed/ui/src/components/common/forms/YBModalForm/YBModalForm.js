@@ -26,6 +26,7 @@ export default class YBModalForm extends Component {
       dialogClassName,
       headerClassName,
       normalizeFooter,
+      pullRightFooter,
       showBackButton
     } = this.props;
 
@@ -81,9 +82,8 @@ export default class YBModalForm extends Component {
                 <Modal.Footer>
                   <div className={footerButtonClass}>
                     <YBButton
-                      btnClass={`btn btn-orange pull-right ${
-                        props.isSubmitting ? ' btn-is-loading' : ''
-                      }`}
+                      btnClass={`btn btn-orange pull-right ${props.isSubmitting ? ' btn-is-loading' : ''
+                        }`}
                       loading={props.isSubmitting}
                       btnText={submitLabel}
                       btnType="submit"
@@ -93,7 +93,7 @@ export default class YBModalForm extends Component {
                       <YBButton btnClass="btn" btnText={cancelLabel} onClick={onHide} />
                     )}
                     {footerAccessory && (
-                      <div className="pull-left modal-accessory">{footerAccessory}</div>
+                      <div className={`pull-${pullRightFooter ? 'right' : 'left'} modal-accessory`}>{footerAccessory}</div>
                     )}
                   </div>
                 </Modal.Footer>
@@ -119,6 +119,7 @@ YBModalForm.propTypes = {
   showCancelButton: PropTypes.bool,
   initialValues: PropTypes.object,
   validationSchema: PropTypes.object,
+  pullRightFooter: PropTypes.bool,
   showBackButton: PropTypes.bool
 };
 
@@ -127,5 +128,6 @@ YBModalForm.defaultProps = {
   submitLabel: 'OK',
   cancelLabel: 'Cancel',
   showCancelButton: false,
+  pullRightFooter: false,
   showBackButton: false
 };
