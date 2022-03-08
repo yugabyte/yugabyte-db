@@ -405,7 +405,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
     Result result = refreshReleases(customer.uuid);
     verify(mockReleaseManager, times(1)).importLocalReleases();
     assertOk(result);
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -442,7 +442,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
     Result result = deleteRelease(customer.uuid, "0.0.2");
     verify(mockReleaseManager, times(1)).getReleaseByVersion("0.0.2");
     assertOk(result);
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
