@@ -102,13 +102,13 @@ class ReleasePackage(object):
             # in our downsstream release code.  So here we munge the name to 'centos' to keep things
             # working while we fix downstream code.
             # TODO(jharveymsith): Remove the almalinux to centos mapping once downstream is fixed.
-            if distro.id() == "centos" and distro.major_version() == 7 \
+            if distro.id() == "centos" and distro.major_version() == "7" \
                     or distro.id() == "almalinux" and platform.machine().lower() == "x86_64":
                 obj.system = "centos"
             elif distro.id == "ubuntu":
-                obj.system = distro.id() + str(distro.version())
+                obj.system = distro.id() + distro.version()
             else:
-                obj.system = distro.id() + str(distro.major_version())
+                obj.system = distro.id() + distro.major_version()
         if len(obj.system) == 0:
             raise YBOpsRuntimeError("Cannot release on this system type: " + platform.system())
         obj.machine = platform.machine().lower()
