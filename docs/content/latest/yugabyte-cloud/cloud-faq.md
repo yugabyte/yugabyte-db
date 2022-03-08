@@ -33,13 +33,13 @@ Yugabyte bills for its services as follows:
 - Tabulates costs daily.
 - Displays your current monthly costs under **Invoices** on the **Billing** tab.
 
-For information on Yugabyte Cloud pricing, refer to the [Yugabyte Cloud Standard Price List](https://www.yugabyte.com/yugabyte-cloud-standard-price-list/). For a description of how cluster configurations are costed, refer to [Cluster costs](../cloud-admin/cloud-billing-costs).
+For information on Yugabyte Cloud pricing, refer to the [Yugabyte Cloud Standard Price List](https://www.yugabyte.com/yugabyte-cloud-standard-price-list/). For a description of how cluster configurations are costed, refer to [Cluster costs](../cloud-admin/cloud-billing-costs/).
 
 ### What regions in AWS and GCP are available?
 
-Refer to [Cloud provider regions](../release-notes#cloud-provider-regions) for a list currently supported regions.
+Refer to [Cloud provider regions](../release-notes/#cloud-provider-regions) for a list currently supported regions.
 
-Yugabyte Cloud supports all the regions that have robust infrastructure and sufficient demand from customers. We are continuously improving region coverage, so if there are any regions you would like us to support, reach out to [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
+Yugabyte Cloud supports all the regions that have robust infrastructure and sufficient demand from customers. We are continuously improving region coverage, so if there are any regions you would like us to support, reach out to {{<support-cloud>}}.
 
 ## Clusters
 
@@ -55,7 +55,7 @@ A Yugabyte Cloud account is limited to a single free cluster; you can add as man
 | :----------- | :---------- | :---------- |
 | Cluster | Single Node | Any |
 | vCPU/Storage | Up to 2 vCPU / 2 GB RAM / 10 GB storage | Any |
-| [Regions](../release-notes#cloud-provider-regions) | All | All |
+| [Regions](../release-notes/#cloud-provider-regions) | All | All |
 | Upgrades | Automatic | Automatic with customizable [maintenance windows](../cloud-clusters/cloud-maintenance/) |
 | VPC Peering | No | Yes |
 | Fault Tolerance | None (Single node, RF-1) | Multi node RF-3 clusters with Availability zone and Node level |
@@ -73,7 +73,7 @@ If you want to continue testing YugabyteDB with more resource-intensive scenario
 
 ### Can I migrate my free cluster to a standard cluster?
 
-Currently self-service migration is not supported. Contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) for help with migration.
+Currently self-service migration is not supported. Contact {{<support-cloud>}} for help with migration.
 
 ### What is the upgrade policy for clusters?
 
@@ -150,17 +150,17 @@ The Fault Tolerance of a cluster determines how resilient the cluster is to node
 
 Free clusters are limited to a single node in a single region.
 
-For multi-region deployments, including [synchronous replication](../../explore/multi-region-deployments/synchronous-replication-ysql/), [asynchronous replication](../../explore/multi-region-deployments/asynchronous-replication-ysql/), and [geo-level partitioning](../../explore/multi-region-deployments/row-level-geo-partitioning/), contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
+For multi-region deployments, including [synchronous replication](../../explore/multi-region-deployments/synchronous-replication-ysql/), [asynchronous replication](../../explore/multi-region-deployments/asynchronous-replication-ysql/), and [geo-level partitioning](../../explore/multi-region-deployments/row-level-geo-partitioning/), contact {{<support-cloud>}}.
 
 ### How do I connect to my cluster?
 
 You can connect to clusters in the following ways:
 
 Cloud Shell
-: Run the [ysqlsh](../../admin/ysqlsh/) or [ycqlsh](../../admin/ycqlsh) shell from your browser to connect to and interact with your YugabyteDB database. Cloud Shell does not require a CA certificate or any special network access configured.
+: Run the [ysqlsh](../../admin/ysqlsh/) or [ycqlsh](../../admin/ycqlsh/) shell from your browser to connect to and interact with your YugabyteDB database. Cloud Shell does not require a CA certificate or any special network access configured.
 
 Client Shell
-: Connect to your YugabyteDB cluster using the YugabyteDB [ysqlsh](../../admin/ysqlsh/) and [ycqlsh](../../admin/ycqlsh) client shells installed on your computer.
+: Connect to your YugabyteDB cluster using the YugabyteDB [ysqlsh](../../admin/ysqlsh/) and [ycqlsh](../../admin/ycqlsh/) client shells installed on your computer.
 
 : Before you can connect using a client shell, you need to add your computer to the cluster IP allow list. Refer to [Assign IP Allow Lists](../cloud-secure-clusters/add-connections/).
 
@@ -193,7 +193,7 @@ Applications
 
 : Before you can connect, your application has to be able to reach your Yugabyte Cloud. To add inbound network access from your application environment to Yugabyte Cloud, add the public IP addresses to the [cluster IP access list](../cloud-secure-clusters/add-connections/), or use [VPC peering](../cloud-basics/cloud-vpcs/) to add private IP addresses.
 
-For more details, refer to [Connect to clusters](../cloud-connect).
+For more details, refer to [Connect to clusters](../cloud-connect/).
 
 ### Why is my free cluster paused?
 
@@ -235,4 +235,4 @@ Currently, Yugabyte Cloud does not support backups of free clusters.
 
 ### Can I download backups?
 
-Currently, Yugabyte Cloud does not support self-service backup downloads. Contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) for assistance.
+Currently, Yugabyte Cloud does not support self-service backup downloads. Contact {{<support-cloud>}} for assistance.
