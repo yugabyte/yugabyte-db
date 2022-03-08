@@ -79,12 +79,12 @@ get_ephemeral_drives() {
   declare -i exit_code=0
 
   # Take into account xvdb or sdb
-  root_drive=$(df | awk '$6 == "/" {print $1}')
+  root_drive=$(lsblk | awk '$7 == "/" {print $1}' | tr -cd '[:alnum:]/')
 
-  if [[ "$root_drive" == "/dev/xvda1" ]]; then
+  if [[ "$root_drive" =~ .*xvd.* ]]; then
     echo "Detected 'xvd' drive naming scheme (root: $root_drive)"
     DRIVE_SCHEME='xvd'
-  elif [[ "$root_drive" =~ ^/dev/nvme.* ]]; then
+  elif [[ "$root_drive" =~ .*nvme.* ]]; then
     echo "Detected 'nvme' drive naming scheme (root: $root_drive)"
     DRIVE_SCHEME='nvme'
   else
@@ -147,7 +147,7 @@ get_ephemeral_drives() {
     # available for an instance type and the meta-data API will happily tell you it exists when it
     # really does not.
     # Also check to make sure we don't try to mount on root volume
-    if [ -b "$device_path" ] && ! grep -q "$device_path" <<< "$root_drive"; then
+    if [ -b "$device_path" ] && ! grep -q "$device_path" <<< "/dev/${root_drive}"; then
       echo "Detected ephemeral disk: $device_path"
       set +e
       # NOTE: This does not seem to return the actual file system
