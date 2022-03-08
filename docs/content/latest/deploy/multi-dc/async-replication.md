@@ -29,6 +29,10 @@ You can create source and target universes as follows:
 1. Create tables for the APIs being used by the target universe. These should be the same tables as you created for the source universe.
 1. Proceed to setting up [unidirectional](#seting-up-unidirectional-replication) or [bidirectional](#setting-up-bidirectional-replication) replication.
 
+{{< note title="Note" >}}
+In case you already have existing data in your tables, you will need to follow the bootstrap process [bootstrapping a sink cluster](#bootstrapping-a-sink-cluster).
+{{< /note >}}
+
 ## Setting Up Unidirectional Replication
 
 After you created the required tables, you can set up asynchronous replication as follows:
@@ -354,7 +358,54 @@ CREATE TABLE transactions_us
 
 ## Bootstrapping a sink cluster
 
-Documentation coming soon. More details in [#6870](https://github.com/yugabyte/yugabyte-db/issues/6870).
+These instructions detail setting up xCluster for the following purposes:
+* Setting up replication on a table that has existing data.
+* Catching up an existing stream where the target has fallen too far behind.
+
+{{< note title="Note" >}}
+In order to ensure that the WALs are still available, the steps below need to be performed within the cdc_wal_retention_time_secs gflag window.
+If the process is going to take more time than the cdc_wal_retention_time_secs, you have to set [cdc_wal_retention_time_secs](../../reference/configuration/yb-master/#cdc-wal-retention-time-secs) flag to a higher value.
+{{< /note >}}
+
+1. First, we need to create a checkpoint on the source side for all the tables we want to replicate:
+    ```sh
+    ./bin/yb-admin -master_addresses <source_universe_master_addresses> \
+    bootstrap_cdc_producer <comma_separated_source_universe_table_ids>
+    ```
+
+    For Example:
+    ```sh
+    ./bin/yb-admin -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+    bootstrap_cdc_producer 000033e1000030008000000000004000,000033e1000030008000000000004003,000033e1000030008000000000004006
+    ```
+
+    This command returns a list of bootstrap_ids, one per table id as below:
+    ```sh
+    table id: 000033e1000030008000000000004000, CDC bootstrap id: fb156717174941008e54fa958e613c10
+    table id: 000033e1000030008000000000004003, CDC bootstrap id: a2a46f5cbf8446a3a5099b5ceeaac28b
+    table id: 000033e1000030008000000000004006, CDC bootstrap id: c967967523eb4e03bcc201bb464e0679
+    ```
+
+2. Take the backup of the tables on the source universe and restore at target universe. [Backup-Restore](../../../manage/backup-restore/)
+3. Then, set up the replication stream, using the bootstrap_ids generated in step 1
+
+  {{< note title="Note" >}}
+  It is important that the bootstrap_ids are in the same order as their corresponding table_ids!
+  {{< /note >}}
+
+  ```sh
+  ./bin/yb-admin -master_addresses <target_universe_master_addresses> setup_universe_replication \
+  <source_universe_uuid>_<replication_stream_name> <source_universe_master_addresses> \
+  <comma_separated_source_universe_table_ids> <comma_separated_bootstrap_ids>
+  ```
+
+  For Example:
+  ```sh
+  ./bin/yb-admin-master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 setup_universe_replication \
+  00000000-1111-2222-3333-444444444444_xCluster1 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+  000033e1000030008000000000004000,000033e1000030008000000000004003,000033e1000030008000000000004006 \
+  fb156717174941008e54fa958e613c10,a2a46f5cbf8446a3a5099b5ceeaac28b,c967967523eb4e03bcc201bb464e0679
+  ```
 
 ## Schema migration
 
