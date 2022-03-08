@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: backup-clusters
     parent: cloud-clusters
-    weight: 100
+    weight: 200
 isTocNested: true
 showAsideToc: true
 ---

@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-There are no set-up charges or commitments to begin using Yugabyte Cloud. At the end of the month, you are automatically charged for that month’s usage. You can view your charges for the current billing period at any time by selecting **Invoices** on the **Billing** tab of the **Admin** page. Refer to [Manage your billing profile and payment method](../cloud-billing-profile).
+There are no set-up charges or commitments to begin using Yugabyte Cloud. At the end of the month, you are automatically charged for that month's usage. You can view your charges for the current billing period at any time by selecting **Invoices** on the **Billing** tab of the **Admin** page. Refer to [Manage your billing profile and payment method](../cloud-billing-profile).
 
 Only the cloud account Admin user (the user who created the Yugabyte Cloud account) can access the billing and payment details.
 
@@ -24,7 +24,7 @@ Your bill is calculated based on your usage of the following cloud dimensions:
 - Backup storage
 - Data transfer
 
-Instance vCPU capacity makes up the majority of your bill, and is the easiest to understand and control. It's purely a function of your total number of vCPUs used and how long they have been running. The cluster's per-hour charge includes free allowances for disk storage, backup storage, and data transfer. If you use more than the free allowance, you incur overages on top of the base vCPU capacity cost. 
+Instance vCPU capacity makes up the majority of your bill, and is the easiest to understand and control. It's purely a function of your total number of vCPUs used and how long they have been running. The cluster's per-hour charge includes free allowances for disk storage, backup storage, and data transfer. If you use more than the free allowance, you incur overages on top of the base vCPU capacity cost.
 
 | Dimension | Allowance/vCPU per month |
 |---|---|
@@ -35,13 +35,13 @@ Instance vCPU capacity makes up the majority of your bill, and is the easiest to
 | Data transfer – Cross Region (Other regions) | 10 GB |
 | Data transfer – Internet | 10 GB |
 
-You can see the approximate cost for your vCPUs when [creating](../../cloud-basics/create-clusters) and [scaling](../../cloud-clusters/configure-clusters) clusters, as shown in the following illustration. **+ Usage** in this context refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. 
+You can see the approximate cost for your vCPUs when [creating](../../cloud-basics/create-clusters) and [scaling](../../cloud-clusters/configure-clusters) clusters, as shown in the following illustration. **+ Usage** in this context refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer.
 
 ![Cloud Cluster Settings Edit Infrastructure](/images/yb-cloud/cloud-clusters-settings-edit.png)
 
 ## Instance vCPU capacity costs
 
-Instance vCPU capacity cost is the cost for the use of the total number of vCPUs in your cloud account. 
+Instance vCPU capacity cost is the cost for the use of the total number of vCPUs in your cloud account.
 
 {{< tip title="Rate card" >}}
 
@@ -53,7 +53,7 @@ You can reduce the cost by reducing the number of vCPUs, which may have a negati
 
 ### Calculating instance minutes
 
-Yugabyte measures vCPU use in “Instance-Minutes,” which are added up at the end of the month to generate your monthly charges. The total instance capacity cost across all your clusters is the sum of instance-minutes across all clusters multiplied by the base per minute rate card ($.00416666666/minute).
+Yugabyte measures vCPU use in "Instance-Minutes," which are added up at the end of the month to generate your monthly charges. The total instance capacity cost across all your clusters is the sum of instance-minutes across all clusters multiplied by the base per minute rate card ($.00416666666/minute).
 
 Pricing is per instance minute consumed for each instance, from the time an instance is launched until it is terminated.
 
@@ -71,7 +71,7 @@ Total vCPU cost/month = 388800 * $.00416666666 ~ $1619.99
 
 ## Disk storage cost
 
-Disk storage costs are tied to the cost of storing the data on disk in the underlying IaaS storage (for example, EBS on AWS). 
+Disk storage costs are tied to the cost of storing the data on disk in the underlying IaaS storage (for example, EBS on AWS).
 
 {{< tip title="Rate card" >}}
 
@@ -89,22 +89,22 @@ Disk storage size is calculated by metering the storage space (GBs) occupied per
 
 ### Calculating disk storage cost
 
-Yugabyte measures disk storage in “GB-hours,” which are added up at the end of the month to generate your monthly charges. The total disk storage capacity cost across all your clusters is the total number of GB-hours multiplied by the base per hour rate card ($0.0001388888889/hr), less the total free allowance based on per month vCPU usage. 
+Yugabyte measures disk storage in "GB-hours," which are added up at the end of the month to generate your monthly charges. The total disk storage capacity cost across all your clusters is the total number of GB-hours multiplied by the base per hour rate card ($0.0001388888889/hr), less the total free allowance based on per month vCPU usage.
 
 Assume you start a cluster for the first 15 days of September with the following configuration:
 
 - Total number of vCPUs: 3 nodes * 2 vCPU = 6 vCPUs
-- Disk storage/node: 100 GB 
+- Disk storage/node: 100 GB
 - Total disk storage: 300 GB
- 
+
 Then scale up to the following configuration for the final 15 days in September:
 
 - Total number of vCPUs: 3 nodes * 4 vCPU = 12 vCPUs
-- Disk storage/node: 500 GB 
+- Disk storage/node: 500 GB
 - Total disk storage: 1500 GB
 
 At the end of September, you would have the following total usage cost:
- 
+
 ```output
 Total disk storage
 [(300 GB * 15 days * 24 hours) + (1500 GB* 15 days * 24 hours)] 
@@ -149,7 +149,7 @@ Backup storage size is calculated by metering the storage space (GBs) occupied p
 
 ### Calculating backup storage cost
 
-Yugabyte measures backup storage in “GB-hours,” which are added up at the end of the month to generate your monthly charges. The total backup storage capacity cost across your clusters is the total number of GB-hours multiplied by the base per hour rate card ($ 0.00003472222222/hr), less the total free allowance based on per month vCPU usage.
+Yugabyte measures backup storage in "GB-hours," which are added up at the end of the month to generate your monthly charges. The total backup storage capacity cost across your clusters is the total number of GB-hours multiplied by the base per hour rate card ($ 0.00003472222222/hr), less the total free allowance based on per month vCPU usage.
 
 Assume you start a cluster with 3 nodes x 2 vCPUs (6 vCPUs) for the first 15 days in September, and then scale up to 6 nodes x 2 vCPUs (12 vCPUs) for the final 15 days in September.
 
@@ -181,7 +181,7 @@ Total disk storage cost/month = 72000 x 0.00003472222222 = $2.5
 
 ## Data transfer costs
 
-Data Transfer accounts for the volume of data going into, out of, and between the nodes in a cluster, which is summed up to a cumulative amount within a billing cycle.
+Data Transfer accounts for the volume of data going into, out of, and between the nodes in a cluster, which is summed up to a cumulative amount in a billing cycle.
 
 Yugabyte meters and bills data transfer using the following three dimensions.
 
@@ -201,7 +201,7 @@ The free allowance for same region transfers is 1000 GB per month for every 1 vC
 
 ### Cross region
 
-This accounts for all of the traffic coming out of the cluster to a different region. This happens if a client is using [VPC peering](../../cloud-basics/cloud-vpcs/) but is in different region than the cluster deployments. Different rate cards apply for clusters deployed in Asia-Pacific (APAC) vs other regions. 
+This accounts for all of the traffic coming out of the cluster to a different region. This happens if a client is using [VPC peering](../../cloud-basics/cloud-vpcs/) but is in different region than the cluster deployments. Different rate cards apply for clusters deployed in Asia-Pacific (APAC) vs other regions.
 
 {{< tip title="Rate card" >}}
 
@@ -239,3 +239,12 @@ The free allowance for data out transfers is 10GB per month for every 1 vCPU per
   - Re-write existing data to your database deployment.
 
 - If possible, configure your client driver to use wire protocol compression to communicate with the YugabyteDB cluster. Yugabyte Cloud always compresses intra-cluster communication.
+
+## Paused cluster costs
+
+Yugabyte suspends Instance vCPU capacity costs for paused clusters. Paused clusters are billed for disk and backup storage, as follows:
+
+- Backup storage is charged at the standard rate.
+- Disk storage is billed at a lower rate, shown as Disk Storage (Paused) on your invoice.
+
+Yugabyte recalculates the monthly entitlements for disk storage, backup storage, and data transfer after resuming the cluster.

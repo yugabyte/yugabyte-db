@@ -41,6 +41,9 @@ Learn the basics of using YugabyteDB clusters in Yugabyte Cloud.
 [Manage](../cloud-clusters)
 : Scale vertically and horizontally to match your performance requirements.
 : Back up and restore clusters.
+: Create PostgreSQL extensions.
+: Set maintenance windows for cluster maintenance and database upgrades.
+: Pause, resume, and delete clusters.
 
 ## Cloud basics
 

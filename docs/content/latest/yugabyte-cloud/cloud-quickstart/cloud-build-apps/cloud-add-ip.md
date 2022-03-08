@@ -31,7 +31,7 @@ To download the certificate to the computer that will be connecting to the clust
 To add your computer to the cluster IP allow list:
 
 1. In Yugabyte Cloud, select your cluster.
-1. Click **Quick Links** and choose **Edit IP Allow List**.
+1. Click **More Links** and choose **Edit IP Allow List**.
 1. Click **Create New List and Add to Cluster**.
 1. Click **Detect and add my IP to this list** to add your own IP address.
 1. Click **Save**.
