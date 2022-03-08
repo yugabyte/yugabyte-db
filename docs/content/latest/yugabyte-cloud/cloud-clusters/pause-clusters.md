@@ -13,11 +13,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-To reduce costs on temporarily unused clusters, you can pause a cluster for up to 30 days. Paused clusters are not billed for instance vCPU capacity, and are billed for disk storage at a reduced rate. Backup storage is charged at the standard rate. Refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
-
 ## Pause clusters
 
-To pause a cluster, click the three dots icon for the cluster you want to pause and choose **Pause Cluster**.
+To reduce costs on temporarily unused clusters, you can pause a cluster for up to 30 days. Paused clusters are not billed for instance vCPU capacity, and are billed for disk storage at a reduced rate. Backup storage is charged at the standard rate. Refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
+
+To pause a cluster, on the **Clusters** page, click the three dots icon for the cluster you want to pause and choose **Pause Cluster**. You can also select the cluster, click **More Links**, and click **Pause Cluster**.
 
 You can't pause a cluster if it was resumed less than an hour before.
 
@@ -31,8 +31,8 @@ Paused clusters have the following limitations:
 
 ## Resume clusters
 
-To manually resume a paused cluster, click the three dots icon for the cluster you want to resume and choose **Resume Cluster**.
+To manually resume a paused cluster, on the **Clusters** page, click the three dots icon for the cluster you want to resume and choose **Resume Cluster**. You can also select the cluster and click **Resume**.
 
 ## Delete clusters
 
-To delete a cluster, click the three dots icon for the cluster you want to delete and choose **Terminate Cluster**. Then enter the name of the cluster and click **Delete**. This deletes the cluster and all of its data, including backups.
+To delete a cluster, on the **Clusters** page, click the three dots icon for the cluster you want to delete and choose **Terminate Cluster**. Then enter the name of the cluster and click **Delete**. This deletes the cluster and all of its data, including backups.
