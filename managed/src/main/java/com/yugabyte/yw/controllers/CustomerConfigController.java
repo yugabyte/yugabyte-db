@@ -56,7 +56,7 @@ public class CustomerConfigController extends AuthenticatedController {
         name = "Config",
         value = "Configuration data to be created",
         required = true,
-        dataType = "Object",
+        dataType = "com.yugabyte.yw.models.CustomerConfig",
         paramType = "body")
   })
   public Result create(UUID customerUUID) {
@@ -164,13 +164,13 @@ public class CustomerConfigController extends AuthenticatedController {
   @ApiOperation(
       value = "Update a customer configuration",
       response = CustomerConfig.class,
-      nickname = "getCustomerConfig")
+      nickname = "editCustomerConfig")
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Config",
         value = "Configuration data to be updated",
         required = true,
-        dataType = "Object",
+        dataType = "com.yugabyte.yw.models.CustomerConfig",
         paramType = "body")
   })
   public Result edit(UUID customerUUID, UUID configUUID) {
@@ -190,13 +190,13 @@ public class CustomerConfigController extends AuthenticatedController {
   @ApiOperation(
       value = "Update a customer configuration V2",
       response = CustomerConfig.class,
-      nickname = "getCustomerConfig")
+      nickname = "editCustomerConfig")
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Config",
         value = "Configuration data to be updated",
         required = true,
-        dataType = "Object",
+        dataType = "com.yugabyte.yw.models.CustomerConfig",
         paramType = "body")
   })
   public Result editYb(UUID customerUUID, UUID configUUID) {
