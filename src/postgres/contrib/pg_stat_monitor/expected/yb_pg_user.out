@@ -39,4 +39,30 @@ DROP TABLE t1;
 DROP TABLE t2;
 DROP USER u1;
 DROP USER u2;
+--
+-- create / alter user
+--
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset
+-----------------------
+
+(1 row)
+
+CREATE USER foo PASSWORD 'foo';
+ALTER USER foo PASSWORD 'foo2';
+CREATE ROLE bar PASSWORD 'bar';
+ALTER ROLE bar PASSWORD 'bar2';
+SELECT userid, query FROM pg_stat_monitor ORDER BY query COLLATE "C";
+ userid |                                 query
+--------+-----------------------------------------------------------------------
+ su     | ALTER ROLE bar PASSWORD <REDACTED>
+ su     | ALTER USER foo PASSWORD <REDACTED>
+ su     | CREATE ROLE bar PASSWORD <REDACTED>
+ su     | CREATE USER foo PASSWORD <REDACTED>
+ su     | SELECT pg_stat_monitor_reset();
+ su     | SELECT userid, query FROM pg_stat_monitor ORDER BY query COLLATE "C";
+(6 rows)
+
+DROP USER foo;
+DROP ROLE bar;
 DROP EXTENSION pg_stat_monitor;

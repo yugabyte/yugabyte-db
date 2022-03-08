@@ -23,4 +23,18 @@ DROP TABLE t2;
 DROP USER u1;
 DROP USER u2;
 
+--
+-- create / alter user
+--
+SELECT pg_stat_monitor_reset();
+CREATE USER foo PASSWORD 'foo';
+ALTER USER foo PASSWORD 'foo2';
+CREATE ROLE bar PASSWORD 'bar';
+ALTER ROLE bar PASSWORD 'bar2';
+
+SELECT userid, query FROM pg_stat_monitor ORDER BY query COLLATE "C";
+
+DROP USER foo;
+DROP ROLE bar;
+
 DROP EXTENSION pg_stat_monitor;

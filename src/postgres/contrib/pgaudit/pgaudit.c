@@ -214,13 +214,6 @@ char *auditRole = NULL;
 #define COMMAND_REVOKE "REVOKE"
 
 /*
- * String constants used for redacting text after the password token in
- * CREATE/ALTER ROLE commands.
- */
-#define TOKEN_PASSWORD "password"
-#define TOKEN_REDACTED "<REDACTED>"
-
-/*
  * An AuditEvent represents an operation that potentially affects a single
  * object.  If a statement affects multiple objects then multiple AuditEvents
  * are created to represent them.
@@ -492,36 +485,7 @@ static void log_audit_event(AuditEventStackItem *stackItem) {
         case T_AlterRoleStmt:
 
           if (stackItem->auditEvent.commandText != NULL) {
-            char *commandStr;
-            char *passwordToken;
-            int i;
-            int passwordPos;
-
-            /* Copy the command string and convert to lower case */
-            commandStr = pstrdup(stackItem->auditEvent.commandText);
-
-            for (i = 0; commandStr[i]; i++)
-              commandStr[i] = (char)pg_tolower((unsigned char)commandStr[i]);
-
-            /* Find index of password token */
-            passwordToken = strstr(commandStr, TOKEN_PASSWORD);
-
-            if (passwordToken != NULL) {
-              /* Copy command string up to password token */
-              passwordPos = (passwordToken - commandStr) + strlen(TOKEN_PASSWORD);
-
-              commandStr = palloc(passwordPos + 1 + strlen(TOKEN_REDACTED) + 1);
-
-              strncpy(commandStr, stackItem->auditEvent.commandText, passwordPos);
-
-              /* And append redacted token */
-              commandStr[passwordPos] = ' ';
-
-              strcpy(commandStr + passwordPos + 1, TOKEN_REDACTED);
-
-              /* Assign new command string */
-              stackItem->auditEvent.commandText = commandStr;
-            }
+            stackItem->auditEvent.commandText = RedactPasswordIfExists(stackItem->auditEvent.commandText);
           }
           switch_fallthrough();
         /* Classify role statements */
