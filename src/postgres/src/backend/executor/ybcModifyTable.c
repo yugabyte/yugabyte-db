@@ -688,7 +688,7 @@ void YBCExecuteDeleteIndex(Relation index,
 	 * TODO(jason): consider how this will unnecessarily cause deletes to be
 	 * persisted when online dropping an index (issue #4936).
 	 */
-	if (!YBCGetDisableIndexBackfill() && !index->rd_index->indisvalid)
+	if (!*YBCGetGFlags()->ysql_disable_index_backfill && !index->rd_index->indisvalid)
 		HandleYBStatus(YBCPgDeleteStmtSetIsPersistNeeded(delete_stmt,
 														 true));
 

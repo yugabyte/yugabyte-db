@@ -1816,7 +1816,7 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 	}
 
 	Datum cacheOptionOrLastCache = Int64GetDatumFast(seqform->seqcache);
-	Datum cacheFlag = Int64GetDatumFast(YBCGetSequenceCacheMinval());
+	Datum cacheFlag = Int64GetDatumFast(*YBCGetGFlags()->ysql_sequence_cache_minval);
 	Datum computedCacheValue = (cacheOptionOrLastCache > cacheFlag) ? cacheOptionOrLastCache : cacheFlag;
 
 	if (cache_value != NULL && cacheOptionOrLastCache < cacheFlag)

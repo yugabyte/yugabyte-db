@@ -10318,6 +10318,154 @@ validateCheckConstraint(Relation rel, HeapTuple constrtup)
 }
 
 /*
+ * Helper structure to emulate virtual functions for YbFKTriggerScan.
+ * This scan works as regular heap_scan in non-YB mode and has some extra
+ * functionality in YB mode.
+ */
+typedef struct YbFKTriggerVTable
+{
+	HeapTuple (*get_next)();
+	Buffer (*get_buffer)();
+} YbFKTriggerVTable;
+
+/*
+ * YbFKTriggerScanDescData holds the state of the YbFKTriggerScan which reads multiple
+ * tuples and preload FK for them. After preloading FK in a batch it returns each tuple one
+ * after another like regular heap_scan.
+ */
+typedef struct YbFKTriggerScanDescData
+{
+	HeapScanDesc scan;
+	ScanDirection scan_direction;
+	MemoryContext cxt;
+	MemoryContext old_cxt;
+	YbFKTriggerVTable* vptr;
+	Trigger* trigger;
+	Relation pkrel;
+	int buffered_tuples_capacity;
+	int buffered_tuples_size;
+	int current_tuple_idx;
+	bool all_tuples_processed;
+	HeapTuple buffered_tuples[];
+} YbFKTriggerScanDescData;
+
+typedef struct YbFKTriggerScanDescData *YbFKTriggerScanDesc;
+
+static HeapTuple
+YbPgGetNext(YbFKTriggerScanDesc desc)
+{
+	/* Clear per-tuple context */
+	MemoryContextReset(desc->cxt);
+	return heap_getnext(desc->scan, desc->scan_direction);
+}
+
+static Buffer
+YbPgGetBuffer(YbFKTriggerScanDesc desc)
+{
+	return desc->scan->rs_cbuf;
+}
+
+static HeapTuple
+YbGetNext(YbFKTriggerScanDesc desc)
+{
+	if (desc->current_tuple_idx >= desc->buffered_tuples_size && !desc->all_tuples_processed)
+	{
+		/* Clear context of previously buffered tuples */
+		MemoryContextReset(desc->cxt);
+		desc->current_tuple_idx = 0;
+		desc->buffered_tuples_size = 0;
+		while (desc->buffered_tuples_size < desc->buffered_tuples_capacity)
+		{
+			HeapTuple tuple = heap_getnext(desc->scan, desc->scan_direction);
+			if (tuple == NULL)
+			{
+				desc->all_tuples_processed = true;
+				break;
+			}
+			YbAddTriggerFKReferenceIntent(desc->trigger, desc->pkrel, tuple);
+			desc->buffered_tuples[desc->buffered_tuples_size++] = tuple;
+		}
+	}
+	return desc->current_tuple_idx < desc->buffered_tuples_size
+		? desc->buffered_tuples[desc->current_tuple_idx++]
+		: NULL;
+}
+
+static Buffer
+YbGetBuffer(YbFKTriggerScanDesc desc)
+{
+	/*
+	 * In YB mode data from trigdata.tg_trigtuplebuf is not used.
+	 * It is safe to return InvalidBuffer.
+	 */
+	return InvalidBuffer;
+}
+
+static YbFKTriggerVTable YbFKTriggerScanVTableNotYugaByteEnabled =
+	{
+		.get_next = &YbPgGetNext,
+		.get_buffer = &YbPgGetBuffer
+	};
+
+static YbFKTriggerVTable YbFKTriggerScanVTableIsYugaByteEnabled =
+	{
+		.get_next = &YbGetNext,
+		.get_buffer = &YbGetBuffer
+	};
+
+static YbFKTriggerScanDesc
+YbFKTriggerScanBegin(HeapScanDesc scan,
+                     ScanDirection direction,
+                     Trigger* trigger,
+                     Relation pkrel,
+                     int buffer_capacity)
+{
+	YbFKTriggerScanDesc descr = (YbFKTriggerScanDesc) palloc(
+		sizeof(YbFKTriggerScanDescData) + buffer_capacity * sizeof(HeapTuple));
+	MemSet(descr, 0, sizeof(YbFKTriggerScanDescData));
+	descr->scan = scan;
+	descr->scan_direction = direction;
+	descr->trigger = trigger;
+	descr->pkrel = pkrel;
+	descr->buffered_tuples_capacity = buffer_capacity;
+	if (IsYBRelation(scan->rs_rd))
+	{
+		descr->vptr = &YbFKTriggerScanVTableIsYugaByteEnabled;
+		descr->cxt = AllocSetContextCreate(
+			CurrentMemoryContext, "validateForeignKeyConstraint", ALLOCSET_DEFAULT_SIZES);
+	}
+	else
+	{
+		descr->vptr = &YbFKTriggerScanVTableNotYugaByteEnabled;
+		descr->cxt = AllocSetContextCreate(
+			CurrentMemoryContext, "validateForeignKeyConstraint", ALLOCSET_SMALL_SIZES);
+	}
+	descr->old_cxt = MemoryContextSwitchTo(descr->cxt);
+	return descr;
+}
+
+static void
+YbFKTriggerScanEnd(YbFKTriggerScanDesc descr)
+{
+	MemoryContextSwitchTo(descr->old_cxt);
+	MemoryContextDelete(descr->cxt);
+	heap_endscan(descr->scan);
+	pfree(descr);
+}
+
+static HeapTuple
+YbFKTriggerScanGetNext(YbFKTriggerScanDesc descr)
+{
+	return descr->vptr->get_next(descr);
+}
+
+static Buffer
+YbFKTriggerScanGetBuffer(YbFKTriggerScanDesc descr)
+{
+	return descr->vptr->get_buffer(descr);
+}
+
+/*
  * Scan the existing rows in a table to verify they meet a proposed FK
  * constraint.
  *
@@ -10330,12 +10478,9 @@ validateForeignKeyConstraint(char *conname,
 							 Oid pkindOid,
 							 Oid constraintOid)
 {
-	HeapScanDesc scan;
 	HeapTuple	tuple;
 	Trigger		trig;
 	Snapshot	snapshot;
-	MemoryContext oldcxt;
-	MemoryContext perTupCxt;
 
 	ereport(DEBUG1,
 			(errmsg("validating foreign key constraint \"%s\"", conname)));
@@ -10358,8 +10503,10 @@ validateForeignKeyConstraint(char *conname,
 	/*
 	 * See if we can do it with a single LEFT JOIN query.  A false result
 	 * indicates we must proceed with the fire-the-trigger method.
+	 * Note: YB handles LEFT JOIN inefficiently. So skip this approach and
+	 * call trigger on each row instead. As triggers can buffer the FK check.
 	 */
-	if (RI_Initial_Check(&trig, rel, pkrel))
+	if (!IsYBRelation(rel) && RI_Initial_Check(&trig, rel, pkrel))
 		return;
 
 	/*
@@ -10368,14 +10515,13 @@ validateForeignKeyConstraint(char *conname,
 	 * ereport(ERROR) and that's that.
 	 */
 	snapshot = RegisterSnapshot(GetLatestSnapshot());
-	scan = heap_beginscan(rel, snapshot, 0, NULL);
-
-	perTupCxt = AllocSetContextCreate(CurrentMemoryContext,
-									  "validateForeignKeyConstraint",
-									  ALLOCSET_SMALL_SIZES);
-	oldcxt = MemoryContextSwitchTo(perTupCxt);
-
-	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	YbFKTriggerScanDesc fk_scan = YbFKTriggerScanBegin(
+		heap_beginscan(rel, snapshot, 0, NULL),
+		ForwardScanDirection,
+		&trig,
+		pkrel,
+		*YBCGetGFlags()->ysql_session_max_batch_size);
+	while ((tuple = YbFKTriggerScanGetNext(fk_scan)) != NULL)
 	{
 		FunctionCallInfoData fcinfo;
 		TriggerData trigdata;
@@ -10398,19 +10544,15 @@ validateForeignKeyConstraint(char *conname,
 		trigdata.tg_trigtuple = tuple;
 		trigdata.tg_newtuple = NULL;
 		trigdata.tg_trigger = &trig;
-		trigdata.tg_trigtuplebuf = scan->rs_cbuf;
+		trigdata.tg_trigtuplebuf = YbFKTriggerScanGetBuffer(fk_scan);
 		trigdata.tg_newtuplebuf = InvalidBuffer;
 
 		fcinfo.context = (Node *) &trigdata;
 
 		RI_FKey_check_ins(&fcinfo);
-
-		MemoryContextReset(perTupCxt);
 	}
 
-	MemoryContextSwitchTo(oldcxt);
-	MemoryContextDelete(perTupCxt);
-	heap_endscan(scan);
+	YbFKTriggerScanEnd(fk_scan);
 	UnregisterSnapshot(snapshot);
 }
 

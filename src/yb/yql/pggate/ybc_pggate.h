@@ -512,23 +512,7 @@ bool YBCIsInitDbModeEnvVarSet();
 // This is called by initdb. Used to customize some behavior.
 void YBCInitFlags();
 
-// Retrieves value of ysql_max_read_restart_attempts gflag
-int32_t YBCGetMaxReadRestartAttempts();
-
-// Retrieves the value of ysql_max_write_restart_attempts gflag.
-int32_t YBCGetMaxWriteRestartAttempts();
-
-// Retrieves the value of ysql_sleep_before_retry_on_txn_conflict gflag.
-bool YBCShouldSleepBeforeRetryOnTxnConflict();
-
-// Retrieves value of ysql_output_buffer_size gflag
-int32_t YBCGetOutputBufferSize();
-
-// Retrieves value of ysql_sequence_cache_minval gflag
-int32_t YBCGetSequenceCacheMinval();
-
-// Retrieve value of ysql_disable_index_backfill gflag.
-bool YBCGetDisableIndexBackfill();
+const YBCPgGFlagsAccessor* YBCGetGFlags();
 
 bool YBCPgIsYugaByteEnabled();
 
