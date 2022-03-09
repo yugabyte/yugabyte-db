@@ -26,7 +26,6 @@ import com.azure.storage.blob.models.ListBlobsOptions;
 @Slf4j
 public class AZUtil {
   public static final String AZURE_STORAGE_SAS_TOKEN_FIELDNAME = "AZURE_STORAGE_SAS_TOKEN";
-  public static final String AZURE_STORAGE_BACKUP_LOCATION = "BACKUP_LOCATION";
   private static final String KEY_LOCATION_SUFFIX = Util.KEY_LOCATION_SUFFIX;
 
   public static String[] getSplitLocationValue(String backupLocation, Boolean isConfigLocation) {
@@ -64,20 +63,35 @@ public class AZUtil {
   }
 
   public static boolean canCredentialListObjects(JsonNode credentials) {
-    String configLocation = credentials.get(AZURE_STORAGE_BACKUP_LOCATION).asText();
-    String[] splitLocation = getSplitLocationValue(configLocation, true);
-    String azureUrl = "https://" + splitLocation[0];
-    String container = splitLocation[1];
-    String sasToken = credentials.get(AZURE_STORAGE_SAS_TOKEN_FIELDNAME).asText();
+    List<String> locations = null;
     try {
-      BlobContainerClient blobContainerClient =
-          createBlobContainerClient(azureUrl, sasToken, container);
-      ListBlobsOptions blobsOptions = new ListBlobsOptions().setMaxResultsPerPage(1);
-      PagedIterable<BlobItem> pagedIterable =
-          blobContainerClient.listBlobs(blobsOptions, Duration.ofMinutes(5));
-    } catch (Exception e) {
-      log.error("Cannot list objects with credentials", e);
+      locations = BackupUtil.getStorageLocationList(credentials);
+    } catch (PlatformServiceException e) {
+      log.error(e.getMessage());
       return false;
+    }
+    return canCredentialListObjects(credentials, locations);
+  }
+
+  public static boolean canCredentialListObjects(JsonNode credentials, List<String> locations) {
+    for (String configLocation : locations) {
+      String[] splitLocation = getSplitLocationValue(configLocation, true);
+      String azureUrl = "https://" + splitLocation[0];
+      String container = splitLocation[1];
+      String sasToken = credentials.get(AZURE_STORAGE_SAS_TOKEN_FIELDNAME).asText();
+      try {
+        BlobContainerClient blobContainerClient =
+            createBlobContainerClient(azureUrl, sasToken, container);
+        ListBlobsOptions blobsOptions = new ListBlobsOptions().setMaxResultsPerPage(1);
+        PagedIterable<BlobItem> pagedIterable =
+            blobContainerClient.listBlobs(blobsOptions, Duration.ofMinutes(5));
+      } catch (Exception e) {
+        log.error(
+            String.format(
+                "Credential cannot list objects in the specified backup location %s",
+                configLocation));
+        return false;
+      }
     }
     return true;
   }

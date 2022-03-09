@@ -109,6 +109,7 @@
   file:
     mode: 0755
     path: "{{ item }}"
+    state: directory
     owner: "{{ user_name }}"
     group: "{{ user_name }}"
   with_items: "{{ mount_points.split(',') }}"

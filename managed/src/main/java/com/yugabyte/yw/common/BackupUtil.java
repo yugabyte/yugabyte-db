@@ -7,20 +7,27 @@ import com.cronutils.model.definition.CronDefinitionBuilder;
 import com.cronutils.model.time.ExecutionTime;
 import com.cronutils.parser.CronParser;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.collect.Sets;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.BackupResp;
 import com.yugabyte.yw.models.BackupResp.BackupRespBuilder;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import com.yugabyte.yw.models.helpers.KeyspaceTablesList;
+import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -46,6 +53,11 @@ public class BackupUtil {
   public static final String BACKUP_SCRIPT = "bin/yb_backup.py";
   public static final String REGION_LOCATIONS = "REGION_LOCATIONS";
   public static final String REGION_NAME = "REGION";
+
+  public static class RegionLocations {
+    public String REGION;
+    public String LOCATION;
+  }
 
   public static void validateBackupCronExpression(String cronExpression)
       throws PlatformServiceException {
@@ -151,5 +163,97 @@ public class BackupUtil {
       builder.responseList(kTLists);
     }
     return builder.build();
+  }
+
+  public static List<String> getStorageLocationList(JsonNode data) throws PlatformServiceException {
+    List<String> locations = new ArrayList<>();
+    List<RegionLocations> regionsList = null;
+    if (StringUtils.isNotBlank(data.get(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME).asText())) {
+      locations.add(data.get(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME).asText());
+    } else {
+      throw new PlatformServiceException(BAD_REQUEST, "Default backup location cannot be empty");
+    }
+    regionsList = getRegionLocationsList(data);
+    if (CollectionUtils.isNotEmpty(regionsList)) {
+      locations.addAll(
+          regionsList
+              .parallelStream()
+              .filter(r -> StringUtils.isNotBlank(r.REGION) && StringUtils.isNotBlank(r.LOCATION))
+              .map(r -> r.LOCATION)
+              .collect(Collectors.toList()));
+    }
+    return locations;
+  }
+
+  public static List<RegionLocations> getRegionLocationsList(JsonNode data) {
+    List<RegionLocations> regionLocationsList = null;
+    try {
+      ObjectMapper mapper = new ObjectMapper();
+      String jsonLocations =
+          mapper.writeValueAsString(data.get(CustomerConfigConsts.REGION_LOCATIONS_FIELDNAME));
+      regionLocationsList = Arrays.asList(mapper.readValue(jsonLocations, RegionLocations[].class));
+    } catch (IOException e) {
+      LOG.error("Error parsing regionLocations list: ", e);
+    }
+    return regionLocationsList;
+  }
+
+  public static void validateStorageConfigOnLocations(
+      CustomerConfig config, List<String> locations) {
+    LOG.info(String.format("Validating storage config %s", config.configName));
+    Boolean isValid = true;
+    switch (config.name) {
+      case Util.AZ:
+        isValid = AZUtil.canCredentialListObjects(config.data, locations);
+        break;
+      case Util.GCS:
+        isValid = GCPUtil.canCredentialListObjects(config.data, locations);
+        break;
+      case Util.S3:
+        isValid = AWSUtil.canCredentialListObjects(config.data, locations);
+        break;
+      case Util.NFS:
+        isValid = true;
+        break;
+      default:
+        throw new PlatformServiceException(
+            BAD_REQUEST, String.format("Invalid config type: %s", config.name));
+    }
+    if (!isValid) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Storage config %s cannot access location %s",
+              config.configName, config.data.get(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME)));
+    }
+  }
+
+  public static void validateStorageConfig(CustomerConfig config) throws PlatformServiceException {
+    LOG.info(String.format("Validating storage config %s", config.configName));
+    Boolean isValid = true;
+    switch (config.name) {
+      case Util.AZ:
+        isValid = AZUtil.canCredentialListObjects(config.data);
+        break;
+      case Util.GCS:
+        isValid = GCPUtil.canCredentialListObjects(config.data);
+        break;
+      case Util.S3:
+        isValid = AWSUtil.canCredentialListObjects(config.data);
+        break;
+      case Util.NFS:
+        isValid = true;
+        break;
+      default:
+        throw new PlatformServiceException(
+            BAD_REQUEST, String.format("Invalid config type: %s", config.name));
+    }
+    if (!isValid) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Storage config %s cannot access location %s",
+              config.configName, config.data.get(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME)));
+    }
   }
 }

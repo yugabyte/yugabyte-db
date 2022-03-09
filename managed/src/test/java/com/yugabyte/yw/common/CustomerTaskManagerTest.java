@@ -5,6 +5,7 @@ import static com.yugabyte.yw.models.CustomerTask.TaskType.Create;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.mockito.Matchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -20,6 +21,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.runners.MockitoJUnitRunner;
+import org.yb.client.YBClient;
 import play.api.Play;
 import play.libs.Json;
 
@@ -28,6 +30,7 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
   Customer customer;
   Universe universe;
   CustomerTaskManager taskManager;
+  YBClient mockClient;
 
   private CustomerTask createTask(
       CustomerTask.TargetType targetType, UUID targetUUID, CustomerTask.TaskType taskType) {
@@ -69,6 +72,7 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
   public void testFailPendingTasksForCompletedCustomerTask() throws Exception {
     universe = ModelFactory.createUniverse(customer.getCustomerId());
     taskManager = spy(Play.current().injector().instanceOf(CustomerTaskManager.class));
+    mockClient = mock(YBClient.class);
     for (CustomerTask.TargetType targetType : CustomerTask.TargetType.values()) {
       UUID targetUUID = UUID.randomUUID();
       if (targetType.equals(CustomerTask.TargetType.Universe)) targetUUID = universe.universeUUID;
@@ -96,6 +100,7 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
   public void testFailPendingTasksForRunningTaskInfo() throws Exception {
     universe = ModelFactory.createUniverse(customer.getCustomerId());
     taskManager = spy(Play.current().injector().instanceOf(CustomerTaskManager.class));
+    mockClient = mock(YBClient.class);
     for (CustomerTask.TargetType targetType : CustomerTask.TargetType.values()) {
       UUID targetUUID = UUID.randomUUID();
       if (targetType.equals(CustomerTask.TargetType.Universe)) targetUUID = universe.universeUUID;
@@ -126,6 +131,7 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
   public void testFailPendingTasksForCompletedTaskInfo() throws Exception {
     universe = ModelFactory.createUniverse(customer.getCustomerId());
     taskManager = spy(Play.current().injector().instanceOf(CustomerTaskManager.class));
+    mockClient = mock(YBClient.class);
     for (CustomerTask.TargetType targetType : CustomerTask.TargetType.values()) {
       UUID targetUUID = UUID.randomUUID();
       if (targetType.equals(CustomerTask.TargetType.Universe)) targetUUID = universe.universeUUID;

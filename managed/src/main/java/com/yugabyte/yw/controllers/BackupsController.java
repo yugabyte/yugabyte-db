@@ -7,10 +7,13 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
+import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TaskInfoManager;
+import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
+import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.DeleteBackupParams;
 import com.yugabyte.yw.forms.DeleteBackupParams.DeleteBackupInfo;
@@ -20,6 +23,7 @@ import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.PlatformResults.YBPTasks;
+import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.filters.BackupApiFilter;
 import com.yugabyte.yw.forms.paging.BackupPagedApiQuery;
@@ -29,6 +33,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
@@ -47,6 +52,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import org.apache.commons.collections.CollectionUtils;
 import org.slf4j.Logger;
@@ -100,7 +106,7 @@ public class BackupsController extends AuthenticatedController {
     return PlatformResults.withData(backups);
   }
 
-  @ApiOperation(value = "Get Backup", response = Backup.class)
+  @ApiOperation(value = "Get Backup V2", response = Backup.class, nickname = "getBackupV2")
   public Result get(UUID customerUUID, UUID backupUUID) {
     Customer.getOrBadRequest(customerUUID);
     Backup backup = Backup.getOrBadRequest(customerUUID, backupUUID);
@@ -116,7 +122,10 @@ public class BackupsController extends AuthenticatedController {
     return PlatformResults.withData(backup);
   }
 
-  @ApiOperation(value = "List Backups (paginated)", response = BackupPagedApiResponse.class)
+  @ApiOperation(
+      value = "List Backups (paginated) V2",
+      response = BackupPagedApiResponse.class,
+      nickname = "listBackupsV2")
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "PageBackupsRequest",
@@ -154,9 +163,10 @@ public class BackupsController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Restore from a backup",
+      value = "Restore from a backup V2",
       response = YBPTask.class,
-      responseContainer = "Restore")
+      responseContainer = "Restore",
+      nickname = "restoreBackupV2")
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "backup",
@@ -192,7 +202,11 @@ public class BackupsController extends AuthenticatedController {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot restore backup as config is queued for deletion.");
     }
-
+    List<String> storageLocations = null;
+    for (BackupStorageInfo storageInfo : taskParams.backupStorageInfoList) {
+      storageLocations.add(storageInfo.storageLocation);
+    }
+    BackupUtil.validateStorageConfigOnLocations(customerConfig, storageLocations);
     UUID taskUUID = commissioner.submit(TaskType.RestoreBackup, taskParams);
     CustomerTask.create(
         customer,
@@ -437,10 +451,10 @@ public class BackupsController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Edit a backup",
+      value = "Edit a backup V2",
       notes = "Edit a backup",
       response = Backup.class,
-      nickname = "editBackup")
+      nickname = "editBackupV2")
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "backup",
