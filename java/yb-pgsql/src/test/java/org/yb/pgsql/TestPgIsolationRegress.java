@@ -30,6 +30,11 @@ public class TestPgIsolationRegress extends BasePgSQLTest {
     return flagMap;
   }
 
+  @Override
+  public int getTestMethodTimeoutSec() {
+    return 1600;
+  }
+
   private void runIsolationRegressTest() throws Exception {
     runPgRegressTest(
         PgRegressBuilder.PG_ISOLATION_REGRESS_DIR /* inputDir */, "yb_pg_isolation_schedule",
