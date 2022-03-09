@@ -35,29 +35,27 @@ showAsideToc: true
 [GORM](https://gorm.io/) is the ORM library for Golang.
 
 
-## Quick Start
+## Quick start
 
 Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using
-the steps on the [Build an application](/latest/quick-start/build-apps/go/ysql-gorm) page under the
+the steps on the [Build an application](../../../quick-start/build-apps/go/ysql-gorm) page under the
 Quick start section.
 
 Let us break down the quick start example and understand how to perform the common tasks required
-for Go App development using the GORM ORM tool.
+for Go App development using GORM.
 
-## Step 1: Import the Driver Package
+## Step 1: Import the driver package
 
-You can import the GORM packages by adding the following import statement in your Go code.
+Import the GORM packages by adding the following import statement in your Go code.
 
-### Import Statement
-
-```golang
+```go
 import (
   "github.com/jinzhu/gorm"
   _ "github.com/jinzhu/gorm/dialects/postgres"
 )
 ```
 
-## Step 2: Connect to YugabyteDB Database
+## Step 2: Connect to YugabyteDB database
 
 Go Apps can connect to the YugabyteDB database using the `gorm.Open()` function.
 
@@ -66,17 +64,17 @@ used for reading the data and writing the data into the database.
 
 Code snippet for connecting to YugabyteDB:
 
-```golang
- conn := fmt.Sprintf("host= %s port = %d user = %s password = %s dbname = %s sslmode=disable", host, port, user, password, dbname)
- var err error
- db, err = gorm.Open("postgres", conn)
- defer db.Close()
- if err != nil {
-   panic(err)
- }
+```go
+conn := fmt.Sprintf("host= %s port = %d user = %s password = %s dbname = %s sslmode=disable", host, port, user, password, dbname)
+var err error
+db, err = gorm.Open("postgres", conn)
+defer db.Close()
+if err != nil {
+  panic(err)
+}
 ```
 
-| Params | Description | Default |
+| Parameters | Description | Default |
 | :---------- | :---------- | :------ |
 | host  | hostname of the YugabyteDB instance | localhost
 | port |  Listen port for YSQL | 5433
@@ -84,48 +82,44 @@ Code snippet for connecting to YugabyteDB:
 | password | password for connecting to the database | yugabyte
 | dbname | database name | yugabyte
 
-## Step 3: Create Table
+## Step 3: Create table
 
 Define a struct which maps to the table schema and use `AutoMigrate()` to create the table.
 
-```golang
+```go
 type Employee struct {
- Id       int64  `gorm:"primary_key"`
- Name     string `gorm:"size:255"`
- Age      int64
- Language string `gorm:"size:255"`
+  Id       int64  `gorm:"primary_key"`
+  Name     string `gorm:"size:255"`
+  Age      int64
+  Language string `gorm:"size:255"`
 }
  ...
 
- // Create table
- db.Debug().AutoMigrate(&Employee{})
+// Create table
+db.Debug().AutoMigrate(&Employee{})
 ```
 
 Read more on designing [Database schemas and tables](../../../../explore/ysql-language-features/databases-schemas-tables/).
 
-## Step 4: Read and Write Data
+## Step 4: Read and write data
 
-### Insert Data
+To write data into YugabyteDB, use the `db.Create()` function.
 
-In order to write data into YugabyteDB, use the `db.Create()` functions.
-
-```golang
- // Insert value
- db.Create(&Employee{Id: 1, Name: "John", Age: 35, Language: "Golang-GORM"})
- db.Create(&Employee{Id: 2, Name: "Smith", Age: 24, Language: "Golang-GORM"})
+```go
+// Insert value
+db.Create(&Employee{Id: 1, Name: "John", Age: 35, Language: "Golang-GORM"})
+db.Create(&Employee{Id: 2, Name: "Smith", Age: 24, Language: "Golang-GORM"})
 ```
 
 
-### Query Data
+To query data from YugabyteDB tables, use the `db.Find()` function.
 
-In order to query data from YugabyteDB tables, execute the `db.Find()` function.
-
-```golang
- // Display input data
- var employees []Employee
- db.Find(&employees)
- for _, employee := range employees {
-   fmt.Printf("Employee ID:%d\nName:%s\nAge:%d\nLanguage:%s\n", employee.Id, employee.Name, employee.Age, employee.Language)
-   fmt.Printf("--------------------------------------------------------------\n")
- }
+```go
+// Display input data
+var employees []Employee
+db.Find(&employees)
+for _, employee := range employees {
+  fmt.Printf("Employee ID:%d\nName:%s\nAge:%d\nLanguage:%s\n", employee.Id, employee.Name, employee.Age, employee.Language)
+  fmt.Printf("--------------------------------------------------------------\n")
+}
 ```

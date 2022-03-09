@@ -13,9 +13,9 @@ menu:
 isTocNested: true
 showAsideToc: true
 ---
-For Go Applications, most drivers provide database connectivity through the standard `database/sql`
-API. YugabyteDB supports [PGX Driver](https://github.com/jackc/pgx) and the
-[PQ Driver](https://github.com/lib/pq).
+
+For Go Applications, most drivers provide database connectivity through the standard `database/sql` API.
+YugabyteDB supports the [PGX Driver](https://github.com/jackc/pgx) and the [PQ Driver](https://github.com/lib/pq).
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
@@ -36,32 +36,31 @@ API. YugabyteDB supports [PGX Driver](https://github.com/jackc/pgx) and the
 </ul>
 
 The [PGX driver](https://github.com/jackc/pgx/) is one of the most popular and actively maintained
-drivers for PostgreSQL which can be used for connecting to YugabyteDB YSQL as well.<br/>
+drivers for PostgreSQL which can be used for connecting to YugabyteDB YSQL as well.
+
 This driver allows Go programmers to connect to YugabyteDB database to execute DMLs and DDLs using
 the PGX APIs. It also supports the standard `database/sql` package.
 
-## Quick Start
+## Quick start
 
 Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using
-the steps in the [Build an application](/latest/quick-start/build-apps/go/ysql-pgx) page under the
+the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-pgx) page under the
 Quick start section.
 
 Let us break down the quick start example and understand how to perform the common tasks required
 for Go App development using the PGX driver.
 
-## Step 1: Import the Driver Package
+## Step 1: Import the driver package
 
-You can import the PGX driver package by adding the following import statement in your Go code.
+Import the PGX driver package by adding the following import statement in your Go code.
 
-### Import Statement
-
-```golang
+```go
 import (
   "github.com/jackc/pgx/v4"
 )
 ```
 
-## Step 2: Connect to YugabyteDB
+## Step 2: Connect to YugabyteDB database
 
 Go Apps can connect to the YugabyteDB database using the `pgx.Connect()` function.
 All the common functions or structs required for working with YugabyteDB database is part of `pgx` package.
@@ -69,21 +68,21 @@ All the common functions or structs required for working with YugabyteDB databas
 Use the `pgx.Connect()` method for getting connection object for the YugabyteDB database which can
 be used for performing DDLs and DMLs against the database.
 
-PGX Connection url is in the format given below:
+The PGX connection URL is in the following format:
 
-```golang
+```go
 postgresql://username:password@hostname:port/database
 ```
 
 Code snippet for connecting to YugabyteDB:
 
-```golang
+```go
 url := fmt.Sprintf("postgres://%s:%s@%s:%d/%s",
                     user, password, host, port, dbname)
 conn, err := pgx.Connect(context.Background(), url)
 ```
 
-| Params | Description | Default |
+| Parameters | Description | Default |
 | :---------- | :---------- | :------ |
 | user | user for connecting to the database | yugabyte
 | password | password for connecting to the database | yugabyte
@@ -91,7 +90,7 @@ conn, err := pgx.Connect(context.Background(), url)
 | port |  Listen port for YSQL | 5433
 | dbname | database name | yugabyte
 
-## Step 3: Create Table
+## Step 3: Create table
 
 Execute an SQL statement like the DDL `CREATE TABLE ...` using the `Exec()` function on the `conn`
 instance.
@@ -104,7 +103,7 @@ CREATE TABLE employee (id int PRIMARY KEY, name varchar, age int, language varch
 
 Code snippet:
 
-```golang
+```go
 var createStmt = 'CREATE TABLE employee (id int PRIMARY KEY,
                   name varchar, age int, language varchar)';
 _, err = conn.Exec(context.Background(), createStmt)
@@ -118,22 +117,21 @@ in your code.
 
 Read more on designing [Database schemas and tables](../../../../explore/ysql-language-features/databases-schemas-tables/).
 
-## Step 4:  Read and Write Data
+## Step 4:  Read and write data
 
-### Insert Data
+### Insert data
 
-In order to write data into YugabyteDB, execute the `INSERT` statement using the same `conn.Exec()`
-function.
+To write data into YugabyteDB, execute the `INSERT` statement using the same `conn.Exec()` function.
 
 The INSERT DML statement:
 
-```java
+```sql
 INSERT INTO employee(id, name, age, language) VALUES (1, 'John', 35, 'Go')
 ```
 
 Code snippet:
 
-```golang
+```go
 var insertStmt string = "INSERT INTO employee(id, name, age, language)" +
                         " VALUES (1, 'John', 35, 'Go')";
 _, err = conn.Exec(context.Background(), insertStmt)
@@ -146,7 +144,7 @@ The pgx driver automatically prepares and caches statements by default, so that 
 not have to. 
 
 
-### Query Data
+### Query data
 
 In order to query data from YugabyteDB tables, execute the `SELECT` statement using the function
 `conn.Query()`.
@@ -161,7 +159,7 @@ SELECT * from employee;
 
 Code snippet:
 
-```golang
+```go
 var name string
 var age int
 var language string
@@ -187,4 +185,4 @@ if err != nil {
 }
 ```
 
-See this page - [PGX Driver](/latest/reference/drivers/go/pgx-reference/) - for more details.
+See the [PGX Driver](../../../reference/drivers/go/pgx-reference/) page for more details.

@@ -13,6 +13,7 @@ menu:
 isTocNested: true
 showAsideToc: true
 ---
+
 For Go Applications, most drivers provide database connectivity through the standard `database/sql`
 API. YugabyteDB supports [PGX Driver](https://github.com/jackc/pgx) and the
 [PQ Driver](https://github.com/lib/pq).
@@ -35,33 +36,31 @@ API. YugabyteDB supports [PGX Driver](https://github.com/jackc/pgx) and the
 
 </ul>
 
-The [PQ driver](https://github.com/lib/pq/) is a popular driver for PostgreSQL which can used for
-connecting to YugabyteDB YSQL as well.<br/>
+The [PQ driver](https://github.com/lib/pq/) is a popular driver for PostgreSQL which can used for connecting to YugabyteDB YSQL as well.
+
 This driver allows Go programmers to connect to YugabyteDB database to execute DMLs and DDLs using
 the standard `database/sql` package.
 
-## Quick Start
+## Quick start
 
 Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using
-the steps in the [Build an application](/latest/quick-start/build-apps/go/ysql-pq) page under the
+the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-pq) page under the
 Quick start section.
 
 Let us break down the quick start example and understand how to perform the common tasks required
 for Go App development using the PQ driver.
 
-## Step 1: Import the Driver Package
+## Step 1: Import the driver package
 
-You can import the PQ driver package by adding the following import statement in your Go code.
+Import the PQ driver package by adding the following import statement in your Go code.
 
-### Import Statement
-
-```golang
+```go
 import (
   _ "github.com/lib/pq"
 )
 ```
 
-## Step 2: Connect to YugabyteDB
+## Step 2: Connect to YugabyteDB database
 
 Go Apps can connect to the YugabyteDB database using the `sql.Open()` function.
 All the functions or structs required for working with YugabyteDB database are part of `sql` package.
@@ -71,25 +70,25 @@ used for performing DDLs and DMLs against the database.
 
 The connection details can be specified either as string params or via an url in the format given below:
 
-```golang
+```go
 postgresql://username:password@hostname:port/database
 ```
 
 Code snippet for connecting to YugabyteDB:
 
-```golang
-    psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s",
-                            host, port, user, password, dbname)
-    // Other connection configs are read from the standard environment variables:
-    // PGSSLMODE, PGSSLROOTCERT, and so on.
-    db, err := sql.Open("postgres", psqlInfo)
-    defer db.Close()
-    if err != nil {
-        log.Fatal(err)
-    }
+```go
+psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s",
+                        host, port, user, password, dbname)
+// Other connection configs are read from the standard environment variables:
+// PGSSLMODE, PGSSLROOTCERT, and so on.
+db, err := sql.Open("postgres", psqlInfo)
+defer db.Close()
+if err != nil {
+    log.Fatal(err)
+}
 ```
 
-| Params | Description | Default |
+| Parameters | Description | Default |
 | :---------- | :---------- | :------ |
 | host  | hostname of the YugabyteDB instance | localhost
 | port |  Listen port for YSQL | 5433
@@ -97,7 +96,7 @@ Code snippet for connecting to YugabyteDB:
 | password | password for connecting to the database | yugabyte
 | dbname | database name | yugabyte
 
-## Step 3: Create Table
+## Step 3: Create table
 
 Execute an SQL statement like the DDL `CREATE TABLE ...` using the `Exec()` function on the `db`
 instance.
@@ -110,14 +109,14 @@ CREATE TABLE employee (id int PRIMARY KEY, name varchar, age int, language varch
 
 Code snippet:
 
-```golang
-    var createStmt = `CREATE TABLE employee (id int PRIMARY KEY,
-                                             name varchar,
-                                             age int,
-                                             language varchar)`;
-    if _, err := db.Exec(createStmt); err != nil {
-        log.Fatal(err)
-    }
+```go
+var createStmt = `CREATE TABLE employee (id int PRIMARY KEY,
+                                         name varchar,
+                                         age int,
+                                         language varchar)`;
+if _, err := db.Exec(createStmt); err != nil {
+    log.Fatal(err)
+}
 ```
 
 The `db.Exec()` function also returns an `error` object which, if not `nil`, needs to handled in
@@ -125,32 +124,31 @@ your code.
 
 Read more on designing [Database schemas and tables](../../../../explore/ysql-language-features/databases-schemas-tables/).
 
-## Step 4: Read and Write Data
+## Step 4: Read and write data
 
-### Insert Data
+### Insert data
 
-In order to write data into YugabyteDB, execute the `INSERT` statement using the same `db.Exec()`
-function.
+To write data into YugabyteDB, execute the `INSERT` statement using the same `db.Exec()` function.
 
 The INSERT DML statement:
 
-```java
+```sql
 INSERT INTO employee(id, name, age, language) VALUES (1, 'John', 35, 'Go')
 ```
 
 Code snippet:
 
-```golang
-    var insertStmt string = "INSERT INTO employee(id, name, age, language)" +
-        " VALUES (1, 'John', 35, 'Go')";
-    if _, err := db.Exec(insertStmt); err != nil {
-        log.Fatal(err)
-    }
+```go
+var insertStmt string = "INSERT INTO employee(id, name, age, language)" +
+    " VALUES (1, 'John', 35, 'Go')";
+if _, err := db.Exec(insertStmt); err != nil {
+    log.Fatal(err)
+}
 ```
 
-### Query Data
+### Query data
 
-In order to query data from YugabyteDB tables, execute the `SELECT` statement using the function
+To query data from YugabyteDB tables, execute the `SELECT` statement using the function
 `Query()` on `db` instance.
 
 Query results are returned as `rows` which can be iterated using `rows.next()` method.
@@ -164,27 +162,27 @@ SELECT * from employee;
 
 Code snippet:
 
-```golang
-    var name string
-    var age int
-    var language string
-    rows, err := db.Query(`SELECT name, age, language FROM employee WHERE id = 1`)
+```go
+var name string
+var age int
+var language string
+rows, err := db.Query(`SELECT name, age, language FROM employee WHERE id = 1`)
+if err != nil {
+    log.Fatal(err)
+}
+defer rows.Close()
+fmt.Printf("Query for id=1 returned: ");
+for rows.Next() {
+    err := rows.Scan(&name, &age, &language)
     if err != nil {
-        log.Fatal(err)
+       log.Fatal(err)
     }
-    defer rows.Close()
-    fmt.Printf("Query for id=1 returned: ");
-    for rows.Next() {
-        err := rows.Scan(&name, &age, &language)
-        if err != nil {
-           log.Fatal(err)
-        }
-        fmt.Printf("Row[%s, %d, %s]\n", name, age, language)
-    }
-    err = rows.Err()
-    if err != nil {
-        log.Fatal(err)
-    }
+    fmt.Printf("Row[%s, %d, %s]\n", name, age, language)
+}
+err = rows.Err()
+if err != nil {
+    log.Fatal(err)
+}
 ```
 
-See this page - [PQ Driver](/latest/reference/drivers/go/pq-reference/) - for more details.
+See the [PQ Driver](../../../reference/drivers/go/pq-reference/) page for more details.

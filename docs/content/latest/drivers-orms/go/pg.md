@@ -34,29 +34,27 @@ showAsideToc: true
 
 The [go-pg](https://github.com/go-pg/pg) lib is "Golang ORM with focus on PostgreSQL features and performance". 
 
-## Quick Start
+## Quick start
 
 Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using
-the steps in the [Build an application](/latest/quick-start/build-apps/go/ysql-pg) page under the
+the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-pg) page under the
 Quick start section.
 
 Let us break down the quick start example and understand how to perform the common tasks required
 for Go App development using the GO-PG ORM tool.
 
-## Step 1: Import the Driver Package
+## Step 1: Import the driver package
 
-You can import the PG packages by adding the following import statement in your Go code.
+Import the PG packages by adding the following import statement in your Go code.
 
-### Import Statement
-
-```golang
+```go
 import (
   "github.com/go-pg/pg/v10"
   "github.com/go-pg/pg/v10/orm"
 )
 ```
 
-## Step 2: Connect to YugabyteDB Database
+## Step 2: Connect to YugabyteDB database
 
 Go Apps can connect to the YugabyteDB database using the `pg.Connect()` function.
 
@@ -65,18 +63,18 @@ used for reading the data and writing the data into the database.
 
 Code snippet for connecting to YugabyteDB:
 
-```golang
-    url := fmt.Sprintf("postgres://%s:%s@%s:%d/%s%s",
-                      user, password, host, port, dbname, sslMode)
-    opt, errors := pg.ParseURL(url)
-    if errors != nil {
-        log.Fatal(errors)
-    }
+```go
+url := fmt.Sprintf("postgres://%s:%s@%s:%d/%s%s",
+                  user, password, host, port, dbname, sslMode)
+opt, errors := pg.ParseURL(url)
+if errors != nil {
+    log.Fatal(errors)
+}
 
-    db := pg.Connect(opt)
+db := pg.Connect(opt)
 ```
 
-| Params | Description | Default |
+| Parameters | Description | Default |
 | :---------- | :---------- | :------ |
 | user | user for connecting to the database | yugabyte
 | password | password for connecting to the database | yugabyte
@@ -85,11 +83,11 @@ Code snippet for connecting to YugabyteDB:
 | dbname | database name | yugabyte
 | sslMode | SSL mode | 
 
-## Step 3: Create Table
+## Step 3: Create table
 
 Define a struct which maps to the table schema and use `AutoMigrate()` to create the table.
 
-```golang
+```go
 type Employee struct {
     Id        int64
     Name      string
@@ -108,39 +106,34 @@ type Employee struct {
 
 Read more on designing [Database schemas and tables](../../../../explore/ysql-language-features/databases-schemas-tables/).
 
-## Step 4: Read and Write Data
+## Step 4: Read and write data
 
-### Insert Data
+To write data into YugabyteDB, use the `Insert()` functions.
 
-In order to write data into YugabyteDB, use the `Insert()` functions.
-
-```golang
-    // Insert into the table.
-    employee1 := &Employee{
-        Name:   "John",
-        Age:    35,
-        Language: []string{"Go"},
-    }
-    _, err = db.Model(employee1).Insert()
-    if err != nil {
-        log.Fatal(err)
-    }
+```go
+// Insert into the table.
+employee1 := &Employee{
+    Name:   "John",
+    Age:    35,
+    Language: []string{"Go"},
+}
+_, err = db.Model(employee1).Insert()
+if err != nil {
+    log.Fatal(err)
+}
 ```
 
+To query data from YugabyteDB tables, execute the `Select()` function.
 
-### Query Data
-
-In order to query data from YugabyteDB tables, execute the `Select()` function.
-
-```golang
-    // Read from the table.
-    emp := new(Employee)
-    err = db.Model(emp).
-        Where("employee.id = ?", employee1.Id).
-        Select()
-    if err != nil {
-        log.Fatal(err)
-    }
-    fmt.Printf("Query for id=1 returned: ");
-    fmt.Println(emp)
+```go
+// Read from the table.
+emp := new(Employee)
+err = db.Model(emp).
+    Where("employee.id = ?", employee1.Id).
+    Select()
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("Query for id=1 returned: ");
+fmt.Println(emp)
 ```
