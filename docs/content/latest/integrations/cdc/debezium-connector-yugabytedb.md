@@ -858,9 +858,9 @@ Note that the APIs we use for fetching the changes are set up to work with the T
 | :--- | :--- | :--- |
 | snapshot.mode | | |
 | cdc.poll.interval.ms | 200 | The interval at which the connector will poll the database for the changes. |
-| admin.operation.timeout.ms | 60000 | Specifies the timeout for the admin operations to complete. |
-| operation.timeout.ms | 60000 | |
-| socket.read.timeout.ms | 60000 | |
+| admin.operation.timeout.ms | 60000 | The default timeout used for administrative operations (e.g. createTable, deleteTable, getTables, etc). |
+| operation.timeout.ms | 60000 | The default timeout used for user operations (using sessions and scanners). |
+| socket.read.timeout.ms | 60000 | The default timeout to use when waiting on data from a socket. |
 | time.precision.mode | adaptive | Time, date, and timestamps can be represented with different kinds of precision: <br/><br/> `adaptive` captures the time and timestamp values exactly as in the database using millisecond precision values based on the database column’s type. <br/><br/> `adaptive_time_microseconds` captures the date, datetime and timestamp values exactly as in the database using millisecond precision values based on the database column’s type. An exception is `TIME` type fields, which are always captured as microseconds. <br/><br/> `connect` always represents time and timestamp values by using Kafka Connect’s built-in representations for Time, Date, and Timestamp, which use millisecond precision regardless of the database columns' precision. See temporal values. |
 | decimal.handling.mode | double | The `precise` mode is not currently supported. <br/><br/>  `double` maps all the numeric, double, and money types as Java double values (FLOAT64) <br/><br/>  `string` represents the numeric, double, and money types as their string-formatted form <br/><br/> |
 | binary.handling.mode | hex | `hex` is the only supported mode. All binary strings are converted to their respective hex format and emitted as their string representation . |
