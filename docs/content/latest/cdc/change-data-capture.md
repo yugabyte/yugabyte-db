@@ -1,8 +1,8 @@
 ---
-title: Change Data Capture (CDC)
-headerTitle: Change Data Capture (CDC)
-linkTitle: Change Data Capture (CDC)
-description: CDC or Change Data Capture is a process to capture changes made to data in the database.
+title: Change data capture (CDC)
+headerTitle: Change data capture (CDC)
+linkTitle: Change data capture (CDC)
+description: CDC or Change data capture is a process to capture changes made to data in the database.
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 url: /latest/cdc/
 section: YUGABYTEDB CORE
@@ -16,15 +16,38 @@ showAsideToc: true
 
 ## What is CDC?
 
-Change Data Capture (CDC) is a process to capture changes made to data in the database and stream those changes to external processes, applications or other databases. <br/>
+Change data capture (CDC) is a process to capture changes made to data in the database and stream those changes to external processes, applications or other databases. <br/>
 
  The core primitive of CDC is the _stream_. Streams can be enabled/disabled on databases. Every change to a watched database table is emitted as a record in a configurable format to a configurable sink. Streams scale to any YugabyteDB cluster independent of its size and are designed to impact production traffic as little as possible.
 
-## Use cases
-
-Many applications benefit from capturing changes to items stored in a YugabyteDB table, at the point in time when such changes occur. The following are some sample use cases: triggering alerts and notifications in IoT use cases, sending real-time updates to analytics pipelines and applications, auditing and compliance, and cache invalidation.
-
 ### Process Architecture
+
+```txt
+                          ╔═══════════════════════════════════════════╗
+                          ║  Node #1                                  ║
+                          ║  ╔════════════════╗ ╔══════════════════╗  ║
+                          ║  ║    YB-Master   ║ ║    YB-TServer    ║  ║  CDC Service is stateless
+    CDC Streams metadata  ║  ║  (Stores CDC   ║ ║  ╔═════════════╗ ║  ║           |
+    replicated with Raft  ║  ║   metadata)    ║ ║  ║ CDC Service ║ ║  ║<----------'
+             .----------->║  ║                ║ ║  ╚═════════════╝ ║  ║
+             |            ║  ╚════════════════╝ ╚══════════════════╝  ║
+             |            ╚═══════════════════════════════════════════╝
+             |
+             |
+             |_______________________________________________.
+             |                                               |
+             V                                               V
+  ╔═══════════════════════════════════════════╗    ╔═══════════════════════════════════════════╗
+  ║  Node #2                                  ║    ║  Node #3                                  ║
+  ║  ╔════════════════╗ ╔══════════════════╗  ║    ║  ╔════════════════╗ ╔══════════════════╗  ║
+  ║  ║    YB-Master   ║ ║    YB-TServer    ║  ║    ║  ║    YB-Master   ║ ║    YB-TServer    ║  ║
+  ║  ║  (Stores CDC   ║ ║  ╔═════════════╗ ║  ║    ║  ║  (Stores CDC   ║ ║  ╔═════════════╗ ║  ║
+  ║  ║   metadata)    ║ ║  ║ CDC Service ║ ║  ║    ║  ║   metadata)    ║ ║  ║ CDC Service ║ ║  ║
+  ║  ║                ║ ║  ╚═════════════╝ ║  ║    ║  ║                ║ ║  ╚═════════════╝ ║  ║
+  ║  ╚════════════════╝ ╚══════════════════╝  ║    ║  ╚════════════════╝ ╚══════════════════╝  ║
+  ╚═══════════════════════════════════════════╝    ╚═══════════════════════════════════════════╝
+
+```
 
 #### CDC Streams
 
@@ -76,13 +99,13 @@ See [limitations](#limitations) to see what else is not supported currently.
 
 {{< /warning >}}
 
-### yb-admin commands for Change Data Capture
+### yb-admin commands for Change data capture
 
 The commands used to manipulate CDC DB streams can be found under the [yb-admin](../admin/yb-admin.md#change-data-capture-cdc-commands).
 
 ### DDL commands support
 
-  Change Data Capture supports the schema changes (eg. adding a default value to column, adding a new column, adding constraints to column, etc) for a table as well. When a DDL command is issued, the schema is altered and a DDL record will be emitted with the new schema values, after that further records will come in format of the new schema only.
+  Change data capture supports the schema changes (eg. adding a default value to column, adding a new column, adding constraints to column, etc) for a table as well. When a DDL command is issued, the schema is altered and a DDL record will be emitted with the new schema values, after that further records will come in format of the new schema only.
 
 ### Snapshot support
 

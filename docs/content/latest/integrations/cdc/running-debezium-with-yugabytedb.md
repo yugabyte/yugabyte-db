@@ -72,7 +72,7 @@ Follow the steps in this section to run CDC with Debezium on a local YugabyteDB 
 
 ### Create a database stream ID
 
-[`yb-admin`](../../../admin/yb-admin#change-data-capture-cdc-commands) is equipped with the commands to manage stream IDs for Change Data Capture. Use it to create a stream ID:
+[`yb-admin`](../../../admin/yb-admin#change-data-capture-cdc-commands) is equipped with the commands to manage stream IDs for Change data capture. Use it to create a stream ID:
 
 ```sh
 ./bin/yb-admin --master_addresses ${IP}:7100 create_change_data_stream ysql.yugabyte
