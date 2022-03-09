@@ -8,6 +8,7 @@ cpu_usage_user:
   operator: "* 100"
   filters:
     mode: "user"
+  panel_group: "Node Metrics"
   layout:
     title: "CPU Usage (User)"
     xaxis:
@@ -22,6 +23,7 @@ cpu_usage_system:
   operator: "* 100"
   filters:
     mode: "system"
+  panel_group: "Node Metrics"
   layout:
     title: "CPU Usage (System)"
     xaxis:
@@ -37,6 +39,7 @@ disk_usage:
     saved_name: "node_filesystem_free_bytes|node_filesystem_size_bytes"
     mountpoint: "/mnt/.*"
   group_by: saved_name
+  panel_group: "Node Metrics"
   layout:
     title: "Disk Usage"
     xaxis:
@@ -55,6 +58,7 @@ cpu_usage:
   filters:
     mode: "user|system"
   group_by: "mode"
+  panel_group: "Node Metrics"
   layout:
     title: "CPU Usage"
     xaxis:
@@ -69,6 +73,7 @@ disk_iops:
   filters:
     saved_name: "node_disk_reads_completed_total|node_disk_writes_completed_total"
   group_by: "saved_name"
+  panel_group: "Node Metrics"
   layout:
     title: "Disk IOPS / Node"
     xaxis:
@@ -88,6 +93,7 @@ tserver_rpcs_per_sec_by_universe:
     service_type: "TabletServerService"
     service_method: "Read|Write"
   group_by: "service_method, node_prefix"
+  panel_group: "Tablet Server"
   layout:
     xaxis:
       type: "date"
@@ -99,6 +105,7 @@ memory_usage:
   filters:
     saved_name: "node_memory_Cached_bytes|node_memory_Buffers_bytes|node_memory_MemFree_bytes"
   group_by: "saved_name"
+  panel_group: "Node Metrics"
   layout:
     title: "Memory Usage"
     xaxis:
@@ -118,6 +125,7 @@ container_cpu_usage:
   filters:
     pod_name: "yb-tserver-(.*)"
     container_name: "yb-tserver"
+  panel_group: "Container"
   layout:
     title: "CPU Usage"
     xaxis:
@@ -133,6 +141,7 @@ container_cpu_request:
   filters:
     pod_name: "yb-tserver-(.*)"
     container_name: "yb-tserver"
+  panel_group: "Container"
   layout:
     title: "CPU Request"
     xaxis:
@@ -149,6 +158,7 @@ container_cpu_usage_seconds_total:
   filters:
     pod_name: "yb-tserver-(.*)"
     container_name: "yb-tserver"
+  panel_group: "Container"
   layout:
     title: "CPU Usage"
     xaxis:
@@ -165,6 +175,7 @@ container_memory_usage:
   filters:
     pod_name: "yb-tserver-(.*)"
     container_name: "yb-tserver"
+  panel_group: "Container"
   layout:
     title: "Memory Usage"
     xaxis:
@@ -180,6 +191,7 @@ container_volume_stats:
   operator: "/ 1073741824"
   filters:
     persistentvolumeclaim: "(.*)-yb-tserver-(.*)"
+  panel_group: "Container"
   layout:
     title: "Persistent Volume Stats"
     xaxis:
@@ -195,6 +207,7 @@ container_volume_max_usage:
   operator: "/ 1073741824"
   filters:
     persistentvolumeclaim: "(.*)-yb-tserver-(.*)"
+  panel_group: "Container"
   layout:
     title: "Persistent Volume Stats"
     xaxis:
@@ -213,6 +226,7 @@ network_bytes:
     # Filter out devices starting with l, as a proxy for "lo", since we cannot model != "lo" ...
     device: "[^l].*"
   group_by: "saved_name"
+  panel_group: "Node Metrics"
   layout:
     title: "Network Bytes / Sec / Node"
     xaxis:
@@ -231,6 +245,7 @@ network_packets:
     # Filter out devices starting with l, as a proxy for "lo", since we cannot model != "lo" ...
     device: "[^l].*"
   group_by: "saved_name"
+  panel_group: "Node Metrics"
   layout:
     title: "Network Packets / Sec / Node"
     xaxis:
@@ -249,6 +264,7 @@ network_errors:
     # Filter out devices starting with l, as a proxy for "lo", since we cannot model != "lo" ...
     device: "[^l].*"
   group_by: "saved_name"
+  panel_group: "Node Metrics"
   layout:
     title: "Network Errors / Sec / Node"
     xaxis:
@@ -264,6 +280,7 @@ system_load_over_time:
     saved_name: "node_load1|node_load5|node_load15"
   group_by: "saved_name"
   function: "avg"
+  panel_group: "Node Metrics"
   layout:
     title: "System Load Over Time"
     xaxis:
@@ -281,6 +298,7 @@ disk_bytes_per_second_per_node:
   group_by: "saved_name"
   range : true
   function: "rate|sum without (device)|avg"
+  panel_group: "Node Metrics"
   layout:
     title: "Disk Bytes / Sec / Node"
     xaxis:
@@ -297,6 +315,7 @@ node_clock_skew:
   group_by: "saved_name"
   filters:
     export_type: "(tserver_export|master_export)"
+  panel_group: "Node Metrics"
   layout:
     title: "Clock Skew"
     xaxis:
@@ -314,6 +333,7 @@ redis_rpcs_per_sec_all:
     server_type: "yb_redisserver"
     service_type: "RedisServerService"
   group_by: "service_method"
+  panel_group: "YEDIS Ops & Latency"
   layout:
     title: "Total YEDIS Ops / Sec"
     xaxis:
@@ -372,6 +392,7 @@ redis_server_rpc_p95:
     service_type: "RedisServerService"
     quantile: "p95"
   group_by: "service_method"
+  panel_group: "YEDIS Ops & Latency"
   layout:
     title: "YEDIS Op Latency (P95)"
     xaxis:
@@ -431,6 +452,7 @@ redis_server_rpc_p99:
     service_type: "RedisServerService"
     quantile: "p99"
   group_by: "service_method"
+  panel_group: "YEDIS Ops & Latency"
   layout:
     title: "YEDIS Op Latency (P99)"
     xaxis:
@@ -491,6 +513,7 @@ redis_rpcs_per_sec_hash:
     service_type: "RedisServerService"
     service_method: "hget|hmget|hgetall|hkeys|hvals|hlen|hexists|hstrlen|hset|hmset|hdel|hincrby"
   group_by: "service_method"
+  panel_group: "YEDIS Ops & Latency"
   layout:
     title: "Total YEDIS Ops / Sec -- Hash"
     xaxis:
@@ -520,6 +543,7 @@ redis_rpcs_per_sec_ts:
     service_type: "RedisServerService"
     service_method: "tsget|tsadd|tsrangebytime|tsrem"
   group_by: "service_method"
+  panel_group: "YEDIS Ops & Latency"
   layout:
     title: "Total YEDIS Ops / Sec -- TS"
     xaxis:
@@ -540,6 +564,7 @@ redis_rpcs_per_sec_set:
     server_type: "yb_redisserver"
     service_type: "RedisServerService"
     service_method: "smembers|sismember|scard|strlen|sadd|srem"
+  panel_group: "YEDIS Ops & Latency"
   group_by: "service_method"
   layout:
     title: "Total YEDIS Ops / Sec -- Set"
@@ -565,6 +590,7 @@ redis_rpcs_per_sec_sortedset:
     service_type: "RedisServerService"
     service_method: "zadd|zrem|zcard|zrevrange|zrangebyscore"
   group_by: "service_method"
+  panel_group: "YEDIS Ops & Latency"
   layout:
     title: "Total YEDIS Ops / Sec -- Sorted Set"
     xaxis:
@@ -587,6 +613,7 @@ redis_rpcs_per_sec_str:
     service_type: "RedisServerService"
     service_method: "get|mget|strlen|exists|getrange|set|mset|getset|append|del|setrange|incr"
   group_by: "service_method"
+  panel_group: "YEDIS Ops & Latency"
   layout:
     title: "Total YEDIS Ops / Sec -- Str"
     xaxis:
@@ -616,6 +643,7 @@ redis_rpcs_per_sec_local:
     service_type: "RedisServerService"
     service_method: "echo|auth|config|info|role|ping|command|quit|flushdb"
   group_by: "service_method"
+  panel_group: "YEDIS Ops & Latency"
   layout:
     title: "Total YEDIS Ops / Sec -- Others"
     xaxis:
@@ -642,6 +670,7 @@ redis_ops_latency_all:
     server_type: "yb_redisserver"
     service_type: "RedisServerService"
   group_by: "service_method"
+  panel_group: "YEDIS Ops & Latency"
   layout:
     title: "YEDIS Op Latency (Avg)"
     xaxis:
@@ -705,6 +734,7 @@ redis_ops_latency_hash:
     service_type: "RedisServerService"
     service_method: "hget|hmget|hgetall|hkeys|hvals|hlen|hexists|hstrlen|hincrby|hset|hmset|hdel"
   group_by: "service_method"
+  panel_group: "YEDIS Ops & Latency"
   layout:
     title: "YEDIS Op Latency -- Hash"
     xaxis:
@@ -737,6 +767,7 @@ redis_ops_latency_ts:
     service_type: "RedisServerService"
     service_method: "tsget|tsadd|tsrangebytime|tsrem"
   group_by: "service_method"
+  panel_group: "YEDIS Ops & Latency"
   layout:
     title: "YEDIS Op Latency -- TS"
     xaxis:
@@ -761,6 +792,7 @@ redis_ops_latency_set:
     service_type: "RedisServerService"
     service_method: "smembers|sismember|scard|strlen|sadd|srem"
   group_by: "service_method"
+  panel_group: "YEDIS Ops & Latency"
   layout:
     title: "YEDIS Op Latency -- Set"
     xaxis:
@@ -787,6 +819,7 @@ redis_ops_latency_sorted_set:
     service_type: "RedisServerService"
     service_method: "zadd|zrem|zcard|zrevrange|zrangebyscore"
   group_by: "service_method"
+  panel_group: "YEDIS Ops & Latency"
   layout:
     title: "YEDIS Op Latency -- Sorted Set"
     xaxis:
@@ -812,6 +845,7 @@ redis_ops_latency_str:
     service_type: "RedisServerService"
     service_method: "get|mget|strlen|exists|getrange|set|mset|getset|append|del|setrange|incr"
   group_by: "service_method"
+  panel_group: "YEDIS Ops & Latency"
   layout:
     title: "YEDIS Op Latency -- Str"
     xaxis:
@@ -844,6 +878,7 @@ redis_ops_latency_local:
     service_type: "RedisServerService"
     service_method: "echo|auth|config|info|role|ping|command|quit|flushdb"
   group_by: "service_method"
+  panel_group: "YEDIS Ops & Latency"
   layout:
     title: "YEDIS Op Latency -- Others"
     xaxis:
@@ -872,6 +907,7 @@ redis_yb_local_vs_remote_ops:
     service_type: "read|write"
     service_method: "local|remote"
   group_by: "service_method,service_type"
+  panel_group: "YEDIS Ops & Latency"
   layout:
     title: "YBClient Ops Local vs Remote"
     xaxis:
@@ -892,6 +928,7 @@ redis_yb_local_vs_remote_latency:
     service_type: "read|write"
     service_method: "local|remote"
   group_by: "service_method,service_type"
+  panel_group: "YEDIS Ops & Latency"
   layout:
     title: "YBClient Latency Local vs Remote"
     xaxis:
@@ -910,6 +947,7 @@ redis_reactor_latency:
   range : true
   filters:
     export_type: "redis_export"
+  panel_group: "YEDIS Ops & Latency"
   layout:
     title: "YBClient Reactor Delays"
     xaxis:
@@ -933,6 +971,7 @@ tserver_ops_latency:
     service_type: "TabletServerService"
     service_method: "Read|Write|Scan"
   group_by: "service_method"
+  panel_group: "Tablet Server"
   layout:
     title: "Average Latency"
     xaxis:
@@ -948,6 +987,7 @@ tserver_handler_latency:
   # operator: "/ 1000"
   filters:
     export_type: "tserver_export"
+  panel_group: "Tablet Server"
   layout:
     title: "Reactor Delays"
     xaxis:
@@ -970,6 +1010,7 @@ total_rpcs_per_sec:
     service_type: "TabletServerService"
     service_method: "Write|Read|Scan"
   group_by: "service_method"
+  panel_group: "Tablet Server"
   layout:
     title: "Total Ops / Sec"
     xaxis:
@@ -985,6 +1026,7 @@ tserver_rpcs_per_sec_per_node:
     service_type: "TabletServerService"
     service_method: "Write|Read|Scan"
   group_by: "service_method"
+  panel_group: "Tablet Server"
   layout:
     title: "Ops / Sec / Node"
     xaxis:
@@ -1000,6 +1042,7 @@ tserver_consensus_rpcs_per_sec:
     service_type: "ConsensusService"
     service_method: "UpdateConsensus|RequestConsensusVote"
   group_by: "service_method"
+  panel_group: "Tablet Server"
   layout:
     title: "Consensus Ops / Sec"
     xaxis:
@@ -1018,6 +1061,7 @@ tserver_change_config:
     service_type: "ConsensusService"
     service_method: "ChangeConfig|RunLeaderElection|LeaderStepDown|LeaderElectionLost"
   group_by: "service_method"
+  panel_group: "Tablet Server"
   layout:
     title: "Total Consensus Change Config"
     xaxis:
@@ -1031,6 +1075,7 @@ tserver_remote_bootstraps:
     server_type: "yb_consensus"
     service_type: "ConsensusService"
     service_method: "StartRemoteBootstrap"
+  panel_group: "Tablet Server"
   layout:
     title: "Remote Bootstraps"
     xaxis:
@@ -1050,6 +1095,7 @@ tserver_consensus_rpcs_latency:
     service_type: "ConsensusService"
     service_method: "UpdateConsensus|RequestConsensusVote"
   group_by: "service_method"
+  panel_group: "Tablet Server"
   layout:
     title: "Consensus Rpc Latencies"
     xaxis:
@@ -1068,6 +1114,7 @@ tserver_change_config_latency:
     service_type: "ConsensusService"
     service_method: "ChangeConfig"
   group_by: "service_method"
+  panel_group: "Tablet Server"
   layout:
     title: "Change Config Latency"
     xaxis:
@@ -1082,6 +1129,7 @@ tserver_threads:
     export_type: "tserver_export"
     saved_name: "threads_running|threads_started"
   group_by: "saved_name"
+  panel_group: "Tablet Server"
   layout:
     title: "Threads"
     xaxis:
@@ -1099,6 +1147,7 @@ tserver_context_switches:
     export_type: "tserver_export"
     saved_name: "involuntary_context_switches|voluntary_context_switches"
   group_by: "saved_name"
+  panel_group: "Tablet Server"
   layout:
     title: "Context Switches"
     xaxis:
@@ -1114,6 +1163,7 @@ tserver_spinlock_server:
   range : true
   filters:
     export_type: "tserver_export"
+  panel_group: "Tablet Server"
   layout:
     title: "SpinLock Time/Server"
     xaxis:
@@ -1126,6 +1176,7 @@ tserver_log_latency:
   metric: "log_sync_latency.avg|log_group_commit_latency.avg|log_append_latency.avg"
   function: "rate|avg"
   range : true
+  panel_group: "Tablet Server"
   layout:
     title: "WAL Latency"
     xaxis:
@@ -1143,6 +1194,7 @@ tserver_log_bytes_written:
   range : true
   filters:
     export_type: "tserver_export"
+  panel_group: "Tablet Server"
   layout:
     title: "WAL Bytes Written / Sec / Node"
     xaxis:
@@ -1157,6 +1209,7 @@ tserver_log_bytes_read:
   range : true
   filters:
     export_type: "tserver_export"
+  panel_group: "Tablet Server"
   layout:
     title: "WAL Bytes Read / Sec / Node"
     xaxis:
@@ -1173,6 +1226,7 @@ tserver_log_ops_second:
     export_type: "tserver_export"
     saved_name: "log_group_commit_latency_count|log_append_latency_count|log_sync_latency_count"
   group_by: "saved_name"
+  panel_group: "Tablet Server"
   layout:
     title: "WAL Ops / Sec / Node"
     xaxis:
@@ -1191,6 +1245,7 @@ tserver_tc_malloc_stats:
     export_type: "tserver_export"
     saved_name: "generic_current_allocated_bytes|generic_heap_size"
   group_by: "saved_name"
+  panel_group: "Tablet Server"
   layout:
     title: "TCMalloc Stats"
     xaxis:
@@ -1209,6 +1264,7 @@ tserver_log_stats:
     export_type: "tserver_export"
     saved_name: "log_reader_bytes_read|log_cache_size"
   group_by: "saved_name"
+  panel_group: "Tablet Server"
   layout:
     title: "WAL Stats / Node"
     xaxis:
@@ -1224,6 +1280,7 @@ tserver_cache_reader_num_ops:
   function: "sum by (exported_instance)|avg"
   filters:
     export_type: "tserver_export"
+  panel_group: "Tablet Server"
   layout:
     title: "WAL Cache Num Ops / Node"
     xaxis:
@@ -1239,6 +1296,7 @@ tserver_glog_info_messages:
     export_type: "tserver_export"
     saved_name: "glog_info_messages|glog_warning_messages|glog_error_messages"
   group_by: "saved_name"
+  panel_group: "Tablet Server"
   layout:
     title: "Glog messages"
     xaxis:
@@ -1252,6 +1310,7 @@ node_up:
   metric: "up"
   function: "avg"
   group_by: "instance"
+  panel_group: "Node Metrics"
 
 lsm_rocksdb_num_seek_or_next:
   metric: ""
@@ -1261,6 +1320,7 @@ lsm_rocksdb_num_seek_or_next:
     export_type: "tserver_export"
     saved_name: "rocksdb_number_db_seek|rocksdb_number_db_next"
   group_by: "saved_name"
+  panel_group: "RocksDB"
   layout:
     title: "LSM-DB Seek/Next Num Ops"
     xaxis:
@@ -1276,6 +1336,7 @@ lsm_rocksdb_num_seeks_per_node:
   range : true
   filters:
     export_type: "tserver_export"
+  panel_group: "RocksDB"
   layout:
     title: "LSM-DB Seeks / Sec / Node"
     xaxis:
@@ -1290,6 +1351,7 @@ lsm_rocksdb_total_sst_per_node:
   operator: "/ 1073741824"
   filters:
     export_type: "tserver_export"
+  panel_group: "RocksDB"
   layout:
     title: "SSTable size / Node"
     xaxis:
@@ -1305,6 +1367,7 @@ lsm_rocksdb_avg_num_sst_per_node:
   function: "sum by (exported_instance)|avg"
   filters:
     export_type: "tserver_export"
+  panel_group: "RocksDB"
   layout:
     title: "Average SSTables / Node"
     xaxis:
@@ -1321,6 +1384,7 @@ lsm_rocksdb_blooms_checked_and_useful:
     export_type: "tserver_export"
     saved_name: "rocksdb_bloom_filter_checked|rocksdb_bloom_filter_useful"
   group_by: "saved_name"
+  panel_group: "RocksDB"
   layout:
     title: "LSM-DB Blooms usefulness"
     xaxis:
@@ -1336,6 +1400,7 @@ lsm_rocksdb_latencies_get:
   range : true
   filters:
     export_type: "tserver_export"
+  panel_group: "RocksDB"
   layout:
     title: "LSM-DB Get Latencies"
     xaxis:
@@ -1351,6 +1416,7 @@ lsm_rocksdb_latencies_write:
   range : true
   filters:
     export_type: "tserver_export"
+  panel_group: "RocksDB"
   layout:
     title: "LSM-DB Write Latencies"
     xaxis:
@@ -1364,6 +1430,7 @@ lsm_rocksdb_latencies_seek:
   metric: "rocksdb_db_seek_micros.avg"
   function: "rate|sum by (exported_instance)|avg"
   range : true
+  panel_group: "RocksDB"
   layout:
     title: "LSM-DB Seek Latencies"
     xaxis:
@@ -1379,6 +1446,7 @@ lsm_rocksdb_latencies_mutex:
   range : true
   filters:
     export_type: "tserver_export"
+  panel_group: "RocksDB"
   layout:
     title: "LSM-DB Mutex Wait Latencies"
     xaxis:
@@ -1396,6 +1464,7 @@ lsm_rocksdb_block_cache_hit_miss:
     saved_name: "rocksdb_block_cache_hit|rocksdb_block_cache_miss"
     export_type: "tserver_export"
   group_by: "saved_name"
+  panel_group: "RocksDB"
   layout:
     title: "Cache Hit & Miss"
     xaxis:
@@ -1413,6 +1482,7 @@ lsm_rocksdb_block_cache_usage:
     saved_name: "block_cache_single_touch_usage|block_cache_multi_touch_usage"
     export_type: "tserver_export"
   group_by: "saved_name"
+  panel_group: "RocksDB"
   layout:
     title: "Block cache usage"
     xaxis:
@@ -1431,6 +1501,7 @@ lsm_rocksdb_block_cache_add:
     saved_name: "rocksdb_block_cache_add|rocksdb_block_cache_single_touch_add|rocksdb_block_cache_multi_touch_add"
     export_type: "tserver_export"
   group_by: "saved_name"
+  panel_group: "RocksDB"
   layout:
     title: "Cache Add"
     xaxis:
@@ -1447,6 +1518,7 @@ lsm_rocksdb_stalls:
   range : true
   filters:
     export_type: "tserver_export"
+  panel_group: "RocksDB"
   layout:
     title: "Stalls"
     xaxis:
@@ -1462,6 +1534,7 @@ lsm_rocksdb_write_rejections:
   range : true
   filters:
     export_type: "tserver_export"
+  panel_group: "RocksDB"
   layout:
     title: "Rejections"
     xaxis:
@@ -1475,6 +1548,7 @@ lsm_rocksdb_flush_size:
   function: "rate|sum by (exported_instance)|avg"
   range : true
   operator: "/ 1048576"
+  panel_group: "RocksDB"
   layout:
     title: "Flush write"
     xaxis:
@@ -1493,6 +1567,7 @@ lsm_rocksdb_compaction:
     export_type: "tserver_export"
     saved_name: "rocksdb_compact_read_bytes|rocksdb_compact_write_bytes"
   group_by: "saved_name"
+  panel_group: "RocksDB"
   layout:
     title: "Compaction"
     xaxis:
@@ -1509,6 +1584,7 @@ lsm_rocksdb_compaction_numfiles:
   range : true
   filters:
     export_type: "tserver_export"
+  panel_group: "RocksDB"
   layout:
     title: "Compaction num files"
     xaxis:
@@ -1524,6 +1600,7 @@ lsm_rocksdb_compaction_time:
   #operator: "/ 1000000"
   filters:
     export_type: "tserver_export"
+  panel_group: "RocksDB"
   layout:
     title: "Compaction time"
     xaxis:
@@ -1541,6 +1618,7 @@ docdb_transaction:
     saved_name: "transaction_conflicts|expired_transactions"
     export_type: "tserver_export"
   group_by: "saved_name"
+  panel_group: "Tablet Server"
   layout:
     title: "Transaction"
     xaxis:
@@ -1561,6 +1639,7 @@ ysql_server_rpc_per_second:
     service_type: "SQLProcessor"
     service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt"
   group_by: "service_method"
+  panel_group: "YSQL Ops & Latency"
   layout:
     title: "Total YSQL Ops / Sec"
     xaxis:
@@ -1582,6 +1661,7 @@ ysql_sql_latency:
     service_type: "SQLProcessor"
     service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt"
   group_by: "service_method"
+  panel_group: "YSQL Ops & Latency"
   layout:
     title: "YSQL Op Latency (Avg)"
     xaxis:
@@ -1604,6 +1684,7 @@ ysql_server_advanced_rpc_per_second:
     service_type: "SQLProcessor"
     service_method: "BeginStmt|CommitStmt|RollbackStmt|Transactions|OtherStmts"
   group_by: "service_method"
+  panel_group: "YSQL Ops & Latency"
   layout:
     title: "Total YSQL Ops / Sec"
     xaxis:
@@ -1627,6 +1708,7 @@ ysql_sql_advanced_latency:
     service_type: "SQLProcessor"
     service_method: "BeginStmt|CommitStmt|RollbackStmt|Transactions|OtherStmts"
   group_by: "service_method"
+  panel_group: "YSQL Ops & Latency"
   layout:
     title: "YSQL Op Latency (Avg)"
     xaxis:
@@ -1650,6 +1732,7 @@ ysql_server_rpc_p95:
     service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt"
     quantile: "p95"
   group_by: "service_method"
+  panel_group: "YSQL Ops & Latency"
   layout:
     title: "YSQL Op Latency (P95)"
     xaxis:
@@ -1672,6 +1755,7 @@ ysql_server_rpc_p99:
     service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt"
     quantile: "p99"
   group_by: "service_method"
+  panel_group: "YSQL Ops & Latency"
   layout:
     title: "YSQL Op Latency (P99)"
     xaxis:
@@ -1695,6 +1779,7 @@ cql_server_rpc_per_second:
     service_type: "SQLProcessor"
     service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transaction"
   group_by: "service_method"
+  panel_group: "YCQL Ops & Latency"
   layout:
     title: "Total YCQL Ops / Sec"
     xaxis:
@@ -1718,6 +1803,7 @@ cql_sql_latency:
     service_type: "SQLProcessor"
     service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transaction"
   group_by: "service_method"
+  panel_group: "YCQL Ops & Latency"
   layout:
     title: "YCQL Op Latency (Avg)"
     xaxis:
@@ -1742,6 +1828,7 @@ cql_server_rpc_p95:
     service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transaction"
     quantile: "p95"
   group_by: "service_method"
+  panel_group: "YCQL Ops & Latency"
   layout:
     title: "YCQL Op Latency (P95)"
     xaxis:
@@ -1765,6 +1852,7 @@ cql_server_rpc_p99:
     service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transaction"
     quantile: "p99"
   group_by: "service_method"
+  panel_group: "YCQL Ops & Latency"
   layout:
     title: "YCQL Op Latency (P99)"
     xaxis:
@@ -1789,6 +1877,7 @@ cql_sql_latency_breakdown:
     service_type: "CQLServerService"
     service_method: "ProcessRequest|ParseRequest|AnalyzeRequest|ExecuteRequest"
   group_by: "service_method"
+  panel_group: "YCQL Ops & Latency"
   layout:
     title: "YCQL Latency Breakdown"
     xaxis:
@@ -1806,6 +1895,7 @@ cql_yb_rpc_connections:
   function: "sum"
   filters:
     export_type: "cql_export"
+  panel_group: "YCQL Ops & Latency"
   layout:
     title: "Inbound RPC Connections Alive"
     xaxis:
@@ -1820,6 +1910,7 @@ cql_yb_local_vs_remote:
     service_type: "read|write"
     service_method: "local|remote"
   group_by: "service_method,service_type"
+  panel_group: "YCQL Ops & Latency"
   layout:
     title: "YBClient Ops Local vs Remote"
     xaxis:
@@ -1840,6 +1931,7 @@ cql_yb_latency:
     service_type: "read|write"
     service_method: "local|remote"
   group_by: "service_method,service_type"
+  panel_group: "YCQL Ops & Latency"
   layout:
     title: "YBClient Latency"
     xaxis:
@@ -1861,6 +1953,7 @@ cql_yb_transaction:
     service_type: "SQLProcessor"
     service_method: "Transaction"
   group_by: "service_method"
+  panel_group: "YCQL Ops & Latency"
   layout:
     title: "Transaction"
     xaxis:
@@ -1877,6 +1970,7 @@ cql_reactor_latency:
   # operator: "/ 1000"
   filters:
     export_type: "cql_export"
+  panel_group: "YCQL Ops & Latency"
   layout:
     title: "Reactor Delays"
     xaxis:
@@ -1898,6 +1992,7 @@ response_sizes:
     service_type: "SQLProcessor"
     service_method: "ResponseSize"
   group_by: "service_method"
+  panel_group: "YCQL Ops & Latency"
   layout:
     title: "Response Size (bytes)"
     xaxis:
@@ -1909,6 +2004,7 @@ response_sizes:
 tserver_rpc_queue_size_master:
   metric: "rpcs_in_queue_yb_master_MasterService"
   function: "max"
+  panel_group: "Master"
   layout:
     title: "RPC Queue Size"
     xaxis:
@@ -1926,6 +2022,7 @@ tserver_rpc_queue_size_tserver:
     saved_name: "rpcs_in_queue_.*"
     export_type: "tserver_export"
   group_by: "saved_name"
+  panel_group: "Tablet Server"
   layout:
     title: "RPC Queue Size"
     xaxis:
@@ -1947,6 +2044,7 @@ tserver_rpc_queue_size_cql:
     saved_name: "rpcs_in_queue_yb_cqlserver_CQLServerService"
     export_type: "cql_export"
   group_by: "saved_name"
+  panel_group: "Tablet Server"
   layout:
     title: "RPC Queue Size"
     xaxis:
@@ -1962,6 +2060,7 @@ tserver_rpc_queue_size_redis:
     saved_name: "rpcs_in_queue_yb_redisserver_RedisServerService"
     export_type: "redis_export"
   group_by: "saved_name"
+  panel_group: "YEDIS Ops & Latency"
   layout:
     title: "RPC Queue Size"
     xaxis:
@@ -1976,6 +2075,7 @@ tserver_async_replication_lag_micros:
   function: "max by (exported_instance, saved_name)"
   filters:
     saved_name: "async_replication_sent_lag_micros|async_replication_committed_lag_micros"
+  panel_group: "Tablet Server"
   layout:
     title: "Async Replication Lag"
     xaxis:
@@ -1992,6 +2092,7 @@ master_overall_rpc_rate:
   range : true
   filters:
     export_type: "master_export"
+  panel_group: "Master"
   layout:
     title: "Overall RPCs / sec"
     xaxis:
@@ -2008,6 +2109,7 @@ master_get_tablet_location:
     export_type: "master_export"
     service_type: "MasterService"
     service_method: "GetTabletLocations"
+  panel_group: "Master"
   layout:
     title: "GetTabletLocations / sec"
     xaxis:
@@ -2024,6 +2126,7 @@ master_tsservice_reads:
     export_type: "master_export"
     service_type: "TabletServerService"
     service_method: "Read"
+  panel_group: "Master"
   layout:
     title: "Master TSService Reads / sec"
     xaxis:
@@ -2040,6 +2143,7 @@ master_tsservice_writes:
     export_type: "master_export"
     service_type: "TabletServerService"
     service_method: "Write"
+  panel_group: "Master"
   layout:
     title: "Master TSService Writes / sec"
     xaxis:
@@ -2056,6 +2160,7 @@ master_ts_heartbeats:
     export_type: "master_export"
     service_type: "MasterService"
     service_method: "TSHeartbeat"
+  panel_group: "Master"
   layout:
     title: "TS Heartbeats / sec"
     xaxis:
@@ -2072,6 +2177,7 @@ master_consensus_update:
     export_type: "master_export"
     service_type: "ConsensusService"
     service_method: "UpdateConsensus"
+  panel_group: "Master"
   layout:
     title: "UpdateConsensus / sec"
     xaxis:
@@ -2088,6 +2194,7 @@ master_table_ops:
     service_type: "MasterService"
     saved_name: "handler_latency_yb_master_MasterService_DeleteTable_count|handler_latency_yb_master_MasterService_CreateTable_count"
   group_by: "saved_name"
+  panel_group: "Master"
   layout:
     title: "Create/Delete Table RPCs"
     xaxis:
@@ -2104,6 +2211,7 @@ master_cpu_util_secs:
   operator: "/ 1000"
   filters:
     export_type: "master_export"
+  panel_group: "Master"
   layout:
     title: "CPU Util Secs / Sec"
     xaxis:
@@ -2121,6 +2229,7 @@ tserver_cpu_util_secs:
   operator: "/ 1000"
   filters:
     export_type: "tserver_export"
+  panel_group: "Tablet Server"
   layout:
     title: "CPU Util Secs / Sec"
     xaxis:
@@ -2135,6 +2244,7 @@ redis_yb_rpc_connections:
   function: "sum"
   filters:
     export_type: "redis_export"
+  panel_group: "YEDIS Ops & Latency"
   layout:
     title: "Inbound RPC Connections Alive"
     xaxis:
@@ -2145,6 +2255,7 @@ tserver_yb_rpc_connections:
   function: "sum"
   filters:
     export_type: "tserver_export"
+  panel_group: "Tablet Server"
   layout:
     title: "Inbound RPC Connections Alive"
     xaxis:
@@ -2155,6 +2266,7 @@ master_yb_rpc_connections:
   function: ""
   filters:
     export_type: "master_export"
+  panel_group: "Master"
   layout:
     title: "Inbound RPC Connections Alive"
     xaxis:
