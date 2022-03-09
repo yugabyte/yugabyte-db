@@ -871,6 +871,9 @@ class YBManifest:
     def get_backup_size(self):
         return self.body['properties'].get('size-in-bytes')
 
+    def get_locations(self):
+        return self.body['locations'].keys()
+
 
 class YBBackup:
     def __init__(self):
@@ -2380,10 +2383,12 @@ class YBBackup:
                 self.storage.download_file_cmd(key_file_src, self.args.restore_keys_destination)
             )
 
-    def delete_bucket_obj(self):
-        del_cmd = self.storage.delete_obj_cmd(self.args.backup_location)
+    def delete_bucket_obj(self, backup_path):
+        logging.info("[app] Removing backup directory '{}'".format(backup_path))
+
+        del_cmd = self.storage.delete_obj_cmd(backup_path)
         if self.is_nfs():
-            self.run_ssh_cmd(del_cmd, self.get_leader_master_ip())
+            self.run_ssh_cmd(' '.join(del_cmd), self.get_leader_master_ip())
         else:
             self.run_program(del_cmd)
 
@@ -2767,16 +2772,16 @@ class YBBackup:
         logging.info(
             'Downloaded metadata file %s from %s' % (target_path, src_path))
 
-    def download_metadata_file(self):
+    def load_or_create_manifest(self):
         """
-        Download the metadata file for a backup so as to perform a restore based on it.
+        Download the Manifest file for the backup to the local object.
+        Create the Manifest by default if it's not available (old backup).
         """
         if self.args.local_yb_admin_binary:
             self.run_program(['mkdir', '-p', self.get_tmp_dir()])
         else:
             self.create_remote_tmp_dir(self.get_main_host_ip())
 
-        dump_files = []
         src_manifest_path = os.path.join(self.args.backup_location, MANIFEST_FILE_NAME)
         manifest_path = os.path.join(self.get_tmp_dir(), MANIFEST_FILE_NAME)
         try:
@@ -2798,6 +2803,13 @@ class YBBackup:
             logging.info("{} manifest: {}".format(
                 "Loaded" if self.manifest.is_loaded() else "Generated",
                 self.manifest.to_string()))
+
+    def download_metadata_file(self):
+        """
+        Download the metadata file for a backup so as to perform a restore based on it.
+        """
+        self.load_or_create_manifest()
+        dump_files = []
 
         if self.args.use_tablespaces:
             src_sql_tbsp_dump_path = os.path.join(
@@ -3185,8 +3197,21 @@ class YBBackup:
         """
         Delete the backup specified by the storage location.
         """
-        if self.args.backup_location:
-            self.delete_bucket_obj()
+        if not self.args.backup_location:
+            raise BackupException('Need to specify --backup_location')
+
+        self.load_or_create_manifest()
+        error = None
+        for loc in self.manifest.get_locations():
+            try:
+                self.delete_bucket_obj(loc)
+            except Exception as ex:
+                logging.warning("Failed to delete '{}'. Error: {}".format(loc, ex))
+                error = ex
+
+        if error:
+            raise error
+
         logging.info('[app] Deleted backup %s successfully!', self.args.backup_location)
         print(json.dumps({"success": True}))
 
