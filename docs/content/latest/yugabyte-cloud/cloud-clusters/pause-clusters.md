@@ -15,13 +15,11 @@ showAsideToc: true
 
 ## Pause clusters
 
-To reduce costs on temporarily unused clusters, you can pause a cluster for up to 30 days. Paused clusters are not billed for instance vCPU capacity, and are billed for disk storage at a reduced rate. Backup storage is charged at the standard rate. Refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
+To reduce costs on temporarily unused clusters, you can pause a cluster for up to 30 days. Paused clusters are not billed for instance vCPU capacity. Disk and Backup storage are charged at the standard rate. Refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
 
 To pause a cluster, on the **Clusters** page, click the three dots icon for the cluster you want to pause and choose **Pause Cluster**. You can also select the cluster, click **More Links**, and click **Pause Cluster**.
 
-You can't pause a cluster if it was resumed less than an hour before.
-
-Paused clusters resume automatically after 30 days. Yugabyte notifies you when a cluster is paused and resumed.
+Yugabyte notifies you when a cluster is paused and resumed.
 
 Paused clusters have the following limitations:
 

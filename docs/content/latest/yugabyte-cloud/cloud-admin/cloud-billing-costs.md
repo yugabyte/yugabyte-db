@@ -242,9 +242,37 @@ The free allowance for data out transfers is 10GB per month for every 1 vCPU per
 
 ## Paused cluster costs
 
-Yugabyte suspends Instance vCPU capacity costs for paused clusters. Paused clusters are billed for disk and backup storage, as follows:
+Yugabyte suspends [instance vCPU capacity costs](#instance-vcpu-capacity-costs) for paused clusters. Paused clusters are billed for [disk storage](#disk-storage-cost) and [backup storage](#backup-storage-costs) at the standard rates; this cost includes any storage that is normally covered by your running cluster free allowances.
 
-- Backup storage is charged at the standard rate.
-- Disk storage is billed at a lower rate, shown as Disk Storage (Paused) on your invoice.
+For example, suppose you have a cluster with following configuration:
+
+- Total number of vCPUs: 1 node * 4 vCPU = 4 vCPUs
+- Disk storage used: 200 GB
+- Backup storage used: 400 GB
+
+While active, disk and backup storage are covered by the free allowance, and the cluster is charged at the following rate:
+
+```output
+Total vCPU cost/hour = num_vcpus x per_hour_rate
+
+Active cluster hourly rate = 4 x $0.25 = $1/hour
+```
+
+When paused, instance vCPU capacity is no longer charged, while disk and backup storage are charged at the standard rate, as follows:
+
+```output
+Disk storage (Paused)  = disk_storage x per_hour_disk_rate
+                       = 200gb x 0.000138888889 
+                       = $0.0277777778/hour
+
+
+Backup storage (Paused)  = backup_storage x per_hour_backup_rate
+                         = 400gb x 0.00003472222222
+                         = $0.0138888889/hour
+
+Paused cluster hourly rate = $0.0416666667/hour
+```
+
+For paused clusters, your invoice includes Disk Storage (Paused) and Backup Storage (Paused) items.
 
 Yugabyte recalculates the monthly entitlements for disk storage, backup storage, and data transfer after resuming the cluster.
