@@ -772,7 +772,7 @@ In case CDC is lagging or away for some time, the disk usage may grow and may ca
 
 ## Deployment
 
-To deploy a Debezium YugabyteDB connector, you install the Debezium YugabyteDB connector archive, configure the connector, and start the connector by adding its configuration to Kafka Connect. For complete steps follow our guide to start the [Debezium connector for YugabyteDB](debezium-for-cdc.md).
+To deploy a Debezium YugabyteDB connector, you install the Debezium YugabyteDB connector archive, configure the connector, and start the connector by adding its configuration to Kafka Connect. For complete steps follow our guide to start the [Debezium connector for YugabyteDB](running-debezium-with-yugabytedb.md).
 
 ### Connector configuration example
 Following is an example of the configuration for a YugabyteDB connector that connects to a YugabyteDB server on port 5433 at 127.0.0.1, whose logical name is `dbserver1`. Typically, you configure the Debezium YugabyteDB connector in a JSON file by setting the configuration properties available for the connector.
