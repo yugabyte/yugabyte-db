@@ -29,6 +29,7 @@ import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.json.JSONObject;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,6 +46,7 @@ import com.google.common.collect.ImmutableMap;
 import static org.yb.AssertionWrappers.assertArrayEquals;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
+import static org.yb.AssertionWrappers.assertGreaterThan;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
@@ -811,8 +813,8 @@ public class TestYbBackup extends BasePgSQLTest {
     }
   }
 
-  public void doTestGeoPartitionedBackup(
-      String targetDB, int numRegions, boolean useTablespaces) throws Exception {
+  public String doCreateGeoPartitionedBackup(int numRegions, boolean useTablespaces)
+      throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute(
           " CREATE TABLESPACE region1_ts " +
@@ -863,15 +865,16 @@ public class TestYbBackup extends BasePgSQLTest {
         args.add("--use_tablespaces");
       }
 
+      String output = null;
       switch (numRegions) {
         case 0:
-          YBBackupUtil.runYbBackupCreate(args);
+          output = YBBackupUtil.runYbBackupCreate(args);
           checkTabletsInDir(backupDir, tblTablets, tblR1Tablets, tblR2Tablets, tblR3Tablets);
           break;
         case 1:
           args.addAll(Arrays.asList(
               "--region", "region1", "--region_location", backupDir + "_reg1"));
-          YBBackupUtil.runYbBackupCreate(args);
+          output = YBBackupUtil.runYbBackupCreate(args);
           checkTabletsInDir(backupDir, tblR2Tablets, tblR3Tablets);
           checkTabletsInDir(backupDir + "_reg1", tblR1Tablets);
           break;
@@ -880,7 +883,7 @@ public class TestYbBackup extends BasePgSQLTest {
             "--region", "region1", "--region_location", backupDir + "_reg1",
             "--region", "region2", "--region_location", backupDir + "_reg2",
             "--region", "region3", "--region_location", backupDir + "_reg3"));
-          YBBackupUtil.runYbBackupCreate(args);
+          output = YBBackupUtil.runYbBackupCreate(args);
           assertTrue(subDirs(backupDir).isEmpty());
           checkTabletsInDir(backupDir + "_reg1", tblR1Tablets);
           checkTabletsInDir(backupDir + "_reg2", tblR2Tablets);
@@ -890,13 +893,22 @@ public class TestYbBackup extends BasePgSQLTest {
           throw new IllegalArgumentException("Unexpected numRegions: " + numRegions);
       }
 
+      return output;
+    }
+  }
+
+  public void doTestGeoPartitionedBackup(String targetDB, int numRegions, boolean useTablespaces)
+      throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      doCreateGeoPartitionedBackup(numRegions, useTablespaces);
+
       stmt.execute("INSERT INTO tbl (id, geo) VALUES (9999, 'R1')");
       assertQuery(stmt, "SELECT * FROM tbl WHERE id=1", new Row(1, "R2"));
       assertQuery(stmt, "SELECT * FROM tbl WHERE id=2000", new Row(2000, "R3"));
       assertQuery(stmt, "SELECT * FROM tbl WHERE id=9999", new Row(9999, "R1"));
       assertQuery(stmt, "SELECT COUNT(*) FROM tbl", new Row(2001));
 
-      args.clear();
+      List<String> args = new ArrayList<>();
       if (useTablespaces) {
         args.add("--use_tablespaces");
       }
@@ -994,6 +1006,34 @@ public class TestYbBackup extends BasePgSQLTest {
   @Test
   public void testGeoPartitioningRestoringIntoExistingWithTablespaces() throws Exception {
     doTestGeoPartitionedBackup("yugabyte", 3, true);
+  }
+
+  @Test
+  public void testGeoPartitioningDeleteBackup() throws Exception {
+    String output = doCreateGeoPartitionedBackup(3, false);
+    JSONObject json = new JSONObject(output);
+    String backupDir = json.getString("snapshot_url");
+    List<String> backupDirs = new ArrayList<String>(Arrays.asList(
+        backupDir, json.getString("region1"),
+        json.getString("region2"), json.getString("region3")));
+    LOG.info("Backup folders:" + backupDirs);
+
+    // Ensure the backup folders exist.
+    for (String dirName : backupDirs) {
+      LOG.info("Checking existing folder: " + dirName);
+      File dir = new File(dirName);
+      assertTrue(dir.exists());
+      assertGreaterThan(dir.length(), 0L);
+    }
+
+    YBBackupUtil.runYbBackupDelete();
+    // Ensure the backup folders were deleted.
+    for (String dirName : backupDirs) {
+      LOG.info("Checking deleted folder: " + dirName);
+      File dir = new File(dirName);
+      assertFalse(dir.exists());
+      assertEquals(dir.length(), 0L);
+    }
   }
 
   @Test
