@@ -176,7 +176,7 @@ class RocksDBHelper {
   }
 
   Result<std::unique_ptr<rocksdb::TableReader>> NewTableReader(const std::string& fname) {
-    uint64_t base_file_size;
+    uint64_t base_file_size = 0;
     auto file_reader = VERIFY_RESULT(NewFileReader(fname, &base_file_size));
 
     std::unique_ptr<rocksdb::TableReader> table_reader;
