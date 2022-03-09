@@ -808,6 +808,18 @@ The number of reactor threads to be used for processing `ybclient` requests for 
 
 Default: `50`
 
+##### --cdc_max_stream_intent_records
+
+Maximum number of intent records allowed in a single CDC batch.
+
+Default: `1000`
+
+##### --cdc_snapshot_batch_size 
+
+Number of records fetched in a single batch of snapshot operation of CDC.
+
+Default: `250`
+
 ## Admin UI
 
 The Admin UI for the YB-TServer is available at `http://localhost:9000`.

@@ -94,8 +94,7 @@ Note that the snapshot feature uses a GFlag `cdc_snapshot_batch_size`, the defau
 
 | GFlag | Default Value | Description |
 | :---- | :------------ | :---------- |
-| `cdc_max_stream_intent_records` | 1000 | Maximum number of intent records allowed in a single CDC batch. |
-| `cdc_snapshot_batch_size` | 250 | Number of records fetched in a single batch of snapshot operation of CDC. |
+
 | `consensus_max_size_bytes` | 4_MB | Maximum per-tablet RPC batch size when updating peers. |
 | `cdc_min_replicated_index_considered_stale_seconds` | 900 | If cdc_min_replicated_index hasn't been replicated in this amount of time, we reset its value to max int64 to avoid retaining any logs. |
 | `timestamp_history_retention_interval_sec` | 900 | Time interval, in seconds, to retain history or older versions of data. |
