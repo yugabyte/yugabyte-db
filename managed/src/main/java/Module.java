@@ -1,13 +1,13 @@
 // Copyright (c) YugaByte, Inc.
 
+import javax.persistence.PersistenceException;
+
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.cloud.aws.AWSCloudModule;
 import com.yugabyte.yw.commissioner.BackupGarbageCollector;
 import com.yugabyte.yw.commissioner.CallHome;
-import com.yugabyte.yw.common.GFlagsValidation;
-import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.commissioner.DefaultExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.ExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.HealthChecker;
@@ -20,15 +20,16 @@ import com.yugabyte.yw.common.AlertManager;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.ExtraMigrationManager;
+import com.yugabyte.yw.common.GFlagsValidation;
 import com.yugabyte.yw.common.HealthManager;
-import com.yugabyte.yw.common.KubernetesManager;
-import com.yugabyte.yw.common.ShellKubernetesManager;
 import com.yugabyte.yw.common.NativeKubernetesManager;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlatformInstanceClientFactory;
 import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.ShellKubernetesManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.TemplateManager;
 import com.yugabyte.yw.common.YamlWrapper;
@@ -47,24 +48,23 @@ import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.common.services.LocalYBClientService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.ybflyway.YBFlywayInit;
-import com.yugabyte.yw.common.SupportBundleUtil;
+import com.yugabyte.yw.controllers.MetricGrafanaController;
 import com.yugabyte.yw.controllers.PlatformHttpActionAdapter;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.queries.QueryHelper;
 import com.yugabyte.yw.scheduler.Scheduler;
-import lombok.extern.slf4j.Slf4j;
+
 import org.pac4j.core.client.Clients;
 import org.pac4j.core.config.Config;
 import org.pac4j.oidc.client.OidcClient;
 import org.pac4j.oidc.config.OidcConfiguration;
 import org.pac4j.oidc.profile.OidcProfile;
-import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
+
+import lombok.extern.slf4j.Slf4j;
 import play.Configuration;
 import play.Environment;
-
-import javax.persistence.PersistenceException;
 
 /**
  * This class is a Guice module that tells Guice to bind different types
@@ -143,6 +143,7 @@ public class Module extends AbstractModule {
       bind(ShellKubernetesManager.class).asEagerSingleton();
       bind(NativeKubernetesManager.class).asEagerSingleton();
       bind(SupportBundleUtil.class).asEagerSingleton();
+      bind(MetricGrafanaController.class).asEagerSingleton();
 
       final CallbackController callbackController = new CallbackController();
       callbackController.setDefaultUrl(config.getString("yb.url", ""));
