@@ -17,7 +17,7 @@ public interface YBClientService {
   public static class Config {
     private @NonNull String masterHostPorts;
     private String certFile;
-    private Duration adminOperationTimeout = Duration.ofMillis(12000);
+    private Duration adminOperationTimeout = Duration.ofSeconds(120);
 
     public Config(String masterHostPorts) {
       this(masterHostPorts, null);
