@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Pause clusters
 
-To reduce costs on temporarily unused clusters, you can pause a cluster for up to 30 days. Paused clusters are not billed for instance vCPU capacity. Disk and Backup storage are charged at the standard rate. Refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
+To reduce costs on temporarily unused clusters, you can pause a cluster for up to 30 days. Paused clusters are not billed for instance vCPU capacity. Disk and Backup storage are charged at the standard rate. Refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/#paused-cluster-costs).
 
 To pause a cluster, on the **Clusters** page, click the three dots icon for the cluster you want to pause and choose **Pause Cluster**. You can also select the cluster, click **More Links**, and click **Pause Cluster**.
 

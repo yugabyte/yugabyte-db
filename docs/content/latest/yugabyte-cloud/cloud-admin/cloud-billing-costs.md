@@ -253,7 +253,7 @@ For example, suppose you have a cluster with following configuration:
 While active, disk and backup storage are covered by the free allowance, and the cluster is charged at the following rate:
 
 ```output
-Total vCPU cost/hour = num_vcpus x per_hour_rate
+Total vCPU cost/hour = vCPUs x hourly rate
 
 Active cluster hourly rate = 4 x $0.25 = $1/hour
 ```
@@ -261,12 +261,11 @@ Active cluster hourly rate = 4 x $0.25 = $1/hour
 When paused, instance vCPU capacity is no longer charged, while disk and backup storage are charged at the standard rate, as follows:
 
 ```output
-Disk storage (Paused)  = disk_storage x per_hour_disk_rate
+Disk storage (Paused)  = disk storage x hourly rate
                        = 200gb x 0.000138888889 
                        = $0.0277777778/hour
 
-
-Backup storage (Paused)  = backup_storage x per_hour_backup_rate
+Backup storage (Paused)  = backup storage x hourly rate
                          = 400gb x 0.00003472222222
                          = $0.0138888889/hour
 
