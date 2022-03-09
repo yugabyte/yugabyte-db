@@ -74,7 +74,7 @@ if errors != nil {
 db := pg.Connect(opt)
 ```
 
-| Parameters | Description | Default |
+| Parameter | Description | Default |
 | :---------- | :---------- | :------ |
 | user | user for connecting to the database | yugabyte
 | password | password for connecting to the database | yugabyte
@@ -104,7 +104,7 @@ type Employee struct {
     }
 ```
 
-Read more on designing [Database schemas and tables](../../../../explore/ysql-language-features/databases-schemas-tables/).
+Read more on designing [Database schemas and tables](../../../explore/ysql-language-features/databases-schemas-tables/).
 
 ## Step 4: Read and write data
 

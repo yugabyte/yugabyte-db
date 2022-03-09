@@ -281,5 +281,5 @@ See the matrix [here](../../../../drivers-orms/go/compatibility/).
 
 ## Other usage examples
 
-- [ORM Examples](../../../drivers-orms/go/gorm/)
+- [ORM Examples](../../../../drivers-orms/go/gorm/)
 

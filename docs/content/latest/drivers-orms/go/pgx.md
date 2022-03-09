@@ -82,7 +82,7 @@ url := fmt.Sprintf("postgres://%s:%s@%s:%d/%s",
 conn, err := pgx.Connect(context.Background(), url)
 ```
 
-| Parameters | Description | Default |
+| Parameter | Description | Default |
 | :---------- | :---------- | :------ |
 | user | user for connecting to the database | yugabyte
 | password | password for connecting to the database | yugabyte
@@ -115,7 +115,7 @@ if err != nil {
 The `conn.Exec()` function also returns an `error` object which, if not `nil`, needs to be handled
 in your code.
 
-Read more on designing [Database schemas and tables](../../../../explore/ysql-language-features/databases-schemas-tables/).
+Read more on designing [Database schemas and tables](../../../explore/ysql-language-features/databases-schemas-tables/).
 
 ## Step 4:  Read and write data
 

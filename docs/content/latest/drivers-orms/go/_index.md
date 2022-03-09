@@ -21,7 +21,8 @@ Following are the recommended projects for implementing Golang applications usin
 
 ## Build a hello world app
 
-Learn how to establish a connection to your YugabyteDB database and begin simple CRUD operations using the steps in [Build an Application](../../../quick-start/build-apps/go/ysql-pgx) in the Quick Start section.
+Learn how to establish a connection to your YugabyteDB database and begin simple CRUD operations
+using the steps in [Build an Application](../../quick-start/build-apps/go/ysql-pgx) in the Quick Start section.
 
 ## Pre-requisites
 
@@ -45,10 +46,10 @@ cluster provides a fully functioning YugabyteDB cluster deployed to the cloud re
 The cluster is free forever and includes enough resources to explore the core features available for
 developing the Go Applications with YugabyteDB database.
 
-Complete the steps for [creating a free tier cluster](../../../yugabyte-cloud/cloud-quickstart/qs-add/).
+Complete the steps for [creating a free tier cluster](../../yugabyte-cloud/cloud-quickstart/qs-add/).
 
 Alternatively, You can also set up a standalone YugabyteDB cluster by following the
-[YugabyteDB installation steps](../../../quick-start/install/macos).
+[YugabyteDB installation steps](../../quick-start/install/macos).
 
 ## Usage examples
 
@@ -57,10 +58,10 @@ The table below provides quick links for navigating to the specific documentatio
 
 | Project | Type | Usage Examples |
 | :------ | :--- | :------------- |
-| [PGX Driver](../../../reference/drivers/go/pgx-reference/) | Go Driver | [Hello World](../../../quick-start/build-apps/go/ysql-pgx) <br />[CRUD App](pgx) |
-| [PQ Driver](../../../reference/drivers/go/pq-reference/) | Go Driver | [Hello World](../../../quick-start/build-apps/go/ysql-pq) <br />[CRUD App](pq) |
-| [GORM](../../../integrations/gorm/) | ORM |  [Hello World](../../../quick-start/build-apps/go/ysql-gorm) <br />[CRUD App](gorm) |
-| [GO-PG](go-pg) | ORM |  [Hello World](../../../quick-start/build-apps/go/ysql-pg) <br />[CRUD App](go-pg) |
+| [PGX Driver](../../reference/drivers/go/pgx-reference/) | Go Driver | [Hello World](../../quick-start/build-apps/go/ysql-pgx) <br />[CRUD App](pgx) |
+| [PQ Driver](../../reference/drivers/go/pq-reference/) | Go Driver | [Hello World](../../quick-start/build-apps/go/ysql-pq) <br />[CRUD App](pq) |
+| [GORM](../../integrations/gorm/) | ORM |  [Hello World](../../quick-start/build-apps/go/ysql-gorm) <br />[CRUD App](gorm) |
+| [GO-PG](pg) | ORM |  [Hello World](../../quick-start/build-apps/go/ysql-pg) <br />[CRUD App](pg) |
 
 ## Next steps
 

@@ -74,7 +74,7 @@ if err != nil {
 }
 ```
 
-| Parameters | Description | Default |
+| Parameter | Description | Default |
 | :---------- | :---------- | :------ |
 | host  | hostname of the YugabyteDB instance | localhost
 | port |  Listen port for YSQL | 5433
@@ -99,7 +99,7 @@ type Employee struct {
 db.Debug().AutoMigrate(&Employee{})
 ```
 
-Read more on designing [Database schemas and tables](../../../../explore/ysql-language-features/databases-schemas-tables/).
+Read more on designing [Database schemas and tables](../../../explore/ysql-language-features/databases-schemas-tables/).
 
 ## Step 4: Read and write data
 

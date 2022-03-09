@@ -88,7 +88,7 @@ if err != nil {
 }
 ```
 
-| Parameters | Description | Default |
+| Parameter | Description | Default |
 | :---------- | :---------- | :------ |
 | host  | hostname of the YugabyteDB instance | localhost
 | port |  Listen port for YSQL | 5433
@@ -122,7 +122,7 @@ if _, err := db.Exec(createStmt); err != nil {
 The `db.Exec()` function also returns an `error` object which, if not `nil`, needs to handled in
 your code.
 
-Read more on designing [Database schemas and tables](../../../../explore/ysql-language-features/databases-schemas-tables/).
+Read more on designing [Database schemas and tables](../../../explore/ysql-language-features/databases-schemas-tables/).
 
 ## Step 4: Read and write data
 
