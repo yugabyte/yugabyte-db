@@ -80,19 +80,19 @@ You install Yugabyte Platform on a Kubernetes cluster as follows:
 
     ```output
     NAME                 CHART VERSION  APP VERSION  DESCRIPTION
-    yugabytedb/yugaware  2.11.2         2.11.2.0-b89  YugaWare is YugaByte Database's Orchestration a...
+    yugabytedb/yugaware  2.13.0         2.13.0.0-b42  YugaWare is YugaByte Database's Orchestration a...
     ```
 
 1. Run the following `helm install` command to install the Yugabyte Platform (`yugaware`) Helm chart:
 
     ```sh
-    helm install yw-test yugabytedb/yugaware --version 2.11.2 -n yb-platform --wait
+    helm install yw-test yugabytedb/yugaware --version 2.13.0 -n yb-platform --wait
     ```
 
 1. Optionally, set the TLS version for Nginx frontend by using `ssl_protocols` operational directive in the Helm installation, as follows:
 
     ```sh
-    helm install yw-test yugabytedb/yugaware --version 2.11.2 -n yb-platform --wait --set tls.sslProtocols="TLSv1.2"
+    helm install yw-test yugabytedb/yugaware --version 2.13.0 -n yb-platform --wait --set tls.sslProtocols="TLSv1.2"
     ```
 
 1. Use the following command to check the service:
@@ -117,7 +117,7 @@ You install Yugabyte Platform on a Kubernetes cluster as follows:
     <br>The following output should appear:
 
     ```output
-    NAME                 READY   STATUS    RESTARTS   AGE 
+    NAME                 READY   STATUS    RESTARTS   AGE
     yw-test-yugaware-0   4/4     Running   0          12s
     ```
 

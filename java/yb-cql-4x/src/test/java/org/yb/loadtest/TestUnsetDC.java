@@ -18,6 +18,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.google.common.net.HostAndPort;
 import org.yb.*;
+import org.yb.CommonTypes;
 import org.yb.client.*;
 import org.yb.consensus.Metadata;
 import org.yb.minicluster.*;
@@ -101,13 +102,13 @@ public class TestUnsetDC extends BaseMiniClusterTest {
     createMiniClusterWithSameRegionDifferentZone();
     YBClient client = miniCluster.getClient();
 
-    org.yb.Common.CloudInfoPB leader = org.yb.Common.CloudInfoPB.newBuilder()
+    org.yb.CommonNet.CloudInfoPB leader = org.yb.CommonNet.CloudInfoPB.newBuilder()
       .setPlacementCloud(PLACEMENT_CLOUD)
       .setPlacementRegion(PLACEMENT_REGION_LIVE)
       .setPlacementZone(PLACEMENT_ZONE+2)
       .build();
 
-    List<org.yb.Common.CloudInfoPB> leaders = new ArrayList<org.yb.Common.CloudInfoPB>();
+    List<org.yb.CommonNet.CloudInfoPB> leaders = new ArrayList<org.yb.CommonNet.CloudInfoPB>();
 
     leaders.add(leader);
 
@@ -136,7 +137,7 @@ public class TestUnsetDC extends BaseMiniClusterTest {
 
     CreateTableOptions options = new CreateTableOptions();
     options.setNumTablets(1);
-    options.setTableType(Common.TableType.YQL_TABLE_TYPE);
+    options.setTableType(org.yb.CommonTypes.TableType.YQL_TABLE_TYPE);
     ybTable = client.createTable(DEFAULT_TEST_KEYSPACE, TABLE_NAME, new Schema(
       Arrays.asList(hash_column.build(), range_column.build(), regular_column.build())), options);
 
@@ -208,7 +209,7 @@ public class TestUnsetDC extends BaseMiniClusterTest {
       Metrics metrics = new Metrics(host, webPort, "server");
       long numOpsread = metrics.getHistogram(TSERVER_READ_METRIC).totalCount;
       long numOpswrite = metrics.getHistogram(TSERVER_WRITE_METRIC).totalCount;
-      if (replica.getRole().equals(Metadata.RaftPeerPB.Role.LEADER.toString())) {
+      if (replica.getRole().equals(CommonTypes.PeerRole.LEADER.toString())) {
         assertEquals(NUM_OPS, numOpsread);
         assertEquals(NUM_OPS, numOpswrite);
         assertTrue(true);
@@ -238,7 +239,7 @@ public class TestUnsetDC extends BaseMiniClusterTest {
       Metrics metrics = new Metrics(host, webPort, "server");
       long numOpsread = metrics.getHistogram(TSERVER_READ_METRIC).totalCount;
       long numOpswrite = metrics.getHistogram(TSERVER_WRITE_METRIC).totalCount;
-      if (replica.getRole().equals(Metadata.RaftPeerPB.Role.LEADER.toString())) {
+      if (replica.getRole().equals(CommonTypes.PeerRole.LEADER.toString())) {
         assertEquals(NUM_OPS, numOpsread);
         assertEquals(NUM_OPS, numOpswrite);
         assertTrue(true);
@@ -270,7 +271,7 @@ public class TestUnsetDC extends BaseMiniClusterTest {
       long numOpsread = metrics.getHistogram(TSERVER_READ_METRIC).totalCount;
       long numOpswrite = metrics.getHistogram(TSERVER_WRITE_METRIC).totalCount;
       totalOps += numOpsread;
-      if (replica.getRole().equals(Metadata.RaftPeerPB.Role.LEADER.toString())) {
+      if (replica.getRole().equals(CommonTypes.PeerRole.LEADER.toString())) {
         assertTrue(numOpsread > NUM_OPS / 10);
         ;
         assertEquals(NUM_OPS, numOpswrite);
@@ -301,7 +302,7 @@ public class TestUnsetDC extends BaseMiniClusterTest {
       Metrics metrics = new Metrics(host, webPort, "server");
       long numOpsread = metrics.getHistogram(TSERVER_READ_METRIC).totalCount;
       long numOpswrite = metrics.getHistogram(TSERVER_WRITE_METRIC).totalCount;
-      if (replica.getRole().equals(Metadata.RaftPeerPB.Role.LEADER.toString())) {
+      if (replica.getRole().equals(CommonTypes.PeerRole.LEADER.toString())) {
         assertEquals(NUM_OPS, numOpsread);
         assertEquals(NUM_OPS, numOpswrite);
         assertTrue(true);
@@ -334,7 +335,7 @@ public class TestUnsetDC extends BaseMiniClusterTest {
       long numOpsread = metrics.getHistogram(TSERVER_READ_METRIC).totalCount;
       long numOpswrite = metrics.getHistogram(TSERVER_WRITE_METRIC).totalCount;
       totalOps += numOpsread;
-      if (replica.getRole().equals(Metadata.RaftPeerPB.Role.LEADER.toString())) {
+      if (replica.getRole().equals(CommonTypes.PeerRole.LEADER.toString())) {
         assertTrue(numOpsread > NUM_OPS/10);;
         assertEquals(NUM_OPS, numOpswrite);
       } else {

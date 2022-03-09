@@ -16,7 +16,7 @@ PUT     /customers/:cUUID/security                                             c
 PUT     /customers/:cUUID/api_token                                            com.yugabyte.yw.controllers.SessionController.api_token(cUUID: java.util.UUID)
 GET     /logout                                                                com.yugabyte.yw.controllers.SessionController.logout()
 + nocsrf
-POST    /register                                                              com.yugabyte.yw.controllers.SessionController.register()
+POST    /register                                                              com.yugabyte.yw.controllers.SessionController.register(generateApiToken: Boolean ?= false)
 GET     /customers/:cUUID/password_policy                                      com.yugabyte.yw.controllers.SessionController.getPasswordPolicy(cUUID: java.util.UUID)
 GET     /ui_theme                                                              com.yugabyte.yw.controllers.SessionController.getUITheme()
 
@@ -34,6 +34,8 @@ POST    /logging_config                                                         
 GET     /customers/:cUUID/host_info                                            com.yugabyte.yw.controllers.CustomerController.getHostInfo(cUUID: java.util.UUID)
 
 GET     /prometheus_metrics                                                    com.yugabyte.yw.controllers.MetricsController.index()
+
+GET     /grafana_dashboard                                                     com.yugabyte.yw.controllers.MetricGrafanaController.getGrafanaDashboardPath()
 
 # Initialize cloud information.
 GET     /customers/:cUUID/regions                                              com.yugabyte.yw.controllers.RegionController.listAllRegions(cUUID: java.util.UUID)

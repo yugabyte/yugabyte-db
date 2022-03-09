@@ -251,7 +251,7 @@ CREATE TABLE transactions_us
 ### Steps to create Replication(Unidirectional):
 1. Collect child table UUIDs from source universe (partition tables, here transactions_eu, transactions_in and transactions_us) - these will be used while setting up replication. To collect table UUIDs, go to the `Tables` section in the Admin UI (127.0.0.1:7000).
 
-  ![xCluster_with_GP](../../../../static/images/explore/yb_xcluster_table_uuids.png)
+  ![xCluster_with_GP](/images/explore/yb_xcluster_table_uuids.png)
 
 2. Run the replication setup command for the source universe:
     ```sh
@@ -431,4 +431,4 @@ In the event you cannot stop incoming user traffic, then the recommended approac
 - [Setup replication](../../../admin/yb-admin/#setup-universe-replication) again, for all of the relevant tables.
   - Make sure to pass in the `bootstrap_ids`, as described above.
 
-### For users of Yugabyte Platform (2.11+), please visit the [async-replication-platform](../../yugabyte-platform/create-deployments/async-replication-platform) to configure replication.
+### For users of Yugabyte Platform (2.11+), please visit the [async-replication-platform](../../../yugabyte-platform/create-deployments/async-replication-platform/#using-the-yugabyte-platform-ui) to configure replication.

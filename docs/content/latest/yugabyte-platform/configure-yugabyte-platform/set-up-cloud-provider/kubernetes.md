@@ -98,7 +98,7 @@ The namespace in the following commands needs to be replaced with the correct na
 
 The tasks you can perform depend on your access level.
 
-**Global admin** can grant broad cluster-level admin access by executing the following command:
+**Global Admin** can grant broad cluster level admin access by executing the following command:
 
 ```sh
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-global-admin.yaml \
@@ -106,7 +106,7 @@ curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-g
   | kubectl apply -n <namespace> -f -
 ```
 
-**Global restricted** can grant access to only the specific cluster roles to create and manage YugabyteDB universes across all the namespaces in a cluster using the following command:
+**Global Restricted** can grant access to only the specific cluster roles to create and manage YugabyteDB universes across all the namespaces in a cluster using the following command:
 
 ```sh
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-global.yaml \
@@ -125,7 +125,7 @@ kubectl auth can-i \
     {namespaces|poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
 ```
 
-**Namespace admin** can grant namespace-level admin access by using the following command:
+**Namespace Admin** can grant namespace-level admin access by using the following command:
 
 ```sh
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-namespaced-admin.yaml \
@@ -144,7 +144,7 @@ kubectl auth can-i \
     {poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
 ```
 
-**Namespace restricted** can grant access to only the specific roles required to create and manage YugabyteDB universes in a particular namespace. Contains Roles and RoleBindings for the required set of permissions.
+**Namespace Restricted** can grant access to only the specific roles required to create and manage YugabyteDB universes in a particular namespace. Contains Roles and RoleBindings for the required set of permissions.
 
 For example, if your goal is to allow the platform software to manage YugabyteDB universes in the namespaces `yb-db-demo` and `yb-db-us-east4-a` (the target namespaces), then you need to apply in both the target namespaces, as follows:
 

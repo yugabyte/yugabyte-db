@@ -1,0 +1,101 @@
+{
+  "cacheTimeout": null,
+  "colorBackground": false,
+  "colorValue": true,
+  "colors": [
+    "#d44a3a",
+    "rgba(237, 129, 40, 0.89)",
+    "#299c46"
+  ],
+  "datasource": "$datasource",
+  "fieldConfig": {
+    "defaults": {
+      "custom": {}
+    },
+    "overrides": []
+  },
+  "format": "none",
+  "gauge": {
+    "maxValue": 100,
+    "minValue": 0,
+    "show": false,
+    "thresholdLabels": false,
+    "thresholdMarkers": true
+  },
+  "gridPos": {
+    "h": 3,
+    "w": 8,
+    "x": 0,
+    "y": 5
+  },
+  "interval": null,
+  "links": [],
+  "mappingType": 2,
+  "mappingTypes": [
+    {
+      "$$hashKey": "object:243",
+      "name": "value to text",
+      "value": 1
+    },
+    {
+      "$$hashKey": "object:244",
+      "name": "range to text",
+      "value": 2
+    }
+  ],
+  "maxDataPoints": 100,
+  "nullPointMode": "connected",
+  "nullText": null,
+  "postfix": "",
+  "postfixFontSize": "50%",
+  "prefix": "",
+  "prefixFontSize": "50%",
+  "rangeMaps": [
+    {
+      "$$hashKey": "object:246",
+      "from": "0.51",
+      "text": "Running",
+      "to": "1"
+    },
+    {
+      "$$hashKey": "object:247",
+      "from": "-1",
+      "text": "Not Running",
+      "to": "0.5"
+    }
+  ],
+  "repeat": "tserver_node",
+  "sparkline": {
+    "fillColor": "rgba(31, 118, 189, 0.18)",
+    "full": false,
+    "lineColor": "rgb(31, 120, 193)",
+    "show": false
+  },
+  "tableColumn": "",
+  "targets": [
+    {
+      "expr": "avg(up{node_prefix=\"$dbcluster\",instance=~\"${tserver_node}\"})",
+      "format": "time_series",
+      "hide": false,
+      "instant": true,
+      "interval": "",
+      "intervalFactor": 1,
+      "legendFormat": "",
+      "refId": "A"
+    }
+  ],
+  "thresholds": "0,1",
+  "timeFrom": null,
+  "timeShift": null,
+  "title": "TServer Status - $tserver_node",
+  "type": "singlestat",
+  "valueFontSize": "100%",
+  "valueMaps": [
+    {
+      "op": "=",
+      "text": "N/A",
+      "value": "null"
+    }
+  ],
+  "valueName": "current"
+}

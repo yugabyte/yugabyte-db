@@ -216,13 +216,13 @@ class ReleaseUtil(object):
             # in our downsstream release code.  So here we munge the name to 'centos' to keep things
             # working while we fix downstream code.
             # TODO(jharveymsith): Remove the almalinux to centos mapping once downstream is fixed.
-            if distro.id() == "centos" and distro.major_version() == 7 \
+            if distro.id() == "centos" and distro.major_version() == "7" \
                     or distro.id() == "almalinux" and platform.machine().lower() == "x86_64":
                 system = "centos"
             elif distro.id == "ubuntu":
-                system = distro.id() + str(distro.version())
+                system = distro.id() + distro.version()
             else:
-                system = distro.id() + str(distro.major_version())
+                system = distro.id() + distro.major_version()
 
         release_file_name = "yugabyte-{}-{}-{}.tar.gz".format(
             release_name, system, platform.machine().lower())
