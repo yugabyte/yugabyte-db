@@ -24,6 +24,7 @@ import UniverseDetail from './pages/UniverseDetail';
 import Universes from './pages/Universes';
 import { Tasks, TasksList, TaskDetail } from './pages/tasks';
 import Alerts from './pages/Alerts';
+import Backups from './pages/Backups';
 import UniverseConsole from './pages/UniverseConsole';
 import Metrics from './pages/Metrics';
 import DataCenterConfiguration from './pages/DataCenterConfiguration';
@@ -255,6 +256,7 @@ export default (store) => {
           <Route path="/config/:tab/:section/:uuid" component={DataCenterConfiguration} />
         </Route>
         <Route path="/alerts" component={Alerts} />
+        <Route path="/backups" component={Backups} />
         <Route path="/help" component={Help} />
         <Route path="/profile" component={Profile} />
         <Route path="/profile/:tab" component={Profile} />

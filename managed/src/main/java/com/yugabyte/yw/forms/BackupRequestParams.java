@@ -55,6 +55,9 @@ public class BackupRequestParams extends UniverseTaskParams {
   @ApiModelProperty(value = "Should table backup errors be ignored")
   public Boolean ignoreErrors = false;
 
+  @ApiModelProperty(value = "Alter load balancer state")
+  public boolean alterLoadBalancer = false;
+
   // Specifies the frequency for running the backup in milliseconds.
   @ApiModelProperty(value = "Frequency to run the backup, in milliseconds")
   public long schedulingFrequency = 0L;

@@ -144,12 +144,12 @@ const animatedComponents = makeAnimated({
 });
 
 export const YBMultiSelectRedesiged = (props) => {
-  const { options, value, onChange, placeholder, name, className } = props;
+  const { options, value, onChange, placeholder, name, className, isMulti = true } = props;
   return (
     <Select
       className={className}
       classNamePrefix="select"
-      isMulti
+      isMulti={isMulti}
       name={name}
       placeholder={placeholder}
       options={options}
