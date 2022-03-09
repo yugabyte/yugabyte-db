@@ -994,8 +994,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // compaction has already been triggered for this instance.
   std::unique_ptr<ThreadPoolToken> post_split_compaction_task_pool_token_ = nullptr;
 
-  std::unique_ptr<ThreadPoolToken> data_integrity_token_;
-
   simple_spinlock operation_filters_mutex_;
 
   boost::intrusive::list<OperationFilter> operation_filters_ GUARDED_BY(operation_filters_mutex_);

@@ -369,35 +369,33 @@ IntentsWriter::IntentsWriter(const Slice& start_key,
                              rocksdb::DB* intents_db,
                              IntentsWriterContext* context)
     : start_key_(start_key), intents_db_(intents_db), context_(*context) {
+  AppendTransactionKeyPrefix(context_.transaction_id(), &txn_reverse_index_prefix_);
+  txn_reverse_index_prefix_.AppendValueType(ValueType::kMaxByte);
+  reverse_index_upperbound_ = txn_reverse_index_prefix_.AsSlice();
+  reverse_index_iter_ = CreateRocksDBIterator(
+      intents_db_, &KeyBounds::kNoBounds, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,
+      rocksdb::kDefaultQueryId, nullptr /* read_filter */, &reverse_index_upperbound_);
 }
 
 CHECKED_STATUS IntentsWriter::Apply(rocksdb::DirectWriteHandler* handler) {
-  KeyBytes txn_reverse_index_prefix;
-  AppendTransactionKeyPrefix(context_.transaction_id(), &txn_reverse_index_prefix);
-  txn_reverse_index_prefix.AppendValueType(ValueType::kMaxByte);
-  Slice key_prefix = txn_reverse_index_prefix.AsSlice();
+  Slice key_prefix = txn_reverse_index_prefix_.AsSlice();
   key_prefix.remove_suffix(1);
-  const Slice reverse_index_upperbound = txn_reverse_index_prefix.AsSlice();
-
-  auto reverse_index_iter = CreateRocksDBIterator(
-      intents_db_, &KeyBounds::kNoBounds, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,
-      rocksdb::kDefaultQueryId, nullptr /* read_filter */, &reverse_index_upperbound);
 
   DocHybridTimeBuffer doc_ht_buffer;
 
-  reverse_index_iter.Seek(start_key_.empty() ? key_prefix : start_key_);
+  reverse_index_iter_.Seek(start_key_.empty() ? key_prefix : start_key_);
 
   context_.Start(
-      reverse_index_iter.Valid() ? boost::make_optional(reverse_index_iter.key()) : boost::none);
+      reverse_index_iter_.Valid() ? boost::make_optional(reverse_index_iter_.key()) : boost::none);
 
-  while (reverse_index_iter.Valid()) {
-    const Slice key_slice(reverse_index_iter.key());
+  while (reverse_index_iter_.Valid()) {
+    const Slice key_slice(reverse_index_iter_.key());
 
     if (!key_slice.starts_with(key_prefix)) {
       break;
     }
 
-    auto reverse_index_value = reverse_index_iter.value();
+    auto reverse_index_value = reverse_index_iter_.value();
 
     bool metadata = key_slice.size() == 1 + TransactionId::StaticSize();
     // At this point, txn_reverse_index_prefix is a prefix of key_slice. If key_slice is equal to
@@ -415,7 +413,7 @@ CHECKED_STATUS IntentsWriter::Apply(rocksdb::DirectWriteHandler* handler) {
       return Status::OK();
     }
 
-    reverse_index_iter.Next();
+    reverse_index_iter_.Next();
   }
 
   context_.Complete(handler);

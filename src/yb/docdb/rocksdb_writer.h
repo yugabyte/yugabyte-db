@@ -174,6 +174,9 @@ class IntentsWriter : public rocksdb::DirectWriter {
   Slice start_key_;
   rocksdb::DB* intents_db_;
   IntentsWriterContext& context_;
+  KeyBytes txn_reverse_index_prefix_;
+  Slice reverse_index_upperbound_;
+  BoundedRocksDbIterator reverse_index_iter_;
 };
 
 class ApplyIntentsContext : public IntentsWriterContext {
