@@ -8947,7 +8947,7 @@
           "name" : "Config",
           "required" : true,
           "schema" : {
-            "type" : "object"
+            "$ref" : "#/definitions/CustomerConfig"
           }
         } ],
         "responses" : {
@@ -9004,7 +9004,7 @@
       },
       "put" : {
         "description" : "",
-        "operationId" : "getCustomerConfig",
+        "operationId" : "editCustomerConfig",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -9023,7 +9023,7 @@
           "name" : "Config",
           "required" : true,
           "schema" : {
-            "type" : "object"
+            "$ref" : "#/definitions/CustomerConfig"
           }
         } ],
         "responses" : {
@@ -9082,7 +9082,7 @@
     "/api/v1/customers/{cUUID}/configs/{configUUID}/edit" : {
       "put" : {
         "description" : "",
-        "operationId" : "getCustomerConfig",
+        "operationId" : "editCustomerConfig",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -9101,7 +9101,7 @@
           "name" : "Config",
           "required" : true,
           "schema" : {
-            "type" : "object"
+            "$ref" : "#/definitions/CustomerConfig"
           }
         } ],
         "responses" : {
