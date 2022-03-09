@@ -345,3 +345,7 @@ class GcpCloud(AbstractCloud):
 
     def get_console_output(self, args):
         return self.get_admin().get_console_output(args.zone, args.search_pattern)
+
+    def delete_volumes(self, args):
+        tags = json.loads(args.instance_tags) if args.instance_tags is not None else {}
+        return self.get_admin().delete_disks(args.zone, tags)
