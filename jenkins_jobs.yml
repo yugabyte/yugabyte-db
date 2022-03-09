@@ -35,7 +35,7 @@ jobs:
 
   - os: alma8
     compiler: gcc9
-    build_type: debug
+    build_type: fastdebug
     release_artifact: false
 
   - os: mac11.6
