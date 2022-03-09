@@ -188,7 +188,8 @@ void Connection::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
       auto passed = reactor_->cur_time() - last_activity_time_;
       reactor_->DestroyConnection(
           this,
-          STATUS_FORMAT(NetworkError, "Connect timeout, passed: $0, timeout: $1", passed, timeout));
+          STATUS_FORMAT(
+              HostUnreachable, "Connect timeout, passed: $0, timeout: $1", passed, timeout));
       return;
     }
   }
