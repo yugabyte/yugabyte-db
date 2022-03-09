@@ -12,7 +12,7 @@ import Bulb from '../../universes/images/bulb.svg';
 
 const VALIDATION_SCHEMA = Yup.object().shape({
   ldap_url: Yup.string()
-    .matches(/^(?:(http|https|ldap)?:\/\/)?[\w.-]+(?:[\w-]+)+:\d{1,5}$/, {
+    .matches(/^(?:(http|https|ldap|ldaps)?:\/\/)?[\w.-]+(?:[\w-]+)+:\d{1,5}$/, {
       message: 'LDAP URL must be a valid URL with port number'
     })
     .required('LDAP URL is Required'),
