@@ -49,6 +49,8 @@ Most YugabyteDB servers are configured to not retain the complete history of the
 
 After the connector completes its initial snapshot, the YugabyteDB connector continues streaming the changes. This ensures that the connector does not miss any updates. If the connector stops again for any reason, upon restart, the connector continues streaming changes from where it previously left off.
 
+<!-- Vaibhav todo: add table 1 snapshot.mode values -->
+
 ### Streaming changes
 
 The YugabyteDB connector typically spends the vast majority of its time streaming changes from the YugabyteDB server to which it is connected.
@@ -766,7 +768,7 @@ The YugabyteDB connector connects to the master processes running on the Yugabyt
 
 The change records for CDC are read from the WAL. CDC module maintains checkpoint internally for each of the DB stream ID and garbage collects the WAL entries if those have been streamed to the cdc clients.
 
-In case CDC is lagging or away for some time, the disk usage may grow and may cause YugabyteDB cluster instability. To avoid a scenario like this if a stream is inactive for a configured amount of time we garbage collect the WAL. This is configurable by a [GFLAG](../configuration/yb-tserver.md#change-data-capture-cdc-flags).
+In case CDC is lagging or away for some time, the disk usage may grow and may cause YugabyteDB cluster instability. To avoid a scenario like this if a stream is inactive for a configured amount of time we garbage collect the WAL. This is configurable by a [GFLAG](../../cdc/change-data-capture.md#gflags-affecting-change-data-capture).
 
 ## Deployment
 
@@ -829,6 +831,7 @@ The following properties are *required* unless a default value is available:
 | database.server.name | N/A | Logical name that identifies and provides a namespace for the particular YugabyteDB database server or cluster for which Debezium is capturing changes. This name must be unique, since it's also used to form the Kafka topic. |
 | database.streamid | N/A | Stream ID created using yb-admin for Change Data Capture. |
 | table.include.list | N/A | Comma-separated list of table names and schema names, such as `public.test` or `test_schema.test_table_name`. |
+| snapshot.mode | N/A | `never` - Don't take a snapshot <br/><br/> `initial` - Take a snapshot when the connector is first started <br/><br/> `always` - Always take a snapshot <br/><br/> |
 | table.max.num.tablets | 10 | Maximum number of tablets the connector can poll for. This should be greater than or equal to the number of tablets the table is split into. |
 | database.sslmode | disable | Whether to use an encrypted connection to the YugabyteDB cluster. Supported options are:<br/><br/> `disable` uses an unencrypted connection <br/><br/> `require` uses an encrypted connection and fails if it can't be established <br/><br/> `verify-ca` uses an encrypted connection, verifies the server TLS certificate against the configured Certificate Authority (CA) certificates, and fails if no valid matching CA certificates are found. |
 | database.sslrootcert | N/A | The path to the file which contains the root certificate against which the server is to be validated. |
@@ -853,7 +856,7 @@ Note that the APIs we use for fetching the changes are set up to work with the T
 *Advanced connector configuration properties:*
 | Property | Default | Description |
 | :--- | :--- | :--- |
-| snapshot.mode | N/A | `never` - Don't take a snapshot <br/><br/> `initial` - Take a snapshot when the connector is first started <br/><br/> `always` - Always take a snapshot <br/><br/> `initial_only` - The connector performs an initial snapshot and then stops, without processing any subsequent changes. |
+| snapshot.mode | | |
 | cdc.poll.interval.ms | 200 | The interval at which the connector will poll the database for the changes. |
 | admin.operation.timeout.ms | 60000 | Specifies the timeout for the admin operations to complete. |
 | operation.timeout.ms | 60000 | |
@@ -882,7 +885,7 @@ In case one of the tserver crashes, the replicas on other TServer nodes will bec
 
 ### YugabyteDB server failures
 
-In case of YugabyteDB server failures, the Debezium YugabyteDB connector will try for a configurable amount (configurable using a [GFLAG](../configuration/yb-tserver.md#change-data-capture-cdc-flags)) of time for the availability of the TServer and will stop if the cluster cannot start. When the cluster is restarted, the connector can be run again and it will start processing the changes with the committed checkpoint.
+In case of YugabyteDB server failures, the Debezium YugabyteDB connector will try for a configurable amount (configurable using a [GFLAG](../../cdc/change-data-capture.md#gflags-affecting-change-data-capture)) of time for the availability of the TServer and will stop if the cluster cannot start. When the cluster is restarted, the connector can be run again and it will start processing the changes with the committed checkpoint.
 
 ### Configuration and startup errors
 

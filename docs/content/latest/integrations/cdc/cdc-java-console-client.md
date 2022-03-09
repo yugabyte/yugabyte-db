@@ -3,9 +3,6 @@ title: Java console client for CDC
 headerTitle: Using Java console client for testing CDC locally
 linkTitle: Java CDC console
 description: Use the CDC console client to learn how CDC works.
-aliases:
- - /latest/reference/cdc/java-console
- - /latest/reference/cdc/cdc-java-console
 menu:
   latest:
     identifier: cdc-java-console

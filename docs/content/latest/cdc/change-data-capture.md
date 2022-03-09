@@ -1,18 +1,14 @@
 ---
-title: Change data capture (CDC)
-headerTitle: Change data capture (CDC)
-linkTitle: Change data capture (CDC)
-description: CDC or Change data capture is a process to capture changes made to data in the database.
+title: Change Data Capture (CDC)
+headerTitle: Change Data Capture (CDC)
+linkTitle: Change Data Capture (CDC)
+description: CDC or Change Data Capture is a process to capture changes made to data in the database.
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
-# url: /latest/cdc/
-aliases: 
- - /latest/explore/change-data-capture/
- - /latest/explore/cdc
+url: /latest/cdc/
+section: YUGABYTEDB CORE
 menu:
   latest:
-    name: Change data capture (CDC)
-    identifier: explore-change-data-capture
-    parent: explore
+    identifier: change-data-capture
     weight: 699
 isTocNested: true
 showAsideToc: true
@@ -20,7 +16,7 @@ showAsideToc: true
 
 ## What is CDC?
 
-Change data capture (CDC) is a process to capture changes made to data in the database and stream those changes to external processes, applications or other databases. <br/>
+Change Data Capture (CDC) is a process to capture changes made to data in the database and stream those changes to external processes, applications or other databases. <br/>
 
  The core primitive of CDC is the _stream_. Streams can be enabled/disabled on databases. Every change to a watched database table is emitted as a record in a configurable format to a configurable sink. Streams scale to any YugabyteDB cluster independent of its size and are designed to impact production traffic as little as possible.
 
@@ -80,19 +76,35 @@ See [limitations](#limitations) to see what else is not supported currently.
 
 {{< /warning >}}
 
-### yb-admin commands for Change data capture
+### yb-admin commands for Change Data Capture
 
 The commands used to manipulate CDC DB streams can be found under the [yb-admin](../admin/yb-admin.md#change-data-capture-cdc-commands).
 
 ### DDL commands support
 
-  Change data capture supports the schema changes (eg. adding a default value to column, adding a new column, adding constraints to column, etc) for a table as well. When a DDL command is issued, the schema is altered and a DDL record will be emitted with the new schema values, after that further records will come in format of the new schema only.
+  Change Data Capture supports the schema changes (eg. adding a default value to column, adding a new column, adding constraints to column, etc) for a table as well. When a DDL command is issued, the schema is altered and a DDL record will be emitted with the new schema values, after that further records will come in format of the new schema only.
 
 ### Snapshot support
 
 Initially, if you create a stream for a particular table which already contains some records, the stream takes a snapshot of the table, and streams all the data that resides in the table. After the snapshot of the whole table is completed, YugabyteDB starts streaming the changes that would be made to the table.
 
 Note that the snapshot feature uses a GFlag `cdc_snapshot_batch_size`, the default value for which is 250. This is the number of records included per batch in response to an internal call to get the snapshot; if the table contains a very large amount of data, you may need to increase this value to reduce the amount of time it takes to stream the complete snapshot.
+
+### GFlags affecting Change Data Capture
+
+| GFlag | Default Value | Description |
+| :---- | :------------ | :---------- |
+| `cdc_max_stream_intent_records` | 1000 | Maximum number of intent records allowed in a single CDC batch. |
+| `cdc_snapshot_batch_size` | 250 | Number of records fetched in a single batch of snapshot operation of CDC. |
+| `consensus_max_size_bytes` | 4_MB | Maximum per-tablet RPC batch size when updating peers. |
+| `cdc_min_replicated_index_considered_stale_seconds` | 900 | If cdc_min_replicated_index hasn't been replicated in this amount of time, we reset its value to max int64 to avoid retaining any logs. |
+| `timestamp_history_retention_interval_sec` | 900 | Time interval, in seconds, to retain history or older versions of data. |
+| `update_min_cdc_indices_interval_secs` | 60 | How often to read the cdc_state table to get the minimum applied index for each tablet across all streams. This information is used to correctly keep log files that contain unapplied entries. This is also the rate at which a tablet's minimum replicated index across all streams is sent to the other peers in the configuration. If flag enable_log_retention_by_op_idx is disabled, this flag has no effect. |
+| `cdc_checkpoint_opid_interval_ms` | 60000 | The number of seconds for which the client can go down and the intents will be retained. This basically means that if a client has not updated the checkpoint for this interval, the intents would be garbage collected.<br/><br/> If you are using multiple streams, it is advised that you set this flag to 1800000 i.e. 30 minutes. |
+| `cdc_ybclient_reactor_threads` | 50 | Number of reactor threads to be used for processing YB client requests for CDC. Increase to improve throughput on large tablet setups. |
+| `enable_log_retention_by_op_idx` | true | If true, logs will be retained based on an op ID passed by the CDC service. |
+| `log_max_seconds_to_retain` | 86400 | Number of seconds to retain log files. Log files older than this value will be deleted even if they contain unreplicated CDC entries. If 0, this flag will be ignored. This flag is _also_ ignored if a log segment contains entries that haven't been flushed to RocksDB. |
+| `log_stop_retaining_min_disk_mb` | 102400 | Stop retaining logs if the space available for the logs falls below this limit, specified in megabytes. As with `log_max_seconds_to_retain`, this flag is ignored if a log segment contains unflushed entries. |
 
 ### Running the Debezium connector
 
