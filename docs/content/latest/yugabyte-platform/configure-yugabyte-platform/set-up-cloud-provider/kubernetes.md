@@ -78,10 +78,7 @@ Before you install YugabyteDB on a Kubernetes cluster, perform the following:
 
 ### Service account
 
-The secret of a service account can be used to generate a `kubeconfig` file. This account:
-
-- Should not be deleted once it is in use by Yugabyte Platform.
-- `namespace` in the service account creation command can be replaced by the desired namespace in which to install YugabyteDB.
+The secret of a service account can be used to generate a `kubeconfig` file. This account should not be deleted once it is in use by Yugabyte Platform. *namespace* in the service account creation command can be replaced with the desired namespace in which to install YugabyteDB.
 
 Run the following `kubectl` command to apply the YAML file:
 
@@ -95,30 +92,31 @@ Expect the following output:
 serviceaccount/yugabyte-platform-universe-management created
 ```
 
-You need to grant access to this service account using ClusterRoles and Roles, as well as ClusterRoleBindings and RoleBindings, thus allowing it to manage the YugabyteDB universe's resources for you.<br><br>
-Ensure that you have replaced the `namespace` from the commands with the correct namespace of the previously created ServiceAccount.
+The next step is to grant access to this service account using ClusterRoles and Roles, as well as ClusterRoleBindings and RoleBindings, thus allowing it to manage the YugabyteDB universe's resources for you. 
+
+The namespace in the following commands needs to be replaced with the correct namespace of the previously created service account.
 
 The tasks you can perform depend on your access level.
 
-Global Admin can grant broad cluster level admin access by executing the following command:
+**Global admin** can grant broad cluster-level admin access by executing the following command:
 
 ```sh
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-global-admin.yaml \
-  | sed "s/namespace: <SA_NAMESPACE>/namespace: <namespace>"/g \
+  | sed "s/namespace: <serviceaccount_namespace>/namespace: <namespace>"/g \
   | kubectl apply -n <namespace> -f -
 ```
 
-Global Restricted can grant access to only the specific cluster roles to create and manage YugabyteDB universes across all the namespaces in a cluster using the following command:
+**Global restricted** can grant access to only the specific cluster roles to create and manage YugabyteDB universes across all the namespaces in a cluster using the following command:
 
 ```sh
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-global.yaml \
-  | sed "s/namespace: <SA_NAMESPACE>/namespace: <namespace>"/g \
+  | sed "s/namespace: <serviceaccount_namespace>/namespace: <namespace>"/g \
   | kubectl apply -n <namespace> -f -
 ```
 
 This contains ClusterRoles and ClusterRoleBindings for the required set of permissions.
 
-Validate the service account using the following command:
+The following command can be used to validate the service account:
 
 ```sh
 kubectl auth can-i \
@@ -127,17 +125,17 @@ kubectl auth can-i \
     {namespaces|poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
 ```
 
-Namespace Admin can grant namespace-level admin access by using the following command:
+**Namespace admin** can grant namespace-level admin access by using the following command:
 
 ```sh
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-namespaced-admin.yaml \
-  | sed "s/namespace: <SA_NAMESPACE>/namespace: <namespace>"/g \
+  | sed "s/namespace: <serviceaccount_namespace>/namespace: <namespace>"/g \
   | kubectl apply -n <namespace> -f -
 ```
 
 If you have multiple target namespaces, then you have to apply the YAML in all of them.
 
-Validate the service account using the following command:
+The following command can be used to validate the service account:
 
 ```sh
 kubectl auth can-i \
@@ -146,17 +144,17 @@ kubectl auth can-i \
     {poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
 ```
 
-Namespace Restricted can grant access to only the specific roles required to create and manage YugabyteDB universes in a particular namespace. Contains Roles and RoleBindings for the required set of permissions.
+**Namespace restricted** can grant access to only the specific roles required to create and manage YugabyteDB universes in a particular namespace. Contains Roles and RoleBindings for the required set of permissions.
 
 For example, if your goal is to allow the platform software to manage YugabyteDB universes in the namespaces `yb-db-demo` and `yb-db-us-east4-a` (the target namespaces), then you need to apply in both the target namespaces, as follows:
 
 ```sh
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-namespaced.yaml \
-  | sed "s/namespace: <SA_NAMESPACE>/namespace: <namespace>"/g \
+  | sed "s/namespace: <serviceaccount_namespace>/namespace: <namespace>"/g \
   | kubectl apply -n <namespace> -f -
 ```
 
-Validate the service account using the following command:
+The following command can be used to validate the service account:
 
 ```sh
 kubectl auth can-i \
@@ -168,7 +166,7 @@ kubectl auth can-i \
 
 ### `kubeconfig` file
 
-You can create a `kubeconfig` file for previously created `yugabyte-platform-universe-management` service account as follows:
+You can create a `kubeconfig` file for the previously created `yugabyte-platform-universe-management` service account as follows:
 
 1. Run the following `wget` command to get the Python script for generating the `kubeconfig` file:
 
@@ -218,7 +216,7 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
 
 - Optionally, use the **Storage Class** field to enter a comma-delimited value. If you do not specify this value, it would default to standard. You need to ensure that this storage class exists in your Kubernetes cluster.
 
-- Use the **Namespace** field to specify the namespace. If provided SA has the `Cluster Admin` permissions, you are not required to complete this field. The SA used in the provided `kubeconfig` file should have access to this namespace.
+- Use the **Namespace** field to specify the namespace. If provided service account has the `Cluster Admin` permissions, you are not required to complete this field. The service account used in the provided `kubeconfig` file should have access to this namespace.
 
 - Use **Kube Config** to upload the configuration file. If this file is available at provider level, you are not required to supply it.<br><br>
 
