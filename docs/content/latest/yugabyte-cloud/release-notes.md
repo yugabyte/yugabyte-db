@@ -15,6 +15,13 @@ showAsideToc: true
 
 ## Releases
 
+### March 10, 2021
+
+#### New features
+
+- Ability to schedule the maintenance window for upcoming maintenance and database upgrades. The maintenance window is a weekly four-hour time slot during which Yugabyte may maintain or upgrade clusters. Yugabyte does not maintain or upgrade clusters outside the scheduled maintenance window. You can also specify exclusion periods. Manage maintenance windows on the cluster **Maintenance** tab.
+- Ability to manually pause and resume clusters. To pause a cluster, select the cluster, click **More Links**, and choose **Pause Cluster**. Yugabyte suspends instance vCPU capacity charges for paused clusters; disk and backup storage are charged at the standard rate.
+
 ### February 3, 2021
 
 #### New features
@@ -67,7 +74,14 @@ showAsideToc: true
 
 #### New features
 
-- Support for auditing cloud activity using the new **Activity** tab on the **Admin** page. The tab provides a running audit of activity on your cloud, including backups, cluster creation and modification, changes to cloud users and their roles, billing changes, and allow list changes.
+- Support for auditing cloud activity using the new **Activity** tab on the **Admin** page. The tab provides a running audit of activity on your cloud, including:
+
+  - backups
+  - cluster creation and modification
+  - changes to cloud users and their roles
+  - billing changes
+  - allow list changes
+
 - Support for multiple Admin users on your cloud account, and Admin users can now change the role of existing users. You can also invite multiple users to your cloud at once, and assign them a role (Developer or Admin) when you invite them. You manage cloud users using the **Users** tab on the **Admin** page.
 - Additional charts on the **Invoices** on the **Billing** tab, which break costs down by cluster and infrastructure (instance costs, storage, and data transfer) so that you can quickly evaluate your cloud costs.
 
@@ -147,7 +161,7 @@ The following **AWS regions** are available:
 - **Clusters** - No support for scaling vCPUs on single node clusters.
 - **Metrics** - The **View Full Screen** option in charts on the cluster **Overview** and **Performance Metrics** pages does not work in some versions of Safari 14.0 (Big Sur).
 - **Metrics** - Some clusters in European regions may show occasional spikes in the YSQL Operations/sec chart. This is due to cluster health checks and can be ignored.
-- **Invoices** - Redundant "Disk Storage (Paused)" entry on invoices for paused clusters. The entry has no effect on your invoice.
+- **Pausing clusters** - The rate shown in the **Pause Cluster** dialog does not include backup storage costs.
 
 ### Known issues in Cloud Shell
 
@@ -155,3 +169,4 @@ The following **AWS regions** are available:
 - If Cloud Shell stops responding, close the browser tab and restart Cloud Shell.
 - Cloud Shell is unavailable for clusters in a VPC.
 - Cloud Shell is unavailable during any edit and backup/restore operations. Wait until the operations are complete before you launch the shell.
+- Your browser may disconnect your Cloud Shell session after several minutes when you switch to a different tab.
