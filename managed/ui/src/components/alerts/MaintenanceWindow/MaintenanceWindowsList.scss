@@ -30,6 +30,11 @@
     }
   }
 
+  .maintenance-window-action {
+    display: flex;
+    justify-content: flex-end;
+  }
+
   .extend-actions {
     width: 90px !important;
   }
@@ -39,6 +44,8 @@
     border: 0;
     margin-left: 10px !important;
     font-weight: 500;
+    padding: 0px 15px 7px 15px !important;
+    height: 36px;
   }
 
   .yb-actions-cell {
@@ -58,6 +65,13 @@
   #maintenance-window-table .react-bs-table-container td {
     vertical-align: middle !important;
   }
+
+  .react-bs-table-pagination{
+    .col-lg-6:first-child{
+      padding: 0;
+    }
+  }
+
 }
 
 div#more-universe-list {
@@ -68,5 +82,13 @@ div#more-universe-list {
 
   .universe-name:not(:last-child) {
     margin-bottom: 24px;
+  }
+}
+
+.create-maintenance-window {
+  .btn-group-radio {
+    input {
+      margin: 4px;
+    }
   }
 }
