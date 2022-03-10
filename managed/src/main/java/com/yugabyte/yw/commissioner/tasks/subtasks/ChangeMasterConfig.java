@@ -102,7 +102,20 @@ public class ChangeMasterConfig extends AbstractTaskBase {
     YBClientService.Config config = new YBClientService.Config(masterAddresses, certificate);
     config.setAdminOperationTimeout(YBCLIENT_ADMIN_OPERATION_TIMEOUT);
     YBClient client = ybService.getClientWithConfig(config);
-    String ipToUse = node.cloudInfo.private_ip;
+
+    // If the cluster has a secondary IP, we want to ensure that we use the correct addresses.
+    // The ipToUse is the address that we need to add to the config.
+    // The ipForPlatform is the address that the platform uses to connect to the host.
+    boolean hasSecondaryIp =
+        node.cloudInfo.secondary_private_ip != null
+            && !node.cloudInfo.secondary_private_ip.equals("null");
+    boolean shouldUseSecondary =
+        universe.getConfig().getOrDefault(Universe.DUAL_NET_LEGACY, "true").equals("false");
+    String ipToUse =
+        hasSecondaryIp && shouldUseSecondary
+            ? node.cloudInfo.secondary_private_ip
+            : node.cloudInfo.private_ip;
+    String ipForPlatform = node.cloudInfo.private_ip;
     try {
       // The call changeMasterConfig is not idempotent. The client library internally keeps retrying
       // for a long time until it gives up if the node is already added or removed.
@@ -121,7 +134,7 @@ public class ChangeMasterConfig extends AbstractTaskBase {
       }
       response =
           client.changeMasterConfig(
-              ipToUse, node.masterRpcPort, isAddMasterOp, taskParams().useHostPort);
+              ipForPlatform, node.masterRpcPort, isAddMasterOp, taskParams().useHostPort, ipToUse);
     } catch (Exception e) {
       String msg =
           "Error "
