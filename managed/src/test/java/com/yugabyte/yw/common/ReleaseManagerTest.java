@@ -19,9 +19,12 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
+import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata.Package;
 import java.io.File;
 import java.io.IOException;
 import java.lang.Object;
@@ -79,6 +82,24 @@ public class ReleaseManagerTest extends FakeDBApplication {
       boolean hasEnterpriseStr,
       boolean withHelmChart,
       boolean withAarch) {
+    createDummyReleases(
+        versions,
+        multipleRepos,
+        inDockerPath,
+        hasEnterpriseStr,
+        withHelmChart,
+        withAarch,
+        "centos");
+  }
+
+  private void createDummyReleases(
+      List<String> versions,
+      boolean multipleRepos,
+      boolean inDockerPath,
+      boolean hasEnterpriseStr,
+      boolean withHelmChart,
+      boolean withAarch,
+      String os) {
     versions.forEach(
         (version) -> {
           String versionPath = String.format("%s/%s", TMP_STORAGE_PATH, version);
@@ -88,10 +109,12 @@ public class ReleaseManagerTest extends FakeDBApplication {
           }
           String eeStr = hasEnterpriseStr ? "ee-" : "";
           createTempFile(
-              versionPath, "yugabyte-" + eeStr + version + "-centos-x86_64.tar.gz", "Sample data");
+              versionPath,
+              "yugabyte-" + eeStr + version + "-" + os + "-x86_64.tar.gz",
+              "Sample data");
           if (multipleRepos) {
             createTempFile(
-                versionPath, "devops.xyz." + version + "-centos-x86_64.tar.gz", "Sample data");
+                versionPath, "devops.xyz." + version + "-" + os + "-x86_64.tar.gz", "Sample data");
           }
           if (withHelmChart) {
             createTempFile(
@@ -100,7 +123,7 @@ public class ReleaseManagerTest extends FakeDBApplication {
           if (withAarch) {
             createTempFile(
                 versionPath,
-                "yugabyte-" + eeStr + version + "-centos-aarch64.tar.gz",
+                "yugabyte-" + eeStr + version + "-" + os + "-aarch64.tar.gz",
                 "Sample data");
           }
         });
@@ -217,6 +240,10 @@ public class ReleaseManagerTest extends FakeDBApplication {
           assertEquals(expectedRelease.filePath, actualRelease.filePath);
           assertEquals(expectedRelease.chartPath, actualRelease.chartPath);
           assertEquals(expectedRelease.packages.size(), actualRelease.packages.size());
+          for (int i = 0; i < expectedRelease.packages.size(); i++) {
+            assertEquals(expectedRelease.packages.get(i).path, actualRelease.packages.get(i).path);
+            assertEquals(expectedRelease.packages.get(i).arch, actualRelease.packages.get(i).arch);
+          }
         });
   }
 
@@ -362,6 +389,35 @@ public class ReleaseManagerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testLoadReleasesWithAlmaPath() {
+    when(appConfig.getString("yb.releases.path")).thenReturn(TMP_STORAGE_PATH);
+    List<String> versions = ImmutableList.of("0.0.2-b2");
+    createDummyReleases(versions, false, false, false, true, true, "almalinux8");
+    releaseManager.importLocalReleases();
+    ArgumentCaptor<ConfigHelper.ConfigType> configType;
+    ArgumentCaptor<HashMap> releaseMap;
+    configType = ArgumentCaptor.forClass(ConfigHelper.ConfigType.class);
+    releaseMap = ArgumentCaptor.forClass(HashMap.class);
+    Mockito.verify(configHelper, times(1))
+        .loadConfigToDB(configType.capture(), releaseMap.capture());
+    Map expectedMap =
+        ImmutableMap.of(
+            "0.0.2-b2",
+            ReleaseManager.ReleaseMetadata.create("0.0.2-b2")
+                .withFilePath(
+                    TMP_STORAGE_PATH + "/0.0.2-b2/yugabyte-0.0.2-b2-almalinux8-x86_64.tar.gz")
+                .withChartPath(TMP_STORAGE_PATH + "/0.0.2-b2/yugabyte-0.0.2-b2-helm.tar.gz")
+                .withPackage(
+                    TMP_STORAGE_PATH + "/0.0.2-b2/yugabyte-0.0.2-b2-almalinux8-x86_64.tar.gz",
+                    Architecture.x86_64)
+                .withPackage(
+                    TMP_STORAGE_PATH + "/0.0.2-b2/yugabyte-0.0.2-b2-almalinux8-aarch64.tar.gz",
+                    Architecture.arm64));
+    assertReleases(expectedMap, releaseMap.getValue());
+    assertEquals(SoftwareReleases, configType.getValue());
+  }
+
+  @Test
   public void testLoadReleasesWithInvalidDockerPath() {
     try {
       releaseManager.importLocalReleases();
@@ -451,5 +507,106 @@ public class ReleaseManagerTest extends FakeDBApplication {
     } catch (RuntimeException re) {
       assertEquals("Release already exists for version [0.0.1]", re.getMessage());
     }
+  }
+
+  @Test
+  public void testUpdateCurrentReleasesFromRaw() {
+    Map<String, Object> myMap =
+        new HashMap<String, Object>() {
+          {
+            put("0.0.1", "/path/to/yugabyte-0.0.1.tar.gz");
+            put("0.0.2", "/path/to/yugabyte-0.0.2-centos-aarch64.tar.gz");
+          }
+        };
+    when(configHelper.getConfig(SoftwareReleases)).thenReturn(myMap);
+    releaseManager.updateCurrentReleases();
+    ArgumentCaptor<ConfigHelper.ConfigType> configType;
+    ArgumentCaptor<HashMap> releaseMap;
+    configType = ArgumentCaptor.forClass(ConfigHelper.ConfigType.class);
+    releaseMap = ArgumentCaptor.forClass(HashMap.class);
+    Mockito.verify(configHelper, times(1))
+        .loadConfigToDB(configType.capture(), releaseMap.capture());
+    Map expectedMap =
+        ImmutableMap.of(
+            "0.0.1",
+            ReleaseManager.ReleaseMetadata.create("0.0.1")
+                .withFilePath("/path/to/yugabyte-0.0.1.tar.gz")
+                .withChartPath(""),
+            "0.0.2",
+            ReleaseManager.ReleaseMetadata.create("0.0.2")
+                .withFilePath("/path/to/yugabyte-0.0.2-centos-aarch64.tar.gz")
+                .withChartPath("")
+                .withPackage("/path/to/yugabyte-0.0.2-centos-aarch64.tar.gz", Architecture.arm64));
+    assertReleases(expectedMap, releaseMap.getValue());
+  }
+
+  @Test
+  public void testUpdateCurrentReleasesFromCreate() {
+    ReleaseMetadata metadata = ReleaseManager.ReleaseMetadata.create("0.0.1");
+    when(configHelper.getConfig(SoftwareReleases)).thenReturn(ImmutableMap.of("0.0.1", metadata));
+    releaseManager.updateCurrentReleases();
+    ArgumentCaptor<ConfigHelper.ConfigType> configType;
+    ArgumentCaptor<HashMap> releaseMap;
+    configType = ArgumentCaptor.forClass(ConfigHelper.ConfigType.class);
+    releaseMap = ArgumentCaptor.forClass(HashMap.class);
+    Mockito.verify(configHelper, times(1))
+        .loadConfigToDB(configType.capture(), releaseMap.capture());
+    Map expectedMap = ImmutableMap.of("0.0.1", ReleaseManager.ReleaseMetadata.create("0.0.1"));
+    assertReleases(expectedMap, releaseMap.getValue());
+  }
+
+  @Test
+  public void testUpdateCurrentReleasesFromLegacy() {
+    ReleaseMetadata metadata =
+        ReleaseManager.ReleaseMetadata.fromLegacy("0.0.1", "/path/to/yugabyte-0.0.1.tar.gz");
+    ReleaseMetadata metadataPackage =
+        ReleaseManager.ReleaseMetadata.fromLegacy(
+            "0.0.2", "/path/to/yugabyte-0.0.1-centos-x86_64.tar.gz");
+    when(configHelper.getConfig(SoftwareReleases))
+        .thenReturn(ImmutableMap.of("0.0.1", metadata, "0.0.2", metadataPackage));
+    releaseManager.updateCurrentReleases();
+    ArgumentCaptor<ConfigHelper.ConfigType> configType;
+    ArgumentCaptor<HashMap> releaseMap;
+    configType = ArgumentCaptor.forClass(ConfigHelper.ConfigType.class);
+    releaseMap = ArgumentCaptor.forClass(HashMap.class);
+    Mockito.verify(configHelper, times(1))
+        .loadConfigToDB(configType.capture(), releaseMap.capture());
+    Map expectedMap =
+        ImmutableMap.of(
+            "0.0.1",
+            ReleaseManager.ReleaseMetadata.create("0.0.1")
+                .withFilePath("/path/to/yugabyte-0.0.1.tar.gz")
+                .withChartPath(""),
+            "0.0.2",
+            ReleaseManager.ReleaseMetadata.create("0.0.2")
+                .withFilePath("/path/to/yugabyte-0.0.1-centos-x86_64.tar.gz")
+                .withChartPath("")
+                .withPackage("/path/to/yugabyte-0.0.1-centos-x86_64.tar.gz", Architecture.x86_64));
+    assertReleases(expectedMap, releaseMap.getValue());
+  }
+
+  @Test
+  public void testUpdateCurrentReleasesFromPackage() {
+    Map expectedMap =
+        ImmutableMap.of(
+            "0.0.4-b4",
+            ReleaseManager.ReleaseMetadata.create("0.0.4-b4")
+                .withFilePath(TMP_STORAGE_PATH + "/0.0.4-b4/yugabyte-0.0.4-b4-centos-x86_64.tar.gz")
+                .withChartPath(TMP_STORAGE_PATH + "/0.0.4-b4/yugabyte-0.0.4-b4-helm.tar.gz")
+                .withPackage(
+                    TMP_STORAGE_PATH + "/0.0.4-b4/yugabyte-0.0.4-b4-centos-x86_64.tar.gz",
+                    Architecture.x86_64)
+                .withPackage(
+                    TMP_STORAGE_PATH + "/0.0.4-b4/yugabyte-0.0.4-b4-centos-aarch64.tar.gz",
+                    Architecture.arm64));
+    when(configHelper.getConfig(SoftwareReleases)).thenReturn(expectedMap);
+    releaseManager.updateCurrentReleases();
+    ArgumentCaptor<ConfigHelper.ConfigType> configType;
+    ArgumentCaptor<HashMap> releaseMap;
+    configType = ArgumentCaptor.forClass(ConfigHelper.ConfigType.class);
+    releaseMap = ArgumentCaptor.forClass(HashMap.class);
+    Mockito.verify(configHelper, times(1))
+        .loadConfigToDB(configType.capture(), releaseMap.capture());
+    assertReleases(expectedMap, releaseMap.getValue());
   }
 }
