@@ -19,7 +19,8 @@ showAsideToc: true
 
 #### New features
 
-- Ability to schedule the maintenance window for upcoming maintenance and database upgrades. The maintenance window is a weekly four-hour time slot during which Yugabyte may maintain or upgrade clusters. Yugabyte does not maintain or upgrade clusters outside the scheduled maintenance window. You can also specify exclusion periods. Manage maintenance windows on the cluster **Maintenance** tab.
+- Self-guided quickstart incorporated in Cloud Shell. Launch Cloud Shell using the YSQL API to begin a self-guided tutorial exploring distributed SQL.
+- Ability to schedule the maintenance window and exclusion periods for upcoming maintenance and database upgrades. The maintenance window is a weekly four-hour time slot during which Yugabyte may maintain or upgrade clusters. Yugabyte does not maintain or upgrade clusters outside the scheduled maintenance window, or during exclusion periods. Manage maintenance windows on the cluster **Maintenance** tab.
 - Ability to manually pause and resume clusters. To pause a cluster, select the cluster, click **More Links**, and choose **Pause Cluster**. Yugabyte suspends instance vCPU capacity charges for paused clusters; disk and backup storage are charged at the standard rate.
 
 ### February 3, 2021
@@ -27,7 +28,7 @@ showAsideToc: true
 #### New features
 
 - Ability to select the [version](../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) of YugabyteDB to install on a cluster when [creating standard clusters](../cloud-basics/create-clusters/).
-- Automated notifications of upcoming database upgrades. The notification email includes the date and time of the upgrade window. An Upcoming Upgrade badge is also displayed on the cluster. You can start the upgrade any time by signing in to Yugabyte Cloud, selecting the cluster, clicking the **Upcoming Upgrade** badge, and clicking **Upgrade Now**. To change the upgrade window, contact {{<support-cloud>}}.
+- Automated notifications of upcoming database maintenance. The notification email includes the date and time of the maintenance window. An Upcoming Maintenance badge is also displayed on the cluster. Start an upgrade any time by signing in to Yugabyte Cloud, selecting the cluster, clicking the **Upcoming Maintenance** badge, and clicking **Upgrade Now**.
 
 #### Infrastructure
 
@@ -74,7 +75,7 @@ showAsideToc: true
 
 #### New features
 
-- Support for auditing cloud activity using the new **Activity** tab on the **Admin** page. The tab provides a running audit of activity on your cloud, including:
+- Support for auditing cloud activity using the new **Activity** tab on the **Admin** page. The tab provides a running audit of cloud activity, including:
 
   - backups
   - cluster creation and modification
@@ -169,4 +170,4 @@ The following **AWS regions** are available:
 - If Cloud Shell stops responding, close the browser tab and restart Cloud Shell.
 - Cloud Shell is unavailable for clusters in a VPC.
 - Cloud Shell is unavailable during any edit and backup/restore operations. Wait until the operations are complete before you launch the shell.
-- Your browser may disconnect your Cloud Shell session after several minutes when you switch to a different tab.
+- The browser may prematurely disconnect a Cloud Shell session after switching to a different tab.
