@@ -37,7 +37,7 @@ shutilwhich==1.1.0
 six==1.16.0
 sys-detection==1.1.1
 toml==0.10.2
-typed-ast==1.5.1
+typed-ast==1.4.3
 typing-extensions==3.10.0.2
 typing-utils==0.1.0
 urllib3==1.26.7

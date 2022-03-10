@@ -172,14 +172,15 @@ static void YBCBindTupleId(YBCPgStatement pg_stmt, Datum tuple_id) {
  */
 static void YBCExecWriteStmt(YBCPgStatement ybc_stmt,
 							 Relation rel,
-							 int *rows_affected_count)
+							 int *rows_affected_count,
+							 bool use_async_flush)
 {
 	HandleYBStatus(YBCPgSetCatalogCacheVersion(ybc_stmt, yb_catalog_cache_version));
 
 	bool is_syscatalog_version_inc = YbMarkStatementIfCatalogVersionIncrement(ybc_stmt, rel);
 
 	/* Execute the insert. */
-	HandleYBStatus(YBCPgDmlExecWriteOp(ybc_stmt, rows_affected_count));
+	HandleYBStatus(YBCPgDmlExecWriteOp(ybc_stmt, rows_affected_count, use_async_flush));
 
 	/*
 	 * Optimization to increment the catalog version for the local cache as
@@ -205,7 +206,8 @@ static Oid YBCExecuteInsertInternal(Oid dboid,
                                     Relation rel,
                                     TupleDesc tupleDesc,
                                     HeapTuple tuple,
-                                    bool is_single_row_txn)
+                                    bool is_single_row_txn,
+                                    bool use_async_flush)
 {
 	Oid            relid    = RelationGetRelid(rel);
 	AttrNumber     minattr  = YBGetFirstLowInvalidAttributeNumber(rel);
@@ -285,7 +287,7 @@ static Oid YBCExecuteInsertInternal(Oid dboid,
 	}
 
 	/* Execute the insert */
-	YBCExecWriteStmt(insert_stmt, rel, NULL /* rows_affected_count */);
+	YBCExecWriteStmt(insert_stmt, rel, NULL /* rows_affected_count */, use_async_flush);
 
 	/* Cleanup. */
 	YBCPgDeleteStatement(insert_stmt);
@@ -298,25 +300,29 @@ static Oid YBCExecuteInsertInternal(Oid dboid,
 
 Oid YBCExecuteInsert(Relation rel,
                      TupleDesc tupleDesc,
-                     HeapTuple tuple)
+                     HeapTuple tuple,
+					           bool use_async_flush)
 {
 	return YBCExecuteInsertForDb(YBCGetDatabaseOid(rel),
 	                             rel,
 	                             tupleDesc,
-	                             tuple);
+	                             tuple,
+								               use_async_flush);
 }
 
 Oid YBCExecuteInsertForDb(Oid dboid,
                           Relation rel,
                           TupleDesc tupleDesc,
-                          HeapTuple tuple)
+                          HeapTuple tuple,
+						              bool use_async_flush)
 {
 	bool non_transactional = !IsSystemRelation(rel) && yb_disable_transactional_writes;
 	return YBCExecuteInsertInternal(dboid,
 	                                rel,
 	                                tupleDesc,
 	                                tuple,
-	                                non_transactional);
+	                                non_transactional,
+									                use_async_flush);
 }
 
 Oid YBCExecuteNonTxnInsert(Relation rel,
@@ -338,7 +344,8 @@ Oid YBCExecuteNonTxnInsertForDb(Oid dboid,
 	                                rel,
 	                                tupleDesc,
 	                                tuple,
-	                                true /* is_single_row_txn */);
+	                                true /* is_single_row_txn */,
+									                false /* use_async_flush */);
 }
 
 Oid YBCHeapInsert(TupleTableSlot *slot,
@@ -379,7 +386,8 @@ Oid YBCHeapInsertForDb(Oid dboid,
 		return YBCExecuteInsertForDb(dboid,
 		                             resultRelationDesc,
 		                             slot->tts_tupleDescriptor,
-		                             tuple);
+		                             tuple,
+									               false /* use_async_flush */);
 	}
 }
 
@@ -509,7 +517,8 @@ void YBCExecuteInsertIndexForDb(Oid dboid,
 	/* Execute the insert and clean up. */
 	YBCExecWriteStmt(insert_stmt,
 					 index,
-					 NULL /* rows_affected_count */);
+					 NULL /* rows_affected_count */,
+					 false /* use_async_flush */);
 
 	/* Cleanup. */
 	YBCPgDeleteStatement(insert_stmt);
@@ -582,7 +591,7 @@ bool YBCExecuteDelete(Relation rel, TupleTableSlot *slot, EState *estate,
 		 * a row across partitions, pass &rows_affected_count even if this
 		 * is not a single row transaction.
 		 */
-		YBCExecWriteStmt(delete_stmt, rel, &rows_affected_count);
+		YBCExecWriteStmt(delete_stmt, rel, &rows_affected_count, false /* use_async_flush */);
 		/* Cleanup. */
 		YBCPgDeleteStatement(delete_stmt);
 		return rows_affected_count > 0;
@@ -606,7 +615,8 @@ bool YBCExecuteDelete(Relation rel, TupleTableSlot *slot, EState *estate,
 
 	YBCExecWriteStmt(delete_stmt,
 					 rel,
-					 isSingleRow ? &rows_affected_count : NULL);
+					 isSingleRow ? &rows_affected_count : NULL,
+					 false /* use_async_flush */);
 
 	/*
 	 * Fetch values of the columns required to evaluate returning clause
@@ -700,7 +710,10 @@ void YBCExecuteDeleteIndex(Relation index,
 		HandleYBStatus(YBCPgDeleteStmtSetIsPersistNeeded(delete_stmt,
 														 true));
 
-	YBCExecWriteStmt(delete_stmt, index, NULL /* rows_affected_count */);
+	YBCExecWriteStmt(delete_stmt,
+					 index,
+					 NULL /* rows_affected_count */,
+					 false /* use_async_flush */);
 	YBCPgDeleteStatement(delete_stmt);
 }
 
@@ -865,7 +878,8 @@ bool YBCExecuteUpdate(Relation rel,
 	/* If update batching is allowed, then ignore rows_affected_count. */
 	YBCExecWriteStmt(update_stmt,
 					 rel,
-					 can_batch_update ? NULL : &rows_affected_count);
+					 can_batch_update ? NULL : &rows_affected_count,
+					 false /* use_async_flush */);
 
 	/*
 	 * Fetch values of the columns required to evaluate returning clause
@@ -947,7 +961,10 @@ Oid YBCExecuteUpdateReplace(Relation rel,
 
 	YBCExecuteDelete(rel, slot, estate, mtstate, false /* changingPart */);
 
-	Oid tupleoid = YBCExecuteInsert(rel, RelationGetDescr(rel), tuple);
+	Oid tupleoid = YBCExecuteInsert(rel,
+									RelationGetDescr(rel),
+									tuple,
+									false /* use_async_flush */);
 
 	return tupleoid;
 }
@@ -986,7 +1003,10 @@ void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple)
 	MarkCurrentCommandUsed();
 	CacheInvalidateHeapTuple(rel, tuple, NULL);
 
-	YBCExecWriteStmt(delete_stmt, rel, NULL /* rows_affected_count */);
+	YBCExecWriteStmt(delete_stmt,
+					 rel,
+					 NULL /* rows_affected_count */,
+					 false /* use_async_flush */);
 
 	/* Cleanup. */
 	YBCPgDeleteStatement(delete_stmt);
@@ -1054,7 +1074,10 @@ void YBCUpdateSysCatalogTupleForDb(Oid dboid, Relation rel, HeapTuple oldtuple, 
 		CacheInvalidateHeapTuple(rel, tuple, NULL);
 
 	/* Execute the statement and clean up */
-	YBCExecWriteStmt(update_stmt, rel, NULL /* rows_affected_count */);
+	YBCExecWriteStmt(update_stmt,
+					 rel,
+					 NULL /* rows_affected_count */,
+					 false /* use_async_flush */);
 
 	/* Cleanup. */
 	YBCPgDeleteStatement(update_stmt);;

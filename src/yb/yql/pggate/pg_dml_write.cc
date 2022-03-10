@@ -108,7 +108,7 @@ Status PgDmlWrite::DeleteEmptyPrimaryBinds() {
   return Status::OK();
 }
 
-Status PgDmlWrite::Exec(bool force_non_bufferable) {
+Status PgDmlWrite::Exec(bool force_non_bufferable, bool use_async_flush) {
 
   // Delete allocated binds that are not associated with a value.
   // YBClient interface enforce us to allocate binds for primary key columns in their indexing
@@ -136,7 +136,8 @@ Status PgDmlWrite::Exec(bool force_non_bufferable) {
 
   // Execute the statement. If the request has been sent, get the result and handle any rows
   // returned.
-  if (VERIFY_RESULT(doc_op_->Execute(force_non_bufferable)) == RequestSent::kTrue) {
+  if (VERIFY_RESULT(
+    doc_op_->Execute(force_non_bufferable, use_async_flush)) == RequestSent::kTrue) {
     RETURN_NOT_OK(doc_op_->GetResult(&rowsets_));
 
     // Save the number of rows affected by the op.

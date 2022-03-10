@@ -658,8 +658,10 @@ YBCStatus YBCPgFlushBufferedOperations() {
   return ToYBCStatus(pgapi->FlushBufferedOperations());
 }
 
-YBCStatus YBCPgDmlExecWriteOp(YBCPgStatement handle, int32_t *rows_affected_count) {
-  return ToYBCStatus(pgapi->DmlExecWriteOp(handle, rows_affected_count));
+YBCStatus YBCPgDmlExecWriteOp(YBCPgStatement handle,
+                              int32_t *rows_affected_count,
+                              bool use_async_flush) {
+  return ToYBCStatus(pgapi->DmlExecWriteOp(handle, rows_affected_count, use_async_flush));
 }
 
 YBCStatus YBCPgBuildYBTupleId(const YBCPgYBTupleIdDescriptor *source, uint64_t *ybctid) {
