@@ -182,17 +182,17 @@ TEST_F(DecimalTest, TestDoubleConversions) {
 
   EXPECT_OK(decimal.FromDouble(std::numeric_limits<double>::epsilon()));
   EXPECT_OK(dbl = decimal.ToDouble());
-  EXPECT_EQ(std::numeric_limits<double>::epsilon(), *dbl);
+  EXPECT_EQ(std::numeric_limits<double>::epsilon(), static_cast<double>(*dbl));
   EXPECT_EQ("2.2204460492503130808e-16", decimal.ToString());
 
   EXPECT_OK(decimal.FromDouble(std::numeric_limits<double>::lowest()));
   EXPECT_OK(dbl = decimal.ToDouble());
-  EXPECT_EQ(std::numeric_limits<double>::lowest(), *dbl);
+  EXPECT_EQ(std::numeric_limits<double>::lowest(), static_cast<double>(*dbl));
   EXPECT_EQ("-1.7976931348623157081e+308", decimal.ToString());
 
   EXPECT_OK(decimal.FromDouble(std::numeric_limits<double>::max()));
   EXPECT_OK(dbl = decimal.ToDouble());
-  EXPECT_EQ(std::numeric_limits<double>::max(), *dbl);
+  EXPECT_EQ(std::numeric_limits<double>::max(), static_cast<double>(*dbl));
   EXPECT_EQ("1.7976931348623157081e+308", decimal.ToString());
 
   // Can convert from denorm values.
