@@ -1,13 +1,13 @@
 ---
-title: Unique Indexes
-linkTitle: Unique Indexes
-description: Using Unique Indexes in YCQL
+title: Unique indexes
+linkTitle: Unique indexes
+description: Using Unique indexes in YCQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   stable:
     identifier: unique-index-ycql
     parent: explore-indexes-constraints
-    weight: 211
+    weight: 231
 isTocNested: true
 showAsideToc: true
 ---
