@@ -63,10 +63,10 @@ If you have an _Active_ peering connection but are unable to connect to a cluste
 
 ## Add the peered application VPC to your cluster IP allow list
 
-Once the VPC and the peering connection are active, you need to add at least one of the CIDR blocks associated with the peered application VPC to the [IP allow list](../../../cloud-secure-clusters/add-connections/) for your cluster.
+After the VPC and the peering connection are active, you need to add at least one of the CIDR blocks associated with the peered application VPC to the [IP allow list](../../../cloud-secure-clusters/add-connections/) for your cluster.
 
 1. On the **Clusters** page, select your cluster.
-1. Click **Quick Links** and **Edit IP Allow List**.
+1. Click **More Links** and **Edit IP Allow List**.
 1. Click **Create New List and Add to Cluster**.
 1. Enter a name for the allow list.
 1. Enter the IP addresses or CIDR.
