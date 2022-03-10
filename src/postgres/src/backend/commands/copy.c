@@ -55,7 +55,7 @@
 #include "pg_yb_utils.h"
 #include "executor/ybcModifyTable.h"
 
-
+bool yb_use_async_flush = true;
 
 #define ISOCTAL(c) (((c) >= '0') && ((c) <= '7'))
 #define OCTVALUE(c) ((c) - '0')
@@ -3005,7 +3005,10 @@ CopyFrom(CopyState cstate)
 							}
 							else
 							{
-								YBCExecuteInsert(resultRelInfo->ri_RelationDesc, tupDesc, tuple);
+								YBCExecuteInsert(resultRelInfo->ri_RelationDesc,
+												 tupDesc,
+												 tuple,
+												 yb_use_async_flush);
 							}
 						}
 						else if (resultRelInfo->ri_FdwRoutine != NULL)
