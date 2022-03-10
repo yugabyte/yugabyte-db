@@ -102,6 +102,8 @@ public enum TaskType {
 
   CreateKMSConfig("CreateKMSConfig"),
 
+  EditKMSConfig("EditKMSConfig"),
+
   DeleteKMSConfig("DeleteKMSConfig"),
 
   UpdateDiskSize("UpdateDiskSize"),

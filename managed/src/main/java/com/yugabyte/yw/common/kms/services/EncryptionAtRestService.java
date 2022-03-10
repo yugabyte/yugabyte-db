@@ -120,6 +120,12 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
     if (keyVal == null) {
       LOG.debug("Universe key cache entry empty. Retrieving key from service");
       keyVal = retrieveKeyWithService(universeUUID, configUUID, keyRef, config);
+      // Update the cache entry
+      if (keyVal != null) {
+        EncryptionAtRestUtil.setUniverseKeyCacheEntry(universeUUID, keyRef, keyVal);
+      } else {
+        LOG.warn("Could not retrieve key from key ref for universe " + universeUUID.toString());
+      }
     }
     return keyVal;
   }
@@ -140,6 +146,29 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
     }
 
     return key;
+  }
+
+  protected abstract byte[] validateRetrieveKeyWithService(
+      UUID universeUUID,
+      UUID configUUID,
+      byte[] keyRef,
+      EncryptionAtRestConfig config,
+      ObjectNode authConfig);
+
+  public byte[] validateConfigForUpdate(
+      UUID universeUUID,
+      UUID configUUID,
+      byte[] keyRef,
+      EncryptionAtRestConfig config,
+      ObjectNode authConfig) {
+    if (keyRef == null) {
+      String errMsg =
+          String.format(
+              "Retrieve key could not find a key ref for universe %s...", universeUUID.toString());
+      LOG.warn(errMsg);
+      return null;
+    }
+    return validateRetrieveKeyWithService(universeUUID, configUUID, keyRef, config, authConfig);
   }
 
   protected void cleanupWithService(UUID universeUUID, UUID configUUID) {}
@@ -197,6 +226,23 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
       result = null;
     }
 
+    return result;
+  }
+
+  public KmsConfig updateAuthConfig(UUID customerUUID, UUID configUUID, ObjectNode config) {
+    ObjectNode maskedConfig =
+        EncryptionAtRestUtil.maskConfigData(customerUUID, config, this.keyProvider);
+    KmsConfig result = KmsConfig.get(configUUID);
+    KmsConfig.updateKMSConfig(configUUID, maskedConfig);
+    ObjectNode existingConfig = getAuthConfig(configUUID);
+    ObjectNode updatedConfig = createAuthConfigWithService(configUUID, existingConfig);
+    if (updatedConfig != null) {
+      ObjectNode updatedMaskedConfig =
+          EncryptionAtRestUtil.maskConfigData(customerUUID, updatedConfig, this.keyProvider);
+      result = KmsConfig.updateKMSConfig(configUUID, updatedMaskedConfig);
+    } else {
+      return null;
+    }
     return result;
   }
 

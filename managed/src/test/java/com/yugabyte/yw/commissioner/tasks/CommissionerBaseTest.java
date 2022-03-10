@@ -30,6 +30,7 @@ import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Customer;
@@ -74,6 +75,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected AlertDefinitionService alertDefinitionService;
   protected AlertConfigurationService alertConfigurationService;
   protected NodeUniverseManager mockNodeUniverseManager;
+  protected EncryptionAtRestManager mockEARManager;
 
   @Mock protected BaseTaskDependencies mockBaseTaskDependencies;
 
@@ -131,6 +133,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     mockSessionStore = mock(PlayCacheSessionStore.class);
     mockApiHelper = mock(ApiHelper.class);
     mockNodeUniverseManager = mock(NodeUniverseManager.class);
+    mockEARManager = mock(EncryptionAtRestManager.class);
 
     return configureApplication(
             new GuiceApplicationBuilder()
@@ -154,6 +157,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
                 .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
                 .overrides(bind(NodeUniverseManager.class).toInstance(mockNodeUniverseManager))
+                .overrides(bind(EncryptionAtRestManager.class).toInstance(mockEARManager))
                 .overrides(bind(BaseTaskDependencies.class).toInstance(mockBaseTaskDependencies)))
         .build();
   }

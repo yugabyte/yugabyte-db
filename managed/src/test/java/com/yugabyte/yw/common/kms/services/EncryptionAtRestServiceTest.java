@@ -14,6 +14,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
@@ -80,6 +81,17 @@ class TestEncryptionAtRestService extends EncryptionAtRestService<TestAlgorithm>
   @Override
   public byte[] retrieveKeyWithService(
       UUID universeUUID, UUID configUUID, byte[] keyRef, EncryptionAtRestConfig config) {
+    this.createRequest = !this.createRequest;
+    return this.createRequest ? null : "some_key_value".getBytes();
+  }
+
+  @Override
+  public byte[] validateRetrieveKeyWithService(
+      UUID universeUUID,
+      UUID configUUID,
+      byte[] keyRef,
+      EncryptionAtRestConfig config,
+      ObjectNode authConig) {
     this.createRequest = !this.createRequest;
     return this.createRequest ? null : "some_key_value".getBytes();
   }

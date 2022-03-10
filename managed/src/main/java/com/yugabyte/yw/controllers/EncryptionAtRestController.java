@@ -71,9 +71,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
 
   @Inject CloudAPI.Factory cloudAPIFactory;
 
-  private void validateKMSProviderConfigFormData(
-      ObjectNode formData, String keyProvider, UUID customerUUID) {
-    // Check if kmsConfig is already present with requested name
+  private void checkIfKMSConfigExists(UUID customerUUID, ObjectNode formData) {
     String kmsConfigName = formData.get("name").asText();
     if (KmsConfig.listKMSConfigs(customerUUID)
         .stream()
@@ -81,19 +79,17 @@ public class EncryptionAtRestController extends AuthenticatedController {
       throw new PlatformServiceException(
           BAD_REQUEST, String.format("Kms config with %s name already exists", kmsConfigName));
     }
+  }
 
-    if (keyProvider.toUpperCase().equals(KeyProvider.AWS.toString())
-        && (formData.get(AWS_ACCESS_KEY_ID_FIELDNAME) != null
-            || formData.get(AWS_SECRET_ACCESS_KEY_FIELDNAME) != null)) {
+  private void validateKMSProviderConfigFormData(
+      ObjectNode formData, String keyProvider, UUID customerUUID) {
+    if (keyProvider.toUpperCase().equals(KeyProvider.AWS.toString())) {
       CloudAPI cloudAPI = cloudAPIFactory.get(KeyProvider.AWS.toString().toLowerCase());
-      Map<String, String> config = new HashMap<>();
-      config.put(
-          AWS_ACCESS_KEY_ID_FIELDNAME, formData.get(AWS_ACCESS_KEY_ID_FIELDNAME).textValue());
-      config.put(
-          AWS_SECRET_ACCESS_KEY_FIELDNAME,
-          formData.get(AWS_SECRET_ACCESS_KEY_FIELDNAME).textValue());
-      if (cloudAPI != null
-          && !cloudAPI.isValidCreds(config, formData.get(AWS_REGION_FIELDNAME).textValue())) {
+      if (cloudAPI == null) {
+        throw new PlatformServiceException(
+            SERVICE_UNAVAILABLE, "Cloud not create CloudAPI to validate the credentials");
+      }
+      if (!cloudAPI.isValidCredsKms(formData, customerUUID)) {
         throw new PlatformServiceException(BAD_REQUEST, "Invalid AWS Credentials.");
       }
     }
@@ -112,6 +108,29 @@ public class EncryptionAtRestController extends AuthenticatedController {
         }
       }
     }
+  }
+
+  private void checkEditableFields(ObjectNode formData, KeyProvider keyProvider, UUID configUUID) {
+    KmsConfig config = KmsConfig.get(configUUID);
+    ObjectNode authconfig = EncryptionAtRestUtil.getAuthConfig(configUUID, keyProvider);
+    if (formData.get("name") != null && !config.name.equals(formData.get("name").asText())) {
+      throw new PlatformServiceException(BAD_REQUEST, "KmsConfig name cannot be changed.");
+    }
+    if (keyProvider.equals(KeyProvider.AWS)) {
+      if (formData.get(AWS_REGION_FIELDNAME) != null
+          && !authconfig.get(AWS_REGION_FIELDNAME).equals(formData.get(AWS_REGION_FIELDNAME))) {
+        throw new PlatformServiceException(BAD_REQUEST, "KmsConfig region cannot be changed.");
+      }
+    }
+  }
+
+  private ObjectNode addNonEditableFieldsData(
+      ObjectNode formData, UUID configUUID, KeyProvider keyProvider) {
+    ObjectNode authconfig = EncryptionAtRestUtil.getAuthConfig(configUUID, keyProvider);
+    if (keyProvider.equals(KeyProvider.AWS)) {
+      formData.set(AWS_REGION_FIELDNAME, authconfig.get(AWS_REGION_FIELDNAME));
+    }
+    return formData;
   }
 
   @ApiOperation(value = "Create a KMS configuration", response = YBPTask.class)
@@ -134,6 +153,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
       ObjectNode formData = (ObjectNode) request().body().asJson();
       // Validating the KMS Provider config details.
       validateKMSProviderConfigFormData(formData, keyProvider, customerUUID);
+      // checks if a already KMS Config exists with the requested name
+      checkIfKMSConfigExists(customerUUID, formData);
       KMSConfigTaskParams taskParams = new KMSConfigTaskParams();
       taskParams.kmsProvider = Enum.valueOf(KeyProvider.class, keyProvider);
       taskParams.providerConfig = formData;
@@ -153,6 +174,65 @@ public class EncryptionAtRestController extends AuthenticatedController {
       LOG.info(
           "Saved task uuid " + taskUUID + " in customer tasks table for customer: " + customerUUID);
 
+      auditService().createAuditEntry(ctx(), request(), formData);
+      return new YBPTask(taskUUID).asResult();
+    } catch (Exception e) {
+      throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
+    }
+  }
+
+  @ApiOperation(value = "Edit a KMS configuration", response = YBPTask.class)
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        name = "KMS config",
+        value = "KMS config to be edited",
+        required = true,
+        dataType = "Object",
+        paramType = "body")
+  })
+  public Result editKMSConfig(UUID customerUUID, UUID configUUID) {
+    LOG.info(
+        String.format(
+            "Editing KMS configuration %s for customer %s",
+            configUUID.toString(), customerUUID.toString()));
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    KmsConfig config = KmsConfig.get(configUUID);
+    if (config == null) {
+      String errMsg =
+          "KMS config with config UUID "
+              + configUUID
+              + " does not exist for customer "
+              + customerUUID;
+      throw new PlatformServiceException(BAD_REQUEST, errMsg);
+    }
+    try {
+      TaskType taskType = TaskType.EditKMSConfig;
+      ObjectNode formData = (ObjectNode) request().body().asJson();
+      // Check for non-editable fields.
+      checkEditableFields(formData, config.keyProvider, configUUID);
+      // add non-editable fields in formData from existing config.
+      formData = addNonEditableFieldsData(formData, configUUID, config.keyProvider);
+      // Validating the KMS Provider config details.
+      validateKMSProviderConfigFormData(formData, config.keyProvider.toString(), customerUUID);
+      KMSConfigTaskParams taskParams = new KMSConfigTaskParams();
+      taskParams.configUUID = configUUID;
+      taskParams.kmsProvider = config.keyProvider;
+      taskParams.providerConfig = formData;
+      taskParams.kmsConfigName = config.name;
+      taskParams.customerUUID = customerUUID;
+      formData.remove("name");
+      UUID taskUUID = commissioner.submit(taskType, taskParams);
+      LOG.info("Submitted Edit KMS config for {}, task uuid = {}.", customerUUID, taskUUID);
+      // Add this task uuid to the user universe.
+      CustomerTask.create(
+          customer,
+          customerUUID,
+          taskUUID,
+          CustomerTask.TargetType.KMSConfiguration,
+          CustomerTask.TaskType.Update,
+          taskParams.getName());
+      LOG.info(
+          "Saved task uuid " + taskUUID + " in customer tasks table for customer: " + customerUUID);
       auditService().createAuditEntry(ctx(), request(), formData);
       return new YBPTask(taskUUID).asResult();
     } catch (Exception e) {
