@@ -103,7 +103,8 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     try {
       // WaitForTServerHeartBeats mock.
       doNothing().when(mockClient).waitForMasterLeader(anyLong());
-      when(mockClient.changeMasterConfig(anyString(), anyInt(), anyBoolean(), anyBoolean()))
+      when(mockClient.changeMasterConfig(
+              anyString(), anyInt(), anyBoolean(), anyBoolean(), anyString()))
           .thenReturn(mockChangeConfigResponse);
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(ccr);
       when(mockClient.getLoadMoveCompletion()).thenReturn(gpr);

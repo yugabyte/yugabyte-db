@@ -140,7 +140,8 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     try {
       when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockMasterChangeConfigResponse);
-      when(mockClient.changeMasterConfig(anyString(), anyInt(), anyBoolean(), anyBoolean()))
+      when(mockClient.changeMasterConfig(
+              anyString(), anyInt(), anyBoolean(), anyBoolean(), anyString()))
           .thenReturn(mockChangeConfigResponse);
       when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean()))
           .thenReturn(Boolean.TRUE);

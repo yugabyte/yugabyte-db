@@ -81,7 +81,8 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
 
     ChangeConfigResponse mockChangeConfigResponse = mock(ChangeConfigResponse.class);
     try {
-      when(mockClient.changeMasterConfig(anyString(), anyInt(), anyBoolean(), anyBoolean()))
+      when(mockClient.changeMasterConfig(
+              anyString(), anyInt(), anyBoolean(), anyBoolean(), anyString()))
           .thenReturn(mockChangeConfigResponse);
       when(mockClient.setFlag(any(HostAndPort.class), anyString(), anyString(), anyBoolean()))
           .thenReturn(true);
