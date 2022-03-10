@@ -328,6 +328,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
       reqConfig.put("foo", "bar");
       reqConfig.put("foo2", "bar2");
     }
+    providerReq.customerUUID = customer.uuid;
     providerReq.setConfig(reqConfig);
     Provider createdProvider =
         createProviderTest(providerReq, REGION_CODES_FROM_CLOUD_API, UUID.randomUUID());
@@ -476,7 +477,6 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     ObjectNode configJson = Json.newObject();
     configJson.put("HOSTED_ZONE_ID", "1234");
     bodyJson.set("config", configJson);
-
     mockDnsManagerListFailure("fail", 0);
     Result result = assertPlatformException(() -> createProvider(bodyJson));
     verify(mockDnsManager, times(1)).listDnsRecord(any(), any());
@@ -516,5 +516,19 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     shellResponse.message = "{\"wrong_key\": \"" + mockFailureMessage + "\"}";
     shellResponse.code = successCode;
     when(mockDnsManager.listDnsRecord(any(), any())).thenReturn(shellResponse);
+  }
+
+  @Test
+  public void testCreateProviderConfigEncryption() {
+    Map<String, String> testConfig = new HashMap<>();
+    testConfig.put("ACCOUNT_NAME", "John Doe");
+    testConfig.put("ACCOUNT_MAIL", "jdoe@yugabyte.com");
+    Provider testProvider = buildProviderReq("aws", "test-provider");
+    testProvider.setConfig(testConfig);
+    Provider createdProvider =
+        createProviderTest(testProvider, ImmutableList.of("region1", "region2"), UUID.randomUUID());
+    assertTrue(createdProvider.getConfig().containsKey("encrypted"));
+    Map<String, String> decryptedConfig = createdProvider.getUnmaskedConfig();
+    assertEquals(testConfig, decryptedConfig);
   }
 }

@@ -10,6 +10,7 @@ import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -19,6 +20,9 @@ import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.common.EmailFixtures;
 import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import java.util.Optional;
@@ -127,6 +131,19 @@ public class CommonUtilsTest {
     AlertChannelEmailParams unmaskedParams = CommonUtils.unmaskObject(params, maskedParams);
     assertThat(unmaskedParams, not(maskedParams));
     assertThat(unmaskedParams, equalTo(params));
+  }
+
+  @Test
+  public void testEncryptDecryptConfig() {
+    UUID uuid = UUID.randomUUID();
+    Map<String, String> config = new HashMap<>();
+    config.put("key1", "value1");
+    config.put("key2", "value2");
+    Map<String, String> encryptedConfig = CommonUtils.encryptProviderConfig(config, uuid, "aws");
+    assertTrue(encryptedConfig.containsKey("encrypted"));
+    Map<String, String> decryptedConfig =
+        CommonUtils.decryptProviderConfig(encryptedConfig, uuid, "aws");
+    assertEquals(config, decryptedConfig);
   }
 
   @Test
