@@ -40,12 +40,14 @@
 #define EDGE_HTAB_INITIAL_SIZE 1000000
 
 /* internal data structures implementation */
+
 /* vertex entry for the vertex_hastable */
 typedef struct vertex_entry
 {
     graphid vertex_id;             /* vertex id, it is also the hash key */
-    ListGraphId *edges;            /* A list of all (entering & exiting) edges'
-                                    * graphids (int64s). */
+    ListGraphId *edges_in;         /* List of entering edges graphids (int64) */
+    ListGraphId *edges_out;        /* List of exiting edges graphids (int64) */
+    ListGraphId *edges_self;       /* List of selfloop edges graphids (int64) */
     Oid vertex_label_table_oid;    /* the label table oid */
     Datum vertex_properties;       /* datum property value */
 } vertex_entry;
@@ -95,7 +97,8 @@ static List *get_ag_labels_names(Snapshot snapshot, Oid graph_oid,
 static bool insert_edge(GRAPH_global_context *ggctx, graphid edge_id,
                         Datum edge_properties, graphid start_vertex_id,
                         graphid end_vertex_id, Oid edge_label_table_oid);
-static bool insert_vertex_edge(GRAPH_global_context *ggctx, graphid vertex_id,
+static bool insert_vertex_edge(GRAPH_global_context *ggctx,
+                               graphid start_vertex_id, graphid end_vertex_id,
                                graphid edge_id);
 static bool insert_vertex_entry(GRAPH_global_context *ggctx, graphid vertex_id,
                                 Oid vertex_label_table_oid,
@@ -279,7 +282,9 @@ static bool insert_vertex_entry(GRAPH_global_context *ggctx, graphid vertex_id,
     /* set the datum vertex properties */
     ve->vertex_properties = vertex_properties;
     /* set the NIL edge list */
-    ve->edges = NULL;
+    ve->edges_in = NULL;
+    ve->edges_out = NULL;
+    ve->edges_self = NULL;
 
     /* we also need to store the vertex id for clean up of vertex lists */
     ggctx->vertices = append_graphid(ggctx->vertices, vertex_id);
@@ -294,22 +299,53 @@ static bool insert_vertex_entry(GRAPH_global_context *ggctx, graphid vertex_id,
  * Helper function to append one edge to an existing vertex in the current
  * global vertex hashtable.
  */
-static bool insert_vertex_edge(GRAPH_global_context *ggctx, graphid vertex_id,
+static bool insert_vertex_edge(GRAPH_global_context *ggctx,
+                               graphid start_vertex_id, graphid end_vertex_id,
                                graphid edge_id)
 {
     vertex_entry *value = NULL;
     bool found = false;
+    bool is_selfloop = false;
 
-    /* search for the vertex */
+    /* is it a self loop */
+    is_selfloop = (start_vertex_id == end_vertex_id);
+
+    /* search for the start vertex of the edge */
     value = (vertex_entry *)hash_search(ggctx->vertex_hashtable,
-                                        (void *)&vertex_id, HASH_FIND, &found);
+                                        (void *)&start_vertex_id, HASH_FIND,
+                                        &found);
     /* vertices were preloaded so it must be there */
     Assert(found);
+    if (!found)
+    {
+        return found;
+    }
 
-    /* add the edge to the edge list */
-    value->edges = append_graphid(value->edges, edge_id);
+    /* if it is a self loop, add the edge to edges_self and we're done */
+    if (is_selfloop)
+    {
+        value->edges_self = append_graphid(value->edges_self, edge_id);
+        return found;
+    }
 
-    return true;
+    /* add the edge to the edges_out list of the start vertex */
+    value->edges_out = append_graphid(value->edges_out, edge_id);
+
+    /* search for the end vertex of the edge */
+    value = (vertex_entry *)hash_search(ggctx->vertex_hashtable,
+                                        (void *)&end_vertex_id, HASH_FIND,
+                                        &found);
+    /* vertices were preloaded so it must be there */
+    Assert(found);
+    if (!found)
+    {
+        return found;
+    }
+
+    /* add the edge to the edges_in list of the end vertex */
+    value->edges_in = append_graphid(value->edges_in, edge_id);
+
+    return found;
 }
 
 /* helper routine to load all vertices into the GRAPH global vertex hashtable */
@@ -494,29 +530,13 @@ static void load_edge_hashtable(GRAPH_global_context *ggctx)
                  elog(ERROR, "insert_edge: failed to insert");
             }
 
-            /* insert the edge into this vertex's edge list */
+            /* insert the edge into the start and end vertices edge lists */
             inserted = insert_vertex_edge(ggctx, edge_vertex_start_id,
-                                          edge_id);
+                                          edge_vertex_end_id, edge_id);
             /* this insert must not fail */
             if (!inserted)
             {
                  elog(ERROR, "insert_vertex_edge: failed to insert");
-            }
-
-            /*
-             * Insert the edge into this vertex's edge list. UNLESS this is a
-             * self loop (start == end  vertex) because that would be adding it
-             * twice.
-             */
-            if (edge_vertex_start_id != edge_vertex_end_id)
-            {
-                inserted = insert_vertex_edge(ggctx, edge_vertex_end_id,
-                                              edge_id);
-                /* this insert much not fail */
-                if (!inserted)
-                {
-                     elog(ERROR, "insert_vertex_edge: failed to insert");
-                }
             }
         }
 
@@ -577,7 +597,9 @@ static void free_specific_GRAPH_global_context(GRAPH_global_context *ggctx)
         Assert(found);
 
         /* free the edge list associated with this vertex */
-        free_ListGraphId(value->edges);
+        free_ListGraphId(value->edges_in);
+        free_ListGraphId(value->edges_out);
+        free_ListGraphId(value->edges_self);
 
         /* move to the next vertex */
         curr_vertex = next_vertex;
@@ -780,10 +802,21 @@ graphid get_vertex_entry_id(vertex_entry *ve)
     return ve->vertex_id;
 }
 
-ListGraphId *get_vertex_entry_edges(vertex_entry *ve)
+ListGraphId *get_vertex_entry_edges_in(vertex_entry *ve)
 {
-    return ve->edges;
+    return ve->edges_in;
 }
+
+ListGraphId *get_vertex_entry_edges_out(vertex_entry *ve)
+{
+    return ve->edges_out;
+}
+
+ListGraphId *get_vertex_entry_edges_self(vertex_entry *ve)
+{
+    return ve->edges_self;
+}
+
 
 Oid get_vertex_entry_label_table_oid(vertex_entry *ve)
 {

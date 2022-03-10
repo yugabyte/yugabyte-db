@@ -48,7 +48,9 @@ vertex_entry *get_vertex_entry(GRAPH_global_context *ggctx,
 edge_entry *get_edge_entry(GRAPH_global_context *ggctx, graphid edge_id);
 /* vertex entry accessor functions*/
 graphid get_vertex_entry_id(vertex_entry *ve);
-ListGraphId *get_vertex_entry_edges(vertex_entry *ve);
+ListGraphId *get_vertex_entry_edges_in(vertex_entry *ve);
+ListGraphId *get_vertex_entry_edges_out(vertex_entry *ve);
+ListGraphId *get_vertex_entry_edges_self(vertex_entry *ve);
 Oid get_vertex_entry_label_table_oid(vertex_entry *ve);
 Datum get_vertex_entry_properties(vertex_entry *ve);
 /* edge entry accessor functions */

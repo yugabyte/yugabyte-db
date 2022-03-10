@@ -181,6 +181,7 @@
 // unique name generation
 #define UNIQUE_NAME_NULL_PREFIX "_unique_null_prefix"
 static char *create_unique_name(char *prefix_name);
+static unsigned long get_a_unique_number(void);
 
 // logical operators
 static Node *make_or_expr(Node *lexpr, Node *rexpr, int location);
@@ -1007,7 +1008,11 @@ simple_path:
                 cypher_node *cnr = NULL;
                 Node *node = NULL;
                 int length = 0;
+                unsigned long unique_number = 0;
                 int location = 0;
+
+                /* get a unique number to identify this VLE node */
+                unique_number = get_a_unique_number();
 
                 /* get the location */
                 location = cr->location;
@@ -1137,6 +1142,9 @@ simple_path:
                 }
                 /* add in the direction as Const */
                 args = lappend(args, make_int_const(cr->dir, @2));
+
+                /* add in the unique number used to identify this VLE node */
+                args = lappend(args, make_int_const(unique_number, -1));
 
                 /* build the VLE function node */
                 cr->varlen = make_function_expr(list_make1(makeString("vle")),
@@ -1473,6 +1481,22 @@ expr:
                     ereport(ERROR,
                             (errcode(ERRCODE_SYNTAX_ERROR),
                              errmsg("function already qualified"),
+                             ag_scanner_errposition(@1, scanner)));
+            }
+            /* allow a function to be used as a parent of an indirection */
+            else if (IsA($1, FuncCall) && IsA($3, ColumnRef))
+            {
+                ColumnRef *cr = (ColumnRef*)$3;
+                List *fields = cr->fields;
+                Value *string = linitial(fields);
+
+                $$ = append_indirection($1, (Node*)string);
+            }
+            else if (IsA($1, FuncCall) && IsA($3, A_Indirection))
+            {
+                ereport(ERROR,
+                            (errcode(ERRCODE_SYNTAX_ERROR),
+                             errmsg("not supported A_Indirection indirection"),
                              ag_scanner_errposition(@1, scanner)));
             }
             /*
@@ -2134,9 +2158,10 @@ static char *create_unique_name(char *prefix_name)
     char *name = NULL;
     char *prefix = NULL;
     uint nlen = 0;
+    unsigned long unique_number = 0;
 
-    /* STATIC VARIABLE unique_counter for name uniqueness */
-    static unsigned long unique_counter = 0;
+    /* get a unique number */
+    unique_number = get_a_unique_number();
 
     /* was a valid prefix supplied */
     if (prefix_name == NULL || strlen(prefix_name) <= 0)
@@ -2150,13 +2175,13 @@ static char *create_unique_name(char *prefix_name)
     }
 
     /* get the length of the combinded string */
-    nlen = snprintf(NULL, 0, "%s_%lu", prefix, unique_counter);
+    nlen = snprintf(NULL, 0, "%s_%lu", prefix, unique_number);
 
     /* allocate the space */
     name = palloc0(nlen + 1);
 
     /* create the name */
-    snprintf(name, nlen + 1, "%s_%lu", prefix, unique_counter);
+    snprintf(name, nlen + 1, "%s_%lu", prefix, unique_number);
 
     /* if we created the prefix, we need to free it */
     if (prefix_name == NULL || strlen(prefix_name) <= 0)
@@ -2164,8 +2189,14 @@ static char *create_unique_name(char *prefix_name)
         pfree(prefix);
     }
 
-    /* increment the counter */
-    unique_counter++;
-
     return name;
+}
+
+/* function to return a unique unsigned long number */
+static unsigned long get_a_unique_number(void)
+{
+    /* STATIC VARIABLE unique_counter for number uniqueness */
+    static unsigned long unique_counter = 0;
+
+    return unique_counter++;
 }

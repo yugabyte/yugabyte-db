@@ -934,9 +934,10 @@ static Node *transform_FuncCall(cypher_parsestate *cpstate, FuncCall *fn)
          * is not empty. Then prepend the graph name if necessary.
          */
         if ((list_length(targs) != 0) &&
-            ((pg_strcasecmp("startNode", name) == 0 ||
-              pg_strcasecmp("endNode", name) == 0 ||
-              pg_strcasecmp("vle", name) == 0)))
+            (strcmp("startNode", name) == 0 ||
+              strcmp("endNode", name) == 0 ||
+              strcmp("vle", name) == 0 ||
+              strcmp("vertex_stats", name) == 0))
         {
             char *graph_name = cpstate->graph_name;
             Datum d = string_to_agtype(graph_name);

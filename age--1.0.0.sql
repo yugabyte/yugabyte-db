@@ -3796,8 +3796,21 @@ STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
+-- original VLE function definition
 CREATE FUNCTION ag_catalog.age_vle(IN agtype, IN agtype, IN agtype, IN agtype,
                                    IN agtype, IN agtype, IN agtype,
+                                   OUT edges agtype)
+RETURNS SETOF agtype
+LANGUAGE C
+STABLE
+CALLED ON NULL INPUT
+PARALLEL UNSAFE -- might be safe
+AS 'MODULE_PATHNAME';
+
+-- This is an overloaded function definition to allow for the VLE local context
+-- caching mechanism to coexist with the previous VLE version.
+CREATE FUNCTION ag_catalog.age_vle(IN agtype, IN agtype, IN agtype, IN agtype,
+                                   IN agtype, IN agtype, IN agtype, IN agtype,
                                    OUT edges agtype)
 RETURNS SETOF agtype
 LANGUAGE C
@@ -3901,6 +3914,13 @@ CREATE FUNCTION ag_catalog.age_unnest(agtype, block_types boolean = false)
     RETURNS SETOF agtype
     LANGUAGE c
     STABLE
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE FUNCTION ag_catalog.age_vertex_stats(agtype, agtype)
+RETURNS agtype
+LANGUAGE c
+STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 

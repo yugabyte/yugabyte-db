@@ -75,6 +75,18 @@ GraphIdNode *peek_stack_tail(ListGraphId *stack)
     return stack->tail;
 }
 
+/* return a reference to the head entry of a list */
+GraphIdNode *get_list_head(ListGraphId *list)
+{
+    return list->head;
+}
+
+/* get the size of the passed list */
+int64 get_list_size(ListGraphId *list)
+{
+    return list->size;
+}
+
 /*
  * Helper function to add a graphid to the end of a ListGraphId container.
  * If the container is NULL, it creates the container with the entry.

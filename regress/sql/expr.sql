@@ -2284,6 +2284,18 @@ SELECT * FROM cypher('VLE', $$MATCH (u)-[*0..1]-(v) RETURN u, v$$) AS (u agtype,
 SELECT * FROM cypher('VLE', $$MATCH (u)-[*..1]-(v) RETURN u, v$$) AS (u agtype, v agtype);
 SELECT * FROM cypher('VLE', $$MATCH (u)-[*..5]-(v) RETURN u, v$$) AS (u agtype, v agtype);
 
+-- Create a graph to test
+SELECT * FROM cypher('VLE', $$CREATE (b:begin)-[:edge {name: 'main edge', number: 1, dangerous: {type: "all", level: "all"}}]->(u1:middle)-[:edge {name: 'main edge', number: 2, dangerous: {type: "all", level: "all"}, packages: [2,4,6]}]->(u2:middle)-[:edge {name: 'main edge', number: 3, dangerous: {type: "all", level: "all"}}]->(u3:middle)-[:edge {name: 'main edge', number: 4, dangerous: {type: "all", level: "all"}}]->(e:end), (u1)-[:self_loop {name: 'self loop', number: 1, dangerous: {type: "all", level: "all"}}]->(u1), (e)-[:self_loop {name: 'self loop', number: 2, dangerous: {type: "all", level: "all"}}]->(e), (b)-[:alternate_edge {name: 'alternate edge', number: 1, packages: [2,4,6], dangerous: {type: "poisons", level: "all"}}]->(u1), (u2)-[:alternate_edge {name: 'alternate edge', number: 2, packages: [2,4,6], dangerous: {type: "poisons", level: "all"}}]->(u3), (u3)-[:alternate_edge {name: 'alternate edge', number: 3, packages: [2,4,6], dangerous: {type: "poisons", level: "all"}}]->(e), (u2)-[:bypass_edge {name: 'bypass edge', number: 1, packages: [1,3,5,7]}]->(e), (e)-[:alternate_edge {name: 'backup edge', number: 1, packages: [1,3,5,7]}]->(u3), (u3)-[:alternate_edge {name: 'backup edge', number: 2, packages: [1,3,5,7]}]->(u2), (u2)-[:bypass_edge {name: 'bypass edge', number: 2, packages: [1,3,5,7], dangerous: {type: "poisons", level: "all"}}]->(b) RETURN b, e $$) AS (b agtype, e agtype);
+
+-- test vertex_stats command
+SELECT * FROM cypher('VLE', $$ MATCH (u) RETURN vertex_stats(u) $$) AS (result agtype);
+
+-- test indirection operator for a function
+SELECT * FROM cypher('VLE', $$ MATCH (u) WHERE vertex_stats(u).self_loops <> 0 RETURN vertex_stats(u) $$) AS (result agtype);
+SELECT * FROM cypher('VLE', $$ MATCH (u) WHERE vertex_stats(u).in_degree < vertex_stats(u).out_degree RETURN vertex_stats(u) $$) AS (result agtype);
+SELECT * FROM cypher('VLE', $$ MATCH (u) WHERE vertex_stats(u).out_degree < vertex_stats(u).in_degree RETURN vertex_stats(u) $$) AS (result agtype);
+
+
 -- list functions relationships(), range(), keys()
 SELECT create_graph('keys');
 -- keys()
