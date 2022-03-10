@@ -1,7 +1,7 @@
 ---
-title: Other Constraints
-linkTitle: Other Constraints
-description: Other Constraints in YSQL
+title: Other constraints
+linkTitle: Other constraints
+description: Other constraints in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   stable:
@@ -73,50 +73,6 @@ For additional examples, see:
 
 - [Table with CHECK constraint](../../../api/ysql/the-sql-language/statements/ddl_create_table/#table-with-check-constraint)
 - [Create indexes and check constraints on JSON columns](../../../api/ysql/datatypes/type_json/create-indexes-check-constraints/#check-constraints-on-jsonb-columns)
-
-## UNIQUE Constraint
-
-The `UNIQUE` constraint allows you to ensure that values stored in columns are unique across rows in a table. During inserting new rows or updating existing ones, the `UNIQUE` constraint checks if the value is already in the table, in which case the change is rejected and an error is displayed.
-
-When you add a `UNIQUE` constraint to one or more columns, YSQL automatically creates a [unique index](../indexes-1#using-a-unique-index) on these columns.
-
-The following example creates a table with a `UNIQUE` constraint for the `phone` column:
-
-```sql
-CREATE TABLE employees (
-  employee_no integer PRIMARY KEY,
-  name text,
-  department text,
-  phone integer UNIQUE
-);
-```
-
-The following example creates the same constraint for the same column of the same table, only as a table constraint:
-
-```sql
-CREATE TABLE employees (
-  employee_no integer PRIMARY KEY,
-  name text,
-  department text,
-  phone integer,
-  UNIQUE(phone)
-);
-```
-
-The following example creates a `UNIQUE` constraint on a group of columns in a new table:
-
-```sql
-CREATE TABLE employees (
-  employee_no integer PRIMARY KEY,
-  name text,
-  department text,
-  phone integer,
-  email text
-  UNIQUE(phone, email)
-);
-```
-
-For additional examples, see [Table with UNIQUE constraint](../../../api/ysql/the-sql-language/statements/ddl_create_table/#table-with-unique-constraint).
 
 ## NOT NULL Constraint
 

@@ -1,13 +1,13 @@
 ---
-title: Primary Key
-linkTitle: Primary Key
-description: Defining Primary Key Constraint in YSQL
+title: Primary key
+linkTitle: Primary key
+description: Defining Primary key constraint in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   stable:
     identifier: primary-key-ysql
     parent: explore-indexes-constraints
-    weight: 250
+    weight: 200
 isTocNested: true
 showAsideToc: true
 ---
@@ -49,7 +49,7 @@ CREATE TABLE (
 );
 ```
 
-The following example creates the `employee` table with `employee_no` as the primary key, which uniquely identifies an employee. Try the examples using the YSQL shell and
+The following example creates the `employee` table with `employee_no` as the primary key, which uniquely identifies an employee.
 
 ```sql
 CREATE TABLE employees (

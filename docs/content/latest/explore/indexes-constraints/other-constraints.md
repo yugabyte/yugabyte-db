@@ -1,7 +1,7 @@
 ---
-title: Other Constraints
-linkTitle: Other Constraints
-description: Other Constraints in YSQL
+title: Other constraints
+linkTitle: Other constraints
+description: Other constraints in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   latest:

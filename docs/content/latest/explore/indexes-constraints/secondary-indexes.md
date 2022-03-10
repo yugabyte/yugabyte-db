@@ -1,13 +1,16 @@
 ---
-title: Overview
-linkTitle: Overview
-description: Overview of Indexes in YSQL and YCQL
+title: Secondary indexes
+linkTitle: Secondary indexes
+description: Overview of Secondary indexes in YSQL and YCQL
 image: /images/section_icons/secure/create-roles.png
 menu:
-  stable:
-    identifier: overview
+  latest:
+    identifier: secondary-indexes
     parent: explore-indexes-constraints
-    weight: 200
+    weight: 220
+aliases:
+   - /latest/explore/ysql-language-features/indexes-1/
+   - /latest/explore/indexes-constraints/indexes-1/
 isTocNested: true
 showAsideToc: true
 

@@ -1,13 +1,13 @@
 ---
-title: Primary Key
-linkTitle: Primary Key
-description: Defining Primary Key Constraint in YSQL
+title: Primary keys
+linkTitle: Primary keys
+description: Defining Primary key constraint in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   latest:
     identifier: primary-key-ysql
     parent: explore-indexes-constraints
-    weight: 250
+    weight: 200
 isTocNested: true
 showAsideToc: true
 aliases:

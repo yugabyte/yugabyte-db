@@ -1,13 +1,13 @@
 ---
-title: Primary Key
-linkTitle: Primary Key
-description: Defining Primary Key Constraint in YCQL
+title: Primary key
+linkTitle: Primary key
+description: Defining Primary key constraint in YCQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   stable:
     identifier: primary-key-ycql
     parent: explore-indexes-constraints
-    weight: 251
+    weight: 201
 isTocNested: true
 showAsideToc: true
 ---

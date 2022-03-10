@@ -1,13 +1,13 @@
 ---
-title: Foreign Key
-linkTitle: Foreign Key
-description: Defining Foreign Key Constraint in YSQL
+title: Foreign keys
+linkTitle: Foreign keys
+description: Defining Foreign key constraint in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   latest:
     identifier: foreign-key-ysql
     parent: explore-indexes-constraints
-    weight: 260
+    weight: 210
 isTocNested: true
 showAsideToc: true
 aliases:

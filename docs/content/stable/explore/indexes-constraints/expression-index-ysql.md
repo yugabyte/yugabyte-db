@@ -1,13 +1,13 @@
 ---
-title: Expression Indexes
-linkTitle: Expression Indexes
-description: Using Expression Indexes in YSQL
+title: Expression indexes
+linkTitle: Expression indexes
+description: Using Expression indexes in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   stable:
     identifier: expression-index-ysql
     parent: explore-indexes-constraints
-    weight: 230
+    weight: 240
 isTocNested: true
 showAsideToc: true
 ---

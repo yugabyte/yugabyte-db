@@ -1,13 +1,13 @@
 ---
-title: Partial Indexes
-linkTitle: Partial Indexes
-description: Using Partial Indexes in YCQL
+title: Partial indexes
+linkTitle: Partial indexes
+description: Using Partial indexes in YCQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   latest:
     identifier: partial-index-ycql
     parent: explore-indexes-constraints
-    weight: 221
+    weight: 241
 aliases:
    - /latest/explore/ysql-language-features/indexes-1/
    - /latest/explore/indexes-constraints/indexes-1/
