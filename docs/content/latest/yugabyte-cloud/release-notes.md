@@ -163,7 +163,7 @@ The following **AWS regions** are available:
 - **Metrics** - Some clusters in European regions may show occasional spikes in the YSQL Operations/sec chart. This is due to cluster health checks and can be ignored.
 - **Pausing clusters** - The rate shown in the **Pause Cluster** dialog does not include backup storage costs.
 
-### Known issues in Cloud Shell
+### Known issues in [Cloud Shell](../cloud-connect/connect-cloud-shell/)
 
 - At this time, we recommend running only a single Cloud Shell session. Running more than one session may produce unexpected results.
 - If Cloud Shell stops responding, close the browser tab and restart Cloud Shell.
