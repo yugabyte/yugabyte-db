@@ -15,6 +15,8 @@ showAsideToc: true
 
 Use any browser to connect to Yugabyte Cloud by using Cloud Shell. Cloud Shell doesn't require a CA certificate or any special network access configured.
 
+## Command line interface
+
 You have the option of using the following command line interfaces (CLIs) in Cloud Shell:
 
 - [ysqlsh](../../../admin/ysqlsh/) - YSQL shell for interacting with YugabyteDB using the [YSQL API](../../../api/ysql/).
@@ -68,7 +70,7 @@ Use HELP for help.
 admin@ycqlsh:yugabyte>
 ```
 
-If you enter an incorrect password, the shell session terminates immediately and you must start a new session.
+When you connect to your cluster using Cloud Shell with the YSQL API, the shell window incorporates a [quick start guide](../../cloud-quickstart/qs-explore/), with a series of pre-built queries for you to run.
 
 ## ysqlsh meta-commands in Cloud Shell
 
