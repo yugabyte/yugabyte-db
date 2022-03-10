@@ -86,6 +86,7 @@ DAEMON_TYPE_TSERVER = 'tserver'
 PROTOCOL_TYPE_YSQL = 'ysql'
 PROTOCOL_TYPE_YCQL = 'ycql'
 PROTOCOL_TYPE_YEDIS = 'yedis'
+VERSION_METADATA_JSON = 'version_metadata.json'
 
 DAEMON_TYPES = [
     DAEMON_TYPE_MASTER,
@@ -115,6 +116,14 @@ DEFAULT_IP_START = 1
 # --fs_data_dirs /tmp/yb-ctl-test-data-2019-06-05T14_14_12-4841/node-1/disk-1
 FS_DATA_DIRS_ARG_RE = re.compile(r'--fs_data_dirs[ =](\S+)')
 
+def is_release_mode():
+    """
+    This script can be located in either a release package or a src package.
+    Use the VERSION_METADATA_JSON file to determin if it is running in the
+    release mode.
+    """
+    root_candidate = dirname_n(os.path.realpath(__file__), 2)
+    return os.path.exists(os.path.join(root_candidate, VERSION_METADATA_JSON))
 
 def call_get_output_maybe_error(cmd_list, should_get_error=False):
     """
@@ -315,6 +324,15 @@ def has_rel_paths(top_dir, rel_paths):
         if not os.path.exists(os.path.join(top_dir, rel_path)):
             return False
     return True
+
+
+def dirname_n(dir_path, n):
+    """
+    Call N times of dirname(...) on the input dir_path.
+    """
+    for _ in range(n):
+        dir_path = os.path.dirname(dir_path)
+    return dir_path
 
 
 def is_yugabyte_db_installation_dir(top_dir):
@@ -841,13 +859,22 @@ class ClusterOptions:
         if base_ports_from_config is not None:
             self.base_ports = base_ports_from_config
 
+    def get_bin_parent_dir(self):
+        # Use the installation dir if it is called in release mode.
+        # Otherwise use the source root dir in development mode.
+        return self.installation_dir if is_release_mode() \
+            else dirname_n(os.path.realpath(__file__), 4)
+
     def get_client_tool_path(self, client_tool_name):
-        tool_abs_path = os.path.abspath(
-                os.path.join(self.installation_dir, 'bin', client_tool_name))
+        bin_parent_dir = self.get_bin_parent_dir()
+        tool_abs_path = os.path.abspath(os.path.join(bin_parent_dir, 'bin', client_tool_name))
+
         cur_dir_abs_path = os.path.abspath(os.getcwd())
         home_dir_abs_path = os.path.abspath(os.path.expanduser('~'))
+
         path_rel_to_cur = os.path.relpath(tool_abs_path, cur_dir_abs_path)
         path_rel_to_home = '~/' + os.path.relpath(tool_abs_path, home_dir_abs_path)
+
         candidates = [tool_abs_path, path_rel_to_cur, path_rel_to_home]
         min_len = None
         for i in range(len(candidates)):
