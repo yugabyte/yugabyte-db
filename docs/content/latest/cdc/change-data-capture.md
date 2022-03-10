@@ -51,11 +51,23 @@ Change data capture (CDC) is a process to capture changes made to data in the da
 
 #### CDC Streams
 
-Streams are the YugabyteDB endpoints for fetching DB changes by applications, processes and systems. Streams can be enabled or disabled [on a per table basis]. Every change to a database table (for which the data is being streamed) is emitted as a record to the stream, which is then propagated further for consumption by applications, in our case to Debezium and then ultimately to Kafka.
+Streams are the YugabyteDB endpoints for fetching DB changes by applications, processes and systems. Streams can be enabled or disabled [on a per namespace basis]. Every change to a database table (for which the data is being streamed) is emitted as a record to the stream, which is then propagated further for consumption by applications, in our case to Debezium and then ultimately to Kafka.
 
 #### DB Stream
 
 In order to facilitate the streaming of data, we have to create a DB Stream, this stream is created on the database level and can be used to access the data out of all the tables under a particular database.
+
+### Debezium connector for YugabyteDB
+
+The Debezium connector for YugabyteDB pulls the data from YugabyteDB and published them to Kafka. The below illustration explains the pipeline:
+
+![CDC Pipeline with Debezium and Kafka](../../../static/images/architecture/cdc-2dc/cdc-pipeline.png)
+
+See [Debezium connector for YugabyteDB](../integrations/cdc/debezium-connector-yugabytedb.md) to learn more.
+
+### CDC Java console client
+
+There is a [Java console client](../integrations/cdc/cdc-java-console-client.md) for Change data capture and is strictly meant for testing purposes only, it will help in building an understaning what all change records are emitted by YugabyteDB.
 
 ### Consistency Semantics
 
@@ -75,14 +87,13 @@ Note that once you have received a change for a row for some timestamp t, you wi
 
   The change records for CDC are read from the WAL. CDC module maintains checkpoint internally for each of the stream-id and garbage collects the WAL entries if those have been streamed to cdc clients. <br/>
 
-  In case CDC is lagging or away for some time, the disk usage may grow and may cause YugabyteDB cluster instability. To avoid a scenario like this if a stream is inactive for a configured amount of time we garbage collect the WAL. This is configurable by a GFLAG.
+  In case CDC is lagging or away for some time, the disk usage may grow and may cause YugabyteDB cluster instability. To avoid a scenario like this if a stream is inactive for a configured amount of time we garbage collect the WAL. This is configurable by a [Gflag](../../latest/reference/configuration/yb-tserver.md#change-data-capture-cdc-flags).
 
 ### Prerequisites/Consideration
 
 * You should be using YugabyteDB version 2.13.0 or higher
 * You cannot stream data out of system tables
-* Yugabyte cluster should be up and running, for details see YugabyteDB Quick Start
-* There should be at least one primary key on the table you want to stream the changes from
+* There should be a primary key on the table you want to stream the changes from
 * You cannot create a stream on a table which doesn’t exist. For example, if you create a DB stream on the database and after that create a new table in that database, you won’t be able to stream data out of that table. A simple workaround is to create a new DB Stream ID and use it to stream data
 
 {{< note title="Note" >}}
@@ -109,23 +120,19 @@ The commands used to manipulate CDC DB streams can be found under the [yb-admin]
 
 ### Snapshot support
 
-Initially, if you create a stream for a particular table which already contains some records, the stream takes a snapshot of the table, and streams all the data that resides in the table. After the snapshot of the whole table is completed, YugabyteDB starts streaming the changes that would be made to the table.
+Initially, if you create a stream for a particular table that already contains some records, the stream takes a snapshot of the table, and streams all the data that resides in the table. After the snapshot of the whole table is completed, YugabyteDB starts streaming the changes that would be made to the table.
 
-Note that the snapshot feature uses a GFlag `cdc_snapshot_batch_size`, the default value for which is 250. This is the number of records included per batch in response to an internal call to get the snapshot; if the table contains a very large amount of data, you may need to increase this value to reduce the amount of time it takes to stream the complete snapshot.
-
-### Running the Debezium connector
-
-See the [Debezium connector](../integrations/cdc/debezium-for-cdc) documentation for details on how to run with the Debezium connector.
+Note that the snapshot feature uses a GFlag `cdc_snapshot_batch_size`, the default value for which is 250. This is the number of records included per batch in response to an internal call to get the snapshot; if the table contains a very large amount of data, you may need to increase this value to reduce the amount of time it takes to stream the complete snapshot. Note that you can also choose not to take a snapshot by modifying the configuration for [Debezium](#debezium-connector-for-yugabytedb)
 
 ### Limitations
 
 * YCQL tables are not currently supported. Issue [11320](https://github.com/yugabyte/yugabyte-db/issues/11320).
 * DROP and TRUNCATE commands are not supported. If a user tries to issue these commands on a table while a stream ID is there for the table, the server might crash, the behaviour is unstable. Issues for TRUNCATE [10010](https://github.com/yugabyte/yugabyte-db/issues/10010) and DROP [10069](https://github.com/yugabyte/yugabyte-db/issues/10069).
 * If a stream ID is created, and after that a new table is created, the existing stream ID is not able to stream data from the newly created table. The user needs to create a new stream ID. Issue [10921](https://github.com/yugabyte/yugabyte-db/issues/10921)
-* A single stream cannot be used to stream data for both YSQL and YCQL namespaces and keyspaces respectively - [GitHub #10131](https://github.com/yugabyte/yugabyte-db/issues/10131)
+* A single stream can only be used to stream data from one namespace only.
 
 In addition, CDC support for the following features will be added in upcoming releases:
 
 * Tablet splitting support is tracked in issue [10935](https://github.com/yugabyte/yugabyte-db/issues/10935)
 * Point In Time Recovery (PITR) support is tracked in issue [10938](https://github.com/yugabyte/yugabyte-db/issues/10938)
-* Savepoints support is tracked in issue [10936](https://github.com/yugabyte/yugabyte-db/issues/10936)
+* Transaction savepoints support is tracked in issue [10936](https://github.com/yugabyte/yugabyte-db/issues/10936)
