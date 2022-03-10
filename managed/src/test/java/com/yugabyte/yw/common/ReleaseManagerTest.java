@@ -1,7 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.common;
 
-import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.SoftwareReleases;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
@@ -23,6 +22,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata.Package;
 import java.io.File;

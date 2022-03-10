@@ -71,6 +71,7 @@ public class ReleaseController extends AuthenticatedController {
           ReleaseManager.formDataToReleaseMetadata(versionDataList);
       releases.forEach(
           (version, metadata) -> releaseManager.addReleaseWithMetadata(version, metadata));
+      releaseManager.updateCurrentReleases();
     } catch (RuntimeException re) {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, re.getMessage());
     }
