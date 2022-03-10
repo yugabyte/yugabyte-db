@@ -464,6 +464,11 @@ public class UniverseCRUDHandler {
       }
     }
 
+    universe.updateConfig(
+        ImmutableMap.of(
+            Universe.SKIP_ANSIBLE_TASKS,
+            taskParams.nodeDetailsSet.stream().allMatch(n -> n.ybPrebuiltAmi) ? "true" : "false"));
+
     // Submit the task to create the universe.
     UUID taskUUID = commissioner.submit(taskType, taskParams);
     LOG.info(
