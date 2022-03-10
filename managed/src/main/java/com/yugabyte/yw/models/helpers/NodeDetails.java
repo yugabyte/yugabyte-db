@@ -58,6 +58,9 @@ public class NodeDetails {
   @ApiModelProperty(value = "Disks are mounted by uuid")
   public boolean disksAreMountedByUUID;
 
+  @ApiModelProperty(value = "True if this a custom YB AMI")
+  public boolean ybPrebuiltAmi = false;
+
   // Possible states in which this node can exist.
   public enum NodeState {
     // Set when a new node needs to be added into a Universe and has not yet been created.
@@ -221,6 +224,7 @@ public class NodeDetails {
     clone.nodeUuid = this.nodeUuid;
     clone.placementUuid = this.placementUuid;
     clone.machineImage = this.machineImage;
+    clone.ybPrebuiltAmi = this.ybPrebuiltAmi;
     return clone;
   }
 

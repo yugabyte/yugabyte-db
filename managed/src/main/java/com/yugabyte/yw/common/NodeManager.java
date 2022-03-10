@@ -918,11 +918,18 @@ public class NodeManager extends DevopsBase {
     subcommand.add("--redis_proxy_rpc_port");
     subcommand.add(Integer.toString(node.redisServerRpcPort));
 
-    // Custom cluster creation flow with prebuilt AMI
-    if (userIntent.providerType.equals(Common.CloudType.aws)
-        && taskParam.getRegion().ybPrebuiltAmi) {
-      subcommand.add("--skip_tags");
-      subcommand.add("yb-prebuilt-ami");
+    // Custom cluster creation flow with prebuilt AMI for cloud
+    if (config.getBoolean("yb.cloud.enabled")
+        && taskParam.type != UpgradeTaskParams.UpgradeTaskType.Software) {
+      if ((userIntent.providerType.equals(Common.CloudType.aws)
+              || userIntent.providerType.equals(Common.CloudType.gcp))
+          && universe
+              .getConfig()
+              .getOrDefault(Universe.SKIP_ANSIBLE_TASKS, "false")
+              .equals("true")) {
+        subcommand.add("--skip_tags");
+        subcommand.add("yb-prebuilt-ami");
+      }
     }
 
     boolean useHostname =
@@ -1533,12 +1540,6 @@ public class NodeManager extends DevopsBase {
             // aws uses instance_type to determine device names for mounting
             commandArgs.add("--instance_type");
             commandArgs.add(taskParam.instanceType);
-
-            // Custom cluster creation flow with prebuilt AMI
-            if (taskParam.getRegion().ybPrebuiltAmi) {
-              commandArgs.add("--skip_tags");
-              commandArgs.add("yb-prebuilt-ami");
-            }
           }
 
           // gcp uses machine_image for ansible preprovision.yml
@@ -1548,6 +1549,18 @@ public class NodeManager extends DevopsBase {
             if (ybImage != null && !ybImage.isEmpty()) {
               commandArgs.add("--machine_image");
               commandArgs.add(ybImage);
+            }
+          }
+
+          // Custom cluster creation flow with prebuilt AMI for cloud
+          if (runtimeConfigFactory.forUniverse(universe).getBoolean("yb.cloud.enabled")) {
+            if ((cloudType.equals(Common.CloudType.aws) || cloudType.equals(Common.CloudType.gcp))
+                && universe
+                    .getConfig()
+                    .getOrDefault(Universe.SKIP_ANSIBLE_TASKS, "false")
+                    .equals("true")) {
+              commandArgs.add("--skip_tags");
+              commandArgs.add("yb-prebuilt-ami");
             }
           }
 

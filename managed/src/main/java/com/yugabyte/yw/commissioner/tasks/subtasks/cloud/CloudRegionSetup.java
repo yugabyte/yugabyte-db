@@ -60,10 +60,8 @@ public class CloudRegionSetup extends CloudTaskBase {
     Provider provider = getProvider();
     final Region region = Region.createWithMetadata(provider, regionCode, metaData);
     String customImageId = taskParams().metadata.customImageId;
-    boolean ybPrebuiltAmi = taskParams().metadata.ybPrebuiltAmi;
     if (customImageId != null && !customImageId.isEmpty()) {
       region.ybImage = customImageId;
-      region.ybPrebuiltAmi = ybPrebuiltAmi;
       region.save();
     } else {
       switch (Common.CloudType.valueOf(provider.code)) {

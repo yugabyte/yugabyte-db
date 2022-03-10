@@ -3953,6 +3953,10 @@
           "format" : "int32",
           "type" : "integer"
         },
+        "ybPrebuiltAmi" : {
+          "description" : "True if this a custom YB AMI",
+          "type" : "boolean"
+        },
         "yqlServerHttpPort" : {
           "description" : "YCQL HTTP port",
           "format" : "int32",
@@ -4098,6 +4102,10 @@
           "description" : "Tablet server RPC port",
           "format" : "int32",
           "type" : "integer"
+        },
+        "ybPrebuiltAmi" : {
+          "description" : "True if this a custom YB AMI",
+          "type" : "boolean"
         },
         "yqlServerHttpPort" : {
           "description" : "YCQL HTTP port",
@@ -4503,10 +4511,6 @@
           "description" : "The AMI to be used in this region.",
           "example" : "TODO",
           "type" : "string"
-        },
-        "ybPrebuiltAmi" : {
-          "description" : "Indicates whether to use YB Prebuilt AMI flow or not for the supplied AMI ID",
-          "type" : "boolean"
         },
         "zones" : {
           "items" : {
