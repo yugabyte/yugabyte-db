@@ -4,7 +4,7 @@ headerTitle: Manage clusters
 linkTitle: Manage clusters
 description: Manage your Yugabyte Cloud clusters.
 image: /images/section_icons/architecture/core_functions/universe.png
-headcontent: Pause, delete, scale, and back up your clusters.
+headcontent: Scale clusters, configure backups and maintenance windows, and pause or delete clusters.
 section: YUGABYTE CLOUD
 menu:
   latest:
@@ -12,7 +12,25 @@ menu:
     weight: 150
 ---
 
-Yugabyte Cloud includes the following cluster management features.
+Yugabyte Cloud provides the following tools to manage clusters:
+
+Horizontal and vertical scaling
+: To ensure the cluster configuration matches its performance requirements, [scale the cluster](configure-clusters/) vertically or horizontally as your requirements change.
+
+Backups
+: Configure a regular [backup](backup-clusters/) schedule, run manual backups, and review previous backups.
+
+Maintenance windows
+: Yugabyte performs cluster maintenance, including database upgrades, during scheduled [maintenance windows](cloud-maintenance/).
+
+PostgreSQL extensions
+: Extend the functionality of your cluster using [PostgreSQL extensions](add-extensions/).
+
+Pause, resume, and delete
+: To reduce costs on unused clusters, you can pause or delete them. Deleting a cluster deletes all of its data, including backups.
+: Paused clusters are not billed for instance vCPU capacity. Disk and backup storage are charged at the standard rate (refer to [Cluster costs](../cloud-admin/cloud-billing-costs/#paused-cluster-costs)). Yugabyte notifies you when a cluster is paused for 30 days.
+: You can't change the configuration, or read and write data to a paused cluster. Alerts and backups are also stopped. Existing backups remain until they expire.
+: Access **Pause/Resume Cluster** and **Terminate Cluster** via the cluster **More Links** menu, or click the three dots icon for the cluster on the **Clusters** page.
 
 <div class="row">
 
@@ -60,18 +78,6 @@ Yugabyte Cloud includes the following cluster management features.
       </div>
       <div class="body">
         Set up maintenance windows and exclusion periods for cluster upgrades.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="pause-clusters/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Pause, resume, and delete</div>
-      </div>
-      <div class="body">
-        Pause idle clusters to reduce costs.
       </div>
     </a>
   </div>
