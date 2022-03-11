@@ -55,7 +55,7 @@
 #include "pg_yb_utils.h"
 #include "executor/ybcModifyTable.h"
 
-
+bool yb_use_async_flush = true;
 
 #define ISOCTAL(c) (((c) >= '0') && ((c) <= '7'))
 #define OCTVALUE(c) ((c) - '0')
@@ -2646,12 +2646,17 @@ CopyFrom(CopyState cstate)
 		int batch_size = 0;
 
 		if (!IsYBRelation(resultRelInfo->ri_RelationDesc))
+		{
+			Assert(resultRelInfo->ri_RelationDesc->rd_rel->relpersistence == RELPERSISTENCE_TEMP ||
+					resultRelInfo->ri_RelationDesc->rd_rel->relkind == RELKIND_FOREIGN_TABLE);
 			ereport(WARNING,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-			 	 errmsg("Batched COPY is not supported on temporary tables. "
-						"Defaulting to using one transaction for the entire copy."),
+			 	 errmsg("Batched COPY is not supported on %s tables. "
+						"Defaulting to using one transaction for the entire copy.",
+						YbIsTempRelation(resultRelInfo->ri_RelationDesc) ? "temporary" : "foreign"),
 				 errhint("Either copy onto non-temporary table or set rows_per_transaction "
 						 "option to `0` to disable batching and remove this warning.")));
+		}
 		else if (YBIsDataSent())
 			ereport(WARNING,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -3000,7 +3005,10 @@ CopyFrom(CopyState cstate)
 							}
 							else
 							{
-								YBCExecuteInsert(resultRelInfo->ri_RelationDesc, tupDesc, tuple);
+								YBCExecuteInsert(resultRelInfo->ri_RelationDesc,
+												 tupDesc,
+												 tuple,
+												 yb_use_async_flush);
 							}
 						}
 						else if (resultRelInfo->ri_FdwRoutine != NULL)

@@ -935,6 +935,7 @@ public class TestYbBackup extends BasePgSQLTest {
   @Test
   public void testUserDefinedTypes() throws Exception {
     // TODO(myang): Add ALTER TYPE test after #1893 is fixed.
+    String backupDir = null;
     try (Statement stmt = connection.createStatement()) {
       // A enum type.
       stmt.execute("CREATE TYPE e_t AS ENUM('c', 'b', 'a')");
@@ -1002,7 +1003,10 @@ public class TestYbBackup extends BasePgSQLTest {
                    "'a', 'b', 'c', 'a'), ('a', 'c', 'b', 'b'), ('b', 'a', 'c', 'c')");
       stmt.execute("ALTER TABLE test_tb11 DROP COLUMN c2");
 
-      YBBackupUtil.runYbBackupCreate("--keyspace", "ysql.yugabyte");
+      backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yugabyte");
+      backupDir = new JSONObject(output).getString("snapshot_url");
 
       stmt.execute("INSERT INTO test_tb1 VALUES ('a')");
       stmt.execute("INSERT INTO test_tb2 VALUES(2)");
@@ -1068,7 +1072,7 @@ public class TestYbBackup extends BasePgSQLTest {
       assertRowList(stmt, "SELECT * FROM test_tb11 ORDER BY c1, c4", expectedRows11);
     }
 
-    YBBackupUtil.runYbBackupRestore("--keyspace", "ysql.yb2");
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
 
     try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
          Statement stmt = connection2.createStatement()) {
@@ -1113,5 +1117,46 @@ public class TestYbBackup extends BasePgSQLTest {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("DROP DATABASE yb2");
     }
+  }
+
+  private void testMaterializedViewsHelper(boolean matviewOnMatview) throws Exception {
+    String backupDir = null;
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS test_tbl");
+      stmt.execute("CREATE TABLE test_tbl (t int)");
+      stmt.execute("CREATE MATERIALIZED VIEW test_mv AS SELECT * FROM test_tbl");
+      if (matviewOnMatview) {
+        stmt.execute("CREATE MATERIALIZED VIEW test_mv_2 AS SELECT * FROM test_mv");
+      }
+      stmt.execute("INSERT INTO test_tbl VALUES (1)");
+      stmt.execute("REFRESH MATERIALIZED VIEW test_mv");
+      if (matviewOnMatview) {
+        stmt.execute("REFRESH MATERIALIZED VIEW test_mv_2");
+      }
+      backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yugabyte");
+      backupDir = new JSONObject(output).getString("snapshot_url");
+    }
+
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection2.createStatement()) {
+        assertQuery(stmt, "SELECT * FROM test_mv WHERE t=1", new Row(1));
+        if (matviewOnMatview) {
+          assertQuery(stmt, "SELECT * FROM test_mv_2 WHERE t=1", new Row(1));
+        }
+    }
+  }
+
+  @Test
+  public void testRefreshedMaterializedViewsBackup() throws Exception {
+    testMaterializedViewsHelper(false);
+  }
+
+  @Test
+  public void testRefreshedMaterializedViewsOnMaterializedViewsBackup() throws Exception {
+    testMaterializedViewsHelper(true);
   }
 }

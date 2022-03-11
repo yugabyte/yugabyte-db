@@ -30,7 +30,7 @@ from six import string_types, PY2, PY3
 
 # Try to read home dir from environment variable, else assume it's /home/yugabyte.
 ALERT_ENHANCEMENTS_RELEASE_BUILD = "2.6.0.0-b0"
-RELEASE_BUILD_PATTERN = "(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)[-]b(\\d+).*"
+RELEASE_BUILD_PATTERN = "(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)[-]b(\\d+|PRE_RELEASE).*"
 YB_HOME_DIR = os.environ.get("YB_HOME_DIR", "/home/yugabyte")
 YB_TSERVER_DIR = os.path.join(YB_HOME_DIR, "tserver")
 YB_CORES_DIR = os.path.join(YB_HOME_DIR, "cores/")
@@ -326,7 +326,7 @@ class NodeChecker():
         return output
 
     def get_disk_utilization(self):
-        remote_cmd = 'df -hl -x squashfs 2>/dev/null'
+        remote_cmd = 'df -hl -x squashfs -x overlay 2>/dev/null'
         return self._remote_check_output(remote_cmd)
 
     def check_disk_utilization(self):
@@ -726,7 +726,7 @@ class NodeChecker():
         clock_re = re.match(r'((.|\n)*)((NTP enabled: )|(NTP service: )|(Network time on: )|' +
                             r'(systemd-timesyncd\.service active: ))(.*)$', output, re.MULTILINE)
         if clock_re:
-            ntp_enabled_answer = clock_re.group(8)
+            ntp_enabled_answer = clock_re.group(8).strip()
         else:
             return e.fill_and_return_entry(["Error getting NTP state - incorrect answer format"],
                                            True)
@@ -741,7 +741,7 @@ class NodeChecker():
 
         clock_re = re.match(r'((.|\n)*)(NTP service: )(.*)$', output, re.MULTILINE)
         if clock_re:
-            ntp_service_answer = clock_re.group(4)
+            ntp_service_answer = clock_re.group(4).strip()
             # Oracle8 NTP service: n/a not supported anymore
             if ntp_service_answer in ("n/a"):
                 errors = []
@@ -749,7 +749,7 @@ class NodeChecker():
         clock_re = re.match(r'((.|\n)*)((NTP synchronized: )|(System clock synchronized: ))(.*)$',
                             output, re.MULTILINE)
         if clock_re:
-            ntp_synchronized_answer = clock_re.group(6)
+            ntp_synchronized_answer = clock_re.group(6).strip()
         else:
             return e.fill_and_return_entry([
                 "Error getting NTP synchronization state - incorrect answer format"], True)

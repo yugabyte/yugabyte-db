@@ -162,11 +162,13 @@ bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change)
 	}
 
 	int rows_affected_count = 0;
-	if (YBCGetLogYsqlCatalogVersions())
+	if (*YBCGetGFlags()->log_ysql_catalog_versions)
 		ereport(LOG,
 				(errmsg("%s: incrementing master catalog version (%sbreaking)",
 						__func__, is_breaking_change ? "" : "non")));
-	HandleYBStatus(YBCPgDmlExecWriteOp(update_stmt, &rows_affected_count));
+	HandleYBStatus(YBCPgDmlExecWriteOp(update_stmt,
+									   &rows_affected_count,
+									   false /* use_async_flush */));
 	Assert(rows_affected_count == 1);
 
 	/* Cleanup. */

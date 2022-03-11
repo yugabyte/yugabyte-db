@@ -15,6 +15,7 @@
 #define YB_COMMON_COMMON_FWD_H
 
 #include <memory>
+#include <vector>
 
 #include "yb/common/common.fwd.h"
 #include "yb/common/pgsql_protocol.fwd.h"
@@ -57,6 +58,7 @@ class QLValue;
 struct DeletedColumn;
 struct IndexColumn;
 struct OpId;
+struct PgObjectId;
 struct QLTableColumn;
 struct ReadHybridTime;
 struct TransactionMetadata;
@@ -65,6 +67,8 @@ struct TransactionStatusResult;
 
 using PgTableOid = uint32_t;
 using QLTypePtr = std::shared_ptr<QLType>;
+
+using PgObjectIds = std::vector<PgObjectId>;
 
 enum class PgSystemAttrNum : int;
 enum class QLNameOption : int8_t;

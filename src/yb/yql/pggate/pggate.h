@@ -246,6 +246,7 @@ class PgApiImpl {
                                 const bool colocated,
                                 const PgObjectId& tablegroup_oid,
                                 const PgObjectId& tablespace_oid,
+                                const PgObjectId& matview_pg_table_oid,
                                 PgStatement **handle);
 
   CHECKED_STATUS CreateTableAddColumn(PgStatement *handle, const char *attr_name, int attr_num,
@@ -365,6 +366,16 @@ class PgApiImpl {
                                 bool end_valid, bool end_inclusive,
                                 uint64_t end_hash_val);
 
+  CHECKED_STATUS DmlAddRowUpperBound(YBCPgStatement handle,
+                                    int n_col_values,
+                                    YBCPgExpr *col_values,
+                                    bool is_inclusive);
+
+  CHECKED_STATUS DmlAddRowLowerBound(YBCPgStatement handle,
+                                    int n_col_values,
+                                    YBCPgExpr *col_values,
+                                    bool is_inclusive);
+
   // Binding Tables: Bind the whole table in a statement.  Do not use with BindColumn.
   CHECKED_STATUS DmlBindTable(YBCPgStatement handle);
 
@@ -380,7 +391,8 @@ class PgApiImpl {
                           PgSysColumns *syscols, bool *has_data);
 
   // Utility method that checks stmt type and calls exec insert, update, or delete internally.
-  CHECKED_STATUS DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_count);
+  CHECKED_STATUS DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_count,
+                                bool use_async_flush);
 
   // This function adds a primary column to be used in the construction of the tuple id (ybctid).
   CHECKED_STATUS DmlAddYBTupleIdColumn(PgStatement *handle, int attr_num, uint64_t datum,
@@ -481,7 +493,7 @@ class PgApiImpl {
   CHECKED_STATUS ResetTransactionReadPoint();
   CHECKED_STATUS RestartReadPoint();
   CHECKED_STATUS CommitTransaction();
-  void AbortTransaction();
+  CHECKED_STATUS AbortTransaction();
   CHECKED_STATUS SetTransactionIsolationLevel(int isolation);
   CHECKED_STATUS SetTransactionReadOnly(bool read_only);
   CHECKED_STATUS SetTransactionDeferrable(bool deferrable);

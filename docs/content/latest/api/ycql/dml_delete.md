@@ -2,7 +2,7 @@
 title: DELETE statement [YCQL]
 headerTitle: DELETE
 linkTitle: DELETE
-description: Use the DELETE statement to remove rows from a specified table that meet a given condition. 
+description: Use the DELETE statement to remove rows from a specified table that meet a given condition.
 menu:
   latest:
     parent: api-cassandra
@@ -27,9 +27,9 @@ Use the `DELETE` statement to remove rows from a specified table that meet a giv
 ### Grammar
 
 ```
-delete ::= DELETE FROM table_name 
-               [ USING TIMESTAMP timestamp_expression ] WHERE 
-               where_expression [ IF { [ NOT ] EXISTS | if_expression } ] 
+delete ::= DELETE FROM table_name
+               [ USING TIMESTAMP timestamp_expression ] WHERE
+               where_expression [ IF { [ NOT ] EXISTS | if_expression } ]
                [ RETURNS STATUS AS ROW ]
 ```
 
@@ -60,7 +60,7 @@ Where
 - The `if_expression` can only apply to non-key columns (regular columns).
 - The `if_expression` can contain any logical and boolean operators.
 - Deleting only some column values from a row is not yet supported.
-- `IF EXISTS` and `IF NOT EXISTS` options are mostly for symmetry with the [`INSERT`](../dml_insert) and [`UPDATE`](../dml_update) commands.
+- `IF EXISTS` and `IF NOT EXISTS` options are mostly for symmetry with the [`INSERT`](../dml_insert) and [`UPDATE`](../dml_update/) commands.
   - `IF EXISTS` works like a normal delete but additionally returns whether the delete was applied (a row was found with that primary key).
   - `IF NOT EXISTS` is effectively a no-op since rows that do not exist cannot be deleted (but returns whether no row was found with that primary key).
 
@@ -73,9 +73,9 @@ The `timestamp_expression` must be an integer value (or a bind variable marker f
 ### Delete a row from a table
 
 ```sql
-ycqlsh:example> CREATE TABLE employees(department_id INT, 
-                                      employee_id INT, 
-                                      name TEXT, 
+ycqlsh:example> CREATE TABLE employees(department_id INT,
+                                      employee_id INT,
+                                      name TEXT,
                                       PRIMARY KEY(department_id, employee_id));
 ```
 
@@ -290,7 +290,7 @@ See examples in [batch docs](../batch#row-status).
 
 - [`CREATE TABLE`](../ddl_create_table)
 - [`INSERT`](../dml_insert)
-- [`SELECT`](../dml_select)
-- [`UPDATE`](../dml_update)
+- [`SELECT`](../dml_select/)
+- [`UPDATE`](../dml_update/)
 - [`TRUNCATE`](../dml_truncate)
 - [`Expression`](..#expressions)

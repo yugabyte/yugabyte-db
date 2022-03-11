@@ -261,13 +261,6 @@ YBCStatus YBCPgGetCatalogMasterVersion(uint64_t *version) {
   return ToYBCStatus(pgapi->GetCatalogMasterVersion(version));
 }
 
-void YBCPgInvalidateTableCache(
-    const YBCPgOid database_oid,
-    const YBCPgOid table_oid) {
-  const PgObjectId table_id(database_oid, table_oid);
-  pgapi->InvalidateTableCache(table_id);
-}
-
 YBCStatus YBCPgInvalidateTableCacheByTableId(const char *table_id) {
   if (table_id == NULL) {
     return ToYBCStatus(STATUS(InvalidArgument, "table_id is null"));
@@ -367,13 +360,16 @@ YBCStatus YBCPgNewCreateTable(const char *database_name,
                               const bool colocated,
                               const YBCPgOid tablegroup_oid,
                               const YBCPgOid tablespace_oid,
+                              const YBCPgOid matview_pg_table_oid,
                               YBCPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_oid);
   const PgObjectId tablegroup_id(database_oid, tablegroup_oid);
   const PgObjectId tablespace_id(database_oid, tablespace_oid);
+  const PgObjectId matview_pg_table_id(database_oid, matview_pg_table_oid);
   return ToYBCStatus(pgapi->NewCreateTable(
       database_name, schema_name, table_name, table_id, is_shared_table,
-      if_not_exist, add_primary_key, colocated, tablegroup_id, tablespace_id, handle));
+      if_not_exist, add_primary_key, colocated, tablegroup_id, tablespace_id, matview_pg_table_id,
+      handle));
 }
 
 YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
@@ -588,6 +584,26 @@ YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr
   return ToYBCStatus(pgapi->DmlBindColumn(handle, attr_num, attr_value));
 }
 
+YBCStatus YBCPgDmlAddRowUpperBound(YBCPgStatement handle,
+                                    int n_col_values,
+                                    YBCPgExpr *col_values,
+                                    bool is_inclusive) {
+    return ToYBCStatus(pgapi->DmlAddRowUpperBound(handle,
+                                                    n_col_values,
+                                                    col_values,
+                                                    is_inclusive));
+}
+
+YBCStatus YBCPgDmlAddRowLowerBound(YBCPgStatement handle,
+                                    int n_col_values,
+                                    YBCPgExpr *col_values,
+                                    bool is_inclusive) {
+    return ToYBCStatus(pgapi->DmlAddRowLowerBound(handle,
+                                                    n_col_values,
+                                                    col_values,
+                                                    is_inclusive));
+}
+
 YBCStatus YBCPgDmlBindColumnCondBetween(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value,
     YBCPgExpr attr_value_end) {
   return ToYBCStatus(pgapi->DmlBindColumnCondBetween(handle, attr_num, attr_value, attr_value_end));
@@ -642,8 +658,10 @@ YBCStatus YBCPgFlushBufferedOperations() {
   return ToYBCStatus(pgapi->FlushBufferedOperations());
 }
 
-YBCStatus YBCPgDmlExecWriteOp(YBCPgStatement handle, int32_t *rows_affected_count) {
-  return ToYBCStatus(pgapi->DmlExecWriteOp(handle, rows_affected_count));
+YBCStatus YBCPgDmlExecWriteOp(YBCPgStatement handle,
+                              int32_t *rows_affected_count,
+                              bool use_async_flush) {
+  return ToYBCStatus(pgapi->DmlExecWriteOp(handle, rows_affected_count, use_async_flush));
 }
 
 YBCStatus YBCPgBuildYBTupleId(const YBCPgYBTupleIdDescriptor *source, uint64_t *ybctid) {
@@ -920,8 +938,8 @@ YBCStatus YBCPgCommitTransaction() {
   return ToYBCStatus(pgapi->CommitTransaction());
 }
 
-void YBCPgAbortTransaction() {
-  pgapi->AbortTransaction();
+YBCStatus YBCPgAbortTransaction() {
+  return ToYBCStatus(pgapi->AbortTransaction());
 }
 
 YBCStatus YBCPgSetTransactionIsolationLevel(int isolation) {
@@ -1040,32 +1058,18 @@ YBCStatus YBCGetSharedAuthKey(uint64_t* auth_key) {
   return ExtractValueFromResult(pgapi->GetSharedAuthKey(), auth_key);
 }
 
-int32_t YBCGetMaxReadRestartAttempts() {
-  return FLAGS_ysql_max_read_restart_attempts;
-}
-
-int32_t YBCGetMaxWriteRestartAttempts() {
-  return FLAGS_ysql_max_write_restart_attempts;
-}
-
-bool YBCShouldSleepBeforeRetryOnTxnConflict() {
-  return FLAGS_ysql_sleep_before_retry_on_txn_conflict;
-}
-
-int32_t YBCGetOutputBufferSize() {
-  return FLAGS_ysql_output_buffer_size;
-}
-
-int32_t YBCGetSequenceCacheMinval() {
-  return FLAGS_ysql_sequence_cache_minval;
-}
-
-bool YBCGetDisableIndexBackfill() {
-  return FLAGS_ysql_disable_index_backfill;
-}
-
-bool YBCGetLogYsqlCatalogVersions() {
-  return FLAGS_log_ysql_catalog_versions;
+const YBCPgGFlagsAccessor* YBCGetGFlags() {
+  static YBCPgGFlagsAccessor accessor = {
+      .log_ysql_catalog_versions               = &FLAGS_log_ysql_catalog_versions,
+      .ysql_disable_index_backfill             = &FLAGS_ysql_disable_index_backfill,
+      .ysql_max_read_restart_attempts          = &FLAGS_ysql_max_read_restart_attempts,
+      .ysql_max_write_restart_attempts         = &FLAGS_ysql_max_write_restart_attempts,
+      .ysql_output_buffer_size                 = &FLAGS_ysql_output_buffer_size,
+      .ysql_sequence_cache_minval              = &FLAGS_ysql_sequence_cache_minval,
+      .ysql_session_max_batch_size             = &FLAGS_ysql_session_max_batch_size,
+      .ysql_sleep_before_retry_on_txn_conflict = &FLAGS_ysql_sleep_before_retry_on_txn_conflict
+  };
+  return &accessor;
 }
 
 bool YBCPgIsYugaByteEnabled() {

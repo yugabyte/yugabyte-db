@@ -398,6 +398,9 @@ Status LogReader::ReadReplicatesInRange(
     const int64_t up_to,
     int64_t max_bytes_to_read,
     ReplicateMsgs* replicates,
+    int64_t* starting_op_segment_seq_num,
+    yb::SchemaPB* modified_schema,
+    uint32_t* modified_schema_version,
     CoarseTimePoint deadline) const {
   DCHECK_GT(starting_at, 0);
   DCHECK_GE(up_to, starting_at);
@@ -430,6 +433,9 @@ Status LogReader::ReadReplicatesInRange(
     RETURN_NOT_OK_PREPEND(log_index_->GetEntry(index, &index_entry),
                           Substitute("Failed to read log index for op $0", index));
 
+    if (index == starting_at && starting_op_segment_seq_num != nullptr) {
+      *starting_op_segment_seq_num = index_entry.segment_sequence_number;
+    }
     // Since a given LogEntryBatch may contain multiple REPLICATE messages,
     // it's likely that this index entry points to the same batch as the previous
     // one. If that's the case, we've already read this REPLICATE and we can
@@ -471,6 +477,12 @@ Status LogReader::ReadReplicatesInRange(
           total_size + space_required < max_bytes_to_read) {
         total_size += space_required;
         replicates_tmp.emplace_back(entry->release_replicate());
+        if (replicates_tmp.back()->op_type() == consensus::OperationType::CHANGE_METADATA_OP &&
+            modified_schema != nullptr && modified_schema_version != nullptr) {
+          (*modified_schema).CopyFrom(replicates_tmp.back()->change_metadata_request().schema());
+          *modified_schema_version = replicates_tmp.back()->change_metadata_request().
+            schema_version();
+        }
       } else {
         limit_exceeded = true;
       }
@@ -492,6 +504,15 @@ Result<yb::OpId> LogReader::LookupOpId(int64_t op_index) const {
   RETURN_NOT_OK_PREPEND(log_index_->GetEntry(op_index, &index_entry),
                         strings::Substitute("Failed to read log index for op $0", op_index));
   return index_entry.op_id;
+}
+
+Result<int64_t> LogReader::LookupHeader(int64_t op_index) const {
+  LogIndexEntry index_entry;
+  Status st = log_index_->GetEntry(op_index, &index_entry);
+  if (st.IsNotFound()) {
+    return -1;
+  }
+  return index_entry.segment_sequence_number;
 }
 
 Status LogReader::GetSegmentsSnapshot(SegmentSequence* segments) const {

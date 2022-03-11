@@ -136,7 +136,7 @@ For this reason, this section won't say any more about the _timeofday()_ builtin
 | [pg_sleep_for()](./delaying-execution#function-pg-sleep-for-returns-void)     | void                 |
 | [pg_sleep_until()](./delaying-execution#function-pg-sleep-until-returns-void) | void                 |
 
-## [Miscellaneous functions](./miscellaneous)
+## [Miscellaneous functions](./miscellaneous/)
 
 |                                                                                                                              | **return data type**                       |
 | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |

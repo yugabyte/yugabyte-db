@@ -35,7 +35,7 @@ showAsideToc: true
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe, and are able to interact with it using the YSQL shell (`ysqlsh`). If not, follow the steps in [Quick start](../../../../quick-start).
+- installed YugabyteDB, created a universe, and are able to interact with it using the YSQL shell (`ysqlsh`). If not, follow the steps in [Quick start](../../../../quick-start/).
 - installed Visual Studio
 
 ## Writing a HelloWorld C# application
@@ -49,7 +49,7 @@ To install the driver in your Visual Studio project:
 <ol>
   <li>Open your Project Solution View.</li>
   <li>Right-click on **Packages** and click **Add Packages**.</li>
-  ![Add Package](/images/develop/client-drivers/csharp/visual-studio-add-package.png) 
+  ![Add Package](/images/develop/client-drivers/csharp/visual-studio-add-package.png)
   <li>Search for Npgsql and click **Add Package**.</li>
   ![Search Package](/images/develop/client-drivers/csharp/visual-studio-search-ngpsql-package.png)
 </ol>
@@ -86,7 +86,7 @@ namespace Yugabyte_CSharp_Demo
                 empPrepCmd.Parameters["@EmployeeId"].Value = 1;
                 NpgsqlDataReader reader = empPrepCmd.ExecuteReader();
 
-                Console.WriteLine("Query returned:\nName\tAge\tLanguage"); 
+                Console.WriteLine("Query returned:\nName\tAge\tLanguage");
                 while (reader.Read())
                 {
                     Console.WriteLine("{0}\t{1}\t{2}", reader.GetString(0), reader.GetInt32(1), reader.GetString(2));

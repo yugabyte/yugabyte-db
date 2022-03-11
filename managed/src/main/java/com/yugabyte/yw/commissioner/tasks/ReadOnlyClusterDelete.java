@@ -20,9 +20,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-
 import io.jsonwebtoken.lang.Collections;
-
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
@@ -82,7 +80,10 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
       createSetNodeStateTasks(nodesToBeRemoved, NodeDetails.NodeState.Removing)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
       createDestroyServerTasks(
-              nodesToBeRemoved, params().isForceDelete, true /* deleteNodeFromDB */)
+              nodesToBeRemoved,
+              params().isForceDelete,
+              true /* deleteNodeFromDB */,
+              true /* deleteRootVolumes */)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
       // Remove the cluster entry from the universe db entry.

@@ -18,13 +18,13 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/secure/audit-logging/audit-logging-ysql" class="nav-link">
+    <a href="../audit-logging-ysql/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
   <li >
-    <a href="/latest/secure/audit-logging/audit-logging-ycql" class="nav-link active">
+    <a href="../audit-logging-ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -33,7 +33,7 @@ showAsideToc: true
 
 Audit logging can be used to record information about YCQL statements or events (such as login events) and log the records on a per-node basis into the YB-Tserver logs. Audit logging can be enabled on YugabyteDB cluster by setting the` ycql_enable_audit_log `tserver flag to `true`. By Default, each TServer will record all login events and YCQL commands issued to the server.
 
-Audit record is logged before an operation attempts to be executed, failures are audited as well. Hence, if an operation fails to execute, both operation execution and failure will be logged. However, an error that happens during parsing or analysis of YCQL statement will result only in a error audit record to be logged. 
+Audit record is logged before an operation attempts to be executed, failures are audited as well. Hence, if an operation fails to execute, both operation execution and failure will be logged. However, an error that happens during parsing or analysis of YCQL statement will result only in a error audit record to be logged.
 
 YCQL Audit logging can be further customized by additional TServer flags described below.
 
@@ -49,7 +49,7 @@ $ yb-tserver <options> --ycql_enable_audit_log=true
 
 *   Statements or events are recorded if they match _all_ auditing filters described by the flags above. i.e. only the configured categories in the configured keyspaces by the configured users will be recorded.
 *   For the `included` flags the default value (empty) means everything is included, while for the `excluded` flags the default value (empty) means nothing is excluded. By default everything will be logged except events in system keyspaces.
-*   If both the inclusion and exclusion flags are set for the same dimension (e.g. users) then statements or events will be recorded only if both match: if they are in the set-difference between included entries and excluded entries. So that is allowed although it is redundant: the same semantics can be achieved by setting only the inclusion flag to the resulting set-difference. 
+*   If both the inclusion and exclusion flags are set for the same dimension (e.g. users) then statements or events will be recorded only if both match: if they are in the set-difference between included entries and excluded entries. So that is allowed although it is redundant: the same semantics can be achieved by setting only the inclusion flag to the resulting set-difference.
 *   The `ycql_audit_log_level` determines the log file where the audit records will be written (i.e. `yb-tserver.INFO`, `yb-tserver.WARNING`, or `yb-tserver.ERROR`). \
 Note that only `ERROR`-level logs are immediately flushed to disk, lower levels might be buffered.
 
@@ -191,7 +191,7 @@ Log record for a `CREATE TABLE` statement executed by user `john`, on keyspace `
 ```
 E0920 09:07:30.679694 10725 audit_logger.cc:552] AUDIT: user:john|
 host:172.151.36.146:9042|source:10.9.80.22|port:56480|timestamp:1600592850679|
-type:CREATE_TABLE|category:DDL|ks:prod|scope:test_table|operation:create table 
+type:CREATE_TABLE|category:DDL|ks:prod|scope:test_table|operation:create table
 test_table(k int primary key, v int);
 ```
 
@@ -294,9 +294,9 @@ ycql_audit_excluded_categories=QUERY,DML
 
 ```
 ycql_enable_audit_log=true
-ycql_audit_included_categories=DDL 
+ycql_audit_included_categories=DDL
 ycql_audit_included_keyspace=ks1
-ycql_audit_included_users=user1 
+ycql_audit_included_users=user1
 ```
 
 

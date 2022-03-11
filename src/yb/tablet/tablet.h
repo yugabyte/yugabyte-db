@@ -292,6 +292,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   CHECKED_STATUS RemoveIntents(
       const RemoveIntentsData& data, const TransactionIdSet& transactions) override;
 
+  CHECKED_STATUS GetIntents(
+      const TransactionId& id, std::vector<docdb::IntentKeyValueForCDC>* keyValueIntents,
+      docdb::ApplyTransactionState* stream_state);
+
   // Apply all of the row operations associated with this transaction.
   CHECKED_STATUS ApplyRowOperations(
       WriteOperation* operation,
@@ -377,11 +381,16 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const ReadHybridTime read_hybrid_time = {},
       const TableId& table_id = "",
       CoarseTimePoint deadline = CoarseTimePoint::max(),
-      AllowBootstrappingState allow_bootstrapping_state = AllowBootstrappingState::kFalse) const;
+      AllowBootstrappingState allow_bootstrapping_state = AllowBootstrappingState::kFalse,
+      const Slice& sub_doc_key = Slice()) const;
 
   Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> NewRowIterator(
       const TableId& table_id) const;
 
+  Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> CreateCDCSnapshotIterator(
+      const Schema& projection,
+      const ReadHybridTime& time,
+      const string& next_key);
   //------------------------------------------------------------------------------------------------
   // Makes RocksDB Flush.
   CHECKED_STATUS Flush(FlushMode mode,
@@ -642,6 +651,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   SnapshotCoordinator* snapshot_coordinator() {
     return snapshot_coordinator_;
+  }
+
+  docdb::YQLRowwiseIteratorIf* cdc_iterator() {
+    return cdc_iterator_;
   }
 
   // Allows us to add tablet-specific information that will get deref'd when the tablet does.
@@ -962,6 +975,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   SnapshotCoordinator* snapshot_coordinator_ = nullptr;
 
+  docdb::YQLRowwiseIteratorIf* cdc_iterator_ = nullptr;
+
   mutable std::mutex control_path_mutex_;
   std::unordered_map<std::string, std::shared_ptr<void>> additional_metadata_
     GUARDED_BY(control_path_mutex_);
@@ -978,8 +993,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // compaction if this member is already set, as the existence of this member implies that such a
   // compaction has already been triggered for this instance.
   std::unique_ptr<ThreadPoolToken> post_split_compaction_task_pool_token_ = nullptr;
-
-  std::unique_ptr<ThreadPoolToken> data_integrity_token_;
 
   simple_spinlock operation_filters_mutex_;
 

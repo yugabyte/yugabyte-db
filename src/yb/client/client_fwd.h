@@ -120,6 +120,7 @@ namespace internal {
 class AsyncRpc;
 class TxnBatcherIf;
 class GetTableSchemaRpc;
+class GetTablegroupSchemaRpc;
 class GetColocatedTabletSchemaRpc;
 class LookupRpc;
 class MetaCache;
@@ -150,7 +151,6 @@ typedef std::function<void(const Result<internal::RemoteTabletPtr>&)> LookupTabl
 typedef std::function<void(const Result<std::vector<internal::RemoteTabletPtr>>&)>
         LookupTabletRangeCallback;
 typedef std::function<void(const Result<CDCStreamId>&)> CreateCDCStreamCallback;
-
 class AsyncClientInitialiser;
 
 } // namespace client

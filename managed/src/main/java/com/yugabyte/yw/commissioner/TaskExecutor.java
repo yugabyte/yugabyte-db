@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner;
 
+import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.yugabyte.yw.models.helpers.CommonUtils.getDurationSeconds;
 
@@ -327,8 +328,7 @@ public class TaskExecutor {
     } catch (Exception e) {
       // Update task state on submission failure.
       runnableTasks.remove(taskUUID);
-      runnableTask.setTaskState(TaskInfo.State.Failure);
-      runnableTask.updateTaskDetailsOnError(e);
+      runnableTask.updateTaskDetailsOnError(TaskInfo.State.Failure, e);
     }
     return taskUUID;
   }
@@ -455,7 +455,7 @@ public class TaskExecutor {
    */
   @FunctionalInterface
   public interface TaskExecutionListener {
-    default void beforeTask(TaskInfo taskInfo) {};
+    default void beforeTask(TaskInfo taskInfo) {}
 
     void afterTask(TaskInfo taskInfo, Throwable t);
   }
@@ -542,6 +542,19 @@ public class TaskExecutor {
       }
     }
 
+    // Removes the completed subtask from the iterator.
+    private void removeCompletedSubTask(
+        Iterator<RunnableSubTask> taskIterator,
+        RunnableSubTask runnableSubTask,
+        Throwable throwable) {
+      if (throwable != null) {
+        log.error("Error occurred in subtask " + runnableSubTask.taskInfo, throwable);
+      }
+      taskIterator.remove();
+      numTasksCompleted.incrementAndGet();
+      runnableSubTask.publishAfterTask(throwable);
+    }
+
     // Wait for all the subtasks to complete. In this method, the state updates on
     // exceptions are done for tasks which are not yet running and exception occurs.
     private void waitForSubTasks() {
@@ -552,7 +565,6 @@ public class TaskExecutor {
 
       Throwable anyEx = null;
       while (runnableSubTasks.size() > 0) {
-        Throwable t = null;
         Iterator<RunnableSubTask> iter = runnableSubTasks.iterator();
 
         // Start round-robin check on the task completion to give fair share to each subtask.
@@ -562,14 +574,13 @@ public class TaskExecutor {
 
           try {
             future.get(TASK_SPIN_WAIT_INTERVAL_MS, TimeUnit.MILLISECONDS);
-            iter.remove();
-            numTasksCompleted.incrementAndGet();
-            runnableSubTask.publishAfterTask(null);
+            removeCompletedSubTask(iter, runnableSubTask, null);
           } catch (ExecutionException e) {
             // Ignore state update because this exception is thrown
             // during the task execution and is already taken care
             // by RunnableSubTask.
-            t = e.getCause();
+            anyEx = e.getCause();
+            removeCompletedSubTask(iter, runnableSubTask, anyEx);
           } catch (TimeoutException e) {
             // The exception is ignored if the elapsed time has not surpassed
             // the time limit.
@@ -581,42 +592,35 @@ public class TaskExecutor {
             Instant abortTime = runnableTask.getAbortTime();
             // If the subtask execution takes long, it is interrupted.
             if (!timeout.isZero() && elapsed.compareTo(timeout) > 0) {
+              anyEx = e;
+              future.cancel(true);
               // Report failure to the parent task.
-              t = e;
+              // Update the subtask state to aborted if the execution timed out.
+              runnableSubTask.updateTaskDetailsOnError(TaskInfo.State.Aborted, e);
+              removeCompletedSubTask(iter, runnableSubTask, e);
             } else if (abortTime != null
                 && Duration.between(abortTime, Instant.now()).compareTo(defaultAbortTaskTimeout) > 0
                 && (skipSubTaskAbortableCheck
                     || isTaskAbortable(runnableSubTask.task.getClass()))) {
-              // Report aborted to the parent task.
-              t = new CancellationException(e.getMessage());
-            }
-            if (t != null) {
               future.cancel(true);
+              // Report aborted to the parent task.
               // Update the subtask state to aborted if the execution timed out.
-              runnableSubTask.setTaskState(TaskInfo.State.Aborted);
-              runnableSubTask.updateTaskDetailsOnError(e);
+              anyEx = new CancellationException(e.getMessage());
+              runnableSubTask.updateTaskDetailsOnError(TaskInfo.State.Aborted, anyEx);
+              removeCompletedSubTask(iter, runnableSubTask, anyEx);
             }
           } catch (CancellationException e) {
-            t = e;
-            runnableSubTask.setTaskState(TaskInfo.State.Aborted);
-            runnableSubTask.updateTaskDetailsOnError(e);
+            anyEx = e;
+            runnableSubTask.updateTaskDetailsOnError(TaskInfo.State.Aborted, e);
+            removeCompletedSubTask(iter, runnableSubTask, e);
           } catch (InterruptedException e) {
-            t = new CancellationException(e.getMessage());
-            runnableSubTask.setTaskState(TaskInfo.State.Aborted);
-            runnableSubTask.updateTaskDetailsOnError(e);
+            anyEx = new CancellationException(e.getMessage());
+            runnableSubTask.updateTaskDetailsOnError(TaskInfo.State.Aborted, anyEx);
+            removeCompletedSubTask(iter, runnableSubTask, anyEx);
           } catch (Exception e) {
-            t = e;
-            runnableSubTask.setTaskState(TaskInfo.State.Failure);
-            runnableSubTask.updateTaskDetailsOnError(e);
-          } finally {
-            // t == null does not mean success because the task can still be running.
-            if (t != null) {
-              log.error("Error occurred in subtask " + runnableSubTask.taskInfo, t);
-              iter.remove();
-              anyEx = t;
-              numTasksCompleted.incrementAndGet();
-              runnableSubTask.publishAfterTask(t);
-            }
+            anyEx = e;
+            runnableSubTask.updateTaskDetailsOnError(TaskInfo.State.Failure, e);
+            removeCompletedSubTask(iter, runnableSubTask, e);
           }
         }
       }
@@ -713,19 +717,17 @@ public class TaskExecutor {
         setTaskState(TaskInfo.State.Success);
       } catch (CancellationException e) {
         t = e;
-        setTaskState(TaskInfo.State.Aborted);
+        updateTaskDetailsOnError(TaskInfo.State.Aborted, e);
+        throw e;
       } catch (Exception e) {
         t = e;
-        setTaskState(TaskInfo.State.Failure);
+        updateTaskDetailsOnError(TaskInfo.State.Failure, e);
+        Throwables.propagate(e);
       } finally {
         taskCompletionTime = Instant.now();
         writeTaskStateMetric(taskType, taskStartTime, taskCompletionTime, getTaskState());
         publishAfterTask(t);
         task.terminate();
-        if (t != null) {
-          updateTaskDetailsOnError(t);
-          Throwables.propagate(t);
-        }
       }
     }
 
@@ -801,10 +803,11 @@ public class TaskExecutor {
       return false;
     }
 
-    synchronized void updateTaskDetailsOnError(Throwable t) {
-      if (t == null) {
-        return;
-      }
+    synchronized void updateTaskDetailsOnError(TaskInfo.State state, Throwable t) {
+      checkNotNull(t);
+      checkArgument(
+          TaskInfo.ERROR_STATES.contains(state),
+          "Task state must be one of " + TaskInfo.ERROR_STATES);
       JsonNode taskDetails = taskInfo.getTaskDetails();
       String errorString =
           "Failed to execute task "
@@ -821,7 +824,10 @@ public class TaskExecutor {
 
       ObjectNode details = taskDetails.deepCopy();
       details.put("errorString", errorString);
-      setTaskDetails(details);
+      taskInfo.refresh();
+      taskInfo.setTaskState(state);
+      taskInfo.setTaskDetails(details);
+      taskInfo.update();
     }
 
     void publishBeforeTask() {
@@ -933,6 +939,11 @@ public class TaskExecutor {
       subTaskPosition++;
     }
 
+    public void addSubTaskGroup(SubTaskGroup subTaskGroup, int position) {
+      subTaskPosition = position;
+      addSubTaskGroup(subTaskGroup);
+    }
+
     /**
      * Starts execution of the subtasks in the groups for this runnable task and waits for
      * completion. This method is invoked inside the run() method of the task e.g CreateUniverse to
@@ -995,8 +1006,7 @@ public class TaskExecutor {
         future = executorService.submit(this);
       } catch (RuntimeException e) {
         // Subtask submission failed.
-        setTaskState(TaskInfo.State.Failure);
-        updateTaskDetailsOnError(e);
+        updateTaskDetailsOnError(TaskInfo.State.Failure, e);
         publishAfterTask(e);
         throw e;
       }
