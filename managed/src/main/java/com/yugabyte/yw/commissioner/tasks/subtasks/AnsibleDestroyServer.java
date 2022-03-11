@@ -131,7 +131,7 @@ public class AnsibleDestroyServer extends NodeTaskBase {
     if (taskParams().deleteNode) {
       // Update the node state to removed. Even though we remove the node below, this will
       // help tracking state for any nodes stuck in limbo.
-      setNodeState(NodeDetails.NodeState.Removed);
+      setNodeState(NodeDetails.NodeState.Terminated);
 
       removeNodeFromUniverse(taskParams().nodeName);
     }

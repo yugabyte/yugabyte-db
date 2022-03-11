@@ -49,8 +49,7 @@ public class ChangeMasterConfig extends AbstractTaskBase {
     // as this is best effort.
     public boolean useHostPort = false;
     // Check if the operation is already performed before it is done again.
-    // This is done to have no impact on the existing usage.
-    public boolean checkBeforeChange = false;
+    public boolean checkBeforeChange = true;
   }
 
   @Override

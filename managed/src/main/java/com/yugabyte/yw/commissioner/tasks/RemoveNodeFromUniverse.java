@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -64,19 +65,7 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
         throw new RuntimeException(msg);
       }
 
-      if (currentNode.state != NodeDetails.NodeState.Live
-          && currentNode.state != NodeDetails.NodeState.ToBeRemoved
-          && currentNode.state != NodeDetails.NodeState.ToJoinCluster
-          && currentNode.state != NodeDetails.NodeState.Stopped) {
-        String msg =
-            "Node "
-                + taskParams().nodeName
-                + " is not in Live/ToJoinCluster/ToBeRemoved/Stopped states, but is in "
-                + currentNode.state
-                + ", so cannot be removed.";
-        log.error(msg);
-        throw new RuntimeException(msg);
-      }
+      currentNode.validateActionOnState(NodeActionType.REMOVE);
 
       preTaskActions();
 

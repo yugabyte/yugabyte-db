@@ -4,13 +4,17 @@ package com.yugabyte.yw.models.helpers;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.core.AllOf.allOf;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.NodeActionType;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -81,5 +85,27 @@ public class NodeDetailsTest {
         assertFalse(nd.isQueryable());
       }
     }
+  }
+
+  @Test
+  public void testIsRemovable() {
+    Set<NodeDetails.NodeState> expectedRemovableStates = new HashSet<>();
+    expectedRemovableStates.add(NodeDetails.NodeState.ToBeAdded);
+    expectedRemovableStates.add(NodeDetails.NodeState.Adding);
+    expectedRemovableStates.add(NodeDetails.NodeState.InstanceCreated);
+    expectedRemovableStates.add(NodeDetails.NodeState.Provisioned);
+    expectedRemovableStates.add(NodeDetails.NodeState.ServerSetup);
+    expectedRemovableStates.add(NodeDetails.NodeState.SoftwareInstalled);
+    expectedRemovableStates.add(NodeDetails.NodeState.Decommissioned);
+    expectedRemovableStates.add(NodeDetails.NodeState.Terminating);
+    expectedRemovableStates.add(NodeDetails.NodeState.Terminated);
+    for (NodeDetails.NodeState state : expectedRemovableStates) {
+      nd.state = state;
+      assertEquals(true, nd.isRemovable());
+    }
+    // Only the above states must contain the DELETE action.
+    Set<NodeDetails.NodeState> removableStates =
+        NodeDetails.NodeState.allowedStatesForAction(NodeActionType.DELETE);
+    assertEquals(expectedRemovableStates, removableStates);
   }
 }

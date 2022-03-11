@@ -9,10 +9,7 @@ import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -20,8 +17,10 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -31,6 +30,8 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -38,10 +39,10 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.runners.MockitoJUnitRunner;
-import org.yb.client.ChangeConfigResponse;
+import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
+import org.yb.client.ListMastersResponse;
 import org.yb.client.YBClient;
 import play.libs.Json;
 
@@ -97,17 +98,16 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
 
-    ChangeConfigResponse mockChangeConfigResponse = mock(ChangeConfigResponse.class);
     ChangeMasterClusterConfigResponse ccr = new ChangeMasterClusterConfigResponse(1111, "", null);
     GetLoadMovePercentResponse gpr = new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null);
     try {
       // WaitForTServerHeartBeats mock.
       doNothing().when(mockClient).waitForMasterLeader(anyLong());
-      when(mockClient.changeMasterConfig(
-              anyString(), anyInt(), anyBoolean(), anyBoolean(), anyString()))
-          .thenReturn(mockChangeConfigResponse);
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(ccr);
       when(mockClient.getLoadMoveCompletion()).thenReturn(gpr);
+      ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
+      when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
+      when(mockClient.listMasters()).thenReturn(listMastersResponse);
     } catch (Exception e) {
     }
 
@@ -363,5 +363,20 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertRemoveNodeSequence(subTasksByPosition, RemoveType.WITH_MASTER, true);
+  }
+
+  @Test
+  public void testRemoveNodeAllowedState() {
+    Set<NodeState> allowedStates = NodeState.allowedStatesForAction(NodeActionType.REMOVE);
+    Set<NodeState> expectedStates =
+        ImmutableSet.of(
+            NodeState.Live,
+            NodeState.ToBeRemoved,
+            NodeState.ToJoinCluster,
+            NodeState.Stopped,
+            NodeState.Starting,
+            NodeState.Stopping,
+            NodeState.Removing);
+    assertEquals(expectedStates, allowedStates);
   }
 }

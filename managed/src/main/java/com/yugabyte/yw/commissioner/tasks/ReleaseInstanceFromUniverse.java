@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -24,6 +25,7 @@ import java.util.Collection;
 import java.util.HashSet;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 
 // Allows the removal of the instance from a universe. That node is already not part of the
 // universe and is in Removed state.
@@ -62,17 +64,7 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
         throw new RuntimeException(msg);
       }
 
-      if (currentNode.state != NodeState.Removed) {
-        String msg =
-            "Node "
-                + taskParams().nodeName
-                + " is not on removed or added state, but "
-                + "is in "
-                + currentNode.state
-                + ", so cannot be released.";
-        log.error(msg);
-        throw new RuntimeException(msg);
-      }
+      currentNode.validateActionOnState(NodeActionType.RELEASE);
 
       preTaskActions();
 
@@ -104,7 +96,7 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
         }
 
         // Set the node states to Removing.
-        createSetNodeStateTasks(currentNodeDetails, NodeDetails.NodeState.Removing)
+        createSetNodeStateTasks(currentNodeDetails, NodeDetails.NodeState.Terminating)
             .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
         // Create tasks to terminate that instance. Force delete and ignore errors.
         createDestroyServerTasks(

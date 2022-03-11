@@ -74,7 +74,7 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
       Cluster cluster = roClusters.get(0);
       Collection<NodeDetails> nodesToBeRemoved = universe.getNodesInCluster(cluster.uuid);
       // Set the node states to Removing.
-      createSetNodeStateTasks(nodesToBeRemoved, NodeDetails.NodeState.Removing)
+      createSetNodeStateTasks(nodesToBeRemoved, NodeDetails.NodeState.Terminating)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
       createDestroyServerTasks(
               nodesToBeRemoved,

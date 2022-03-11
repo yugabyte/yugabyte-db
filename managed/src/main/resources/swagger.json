@@ -3917,10 +3917,6 @@
           "description" : "Node name",
           "type" : "string"
         },
-        "nodeUUID" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
         "nodeUuid" : {
           "description" : "Node UUID",
           "format" : "uuid",
@@ -3943,7 +3939,7 @@
         },
         "state" : {
           "description" : "Node state",
-          "enum" : [ "ToBeAdded", "InstanceCreated", "ServerSetup", "ToJoinCluster", "Provisioned", "SoftwareInstalled", "UpgradeSoftware", "UpdateGFlags", "Live", "Stopping", "Starting", "Stopped", "Unreachable", "ToBeRemoved", "Removing", "Removed", "Adding", "BeingDecommissioned", "Decommissioned", "UpdateCert", "ToggleTls", "Resizing", "SystemdUpgrade" ],
+          "enum" : [ "ToBeAdded", "InstanceCreated", "ServerSetup", "ToJoinCluster", "Provisioned", "SoftwareInstalled", "UpgradeSoftware", "UpdateGFlags", "Live", "Stopping", "Starting", "Stopped", "Unreachable", "ToBeRemoved", "Removing", "Removed", "Adding", "BeingDecommissioned", "Decommissioned", "UpdateCert", "ToggleTls", "Resizing", "SystemdUpgrade", "Terminating", "Terminated" ],
           "example" : "Provisioned",
           "type" : "string"
         },
@@ -3982,7 +3978,6 @@
           "type" : "integer"
         }
       },
-      "required" : [ "nodeUUID" ],
       "type" : "object"
     },
     "NodeDetailsResp" : {
@@ -4067,10 +4062,6 @@
           "description" : "Node name",
           "type" : "string"
         },
-        "nodeUUID" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
         "nodeUuid" : {
           "description" : "Node UUID",
           "format" : "uuid",
@@ -4093,7 +4084,7 @@
         },
         "state" : {
           "description" : "Node state",
-          "enum" : [ "ToBeAdded", "InstanceCreated", "ServerSetup", "ToJoinCluster", "Provisioned", "SoftwareInstalled", "UpgradeSoftware", "UpdateGFlags", "Live", "Stopping", "Starting", "Stopped", "Unreachable", "ToBeRemoved", "Removing", "Removed", "Adding", "BeingDecommissioned", "Decommissioned", "UpdateCert", "ToggleTls", "Resizing", "SystemdUpgrade" ],
+          "enum" : [ "ToBeAdded", "InstanceCreated", "ServerSetup", "ToJoinCluster", "Provisioned", "SoftwareInstalled", "UpgradeSoftware", "UpdateGFlags", "Live", "Stopping", "Starting", "Stopped", "Unreachable", "ToBeRemoved", "Removing", "Removed", "Adding", "BeingDecommissioned", "Decommissioned", "UpdateCert", "ToggleTls", "Resizing", "SystemdUpgrade", "Terminating", "Terminated" ],
           "example" : "Provisioned",
           "type" : "string"
         },
@@ -4132,7 +4123,6 @@
           "type" : "integer"
         }
       },
-      "required" : [ "nodeUUID" ],
       "type" : "object"
     },
     "NodeInstance" : {
