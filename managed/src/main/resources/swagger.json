@@ -14151,6 +14151,26 @@
         "tags" : [ "Node instances" ]
       }
     },
+    "/api/v1/grafana_dashboard" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "GrafanaDashboard",
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Get Grafana Dashboard",
+        "tags" : [ "Grafana Dashboard" ]
+      }
+    },
     "/api/v1/logging_config" : {
       "post" : {
         "description" : "",
@@ -14490,6 +14510,8 @@
     "name" : "Customer management"
   }, {
     "name" : "Encryption at rest"
+  }, {
+    "name" : "Grafana Dashboard"
   }, {
     "name" : "Instance types"
   }, {

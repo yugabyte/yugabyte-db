@@ -35,7 +35,7 @@ GET     /customers/:cUUID/host_info                                            c
 
 GET     /prometheus_metrics                                                    com.yugabyte.yw.controllers.MetricsController.index()
 
-GET     /grafana_dashboard                                                     com.yugabyte.yw.controllers.MetricGrafanaController.getGrafanaDashboardPath()
+GET     /grafana_dashboard                                                     com.yugabyte.yw.controllers.MetricGrafanaController.getGrafanaDashboard()
 
 # Initialize cloud information.
 GET     /customers/:cUUID/regions                                              com.yugabyte.yw.controllers.RegionController.listAllRegions(cUUID: java.util.UUID)
