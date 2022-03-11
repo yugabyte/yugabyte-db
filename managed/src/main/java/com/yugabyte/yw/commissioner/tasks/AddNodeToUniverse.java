@@ -18,6 +18,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.NodeInstance;
@@ -72,17 +73,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
         throw new RuntimeException(msg);
       }
 
-      if (currentNode.state != NodeState.Removed && currentNode.state != NodeState.Decommissioned) {
-        String msg =
-            "Node "
-                + taskParams().nodeName
-                + " is not in removed or decommissioned state"
-                + ", but is in "
-                + currentNode.state
-                + ", so cannot be added.";
-        log.error(msg);
-        throw new RuntimeException(msg);
-      }
+      currentNode.validateActionOnState(NodeActionType.ADD);
 
       preTaskActions();
 

@@ -1226,9 +1226,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.opType =
         isAdd ? ChangeMasterConfig.OpType.AddMaster : ChangeMasterConfig.OpType.RemoveMaster;
     params.useHostPort = useHostPort;
-    // Check before the operation for idempotency if it is a retry.
-    // Existing first-try task remains intact.
-    params.checkBeforeChange = !UniverseTaskParams.isFirstTryForTask(taskParams());
     // Create the task.
     ChangeMasterConfig changeConfig = createTask(ChangeMasterConfig.class);
     changeConfig.initialize(params);
