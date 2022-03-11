@@ -55,6 +55,7 @@
 #include "yb/util/errno.h"
 #include "yb/util/faststring.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/locks.h"
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/socket.h"
@@ -83,9 +84,6 @@ DEFINE_string(
     "Can be set to something like \"ipv4_external,ipv4_all,ipv6_all\" to "
     "prefer external IPv4 "
     "addresses first. Other options include ipv6_external,ipv6_non_link_local");
-
-DEFINE_test_flag(string, fail_to_fast_resolve_address, "",
-                 "A hostname to fail to fast resolve for tests.");
 
 namespace yb {
 
@@ -654,6 +652,17 @@ Result<IpAddress> ParseIpAddress(const std::string& host) {
   return addr;
 }
 
+simple_spinlock fail_to_fast_resolve_address_mutex;
+std::string fail_to_fast_resolve_address;
+
+void TEST_SetFailToFastResolveAddress(const std::string& address) {
+  {
+    std::lock_guard<simple_spinlock> lock(fail_to_fast_resolve_address_mutex);
+    fail_to_fast_resolve_address = address;
+  }
+  LOG(INFO) << "Setting fail_to_fast_resolve_address to: " << address;
+}
+
 boost::optional<IpAddress> TryFastResolve(const std::string& host) {
   auto result = ParseIpAddress(host);
   if (result.ok()) {
@@ -663,8 +672,11 @@ boost::optional<IpAddress> TryFastResolve(const std::string& host) {
   // For testing purpose we resolve A.B.C.D.ip.yugabyte to A.B.C.D.
   static const std::string kYbIpSuffix = ".ip.yugabyte";
   if (boost::ends_with(host, kYbIpSuffix)) {
-    if (PREDICT_FALSE(host == FLAGS_TEST_fail_to_fast_resolve_address)) {
-      return boost::none;
+    {
+      std::lock_guard<simple_spinlock> lock(fail_to_fast_resolve_address_mutex);
+      if (PREDICT_FALSE(host == fail_to_fast_resolve_address)) {
+        return boost::none;
+      }
     }
     boost::system::error_code ec;
     auto address = IpAddress::from_string(

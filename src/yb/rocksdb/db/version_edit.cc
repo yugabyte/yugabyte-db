@@ -116,9 +116,9 @@ std::string FileMetaData::FrontiersToString() const {
 }
 
 std::string FileMetaData::ToString() const {
-  return yb::Format("{ number: $0 total_size: $1 base_size: $2 refs: $3 "
-                    "being_compacted: $4 smallest: $5 largest: $6 }",
-                    fd.GetNumber(), fd.GetTotalFileSize(), fd.GetBaseFileSize(), refs,
+  return yb::Format("{ number: $0 total_size: $1 base_size: $2 "
+                    "being_compacted: $3 smallest: $4 largest: $5 }",
+                    fd.GetNumber(), fd.GetTotalFileSize(), fd.GetBaseFileSize(),
                     being_compacted, smallest, largest);
 }
 
@@ -380,6 +380,38 @@ void VersionEdit::InitNewDB() {
   next_file_number_ = VersionSet::kInitialNextFileNumber;
   last_sequence_ = 0;
   flushed_frontier_.reset();
+}
+
+void VersionEdit::AddTestFile(int level,
+                              const FileDescriptor& fd,
+                              const FileMetaData::BoundaryValues& smallest,
+                              const FileMetaData::BoundaryValues& largest,
+                              bool marked_for_compaction) {
+  DCHECK_LE(smallest.seqno, largest.seqno);
+  FileMetaData f;
+  f.fd = fd;
+  f.fd.table_reader = nullptr;
+  f.smallest = smallest;
+  f.largest = largest;
+  f.marked_for_compaction = marked_for_compaction;
+  new_files_.emplace_back(level, f);
+}
+
+void VersionEdit::AddFile(int level, const FileMetaData& f) {
+  DCHECK_LE(f.smallest.seqno, f.largest.seqno);
+  new_files_.emplace_back(level, f);
+}
+
+void VersionEdit::AddCleanedFile(int level, const FileMetaData& f) {
+  DCHECK_LE(f.smallest.seqno, f.largest.seqno);
+  FileMetaData nf;
+  nf.fd = f.fd;
+  nf.fd.table_reader = nullptr;
+  nf.smallest = f.smallest;
+  nf.largest = f.largest;
+  nf.marked_for_compaction = f.marked_for_compaction;
+  nf.imported = f.imported;
+  new_files_.emplace_back(level, std::move(nf));
 }
 
 void VersionEdit::UpdateFlushedFrontier(UserFrontierPtr value) {

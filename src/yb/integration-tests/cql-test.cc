@@ -31,7 +31,6 @@ DECLARE_bool(TEST_timeout_non_leader_master_rpcs);
 DECLARE_int64(cql_processors_limit);
 DECLARE_int32(client_read_write_timeout_ms);
 
-DECLARE_string(TEST_fail_to_fast_resolve_address);
 DECLARE_int32(partitions_vtable_cache_refresh_secs);
 DECLARE_int32(client_read_write_timeout_ms);
 
@@ -257,7 +256,6 @@ Status CheckNumAddressesInYqlPartitionsTable(CassandraSession* session, int expe
 }
 
 TEST_F_EX(CqlTest, HostnameResolutionFailureInYqlPartitionsTable, CqlThreeMastersTest) {
-  google::FlagSaver flag_saver;
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
   ASSERT_OK(CheckNumAddressesInYqlPartitionsTable(&session, 3));
 
@@ -266,9 +264,7 @@ TEST_F_EX(CqlTest, HostnameResolutionFailureInYqlPartitionsTable, CqlThreeMaster
                                             server::Private::kFalse);
 
   // Fail resolution of the old leader master's hostname.
-  FLAGS_TEST_fail_to_fast_resolve_address = hostname;
-  LOG(INFO) << "Setting FLAGS_TEST_fail_to_fast_resolve_address to: "
-            << FLAGS_TEST_fail_to_fast_resolve_address;
+  TEST_SetFailToFastResolveAddress(hostname);
 
   // Shutdown the master leader, and wait for new leader to get elected.
   ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->Shutdown();
@@ -276,6 +272,8 @@ TEST_F_EX(CqlTest, HostnameResolutionFailureInYqlPartitionsTable, CqlThreeMaster
 
   // Assert that a new call will succeed, but will be missing the shutdown master address.
   ASSERT_OK(CheckNumAddressesInYqlPartitionsTable(&session, 2));
+
+  TEST_SetFailToFastResolveAddress("");
 }
 
 TEST_F_EX(CqlTest, NonRespondingMaster, CqlThreeMastersTest) {

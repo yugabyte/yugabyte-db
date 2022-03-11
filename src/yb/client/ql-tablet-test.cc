@@ -218,9 +218,10 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
       const int begin, const int end, const int batch_size, const TableHandle& table) {
     {
       auto session = CreateSession();
-      for (int i = begin; i != end; ++i) {
+      for (int i = begin; i != end;) {
         auto op = CreateSetValueOp(i, ValueForKey(i), table);
-        if ((i - begin + 1) % batch_size == 0 || i == end) {
+        ++i;
+        if ((i - begin) % batch_size == 0 || i == end) {
           RETURN_NOT_OK(session->ApplyAndFlush(op));
         } else {
           session->Apply(op);
@@ -355,7 +356,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
 
   CHECKED_STATUS VerifyConsistency(
       int begin, int end, const TableHandle& table, int expected_rows_mismatched = 0) {
-    auto deadline = MonoTime::Now() + MonoDelta::FromSeconds(30);
+    auto deadline = MonoTime::Now() + MonoDelta::FromSeconds(30 * kTimeMultiplier);
     TabletIdsAndReplicas info = VERIFY_RESULT(GetTabletIdsAndReplicas(table));
     std::vector<std::string> tablet_ids = info.first;
     std::unordered_set<std::string> replicas = info.second;
@@ -1189,11 +1190,12 @@ TEST_F(QLTabletTest, OperationMemTracking) {
 TEST_F(QLTabletTest, BlockCacheMemTracking) {
   const auto kSleepTime = NonTsanVsTsan(5s, 1s);
   constexpr size_t kTotalRows = 10000;
+  constexpr size_t kBatchSize = 250;
   const string kBlockTrackerName = "BlockBasedTable";
 
   TableHandle table;
   CreateTable(kTable1Name, &table, 1);
-  FillTable(0, kTotalRows, table);
+  ASSERT_OK(BatchedFillTable(0, kTotalRows, kBatchSize, table));
 
   auto server_tracker = MemTracker::GetRootTracker()->FindChild("server 1");
   auto block_cache_tracker = server_tracker->FindChild(kBlockTrackerName);

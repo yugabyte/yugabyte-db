@@ -77,9 +77,6 @@ DEFINE_test_flag(int32, transaction_inject_flushed_delay_ms, 0,
 DEFINE_test_flag(bool, disable_proactive_txn_cleanup_on_abort, false,
                 "Disable cleanup of intents in abort path.");
 
-DECLARE_string(placement_cloud);
-DECLARE_string(placement_region);
-
 namespace yb {
 namespace client {
 
@@ -278,9 +275,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
       auto tservers = tablet->GetRemoteTabletServers(internal::IncludeFailedReplicas::kTrue);
       for (const auto &tserver : tservers) {
-        auto pb = tserver->cloud_info();
-        if (pb.placement_cloud() != FLAGS_placement_cloud ||
-            pb.placement_region() != FLAGS_placement_region) {
+        if (!tserver->IsLocalRegion()) {
           VLOG_WITH_PREFIX(4) << "Aborting (accessing nonlocal tablet in local transaction)";
           return STATUS_FORMAT(
               IllegalState, "Nonlocal tablet accessed in local transaction: tablet $0", tablet_id);

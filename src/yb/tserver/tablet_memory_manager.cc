@@ -302,7 +302,7 @@ void TabletMemoryManager::FlushTabletIfLimitExceeded() {
             << tablet_to_flush->OldestMutableMemtableWriteHybridTime();
         WARN_NOT_OK(
             tablet_to_flush->Flush(
-                tablet::FlushMode::kAsync, tablet::FlushFlags::kAll, flush_tick),
+                tablet::FlushMode::kAsync, tablet::FlushFlags::kAllDbs, flush_tick),
             Substitute("Flush failed on $0", peer_to_flush->tablet_id()));
         for (auto listener : TEST_listeners) {
           listener->StartedFlush(peer_to_flush->tablet_id());

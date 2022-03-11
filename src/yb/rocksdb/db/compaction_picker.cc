@@ -480,7 +480,7 @@ void CompactionPicker::MarkL0FilesForDeletion(
       vstorage->LevelFiles(0));
   for (FileMetaData* f : vstorage->LevelFiles(0)) {
     if (file_filter && file_filter->Filter(f) == FilterDecision::kDiscard) {
-      f->delete_after_compaction = true;
+      f->set_delete_after_compaction(true);
     }
   }
 }
@@ -1210,7 +1210,7 @@ struct UniversalCompactionPicker::SortedRun {
   }
 
   bool delete_after_compaction() const {
-    return file ? file->delete_after_compaction : false;
+    return file ? file->delete_after_compaction() : false;
   }
 
   int level;
@@ -1272,7 +1272,7 @@ std::vector<std::vector<UniversalCompactionPicker::SortedRun>>
   for (FileMetaData* f : vstorage.LevelFiles(0)) {
     // Any files that can be directly removed during compaction can be included, even if they
     // exceed the "max file size for compaction."
-    if (f->fd.GetTotalFileSize() <= max_file_size || f->delete_after_compaction) {
+    if (f->fd.GetTotalFileSize() <= max_file_size || f->delete_after_compaction()) {
       ret.back().emplace_back(0, f, f->fd.GetTotalFileSize(), f->compensated_file_size,
           f->being_compacted);
     // If last sequence is empty it means that there are multiple too-large-to-compact files in

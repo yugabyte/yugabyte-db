@@ -71,7 +71,7 @@ class ScopedOperation {
 // fine-grained control, such as preventing new operations from being started.
 class RWOperationCounter {
  public:
-  explicit RWOperationCounter(const std::string resource_name) : resource_name_(resource_name) {}
+  explicit RWOperationCounter(const std::string& resource_name) : resource_name_(resource_name) {}
 
   CHECKED_STATUS DisableAndWaitForOps(const CoarseTimePoint& deadline, Stop stop);
 

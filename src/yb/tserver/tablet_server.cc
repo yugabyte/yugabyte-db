@@ -262,6 +262,12 @@ Status TabletServer::Init() {
   RETURN_NOT_OK(ValidateMasterAddressResolution());
 
   RETURN_NOT_OK(RpcAndWebServerBase::Init());
+
+  // If enabled, creates a proxy to call this tablet server locally.
+  if (FLAGS_enable_direct_local_tablet_server_call) {
+    proxy_ = std::make_shared<TabletServerServiceProxy>(proxy_cache_.get(), HostPort());
+  }
+
   RETURN_NOT_OK(path_handlers_->Register(web_server_.get()));
 
   log_prefix_ = Format("P $0: ", permanent_uuid());
@@ -396,11 +402,6 @@ Status TabletServer::Start() {
 
   RETURN_NOT_OK(RegisterServices());
   RETURN_NOT_OK(RpcAndWebServerBase::Start());
-
-  // If enabled, creates a proxy to call this tablet server locally.
-  if (FLAGS_enable_direct_local_tablet_server_call) {
-    proxy_ = std::make_shared<TabletServerServiceProxy>(proxy_cache_.get(), HostPort());
-  }
 
   RETURN_NOT_OK(tablet_manager_->Start());
 

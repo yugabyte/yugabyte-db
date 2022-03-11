@@ -24,6 +24,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/trace.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 
@@ -90,7 +91,7 @@ uint64_t RWOperationCounter::Update(uint64_t delta) {
 
 bool RWOperationCounter::WaitMutexAndIncrement(CoarseTimePoint deadline) {
   if (deadline == CoarseTimePoint()) {
-    deadline = CoarseMonoClock::now() + 10ms;
+    deadline = CoarseMonoClock::now() + 10ms * kTimeMultiplier;
   } else if (deadline == CoarseTimePoint::min()) {
     return false;
   }

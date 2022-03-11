@@ -1341,8 +1341,8 @@ Status CDCServiceImpl::RefreshCacheOnFail(const Status& s) {
 MicrosTime CDCServiceImpl::GetLastReplicatedTime(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer) {
   tablet::RemoveIntentsData data;
-  tablet_peer->GetLastReplicatedData(&data);
-  return data.log_ht.GetPhysicalValueMicros();
+  auto status = tablet_peer->GetLastReplicatedData(&data);
+  return status.ok() ? data.log_ht.GetPhysicalValueMicros() : 0;
 }
 
 void CDCServiceImpl::UpdatePeersAndMetrics() {
@@ -1522,9 +1522,7 @@ Status CDCServiceImpl::GetTServers(const TabletId& tablet_id,
 }
 
 std::shared_ptr<CDCServiceProxy> CDCServiceImpl::GetCDCServiceProxy(RemoteTabletServer* ts) {
-  auto hostport = HostPortFromPB(DesiredHostPort(
-      ts->public_rpc_hostports(), ts->private_rpc_hostports(), ts->cloud_info(),
-      client()->cloud_info()));
+  auto hostport = HostPortFromPB(ts->DesiredHostPort(client()->cloud_info()));
   DCHECK(!hostport.host().empty());
 
   {

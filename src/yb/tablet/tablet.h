@@ -394,7 +394,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   //------------------------------------------------------------------------------------------------
   // Makes RocksDB Flush.
   CHECKED_STATUS Flush(FlushMode mode,
-                       FlushFlags flags = FlushFlags::kAll,
+                       FlushFlags flags = FlushFlags::kAllDbs,
                        int64_t ignore_if_flushed_after_tick = rocksdb::FlushOptions::kNeverIgnore);
 
   CHECKED_STATUS WaitForFlush();
@@ -619,7 +619,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Necessary for cases like truncate or restore snapshot when RocksDB is reset.
   CHECKED_STATUS ModifyFlushedFrontier(
       const docdb::ConsensusFrontier& value,
-      rocksdb::FrontierModificationMode mode);
+      rocksdb::FrontierModificationMode mode,
+      FlushFlags flags = FlushFlags::kAllDbs);
 
   // Get the isolation level of the given transaction from the metadata stored in the provisional
   // records RocksDB.

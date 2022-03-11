@@ -131,7 +131,7 @@ class YBTabletUtilTest : public YBMiniClusterTestBase<MiniCluster> {
 TEST_F(YBTabletUtilTest, VerifySingleKeyIsFound) {
   string output;
   ASSERT_OK(WriteData());
-  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kAll));
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kAllDbs));
   string db_path = ASSERT_RESULT(GetTabletDbPath());
 
   vector<string> argv = {

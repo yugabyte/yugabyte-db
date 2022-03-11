@@ -130,7 +130,6 @@ DECLARE_int32(min_backoff_ms_exponent);
 DECLARE_int32(max_backoff_ms_exponent);
 DECLARE_bool(TEST_force_master_lookup_all_tablets);
 DECLARE_double(TEST_simulate_lookup_timeout_probability);
-DECLARE_string(TEST_fail_to_fast_resolve_address);
 
 METRIC_DECLARE_counter(rpcs_queue_overflow);
 
@@ -258,7 +257,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
       client = client_.get();
     }
     std::shared_ptr<YBSession> session = client->NewSession();
-    session->SetTimeout(10s);
+    session->SetTimeout(10s * kTimeMultiplier);
     return session;
   }
 
@@ -2660,7 +2659,7 @@ class ClientTestWithHashAndRangePk : public ClientTest {
 // This tests https://github.com/yugabyte/yugabyte-db/issues/9806 with a scenario
 // when the batcher is emptied due to part of tablet lookups failing, but callback was not called.
 TEST_F_EX(ClientTest, EmptiedBatcherFlush, ClientTestWithHashAndRangePk) {
-  constexpr auto kNumRowsPerBatch = 100;
+  constexpr auto kNumRowsPerBatch = RegularBuildVsSanitizers(100, 10);
   constexpr auto kWriters = 4;
   const auto kTotalNumBatches = 50;
   const auto kFlushTimeout = 10s * kTimeMultiplier;
@@ -2704,7 +2703,7 @@ TEST_F_EX(ClientTest, EmptiedBatcherFlush, ClientTestWithHashAndRangePk) {
       ASSERT_OK(cluster_->mini_master()->catalog_manager()
           .TEST_IncrementTablePartitionListVersion(table->id()));
       table->MarkPartitionsAsStale();
-      SleepFor(10ms);
+      SleepFor(10ms * kTimeMultiplier);
     }
   });
 
@@ -2738,7 +2737,6 @@ class ClientTestWithThreeMasters : public ClientTest {
 };
 
 TEST_F_EX(ClientTest, IsMultiMasterWithFailingHostnameResolution, ClientTestWithThreeMasters) {
-  google::FlagSaver flag_saver;
   // TEST_RpcAddress is 1-indexed.
   string hostname = server::TEST_RpcAddress(cluster_->LeaderMasterIdx() + 1,
                                             server::Private::kFalse);
@@ -2748,9 +2746,7 @@ TEST_F_EX(ClientTest, IsMultiMasterWithFailingHostnameResolution, ClientTestWith
   ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
 
   // Fail resolution of the old leader master's hostname.
-  FLAGS_TEST_fail_to_fast_resolve_address = hostname;
-  LOG(INFO) << "Setting FLAGS_TEST_fail_to_fast_resolve_address to: "
-            << FLAGS_TEST_fail_to_fast_resolve_address;
+  TEST_SetFailToFastResolveAddress(hostname);
 
   // Make a client request to the leader master, since that master is no longer the leader, we will
   // check that we have a MultiMaster setup. That check should not fail even though one of the
