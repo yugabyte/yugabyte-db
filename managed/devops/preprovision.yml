@@ -22,7 +22,7 @@
         create: yes
         mode: 0440
         line: "{{ [ssh_user, yb_server_ssh_user, user_name] |
-          select('defined') | unique | map('regex_replace', '(.*)', 'Defaults:\\1 !requiretty') |
+          select('defined') | unique | map('regex_replace', '^(.*)$', 'Defaults:\\1 !requiretty') |
           join('\n') }}"
       vars:
         ansible_ssh_pipelining: no

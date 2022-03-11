@@ -2086,6 +2086,11 @@ public class PlacementInfoUtil {
 
   private static void addPlacementZone(
       UUID zone, PlacementInfo placementInfo, int rf, int numNodes) {
+    addPlacementZone(zone, placementInfo, rf, numNodes, true);
+  }
+
+  public static void addPlacementZone(
+      UUID zone, PlacementInfo placementInfo, int rf, int numNodes, boolean isAffinitized) {
     // Get the zone, region and cloud.
     AvailabilityZone az = AvailabilityZone.get(zone);
     Region region = az.region;
@@ -2140,7 +2145,7 @@ public class PlacementInfoUtil {
                   newPlacementAZ.name = az.name;
                   newPlacementAZ.replicationFactor = 0;
                   newPlacementAZ.subnet = az.subnet;
-                  newPlacementAZ.isAffinitized = true;
+                  newPlacementAZ.isAffinitized = isAffinitized;
                   placementRegion.azList.add(newPlacementAZ);
 
                   return newPlacementAZ;

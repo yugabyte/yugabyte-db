@@ -86,6 +86,16 @@ public class ApiUtils {
   }
 
   public static Universe.UniverseUpdater mockUniverseUpdater(
+      final UserIntent userIntent, final PlacementInfo placementInfo) {
+    return mockUniverseUpdater(userIntent, "host", false);
+  }
+
+  public static Universe.UniverseUpdater mockUniverseUpdater(
+      final UserIntent userIntent, final PlacementInfo placementInfo, boolean setMasters) {
+    return mockUniverseUpdater(userIntent, "host", setMasters, false, placementInfo);
+  }
+
+  public static Universe.UniverseUpdater mockUniverseUpdater(
       UserIntent userIntent, boolean setMasters) {
     return mockUniverseUpdater(userIntent, "host", setMasters);
   }
@@ -105,13 +115,22 @@ public class ApiUtils {
       final String nodePrefix,
       final boolean setMasters,
       final boolean updateInProgress) {
+    PlacementInfo placementInfo =
+        PlacementInfoUtil.getPlacementInfo(
+            ClusterType.PRIMARY, userIntent, userIntent.replicationFactor);
+    return mockUniverseUpdater(userIntent, nodePrefix, setMasters, updateInProgress, placementInfo);
+  }
+
+  public static Universe.UniverseUpdater mockUniverseUpdater(
+      final UserIntent userIntent,
+      final String nodePrefix,
+      final boolean setMasters,
+      final boolean updateInProgress,
+      final PlacementInfo placementInfo) {
     return new Universe.UniverseUpdater() {
       @Override
       public void run(Universe universe) {
         UniverseDefinitionTaskParams universeDetails = new UniverseDefinitionTaskParams();
-        PlacementInfo placementInfo =
-            PlacementInfoUtil.getPlacementInfo(
-                ClusterType.PRIMARY, userIntent, userIntent.replicationFactor);
         universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
         universeDetails.nodeDetailsSet = new HashSet<>();
         universeDetails.updateInProgress = updateInProgress;
@@ -130,6 +149,29 @@ public class ApiUtils {
         universeDetails.rootCA = universe.getUniverseDetails().rootCA;
         universe.setUniverseDetails(universeDetails);
       }
+    };
+  }
+
+  public static Universe.UniverseUpdater mockUniverseUpdaterWithReadReplica(
+      final UserIntent userIntent, final PlacementInfo placementInfo) {
+
+    return universe -> {
+      UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+      UniverseDefinitionTaskParams.Cluster readReplica =
+          universeDetails.upsertCluster(userIntent, placementInfo, UUID.randomUUID());
+      int currentNodes = universeDetails.nodeDetailsSet.size();
+      for (int idx = currentNodes + 1; idx <= currentNodes + userIntent.numNodes; idx++) {
+        NodeDetails node = getDummyNodeDetails(idx, NodeState.Live, false);
+        node.placementUuid = readReplica.uuid;
+        if (placementInfo != null) {
+          List<PlacementInfo.PlacementAZ> azList =
+              placementInfo.cloudList.get(0).regionList.get(0).azList;
+          int azIndex = (idx - 1) % azList.size();
+          node.azUuid = azList.get(azIndex).uuid;
+        }
+        universeDetails.nodeDetailsSet.add(node);
+      }
+      universe.setUniverseDetails(universeDetails);
     };
   }
 

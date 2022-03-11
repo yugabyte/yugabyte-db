@@ -27,6 +27,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.forms.CertificateParams;
@@ -39,6 +40,7 @@ import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.File;
 import java.io.IOException;
@@ -57,10 +59,8 @@ import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
-import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.IsServerReadyResponse;
 import org.yb.client.YBClient;
-import org.yb.master.Master;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -73,7 +73,12 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
   Universe defaultUniverse;
   ShellResponse dummyShellResponse;
 
-  String cert1Contents =
+  private Region region;
+  private AvailabilityZone az1;
+  private AvailabilityZone az2;
+  private AvailabilityZone az3;
+
+  private static final String cert1Contents =
       "-----BEGIN CERTIFICATE-----\n"
           + "MIIDEjCCAfqgAwIBAgIUEdzNoxkMLrZCku6H1jQ4pUgPtpQwDQYJKoZIhvcNAQEL\n"
           + "BQAwLzERMA8GA1UECgwIWXVnYWJ5dGUxGjAYBgNVBAMMEUNBIGZvciBZdWdhYnl0\n"
@@ -94,7 +99,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           + "YvtLjmJF//b3rsty6NFIonSVgq6Nqw==\n"
           + "-----END CERTIFICATE-----\n";
 
-  String cert2Contents =
+  private static final String cert2Contents =
       "-----BEGIN CERTIFICATE-----\n"
           + "MIIDAjCCAeqgAwIBAgIGAXVCiJ4gMA0GCSqGSIb3DQEBCwUAMC4xFjAUBgNVBAMM\n"
           + "DXliLWFkbWluLXRlc3QxFDASBgNVBAoMC2V4YW1wbGUuY29tMB4XDTIwMTAxOTIw\n"
@@ -119,8 +124,10 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
   public void setUp() {
     super.setUp();
     upgradeUniverse.setUserTaskUUID(UUID.randomUUID());
-    Region region = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
-    AvailabilityZone.create(region, "az-1", "AZ 1", "subnet-1");
+    region = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
+    az1 = AvailabilityZone.create(region, "az-1", "AZ 1", "subnet-1");
+    az2 = AvailabilityZone.create(region, "az-2", "AZ 2", "subnet-2");
+    az3 = AvailabilityZone.create(region, "az-3", "AZ 3", "subnet-3");
     UUID certUUID = UUID.randomUUID();
     Date date = new Date();
     CertificateParams.CustomCertInfo customCertInfo = new CertificateParams.CustomCertInfo();
@@ -149,9 +156,14 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     userIntent.accessKeyCode = "demo-access";
     userIntent.regionList = ImmutableList.of(region.uuid);
     defaultUniverse = createUniverse(defaultCustomer.getCustomerId(), certUUID);
+    PlacementInfo pi = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(az1.uuid, pi, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az2.uuid, pi, 1, 1, true);
+    PlacementInfoUtil.addPlacementZone(az3.uuid, pi, 1, 1, false);
+
     Universe.saveDetails(
         defaultUniverse.universeUUID,
-        ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
+        ApiUtils.mockUniverseUpdater(userIntent, pi, true /* setMasters */));
 
     // Setup mocks
     mockClient = mock(YBClient.class);
@@ -193,9 +205,9 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     return null;
   }
 
-  List<String> PROPERTY_KEYS = ImmutableList.of("processType", "taskSubType");
+  private static final List<String> PROPERTY_KEYS = ImmutableList.of("processType", "taskSubType");
 
-  List<TaskType> NON_NODE_TASKS =
+  private static final List<TaskType> NON_NODE_TASKS =
       ImmutableList.of(
           TaskType.LoadBalancerStateChange,
           TaskType.UpdateAndPersistGFlags,
@@ -203,7 +215,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           TaskType.UnivSetCertificate,
           TaskType.UniverseUpdateSucceeded);
 
-  List<TaskType> GFLAGS_UPGRADE_TASK_SEQUENCE =
+  private static final List<TaskType> GFLAGS_UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.AnsibleConfigureServers,
           TaskType.SetNodeState,
@@ -212,7 +224,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           TaskType.SetNodeState,
           TaskType.WaitForServer);
 
-  List<TaskType> GFLAGS_ROLLING_UPGRADE_TASK_SEQUENCE =
+  private static final List<TaskType> GFLAGS_ROLLING_UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.AnsibleConfigureServers,
@@ -223,7 +235,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           TaskType.WaitForEncryptionKeyInMemory,
           TaskType.SetNodeState);
 
-  List<TaskType> CERTS_ROLLING_UPGRADE_TASK_SEQUENCE =
+  private static final List<TaskType> CERTS_ROLLING_UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.AnsibleClusterServerCtl,
@@ -233,7 +245,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           TaskType.WaitForEncryptionKeyInMemory,
           TaskType.SetNodeState);
 
-  List<TaskType> CERTS_NON_ROLLING_TASK_SEQUENCE =
+  private static final List<TaskType> CERTS_NON_ROLLING_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.AnsibleClusterServerCtl,
@@ -241,14 +253,14 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           TaskType.SetNodeState,
           TaskType.WaitForServer);
 
-  List<TaskType> GFLAGS_NON_ROLLING_UPGRADE_TASK_SEQUENCE =
+  private static final List<TaskType> GFLAGS_NON_ROLLING_UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.AnsibleConfigureServers,
           TaskType.SetNodeState,
           TaskType.SetFlagInMemory,
           TaskType.SetNodeState);
 
-  List<TaskType> SOFTWARE_FULL_UPGRADE_TASK_SEQUENCE =
+  private static final List<TaskType> SOFTWARE_FULL_UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.AnsibleClusterServerCtl,
@@ -257,7 +269,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           TaskType.SetNodeState,
           TaskType.WaitForServer);
 
-  List<TaskType> SOFTWARE_ROLLING_UPGRADE_TASK_SEQUENCE =
+  private static final List<TaskType> SOFTWARE_ROLLING_UPGRADE_TASK_SEQUENCE_ACTIVE_ROLE =
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.AnsibleClusterServerCtl,
@@ -268,7 +280,14 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           TaskType.WaitForEncryptionKeyInMemory,
           TaskType.SetNodeState);
 
-  List<TaskType> ROLLING_RESTART_TASK_SEQUENCE =
+  private static final List<TaskType> SOFTWARE_ROLLING_UPGRADE_TASK_SEQUENCE_INACTIVE_ROLE =
+      ImmutableList.of(
+          TaskType.SetNodeState,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.AnsibleConfigureServers,
+          TaskType.SetNodeState);
+
+  private static final List<TaskType> ROLLING_RESTART_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.AnsibleClusterServerCtl,
@@ -372,13 +391,15 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
       Map<Integer, List<TaskInfo>> subTasksByPosition,
       ServerType serverType,
       int startPosition,
-      boolean isRollingUpgrade) {
+      boolean isRollingUpgrade,
+      boolean activeRole) {
     int position = startPosition;
     if (isRollingUpgrade) {
-      List<TaskType> taskSequence = SOFTWARE_ROLLING_UPGRADE_TASK_SEQUENCE;
-      // We need to check that the master leader is upgraded last.
-      List<Integer> nodeOrder =
-          serverType == MASTER ? Arrays.asList(1, 3, 2) : Arrays.asList(1, 2, 3);
+      List<TaskType> taskSequence =
+          activeRole
+              ? SOFTWARE_ROLLING_UPGRADE_TASK_SEQUENCE_ACTIVE_ROLE
+              : SOFTWARE_ROLLING_UPGRADE_TASK_SEQUENCE_INACTIVE_ROLE;
+      List<Integer> nodeOrder = getRollingUpgradeNodeOrderForSWUpgrade(serverType, activeRole);
       for (int nodeIdx : nodeOrder) {
         String nodeName = String.format("host-n%d", nodeIdx);
         for (int j = 0; j < taskSequence.size(); j++) {
@@ -723,10 +744,31 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testSoftwareUpgrade() {
+    // create default universe
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        new UniverseDefinitionTaskParams.UserIntent();
+    userIntent.numNodes = 5;
+    userIntent.replicationFactor = 3;
+    userIntent.ybSoftwareVersion = "old-version";
+    userIntent.accessKeyCode = "demo-access";
+    userIntent.regionList = ImmutableList.of(region.uuid);
+
+    PlacementInfo pi = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(az1.uuid, pi, 1, 2, false);
+    PlacementInfoUtil.addPlacementZone(az2.uuid, pi, 1, 1, true);
+    PlacementInfoUtil.addPlacementZone(az3.uuid, pi, 1, 2, false);
+
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.universeUUID,
+            ApiUtils.mockUniverseUpdater(
+                userIntent, "host", true /* setMasters */, false /* updateInProgress */, pi));
+
     UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
     taskParams.ybSoftwareVersion = "new-version";
-    TaskInfo taskInfo = submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.Software);
-    verify(mockNodeManager, times(21)).nodeCommand(any(), any());
+    TaskInfo taskInfo =
+        submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.Software, defaultUniverse.version);
+    verify(mockNodeManager, times(33)).nodeCommand(any(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -735,14 +777,80 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     int position = 0;
     List<TaskInfo> downloadTasks = subTasksByPosition.get(position++);
     assertTaskType(downloadTasks, TaskType.AnsibleConfigureServers);
-    assertEquals(3, downloadTasks.size());
-    position = assertSoftwareUpgradeSequence(subTasksByPosition, MASTER, position, true);
+    assertEquals(5, downloadTasks.size());
+    position = assertSoftwareUpgradeSequence(subTasksByPosition, MASTER, position, true, true);
+    position = assertSoftwareUpgradeSequence(subTasksByPosition, MASTER, position, true, false);
     assertTaskType(subTasksByPosition.get(position++), TaskType.LoadBalancerStateChange);
     position =
         assertSoftwareCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false);
-    position = assertSoftwareUpgradeSequence(subTasksByPosition, TSERVER, position, true);
+    position = assertSoftwareUpgradeSequence(subTasksByPosition, TSERVER, position, true, true);
     assertSoftwareCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true);
-    assertEquals(50, position);
+    assertEquals(74, position);
+    assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testSoftwareUpgradeWithReadReplica() {
+    // Update default universe.
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        new UniverseDefinitionTaskParams.UserIntent();
+    userIntent.numNodes = 5;
+    userIntent.replicationFactor = 3;
+    userIntent.ybSoftwareVersion = "old-version";
+    userIntent.accessKeyCode = "demo-access";
+    userIntent.regionList = ImmutableList.of(region.uuid);
+
+    PlacementInfo pi = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(az1.uuid, pi, 1, 2, false);
+    PlacementInfoUtil.addPlacementZone(az2.uuid, pi, 1, 1, true);
+    PlacementInfoUtil.addPlacementZone(az3.uuid, pi, 1, 2, false);
+
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.universeUUID,
+            ApiUtils.mockUniverseUpdater(
+                userIntent, "host", true /* setMasters */, false /* updateInProgress */, pi));
+
+    pi = new PlacementInfo();
+    AvailabilityZone az4 = AvailabilityZone.create(region, "az-4", "AZ 4", "subnet-1");
+    AvailabilityZone az5 = AvailabilityZone.create(region, "az-5", "AZ 5", "subnet-2");
+    AvailabilityZone az6 = AvailabilityZone.create(region, "az-6", "AZ 6", "subnet-3");
+
+    // Currently read replica zones are always affinitized.
+    PlacementInfoUtil.addPlacementZone(az4.uuid, pi, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az5.uuid, pi, 1, 1, true);
+    PlacementInfoUtil.addPlacementZone(az6.uuid, pi, 1, 1, false);
+
+    userIntent.numNodes = 3;
+
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.universeUUID,
+            ApiUtils.mockUniverseUpdaterWithReadReplica(userIntent, pi));
+
+    UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
+    taskParams.ybSoftwareVersion = "new-version";
+    TaskInfo taskInfo =
+        submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.Software, defaultUniverse.version);
+    verify(mockNodeManager, times(45)).nodeCommand(any(), any());
+
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+
+    int position = 0;
+    List<TaskInfo> downloadTasks = subTasksByPosition.get(position++);
+    assertTaskType(downloadTasks, TaskType.AnsibleConfigureServers);
+    assertEquals(8, downloadTasks.size());
+    position = assertSoftwareUpgradeSequence(subTasksByPosition, MASTER, position, true, true);
+    position = assertSoftwareUpgradeSequence(subTasksByPosition, MASTER, position, true, false);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.LoadBalancerStateChange);
+    position =
+        assertSoftwareCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false);
+    position = assertSoftwareUpgradeSequence(subTasksByPosition, TSERVER, position, true, true);
+    assertSoftwareCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true);
+    assertEquals(98, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
   }
@@ -764,8 +872,8 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     List<TaskInfo> downloadTasks = subTasksByPosition.get(position++);
     assertTaskType(downloadTasks, TaskType.AnsibleConfigureServers);
     assertEquals(3, downloadTasks.size());
-    position = assertSoftwareUpgradeSequence(subTasksByPosition, MASTER, position, false);
-    position = assertSoftwareUpgradeSequence(subTasksByPosition, TSERVER, position, false);
+    position = assertSoftwareUpgradeSequence(subTasksByPosition, MASTER, position, false, true);
+    position = assertSoftwareUpgradeSequence(subTasksByPosition, TSERVER, position, false, true);
     assertSoftwareCommonTasks(subTasksByPosition, position, UpgradeType.FULL_UPGRADE, true);
     assertEquals(13, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
@@ -1309,5 +1417,21 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
     assertEquals(12, position);
     verify(mockNodeManager, times(15)).nodeCommand(any(), any());
+  }
+
+  // Software upgrade has more nodes - 3 masters + 2 tservers only.
+  private List<Integer> getRollingUpgradeNodeOrderForSWUpgrade(
+      ServerType serverType, boolean activeRole) {
+    return serverType == MASTER
+        ?
+        // We need to check that the master leader is upgraded last.
+        (activeRole ? Arrays.asList(1, 3, 2) : Arrays.asList(4, 5))
+        :
+        // We need to check that isAffinitized zone node is upgraded getFirst().
+        defaultUniverse.getUniverseDetails().getReadOnlyClusters().isEmpty()
+            ? Arrays.asList(1, 2, 3, 4, 5)
+            :
+            // Primary cluster getFirst(), then read replica.
+            Arrays.asList(1, 2, 3, 4, 5, 6, 7, 8);
   }
 }
