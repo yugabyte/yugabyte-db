@@ -34,7 +34,7 @@ namespace yb {
 namespace pggate {
 
 PgTableDesc::PgTableDesc(const PgObjectId& id, const client::YBTablePtr& table)
-    : id_(id), table_(table), table_partitions_(table_->GetVersionedPartitions()) {
+    : id_(id), table_(table), table_partitions_(table->GetVersionedPartitions()) {
 
   size_t idx = 0;
   for (const auto& column : schema().columns()) {
@@ -167,30 +167,6 @@ const Schema& PgTableDesc::schema() const {
 
 uint32_t PgTableDesc::schema_version() const {
   return table_->schema().version();
-}
-
-std::unique_ptr<client::YBPgsqlWriteOp> PgTableDesc::NewPgsqlInsert() {
-  return client::YBPgsqlWriteOp::NewInsert(table_);
-}
-
-std::unique_ptr<client::YBPgsqlWriteOp> PgTableDesc::NewPgsqlUpdate() {
-  return client::YBPgsqlWriteOp::NewUpdate(table_);
-}
-
-std::unique_ptr<client::YBPgsqlWriteOp> PgTableDesc::NewPgsqlDelete() {
-  return client::YBPgsqlWriteOp::NewDelete(table_);
-}
-
-std::unique_ptr<client::YBPgsqlWriteOp> PgTableDesc::NewPgsqlTruncateColocated() {
-  return client::YBPgsqlWriteOp::NewTruncateColocated(table_);
-}
-
-std::unique_ptr<client::YBPgsqlReadOp> PgTableDesc::NewPgsqlSelect() {
-  return client::YBPgsqlReadOp::NewSelect(table_);
-}
-
-std::unique_ptr<client::YBPgsqlReadOp> PgTableDesc::NewPgsqlSample() {
-  return client::YBPgsqlReadOp::NewSample(table_);
 }
 
 }  // namespace pggate
