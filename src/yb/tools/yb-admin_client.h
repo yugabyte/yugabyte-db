@@ -275,6 +275,10 @@ class ClusterAdminClient {
 
   CHECKED_STATUS SplitTablet(const std::string& tablet_id);
 
+  CHECKED_STATUS DisableTabletSplitting(int64_t disable_duration_ms);
+
+  CHECKED_STATUS IsTabletSplittingComplete();
+
   CHECKED_STATUS CreateTransactionsStatusTable(const std::string& table_name);
 
   Result<TableNameResolver> BuildTableNameResolver();
