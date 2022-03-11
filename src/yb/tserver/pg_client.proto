@@ -56,6 +56,12 @@ service PgClientService {
   rpc TruncateTable(PgTruncateTableRequestPB) returns (PgTruncateTableResponsePB);
   rpc ValidatePlacement(PgValidatePlacementRequestPB)
       returns (PgValidatePlacementResponsePB);
+
+  rpc InsertSequenceTuple(PgInsertSequenceTupleRequestPB) returns (PgInsertSequenceTupleResponsePB);
+  rpc UpdateSequenceTuple(PgUpdateSequenceTupleRequestPB) returns (PgUpdateSequenceTupleResponsePB);
+  rpc ReadSequenceTuple(PgReadSequenceTupleRequestPB) returns (PgReadSequenceTupleResponsePB);
+  rpc DeleteSequenceTuple(PgDeleteSequenceTupleRequestPB) returns (PgDeleteSequenceTupleResponsePB);
+  rpc DeleteDBSequences(PgDeleteDBSequencesRequestPB) returns (PgDeleteDBSequencesResponsePB);
 }
 
 message PgHeartbeatRequestPB {
@@ -407,5 +413,67 @@ message PgValidatePlacementRequestPB {
 }
 
 message PgValidatePlacementResponsePB {
+  AppStatusPB status = 1;
+}
+
+message PgInsertSequenceTupleRequestPB {
+  uint64 session_id = 1;
+  int64 db_oid = 2;
+  int64 seq_oid = 3;
+  uint64 ysql_catalog_version = 4;
+  int64 last_val = 5;
+  bool is_called = 6;
+}
+
+message PgInsertSequenceTupleResponsePB {
+  AppStatusPB status = 1;
+}
+
+message PgUpdateSequenceTupleRequestPB {
+  uint64 session_id = 1;
+  int64 db_oid = 2;
+  int64 seq_oid = 3;
+  uint64 ysql_catalog_version = 4;
+  int64 last_val = 5;
+  bool is_called = 6;
+  bool has_expected = 7;
+  int64 expected_last_val = 8;
+  bool expected_is_called = 9;
+}
+
+message PgUpdateSequenceTupleResponsePB {
+  AppStatusPB status = 1;
+  bool skipped = 2;
+}
+
+message PgReadSequenceTupleRequestPB {
+  uint64 session_id = 1;
+  int64 db_oid = 2;
+  int64 seq_oid = 3;
+  uint64 ysql_catalog_version = 4;
+}
+
+message PgReadSequenceTupleResponsePB {
+  AppStatusPB status = 1;
+  int64 last_val = 2;
+  bool is_called = 3;
+}
+
+message PgDeleteSequenceTupleRequestPB {
+  uint64 session_id = 1;
+  int64 db_oid = 2;
+  int64 seq_oid = 3;
+}
+
+message PgDeleteSequenceTupleResponsePB {
+  AppStatusPB status = 1;
+}
+
+message PgDeleteDBSequencesRequestPB {
+  uint64 session_id = 1;
+  int64 db_oid = 2;
+}
+
+message PgDeleteDBSequencesResponsePB {
   AppStatusPB status = 1;
 }
