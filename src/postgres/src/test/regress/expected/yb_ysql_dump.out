@@ -2,8 +2,8 @@
 -- YSQL database dump
 --
 
--- Dumped from database version 11.2-YB-2.8.3.0-b0
--- Dumped by ysql_dump version 11.2-YB-2.8.3.0-b0
+-- Dumped from database version 11.2-YB-2.8.4.0-b0
+-- Dumped by ysql_dump version 11.2-YB-2.8.4.0-b0
 
 SET yb_binary_restore = true;
 SET statement_timeout = 0;
@@ -433,6 +433,118 @@ SPLIT INTO 3 TABLETS;
 ALTER TABLE public.tbl9 OWNER TO yugabyte_test;
 
 --
+-- Name: th1; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16485'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16484'::pg_catalog.oid);
+
+CREATE TABLE public.th1 (
+    a integer,
+    b text,
+    c double precision
+)
+SPLIT INTO 2 TABLETS;
+
+
+ALTER TABLE public.th1 OWNER TO yugabyte_test;
+
+--
+-- Name: th2; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16488'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16487'::pg_catalog.oid);
+
+CREATE TABLE public.th2 (
+    a integer NOT NULL,
+    b text NOT NULL,
+    c double precision,
+    CONSTRAINT th2_pkey PRIMARY KEY((a) HASH, b ASC)
+)
+SPLIT INTO 3 TABLETS;
+
+
+ALTER TABLE public.th2 OWNER TO yugabyte_test;
+
+--
+-- Name: th3; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16493'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16492'::pg_catalog.oid);
+
+CREATE TABLE public.th3 (
+    a integer NOT NULL,
+    b text NOT NULL,
+    c double precision,
+    CONSTRAINT th3_pkey PRIMARY KEY((a, b) HASH)
+)
+SPLIT INTO 4 TABLETS;
+
+
+ALTER TABLE public.th3 OWNER TO yugabyte_test;
+
+--
+-- Name: tr1; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16498'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16497'::pg_catalog.oid);
+
+CREATE TABLE public.tr1 (
+    a integer NOT NULL,
+    b text,
+    c double precision,
+    CONSTRAINT tr1_pkey PRIMARY KEY(a ASC)
+);
+
+
+ALTER TABLE public.tr1 OWNER TO yugabyte_test;
+
+--
+-- Name: tr2; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16503'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16502'::pg_catalog.oid);
+
+CREATE TABLE public.tr2 (
+    a integer NOT NULL,
+    b text NOT NULL,
+    c double precision NOT NULL,
+    CONSTRAINT tr2_pkey PRIMARY KEY(a DESC, b ASC, c DESC)
+);
+
+
+ALTER TABLE public.tr2 OWNER TO yugabyte_test;
+
+--
 -- Name: uaccount; Type: TABLE; Schema: public; Owner: regress_rls_alice
 --
 
@@ -598,6 +710,46 @@ COPY public.tbl9 (a, b, c) FROM stdin;
 
 
 --
+-- Data for Name: th1; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.th1 (a, b, c) FROM stdin;
+\.
+
+
+--
+-- Data for Name: th2; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.th2 (a, b, c) FROM stdin;
+\.
+
+
+--
+-- Data for Name: th3; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.th3 (a, b, c) FROM stdin;
+\.
+
+
+--
+-- Data for Name: tr1; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.tr1 (a, b, c) FROM stdin;
+\.
+
+
+--
+-- Data for Name: tr2; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.tr2 (a, b, c) FROM stdin;
+\.
+
+
+--
 -- Data for Name: uaccount; Type: TABLE DATA; Schema: public; Owner: regress_rls_alice
 --
 
@@ -652,6 +804,34 @@ CREATE INDEX tbl8_idx4 ON public.tbl8 USING lsm (b DESC);
 --
 
 CREATE INDEX tbl8_idx5 ON public.tbl8 USING lsm (c HASH) SPLIT INTO 3 TABLETS;
+
+
+--
+-- Name: th2_c_b_idx; Type: INDEX; Schema: public; Owner: yugabyte_test
+--
+
+CREATE INDEX th2_c_b_idx ON public.th2 USING lsm (c HASH, b DESC) SPLIT INTO 4 TABLETS;
+
+
+--
+-- Name: th3_c_b_idx; Type: INDEX; Schema: public; Owner: yugabyte_test
+--
+
+CREATE INDEX th3_c_b_idx ON public.th3 USING lsm ((c, b) HASH) SPLIT INTO 3 TABLETS;
+
+
+--
+-- Name: tr2_c_b_a_idx; Type: INDEX; Schema: public; Owner: yugabyte_test
+--
+
+CREATE INDEX tr2_c_b_a_idx ON public.tr2 USING lsm (c ASC, b DESC, a ASC);
+
+
+--
+-- Name: tr2_c_idx; Type: INDEX; Schema: public; Owner: yugabyte_test
+--
+
+CREATE INDEX tr2_c_idx ON public.tr2 USING lsm (c DESC);
 
 
 --

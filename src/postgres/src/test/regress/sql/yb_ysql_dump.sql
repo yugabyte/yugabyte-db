@@ -56,3 +56,42 @@ CREATE TABLE uaccount (pguser      name, seclv       int, PRIMARY KEY(pguser ASC
 ALTER TABLE uaccount ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY account_policies ON uaccount USING (pguser = current_user);
+
+RESET SESSION AUTHORIZATION;
+
+------------------------------------------------
+-- Test table and index explicit splitting.
+------------------------------------------------
+
+------------------------------------
+-- Tables
+
+-- Table without a primary key
+CREATE TABLE th1 (a int, b text, c float) SPLIT INTO 2 TABLETS;
+
+-- Hash-partitioned table with range components
+CREATE TABLE th2 (a int, b text, c float, PRIMARY KEY (a HASH, b ASC)) SPLIT INTO 3 TABLETS;
+
+-- Hash-partitioned table without range components
+CREATE TABLE th3 (a int, b text, c float, PRIMARY KEY ((a, b) HASH)) SPLIT INTO 4 TABLETS;
+
+-- Range-partitioned table with single-column key
+CREATE TABLE tr1 (a int, b text, c float, PRIMARY KEY (a ASC)) SPLIT AT VALUES ((1), (100));
+
+-- Range-partitioned table with multi-column key
+CREATE TABLE tr2 (a int, b text, c float, PRIMARY KEY (a DESC, b ASC, c DESC)) SPLIT AT VALUES ((100, 'a', 2.5), (50, 'n'), (1, 'z', -5.12));
+
+------------------------------------
+-- Indexes
+
+-- Hash-partitioned table with range components
+CREATE INDEX on th2(c HASH, b DESC) SPLIT INTO 4 TABLETS;
+
+-- Hash-partitioned table without range components
+CREATE INDEX on th3((c, b) HASH) SPLIT INTO 3 TABLETS;
+
+-- Range-partitioned table with single-column key
+CREATE INDEX ON tr2(c DESC) SPLIT AT VALUES ((100.5), (1.5));
+
+-- Range-partitioned table with multi-column key
+CREATE INDEX ON tr2(c ASC, b DESC, a ASC) SPLIT AT VALUES ((-5.12, 'z', 1), (-0.75, 'l'), (2.5, 'a', 100));
