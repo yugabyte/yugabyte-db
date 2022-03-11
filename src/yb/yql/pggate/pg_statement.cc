@@ -26,7 +26,6 @@ using std::string;
 using std::vector;
 using namespace std::literals;  // NOLINT
 
-using client::YBClient;
 using client::YBSession;
 using client::YBMetaDataCache;
 

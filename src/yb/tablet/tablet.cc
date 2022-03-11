@@ -3313,6 +3313,10 @@ Result<TransactionOperationContext> Tablet::CreateTransactionOperationContext(
     return TransactionOperationContext();
   }
 
+  if (!transaction_participant_) {
+    return STATUS(IllegalState, "Transactional operation for non transactional tablet");
+  }
+
   if (!subtransaction_metadata) {
     return TransactionOperationContext(*txn_id, transaction_participant());
   }

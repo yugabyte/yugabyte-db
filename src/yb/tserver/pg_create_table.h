@@ -59,6 +59,8 @@ class PgCreateTable {
   bool ybbasectid_added_ = false;
 };
 
+CHECKED_STATUS CreateSequencesDataTable(client::YBClient* client, CoarseTimePoint deadline);
+
 }  // namespace tserver
 }  // namespace yb
 

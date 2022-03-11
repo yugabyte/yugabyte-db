@@ -124,8 +124,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   typedef scoped_refptr<PgSession> ScopedRefPtr;
 
   // Constructors.
-  PgSession(client::YBClient* client,
-            PgClient* pg_client,
+  PgSession(PgClient* pg_client,
             const string& database_name,
             scoped_refptr<PgTxnManager> pg_txn_manager,
             scoped_refptr<server::HybridClock> clock,
@@ -163,20 +162,17 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
                                      int64_t last_val,
                                      bool is_called);
 
-  CHECKED_STATUS UpdateSequenceTuple(int64_t db_oid,
-                                     int64_t seq_oid,
-                                     uint64_t ysql_catalog_version,
-                                     int64_t last_val,
-                                     bool is_called,
-                                     boost::optional<int64_t> expected_last_val,
-                                     boost::optional<bool> expected_is_called,
-                                     bool* skipped);
-
-  CHECKED_STATUS ReadSequenceTuple(int64_t db_oid,
+  Result<bool> UpdateSequenceTuple(int64_t db_oid,
                                    int64_t seq_oid,
                                    uint64_t ysql_catalog_version,
-                                   int64_t *last_val,
-                                   bool *is_called);
+                                   int64_t last_val,
+                                   bool is_called,
+                                   boost::optional<int64_t> expected_last_val,
+                                   boost::optional<bool> expected_is_called);
+
+  Result<std::pair<int64_t, bool>> ReadSequenceTuple(int64_t db_oid,
+                                                     int64_t seq_oid,
+                                                     uint64_t ysql_catalog_version);
 
   CHECKED_STATUS DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid);
 
@@ -385,9 +381,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   void Perform(PgsqlOps* operations, const PerformCallback& callback);
 
   void UpdateInTxnLimit(uint64_t* read_time);
-
-  // YBSession to execute operations.
-  std::shared_ptr<client::YBSession> session_;
 
   PgClient& pg_client_;
 

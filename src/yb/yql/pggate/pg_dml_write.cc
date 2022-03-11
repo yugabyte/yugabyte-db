@@ -27,7 +27,6 @@ using std::shared_ptr;
 using std::string;
 using namespace std::literals;  // NOLINT
 
-using client::YBClient;
 using client::YBSession;
 using client::YBMetaDataCache;
 using client::YBTable;
