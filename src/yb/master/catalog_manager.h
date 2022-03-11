@@ -1578,7 +1578,7 @@ class CatalogManager :
   // Handles querying and processing YSQL DDL Transactions as a catalog manager background task.
   std::unique_ptr<YsqlTransactionDdl> ysql_transaction_;
 
-  MonoTime time_elected_leader_;
+  std::atomic<MonoTime> time_elected_leader_;
 
   std::unique_ptr<client::YBClient> cdc_state_client_;
 
