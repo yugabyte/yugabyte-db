@@ -86,6 +86,8 @@ TabletSplitManager::TabletSplitManager(
     filter_(filter),
     driver_(driver),
     xcluster_split_driver_(xcluster_split_driver),
+    is_running_(false),
+    splitting_disabled_until_(CoarseDuration::zero()),
     last_run_time_(CoarseDuration::zero()) {}
 
 Status TabletSplitManager::ValidateSplitCandidateTable(const TableInfo& table) {
@@ -263,7 +265,8 @@ void TabletSplitManager::DoSplitting(const TableInfoMap& table_info_map) {
     uint64_t outstanding_splits = splits_with_task.size() +
                                   compacting_splits.size() +
                                   splits_to_schedule.size();
-    return outstanding_splits < FLAGS_outstanding_tablet_split_limit;
+    return FLAGS_outstanding_tablet_split_limit == 0 ||
+           outstanding_splits < FLAGS_outstanding_tablet_split_limit;
   };
 
   // TODO(asrivastava): We might want to loop over all running tables when determining outstanding
@@ -356,8 +359,50 @@ void TabletSplitManager::DoSplitting(const TableInfoMap& table_info_map) {
   ScheduleSplits(splits_to_schedule);
 }
 
+bool TabletSplitManager::HasOutstandingTabletSplits(const TableInfoMap& table_info_map) {
+  vector<TableInfoPtr> valid_tables;
+  for (const auto& table : table_info_map) {
+    if (ValidateSplitCandidateTable(*table.second).ok()) {
+      valid_tables.push_back(table.second);
+    }
+  }
+
+  for (const auto& table : valid_tables) {
+    for (const auto& task : table->GetTasks()) {
+      if (task->type() == yb::server::MonitoredTask::ASYNC_GET_TABLET_SPLIT_KEY ||
+          task->type() == yb::server::MonitoredTask::ASYNC_SPLIT_TABLET) {
+        return true;
+      }
+    }
+  }
+
+  for (const auto& table : valid_tables) {
+    for (const auto& tablet : table->GetTablets()) {
+      auto tablet_lock = tablet->LockForRead();
+      if (tablet_lock->pb.has_split_parent_tablet_id() && !tablet_lock->is_running()) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool TabletSplitManager::IsRunning() {
+  return is_running_;
+}
+
+bool TabletSplitManager::IsTabletSplittingComplete(const TableInfoMap& table_info_map) {
+  return !HasOutstandingTabletSplits(table_info_map) && !is_running_;
+}
+
+void TabletSplitManager::DisableSplittingFor(const MonoDelta& disable_duration) {
+  LOG(INFO) << Substitute("Disabling tablet splitting for $0 milliseconds.",
+                          disable_duration.ToMilliseconds());
+  splitting_disabled_until_ = CoarseMonoClock::Now() + disable_duration;
+}
+
 void TabletSplitManager::MaybeDoSplitting(const TableInfoMap& table_info_map) {
-  if (!FLAGS_enable_automatic_tablet_splitting || FLAGS_outstanding_tablet_split_limit == 0) {
+  if (!FLAGS_enable_automatic_tablet_splitting) {
     return;
   }
 
@@ -365,7 +410,16 @@ void TabletSplitManager::MaybeDoSplitting(const TableInfoMap& table_info_map) {
   if (time_since_last_run < (FLAGS_process_split_tablet_candidates_interval_msec * 1ms)) {
     return;
   }
+
+  // Setting and unsetting is_running_ could also be accomplished using a scoped object, but this is
+  // simpler for now.
+  is_running_ = true;
+  if (CoarseMonoClock::Now() < splitting_disabled_until_) {
+    is_running_ = false;
+    return;
+  }
   DoSplitting(table_info_map);
+  is_running_ = false;
   last_run_time_ = CoarseMonoClock::Now();
 }
 

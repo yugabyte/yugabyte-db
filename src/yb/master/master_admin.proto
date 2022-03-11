@@ -107,6 +107,22 @@ message DeleteNotServingTabletResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message DisableTabletSplittingRequestPB {
+  optional uint64 disable_duration_ms = 1;
+}
+
+message DisableTabletSplittingResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message IsTabletSplittingCompleteRequestPB {
+}
+
+message IsTabletSplittingCompleteResponsePB {
+  optional MasterErrorPB error = 1;
+  optional bool is_tablet_splitting_complete = 2;
+}
+
 message DdlLogRequestPB {
 }
 
@@ -131,6 +147,11 @@ service MasterAdmin {
       returns (CreateTransactionStatusTableResponsePB);
   rpc DeleteNotServingTablet(DeleteNotServingTabletRequestPB)
       returns (DeleteNotServingTabletResponsePB);
+
+  rpc DisableTabletSplitting(DisableTabletSplittingRequestPB)
+      returns (DisableTabletSplittingResponsePB);
+  rpc IsTabletSplittingComplete(IsTabletSplittingCompleteRequestPB)
+      returns (IsTabletSplittingCompleteResponsePB);
 
   rpc DdlLog(DdlLogRequestPB) returns (DdlLogResponsePB);
 }
