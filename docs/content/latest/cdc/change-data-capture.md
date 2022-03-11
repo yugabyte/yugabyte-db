@@ -59,7 +59,7 @@ In order to facilitate the streaming of data, we have to create a DB Stream, thi
 
 ### Debezium connector for YugabyteDB
 
-The Debezium connector for YugabyteDB pulls the data from YugabyteDB and published them to Kafka. The below illustration explains the pipeline:
+The Debezium connector for YugabyteDB pulls the data from YugabyteDB and publishes them to Kafka. The below illustration explains the pipeline:
 
 ![CDC Pipeline with Debezium and Kafka](../../../static/images/architecture/cdc-2dc/cdc-pipeline.png)
 
@@ -67,7 +67,7 @@ See [Debezium connector for YugabyteDB](../integrations/cdc/debezium-connector-y
 
 ### CDC Java console client
 
-There is a [Java console client](../integrations/cdc/cdc-java-console-client.md) for Change data capture and is strictly meant for testing purposes only, it will help in building an understaning what all change records are emitted by YugabyteDB.
+There is a [Java console client](../integrations/cdc/cdc-java-console-client.md) for Change data capture and is strictly meant for testing purposes only, it will help in building an understanding what all change records are emitted by YugabyteDB.
 
 ### Consistency Semantics
 

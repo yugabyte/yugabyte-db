@@ -56,6 +56,7 @@ $ ./bin/yb-admin --help
 * [Security](#security-commands)
   * [Encryption at rest](#encryption-at-rest-commands)
 * [Change data capture (CDC)](#change-data-capture-cdc-commands)
+* [xCluster replication](#xcluster-replication-commands)
 * [Decommissioning](#decommissioning-commands)
 * [Rebalancing](#rebalancing-commands)
 * [Upgrade YSQL system catalog](#upgrade-ysql-system-catalog)

@@ -19,13 +19,13 @@ The first time it connects to a YugabyteDB cluster or universe, the connector ta
 
 ## Overview
 
-Java code (the actual Kafka Connect connector) that reads the changes produced by the chosen logical decoding output plug-in. It uses the APIs implemented on the server side to get the changes.
+The Debezium connector for YugabyteDB reads the changes produced by YugabyteDB. It uses the CDC service APIs implemented on the server side to get the changes.
 
 The connector produces a change event for every row-level insert, update, and delete operation that was captured and sends change event records for each table in a separate Kafka topic. Client applications read the Kafka topics that correspond to the database tables of interest, and can react to every row-level event they receive from those topics.
 
-The connector normally purges write-ahead log (WAL) segments after some period of time. This means that the connector does not have the complete history of all changes that have been made to the database. Therefore, when the YugabyteDB connector first connects to a particular YugabyteDB database, it starts by performing a consistent snapshot of each of the database schemas. After the connector completes the snapshot, it continues streaming changes from the exact point at which the snapshot was made. This way, the connector starts with a consistent view of all of the data, and does not omit any changes that were made while the snapshot was being taken.
+YugabyteDB normally purges write-ahead log (WAL) segments after some period of time. This means that the connector does not have the complete history of all changes that have been made to the database. Therefore, when the YugabyteDB connector first connects to a particular YugabyteDB database, it starts by performing a consistent snapshot of each of the database schemas. After the connector completes the snapshot, it continues streaming changes from the exact point at which the snapshot was made. This way, the connector starts with a consistent view of all of the data, and does not omit any changes that were made while the snapshot was being taken.
 
-The connector is tolerant of failures. As the connector reads changes and produces events, it records the WAL position for each event. If the connector stops for any reason (including communication failures, network problems, or crashes), upon restart the connector continues reading the WAL where it last left off using the checkpoints we managed on the Kafka side as well as the server side i.e. YugabyteDB cluster.
+The connector is tolerant of failures. As the connector reads changes and produces events, it records the WAL position for each event. If the connector stops for any reason (including communication failures, network problems, or crashes), upon restart the connector continues reading the WAL where it last left off using the WAL position called checkpoints managed on the Kafka side as well as the server side i.e. YugabyteDB cluster.
 
 {{< note title="Note" >}}
 
@@ -39,17 +39,19 @@ To optimally configure and run a Debezium YugabyteDB connector, it is helpful to
 
 ### Security
 
-To use the Debezium connector to stream changes from a YugabyteDB database, the connector must operate with specific privileges in the database. Although one way to grant the necessary privileges is to provide the user with superuser privileges, doing so potentially exposes your data data to unauthorized access. Rather than granting excessive privileges to the Debezium user, it is best to create a dedicated Debezium user to which you grant specific privileges.
+Currently, any user that has the access to the cluster, the authentication is done via that user. We also support the SSL based verification provided all the required keys and certificates are passed to the connector. 
 
-For more information about configuring privileges for the Debezium YugabyteDB user, see [Granting privileges in YSQL](../../secure/authorization/ysql-grant-permissions.md).
+{{< note title="Note" >}}
+
+There is a plan to add CDC privileges to a specific user in the future releases.
+
+{{< /note >}}
 
 ### Snapshots
 
-Most YugabyteDB servers are configured to not retain the complete history of the database in the WAL segments. This means that the YugayteDB connector would be unable to see the entire history of the database by reading only the WAL. Consequently, the first time that the connector starts, it performs an initial consistent snapshot of the database. The default behavior for performing a snapshot consists of the following steps. You can change this behavior by setting the [`snapshot.mode` connector configuration property]() to a value other than initial.
+Most YugabyteDB servers are configured to not retain the complete history of the database in the WAL segments. This means that the YugayteDB connector would be unable to see the entire history of the database by reading only the WAL. Consequently, the first time that the connector starts, it performs an initial consistent snapshot of the database. The default behavior for performing a snapshot consists of the following steps. You can change this behavior by setting the `snapshot.mode` connector configuration property to a value other than initial.
 
 After the connector completes its initial snapshot, the YugabyteDB connector continues streaming the changes. This ensures that the connector does not miss any updates. If the connector stops again for any reason, upon restart, the connector continues streaming changes from where it previously left off.
-
-<!-- Vaibhav todo: add table 1 snapshot.mode values -->
 
 ### Streaming changes
 

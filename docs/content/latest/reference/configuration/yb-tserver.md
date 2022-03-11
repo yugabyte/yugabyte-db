@@ -790,12 +790,6 @@ For more information, refer to [SSL_CTX_set_cipher_list](https://www.openssl.org
 
 To learn about CDC, see [Change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture/).
 
-##### --cdc_rpc_timeout_ms
-
-The timeout used for CDC->`yb-tserver` asynchronous RPC calls.
-
-Default: `30000`
-
 ##### --cdc_state_checkpoint_update_interval_ms
 
 The rate at which CDC state's checkpoint is updated.
@@ -808,12 +802,6 @@ The number of reactor threads to be used for processing `ybclient` requests for 
 
 Default: `50`
 
-##### --enable_log_retention_by_op_idx
-
-If true, logs will be retained based on an op ID passed by the CDC service.
-
-Default: `true`
-
 ##### --cdc_max_stream_intent_records
 
 Maximum number of intent records allowed in a single CDC batch.
@@ -825,12 +813,6 @@ Default: `1000`
 Number of records fetched in a single batch of snapshot operation of CDC.
 
 Default: `250`
-
-##### --consensus_max_size_bytes
-
-Maximum per-tablet RPC batch size when updating peers.
-
-Default: `4_MB`
 
 ##### --cdc_min_replicated_index_considered_stale_seconds
 
@@ -846,7 +828,7 @@ Default: `900`
 
 ##### --update_min_cdc_indices_interval_secs
 
-How often to read the cdc_state table to get the minimum applied index for each tablet across all streams. This information is used to correctly keep log files that contain unapplied entries. This is also the rate at which a tablet's minimum replicated index across all streams is sent to the other peers in the configuration. If flag `enable_log_retention_by_op_idx` is disabled, this flag has no effect.
+How often to read the cdc_state table to get the minimum applied index for each tablet across all streams. This information is used to correctly keep log files that contain unapplied entries. This is also the rate at which a tablet's minimum replicated index across all streams is sent to the other peers in the configuration. If flag `enable_log_retention_by_op_idx` (default: `true`) is disabled, this flag has no effect.
 
 Default: `60`
 
