@@ -241,6 +241,10 @@ Result<PGConn> YsqlUpgradeHelper::Connect(const std::string& database_name) {
 
   RETURN_NOT_OK(pgconn.Execute("SET ysql_upgrade_mode TO true;"));
 
+  // Force global transactions when running upgrade to avoid transactions being run as local.
+  // This can be removed once #11731 is resolved.
+  RETURN_NOT_OK(pgconn.Execute("SET force_global_transaction TO true;"));
+
   return pgconn;
 }
 
