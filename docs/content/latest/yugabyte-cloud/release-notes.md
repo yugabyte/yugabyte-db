@@ -19,7 +19,7 @@ showAsideToc: true
 
 #### New features
 
-- Self-guided quickstart incorporated in Cloud Shell. Launch Cloud Shell using the YSQL API to begin a self-guided tutorial exploring distributed SQL.
+<!-- Self-guided quickstart incorporated in Cloud Shell. Launch Cloud Shell using the YSQL API to begin a self-guided tutorial exploring distributed SQL. -->
 - Ability to schedule the maintenance window and exclusion periods for upcoming maintenance and database upgrades. The maintenance window is a weekly four-hour time slot during which Yugabyte may maintain or upgrade clusters. Yugabyte does not maintain or upgrade clusters outside the scheduled maintenance window, or during exclusion periods. Manage maintenance windows on the cluster **Maintenance** tab.
 - Ability to manually pause and resume clusters. To pause a cluster, select the cluster, click **More Links**, and choose **Pause Cluster**. Yugabyte suspends instance vCPU capacity charges for paused clusters; disk and backup storage are charged at the standard rate.
 
