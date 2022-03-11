@@ -32,6 +32,15 @@ class TabletSplitManager : public TabletSplitCompleteHandlerIf {
                      TabletSplitDriverIf* driver,
                      CDCConsumerSplitDriverIf* cdc_consumer_split_driver);
 
+  // Temporarily disable splitting for the specified amount of time.
+  void DisableSplittingFor(const MonoDelta& disable_duration);
+
+  bool IsRunning();
+
+  // Returns true if there are no outstanding tablet splits, and the automatic splitting thread is
+  // not running (to ensure that no splits are started immediately after returning).
+  bool IsTabletSplittingComplete(const TableInfoMap& table_info_map);
+
   // Perform one round of tablet splitting. This method is not thread-safe.
   void MaybeDoSplitting(const TableInfoMap& table_info_map);
 
@@ -57,6 +66,8 @@ class TabletSplitManager : public TabletSplitCompleteHandlerIf {
  private:
   void ScheduleSplits(const unordered_set<TabletId>& splits_to_schedule);
 
+  bool HasOutstandingTabletSplits(const TableInfoMap& table_info_map);
+
   void DoSplitting(const TableInfoMap& table_info_map);
 
   Status ValidateAgainstDisabledList(const std::string& id,
@@ -66,6 +77,12 @@ class TabletSplitManager : public TabletSplitCompleteHandlerIf {
   TabletSplitDriverIf* driver_;
   CDCConsumerSplitDriverIf* cdc_consumer_split_driver_;
 
+  // Used to signal (e.g. to IsTabletSplittingComplete) that the tablet split manager is not
+  // running, and hence it is safe to assume that no more splitting will occur if splitting was
+  // disabled before calling IsTabletSplittingComplete. This should only be written to by the
+  // automatic tablet splitting code.
+  bool is_running_;
+  CoarseTimePoint splitting_disabled_until_;
   CoarseTimePoint last_run_time_;
 
   std::mutex mutex_;

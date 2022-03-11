@@ -32,6 +32,7 @@ from contextlib import contextmanager
 
 import os
 import re
+import threading
 
 TABLET_UUID_LEN = 32
 UUID_RE_STR = '[0-9a-f-]{32,36}'
@@ -90,6 +91,12 @@ DEFAULT_YB_USER = 'yugabyte'
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 PLATFORM_VERSION_FILE_PATH = os.path.join(SCRIPT_DIR, '../../yugaware/conf/version_metadata.json')
 YB_VERSION_RE = re.compile(r'^version (\d+\.\d+\.\d+\.\d+).*')
+YB_ADMIN_HELP_RE = re.compile(r'^ \d+\. (\w+).*')
+
+DISABLE_SPLITTING_MS = 30000
+DISABLE_SPLITTING_FREQ_SEC = 10
+IS_SPLITTING_DISABLED_MAX_RETRIES = 10
+TEST_SLEEP_AFTER_FIND_SNAPSHOT_DIRS_SEC = 100
 
 DEFAULT_TS_WEB_PORT = 9000
 
@@ -109,6 +116,12 @@ class BackupException(Exception):
 
 class CompatibilityException(BackupException):
     """Exception which can be ignored for compatibility."""
+    pass
+
+
+class YbAdminOpNotSupportedException(BackupException):
+    """Exception raised if the attempted operation is not supported by the version of yb-admin we
+    are using."""
     pass
 
 
@@ -141,14 +154,13 @@ class BackupTimer:
     def log_new_phase(self, msg=""):
         self.logged_times.append(time.time())
         self.phases.append(msg)
-        # Print completed time of last stage.
-        if self.num_phases > 0:  # Don't print for phase 0 as that is just the start-up.
-            time_taken = self.logged_times[self.num_phases] - self.logged_times[self.num_phases - 1]
-            logging.info("Completed phase {}: {} [Time taken for phase: {}]".format(
-                    self.num_phases,
-                    self.phases[self.num_phases],
-                    str(timedelta(seconds=time_taken))))
         self.num_phases += 1
+        # Print completed time of last stage.
+        time_taken = self.logged_times[self.num_phases] - self.logged_times[self.num_phases - 1]
+        logging.info("Completed phase {}: {} [Time taken for phase: {}]".format(
+                self.num_phases - 1,
+                self.phases[self.num_phases - 1],
+                str(timedelta(seconds=time_taken))))
         logging.info("[app] Starting phase {}: {}".format(self.num_phases, msg))
 
     def print_summary(self):
@@ -1086,6 +1098,11 @@ class YBBackup:
             help="Regular expression for 'sed' tool to edit on fly YSQL dump file(s) during the "
                  "backup restoring. Example: \"s|OWNER TO yugabyte|OWNER TO admin|\". WARNING: "
                  "Contact support team before use! No any backward compatibility guaranties.")
+        parser.add_argument(
+            '--do_not_disable_splitting', required=False, action='store_true', default=False,
+            help="Do not disable automatic splitting before taking a backup. This is dangerous "
+                 "because a tablet might be split and cleaned up just before we try to copy its "
+                 "data.")
 
         """
         Test arguments
@@ -1096,6 +1113,18 @@ class YBBackup:
         parser.add_argument(
             '--TEST_sleep_during_download_dir', required=False, action='store_true', default=False,
             help=argparse.SUPPRESS)
+
+        # Adds in a sleep after finding the list of snapshot directories to upload but before
+        # uploading them, to test that they are not deleted by a completed tablet split (tablet
+        # splitting should be disabled).
+        parser.add_argument(
+            '--TEST_sleep_after_find_snapshot_dirs', required=False, action='store_true',
+            default=False, help=argparse.SUPPRESS)
+
+        # Simulate an older yb-admin which does not support some command.
+        parser.add_argument(
+            '--TEST_yb_admin_unsupported_commands', required=False, action='store_true',
+            default=False, help=argparse.SUPPRESS)
         self.args = parser.parse_args()
 
     def post_process_arguments(self):
@@ -1372,9 +1401,15 @@ class YBBackup:
             cert_flag = ["--certs_dir_name", self.args.certs_dir]
             cmd_line_args = cert_flag + cmd_line_args
 
-        return self.run_tool(self.args.local_yb_admin_binary, self.args.remote_yb_admin_binary,
-                             ['--master_addresses', self.args.masters],
-                             cmd_line_args, run_ip=run_ip)
+        try:
+            return self.run_tool(self.args.local_yb_admin_binary, self.args.remote_yb_admin_binary,
+                                 ['--master_addresses', self.args.masters],
+                                 cmd_line_args, run_ip=run_ip)
+        except Exception as ex:
+            if "Invalid operation" in str(ex.output.decode('utf-8')):
+                raise YbAdminOpNotSupportedException("yb-admin does not support command "
+                                                     "{}".format(cmd_line_args))
+            raise ex
 
     def get_ysql_dump_std_args(self):
         args = ['--host=' + self.get_ysql_ip()]
@@ -1992,6 +2027,11 @@ class YBBackup:
             leader_ip_to_tablet_id_to_snapshot_dirs = self.rearrange_snapshot_dirs(
                 find_snapshot_dir_results, snapshot_id, tablets_by_leader_ip)
 
+            if (self.args.TEST_sleep_after_find_snapshot_dirs):
+                logging.info("Sleeping to allow a tablet split to take place and delete snapshot "
+                             "dirs.")
+                time.sleep(TEST_SLEEP_AFTER_FIND_SNAPSHOT_DIRS_SEC)
+
             parallel_uploads = SequencedParallelCmd(
                 self.run_ssh_cmd, preprocess_args_fn=self.join_ssh_cmds)
             self.prepare_cloud_ssh_cmds(
@@ -2520,6 +2560,12 @@ class YBBackup:
         target_filepath = os.path.join(snapshot_filepath, MANIFEST_FILE_NAME)
         self.upload_metadata_and_checksum(metadata_path, target_filepath)
 
+    def bg_disable_splitting(self):
+        while (True):
+            logging.info("Disabling splitting for {} milliseconds.".format(DISABLE_SPLITTING_MS))
+            self.run_yb_admin(["disable_tablet_splitting", DISABLE_SPLITTING_MS])
+            time.sleep(DISABLE_SPLITTING_FREQ_SEC)
+
     def backup_table(self):
         """
         Creates a backup of the given table by creating a snapshot and uploading it to the provided
@@ -2563,6 +2609,29 @@ class YBBackup:
                         "must be equal.".format(len(self.args.table_uuid), len(self.args.table)))
 
                 snapshot_bucket = '{}-{}'.format(snapshot_bucket, '-'.join(self.args.table_uuid))
+
+        if not self.args.do_not_disable_splitting:
+            disable_splitting_supported = False
+            try:
+                self.run_yb_admin(["disable_tablet_splitting", DISABLE_SPLITTING_MS])
+                disable_splitting_supported = True
+            except YbAdminOpNotSupportedException as ex:
+                # Continue if the disable splitting APIs are not supported, otherwise re-raise and
+                # crash.
+                logging.warning("disable_tablet_splitting operation was not found in yb-admin.")
+
+            if disable_splitting_supported:
+                disable_splitting_thread = threading.Thread(target=self.bg_disable_splitting)
+                disable_splitting_thread.start()
+                for i in range(IS_SPLITTING_DISABLED_MAX_RETRIES):
+                    # Wait for existing splits to complete.
+                    output = self.run_yb_admin(["is_tablet_splitting_complete"])
+                    if ("is_tablet_splitting_complete: true" in output):
+                        break
+                    logging.info("Waiting for existing tablet splits to complete.")
+                    time.sleep(5)
+                else:
+                    raise BackupException('Splitting did not complete in time.')
 
         self.timer.log_new_phase("Create and upload snapshot metadata")
         snapshot_id = self.create_and_upload_metadata_files(snapshot_bucket)
@@ -3125,9 +3194,21 @@ class YBBackup:
 
         return self.run_yb_admin(['delete_snapshot', snapshot_id])
 
+    def TEST_yb_admin_unsupported_commands(self):
+        try:
+            self.run_yb_admin(["fake_command"])
+            raise BackupException("Expected YbAdminOpNotSupportedException on unsupported command.")
+        except YbAdminOpNotSupportedException as ex:
+            # Required output for the JsonReader to pass the test.
+            print(json.dumps({"success": True}))
+
     def run(self):
         try:
             self.post_process_arguments()
+            if self.args.TEST_yb_admin_unsupported_commands:
+                self.TEST_yb_admin_unsupported_commands()
+                return
+
             try:
                 self.database_version = YBVersion(self.run_yb_admin(['--version']),
                                                   self.args.verbose)

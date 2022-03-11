@@ -1998,6 +1998,23 @@ CHECKED_STATUS ClusterAdminClient::SplitTablet(const std::string& tablet_id) {
   return Status::OK();
 }
 
+CHECKED_STATUS ClusterAdminClient::DisableTabletSplitting(int64_t disable_duration_ms) {
+  master::DisableTabletSplittingRequestPB req;
+  req.set_disable_duration_ms(disable_duration_ms);
+  const auto resp = VERIFY_RESULT(
+      InvokeRpc(&master::MasterAdminProxy::DisableTabletSplitting, *master_admin_proxy_, req));
+  std::cout << "Response: " << AsString(resp) << std::endl;
+  return Status::OK();
+}
+
+CHECKED_STATUS ClusterAdminClient::IsTabletSplittingComplete() {
+  master::IsTabletSplittingCompleteRequestPB req;
+  const auto resp = VERIFY_RESULT(
+      InvokeRpc(&master::MasterAdminProxy::IsTabletSplittingComplete, *master_admin_proxy_, req));
+  std::cout << "Response: " << AsString(resp) << std::endl;
+  return Status::OK();
+}
+
 Status ClusterAdminClient::CreateTransactionsStatusTable(const std::string& table_name) {
   return yb_client_->CreateTransactionsStatusTable(table_name);
 }

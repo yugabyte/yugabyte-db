@@ -8038,6 +8038,27 @@ Status CatalogManager::ListUDTypes(const ListUDTypesRequestPB* req,
   return Status::OK();
 }
 
+Status CatalogManager::DisableTabletSplitting(
+    const DisableTabletSplittingRequestPB* req, DisableTabletSplittingResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  const MonoDelta disable_duration = MonoDelta::FromMilliseconds(req->disable_duration_ms());
+  tablet_split_manager_.DisableSplittingFor(disable_duration);
+  return Status::OK();
+}
+
+Status CatalogManager::IsTabletSplittingComplete(
+    const IsTabletSplittingCompleteRequestPB* req, IsTabletSplittingCompleteResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  TableInfoMap table_info_map;
+  {
+    SharedLock lock(mutex_);
+    table_info_map = *table_ids_map_;
+  }
+  resp->set_is_tablet_splitting_complete(
+      tablet_split_manager_.IsTabletSplittingComplete(table_info_map));
+  return Status::OK();
+}
+
 // For non-enterprise builds, this is a no-op.
 Status CatalogManager::DeleteCDCStreamsForTable(const TableId& table) {
   return Status::OK();
