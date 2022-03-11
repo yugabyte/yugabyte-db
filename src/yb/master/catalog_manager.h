@@ -478,6 +478,17 @@ class CatalogManager :
                                GetUDTypeInfoResponsePB* resp,
                                rpc::RpcContext* rpc);
 
+  // Disables tablet splitting for a specified amount of time.
+  CHECKED_STATUS DisableTabletSplitting(
+      const DisableTabletSplittingRequestPB* req, DisableTabletSplittingResponsePB* resp,
+      rpc::RpcContext* rpc);
+
+  // Returns true if there are no outstanding tablets and the tablet split manager is not currently
+  // processing tablet splits.
+  CHECKED_STATUS IsTabletSplittingComplete(
+      const IsTabletSplittingCompleteRequestPB* req, IsTabletSplittingCompleteResponsePB* resp,
+      rpc::RpcContext* rpc);
+
   // Delete CDC streams for a table.
   virtual CHECKED_STATUS DeleteCDCStreamsForTable(const TableId& table_id) EXCLUDES(mutex_);
   virtual CHECKED_STATUS DeleteCDCStreamsForTables(const vector<TableId>& table_ids)
