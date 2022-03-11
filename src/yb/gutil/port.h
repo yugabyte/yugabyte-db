@@ -1053,7 +1053,11 @@ struct PortableHashBase { };
 // On some platforms, like ARM, the copy functions can be more efficient
 // then a load and a store.
 
-#if defined(__i386) || defined(ARCH_ATHLON) || defined(__x86_64__) || defined(_ARCH_PPC)
+#if defined(__i386) || \
+    defined(ARCH_ATHLON) || \
+    defined(__x86_64__) || \
+    defined(_ARCH_PPC) || \
+    defined(__aarch64__)
 
 // x86 and x86-64 can perform unaligned loads/stores directly;
 // modern PowerPC hardware can also do unaligned integer loads and stores;
