@@ -10,17 +10,14 @@
 
 package com.yugabyte.yw.common;
 
+import com.google.common.util.concurrent.ForwardingBlockingQueue;
+import com.yugabyte.yw.common.logging.MDCAwareThreadPoolExecutor;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-
-import com.google.common.util.concurrent.ForwardingBlockingQueue;
-
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
-import com.yugabyte.yw.common.logging.MDCAwareThreadPoolExecutor;
 
 /**
  * A subclass of ThreadPoolExecutor that adjusts its pool size depending on the number of tasks
