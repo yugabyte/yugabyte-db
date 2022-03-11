@@ -1,5 +1,6 @@
 package com.yugabyte.yw.controllers;
 
+import java.io.InputStream;
 import java.net.URL;
 
 import com.google.inject.Inject;
@@ -13,9 +14,17 @@ import play.mvc.Controller;
 import play.mvc.Result;
 import play.mvc.Results;
 
+import org.apache.commons.io.IOUtils;
+import java.nio.charset.StandardCharsets;
+import io.swagger.annotations.Authorization;
+import io.swagger.annotations.Api;
+
+@Api(
+    value = "Grafana Dashboard",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 @Singleton
 @Slf4j
-public class MetricGrafanaController extends Controller {
+public class MetricGrafanaController extends AuthenticatedController {
 
   private final Environment environment;
 
@@ -25,21 +34,21 @@ public class MetricGrafanaController extends Controller {
   }
 
   @ApiOperation(
-      value = "Get Grafana Dashboard Path",
+      value = "Get Grafana Dashboard",
       response = String.class,
-      nickname = "GrafanaDashboardPath")
-  public Result getGrafanaDashboardPath() {
+      nickname = "GrafanaDashboard")
+  public Result getGrafanaDashboard() {
     String resourcePath = "metric/Dashboard.json";
-    URL dashboardURL;
-    try {
-      dashboardURL = environment.classLoader().getResource(resourcePath);
-      if (dashboardURL == null) {
+    String dashboardContent = "";
+    try (InputStream dashboardStream = environment.resourceAsStream(resourcePath)) {
+      if (dashboardStream == null) {
         return Results.status(NOT_FOUND);
       }
+      dashboardContent = IOUtils.toString(dashboardStream, StandardCharsets.UTF_8);
     } catch (Exception e) {
       log.error("Error in reading dashboard file: {}", e);
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
-    return Results.status(OK, dashboardURL.getPath());
+    return Results.status(OK, dashboardContent);
   }
 }
