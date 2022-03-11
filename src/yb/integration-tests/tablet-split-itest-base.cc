@@ -240,12 +240,14 @@ Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>>
                                         session,
                                         i /* key */,
                                         v /* value */,
-                                        client::WriteOpType::INSERT));
+                                        client::WriteOpType::INSERT,
+                                        client::Flush::kFalse));
     const auto hash_code = op->GetHashCode();
     min_hash_code = std::min(min_hash_code, hash_code);
     max_hash_code = std::max(max_hash_code, hash_code);
     YB_LOG_EVERY_N_SECS(INFO, 10) << "Rows written: " << start_key << "..." << i;
   }
+  RETURN_NOT_OK(session->Flush());
   if (txn) {
     RETURN_NOT_OK(txn->CommitFuture().get());
     LOG(INFO) << "Committed: " << txn->id();

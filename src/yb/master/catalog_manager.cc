@@ -844,7 +844,7 @@ Status CatalogManager::ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB*
 }
 
 Status CatalogManager::ElectedAsLeaderCb() {
-  time_elected_leader_ = MonoTime::Now();
+  time_elected_leader_.store(MonoTime::Now());
   return leader_initialization_pool_->SubmitClosure(
       Bind(&CatalogManager::LoadSysCatalogDataTask, Unretained(this)));
 }
@@ -10006,7 +10006,7 @@ bool CatalogManager::IsLoadBalancerEnabled() {
 }
 
 MonoDelta CatalogManager::TimeSinceElectedLeader() {
-  return MonoTime::Now() - time_elected_leader_;
+  return MonoTime::Now() - time_elected_leader_.load();
 }
 
 Status CatalogManager::GoIntoShellMode() {
