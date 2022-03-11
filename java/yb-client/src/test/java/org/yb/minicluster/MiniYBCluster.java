@@ -1006,17 +1006,21 @@ public class MiniYBCluster implements AutoCloseable {
     String processInfoDir = getProcessInfoDir();
     processCoreFiles(processInfoDir);
     pathsToDelete.add(processInfoDir);
-    for (String path : pathsToDelete) {
-      try {
-        File f = new File(path);
-        LOG.info("Deleting path: " + path);
-        if (f.isDirectory()) {
-          FileUtils.deleteDirectory(f);
-        } else {
-          f.delete();
+    if (ConfForTesting.keepData()) {
+      LOG.info("Skipping deletion of data paths");
+    } else {
+      for (String path : pathsToDelete) {
+        try {
+          File f = new File(path);
+          LOG.info("Deleting path: " + path);
+          if (f.isDirectory()) {
+            FileUtils.deleteDirectory(f);
+          } else {
+            f.delete();
+          }
+        } catch (Exception e) {
+          LOG.warn("Could not delete path {}", path, e);
         }
-      } catch (Exception e) {
-        LOG.warn("Could not delete path {}", path, e);
       }
     }
     LOG.info("Mini cluster shutdown finished");

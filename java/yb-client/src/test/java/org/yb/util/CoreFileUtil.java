@@ -116,6 +116,8 @@ public final class CoreFileUtil {
         if (analysisProcess.exitValue() != 0) {
           LOG.warn("Core file analysis script " + analysisProcess + " exited with code: " +
               analysisProcess.exitValue());
+        } else if (ConfForTesting.keepData()) {
+          LOG.info("Skipping deletion of core file '{}'", coreFile.getAbsolutePath());
         } else {
           if (coreFile.delete()) {
             LOG.warn("Deleted core file at '{}'", coreFile.getAbsolutePath());
