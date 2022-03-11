@@ -4746,16 +4746,14 @@ bool CatalogManager::IsTableCdcProducer(const TableInfo& table_info) const {
   auto it = cdc_stream_tables_count_map_.find(table_info.id());
   if (it == cdc_stream_tables_count_map_.end()) {
     return false;
-  } else {
+  } else if (it->second > 0) {
     auto tid = table_info.id();
-    std::vector<scoped_refptr<CDCStreamInfo>> streams;
     for (const auto& entry : cdc_stream_map_) {
       auto s = entry.second->LockForRead();
       // for xCluster the first entry will be the table_id
-      if (s->table_id().Get(0) == tid) {
-        if (!(s->is_deleting() || s->is_deleted())) {
-          return it->second > 0;
-        }
+      const auto& table_id = s->table_id();
+      if (!table_id.empty() && table_id.Get(0) == tid && !(s->is_deleting() || s->is_deleted())) {
+        return true;
       }
     }
   }

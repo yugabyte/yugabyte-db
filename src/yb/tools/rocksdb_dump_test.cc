@@ -135,7 +135,7 @@ class RocksDbDumpTest : public YBMiniClusterTestBase<MiniCluster> {
 TEST_F(RocksDbDumpTest, VerifySingleKeyIsFound) {
   string output;
   ASSERT_OK(WriteData());
-  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kAll));
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kAllDbs));
   string db_path = ASSERT_RESULT(GetTabletDbPath());
 
   string output_path = strings::Substitute(
