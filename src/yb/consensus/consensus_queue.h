@@ -178,7 +178,7 @@ class PeerMessageQueue {
 
     uint64_t num_sst_files = 0;
 
-   private:
+  private:
     // The last term we saw from a given peer.
     // This is only used for sanity checking that a peer doesn't
     // go backwards in time.
@@ -358,11 +358,17 @@ class PeerMessageQueue {
     int64_t* last_replicated_opid_index = nullptr,
     const CoarseTimePoint deadline = CoarseTimePoint::max());
 
-  void UpdateCDCConsumerOpId(const yb::OpId& op_id);
+  enum class CDCSourceType {
+    XCLUSTER = 1,
+    CDCSDK = 2
+  };
+
+  void UpdateCDCConsumerOpId(const yb::OpId& op_id, CDCSourceType cdc_source_type);
 
   // Get the maximum op ID that can be evicted for CDC consumer from log cache.
   yb::OpId GetCDCConsumerOpIdToEvict();
   yb::OpId GetCDCConsumerOpIdForIntentRemoval();
+
 
 
   size_t LogCacheSize();
@@ -568,6 +574,7 @@ class PeerMessageQueue {
   mutable rw_spinlock cdc_consumer_lock_;
   yb::OpId cdc_consumer_op_id_ = yb::OpId::Max();
   CoarseTimePoint cdc_consumer_op_id_last_updated_ = ToCoarse(MonoTime::kMin);
+  CDCSourceType cdc_consumer_source_type_;
 };
 
 inline std::ostream& operator <<(std::ostream& out, PeerMessageQueue::Mode mode) {

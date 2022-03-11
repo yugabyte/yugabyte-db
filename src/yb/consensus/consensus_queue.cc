@@ -778,10 +778,11 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
   return Status::OK();
 }
 
-void PeerMessageQueue::UpdateCDCConsumerOpId(const yb::OpId& op_id) {
+void PeerMessageQueue::UpdateCDCConsumerOpId(const yb::OpId& op_id, CDCSourceType cdc_source_type) {
   std::lock_guard<rw_spinlock> l(cdc_consumer_lock_);
   cdc_consumer_op_id_ = op_id;
   cdc_consumer_op_id_last_updated_ = CoarseMonoClock::Now();
+  cdc_consumer_source_type_ = cdc_source_type;
 }
 
 yb::OpId PeerMessageQueue::GetCDCConsumerOpIdToEvict() {
@@ -797,7 +798,8 @@ yb::OpId PeerMessageQueue::GetCDCConsumerOpIdToEvict() {
 
 yb::OpId PeerMessageQueue::GetCDCConsumerOpIdForIntentRemoval() {
   std::shared_lock<rw_spinlock> l(cdc_consumer_lock_);
-  if (CoarseMonoClock::Now() - cdc_consumer_op_id_last_updated_ <= kCDCConsumerIntentRetention) {
+  if ((CoarseMonoClock::Now() - cdc_consumer_op_id_last_updated_ <= kCDCConsumerIntentRetention) &&
+      cdc_consumer_source_type_ != CDCSourceType::XCLUSTER) {
     return cdc_consumer_op_id_;
   } else {
     return yb::OpId::Max();

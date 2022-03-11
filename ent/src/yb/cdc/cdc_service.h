@@ -212,8 +212,8 @@ class CDCServiceImpl : public CDCServiceIf {
   OpId GetMinAppliedCheckpointForTablet(const std::string& tablet_id,
                                         const client::YBSessionPtr& session);
 
-  CHECKED_STATUS UpdatePeersCdcMinReplicatedIndex(const TabletId& tablet_id, int64_t min_index,
-                                                  int64_t min_term = -1);
+  CHECKED_STATUS UpdatePeersCdcMinReplicatedIndex(const TabletId &tablet_id, CDCRequestSource cdc_req_source,
+                                                  int64_t min_index, int64_t min_term = -1);
 
   void ComputeLagMetric(int64_t last_replicated_micros, int64_t metric_last_timestamp_micros,
                         int64_t cdc_state_last_replication_time_micros,

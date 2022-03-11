@@ -336,7 +336,13 @@ class Consensus {
                                                              int64_t* repl_index,
                                                              const CoarseTimePoint deadline) = 0;
 
-  virtual void UpdateCDCConsumerOpId(const yb::OpId& op_id) = 0;
+
+  enum class CDCSourceType {
+    XCLUSTER = 1,
+    CDCSDK = 2
+  };
+
+  virtual void UpdateCDCConsumerOpId(const yb::OpId& op_id, CDCSourceType cdc_source_type) = 0;
 
  protected:
   friend class RefCountedThreadSafe<Consensus>;

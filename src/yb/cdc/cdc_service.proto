@@ -398,6 +398,7 @@ message UpdateCdcReplicatedIndexRequestPB {
   // Minimum replicated index across all the streams for this tablet.
   optional int64 replicated_index = 2;
   optional int64 replicated_term = 3;
+  optional CDCRequestSource source_type = 4 [default = XCLUSTER];
 }
 
 message UpdateCdcReplicatedIndexResponsePB {
