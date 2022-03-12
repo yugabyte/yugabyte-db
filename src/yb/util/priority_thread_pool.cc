@@ -562,7 +562,7 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
     }
 
     PriorityThreadPoolWorker* higher_pri_worker = nullptr;
-    const PriorityThreadPoolInternalTask* task;
+    const PriorityThreadPoolInternalTask* task = nullptr;
     {
       std::lock_guard<std::mutex> lock(mutex_);
 

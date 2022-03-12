@@ -4,7 +4,7 @@ headerTitle: Manage clusters
 linkTitle: Manage clusters
 description: Manage your Yugabyte Cloud clusters.
 image: /images/section_icons/architecture/core_functions/universe.png
-headcontent: Add, delete, scale, and back up your clusters.
+headcontent: Scale clusters, configure backups and maintenance windows, and pause or delete clusters.
 section: YUGABYTE CLOUD
 menu:
   latest:
@@ -12,29 +12,27 @@ menu:
     weight: 150
 ---
 
-To ensure the cluster configuration matches its performance requirements, you can [monitor key database performance metrics](../cloud-monitor/) and scale the cluster vertically or horizontally as your requirements change. You can also change the default backup policy for clusters and perform on-demand backups. You access your clusters from the **Clusters** page.
+Yugabyte Cloud provides the following tools to manage clusters:
 
-The **Clusters** page lists your currently provisioned clusters and their status, along with a summary of the total number of clusters, nodes, and vCPUs in your cloud. From here you can also [add](../cloud-basics/create-clusters/) and delete clusters.
+Horizontal and vertical scaling
+: To ensure the cluster configuration matches its performance requirements, [scale the cluster](configure-clusters/) vertically or horizontally as your requirements change.
 
-To _add_ a cluster, click **Add Cluster**. Refer to [Create a cluster](../cloud-basics/create-clusters/).
+Backups
+: Configure a regular [backup](backup-clusters/) schedule, run manual backups, and review previous backups.
 
-To _delete_ a cluster, click the three dots icon for the cluster you want to delete and choose **Terminate Cluster**. Then enter the name of the cluster and click **Delete**. This deletes the cluster and all of its data, including backups.
+Maintenance windows
+: Yugabyte performs cluster maintenance, including database upgrades, during scheduled [maintenance windows](cloud-maintenance/).
 
-To _manage_ a cluster, select the cluster in the list to display the cluster [Overview](../cloud-monitor/overview). Once you've selected a cluster, you can access [backups](backup-clusters/), and [scale the cluster](configure-clusters/).
+PostgreSQL extensions
+: Extend the functionality of your cluster using [PostgreSQL extensions](add-extensions/).
+
+Pause, resume, and delete
+: To reduce costs on unused clusters, you can pause or delete them. Deleting a cluster deletes all of its data, including backups.
+: Paused clusters are not billed for instance vCPU capacity. Disk and backup storage are charged at the standard rate (refer to [Cluster costs](../cloud-admin/cloud-billing-costs/#paused-cluster-costs)). Yugabyte notifies you when a cluster is paused for 30 days.
+: You can't change the configuration, or read and write data to a paused cluster. Alerts and backups are also stopped. Existing backups remain until they expire.
+: Access **Pause/Resume Cluster** and **Terminate Cluster** via the cluster **More Links** menu, or click the three dots icon for the cluster on the **Clusters** page.
 
 <div class="row">
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="backup-clusters/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Back up clusters</div>
-      </div>
-      <div class="body">
-        Perform on-demand backups and restores, and customize the backup policy.
-      </div>
-    </a>
-  </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="configure-clusters/">
@@ -49,6 +47,18 @@ To _manage_ a cluster, select the cluster in the list to display the cluster [Ov
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="backup-clusters/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
+        <div class="title">Back up clusters</div>
+      </div>
+      <div class="body">
+        Perform on-demand backups and restores, and customize the backup policy.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="add-extensions/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/administer.png" aria-hidden="true" />
@@ -56,6 +66,18 @@ To _manage_ a cluster, select the cluster in the list to display the cluster [Ov
       </div>
       <div class="body">
         Create PostgreSQL extensions in Yugabyte Cloud clusters.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="cloud-maintenance/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
+        <div class="title">Maintenance windows</div>
+      </div>
+      <div class="body">
+        Set up maintenance windows and exclusion periods for cluster upgrades.
       </div>
     </a>
   </div>

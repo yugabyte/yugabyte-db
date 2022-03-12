@@ -91,12 +91,6 @@ class PgApiImpl {
     return &pg_callbacks_;
   }
 
-  //------------------------------------------------------------------------------------------------
-  // Access function to Pggate attribute.
-  client::YBClient* client() {
-    return async_client_init_.client();
-  }
-
   void ResetCatalogReadTime();
 
   // Initialize ENV within which PGSQL calls will be executed.
@@ -391,7 +385,8 @@ class PgApiImpl {
                           PgSysColumns *syscols, bool *has_data);
 
   // Utility method that checks stmt type and calls exec insert, update, or delete internally.
-  CHECKED_STATUS DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_count);
+  CHECKED_STATUS DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_count,
+                                bool use_async_flush);
 
   // This function adds a primary column to be used in the construction of the tuple id (ybctid).
   CHECKED_STATUS DmlAddYBTupleIdColumn(PgStatement *handle, int attr_num, uint64_t datum,
@@ -569,9 +564,6 @@ class PgApiImpl {
   std::shared_ptr<MemTracker> mem_tracker_;
 
   PgApiContext::MessengerHolder messenger_holder_;
-
-  // YBClient is to communicate with either master or tserver.
-  yb::client::AsyncClientInitialiser async_client_init_;
 
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
 

@@ -48,6 +48,7 @@ import com.yugabyte.yw.common.services.LocalYBClientService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.ybflyway.YBFlywayInit;
 import com.yugabyte.yw.common.SupportBundleUtil;
+import com.yugabyte.yw.controllers.MetricGrafanaController;
 import com.yugabyte.yw.controllers.PlatformHttpActionAdapter;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.queries.QueryHelper;
@@ -143,6 +144,7 @@ public class Module extends AbstractModule {
       bind(ShellKubernetesManager.class).asEagerSingleton();
       bind(NativeKubernetesManager.class).asEagerSingleton();
       bind(SupportBundleUtil.class).asEagerSingleton();
+      bind(MetricGrafanaController.class).asEagerSingleton();
 
       final CallbackController callbackController = new CallbackController();
       callbackController.setDefaultUrl(config.getString("yb.url", ""));
