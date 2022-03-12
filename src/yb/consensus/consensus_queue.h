@@ -178,7 +178,7 @@ class PeerMessageQueue {
 
     uint64_t num_sst_files = 0;
 
-  private:
+   private:
     // The last term we saw from a given peer.
     // This is only used for sanity checking that a peer doesn't
     // go backwards in time.

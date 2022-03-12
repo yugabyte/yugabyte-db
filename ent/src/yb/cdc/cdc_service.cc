@@ -562,7 +562,8 @@ Status DoUpdateCDCConsumerOpId(const std::shared_ptr<tablet::TabletPeer>& tablet
                          "Failed to get tablet $0 peer consensus", tablet_id);
   }
 
-  shared_consensus->UpdateCDCConsumerOpId(checkpoint, static_cast<consensus::Consensus::CDCSourceType>(cdc_req_source));
+  shared_consensus->UpdateCDCConsumerOpId(
+      checkpoint, static_cast<consensus::Consensus::CDCSourceType>(cdc_req_source));
   return Status::OK();
 }
 
@@ -1152,8 +1153,10 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
   context.RespondSuccess();
 }
 
-  Status CDCServiceImpl::UpdatePeersCdcMinReplicatedIndex(const TabletId &tablet_id, CDCRequestSource cdc_req_source,
-                                                          int64_t min_index, int64_t min_term) {
+  Status CDCServiceImpl::UpdatePeersCdcMinReplicatedIndex(const TabletId &tablet_id,
+                                                          CDCRequestSource cdc_req_source,
+                                                          int64_t min_index,
+                                                          int64_t min_term) {
   std::vector<client::internal::RemoteTabletServer *> servers;
   RETURN_NOT_OK(GetTServers(tablet_id, &servers));
   for (const auto &server : servers) {
@@ -1479,7 +1482,8 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
       }
       VLOG(1) << "Updating followers for tablet " << tablet_id << " with index " << min_index;
       WARN_NOT_OK(
-          UpdatePeersCdcMinReplicatedIndex(tablet_id, tablet_cdc_req_source[tablet_id], min_index, current_term),
+          UpdatePeersCdcMinReplicatedIndex(tablet_id, tablet_cdc_req_source[tablet_id],
+                                           min_index, current_term),
           "UpdatePeersCdcMinReplicatedIndex failed");
     }
     LOG(INFO) << "Done reading all the indices for all tablets and updating peers";
@@ -1704,7 +1708,8 @@ void CDCServiceImpl::UpdateCdcReplicatedIndex(const UpdateCdcReplicatedIndexRequ
   RPC_STATUS_RETURN_ERROR(tablet_peer->set_cdc_min_replicated_index(req->replicated_index()),
                           resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
 
-  auto status = DoUpdateCDCConsumerOpId(tablet_peer, OpId(req->replicated_term(), req->replicated_index()),
+  auto status = DoUpdateCDCConsumerOpId(tablet_peer,
+                                        OpId(req->replicated_term(), req->replicated_index()),
                                         req->tablet_id(), req->source_type());
 
   RPC_STATUS_RETURN_ERROR(status, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
@@ -1826,7 +1831,8 @@ void CDCServiceImpl::RollbackPartialCreate(const CDCCreationState& creation_stat
   for (const auto& entry : creation_state.producer_entries_modified) {
     auto res = GetStream(entry.stream_id);
     StreamMetadata record = **res;
-    WARN_NOT_OK(UpdatePeersCdcMinReplicatedIndex(entry.tablet_id, record.source_type, numeric_limits<uint64_t>::max()),
+    WARN_NOT_OK(UpdatePeersCdcMinReplicatedIndex(entry.tablet_id, record.source_type,
+                                                 numeric_limits<uint64_t>::max()),
                 "Unable to update tablet " + entry.tablet_id);
   }
 
@@ -1914,8 +1920,9 @@ void CDCServiceImpl::BootstrapProducer(const BootstrapProducerRequestPB* req,
           return;
         }
         op_id = tablet_peer->log()->GetLatestEntryOpId();
-        RPC_STATUS_RETURN_ERROR(UpdatePeersCdcMinReplicatedIndex(tablet.tablet_id(), yb::cdc::XCLUSTER, op_id.index),
-                                resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+        RPC_STATUS_RETURN_ERROR(
+            UpdatePeersCdcMinReplicatedIndex(tablet.tablet_id(), yb::cdc::XCLUSTER, op_id.index),
+            resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
       }
 
       const auto op = cdc_state_table->NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);

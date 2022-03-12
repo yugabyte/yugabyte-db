@@ -597,8 +597,8 @@ Status GetChangesForCDCSDK(
       // Update the CDCConsumerOpId.
       {
         std::shared_ptr<consensus::Consensus> shared_consensus = tablet_peer->shared_consensus();
-        shared_consensus->UpdateCDCConsumerOpId(data.op_id,
-                                                static_cast<consensus::Consensus::CDCSourceType>(yb::cdc::CDCSDK));
+        shared_consensus->UpdateCDCConsumerOpId(
+            data.op_id, static_cast<consensus::Consensus::CDCSourceType>(yb::cdc::CDCSDK));
       }
       if (txn_participant == nullptr || txn_participant->context() == nullptr)
         return STATUS_SUBSTITUTE(
