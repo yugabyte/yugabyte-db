@@ -1,0 +1,93 @@
+\set VERBOSITY terse
+-- predictability
+SET synchronous_commit = on;
+CREATE TABLE w2j_default (a serial, b integer DEFAULT 6, c text DEFAULT 'wal2json', d timestamp DEFAULT '2020-07-12 11:55:30', e integer DEFAULT NULL, f integer, PRIMARY KEY(a));
+CREATE TABLE w2j_truncate (a serial primary key, b text not null);
+SELECT 'init' FROM pg_create_logical_replication_slot('regression_slot', 'wal2json');
+ ?column? 
+----------
+ init
+(1 row)
+
+INSERT INTO w2j_default (b, c ,d, e, f) VALUES(2, 'test', '2020-03-01 08:09:00', 80, 10);
+INSERT INTO w2j_default DEFAULT VALUES;
+UPDATE w2j_default SET b = 3 WHERE a = 1;
+INSERT INTO w2j_truncate (b) VALUES('foo@bar.com');
+TRUNCATE w2j_truncate;
+INSERT INTO w2j_truncate (b) VALUES('foo@bar.com');
+-- without include-default parameter
+SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '1');
+                                                                                                                                                                     data                                                                                                                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"change":[{"kind":"insert","schema":"public","table":"w2j_default","columnnames":["a","b","c","d","e","f"],"columntypes":["integer","integer","text","timestamp without time zone","integer","integer"],"columnvalues":[1,2,"test","Sun Mar 01 08:09:00 2020",80,10]}]}
+ {"change":[{"kind":"insert","schema":"public","table":"w2j_default","columnnames":["a","b","c","d","e","f"],"columntypes":["integer","integer","text","timestamp without time zone","integer","integer"],"columnvalues":[2,6,"wal2json","Sun Jul 12 11:55:30 2020",null,null]}]}
+ {"change":[{"kind":"update","schema":"public","table":"w2j_default","columnnames":["a","b","c","d","e","f"],"columntypes":["integer","integer","text","timestamp without time zone","integer","integer"],"columnvalues":[1,3,"test","Sun Mar 01 08:09:00 2020",80,10],"oldkeys":{"keynames":["a"],"keytypes":["integer"],"keyvalues":[1]}}]}
+ {"change":[{"kind":"insert","schema":"public","table":"w2j_truncate","columnnames":["a","b"],"columntypes":["integer","text"],"columnvalues":[1,"foo@bar.com"]}]}
+ {"change":[]}
+ {"change":[{"kind":"insert","schema":"public","table":"w2j_truncate","columnnames":["a","b"],"columntypes":["integer","text"],"columnvalues":[2,"foo@bar.com"]}]}
+(6 rows)
+
+SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '2');
+                                                                                                                                                                                                           data                                                                                                                                                                                                           
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"action":"B"}
+ {"action":"I","schema":"public","table":"w2j_default","columns":[{"name":"a","type":"integer","value":1},{"name":"b","type":"integer","value":2},{"name":"c","type":"text","value":"test"},{"name":"d","type":"timestamp without time zone","value":"Sun Mar 01 08:09:00 2020"},{"name":"e","type":"integer","value":80},{"name":"f","type":"integer","value":10}]}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"I","schema":"public","table":"w2j_default","columns":[{"name":"a","type":"integer","value":2},{"name":"b","type":"integer","value":6},{"name":"c","type":"text","value":"wal2json"},{"name":"d","type":"timestamp without time zone","value":"Sun Jul 12 11:55:30 2020"},{"name":"e","type":"integer","value":null},{"name":"f","type":"integer","value":null}]}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"U","schema":"public","table":"w2j_default","columns":[{"name":"a","type":"integer","value":1},{"name":"b","type":"integer","value":3},{"name":"c","type":"text","value":"test"},{"name":"d","type":"timestamp without time zone","value":"Sun Mar 01 08:09:00 2020"},{"name":"e","type":"integer","value":80},{"name":"f","type":"integer","value":10}],"identity":[{"name":"a","type":"integer","value":1}]}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"I","schema":"public","table":"w2j_truncate","columns":[{"name":"a","type":"integer","value":1},{"name":"b","type":"text","value":"foo@bar.com"}]}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"I","schema":"public","table":"w2j_truncate","columns":[{"name":"a","type":"integer","value":2},{"name":"b","type":"text","value":"foo@bar.com"}]}
+ {"action":"C"}
+(17 rows)
+
+-- with include-default parameter
+SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '1', 'include-default', '1');
+                                                                                                                                                                                                                                                data                                                                                                                                                                                                                                                 
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"change":[{"kind":"insert","schema":"public","table":"w2j_default","columnnames":["a","b","c","d","e","f"],"columntypes":["integer","integer","text","timestamp without time zone","integer","integer"],"columndefaults":["nextval('w2j_default_a_seq'::regclass)","6","'wal2json'::text","'Sun Jul 12 11:55:30 2020'::timestamp without time zone",null,null],"columnvalues":[1,2,"test","Sun Mar 01 08:09:00 2020",80,10]}]}
+ {"change":[{"kind":"insert","schema":"public","table":"w2j_default","columnnames":["a","b","c","d","e","f"],"columntypes":["integer","integer","text","timestamp without time zone","integer","integer"],"columndefaults":["nextval('w2j_default_a_seq'::regclass)","6","'wal2json'::text","'Sun Jul 12 11:55:30 2020'::timestamp without time zone",null,null],"columnvalues":[2,6,"wal2json","Sun Jul 12 11:55:30 2020",null,null]}]}
+ {"change":[{"kind":"update","schema":"public","table":"w2j_default","columnnames":["a","b","c","d","e","f"],"columntypes":["integer","integer","text","timestamp without time zone","integer","integer"],"columndefaults":["nextval('w2j_default_a_seq'::regclass)","6","'wal2json'::text","'Sun Jul 12 11:55:30 2020'::timestamp without time zone",null,null],"columnvalues":[1,3,"test","Sun Mar 01 08:09:00 2020",80,10],"oldkeys":{"keynames":["a"],"keytypes":["integer"],"keyvalues":[1]}}]}
+ {"change":[{"kind":"insert","schema":"public","table":"w2j_truncate","columnnames":["a","b"],"columntypes":["integer","text"],"columndefaults":["nextval('w2j_truncate_a_seq'::regclass)",null],"columnvalues":[1,"foo@bar.com"]}]}
+ {"change":[]}
+ {"change":[{"kind":"insert","schema":"public","table":"w2j_truncate","columnnames":["a","b"],"columntypes":["integer","text"],"columndefaults":["nextval('w2j_truncate_a_seq'::regclass)",null],"columnvalues":[2,"foo@bar.com"]}]}
+(6 rows)
+
+SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '2', 'include-default', '1');
+                                                                                                                                                                                                                                                                                                           data                                                                                                                                                                                                                                                                                                           
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"action":"B"}
+ {"action":"I","schema":"public","table":"w2j_default","columns":[{"name":"a","type":"integer","value":1,"default":"nextval('w2j_default_a_seq'::regclass)"},{"name":"b","type":"integer","value":2,"default":"6"},{"name":"c","type":"text","value":"test","default":"'wal2json'::text"},{"name":"d","type":"timestamp without time zone","value":"Sun Mar 01 08:09:00 2020","default":"'Sun Jul 12 11:55:30 2020'::timestamp without time zone"},{"name":"e","type":"integer","value":80,"default":null},{"name":"f","type":"integer","value":10,"default":null}]}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"I","schema":"public","table":"w2j_default","columns":[{"name":"a","type":"integer","value":2,"default":"nextval('w2j_default_a_seq'::regclass)"},{"name":"b","type":"integer","value":6,"default":"6"},{"name":"c","type":"text","value":"wal2json","default":"'wal2json'::text"},{"name":"d","type":"timestamp without time zone","value":"Sun Jul 12 11:55:30 2020","default":"'Sun Jul 12 11:55:30 2020'::timestamp without time zone"},{"name":"e","type":"integer","value":null,"default":null},{"name":"f","type":"integer","value":null,"default":null}]}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"U","schema":"public","table":"w2j_default","columns":[{"name":"a","type":"integer","value":1,"default":"nextval('w2j_default_a_seq'::regclass)"},{"name":"b","type":"integer","value":3,"default":"6"},{"name":"c","type":"text","value":"test","default":"'wal2json'::text"},{"name":"d","type":"timestamp without time zone","value":"Sun Mar 01 08:09:00 2020","default":"'Sun Jul 12 11:55:30 2020'::timestamp without time zone"},{"name":"e","type":"integer","value":80,"default":null},{"name":"f","type":"integer","value":10,"default":null}],"identity":[{"name":"a","type":"integer","value":1}]}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"I","schema":"public","table":"w2j_truncate","columns":[{"name":"a","type":"integer","value":1,"default":"nextval('w2j_truncate_a_seq'::regclass)"},{"name":"b","type":"text","value":"foo@bar.com","default":null}]}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"I","schema":"public","table":"w2j_truncate","columns":[{"name":"a","type":"integer","value":2,"default":"nextval('w2j_truncate_a_seq'::regclass)"},{"name":"b","type":"text","value":"foo@bar.com","default":null}]}
+ {"action":"C"}
+(17 rows)
+
+SELECT 'stop' FROM pg_drop_replication_slot('regression_slot');
+ ?column? 
+----------
+ stop
+(1 row)
+
+DROP TABLE w2j_default;
+DROP TABLE w2j_truncate;
