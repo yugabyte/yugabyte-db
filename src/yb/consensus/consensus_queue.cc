@@ -796,6 +796,19 @@ yb::OpId PeerMessageQueue::GetCDCConsumerOpIdToEvict() {
   }
 }
 
+
+const char* PeerMessageQueue::CDCSourceToStr(CDCSourceType cdc_source_type) {
+  switch(cdc_source_type) {
+    case CDCSourceType::XCLUSTER:
+      return "XCLUSTER";
+    case CDCSourceType::CDCSDK:
+      return "CDCSDK";
+    case CDCSourceType::NONE:
+      return "NONE";
+  }
+  FATAL_INVALID_ENUM_VALUE(PeerMessageQueue::CDCSourceType, cdc_source_type);
+}
+
 yb::OpId PeerMessageQueue::GetCDCConsumerOpIdForIntentRemoval() {
   std::shared_lock<rw_spinlock> l(cdc_consumer_lock_);
   if (cdc_consumer_source_type_ == CDCSourceType::NONE) {

@@ -576,6 +576,10 @@ class PeerMessageQueue {
   yb::OpId cdc_consumer_op_id_ = yb::OpId::Max();
   CoarseTimePoint cdc_consumer_op_id_last_updated_ = ToCoarse(MonoTime::kMin);
   CDCSourceType cdc_consumer_source_type_ = CDCSourceType::NONE;
+
+  friend std::ostream& operator <<(std::ostream& out, CDCSourceType cdc_source_type);
+  static const char* CDCSourceToStr(CDCSourceType cdc_source_typ);
+
 };
 
 inline std::ostream& operator <<(std::ostream& out, PeerMessageQueue::Mode mode) {
@@ -584,6 +588,10 @@ inline std::ostream& operator <<(std::ostream& out, PeerMessageQueue::Mode mode)
 
 inline std::ostream& operator <<(std::ostream& out, PeerMessageQueue::State state) {
   return out << PeerMessageQueue::StateToStr(state);
+}
+
+inline std::ostream& operator <<(std::ostream& out, PeerMessageQueue::CDCSourceType cdc_source_type) {
+  return out << PeerMessageQueue::CDCSourceToStr(cdc_source_type);
 }
 
 struct MajorityReplicatedData {
