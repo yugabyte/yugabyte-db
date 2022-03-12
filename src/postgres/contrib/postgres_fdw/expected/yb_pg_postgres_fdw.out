@@ -3109,6 +3109,13 @@ COMMIT;
 create table loct3 (f1 text collate "C" unique, f2 text, f3 varchar(10) unique);
 create foreign table ft3 (f1 text collate "C", f2 text, f3 varchar(10))
   server loopback options (table_name 'loct3', use_remote_estimate 'true');
+-- YB note: foreign table does not exist, remove when #11684 is fixed
+select pg_sleep(1);
+ pg_sleep
+----------
+
+(1 row)
+
 -- can be sent to remote
 explain (verbose, costs off) select * from ft3 where f1 = 'foo';
                                   QUERY PLAN
@@ -6161,6 +6168,13 @@ SELECT * FROM ft1 ORDER BY c6 ASC NULLS FIRST, c1 OFFSET 15 LIMIT 10;
 -- ===================================================================
 -- Consistent check constraints provide consistent results
 ALTER FOREIGN TABLE ft1 ADD CONSTRAINT ft1_c2positive CHECK (c2 >= 0);
+-- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
+select pg_sleep(1);
+ pg_sleep
+----------
+
+(1 row)
+
 --EXPLAIN (VERBOSE, COSTS OFF) SELECT count(*) FROM ft1 WHERE c2 < 0;
 SELECT count(*) FROM ft1 WHERE c2 < 0;
  count

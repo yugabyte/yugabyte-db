@@ -20,6 +20,7 @@ public class BackupResp {
   UUID universeUUID;
   UUID scheduleUUID;
   UUID customerUUID;
+  UUID taskUUID;
   String universeName;
   Boolean isStorageConfigPresent;
   Boolean isUniversePresent;
@@ -28,6 +29,7 @@ public class BackupResp {
   Date createTime;
   Date updateTime;
   Date expiryTime;
+  Date completionTime;
   Long totalBackupSizeInBytes;
   Set<KeyspaceTablesList> responseList;
 }
