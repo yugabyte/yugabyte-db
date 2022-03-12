@@ -1007,7 +1007,10 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
           }
 
           LOG_WITH_PREFIX(INFO) << "Re-initializing cluster config";
-          cluster_config_.reset();
+          {
+            std::lock_guard<decltype(config_mutex_)> lock(config_mutex_);
+            cluster_config_.reset();
+          }
           RETURN_NOT_OK(PrepareDefaultClusterConfig(term));
 
           LOG_WITH_PREFIX(INFO) << "Restoring snapshot completed, considering initdb finished";
@@ -1112,7 +1115,10 @@ Status CatalogManager::RunLoaders(int64_t term) {
   udtype_names_map_.clear();
 
   // Clear the current cluster config.
-  cluster_config_.reset();
+  {
+    std::lock_guard<decltype(config_mutex_)> lock(config_mutex_);
+    cluster_config_.reset();
+  }
 
   // Clear redis config mapping.
   redis_config_map_.clear();
@@ -1199,6 +1205,7 @@ Status CatalogManager::CheckResource(
 }
 
 Status CatalogManager::PrepareDefaultClusterConfig(int64_t term) {
+  std::lock_guard<decltype(config_mutex_)> lock(config_mutex_);
   if (cluster_config_) {
     LOG_WITH_PREFIX(INFO)
         << "Cluster configuration has already been set up, skipping re-initialization.";
@@ -1223,14 +1230,14 @@ Status CatalogManager::PrepareDefaultClusterConfig(int64_t term) {
       << "Setting cluster UUID to " << config.cluster_uuid() << " " << cluster_uuid_source;
 
   // Create in memory object.
-  cluster_config_ = new ClusterConfigInfo();
+  cluster_config_ = std::make_shared<ClusterConfigInfo>();
 
   // Prepare write.
   auto l = cluster_config_->LockForWrite();
   l.mutable_data()->pb = std::move(config);
 
   // Write to sys_catalog and in memory.
-  RETURN_NOT_OK(sys_catalog_->Upsert(term, cluster_config_));
+  RETURN_NOT_OK(sys_catalog_->Upsert(term, cluster_config_.get()));
   l.Commit();
 
   return Status::OK();
@@ -1857,7 +1864,7 @@ Result<ReplicationInfoPB> CatalogManager::GetTableReplicationInfo(
   }
 
   // Neither table nor tablespace info set. Return cluster level replication info.
-  auto l = cluster_config_->LockForRead();
+  auto l = ClusterConfig()->LockForRead();
   return l->pb.replication_info();
 }
 
@@ -1924,7 +1931,7 @@ Status CatalogManager::ValidateTableReplicationInfo(const ReplicationInfoPB& rep
   }
   // Today we support setting table level replication info only in clusters where read replica
   // placements is not set. Return error if the cluster has read replica placements set.
-  auto l = cluster_config_->LockForRead();
+  auto l = ClusterConfig()->LockForRead();
   const ReplicationInfoPB& cluster_replication_info = l->pb.replication_info();
   // TODO(bogdan): figure this out when we expand on geopartition support.
   // if (!cluster_replication_info.read_replicas().empty() ||
@@ -1960,7 +1967,7 @@ Result<shared_ptr<TablespaceIdToReplicationInfoMap>> CatalogManager::GetYsqlTabl
   // each tablespace.
   string placement_uuid;
   {
-    auto l = cluster_config_->LockForRead();
+    auto l = ClusterConfig()->LockForRead();
     // TODO(deepthi.srinivasan): Read-replica placements are not supported as
     // of now.
     placement_uuid = l->pb.replication_info().live_replicas().placement_uuid();
@@ -2523,7 +2530,7 @@ Result<ReplicationInfoPB> CatalogManager::GetTableReplicationInfo(
     return replication_info_opt.value();
   }
 
-  return cluster_config_->LockForRead()->pb.replication_info();
+  return ClusterConfig()->LockForRead()->pb.replication_info();
 }
 
 bool CatalogManager::ShouldSplitValidCandidate(
@@ -3027,16 +3034,18 @@ Status CatalogManager::CopyPgsqlSysTables(const NamespaceId& namespace_id,
 }
 
 size_t CatalogManager::GetNumLiveTServersForPlacement(const PlacementId& placement_id) {
-  BlacklistSet blacklist = BlacklistSetFromPB();
+  auto blacklist = BlacklistSetFromPB();
   TSDescriptorVector ts_descs;
-  master_->ts_manager()->GetAllLiveDescriptorsInCluster(&ts_descs, placement_id, blacklist);
+  master_->ts_manager()->GetAllLiveDescriptorsInCluster(
+      &ts_descs, placement_id, (blacklist.ok() ? *blacklist : BlacklistSet()));
   return ts_descs.size();
 }
 
 TSDescriptorVector CatalogManager::GetAllLiveNotBlacklistedTServers() const {
   TSDescriptorVector ts_descs;
-  BlacklistSet blacklist = BlacklistSetFromPB();
-  master_->ts_manager()->GetAllLiveDescriptors(&ts_descs, blacklist);
+  auto blacklist = BlacklistSetFromPB();
+  master_->ts_manager()->GetAllLiveDescriptors(
+      &ts_descs, blacklist.ok() ? *blacklist : BlacklistSet());
   return ts_descs;
 }
 
@@ -3886,7 +3895,7 @@ CHECKED_STATUS CatalogManager::CreateTransactionStatusTableInternal(
     num_tablets = FLAGS_transaction_table_num_tablets;
   } else {
     auto placement_uuid =
-        cluster_config_->LockForRead()->pb.replication_info().live_replicas().placement_uuid();
+        ClusterConfig()->LockForRead()->pb.replication_info().live_replicas().placement_uuid();
     num_tablets = narrow_cast<int>(GetNumLiveTServersForPlacement(placement_uuid) *
                                    FLAGS_transaction_table_num_tablets_per_tserver);
   }
@@ -8315,7 +8324,7 @@ Status CatalogManager::RegisterTsFromRaftConfig(const consensus::RaftPeerPB& pee
 
   // Todo(Rahul) : May need to be changed when we implement table level overrides.
   {
-    auto l = cluster_config_->LockForRead();
+    auto l = ClusterConfig()->LockForRead();
     // If the config has no replication info, use empty string for the placement uuid, otherwise
     // calculate it from the reported peer.
     auto placement_uuid = l->pb.has_replication_info()
@@ -9487,7 +9496,7 @@ void CatalogManager::StartElectionIfReady(
 
   ReplicationInfoPB replication_info;
   {
-    auto l = cluster_config_->LockForRead();
+    auto l = ClusterConfig()->LockForRead();
     replication_info = l->pb.replication_info();
   }
 
@@ -10029,8 +10038,9 @@ Status CatalogManager::GetClusterConfig(GetMasterClusterConfigResponsePB* resp) 
 }
 
 Status CatalogManager::GetClusterConfig(SysClusterConfigEntryPB* config) {
-  DCHECK(cluster_config_) << "Missing cluster config for master!";
-  auto l = cluster_config_->LockForRead();
+  auto cluster_config = ClusterConfig();
+  DCHECK(cluster_config) << "Missing cluster config for master!";
+  auto l = cluster_config->LockForRead();
   *config = l->pb;
   return Status::OK();
 }
@@ -10054,7 +10064,8 @@ Status CatalogManager::SetClusterConfig(
                     config.leader_blacklist().initial_leader_load());
   }
 
-  auto l = cluster_config_->LockForWrite();
+  auto cluster_config = ClusterConfig();
+  auto l = cluster_config->LockForWrite();
   // We should only set the config, if the caller provided us with a valid update to the
   // existing config.
   if (l->pb.version() != config.version()) {
@@ -10093,7 +10104,7 @@ Status CatalogManager::SetClusterConfig(
 
   LOG(INFO) << "Updating cluster config to " << config.version() + 1;
 
-  RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), cluster_config_));
+  RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()));
 
   l.Commit();
 
@@ -10104,7 +10115,7 @@ Status CatalogManager::ValidateReplicationInfo(
     const ValidateReplicationInfoRequestPB* req, ValidateReplicationInfoResponsePB* resp) {
   TSDescriptorVector all_ts_descs;
   {
-    BlacklistSet blacklist = BlacklistSetFromPB();
+    BlacklistSet blacklist = VERIFY_RESULT(BlacklistSetFromPB());
     master_->ts_manager()->GetAllLiveDescriptors(&all_ts_descs, blacklist);
   }
   // We don't need any validation checks for read replica placements
@@ -10122,7 +10133,8 @@ Status CatalogManager::ValidateReplicationInfo(
 
 Status CatalogManager::SetPreferredZones(
     const SetPreferredZonesRequestPB* req, SetPreferredZonesResponsePB* resp) {
-  auto l = cluster_config_->LockForWrite();
+  auto cluster_config = ClusterConfig();
+  auto l = cluster_config->LockForWrite();
   auto replication_info = l.mutable_data()->pb.mutable_replication_info();
   replication_info->clear_affinitized_leaders();
 
@@ -10140,7 +10152,7 @@ Status CatalogManager::SetPreferredZones(
 
   LOG(INFO) << "Updating cluster config to " << l.mutable_data()->pb.version();
 
-  Status s = sys_catalog_->Upsert(leader_ready_term(), cluster_config_);
+  Status s = sys_catalog_->Upsert(leader_ready_term(), cluster_config.get());
   if (!s.ok()) {
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_CLUSTER_CONFIG, s);
   }
@@ -10151,8 +10163,9 @@ Status CatalogManager::SetPreferredZones(
 }
 
 Result<size_t> CatalogManager::GetReplicationFactor() {
-  DCHECK(cluster_config_) << "Missing cluster config for master!";
-  auto l = cluster_config_->LockForRead();
+  auto cluster_config = ClusterConfig();
+  DCHECK(cluster_config) << "Missing cluster config for master!";
+  auto l = cluster_config->LockForRead();
   const ReplicationInfoPB& replication_info = l->pb.replication_info();
   return GetNumReplicasFromPlacementInfo(replication_info.live_replicas());
 }
@@ -10171,7 +10184,7 @@ Result<size_t> CatalogManager::GetReplicationFactorForTablet(
 }
 
 void CatalogManager::GetExpectedNumberOfReplicas(int* num_live_replicas, int* num_read_replicas) {
-  auto l = cluster_config_->LockForRead();
+  auto l = ClusterConfig()->LockForRead();
   const ReplicationInfoPB& replication_info = l->pb.replication_info();
   *num_live_replicas = narrow_cast<int>(GetNumReplicasFromPlacementInfo(
       replication_info.live_replicas()));
@@ -10180,9 +10193,12 @@ void CatalogManager::GetExpectedNumberOfReplicas(int* num_live_replicas, int* nu
   }
 }
 
-string CatalogManager::placement_uuid() const {
-  DCHECK(cluster_config_) << "Missing cluster config for master!";
-  auto l = cluster_config_->LockForRead();
+Result<string> CatalogManager::placement_uuid() const {
+  auto cluster_config = ClusterConfig();
+  if (!cluster_config) {
+    return STATUS(IllegalState, "Missing cluster config for master!");
+  }
+  auto l = cluster_config->LockForRead();
   const ReplicationInfoPB& replication_info = l->pb.replication_info();
   return replication_info.live_replicas().placement_uuid();
 }
@@ -10225,7 +10241,7 @@ Status CatalogManager::AreLeadersOnPreferredOnly(const AreLeadersOnPreferredOnly
   TSDescriptorVector ts_descs;
   string live_replicas_placement_uuid = "";
   {
-    auto l = cluster_config_->LockForRead();
+    auto l = ClusterConfig()->LockForRead();
     const ReplicationInfoPB& cluster_replication_info = l->pb.replication_info();
     if (cluster_replication_info.has_live_replicas()) {
       live_replicas_placement_uuid = cluster_replication_info.live_replicas().placement_uuid();
@@ -10233,7 +10249,7 @@ Status CatalogManager::AreLeadersOnPreferredOnly(const AreLeadersOnPreferredOnly
   }
 
   {
-    BlacklistSet blacklist = BlacklistSetFromPB();
+    BlacklistSet blacklist = VERIFY_RESULT(BlacklistSetFromPB());
     if (live_replicas_placement_uuid.empty()) {
       master_->ts_manager()->GetAllLiveDescriptors(&ts_descs, blacklist);
     } else {
@@ -10249,7 +10265,7 @@ Status CatalogManager::AreLeadersOnPreferredOnly(const AreLeadersOnPreferredOnly
     tables = master_->catalog_manager()->GetTables(GetTablesMode::kRunning);
   }
 
-  auto l = cluster_config_->LockForRead();
+  auto l = ClusterConfig()->LockForRead();
   Status s = CatalogManagerUtil::AreLeadersOnPreferredOnly(
       ts_descs, l->pb.replication_info(), tables);
   if (!s.ok()) {
@@ -10304,7 +10320,7 @@ Status CatalogManager::GetLeaderBlacklistCompletionPercent(GetLoadMovePercentRes
 
 Status CatalogManager::GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB* resp,
                                                     bool blacklist_leader) {
-  auto l = cluster_config_->LockForRead();
+  auto l = ClusterConfig()->LockForRead();
 
   // Fine to pass in empty defaults if server_blacklist or leader_blacklist is not filled.
   const BlacklistPB& state = blacklist_leader ? l->pb.leader_blacklist() : l->pb.server_blacklist();
@@ -10588,7 +10604,7 @@ void CatalogManager::RebuildYQLSystemPartitions() {
 }
 
 Status CatalogManager::SysCatalogRespectLeaderAffinity() {
-  auto l = cluster_config_->LockForRead();
+  auto l = ClusterConfig()->LockForRead();
 
   const auto& affinitized_leaders = l->pb.replication_info().affinitized_leaders();
   if (affinitized_leaders.empty()) {
@@ -10646,8 +10662,12 @@ Status CatalogManager::SysCatalogRespectLeaderAffinity() {
   return STATUS(NotFound, "Couldn't step down to a master in an affinitized zone");
 }
 
-BlacklistSet CatalogManager::BlacklistSetFromPB() const {
-  auto l = cluster_config_->LockForRead();
+Result<BlacklistSet> CatalogManager::BlacklistSetFromPB() const {
+  auto cluster_config = ClusterConfig();
+  if (!cluster_config) {
+    return STATUS(IllegalState, "Cluster config not found.");
+  }
+  auto l = cluster_config->LockForRead();
 
   const auto& blacklist_pb = l->pb.server_blacklist();
   BlacklistSet blacklist_set;
@@ -10744,6 +10764,11 @@ void CatalogManager::InitializeGlobalLoadState(
     }
     CatalogManagerUtil::FillTableLoadState(id_and_info.second, state);
   }
+}
+
+std::shared_ptr<ClusterConfigInfo> CatalogManager::ClusterConfig() const {
+  yb::SharedLock<decltype(config_mutex_)> lock(config_mutex_);
+  return cluster_config_;
 }
 
 }  // namespace master
