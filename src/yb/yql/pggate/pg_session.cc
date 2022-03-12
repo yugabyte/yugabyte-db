@@ -70,6 +70,10 @@ DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
 
 DEFINE_bool(ysql_log_failed_docdb_requests, false, "Log failed docdb requests.");
 
+// If this is set in the user's session to a positive value, it will supersede the gflag
+// ysql_session_max_batch_size.
+int ysql_session_max_batch_size = 0;
+
 namespace yb {
 namespace pggate {
 
@@ -78,7 +82,6 @@ using std::unique_ptr;
 using std::shared_ptr;
 using std::string;
 
-using client::YBClient;
 using client::YBSession;
 using client::YBMetaDataCache;
 using client::YBSchema;
@@ -93,8 +96,8 @@ using yb::tserver::TServerSharedObject;
 
 namespace {
 
-static constexpr const size_t kPgSequenceLastValueColIdx = 2;
-static constexpr const size_t kPgSequenceIsCalledColIdx = 3;
+bool has_prev_future = false;
+PerformFuture prevFlushFuture;
 
 docdb::PrimitiveValue NullValue(SortingType sorting) {
   using SortingType = SortingType;
@@ -150,6 +153,13 @@ bool IsTableUsedByOperation(const PgsqlOp& op, const string& table_id) {
   } else {
     return IsTableUsedByRequest(down_cast<const PgsqlWriteOp&>(op).write_request(), table_id);
   }
+}
+
+/* Use the gflag value if the session variable is unset. */
+uint64_t GetSessionMaxBatchSize() {
+    return ysql_session_max_batch_size <= 0
+        ? FLAGS_ysql_session_max_batch_size
+        : (uint64_t) ysql_session_max_batch_size;
 }
 
 struct PgForeignKeyReferenceLightweight {
@@ -217,7 +227,8 @@ PgSession::RunHelper::RunHelper(const PgObjectId& relation_id,
 }
 
 Status PgSession::RunHelper::Apply(
-    const Schema& schema, const PgsqlOpPtr& op, uint64_t* read_time, bool force_non_bufferable) {
+    const Schema& schema, const PgsqlOpPtr& op, uint64_t* read_time, bool force_non_bufferable,
+    UseAsyncFlush use_async_flush) {
   auto& buffered_keys = pg_session_.buffered_keys_;
   // Try buffering this operation if it is a write operation, buffering is enabled and no
   // operations have been already applied to current session (yb session does not exist).
@@ -231,7 +242,7 @@ Status PgSession::RunHelper::Apply(
     // Flush is required in this case.
     RowIdentifier row_id(schema, wop);
     if (PREDICT_FALSE(!buffered_keys.insert(row_id).second)) {
-      RETURN_NOT_OK(pg_session_.FlushBufferedOperations());
+      RETURN_NOT_OK(pg_session_.FlushBufferedOperations(use_async_flush));
       buffered_keys.insert(row_id);
     }
     if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {
@@ -239,9 +250,9 @@ Status PgSession::RunHelper::Apply(
     }
     buffer_.Add(op, relation_id_);
     // Flush buffers in case limit of operations in single RPC exceeded.
-    return PREDICT_TRUE(buffered_keys.size() < FLAGS_ysql_session_max_batch_size)
+    return PREDICT_TRUE(buffered_keys.size() < GetSessionMaxBatchSize())
         ? Status::OK()
-        : pg_session_.FlushBufferedOperations();
+        : pg_session_.FlushBufferedOperations(use_async_flush);
   }
   bool read_only = op->is_read();
   // Flush all buffered operations (if any) before performing non-bufferable operation
@@ -258,17 +269,17 @@ Status PgSession::RunHelper::Apply(
       full_flush_required = IsTableUsedByOperation(*op, i->table_id());
     }
     if (full_flush_required) {
-      RETURN_NOT_OK(pg_session_.FlushBufferedOperations());
+      RETURN_NOT_OK(pg_session_.FlushBufferedOperations(use_async_flush));
     } else {
       RETURN_NOT_OK(pg_session_.FlushBufferedOperationsImpl(
-          [this](auto ops, auto transactional) -> Status {
+          [this](auto ops, auto transactional, auto use_async_flush) -> Status {
             if (transactional == transactional_) {
               // Save buffered operations for further applying before non-buffered operation.
               operations_.Swap(&ops);
               return Status::OK();
             }
-            return pg_session_.FlushOperations(std::move(ops), transactional);
-          }));
+            return pg_session_.FlushOperations(std::move(ops), transactional, use_async_flush);
+          }, use_async_flush));
       read_only = read_only && operations_.empty();
     }
   }
@@ -397,15 +408,13 @@ size_t hash_value(const RowIdentifier& key) {
 //--------------------------------------------------------------------------------------------------
 
 PgSession::PgSession(
-    client::YBClient* client,
     PgClient* pg_client,
     const string& database_name,
     scoped_refptr<PgTxnManager> pg_txn_manager,
     scoped_refptr<server::HybridClock> clock,
     const tserver::TServerSharedObject* tserver_shared_object,
     const YBCPgCallbacks& pg_callbacks)
-    : session_(BuildSession(client)),
-      pg_client_(*pg_client),
+    : pg_client_(*pg_client),
       pg_txn_manager_(std::move(pg_txn_manager)),
       clock_(std::move(clock)),
       tserver_shared_object_(tserver_shared_object),
@@ -454,185 +463,34 @@ Status PgSession::InsertSequenceTuple(int64_t db_oid,
                                       uint64_t ysql_catalog_version,
                                       int64_t last_val,
                                       bool is_called) {
-  PgObjectId oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
-  auto result = LoadTable(oid);
-  if (!result.ok()) {
-    RETURN_NOT_OK(CreateSequencesDataTable());
-    // Try one more time.
-    result = LoadTable(oid);
-  }
-  auto t = VERIFY_RESULT(std::move(result));
-
-  auto psql_write(t->NewPgsqlInsert());
-
-  auto write_request = psql_write->mutable_request();
-  write_request->set_ysql_catalog_version(ysql_catalog_version);
-
-  write_request->add_partition_column_values()->mutable_value()->set_int64_value(db_oid);
-  write_request->add_partition_column_values()->mutable_value()->set_int64_value(seq_oid);
-
-  PgsqlColumnValuePB* column_value = write_request->add_column_values();
-  column_value->set_column_id(t->schema().column_id(kPgSequenceLastValueColIdx));
-  column_value->mutable_expr()->mutable_value()->set_int64_value(last_val);
-
-  column_value = write_request->add_column_values();
-  column_value->set_column_id(t->schema().column_id(kPgSequenceIsCalledColIdx));
-  column_value->mutable_expr()->mutable_value()->set_bool_value(is_called);
-
-  return session_->ApplyAndFlush(std::move(psql_write));
+  return pg_client_.InsertSequenceTuple(
+      db_oid, seq_oid, ysql_catalog_version, last_val, is_called);
 }
 
-Status PgSession::UpdateSequenceTuple(int64_t db_oid,
-                                      int64_t seq_oid,
-                                      uint64_t ysql_catalog_version,
-                                      int64_t last_val,
-                                      bool is_called,
-                                      boost::optional<int64_t> expected_last_val,
-                                      boost::optional<bool> expected_is_called,
-                                      bool* skipped) {
-  PgObjectId oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
-  auto t = VERIFY_RESULT(LoadTable(oid));
-
-  std::shared_ptr<client::YBPgsqlWriteOp> psql_write(t->NewPgsqlUpdate());
-
-  auto write_request = psql_write->mutable_request();
-  write_request->set_ysql_catalog_version(ysql_catalog_version);
-
-  write_request->add_partition_column_values()->mutable_value()->set_int64_value(db_oid);
-  write_request->add_partition_column_values()->mutable_value()->set_int64_value(seq_oid);
-
-  PgsqlColumnValuePB* column_value = write_request->add_column_new_values();
-  column_value->set_column_id(t->schema().column_id(kPgSequenceLastValueColIdx));
-  column_value->mutable_expr()->mutable_value()->set_int64_value(last_val);
-
-  column_value = write_request->add_column_new_values();
-  column_value->set_column_id(t->schema().column_id(kPgSequenceIsCalledColIdx));
-  column_value->mutable_expr()->mutable_value()->set_bool_value(is_called);
-
-  auto where_pb = write_request->mutable_where_expr()->mutable_condition();
-
-  if (expected_last_val && expected_is_called) {
-    // WHERE clause => WHERE last_val == expected_last_val AND is_called == expected_is_called.
-    where_pb->set_op(QL_OP_AND);
-
-    auto cond = where_pb->add_operands()->mutable_condition();
-    cond->set_op(QL_OP_EQUAL);
-    cond->add_operands()->set_column_id(t->schema().column_id(kPgSequenceLastValueColIdx));
-    cond->add_operands()->mutable_value()->set_int64_value(*expected_last_val);
-
-    cond = where_pb->add_operands()->mutable_condition();
-    cond->set_op(QL_OP_EQUAL);
-    cond->add_operands()->set_column_id(t->schema().column_id(kPgSequenceIsCalledColIdx));
-    cond->add_operands()->mutable_value()->set_bool_value(*expected_is_called);
-  } else {
-    where_pb->set_op(QL_OP_EXISTS);
-  }
-
-  // For compatibility set deprecated column_refs
-  write_request->mutable_column_refs()->add_ids(
-      t->schema().column_id(kPgSequenceLastValueColIdx));
-  write_request->mutable_column_refs()->add_ids(
-      t->schema().column_id(kPgSequenceIsCalledColIdx));
-  // Same values, to be consumed by current TServers
-  write_request->add_col_refs()->set_column_id(
-      t->schema().column_id(kPgSequenceLastValueColIdx));
-  write_request->add_col_refs()->set_column_id(
-      t->schema().column_id(kPgSequenceIsCalledColIdx));
-
-  RETURN_NOT_OK(session_->ApplyAndFlush(psql_write));
-  if (skipped) {
-    *skipped = psql_write->response().skipped();
-  }
-  return Status::OK();
+Result<bool> PgSession::UpdateSequenceTuple(int64_t db_oid,
+                                            int64_t seq_oid,
+                                            uint64_t ysql_catalog_version,
+                                            int64_t last_val,
+                                            bool is_called,
+                                            boost::optional<int64_t> expected_last_val,
+                                            boost::optional<bool> expected_is_called) {
+  return pg_client_.UpdateSequenceTuple(
+      db_oid, seq_oid, ysql_catalog_version, last_val, is_called, expected_last_val,
+      expected_is_called);
 }
 
-Status PgSession::ReadSequenceTuple(int64_t db_oid,
-                                    int64_t seq_oid,
-                                    uint64_t ysql_catalog_version,
-                                    int64_t *last_val,
-                                    bool *is_called) {
-  PgObjectId oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
-  PgTableDescPtr t = VERIFY_RESULT(LoadTable(oid));
-
-  std::shared_ptr<client::YBPgsqlReadOp> psql_read(t->NewPgsqlSelect());
-
-  auto read_request = psql_read->mutable_request();
-  read_request->set_ysql_catalog_version(ysql_catalog_version);
-
-  read_request->add_partition_column_values()->mutable_value()->set_int64_value(db_oid);
-  read_request->add_partition_column_values()->mutable_value()->set_int64_value(seq_oid);
-
-  read_request->add_targets()->set_column_id(
-      t->schema().column_id(kPgSequenceLastValueColIdx));
-  read_request->add_targets()->set_column_id(
-      t->schema().column_id(kPgSequenceIsCalledColIdx));
-
-  // For compatibility set deprecated column_refs
-  read_request->mutable_column_refs()->add_ids(
-      t->schema().column_id(kPgSequenceLastValueColIdx));
-  read_request->mutable_column_refs()->add_ids(
-      t->schema().column_id(kPgSequenceIsCalledColIdx));
-  // Same values, to be consumed by current TServers
-  read_request->add_col_refs()->set_column_id(
-      t->schema().column_id(kPgSequenceLastValueColIdx));
-  read_request->add_col_refs()->set_column_id(
-      t->schema().column_id(kPgSequenceIsCalledColIdx));
-
-  RETURN_NOT_OK(session_->ReadSync(psql_read));
-
-  Slice cursor;
-  int64_t row_count = 0;
-  PgDocData::LoadCache(psql_read->rows_data(), &row_count, &cursor);
-  if (row_count == 0) {
-    return STATUS_SUBSTITUTE(NotFound, "Unable to find relation for sequence $0", seq_oid);
-  }
-
-  PgWireDataHeader header = PgDocData::ReadDataHeader(&cursor);
-  if (header.is_null()) {
-    return STATUS_SUBSTITUTE(NotFound, "Unable to find relation for sequence $0", seq_oid);
-  }
-  size_t read_size = PgDocData::ReadNumber(&cursor, last_val);
-  cursor.remove_prefix(read_size);
-
-  header = PgDocData::ReadDataHeader(&cursor);
-  if (header.is_null()) {
-    return STATUS_SUBSTITUTE(NotFound, "Unable to find relation for sequence $0", seq_oid);
-  }
-  read_size = PgDocData::ReadNumber(&cursor, is_called);
-  return Status::OK();
+Result<std::pair<int64_t, bool>> PgSession::ReadSequenceTuple(int64_t db_oid,
+                                                              int64_t seq_oid,
+                                                              uint64_t ysql_catalog_version) {
+  return pg_client_.ReadSequenceTuple(db_oid, seq_oid, ysql_catalog_version);
 }
 
 Status PgSession::DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid) {
-  PgObjectId oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
-  PgTableDescPtr t = VERIFY_RESULT(LoadTable(oid));
-
-  auto psql_delete(t->NewPgsqlDelete());
-  auto delete_request = psql_delete->mutable_request();
-
-  delete_request->add_partition_column_values()->mutable_value()->set_int64_value(db_oid);
-  delete_request->add_partition_column_values()->mutable_value()->set_int64_value(seq_oid);
-
-  return session_->ApplyAndFlush(std::move(psql_delete));
+  return pg_client_.DeleteSequenceTuple(db_oid, seq_oid);
 }
 
 Status PgSession::DeleteDBSequences(int64_t db_oid) {
-  PgObjectId oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
-  Result<PgTableDescPtr> r = LoadTable(oid);
-  if (!r.ok()) {
-    // Sequence table is not yet created.
-    return Status::OK();
-  }
-
-  auto t = std::move(*r);
-  if (t == nullptr) {
-    return Status::OK();
-  }
-
-  auto psql_delete(t->NewPgsqlDelete());
-  auto delete_request = psql_delete->mutable_request();
-
-  delete_request->add_partition_column_values()->mutable_value()->set_int64_value(db_oid);
-  return session_->ApplyAndFlush(std::move(psql_delete));
+  return pg_client_.DeleteDBSequences(db_oid);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -725,7 +583,7 @@ Status PgSession::StartOperationsBuffering() {
 Status PgSession::StopOperationsBuffering() {
   SCHECK(buffering_enabled_, IllegalState, "Buffering hasn't been started");
   buffering_enabled_ = false;
-  return FlushBufferedOperations();
+  return FlushBufferedOperations(UseAsyncFlush::kFalse);
 }
 
 void PgSession::ResetOperationsBuffering() {
@@ -733,10 +591,10 @@ void PgSession::ResetOperationsBuffering() {
   buffering_enabled_ = false;
 }
 
-Status PgSession::FlushBufferedOperations() {
-  return FlushBufferedOperationsImpl([this](auto ops, auto txn) {
-    return this->FlushOperations(std::move(ops), txn);
-  });
+Status PgSession::FlushBufferedOperations(UseAsyncFlush use_async_flush) {
+  return FlushBufferedOperationsImpl([this](auto ops, auto txn, auto use_async_flush) {
+    return this->FlushOperations(std::move(ops), txn, use_async_flush);
+  }, use_async_flush);
 }
 
 void PgSession::DropBufferedOperations() {
@@ -751,22 +609,32 @@ PgIsolationLevel PgSession::GetIsolationLevel() {
   return pg_txn_manager_->GetPgIsolationLevel();
 }
 
-Status PgSession::FlushBufferedOperationsImpl(const Flusher& flusher) {
+Status PgSession::FlushBufferedOperationsImpl(const Flusher& flusher,
+                                              UseAsyncFlush use_async_flush) {
   auto ops = std::move(buffered_ops_);
   auto txn_ops = std::move(buffered_txn_ops_);
   buffered_keys_.clear();
   buffered_ops_.Clear();
   buffered_txn_ops_.Clear();
   if (!ops.empty()) {
-    RETURN_NOT_OK(flusher(std::move(ops), IsTransactionalSession::kFalse));
+    RETURN_NOT_OK(flusher(std::move(ops), IsTransactionalSession::kFalse, use_async_flush));
   }
   if (!txn_ops.empty()) {
     SCHECK(!YBCIsInitDbModeEnvVarSet(),
            IllegalState,
            "No transactional operations are expected in the initdb mode");
-    RETURN_NOT_OK(flusher(std::move(txn_ops), IsTransactionalSession::kTrue));
+    RETURN_NOT_OK(flusher(std::move(txn_ops), IsTransactionalSession::kTrue, use_async_flush));
   }
   return Status::OK();
+}
+
+Status PgSession::ProcessPreviousFlush() {
+  Status flush_status;
+  if (has_prev_future) {
+    flush_status = prevFlushFuture.Get();
+    has_prev_future = false;
+  }
+  return flush_status;
 }
 
 Result<bool> PgSession::ShouldHandleTransactionally(const PgTableDesc& table, const PgsqlOp& op) {
@@ -800,7 +668,8 @@ Result<bool> PgSession::IsInitDbDone() {
   return pg_client_.IsInitDbDone();
 }
 
-Status PgSession::FlushOperations(BufferableOperations ops, IsTransactionalSession transactional) {
+Status PgSession::FlushOperations(BufferableOperations ops, IsTransactionalSession transactional,
+                                  UseAsyncFlush use_async_flush) {
   DCHECK(ops.size() > 0 && ops.size() <= FLAGS_ysql_session_max_batch_size);
 
   if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {
@@ -819,12 +688,23 @@ Status PgSession::FlushOperations(BufferableOperations ops, IsTransactionalSessi
     in_txn_limit_ = clock_->Now();
   }
 
-  std::promise<PerformResult> promise;
-  Perform(&ops.operations, [&promise](const PerformResult& result) {
-    promise.set_value(result);
+  auto promise = std::make_shared<std::promise<PerformResult>>();
+  Perform(&ops.operations, [promise](const PerformResult& result) {
+    promise->set_value(result);
   });
-  PerformFuture future(promise.get_future(), this, &ops.relations);
-  return future.Get();
+  PerformFuture future(promise->get_future(), this, &ops.relations);
+  Status flush_status;
+  if (use_async_flush) {
+    if (!has_prev_future) {
+      has_prev_future = true;
+    } else {
+      flush_status = prevFlushFuture.Get();
+    }
+    prevFlushFuture = std::move(future);
+  } else {
+    flush_status = future.Get();
+  }
+  return flush_status;
 }
 
 void PgSession::Perform(PgsqlOps* operations, const PerformCallback& callback) {
@@ -881,17 +761,18 @@ Result<bool> PgSession::ForeignKeyReferenceExists(PgOid table_id,
     return false;
   }
   std::vector<Slice> ybctids;
-  const auto reserved_size = std::min<size_t>(FLAGS_ysql_session_max_batch_size,
+  const auto reserved_size = std::min<size_t>(GetSessionMaxBatchSize(),
                                               fk_reference_intent_.size() + 1);
   ybctids.reserve(reserved_size);
   ybctids.push_back(ybctid);
-  // TODO(dmitry): In case number of keys for same table > FLAGS_ysql_session_max_batch_size
+  // TODO(dmitry): In case number of keys for same table > session max batch size
   // two strategy are possible:
   // 1. select keys belonging to same tablet to reduce number of simultaneous RPC
   // 2. select keys belonging to different tablets to distribute reads among different nodes
   const auto intent_match = [table_id](const auto& key) { return key.table_id == table_id; };
   for (auto it = fk_reference_intent_.begin();
-       it != fk_reference_intent_.end() && ybctids.size() < FLAGS_ysql_session_max_batch_size;
+       it != fk_reference_intent_.end() &&
+       ybctids.size() < GetSessionMaxBatchSize();
        ++it) {
     if (intent_match(*it)) {
       ybctids.push_back(it->ybctid);
@@ -966,7 +847,6 @@ bool PgSession::ShouldUseFollowerReads() const {
 }
 
 void PgSession::SetTimeout(const int timeout_ms) {
-  session_->SetTimeout(MonoDelta::FromMilliseconds(timeout_ms));
   pg_client_.SetTimeout(timeout_ms * 1ms);
 }
 
@@ -987,7 +867,7 @@ Status PgSession::SetActiveSubTransaction(SubTransactionId id) {
   // ensuring that previous operations use previous SubTransactionMetadata. If we do not flush here,
   // already queued operations may incorrectly use this newly modified SubTransactionMetadata when
   // they are eventually sent to DocDB.
-  RETURN_NOT_OK(FlushBufferedOperations());
+  RETURN_NOT_OK(FlushBufferedOperations(UseAsyncFlush::kFalse));
   tserver::PgPerformOptionsPB* options_ptr = nullptr;
   tserver::PgPerformOptionsPB options;
   if (pg_txn_manager_->GetIsolationLevel() == IsolationLevel::NON_TRANSACTIONAL) {
@@ -1008,7 +888,7 @@ Status PgSession::RollbackSubTransaction(SubTransactionId id) {
   // eventually send this metadata.
   // See comment in SetActiveSubTransaction -- we must flush buffered operations before updating any
   // SubTransactionMetadata.
-  RETURN_NOT_OK(FlushBufferedOperations());
+  RETURN_NOT_OK(FlushBufferedOperations(UseAsyncFlush::kFalse));
   return pg_client_.RollbackSubTransaction(id);
 }
 

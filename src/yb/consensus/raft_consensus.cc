@@ -3460,7 +3460,8 @@ Result<ReadOpsResult> RaftConsensus::ReadReplicatedMessagesForCDC(const yb::OpId
 }
 
 void RaftConsensus::UpdateCDCConsumerOpId(const yb::OpId& op_id, CDCSourceType cdc_source_type) {
-  return queue_->UpdateCDCConsumerOpId(op_id, static_cast<PeerMessageQueue::CDCSourceType>(cdc_source_type));
+  return queue_->UpdateCDCConsumerOpId(
+      op_id, static_cast<PeerMessageQueue::CDCSourceType>(cdc_source_type));
 }
 
 void RaftConsensus::RollbackIdAndDeleteOpId(const ReplicateMsgPtr& replicate_msg,

@@ -17,21 +17,19 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
-
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.common.TestHelper;
-import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
+import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.CertificateInfo;
-import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
@@ -97,8 +95,8 @@ public class TlsToggleTest extends UpgradeTaskTest {
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleClusterServerCtl,
           TaskType.AnsibleClusterServerCtl,
-          TaskType.SetNodeState,
-          TaskType.WaitForServer);
+          TaskType.WaitForServer,
+          TaskType.SetNodeState);
 
   private static final List<TaskType> NON_RESTART_UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
@@ -164,9 +162,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
         for (TaskType type : taskSequence) {
           List<TaskInfo> tasks = subTasksByPosition.get(position);
           TaskType taskType = tasks.get(0).getTaskType();
-          // Leader blacklisting adds a ModifyBlackList task at position 0.
-          int numTasksToAssert = position == 0 ? 2 : 1;
-          assertEquals(numTasksToAssert, tasks.size());
+          assertEquals(1, tasks.size());
           assertEquals(type, taskType);
           if (!NON_NODE_TASKS.contains(taskType)) {
             Map<String, Object> assertValues =
@@ -226,9 +222,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
           if (taskType.equals(TaskType.AnsibleConfigureServers)) {
             assertValues.putAll(ImmutableMap.of("processType", serverType.toString()));
           }
-          // The task at postion 0 adds a ModifyBlacklist sub-task.
-          int numTasksToAssert = position == 0 ? 4 : 3;
-          assertEquals(numTasksToAssert, tasks.size());
+          assertEquals(3, tasks.size());
           assertNodeSubTask(tasks, assertValues);
         }
         position++;
@@ -514,7 +508,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
       // Cert update tasks will be non rolling
       List<TaskInfo> certUpdateTasks = subTasksByPosition.get(position++);
       assertTaskType(certUpdateTasks, TaskType.AnsibleConfigureServers);
-      assertEquals(4, certUpdateTasks.size());
+      assertEquals(3, certUpdateTasks.size());
     }
     // First round gflag update tasks
     position = assertSequence(subTasksByPosition, MASTER, position, upgrade.getFirst());
@@ -647,7 +641,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
       // Cert update tasks will be non rolling
       List<TaskInfo> certUpdateTasks = subTasksByPosition.get(position++);
       assertTaskType(certUpdateTasks, TaskType.AnsibleConfigureServers);
-      assertEquals(4, certUpdateTasks.size());
+      assertEquals(3, certUpdateTasks.size());
     }
     // First round gflag update tasks
     position = assertSequence(subTasksByPosition, MASTER, position, upgrade.getFirst());

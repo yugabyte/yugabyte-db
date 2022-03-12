@@ -222,14 +222,6 @@ PgApiImpl::PgApiImpl(
       metric_entity_(std::move(context.metric_entity)),
       mem_tracker_(std::move(context.mem_tracker)),
       messenger_holder_(std::move(context.messenger_holder)),
-      async_client_init_(messenger_holder_.messenger.get()->name(),
-                         FLAGS_pggate_ybclient_reactor_threads,
-                         FLAGS_pggate_rpc_timeout_secs,
-                         "" /* tserver_uuid */,
-                         &pggate_options_,
-                         metric_entity_,
-                         mem_tracker_,
-                         messenger_holder_.messenger.get()),
       proxy_cache_(std::move(context.proxy_cache)),
       clock_(new server::HybridClock()),
       tserver_shared_object_(InitTServerSharedObject()),
@@ -244,23 +236,6 @@ PgApiImpl::PgApiImpl(
     const YBCPgTypeEntity *type_entity = &YBCDataTypeArray[idx];
     type_map_[type_entity->type_oid] = type_entity;
   }
-  if (FLAGS_ysql_forward_rpcs_to_local_tserver) {
-    async_client_init_.AddPostCreateHook([this](client::YBClient *client) {
-      const auto& tserver_shared_data = **tserver_shared_object_;
-      HostPort host_port(tserver_shared_data.endpoint());
-      MonoDelta resolve_cache_timeout;
-      if (FLAGS_use_node_hostname_for_local_tserver) {
-        host_port = HostPort(tserver_shared_data.host().ToBuffer(),
-                             tserver_shared_data.endpoint().port());
-        resolve_cache_timeout = MonoDelta::kMax;
-      }
-      auto proxy = std::make_shared<tserver::TabletServerForwardServiceProxy>(
-          &client->proxy_cache(), host_port, nullptr /* protocol */, resolve_cache_timeout);
-      client->SetNodeLocalForwardProxy(proxy);
-      client->SetNodeLocalTServerHostPort(host_port);
-    });
-  }
-  async_client_init_.Start();
 
   CHECK_OK(pg_client_.Start(
       proxy_cache_.get(), &messenger_holder_.messenger->scheduler(),
@@ -269,7 +244,6 @@ PgApiImpl::PgApiImpl(
 
 PgApiImpl::~PgApiImpl() {
   messenger_holder_.messenger->Shutdown();
-  async_client_init_.client()->Shutdown();
   pg_txn_manager_.reset();
   pg_client_.Shutdown();
 }
@@ -299,8 +273,7 @@ Status PgApiImpl::DestroyEnv(PgEnv *pg_env) {
 Status PgApiImpl::InitSession(const PgEnv *pg_env,
                               const string& database_name) {
   CHECK(!pg_session_);
-  auto session = make_scoped_refptr<PgSession>(client(),
-                                               &pg_client_,
+  auto session = make_scoped_refptr<PgSession>(&pg_client_,
                                                database_name,
                                                pg_txn_manager_,
                                                clock_,
@@ -396,9 +369,10 @@ Status PgApiImpl::UpdateSequenceTupleConditionally(int64_t db_oid,
                                                    int64_t expected_last_val,
                                                    bool expected_is_called,
                                                    bool *skipped) {
-  return pg_session_->UpdateSequenceTuple(
+  *skipped = VERIFY_RESULT(pg_session_->UpdateSequenceTuple(
       db_oid, seq_oid, ysql_catalog_version, last_val, is_called,
-      expected_last_val, expected_is_called, skipped);
+      expected_last_val, expected_is_called));
+  return Status::OK();
 }
 
 Status PgApiImpl::UpdateSequenceTuple(int64_t db_oid,
@@ -407,9 +381,13 @@ Status PgApiImpl::UpdateSequenceTuple(int64_t db_oid,
                                       int64_t last_val,
                                       bool is_called,
                                       bool* skipped) {
-  return pg_session_->UpdateSequenceTuple(
+  bool result = VERIFY_RESULT(pg_session_->UpdateSequenceTuple(
       db_oid, seq_oid, ysql_catalog_version, last_val,
-      is_called, boost::none, boost::none, skipped);
+      is_called, boost::none, boost::none));
+  if (skipped) {
+    *skipped = result;
+  }
+  return Status::OK();
 }
 
 Status PgApiImpl::ReadSequenceTuple(int64_t db_oid,
@@ -417,7 +395,14 @@ Status PgApiImpl::ReadSequenceTuple(int64_t db_oid,
                                     uint64_t ysql_catalog_version,
                                     int64_t *last_val,
                                     bool *is_called) {
-  return pg_session_->ReadSequenceTuple(db_oid, seq_oid, ysql_catalog_version, last_val, is_called);
+  auto res = VERIFY_RESULT(pg_session_->ReadSequenceTuple(db_oid, seq_oid, ysql_catalog_version));
+  if (last_val) {
+    *last_val = res.first;
+  }
+  if (is_called) {
+    *is_called = res.second;
+  }
+  return Status::OK();
 }
 
 Status PgApiImpl::DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid) {
@@ -1052,10 +1037,12 @@ void PgApiImpl::ResetOperationsBuffering() {
 }
 
 Status PgApiImpl::FlushBufferedOperations() {
-  return pg_session_->FlushBufferedOperations();
+  return pg_session_->FlushBufferedOperations(UseAsyncFlush::kFalse);
 }
 
-Status PgApiImpl::DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_count) {
+Status PgApiImpl::DmlExecWriteOp(PgStatement *handle,
+                                 int32_t *rows_affected_count,
+                                 bool use_async_flush) {
   switch (handle->stmt_op()) {
     case StmtOp::STMT_INSERT:
     case StmtOp::STMT_UPDATE:
@@ -1063,7 +1050,8 @@ Status PgApiImpl::DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_cou
     case StmtOp::STMT_TRUNCATE:
       {
         auto dml_write = down_cast<PgDmlWrite *>(handle);
-        RETURN_NOT_OK(dml_write->Exec(rows_affected_count != nullptr /* force_non_bufferable */));
+        RETURN_NOT_OK(dml_write->Exec(rows_affected_count != nullptr /* force_non_bufferable */,
+                                      use_async_flush));
         if (rows_affected_count) {
           *rows_affected_count = dml_write->GetRowsAffectedCount();
         }
@@ -1440,7 +1428,8 @@ Status PgApiImpl::RestartReadPoint() {
 
 Status PgApiImpl::CommitTransaction() {
   pg_session_->InvalidateForeignKeyReferenceCache();
-  RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
+  RETURN_NOT_OK(pg_session_->FlushBufferedOperations(UseAsyncFlush::kFalse));
+  RETURN_NOT_OK(pg_session_->ProcessPreviousFlush());
   return pg_txn_manager_->CommitTransaction();
 }
 
@@ -1468,13 +1457,13 @@ Status PgApiImpl::SetTransactionDeferrable(bool deferrable) {
 
 Status PgApiImpl::EnterSeparateDdlTxnMode() {
   // Flush all buffered operations as ddl txn use its own transaction session.
-  RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
+  RETURN_NOT_OK(pg_session_->FlushBufferedOperations(UseAsyncFlush::kFalse));
   return pg_txn_manager_->EnterSeparateDdlTxnMode();
 }
 
 Status PgApiImpl::ExitSeparateDdlTxnMode() {
   // Flush all buffered operations as ddl txn use its own transaction session.
-  RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
+  RETURN_NOT_OK(pg_session_->FlushBufferedOperations(UseAsyncFlush::kFalse));
   RETURN_NOT_OK(pg_txn_manager_->ExitSeparateDdlTxnMode(Commit::kTrue));
   // Next reads from catalog tables have to see changes made by the DDL transaction.
   ResetCatalogReadTime();
@@ -1487,7 +1476,7 @@ void PgApiImpl::ClearSeparateDdlTxnMode() {
 }
 
 Status PgApiImpl::SetActiveSubTransaction(SubTransactionId id) {
-  RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
+  RETURN_NOT_OK(pg_session_->FlushBufferedOperations(UseAsyncFlush::kFalse));
   return pg_session_->SetActiveSubTransaction(id);
 }
 

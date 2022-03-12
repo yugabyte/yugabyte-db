@@ -19,6 +19,7 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Universe;
+import java.util.Date;
 import java.util.Map;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -69,7 +70,7 @@ public class BackupTableYb extends AbstractTaskBase {
           totalBackupSize += backupSize;
           backupIdx++;
         }
-
+        backup.setCompletionTime(backup.getUpdateTime());
         backup.setTotalBackupSize(totalBackupSize);
         backup.transitionState(Backup.BackupState.Completed);
       } else {
