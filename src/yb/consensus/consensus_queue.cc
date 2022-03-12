@@ -798,6 +798,10 @@ yb::OpId PeerMessageQueue::GetCDCConsumerOpIdToEvict() {
 
 yb::OpId PeerMessageQueue::GetCDCConsumerOpIdForIntentRemoval() {
   std::shared_lock<rw_spinlock> l(cdc_consumer_lock_);
+  if (cdc_consumer_source_type_ == CDCSourceType::NONE) {
+     return yb::OpId::Max();
+  }
+
   if ((CoarseMonoClock::Now() - cdc_consumer_op_id_last_updated_ <= kCDCConsumerIntentRetention) &&
       cdc_consumer_source_type_ != CDCSourceType::XCLUSTER) {
     return cdc_consumer_op_id_;

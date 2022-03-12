@@ -359,6 +359,7 @@ class PeerMessageQueue {
     const CoarseTimePoint deadline = CoarseTimePoint::max());
 
   enum class CDCSourceType {
+    NONE = 0,
     XCLUSTER = 1,
     CDCSDK = 2
   };
@@ -574,7 +575,7 @@ class PeerMessageQueue {
   mutable rw_spinlock cdc_consumer_lock_;
   yb::OpId cdc_consumer_op_id_ = yb::OpId::Max();
   CoarseTimePoint cdc_consumer_op_id_last_updated_ = ToCoarse(MonoTime::kMin);
-  CDCSourceType cdc_consumer_source_type_;
+  CDCSourceType cdc_consumer_source_type_ = CDCSourceType::NONE;
 };
 
 inline std::ostream& operator <<(std::ostream& out, PeerMessageQueue::Mode mode) {
