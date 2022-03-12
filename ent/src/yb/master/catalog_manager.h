@@ -189,7 +189,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
     return snapshot_coordinator_;
   }
 
-  size_t GetNumLiveTServersForActiveCluster() override;
+  Result<size_t> GetNumLiveTServersForActiveCluster() override;
 
  private:
   friend class SnapshotLoader;
@@ -340,10 +340,6 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   CHECKED_STATUS FillHeartbeatResponseCDC(const SysClusterConfigEntryPB& cluster_config,
                                           const TSHeartbeatRequestPB* req,
                                           TSHeartbeatResponsePB* resp);
-
-  scoped_refptr<ClusterConfigInfo> GetClusterConfigInfo() const {
-    return cluster_config_;
-  }
 
   // Helper functions for GetTableSchemaCallback, GetTablegroupSchemaCallback
   // and GetColocatedTabletSchemaCallback.

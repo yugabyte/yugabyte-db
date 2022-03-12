@@ -1939,7 +1939,8 @@ void MasterPathHandlers::HandlePrettyLB(
     return;
   }
 
-  BlacklistSet blacklist = master_->catalog_manager()->BlacklistSetFromPB();
+  auto blacklist_result = master_->catalog_manager()->BlacklistSetFromPB();
+  BlacklistSet blacklist = blacklist_result.ok() ? *blacklist_result : BlacklistSet();
 
   // A single zone.
   int color_index = 0;
