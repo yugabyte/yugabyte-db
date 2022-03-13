@@ -170,6 +170,9 @@ orafce_to_number(PG_FUNCTION_ARGS)
 	Numeric		res;
 	char	   *p;
 
+	if (VARSIZE_ANY_EXHDR(arg0) == 0)
+		PG_RETURN_NULL();
+
 	buf = text_to_cstring(arg0);
 
 	for (p = buf; *p; p++)

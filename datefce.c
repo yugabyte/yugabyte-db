@@ -583,6 +583,9 @@ ora_to_date(PG_FUNCTION_ARGS)
 	text *date_txt = PG_GETARG_TEXT_PP(0);
 	Timestamp result;
 
+	if (VARSIZE_ANY_EXHDR(date_txt) == 0)
+		PG_RETURN_NULL();
+
 	if(nls_date_format && strlen(nls_date_format))
 	{
 		Datum newDate;
