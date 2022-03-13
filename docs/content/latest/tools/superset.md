@@ -1,7 +1,7 @@
 ---
 title: Use Apache Superset with YugabyteDB YSQL
 headerTitle: Apache Superset
-linkTitle: Superset
+linkTitle: Apache Superset
 description: Use Apache Superset to explore and visulize data in YugabyteDB.
 menu:
   latest:
@@ -14,7 +14,7 @@ showAsideToc: true
 
 This document describes how to query and visualize data in YugabyteDB using [Arctype](https://arctype.com/), a user-friendly collaborative SQL client.
 
-Arctype is a database client with a focus on speed and design. Arctype is free to use and cross platform. It offers one click query sharing for teams, and users can quickly visualize query output and even combine multiple charts and tables into a simple and intuitive dashboard.
+Apache Superset is fast, lightweight, intuitive, data exploration and visualization tool that helps you query your data stored in YugabyteDB and visualize it using  from simple line charts to highly detailed geospatial charts.
 
 ![Arctype application](/images/develop/tools/arctype/Arctype-YB-Image-2.png)
 
