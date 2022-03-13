@@ -137,7 +137,7 @@ showAsideToc: true
     $ tar xvfz yugabyte-2.11.2.0-b89-darwin-x86_64.tar.gz && cd yugabyte-2.11.2.0/
     ```
 
-## Configure
+## Configure loopback addresses
 
 Some of the examples in the [Explore core features](../../../explore/) section require extra loopback addresses that allow you to simulate the use of multiple hosts or nodes.
 
@@ -152,7 +152,7 @@ sudo ifconfig lo0 alias 127.0.0.6
 sudo ifconfig lo0 alias 127.0.0.7
 ```
 
-**Note**: The loopback addresses do not persist upon rebooting of your Mac.
+The loopback addresses do not persist after rebooting your Mac.
 
 To verify that the extra loopback addresses exist, run the following command.
 

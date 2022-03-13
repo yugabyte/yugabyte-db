@@ -69,6 +69,12 @@ $ ./bin/yugabyted start --master_webserver_port=9999
 
 After the cluster is created, clients can connect to the YSQL and YCQL APIs at `localhost:5433` and `localhost:9042` respectively. You can also check `~/var/data` to see the data directory and `~/var/logs` to see the logs directory.
 
+{{< tip title="Tip" >}}
+
+If you have previously installed YugabyteDB (2.8 or later) and created a cluster on the same computer, you may need to [upgrade the YSQL system catalog](../../../manage/upgrade-deployment/#upgrade-the-ysql-system-catalog) to run the latest features.
+
+{{< /tip >}}
+
 ## 2. Check cluster status
 
 ```sh
@@ -96,7 +102,7 @@ The [YB-Master Admin UI](../../../reference/configuration/yb-master/#admin-ui) i
 
 ### Overview and YB-Master status
 
-The yb-master Admin UI home page shows that you have a cluster with `Replication Factor` of 1 and `Num Nodes (TServers)` as 1. `Num User Tables` is 0 since there are no user tables created yet. The YugabyteDB version number is also shown for your reference.
+The yb-master Admin UI home page shows that you have a cluster with `Replication Factor` of 1 and `Num Nodes (TServers)` as 1. `Num User Tables` is 0 as no user tables have been created. The YugabyteDB version number is also shown for your reference.
 
 ![master-home](/images/admin/master-home-binary-rf1.png)
 
@@ -104,7 +110,7 @@ The Masters section highlights the 1 yb-master along with its corresponding clou
 
 ### YB-TServer status
 
-Clicking `See all nodes` takes you to the Tablet Servers page where you can observe the 1 yb-tserver along with the time since it last connected to this yb-master via regular heartbeats. Since there are no user tables created yet, you can see that the `Load (Num Tablets)` is 0. As new tables get added, new tablets (aka shards) will be created automatically and distributed evenly across all the available tablet servers.
+Clicking `See all nodes` takes you to the Tablet Servers page where you can observe the 1 yb-tserver along with the time since it last connected to this yb-master via regular heartbeats. Because there are no user tables created yet, you can see that the `Load (Num Tablets)` is 0. As new tables get added, new tablets (aka shards) will be created automatically and distributed evenly across all the available tablet servers.
 
 ![master-home](/images/admin/master-tservers-list-binary-rf1.png)
 

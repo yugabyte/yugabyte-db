@@ -45,7 +45,7 @@ Yugabyte Cloud supports all the regions that have robust infrastructure and suff
 
 ### What are the differences between free and standard clusters?
 
-Use the free cluster to get started with YugabyteDB. The free cluster is limited to a single node and 10GB of storage. Although not suitable for production workloads, the cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB. Free clusters are provisioned with an [edge release](#what-version-of-yugabytedb-does-my-cluster-run-on). You can only have one free cluster. Free clusters that are inactive for 21 days are [paused](#why-is-my-free-cluster-paused); after 30 days they are deleted.
+Use the free cluster to get started with YugabyteDB. The free cluster is limited to a single node and 10GB of storage. Although not suitable for production workloads or performance testing, the cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB. Free clusters are provisioned with an [edge release](#what-version-of-yugabytedb-does-my-cluster-run-on). You can only have one free cluster. Free clusters that are inactive for 21 days are [paused](#why-is-my-free-cluster-paused); after 30 days they are deleted.
 
 Standard clusters can have unlimited nodes and storage and are suitable for production workloads. They also support horizontal and vertical scaling - nodes and storage can be added or removed to suit your production loads. Standard clusters also support VPC peering, and scheduled and manual backups. By default, standard clusters are provisioned using a [stable release](#what-version-of-yugabytedb-does-my-cluster-run-on).
 
@@ -70,6 +70,8 @@ If you want to continue testing YugabyteDB with more resource-intensive scenario
 
 - Download and run YugabyteDB on a local machine. For instructions, refer to [Quick Start](../../quick-start/).
 - Upgrade to a [standard cluster](../cloud-basics/create-clusters/) to access bigger clusters with more resources.
+
+To evaluate Yugabyte Cloud for production use or conduct a proof-of-concept (POC), contact {{<support-cloud>}} for trial credits.
 
 ### Can I migrate my free cluster to a standard cluster?
 
