@@ -1082,6 +1082,7 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 		if (data->include_types)
 		{
 			char	*type_str;
+			int		len;
 			Form_pg_type type_form = (Form_pg_type) GETSTRUCT(type_tuple);
 
 			/*
@@ -1121,9 +1122,11 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 			/*
 			 * format_type() returns a quoted identifier, if
 			 * required. In this case, it doesn't need to enclose the type name
-			 * in double quotes.
+			 * in double quotes. However, if it is an array type, it should
+			 * escape it because the brackets are outside the double quotes.
 			 */
-			if (type_str[0] == '"')
+			len = strlen(type_str);
+			if (type_str[0] == '"' && type_str[len - 1] != ']')
 				appendStringInfo(&coltypes, "%s", type_str);
 			else
 				escape_json(&coltypes, type_str);
@@ -1979,6 +1982,7 @@ pg_decode_write_tuple(LogicalDecodingContext *ctx, Relation relation, HeapTuple 
 			HeapTuple		type_tuple;
 			Form_pg_type	type_form;
 			char			*type_str;
+			int				len;
 
 			type_tuple = SearchSysCache1(TYPEOID, ObjectIdGetDatum(attr->atttypid));
 			type_form = (Form_pg_type) GETSTRUCT(type_tuple);
@@ -1996,12 +2000,14 @@ pg_decode_write_tuple(LogicalDecodingContext *ctx, Relation relation, HeapTuple 
 			/*
 			 * format_type_with_typemod() returns a quoted identifier, if
 			 * required. In this case, it doesn't need to enclose the type name
-			 * in double quotes.
+			 * in double quotes. However, if it is an array type, it should
+			 * escape it because the brackets are outside the double quotes.
 			 */
-			if (type_str[0] == '"')
+			len = strlen(type_str);
+			if (type_str[0] == '"' && type_str[len -1] != ']')
 				appendStringInfo(ctx->out, "%s", type_str);
 			else
-				appendStringInfo(ctx->out, "\"%s\"", type_str);
+				escape_json(ctx->out, type_str);
 			pfree(type_str);
 
 			ReleaseSysCache(type_tuple);
