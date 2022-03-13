@@ -18,6 +18,9 @@ import org.apache.commons.lang3.tuple.Pair;
 
 public class SoftwareUpgrade extends UpgradeTaskBase {
 
+  private static final UpgradeContext SOFTWARE_UPGRADE_CONTEXT =
+      UpgradeContext.builder().runBeforeStopping(false).processInactiveMaster(true).build();
+
   @Inject
   protected SoftwareUpgrade(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
@@ -43,17 +46,16 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
     runUpgrade(
         () -> {
           Pair<List<NodeDetails>, List<NodeDetails>> nodes = fetchNodes(taskParams().upgradeOption);
-          // Verify the request params and fail if invalid
+          // Verify the request params and fail if invalid.
           taskParams().verifyParams(getUniverse());
-          // Download software to all nodes
+          // Download software to all nodes.
           createDownloadTasks(nodes.getRight());
-          // Install software on nodes
-          createUpgradeTaskFlow(
-              this::createSoftwareInstallTasks, taskParams().upgradeOption, nodes, false);
+          // Install software on nodes.
+          createUpgradeTaskFlow(this::createSoftwareInstallTasks, nodes, SOFTWARE_UPGRADE_CONTEXT);
           // Run YSQL upgrade on the universe
           createRunYsqlUpgradeTask(taskParams().ybSoftwareVersion)
               .setSubTaskGroupType(getTaskSubGroupType());
-          // Mark the final software version on the universe
+          // Update software version on the universe
           createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
               .setSubTaskGroupType(getTaskSubGroupType());
         });

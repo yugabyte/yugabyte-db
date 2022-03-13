@@ -32,6 +32,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateNodeDetails;
 import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
@@ -313,7 +314,8 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-      UserIntent primIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+      Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+      UserIntent primIntent = primaryCluster.userIntent;
 
       // Check if the combination of taskType and upgradeOption are compatible.
       verifyParams(universe, primIntent);
@@ -328,7 +330,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
 
       // Create all the necessary subtasks required for the required taskType and upgradeOption
       // combination.
-      createServerUpgradeTasks(nodes.getLeft(), nodes.getRight());
+      createServerUpgradeTasks(primaryCluster.uuid, nodes.getLeft(), nodes.getRight());
 
       // Marks update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks()
@@ -503,11 +505,11 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
   }
 
   private void createServerUpgradeTasks(
-      List<NodeDetails> masterNodes, List<NodeDetails> tServerNodes) {
+      UUID primaryClusterUuid, List<NodeDetails> masterNodes, List<NodeDetails> tServerNodes) {
     createPreUpgradeTasks(masterNodes, tServerNodes);
-    createUpgradeTasks(masterNodes, tServerNodes, UpgradeIteration.Round1);
+    createUpgradeTasks(primaryClusterUuid, masterNodes, tServerNodes, UpgradeIteration.Round1);
     createMetadataUpdateTasks();
-    createUpgradeTasks(masterNodes, tServerNodes, UpgradeIteration.Round2);
+    createUpgradeTasks(primaryClusterUuid, masterNodes, tServerNodes, UpgradeIteration.Round2);
     createPostUpgradeTasks();
   }
 
@@ -703,6 +705,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
   }
 
   private void createUpgradeTasks(
+      UUID primaryClusterUuid,
       List<NodeDetails> masterNodes,
       List<NodeDetails> tServerNodes,
       UpgradeIteration upgradeIteration) {
@@ -750,12 +753,35 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
         }
       }
 
+      // Upgrading inactive masters from the Primary cluster only.
+      List<NodeDetails> inactiveMasterNodes =
+          tServerNodes != null
+              ? tServerNodes
+                  .stream()
+                  .filter(node -> node.placementUuid.equals(primaryClusterUuid))
+                  .filter(node -> masterNodes == null || !masterNodes.contains(node))
+                  .collect(Collectors.toList())
+              : null;
+
       // Common subtasks
+      // 1. Upgrade active masters.
       if (masterNodes != null && !masterNodes.isEmpty()) {
-        createAllUpgradeTasks(masterNodes, ServerType.MASTER, upgradeIteration, upgradeOption);
+        createAllUpgradeTasks(
+            masterNodes, ServerType.MASTER, upgradeIteration, upgradeOption, true);
       }
+
+      // 2. Upgrade inactive masters.
+      if ((taskParams().taskType == UpgradeTaskType.Software)
+          && (inactiveMasterNodes != null)
+          && !inactiveMasterNodes.isEmpty()) {
+        createAllUpgradeTasks(
+            inactiveMasterNodes, ServerType.MASTER, upgradeIteration, upgradeOption, false);
+      }
+
+      // 3. Upgrade tservers.
       if (tServerNodes != null && !tServerNodes.isEmpty()) {
-        createAllUpgradeTasks(tServerNodes, ServerType.TSERVER, upgradeIteration, upgradeOption);
+        createAllUpgradeTasks(
+            tServerNodes, ServerType.TSERVER, upgradeIteration, upgradeOption, true);
       }
     } else {
       SubTaskGroupType subGroupType = getTaskSubGroupType();
@@ -837,7 +863,8 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
       List<NodeDetails> nodes,
       ServerType processType,
       UpgradeIteration upgradeIteration,
-      UpgradeParams.UpgradeOption upgradeOption) {
+      UpgradeParams.UpgradeOption upgradeOption,
+      boolean isActiveProcess) {
     switch (upgradeOption) {
       case ROLLING_UPGRADE:
         // For a rolling upgrade, we need the data to not move, so
@@ -848,7 +875,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
           loadbalancerOff = true;
         }
         for (NodeDetails node : nodes) {
-          createSingleNodeUpgradeTasks(node, processType, upgradeIteration);
+          createSingleNodeUpgradeTasks(node, processType, upgradeIteration, isActiveProcess);
         }
         if (loadbalancerOff) {
           createLoadBalancerStateChangeTask(true /*enable*/)
@@ -857,9 +884,12 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
         }
         break;
       case NON_ROLLING_UPGRADE:
-        createMultipleNonRollingNodeUpgradeTasks(nodes, processType, upgradeIteration);
-        createWaitForServersTasks(nodes, processType)
-            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+        createMultipleNonRollingNodeUpgradeTasks(
+            nodes, processType, upgradeIteration, isActiveProcess);
+        if (isActiveProcess) {
+          createWaitForServersTasks(nodes, processType)
+              .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+        }
         break;
       case NON_RESTART_UPGRADE:
         createNonRestartUpgradeTasks(nodes, processType, upgradeIteration);
@@ -868,7 +898,10 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
 
   // This is used for rolling upgrade, which is done per node in the universe.
   private void createSingleNodeUpgradeTasks(
-      NodeDetails node, ServerType processType, UpgradeIteration upgradeIteration) {
+      NodeDetails node,
+      ServerType processType,
+      UpgradeIteration upgradeIteration,
+      boolean isActiveProcess) {
     NodeDetails.NodeState nodeState = null;
     switch (taskParams().taskType) {
       case Software:
@@ -906,12 +939,14 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
       createServerControlTask(node, processType, "stop").setSubTaskGroupType(subGroupType);
     }
 
-    createServerControlTask(node, processType, "start").setSubTaskGroupType(subGroupType);
-    createWaitForServersTasks(new HashSet<>(Collections.singletonList(node)), processType)
-        .setSubTaskGroupType(subGroupType);
-    createWaitForServerReady(node, processType, getSleepTimeForProcess(processType))
-        .setSubTaskGroupType(subGroupType);
-    createWaitForKeyInMemoryTask(node).setSubTaskGroupType(subGroupType);
+    if (isActiveProcess) {
+      createServerControlTask(node, processType, "start").setSubTaskGroupType(subGroupType);
+      createWaitForServersTasks(new HashSet<>(Collections.singletonList(node)), processType)
+          .setSubTaskGroupType(subGroupType);
+      createWaitForServerReady(node, processType, getSleepTimeForProcess(processType))
+          .setSubTaskGroupType(subGroupType);
+      createWaitForKeyInMemoryTask(node).setSubTaskGroupType(subGroupType);
+    }
     createSetNodeStateTask(node, NodeDetails.NodeState.Live).setSubTaskGroupType(subGroupType);
   }
 
@@ -955,7 +990,10 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
   // This is used for non-rolling upgrade, where each operation is done in parallel across all
   // the provided nodes per given process type.
   private void createMultipleNonRollingNodeUpgradeTasks(
-      List<NodeDetails> nodes, ServerType processType, UpgradeIteration upgradeIteration) {
+      List<NodeDetails> nodes,
+      ServerType processType,
+      UpgradeIteration upgradeIteration,
+      boolean isActiveProcess) {
     if (taskParams().taskType == UpgradeTaskType.GFlags) {
       createServerConfFileUpdateTasks(nodes, processType);
     } else if (taskParams().taskType == UpgradeTaskType.ToggleTls) {
@@ -986,7 +1024,9 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
       createSoftwareInstallTasks(nodes, processType);
     }
 
-    createServerControlTasks(nodes, processType, "start").setSubTaskGroupType(subGroupType);
+    if (isActiveProcess) {
+      createServerControlTasks(nodes, processType, "start").setSubTaskGroupType(subGroupType);
+    }
     createSetNodeStateTasks(nodes, NodeDetails.NodeState.Live).setSubTaskGroupType(subGroupType);
   }
 

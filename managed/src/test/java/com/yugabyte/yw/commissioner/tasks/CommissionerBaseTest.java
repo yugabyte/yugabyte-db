@@ -53,7 +53,7 @@ import play.inject.guice.GuiceApplicationBuilder;
 import play.modules.swagger.SwaggerModule;
 
 public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseTest {
-  private int maxRetryCount = 200;
+  private static final int MAX_RETRY_COUNT = 2000;
   protected AccessManager mockAccessManager;
   protected NetworkManager mockNetworkManager;
   protected ConfigHelper mockConfigHelper;
@@ -182,13 +182,23 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
 
   protected TaskInfo waitForTask(UUID taskUUID) throws InterruptedException {
     int numRetries = 0;
-    while (numRetries < maxRetryCount) {
-      TaskInfo taskInfo = TaskInfo.get(taskUUID);
-      if (taskInfo.getTaskState() == TaskInfo.State.Success
-          || taskInfo.getTaskState() == TaskInfo.State.Failure) {
-        return taskInfo;
+    while (numRetries < MAX_RETRY_COUNT) {
+      // Here is a hack to decrease amount of accidental problems for tests using this
+      // function:
+      // Surrounding the next block with try {} catch {} as sometimes h2 raises NPE
+      // inside the get() request. We are not afraid of such exception as the next
+      // request will succeeded.
+      try {
+        TaskInfo taskInfo = TaskInfo.get(taskUUID);
+        if (TaskInfo.COMPLETED_STATES.contains(taskInfo.getTaskState())) {
+          // Also, ensure task details are set before returning.
+          if (taskInfo.getTaskDetails() != null) {
+            return taskInfo;
+          }
+        }
+      } catch (Exception e) {
       }
-      Thread.sleep(1000);
+      Thread.sleep(100);
       numRetries++;
     }
     throw new RuntimeException(

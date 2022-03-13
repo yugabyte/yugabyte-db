@@ -67,11 +67,11 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
     switch (taskParams().upgradeOption) {
       case ROLLING_UPGRADE:
         createRollingUpgradeTaskFlow(
-            this::createServerConfFileUpdateTasks, masterNodes, tServerNodes, true);
+            this::createServerConfFileUpdateTasks, masterNodes, tServerNodes, RUN_BEFORE_STOPPING);
         break;
       case NON_ROLLING_UPGRADE:
         createNonRollingUpgradeTaskFlow(
-            this::createServerConfFileUpdateTasks, masterNodes, tServerNodes, true);
+            this::createServerConfFileUpdateTasks, masterNodes, tServerNodes, RUN_BEFORE_STOPPING);
         break;
       case NON_RESTART_UPGRADE:
         createNonRestartUpgradeTaskFlow(

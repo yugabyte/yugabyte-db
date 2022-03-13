@@ -92,13 +92,13 @@ public class TlsToggle extends UpgradeTaskBase {
             (List<NodeDetails> nodeList, ServerType processType) ->
                 createGFlagUpdateTasks(1, nodeList, processType),
             nodes,
-            true);
+            RUN_BEFORE_STOPPING);
       } else if (taskParams().upgradeOption == UpgradeOption.NON_ROLLING_UPGRADE) {
         createNonRollingUpgradeTaskFlow(
             (List<NodeDetails> nodeList, ServerType processType) ->
                 createGFlagUpdateTasks(1, nodeList, processType),
             nodes,
-            true);
+            RUN_BEFORE_STOPPING);
       }
     }
   }
@@ -122,13 +122,13 @@ public class TlsToggle extends UpgradeTaskBase {
             (List<NodeDetails> nodeList, ServerType processType) ->
                 createGFlagUpdateTasks(2, nodeList, processType),
             nodes,
-            true);
+            RUN_BEFORE_STOPPING);
       } else if (taskParams().upgradeOption == UpgradeOption.NON_ROLLING_UPGRADE) {
         createNonRollingUpgradeTaskFlow(
             (List<NodeDetails> nodeList, ServerType processType) ->
                 createGFlagUpdateTasks(2, nodeList, processType),
             nodes,
-            true);
+            RUN_BEFORE_STOPPING);
       }
     }
   }
