@@ -11,7 +11,7 @@ import play.api.libs.json._
 import com.yugabyte.yw.models.helpers.CommonUtils
 import com.fasterxml.jackson.databind.ObjectMapper
 
-class V159__Provider_Config_Encryption_Update extends JdbcMigration {
+class V160__Provider_Config_Encryption_Update extends JdbcMigration {
   override def migrate(connection: Connection): Unit = {
     val selectStmt = "SELECT uuid, config, code, customer_uuid FROM provider"
     val resultSet = connection.createStatement().executeQuery(selectStmt)
