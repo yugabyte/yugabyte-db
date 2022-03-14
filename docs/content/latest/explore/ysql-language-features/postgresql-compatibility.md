@@ -1,5 +1,5 @@
 ---
-title: PostgreSQL Compatibility
+title: PostgreSQL compatibility
 linkTitle: PostgreSQL Compatibility
 description: Summary of YugabyteDB's PostgreSQL Compatibility
 image: /images/section_icons/secure/create-roles.png
