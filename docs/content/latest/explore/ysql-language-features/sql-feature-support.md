@@ -15,7 +15,7 @@ To understand which standard SQL features we support, refer the following tables
 
 ### Schema operations
 
- Operation | Supported | Details
+ Operation | Supported | Documentation
 -----------|-----------|---------
 Altering tables | ✓ | [`ALTER TABLE`  documentation](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/ddl_alter_table/)
  Altering databases | ✓ | [`ALTER DATABASE` documentation](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/ddl_alter_db/)
@@ -35,7 +35,7 @@ Altering tables | ✓ | [`ALTER TABLE`  documentation](https://docs.yugabyte.com
  
 ### Data types
 
- Data type | Supported | Details
+ Data type | Supported | Documentation
 -----------|-----------|---------
  `ARRAY` | ✓ | [Array documentation](https://docs.yugabyte.com/latest/api/ysql/datatypes/type_array/)
  `BINARY` | ✓ | [Binary documentation](https://docs.yugabyte.com/latest/api/ysql/datatypes/type_binary/)
@@ -61,7 +61,7 @@ Altering tables | ✓ | [`ALTER TABLE`  documentation](https://docs.yugabyte.com
  
 ### Indexes
 
- Component | Supported |  Details
+ Component | Supported |  Documentation
 -----------|-----------|---------
  Indexes | ✓ | [Indexes documentation](https://docs.yugabyte.com/latest/explore/indexes-constraints/overview/)
  GIN indexes | ✓ | [GIN Indexes documentation](https://docs.yugabyte.com/latest/explore/indexes-constraints/gin/)
@@ -79,7 +79,7 @@ Altering tables | ✓ | [`ALTER TABLE`  documentation](https://docs.yugabyte.com
  
 ### Constraints
 
- Feature | Supported |  Details
+ Feature | Supported |  Documentation
 -----------|-----------|---------
  Check | ✓ | [Check documentation](https://docs.yugabyte.com/latest/explore/indexes-constraints/other-constraints/#check-constraint)
  Unique | ✓ | [Unique documentation](https://docs.yugabyte.com/latest/explore/indexes-constraints/other-constraints/#unique-constraint)
@@ -90,7 +90,7 @@ Altering tables | ✓ | [`ALTER TABLE`  documentation](https://docs.yugabyte.com
 
 ### Transactions
 
- Feature | Supported | Details
+ Feature | Supported | Documentation
 -----------|-----------|---------
  Transactions | ✓ | [Transactions documentation](https://docs.yugabyte.com/latest/explore/transactions/)
  `BEGIN` | ✓ | [`BEGIN` documentation](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/txn_begin/)
@@ -101,7 +101,7 @@ Altering tables | ✓ | [`ALTER TABLE`  documentation](https://docs.yugabyte.com
 
 ### Roles and Permissions
 
- Component | Supported | Details
+ Component | Supported | Documentation
 -----------|-----------|---------
  Users | ✓ | 
  Roles | ✓ | 
@@ -110,67 +110,17 @@ Altering tables | ✓ | [`ALTER TABLE`  documentation](https://docs.yugabyte.com
  Default privileges | ✗ |
  RLS/CLS | |
  
-### Advanced statements (other than common statementes)
-
-Statement | Supported |  Details
------------|-----------|---------
- `SELECT INTO` | ✗|
- `SELECT FOR UPDATE` | ✗ | 
- `EXPLAIN` | ✓ | [`EXPLAIN` documentation](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/perf_explain)
-
-### Clauses
-
- Clause | Supported | Details
------------|-----------|---------
- `LIMIT` | ✗ | 
- `LIMIT` with `OFFSET` | ✗ | 
- `RETURNING` | ✗ | 
-
-### Table expressions
-
- Component | Supported |  Details
------------|-----------|---------
- Table and View references | ✓ | 
- `AS` in table expressions | ✓ | 
- `JOIN` (`INNER`, `LEFT`, `RIGHT`, `FULL`, `CROSS`) |✓ |  
- Sub-queries as table expressions | ✓ | 
- Table generator functions | ✓ | 
- `WITH ORDINALITY` | ✓ | 
-
-### Scalar expressions and Boolean formulas
-
- Component | Supported |  Details
------------|-----------|---------
- Common functions | ✓ | 
- Common operators | ✓ | 
- `IF`/`CASE`/`NULLIF` | ✓ |
- `COALESCE`/`IFNULL` | ✓ | 
- `AND`/`OR` | ✓ | 
- `LIKE`/`ILIKE`  | ✓ |
- `SIMILAR TO` | ✓ |
- Matching using POSIX regular expressions  | ✓ |
- `EXISTS` | ✓ |
- Scalar subqueries | ✓ |
- Bitwise arithmetic | ✓ |
- `COLLATE`| ✓ | 
- Column ordinal references | ✓ |
- Type annotations | ✓ |
-
 ### Miscellaneous
 
  Component | Supported | Details
 -----------|-----------|---------
- Column families | ✓ | 
- Computed columns (stored and virtual) | ✓ |
- `ON UPDATE` expressions | ✓ |
- Multi-region capabilities | ✓ | 
- System catalog schemas | ✓ | 
+ Stored procedures | ✓ | 
+ Cursors | ✓ | 
+ Triggers | ✓ | 
  Sequences |  ✓ | 
  Identity columns | ✓ |
  Views | ✓ | 
  Materialized views | ✓ | 
  Window functions | ✓ | 
  Common table expressions | ✓|
- Stored procedures | ✓ | 
- Cursors | ✓ | 
- Triggers | ✓ | 
+ 
