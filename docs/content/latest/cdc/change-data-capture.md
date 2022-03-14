@@ -3,7 +3,6 @@ title: Change data capture (CDC)
 headerTitle: Change data capture (CDC)
 linkTitle: Change data capture (CDC)
 description: CDC or Change data capture is a process to capture changes made to data in the database.
-beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 url: /latest/cdc/
 section: YUGABYTEDB CORE
 menu:
