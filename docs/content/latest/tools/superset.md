@@ -32,17 +32,15 @@ Follow these steps to connect Apache Superset to YugabyteDB:
 
 ![Connect Database](/images/develop/tools/superset/connect-database.png)
 
-1. Enter the hostname or IP Address of your YB-TServer with standard credentials and click "Finish".
+2. Enter the hostname or IP Address of your YB-TServer with standard credentials and click "Finish".
 
 ![Database Connection Credentials](/images/develop/tools/superset/connect-ybdb.png)
 
-    {{< note title="Note" >}}
-
+{{< note title="Note" >}}
 As of Docker version 18.03, the host.docker.internal hostname connects to your Docker host from inside a Docker container.
+{{< /note >}}
 
-    {{< /note >}}
-
-1. You should now be connected to the YugabyteDB and to verify you can check the availabe databases and schemas under "Data". Navigate to Data → Datasets and click "+Datasets" and in the dialog configure as shown below. Dropdown selectors would show the datasbes and schemas available for explore and visualize operations.
+3. You should now be connected to the YugabyteDB and to verify you can check the availabe databases and schemas under "Data". Navigate to Data → Datasets and click "+Datasets" and in the dialog configure as shown below. Dropdown selectors would show the datasbes and schemas available for explore and visualize operations.
 
     ![Loading Datasets](/images/develop/tools/superset/load-dataset.png)
 
