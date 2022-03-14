@@ -3,12 +3,13 @@ title: Change data capture (CDC)
 headerTitle: Change data capture (CDC)
 linkTitle: Change data capture (CDC)
 description: CDC or Change data capture is a process to capture changes made to data in the database.
-url: /latest/cdc/
-section: YUGABYTEDB CORE
+aliases:
+  - /latest/explore/change-data-capture
 menu:
   latest:
+    parent: explore-change-data-capture
     identifier: change-data-capture
-    weight: 699
+    weight: 704
 isTocNested: true
 showAsideToc: true
 ---
@@ -60,13 +61,17 @@ In order to facilitate the streaming of data, we have to create a DB Stream, thi
 
 The Debezium connector for YugabyteDB pulls the data from YugabyteDB and publishes them to Kafka. The below illustration explains the pipeline:
 
-![CDC Pipeline with Debezium and Kafka](../../../static/images/architecture/cdc-2dc/cdc-pipeline.png)
+![CDC Pipeline with Debezium and Kafka](../../../../static/images/architecture/cdc-2dc/cdc-pipeline.png)
 
-See [Debezium connector for YugabyteDB](../integrations/cdc/debezium-connector-yugabytedb.md) to learn more.
+See [Debezium connector for YugabyteDB](../change-data-capture/debezium-connector-yugabytedb.md) to learn more and [Running Debezium with YugabyteDB](../../integrations/cdc/running-debezium-with-yugabytedb.md) to get started with the Debezium connector for YugabyteDB.
 
 ### CDC Java console client
 
-There is a [Java console client](../integrations/cdc/cdc-java-console-client.md) for Change data capture and is strictly meant for testing purposes only, it will help in building an understanding what all change records are emitted by YugabyteDB.
+There is a [Java console client](../change-data-capture/cdc-java-console-client.md) for Change data capture and is strictly meant for testing purposes only, it will help in building an understanding what all change records are emitted by YugabyteDB.
+
+### TServer configurations
+
+In order to change server side configurations as per the requirements, there are also several GFlags which can be used to fine tune the behaviour of Change data capture (CDC) for YugabyteDB. To learn more about the various configurations available, visit [Change data capture flags](../../reference/configuration/yb-tserver.md#change-data-capture-cdc-flags).
 
 ### Consistency Semantics
 
@@ -103,7 +108,7 @@ As of the current implementation: if you want to use CDC, you need to use Debezi
 
 {{< warning title="Warning" >}}
 
-Do note that we do NOT support DROP TABLE and TRUNCATE TABLE commands yet, the behavior of these commands while streaming data from CDC is not defined. If dropping or truncating a table is necessarily needed, delete the stream ID using [yb-admin](../admin/yb-admin.md/../../cdc/change-data-capture.md).<br/><br/>
+Do note that we do NOT support DROP TABLE and TRUNCATE TABLE commands yet, the behavior of these commands while streaming data from CDC is not defined. If dropping or truncating a table is necessarily needed, delete the stream ID using [yb-admin](../../admin/yb-admin.md#change-data-capture-cdc-commands).<br/><br/>
 
 See [limitations](#limitations) to see what else is not supported currently.
 
@@ -111,7 +116,7 @@ See [limitations](#limitations) to see what else is not supported currently.
 
 ### yb-admin commands for Change data capture
 
-The commands used to manipulate CDC DB streams can be found under the [yb-admin](../admin/yb-admin.md#change-data-capture-cdc-commands).
+The commands used to manipulate CDC DB streams can be found under the [yb-admin](../../admin/yb-admin.md#change-data-capture-cdc-commands).
 
 ### DDL commands support
 
@@ -121,7 +126,7 @@ The commands used to manipulate CDC DB streams can be found under the [yb-admin]
 
 Initially, if you create a stream for a particular table that already contains some records, the stream takes a snapshot of the table, and streams all the data that resides in the table. After the snapshot of the whole table is completed, YugabyteDB starts streaming the changes that would be made to the table.
 
-Note that the snapshot feature uses a GFlag `cdc_snapshot_batch_size`, the default value for which is 250. This is the number of records included per batch in response to an internal call to get the snapshot; if the table contains a very large amount of data, you may need to increase this value to reduce the amount of time it takes to stream the complete snapshot. Note that you can also choose not to take a snapshot by modifying the configuration for [Debezium](#debezium-connector-for-yugabytedb)
+Note that the snapshot feature uses a GFlag `cdc_snapshot_batch_size`, the default value for which is 250. This is the number of records included per batch in response to an internal call to get the snapshot; if the table contains a very large amount of data, you may need to increase this value to reduce the amount of time it takes to stream the complete snapshot. Note that you can also choose not to take a snapshot by modifying the configuration for [Debezium](../change-data-capture/debezium-connector-yugabytedb.md)
 
 ### Limitations
 
