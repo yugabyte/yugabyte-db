@@ -6,7 +6,8 @@ import { GraphPanelHeader } from '../../metrics';
 import {
   changeGraphQueryPeriod,
   resetGraphQueryPeriod,
-  togglePrometheusQuery
+  togglePrometheusQuery,
+  getGrafanaJson
 } from '../../../actions/graph';
 import { fetchUniverseList, fetchUniverseListResponse } from '../../../actions/universe';
 import {closeDialog, openDialog} from "../../../actions/modal";
@@ -27,6 +28,7 @@ const mapDispatchToProps = (dispatch) => {
     togglePrometheusQuery: () => {
       dispatch(togglePrometheusQuery());
     },
+    getGrafanaJson: getGrafanaJson,
     showModal: (modalName) => {
       dispatch(openDialog(modalName));
     },
