@@ -54,7 +54,8 @@ export default class Replication extends Component {
 
   queryMetrics = () => {
     const {
-      universe: { currentUniverse }
+      universe: { currentUniverse },
+      replicationUUID
     } = this.props;
     const universeDetails = getPromiseState(currentUniverse).isSuccess()
       ? currentUniverse.data.universeDetails
@@ -63,7 +64,8 @@ export default class Replication extends Component {
       metrics: [METRIC_NAME],
       start: moment().utc().subtract('1', 'hour').format('X'),
       end: moment().utc().format('X'),
-      nodePrefix: universeDetails.nodePrefix
+      nodePrefix: universeDetails.nodePrefix,
+      xClusterConfigUuid: replicationUUID
     };
     this.props.queryMetrics(params, GRAPH_TYPE);
   };

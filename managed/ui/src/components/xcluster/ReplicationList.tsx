@@ -112,7 +112,7 @@ function ReplicationItem({
             </Col>
             <Col lg={3} className='lag noPadding'>
               <div className="lag-text">Current Lag</div>
-              <div className="lag-time withinThreshold">
+              <div className="lag-time">
                 <GetCurrentLag
                   replicationUUID={replication.uuid}
                   sourceUniverseUUID={replication.sourceUniverseUUID}

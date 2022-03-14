@@ -15,7 +15,13 @@ export const YSQL_TABLE_TYPE = 'PGSQL_TABLE_TYPE';
 
 export const getReplicationStatus = (status = IReplicationStatus.INIT) => {
   switch (status) {
-    case IReplicationStatus.SUCCESS:
+    case IReplicationStatus.UPDATING:
+      return (
+        <span className="replication-status-text updating">
+          <i className="fa fa-spinner fa-spin" />
+          Updating
+        </span>
+      )
     case IReplicationStatus.RUNNING:
       return (
         <span className="replication-status-text success">
@@ -96,7 +102,7 @@ export const GetCurrentLag = ({
 
   const { data: metricsData, isFetching } = useQuery(
     [replicationUUID, nodePrefix, 'metric'],
-    () => queryLagMetricsForUniverse(nodePrefix),
+    () => queryLagMetricsForUniverse(nodePrefix, replicationUUID),
     {
       enabled: !currentUniverseLoading,
       refetchInterval: 20 * 1000
@@ -131,12 +137,14 @@ export const GetCurrentLagForTable = ({
   replicationUUID,
   tableName,
   enabled,
-  nodePrefix
+  nodePrefix,
+  sourceUniverseUUID
 }: {
   replicationUUID: string;
   tableName: string;
   enabled?: boolean;
   nodePrefix: string | undefined;
+  sourceUniverseUUID: string;
 }) => {
   const { data: metricsData, isFetching } = useQuery(
     [replicationUUID, nodePrefix, tableName, 'metric'],
@@ -147,7 +155,16 @@ export const GetCurrentLagForTable = ({
     }
   );
 
-  if (isFetching) {
+  const configurationFilter = {
+    name: ALERT_NAME,
+    targetUuid: sourceUniverseUUID
+  };
+  const { data: configuredThreshold, isLoading: thresholdLoading } = useQuery(
+    ['getConfiguredThreshold', configurationFilter],
+    () => getAlertConfigurations(configurationFilter)
+  );
+
+  if (isFetching || thresholdLoading) {
     return <i className="fa fa-spinner fa-spin yb-spinner"></i>;
   }
 
@@ -158,8 +175,9 @@ export const GetCurrentLagForTable = ({
     return <span>-</span>;
   }
 
+  let maxAcceptableLag = configuredThreshold?.[0]?.thresholds?.SEVERE.threshold || 0;
   const latestLag = metricsData.data.tserver_async_replication_lag_micros.data[1]?.y[0];
-  return <span>{latestLag || '-'}</span>;
+  return <span className={`replication-lag-value ${maxAcceptableLag < latestLag ? 'above-threshold' : 'below-threshold'}`}>{latestLag || '-'}</span>;
 };
 
 export const getMasterNodeAddress = (nodeDetailsSet: Array<any>) => {
