@@ -305,6 +305,7 @@ void TSDescriptor::UpdateMetrics(const TServerMetricsPB& metrics) {
   ts_metrics_.read_ops_per_sec = metrics.read_ops_per_sec();
   ts_metrics_.write_ops_per_sec = metrics.write_ops_per_sec();
   ts_metrics_.uptime_seconds = metrics.uptime_seconds();
+  ts_metrics_.path_metrics.clear();
   for (const auto& path_metric : metrics.path_metrics()) {
     ts_metrics_.path_metrics[path_metric.path_id()] =
         { path_metric.used_space(), path_metric.total_space() };

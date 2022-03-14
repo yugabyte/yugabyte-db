@@ -48,7 +48,7 @@ CHECKED_STATUS TabletHarness::Create(bool first_time) {
   if (first_time) {
     RETURN_NOT_OK(fs_manager_->CreateInitialFileSystemLayout());
   }
-  RETURN_NOT_OK(fs_manager_->Open());
+  RETURN_NOT_OK(fs_manager_->CheckAndOpenFileSystemRoots());
 
   auto table_info = std::make_shared<TableInfo>(
       "YBTableTest", "test", "YBTableTest", options_.table_type, schema_, IndexMap(), boost::none,

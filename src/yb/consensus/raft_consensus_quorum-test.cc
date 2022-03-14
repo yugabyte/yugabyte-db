@@ -129,7 +129,7 @@ class RaftConsensusQuorumTest : public YBTest {
       opts.server_type = "tserver_test";
       std::unique_ptr<FsManager> fs_manager(new FsManager(env_.get(), opts));
       RETURN_NOT_OK(fs_manager->CreateInitialFileSystemLayout());
-      RETURN_NOT_OK(fs_manager->Open());
+      RETURN_NOT_OK(fs_manager->CheckAndOpenFileSystemRoots());
 
       scoped_refptr<Log> log;
       RETURN_NOT_OK(Log::Open(LogOptions(),

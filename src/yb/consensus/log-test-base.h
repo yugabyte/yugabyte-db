@@ -161,7 +161,7 @@ class LogTestBase : public YBTest {
     tablet_metric_entity_ = METRIC_ENTITY_tablet.Instantiate(
                                 metric_registry_.get(), "log-test-base-tablet");
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
-    ASSERT_OK(fs_manager_->Open());
+    ASSERT_OK(fs_manager_->CheckAndOpenFileSystemRoots());
     tablet_wal_path_ = fs_manager_->GetFirstTabletWalDirOrDie(kTestTable, kTestTablet);
     clock_.reset(new server::HybridClock());
     ASSERT_OK(clock_->Init());

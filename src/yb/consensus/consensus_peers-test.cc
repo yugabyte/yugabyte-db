@@ -92,7 +92,7 @@ class ConsensusPeersTest : public YBTest {
     fs_manager_.reset(new FsManager(env_.get(), GetTestPath("fs_root"), "tserver_test"));
 
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
-    ASSERT_OK(fs_manager_->Open());
+    ASSERT_OK(fs_manager_->CheckAndOpenFileSystemRoots());
     ASSERT_OK(Log::Open(options_,
                        kTabletId,
                        fs_manager_->GetFirstTabletWalDirOrDie(kTableId, kTabletId),

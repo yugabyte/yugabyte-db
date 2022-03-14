@@ -230,7 +230,7 @@ class RaftConsensusTest : public YBTest {
     // monitors and pretty much everything else.
     fs_manager_.reset(new FsManager(env_.get(), test_path, "tserver_test"));
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
-    ASSERT_OK(fs_manager_->Open());
+    ASSERT_OK(fs_manager_->CheckAndOpenFileSystemRoots());
     ASSERT_OK(ThreadPoolBuilder("log").Build(&log_thread_pool_));
     ASSERT_OK(Log::Open(LogOptions(),
                        kTestTablet,

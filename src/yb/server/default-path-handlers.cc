@@ -396,11 +396,12 @@ static void PathUsageHandler(FsManager* fsmanager,
       "<th>Total Space</th></tr>\n";
 
   Env* env = fsmanager->env();
-  for (const auto& path : fsmanager->GetDataRootDirs()) {
+  for (const auto& path : fsmanager->GetFsRootDirs()) {
     const auto stats = env->GetFilesystemStatsBytes(path);
     if (!stats.ok()) {
       LOG(WARNING) << stats.status();
-      *output << Format("  <tr><td>$0</td><td>NA</td><td>NA</td></tr>\n", path);
+      *output << Format("  <tr><td>$0</td><td colspan=\"2\">$1</td></tr>\n",
+                        path, stats.status().message());
       continue;
     }
     const std::string used_space_str = HumanReadableNumBytes::ToString(stats->used_space);

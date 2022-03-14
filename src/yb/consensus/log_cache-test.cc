@@ -100,7 +100,7 @@ class LogCacheTest : public YBTest {
     YBTest::SetUp();
     fs_manager_.reset(new FsManager(env_.get(), GetTestPath("fs_root"), "tserver_test"));
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
-    ASSERT_OK(fs_manager_->Open());
+    ASSERT_OK(fs_manager_->CheckAndOpenFileSystemRoots());
     ASSERT_OK(ThreadPoolBuilder("log").Build(&log_thread_pool_));
     ASSERT_OK(log::Log::Open(log::LogOptions(),
                             kTestTablet,

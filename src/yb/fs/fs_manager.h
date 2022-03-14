@@ -44,6 +44,7 @@
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/env.h"
+#include "yb/util/metrics.h"
 #include "yb/util/path_util.h"
 #include "yb/util/strongly_typed_bool.h"
 
@@ -132,7 +133,7 @@ class FsManager {
   // If the file system has not been initialized, returns NotFound.
   // In that case, CreateInitialFileSystemLayout may be used to initialize
   // the on-disk structures.
-  CHECKED_STATUS Open();
+  CHECKED_STATUS CheckAndOpenFileSystemRoots();
 
   //
   // Returns an error if the file system is already initialized.
@@ -231,10 +232,8 @@ class FsManager {
   // Initializes, sanitizes, and canonicalizes the filesystem roots.
   CHECKED_STATUS Init();
 
-  // Creates filesystem roots from 'roots', writing new on-disk
-  // instances using 'metadata'.
-  CHECKED_STATUS CreateFileSystemRoots(const std::set<std::string>& roots,
-                                       const std::set<std::string>& ancillary_dirs,
+  // Creates filesystem roots, writing new on-disk instances using 'metadata'.
+  CHECKED_STATUS CreateFileSystemRoots(bool create_metadata_dir,
                                        const InstanceMetadataPB& metadata,
                                        bool create_lock = false);
 
@@ -254,6 +253,11 @@ class FsManager {
   // Returns an error if it's not a directory. Otherwise, sets 'is_empty'
   // accordingly.
   CHECKED_STATUS IsDirectoryEmpty(const std::string& path, bool* is_empty);
+
+  // Checks write to temporary file on root.
+  CHECKED_STATUS CheckWrite(const std::string& path);
+
+  void CreateAndSetFaultDriveMetric(const std::string& path);
 
   // ==========================================================================
   //  file-system helpers
@@ -287,6 +291,8 @@ class FsManager {
   std::string canonicalized_metadata_fs_root_;
   std::set<std::string> canonicalized_data_fs_roots_;
   std::set<std::string> canonicalized_all_fs_roots_;
+
+  std::map<std::string, scoped_refptr<Counter>> counters_;
 
   std::unique_ptr<InstanceMetadataPB> metadata_;
 
