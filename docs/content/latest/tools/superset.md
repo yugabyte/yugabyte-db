@@ -12,15 +12,15 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This document describes how to query and visualize data in YugabyteDB using [Arctype](https://arctype.com/), a user-friendly collaborative SQL client.
+[Apache Superset](https://superset.apache.org/) is a fast, lightweight and intuitive open-source data exploration and visualization tool that helps you query your data stored in YugabyteDB and visualize it using simple line charts to highly detailed geospatial charts.
 
-Apache Superset is fast, lightweight, intuitive, data exploration and visualization tool that helps you query your data stored in YugabyteDB and visualize it using  from simple line charts to highly detailed geospatial charts.
-
-![Arctype application](/images/develop/tools/arctype/Arctype-YB-Image-2.png)
+![Superset Dashboard](/images/develop/tools/superset/dashboard.png)
 
 ## Before you begin
 
-Your YugabyteDB cluster should be up and running. If you're new to YugabyteDB, create a local cluster in less than five minutes following the steps in [Quick Start](../../quick-start/install). You can also get started with the free tier of [YugabyteDB Fully-Managed Cloud](https://www.yugabyte.com/cloud/). You also need to install the Arctype client on your computer. You can download clients are available for Windows, Linux, and Mac from the [Arctype](https://arctype.com/) website.
+Your YugabyteDB cluster should be up and running. If you're new to YugabyteDB, create a local cluster in less than five minutes following the steps in [Quick Start](../../quick-start/install). You can also get started with the free tier of [YugabyteDB Fully-Managed Cloud](https://www.yugabyte.com/cloud/). You also need to load a relevant database in your YugabyteDB for exploration and visualizaation. If using yugabyted, you can load the NOrthwind sample database with the ./bin/yugabyted demo connect command from your shell or you can follow [instructions here](https://docs.yugabyte.com/latest/sample-data/northwind/).
+
+You also need to install Apache Superset to explore and visualize your data. You can install Superset using [Docker Compose](https://superset.apache.org/docs/installation/installing-superset-using-docker-compose) (recommended) or from scratch using [python install (PIP)](https://superset.apache.org/docs/installation/installing-superset-from-scratch).
 
 ## Create a database connection
 
