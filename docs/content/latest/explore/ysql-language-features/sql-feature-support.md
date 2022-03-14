@@ -11,7 +11,7 @@ menu:
 isTocNested: true
 showAsideToc: true
 ---
-To understand which standard SQL features we support, refer below tables.
+To understand which standard SQL features we support, refer the following tables:
 
 ### Schema operations
 
