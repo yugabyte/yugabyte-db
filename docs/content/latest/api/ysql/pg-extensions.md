@@ -14,7 +14,7 @@ showAsideToc: true
 ---
 
 PostgreSQL provides a way to extend the functionality of a database by bundling SQL objects into a package and using them as a unit. 
-This page describes the PostgreSQL extensions and describes the extensions supported by YugabyteDB.
+This page describes the PostgreSQL extensions supported by YugabyteDB.
 
 
 # PostgreSQL extensions supported by YugabyteDB
