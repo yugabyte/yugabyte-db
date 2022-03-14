@@ -52,6 +52,7 @@
 #include "utils/timestamp.h"
 #include "utils/lsyscache.h"
 #include "utils/guc.h"
+#include "utils/guc_tables.h"
 
 #define MAX_BACKEND_PROCESES (MaxBackends + NUM_AUXILIARY_PROCS + max_prepared_xacts)
 #define  IntArrayGetTextDatum(x,y) intarray_get_datum(x,y)
@@ -94,23 +95,29 @@
 #define SQLCODE_LEN                         20
 
 #if PG_VERSION_NUM >= 130000
-#define	MAX_SETTINGS                        14
+#define	MAX_SETTINGS                        15
 #else
-#define MAX_SETTINGS                        13
+#define MAX_SETTINGS                        14
 #endif
 
+/* Update this if need a enum GUC with more options. */
+#define MAX_ENUM_OPTIONS 6
 typedef struct GucVariables
 {
-	int		guc_variable;
-	char	guc_name[TEXT_LEN];
-	char	guc_desc[TEXT_LEN];
-	int		guc_default;
-	int		guc_min;
-	int		guc_max;
-	int		guc_unit;
-	int		*guc_value;
-	bool 	guc_restart;
+    enum    config_type type;   /* PGC_BOOL, PGC_INT, PGC_REAL, PGC_STRING, PGC_ENUM */
+    int     guc_variable;
+    char    guc_name[TEXT_LEN];
+    char    guc_desc[TEXT_LEN];
+    int     guc_default;
+    int     guc_min;
+    int     guc_max;
+    int     guc_unit;
+    int     *guc_value;
+    bool    guc_restart;
+    int     n_options;
+    char    guc_options[MAX_ENUM_OPTIONS][32];
 } GucVariable;
+
 
 #if PG_VERSION_NUM < 130000
 typedef struct WalUsage
@@ -408,20 +415,35 @@ void set_qbuf(unsigned char *);
 /* hash_query.c */
 void pgss_startup(void);
 /*---- GUC variables ----*/
+typedef enum {
+    PSGM_TRACK_NONE = 0, /* track no statements */
+    PGSM_TRACK_TOP,      /* only top level statements */
+    PGSM_TRACK_ALL       /* all statements, including nested ones */
+} PGSMTrackLevel;
+static const struct config_enum_entry track_options[] =
+{
+    {"none", PSGM_TRACK_NONE, false},
+    {"top", PGSM_TRACK_TOP, false},
+    {"all", PGSM_TRACK_ALL, false},
+    {NULL, 0, false}
+};
+
 #define PGSM_MAX get_conf(0)->guc_variable
 #define PGSM_QUERY_MAX_LEN get_conf(1)->guc_variable
-#define PGSM_ENABLED get_conf(2)->guc_variable
-#define PGSM_TRACK_UTILITY get_conf(3)->guc_variable
-#define PGSM_NORMALIZED_QUERY get_conf(4)->guc_variable
-#define PGSM_MAX_BUCKETS get_conf(5)->guc_variable
-#define PGSM_BUCKET_TIME get_conf(6)->guc_variable
-#define PGSM_HISTOGRAM_MIN get_conf(7)->guc_variable
-#define PGSM_HISTOGRAM_MAX get_conf(8)->guc_variable
-#define PGSM_HISTOGRAM_BUCKETS get_conf(9)->guc_variable
-#define PGSM_QUERY_SHARED_BUFFER get_conf(10)->guc_variable
-#define PGSM_OVERFLOW_TARGET get_conf(11)->guc_variable
-#define PGSM_QUERY_PLAN get_conf(12)->guc_variable
-#define PGSM_TRACK_PLANNING get_conf(13)->guc_variable
+#define PGSM_TRACK_UTILITY get_conf(2)->guc_variable
+#define PGSM_NORMALIZED_QUERY get_conf(3)->guc_variable
+#define PGSM_MAX_BUCKETS get_conf(4)->guc_variable
+#define PGSM_BUCKET_TIME get_conf(5)->guc_variable
+#define PGSM_HISTOGRAM_MIN get_conf(6)->guc_variable
+#define PGSM_HISTOGRAM_MAX get_conf(7)->guc_variable
+#define PGSM_HISTOGRAM_BUCKETS get_conf(8)->guc_variable
+#define PGSM_QUERY_SHARED_BUFFER get_conf(9)->guc_variable
+#define PGSM_OVERFLOW_TARGET get_conf(10)->guc_variable
+#define PGSM_QUERY_PLAN get_conf(11)->guc_variable
+#define PGSM_TRACK get_conf(12)->guc_variable
+#define PGSM_EXTRACT_COMMENTS get_conf(13)->guc_variable
+#define PGSM_TRACK_PLANNING get_conf(14)->guc_variable
+
 
 /*---- Benchmarking ----*/
 #ifdef BENCHMARK
