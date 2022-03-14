@@ -300,19 +300,14 @@ YBCatalogTupleInsert(Relation heapRel, HeapTuple tup, bool yb_shared_insert)
 				 */
 				if (dboid == YBCGetDatabaseOid(heapRel))
 					continue; /* Will be done after the loop. */
-				YBCExecuteInsertForDb(dboid,
-									  heapRel,
-									  RelationGetDescr(heapRel),
-									  tup,
-									  false /* use_async_flush */);
+				YBCExecuteInsertForDb(dboid, heapRel, RelationGetDescr(heapRel), tup);
 			}
 			YB_FOR_EACH_DB_END;
 		}
 		oid = YBCExecuteInsertForDb(YBCGetDatabaseOid(heapRel),
 									heapRel,
 									RelationGetDescr(heapRel),
-									tup,
-									false /* use_async_flush */);
+									tup);
 		/* Update the local cache automatically */
 		YBSetSysCacheTuple(heapRel, tup);
 	}
@@ -364,19 +359,14 @@ CatalogTupleInsertWithInfo(Relation heapRel, HeapTuple tup,
 				 */
 				if (dboid == YBCGetDatabaseOid(heapRel))
 					continue; /* Will be done after the loop. */
-				YBCExecuteInsertForDb(dboid,
-									  heapRel,
-									  RelationGetDescr(heapRel),
-									  tup,
-									  false /* use_async_flush */);
+				YBCExecuteInsertForDb(dboid, heapRel, RelationGetDescr(heapRel), tup);
 			}
 			YB_FOR_EACH_DB_END;
 		}
 		oid = YBCExecuteInsertForDb(YBCGetDatabaseOid(heapRel),
 									heapRel,
 									RelationGetDescr(heapRel),
-									tup,
-									false /* use_async_flush */);
+									tup);
 		/* Update the local cache automatically */
 		YBSetSysCacheTuple(heapRel, tup);
 	}

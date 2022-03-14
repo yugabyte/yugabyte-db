@@ -824,7 +824,7 @@ InsertOneTuple(Oid objectid)
 		HeapTupleSetOid(tuple, objectid);
 
 	if (IsYugaByteEnabled())
-		YBCExecuteInsert(boot_reldesc, tupDesc, tuple, false /* use_async_flush */);
+		YBCExecuteInsert(boot_reldesc, tupDesc, tuple);
 	else
 		simple_heap_insert(boot_reldesc, tuple);
 

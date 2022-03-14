@@ -504,10 +504,7 @@ transientrel_receive(TupleTableSlot *slot, DestReceiver *self)
 	tuple = ExecMaterializeSlot(slot);
 	if (IsYBRelation(myState->transientrel))
 	{
-		YBCExecuteInsert(myState->transientrel,
-						 RelationGetDescr(myState->transientrel),
-						 tuple,
-						 false /* use_async_flush */);
+		YBCExecuteInsert(myState->transientrel, RelationGetDescr(myState->transientrel), tuple);
 	}
 	else
 	{
