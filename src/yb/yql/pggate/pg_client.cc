@@ -113,7 +113,7 @@ class PgClient::Impl {
 
   Result<PgTableDescPtr> OpenTable(const PgObjectId& table_id) {
     tserver::PgOpenTableRequestPB req;
-    req.set_table_id(table_id.GetYBTableId());
+    req.set_table_id(table_id.GetYbTableId());
     tserver::PgOpenTableResponsePB resp;
 
     RETURN_NOT_OK(proxy_->OpenTable(req, &resp, PrepareAdminController()));

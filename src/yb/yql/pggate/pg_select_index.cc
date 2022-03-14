@@ -66,7 +66,7 @@ Status PgSelectIndex::PrepareQuery(PgsqlReadRequestPB *read_req) {
     RSTATUS_DCHECK(
         prepare_params_.querying_colocated_table, InvalidArgument, "Read request invalid");
     read_req_ = read_req;
-    read_req_->set_table_id(index_id_.GetYBTableId());
+    read_req_->set_table_id(index_id_.GetYbTableId());
     doc_op_ = nullptr;
 
   } else {

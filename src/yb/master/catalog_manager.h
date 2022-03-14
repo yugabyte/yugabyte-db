@@ -555,6 +555,9 @@ class CatalogManager :
   // Is the table a special sequences system table?
   bool IsSequencesSystemTable(const TableInfo& table) const;
 
+  // Is the table id from a tablegroup?
+  bool IsTablegroupParentTableId(const TableId& table_id) const;
+
   // Is the table id from a table created for colocated database?
   bool IsColocatedParentTableId(const TableId& table_id) const;
 
@@ -1495,6 +1498,9 @@ class CatalogManager :
       GUARDED_BY(mutex_);
 
   std::unordered_map<TableId, TableId> matview_pg_table_ids_map_
+      GUARDED_BY(mutex_);
+
+  std::unordered_map<TableId, TablegroupId> table_tablegroup_ids_map_
       GUARDED_BY(mutex_);
 
   boost::optional<std::future<Status>> initdb_future_;

@@ -270,7 +270,9 @@ public class TestUtils {
     }
 
     File f = new File(testTmpDir);
-    f.mkdirs();
+    if (!f.exists() && !f.mkdirs()) {
+      throw new RuntimeException("Could not create " + testTmpDir + ", not enough permissions?");
+    }
     return f.getAbsolutePath();
   }
 

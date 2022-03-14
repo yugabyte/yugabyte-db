@@ -72,6 +72,8 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
 
   bool IsColocated() const;
 
+  YBCPgOid GetColocationId() const;
+
   uint32_t schema_version() const;
 
   // TODO(PgClient) Remove those operations.

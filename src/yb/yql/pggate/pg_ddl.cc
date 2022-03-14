@@ -19,6 +19,7 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/common.pb.h"
+#include "yb/common/constants.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/pg_system_attr.h"
 
@@ -174,6 +175,7 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
                              bool add_primary_key,
                              const bool colocated,
                              const PgObjectId& tablegroup_oid,
+                             const ColocationId colocation_id,
                              const PgObjectId& tablespace_oid,
                              const PgObjectId& matview_pg_table_oid)
     : PgDdl(pg_session) {
@@ -187,6 +189,9 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
   req_.set_if_not_exist(if_not_exist);
   req_.set_colocated(colocated);
   tablegroup_oid.ToPB(req_.mutable_tablegroup_oid());
+  if (colocation_id != kColocationIdNotSet) {
+    req_.set_colocation_id(colocation_id);
+  }
   tablespace_oid.ToPB(req_.mutable_tablespace_oid());
   matview_pg_table_oid.ToPB(req_.mutable_matview_pg_table_oid());
 

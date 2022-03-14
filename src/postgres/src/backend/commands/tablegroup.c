@@ -61,6 +61,7 @@
 #include "commands/tablespace.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
+#include "commands/ybccmds.h"
 #include "common/file_perm.h"
 #include "miscadmin.h"
 #include "postmaster/bgwriter.h"
@@ -78,8 +79,6 @@
 #include "utils/tqual.h"
 #include "utils/varlena.h"
 
-/*  YB includes. */
-#include "commands/ybccmds.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
 
@@ -288,7 +287,7 @@ get_tablegroup_oid_by_table_oid(Oid table_oid)
 			{
 				DefElem	*defel = (DefElem *) lfirst(cell);
 				// Every node is a string node when untransformed. Need to type cast.
-				if (strcmp(defel->defname, "tablegroup") == 0)
+				if (strcmp(defel->defname, "tablegroup_oid") == 0)
 				{
 					result = (Oid) pg_atoi(defGetString(defel), sizeof(Oid), 0);
 				}
@@ -338,13 +337,13 @@ get_tablegroup_name(Oid grp_oid)
 }
 
 /*
- * RemoveTableGroupById - remove a tablegroup by its OID.
+ * RemoveTablegroupById - remove a tablegroup by its OID.
  * If a tablegroup does not exist with the provided oid, then an error is raised.
  *
  * grp_oid - the oid of the tablegroup.
  */
 void
-RemoveTableGroupById(Oid grp_oid)
+RemoveTablegroupById(Oid grp_oid)
 {
 	Relation		pg_tblgrp_rel;
 	HeapScanDesc	scandesc;

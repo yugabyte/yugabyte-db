@@ -662,7 +662,8 @@ inline bool IsEndOfSubKeys(const Slice& key) {
 // this represents the strong intent key and will be stored in encoded_key_buffer at the end of this
 // call.
 //
-// The beginning of each intent key will also include any cotable_id or PgTableOid, if present.
+// The beginning of each intent key will also include any cotable_id or colocation_id,
+// if present.
 Status EnumerateWeakIntents(
     Slice key,
     const EnumerateIntentsCallback& functor,
@@ -675,8 +676,8 @@ Status EnumerateWeakIntents(
     return STATUS(Corruption, "An empty slice is not a valid encoded SubDocKey");
   }
 
-  const bool has_cotable_id = *key.cdata() == ValueTypeAsChar::kTableId;
-  const bool has_pgtable_id = *key.cdata() == ValueTypeAsChar::kPgTableOid;
+  const bool has_cotable_id    = *key.cdata() == ValueTypeAsChar::kTableId;
+  const bool has_colocation_id = *key.cdata() == ValueTypeAsChar::kColocationId;
   {
     bool is_table_root_key = false;
     if (has_cotable_id) {
@@ -689,16 +690,17 @@ Status EnumerateWeakIntents(
       }
       encoded_key_buffer->AppendRawBytes(key.cdata(), kUuidSize + 1);
       is_table_root_key = key[kUuidSize + 1] == ValueTypeAsChar::kGroupEnd;
-    } else if (has_pgtable_id) {
-      const auto kMinExpectedSize = sizeof(PgTableOid) + 2;
+    } else if (has_colocation_id) {
+      const auto kMinExpectedSize = sizeof(ColocationId) + 2;
       if (key.size() < kMinExpectedSize) {
         return STATUS_FORMAT(
             Corruption,
-            "Expected an encoded SubDocKey starting with a pgtable id to be at least $0 bytes long",
+            "Expected an encoded SubDocKey starting with a colocation id to be"
+            " at least $0 bytes long",
             kMinExpectedSize);
       }
-      encoded_key_buffer->AppendRawBytes(key.cdata(), sizeof(PgTableOid) + 1);
-      is_table_root_key = key[sizeof(PgTableOid) + 1] == ValueTypeAsChar::kGroupEnd;
+      encoded_key_buffer->AppendRawBytes(key.cdata(), sizeof(ColocationId) + 1);
+      is_table_root_key = key[sizeof(ColocationId) + 1] == ValueTypeAsChar::kGroupEnd;
     } else {
       is_table_root_key = *key.cdata() == ValueTypeAsChar::kGroupEnd;
     }

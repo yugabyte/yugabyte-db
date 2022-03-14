@@ -1459,7 +1459,7 @@ Result<bool> Tablet::IsQueryOnlyForTablet(const PgsqlReadRequestPB& pgsql_read_r
   }
 
   std::shared_ptr<const Schema> schema = metadata_->schema();
-  if (schema->has_pgtable_id() || schema->has_cotable_id())  {
+  if (schema->has_cotable_id() || schema->has_colocation_id())  {
     // This is a colocated table.
     return true;
   }
@@ -3101,7 +3101,7 @@ bool Tablet::ShouldDisableLbMove() {
   //
   // In this case, we want to disable tablet moves. We conservatively return true for any failure
   // if the tablet is part of a colocated table.
-  return metadata_->schema()->has_pgtable_id();
+  return metadata_->schema()->has_colocation_id();
 }
 
 void Tablet::ForceRocksDBCompactInTest() {

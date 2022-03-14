@@ -20,6 +20,8 @@
 #include <boost/container/small_vector.hpp>
 #include <boost/optional/optional.hpp>
 
+#include "yb/common/constants.h"
+
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/key_bytes.h"
 #include "yb/docdb/primitive_value.h"
@@ -41,7 +43,7 @@ namespace docdb {
 
 // A key that allows us to locate a document. This is the prefix of all RocksDB keys of records
 // inside this document. A document key contains:
-//   - An optional ID (cotable id or pgtable id).
+//   - An optional ID (cotable id or colocation id).
 //   - An optional fixed-width hash prefix.
 //   - A group of primitive values representing "hashed" components (this is what the hash is
 //     computed based on, so this group is present/absent together with the hash).
@@ -50,7 +52,8 @@ namespace docdb {
 // The encoded representation of the key is as follows:
 //   - Optional ID:
 //     * For cotable id, the byte ValueType::kTableId followed by a sixteen byte UUID.
-//     * For pgtable id, the byte ValueType::kPgTableOid followed by a four byte PgTableId.
+//     * For colocation id, the byte ValueType::kColocationId followed by a four byte
+//       ColocationId.
 //   - Optional fixed-width hash prefix, followed by hashed components:
 //     * The byte ValueType::kUInt16Hash, followed by two bytes of the hash prefix.
 //     * Hashed components:
@@ -103,14 +106,14 @@ class DocKey {
          std::vector<PrimitiveValue> hashed_components,
          std::vector<PrimitiveValue> range_components = std::vector<PrimitiveValue>());
 
-  DocKey(PgTableOid pgtable_id,
+  DocKey(ColocationId colocation_id,
          DocKeyHash hash,
          std::vector<PrimitiveValue> hashed_components,
          std::vector<PrimitiveValue> range_components = std::vector<PrimitiveValue>());
 
   explicit DocKey(const Uuid& cotable_id);
 
-  explicit DocKey(PgTableOid pgtable_id);
+  explicit DocKey(ColocationId colocation_id);
 
   // Constructors to create a DocKey for the given schema to support co-located tables.
   explicit DocKey(const Schema& schema);
@@ -145,12 +148,12 @@ class DocKey {
     return !cotable_id_.IsNil();
   }
 
-  PgTableOid pgtable_id() const {
-    return pgtable_id_;
+  ColocationId colocation_id() const {
+    return colocation_id_;
   }
 
-  bool has_pgtable_id() const {
-    return pgtable_id_ > 0;
+  bool has_colocation_id() const {
+    return colocation_id_ != kColocationIdNotSet;
   }
 
   DocKeyHash hash() const {
@@ -252,16 +255,16 @@ class DocKey {
 
   void set_cotable_id(const Uuid& cotable_id) {
     if (!cotable_id.IsNil()) {
-      DCHECK_EQ(pgtable_id_, 0);
+      DCHECK_EQ(colocation_id_, kColocationIdNotSet);
     }
     cotable_id_ = cotable_id;
   }
 
-  void set_pgtable_id(const PgTableOid pgtable_id) {
-    if (pgtable_id > 0) {
+  void set_colocation_id(const ColocationId colocation_id) {
+    if (colocation_id != kColocationIdNotSet) {
       DCHECK(cotable_id_.IsNil());
     }
-    pgtable_id_ = pgtable_id;
+    colocation_id_ = colocation_id;
   }
 
   void set_hash(DocKeyHash hash) {
@@ -291,9 +294,9 @@ class DocKey {
   // primary or single-tenant table.
   Uuid cotable_id_;
 
-  // Postgres table OID of the non-primary table this DocKey belongs to in colocated tables.
-  // 0 for primary or single tenant table.
-  PgTableOid pgtable_id_;
+  // Colocation ID used to distinguish a table within a colocation group.
+  // kColocationIdNotSet for a primary or single-tenant table.
+  ColocationId colocation_id_;
 
   // TODO: can we get rid of this field and just use !hashed_group_.empty() instead?
   bool hash_present_;
@@ -370,7 +373,7 @@ class DocKeyEncoder {
 
   DocKeyEncoderAfterTableIdStep CotableId(const Uuid& cotable_id);
 
-  DocKeyEncoderAfterTableIdStep PgtableId(const PgTableOid pgtable_id);
+  DocKeyEncoderAfterTableIdStep ColocationId(const ColocationId colocation_id);
 
   DocKeyEncoderAfterTableIdStep Schema(const Schema& schema);
 
@@ -383,7 +386,7 @@ class DocKeyDecoder {
   explicit DocKeyDecoder(const Slice& input) : input_(input) {}
 
   Result<bool> DecodeCotableId(Uuid* uuid = nullptr);
-  Result<bool> DecodePgtableId(PgTableOid* pgtable_id = nullptr);
+  Result<bool> DecodeColocationId(ColocationId* colocation_id = nullptr);
 
   Result<bool> HasPrimitiveValue();
 
@@ -607,7 +610,7 @@ class SubDocKey {
       Slice slice, boost::container::small_vector_base<size_t>* out);
 
   // Fills out with ends of SubDocKey components.  First item in out will be size of ID part
-  // (cotable id or pgtable id) of DocKey (0 if ID is not present), second size of whole DocKey,
+  // (cotable id or colocation id) of DocKey (0 if ID is not present), second size of whole DocKey,
   // third size of DocKey + size of first subkey, and so on.
   //
   // To illustrate,
@@ -620,7 +623,7 @@ class SubDocKey {
   //   the ends will be
   //     {0, 10, 12}
   // * for key
-  //     SubDocKey(DocKey(PgTableId=16385, [], [5]), [SystemColumnId(0); HT{ physical: ... }])
+  //     SubDocKey(DocKey(ColocationId=16385, [], [5]), [SystemColumnId(0); HT{ physical: ... }])
   //   aka
   //     30000040014880000005214A80238001B5E700309553804A
   //   (and with spaces to make it clearer)
@@ -628,7 +631,7 @@ class SubDocKey {
   //   the ends will be
   //     {5, 11, 13}
   // * for key
-  //     SubDocKey(DocKey(PgTableId=16385, [], []), [HT{ physical: 1581471227403848 }])
+  //     SubDocKey(DocKey(ColocationId=16385, [], []), [HT{ physical: 1581471227403848 }])
   //   aka
   //     300000400121238001B5E7006E61B7804A
   //   (and with spaces to make it clearer)

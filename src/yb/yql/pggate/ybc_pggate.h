@@ -177,6 +177,7 @@ YBCStatus YBCPgNewCreateTable(const char *database_name,
                               bool add_primary_key,
                               const bool colocated,
                               YBCPgOid tablegroup_oid,
+                              YBCPgOid colocation_id,
                               YBCPgOid tablespace_oid,
                               YBCPgOid matview_pg_table_oid,
                               YBCPgStatement *handle);
@@ -227,8 +228,10 @@ YBCStatus YBCPgGetColumnInfo(YBCPgTableDesc table_desc,
                              int16_t attr_number,
                              YBCPgColumnInfo *column_info);
 
-YBCStatus YBCPgGetTableProperties(YBCPgTableDesc table_desc,
-                                  YBCPgTableProperties *properties);
+// Does not set tablegroup_oid.
+// Callers should probably use YbGetTableDescAndProps instead.
+YBCStatus YBCPgGetSomeTableProperties(YBCPgTableDesc table_desc,
+                                      YBCPgTableProperties *properties);
 
 YBCStatus YBCPgDmlModifiesRow(YBCPgStatement handle, bool *modifies_row);
 
@@ -259,6 +262,7 @@ YBCStatus YBCPgNewCreateIndex(const char *database_name,
                               const bool skip_index_backfill,
                               bool if_not_exist,
                               YBCPgOid tablegroup_oid,
+                              YBCPgOid colocation_id,
                               YBCPgOid tablespace_oid,
                               YBCPgStatement *handle);
 

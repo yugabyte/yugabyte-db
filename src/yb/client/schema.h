@@ -50,6 +50,7 @@
 #include <vector>
 
 #include "yb/client/client_fwd.h"
+#include "yb/common/constants.h"
 #include "yb/client/value.h"
 
 #include "yb/common/common_types.pb.h"
@@ -310,6 +311,12 @@ class YBSchema {
 
   // Returns the total number of columns.
   size_t num_columns() const;
+
+  bool has_colocation_id() const;
+
+  // Gets the colocation ID of the non-primary table this schema belongs to in a
+  // tablet with colocated tables.
+  ColocationId colocation_id() const;
 
   uint32_t version() const;
   void set_version(uint32_t version);

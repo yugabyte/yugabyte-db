@@ -13,6 +13,10 @@
 
 #include "yb/tserver/pg_client_service.h"
 
+#include <shared_mutex>
+
+#include <queue>
+
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/mem_fun.hpp>
 #include <boost/multi_index/ordered_index.hpp>
@@ -247,7 +251,7 @@ class PgClientServiceImpl::Impl {
     auto status = table_creator->table_name(table_name)
         .schema(&schema)
         .table_type(yb::client::YBTableType::PGSQL_TABLE_TYPE)
-        .table_id(oid.GetYBTableId())
+        .table_id(oid.GetYbTableId())
         .hash_schema(YBHashSchema::kPgsqlHash)
         .Create();
     // If we could create it, then all good!

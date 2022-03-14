@@ -44,9 +44,10 @@
 
 #include <glog/logging.h>
 
-#include "yb/common/common_fwd.h"
 #include "yb/common/column_id.h"
 #include "yb/common/common_types.pb.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/constants.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/id_mapping.h"
@@ -478,7 +479,7 @@ class Schema {
                      NameToIndexMapAllocator(&name_to_index_bytes_)),
       has_nullables_(false),
       cotable_id_(Uuid::Nil()),
-      pgtable_id_(0) {
+      colocation_id_(kColocationIdNotSet) {
   }
 
   Schema(const Schema& other);
@@ -498,7 +499,7 @@ class Schema {
          size_t key_columns,
          const TableProperties& table_properties = TableProperties(),
          const Uuid& cotable_id = Uuid::Nil(),
-         const PgTableOid pgtable_id = 0);
+         const ColocationId colocation_id = kColocationIdNotSet);
 
   // Construct a schema with the given information.
   //
@@ -511,7 +512,7 @@ class Schema {
          size_t key_columns,
          const TableProperties& table_properties = TableProperties(),
          const Uuid& cotable_id = Uuid::Nil(),
-         const PgTableOid pgtable_id = 0);
+         const ColocationId colocation_id = kColocationIdNotSet);
 
   // Reset this Schema object to the given schema.
   // If this fails, the Schema object is left in an inconsistent
@@ -519,7 +520,7 @@ class Schema {
   CHECKED_STATUS Reset(const vector<ColumnSchema>& cols, size_t key_columns,
                        const TableProperties& table_properties = TableProperties(),
                        const Uuid& cotable_id = Uuid::Nil(),
-                       const PgTableOid pgtable_id = 0);
+                       const ColocationId colocation_id = kColocationIdNotSet);
 
   // Reset this Schema object to the given schema.
   // If this fails, the Schema object is left in an inconsistent
@@ -529,7 +530,7 @@ class Schema {
                        size_t key_columns,
                        const TableProperties& table_properties = TableProperties(),
                        const Uuid& cotable_id = Uuid::Nil(),
-                       const PgTableOid pgtable_id = 0);
+                       const ColocationId colocation_id = kColocationIdNotSet);
 
   // Return the number of bytes needed to represent a single row of this schema.
   //
@@ -724,26 +725,26 @@ class Schema {
 
   void set_cotable_id(const Uuid& cotable_id) {
     if (!cotable_id.IsNil()) {
-      DCHECK_EQ(pgtable_id_, 0);
+      DCHECK_EQ(colocation_id_, kColocationIdNotSet);
     }
     cotable_id_ = cotable_id;
   }
 
-  // Gets and sets the PG table OID of the non-primary table this schema belongs to in a tablet
-  // with colocated tables.
-  PgTableOid pgtable_id() const {
-    return pgtable_id_;
+  // Gets the colocation ID of the non-primary table this schema belongs to in a
+  // tablet with colocated tables.
+  ColocationId colocation_id() const {
+    return colocation_id_;
   }
 
-  bool has_pgtable_id() const {
-    return pgtable_id_ > 0;
+  bool has_colocation_id() const {
+    return colocation_id_ != kColocationIdNotSet;
   }
 
-  void set_pgtable_id(const PgTableOid pgtable_id) {
-    if (pgtable_id > 0) {
+  void set_colocation_id(const ColocationId colocation_id) {
+    if (colocation_id != kColocationIdNotSet) {
       DCHECK(cotable_id_.IsNil());
     }
-    pgtable_id_ = pgtable_id;
+    colocation_id_ = colocation_id;
   }
 
   // Extract a given column from a row where the type is
@@ -1073,9 +1074,9 @@ class Schema {
   // primary or single-tenant table.
   Uuid cotable_id_;
 
-  // PG table OID of the non-primary table this schema belongs to in a tablet with colocated
-  // tables. Nil for the primary or single-tenant table.
-  PgTableOid pgtable_id_;
+  // Colocation ID used to distinguish a table within a colocation group.
+  // kColocationIdNotSet for a primary or single-tenant table.
+  ColocationId colocation_id_;
 
   // NOTE: if you add more members, make sure to add the appropriate
   // code to swap() and CopyFrom() as well to prevent subtle bugs.
@@ -1116,12 +1117,12 @@ class SchemaBuilder {
     return next_id_;
   }
 
-  void set_pgtable_id(PgTableOid pgtable_id) {
-    pgtable_id_ = pgtable_id;
+  void set_colocation_id(ColocationId colocation_id) {
+    colocation_id_ = colocation_id;
   }
 
-  PgTableOid pgtable_id() const {
-    return pgtable_id_;
+  ColocationId colocation_id() const {
+    return colocation_id_;
   }
 
   void set_cotable_id(Uuid cotable_id) {
@@ -1133,10 +1134,12 @@ class SchemaBuilder {
   }
 
   Schema Build() const {
-    return Schema(cols_, col_ids_, num_key_columns_, table_properties_, cotable_id_, pgtable_id_);
+    return Schema(cols_, col_ids_, num_key_columns_, table_properties_, cotable_id_,
+                  colocation_id_);
   }
   Schema BuildWithoutIds() const {
-    return Schema(cols_, num_key_columns_, table_properties_, cotable_id_,  pgtable_id_);
+    return Schema(cols_, num_key_columns_, table_properties_, cotable_id_,
+                  colocation_id_);
   }
 
   // assumes type is allowed in primary key -- this should be checked before getting here
@@ -1197,7 +1200,7 @@ class SchemaBuilder {
   std::unordered_set<string> col_names_;
   size_t num_key_columns_;
   TableProperties table_properties_;
-  PgTableOid pgtable_id_ = 0;
+  ColocationId colocation_id_ = kColocationIdNotSet;
   Uuid cotable_id_ = Uuid::Nil();
 
   DISALLOW_COPY_AND_ASSIGN(SchemaBuilder);

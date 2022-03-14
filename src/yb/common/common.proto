@@ -104,8 +104,8 @@ message ColumnSchemaPB {
 message ColocatedTableIdentifierPB {
   // Note: an absent value means NULL.
   oneof value {
-    // Colocated YSQL user tables use 4-byte PG table ID.
-    uint32 pgtable_id = 1;
+    // Colocated YSQL user tables use 4-byte ID.
+    uint32 colocation_id = 1;
     // Colocated YSQL system tables use 16-byte UUID.
     bytes cotable_id = 2;
   }

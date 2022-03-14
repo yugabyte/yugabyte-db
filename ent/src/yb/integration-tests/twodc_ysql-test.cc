@@ -238,26 +238,25 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
                                   const std::string& table_name,
                                   uint32_t num_tablets,
                                   bool colocated = false,
-                                  const int table_oid = 0) {
+                                  const ColocationId colocation_id = 0) {
     auto conn = EXPECT_RESULT(cluster->ConnectToDB(namespace_name));
-    std::string table_oid_string = "";
-    if (table_oid > 0) {
-      // Need to turn on session flag to allow for CREATE WITH table_oid.
-      EXPECT_OK(conn.Execute("set yb_enable_create_with_table_oid=true"));
-      table_oid_string = Format("table_oid = $0,", table_oid);
+    std::string colocation_id_string = "";
+    if (colocation_id > 0) {
+      colocation_id_string = Format("colocation_id = $0,", colocation_id);
     }
     EXPECT_OK(conn.ExecuteFormat(
         "CREATE TABLE $0($1 int PRIMARY KEY) WITH ($2colocated = $3) SPLIT INTO $4 TABLETS",
-        table_name, kKeyColumnName, table_oid_string, colocated, num_tablets));
+        table_name, kKeyColumnName, colocation_id_string, colocated, num_tablets));
     return GetTable(cluster, namespace_name, table_name);
   }
 
   Status CreateTable(uint32_t idx, uint32_t num_tablets, Cluster* cluster,
                      std::vector<YBTableName>* tables, bool colocated = false) {
-    // Generate table_oid based on index so that we have the same table_oid for producer/consumer.
-    const int table_oid = colocated ? (idx + 1) * 111111 : 0;
+    // Generate colocation_id based on index so that we have the same colocation_id for
+    // producer/consumer.
+    const int colocation_id = colocated ? (idx + 1) * 111111 : 0;
     auto table = VERIFY_RESULT(CreateTable(cluster, kNamespaceName, Format("test_table_$0", idx),
-                                           num_tablets, colocated, table_oid));
+                                           num_tablets, colocated, colocation_id));
     tables->push_back(table);
     return Status::OK();
   }
@@ -805,29 +804,29 @@ TEST_P(TwoDCYsqlTest, ColocatedDatabaseReplication) {
   Destroy();
 }
 
-TEST_P(TwoDCYsqlTest, ColocatedDatabaseDifferentTableOids) {
+TEST_P(TwoDCYsqlTest, ColocatedDatabaseDifferentColocationIds) {
   YB_SKIP_TEST_IN_TSAN();
   auto colocated_tables = ASSERT_RESULT(SetUpWithParams({}, {}, 3, 1, true /* colocated */));
   const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
 
-  // Create two tables with different table oids.
+  // Create two tables with different colocation ids.
   auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(kNamespaceName));
   auto table_info = ASSERT_RESULT(CreateTable(&producer_cluster_,
                                               kNamespaceName,
                                               "test_table_0",
                                               1 /* num_tablets */,
                                               true /* colocated */,
-                                              123456 /* table_oid */));
+                                              123456 /* colocation_id */));
   ASSERT_RESULT(CreateTable(&consumer_cluster_,
                             kNamespaceName,
                             "test_table_0",
                             1 /* num_tablets */,
                             true /* colocated */,
-                            123457 /* table_oid */));
+                            123457 /* colocation_id */));
   std::shared_ptr<client::YBTable> producer_table;
   ASSERT_OK(producer_client()->OpenTable(table_info, &producer_table));
 
-  // Try to setup replication, should fail on schema validation due to different table oids.
+  // Try to setup replication, should fail on schema validation due to different colocation ids.
   ASSERT_OK(SetupUniverseReplication(producer_cluster(), consumer_cluster(), consumer_client(),
                                      kUniverseId, {producer_table}));
   master::GetUniverseReplicationResponsePB get_universe_replication_resp;

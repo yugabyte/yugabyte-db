@@ -244,6 +244,7 @@ class PgApiImpl {
                                 bool add_primary_key,
                                 const bool colocated,
                                 const PgObjectId& tablegroup_oid,
+                                const ColocationId colocation_id,
                                 const PgObjectId& tablespace_oid,
                                 const PgObjectId& matview_pg_table_oid,
                                 PgStatement **handle);
@@ -307,6 +308,7 @@ class PgApiImpl {
                                 const bool skip_index_backfill,
                                 bool if_not_exist,
                                 const PgObjectId& tablegroup_oid,
+                                const YBCPgOid& colocation_id,
                                 const PgObjectId& tablespace_oid,
                                 PgStatement **handle);
 

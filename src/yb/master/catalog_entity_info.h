@@ -37,6 +37,8 @@
 #include <mutex>
 #include <vector>
 
+#include <boost/bimap.hpp>
+
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
 
@@ -694,13 +696,23 @@ class TablegroupInfo : public RefCountedThreadSafe<TablegroupInfo>{
   const std::string& id() const { return tablegroup_id_; }
   const std::string& namespace_id() const { return namespace_id_; }
 
-  // Operations to track table_set_ information (what tables belong to the tablegroup)
-  void AddChildTable(const TableId& table_id);
+  // TODO(alex): Make this stuff return Status/Result
+
+  // Operations to track table_map_ information (what tables belong to the tablegroup)
+
+  void AddChildTable(const TableId& table_id, ColocationId colocation_id);
+
   void DeleteChildTable(const TableId& table_id);
+
   bool HasChildTables() const;
+
+  bool HasChildTable(ColocationId colocation_id) const;
+
   std::size_t NumChildTables() const;
 
  private:
+  typedef boost::bimap<TableId, ColocationId> TableMap;
+
   friend class RefCountedThreadSafe<TablegroupInfo>;
   ~TablegroupInfo() = default;
 
@@ -709,9 +721,9 @@ class TablegroupInfo : public RefCountedThreadSafe<TablegroupInfo>{
   const TablegroupId tablegroup_id_;
   const NamespaceId namespace_id_;
 
-  // Protects table_set_.
+  // Protects table_map_.
   mutable simple_spinlock lock_;
-  std::unordered_set<TableId> table_set_ GUARDED_BY(lock_);
+  TableMap table_map_ GUARDED_BY(lock_);
 
   DISALLOW_COPY_AND_ASSIGN(TablegroupInfo);
 };

@@ -74,7 +74,7 @@ Status PgClientSession::DropDatabase(
 
 Status PgClientSession::DropTable(
     const PgDropTableRequestPB& req, PgDropTableResponsePB* resp, rpc::RpcContext* context) {
-  auto yb_table_id = PgObjectId::FromPB(req.table_id()).GetYBTableId();
+  const auto yb_table_id = PgObjectId::GetYbTableIdFromPB(req.table_id());
   if (req.index()) {
     client::YBTableName indexed_table;
     RETURN_NOT_OK(client().DeleteIndexTable(
@@ -98,8 +98,9 @@ Status PgClientSession::AlterDatabase(
 
 Status PgClientSession::AlterTable(
     const PgAlterTableRequestPB& req, PgAlterTableResponsePB* resp, rpc::RpcContext* context) {
-  auto alterer = client().NewTableAlterer(PgObjectId::FromPB(req.table_id()).GetYBTableId());
-  auto txn = VERIFY_RESULT(GetDdlTransactionMetadata(req.use_transaction()));
+  const auto table_id = PgObjectId::GetYbTableIdFromPB(req.table_id());
+  const auto alterer = client().NewTableAlterer(table_id);
+  const auto txn = VERIFY_RESULT(GetDdlTransactionMetadata(req.use_transaction()));
   if (txn) {
     alterer->part_of_transaction(txn);
   }
@@ -127,13 +128,13 @@ Status PgClientSession::AlterTable(
 Status PgClientSession::TruncateTable(
     const PgTruncateTableRequestPB& req, PgTruncateTableResponsePB* resp,
     rpc::RpcContext* context) {
-  return client().TruncateTable(PgObjectId::FromPB(req.table_id()).GetYBTableId());
+  return client().TruncateTable(PgObjectId::GetYbTableIdFromPB(req.table_id()));
 }
 
 Status PgClientSession::BackfillIndex(
     const PgBackfillIndexRequestPB& req, PgBackfillIndexResponsePB* resp,
     rpc::RpcContext* context) {
-  return client().BackfillIndex(PgObjectId::FromPB(req.table_id()).GetYBTableId());
+  return client().BackfillIndex(PgObjectId::GetYbTableIdFromPB(req.table_id()));
 }
 
 Status PgClientSession::CreateTablegroup(
@@ -142,7 +143,7 @@ Status PgClientSession::CreateTablegroup(
   auto id = PgObjectId::FromPB(req.tablegroup_id());
   auto s = client().CreateTablegroup(
       req.database_name(), GetPgsqlNamespaceId(id.database_oid),
-      GetPgsqlTablegroupId(id.database_oid, id.object_oid));
+      id.GetYbTablegroupId());
   if (s.ok()) {
     return Status::OK();
   }

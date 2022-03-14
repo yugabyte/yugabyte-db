@@ -130,11 +130,12 @@ bool IsPgsqlId(const string& id) {
   return false;
 }
 
-Result<uint32_t> GetPgsqlDatabaseOid(const NamespaceId& namespace_id) {
-  DCHECK(IsPgsqlId(namespace_id));
+Result<uint32_t> GetPgsqlOid(const std::string& str, size_t offset, const char* name) {
+  SCHECK(IsPgsqlId(str), InvalidArgument, Format("Not a YSQL ID string: $0", str));
   try {
     size_t pos = 0;
-    const uint32_t oid = stoul(namespace_id.substr(0, sizeof(uint32_t) * 2), &pos, 16);
+    const uint32_t oid = static_cast<uint32_t>(
+        stoul(str.substr(offset, sizeof(uint32_t) * 2), &pos, 16));
     if (pos == sizeof(uint32_t) * 2) {
       return oid;
     }
@@ -142,37 +143,19 @@ Result<uint32_t> GetPgsqlDatabaseOid(const NamespaceId& namespace_id) {
   } catch(const std::out_of_range&) {
   }
 
-  return STATUS(InvalidArgument, "Invalid PostgreSQL namespace id", namespace_id);
+  return STATUS_FORMAT(InvalidArgument, "Invalid PostgreSQL $0: $1", name, str);
+}
+
+Result<uint32_t> GetPgsqlDatabaseOid(const NamespaceId& namespace_id) {
+  return GetPgsqlOid(namespace_id, 0, "namespace id");
 }
 
 Result<uint32_t> GetPgsqlTableOid(const TableId& table_id) {
-  DCHECK(IsPgsqlId(table_id));
-  try {
-    size_t pos = 0;
-    const uint32_t oid = stoul(table_id.substr(12 * 2, sizeof(uint32_t) * 2), &pos, 16);
-    if (pos == sizeof(uint32_t) * 2) {
-      return oid;
-    }
-  } catch(const std::invalid_argument&) {
-  } catch(const std::out_of_range&) {
-  }
-
-  return STATUS(InvalidArgument, "Invalid PostgreSQL table id", table_id);
+  return GetPgsqlOid(table_id, 12 * 2, "table id");
 }
 
 Result<uint32_t> GetPgsqlTablegroupOid(const TablegroupId& tablegroup_id) {
-  DCHECK(IsPgsqlId(tablegroup_id));
-  try {
-    size_t pos = 0;
-    const uint32_t oid = stoul(tablegroup_id.substr(12 * 2, sizeof(uint32_t) * 2), &pos, 16);
-    if (pos == sizeof(uint32_t) * 2) {
-      return oid;
-    }
-  } catch(const std::invalid_argument&) {
-  } catch(const std::out_of_range&) {
-  }
-
-  return STATUS(InvalidArgument, "Invalid tablegroup id", tablegroup_id);
+  return GetPgsqlOid(tablegroup_id, 12 * 2, "tablegroup id");
 }
 
 Result<uint32_t> GetPgsqlTablegroupOidByTableId(const TableId& table_id) {
@@ -185,34 +168,11 @@ Result<uint32_t> GetPgsqlTablegroupOidByTableId(const TableId& table_id) {
 }
 
 Result<uint32_t> GetPgsqlDatabaseOidByTableId(const TableId& table_id) {
-  DCHECK(IsPgsqlId(table_id));
-  try {
-    size_t pos = 0;
-    const uint32_t oid = stoul(table_id.substr(0, sizeof(uint32_t) * 2), &pos, 16);
-    if (pos == sizeof(uint32_t) * 2) {
-      return oid;
-    }
-  } catch(const std::invalid_argument&) {
-  } catch(const std::out_of_range&) {
-  }
-
-  return STATUS(InvalidArgument, "Invalid PostgreSQL table id", table_id);
+  return GetPgsqlOid(table_id, 0, "table id");
 }
 
 Result<uint32_t> GetPgsqlTablespaceOid(const TablespaceId& tablespace_id) {
-  DCHECK(IsPgsqlId(tablespace_id));
-  try {
-    size_t pos = 0;
-    const uint32_t oid = stoul(tablespace_id.substr(0, sizeof(uint32_t) * 2), &pos, 16);
-    if (pos == sizeof(uint32_t) * 2) {
-      return oid;
-    }
-  } catch(const std::invalid_argument&) {
-  } catch(const std::out_of_range&) {
-  }
-
-  return STATUS(InvalidArgument, "Invalid PostgreSQL tablespace id", tablespace_id);
+  return GetPgsqlOid(tablespace_id, 0, "tablespace id");
 }
-
 
 }  // namespace yb
