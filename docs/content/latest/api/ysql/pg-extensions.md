@@ -39,7 +39,11 @@ sslinfo| |
 ## Using PostgreSQL extensions
 You can install only the extensions that are supported by YugabyteDB.
 
-Note: You can only install extensions on the primary instance, not the read replica. Once installed, the extension replicates to the read replica.
+{{< note title="Note" >}}
+
+You can only install extensions on the primary instance, not on the read replica. Once installed, the extension replicates to the read replica.
+
+{{< /note >}}
 
 ### Installing an extension
 Before using an extension, install it:
