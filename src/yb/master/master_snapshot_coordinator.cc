@@ -62,9 +62,9 @@ DEFINE_uint64(snapshot_coordinator_poll_interval_ms, 5000,
 DEFINE_test_flag(bool, skip_sending_restore_finished, false,
                  "Whether we should skip sending RESTORE_FINISHED to tablets.");
 
-DEFINE_bool(schedule_snapshot_rpcs_out_of_band, false,
+DEFINE_bool(schedule_snapshot_rpcs_out_of_band, true,
             "Should tablet snapshot RPCs be scheduled out of band from the periodic"
-            " background thread.");
+            " background scheduling.");
 TAG_FLAG(schedule_snapshot_rpcs_out_of_band, runtime);
 
 DEFINE_bool(skip_crash_on_duplicate_snapshot, false,
