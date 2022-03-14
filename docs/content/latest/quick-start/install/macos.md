@@ -177,8 +177,6 @@ lo0: flags=8049<UP,LOOPBACK,RUNNING,MULTICAST> mtu 16384
   nd6 options=201<PERFORMNUD,DAD>
 ```
 
-{{<tip title="Next step" >}}
+## Next step
 
 [Create a local cluster](../../create-local-cluster/macos/)
-
-{{< /tip >}}

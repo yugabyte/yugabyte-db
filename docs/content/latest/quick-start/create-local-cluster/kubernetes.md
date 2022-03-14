@@ -124,12 +124,10 @@ The **Masters** section highlights the YB-Master service along its corresponding
 
 ### YB-TServer status
 
-Click **See all nodes** to go to the **Tablet Servers** page where you can observe the one YB-TServer along with the time since it last connected to the YB-Master using regular heartbeats. As new tables get added, new tablets will get automatically created and distributed evenly across all the available YB-TServers.
+Click **See all nodes** to go to the **Tablet Servers** page, where you can observe the one YB-TServer along with the time since it last connected to the YB-Master using regular heartbeats. As new tables get added, new tablets will get automatically created and distributed evenly across all the available YB-TServers.
 
 ![tserver-list](/images/admin/master-tservers-list-kubernetes-rf1.png)
 
-{{<tip title="Next step" >}}
+## Next step
 
 [Explore YSQL](../../explore/ysql/)
-
-{{< /tip >}}

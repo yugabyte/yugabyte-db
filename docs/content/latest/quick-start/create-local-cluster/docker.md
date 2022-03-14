@@ -93,7 +93,7 @@ The [yb-master Admin UI](../../../reference/configuration/yb-master/#admin-ui) i
 
 ### Overview and YB-Master status
 
-The yb-master home page shows that you have a cluster (or universe) with `Replication Factor` of 1 and `Num Nodes (TServers)` as 1. The `Num User Tables` is `0` since there are no user tables created yet. YugabyteDB version number is also shown for your reference.
+The yb-master home page shows that you have a cluster (or universe) with `Replication Factor` of 1 and `Num Nodes (TServers)` as 1. The `Num User Tables` is `0`, as there are no user tables created yet. YugabyteDB version number is also shown for your reference.
 
 ![master-home](/images/admin/master-home-docker-rf1.png)
 
@@ -101,12 +101,10 @@ The Masters section highlights the cloud, region and zone placement for the yb-m
 
 ### YB-TServer status
 
-Clicking on the `See all nodes` takes us to the Tablet Servers page where you can observe the 1 tserver along with the time since it last connected to this master via regular heartbeats. 
+Click **See all nodes** to go to the **Tablet Servers** page, where you can observe the one YB-TServer along with the time since it last connected to the YB-Master using regular heartbeats.
 
 ![master-home](/images/admin/master-tservers-list-docker-rf1.png)
 
-{{<tip title="Next step" >}}
+## Next step
 
 [Explore YSQL](../../explore/ysql/)
-
-{{< /tip >}}

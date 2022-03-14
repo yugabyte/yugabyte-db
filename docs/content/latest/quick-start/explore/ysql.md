@@ -754,8 +754,6 @@ Use indexes to query table values more efficiently.
     DROP TABLE
     ```
 
-{{<tip title="Next step" >}}
+## Next step
 
 [Build an application](../../build-apps/)
-
-{{< /tip >}}

@@ -158,8 +158,6 @@ ycqlsh> SELECT * FROM myapp.stock_market WHERE stock_symbol in ('FB', 'GOOG');
 (4 rows)
 ```
 
-{{<tip title="Next step" >}}
+## Next step
 
 [Build an application](../../build-apps/)
-
-{{< /tip >}}
