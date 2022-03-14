@@ -13,8 +13,9 @@
 
 #include "yb/tserver/pg_client_service.h"
 
-#include <queue>
 #include <shared_mutex>
+
+#include <queue>
 
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/mem_fun.hpp>

@@ -74,6 +74,10 @@ bool PgTableDesc::IsColocated() const {
   return table_->colocated();
 }
 
+YBCPgOid PgTableDesc::GetColocationId() const {
+  return schema().has_colocation_id() ? schema().colocation_id() : kColocationIdNotSet;
+}
+
 bool PgTableDesc::IsHashPartitioned() const {
   return schema().num_hash_key_columns() > 0;
 }

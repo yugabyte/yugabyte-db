@@ -1308,7 +1308,7 @@ doDeletion(const ObjectAddress *object, int flags)
 			break;
 
 		case OCLASS_TBLGROUP:
-			RemoveTableGroupById(object->objectId);
+			RemoveTablegroupById(object->objectId);
 			break;
 
 			/*

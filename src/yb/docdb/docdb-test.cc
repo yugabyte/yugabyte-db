@@ -662,25 +662,25 @@ TEST_F(DocDBTestQl, LastProjectionIsNull) {
 }
 
 TEST_F(DocDBTestQl, ColocatedTableTombstoneTest) {
-  constexpr PgTableOid pgtable_id(0x4001);
+  constexpr ColocationId colocation_id(0x4001);
   DocKey doc_key_1(PrimitiveValues("mydockey", 123456));
-  doc_key_1.set_pgtable_id(pgtable_id);
+  doc_key_1.set_colocation_id(colocation_id);
   DocKey doc_key_2(PrimitiveValues("mydockey", 789123));
-  doc_key_2.set_pgtable_id(pgtable_id);
+  doc_key_2.set_colocation_id(colocation_id);
   ASSERT_OK(SetPrimitive(
       doc_key_1.Encode(), PrimitiveValue(1), 1000_usec_ht));
   ASSERT_OK(SetPrimitive(
       doc_key_2.Encode(), PrimitiveValue(2), 1000_usec_ht));
 
   DocKey doc_key_table;
-  doc_key_table.set_pgtable_id(pgtable_id);
+  doc_key_table.set_colocation_id(colocation_id);
   ASSERT_OK(DeleteSubDoc(
       doc_key_table.Encode(), 2000_usec_ht));
 
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
-      SubDocKey(DocKey(PgTableId=16385, [], []), [HT{ physical: 2000 }]) -> DEL
-      SubDocKey(DocKey(PgTableId=16385, [], ["mydockey", 123456]), [HT{ physical: 1000 }]) -> 1
-      SubDocKey(DocKey(PgTableId=16385, [], ["mydockey", 789123]), [HT{ physical: 1000 }]) -> 2
+      SubDocKey(DocKey(ColocationId=16385, [], []), [HT{ physical: 2000 }]) -> DEL
+      SubDocKey(DocKey(ColocationId=16385, [], ["mydockey", 123456]), [HT{ physical: 1000 }]) -> 1
+      SubDocKey(DocKey(ColocationId=16385, [], ["mydockey", 789123]), [HT{ physical: 1000 }]) -> 2
       )#");
   VerifySubDocument(SubDocKey(doc_key_1), 4000_usec_ht, "");
   VerifySubDocument(SubDocKey(doc_key_1), 1500_usec_ht, "1");
@@ -2256,7 +2256,7 @@ SubDocKey(DocKey([], ["k1"]), ["s3"; HT{ physical: 2000 }]) -> "v3"; ttl: 0.000s
 
 // Test table tombstones for colocated tables.
 TEST_P(DocDBTestWrapper, TableTombstoneCompaction) {
-  constexpr PgTableOid pgtable_id(0x4001);
+  constexpr ColocationId colocation_id(0x4001);
   HybridTime t = 1000_usec_ht;
 
   // Simulate SQL:
@@ -2265,7 +2265,7 @@ TEST_P(DocDBTestWrapper, TableTombstoneCompaction) {
     DocKey doc_key;
     std::string range_key_str = Format("r$0", i);
 
-    doc_key.set_pgtable_id(pgtable_id);
+    doc_key.set_colocation_id(colocation_id);
     doc_key.ResizeRangeComponents(1);
     doc_key.SetRangeComponent(PrimitiveValue(range_key_str), 0 /* idx */);
     ASSERT_OK(SetPrimitive(
@@ -2276,15 +2276,15 @@ TEST_P(DocDBTestWrapper, TableTombstoneCompaction) {
   }
   ASSERT_OK(FlushRocksDbAndWait());
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
-SubDocKey(DocKey(PgTableId=16385, [], ["r1"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
-SubDocKey(DocKey(PgTableId=16385, [], ["r2"]), [SystemColumnId(0); HT{ physical: 2000 }]) -> null
-SubDocKey(DocKey(PgTableId=16385, [], ["r3"]), [SystemColumnId(0); HT{ physical: 3000 }]) -> null
+SubDocKey(DocKey(ColocationId=16385, [], ["r1"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+SubDocKey(DocKey(ColocationId=16385, [], ["r2"]), [SystemColumnId(0); HT{ physical: 2000 }]) -> null
+SubDocKey(DocKey(ColocationId=16385, [], ["r3"]), [SystemColumnId(0); HT{ physical: 3000 }]) -> null
       )#");
 
   // Simulate SQL (set table tombstone):
   //   TRUNCATE TABLE t;
   {
-    DocKey doc_key(pgtable_id);
+    DocKey doc_key(colocation_id);
     ASSERT_OK(SetPrimitive(
         DocPath(doc_key.Encode()),
         Value(PrimitiveValue::kTombstone),
@@ -2293,10 +2293,10 @@ SubDocKey(DocKey(PgTableId=16385, [], ["r3"]), [SystemColumnId(0); HT{ physical:
   }
   ASSERT_OK(FlushRocksDbAndWait());
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
-SubDocKey(DocKey(PgTableId=16385, [], []), [HT{ physical: 4000 }]) -> DEL
-SubDocKey(DocKey(PgTableId=16385, [], ["r1"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
-SubDocKey(DocKey(PgTableId=16385, [], ["r2"]), [SystemColumnId(0); HT{ physical: 2000 }]) -> null
-SubDocKey(DocKey(PgTableId=16385, [], ["r3"]), [SystemColumnId(0); HT{ physical: 3000 }]) -> null
+SubDocKey(DocKey(ColocationId=16385, [], []), [HT{ physical: 4000 }]) -> DEL
+SubDocKey(DocKey(ColocationId=16385, [], ["r1"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+SubDocKey(DocKey(ColocationId=16385, [], ["r2"]), [SystemColumnId(0); HT{ physical: 2000 }]) -> null
+SubDocKey(DocKey(ColocationId=16385, [], ["r3"]), [SystemColumnId(0); HT{ physical: 3000 }]) -> null
       )#");
 
   // Simulate SQL:
@@ -2305,7 +2305,7 @@ SubDocKey(DocKey(PgTableId=16385, [], ["r3"]), [SystemColumnId(0); HT{ physical:
     DocKey doc_key;
     std::string range_key_str = Format("r$0", i);
 
-    doc_key.set_pgtable_id(pgtable_id);
+    doc_key.set_colocation_id(colocation_id);
     doc_key.ResizeRangeComponents(1);
     doc_key.SetRangeComponent(PrimitiveValue(range_key_str), 0 /* idx */);
     ASSERT_OK(SetPrimitive(
@@ -2316,12 +2316,12 @@ SubDocKey(DocKey(PgTableId=16385, [], ["r3"]), [SystemColumnId(0); HT{ physical:
   }
   ASSERT_OK(FlushRocksDbAndWait());
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
-SubDocKey(DocKey(PgTableId=16385, [], []), [HT{ physical: 4000 }]) -> DEL
-SubDocKey(DocKey(PgTableId=16385, [], ["r1"]), [SystemColumnId(0); HT{ physical: 5000 }]) -> null
-SubDocKey(DocKey(PgTableId=16385, [], ["r1"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
-SubDocKey(DocKey(PgTableId=16385, [], ["r2"]), [SystemColumnId(0); HT{ physical: 6000 }]) -> null
-SubDocKey(DocKey(PgTableId=16385, [], ["r2"]), [SystemColumnId(0); HT{ physical: 2000 }]) -> null
-SubDocKey(DocKey(PgTableId=16385, [], ["r3"]), [SystemColumnId(0); HT{ physical: 3000 }]) -> null
+SubDocKey(DocKey(ColocationId=16385, [], []), [HT{ physical: 4000 }]) -> DEL
+SubDocKey(DocKey(ColocationId=16385, [], ["r1"]), [SystemColumnId(0); HT{ physical: 5000 }]) -> null
+SubDocKey(DocKey(ColocationId=16385, [], ["r1"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+SubDocKey(DocKey(ColocationId=16385, [], ["r2"]), [SystemColumnId(0); HT{ physical: 6000 }]) -> null
+SubDocKey(DocKey(ColocationId=16385, [], ["r2"]), [SystemColumnId(0); HT{ physical: 2000 }]) -> null
+SubDocKey(DocKey(ColocationId=16385, [], ["r3"]), [SystemColumnId(0); HT{ physical: 3000 }]) -> null
       )#");
 
   // Simulate SQL:
@@ -2330,7 +2330,7 @@ SubDocKey(DocKey(PgTableId=16385, [], ["r3"]), [SystemColumnId(0); HT{ physical:
     DocKey doc_key;
     std::string range_key_str = Format("r$0", 2);
 
-    doc_key.set_pgtable_id(pgtable_id);
+    doc_key.set_colocation_id(colocation_id);
     doc_key.ResizeRangeComponents(1);
     doc_key.SetRangeComponent(PrimitiveValue(range_key_str), 0 /* idx */);
     ASSERT_OK(SetPrimitive(
@@ -2341,19 +2341,19 @@ SubDocKey(DocKey(PgTableId=16385, [], ["r3"]), [SystemColumnId(0); HT{ physical:
   }
   ASSERT_OK(FlushRocksDbAndWait());
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
-SubDocKey(DocKey(PgTableId=16385, [], []), [HT{ physical: 4000 }]) -> DEL
-SubDocKey(DocKey(PgTableId=16385, [], ["r1"]), [SystemColumnId(0); HT{ physical: 5000 }]) -> null
-SubDocKey(DocKey(PgTableId=16385, [], ["r1"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
-SubDocKey(DocKey(PgTableId=16385, [], ["r2"]), [HT{ physical: 7000 }]) -> DEL
-SubDocKey(DocKey(PgTableId=16385, [], ["r2"]), [SystemColumnId(0); HT{ physical: 6000 }]) -> null
-SubDocKey(DocKey(PgTableId=16385, [], ["r2"]), [SystemColumnId(0); HT{ physical: 2000 }]) -> null
-SubDocKey(DocKey(PgTableId=16385, [], ["r3"]), [SystemColumnId(0); HT{ physical: 3000 }]) -> null
+SubDocKey(DocKey(ColocationId=16385, [], []), [HT{ physical: 4000 }]) -> DEL
+SubDocKey(DocKey(ColocationId=16385, [], ["r1"]), [SystemColumnId(0); HT{ physical: 5000 }]) -> null
+SubDocKey(DocKey(ColocationId=16385, [], ["r1"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+SubDocKey(DocKey(ColocationId=16385, [], ["r2"]), [HT{ physical: 7000 }]) -> DEL
+SubDocKey(DocKey(ColocationId=16385, [], ["r2"]), [SystemColumnId(0); HT{ physical: 6000 }]) -> null
+SubDocKey(DocKey(ColocationId=16385, [], ["r2"]), [SystemColumnId(0); HT{ physical: 2000 }]) -> null
+SubDocKey(DocKey(ColocationId=16385, [], ["r3"]), [SystemColumnId(0); HT{ physical: 3000 }]) -> null
       )#");
 
   // Major compact.
   FullyCompactHistoryBefore(10000_usec_ht);
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
-SubDocKey(DocKey(PgTableId=16385, [], ["r1"]), [SystemColumnId(0); HT{ physical: 5000 }]) -> null
+SubDocKey(DocKey(ColocationId=16385, [], ["r1"]), [SystemColumnId(0); HT{ physical: 5000 }]) -> null
       )#");
 }
 
