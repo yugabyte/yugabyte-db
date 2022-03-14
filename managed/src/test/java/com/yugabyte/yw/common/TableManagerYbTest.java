@@ -251,6 +251,8 @@ public class TableManagerYbTest extends FakeDBApplication {
     testUniverse = createUniverse("Universe-1", testCustomer.getCustomerId());
     testCustomer.addUniverseUUID(testUniverse.universeUUID);
     testCustomer.save();
+    when(mockruntimeConfigFactory.forUniverse(any())).thenReturn(mockConfigUniverseScope);
+    when(mockConfigUniverseScope.getBoolean("yb.backup.pg_based")).thenReturn(false);
   }
 
   private void testCreateS3BackupHelper(boolean enableVerbose, boolean sse) {

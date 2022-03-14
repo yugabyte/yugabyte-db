@@ -46,8 +46,8 @@ class AbstractCloud(AbstractCommandParser):
     CLIENT_KEY_NAME = "yugabytedb.key"
     CERT_LOCATION_NODE = "node"
     CERT_LOCATION_PLATFORM = "platform"
-    SSH_RETRY_COUNT = 30
-    SSH_WAIT_SECONDS = 30
+    SSH_RETRY_COUNT = 180
+    SSH_WAIT_SECONDS = 5
     SSH_TIMEOUT_SECONDS = 10
 
     def __init__(self, name):

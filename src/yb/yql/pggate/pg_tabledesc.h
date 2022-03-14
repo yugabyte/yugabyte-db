@@ -81,15 +81,6 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
 
   uint32_t schema_version() const;
 
-  // TODO(PgClient) Remove those operations.
-  std::unique_ptr<client::YBPgsqlWriteOp> NewPgsqlInsert();
-  std::unique_ptr<client::YBPgsqlWriteOp> NewPgsqlUpdate();
-  std::unique_ptr<client::YBPgsqlWriteOp> NewPgsqlDelete();
-  std::unique_ptr<client::YBPgsqlWriteOp> NewPgsqlTruncateColocated();
-
-  std::unique_ptr<client::YBPgsqlReadOp> NewPgsqlSelect();
-  std::unique_ptr<client::YBPgsqlReadOp> NewPgsqlSample();
-
  private:
   PgObjectId id_;
   // TODO(PgClient) While we have YbOps on postgres side, we have to keep YBTable.

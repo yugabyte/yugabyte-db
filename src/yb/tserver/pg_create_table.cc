@@ -34,6 +34,25 @@
 namespace yb {
 namespace tserver {
 
+namespace {
+
+//--------------------------------------------------------------------------------------------------
+// Constants used for the sequences data table.
+//--------------------------------------------------------------------------------------------------
+static constexpr const char* const kPgSequencesNamespaceName = "system_postgres";
+static constexpr const char* const kPgSequencesDataTableName = "sequences_data";
+
+// Columns names and ids.
+static constexpr const char* const kPgSequenceDbOidColName = "db_oid";
+
+static constexpr const char* const kPgSequenceSeqOidColName = "seq_oid";
+
+static constexpr const char* const kPgSequenceLastValueColName = "last_value";
+
+static constexpr const char* const kPgSequenceIsCalledColName = "is_called";
+
+} // namespace
+
 PgCreateTable::PgCreateTable(const PgCreateTableRequestPB& req) : req_(req) {
 }
 
@@ -270,6 +289,52 @@ Result<std::vector<std::string>> PgCreateTable::BuildSplitRows(const client::YBS
 
 size_t PgCreateTable::PrimaryKeyRangeColumnCount() const {
   return range_columns_.size();
+}
+
+Status CreateSequencesDataTable(client::YBClient* client, CoarseTimePoint deadline) {
+  const client::YBTableName table_name(YQL_DATABASE_PGSQL,
+                                       kPgSequencesDataNamespaceId,
+                                       kPgSequencesNamespaceName,
+                                       kPgSequencesDataTableName);
+  RETURN_NOT_OK(client->CreateNamespaceIfNotExists(kPgSequencesNamespaceName,
+                                                   YQLDatabase::YQL_DATABASE_PGSQL,
+                                                   "" /* creator_role_name */,
+                                                   kPgSequencesDataNamespaceId));
+
+  // Set up the schema.
+  client::YBSchemaBuilder schemaBuilder;
+  schemaBuilder.AddColumn(kPgSequenceDbOidColName)->HashPrimaryKey()->Type(yb::INT64)->NotNull();
+  schemaBuilder.AddColumn(kPgSequenceSeqOidColName)->HashPrimaryKey()->Type(yb::INT64)->NotNull();
+  schemaBuilder.AddColumn(kPgSequenceLastValueColName)->Type(yb::INT64)->NotNull();
+  schemaBuilder.AddColumn(kPgSequenceIsCalledColName)->Type(yb::BOOL)->NotNull();
+  client::YBSchema schema;
+  CHECK_OK(schemaBuilder.Build(&schema));
+
+  // Generate the table id.
+  PgObjectId oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
+
+  // Try to create the table.
+  auto table_creator(client->NewTableCreator());
+
+  auto status = table_creator->table_name(table_name)
+      .schema(&schema)
+      .table_type(client::YBTableType::PGSQL_TABLE_TYPE)
+      .table_id(oid.GetYBTableId())
+      .hash_schema(YBHashSchema::kPgsqlHash)
+      .timeout(deadline - CoarseMonoClock::now())
+      .Create();
+  // If we could create it, then all good!
+  if (status.ok()) {
+    LOG(INFO) << "Table '" << table_name.ToString() << "' created.";
+    // If the table was already there, also not an error...
+  } else if (status.IsAlreadyPresent()) {
+    LOG(INFO) << "Table '" << table_name.ToString() << "' already exists";
+  } else {
+    // If any other error, report that!
+    LOG(ERROR) << "Error creating table '" << table_name.ToString() << "': " << status;
+    return status;
+  }
+  return Status::OK();
 }
 
 }  // namespace tserver

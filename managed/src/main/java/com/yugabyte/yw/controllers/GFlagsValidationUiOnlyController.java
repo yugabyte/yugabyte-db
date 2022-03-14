@@ -6,6 +6,8 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.controllers.handlers.GFlagsValidationHandler;
 import com.yugabyte.yw.forms.GFlagsValidationFormData;
 import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.models.Audit;
+
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
@@ -44,6 +46,9 @@ public class GFlagsValidationUiOnlyController extends AuthenticatedController {
   @ApiOperation(value = "UI_ONLY", hidden = true)
   public Result validateGFlags(String version) throws IOException {
     GFlagsValidationFormData gflags = parseJsonAndValidate(GFlagsValidationFormData.class);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(), Audit.TargetType.GFlags, version, Audit.ActionType.Validate);
     return PlatformResults.withData(gflagsValidationHandler.validateGFlags(version, gflags));
   }
 

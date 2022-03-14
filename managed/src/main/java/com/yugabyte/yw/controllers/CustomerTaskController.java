@@ -16,6 +16,7 @@ import com.yugabyte.yw.forms.SubTaskFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
@@ -296,7 +297,14 @@ public class CustomerTaskController extends AuthenticatedController {
         newTaskUUID,
         universe.universeUUID,
         universe.name);
-    auditService().createAuditEntry(ctx(), request(), Json.toJson(taskParams), newTaskUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.CustomerTask,
+            taskUUID.toString(),
+            Audit.ActionType.Retry,
+            Json.toJson(taskParams),
+            newTaskUUID);
     return PlatformResults.withData(new UniverseResp(universe, newTaskUUID));
   }
 
@@ -310,6 +318,9 @@ public class CustomerTaskController extends AuthenticatedController {
     if (!isSuccess) {
       return YBPSuccess.withMessage("Task is not running.");
     }
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(), Audit.TargetType.CustomerTask, taskUUID.toString(), Audit.ActionType.Abort);
     return YBPSuccess.withMessage("Task is being aborted.");
   }
 }
