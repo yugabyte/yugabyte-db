@@ -36,7 +36,7 @@ class PgDmlWrite : public PgDml {
   void PrepareColumns();
 
   // force_non_bufferable flag indicates this operation should not be buffered.
-  CHECKED_STATUS Exec(bool force_non_bufferable = false, bool use_async_flush = false);
+  CHECKED_STATUS Exec(bool force_non_bufferable = false);
 
   void SetIsSystemCatalogChange() {
     write_req_->set_is_ysql_catalog_change(true);

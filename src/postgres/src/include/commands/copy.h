@@ -21,8 +21,6 @@
 
 #define DEFAULT_BATCH_ROWS_PER_TRANSACTION  1000
 
-extern bool yb_use_async_flush;
-
 /* CopyStateData is private in commands/copy.c */
 typedef struct CopyStateData *CopyState;
 typedef int (*copy_data_source_cb) (void *outbuf, int minread, int maxread);
