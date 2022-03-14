@@ -72,7 +72,7 @@ Yugabyte Platform requires a service account with the appropriate permissions to
 
 To create a service account, perform the following:
 
-- Open your project and use the left-side menu to navigate to **IAM & Admin > Service Accounts**.
+- Open your project in GCP and use the left-side menu to navigate to **IAM & Admin > Service Accounts**.
 
 - Click **Create Service Account**.
 
@@ -96,13 +96,13 @@ For more information, see [Creating and managing service accounts](https://cloud
 
 ## Create a firewall rule
 
-In order to access Yugabyte Platform from outside the GCP environment, you have to enable firewall rules. At a minimum, you need the following:
+In order to access Yugabyte Platform from outside the GCP environment, you have to enable firewall rules. At a minimum, you need to be able to do the following:
 
-- Access the Yugabyte Platform instance over SSH (port `tcp:22`)
-- Check, manage, and upgrade Yugabyte Platform (port `tcp:8800`)
-- View the Yugabyte Platform UI (port `tcp:80`)
+- Access the Yugabyte Platform instance over SSH (port `tcp:22`).
+- Check, manage, and upgrade Yugabyte Platform (port `tcp:8800`).
+- View the Yugabyte Platform UI (port `tcp:80`).
 
-If you are using your own Virtual Private Cloud (VPC) as a self-managed configuration, the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 11000, 12000, 9300, 9042, 5433, 6379. For more information, see [Default ports](../../../../reference/configuration/default-ports).
+If you are using your own Virtual Private Cloud (VPC) as a self-managed configuration, the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 11000, 12000, 13000, 9300, 9042, 5433, 6379. For more information, see [Default ports](../../../../reference/configuration/default-ports).
 
 Next, you need to create a firewall entry, as follows: 
 

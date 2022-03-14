@@ -60,28 +60,33 @@ showAsideToc: true
 
 ## Create a new security group (optional)
 
-In order to access Yugabyte Platform from outside the AWS environment, you would need to enable access by assigning an appropriate security group to the Yugabyte Platform machine. You will at minimum need to:
+In order to access Yugabyte Platform from outside the AWS environment, you would need to enable access by assigning an appropriate security group to the server hosting Yugabyte Platform. At a minimum, you need to be able to do the following:
 
 - Access the Yugabyte Platform instance over SSH (port `tcp:22`)
 - Check, manage, and upgrade Yugabyte Platform (port `tcp:8800`)
-- View the Yugabyte Platform console (port `tcp:80`)
+- View the Yugabyte Platform UI (port `tcp:80`)
 
-If you are using your own custom VPCs (self-managed configuration), the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 11000, 12000, 9300, 9042, 5433, and 6379. For more information on ports used by YugabyteDB, refer to [Default ports](../../../../reference/configuration/default-ports).
+If you are using your own Virtual Private Cloud (VPC) as a self-managed configuration, the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 11000, 12000, 13000, 9300, 9042, 5433, 6379. For more information on ports used by YugabyteDB, refer to [Default ports](../../../../reference/configuration/default-ports).
 
-To create a security group that enables these, go to **EC2 > Security Groups**, click **Create Security Group** and then add the following values:
+To create a security group that enables these, use the Amazon console to navigate to **EC2 > Security Groups**, click **Create Security Group**, and then add the following values:
 
-- For the name, enter `yugaware-sg` (you can change the name if you want).
+- Enter a meaningful name, such as, for example, `yugaware-sg`.
+
 - Add a description (for example, `Security group for Yugabyte Platform access`).
-- Add the appropriate IP addresses to the **Source IP ranges** field. To allow access from any machine, add `0.0.0.0/0` but note that this is not very secure.
-- Add the ports `22`, `8800`, and `80` to the **Port Range** field. The **Protocol** selected must be `TCP`. For a self-managed configuration, also add the 7000, 7100, 9000, 9100, 11000, 12000, 9300, 9042, 5433, and 6379 TCP ports.
 
-You should see something like the screenshot below. Click **Create** next.
+- Add the appropriate IP addresses to the **Source IP ranges** field. To allow access from any computer, add `0.0.0.0/0` but note that this is not very secure.
+
+- Add the ports `22`, `8800`, and `80` to the **Port Range** field. The **Protocol** selected must be `TCP`.
+
+  For a self-managed configuration, also add the 7000, 7100, 9000, 9100, 11000, 12000, 13000, 9300, 9042, 5433, and 6379 TCP ports.
+
+You should see a configuration similar to the one shown in the following illustration:
 
 ![Create security group](/images/ee/aws-setup/yugaware-aws-create-sg.png)
 
 ## Create an IAM role (optional)
 
-In order for Yugabyte Platform to manage YugabyteDB nodes, limited access to your AWS infrastructure is required. To grant the required access, you can provide a set of credentials when configuring the AWS provider, as described in [Configure the AWS cloud provider](../../../configure-yugabyte-platform/set-up-cloud-provider/aws/). Alternatively, the EC2 instance where the Yugabyte Platform will be running can be brought up with an IAM role with enough permissions to take all the actions required by Yugabyte Platform. Here is a sample of such a role:
+In order for Yugabyte Platform to manage YugabyteDB nodes, limited access to your AWS infrastructure is required. To grant the required access, you can provide a set of credentials when configuring the AWS provider, as described in [Configure the AWS cloud provider](../../../configure-yugabyte-platform/set-up-cloud-provider/aws/). Alternatively, the EC2 instance where the Yugabyte Platform will be running can be brought up with an IAM role with enough permissions to take all the actions required by Yugabyte Platform. The following is a sample of such a role:
 
 ```sh
 {
@@ -140,7 +145,7 @@ In order for Yugabyte Platform to manage YugabyteDB nodes, limited access to you
 
 ## Provision an instance for Yugabyte Platform
 
-Create an instance to run the Yugabyte Platform server. To do this, navigate to **EC2 > Instances**, click **Launch Instance**, and enter the following values:
+You need to create an instance to run the Yugabyte Platform server. To do this, navigate to **EC2 > Instances**, click **Launch Instance**, and enter the following values:
 
 - Change the boot disk image to Ubuntu Server 16.04, as shown in the following illustration: <br><br>
 ![Image](/images/ee/aws-setup/yugaware-create-instance-os.png)
@@ -189,7 +194,7 @@ If you are configuring an existing instance of Yugabyte Platform, start by attac
 4. Add the IAM role.
 5. Click **Save**.
 
-Then execute the following command to change metadata options (replace `NNNNNNN` with the instance ID and `us-west-2` with the region in which this EC2 VM is deployed):
+Finally, execute the following command to change metadata options (replace `NNNNNNN` with the instance ID and `us-west-2` with the region in which this EC2 VM is deployed):
 
 ```shell
 aws ec2 modify-instance-metadata-options --instance-id i-NNNNNNN --http-put-response-hop-limit 3 --http-endpoint enabled --region us-west-2
@@ -197,7 +202,7 @@ aws ec2 modify-instance-metadata-options --instance-id i-NNNNNNN --http-put-resp
 
 For more information, see [Configure the instance metadata service](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-service.html).
 
-When you create an AWS cloud provider, as described in [Configure the AWS cloud provider](../../../configure-yugabyte-platform/set-up-cloud-provider/aws/), you need to  complete the following fields in the **Cloud Provider Configuration > AWS** screen:
+When you create an AWS cloud provider, as described in [Configure the AWS cloud provider](../../../configure-yugabyte-platform/set-up-cloud-provider/aws/), you need to  complete the following fields in the **Configs > Cloud Provider Configuration > AWS** page of of Yugabyte Platfrom UI :
 
 - Set the **Credential Type** field to Use IAM Role on instance.
 - Set the **VPC Setup** field to Create a new VPC.
