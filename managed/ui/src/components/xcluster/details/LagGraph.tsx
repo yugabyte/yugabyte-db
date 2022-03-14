@@ -26,8 +26,8 @@ export const LagGraph: FC<LagGraphProps> = ({ replicationUUID, sourceUniverseUUI
   const nodePrefix = universeInfo?.data?.universeDetails.nodePrefix;
 
   const { data: metrics } = useQuery(
-    [replicationUUID, nodePrefix, 'metric'],
-    () => queryLagMetricsForUniverse(nodePrefix),
+    [replicationUUID, nodePrefix, 'metric', 'lagGraph'],
+    () => queryLagMetricsForUniverse(nodePrefix, replicationUUID),
     {
       enabled: !currentUniverseLoading,
       refetchInterval: 10 * 1000

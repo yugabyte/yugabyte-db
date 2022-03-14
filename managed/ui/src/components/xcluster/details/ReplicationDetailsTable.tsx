@@ -8,6 +8,7 @@ import { closeDialog, openDialog } from '../../../actions/modal';
 import {
   editXClusterTables,
   fetchTablesInUniverse,
+  fetchTaskUntilItCompletes,
   getUniverseInfo
 } from '../../../actions/xClusterReplication';
 import { YBButton } from '../../common/forms/fields';
@@ -45,10 +46,24 @@ export function ReplicationDetailsTable({ replication }: props) {
       return editXClusterTables(replication);
     },
     {
-      onSuccess: () => {
-        queryClient.invalidateQueries(['Xcluster', replication.uuid]);
-        dispatch(closeDialog());
-        toast.success(`${deleteTableDetails?.tableName} table removed successfully`);
+      onSuccess: (resp, replication) => {
+        fetchTaskUntilItCompletes(resp.data.taskUUID, (err: boolean) => {
+          if (!err) {
+            queryClient.invalidateQueries(['Xcluster', replication.uuid]);
+            dispatch(closeDialog());
+            toast.success(`"${deleteTableDetails?.tableName}" table removed successfully`);
+          } else {
+            toast.error(
+              <span className="alertMsg">
+                <i className="fa fa-exclamation-circle" />
+                <span>Task Failed.</span>
+                <a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
+                  View Details
+                </a>
+              </span>
+            );
+          }
+        });
       },
       onError: (err: any) => {
         toast.error(err.response.data.error);
@@ -133,6 +148,7 @@ export function ReplicationDetailsTable({ replication }: props) {
                       tableName={row.tableName}
                       nodePrefix={universeInfo?.data.universeDetails.nodePrefix}
                       enabled={isActiveTab}
+                      sourceUniverseUUID={replication.sourceUniverseUUID}
                     />
                   </span>
                 )}
