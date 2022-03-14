@@ -1487,6 +1487,10 @@
           "enum" : [ "InProgress", "Completed", "Failed", "Deleted", "Skipped", "FailedToDelete", "Stopped", "DeleteInProgress", "QueuedForDeletion" ],
           "type" : "string"
         },
+        "storageConfigType" : {
+          "enum" : [ "S3", "NFS", "AZ", "GCS", "FILE" ],
+          "type" : "string"
+        },
         "storageConfigUUID" : {
           "format" : "uuid",
           "type" : "string"
@@ -1511,7 +1515,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "backupType", "backupUUID", "completionTime", "createTime", "customerUUID", "expiryTime", "isStorageConfigPresent", "isUniversePresent", "onDemand", "responseList", "scheduleUUID", "sse", "state", "storageConfigUUID", "taskUUID", "totalBackupSizeInBytes", "universeName", "universeUUID", "updateTime" ],
+      "required" : [ "backupType", "backupUUID", "completionTime", "createTime", "customerUUID", "expiryTime", "isStorageConfigPresent", "isUniversePresent", "onDemand", "responseList", "scheduleUUID", "sse", "state", "storageConfigType", "storageConfigUUID", "taskUUID", "totalBackupSizeInBytes", "universeName", "universeUUID", "updateTime" ],
       "type" : "object"
     },
     "BackupStorageInfo" : {
@@ -1698,6 +1702,11 @@
         "sse" : {
           "description" : "Is SSE",
           "type" : "boolean"
+        },
+        "storageConfigType" : {
+          "description" : "Type of backup storage config",
+          "enum" : [ "S3", "NFS", "AZ", "GCS", "FILE" ],
+          "type" : "string"
         },
         "storageConfigUUID" : {
           "description" : "Storage configuration UUID",
@@ -2871,13 +2880,17 @@
     "EditBackupParams" : {
       "description" : "Edit backup parameters",
       "properties" : {
+        "storageConfigUUID" : {
+          "description" : "New backup Storage config",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "timeBeforeDeleteFromPresentInMillis" : {
           "description" : "Time before deleting the backup from storage, in milliseconds",
           "format" : "int64",
           "type" : "integer"
         }
       },
-      "required" : [ "timeBeforeDeleteFromPresentInMillis" ],
       "type" : "object"
     },
     "EditBackupScheduleParams" : {
@@ -3776,6 +3789,11 @@
         "sse" : {
           "description" : "Is SSE",
           "type" : "boolean"
+        },
+        "storageConfigType" : {
+          "description" : "Type of backup storage config",
+          "enum" : [ "S3", "NFS", "AZ", "GCS", "FILE" ],
+          "type" : "string"
         },
         "storageConfigUUID" : {
           "description" : "Storage configuration UUID",

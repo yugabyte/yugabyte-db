@@ -305,7 +305,6 @@ PUT     /customers/:cUUID/schedules/:sUUID                                     c
 POST    /customers/:cUUID/schedules/page                                       com.yugabyte.yw.controllers.ScheduleController.pageScheduleList(cUUID: java.util.UUID)
 DELETE  /customers/:cUUID/schedules/:sUUID/delete                              com.yugabyte.yw.controllers.ScheduleController.deleteYb(cUUID: java.util.UUID, sUUID: java.util.UUID)
 
-
 # Task History API
 GET    /customers/:cUUID/tasks                                                 com.yugabyte.yw.controllers.CustomerTaskController.list(cUUID: java.util.UUID)
 GET    /customers/:cUUID/tasks_list                                            com.yugabyte.yw.controllers.CustomerTaskController.tasksList(cUUID: java.util.UUID, uUUID: java.util.UUID ?= null)

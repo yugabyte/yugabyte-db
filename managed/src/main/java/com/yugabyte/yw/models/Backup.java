@@ -109,6 +109,23 @@ public class Backup extends Model {
     V2
   }
 
+  public enum StorageConfigType {
+    @EnumValue("S3")
+    S3,
+
+    @EnumValue("NFS")
+    NFS,
+
+    @EnumValue("AZ")
+    AZ,
+
+    @EnumValue("GCS")
+    GCS,
+
+    @EnumValue("FILE")
+    FILE;
+  }
+
   public static final Set<BackupState> IN_PROGRESS_STATES =
       Sets.immutableEnumSet(
           BackupState.InProgress, BackupState.QueuedForDeletion, BackupState.DeleteInProgress);
@@ -190,6 +207,12 @@ public class Backup extends Model {
 
   public void updateExpiryTime(long timeBeforeDeleteFromPresent) {
     setExpiry(timeBeforeDeleteFromPresent);
+    save();
+  }
+
+  public void updateStorageConfigUUID(UUID storageConfigUUID) {
+    this.storageConfigUUID = storageConfigUUID;
+    this.backupInfo.storageConfigUUID = storageConfigUUID;
     save();
   }
 
@@ -315,6 +338,10 @@ public class Backup extends Model {
     } else if (params.storageLocation == null) {
       // We would derive the storage location based on the parameters
       backup.updateStorageLocation(params);
+    }
+    CustomerConfig storageConfig = CustomerConfig.get(customerUUID, params.storageConfigUUID);
+    if (storageConfig != null) {
+      params.storageConfigType = StorageConfigType.valueOf(storageConfig.name);
     }
     backup.setBackupInfo(params);
     backup.save();

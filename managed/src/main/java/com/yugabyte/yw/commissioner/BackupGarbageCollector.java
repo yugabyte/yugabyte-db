@@ -75,6 +75,11 @@ public class BackupGarbageCollector {
     this.backupUtil = backupUtil;
   }
 
+  @VisibleForTesting
+  public void setRunningState(Boolean state) {
+    running.compareAndSet(!state, state);
+  }
+
   public void start() {
     Duration gcInterval = this.gcRunInterval();
     this.actorSystem
@@ -88,7 +93,6 @@ public class BackupGarbageCollector {
         .getDuration(YB_BACKUP_GARBAGE_COLLECTOR_INTERVAL);
   }
 
-  @VisibleForTesting
   void scheduleRunner() {
     if (!running.compareAndSet(false, true)) {
       log.info("Previous Backup Garbage Collector still running");
@@ -164,19 +168,19 @@ public class BackupGarbageCollector {
         try {
           switch (customerConfig.name) {
             case S3:
-              backupLocations = getBackupLocations(backup);
+              backupLocations = backupUtil.getBackupLocations(backup);
               AWSUtil.deleteKeyIfExists(customerConfig.data, backupLocations.get(0));
               AWSUtil.deleteStorage(customerConfig.data, backupLocations);
               backup.delete();
               break;
             case GCS:
-              backupLocations = getBackupLocations(backup);
+              backupLocations = backupUtil.getBackupLocations(backup);
               GCPUtil.deleteKeyIfExists(customerConfig.data, backupLocations.get(0));
               GCPUtil.deleteStorage(customerConfig.data, backupLocations);
               backup.delete();
               break;
             case AZ:
-              backupLocations = getBackupLocations(backup);
+              backupLocations = backupUtil.getBackupLocations(backup);
               AZUtil.deleteKeyIfExists(customerConfig.data, backupLocations.get(0));
               AZUtil.deleteStorage(customerConfig.data, backupLocations);
               backup.delete();
@@ -265,19 +269,6 @@ public class BackupGarbageCollector {
       log.info("NFS Backup deleted successfully STDOUT: " + response.message);
       return true;
     }
-  }
-
-  private static List<String> getBackupLocations(Backup backup) {
-    BackupTableParams backupParams = backup.getBackupInfo();
-    List<String> backupLocations = new ArrayList<>();
-    if (backupParams.backupList != null) {
-      for (BackupTableParams params : backupParams.backupList) {
-        backupLocations.add(params.storageLocation);
-      }
-    } else {
-      backupLocations.add(backupParams.storageLocation);
-    }
-    return backupLocations;
   }
 
   private Boolean isCredentialUsable(CustomerConfig config) {

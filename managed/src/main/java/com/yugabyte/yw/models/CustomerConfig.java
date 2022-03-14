@@ -346,6 +346,7 @@ public class CustomerConfig extends Model {
       LOG.debug("Invalid State transition {} to {}", this.state, newState);
       return;
     }
+    LOG.info("Customer config: transitioned from {} to {}", this.state, newState);
     this.state = newState;
     save();
   }
