@@ -2056,16 +2056,6 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_use_async_flush", PGC_USERSET, CLIENT_CONN_STATEMENT,
-			gettext_noop("Perform async flushes if applicable."),
-			NULL
-		},
-		&yb_use_async_flush,
-		true,
-		NULL, NULL, NULL
-	},
-
-	{
 		{"yb_enable_expression_pushdown", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Push supported expressions down to DocDB for evaluation."),
 			NULL
@@ -3339,17 +3329,6 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&yb_default_copy_from_rows_per_transaction,
 		DEFAULT_BATCH_ROWS_PER_TRANSACTION, 0, INT_MAX,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"ysql_session_max_batch_size", PGC_USERSET, CLIENT_CONN_STATEMENT,
-			gettext_noop("Sets the maximum batch size for writes that YSQL can buffer before flushing to tablet servers."),
-			gettext_noop("If this is 0, YSQL will use the gflag ysql_session_max_batch_size. If non-zero, this session variable will supersede the value of the gflag."),
-			0
-		},
-		&ysql_session_max_batch_size,
-		0, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 

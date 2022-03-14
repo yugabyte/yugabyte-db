@@ -98,7 +98,6 @@ class RowIdentifier {
 };
 
 YB_STRONGLY_TYPED_BOOL(IsTransactionalSession);
-YB_STRONGLY_TYPED_BOOL(UseAsyncFlush);
 YB_STRONGLY_TYPED_BOOL(IsReadOnlyOperation);
 YB_STRONGLY_TYPED_BOOL(IsCatalogOperation);
 
@@ -208,9 +207,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   void ResetOperationsBuffering();
 
   // Flush all pending buffered operations. Buffering mode remain unchanged.
-  CHECKED_STATUS FlushBufferedOperations(UseAsyncFlush use_async_flush);
-  // Process previous flush for async flush.
-  CHECKED_STATUS ProcessPreviousFlush();
+  CHECKED_STATUS FlushBufferedOperations();
   // Drop all pending buffered operations. Buffering mode remain unchanged.
   void DropBufferedOperations();
 
@@ -322,13 +319,10 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   CHECKED_STATUS RollbackSubTransaction(SubTransactionId id);
 
  private:
-  using Flusher = std::function<Status(BufferableOperations, IsTransactionalSession,
-                                       UseAsyncFlush)>;
+  using Flusher = std::function<Status(BufferableOperations, IsTransactionalSession)>;
 
-  CHECKED_STATUS FlushBufferedOperationsImpl(const Flusher& flusher,
-                                             UseAsyncFlush use_async_flush);
-  CHECKED_STATUS FlushOperations(BufferableOperations ops, IsTransactionalSession transactional,
-                                 UseAsyncFlush use_async_flush);
+  CHECKED_STATUS FlushBufferedOperationsImpl(const Flusher& flusher);
+  CHECKED_STATUS FlushOperations(BufferableOperations ops, IsTransactionalSession transactional);
 
   // Run multiple operations.
   template<class Op>
@@ -337,16 +331,13 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
                                    const PgTableDesc& table,
                                    const PgObjectId& relation_id,
                                    uint64_t* read_time,
-                                   bool force_non_bufferable,
-                                   bool use_async_flush) {
+                                   bool force_non_bufferable) {
     SCHECK_GT(ops_count, 0ULL, IllegalState, "Operation list must not be empty");
     const IsTransactionalSession transactional(VERIFY_RESULT(
         ShouldHandleTransactionally(table, **op)));
-    UseAsyncFlush use_async_flush_(use_async_flush);
     RunHelper runner(relation_id, this, transactional);
     for (auto end = op + ops_count; op != end; ++op) {
-      RETURN_NOT_OK(runner.Apply(table.schema(), *op, read_time, force_non_bufferable,
-                    use_async_flush_));
+      RETURN_NOT_OK(runner.Apply(table.schema(), *op, read_time, force_non_bufferable));
     }
     return runner.Flush();
   }
@@ -359,8 +350,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
     RunHelper(
         const PgObjectId& relation_id, PgSession* pg_session, IsTransactionalSession transactional);
     CHECKED_STATUS Apply(
-        const Schema& schema, const PgsqlOpPtr& op, uint64_t* read_time, bool force_non_bufferable,
-        UseAsyncFlush use_async_flush);
+        const Schema& schema, const PgsqlOpPtr& op, uint64_t* read_time, bool force_non_bufferable);
     Result<PerformFuture> Flush();
 
    private:

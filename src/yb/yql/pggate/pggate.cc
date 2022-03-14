@@ -1039,12 +1039,10 @@ void PgApiImpl::ResetOperationsBuffering() {
 }
 
 Status PgApiImpl::FlushBufferedOperations() {
-  return pg_session_->FlushBufferedOperations(UseAsyncFlush::kFalse);
+  return pg_session_->FlushBufferedOperations();
 }
 
-Status PgApiImpl::DmlExecWriteOp(PgStatement *handle,
-                                 int32_t *rows_affected_count,
-                                 bool use_async_flush) {
+Status PgApiImpl::DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_count) {
   switch (handle->stmt_op()) {
     case StmtOp::STMT_INSERT:
     case StmtOp::STMT_UPDATE:
@@ -1052,8 +1050,7 @@ Status PgApiImpl::DmlExecWriteOp(PgStatement *handle,
     case StmtOp::STMT_TRUNCATE:
       {
         auto dml_write = down_cast<PgDmlWrite *>(handle);
-        RETURN_NOT_OK(dml_write->Exec(rows_affected_count != nullptr /* force_non_bufferable */,
-                                      use_async_flush));
+        RETURN_NOT_OK(dml_write->Exec(rows_affected_count != nullptr /* force_non_bufferable */));
         if (rows_affected_count) {
           *rows_affected_count = dml_write->GetRowsAffectedCount();
         }
@@ -1430,8 +1427,7 @@ Status PgApiImpl::RestartReadPoint() {
 
 Status PgApiImpl::CommitTransaction() {
   pg_session_->InvalidateForeignKeyReferenceCache();
-  RETURN_NOT_OK(pg_session_->FlushBufferedOperations(UseAsyncFlush::kFalse));
-  RETURN_NOT_OK(pg_session_->ProcessPreviousFlush());
+  RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
   return pg_txn_manager_->CommitTransaction();
 }
 
@@ -1459,13 +1455,13 @@ Status PgApiImpl::SetTransactionDeferrable(bool deferrable) {
 
 Status PgApiImpl::EnterSeparateDdlTxnMode() {
   // Flush all buffered operations as ddl txn use its own transaction session.
-  RETURN_NOT_OK(pg_session_->FlushBufferedOperations(UseAsyncFlush::kFalse));
+  RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
   return pg_txn_manager_->EnterSeparateDdlTxnMode();
 }
 
 Status PgApiImpl::ExitSeparateDdlTxnMode() {
   // Flush all buffered operations as ddl txn use its own transaction session.
-  RETURN_NOT_OK(pg_session_->FlushBufferedOperations(UseAsyncFlush::kFalse));
+  RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
   RETURN_NOT_OK(pg_txn_manager_->ExitSeparateDdlTxnMode(Commit::kTrue));
   // Next reads from catalog tables have to see changes made by the DDL transaction.
   ResetCatalogReadTime();
@@ -1478,7 +1474,7 @@ void PgApiImpl::ClearSeparateDdlTxnMode() {
 }
 
 Status PgApiImpl::SetActiveSubTransaction(SubTransactionId id) {
-  RETURN_NOT_OK(pg_session_->FlushBufferedOperations(UseAsyncFlush::kFalse));
+  RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
   return pg_session_->SetActiveSubTransaction(id);
 }
 
