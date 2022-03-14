@@ -30,7 +30,3 @@ The following PostgreSQL features are not supported in YugabyteDB:
 - XML Functions
 - XA syntax
 
-## Features that differ from PostgreSQL
-- Tablespaces 
-- Logical replication is CDC 
-- Primary key (hash/range)
