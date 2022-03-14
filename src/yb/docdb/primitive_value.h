@@ -159,7 +159,7 @@ class PrimitiveValue {
   static PrimitiveValue UInt64(uint64_t v, SortOrder sort_order = SortOrder::kAscending);
   static PrimitiveValue TransactionId(Uuid transaction_id);
   static PrimitiveValue TableId(Uuid table_id);
-  static PrimitiveValue PgTableOid(const PgTableOid pgtable_id);
+  static PrimitiveValue ColocationId(const ColocationId colocation_id);
   static PrimitiveValue Jsonb(const std::string& json);
   static PrimitiveValue GinNull(uint8_t v);
 

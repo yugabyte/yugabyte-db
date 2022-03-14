@@ -343,6 +343,8 @@ typedef struct PgTableProperties {
   uint64_t num_tablets;
   uint64_t num_hash_key_columns;
   bool is_colocated;
+  YBCPgOid tablegroup_oid; /* 0 if none */
+  YBCPgOid colocation_id; /* 0 if not colocated */
 } YBCPgTableProperties;
 
 typedef struct PgYBTupleIdDescriptor {

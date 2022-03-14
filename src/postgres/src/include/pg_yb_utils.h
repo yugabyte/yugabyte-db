@@ -494,6 +494,20 @@ YBCPgYBTupleIdDescriptor* YBCCreateYBTupleIdDescriptor(Oid db_oid, Oid table_oid
 void YBCFillUniqueIndexNullAttribute(YBCPgYBTupleIdDescriptor* descr);
 
 /*
+ * Fetch YBCPgTableDesc and YBCPgTableProperties for the given table.
+ *
+ * If allow_missing is true, existence precheck will be done and table
+ * missing in DocDB will result in desc set to NULL.
+ * Otherwise, DocDB will be queried unconditionally and the table missing
+ * will trigger an error.
+ */
+void
+YbGetTableDescAndProps(Oid table_oid,
+					   bool allow_missing,
+					   YBCPgTableDesc *desc,
+					   YBCPgTableProperties *props);
+
+/*
  * Check whether the given libc locale is supported in YugaByte mode.
  */
 bool YBIsSupportedLibcLocale(const char *localebuf);

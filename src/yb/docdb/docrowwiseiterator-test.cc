@@ -611,30 +611,30 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorIncompleteProjection) {
 }
 
 TEST_F(DocRowwiseIteratorTest, ColocatedTableTombstoneTest) {
-  constexpr PgTableOid pgtable_id(0x4001);
+  constexpr ColocationId colocation_id(0x4001);
   auto dwb = MakeDocWriteBatch();
 
-  DocKey encoded_1_with_tableid;
+  DocKey encoded_1_with_colocation_id;
 
-  ASSERT_OK(encoded_1_with_tableid.FullyDecodeFrom(kEncodedDocKey1));
-  encoded_1_with_tableid.set_pgtable_id(pgtable_id);
+  ASSERT_OK(encoded_1_with_colocation_id.FullyDecodeFrom(kEncodedDocKey1));
+  encoded_1_with_colocation_id.set_colocation_id(colocation_id);
 
   ASSERT_OK(dwb.SetPrimitive(
-      DocPath(encoded_1_with_tableid.Encode(), PrimitiveValue::kLivenessColumn),
+      DocPath(encoded_1_with_colocation_id.Encode(), PrimitiveValue::kLivenessColumn),
       PrimitiveValue(ValueType::kNullLow)));
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(1000)));
 
-  DocKey table_id(pgtable_id);
-  ASSERT_OK(dwb.DeleteSubDoc(DocPath(table_id.Encode())));
+  DocKey colocation_key(colocation_id);
+  ASSERT_OK(dwb.DeleteSubDoc(DocPath(colocation_key.Encode())));
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(2000)));
 
   ASSERT_DOCDB_DEBUG_DUMP_STR_EQ(R"#(
-SubDocKey(DocKey(PgTableId=16385, [], []), [HT{ physical: 2000 }]) -> DEL
-SubDocKey(DocKey(PgTableId=16385, [], ["row1", 11111]), [SystemColumnId(0); HT{ physical: 1000 }]) \
-    -> null
+SubDocKey(DocKey(ColocationId=16385, [], []), [HT{ physical: 2000 }]) -> DEL
+SubDocKey(DocKey(ColocationId=16385, [], ["row1", 11111]), [SystemColumnId(0); \
+    HT{ physical: 1000 }]) -> null
       )#");
   Schema schema_copy = kSchemaForIteratorTests;
-  schema_copy.set_pgtable_id(pgtable_id);
+  schema_copy.set_colocation_id(colocation_id);
   Schema projection;
   // Read should have results before delete...
   {

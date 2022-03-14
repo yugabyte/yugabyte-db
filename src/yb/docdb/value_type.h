@@ -80,7 +80,7 @@ namespace docdb {
     ((kRedisSortedSet, ',')) /* ASCII code 44 */ \
     ((kInetaddress, '-'))  /* ASCII code 45 */ \
     ((kInetaddressDescending, '.'))  /* ASCII code 46 */ \
-    ((kPgTableOid, '0')) /* ASCII code 48 */ \
+    ((kColocationId, '0')) /* ASCII code 48 */ \
     ((kJsonb, '2')) /* ASCII code 50 */ \
     ((kFrozen, '<')) /* ASCII code 60 */ \
     ((kFrozenDescending, '>')) /* ASCII code 62 */ \

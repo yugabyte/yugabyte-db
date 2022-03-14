@@ -51,9 +51,11 @@ typedef enum relopt_kind
 	RELOPT_KIND_BRIN = (1 << 10),
 	RELOPT_KIND_PARTITIONED = (1 << 11),
 	RELOPT_KIND_YB_TABLESPACE = (1 << 12),
+	RELOPT_KIND_YB_LSM = (1 << 13),
 	/* if you add a new kind, make sure you update "last_default" too */
-	RELOPT_KIND_LAST_DEFAULT = RELOPT_KIND_YB_TABLESPACE,
-	RELOPT_KIND_INDEX = RELOPT_KIND_BTREE | RELOPT_KIND_HASH | RELOPT_KIND_GIN | RELOPT_KIND_SPGIST,
+	RELOPT_KIND_LAST_DEFAULT = RELOPT_KIND_YB_LSM,
+	RELOPT_KIND_INDEX = RELOPT_KIND_BTREE | RELOPT_KIND_HASH | RELOPT_KIND_GIN | RELOPT_KIND_SPGIST |
+						RELOPT_KIND_YB_LSM,
 	/* some compilers treat enums as signed ints, so we can't use 1 << 31 */
 	RELOPT_KIND_MAX = (1 << 30)
 } relopt_kind;
@@ -281,10 +283,7 @@ extern void add_string_reloption(bits32 kinds, const char *name, const char *des
 extern Datum transformRelOptions(Datum oldOptions, List *defList,
 					const char *namspace, char *validnsps[],
 					bool ignoreOids, bool isReset);
-extern Datum ybTransformRelOptions(Datum oldOptions, List *defList,
-					const char *namspace, char *validnsps[],
-					bool ignoreOids, bool isReset,
-					bool ybIgnoreYsqlUpgradeOptions);
+extern Datum ybExcludeNonPersistentReloptions(Datum options);
 extern List *untransformRelOptions(Datum options);
 extern bytea *extractRelOptions(HeapTuple tuple, TupleDesc tupdesc,
 				  amoptions_function amoptions);

@@ -115,7 +115,7 @@ Status PgCreateTable::Exec(
   // Create table.
   auto table_creator = client->NewTableCreator();
   table_creator->table_name(table_name_).table_type(client::YBTableType::PGSQL_TABLE_TYPE)
-                .table_id(PgObjectId::GetYBTableIdFromPB(req_.table_id()))
+                .table_id(PgObjectId::GetYbTableIdFromPB(req_.table_id()))
                 .schema(&schema)
                 .colocated(req_.colocated());
   if (req_.is_pg_catalog_table()) {
@@ -132,22 +132,27 @@ Status PgCreateTable::Exec(
 
   auto tablegroup_oid = PgObjectId::FromPB(req_.tablegroup_oid());
   if (tablegroup_oid.IsValid()) {
-    table_creator->tablegroup_id(tablegroup_oid.GetYBTablegroupId());
+    table_creator->tablegroup_id(tablegroup_oid.GetYbTablegroupId());
+  }
+
+  if (req_.optional_colocation_id_case() !=
+      PgCreateTableRequestPB::OptionalColocationIdCase::OPTIONAL_COLOCATION_ID_NOT_SET) {
+    table_creator->colocation_id(req_.colocation_id());
   }
 
   auto tablespace_oid = PgObjectId::FromPB(req_.tablespace_oid());
   if (tablespace_oid.IsValid()) {
-    table_creator->tablespace_id(tablespace_oid.GetYBTablespaceId());
+    table_creator->tablespace_id(tablespace_oid.GetYbTablespaceId());
   }
 
   auto matview_pg_table_oid = PgObjectId::FromPB(req_.matview_pg_table_oid());
   if (matview_pg_table_oid.IsValid()) {
-    table_creator->matview_pg_table_id(matview_pg_table_oid.GetYBTableId());
+    table_creator->matview_pg_table_id(matview_pg_table_oid.GetYbTableId());
   }
 
   // For index, set indexed (base) table id.
   if (indexed_table_id_.IsValid()) {
-    table_creator->indexed_table_id(indexed_table_id_.GetYBTableId());
+    table_creator->indexed_table_id(indexed_table_id_.GetYbTableId());
     if (req_.is_unique_index()) {
       table_creator->is_unique_index(true);
     }
@@ -319,7 +324,7 @@ Status CreateSequencesDataTable(client::YBClient* client, CoarseTimePoint deadli
   auto status = table_creator->table_name(table_name)
       .schema(&schema)
       .table_type(client::YBTableType::PGSQL_TABLE_TYPE)
-      .table_id(oid.GetYBTableId())
+      .table_id(oid.GetYbTableId())
       .hash_schema(YBHashSchema::kPgsqlHash)
       .timeout(deadline - CoarseMonoClock::now())
       .Create();

@@ -349,7 +349,7 @@ Status PgClientSession::CreateTable(
   VLOG_WITH_PREFIX(1) << __func__ << ": " << req.table_name();
   const auto& indexed_table_id = helper.indexed_table_id();
   if (indexed_table_id.IsValid()) {
-    table_cache_.Invalidate(indexed_table_id.GetYBTableId());
+    table_cache_.Invalidate(indexed_table_id.GetYbTableId());
   }
   return Status::OK();
 }
@@ -381,7 +381,7 @@ Status PgClientSession::DropDatabase(
 
 Status PgClientSession::DropTable(
     const PgDropTableRequestPB& req, PgDropTableResponsePB* resp, rpc::RpcContext* context) {
-  const auto yb_table_id = PgObjectId::GetYBTableIdFromPB(req.table_id());
+  const auto yb_table_id = PgObjectId::GetYbTableIdFromPB(req.table_id());
   if (req.index()) {
     client::YBTableName indexed_table;
     RETURN_NOT_OK(client().DeleteIndexTable(
@@ -409,7 +409,7 @@ Status PgClientSession::AlterDatabase(
 
 Status PgClientSession::AlterTable(
     const PgAlterTableRequestPB& req, PgAlterTableResponsePB* resp, rpc::RpcContext* context) {
-  const auto table_id = PgObjectId::GetYBTableIdFromPB(req.table_id());
+  const auto table_id = PgObjectId::GetYbTableIdFromPB(req.table_id());
   const auto alterer = client().NewTableAlterer(table_id);
   const auto txn = VERIFY_RESULT(GetDdlTransactionMetadata(req.use_transaction()));
   if (txn) {
@@ -442,14 +442,14 @@ Status PgClientSession::AlterTable(
 Status PgClientSession::TruncateTable(
     const PgTruncateTableRequestPB& req, PgTruncateTableResponsePB* resp,
     rpc::RpcContext* context) {
-  return client().TruncateTable(PgObjectId::GetYBTableIdFromPB(req.table_id()));
+  return client().TruncateTable(PgObjectId::GetYbTableIdFromPB(req.table_id()));
 }
 
 Status PgClientSession::BackfillIndex(
     const PgBackfillIndexRequestPB& req, PgBackfillIndexResponsePB* resp,
     rpc::RpcContext* context) {
   return client().BackfillIndex(
-      PgObjectId::GetYBTableIdFromPB(req.table_id()), /* wait= */ true,
+      PgObjectId::GetYbTableIdFromPB(req.table_id()), /* wait= */ true,
       context->GetClientDeadline());
 }
 
@@ -460,8 +460,8 @@ Status PgClientSession::CreateTablegroup(
   auto tablespace_id = PgObjectId::FromPB(req.tablespace_id());
   auto s = client().CreateTablegroup(
       req.database_name(), GetPgsqlNamespaceId(id.database_oid),
-      id.GetYBTablegroupId(),
-      tablespace_id.IsValid() ? tablespace_id.GetYBTablespaceId() : "");
+      id.GetYbTablegroupId(),
+      tablespace_id.IsValid() ? tablespace_id.GetYbTablespaceId() : "");
   if (s.ok()) {
     return Status::OK();
   }
@@ -772,11 +772,11 @@ Status PgClientSession::InsertSequenceTuple(
     const PgInsertSequenceTupleRequestPB& req, PgInsertSequenceTupleResponsePB* resp,
     rpc::RpcContext* context) {
   PgObjectId table_oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
-  auto result = table_cache_.Get(table_oid.GetYBTableId());
+  auto result = table_cache_.Get(table_oid.GetYbTableId());
   if (!result.ok()) {
     RETURN_NOT_OK(CreateSequencesDataTable(&client_, context->GetClientDeadline()));
     // Try one more time.
-    result = table_cache_.Get(table_oid.GetYBTableId());
+    result = table_cache_.Get(table_oid.GetYbTableId());
   }
   auto table = VERIFY_RESULT(std::move(result));
 
@@ -805,7 +805,7 @@ Status PgClientSession::UpdateSequenceTuple(
     const PgUpdateSequenceTupleRequestPB& req, PgUpdateSequenceTupleResponsePB* resp,
     rpc::RpcContext* context) {
   PgObjectId table_oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
-  auto table = VERIFY_RESULT(table_cache_.Get(table_oid.GetYBTableId()));
+  auto table = VERIFY_RESULT(table_cache_.Get(table_oid.GetYbTableId()));
 
   std::shared_ptr<client::YBPgsqlWriteOp> psql_write(client::YBPgsqlWriteOp::NewUpdate(table));
 
@@ -867,7 +867,7 @@ Status PgClientSession::ReadSequenceTuple(
   using pggate::PgWireDataHeader;
 
   PgObjectId table_oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
-  auto table = VERIFY_RESULT(table_cache_.Get(table_oid.GetYBTableId()));
+  auto table = VERIFY_RESULT(table_cache_.Get(table_oid.GetYbTableId()));
 
   std::shared_ptr<client::YBPgsqlReadOp> psql_read(client::YBPgsqlReadOp::NewSelect(table));
 
@@ -927,7 +927,7 @@ Status PgClientSession::DeleteSequenceTuple(
     const PgDeleteSequenceTupleRequestPB& req, PgDeleteSequenceTupleResponsePB* resp,
     rpc::RpcContext* context) {
   PgObjectId table_oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
-  auto table = VERIFY_RESULT(table_cache_.Get(table_oid.GetYBTableId()));
+  auto table = VERIFY_RESULT(table_cache_.Get(table_oid.GetYbTableId()));
 
   auto psql_delete(client::YBPgsqlWriteOp::NewDelete(table));
   auto delete_request = psql_delete->mutable_request();
@@ -944,7 +944,7 @@ Status PgClientSession::DeleteDBSequences(
     const PgDeleteDBSequencesRequestPB& req, PgDeleteDBSequencesResponsePB* resp,
     rpc::RpcContext* context) {
   PgObjectId table_oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
-  auto table_res = table_cache_.Get(table_oid.GetYBTableId());
+  auto table_res = table_cache_.Get(table_oid.GetYbTableId());
   if (!table_res.ok()) {
     // Sequence table is not yet created.
     return Status::OK();

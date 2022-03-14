@@ -359,6 +359,7 @@ YBCStatus YBCPgNewCreateTable(const char *database_name,
                               bool add_primary_key,
                               const bool colocated,
                               const YBCPgOid tablegroup_oid,
+                              const YBCPgOid colocation_id,
                               const YBCPgOid tablespace_oid,
                               const YBCPgOid matview_pg_table_oid,
                               YBCPgStatement *handle) {
@@ -368,8 +369,8 @@ YBCStatus YBCPgNewCreateTable(const char *database_name,
   const PgObjectId matview_pg_table_id(database_oid, matview_pg_table_oid);
   return ToYBCStatus(pgapi->NewCreateTable(
       database_name, schema_name, table_name, table_id, is_shared_table,
-      if_not_exist, add_primary_key, colocated, tablegroup_id, tablespace_id, matview_pg_table_id,
-      handle));
+      if_not_exist, add_primary_key, colocated, tablegroup_id, colocation_id, tablespace_id,
+      matview_pg_table_id, handle));
 }
 
 YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
@@ -480,11 +481,13 @@ YBCStatus YBCPgIsTableColocated(const YBCPgOid database_oid,
   }
 }
 
-YBCStatus YBCPgGetTableProperties(YBCPgTableDesc table_desc,
-                                  YBCPgTableProperties *properties) {
+YBCStatus YBCPgGetSomeTableProperties(YBCPgTableDesc table_desc,
+                                      YBCPgTableProperties *properties) {
   CHECK_NOTNULL(properties)->num_tablets = table_desc->GetPartitionCount();
   properties->num_hash_key_columns = table_desc->num_hash_key_columns();
   properties->is_colocated = table_desc->IsColocated();
+  properties->tablegroup_oid = 0; /* Isn't set here. */
+  properties->colocation_id = table_desc->GetColocationId();
   return YBCStatusOK();
 }
 
@@ -518,6 +521,7 @@ YBCStatus YBCPgNewCreateIndex(const char *database_name,
                               const bool skip_index_backfill,
                               bool if_not_exist,
                               const YBCPgOid tablegroup_oid,
+                              const YBCPgOid colocation_id,
                               const YBCPgOid tablespace_oid,
                               YBCPgStatement *handle) {
   const PgObjectId index_id(database_oid, index_oid);
@@ -527,7 +531,7 @@ YBCStatus YBCPgNewCreateIndex(const char *database_name,
   return ToYBCStatus(pgapi->NewCreateIndex(database_name, schema_name, index_name, index_id,
                                            table_id, is_shared_index, is_unique_index,
                                            skip_index_backfill, if_not_exist, tablegroup_id,
-                                           tablespace_id, handle));
+                                           colocation_id, tablespace_id, handle));
 }
 
 YBCStatus YBCPgCreateIndexAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,

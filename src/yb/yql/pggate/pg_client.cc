@@ -166,7 +166,7 @@ class PgClient::Impl {
   Result<PgTableDescPtr> OpenTable(
       const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time) {
     tserver::PgOpenTableRequestPB req;
-    req.set_table_id(table_id.GetYBTableId());
+    req.set_table_id(table_id.GetYbTableId());
     req.set_reopen(reopen);
     if (invalidate_cache_time != CoarseTimePoint()) {
       req.set_invalidate_cache_time_us(ToMicroseconds(invalidate_cache_time.time_since_epoch()));

@@ -30,6 +30,7 @@
 #include "commands/tablegroup.h"
 #include "commands/tablespace.h"
 #include "commands/view.h"
+#include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "postmaster/postmaster.h"
 #include "utils/array.h"
@@ -378,8 +379,19 @@ static relopt_oid oidRelOpts[] =
 {
 	{
 		{
-			"tablegroup",
+			"tablegroup_oid",
 			"Tablegroup oid for this relation.",
+			RELOPT_KIND_HEAP | RELOPT_KIND_INDEX,
+			AccessExclusiveLock
+		},
+		InvalidOid,
+		FirstNormalObjectId,
+		OID_MAX
+	},
+	{
+		{
+			"colocation_id",
+			"Colocation ID to distinguish a table within a colocation group. Used during backup/restore.",
 			RELOPT_KIND_HEAP | RELOPT_KIND_INDEX,
 			AccessExclusiveLock
 		},
@@ -882,24 +894,6 @@ Datum
 transformRelOptions(Datum oldOptions, List *defList, const char *namspace,
 					char *validnsps[], bool ignoreOids, bool isReset)
 {
-	return ybTransformRelOptions(oldOptions, defList, namspace, validnsps,
-								 ignoreOids, isReset,
-								 false /* ybIgnoreYsqlUpgradeOptions */);
-}
-
-/*
- * See above for transformRelOptions description.
- *
- * If ybIgnoreYsqlUpgradeOptions is specified, ignore "table_oid"
- * and "row_type_oid" options. This is needed in YSQL upgrade mode, where we
- * use them to simulate initdb-like behaviour for creating relations but don't
- * want them to be persisted.
- */
-Datum
-ybTransformRelOptions(Datum oldOptions, List *defList, const char *namspace,
-					  char *validnsps[], bool ignoreOids, bool isReset,
-					  bool ybIgnoreYsqlUpgradeOptions)
-{
 	Datum		result;
 	ArrayBuildState *astate;
 	ListCell   *cell;
@@ -1012,17 +1006,6 @@ ybTransformRelOptions(Datum oldOptions, List *defList, const char *namspace,
 			if (ignoreOids && strcmp(def->defname, "oids") == 0)
 				continue;
 
-			/*
-			 * These options serve as temporary markers during YSQL upgrade,
-			 * but they might also be used for other purposes (e.g. table_oid
-			 * is used to backup/restore colocated tables).
-			 */
-			if (ybIgnoreYsqlUpgradeOptions &&
-				(strcmp(def->defname, "table_oid") == 0 ||
-				 strcmp(def->defname, "row_type_oid") == 0 ||
-				 strcmp(def->defname, "use_initdb_acl") == 0))
-				continue;
-
 			/* ignore if not in the same namespace */
 			if (namspace == NULL)
 			{
@@ -1063,6 +1046,67 @@ ybTransformRelOptions(Datum oldOptions, List *defList, const char *namspace,
 	return result;
 }
 
+/*
+ * Create a new reloptions list without YB-specific utility reloptions which
+ * we don't want to be persisted.
+ */
+Datum
+ybExcludeNonPersistentReloptions(Datum options)
+{
+	Datum		result = (Datum) 0;
+
+	/* Nothing to do if no options */
+	if (!PointerIsValid(DatumGetPointer(options)))
+		return result;
+
+	ArrayType  *array = DatumGetArrayTypeP(options);
+
+	Datum	   *optiondatums;
+	int			noptions;
+	deconstruct_array(array, TEXTOID, -1, false, 'i',
+					  &optiondatums, NULL, &noptions);
+
+	/* We build new array using accumArrayResult */
+	ArrayBuildState *astate = NULL;
+
+	for (int i = 0; i < noptions; i++)
+	{
+		char *s = TextDatumGetCString(optiondatums[i]);
+
+		char *p = strchr(s, '=');
+		if (p)
+			*p = '\0';
+
+		/*
+		 * These options serve as temporary markers during YSQL upgrade,
+		 * but they might also be used for other purposes (e.g. table_oid
+		 * was used to backup/restore colocated tables).
+		 */
+		if (IsYsqlUpgrade &&
+			(strcmp(s, "table_oid") == 0 ||
+			 strcmp(s, "row_type_oid") == 0 ||
+			 strcmp(s, "use_initdb_acl") == 0))
+			continue;
+
+		/*
+		 * We do not want colocation ID to be persisted in reloptions,
+		 * we can get it via YbGetTableDescAndProps.
+		 */
+		if (strcmp(s, "colocation_id") == 0)
+			continue;
+
+		astate = accumArrayResult(astate, optiondatums[i],
+								  false, TEXTOID,
+								  GetCurrentMemoryContext());
+	}
+
+	if (astate)
+		result = makeArrayResult(astate, GetCurrentMemoryContext());
+	else
+		result = (Datum) 0;
+
+	return result;
+}
 
 /*
  * Convert the text-array format of reloptions into a List of DefElem.
@@ -1549,7 +1593,8 @@ default_reloptions(Datum reloptions, bool validate, relopt_kind kind)
 		offsetof(StdRdOptions, vacuum_cleanup_index_scale_factor)},
 		{"colocated", RELOPT_TYPE_BOOL,
 		offsetof(StdRdOptions, colocated)},
-		{"tablegroup", RELOPT_TYPE_OID, offsetof(StdRdOptions, tablegroup_oid)},
+		{"tablegroup_oid", RELOPT_TYPE_OID, offsetof(StdRdOptions, tablegroup_oid)},
+		{"colocation_id", RELOPT_TYPE_OID, offsetof(StdRdOptions, colocation_id)},
 		{"table_oid", RELOPT_TYPE_OID, offsetof(StdRdOptions, table_oid)},
 		{"row_type_oid", RELOPT_TYPE_OID, offsetof(StdRdOptions, row_type_oid)},
 	};

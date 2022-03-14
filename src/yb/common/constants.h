@@ -14,11 +14,28 @@
 #ifndef YB_COMMON_CONSTANTS_H
 #define YB_COMMON_CONSTANTS_H
 
+#include "yb/common/common_fwd.h"
+
 namespace yb {
 
 // As a result of single dynamic tablet splitting operation we always have kNumSplitParts new
 // post-split tablets.
 constexpr const auto kNumSplitParts = 2;
+
+constexpr const ColocationId kColocationIdNotSet = 0;
+
+// Minimum colocation ID to be auto-generated, IDs below are reserved just in case we want
+// some special values in the future.
+// This has been chosen to match FirstNormalObjectId from Postgres code.
+constexpr const ColocationId kFirstNormalColocationId = 16384;
+
+enum SortingType : uint8_t {
+  kNotSpecified = 0,
+  kAscending,          // ASC, NULLS FIRST
+  kDescending,         // DESC, NULLS FIRST
+  kAscendingNullsLast, // ASC, NULLS LAST
+  kDescendingNullsLast // DESC, NULLS LAST
+};
 
 } // namespace yb
 

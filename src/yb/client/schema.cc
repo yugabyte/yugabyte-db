@@ -622,6 +622,14 @@ size_t YBSchema::num_range_key_columns() const {
   return schema_->num_range_key_columns();
 }
 
+bool YBSchema::has_colocation_id() const {
+  return schema_->has_colocation_id();
+}
+
+ColocationId YBSchema::colocation_id() const {
+  return schema_->colocation_id();
+}
+
 bool YBSchema::is_compatible_with_previous_version() const {
   return is_compatible_with_previous_version_;
 }

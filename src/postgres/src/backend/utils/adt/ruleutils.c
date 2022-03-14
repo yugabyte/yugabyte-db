@@ -75,6 +75,9 @@
 #include "utils/varlena.h"
 #include "utils/xml.h"
 
+/* YB includes. */
+#include "commands/tablegroup.h"
+
 
 /* ----------
  * Pretty formatting constants
@@ -326,7 +329,7 @@ static char *pg_get_indexdef_worker(Oid indexrelid, int colno,
 					   bool showTblSpc, bool inherits,
 					   int prettyFlags, bool missing_ok,
 					   bool useNonconcurrently,
-					   bool showSplits);
+					   bool includeYbMetadata);
 static char *pg_get_statisticsobj_worker(Oid statextid, bool missing_ok);
 static char *pg_get_partkeydef_worker(Oid relid, int prettyFlags,
 						 bool attrsOnly, bool missing_ok);
@@ -1083,6 +1086,43 @@ pg_get_triggerdef_worker(Oid trigid, bool pretty)
 	return buf.data;
 }
 
+/*
+ * If an index has options, append " WITH (options)" clause to the buffer.
+ * This includes "hidden" reloptions like colocation_id.
+ */
+static void
+YbAppendIndexReloptions(StringInfoData buf,
+						Oid index_oid,
+						const YBCPgTableProperties* yb_table_properties)
+{
+	char *str = flatten_reloptions(index_oid);
+
+	bool has_reloptions	=
+		str && strcmp(str, "") != 0;
+	bool has_colocation_id =
+		yb_table_properties && OidIsValid(yb_table_properties->colocation_id);
+
+	if (has_reloptions || has_colocation_id)
+	{
+		appendStringInfo(&buf, " WITH (");
+
+		if (has_reloptions)
+		{
+			appendStringInfo(&buf, "%s", str);
+			pfree(str);
+		}
+
+		if (has_reloptions && has_colocation_id)
+			appendStringInfo(&buf, ", ");
+
+		if (has_colocation_id)
+			appendStringInfo(&buf, "colocation_id=%u", yb_table_properties->colocation_id);
+
+		appendStringInfo(&buf, ")");
+	}
+
+}
+
 /* ----------
  * get_indexdef			- Get the definition of an index
  *
@@ -1187,7 +1227,7 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 					   bool showTblSpc, bool inherits,
 					   int prettyFlags, bool missing_ok,
 					   bool useNonconcurrently,
-					   bool showSplits)
+					   bool includeYbMetadata)
 {
 	/* might want a separate isConstraint parameter later */
 	bool		isConstraint = (excludeOps != NULL);
@@ -1445,17 +1485,20 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 
 	if (!attrsOnly)
 	{
+		YBCPgTableDesc yb_tabledesc = NULL;
+		YBCPgTableProperties yb_table_properties;
+
+		if (includeYbMetadata && IsYBRelationById(indexrelid) &&
+			!idxrec->indisprimary)
+		{
+			YbGetTableDescAndProps(indexrelid, false,
+								   &yb_tabledesc, &yb_table_properties);
+		}
+
 		appendStringInfoChar(&buf, ')');
 
-		/*
-		 * If it has options, append "WITH (options)"
-		 */
-		str = flatten_reloptions(indexrelid);
-		if (str && strcmp(str,"") != 0)
-		{
-			appendStringInfo(&buf, " WITH (%s)", str);
-			pfree(str);
-		}
+		YbAppendIndexReloptions(buf, indexrelid,
+			yb_tabledesc ? &yb_table_properties : NULL);
 
 		/*
 		 * Print tablespace, but only if requested
@@ -1476,15 +1519,8 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 		/*
 		 * Print SPLIT INTO/AT clause.
 		 */
-		if (showSplits && !idxrec->indisprimary)
+		if (includeYbMetadata && yb_tabledesc)
 		{
-			YBCPgTableDesc ybc_tabledesc = NULL;
-			YBCPgTableProperties yb_table_properties;
-
-			/* Get the table properties from YugaByte. */
-			HandleYBStatus(YBCPgGetTableDesc(MyDatabaseId, indexrelid, &ybc_tabledesc));
-			HandleYBStatus(YBCPgGetTableProperties(ybc_tabledesc, &yb_table_properties));
-
 			if (yb_table_properties.num_hash_key_columns > 0)
 			{
 				/* For hash-partitioned tables */
@@ -1507,6 +1543,23 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 									 " Click '+' on the description to raise its priority.")));
 				}
 			}
+
+			Relation indrel = heap_open(indrelid, AccessShareLock);
+
+			/*
+			 * If the indexed table's tablegroup mismatches that of an
+			 * index table, append an explicit [NO] TABLEGROUP clause.
+			 */
+			if (yb_table_properties.tablegroup_oid != RelationGetTablegroupOid(indrel))
+			{
+				if (OidIsValid(yb_table_properties.tablegroup_oid))
+					appendStringInfo(&buf, " TABLEGROUP %s",
+									 get_tablegroup_name(yb_table_properties.tablegroup_oid));
+				else
+					appendStringInfo(&buf, " NO TABLEGROUP");
+			}
+
+			heap_close(indrel, AccessShareLock);
 		}
 
 		/*
@@ -2197,19 +2250,24 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 				/* XXX why do we only print these bits if fullCommand? */
 				if (fullCommand && OidIsValid(indexId))
 				{
-					char	   *options = flatten_reloptions(indexId);
-					Oid			tblspc;
+					YBCPgTableDesc		 yb_tabledesc = NULL;
+					YBCPgTableProperties yb_table_properties;
 
-					if (options)
-					{
-						appendStringInfo(&buf, " WITH (%s)", options);
-						pfree(options);
-					}
+					if (IsYBRelationById(indexId) && conForm->contype != CONSTRAINT_PRIMARY)
+						YbGetTableDescAndProps(indexId, false,
+											   &yb_tabledesc, &yb_table_properties);
+
+					YbAppendIndexReloptions(buf, indexId,
+						yb_tabledesc ? &yb_table_properties : NULL);
+
+					Oid			tblspc;
 
 					tblspc = get_rel_tablespace(indexId);
 					if (OidIsValid(tblspc))
 						appendStringInfo(&buf, " USING INDEX TABLESPACE %s",
 										 quote_identifier(get_tablespace_name(tblspc)));
+
+					/* TODO: Add TABLEGROUP clause when #11600 is implemented. */
 				}
 
 				break;
@@ -11236,16 +11294,16 @@ flatten_reloptions(Oid relid)
 				value = "";
 
 			/*
-			 * We ignore the reloption for tablegroup.
+			 * We ignore the reloption for tablegroup_oid.
 			 * It is parsed seperately in describe.c.
 			 */
-			if (strcmp(name, "tablegroup") == 0)
+			if (strcmp(name, "tablegroup_oid") == 0)
 			{
 				pfree(option);
 				continue;
 			}
 
-			if (i > 0)
+			if (buf.len > 0)
 				appendStringInfoString(&buf, ", ");
 			appendStringInfo(&buf, "%s=", quote_identifier(name));
 

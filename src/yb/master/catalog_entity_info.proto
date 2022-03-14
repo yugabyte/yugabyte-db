@@ -151,7 +151,8 @@ message SysTablesEntryPB {
 
   optional uint32 wal_retention_secs = 24;
 
-  optional bool colocated = 25 [ default = false ]; // Is this a colocated table?
+  // True if the table is colocated (including tablegroups, excluding YSQL system tables).
+  optional bool colocated = 25 [ default = false ];
 
   optional uint32 fully_applied_schema_version = 23;
   repeated IndexInfoPB fully_applied_indexes = 26;

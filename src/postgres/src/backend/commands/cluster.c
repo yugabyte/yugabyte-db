@@ -705,7 +705,7 @@ make_new_heap(Oid OIDOldHeap, Oid NewTableSpace, char relpersistence,
 		CreateStmt *dummyStmt = makeNode(CreateStmt);
 		dummyStmt->relation = makeRangeVar(NULL, NewHeapName, -1);
 		YBCCreateTable(dummyStmt, RELKIND_RELATION, OldHeapDesc, OIDNewHeap, namespaceid,
-		               InvalidOid, NewTableSpace, OIDOldHeap);
+					   InvalidOid, InvalidOid, NewTableSpace, OIDOldHeap);
 	}
 
 	ReleaseSysCache(tuple);

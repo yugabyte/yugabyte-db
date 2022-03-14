@@ -9,7 +9,7 @@ SELECT yb_is_database_colocated();
 -- Test yb_table_properties.
 CREATE TABLE temp_tbl (h1 INT, h2 INT, PRIMARY KEY((h1, h2))) SPLIT INTO 7 TABLETS;
 
-SELECT yb_table_properties('temp_tbl'::regclass);
+SELECT * FROM yb_table_properties('temp_tbl'::regclass);
 
 -- Cleanup.
 DROP TABLE temp_tbl;
@@ -17,17 +17,22 @@ DROP TABLE temp_tbl;
 --
 -- Test COLOCATED database.
 --
-CREATE DATABASE colocated_db colocated = true;
+CREATE DATABASE test_yb_obj_props_clc COLOCATED = true;
 
-\c colocated_db
+\c test_yb_obj_props_clc
 --
 -- Test yb_is_database_colocated.
 SELECT yb_is_database_colocated();
 --
 -- Test yb_table_properties.
-CREATE TABLE col_temp_tbl (h INT PRIMARY KEY) WITH (colocated = true) SPLIT INTO 5 TABLETS;
+CREATE TABLE clc_temp_tbl (h INT PRIMARY KEY) WITH (colocated=true) SPLIT INTO 5 TABLETS;
+CREATE TABLE clc_temp_tbl_2 (h INT PRIMARY KEY) WITH (colocated=true, colocation_id=100500);
 
-SELECT yb_table_properties('col_temp_tbl'::regclass);
+SELECT c.relname, props.*
+FROM pg_class c, yb_table_properties(c.oid) props
+WHERE c.relname LIKE 'clc_%' AND c.relkind <> 'i' ORDER BY c.oid;
 
 -- Cleanup.
-DROP TABLE col_temp_tbl;
+DROP TABLE clc_temp_tbl;
+\c yugabyte
+DROP DATABASE test_yb_obj_props_clc;

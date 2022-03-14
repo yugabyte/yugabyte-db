@@ -13,6 +13,7 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/common/constants.h"
 #include "yb/common/ybc-internal.h"
 
 #include "yb/util/status_log.h"
@@ -40,6 +41,7 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
                                        false /* is_shared_table */, true /* if_not_exist */,
                                        false /* add_primary_key */, true /* colocated */,
                                        kInvalidOid /* tablegroup_id */,
+                                       kColocationIdNotSet /* colocation_id */,
                                        kInvalidOid /* tablespace_id */,
                                        kInvalidOid /* matview_pg_table_id */,
                                        &pg_stmt));

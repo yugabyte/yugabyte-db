@@ -243,8 +243,8 @@ string PrimitiveValue::ToString(AutoDecodeKeys auto_decode_keys) const {
       return "[]";
     case ValueType::kTableId:
       return Format("TableId($0)", uuid_val_.ToString());
-    case ValueType::kPgTableOid:
-      return Format("PgTableOid($0)", uint32_val_);
+    case ValueType::kColocationId:
+      return Format("ColocationId($0)", uint32_val_);
     case ValueType::kTransactionApplyState: FALLTHROUGH_INTENDED;
     case ValueType::kExternalTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kTransactionId:
@@ -315,7 +315,7 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
       key_bytes->AppendInt32(int32_val_);
       return;
 
-    case ValueType::kPgTableOid: FALLTHROUGH_INTENDED;
+    case ValueType::kColocationId: FALLTHROUGH_INTENDED;
     case ValueType::kSubTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32:
       key_bytes->AppendUInt32(uint32_val_);
@@ -501,7 +501,7 @@ string PrimitiveValue::ToValue() const {
       AppendBigEndianUInt32(int32_val_, &result);
       return result;
 
-    case ValueType::kPgTableOid: FALLTHROUGH_INTENDED;
+    case ValueType::kColocationId: FALLTHROUGH_INTENDED;
     case ValueType::kSubTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32Descending: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32:
@@ -804,7 +804,7 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
       type_ref = value_type;
       return Status::OK();
 
-    case ValueType::kPgTableOid: FALLTHROUGH_INTENDED;
+    case ValueType::kColocationId: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32Descending: FALLTHROUGH_INTENDED;
     case ValueType::kSubTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32:
@@ -1127,7 +1127,7 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
       int32_val_ = BigEndian::Load32(slice.data());
       return Status::OK();
 
-    case ValueType::kPgTableOid: FALLTHROUGH_INTENDED;
+    case ValueType::kColocationId: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32: FALLTHROUGH_INTENDED;
     case ValueType::kSubTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32Descending:
@@ -1382,9 +1382,9 @@ PrimitiveValue PrimitiveValue::TableId(Uuid table_id) {
   return primitive_value;
 }
 
-PrimitiveValue PrimitiveValue::PgTableOid(const yb::PgTableOid pgtable_id) {
-  PrimitiveValue primitive_value(pgtable_id);
-  primitive_value.type_ = ValueType::kPgTableOid;
+PrimitiveValue PrimitiveValue::ColocationId(const yb::ColocationId colocation_id) {
+  PrimitiveValue primitive_value(colocation_id);
+  primitive_value.type_ = ValueType::kColocationId;
   return primitive_value;
 }
 
@@ -1438,7 +1438,7 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
     case ValueType::kWriteId: FALLTHROUGH_INTENDED;
     case ValueType::kInt32: return int32_val_ == other.int32_val_;
 
-    case ValueType::kPgTableOid: FALLTHROUGH_INTENDED;
+    case ValueType::kColocationId: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32Descending: FALLTHROUGH_INTENDED;
     case ValueType::kSubTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32: return uint32_val_ == other.uint32_val_;
@@ -1527,7 +1527,7 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
       return CompareUsingLessThan(int32_val_, other.int32_val_);
     case ValueType::kUInt32Descending:
       return CompareUsingLessThan(other.uint32_val_, uint32_val_);
-    case ValueType::kPgTableOid: FALLTHROUGH_INTENDED;
+    case ValueType::kColocationId: FALLTHROUGH_INTENDED;
     case ValueType::kSubTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32:
       return CompareUsingLessThan(uint32_val_, other.uint32_val_);

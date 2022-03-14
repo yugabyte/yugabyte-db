@@ -156,7 +156,8 @@ class MasterTestBase : public YBTest {
   Status CreateTablegroupTable(const NamespaceId& namespace_id,
                                const TableName& table_name,
                                const TablegroupId& tablegroup_id,
-                               const Schema& schema);
+                               const Schema& schema,
+                               TableId* table_id = nullptr);
 
   Status DoCreateTable(const NamespaceName& namespace_name,
                        const TableName& table_name,
@@ -169,6 +170,8 @@ class MasterTestBase : public YBTest {
                        TableId* table_id = nullptr) {
     return DoCreateTable(default_namespace_name, table_name, schema, request, table_id);
   }
+
+  Status DeleteTableById(const TableId& table_id);
 
   Status DeleteTable(const NamespaceName& namespace_name,
                      const TableName& table_name,

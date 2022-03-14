@@ -567,13 +567,14 @@ Status PgApiImpl::NewCreateTable(const char *database_name,
                                  bool add_primary_key,
                                  const bool colocated,
                                  const PgObjectId& tablegroup_oid,
+                                 const ColocationId colocation_id,
                                  const PgObjectId& tablespace_oid,
                                  const PgObjectId& matview_pg_table_oid,
                                  PgStatement **handle) {
   auto stmt = std::make_unique<PgCreateTable>(
       pg_session_, database_name, schema_name, table_name,
       table_id, is_shared_table, if_not_exist, add_primary_key, colocated, tablegroup_oid,
-      tablespace_oid, matview_pg_table_oid);
+      colocation_id, tablespace_oid, matview_pg_table_oid);
   if (pg_txn_manager_->IsDdlMode()) {
     stmt->UseTransaction();
   }
@@ -796,13 +797,14 @@ Status PgApiImpl::NewCreateIndex(const char *database_name,
                                  const bool skip_index_backfill,
                                  bool if_not_exist,
                                  const PgObjectId& tablegroup_oid,
+                                 const YBCPgOid& colocation_id,
                                  const PgObjectId& tablespace_oid,
                                  PgStatement **handle) {
   auto stmt = std::make_unique<PgCreateTable>(
       pg_session_, database_name, schema_name, index_name, index_id, is_shared_index,
       if_not_exist, false /* add_primary_key */,
-      tablegroup_oid.IsValid() ? false : true /* colocated */, tablegroup_oid, tablespace_oid,
-      PgObjectId() /* matview_pg_table_id */);
+      tablegroup_oid.IsValid() ? false : true /* colocated */, tablegroup_oid, colocation_id,
+      tablespace_oid, PgObjectId() /* matview_pg_table_id */);
   stmt->SetupIndex(base_table_id, is_unique_index, skip_index_backfill);
   if (pg_txn_manager_->IsDdlMode()) {
       stmt->UseTransaction();

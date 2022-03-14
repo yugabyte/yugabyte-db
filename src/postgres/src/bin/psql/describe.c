@@ -1653,7 +1653,7 @@ describeOneTableDetails(const char *schemaname,
 
 	/* Get information about tablegroup (if any) */
 	printfPQExpBuffer(&tablegroupbuf,
-					  "SELECT SUBSTRING(unnest(reloptions) from '.*tablegroup=(\\d*).*') AS tablegroup\n"
+					  "SELECT SUBSTRING(unnest(reloptions) from '.*tablegroup_oid=(\\d*).*') AS tablegroup\n"
 					  "FROM pg_catalog.pg_class WHERE oid = '%s';",
 					  oid);
 
@@ -2350,7 +2350,7 @@ describeOneTableDetails(const char *schemaname,
 
 					/* Get information about tablegroup (if any) */
 					printfPQExpBuffer(&tablegroupbuf,
-									  "SELECT SUBSTRING(unnest(reloptions) from '.*tablegroup=(\\d*).*') AS tablegroup\n"
+									  "SELECT SUBSTRING(unnest(reloptions) from '.*tablegroup_oid=(\\d*).*') AS tablegroup\n"
 									  "FROM pg_catalog.pg_class WHERE relname = '%s';",
 									  PQgetvalue(result, i, 0));
 
@@ -3288,6 +3288,7 @@ add_tablegroup_footer(printTableContent *const cont, char relkind,
 			PGresult   *result = NULL;
 			PQExpBufferData buf;
 
+			/* TODO(alex): Can we use YBTABLEGROUPOID cache, e.g. get_tablegroup_name? */
 			initPQExpBuffer(&buf);
 			printfPQExpBuffer(&buf,
 							  "SELECT grpname FROM pg_catalog.pg_yb_tablegroup\n"
@@ -4437,7 +4438,7 @@ listTablegroups(const char *pattern, bool verbose, bool showRelations)
 							 "\nJOIN (SELECT oid, relname, relkind, relowner, unnest(pg_catalog.pg_class.reloptions) " \
 							 "AS relopt FROM pg_catalog.pg_class) c");
 		appendPQExpBufferStr(&buf,
-							 "\nON c.relopt LIKE CONCAT('%tablegroup=%', CAST(g.oid AS TEXT), '%')\n");
+							 "\nON c.relopt LIKE CONCAT('%tablegroup_oid=%', CAST(g.oid AS TEXT), '%')\n");
 	}
 
 	processSQLNamePattern(pset.db, &buf, pattern, false, false,

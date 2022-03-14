@@ -51,6 +51,13 @@ public class TestYsqlDump extends BasePgSQLTest {
   }
 
   @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    flagMap.put("TEST_sequential_colocation_ids", "true");
+    return flagMap;
+  }
+
+  @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("ysql_sequence_cache_minval", Integer.toString(TURN_OFF_SEQUENCE_CACHE_FLAG));
@@ -71,7 +78,7 @@ public class TestYsqlDump extends BasePgSQLTest {
   private String postprocessOutputLine(String s) {
     if (s == null)
       return null;
-    return StringUtil.rtrim(
+    return StringUtil.expandTabsAndRemoveTrailingSpaces(
       VERSION_NUMBER_PATTERN.matcher(s).replaceAll(VERSION_NUMBER_REPLACEMENT_STR));
   }
 
@@ -199,7 +206,9 @@ public class TestYsqlDump extends BasePgSQLTest {
 
     args.add("--include-yb-metadata");
 
-    buildAndRunProcess(binaryName, args);
+    int ysqlDumpExitCode = buildAndRunProcess(binaryName, args);
+    assertTrue(ysqlDumpExec.getName() + " exited with code " + ysqlDumpExitCode,
+        ysqlDumpExitCode == 0);
 
     compareExpectedAndActual(expected, actual);
   }
@@ -222,7 +231,7 @@ public class TestYsqlDump extends BasePgSQLTest {
   private void compareExpectedAndActual(File expected, File actual) throws Exception {
     // Compare the expected output and the actual output.
     try (BufferedReader actualIn   = createFileReader(actual);
-         BufferedReader expectedIn = createFileReader(expected);) {
+         BufferedReader expectedIn = createFileReader(expected)) {
 
       // Create the side-by-side diff between the actual output and expected output.
       // The resulting string will be used to provide debug information if the below

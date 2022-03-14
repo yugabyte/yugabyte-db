@@ -68,6 +68,7 @@ CREATE TABLE tgroup_one_option (a INT) WITH (autovacuum_enabled = true);
 CREATE TABLE tgroup_one_option_and_tgroup (a INT) WITH (autovacuum_enabled = true) TABLEGROUP grp2;
 CREATE TABLE tgroup_options (a INT) WITH (autovacuum_enabled=true, parallel_workers=2);
 CREATE TABLE tgroup_options_and_tgroup (a INT) WITH (autovacuum_enabled=true, parallel_workers=2) TABLEGROUP grp2;
+CREATE TABLE tgroup_options_tgroup_and_custom_colocation_id (a INT) WITH (autovacuum_enabled=true, colocation_id=100500, parallel_workers=2) TABLEGROUP grp2;
 CREATE TABLE tgroup_after_options (a INT) TABLEGROUP grp1;
 CREATE TABLE tgroup_in_between_options (a INT) WITH (autovacuum_enabled = true) TABLEGROUP grp1;
 CREATE TABLE tgroup_empty_options (a INT);
