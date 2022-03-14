@@ -66,7 +66,7 @@ The action to release a node instance is available from the Removed internal sta
 Taking this action transfers the node to a BeingDecommissioned and then Decommissioned internal state, as follows:
 
 1. There is a wait for Master leader.
-2. This server is removed from blacklist on Master leader (blacklisting is described in [Remove node](#remove-node)).
+2. This server is removed from blacklist on Master leader (blacklisting is described in [Remove node](#remove-node/)).
 3. The Master and TServer server tasks are stopped, if they have not been stopped already.
 4. The instance is destroyed.
 5. DNS entries are updated.
@@ -87,3 +87,5 @@ Taking this action completely eliminates the node, as follows:
 
 1. Removes the node record from the universe metadata.
 2. Updates metadata in the database only.
+
+You can recover a deleted node by following instructions provided in [Use Yugabyte Platform to add a node](../add-nodes/).
