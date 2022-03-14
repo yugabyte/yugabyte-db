@@ -7740,6 +7740,13 @@ CREATE SCHEMA import_dest5;
 BEGIN;
 DROP TYPE "Colors" CASCADE;
 NOTICE:  drop cascades to column Col of table import_source.t5
+-- YB note: type dropping in transaction is not respected, should error when issue #11742 is fixed
+select pg_sleep(1);
+ pg_sleep
+----------
+
+(1 row)
+
 IMPORT FOREIGN SCHEMA import_source LIMIT TO (t5)
   FROM SERVER loopback INTO import_dest5;  -- ERROR
 ROLLBACK;
