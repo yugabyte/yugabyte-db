@@ -49,7 +49,8 @@ You can only install extensions on the primary instance, not on the read replica
 Before using an extension, install it:
 In the ysql shell, run the CREATE EXTENSION command.
 ### Requirement for superuser privileges
-Extensions can only be created by users that are part of the superuser role?
+
+Extensions can only be created by users that are part of the superuser role.
 
 ### Inter-database connections
 The target instances for connections must be in the same VPC network as the connecting instance.
