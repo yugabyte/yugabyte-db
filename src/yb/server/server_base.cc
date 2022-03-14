@@ -481,13 +481,13 @@ void RpcAndWebServerBase::GenerateInstanceID() {
 Status RpcAndWebServerBase::Init() {
   encryption::InitOpenSSL();
 
-  Status s = fs_manager_->Open();
+  Status s = fs_manager_->CheckAndOpenFileSystemRoots();
   if (s.IsNotFound() || (!s.ok() && fs_manager_->HasAnyLockFiles())) {
     LOG(INFO) << "Could not load existing FS layout: " << s.ToString();
     LOG(INFO) << "Creating new FS layout";
     RETURN_NOT_OK_PREPEND(fs_manager_->CreateInitialFileSystemLayout(true),
                           "Could not create new FS layout");
-    s = fs_manager_->Open();
+    s = fs_manager_->CheckAndOpenFileSystemRoots();
   }
   RETURN_NOT_OK_PREPEND(s, "Failed to load FS layout");
 
