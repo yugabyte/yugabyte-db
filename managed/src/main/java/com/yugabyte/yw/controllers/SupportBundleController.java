@@ -9,6 +9,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.SupportBundleUtil;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
@@ -38,9 +39,12 @@ import play.mvc.Result;
 public class SupportBundleController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(SupportBundleController.class);
+  public static final String K8S_ENABLED = "yb.support_bundle.k8s_enabled";
+  public static final String ONPREM_ENABLED = "yb.support_bundle.onprem_enabled";
 
   @Inject Commissioner commissioner;
   @Inject SupportBundleUtil supportBundleUtil;
+  @Inject private RuntimeConfigFactory runtimeConfigFactory;
 
   @ApiOperation(
       value = "Create support bundle for specific universe",
@@ -67,7 +71,10 @@ public class SupportBundleController extends AuthenticatedController {
 
     // Temporarily cannot create for onprem or k8s properly. Will result in empty directories
     CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
-    if (cloudType == CloudType.onprem || cloudType == CloudType.kubernetes) {
+    Boolean k8s_enabled = runtimeConfigFactory.globalRuntimeConf().getBoolean(K8S_ENABLED);
+    Boolean onprem_enabled = runtimeConfigFactory.globalRuntimeConf().getBoolean(ONPREM_ENABLED);
+    if ((cloudType == CloudType.onprem && !onprem_enabled)
+        || (cloudType == CloudType.kubernetes && !k8s_enabled)) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot currently create support bundle for onprem or k8s clusters");
     }
