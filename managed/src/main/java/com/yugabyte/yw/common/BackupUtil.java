@@ -159,6 +159,7 @@ public class BackupUtil {
             .isUniversePresent(isUniversePresent)
             .totalBackupSizeInBytes(Long.valueOf(backup.getBackupInfo().backupSizeInBytes))
             .backupType(backup.getBackupInfo().backupType)
+            .storageConfigType(backup.getBackupInfo().storageConfigType)
             .state(backup.state);
     if (backup.getBackupInfo().backupList == null) {
       KeyspaceTablesList kTList =
@@ -231,7 +232,7 @@ public class BackupUtil {
     return regionLocationsList;
   }
 
-  public void validateStorageConfigOnLocations(CustomerConfig config, List<String> locations) {
+  public Boolean validateStorageConfigOnLocations(CustomerConfig config, List<String> locations) {
     LOG.info(String.format("Validating storage config %s", config.configName));
     Boolean isValid = true;
     switch (config.name) {
@@ -251,13 +252,7 @@ public class BackupUtil {
         throw new PlatformServiceException(
             BAD_REQUEST, String.format("Invalid config type: %s", config.name));
     }
-    if (!isValid) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          String.format(
-              "Storage config %s cannot access location %s",
-              config.configName, config.data.get(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME)));
-    }
+    return isValid;
   }
 
   public void validateStorageConfig(CustomerConfig config) throws PlatformServiceException {
@@ -374,5 +369,18 @@ public class BackupUtil {
     } finally {
       ybService.closeClient(client, masterAddresses);
     }
+  }
+
+  public List<String> getBackupLocations(Backup backup) {
+    BackupTableParams backupParams = backup.getBackupInfo();
+    List<String> backupLocations = new ArrayList<>();
+    if (backupParams.backupList != null) {
+      for (BackupTableParams params : backupParams.backupList) {
+        backupLocations.add(params.storageLocation);
+      }
+    } else {
+      backupLocations.add(backupParams.storageLocation);
+    }
+    return backupLocations;
   }
 }
