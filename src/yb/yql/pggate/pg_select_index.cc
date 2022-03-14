@@ -64,7 +64,7 @@ Status PgSelectIndex::PrepareSubquery(std::shared_ptr<PgsqlReadRequestPB> read_r
   RSTATUS_DCHECK(
       prepare_params_.querying_colocated_table, InvalidArgument, "Read request invalid");
   read_req_ = std::move(read_req);
-  read_req_->set_table_id(index_id_.GetYBTableId());
+  read_req_->set_table_id(index_id_.GetYbTableId());
 
   // Prepare index key columns.
   PrepareBinds();

@@ -680,12 +680,13 @@ Status PgsqlWriteOperation::PopulateResultSet(const QLTableRow& table_row) {
     if (expr.has_column_id()) {
       QLExprResult value;
       if (expr.column_id() == static_cast<int>(PgSystemAttrNum::kYBTupleId)) {
-        // Strip cotable id / pgtable id from the serialized DocKey before returning it as ybctid.
+        // Strip cotable ID / colocation ID from the serialized DocKey before returning it
+        // as ybctid.
         Slice tuple_id = encoded_doc_key_.as_slice();
         if (tuple_id.starts_with(ValueTypeAsChar::kTableId)) {
           tuple_id.remove_prefix(1 + kUuidSize);
-        } else if (tuple_id.starts_with(ValueTypeAsChar::kPgTableOid)) {
-          tuple_id.remove_prefix(1 + sizeof(PgTableOid));
+        } else if (tuple_id.starts_with(ValueTypeAsChar::kColocationId)) {
+          tuple_id.remove_prefix(1 + sizeof(ColocationId));
         }
         value.Writer().NewValue().set_binary_value(tuple_id.data(), tuple_id.size());
       } else {

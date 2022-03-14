@@ -387,8 +387,12 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							errmsg("users cannot create system catalog tables")));
 		}
-		else if (strcmp(def->defname, "tablegroup") == 0)
-			(void) strtol(defGetString(def), NULL, 10);
+		else if (strcmp(def->defname, "tablegroup_oid") == 0)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("cannot supply tablegroup_oid through WITH clause")));
+		}
 		else if (strcmp(def->defname, "colocated") == 0)
 			(void) defGetBoolean(def);
 		else if (strcmp(def->defname, "table_oid") == 0)
@@ -423,6 +427,13 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 								"(exactly as defined in the relevant BKI header file!)",
 								max_system_relid)));
 			}
+		}
+		else if (strcmp(def->defname, "colocation_id") == 0)
+		{
+			/*
+			 * Acknowledge we recognize the reloption.
+			 * reloptions parsing will do the bounds check for us.
+			 */
 		}
 		else if (strcmp(def->defname, "row_type_oid") == 0)
 		{
@@ -2844,7 +2855,7 @@ transformIndexStmt(Oid relid, IndexStmt *stmt, const char *queryString)
 	foreach(cell, stmt->options)
 	{
 		DefElem *def = (DefElem*) lfirst(cell);
-		if (strcmp(def->defname, "tablegroup") == 0)
+		if (strcmp(def->defname, "tablegroup_oid") == 0)
 		{
 			/*
 			 * We must ensure that no tablegroup option was supplied in the
@@ -2856,7 +2867,7 @@ transformIndexStmt(Oid relid, IndexStmt *stmt, const char *queryString)
 			 */
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("cannot supply tablegroup through WITH clause")));
+					 errmsg("cannot supply tablegroup_oid through WITH clause")));
 		}
 		else if (strcmp(def->defname, "table_oid") == 0)
 		{

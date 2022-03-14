@@ -332,8 +332,8 @@ Status AddHostPortPBs(const std::vector<Endpoint>& addrs,
 
 void SchemaToColocatedTableIdentifierPB(
     const Schema& schema, ColocatedTableIdentifierPB* colocated_pb) {
-  if (schema.has_pgtable_id()) {
-    colocated_pb->set_pgtable_id(schema.pgtable_id());
+  if (schema.has_colocation_id()) {
+    colocated_pb->set_colocation_id(schema.colocation_id());
   } else if (schema.has_cotable_id()) {
     colocated_pb->set_cotable_id(schema.cotable_id().ToString());
   }
@@ -375,8 +375,8 @@ Status SchemaFromPB(const SchemaPB& pb, Schema *schema) {
             VERIFY_RESULT(Uuid::FromString(pb.colocated_table_id().cotable_id())));
         break;
       }
-      case ColocatedTableIdentifierPB::kPgtableId:
-        schema->set_pgtable_id(pb.colocated_table_id().pgtable_id());
+      case ColocatedTableIdentifierPB::kColocationId:
+        schema->set_colocation_id(pb.colocated_table_id().colocation_id());
         break;
       case ColocatedTableIdentifierPB::VALUE_NOT_SET:
         break;

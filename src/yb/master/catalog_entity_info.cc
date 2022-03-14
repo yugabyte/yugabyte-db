@@ -43,6 +43,7 @@
 #include "yb/master/master_error.h"
 #include "yb/master/ts_descriptor.h"
 
+#include "yb/gutil/map-util.h"
 #include "yb/util/atomic.h"
 #include "yb/util/format.h"
 #include "yb/util/status_format.h"
@@ -288,7 +289,8 @@ void PersistentTabletInfo::set_state(SysTabletsEntryPB::State state, const strin
 // TableInfo
 // ================================================================================================
 
-TableInfo::TableInfo(TableId table_id, scoped_refptr<TasksTracker> tasks_tracker)
+TableInfo::TableInfo(TableId table_id,
+                     scoped_refptr<TasksTracker> tasks_tracker)
     : table_id_(std::move(table_id)),
       tasks_tracker_(tasks_tracker) {
 }
@@ -895,38 +897,54 @@ string NamespaceInfo::ToString() const {
 TablegroupInfo::TablegroupInfo(TablegroupId tablegroup_id, NamespaceId namespace_id) :
                                tablegroup_id_(tablegroup_id), namespace_id_(namespace_id) {}
 
-void TablegroupInfo::AddChildTable(const TableId& table_id) {
+void TablegroupInfo::AddChildTable(const TableId& table_id, ColocationId colocation_id) {
   std::lock_guard<simple_spinlock> l(lock_);
-  if (table_set_.find(table_id) != table_set_.end()) {
-    LOG(WARNING) << "Table ID " << table_id << " already in Tablegroup " << tablegroup_id_;
+  if (ContainsKey(table_map_.left, table_id)) {
+    LOG(WARNING) << "Tablegroup " << tablegroup_id_ << " already contains a table with ID "
+                 << table_id;
+  } else if (ContainsKey(table_map_.right, colocation_id)) {
+    LOG(WARNING) << "Tablegroup " << tablegroup_id_ << " already contains a table with "
+                 << "colocation ID " << colocation_id;
   } else {
-    table_set_.insert(table_id);
+    table_map_.insert(TableMap::value_type(table_id, colocation_id));
   }
 }
 
 void TablegroupInfo::DeleteChildTable(const TableId& table_id) {
   std::lock_guard<simple_spinlock> l(lock_);
-  if (table_set_.find(table_id) != table_set_.end()) {
-    table_set_.erase(table_id);
+  auto left_map = table_map_.left;
+  if (ContainsKey(left_map, table_id)) {
+    left_map.erase(table_id);
   } else {
-    LOG(WARNING) << "Table ID " << table_id << " not found in Tablegroup " << tablegroup_id_;
+    LOG(WARNING) << "Tablegroup " << tablegroup_id_ << " does not contains a table with ID "
+                 << table_id;
   }
 }
 
 bool TablegroupInfo::HasChildTables() const {
   std::lock_guard<simple_spinlock> l(lock_);
-  return !table_set_.empty();
+  return !table_map_.empty();
+}
+
+
+bool TablegroupInfo::HasChildTable(ColocationId colocation_id) const {
+  std::lock_guard<simple_spinlock> l(lock_);
+  return ContainsKey(table_map_.right, colocation_id);
 }
 
 
 std::size_t TablegroupInfo::NumChildTables() const {
   std::lock_guard<simple_spinlock> l(lock_);
-  return table_set_.size();
+  return table_map_.size();
 }
 
 std::unordered_set<TableId> TablegroupInfo::ChildTables() const {
   std::lock_guard<simple_spinlock> l(lock_);
-  return table_set_;
+  std::unordered_set<TableId> result;
+  for (auto iter = table_map_.left.begin(), iend = table_map_.left.end(); iter != iend; ++iter) {
+    result.insert(iter->first);
+  }
+  return result;
 }
 
 // ================================================================================================

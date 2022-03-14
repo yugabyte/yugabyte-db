@@ -456,16 +456,16 @@ ALTER TABLE public.tbl9 OWNER TO yugabyte_test;
 
 
 -- For binary upgrade, must preserve pg_type oid
-SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16503'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16506'::pg_catalog.oid);
 
 
 -- For binary upgrade, must preserve pg_type array oid
-SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16502'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16505'::pg_catalog.oid);
 
 CREATE TABLE public.tgroup_after_options (
     a integer
 )
-WITH (a=b)
+WITH (a=b, colocation_id='20002')
 TABLEGROUP grp1;
 
 
@@ -477,11 +477,11 @@ ALTER TABLE public.tgroup_after_options OWNER TO tablegroup_test_user;
 
 
 -- For binary upgrade, must preserve pg_type oid
-SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16509'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16512'::pg_catalog.oid);
 
 
 -- For binary upgrade, must preserve pg_type array oid
-SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16508'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16511'::pg_catalog.oid);
 
 CREATE TABLE public.tgroup_empty_options (
     a integer
@@ -497,16 +497,16 @@ ALTER TABLE public.tgroup_empty_options OWNER TO tablegroup_test_user;
 
 
 -- For binary upgrade, must preserve pg_type oid
-SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16506'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16509'::pg_catalog.oid);
 
 
 -- For binary upgrade, must preserve pg_type array oid
-SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16505'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16508'::pg_catalog.oid);
 
 CREATE TABLE public.tgroup_in_between_options (
     a integer
 )
-WITH (a=b, autovacuum_enabled='true')
+WITH (a=b, autovacuum_enabled='true', colocation_id='20003')
 TABLEGROUP grp1;
 
 
@@ -527,6 +527,7 @@ SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16487'::pg_catalog.
 CREATE TABLE public.tgroup_no_options_and_tgroup (
     a integer
 )
+WITH (colocation_id='20001')
 TABLEGROUP grp1;
 
 
@@ -568,7 +569,7 @@ SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16493'::pg_catalog.
 CREATE TABLE public.tgroup_one_option_and_tgroup (
     a integer
 )
-WITH (autovacuum_enabled='true')
+WITH (autovacuum_enabled='true', colocation_id='20001')
 TABLEGROUP grp2;
 
 
@@ -610,11 +611,32 @@ SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16499'::pg_catalog.
 CREATE TABLE public.tgroup_options_and_tgroup (
     a integer
 )
-WITH (autovacuum_enabled='true', parallel_workers='2')
+WITH (autovacuum_enabled='true', parallel_workers='2', colocation_id='20002')
 TABLEGROUP grp2;
 
 
 ALTER TABLE public.tgroup_options_and_tgroup OWNER TO tablegroup_test_user;
+
+--
+-- Name: tgroup_options_tgroup_and_custom_colocation_id; Type: TABLE; Schema: public; Owner: tablegroup_test_user
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16503'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16502'::pg_catalog.oid);
+
+CREATE TABLE public.tgroup_options_tgroup_and_custom_colocation_id (
+    a integer
+)
+WITH (autovacuum_enabled='true', parallel_workers='2', colocation_id='100500')
+TABLEGROUP grp2;
+
+
+ALTER TABLE public.tgroup_options_tgroup_and_custom_colocation_id OWNER TO tablegroup_test_user;
 
 --
 -- Name: th1; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -622,11 +644,11 @@ ALTER TABLE public.tgroup_options_and_tgroup OWNER TO tablegroup_test_user;
 
 
 -- For binary upgrade, must preserve pg_type oid
-SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16512'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16515'::pg_catalog.oid);
 
 
 -- For binary upgrade, must preserve pg_type array oid
-SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16511'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16514'::pg_catalog.oid);
 
 CREATE TABLE public.th1 (
     a integer,
@@ -644,11 +666,11 @@ ALTER TABLE public.th1 OWNER TO yugabyte_test;
 
 
 -- For binary upgrade, must preserve pg_type oid
-SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16515'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16518'::pg_catalog.oid);
 
 
 -- For binary upgrade, must preserve pg_type array oid
-SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16514'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16517'::pg_catalog.oid);
 
 CREATE TABLE public.th2 (
     a integer NOT NULL,
@@ -667,11 +689,11 @@ ALTER TABLE public.th2 OWNER TO yugabyte_test;
 
 
 -- For binary upgrade, must preserve pg_type oid
-SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16520'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16523'::pg_catalog.oid);
 
 
 -- For binary upgrade, must preserve pg_type array oid
-SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16519'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16522'::pg_catalog.oid);
 
 CREATE TABLE public.th3 (
     a integer NOT NULL,
@@ -690,11 +712,11 @@ ALTER TABLE public.th3 OWNER TO yugabyte_test;
 
 
 -- For binary upgrade, must preserve pg_type oid
-SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16525'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16528'::pg_catalog.oid);
 
 
 -- For binary upgrade, must preserve pg_type array oid
-SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16524'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16527'::pg_catalog.oid);
 
 CREATE TABLE public.tr1 (
     a integer NOT NULL,
@@ -712,11 +734,11 @@ ALTER TABLE public.tr1 OWNER TO yugabyte_test;
 
 
 -- For binary upgrade, must preserve pg_type oid
-SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16530'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16533'::pg_catalog.oid);
 
 
 -- For binary upgrade, must preserve pg_type array oid
-SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16529'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16532'::pg_catalog.oid);
 
 CREATE TABLE public.tr2 (
     a integer NOT NULL,
@@ -954,6 +976,14 @@ COPY public.tgroup_options (a) FROM stdin;
 --
 
 COPY public.tgroup_options_and_tgroup (a) FROM stdin;
+\.
+
+
+--
+-- Data for Name: tgroup_options_tgroup_and_custom_colocation_id; Type: TABLE DATA; Schema: public; Owner: tablegroup_test_user
+--
+
+COPY public.tgroup_options_tgroup_and_custom_colocation_id (a) FROM stdin;
 \.
 
 
