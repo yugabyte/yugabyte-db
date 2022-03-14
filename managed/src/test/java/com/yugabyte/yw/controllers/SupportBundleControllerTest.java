@@ -254,7 +254,7 @@ public class SupportBundleControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     assertEquals(json.get("taskUUID").asText(), fakeTaskUUID.toString());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
