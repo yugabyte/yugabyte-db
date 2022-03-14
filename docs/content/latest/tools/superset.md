@@ -18,7 +18,7 @@ showAsideToc: true
 
 ## Before you begin
 
-Your YugabyteDB cluster should be up and running. If you're new to YugabyteDB, create a local cluster in less than five minutes following the steps in [Quick Start](../../quick-start/install). You can also get started with the free tier of [YugabyteDB Fully-Managed Cloud](https://www.yugabyte.com/cloud/). You also need to load a relevant database in your YugabyteDB for exploration and visualizaation. If using yugabyted, you can load the NOrthwind sample database with the ./bin/yugabyted demo connect command from your shell or you can follow [instructions here](https://docs.yugabyte.com/latest/sample-data/northwind/).
+Your YugabyteDB cluster should be up and running. If you're new to YugabyteDB, create a local cluster in less than five minutes following the steps in [Quick Start](../../quick-start/install). You can also get started with the free tier of [YugabyteDB Fully-Managed Cloud](https://www.yugabyte.com/cloud/). You also need to load a relevant database in your YugabyteDB for exploration and visualizaation. If using yugabyted, you can load the Northwind sample database with the ./bin/yugabyted demo connect command from your shell or you can follow [instructions here](https://docs.yugabyte.com/latest/sample-data/northwind/).
 
 You also need to install Apache Superset to explore and visualize your data. You can install Superset using [Docker Compose](https://superset.apache.org/docs/installation/installing-superset-using-docker-compose) (recommended) or from scratch using [python install (PIP)](https://superset.apache.org/docs/installation/installing-superset-from-scratch).
 
@@ -28,7 +28,7 @@ After successful installation, launch Superset in the browser at http://<hostnam
 
 Follow these steps to connect Apache Superset to YugabyteDB:
 
-1. Navigate to Data → Databases → + Databases as shown below and choose "PostgreSQL" from the “Connect a database” menu as shown below.
+1. Navigate to Data → Databases → + Databases and choose "PostgreSQL" from the “Connect a database” menu as shown below.
 
 ![Connect Database](/images/develop/tools/superset/connect-database.png)
 
