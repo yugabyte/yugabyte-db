@@ -168,7 +168,7 @@ const PgExecParameters& PgDocOp::ExecParameters() const {
   return exec_params_;
 }
 
-Result<RequestSent> PgDocOp::Execute(bool force_non_bufferable, bool use_async_flush) {
+Result<RequestSent> PgDocOp::Execute(bool force_non_bufferable) {
   // As of 09/25/2018, DocDB doesn't cache or keep any execution state for a statement, so we
   // have to call query execution every time.
   // - Normal SQL convention: Exec, Fetch, Fetch, ...
@@ -176,7 +176,7 @@ Result<RequestSent> PgDocOp::Execute(bool force_non_bufferable, bool use_async_f
   // This refers to the sequence of operations between this layer and the underlying tablet
   // server / DocDB layer, not to the sequence of operations between the PostgreSQL layer and this
   // layer.
-  exec_status_ = SendRequest(force_non_bufferable, use_async_flush);
+  exec_status_ = SendRequest(force_non_bufferable);
   RETURN_NOT_OK(exec_status_);
   return RequestSent(response_.Valid());
 }
@@ -188,7 +188,7 @@ Status PgDocOp::GetResult(list<PgDocResult> *rowsets) {
   if (!end_of_data_) {
     // Send request now in case prefetching was suppressed.
     if (suppress_next_result_prefetching_ && !response_.Valid()) {
-      exec_status_ = SendRequest(true /* force_non_bufferable */, false /* use_async_flush */);
+      exec_status_ = SendRequest(true /* force_non_bufferable */);
       RETURN_NOT_OK(exec_status_);
     }
 
@@ -201,7 +201,7 @@ Status PgDocOp::GetResult(list<PgDocResult> *rowsets) {
     rowsets->splice(rowsets->end(), rows);
     // Prefetch next portion of data if needed.
     if (!(end_of_data_ || suppress_next_result_prefetching_)) {
-      exec_status_ = SendRequest(true /* force_non_bufferable */, false /* use_async_flush */);
+      exec_status_ = SendRequest(true /* force_non_bufferable */);
       RETURN_NOT_OK(exec_status_);
     }
   }
@@ -262,14 +262,14 @@ void PgDocOp::MoveInactiveOpsOutside() {
   active_op_count_ = left_iter;
 }
 
-Status PgDocOp::SendRequest(bool force_non_bufferable, bool use_async_flush) {
+Status PgDocOp::SendRequest(bool force_non_bufferable) {
   DCHECK(exec_status_.ok());
   DCHECK(!response_.Valid());
-  exec_status_ = SendRequestImpl(force_non_bufferable, use_async_flush);
+  exec_status_ = SendRequestImpl(force_non_bufferable);
   return exec_status_;
 }
 
-Status PgDocOp::SendRequestImpl(bool force_non_bufferable, bool use_async_flush) {
+Status PgDocOp::SendRequestImpl(bool force_non_bufferable) {
   // Populate collected information into protobuf requests before sending to DocDB.
   RETURN_NOT_OK(CreateRequests());
 
@@ -284,7 +284,7 @@ Status PgDocOp::SendRequestImpl(bool force_non_bufferable, bool use_async_flush)
   size_t send_count = std::min(parallelism_level_, active_op_count_);
   response_ = VERIFY_RESULT(pg_session_->RunAsync(
       pgsql_ops_.data(), send_count, *table_, relation_id_, &GetReadTime(),
-      force_non_bufferable, use_async_flush));
+      force_non_bufferable));
 
   return Status::OK();
 }

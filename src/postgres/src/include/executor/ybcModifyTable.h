@@ -63,13 +63,11 @@ extern Oid YBCHeapInsertForDb(Oid dboid,
  */
 extern Oid YBCExecuteInsert(Relation rel,
                             TupleDesc tupleDesc,
-                            HeapTuple tuple,
-							              bool use_async_flush);
+                            HeapTuple tuple);
 extern Oid YBCExecuteInsertForDb(Oid dboid,
                                  Relation rel,
                                  TupleDesc tupleDesc,
-                                 HeapTuple tuple,
-								                 bool use_async_flush);
+                                 HeapTuple tuple);
 
 /*
  * Execute the insert outside of a transaction.
