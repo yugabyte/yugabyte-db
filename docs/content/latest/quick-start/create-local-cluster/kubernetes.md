@@ -106,7 +106,11 @@ yb-tservers          ClusterIP      None           <none>        7100/TCP,9000/T
 
 ## 3. Check cluster status with Admin UI
 
-To check the cluster status, you need to access the Admin UI on port `7000` exposed by the `yb-master-ui` service. In order to do so, you need to find the port forward the port.
+Under the hood, the cluster you have just created consists of two processes: [YB-Master](../../../architecture/concepts/yb-master/) which keeps track of various metadata (list of tables, users, roles, permissions, etc.), and [YB-TServer](../../../architecture/concepts/yb-tserver/) which is responsible for the actual end user requests for data updates and queries.
+
+Each of the processes exposes its own Admin UI that can be used to check the status of the corresponding process, and perform certain administrative operations.
+
+To get access to the Admin UI, you first need to set up port forwarding for port `7000`:
 
 ```sh
 $ kubectl --namespace yb-demo port-forward svc/yb-master-ui 7000:7000
