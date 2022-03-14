@@ -22,38 +22,34 @@ Your YugabyteDB cluster should be up and running. If you're new to YugabyteDB, c
 
 You also need to install Apache Superset to explore and visualize your data. You can install Superset using [Docker Compose](https://superset.apache.org/docs/installation/installing-superset-using-docker-compose) (recommended) or from scratch using [python install (PIP)](https://superset.apache.org/docs/installation/installing-superset-from-scratch).
 
-## Create a database connection
+## Connecting Apache Superset with YugabyteDB
 
-Follow these steps to connect your Arctype desktop client to YugabyteDB:
+After successful installation, launch Superset in the browser at http://<hostname/IP>:8088. In case of local installation on your laptop, navigate to localhost:8088 or 127.0.0.1:8088. Superset comes with standard PostgreSQL driver that also connects to YugabyteDB. You can also manually install [psycopg2 driver](https://www.psycopg.org/docs/) to connect to YugabyteDB.
 
-1. Launch the Arctype desktop client.
+Follow these steps to connect Apache Superset to YugabyteDB:
 
-1. Follow the in-app prompts to create and log into your Arctype account.
+1. Navigate to Data → Databases → + Databases as shown below and choose "PostgreSQL" from the “Connect a database” menu as shown below.
 
-1. On the "Connect a Database" step, select YugabyteDB.
+![Connect Database](/images/develop/tools/superset/connect-database.png)
 
-    ![Connect DB](/images/develop/tools/arctype/arctype-connect_step3.png)
+1. Enter the hostname or IP Address of your YB-TServer with standard credentials and click "Finish".
+
+![Database Connection Credentials](/images/develop/tools/superset/connect-ybdb.png)
 
     {{< note title="Note" >}}
 
-If you're using YugabyteDB Cloud, you need to add your computer to the cluster IP allow list. Refer to [Assign IP Allow Lists](../../yugabyte-cloud/cloud-secure-clusters/add-connections/). You also need to download and install CA Cert root.crt certificate on your computer from YugabyteDB Cloud console for TLS encryption.
+As of Docker version 18.03, the host.docker.internal hostname connects to your Docker host from inside a Docker container.
 
     {{< /note >}}
 
-1. Enter your YugabyteDB host, port, database, user, and password information, and click 'Test Connection' and save if connection is successful.
+1. You should now be connected to the YugabyteDB and to verify you can check the availabe databases and schemas under "Data". Navigate to Data → Datasets and click "+Datasets" and in the dialog configure as shown below. Dropdown selectors would show the datasbes and schemas available for explore and visualize operations.
 
-    ![Enter host and port](/images/develop/tools/arctype/arctype-connect-step4.png)
+    ![Loading Datasets](/images/develop/tools/superset/load-dataset.png)
 
-1. You can see the schemas and tables available in the YugabyteDB in the navigation panel.
-
-    ![Enter database connection details](/images/develop/tools/arctype/arctype-connect-step5.png)
-
-You've successfully created a connection to your YugabyteDB database, and you can now start querying and visualizing your DB using Arctype.
+You've successfully created a connection to your YugabyteDB database, and you can now start exploring and visualizing your databases using Apache Superset.
 
 ## What's Next
 
-Arctype is a feature rich database query and visualization tool for developers and administrators. To learn more about these features or for help using Arctype, see the [Arctype documentation](https://docs.arctype.com/).
+Superset is a rich, open-source data exploration and visualization platform that allows Business Analysts, Data Scientists and Developers to quickly explore and visualize data stored in their databases and data warehouses. You can explore data without writing complex SQL queries, create rich reports and custom dashboards to visualize this data and get insights quickly.
 
-Check out this [blog post](https://blog.yugabyte.com/yugabytedb-arctype-sql-integration/) to learn more about deep integration between YugabyteDB and Arctype.
-
-YugabyteDB has several sample databases available for you to explore. To learn more about the available sample databases, see [Sample data](../../sample-data/).
+Refer to Apache Superset [documentation](https://superset.apache.org/docs/creating-charts-dashboards/exploring-data#exploring-data-in-superset) to learn more about Superset's data exploration capabilities. Also, in case you are creating your first dashboard using Superset then check out [instructions for data analysis and exploration workflow](https://superset.apache.org/docs/creating-charts-dashboards/creating-your-first-dashboard/).
