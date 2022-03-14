@@ -3275,14 +3275,21 @@ Status CatalogManager::ValidateTableSchema(
   // For colocated tables, only add the parent table since we only added the parent table to the
   // original pb (we use the number of tables in the pb to determine when validation is done).
   if (info->colocated) {
-    // For now we require that colocated tables have the same table oid.
-    auto source_oid = CHECK_RESULT(GetPgsqlTableOid(info->table_id));
-    auto target_oid = CHECK_RESULT(GetPgsqlTableOid(resp->identifier().table_id()));
-    if (source_oid != target_oid) {
+    // We require that colocated tables have the same colocation ID.
+    //
+    // Backward compatibility: tables created prior to #7378 use YSQL table OID as a colocation ID.
+    auto source_clc_id = info->schema.has_colocation_id()
+        ? info->schema.colocation_id()
+        : CHECK_RESULT(GetPgsqlTableOid(info->table_id));
+    auto target_clc_id = (resp->schema().has_colocated_table_id() &&
+                          resp->schema().colocated_table_id().has_colocation_id())
+        ? resp->schema().colocated_table_id().colocation_id()
+        : CHECK_RESULT(GetPgsqlTableOid(resp->identifier().table_id()));
+    if (source_clc_id != target_clc_id) {
       return STATUS(IllegalState,
-          Substitute("Source and target table oids don't match for colocated table: "
-                    "Source: $0, Target: $1, Source table oid: $2, Target table oid: $3",
-                    info->table_id, resp->identifier().table_id(), source_oid, target_oid));
+          Substitute("Source and target colocation IDs don't match for colocated table: "
+                     "Source: $0, Target: $1, Source colocation ID: $2, Target colocation ID: $3",
+                     info->table_id, resp->identifier().table_id(), source_clc_id, target_clc_id));
     }
   }
 

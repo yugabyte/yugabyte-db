@@ -1554,6 +1554,9 @@ class CatalogManager :
   std::unordered_map<TableId, TableId> matview_pg_table_ids_map_
       GUARDED_BY(mutex_);
 
+  std::unordered_map<TableId, TablegroupId> table_tablegroup_ids_map_
+      GUARDED_BY(mutex_);
+
   boost::optional<std::future<Status>> initdb_future_;
   boost::optional<InitialSysCatalogSnapshotWriter> initial_snapshot_writer_;
 
