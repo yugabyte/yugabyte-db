@@ -98,7 +98,7 @@ Status FsTool::Init() {
   // TODO(bogdan): do we use this tool? would we use it for more than tservers?
   opts.server_type = "tserver";
   fs_manager_.reset(new FsManager(Env::Default(), opts));
-  RETURN_NOT_OK(fs_manager_->Open());
+  RETURN_NOT_OK(fs_manager_->CheckAndOpenFileSystemRoots());
 
   LOG(INFO) << "Opened file system with uuid: " << fs_manager_->uuid();
 
