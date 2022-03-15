@@ -47,7 +47,7 @@ showAsideToc: true
 
 </ul>
 
-## 1. Create a local cluster
+## Create a local cluster
 
 To create a 1-node cluster with a replication factor (RF) of 1, run the command below.
 
@@ -76,7 +76,7 @@ $ docker run -d --name yugabyte \
 
 Clients can now connect to the YSQL and YCQL APIs at `localhost:5433` and `localhost:9042` respectively.
 
-## 2. Check cluster status
+## Check cluster status
 
 ```sh
 $ docker ps
@@ -87,7 +87,7 @@ CONTAINER ID        IMAGE                 COMMAND                  CREATED      
 5088ca718f70        yugabytedb/yugabyte   "bin/yugabyted start…"   46 seconds ago      Up 44 seconds       0.0.0.0:5433->5433/tcp, 6379/tcp, 7100/tcp, 0.0.0.0:7000->7000/tcp, 0.0.0.0:9000->9000/tcp, 7200/tcp, 9100/tcp, 10100/tcp, 11000/tcp, 0.0.0.0:9042->9042/tcp, 12000/tcp   yugabyte
 ```
 
-## 3. Check cluster status with Admin UI
+## Check cluster status with Admin UI
 
 The [yb-master Admin UI](../../../reference/configuration/yb-master/#admin-ui) is available at <http://localhost:7000> and the [yb-tserver Admin UI](../../../reference/configuration/yb-tserver/#admin-ui) is available at <http://localhost:9000>. To avoid port conflicts, you should make sure other processes on your machine do not have these ports mapped to `localhost`.
 

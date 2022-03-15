@@ -47,7 +47,7 @@ showAsideToc: true
 
 </ul>
 
-## 1. Create a local cluster
+## Create a local cluster
 
 Create a YugabyteDB cluster in Minikube using the commands below. Note that for Helm, you have to first create a namespace.
 
@@ -68,7 +68,7 @@ resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi,\
 replicas.master=1,replicas.tserver=1,enableLoadBalancer=False --namespace yb-demo
 ```
 
-## 2. Check cluster status with kubectl
+## Check cluster status with kubectl
 
 Run the following command to see that you now have two services with one pod each — 1 yb-master pod (`yb-master-0`) and 1 yb-tserver pod (`yb-tserver-0`) running. For details on the roles of these pods in a YugabyteDB cluster (aka Universe), see [Universe](../../../architecture/concepts/universe/) in the Concepts section.
 
@@ -104,7 +104,7 @@ yb-tserver-service   LoadBalancer   10.106.5.69    <pending>     6379:31320/TCP,
 yb-tservers          ClusterIP      None           <none>        7100/TCP,9000/TCP,6379/TCP,9042/TCP,5433/TCP   119s
 ```
 
-## 3. Check cluster status with Admin UI
+## Check cluster status with Admin UI
 
 To check the cluster status, you need to access the Admin UI on port `7000` exposed by the `yb-master-ui` service. In order to do so, you need to find the port forward the port.
 

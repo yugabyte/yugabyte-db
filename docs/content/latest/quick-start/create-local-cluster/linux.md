@@ -46,7 +46,7 @@ showAsideToc: true
 
 </ul>
 
-## 1. Create a local cluster
+## Create a local cluster
 
 To create a single-node local cluster with a replication factor (RF) of 1, run the following command.
 
@@ -62,7 +62,7 @@ If you have previously installed YugabyteDB (2.8 or later) and created a cluster
 
 {{< /tip >}}
 
-## 2. Check cluster status
+## Check cluster status
 
 ```sh
 $ ./bin/yugabyted status
@@ -83,7 +83,7 @@ $ ./bin/yugabyted status
 +--------------------------------------------------------------------------------------------------+
 ```
 
-## 3. Check cluster status with Admin UI
+## Check cluster status with Admin UI
 
 The [YB-Master Admin UI](../../../reference/configuration/yb-master/#admin-ui) is available at [http://127.0.0.1:7000](http://127.0.0.1:7000) and the [YB-TServer Admin UI](../../../reference/configuration/yb-tserver/#admin-ui) is available at [http://127.0.0.1:9000](http://127.0.0.1:9000).
 
