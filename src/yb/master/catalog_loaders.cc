@@ -32,15 +32,21 @@
 
 #include "yb/master/catalog_loaders.h"
 
+#include "yb/common/constants.h"
 #include "yb/master/master_util.h"
 #include "yb/master/ysql_transaction_ddl.h"
 
+#include "yb/util/flag_tags.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
 DEFINE_bool(master_ignore_deleted_on_load, true,
   "Whether the Master should ignore deleted tables & tablets on restart.  "
   "This reduces failover time at the expense of garbage data." );
+
+DEFINE_test_flag(uint64, slow_cluster_config_load_secs, 0,
+                 "When set, it pauses load of cluster config during sys catalog load.");
+TAG_FLAG(TEST_slow_cluster_config_load_secs, runtime);
 
 namespace yb {
 namespace master {
@@ -73,6 +79,18 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
 
   if (pb.table_type() == TableType::REDIS_TABLE_TYPE && pb.name() == kGlobalTransactionsTableName) {
     pb.set_table_type(TableType::TRANSACTION_STATUS_TABLE_TYPE);
+  }
+
+  // Backward compatibility: tables colocated via DB/tablegroup created prior to #7378 use
+  // YSQL table OID as a colocation ID, and won't have colocation ID explicitly set.
+  if (pb.table_type() == PGSQL_TABLE_TYPE &&
+      pb.colocated() &&
+      !catalog_manager_->IsColocatedParentTableId(table_id) &&
+      !catalog_manager_->IsTablegroupParentTableId(table_id) &&
+      pb.schema().has_colocated_table_id() &&
+      !pb.schema().colocated_table_id().has_colocation_id()) {
+    auto clc_id = CHECK_RESULT(GetPgsqlTableOid(table_id));
+    pb.mutable_schema()->mutable_colocated_table_id()->set_colocation_id(clc_id);
   }
 
   // Add the table to the IDs map and to the name map (if the table is not deleted). Do not
@@ -139,6 +157,8 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
 
   // Setup the tablet info.
   std::vector<TableId> table_ids;
+  std::vector<TableId> existing_table_ids;
+  std::map<ColocationId, TableId> tablet_colocation_map;
   bool tablet_deleted;
   bool listed_as_hidden;
   TabletInfoPtr tablet(new TabletInfo(first_table, tablet_id));
@@ -204,6 +224,8 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
         return STATUS(Corruption, "Missing table for tablet: ", tablet_id);
       }
 
+      existing_table_ids.push_back(table_id);
+
       // Add the tablet to the Table.
       if (!tablet_deleted) {
         // Any table listed under the sys catalog tablet, is by definition a system table.
@@ -219,6 +241,30 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
       if (!tl->started_deleting()) {
         // Found an active table.
         should_delete_tablet = false;
+      }
+
+      auto schema = tl->schema();
+      ColocationId colocation_id = kColocationIdNotSet;
+      bool is_colocated = true;
+      if (schema.has_colocated_table_id() &&
+          schema.colocated_table_id().has_colocation_id()) {
+        colocation_id = schema.colocated_table_id().colocation_id();
+      } else if (table->IsColocatedParentTable() ||
+                 table->IsTablegroupParentTable()) {
+        colocation_id = kColocationIdNotSet;
+      } else {
+        // We do not care about cotables here.
+        is_colocated = false;
+      }
+
+      if (is_colocated) {
+        auto emplace_result = tablet_colocation_map.emplace(colocation_id, table_id);
+        if (!emplace_result.second) {
+          return STATUS_FORMAT(Corruption,
+              "Cannot add a table $0 (ColocationId: $1) to a colocation group for tablet $2: "
+              "place is taken by a table $3",
+              table_id, colocation_id, tablet_id, emplace_result.first->second);
+        }
       }
     }
 
@@ -243,17 +289,26 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
 
   // Add the tablet to tablegroup_tablet_ids_map_ if the tablet is a tablegroup parent.
   if (first_table->IsTablegroupParentTable()) {
+    const auto tablegroup_id = first_table->id().substr(0, 32);
     catalog_manager_->tablegroup_tablet_ids_map_[first_table->namespace_id()]
-        [first_table->id().substr(0, 32)] = catalog_manager_->tablet_map_->find(tablet_id)->second;
+        [tablegroup_id] = catalog_manager_->tablet_map_->find(tablet_id)->second;
 
-    TablegroupInfo *tg = new TablegroupInfo(first_table->id().substr(0, 32),
+    TablegroupInfo *tg = new TablegroupInfo(tablegroup_id,
                                             first_table->namespace_id());
 
-    // Loop through table_ids again to add them to our tablegroup info.
-    for (auto table_id : table_ids) {
-      tg->AddChildTable(table_id);
+    SCHECK(tablet_colocation_map.size() == existing_table_ids.size(), IllegalState,
+           Format("Tablet $0 has $1 tables, but only $2 of them were colocated",
+                  tablet_id, existing_table_ids.size(), tablet_colocation_map.size()));
+
+    // Loop through tablet_colocation_map to add tables to our tablegroup info.
+    for (const auto& colocation_info : tablet_colocation_map) {
+      tg->AddChildTable(colocation_info.second, colocation_info.first);
     }
-    catalog_manager_->tablegroup_ids_map_[first_table->id().substr(0, 32)] = tg;
+    catalog_manager_->tablegroup_ids_map_[tablegroup_id] = tg;
+
+    for (const TableId& table_id : existing_table_ids) {
+      catalog_manager_->table_tablegroup_ids_map_[table_id] = tablegroup_id;
+    }
   }
 
   LOG(INFO) << "Loaded metadata for " << (tablet_deleted ? "deleted " : "")
@@ -413,17 +468,20 @@ Status UDTypeLoader::Visit(const UDTypeId& udtype_id, const SysUDTypeEntryPB& me
 
 Status ClusterConfigLoader::Visit(
     const std::string& unused_id, const SysClusterConfigEntryPB& metadata) {
+  if (FLAGS_TEST_slow_cluster_config_load_secs > 0) {
+    SleepFor(MonoDelta::FromSeconds(FLAGS_TEST_slow_cluster_config_load_secs));
+  }
   // Debug confirm that there is no cluster_config_ set. This also ensures that this does not
   // visit multiple rows. Should update this, if we decide to have multiple IDs set as well.
+  std::lock_guard<decltype(catalog_manager_->config_mutex_)> config_lock(
+      catalog_manager_->config_mutex_);
   DCHECK(!catalog_manager_->cluster_config_) << "Already have config data!";
 
   // Prepare the config object.
-  ClusterConfigInfo* config = new ClusterConfigInfo();
+  std::shared_ptr<ClusterConfigInfo> config = std::make_shared<ClusterConfigInfo>();
   {
     auto l = config->LockForWrite();
     l.mutable_data()->pb.CopyFrom(metadata);
-
-
 
     // Update in memory state.
     catalog_manager_->cluster_config_ = config;

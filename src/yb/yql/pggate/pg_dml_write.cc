@@ -158,7 +158,7 @@ void PgDmlWrite::AllocWriteRequest() {
   write_req_ = std::shared_ptr<PgsqlWriteRequestPB>(write_op, &write_op->write_request());
   write_req_->set_stmt_type(stmt_type());
   write_req_->set_client(YQL_CLIENT_PGSQL);
-  write_req_->set_table_id(table_id_.GetYBTableId());
+  write_req_->set_table_id(table_id_.GetYbTableId());
   write_req_->set_schema_version(target_->schema_version());
   write_req_->set_stmt_id(reinterpret_cast<uint64_t>(write_req_.get()));
 

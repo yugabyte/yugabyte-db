@@ -1474,7 +1474,7 @@ Result<bool> Tablet::IsQueryOnlyForTablet(
   }
 
   std::shared_ptr<const Schema> schema = metadata_->schema();
-  if (schema->has_pgtable_id() || schema->has_cotable_id())  {
+  if (schema->has_cotable_id() || schema->has_colocation_id())  {
     // This is a colocated table.
     return true;
   }
@@ -1640,7 +1640,12 @@ void Tablet::AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteQuery> que
 Status Tablet::Flush(FlushMode mode, FlushFlags flags, int64_t ignore_if_flushed_after_tick) {
   TRACE_EVENT0("tablet", "Tablet::Flush");
 
-  auto pending_op = CreateNonAbortableScopedRWOperation();
+  ScopedRWOperation pending_op;
+  if (!HasFlags(flags, FlushFlags::kNoScopedOperation)) {
+    pending_op = CreateNonAbortableScopedRWOperation();
+    LOG_IF(DFATAL, !pending_op.ok()) << "CreateNonAbortableScopedRWOperation failed";
+    RETURN_NOT_OK(pending_op);
+  }
 
   rocksdb::FlushOptions options;
   options.ignore_if_flushed_after_tick = ignore_if_flushed_after_tick;
@@ -2787,7 +2792,8 @@ ScopedRWOperation Tablet::CreateNonAbortableScopedRWOperation(
 
 Status Tablet::ModifyFlushedFrontier(
     const docdb::ConsensusFrontier& frontier,
-    rocksdb::FrontierModificationMode mode) {
+    rocksdb::FrontierModificationMode mode,
+    FlushFlags flags) {
   const Status s = regular_db_->ModifyFlushedFrontier(frontier.Clone(), mode);
   if (PREDICT_FALSE(!s.ok())) {
     auto status = STATUS(IllegalState, "Failed to set flushed frontier", s.ToString());
@@ -2841,7 +2847,7 @@ Status Tablet::ModifyFlushedFrontier(
     RETURN_NOT_OK(intents_db_->ModifyFlushedFrontier(frontier.Clone(), mode));
   }
 
-  return Flush(FlushMode::kAsync);
+  return Flush(FlushMode::kAsync, flags);
 }
 
 Status Tablet::Truncate(TruncateOperation* operation) {
@@ -2880,7 +2886,8 @@ Status Tablet::Truncate(TruncateOperation* operation) {
   // We use the kUpdate mode here, because unlike the case of restoring a snapshot to a completely
   // different tablet in an arbitrary Raft group, here there is no possibility of the flushed
   // frontier needing to go backwards.
-  RETURN_NOT_OK(ModifyFlushedFrontier(frontier, rocksdb::FrontierModificationMode::kUpdate));
+  RETURN_NOT_OK(ModifyFlushedFrontier(frontier, rocksdb::FrontierModificationMode::kUpdate,
+                                      FlushFlags::kAllDbs | FlushFlags::kNoScopedOperation));
 
   LOG_WITH_PREFIX(INFO) << "Created new db for truncated tablet";
   LOG_WITH_PREFIX(INFO) << "Sequence numbers: old=" << sequence_number
@@ -3143,7 +3150,7 @@ bool Tablet::ShouldDisableLbMove() {
   //
   // In this case, we want to disable tablet moves. We conservatively return true for any failure
   // if the tablet is part of a colocated table.
-  return metadata_->schema()->has_pgtable_id();
+  return metadata_->schema()->has_colocation_id();
 }
 
 void Tablet::ForceRocksDBCompactInTest() {
@@ -3255,6 +3262,9 @@ std::pair<int, int> Tablet::GetNumMemtables() const {
 
   {
     auto scoped_operation = CreateNonAbortableScopedRWOperation();
+    if (!scoped_operation.ok()) {
+      return std::make_pair(0, 0);
+    }
     std::lock_guard<rw_spinlock> lock(component_lock_);
     if (intents_db_) {
       // NOTE: 1 is added on behalf of cfd->mem().

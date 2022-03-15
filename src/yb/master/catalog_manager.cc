@@ -77,6 +77,7 @@
 
 #include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
+#include "yb/common/constants.h"
 #include "yb/common/key_encoder.h"
 #include "yb/common/partial_row.h"
 #include "yb/common/partition.h"
@@ -465,6 +466,11 @@ DEFINE_bool(enable_delete_truncate_xcluster_replicated_table, false,
             "When set, enables deleting/truncating tables currently in xCluster replication");
 TAG_FLAG(enable_delete_truncate_xcluster_replicated_table, runtime);
 
+DEFINE_test_flag(bool, sequential_colocation_ids, false,
+                 "When set, colocation IDs will be assigned sequentially (starting from 20001) "
+                 "rather than at random. This is especially useful for making pg_regress "
+                 "tests output consistent and predictable.");
+
 namespace yb {
 namespace master {
 
@@ -844,7 +850,7 @@ Status CatalogManager::ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB*
 }
 
 Status CatalogManager::ElectedAsLeaderCb() {
-  time_elected_leader_ = MonoTime::Now();
+  time_elected_leader_.store(MonoTime::Now());
   return leader_initialization_pool_->SubmitClosure(
       Bind(&CatalogManager::LoadSysCatalogDataTask, Unretained(this)));
 }
@@ -1007,7 +1013,10 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
           }
 
           LOG_WITH_PREFIX(INFO) << "Re-initializing cluster config";
-          cluster_config_.reset();
+          {
+            std::lock_guard<decltype(config_mutex_)> lock(config_mutex_);
+            cluster_config_.reset();
+          }
           RETURN_NOT_OK(PrepareDefaultClusterConfig(term));
 
           LOG_WITH_PREFIX(INFO) << "Restoring snapshot completed, considering initdb finished";
@@ -1112,7 +1121,10 @@ Status CatalogManager::RunLoaders(int64_t term) {
   udtype_names_map_.clear();
 
   // Clear the current cluster config.
-  cluster_config_.reset();
+  {
+    std::lock_guard<decltype(config_mutex_)> lock(config_mutex_);
+    cluster_config_.reset();
+  }
 
   // Clear redis config mapping.
   redis_config_map_.clear();
@@ -1199,6 +1211,7 @@ Status CatalogManager::CheckResource(
 }
 
 Status CatalogManager::PrepareDefaultClusterConfig(int64_t term) {
+  std::lock_guard<decltype(config_mutex_)> lock(config_mutex_);
   if (cluster_config_) {
     LOG_WITH_PREFIX(INFO)
         << "Cluster configuration has already been set up, skipping re-initialization.";
@@ -1223,14 +1236,14 @@ Status CatalogManager::PrepareDefaultClusterConfig(int64_t term) {
       << "Setting cluster UUID to " << config.cluster_uuid() << " " << cluster_uuid_source;
 
   // Create in memory object.
-  cluster_config_ = new ClusterConfigInfo();
+  cluster_config_ = std::make_shared<ClusterConfigInfo>();
 
   // Prepare write.
   auto l = cluster_config_->LockForWrite();
   l.mutable_data()->pb = std::move(config);
 
   // Write to sys_catalog and in memory.
-  RETURN_NOT_OK(sys_catalog_->Upsert(term, cluster_config_));
+  RETURN_NOT_OK(sys_catalog_->Upsert(term, cluster_config_.get()));
   l.Commit();
 
   return Status::OK();
@@ -1857,7 +1870,7 @@ Result<ReplicationInfoPB> CatalogManager::GetTableReplicationInfo(
   }
 
   // Neither table nor tablespace info set. Return cluster level replication info.
-  auto l = cluster_config_->LockForRead();
+  auto l = ClusterConfig()->LockForRead();
   return l->pb.replication_info();
 }
 
@@ -1924,7 +1937,7 @@ Status CatalogManager::ValidateTableReplicationInfo(const ReplicationInfoPB& rep
   }
   // Today we support setting table level replication info only in clusters where read replica
   // placements is not set. Return error if the cluster has read replica placements set.
-  auto l = cluster_config_->LockForRead();
+  auto l = ClusterConfig()->LockForRead();
   const ReplicationInfoPB& cluster_replication_info = l->pb.replication_info();
   // TODO(bogdan): figure this out when we expand on geopartition support.
   // if (!cluster_replication_info.read_replicas().empty() ||
@@ -1960,7 +1973,7 @@ Result<shared_ptr<TablespaceIdToReplicationInfoMap>> CatalogManager::GetYsqlTabl
   // each tablespace.
   string placement_uuid;
   {
-    auto l = cluster_config_->LockForRead();
+    auto l = ClusterConfig()->LockForRead();
     // TODO(deepthi.srinivasan): Read-replica placements are not supported as
     // of now.
     placement_uuid = l->pb.replication_info().live_replicas().placement_uuid();
@@ -2523,7 +2536,7 @@ Result<ReplicationInfoPB> CatalogManager::GetTableReplicationInfo(
     return replication_info_opt.value();
   }
 
-  return cluster_config_->LockForRead()->pb.replication_info();
+  return ClusterConfig()->LockForRead()->pb.replication_info();
 }
 
 bool CatalogManager::ShouldSplitValidCandidate(
@@ -2763,6 +2776,47 @@ CHECKED_STATUS ValidateCreateTableSchema(const Schema& schema, CreateTableRespon
     }
   }
   return Status::OK();
+}
+
+// Extract a colocation ID from request if explicitly passed, or generate a new valid one.
+// Will error if requested ID is taken or invalid.
+template<typename ContainsColocationIdFn>
+Result<ColocationId> ConceiveColocationId(const CreateTableRequestPB& req,
+                                          CreateTableResponsePB* resp,
+                                          ContainsColocationIdFn contains_colocation_id) {
+  ColocationId colocation_id;
+
+  if (req.has_colocation_id()) {
+    colocation_id = req.colocation_id();
+    if (colocation_id < kFirstNormalColocationId) {
+      Status s = STATUS_SUBSTITUTE(InvalidArgument,
+                                   "Colocation ID cannot be less than $0",
+                                   kFirstNormalColocationId);
+      return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
+    }
+    if (contains_colocation_id(colocation_id)) {
+      Status s =
+          STATUS_SUBSTITUTE(InvalidArgument,
+                            "Colocation group already contains a table with colocation ID $0",
+                            colocation_id);
+      return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
+    }
+  } else {
+    // Generate a random colocation ID unique within colocation group.
+    colocation_id = 20000; // In agreement with sequential_colocation_ids flag.
+    do {
+      if (PREDICT_FALSE(FLAGS_TEST_sequential_colocation_ids)) {
+        colocation_id++;
+      } else {
+        // See comment on kFirstNormalColocationId.
+        colocation_id =
+            RandomUniformInt<ColocationId>(kFirstNormalColocationId,
+                                           std::numeric_limits<ColocationId>::max());
+      }
+    } while (contains_colocation_id(colocation_id));
+  }
+
+  return colocation_id;
 }
 
 }  // namespace
@@ -3027,16 +3081,18 @@ Status CatalogManager::CopyPgsqlSysTables(const NamespaceId& namespace_id,
 }
 
 size_t CatalogManager::GetNumLiveTServersForPlacement(const PlacementId& placement_id) {
-  BlacklistSet blacklist = BlacklistSetFromPB();
+  auto blacklist = BlacklistSetFromPB();
   TSDescriptorVector ts_descs;
-  master_->ts_manager()->GetAllLiveDescriptorsInCluster(&ts_descs, placement_id, blacklist);
+  master_->ts_manager()->GetAllLiveDescriptorsInCluster(
+      &ts_descs, placement_id, (blacklist.ok() ? *blacklist : BlacklistSet()));
   return ts_descs.size();
 }
 
 TSDescriptorVector CatalogManager::GetAllLiveNotBlacklistedTServers() const {
   TSDescriptorVector ts_descs;
-  BlacklistSet blacklist = BlacklistSetFromPB();
-  master_->ts_manager()->GetAllLiveDescriptors(&ts_descs, blacklist);
+  auto blacklist = BlacklistSetFromPB();
+  master_->ts_manager()->GetAllLiveDescriptors(
+      &ts_descs, blacklist.ok() ? *blacklist : BlacklistSet());
   return ts_descs;
 }
 
@@ -3427,6 +3483,40 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       tablegroup_tablets_exist = true;
     }
 
+    // Generate colocation ID in advance in order to fail before CreateTableInMemory is called.
+    ColocationId colocation_id = kColocationIdNotSet;
+    if (req.has_tablegroup_id() && tablegroup_tablets_exist) {
+      auto tablegroup = tablegroup_ids_map_[req.tablegroup_id()];
+
+      colocation_id = VERIFY_RESULT(
+          ConceiveColocationId(req, resp, [tablegroup](auto colocation_id) {
+            return tablegroup->HasChildTable(colocation_id);
+          }));
+    } else if (colocated && tablets_exist) {
+      auto tablet = colocated_tablet_ids_map_[ns->id()];
+      auto tablet_lock = tablet->LockForWrite();
+
+      std::set<ColocationId> colocation_ids;
+      if (!req.has_colocation_id()) {
+        for (const TableId& table_id : tablet_lock.data().pb.table_ids()) {
+          DCHECK(!table_id.empty());
+          const auto colocated_table_info = GetTableInfoUnlocked(table_id);
+          if (!colocated_table_info) {
+            // Needed because of #11129, should be replaced with DCHECK after the fix.
+            continue;
+          }
+          Schema colocated_table_schema;
+          RETURN_NOT_OK(colocated_table_info->GetSchema(&colocated_table_schema));
+          colocation_ids.insert(colocated_table_schema.colocation_id());
+        }
+      }
+
+      colocation_id = VERIFY_RESULT(
+          ConceiveColocationId(req, resp, [&colocation_ids](auto colocation_id) {
+            return ContainsKey(colocation_ids, colocation_id);
+          }));
+    }
+
     RETURN_NOT_OK(CreateTableInMemory(
         req, schema, partition_schema, namespace_id, namespace_name, partitions, &index_info,
         (!tablets_exist && !tablegroup_tablets_exist) ? &tablets : nullptr, resp, &table));
@@ -3449,9 +3539,17 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), tablet));
         tablet_lock.Commit();
 
+        auto tablegroup = tablegroup_ids_map_[req.tablegroup_id()];
+
+        CHECK(colocation_id != kColocationIdNotSet);
+        table->mutable_metadata()->mutable_dirty()->
+            pb.mutable_schema()->mutable_colocated_table_id()->set_colocation_id(colocation_id);
+
         tablet->mutable_metadata()->StartMutation();
         table->AddTablet(tablet);
-        tablegroup_ids_map_[req.tablegroup_id()]->AddChildTable(table->id());
+        tablegroup->AddChildTable(table->id(), colocation_id);
+
+        table_tablegroup_ids_map_[table->id()] = tablegroup->id();
       } else {
         // If the table is a tablegroup parent table, it creates a dummy tablet for the tablegroup
         // along with updating the catalog manager maps.
@@ -3472,10 +3570,16 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
             tablet->colocated(), InternalError,
             "The tablet for colocated database should be colocated.");
         tablets.push_back(tablet.get());
+
         auto tablet_lock = tablet->LockForWrite();
+
         tablet_lock.mutable_data()->pb.add_table_ids(table->id());
         RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), tablet));
         tablet_lock.Commit();
+
+        CHECK(colocation_id != kColocationIdNotSet);
+        table->mutable_metadata()->mutable_dirty()->
+            pb.mutable_schema()->mutable_colocated_table_id()->set_colocation_id(colocation_id);
 
         tablet->mutable_metadata()->StartMutation();
         table->AddTablet(tablet);
@@ -3886,7 +3990,7 @@ CHECKED_STATUS CatalogManager::CreateTransactionStatusTableInternal(
     num_tablets = FLAGS_transaction_table_num_tablets;
   } else {
     auto placement_uuid =
-        cluster_config_->LockForRead()->pb.replication_info().live_replicas().placement_uuid();
+        ClusterConfig()->LockForRead()->pb.replication_info().live_replicas().placement_uuid();
     num_tablets = narrow_cast<int>(GetNumLiveTServersForPlacement(placement_uuid) *
                                    FLAGS_transaction_table_num_tablets_per_tserver);
   }
@@ -4967,6 +5071,16 @@ Status CatalogManager::DeleteTableInternal(
     // Send a RemoveTableFromTablet() request to each colocated parent tablet replica in the table.
     // TODO(pitr) handle YSQL colocated tables.
     if (table.info->IsColocatedUserTable()) {
+      {
+        LockGuard lock(mutex_);
+        const auto it = table_tablegroup_ids_map_.find(table.info->id());
+        if (it != table_tablegroup_ids_map_.end()) {
+          const TablegroupId& tablegroup_id = it->second;
+          const auto& tablegroup = DCHECK_NOTNULL(tablegroup_ids_map_[tablegroup_id]);
+          tablegroup->DeleteChildTable(table.info->id());
+          table_tablegroup_ids_map_.erase(table.info->id());
+        }
+      }
       auto call = std::make_shared<AsyncRemoveTableFromTablet>(
           master_, AsyncTaskPool(), table.info->GetColocatedTablet(), table.info);
       table.info->AddTask(call);
@@ -5325,10 +5439,8 @@ CHECKED_STATUS ApplyAlterSteps(server::Clock* clock,
       Uuid cotable_id;
       RETURN_NOT_OK(cotable_id.FromHexString(req->table().table_id()));
       builder.set_cotable_id(cotable_id);
-    } else {
-      uint32_t pgtable_id = VERIFY_RESULT(GetPgsqlTableOid(req->table().table_id()));
-      builder.set_pgtable_id(pgtable_id);
     }
+    // Colocation ID is set in schema and cannot be altered.
   }
 
   for (const AlterTableRequestPB::Step& step : req->alter_schema_steps()) {
@@ -6830,10 +6942,11 @@ Status CatalogManager::CreateTablegroup(const CreateTablegroupRequestPB* req,
   }
 
   // Update catalog manager maps
-  SharedLock lock(mutex_);
+  LockGuard lock(mutex_);
   TRACE("Acquired catalog manager lock");
   TablegroupInfo *tg = new TablegroupInfo(req->id(), req->namespace_id());
   tablegroup_ids_map_[req->id()] = tg;
+  table_tablegroup_ids_map_[parent_table_id] = tg->id();
 
   return s;
 }
@@ -6841,6 +6954,8 @@ Status CatalogManager::CreateTablegroup(const CreateTablegroupRequestPB* req,
 Status CatalogManager::DeleteTablegroup(const DeleteTablegroupRequestPB* req,
                                         DeleteTablegroupResponsePB* resp,
                                         rpc::RpcContext* rpc) {
+  LOG(INFO) << "Servicing DeleteTablegroup request from " << RequestorString(rpc) << ": "
+            << req->ShortDebugString();
   DeleteTableRequestPB dtreq;
   DeleteTableResponsePB dtresp;
 
@@ -6858,6 +6973,22 @@ Status CatalogManager::DeleteTablegroup(const DeleteTablegroupRequestPB* req,
   dtreq.mutable_table()->set_table_id(parent_table_id);
   dtreq.set_is_index_table(false);
 
+  {
+    SharedLock lock(mutex_);
+    const auto& tablegroup = tablegroup_ids_map_[req->id()];
+    // Tablegroup should be empty. In practice that means it would contain only the
+    // dummy parent table.
+    // TODO(alex): Rework tablegroup internals to track real tables.
+    if (tablegroup->NumChildTables() > 1) {
+      return SetupError(
+          resp->mutable_error(),
+          MasterErrorPB::INVALID_REQUEST,
+          STATUS_FORMAT(InvalidArgument,
+                        "Cannot delete tablegroup, it still has $0 tables in it",
+                        tablegroup->NumChildTables() - 1));
+    }
+  }
+
   Status s = DeleteTable(&dtreq, &dtresp, rpc);
   resp->set_parent_table_id(dtresp.table_id());
 
@@ -6868,12 +6999,13 @@ Status CatalogManager::DeleteTablegroup(const DeleteTablegroupRequestPB* req,
   }
 
   // Perform map updates.
-  SharedLock lock(mutex_);
+  LockGuard lock(mutex_);
   TRACE("Acquired catalog manager lock");
   tablegroup_ids_map_.erase(req->id());
   tablegroup_tablet_ids_map_[req->namespace_id()].erase(req->id());
+  table_tablegroup_ids_map_.erase(parent_table_id);
 
-  LOG(INFO) << "Deleted table " << parent_table_name;
+  LOG(INFO) << "Deleted tablegroup " << req->id();
   return s;
 }
 
@@ -8315,7 +8447,7 @@ Status CatalogManager::RegisterTsFromRaftConfig(const consensus::RaftPeerPB& pee
 
   // Todo(Rahul) : May need to be changed when we implement table level overrides.
   {
-    auto l = cluster_config_->LockForRead();
+    auto l = ClusterConfig()->LockForRead();
     // If the config has no replication info, use empty string for the placement uuid, otherwise
     // calculate it from the reported peer.
     auto placement_uuid = l->pb.has_replication_info()
@@ -8759,12 +8891,15 @@ Status CatalogManager::DeleteTabletsAndSendRequests(
       tablets, deletion_msg, retained_by_snapshot_schedules));
 
   if (table->IsColocatedParentTable()) {
-    SharedLock lock(mutex_);
+    LockGuard lock(mutex_);
     colocated_tablet_ids_map_.erase(table->namespace_id());
   } else if (table->IsTablegroupParentTable()) {
     // In the case of dropped tablegroup parent table, need to delete tablegroup info.
-    SharedLock lock(mutex_);
-    tablegroup_ids_map_.erase(table->id().substr(0, 32));
+    LockGuard lock(mutex_);
+    const auto& tablegroup_id = table_tablegroup_ids_map_[table->id()];
+    tablegroup_ids_map_.erase(tablegroup_id);
+    tablegroup_tablet_ids_map_[table->namespace_id()].erase(tablegroup_id);
+    table_tablegroup_ids_map_.erase(table->id());
   }
   return Status::OK();
 }
@@ -9487,7 +9622,7 @@ void CatalogManager::StartElectionIfReady(
 
   ReplicationInfoPB replication_info;
   {
-    auto l = cluster_config_->LockForRead();
+    auto l = ClusterConfig()->LockForRead();
     replication_info = l->pb.replication_info();
   }
 
@@ -9997,7 +10132,7 @@ bool CatalogManager::IsLoadBalancerEnabled() {
 }
 
 MonoDelta CatalogManager::TimeSinceElectedLeader() {
-  return MonoTime::Now() - time_elected_leader_;
+  return MonoTime::Now() - time_elected_leader_.load();
 }
 
 Status CatalogManager::GoIntoShellMode() {
@@ -10029,8 +10164,9 @@ Status CatalogManager::GetClusterConfig(GetMasterClusterConfigResponsePB* resp) 
 }
 
 Status CatalogManager::GetClusterConfig(SysClusterConfigEntryPB* config) {
-  DCHECK(cluster_config_) << "Missing cluster config for master!";
-  auto l = cluster_config_->LockForRead();
+  auto cluster_config = ClusterConfig();
+  DCHECK(cluster_config) << "Missing cluster config for master!";
+  auto l = cluster_config->LockForRead();
   *config = l->pb;
   return Status::OK();
 }
@@ -10054,7 +10190,8 @@ Status CatalogManager::SetClusterConfig(
                     config.leader_blacklist().initial_leader_load());
   }
 
-  auto l = cluster_config_->LockForWrite();
+  auto cluster_config = ClusterConfig();
+  auto l = cluster_config->LockForWrite();
   // We should only set the config, if the caller provided us with a valid update to the
   // existing config.
   if (l->pb.version() != config.version()) {
@@ -10093,7 +10230,7 @@ Status CatalogManager::SetClusterConfig(
 
   LOG(INFO) << "Updating cluster config to " << config.version() + 1;
 
-  RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), cluster_config_));
+  RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()));
 
   l.Commit();
 
@@ -10104,7 +10241,7 @@ Status CatalogManager::ValidateReplicationInfo(
     const ValidateReplicationInfoRequestPB* req, ValidateReplicationInfoResponsePB* resp) {
   TSDescriptorVector all_ts_descs;
   {
-    BlacklistSet blacklist = BlacklistSetFromPB();
+    BlacklistSet blacklist = VERIFY_RESULT(BlacklistSetFromPB());
     master_->ts_manager()->GetAllLiveDescriptors(&all_ts_descs, blacklist);
   }
   // We don't need any validation checks for read replica placements
@@ -10122,7 +10259,8 @@ Status CatalogManager::ValidateReplicationInfo(
 
 Status CatalogManager::SetPreferredZones(
     const SetPreferredZonesRequestPB* req, SetPreferredZonesResponsePB* resp) {
-  auto l = cluster_config_->LockForWrite();
+  auto cluster_config = ClusterConfig();
+  auto l = cluster_config->LockForWrite();
   auto replication_info = l.mutable_data()->pb.mutable_replication_info();
   replication_info->clear_affinitized_leaders();
 
@@ -10140,7 +10278,7 @@ Status CatalogManager::SetPreferredZones(
 
   LOG(INFO) << "Updating cluster config to " << l.mutable_data()->pb.version();
 
-  Status s = sys_catalog_->Upsert(leader_ready_term(), cluster_config_);
+  Status s = sys_catalog_->Upsert(leader_ready_term(), cluster_config.get());
   if (!s.ok()) {
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_CLUSTER_CONFIG, s);
   }
@@ -10151,8 +10289,9 @@ Status CatalogManager::SetPreferredZones(
 }
 
 Result<size_t> CatalogManager::GetReplicationFactor() {
-  DCHECK(cluster_config_) << "Missing cluster config for master!";
-  auto l = cluster_config_->LockForRead();
+  auto cluster_config = ClusterConfig();
+  DCHECK(cluster_config) << "Missing cluster config for master!";
+  auto l = cluster_config->LockForRead();
   const ReplicationInfoPB& replication_info = l->pb.replication_info();
   return GetNumReplicasFromPlacementInfo(replication_info.live_replicas());
 }
@@ -10171,7 +10310,7 @@ Result<size_t> CatalogManager::GetReplicationFactorForTablet(
 }
 
 void CatalogManager::GetExpectedNumberOfReplicas(int* num_live_replicas, int* num_read_replicas) {
-  auto l = cluster_config_->LockForRead();
+  auto l = ClusterConfig()->LockForRead();
   const ReplicationInfoPB& replication_info = l->pb.replication_info();
   *num_live_replicas = narrow_cast<int>(GetNumReplicasFromPlacementInfo(
       replication_info.live_replicas()));
@@ -10180,9 +10319,12 @@ void CatalogManager::GetExpectedNumberOfReplicas(int* num_live_replicas, int* nu
   }
 }
 
-string CatalogManager::placement_uuid() const {
-  DCHECK(cluster_config_) << "Missing cluster config for master!";
-  auto l = cluster_config_->LockForRead();
+Result<string> CatalogManager::placement_uuid() const {
+  auto cluster_config = ClusterConfig();
+  if (!cluster_config) {
+    return STATUS(IllegalState, "Missing cluster config for master!");
+  }
+  auto l = cluster_config->LockForRead();
   const ReplicationInfoPB& replication_info = l->pb.replication_info();
   return replication_info.live_replicas().placement_uuid();
 }
@@ -10225,7 +10367,7 @@ Status CatalogManager::AreLeadersOnPreferredOnly(const AreLeadersOnPreferredOnly
   TSDescriptorVector ts_descs;
   string live_replicas_placement_uuid = "";
   {
-    auto l = cluster_config_->LockForRead();
+    auto l = ClusterConfig()->LockForRead();
     const ReplicationInfoPB& cluster_replication_info = l->pb.replication_info();
     if (cluster_replication_info.has_live_replicas()) {
       live_replicas_placement_uuid = cluster_replication_info.live_replicas().placement_uuid();
@@ -10233,7 +10375,7 @@ Status CatalogManager::AreLeadersOnPreferredOnly(const AreLeadersOnPreferredOnly
   }
 
   {
-    BlacklistSet blacklist = BlacklistSetFromPB();
+    BlacklistSet blacklist = VERIFY_RESULT(BlacklistSetFromPB());
     if (live_replicas_placement_uuid.empty()) {
       master_->ts_manager()->GetAllLiveDescriptors(&ts_descs, blacklist);
     } else {
@@ -10249,7 +10391,7 @@ Status CatalogManager::AreLeadersOnPreferredOnly(const AreLeadersOnPreferredOnly
     tables = master_->catalog_manager()->GetTables(GetTablesMode::kRunning);
   }
 
-  auto l = cluster_config_->LockForRead();
+  auto l = ClusterConfig()->LockForRead();
   Status s = CatalogManagerUtil::AreLeadersOnPreferredOnly(
       ts_descs, l->pb.replication_info(), tables);
   if (!s.ok()) {
@@ -10304,7 +10446,7 @@ Status CatalogManager::GetLeaderBlacklistCompletionPercent(GetLoadMovePercentRes
 
 Status CatalogManager::GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB* resp,
                                                     bool blacklist_leader) {
-  auto l = cluster_config_->LockForRead();
+  auto l = ClusterConfig()->LockForRead();
 
   // Fine to pass in empty defaults if server_blacklist or leader_blacklist is not filled.
   const BlacklistPB& state = blacklist_leader ? l->pb.leader_blacklist() : l->pb.server_blacklist();
@@ -10588,7 +10730,7 @@ void CatalogManager::RebuildYQLSystemPartitions() {
 }
 
 Status CatalogManager::SysCatalogRespectLeaderAffinity() {
-  auto l = cluster_config_->LockForRead();
+  auto l = ClusterConfig()->LockForRead();
 
   const auto& affinitized_leaders = l->pb.replication_info().affinitized_leaders();
   if (affinitized_leaders.empty()) {
@@ -10646,8 +10788,12 @@ Status CatalogManager::SysCatalogRespectLeaderAffinity() {
   return STATUS(NotFound, "Couldn't step down to a master in an affinitized zone");
 }
 
-BlacklistSet CatalogManager::BlacklistSetFromPB() const {
-  auto l = cluster_config_->LockForRead();
+Result<BlacklistSet> CatalogManager::BlacklistSetFromPB() const {
+  auto cluster_config = ClusterConfig();
+  if (!cluster_config) {
+    return STATUS(IllegalState, "Cluster config not found.");
+  }
+  auto l = cluster_config->LockForRead();
 
   const auto& blacklist_pb = l->pb.server_blacklist();
   BlacklistSet blacklist_set;
@@ -10744,6 +10890,11 @@ void CatalogManager::InitializeGlobalLoadState(
     }
     CatalogManagerUtil::FillTableLoadState(id_and_info.second, state);
   }
+}
+
+std::shared_ptr<ClusterConfigInfo> CatalogManager::ClusterConfig() const {
+  yb::SharedLock<decltype(config_mutex_)> lock(config_mutex_);
+  return cluster_config_;
 }
 
 }  // namespace master

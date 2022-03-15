@@ -79,7 +79,7 @@ std::string PgsqlOp::ToString() const {
 
 PgsqlReadOp::PgsqlReadOp(const PgTableDesc& desc) {
   read_request_.set_client(YQL_CLIENT_PGSQL);
-  read_request_.set_table_id(desc.id().GetYBTableId());
+  read_request_.set_table_id(desc.id().GetYbTableId());
   read_request_.set_schema_version(desc.schema_version());
   read_request_.set_stmt_id(reinterpret_cast<int64_t>(&read_request_));
 }

@@ -31,13 +31,14 @@
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
+#include "yb/util/tsan_util.h"
 
 #include "yb/yql/cql/ql/exec/rescheduler.h"
 #include "yb/yql/cql/ql/ptree/parse_tree.h"
 #include "yb/yql/cql/ql/ptree/pt_select.h"
 #include "yb/yql/cql/ql/util/statement_params.h"
 
-DEFINE_int32(cql_prepare_child_threshold_ms, 2000,
+DEFINE_int32(cql_prepare_child_threshold_ms, 2000 * yb::kTimeMultiplier,
              "Timeout if preparing for child transaction takes longer"
              "than the prescribed threshold.");
 

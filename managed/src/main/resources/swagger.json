@@ -1422,6 +1422,10 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "useTablespaces" : {
+          "description" : "Is tablespaces information included",
+          "type" : "boolean"
+        },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
           "type" : "string"
@@ -8472,6 +8476,32 @@
         "tags" : [ "Backups" ]
       }
     },
+    "/api/v1/customers/{cUUID}/backups/delete" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "deleteBackupsv2",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTasks"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Delete backups V2",
+        "tags" : [ "Backups" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/backups/page" : {
       "post" : {
         "description" : "",
@@ -9183,32 +9213,6 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "Create Backup Schedule",
-        "tags" : [ "Backups" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/delete_backups" : {
-      "delete" : {
-        "description" : "",
-        "operationId" : "deleteBackupsv2",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPTasks"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Delete backups V2",
         "tags" : [ "Backups" ]
       }
     },
@@ -14151,6 +14155,26 @@
         "tags" : [ "Node instances" ]
       }
     },
+    "/api/v1/grafana_dashboard" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "GrafanaDashboard",
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Get Grafana Dashboard",
+        "tags" : [ "Grafana Dashboard" ]
+      }
+    },
     "/api/v1/logging_config" : {
       "post" : {
         "description" : "",
@@ -14490,6 +14514,8 @@
     "name" : "Customer management"
   }, {
     "name" : "Encryption at rest"
+  }, {
+    "name" : "Grafana Dashboard"
   }, {
     "name" : "Instance types"
   }, {
