@@ -9,8 +9,8 @@
 
 import React, { FC } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
-import { Backup_States, IBackup } from '.';
-import { YBButton } from '../common/forms/fields';
+import { Backup_States, IBackup } from '..';
+import { YBButton } from '../../common/forms/fields';
 import './BackupTableList.scss';
 import copy from 'copy-to-clipboard';
 import { toast } from 'react-toastify';

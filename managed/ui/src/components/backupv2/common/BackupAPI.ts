@@ -8,8 +8,8 @@
  */
 
 import axios from 'axios';
-import { IBackup, Keyspace_Table, RESTORE_ACTION_TYPE, TIME_RANGE_STATE } from '.';
-import { ROOT_URL } from '../../config';
+import { IBackup, Keyspace_Table, RESTORE_ACTION_TYPE, TIME_RANGE_STATE } from '..';
+import { ROOT_URL } from '../../../config';
 
 export function getBackupsList(
   page = 0,

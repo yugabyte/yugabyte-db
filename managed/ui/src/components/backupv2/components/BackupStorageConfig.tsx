@@ -10,8 +10,8 @@
 import React, { FC, useState } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { useSelector } from 'react-redux';
-import { IBackup } from '.';
-import { YBModalForm } from '../common/forms';
+import { IBackup } from '..';
+import { YBModalForm } from '../../common/forms';
 
 import './BackupStorageConfig.scss';
 

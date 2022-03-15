@@ -14,10 +14,10 @@ import { BootstrapTable, RemoteObjSpec, SortOrder, TableHeaderColumn } from 'rea
 import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
 import Select, { OptionTypeBase } from 'react-select';
-import { Backup_States, getBackupsList, IBackup, IUniverse, TIME_RANGE_STATE } from '.';
-import { StatusBadge } from '../common/badge/StatusBadge';
-import { YBButton, YBMultiSelectRedesiged } from '../common/forms/fields';
-import { YBLoading } from '../common/indicators';
+import { Backup_States, getBackupsList, IBackup, IUniverse, TIME_RANGE_STATE } from '..';
+import { StatusBadge } from '../../common/badge/StatusBadge';
+import { YBButton, YBMultiSelectRedesiged } from '../../common/forms/fields';
+import { YBLoading } from '../../common/indicators';
 import { BackupDetails } from './BackupDetails';
 import {
   BACKUP_STATUS_OPTIONS,
@@ -25,13 +25,13 @@ import {
   CALDENDAR_ICON,
   DATE_FORMAT,
   ENTITY_NOT_AVAILABLE,
-  FormatUnixTimeStampTimeToTimezone,
-} from './BackupUtils';
+  FormatUnixTimeStampTimeToTimezone
+} from '../common/BackupUtils';
 import './BackupList.scss';
 import { BackupCancelModal, BackupDeleteModal } from './BackupDeleteModal';
 import { BackupRestoreModal } from './BackupRestoreModal';
 import { mapValues, keyBy } from 'lodash';
-import { YBSearchInput } from '../common/forms/fields/YBSearchInput';
+import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
 
 const reactWidgets = require('react-widgets');
 const momentLocalizer = require('react-widgets-moment');
