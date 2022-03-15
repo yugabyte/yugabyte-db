@@ -79,8 +79,13 @@ Index Scan using index_employees_department_lc on employees  (cost=0.00..5.25 ro
   Index Cond: (lower(department) = 'operations'::text)
 ```
 
+## Explore Covering indexes
+
+- Learn how [covering indexes](../../indexes-constraints/covering-index-ysql/) can optimize the query performance by covering all the columns needed by a query.
+
+- [Benefits of an Index-only scan](https://blog.yugabyte.com/how-a-distributed-sql-database-boosts-secondary-index-queries-with-index-only-scan/)
+
 ## Learn more
 
 - [Partial and expression indexes](../../json-support/jsonb-ysql/#partial-and-expression-indexes)
 - [SQL Puzzle: Partial Versus Expression Indexes](https://blog.yugabyte.com/sql-puzzle-partial-versus-expression-indexes/)
-- [Benefits of Index-only scan](https://blog.yugabyte.com/how-a-distributed-sql-database-boosts-secondary-index-queries-with-index-only-scan/)
