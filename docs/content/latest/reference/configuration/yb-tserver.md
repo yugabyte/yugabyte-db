@@ -814,7 +814,7 @@ Default: `50`
 
 ##### --tablet_enable_ttl_file_filter
 
-Turn the file expiration feature based on TTL.
+Turn on the file expiration for TTL feature.
 
 Default: `false`
 
@@ -840,9 +840,11 @@ Default: `48`
 
 ##### --file_expiration_ignore_value_ttl
 
-When set to true, ignores any value-level TTL metadata when determining file expiration.Useful in situations where some SST files are missing the necessary value-level metadata (in case of upgrade, for instance).
+When set to true, ignores any value-level TTL metadata when determining file expiration. Useful in situations where some SST files are missing the necessary value-level metadata (in case of upgrade, for instance).
 
-**NOTE:** Use of this flag can potentially result in expiration of live data - use at your discretion.
+{{< warning title="Warning">}}
+Use of this flag can potentially result in expiration of live data - use at your discretion.
+{{< /warning >}}
 
 Default: `false`
 
@@ -850,7 +852,9 @@ Default: `false`
 
 When set to true, allows files to expire purely based on their value-level TTL expiration time (even if it is lower than the table TTL). This is useful for times where a file needs to expire earlier than its table-level TTL would allow. If no value-level TTL metadata is available, then table-level TTL will still be used. 
 
-**NOTE:** Use of this flag can potentially result in expiration of live data - use at your discretion.
+{{< warning title="Warning">}}
+Use of this flag can potentially result in expiration of live data - use at your discretion.
+{{< /warning >}}
 
 Default: `false`
 
