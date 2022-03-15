@@ -186,6 +186,8 @@ Test options:
   --run-java-test-methods-separately, --rjtms
     Run each Java test (test method or a parameterized instantiation of a test method) separately
     as its own top-level Maven invocation, writing output to a separate file.
+  --java-test-args
+    Extra arguments to pass to mvn when running tests. Used with --java-test.
 
   --python-tests
     Run various Python tests (doctest, unit test) and exit.
@@ -818,8 +820,19 @@ while [[ $# -gt 0 ]]; do
       set_cxx_test_name "$2"
       shift
     ;;
+    --test-args)
+      ensure_option_has_arg "$@"
+      export YB_EXTRA_GTEST_FLAGS+=" $2"
+      shift
+    ;;
     --java-test|--jt)
       set_java_test_name "$2"
+      shift
+    ;;
+    --java-test-args)
+      ensure_option_has_arg "$@"
+      # Args passed over commandline take precedence over those set in environment variable.
+      export YB_EXTRA_MVN_OPTIONS_IN_TESTS+=" $2"
       shift
     ;;
     --ctest)
@@ -851,11 +864,6 @@ while [[ $# -gt 0 ]]; do
     --rebuild-file)
       ensure_option_has_arg "$@"
       register_file_to_rebuild "$2"
-      shift
-    ;;
-    --test-args)
-      ensure_option_has_arg "$@"
-      export YB_EXTRA_GTEST_FLAGS+=" $2"
       shift
     ;;
     --rebuild-target)
