@@ -8,7 +8,7 @@
  */
 
 import React, { FC } from 'react';
-import { BackupList } from '.';
+import { BackupList } from '..';
 
 export const AccountLevelBackup: FC = () => {
   return <BackupList />;

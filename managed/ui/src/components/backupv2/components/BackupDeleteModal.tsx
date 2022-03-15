@@ -11,11 +11,11 @@ import { Col, Row } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { useMutation, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
-import { cancelBackup, deleteBackup, IBackup } from '.';
-import { StatusBadge } from '../common/badge/StatusBadge';
-import { YBModalForm } from '../common/forms';
-import { YBButton } from '../common/forms/fields';
-import { FormatUnixTimeStampTimeToTimezone } from './BackupUtils';
+import { cancelBackup, deleteBackup, IBackup } from '..';
+import { StatusBadge } from '../../common/badge/StatusBadge';
+import { YBModalForm } from '../../common/forms';
+import { YBButton } from '../../common/forms/fields';
+import { FormatUnixTimeStampTimeToTimezone } from '../common/BackupUtils';
 
 interface BackupDeleteProps {
   backupsList: IBackup[];
