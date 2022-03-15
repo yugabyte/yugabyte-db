@@ -1396,7 +1396,7 @@ class TabletSplitSingleServerITest : public TabletSplitITest {
 // and check backfill state.
 TEST_F(TabletSplitSingleServerITest, TestBackfillDuringSplit) {
   // TODO(#11695) -- Switch this back to a TabletServerITest
-  constexpr auto kNumRows = 10000;
+  constexpr auto kNumRows = 10000UL;
   FLAGS_TEST_apply_tablet_split_inject_delay_ms = 200 * kTimeMultiplier;
 
   CreateSingleTablet();

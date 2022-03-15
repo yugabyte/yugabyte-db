@@ -161,7 +161,7 @@ void PgDmlWrite::AllocWriteRequest() {
   write_req_->set_schema_version(target_->schema_version());
   write_req_->set_stmt_id(reinterpret_cast<uint64_t>(write_req_.get()));
 
-  doc_op_ = std::make_shared<PgDocWriteOp>(pg_session_, &target_, table_id_, std::move(write_op));
+  doc_op_ = std::make_shared<PgDocWriteOp>(pg_session_, &target_, std::move(write_op));
 }
 
 PgsqlExpressionPB *PgDmlWrite::AllocColumnBindPB(PgColumn *col) {
