@@ -7,10 +7,10 @@ import 'ace-builds/src-noconflict/ext-searchbox';
 import 'ace-builds/src-noconflict/mode-java';
 import 'ace-builds/src-noconflict/theme-github';
 import { Col, Row } from 'react-bootstrap';
+import Select from 'react-select';
 import {
   YBButton,
   YBControlledNumericInputWithLabel,
-  YBControlledSelectWithLabel,
   YBControlledTextInput
 } from '../common/forms/fields';
 import { useMount } from 'react-use';
@@ -18,6 +18,17 @@ import { useMount } from 'react-use';
 import './YugawareLogs.scss';
 
 const DEFAULT_MAX_LINES = 100;
+
+const UNIVERSE_SELECT_STYLES = {
+  control: (styles) => ({
+    ...styles,
+    height: '42px'
+  }),
+  menu: (styles) => ({
+    ...styles,
+    zIndex: 10
+  })
+}
 
 const YugawareLogs = ({ currentCustomer, yugawareLogs, getLogs, logError, fetchUniverseList }) => {
   const editorStyle = {
@@ -28,7 +39,8 @@ const YugawareLogs = ({ currentCustomer, yugawareLogs, getLogs, logError, fetchU
   const [maxLines, setMaxLines] = useState(DEFAULT_MAX_LINES);
   const [regex, setRegex] = useState(undefined);
   const [selectedUniverse, setSelectedUniverse] = useState(undefined);
-  const [universeList, setUniverseList] = useState([<option key={'loading'}>Loading..</option>]);
+  const [universeList, setUniverseList] = useState([]);
+  const [isUniverseListLoading, setIsUniverseListLoading] = useState(true);
 
   const doSearch = () => {
     getLogs(maxLines, regex, selectedUniverse);
@@ -61,22 +73,17 @@ const YugawareLogs = ({ currentCustomer, yugawareLogs, getLogs, logError, fetchU
     setSelectedUniverse(universeFromParam);
 
     getLogs(maxLinesFromParam, regexFromParam, universeFromParam);
-
     fetchUniverseList().then((resp) => {
-      const universesOptions = resp.map((uni) => (
-        <option key={uni.universeUUID} value={uni.name}>
-          {uni.name}
-        </option>
-      ));
-      setUniverseList([
-        <option value={''} key={'default'}>
-          Select a universe
-        </option>,
-        ...universesOptions
-      ]);
+      const universesOptions = resp.map((uni) => {
+        return {
+          label: uni.name,
+          value: uni.name
+        }
+      });
+      setUniverseList(universesOptions);
+      setIsUniverseListLoading(false)
     });
   });
-
   return (
     <div className="yugaware-logs">
       <h2 className="content-title">
@@ -84,13 +91,18 @@ const YugawareLogs = ({ currentCustomer, yugawareLogs, getLogs, logError, fetchU
       </h2>
       <Row>
         <Col lg={2}>
-          <YBControlledSelectWithLabel
-            selectVal={selectedUniverse}
-            label="Universe to filter"
+          <div className='logs-form-label'>Universe to filter</div>
+          <Select
             options={universeList}
-            onInputChanged={(event) => {
-              setSelectedUniverse(event.target.value ? event.target.value : undefined);
+            placeholder={isUniverseListLoading ? 'Loading...' : 'Select a universe'}
+            loadingMessage={() => 'Loading...'}
+            isLoading={isUniverseListLoading}
+            value={selectedUniverse ? { value: selectedUniverse, label: selectedUniverse } : null}
+            onChange={(val) => {
+              setSelectedUniverse(val ? val.value : null)
             }}
+            isClearable
+            styles={UNIVERSE_SELECT_STYLES}
           />
         </Col>
         <Col lg={3}>
