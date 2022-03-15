@@ -150,13 +150,9 @@ public class UniverseInfoHandler {
     JsonNode resultNode;
     try {
       resultNode = queryHelper.liveQueries(universe);
-    } catch (NullPointerException e) {
-      log.error("Universe does not have a private IP or DNS", e);
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Universe failed to fetch live queries");
-    } catch (Throwable t) {
-      log.error("Error retrieving queries for universe", t);
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, t.getMessage());
+    } catch (Exception e) {
+      log.error("Error retrieving queries for universe", e);
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
     return resultNode;
   }
@@ -168,13 +164,9 @@ public class UniverseInfoHandler {
     } catch (IllegalArgumentException e) {
       log.error(e.getMessage(), e);
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
-    } catch (NullPointerException e) {
-      log.error("Universe does not have a private IP or DNS", e);
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Universe failed to fetch slow queries");
-    } catch (Throwable t) {
-      log.error("Error retrieving queries for universe", t);
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, t.getMessage());
+    } catch (Exception e) {
+      log.error("Error retrieving queries for universe", e);
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
     return resultNode;
   }
@@ -182,14 +174,9 @@ public class UniverseInfoHandler {
   public JsonNode resetSlowQueries(Universe universe) {
     try {
       return queryHelper.resetQueries(universe);
-    } catch (NullPointerException e) {
-      // TODO: Investigate why catch NPE??
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Failed reach node, invalid IP or DNS.");
-    } catch (Throwable t) {
-      // TODO: Investigate why catch Throwable??
-      log.error("Error resetting slow queries for universe", t);
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, t.getMessage());
+    } catch (Exception e) {
+      log.error("Error resetting slow queries for universe", e);
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
   }
 

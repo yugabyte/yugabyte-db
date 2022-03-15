@@ -6,7 +6,6 @@ import static play.libs.Json.toJson;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import java.sql.Connection;
@@ -21,25 +20,20 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.Callable;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.api.Play;
+
 import play.libs.Json;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 public class SlowQueryExecutor implements Callable<JsonNode> {
-  public static final Logger LOG = LoggerFactory.getLogger(LiveQueryExecutor.class);
 
-  private final ApiHelper apiHelper;
   // hostname can be either IP address or DNS
-  private String hostName;
-  private int port;
-  private String query;
-  private Universe universe;
-  private String username;
-  private String password;
-
-  private final String DEFAULT_DB_USER = "yugabyte";
-  private final String DEFAULT_DB_PASSWORD = "yugabyte";
+  private final String hostName;
+  private final int port;
+  private final String query;
+  private final Universe universe;
+  private final String username;
+  private final String password;
 
   public SlowQueryExecutor(
       String hostName,
@@ -52,9 +46,8 @@ public class SlowQueryExecutor implements Callable<JsonNode> {
     this.port = port;
     this.universe = universe;
     this.query = query;
-    this.username = username == null ? DEFAULT_DB_USER : username;
-    this.password = password == null ? DEFAULT_DB_PASSWORD : password;
-    this.apiHelper = Play.current().injector().instanceOf(ApiHelper.class);
+    this.username = username == null ? "yugabyte" : username;
+    this.password = password == null ? "yugabyte" : password;
   }
 
   private List<Map<String, Object>> resultSetToMap(ResultSet result) throws SQLException {
@@ -81,8 +74,8 @@ public class SlowQueryExecutor implements Callable<JsonNode> {
     ObjectNode response = Json.newObject();
     String connectString = String.format("jdbc:postgresql://%s:%d/%s", hostName, port, "postgres");
     Properties connInfo = new Properties();
-    connInfo.put("user", this.username == null ? DEFAULT_DB_USER : this.username);
-    connInfo.put("password", this.password == null ? DEFAULT_DB_PASSWORD : this.password);
+    connInfo.put("user", this.username);
+    connInfo.put("password", this.password);
     UniverseDefinitionTaskParams.Cluster primaryCluster =
         universe.getUniverseDetails().getPrimaryCluster();
     if (primaryCluster.userIntent.enableClientToNodeEncrypt) {
@@ -92,19 +85,20 @@ public class SlowQueryExecutor implements Callable<JsonNode> {
     try (Connection conn = DriverManager.getConnection(connectString, connInfo)) {
       if (conn == null) {
         response.put("error", "Unable to connect to DB");
+        response.put("type", "ysql");
       } else {
         PreparedStatement p = conn.prepareStatement(query);
-        boolean hasResult = p.execute();
-        if (hasResult) {
+
+        if (p.execute()) {
           ResultSet result = p.getResultSet();
           List<Map<String, Object>> rows = resultSetToMap(result);
-          response.put("result", toJson(rows));
+          response.set("result", toJson(rows));
         }
       }
-    } catch (SQLException e) {
-      response.put("error", e.getMessage());
     } catch (Exception e) {
+      log.error(e.getMessage(), e);
       response.put("error", e.getMessage());
+      response.put("type", "ysql");
     }
 
     return response;
