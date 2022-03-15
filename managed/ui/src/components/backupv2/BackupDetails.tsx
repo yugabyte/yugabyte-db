@@ -17,10 +17,10 @@ import './BackupDetails.scss';
 import {
   calculateDuration,
   FormatUnixTimeStampTimeToTimezone,
-  RevealBadge,
-  SearchInput
+  RevealBadge
 } from './BackupUtils';
 import { YCQLTableList, YSQLTableList } from './BackupTableList';
+import { YBSearchInput } from '../common/forms/fields/YBSearchInput';
 interface BackupDetailsProps {
   backup_details: IBackup | null;
   onHide: () => void;
@@ -149,7 +149,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
           {backup_details.state !== Backup_States.FAILED && (
             <Row className="tables-list">
               <Col lg={6} className="no-padding">
-                <SearchInput
+                <YBSearchInput
                   placeHolder="Search keyspace name"
                   onValueChanged={(e: React.ChangeEvent<HTMLInputElement>) => {
                     setSearchKeyspaceText(e.target.value);
