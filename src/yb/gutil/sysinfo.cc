@@ -197,7 +197,7 @@ static int ReadMaxCPUIndex() {
 // memory.
 
 static void InitializeSystemInfo() {
-  bool saw_mhz = false;
+  bool saw_mhz ATTRIBUTE_UNUSED = false;
 
   if (RunningOnValgrind()) {
     // Valgrind may slow the progress of time artificially (--scale-time=N
