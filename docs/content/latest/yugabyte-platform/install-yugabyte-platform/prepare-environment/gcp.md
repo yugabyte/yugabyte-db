@@ -72,7 +72,7 @@ Yugabyte Platform requires a service account with the appropriate permissions to
 
 To create a service account, perform the following:
 
-- Open your project and use the left-side menu to navigate to **IAM & Admin > Service Accounts**.
+- Open your project in GCP and use the left-side menu to navigate to **IAM & Admin > Service Accounts**.
 
 - Click **Create Service Account**.
 
@@ -96,13 +96,13 @@ For more information, see [Creating and managing service accounts](https://cloud
 
 ## Create a firewall rule
 
-In order to access Yugabyte Platform from outside the GCP environment, you have to enable firewall rules. At a minimum, you need the following:
+In order to access Yugabyte Platform from outside the GCP environment, you have to enable firewall rules. At a minimum, you need to be able to do the following:
 
-- Access the Yugabyte Platform instance over SSH (port `tcp:22`)
-- Check, manage, and upgrade Yugabyte Platform (port `tcp:8800`)
-- View the Yugabyte Platform UI (port `tcp:80`)
+- Access the Yugabyte Platform instance over SSH (port `tcp:22`).
+- Check, manage, and upgrade Yugabyte Platform (port `tcp:8800`).
+- View the Yugabyte Platform UI (port `tcp:80`).
 
-If you are using your own Virtual Private Cloud (VPC) as a self-managed configuration, the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 11000, 12000, 9300, 9042, 5433, 6379. For more information, see [Default ports](../../../../reference/configuration/default-ports).
+If you are using your own Virtual Private Cloud (VPC) as a self-managed configuration, the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 11000, 12000, 13000, 9300, 9042, 5433, 6379. For more information, see [Default ports](../../../../reference/configuration/default-ports).
 
 Next, you need to create a firewall entry, as follows: 
 
@@ -110,16 +110,16 @@ Next, you need to create a firewall entry, as follows:
 - Create firewall rules by following instructions provided in [Using firewall rules](https://cloud.google.com/vpc/docs/using-firewalls) in the GCP documentation. When creating the rules:
   - Add a tag `yugabyte-server` to the **Target tags** field.
   - Add the appropriate IP addresses to the **Source IP ranges** field.
-  - Add the ports `tcp:22, 8800, 80` to the **Protocol and ports** field. If required, also add TCP ports for a self-managed configuration.
+  - Enter a comma-delimited list of TCP ports 22, 8800, 80 to the **Protocol and ports** field. If required, also add TCP ports for a self-managed configuration.
 
 ## Provision instance for Yugabyte Platform
 
 You need to create an instance to run Yugabyte Platform. To do this, from your project's main page, navigate to **Compute Engine > VM instances**, click **Create**, and then follow instructions provided in [Virtual machine instances](https://cloud.google.com/compute/docs/instances) in the GCP documentation. When creating instances:
 
-- Select a region as, for example, `us-west1`. 
-- Select a zone as, for example, `us-west1-b`.
-- Select `4 vCPUs` (`n1-standard-4`) as the machine type.
-- Change the boot disk image to `Ubuntu 18.04 TLS` and increase the boot disk size to `100`.
+- Select a region as, for example, us-west1. 
+- Select a zone as, for example, us-west1-b.
+- Select 4 vCPUs (n1-standard-4) as the machine type.
+- Change the boot disk image to Ubuntu 18.04 TLS and increase the boot disk size to 100.
 - Specify whether to use the default or your own service account.
 - Specify whether to use the default or your own VPC.
 - Use the **Networking** tab to add `yugabyte-server` as the network tag (or the custom name you chose when setting up the firewall rules).
@@ -154,5 +154,5 @@ To connect to this server, execute the following command:
 $ ssh -i ~/.ssh/yugabyte-1-gcp centos@NN.NN.NN.NN
 ```
 
-Replace `NN.NN.NN.NN` with the IP address and `yugaware-1-gcp` with the appropriate SSH key.
+Replace `NN.NN.NN.NN` with the IP address and `yugabyte-1-gcp` with the appropriate SSH key.
 
