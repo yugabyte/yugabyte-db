@@ -22,6 +22,7 @@
 #include "yb/common/partition.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/schema.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/docdb/doc_key.h"
 
@@ -33,13 +34,20 @@
 namespace yb {
 namespace pggate {
 
-PgTableDesc::PgTableDesc(const PgObjectId& id, const client::YBTablePtr& table)
-    : id_(id), table_(table), table_partitions_(table->GetVersionedPartitions()) {
+PgTableDesc::PgTableDesc(
+    const PgObjectId& id, const master::GetTableSchemaResponsePB& resp,
+    std::shared_ptr<client::VersionedTablePartitionList> partitions)
+    : id_(id), resp_(resp),  table_partitions_(std::move(partitions)) {
+  table_name_.GetFromTableIdentifierPB(resp.identifier());
+}
 
+Status PgTableDesc::Init() {
+  RETURN_NOT_OK(SchemaFromPB(resp_.schema(), &schema_));
   size_t idx = 0;
   for (const auto& column : schema().columns()) {
     attr_num_map_.emplace(column.order(), idx++);
   }
+  return PartitionSchema::FromPB(resp_.partition_schema(), schema_, &partition_schema_);
 }
 
 Result<size_t> PgTableDesc::FindColumn(int attr_num) const {
@@ -71,7 +79,7 @@ Result<YBCPgColumnInfo> PgTableDesc::GetColumnInfo(int16_t attr_number) const {
 }
 
 bool PgTableDesc::IsColocated() const {
-  return table_->colocated();
+  return resp_.colocated();
 }
 
 YBCPgOid PgTableDesc::GetColocationId() const {
@@ -146,7 +154,7 @@ Status PgTableDesc::SetScanBoundary(PgsqlReadRequestPB *req,
 }
 
 const client::YBTableName& PgTableDesc::table_name() const {
-  return table_->name();
+  return table_name_;
 }
 
 size_t PgTableDesc::num_hash_key_columns() const {
@@ -162,15 +170,15 @@ size_t PgTableDesc::num_columns() const {
 }
 
 const PartitionSchema& PgTableDesc::partition_schema() const {
-  return table_->partition_schema();
+  return partition_schema_;
 }
 
 const Schema& PgTableDesc::schema() const {
-  return table_->InternalSchema();
+  return schema_;
 }
 
 uint32_t PgTableDesc::schema_version() const {
-  return table_->schema().version();
+  return resp_.version();
 }
 
 }  // namespace pggate

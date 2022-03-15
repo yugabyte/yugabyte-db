@@ -176,15 +176,14 @@ class PgClient::Impl {
     RETURN_NOT_OK(proxy_->OpenTable(req, &resp, PrepareController()));
     RETURN_NOT_OK(ResponseStatus(resp));
 
-    client::YBTableInfo info;
-    RETURN_NOT_OK(client::CreateTableInfoFromTableSchemaResp(resp.info(), &info));
-
     auto partitions = std::make_shared<client::VersionedTablePartitionList>();
     partitions->version = resp.partitions().version();
     partitions->keys.assign(resp.partitions().keys().begin(), resp.partitions().keys().end());
 
-    return make_scoped_refptr<PgTableDesc>(
-        table_id, std::make_shared<client::YBTable>(info, std::move(partitions)));
+    auto result = make_scoped_refptr<PgTableDesc>(
+        table_id, resp.info(), std::move(partitions));
+    RETURN_NOT_OK(result->Init());
+    return result;
   }
 
   CHECKED_STATUS FinishTransaction(Commit commit, DdlMode ddl_mode) {
