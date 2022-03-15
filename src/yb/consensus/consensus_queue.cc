@@ -789,9 +789,10 @@ yb::OpId PeerMessageQueue::GetCDCConsumerOpIdToEvict() {
   std::shared_lock<rw_spinlock> l(cdc_consumer_lock_);
   // For log cache eviction, we only want to include CDC consumers that are actively polling.
   // If CDC consumer checkpoint has not been updated recently, we exclude it.
-  if (cdc_consumer_op_info.find(CDCSourceType::XCLUSTER) != cdc_consumer_op_info.end() &&
-      CoarseMonoClock::Now() - cdc_consumer_op_info[CDCSourceType::XCLUSTER].cdc_consumer_op_id_last_updated_ <=
-      kCDCConsumerCheckpointInterval) {
+  if (cdc_consumer_op_info.find(CDCSourceType::XCLUSTER) != cdc_consumer_op_info.end()
+      && CoarseMonoClock::Now()
+          - cdc_consumer_op_info[CDCSourceType::XCLUSTER].cdc_consumer_op_id_last_updated_
+          <= kCDCConsumerCheckpointInterval) {
     return cdc_consumer_op_info[CDCSourceType::XCLUSTER].cdc_consumer_op_id_;
   } else {
     return yb::OpId::Max();
@@ -813,9 +814,10 @@ const char* PeerMessageQueue::CDCSourceToStr(CDCSourceType cdc_source_type) {
 
 yb::OpId PeerMessageQueue::GetCDCConsumerOpIdForIntentRemoval() {
   std::shared_lock<rw_spinlock> l(cdc_consumer_lock_);
-  if (cdc_consumer_op_info.find(CDCSourceType::CDCSDK) != cdc_consumer_op_info.end() &&
-      CoarseMonoClock::Now() - cdc_consumer_op_info[CDCSourceType::CDCSDK].cdc_consumer_op_id_last_updated_ <=
-      kCDCConsumerIntentRetention) {
+  if (cdc_consumer_op_info.find(CDCSourceType::CDCSDK) != cdc_consumer_op_info.end()
+      && CoarseMonoClock::Now()
+          - cdc_consumer_op_info[CDCSourceType::CDCSDK].cdc_consumer_op_id_last_updated_
+          <= kCDCConsumerIntentRetention) {
     return cdc_consumer_op_info[CDCSourceType::CDCSDK].cdc_consumer_op_id_;
   } else {
     return yb::OpId::Max();

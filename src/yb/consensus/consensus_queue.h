@@ -593,7 +593,8 @@ inline std::ostream& operator <<(std::ostream& out, PeerMessageQueue::State stat
   return out << PeerMessageQueue::StateToStr(state);
 }
 
-inline std::ostream& operator <<(std::ostream& out, PeerMessageQueue::CDCSourceType cdc_source_type) {
+inline std::ostream &
+operator<<(std::ostream &out, PeerMessageQueue::CDCSourceType cdc_source_type) {
   return out << PeerMessageQueue::CDCSourceToStr(cdc_source_type);
 }
 
