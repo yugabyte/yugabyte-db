@@ -13,6 +13,31 @@ showAsideToc: true
 ---
 To understand which standard SQL features we support, refer the following tables:
 
+### Data types
+
+ Data type | Supported | Documentation|
+-----------|-----------|---------
+ `ARRAY` | ✓ | [Array documentation](https://docs.yugabyte.com/latest/api/ysql/datatypes/type_array/)|
+ `BINARY` | ✓ | [Binary documentation](https://docs.yugabyte.com/latest/api/ysql/datatypes/type_binary/)|
+ `BIT`,`BYTES` | ✓ |  |
+ `BOOLEAN` | ✓ | [Boolean documentation](https://docs.yugabyte.com/latest/api/ysql/datatypes/type_bool/)|
+ `CHAR`, `VARCHAR`, `TEXT` | ✓ | [Character data types documentation](https://docs.yugabyte.com/latest/api/ysql/datatypes/type_character/)|
+ `COLLATE` | ✓ | [Collate documentation](https://docs.yugabyte.com/latest/explore/ysql-language-features/advanced-features/collations/#root)|
+ `DATE`, `TIME`, `TIMESTAMP`, `INTERVAL` | ✓ | [Date and time data types documentation](https://docs.yugabyte.com/latest/api/ysql/datatypes/type_datetime/)|
+ `DEC`, `DECIMAL`, `NUMERIC` | ✓ | [ Fixed point numbers documentation](https://docs.yugabyte.com/latest/api/ysql/datatypes/type_numeric/#fixed-point-numbers)|
+ `ENUM` | ✓ |[ENUM documentation](https://docs.yugabyte.com/latest/explore/ysql-language-features/data-types/#enumerations-enum-type)|
+ `FLOAT`, `REAL`, `DOUBLE PRECISION` | ✓ | [Floating point numbers documentation](https://docs.yugabyte.com/latest/api/ysql/datatypes/type_numeric/)|
+ `JSON`, `JSONB` | ✓ | [JSON data types documentation](https://docs.yugabyte.com/latest/api/ysql/datatypes/type_json/)|
+ `MONEY` | ✓ | [Money data type documentation](https://docs.yugabyte.com/latest/api/ysql/datatypes/type_money/)|
+ `SERIAL`, `SMALLSERIAL`, `BIGSERIAL`| ✓ | [Serial documentation](https://docs.yugabyte.com/latest/api/ysql/datatypes/type_serial/)|
+ `SET`| ✗ | |
+ `SMALLINT, INT, INTEGER, BIGINT` | ✓ | [Integers documentation](https://docs.yugabyte.com/latest/api/ysql/datatypes/type_numeric/)|
+ `INT4RANGE`, `INT8RANGE`, `NUMRANGE`, `TSRANGE`, `TSTZRANGE`, `DATERANGE` | ✓ | [Range data types documentation](https://docs.yugabyte.com/latest/api/ysql/datatypes/type_range/)|
+ `UUID` | ✓ | [UUID documentation](https://docs.yugabyte.com/latest/api/ysql/datatypes/type_uuid/)|
+ `XML`| ✗ | |
+ `TSVECTOR` | ✓ ||
+ `UDT` | ✓ ||
+ 
 ### Schema operations
 
  Operation | Supported | Documentation|
@@ -33,31 +58,16 @@ Altering tables | ✓ | [`ALTER TABLE`  documentation](https://docs.yugabyte.com
  Removing user-defined schemas | ✗ | |
  Altering user-defined schemas | ✗ ||
  
-### Data types
+### Constraints
 
- Data type | Supported | Documentation|
+ Feature | Supported |  Documentation|
 -----------|-----------|---------
- `ARRAY` | ✓ | [Array documentation](https://docs.yugabyte.com/latest/api/ysql/datatypes/type_array/)|
- `BINARY` | ✓ | [Binary documentation](https://docs.yugabyte.com/latest/api/ysql/datatypes/type_binary/)|
- `BIT` | ✓ |  |
- `BYTES` | ✓ | |
- `BOOLEAN` | ✓ | [Boolean documentation](https://docs.yugabyte.com/latest/api/ysql/datatypes/type_bool/)|
- `CHAR`, `VARCHAR`, `TEXT` | ✓ | [Character data types documentation](https://docs.yugabyte.com/latest/api/ysql/datatypes/type_character/)|
- `COLLATE` | ✓ | [Collate documentation](https://docs.yugabyte.com/latest/explore/ysql-language-features/advanced-features/collations/#root)|
- `DATE`, `TIME`, `TIMESTAMP`, `INTERVAL` | ✓ | [Date and time data types documentation](https://docs.yugabyte.com/latest/api/ysql/datatypes/type_datetime/)|
- `DEC`, `DECIMAL`, `NUMERIC` | ✓ | [ Fixed point numbers documentation](https://docs.yugabyte.com/latest/api/ysql/datatypes/type_numeric/#fixed-point-numbers)|
- `ENUM` | ✓ |[ENUM documentation](https://docs.yugabyte.com/latest/explore/ysql-language-features/data-types/#enumerations-enum-type)|
- `FLOAT`, `REAL`, `DOUBLE PRECISION` | ✓ | [Floating point numbers documentation](https://docs.yugabyte.com/latest/api/ysql/datatypes/type_numeric/)|
- `JSON`, `JSONB` | ✓ | [JSON data types documentation](https://docs.yugabyte.com/latest/api/ysql/datatypes/type_json/)|
- `MONEY` | ✓ | [Money data type documentation](https://docs.yugabyte.com/latest/api/ysql/datatypes/type_money/)|
- `SERIAL`, `SMALLSERIAL`, `BIGSERIAL`| ✓ | [Serial documentation](https://docs.yugabyte.com/latest/api/ysql/datatypes/type_serial/)|
- `SET`| ✗ | |
- `SMALLINT, INT, INTEGER, BIGINT` | ✓ | [Integers documentation](https://docs.yugabyte.com/latest/api/ysql/datatypes/type_numeric/)|
- `INT4RANGE`, `INT8RANGE`, `NUMRANGE`, `TSRANGE`, `TSTZRANGE`, `DATERANGE` | ✓ | [Range data types documentation](https://docs.yugabyte.com/latest/api/ysql/datatypes/type_range/)|
- `UUID` | ✓ | [UUID documentation](https://docs.yugabyte.com/latest/api/ysql/datatypes/type_uuid/)|
- `XML`| ✗ | |
- `TSVECTOR` | ✓ ||
- UDT | ✓ ||
+ Check | ✓ | [Check documentation](https://docs.yugabyte.com/latest/explore/indexes-constraints/other-constraints/#check-constraint)|
+ Unique | ✓ | [Unique documentation](https://docs.yugabyte.com/latest/explore/indexes-constraints/other-constraints/#unique-constraint)|
+ Not Null | ✓ | [Not Null documentation](https://docs.yugabyte.com/latest/explore/indexes-constraints/other-constraints/#not-null-constraint)|
+ Primary Key | ✓ | [Primary Key documentation](https://docs.yugabyte.com/latest/explore/indexes-constraints/primary-key-ysql/)|
+ Foreign Key | ✓ | [Foreign Key documentation](https://docs.yugabyte.com/latest/explore/indexes-constraints/foreign-key-ysql/)|
+ Default Value | ✗ | |
  
 ### Indexes
 
@@ -73,21 +83,9 @@ Altering tables | ✓ | [`ALTER TABLE`  documentation](https://docs.yugabyte.com
  Spatial indexes | ✗  ||
  Multiple indexes per query | ✗ ||
  Full-text indexes | ✗ | |
- Hash indexes | ✓ | |
  GiST indexes | ✗ | |
  BRIN indexes | ✗ | |
  
-### Constraints
-
- Feature | Supported |  Documentation|
------------|-----------|---------
- Check | ✓ | [Check documentation](https://docs.yugabyte.com/latest/explore/indexes-constraints/other-constraints/#check-constraint)|
- Unique | ✓ | [Unique documentation](https://docs.yugabyte.com/latest/explore/indexes-constraints/other-constraints/#unique-constraint)|
- Not Null | ✓ | [Not Null documentation](https://docs.yugabyte.com/latest/explore/indexes-constraints/other-constraints/#not-null-constraint)|
- Primary Key | ✓ | [Primary Key documentation](https://docs.yugabyte.com/latest/explore/indexes-constraints/primary-key-ysql/)|
- Foreign Key | ✓ | [Foreign Key documentation](https://docs.yugabyte.com/latest/explore/indexes-constraints/foreign-key-ysql/)|
- Default Value | ✗ | |
-
 ### Transactions
 
  Feature | Supported | Documentation|
