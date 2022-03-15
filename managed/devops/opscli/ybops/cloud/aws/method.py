@@ -11,7 +11,8 @@
 from ybops.cloud.common.method import ListInstancesMethod, CreateInstancesMethod, \
     ProvisionInstancesMethod, DestroyInstancesMethod, AbstractMethod, \
     AbstractAccessMethod, AbstractNetworkMethod, AbstractInstancesMethod, AccessDeleteKeyMethod, \
-    CreateRootVolumesMethod, ReplaceRootVolumeMethod, ChangeInstanceTypeMethod
+    CreateRootVolumesMethod, ReplaceRootVolumeMethod, ChangeInstanceTypeMethod, \
+    DeleteRootVolumesMethod
 from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
 from ybops.cloud.aws.utils import get_yb_sg_name, create_dns_record_set, edit_dns_record_set, \
     delete_dns_record_set, list_dns_record_set, ROOT_VOLUME_LABEL
@@ -128,6 +129,8 @@ class AwsProvisionInstancesMethod(ProvisionInstancesMethod):
 
 
 class AwsCreateRootVolumesMethod(CreateRootVolumesMethod):
+    """Subclass for creating root volumes in AWS
+    """
     def __init__(self, base_command):
         super(AwsCreateRootVolumesMethod, self).__init__(base_command)
         self.create_method = AwsCreateInstancesMethod(base_command)
@@ -135,7 +138,6 @@ class AwsCreateRootVolumesMethod(CreateRootVolumesMethod):
     def create_master_volume(self, args):
         args.auto_delete_boot_disk = False
         args.num_volumes = 0
-        args.instance_tags = None
 
         self.create_method.run_ansible_create(args)
         host_info = self.cloud.get_host_info(args)
@@ -145,6 +147,17 @@ class AwsCreateRootVolumesMethod(CreateRootVolumesMethod):
 
     def delete_instance(self, args, instance_id):
         self.cloud.delete_instance(args.region, instance_id, args.assign_static_public_ip)
+
+
+class AwsDeleteRootVolumesMethod(DeleteRootVolumesMethod):
+    """Subclass for deleting root volumes in AWS.
+    """
+
+    def __init__(self, base_command):
+        super(AwsDeleteRootVolumesMethod, self).__init__(base_command)
+
+    def delete_volumes(self, args):
+        self.cloud.delete_volumes(args)
 
 
 class AwsDestroyInstancesMethod(DestroyInstancesMethod):

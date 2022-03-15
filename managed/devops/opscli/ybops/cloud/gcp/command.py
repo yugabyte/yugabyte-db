@@ -19,7 +19,7 @@ from ybops.cloud.gcp.method import GcpCreateInstancesMethod, GcpProvisionInstanc
     GcpAccessAddKeyMethod, GcpNetworkBootstrapMethod, GcpNetworkQueryMethod, \
     GcpNetworkCleanupMethod, GcpQueryVpcMethod, GcpCreateRootVolumesMethod, \
     GcpReplaceRootVolumeMethod, GcpChangeInstanceTypeMethod, GcpPauseInstancesMethod, \
-    GcpResumeInstancesMethod
+    GcpResumeInstancesMethod, GcpDeleteRootVolumesMethod
 
 
 class GcpInstanceCommand(InstanceCommand):
@@ -32,6 +32,7 @@ class GcpInstanceCommand(InstanceCommand):
         self.add_method(GcpProvisionInstancesMethod(self))
         self.add_method(GcpCreateInstancesMethod(self))
         self.add_method(GcpCreateRootVolumesMethod(self))
+        self.add_method(GcpDeleteRootVolumesMethod(self))
         self.add_method(GcpReplaceRootVolumeMethod(self))
         self.add_method(GcpDestroyInstancesMethod(self))
         self.add_method(ListInstancesMethod(self))
