@@ -49,7 +49,7 @@ showAsideToc: true
 
 ## Create a local cluster
 
-To create a 1-node cluster with a replication factor (RF) of 1, run the command below.
+To create a 1-node cluster with a replication factor (RF) of 1, run the following command.
 
 ```sh
 $ docker run -d --name yugabyte  -p7000:7000 -p9000:9000 -p5433:5433 -p9042:9042\
@@ -58,6 +58,7 @@ $ docker run -d --name yugabyte  -p7000:7000 -p9000:9000 -p5433:5433 -p9042:9042
 ```
 
 In the preceding `docker run` command, the data stored in YugabyteDB doesn't persist across container restarts. To make YugabyteDB persist data across restarts, add a volume mount option to the docker run command.
+
 First, create a `~/yb_data` directory:
 
 ```sh
@@ -89,19 +90,19 @@ CONTAINER ID        IMAGE                 COMMAND                  CREATED      
 
 ## Check cluster status with Admin UI
 
-The [yb-master Admin UI](../../../reference/configuration/yb-master/#admin-ui) is available at <http://localhost:7000> and the [yb-tserver Admin UI](../../../reference/configuration/yb-tserver/#admin-ui) is available at <http://localhost:9000>. To avoid port conflicts, you should make sure other processes on your machine do not have these ports mapped to `localhost`.
+Connect to the [YB-Master Admin UI](../../../reference/configuration/yb-master/#admin-ui) at <http://localhost:7000> and the [YB-TServer Admin UI](../../../reference/configuration/yb-tserver/#admin-ui) at <http://localhost:9000>. To avoid port conflicts, make sure other processes on your machine do not have these ports mapped to `localhost`.
 
 ### Overview and YB-Master status
 
-The yb-master home page shows that you have a cluster (or universe) with `Replication Factor` of 1 and `Num Nodes (TServers)` as 1. The `Num User Tables` is `0`, as there are no user tables created yet. YugabyteDB version number is also shown for your reference.
+The YB-Master home page shows that you have a cluster (or universe) with a replication factor of 1, a single node, and no tables. The YugabyteDB version is also displayed.
 
 ![master-home](/images/admin/master-home-docker-rf1.png)
 
-The Masters section highlights the cloud, region and zone placement for the yb-master servers.
+The **Masters** section highlights the 1 YB-Master along with its corresponding cloud, region, and zone placement.
 
 ### YB-TServer status
 
-Click **See all nodes** to go to the **Tablet Servers** page, where you can observe the one YB-TServer along with the time since it last connected to the YB-Master using regular heartbeats.
+Click **See all nodes** to go to the **Tablet Servers** page, which lists the YB-TServer along with the time since it last connected to the YB-Master using regular heartbeats.
 
 ![master-home](/images/admin/master-tservers-list-docker-rf1.png)
 

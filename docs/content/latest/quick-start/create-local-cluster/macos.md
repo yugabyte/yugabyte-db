@@ -98,19 +98,19 @@ $ ./bin/yugabyted status
 
 ## Check cluster status with Admin UI
 
-The [YB-Master Admin UI](../../../reference/configuration/yb-master/#admin-ui) is available at [http://127.0.0.1:7000](http://127.0.0.1:7000) and the [YB-TServer Admin UI](../../../reference/configuration/yb-tserver/#admin-ui) is available at [http://127.0.0.1:9000](http://127.0.0.1:9000).
+Connect to the [YB-Master Admin UI](../../../reference/configuration/yb-master/#admin-ui) at <http://127.0.0.1:7000> and the [YB-TServer Admin UI](../../../reference/configuration/yb-tserver/#admin-ui) at <http://127.0.0.1:9000>.
 
 ### Overview and YB-Master status
 
-The yb-master Admin UI home page shows that you have a cluster with `Replication Factor` of 1 and `Num Nodes (TServers)` as 1. `Num User Tables` is 0 as no user tables have been created. The YugabyteDB version number is also shown for your reference.
+The YB-Master home page shows that you have a cluster (or universe) with a replication factor of 1, a single node, and no tables. The YugabyteDB version is also displayed.
 
 ![master-home](/images/admin/master-home-binary-rf1.png)
 
-The Masters section highlights the 1 yb-master along with its corresponding cloud, region and zone placement.
+The **Masters** section highlights the 1 YB-Master along with its corresponding cloud, region, and zone placement.
 
 ### YB-TServer status
 
-Click **See all nodes** to go to the **Tablet Servers** page, where you can observe the one YB-TServer along with the time since it last connected to the YB-Master using regular heartbeats. Because there are no user tables, `Load (Num Tablets)` is 0. As tables are added, new tablets (aka shards) will be created automatically and distributed evenly across all the available tablet servers.
+Click **See all nodes** to go to the **Tablet Servers** page, which lists the YB-TServer along with the time since it last connected to the YB-Master using regular heartbeats. Because there are no user tables, User Tablet-Peers / Leaders is 0. As tables are added, new tablets (aka shards) will be created automatically and distributed evenly across all the available tablet servers.
 
 ![master-home](/images/admin/master-tservers-list-binary-rf1.png)
 
