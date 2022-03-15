@@ -21,7 +21,7 @@ This page describes the PostgreSQL extensions supported by YugabyteDB. These ext
 * **Pre-bundled extensions:** These are extensions that are included in the standard YugabyteDB distribution and can be enabled in YSQL by running the [`CREATE EXTENSION`](../the-sql-language/statements/ddl_create_extension) statement.
 * **Extensions requiring installation:** Other extensions have to be installed manually before they can be enabled with the [`CREATE EXTENSION`](../the-sql-language/statements/ddl_create_extension) statement. Refer [how to install an extension?](#installing-an-extension)
 
-# PostgreSQL extensions supported by YugabyteDB
+## PostgreSQL extensions supported by YugabyteDB
 For information about using a specific extension, see the documentation link in one of the tables below.
  Extension | Status |  Description | Example|
 -----------|-----------|---------|-------|
@@ -279,7 +279,7 @@ You'll see results similar to the following:
 (10 rows)
 ```
 
-Every time you repeat the test, you'll see different generated values for `v`. The section [Analyzing a normal distribution with percent_rank(), cume_dist() and ntile()](../exprs/window_functions/analyzing-a-normal-distribution/), within the major documentation section [Window functions](../exprs/window_functions/), uses `normal_rand()`. It populates a table with a large number, say 100,000, rows and displays the outcome as a histogram that clearly shows the familiar bell-curve shape.
+Every time you repeat the test, you'll see different generated values for `v`. The section [Analyzing a normal distribution with percent_rank(), cume_dist() and ntile()](https://github.com/yugabyte/yugabyte-db/tree/master/docs/content/latest/api/ysql/exprs/window_functions/analyzing-a-normal-distribution/), within the major documentation section [Window functions](https://github.com/yugabyte/yugabyte-db/tree/master/docs/content/latest/api/ysql/exprs/window_functions), uses `normal_rand()`. It populates a table with a large number, say 100,000, rows and displays the outcome as a histogram that clearly shows the familiar bell-curve shape.
 
 These other functions are brought by `tablefunc`: `connectby()`; and `crosstab()` and `crosstabN()`.
 
