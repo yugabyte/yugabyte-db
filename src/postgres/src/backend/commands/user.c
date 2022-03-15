@@ -304,10 +304,10 @@ CreateRole(ParseState *pstate, CreateRoleStmt *stmt)
 	}
 	else if (bypassrls)
 	{
-		if (!superuser())
+		if (!superuser() && !IsYbDbAdminUser(GetUserId()))
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-					 errmsg("must be superuser to change bypassrls attribute")));
+					 errmsg("must be superuser or yb_db_admin role to change bypassrls attribute")));
 	}
 	else
 	{
@@ -704,10 +704,10 @@ AlterRole(AlterRoleStmt *stmt)
 	}
 	else if (bypassrls >= 0)
 	{
-		if (!superuser())
+		if (!superuser() && !IsYbDbAdminUser(GetUserId()))
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-					 errmsg("must be superuser to change bypassrls attribute")));
+					 errmsg("must be superuser or yb_db_admin role to change bypassrls attribute")));
 	}
 	else if (!have_createrole_privilege())
 	{
