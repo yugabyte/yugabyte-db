@@ -293,9 +293,7 @@ Status PgSession::RunHelper::Apply(
   }
 
   if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {
-#ifdef PG_CLIENT
-    LOG(INFO) << "Applying operation: " << op->ShortDebugString();
-#endif
+    LOG(INFO) << "Applying operation: " << op->ToString();
   }
 
   operations_.Add(op, relation_id_);
