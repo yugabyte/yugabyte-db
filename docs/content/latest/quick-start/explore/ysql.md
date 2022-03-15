@@ -223,7 +223,7 @@ Referenced by:
 
 ### Self-joins
 
-A self-join is a regular join where the table is joined with itself. The following statement matches employees with their manager and filters those that are earning more than their manager.
+A self-join is a regular [join](../../../explore/ysql-language-features/queries/#joining-columns) where the table is joined with itself. The following statement matches employees with their manager and filters those that are earning more than their manager.
 
 ```sql
 SELECT
@@ -250,7 +250,7 @@ ORDER BY employee.sal;
 
 ### Recursive queries
 
-The following example uses a recursive common table expression (CTE) to show the manager hierarchy. The `emp_manager` CTE is built using the `WITH RECURSIVE` clause to follow the hierarchy under JONES, down to the last level. The first subquery in the recursive clause starts at JONES. The second lists the employees who have JONES as a manager. They are declared with a UNION ALL and are executed recursively to get the other levels. The main query is then run on the CTE.
+The following example uses a [recursive common table expression](../../../explore/ysql-language-features/queries/#recursive-queries-and-ctes) (CTE) to show the manager hierarchy. The `emp_manager` CTE is built using the `WITH RECURSIVE` clause to follow the hierarchy under JONES, down to the last level. The first subquery in the recursive clause starts at JONES. The second lists the employees who have JONES as a manager. They are declared with a UNION ALL and are executed recursively to get the other levels. The main query is then run on the CTE.
 
 ```sql
 WITH RECURSIVE emp_manager AS (
@@ -276,7 +276,7 @@ SELECT * FROM emp_manager;
 
 ### LAG window functions
 
-Use analytic window functions to compare the hiring time interval by department.
+Use analytic [window functions](../../../api/ysql/exprs/window_functions/) to compare the hiring time interval by department.
 
 The following SQL statement uses WINDOW to define groups of employees by department, ordered by hiring date. The LAG window function is used to access the previous row to compare the hiring date interval between two employees. FORMAT builds text from column values, and COALESCE handles the first hire for which there is no previous row in the group. Without these window functions, this query would need to read the table twice.
 
@@ -317,7 +317,7 @@ SELECT
 
 ### Cross table pivots
 
-Use a cross table to show the sum of salary per job, by department. The `crosstabview` shell command displays rows as columns. The following statement sums the salaries across jobs and departments and displays them as a cross table.
+Use a cross table to show the sum of salary per job, by department. The [crosstabview](../../../admin/ysqlsh/#crosstabview-colv-colh-cold-sortcolh) shell command displays rows as columns. The following statement sums the salaries across jobs and departments and displays them as a cross table.
 
 ```sql
 SELECT job, dname, sum(sal)
@@ -339,7 +339,7 @@ SELECT job, dname, sum(sal)
 
 ### Pattern matches using regular expressions
 
-Use regular expressions in an array to do pattern matching. The following statement matches all employees with `@gmail` or `.org` in their email address.
+Use [regular expressions](../../../develop/learn/strings-and-text-ysql/) in an array to do pattern matching. The following statement matches all employees with `@gmail` or `.org` in their email address.
 
 ```sql
 SELECT * FROM emp
@@ -357,9 +357,9 @@ SELECT * FROM emp
 
 ### GIN index JSON
 
-The employee skills are stored in a semi-structured JSON document. You can query them using the `@>`, `?`, `?&`, and `?|` operators. For best performance, index them using a Gin index. GIN indexes provide quick access to elements inside a JSON document.
+The employee skills are stored in a semi-structured JSON document. You can query them using the `@>`, `?`, `?&`, and `?|` operators. For best performance, index them using a [GIN index](../../../explore/indexes-constraints/gin/). GIN indexes provide quick access to elements inside a JSON document.
 
-(Gin indexes are only available in YugabyteDB v2.11 or later. If you are using an earlier version, skip this scenario.)
+(GIN indexes are only available in YugabyteDB v2.11 or later. If you are using an earlier version, skip this scenario.)
 
 1. Create the GIN index on the JSON document.
 
@@ -383,11 +383,11 @@ The employee skills are stored in a semi-structured JSON document. You can query
 
     Thanks to the GIN index, this search doesn't need to read all documents.
 
-### Gin index text
+### GIN index text
 
 GIN indexes also provide fast access to words inside text. The following creates an index for the simple-grammar vector of words extracted from the department description.
 
-(Gin indexes are only available in YugabyteDB v2.11 or later. If you are using an earlier version, skip this scenario.)
+(GIN indexes are only available in YugabyteDB v2.11 or later. If you are using an earlier version, skip this scenario.)
 
 1. Create a text search index on the description column.
 
@@ -414,7 +414,7 @@ Thanks to the GIN index, this search doesn't need to read all rows and text.
 
 ### Date intervals
 
-Using arithmetic on date intervals, you can find employees with overlapping evaluation periods.
+Using arithmetic on [date intervals](../../../explore/ysql-language-features/data-types/#date-and-time), you can find employees with overlapping evaluation periods.
 
 The interval data type allows you to store and manipulate a period of time in years, months, days, and so forth. The following example compares overlapping evaluation periods. The WITH clause defines the evaluation period length depending on the job.
 
@@ -443,7 +443,7 @@ SELECT * FROM emp_evaluation_period e1
 
 ### Update and return values
 
-The UPDATE statement can compute a new value and return it without the need to query again. Using the RETURNING clause returns the new values in the same call. The following adds 100 to the salaries of all employees who are not managers and shows the new value.
+The [UPDATE](../../../api/ysql/the-sql-language/statements/dml_update/) statement can compute a new value and return it without the need to query again. Using the RETURNING clause returns the new values in the same call. The following adds 100 to the salaries of all employees who are not managers and shows the new value.
 
 ```sql
 UPDATE emp SET sal=sal+100
@@ -472,7 +472,7 @@ UPDATE 11
 
 ### Prepared statements
 
-Use a prepared statement with typed input to prevent SQL injection. A prepared statement declares parameterized SQL.
+Use a [prepared statement](../../../api/ysql/the-sql-language/statements/perf_prepare/) with typed input to prevent SQL injection. A prepared statement declares parameterized SQL.
 
 1. Prepare the statement `employee_salary` with a parameterized query. The following prepared statement accepts the input of an employee number as an integer only, and displays the name and salary.
 
@@ -523,7 +523,7 @@ Use a prepared statement with typed input to prevent SQL injection. A prepared s
 
 ### Stored procedures
 
-A stored procedure encapsulates procedural logic into an atomic operation. Use stored procedures to encapsulate transactions with error handling. The following example creates a procedure in PL/pgSQL, named "commission_transfer", that transfers a commission "amount" from `empno1` to `empno2`.
+A [stored procedure](../../../explore/ysql-language-features/stored-procedures/) encapsulates procedural logic into an atomic operation. Use stored procedures to encapsulate transactions with error handling. The following example creates a procedure in PL/pgSQL, named "commission_transfer", that transfers a commission "amount" from `empno1` to `empno2`.
 
 1. Create the procedure with the business logic. The procedure has two SQL operations: decrease from `empno1` and add to `empno2`. It also adds error checking to raise a custom exception if `empno1` doesn't have sufficient funds to transfer.
 
@@ -583,7 +583,7 @@ A stored procedure encapsulates procedural logic into an atomic operation. Use s
 
 ### Triggers
 
-Use triggers to automatically update data. This example uses a trigger to record the last time each row is updated automatically.
+Use [triggers](../../../explore/ysql-language-features/triggers/) to automatically update data. This example uses a trigger to record the last time each row is updated automatically.
 
 1. Add a column to store the last update time.
 
@@ -680,7 +680,7 @@ In addition to the changed location, the last update timestamp has been automati
 
 ### Create indexes
 
-Use indexes to query table values more efficiently.
+Use [indexes](../../../explore/indexes-constraints/secondary-indexes/) to query table values more efficiently.
 
 1. Create a table with randomly generated rows. You can use the GENERATE_SERIES function to generate rows. The following uses GENERATE_SERIES to create a table with 42 rows and a random value from 1 to 10.
 
@@ -692,7 +692,7 @@ Use indexes to query table values more efficiently.
     SELECT 42
     ```
 
-1. Create the index `demo_val` on the `demo` table. To query values as efficiently as possible, create an index. The following statement creates an index on `val` (hashed for distribution) and `num` in ascending order.
+1. Create the index `demo_val` on the `demo` table. The following statement creates an index on `val` (hashed for distribution) and `num` in ascending order.
 
     ```sql
     CREATE INDEX demo_val ON demo(val,num);
