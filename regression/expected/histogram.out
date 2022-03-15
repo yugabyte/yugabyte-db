@@ -55,8 +55,8 @@ SELECT substr(query, 0,50) as query, calls, resp_calls FROM pg_stat_monitor ORDE
 (5 rows)
 
 select * from generate_histogram();
-       range        | freq |                                            bar                                             
---------------------+------+--------------------------------------------------------------------------------------------
+       range        | freq |              bar               
+--------------------+------+--------------------------------
  (0 - 3)}           |    0 | 
   (3 - 10)}         |    0 | 
   (10 - 31)}        |    0 | 
