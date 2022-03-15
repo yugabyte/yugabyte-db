@@ -96,7 +96,6 @@ class FlushJob {
 
  private:
   void ReportStartedFlush();
-  void ReportFlushInputSize(const autovector<MemTable*>& mems);
   void RecordFlushIOStats();
   Result<FileNumbersHolder> WriteLevel0Table(
       const autovector<MemTable*>& mems, VersionEdit* edit, FileMetaData* meta);
