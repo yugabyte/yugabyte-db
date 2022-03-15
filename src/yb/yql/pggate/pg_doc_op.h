@@ -214,9 +214,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   typedef std::unique_ptr<const PgDocOp> UniPtrConst;
 
   // Constructors & Destructors.
-  PgDocOp(const PgSession::ScopedRefPtr& pg_session,
-          PgTable* table,
-          const PgObjectId& relation_id = PgObjectId());
+  PgDocOp(const PgSession::ScopedRefPtr& pg_session, PgTable* table);
   virtual ~PgDocOp();
 
   // Initialize doc operator.
@@ -320,7 +318,6 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
 
   // Target table.
   PgTable& table_;
-  PgObjectId relation_id_;
 
   // Exec control parameters.
   PgExecParameters exec_params_;
@@ -544,7 +541,6 @@ class PgDocWriteOp : public PgDocOp {
   // Constructors & Destructors.
   PgDocWriteOp(const PgSession::ScopedRefPtr& pg_session,
                PgTable* table,
-               const PgObjectId& relation_id,
                PgsqlWriteOpPtr write_op);
 
   // Set write time.
