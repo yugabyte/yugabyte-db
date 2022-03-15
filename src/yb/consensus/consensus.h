@@ -338,6 +338,7 @@ class Consensus {
 
 
   enum class CDCSourceType {
+    NONE = 0,
     XCLUSTER = 1,
     CDCSDK = 2
   };

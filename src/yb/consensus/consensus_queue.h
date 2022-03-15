@@ -364,7 +364,7 @@ class PeerMessageQueue {
     CDCSDK = 2
   };
 
-  void UpdateCDCConsumerOpId(const yb::OpId& op_id, CDCSourceType cdc_source_type);
+  void UpdateCDCConsumerOpId(const yb::OpId& op_id,  CDCSourceType cdc_source_type);
 
   // Get the maximum op ID that can be evicted for CDC consumer from log cache.
   yb::OpId GetCDCConsumerOpIdToEvict();
@@ -573,12 +573,12 @@ class PeerMessageQueue {
 
   // Used to protect cdc_consumer_op_id_ and cdc_consumer_op_id_last_updated_.
   mutable rw_spinlock cdc_consumer_lock_;
-  yb::OpId cdc_consumer_op_id_ = yb::OpId::Max();
-  yb::OpId cdc_sdk_consumer_op_id_ = yb::OpId::Max();
-  CoarseTimePoint cdc_consumer_op_id_last_updated_ = ToCoarse(MonoTime::kMin);
-  CoarseTimePoint cdc_sdk_consumer_op_id_last_updated_ = ToCoarse(MonoTime::kMin);
+  struct CDCConsumerOpInfo {
+    yb::OpId cdc_consumer_op_id_ = yb::OpId::Max();
+    CoarseTimePoint cdc_consumer_op_id_last_updated_ = ToCoarse(MonoTime::kMin);
+  };
 
-  //CDCSourceType cdc_consumer_source_type_ = CDCSourceType::NONE;
+  std::unordered_map<CDCSourceType, CDCConsumerOpInfo> cdc_consumer_op_info;
 
   friend std::ostream& operator <<(std::ostream& out, CDCSourceType cdc_source_type);
   static const char* CDCSourceToStr(CDCSourceType cdc_source_typ);
