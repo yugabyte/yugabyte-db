@@ -1549,7 +1549,7 @@ YbGetTableDescAndProps(Oid table_oid,
 		HandleYBStatus(YBCPgTableExists(MyDatabaseId, table_oid, &exists_in_yb));
 		if (!exists_in_yb)
 		{
-			desc = NULL;
+			*desc = NULL;
 			return;
 		}
 	}
