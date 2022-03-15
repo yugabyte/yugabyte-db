@@ -160,9 +160,7 @@ public class UniverseInfoController extends AuthenticatedController {
     Optional<String> optPassword = request().getHeaders().get(YSQL_PASSWORD_HEADER);
     JsonNode resultNode =
         universeInfoHandler.getSlowQueries(
-            universe,
-            optUsername.orElse(null),
-            optPassword.isPresent() ? Util.decodeBase64(optPassword.get()) : null);
+            universe, optUsername.orElse(null), optPassword.map(Util::decodeBase64).orElse(null));
     return Results.ok(resultNode);
   }
 
