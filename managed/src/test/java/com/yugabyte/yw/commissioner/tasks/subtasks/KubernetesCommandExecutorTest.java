@@ -59,7 +59,6 @@ import org.yaml.snakeyaml.Yaml;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.modules.swagger.SwaggerModule;
-import play.test.Helpers;
 
 public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   private static final String CERTS_DIR = "/tmp/yugaware_tests/kcet_certs";
@@ -536,11 +535,11 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
         Universe.saveDetails(
             defaultUniverse.universeUUID,
             ApiUtils.mockUniverseUpdater(defaultUserIntent, "host", true));
+    u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater(defaultCert.uuid));
     hackPlacementUUID = u.getUniverseDetails().getPrimaryCluster().uuid;
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
-    kubernetesCommandExecutor.taskParams().rootCA = defaultCert.uuid;
     kubernetesCommandExecutor.run();
 
     ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
@@ -584,11 +583,11 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
         Universe.saveDetails(
             defaultUniverse.universeUUID,
             ApiUtils.mockUniverseUpdater(defaultUserIntent, "host", true));
+    u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater(defaultCert.uuid));
     hackPlacementUUID = u.getUniverseDetails().getPrimaryCluster().uuid;
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
-    kubernetesCommandExecutor.taskParams().rootCA = defaultCert.uuid;
     kubernetesCommandExecutor.run();
 
     ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
@@ -632,11 +631,11 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
         Universe.saveDetails(
             defaultUniverse.universeUUID,
             ApiUtils.mockUniverseUpdater(defaultUserIntent, "host", true));
+    u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater(defaultCert.uuid));
     hackPlacementUUID = u.getUniverseDetails().getPrimaryCluster().uuid;
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
-    kubernetesCommandExecutor.taskParams().rootCA = defaultCert.uuid;
     kubernetesCommandExecutor.run();
 
     ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);

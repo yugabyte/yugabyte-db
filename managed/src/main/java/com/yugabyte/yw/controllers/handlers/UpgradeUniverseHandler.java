@@ -155,8 +155,20 @@ public class UpgradeUniverseHandler {
       }
     }
 
+    if (userIntent.providerType.equals(CloudType.kubernetes)) {
+      // Certs rotate does not change universe version. Check for current version of helm chart.
+      checkHelmChartExists(
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
+    }
+
     return submitUpgradeTask(
-        TaskType.CertsRotate, CustomerTask.TaskType.CertsRotate, requestParams, customer, universe);
+        userIntent.providerType.equals(CloudType.kubernetes)
+            ? TaskType.CertsRotateKubernetesUpgrade
+            : TaskType.CertsRotate,
+        CustomerTask.TaskType.CertsRotate,
+        requestParams,
+        customer,
+        universe);
   }
 
   public UUID resizeNode(ResizeNodeParams requestParams, Customer customer, Universe universe) {
