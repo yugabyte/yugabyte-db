@@ -9,29 +9,29 @@
 
 import React, { FC, useState } from 'react';
 import { Alert, Col, Row } from 'react-bootstrap';
-import { getKMSConfigs, IBackup, IUniverse, Keyspace_Table, restoreEntireBackup } from '.';
-import { YBModalForm } from '../common/forms';
+import { getKMSConfigs, IBackup, IUniverse, Keyspace_Table, restoreEntireBackup } from '..';
+import { YBModalForm } from '../../common/forms';
 import {
   FormatUnixTimeStampTimeToTimezone,
   KEYSPACE_VALIDATION_REGEX,
   SPINNER_ICON
-} from './BackupUtils';
+} from '../common/BackupUtils';
 
 import { Field, FieldArray } from 'formik';
 import { useMutation, useQuery } from 'react-query';
-import { fetchTablesInUniverse, fetchUniversesList } from '../../actions/xClusterReplication';
-import { YBLoading } from '../common/indicators';
+import { fetchTablesInUniverse, fetchUniversesList } from '../../../actions/xClusterReplication';
+import { YBLoading } from '../../common/indicators';
 import {
   YBButton,
   YBControlledNumericInputWithLabel,
   YBFormSelect,
   YBInputField
-} from '../common/forms/fields';
+} from '../../common/forms/fields';
 import * as Yup from 'yup';
 import { toast } from 'react-toastify';
 import { components } from 'react-select';
-import { Badge_Types, StatusBadge } from '../common/badge/StatusBadge';
-import { YBSearchInput } from '../common/forms/fields/YBSearchInput';
+import { Badge_Types, StatusBadge } from '../../common/badge/StatusBadge';
+import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
 import './BackupRestoreModal.scss';
 
 interface RestoreModalProps {
