@@ -9,8 +9,7 @@ export function SecurityMenu({
   editTLSAvailability,
   showTLSConfigurationModal,
   showManageKeyModal,
-  manageKeyAvailability,
-  isItKubernetesUniverse
+  manageKeyAvailability
 }) {
   const { test, released } = useSelector((state) => state.featureFlags);
 
@@ -27,7 +26,7 @@ export function SecurityMenu({
         <YBLabelWithIcon icon="fa fa-chevron-left fa-fw">Back</YBLabelWithIcon>
       </MenuItem>
       <MenuItem divider />
-      <YBMenuItem onClick={showTLSConfigurationModal} availability={tlsAvailability} disabled={isItKubernetesUniverse}>
+      <YBMenuItem onClick={showTLSConfigurationModal} availability={tlsAvailability}>
         Encryption in-Transit
       </YBMenuItem>
       <YBMenuItem onClick={showManageKeyModal} availability={manageKeyAvailability}>

@@ -585,15 +585,15 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
     overrides.put("Image", imageInfo);
 
-    if (taskParams().rootCA != null) {
+    if (u.getUniverseDetails().rootCA != null) {
       Map<String, Object> tlsInfo = new HashMap<>();
       tlsInfo.put("enabled", true);
       tlsInfo.put("nodeToNode", userIntent.enableNodeToNodeEncrypt);
       tlsInfo.put("clientToServer", userIntent.enableClientToNodeEncrypt);
       tlsInfo.put("insecure", u.getUniverseDetails().allowInsecure);
       Map<String, Object> rootCA = new HashMap<>();
-      rootCA.put("cert", CertificateHelper.getCertPEM(taskParams().rootCA));
-      rootCA.put("key", CertificateHelper.getKeyPEM(taskParams().rootCA));
+      rootCA.put("cert", CertificateHelper.getCertPEM(u.getUniverseDetails().rootCA));
+      rootCA.put("key", CertificateHelper.getKeyPEM(u.getUniverseDetails().rootCA));
       tlsInfo.put("rootCA", rootCA);
       overrides.put("tls", tlsInfo);
     }

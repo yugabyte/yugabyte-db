@@ -579,7 +579,6 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.tserverPartition = tserverPartition;
     params.enableNodeToNodeEncrypt = primary.userIntent.enableNodeToNodeEncrypt;
     params.enableClientToNodeEncrypt = primary.userIntent.enableClientToNodeEncrypt;
-    params.rootCA = taskParams().rootCA;
     params.serverType = serverType;
     KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
     task.initialize(params);
@@ -648,7 +647,6 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.tserverPartition = tserverPartition;
     params.enableNodeToNodeEncrypt = primary.userIntent.enableNodeToNodeEncrypt;
     params.enableClientToNodeEncrypt = primary.userIntent.enableClientToNodeEncrypt;
-    params.rootCA = taskParams().rootCA;
     params.serverType = serverType;
     KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
     task.initialize(params);
