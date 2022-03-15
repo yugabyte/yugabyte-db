@@ -26,12 +26,12 @@ import {
   DATE_FORMAT,
   ENTITY_NOT_AVAILABLE,
   FormatUnixTimeStampTimeToTimezone,
-  SearchInput
 } from './BackupUtils';
 import './BackupList.scss';
 import { BackupCancelModal, BackupDeleteModal } from './BackupDeleteModal';
 import { BackupRestoreModal } from './BackupRestoreModal';
 import { mapValues, keyBy } from 'lodash';
+import { YBSearchInput } from '../common/forms/fields/YBSearchInput';
 
 const reactWidgets = require('react-widgets');
 const momentLocalizer = require('react-widgets-moment');
@@ -216,7 +216,7 @@ export const BackupList: FC = () => {
         <Col lg={6} className="no-padding">
           <Row>
             <Col lg={6} className="no-padding">
-              <SearchInput
+              <YBSearchInput
                 placeHolder="Search universe name, Storage Config, Database/Keyspace name"
                 onEnterPressed={(val: string) => setSearchText(val)}
               />

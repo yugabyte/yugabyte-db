@@ -7,13 +7,11 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { isFunction } from 'lodash';
+import React from 'react';
 import moment from 'moment';
-import React, { FC } from 'react';
 import { useState } from 'react';
 import { useSelector } from 'react-redux';
 import { Backup_States } from '.';
-import { YBControlledTextInput } from '../common/forms/fields';
 import './BackupUtils.scss';
 
 /**
@@ -106,23 +104,6 @@ export const FormatUnixTimeStampTimeToTimezone = ({ timestamp }: { timestamp: an
     : moment.utc(timestamp)
   ).format('YYYY-MM-DD H:mm:ss');
   return <span>{formatTime}</span>;
-};
-
-export const SearchInput: FC<any> = (props) => {
-  return (
-    <div className="search-input">
-      <i className="fa fa-search" />
-      <YBControlledTextInput
-        {...props}
-        input={{
-          onKeyUp: (e: any) =>
-            e.key === 'Enter' &&
-            isFunction(props.onEnterPressed) &&
-            props.onEnterPressed(e.currentTarget.value)
-        }}
-      />
-    </div>
-  );
 };
 
 export const ENTITY_NOT_AVAILABLE = (

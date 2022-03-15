@@ -26,6 +26,7 @@ import {
   FILTER_TYPE_STATE,
   FILTER_TYPE_TARGET_TYPE,
   FILTER_TYPE_UNIVERSE,
+  formatString,
   NO_DESTINATION
 } from './AlertsFilter';
 
@@ -118,6 +119,8 @@ const getTag = (type) => {
   return <span className="name-tag">{type}</span>;
 };
 
+const NO_DESTINATION_MSG = <span className='no-destination-msg'><i className='fa fa-exclamation-triangle' aria-hidden='true'/> No Destination</span>
+
 export const AlertsList = (props) => {
   const [alertList, setAlertList] = useState([]);
   const [metrics, setMetrics] = useState([]);
@@ -171,17 +174,33 @@ export const AlertsList = (props) => {
   useEffect(onInit, []);
 
   const formatName = (cell, row) => {
+
     const Tag = getTag(row.targetType);
+
+    let name = row.name;
+
+    if(filters[FILTER_TYPE_NAME] && !isAlertListLoading){
+
+      const searchText = filters[FILTER_TYPE_NAME];
+      const index = row.name.toLowerCase().indexOf(searchText.toLowerCase())
+      
+      name = <span>
+        {row?.name?.substr(0, index)}
+        <span className='highlight'>{row?.name?.substr(index, searchText.length)}</span>
+        {row?.name?.substr(index+searchText.length)}
+        </span>
+    }
+    
     if (!row.active) {
       return (
-        <span className="text-red text-regular">
-          {row.name} (Inactive) {Tag}
+        <span className="alert-inactive" title={row.name}>
+          <span className='alert-name'>{name}</span> (Inactive) {Tag}
         </span>
       );
     }
     return (
-      <span>
-        {row.name} {Tag}
+      <span title={row.name}>
+        <span className='alert-name'>{name}&nbsp;</span> {Tag}
       </span>
     );
   };
@@ -212,7 +231,7 @@ export const AlertsList = (props) => {
     if (route.length > 0) {
       return route;
     }
-    return <span className="text-red text-regular"> No destination</span>;
+    return NO_DESTINATION_MSG;
   };
 
   /**
@@ -223,7 +242,7 @@ export const AlertsList = (props) => {
    */
   const formatThresholds = (cell, row) => {
     return Object.keys(row.thresholds)
-      .map((severity) => severity)
+      .map((severity) => formatString(severity))
       .sort()
       .join(', ');
   };
@@ -327,7 +346,7 @@ export const AlertsList = (props) => {
   };
 
   const formatAlertTargets = (cell) => {
-    if (cell.all) return 'ALL';
+    if (cell.all) return 'All';
     const targetUniverse = cell.uuids
       .map((uuid) => {
         return universes.data.find((destination) => destination.universeUUID === uuid);
@@ -338,7 +357,7 @@ export const AlertsList = (props) => {
     return (
       <span>
         {targetUniverse.map((u) => (
-          <div key={u.universeUUID}>{u.name}</div>
+          <div key={u.universeUUID} title={u.name}>{u.name}</div>
         ))}
       </span>
     );
@@ -642,7 +661,7 @@ export const AlertsList = (props) => {
           <Col lg={filterVisible ? 10 : 12} className={filterVisible && 'leftBorder'}>
             {isAlertListLoading && <YBLoading />}
             <BootstrapTable
-              className="alert-list-table"
+              className="alert-list-table middle-aligned-table"
               data={alertList}
               options={{
                 ...options,
@@ -661,7 +680,7 @@ export const AlertsList = (props) => {
                 columnClassName="no-border name-column"
                 dataFormat={formatName}
                 className="no-border"
-                width="25%"
+                width="20%"
               >
                 Name
               </TableHeaderColumn>
@@ -714,6 +733,7 @@ export const AlertsList = (props) => {
                 columnClassName="no-border name-column"
                 className="no-border"
                 width="20%"
+                dataFormat={(cell) => formatString(cell)}
               >
                 Metric Name
               </TableHeaderColumn>

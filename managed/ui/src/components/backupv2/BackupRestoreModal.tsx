@@ -14,7 +14,6 @@ import { YBModalForm } from '../common/forms';
 import {
   FormatUnixTimeStampTimeToTimezone,
   KEYSPACE_VALIDATION_REGEX,
-  SearchInput,
   SPINNER_ICON
 } from './BackupUtils';
 
@@ -32,6 +31,7 @@ import * as Yup from 'yup';
 import { toast } from 'react-toastify';
 import { components } from 'react-select';
 import { Badge_Types, StatusBadge } from '../common/badge/StatusBadge';
+import { YBSearchInput } from '../common/forms/fields/YBSearchInput';
 import './BackupRestoreModal.scss';
 
 interface RestoreModalProps {
@@ -328,7 +328,7 @@ export function RenameKeyspace({
     <div className="rename-keyspace-step">
       <Row>
         <Col lg={6}>
-          <SearchInput
+          <YBSearchInput
             placeHolder="Search keyspace"
             onValueChanged={(e: React.ChangeEvent<HTMLInputElement>) => {
               setFieldValue('searchText', e.target.value);
