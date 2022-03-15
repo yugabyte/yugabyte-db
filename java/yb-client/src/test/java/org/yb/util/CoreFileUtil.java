@@ -58,6 +58,16 @@ public final class CoreFileUtil {
     boolean allowNoPid() { return true; }
   }
 
+  /**
+   * Log stack trace of core file(s).
+   *
+   * Find core files according to pid, coreFileDir, and matchMode.
+   *
+   * Note: this assumes that
+   *       - for linux, kernel.core_pattern = core
+   *       - for mac, kern.corefile = /cores/core.%P
+   * TODO(#11754): don't assume the above
+   */
   public static void processCoreFile(int pid,
                                      String executablePath,
                                      String programDescription,
