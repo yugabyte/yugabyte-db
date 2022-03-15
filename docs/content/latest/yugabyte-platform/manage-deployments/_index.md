@@ -55,7 +55,7 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (virtual 
       </div>
     </a>
   </div>
-  
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="remove-nodes/">
       <div class="head">
@@ -63,7 +63,7 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (virtual 
         <div class="title">Eliminate an unresponsive node</div>
       </div>
       <div class="body">
-        Remove and eliminate unresponsive nodes from a universes.
+        Remove and eliminate unresponsive nodes from a universe.
       </div>
     </a>
   </div>
