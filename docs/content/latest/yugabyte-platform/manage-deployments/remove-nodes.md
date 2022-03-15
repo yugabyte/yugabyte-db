@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: remove-nodes
     parent: manage-deployments
-    weight: 30
+    weight: 20
 isTocNested: true
 showAsideToc: true
 ---
@@ -71,6 +71,8 @@ Taking this action transfers the node to a BeingDecommissioned and then Decommis
 4. The instance is destroyed.
 5. DNS entries are updated.
 6. Prometheus rules are updated and instructed to stop gathering metrics from this instance.
+
+You can recover a node whose **Status** column displays **Decommissioned** by following instructions provided in [Recover a node](../add-nodes/).
 
 ## Delete node
 
