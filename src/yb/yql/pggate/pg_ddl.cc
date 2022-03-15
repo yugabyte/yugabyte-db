@@ -26,6 +26,7 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/tsan_util.h"
 
 #include "yb/yql/pggate/pg_client.h"
 
@@ -46,15 +47,14 @@ using client::YBSession;
 using client::YBMetaDataCache;
 
 // TODO(neil) This should be derived from a GFLAGS.
-static MonoDelta kSessionTimeout = 60s;
+static MonoDelta kDdlTimeout = 60s * kTimeMultiplier;
 
 namespace {
 
 CoarseTimePoint DdlDeadline() {
   auto timeout = MonoDelta::FromSeconds(FLAGS_TEST_user_ddl_operation_timeout_sec);
   if (timeout == MonoDelta::kZero) {
-    // TODO(PG_CLIENT)
-    timeout = 120s;
+    timeout = kDdlTimeout;
   }
   return CoarseMonoClock::now() + timeout;
 }

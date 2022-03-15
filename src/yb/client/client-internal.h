@@ -539,10 +539,6 @@ Status RetryFunc(
     const std::function<Status(CoarseTimePoint, bool*)>& func,
     const CoarseDuration max_wait = std::chrono::seconds(2));
 
-// TODO(PgClient) Remove after removing YBTable from postgres.
-CHECKED_STATUS CreateTableInfoFromTableSchemaResp(
-    const master::GetTableSchemaResponsePB& resp, YBTableInfo* info);
-
 } // namespace client
 } // namespace yb
 
