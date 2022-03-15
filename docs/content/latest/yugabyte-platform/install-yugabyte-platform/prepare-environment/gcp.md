@@ -110,16 +110,16 @@ Next, you need to create a firewall entry, as follows:
 - Create firewall rules by following instructions provided in [Using firewall rules](https://cloud.google.com/vpc/docs/using-firewalls) in the GCP documentation. When creating the rules:
   - Add a tag `yugabyte-server` to the **Target tags** field.
   - Add the appropriate IP addresses to the **Source IP ranges** field.
-  - Add the ports `tcp:22, 8800, 80` to the **Protocol and ports** field. If required, also add TCP ports for a self-managed configuration.
+  - Enter a comma-delimited list of TCP ports 22, 8800, 80 to the **Protocol and ports** field. If required, also add TCP ports for a self-managed configuration.
 
 ## Provision instance for Yugabyte Platform
 
 You need to create an instance to run Yugabyte Platform. To do this, from your project's main page, navigate to **Compute Engine > VM instances**, click **Create**, and then follow instructions provided in [Virtual machine instances](https://cloud.google.com/compute/docs/instances) in the GCP documentation. When creating instances:
 
-- Select a region as, for example, `us-west1`. 
-- Select a zone as, for example, `us-west1-b`.
-- Select `4 vCPUs` (`n1-standard-4`) as the machine type.
-- Change the boot disk image to `Ubuntu 18.04 TLS` and increase the boot disk size to `100`.
+- Select a region as, for example, us-west1. 
+- Select a zone as, for example, us-west1-b.
+- Select 4 vCPUs (n1-standard-4) as the machine type.
+- Change the boot disk image to Ubuntu 18.04 TLS and increase the boot disk size to 100.
 - Specify whether to use the default or your own service account.
 - Specify whether to use the default or your own VPC.
 - Use the **Networking** tab to add `yugabyte-server` as the network tag (or the custom name you chose when setting up the firewall rules).
@@ -154,5 +154,5 @@ To connect to this server, execute the following command:
 $ ssh -i ~/.ssh/yugabyte-1-gcp centos@NN.NN.NN.NN
 ```
 
-Replace `NN.NN.NN.NN` with the IP address and `yugaware-1-gcp` with the appropriate SSH key.
+Replace `NN.NN.NN.NN` with the IP address and `yugabyte-1-gcp` with the appropriate SSH key.
 
