@@ -265,7 +265,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     int64_t* last_replicated_opid_index,
     const CoarseTimePoint deadline = CoarseTimePoint::max()) override;
 
-  void UpdateCDCConsumerOpId(const yb::OpId& op_id, CDCSourceType cdc_source_type) override;
+  void UpdateCDCConsumerOpId(const yb::OpId& op_id, PeerMessageQueue::CDCSourceType cdc_source_type) override;
 
   // Start memory tracking of following operation in case it is still present in our caches.
   void TrackOperationMemory(const yb::OpId& op_id);

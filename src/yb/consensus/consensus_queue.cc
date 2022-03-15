@@ -781,9 +781,15 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
 
 void PeerMessageQueue::UpdateCDCConsumerOpId(const yb::OpId& op_id, CDCSourceType cdc_source_type) {
   std::lock_guard<rw_spinlock> l(cdc_consumer_lock_);
-  cdc_consumer_op_id_ = op_id;
-  cdc_consumer_op_id_last_updated_ = CoarseMonoClock::Now();
-  cdc_consumer_source_type_ = cdc_source_type;
+  if (CDCSourceType::XCLUSTER == cdc_source_type) {
+    cdc_consumer_op_id_ = op_id;
+    cdc_consumer_op_id_last_updated_ = CoarseMonoClock::Now();
+  } else if (CDCSourceType::CDCSDK == cdc_source_type) {
+    cdc_sdk_consumer_op_id_ = op_id;
+    cdc_sdk_consumer_op_id_last_updated_ = CoarseMonoClock::Now();
+  } else {
+    return;
+  }
 }
 
 yb::OpId PeerMessageQueue::GetCDCConsumerOpIdToEvict() {
@@ -812,13 +818,8 @@ const char* PeerMessageQueue::CDCSourceToStr(CDCSourceType cdc_source_type) {
 
 yb::OpId PeerMessageQueue::GetCDCConsumerOpIdForIntentRemoval() {
   std::shared_lock<rw_spinlock> l(cdc_consumer_lock_);
-  if (cdc_consumer_source_type_ == CDCSourceType::NONE) {
-     return yb::OpId::Max();
-  }
-
-  if ((CoarseMonoClock::Now() - cdc_consumer_op_id_last_updated_ <= kCDCConsumerIntentRetention) &&
-      cdc_consumer_source_type_ != CDCSourceType::XCLUSTER) {
-    return cdc_consumer_op_id_;
+  if (CoarseMonoClock::Now() - cdc_sdk_consumer_op_id_last_updated_ <= kCDCConsumerIntentRetention) {
+    return cdc_sdk_consumer_op_id_;
   } else {
     return yb::OpId::Max();
   }

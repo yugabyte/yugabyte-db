@@ -563,7 +563,7 @@ Status DoUpdateCDCConsumerOpId(const std::shared_ptr<tablet::TabletPeer>& tablet
   }
 
   shared_consensus->UpdateCDCConsumerOpId(
-      checkpoint, static_cast<consensus::Consensus::CDCSourceType>(cdc_req_source));
+      checkpoint, static_cast<yb::consensus::PeerMessageQueue::CDCSourceType>(cdc_req_source));
   return Status::OK();
 }
 
