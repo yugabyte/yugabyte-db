@@ -128,13 +128,6 @@ void FlushJob::ReportStartedFlush() {
   IOSTATS_RESET(bytes_written);
 }
 
-void FlushJob::ReportFlushInputSize(const autovector<MemTable*>& mems) {
-  uint64_t input_size = 0;
-  for (auto* mem : mems) {
-    input_size += mem->ApproximateMemoryUsage();
-  }
-}
-
 void FlushJob::RecordFlushIOStats() {
 }
 
@@ -173,8 +166,6 @@ Result<FileNumbersHolder> FlushJob::Run(FileMetaData* file_meta) {
 
     return FileNumbersHolder();
   }
-
-  ReportFlushInputSize(mems);
 
   // entries mems are (implicitly) sorted in ascending order by their created
   // time. We will use the first memtable's `edit` to keep the meta info for
