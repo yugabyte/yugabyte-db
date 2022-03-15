@@ -63,6 +63,8 @@ public enum TaskType {
 
   CertsRotate("upgrade.CertsRotate"),
 
+  CertsRotateKubernetesUpgrade("upgrade.CertsRotateKubernetesUpgrade"),
+
   TlsToggle("upgrade.TlsToggle"),
 
   VMImageUpgrade("upgrade.VMImageUpgrade"),

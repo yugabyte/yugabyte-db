@@ -15,7 +15,11 @@ import {
 } from '../fields';
 import { isNonEmptyArray } from '../../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../../utils/PromiseUtils';
-import { getPrimaryCluster } from '../../../../utils/UniverseUtils';
+import { 
+  isKubernetesUniverse,
+  getPrimaryCluster,
+  getReadOnlyCluster 
+} from '../../../../utils/UniverseUtils';
 import { isDefinedNotNull, isNonEmptyObject } from '../../../../utils/ObjectUtils';
 import './RollingUpgradeForm.scss';
 import { EncryptionInTransit } from './EncryptionInTransit';
@@ -106,7 +110,12 @@ export default class RollingUpgradeForm extends Component {
       universe: {
         currentUniverse: {
           data: {
-            universeDetails: { clusters, nodePrefix },
+            universeDetails: {
+              currentClusterType,
+              clusters,
+              nodePrefix,
+              rootAndClientRootCASame
+            },
             universeUUID
           }
         }
@@ -132,9 +141,15 @@ export default class RollingUpgradeForm extends Component {
         break;
       }
       case 'tlsConfigurationModal': {
+        const cluster = currentClusterType === 'PRIMARY' ?
+          getPrimaryCluster(clusters) : getReadOnlyCluster(clusters);
         payload.taskType = 'Certs';
-        payload.upgradeOption = values.rollingUpgrade ? 'Rolling' : 'Non-Rolling';
-        payload.certUUID = values.tlsCertificate;
+        payload.upgradeOption = 'Rolling';
+        payload.enableNodeToNodeEncrypt = cluster.userIntent.enableNodeToNodeEncrypt;
+        payload.enableClientToNodeEncrypt = cluster.userIntent.enableClientToNodeEncrypt;
+        payload.rootAndClientRootCASame = rootAndClientRootCASame;
+        payload.rootCA = values.tlsCertificate === "Create New Certificate" ? null : values.tlsCertificate;
+        payload.createNewRootCA = values.tlsCertificate === "Create New Certificate";
         break;
       }
       case 'rollingRestart': {
@@ -329,7 +344,8 @@ export default class RollingUpgradeForm extends Component {
         );
       }
       case 'tlsConfigurationModal': {
-        if (this.props.enableNewEncryptionInTransitModal) {
+        if (this.props.enableNewEncryptionInTransitModal &&
+          !isKubernetesUniverse(universe.currentUniverse.data)) {
           return (
             <EncryptionInTransit
               visible={modalVisible}
@@ -384,7 +400,6 @@ export default class RollingUpgradeForm extends Component {
                 component={YBInputField}
                 label="Upgrade Delay Between Servers (secs)"
               />
-              <Field name="rollingUpgrade" component={YBToggle} label="Rolling Upgrade" />
             </div>
             {errorAlert}
           </YBModal>

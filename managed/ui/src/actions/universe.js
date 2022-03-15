@@ -370,11 +370,24 @@ export function closeUniverseDialog() {
 export function rollingUpgrade(values, universeUUID) {
   const customerUUID = localStorage.getItem('customerId');
   const taskEndPoint = values.taskType.toLowerCase();
+  
+  let request;
+  if (values.taskType === "Certs") {
+    // This is to enable cert rotation for kubernetes universes
+    // For kubernetes universes we fallback to old modal
+    // But as we need to call the update_tls API we update the request accordingly
+    request = axios.post(
+      `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/update_tls`,
+      values
+    );
+  } else {
+    request = axios.post(
+      `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/upgrade/${taskEndPoint}`,
+      values
+    );
+  }
   delete values.taskType;
-  const request = axios.post(
-    `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/upgrade/${taskEndPoint}`,
-    values
-  );
+
   return {
     type: ROLLING_UPGRADE,
     payload: request
