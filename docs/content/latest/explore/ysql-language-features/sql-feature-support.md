@@ -36,7 +36,7 @@ To understand which standard SQL features we support, refer the following tables
  `UUID` | ✓ | [UUID documentation](https://docs.yugabyte.com/latest/api/ysql/datatypes/type_uuid/)|
  `XML`| ✗ | |
  `TSVECTOR` | ✓ ||
- `UDT` | ✓ ||
+ UDT(Base, Enumerated, Range, Composite, Array, Domain types) | ✓ ||
  
 ### Schema operations
 
@@ -68,6 +68,9 @@ Altering tables | ✓ | [`ALTER TABLE`  documentation](https://docs.yugabyte.com
  Primary Key | ✓ | [Primary Key documentation](https://docs.yugabyte.com/latest/explore/indexes-constraints/primary-key-ysql/)|
  Foreign Key | ✓ | [Foreign Key documentation](https://docs.yugabyte.com/latest/explore/indexes-constraints/foreign-key-ysql/)|
  Default Value | ✗ | |
+ Deferrable Foreign Key constraints | ✓ ||
+ Deferrable Primary Key and Unique constraints | ✗ | |
+ Exclusion constraints| ✗ | |
  
 ### Indexes
 
@@ -99,7 +102,7 @@ Altering tables | ✓ | [`ALTER TABLE`  documentation](https://docs.yugabyte.com
 
 ### Roles and Permissions
 
- Component | Supported | Documentation|
+ Component | Supported | Details|
 -----------|-----------|---------
  Users | ✓ | |
  Roles | ✓ | |
@@ -107,17 +110,33 @@ Altering tables | ✓ | [`ALTER TABLE`  documentation](https://docs.yugabyte.com
  Privileges | ✓ | |
  Default privileges | ✗ ||
  
-### Miscellaneous
+### Queries
+
+ Component | Supported | Details|
+-----------|-----------|---------
+ FROM, WHERE, GROUP BY, HAVING, DISTINCT, LIMIT/OFFSET, WITH queries| ✓ | |
+ EXPLAIN query plans| ✓ | |
+ JOINs (INNER/OUTER, LEFT/RIGHT)| ✓ | |
+ Expressions and Operators| ✓ | |
+ Common Table Expressions (CTE) and Recursive Queries| ✓ | |
+ Upserts (INSERT ... ON CONFLICT DO NOTHING/UPDATE)| ✓ | |
+ 
+### Advanced SQL
 
  Component | Supported | Details|
 -----------|-----------|---------
  Stored procedures | ✓ | |
+ User-defined functions| ✓ | |
  Cursors | ✓ | |
- Triggers | ✓ | |
+ Row-level triggers (BEFORE, AFTER, INSTEAD OF)| ✓ | |
+ Statement-level triggers (BEFORE, AFTER, INSTEAD OF)| ✓ | |
+ Deferrable triggers | ✗ ||
+ Transition tables (REFERENCING clause for triggers) | ✗ ||
  Sequences |  ✓ | |
  Identity columns | ✓ ||
  Views | ✓ | |
  Materialized views | ✓ | |
  Window functions | ✓ | |
  Common table expressions | ✓||
- 
+ Extensions| ✓||
+ Foreign data wrappers| ✓||
