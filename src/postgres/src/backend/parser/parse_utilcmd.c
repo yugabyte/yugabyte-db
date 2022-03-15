@@ -2380,8 +2380,9 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 				 */
 				defopclass = GetDefaultOpClass(attform->atttypid,
 											   index_rel->rd_rel->relam);
+				int16 opt = index_rel->rd_indoption[i];
 				if (indclass->values[i] != defopclass ||
-					index_rel->rd_indoption[i] != 0)
+					(opt != 0 && (!(INDOPTION_HASH & opt) || !IsYBRelation(heap_rel))))
 					ereport(ERROR,
 							(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 							 errmsg("index \"%s\" does not have default sorting behavior", index_name),

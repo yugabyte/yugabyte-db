@@ -469,3 +469,12 @@ INSERT INTO foobar VALUES ('key', 'value');
 ALTER TABLE foobar ADD COLUMN v2 text not null; -- fails due to not null constraint
 ALTER TABLE foobar ADD COLUMN v2 text not null DEFAULT 'abc'; -- passes
 DROP TABLE foobar;
+
+CREATE TABLE demo (i int);
+INSERT INTO demo VALUES (1);
+CREATE UNIQUE INDEX demoi ON demo(i);
+ALTER TABLE demo ADD CONSTRAINT demoi UNIQUE USING INDEX demoi;
+INSERT INTO demo VALUES (1);
+ALTER TABLE demo DROP CONSTRAINT demoi;
+INSERT INTO demo VALUES (1);
+SELECT * FROM demo;

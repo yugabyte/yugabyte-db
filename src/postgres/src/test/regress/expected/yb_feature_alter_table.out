@@ -843,3 +843,17 @@ ALTER TABLE foobar ADD COLUMN v2 text not null; -- fails due to not null constra
 ERROR:  column "v2" contains null values
 ALTER TABLE foobar ADD COLUMN v2 text not null DEFAULT 'abc'; -- passes
 DROP TABLE foobar;
+CREATE TABLE demo (i int);
+INSERT INTO demo VALUES (1);
+CREATE UNIQUE INDEX demoi ON demo(i);
+ALTER TABLE demo ADD CONSTRAINT demoi UNIQUE USING INDEX demoi;
+INSERT INTO demo VALUES (1);
+ERROR:  duplicate key value violates unique constraint "demoi"
+ALTER TABLE demo DROP CONSTRAINT demoi;
+INSERT INTO demo VALUES (1);
+SELECT * FROM demo;
+ i
+---
+ 1
+ 1
+(2 rows)
