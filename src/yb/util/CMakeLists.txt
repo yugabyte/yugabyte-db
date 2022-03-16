@@ -242,6 +242,7 @@ set(UTIL_SRCS
   threadlocal.cc
   threadpool.cc
   timestamp.cc
+  tostring.cc
   trace.cc
   trilean.cc
   ulimit.cc
