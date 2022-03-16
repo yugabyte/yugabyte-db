@@ -3,7 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroup;
+import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
@@ -102,7 +102,7 @@ public class CertsRotate extends UpgradeTaskBase {
     String subGroupDescription =
         String.format(
             "AnsibleConfigureServers (%s) for: %s", getTaskSubGroupType(), taskParams().nodePrefix);
-    SubTaskGroup rotateCertGroup = new SubTaskGroup(subGroupDescription, executor);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
     for (NodeDetails node : nodes) {
       AnsibleConfigureServers.Params params =
           getAnsibleConfigureServerParams(
@@ -121,30 +121,31 @@ public class CertsRotate extends UpgradeTaskBase {
       AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
       task.initialize(params);
       task.setUserTaskUUID(userTaskUUID);
-      rotateCertGroup.addTask(task);
+      subTaskGroup.addSubTask(task);
     }
-    rotateCertGroup.setSubTaskGroupType(getTaskSubGroupType());
-    subTaskGroupQueue.add(rotateCertGroup);
+    subTaskGroup.setSubTaskGroupType(getTaskSubGroupType());
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
   private void createUniverseUpdateRootCertTask(UpdateRootCertAction updateAction) {
-    SubTaskGroup taskGroup = new SubTaskGroup("UniverseUpdateRootCert", executor);
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("UniverseUpdateRootCert", executor);
     UniverseUpdateRootCert.Params params = new UniverseUpdateRootCert.Params();
     params.universeUUID = taskParams().universeUUID;
     params.rootCA = taskParams().rootCA;
     params.action = updateAction;
     UniverseUpdateRootCert task = createTask(UniverseUpdateRootCert.class);
     task.initialize(params);
-    taskGroup.addTask(task);
-    taskGroup.setSubTaskGroupType(getTaskSubGroupType());
-    subTaskGroupQueue.add(taskGroup);
+    subTaskGroup.addSubTask(task);
+    subTaskGroup.setSubTaskGroupType(getTaskSubGroupType());
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
   private void createUpdateCertDirsTask(List<NodeDetails> nodes, ServerType serverType) {
     String subGroupDescription =
         String.format(
             "AnsibleConfigureServers (%s) for: %s", getTaskSubGroupType(), taskParams().nodePrefix);
-    SubTaskGroup updateCertDirGroup = new SubTaskGroup(subGroupDescription, executor);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
     for (NodeDetails node : nodes) {
       AnsibleConfigureServers.Params params =
           getAnsibleConfigureServerParams(
@@ -159,15 +160,15 @@ public class CertsRotate extends UpgradeTaskBase {
       AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
       task.initialize(params);
       task.setUserTaskUUID(userTaskUUID);
-      updateCertDirGroup.addTask(task);
+      subTaskGroup.addSubTask(task);
     }
-    updateCertDirGroup.setSubTaskGroupType(getTaskSubGroupType());
-    subTaskGroupQueue.add(updateCertDirGroup);
+    subTaskGroup.setSubTaskGroupType(getTaskSubGroupType());
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
   private void createUniverseSetTlsParamsTask() {
-    SubTaskGroup taskGroup = new SubTaskGroup("UniverseSetTlsParams", executor);
-
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("UniverseSetTlsParams", executor);
     UniverseSetTlsParams.Params params = new UniverseSetTlsParams.Params();
     params.universeUUID = taskParams().universeUUID;
     params.enableNodeToNodeEncrypt = getUserIntent().enableNodeToNodeEncrypt;
@@ -179,9 +180,8 @@ public class CertsRotate extends UpgradeTaskBase {
 
     UniverseSetTlsParams task = createTask(UniverseSetTlsParams.class);
     task.initialize(params);
-    taskGroup.addTask(task);
-
-    taskGroup.setSubTaskGroupType(getTaskSubGroupType());
-    subTaskGroupQueue.add(taskGroup);
+    subTaskGroup.addSubTask(task);
+    subTaskGroup.setSubTaskGroupType(getTaskSubGroupType());
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 }

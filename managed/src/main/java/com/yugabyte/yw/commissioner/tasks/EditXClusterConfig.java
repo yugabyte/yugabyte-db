@@ -2,7 +2,6 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.forms.XClusterConfigEditFormData;
 import com.yugabyte.yw.models.XClusterConfig;
@@ -39,7 +38,6 @@ public class EditXClusterConfig extends XClusterConfigTaskBase {
       XClusterConfigStatusType initialStatus = xClusterConfig.status;
       setXClusterConfigStatus(XClusterConfigStatusType.Updating);
 
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
       if (editFormData.name != null) {
         createXClusterConfigRenameTask()
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
@@ -52,7 +50,7 @@ public class EditXClusterConfig extends XClusterConfigTaskBase {
       }
       createMarkUniverseUpdateSuccessTasks()
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
 
       // ToggleStatus already handles updating the status
       if (editFormData.status == null) {

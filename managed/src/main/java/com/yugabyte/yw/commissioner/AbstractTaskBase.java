@@ -48,9 +48,6 @@ public abstract class AbstractTaskBase implements ITask {
   // The threadpool on which the tasks are executed.
   protected ExecutorService executor;
 
-  // The sequence of task lists that should be executed.
-  protected SubTaskGroupQueue subTaskGroupQueue;
-
   // The UUID of the top-level user-facing task at the top of Task tree. Eg. CreateUniverse, etc.
   protected UUID userTaskUUID;
 

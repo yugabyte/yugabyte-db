@@ -10,7 +10,6 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks.check;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.time.Duration;
@@ -32,8 +31,6 @@ public class CheckMasters extends UniverseDefinitionTaskBase {
   @Override
   public void run() {
     try {
-      // Create the task list sequence.
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
       // Get the list of masters.
       // Note that at this point, we have only added the masters into the cluster.
       Set<NodeDetails> masterNodes =
@@ -41,7 +38,7 @@ public class CheckMasters extends UniverseDefinitionTaskBase {
       // Wait for new masters to be responsive.
       createWaitForServersTasks(masterNodes, ServerType.MASTER, RPC_TIMEOUT_MS);
       // Run the task.
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
       throw t;

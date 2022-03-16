@@ -81,9 +81,6 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
               .forUniverse(getUniverse())
               .getInt(Util.BLACKLIST_LEADER_WAIT_TIME_MS);
       checkUniverseVersion();
-      // Create the task list sequence.
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
-
       // Update the universe DB with the update to be performed and set the
       // 'updateInProgress' flag to prevent other updates from happening.
       lockUniverseForUpdate(taskParams().expectedUniverseVersion);
@@ -96,29 +93,30 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Run all the tasks.
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {} with error={}.", getName(), t);
 
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
+      // This clears all the previously added subtasks.
+      getRunnableTask().reset();
       // If the task failed, we don't want the loadbalancer to be
       // disabled, so we enable it again in case of errors.
       if (!isLoadBalancerOn) {
         createLoadBalancerStateChangeTask(true)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
 
       throw t;
     } finally {
       try {
         if (isBlacklistLeaders) {
-          subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
+          // This clears all the previously added subtasks.
+          getRunnableTask().reset();
           List<NodeDetails> tServerNodes = fetchTServerNodes(taskParams().upgradeOption);
-          createModifyBlackListTask(
-                  tServerNodes, false /* isAdd */, true /* isLeaderBlacklist */, -1)
+          createModifyBlackListTask(tServerNodes, false /* isAdd */, true /* isLeaderBlacklist */)
               .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-          subTaskGroupQueue.run();
+          getRunnableTask().runSubTasks();
         }
       } finally {
         unlockUniverseForUpdate();

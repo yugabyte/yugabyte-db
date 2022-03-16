@@ -2,7 +2,6 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
@@ -31,12 +30,11 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
                 "XClusterConfig(%s) must be in `Init` state to create", xClusterConfig.uuid));
       }
 
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
       createXClusterConfigSetupTask()
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
       createMarkUniverseUpdateSuccessTasks()
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
 
       setXClusterConfigStatus(XClusterConfigStatusType.Running);
 

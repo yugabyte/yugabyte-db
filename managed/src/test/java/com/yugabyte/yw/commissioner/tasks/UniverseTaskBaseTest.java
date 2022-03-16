@@ -8,6 +8,7 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -15,7 +16,6 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -56,6 +56,8 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
 
   @Before
   public void setup() {
+    when(baseTaskDependencies.getTaskExecutor())
+        .thenReturn(Play.current().injector().instanceOf(TaskExecutor.class));
     universeTaskBase = new TestUniverseTaskBase();
   }
 
@@ -206,16 +208,21 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
   }
 
   private class TestUniverseTaskBase extends UniverseTaskBase {
+    private final RunnableTask runnableTask;
 
     public TestUniverseTaskBase() {
       super(baseTaskDependencies);
       // Create a real task with fake parameters to make validations succeed.
-      TaskExecutor taskExecutor = Play.current().injector().instanceOf(TaskExecutor.class);
-      RunnableTask runnable =
-          taskExecutor.createRunnableTask(
-              TaskType.CreateUniverse, new UniverseDefinitionTaskParams());
-      subTaskGroupQueue = new SubTaskGroupQueue(runnable);
+      runnableTask =
+          baseTaskDependencies
+              .getTaskExecutor()
+              .createRunnableTask(TaskType.CreateUniverse, new UniverseDefinitionTaskParams());
       taskParams = new UniverseTaskParams();
+    }
+
+    @Override
+    protected RunnableTask getRunnableTask() {
+      return runnableTask;
     }
 
     @Override

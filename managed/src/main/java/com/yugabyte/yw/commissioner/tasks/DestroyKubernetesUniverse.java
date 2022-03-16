@@ -11,8 +11,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroup;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
+import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -38,8 +37,6 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
   @Override
   public void run() {
     try {
-      // Create the task list sequence.
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
@@ -73,19 +70,24 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
       // Try to unify this with the edit remove pods/deployments flow. Currently delete is
       // tied down to a different base class which makes params porting not straight-forward.
       SubTaskGroup helmDeletes =
-          new SubTaskGroup(
-              KubernetesCommandExecutor.CommandType.HELM_DELETE.getSubTaskGroupName(), executor);
+          getTaskExecutor()
+              .createSubTaskGroup(
+                  KubernetesCommandExecutor.CommandType.HELM_DELETE.getSubTaskGroupName(),
+                  executor);
       helmDeletes.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
 
       SubTaskGroup volumeDeletes =
-          new SubTaskGroup(
-              KubernetesCommandExecutor.CommandType.VOLUME_DELETE.getSubTaskGroupName(), executor);
+          getTaskExecutor()
+              .createSubTaskGroup(
+                  KubernetesCommandExecutor.CommandType.VOLUME_DELETE.getSubTaskGroupName(),
+                  executor);
       volumeDeletes.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
 
       SubTaskGroup namespaceDeletes =
-          new SubTaskGroup(
-              KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE.getSubTaskGroupName(),
-              executor);
+          getTaskExecutor()
+              .createSubTaskGroup(
+                  KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE.getSubTaskGroupName(),
+                  executor);
       namespaceDeletes.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
 
       for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
@@ -98,7 +100,7 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
 
         if (runHelmDelete || namespace != null) {
           // Delete the helm deployments.
-          helmDeletes.addTask(
+          helmDeletes.addSubTask(
               createDestroyKubernetesTask(
                   universe.getUniverseDetails().nodePrefix,
                   azName,
@@ -108,7 +110,7 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
         }
 
         // Delete the PVCs created for this AZ.
-        volumeDeletes.addTask(
+        volumeDeletes.addSubTask(
             createDestroyKubernetesTask(
                 universe.getUniverseDetails().nodePrefix,
                 azName,
@@ -129,7 +131,7 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
         // Delete the namespaces of the deployments only if those were
         // created by us.
         if (namespace == null) {
-          namespaceDeletes.addTask(
+          namespaceDeletes.addSubTask(
               createDestroyKubernetesTask(
                   universe.getUniverseDetails().nodePrefix,
                   azName,
@@ -139,9 +141,9 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
         }
       }
 
-      subTaskGroupQueue.add(helmDeletes);
-      subTaskGroupQueue.add(volumeDeletes);
-      subTaskGroupQueue.add(namespaceDeletes);
+      getRunnableTask().addSubTaskGroup(helmDeletes);
+      getRunnableTask().addSubTaskGroup(volumeDeletes);
+      getRunnableTask().addSubTaskGroup(namespaceDeletes);
 
       // Create tasks to remove the universe entry from the Universe table.
       createRemoveUniverseEntryTask()
@@ -151,7 +153,7 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
       createSwamperTargetUpdateTask(true /* removeFile */);
 
       // Run all the tasks.
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       // If for any reason destroy fails we would just unlock the universe for update
       try {

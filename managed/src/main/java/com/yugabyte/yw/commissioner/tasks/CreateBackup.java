@@ -25,7 +25,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
@@ -98,7 +97,6 @@ public class CreateBackup extends UniverseTaskBase {
     boolean isUniverseLocked = false;
     try {
       checkUniverseVersion();
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
@@ -279,8 +277,8 @@ public class CreateBackup extends UniverseTaskBase {
         if (!customerConfig.getState().equals(ConfigState.Active)) {
           throw new RuntimeException("Storage config cannot be used as it is not in Active state");
         }
-
-        subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
+        // Clear any previous subtasks if any.
+        getRunnableTask().reset();
         if (params().alterLoadBalancer) {
           createLoadBalancerStateChangeTask(false)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
@@ -314,7 +312,7 @@ public class CreateBackup extends UniverseTaskBase {
 
         unlockUniverseForUpdate();
         isUniverseLocked = false;
-        subTaskGroupQueue.run();
+        getRunnableTask().runSubTasks();
 
         BACKUP_SUCCESS_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
         metricService.setOkStatusMetric(
@@ -327,12 +325,13 @@ public class CreateBackup extends UniverseTaskBase {
         throw ce;
       } catch (Throwable t) {
         if (params().alterLoadBalancer) {
-          subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
+          // Clear previous subtasks if any.
+          getRunnableTask().reset();
           // If the task failed, we don't want the loadbalancer to be
           // disabled, so we enable it again in case of errors.
           createLoadBalancerStateChangeTask(true)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
-          subTaskGroupQueue.run();
+          getRunnableTask().runSubTasks();
         }
         throw t;
       } finally {

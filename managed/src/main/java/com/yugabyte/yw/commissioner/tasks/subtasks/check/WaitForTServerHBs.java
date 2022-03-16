@@ -10,7 +10,6 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks.check;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -26,12 +25,10 @@ public class WaitForTServerHBs extends UniverseDefinitionTaskBase {
   @Override
   public void run() {
     try {
-      // Create the task list sequence.
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
       // Wait for the master leader to hear from all the tservers.
       createWaitForTServerHeartBeatsTask();
       // Run the task.
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
       throw t;

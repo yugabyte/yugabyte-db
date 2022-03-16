@@ -20,8 +20,7 @@ import com.google.common.collect.ImmutableList;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.SubTaskGroup;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
+import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
@@ -310,9 +309,6 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
   public void run() {
     try {
       checkUniverseVersion();
-      // Create the task list sequence.
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
-
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
@@ -339,18 +335,18 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Run all the tasks.
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {} with error={}.", getName(), t);
-
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
+      // Clear all the previous subtasks if pending.
+      getRunnableTask().reset();
       // If the task failed, we don't want the loadbalancer to be disabled,
       // so we enable it again in case of errors.
       if (loadbalancerOff) {
         createLoadBalancerStateChangeTask(true /*enable*/)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
       throw t;
     } finally {
       unlockUniverseForUpdate();
@@ -409,7 +405,8 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
   }
 
   private SubTaskGroup createChangeInstanceTypeTask(NodeDetails node) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("ChangeInstanceType", executor);
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("ChangeInstanceType", executor);
     ChangeInstanceType.Params params = new ChangeInstanceType.Params();
 
     params.nodeName = node.nodeName;
@@ -419,13 +416,13 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
 
     ChangeInstanceType changeInstanceTypeTask = createTask(ChangeInstanceType.class);
     changeInstanceTypeTask.initialize(params);
-    subTaskGroup.addTask(changeInstanceTypeTask);
-    subTaskGroupQueue.add(subTaskGroup);
+    subTaskGroup.addSubTask(changeInstanceTypeTask);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
   private SubTaskGroup createRootVolumeReplacementTask(NodeDetails node) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("ReplaceRootVolume", executor);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("ReplaceRootVolume", executor);
     ReplaceRootVolume.Params replaceParams = new ReplaceRootVolume.Params();
     replaceParams.nodeName = node.nodeName;
     replaceParams.azUuid = node.azUuid;
@@ -434,17 +431,15 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
 
     ReplaceRootVolume replaceDiskTask = createTask(ReplaceRootVolume.class);
     replaceDiskTask.initialize(replaceParams);
-    subTaskGroup.addTask(replaceDiskTask);
-
-    subTaskGroupQueue.add(subTaskGroup);
+    subTaskGroup.addSubTask(replaceDiskTask);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
   private SubTaskGroup createRootVolumeCreationTasks(List<NodeDetails> nodes) {
     Map<UUID, List<NodeDetails>> rootVolumesPerAZ =
         nodes.stream().collect(Collectors.groupingBy(n -> n.azUuid));
-    SubTaskGroup subTaskGroup = new SubTaskGroup("CreateRootVolumes", executor);
-
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("CreateRootVolumes", executor);
     rootVolumesPerAZ
         .entrySet()
         .forEach(
@@ -483,14 +478,14 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
 
               CreateRootVolumes task = createTask(CreateRootVolumes.class);
               task.initialize(params);
-              subTaskGroup.addTask(task);
+              subTaskGroup.addSubTask(task);
             });
-    subTaskGroupQueue.add(subTaskGroup);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
   private SubTaskGroup createNodeDetailsUpdateTask(NodeDetails node) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("UpdateNodeDetails", executor);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("UpdateNodeDetails", executor);
     UpdateNodeDetails.Params updateNodeDetailsParams = new UpdateNodeDetails.Params();
     updateNodeDetailsParams.universeUUID = taskParams().universeUUID;
     updateNodeDetailsParams.azUuid = node.azUuid;
@@ -500,9 +495,8 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     UpdateNodeDetails updateNodeTask = createTask(UpdateNodeDetails.class);
     updateNodeTask.initialize(updateNodeDetailsParams);
     updateNodeTask.setUserTaskUUID(userTaskUUID);
-    subTaskGroup.addTask(updateNodeTask);
-
-    subTaskGroupQueue.add(subTaskGroup);
+    subTaskGroup.addSubTask(updateNodeTask);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
@@ -1056,14 +1050,14 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
         String.format(
             "AnsibleConfigureServers (%s) for: %s",
             SubTaskGroupType.DownloadingSoftware, taskParams().nodePrefix);
-    SubTaskGroup downloadTaskGroup = new SubTaskGroup(subGroupDescription, executor);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
     for (NodeDetails node : nodes) {
-      downloadTaskGroup.addTask(
+      subTaskGroup.addSubTask(
           getConfigureTask(
               node, ServerType.TSERVER, UpgradeTaskType.Software, UpgradeTaskSubType.Download));
     }
-    downloadTaskGroup.setSubTaskGroupType(SubTaskGroupType.DownloadingSoftware);
-    subTaskGroupQueue.add(downloadTaskGroup);
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.DownloadingSoftware);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
   private void createCertUpdateTasks(List<NodeDetails> nodes) {
@@ -1071,14 +1065,14 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
         String.format(
             "AnsibleConfigureServers (%s) for: %s",
             SubTaskGroupType.RotatingCert, taskParams().nodePrefix);
-    SubTaskGroup rotateCertGroup = new SubTaskGroup(subGroupDescription, executor);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
     for (NodeDetails node : nodes) {
-      rotateCertGroup.addTask(
+      subTaskGroup.addSubTask(
           getConfigureTask(
               node, ServerType.TSERVER, UpgradeTaskType.Certs, UpgradeTaskSubType.None));
     }
-    rotateCertGroup.setSubTaskGroupType(SubTaskGroupType.RotatingCert);
-    subTaskGroupQueue.add(rotateCertGroup);
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.RotatingCert);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
   private void createCopyCertTasks(List<NodeDetails> nodes) {
@@ -1091,14 +1085,14 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
         String.format(
             "AnsibleConfigureServers (%s) for: %s",
             SubTaskGroupType.ToggleTls, taskParams().nodePrefix);
-    SubTaskGroup copyCertGroup = new SubTaskGroup(subGroupDescription, executor);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
     for (NodeDetails node : nodes) {
-      copyCertGroup.addTask(
+      subTaskGroup.addSubTask(
           getConfigureTask(
               node, ServerType.TSERVER, UpgradeTaskType.ToggleTls, UpgradeTaskSubType.CopyCerts));
     }
-    copyCertGroup.setSubTaskGroupType(SubTaskGroupType.ToggleTls);
-    subTaskGroupQueue.add(copyCertGroup);
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.ToggleTls);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
   private void createServerConfFileUpdateTasks(List<NodeDetails> nodes, ServerType processType) {
@@ -1110,13 +1104,13 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
         String.format(
             "AnsibleConfigureServers (%s) for: %s",
             SubTaskGroupType.UpdatingGFlags, taskParams().nodePrefix);
-    SubTaskGroup taskGroup = new SubTaskGroup(subGroupDescription, executor);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
     for (NodeDetails node : nodes) {
-      taskGroup.addTask(
+      subTaskGroup.addSubTask(
           getConfigureTask(node, processType, UpgradeTaskType.GFlags, UpgradeTaskSubType.None));
     }
-    taskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
-    subTaskGroupQueue.add(taskGroup);
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
   private void createSoftwareInstallTasks(List<NodeDetails> nodes, ServerType processType) {
@@ -1129,14 +1123,14 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
         String.format(
             "AnsibleConfigureServers (%s) for: %s",
             SubTaskGroupType.InstallingSoftware, taskParams().nodePrefix);
-    SubTaskGroup taskGroup = new SubTaskGroup(subGroupDescription, executor);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
     for (NodeDetails node : nodes) {
-      taskGroup.addTask(
+      subTaskGroup.addSubTask(
           getConfigureTask(
               node, processType, UpgradeTaskType.Software, UpgradeTaskSubType.Install));
     }
-    taskGroup.setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
-    subTaskGroupQueue.add(taskGroup);
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
   private void createToggleTlsTasks(
@@ -1150,9 +1144,9 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
         String.format(
             "AnsibleConfigureServers (%s) for: %s",
             SubTaskGroupType.ToggleTls, taskParams().nodePrefix);
-    SubTaskGroup taskGroup = new SubTaskGroup(subGroupDescription, executor);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
     for (NodeDetails node : nodes) {
-      taskGroup.addTask(
+      subTaskGroup.addSubTask(
           getConfigureTask(
               node,
               processType,
@@ -1161,13 +1155,13 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
                   ? UpgradeTaskSubType.Round1GFlagsUpdate
                   : UpgradeTaskSubType.Round2GFlagsUpdate));
     }
-    taskGroup.setSubTaskGroupType(SubTaskGroupType.ToggleTls);
-    subTaskGroupQueue.add(taskGroup);
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.ToggleTls);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
   private void createUniverseSetTlsParamsTask() {
-    SubTaskGroup taskGroup = new SubTaskGroup("UniverseSetTlsParams", executor);
-
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("UniverseSetTlsParams", executor);
     UniverseSetTlsParams.Params params = new UniverseSetTlsParams.Params();
     params.universeUUID = taskParams().universeUUID;
     params.enableNodeToNodeEncrypt = taskParams().enableNodeToNodeEncrypt;
@@ -1179,10 +1173,9 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
 
     UniverseSetTlsParams task = createTask(UniverseSetTlsParams.class);
     task.initialize(params);
-    taskGroup.addTask(task);
-
-    taskGroup.setSubTaskGroupType(SubTaskGroupType.ToggleTls);
-    subTaskGroupQueue.add(taskGroup);
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.ToggleTls);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
   private int getSleepTimeForProcess(ServerType processType) {

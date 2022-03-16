@@ -3,7 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroup;
+import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
@@ -144,9 +144,9 @@ public class TlsToggle extends UpgradeTaskBase {
     String subGroupDescription =
         String.format(
             "AnsibleConfigureServers (%s) for: %s", getTaskSubGroupType(), taskParams().nodePrefix);
-    SubTaskGroup taskGroup = new SubTaskGroup(subGroupDescription, executor);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
     for (NodeDetails node : nodes) {
-      taskGroup.addTask(
+      subTaskGroup.addSubTask(
           getAnsibleConfigureServerTask(
               node,
               processType,
@@ -154,8 +154,8 @@ public class TlsToggle extends UpgradeTaskBase {
                   ? UpgradeTaskSubType.Round1GFlagsUpdate
                   : UpgradeTaskSubType.Round2GFlagsUpdate));
     }
-    taskGroup.setSubTaskGroupType(getTaskSubGroupType());
-    subTaskGroupQueue.add(taskGroup);
+    subTaskGroup.setSubTaskGroupType(getTaskSubGroupType());
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
   private void createCopyCertTasks(List<NodeDetails> nodes) {
@@ -167,18 +167,18 @@ public class TlsToggle extends UpgradeTaskBase {
     String subGroupDescription =
         String.format(
             "AnsibleConfigureServers (%s) for: %s", getTaskSubGroupType(), taskParams().nodePrefix);
-    SubTaskGroup copyCertGroup = new SubTaskGroup(subGroupDescription, executor);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
     for (NodeDetails node : nodes) {
-      copyCertGroup.addTask(
+      subTaskGroup.addSubTask(
           getAnsibleConfigureServerTask(node, ServerType.TSERVER, UpgradeTaskSubType.CopyCerts));
     }
-    copyCertGroup.setSubTaskGroupType(getTaskSubGroupType());
-    subTaskGroupQueue.add(copyCertGroup);
+    subTaskGroup.setSubTaskGroupType(getTaskSubGroupType());
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
   private void createUniverseSetTlsParamsTask() {
-    SubTaskGroup taskGroup = new SubTaskGroup("UniverseSetTlsParams", executor);
-
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("UniverseSetTlsParams", executor);
     UniverseSetTlsParams.Params params = new UniverseSetTlsParams.Params();
     params.universeUUID = taskParams().universeUUID;
     params.enableNodeToNodeEncrypt = taskParams().enableNodeToNodeEncrypt;
@@ -190,10 +190,10 @@ public class TlsToggle extends UpgradeTaskBase {
 
     UniverseSetTlsParams task = createTask(UniverseSetTlsParams.class);
     task.initialize(params);
-    taskGroup.addTask(task);
+    subTaskGroup.addSubTask(task);
 
-    taskGroup.setSubTaskGroupType(getTaskSubGroupType());
-    subTaskGroupQueue.add(taskGroup);
+    subTaskGroup.setSubTaskGroupType(getTaskSubGroupType());
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
   private AnsibleConfigureServers getAnsibleConfigureServerTask(
