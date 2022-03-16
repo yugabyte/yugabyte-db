@@ -16,19 +16,23 @@ To uninstall Yugabyte Platform, follow the steps for Docker or Kubernetes enviro
 
 ## Uninstall in Docker environments
 
-1. Stop and remove the Yugabyte Platform on Replicated, as follows:
+You can stop and remove Yugabyte Platform on Replicated, as follows:
+
+1. Execute the following command to gain access to applications installed on Replicated:
 
     ```sh
     /usr/local/bin/replicated apps
     ```
 
-2. Replace *appid* with the application ID of Yugabyte Platform from the preceding command, as follows:
+2. To stop Yugabyte Platform, execute the following command, replacing *appid* with the application ID of Yugabyte Platform obtained from the preceding step:
 
     ```sh
     /usr/local/bin/replicated app <appid> stop
     ```
 
-3. Remove the Yugabyte Platform application, as follows:
+    <!-- The rm command in step 3 doesn't work, as confirmed by dev. We don't know what to do about it. -->
+
+3. Remove Yugabyte Platform, as follows:
 
     ```sh
     /usr/local/bin/replicated app <appid> rm
@@ -49,6 +53,8 @@ To uninstall Yugabyte Platform, follow the steps for Docker or Kubernetes enviro
 6. Uninstall Replicated by following instructions provided in [Removing Replicated](https://help.replicated.com/docs/native/customer-installations/installing-via-script/#removing-replicated).
 
 ## Uninstall in Kubernetes environments
+
+You can uninstall Yugabyte Platform in Kubernetes, as follows:
 
 1. To remove the Yugabyte Platform, execute the following helm command:
 
