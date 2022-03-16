@@ -74,9 +74,7 @@ class DocHybridTimeValue : public rocksdb::UserBoundaryValue {
 
   CHECKED_STATUS value(DocHybridTime* out) const {
     CHECK_NOTNULL(out);
-    DocHybridTime result;
-    RETURN_NOT_OK(result.FullyDecodeFrom(encoded_));
-    *out = std::move(result);
+    *out = VERIFY_RESULT(DocHybridTime::FullyDecodeFrom(encoded_));
     return Status::OK();
   }
 
@@ -201,11 +199,11 @@ class DocBoundaryValuesExtractor : public rocksdb::BoundaryValuesExtractor {
     SubDocKey sub_doc_key;
     CHECK_OK(sub_doc_key.FullyDecodeFrom(user_key));
 
-    DocHybridTime doc_ht, doc_ht2;
     Slice temp_slice = slices.back();
-    CHECK_OK(doc_ht.DecodeFrom(&temp_slice));
+    auto doc_ht = CHECK_RESULT(DocHybridTime::DecodeFrom(&temp_slice));
     CHECK(temp_slice.empty());
     CHECK_EQ(sub_doc_key.doc_hybrid_time(), doc_ht);
+    DocHybridTime doc_ht2;
     CHECK_OK(GetDocHybridTime(values, &doc_ht2));
     CHECK_EQ(doc_ht, doc_ht2);
 

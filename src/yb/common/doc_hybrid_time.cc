@@ -86,7 +86,8 @@ char* DocHybridTime::EncodedInDocDbFormat(char* dest) const {
   return out;
 }
 
-Status DocHybridTime::DecodeFrom(Slice *slice) {
+Result<DocHybridTime> DocHybridTime::DecodeFrom(Slice *slice) {
+  DocHybridTime result;
   const size_t previous_size = slice->size();
   {
     // Currently we just ignore the generation number as it should always be 0.
@@ -97,7 +98,8 @@ Status DocHybridTime::DecodeFrom(Slice *slice) {
     auto decoded_logical = narrow_cast<LogicalTimeComponent>(
         VERIFY_RESULT(FastDecodeDescendingSignedVarIntUnsafe(slice)));
 
-    hybrid_time_ = HybridTime::FromMicrosecondsAndLogicalValue(decoded_micros, decoded_logical);
+    result.hybrid_time_ = HybridTime::FromMicrosecondsAndLogicalValue(
+        decoded_micros, decoded_logical);
   }
 
   const auto ptr_before_decoding_write_id = slice->data();
@@ -111,7 +113,7 @@ Status DocHybridTime::DecodeFrom(Slice *slice) {
         Slice(ptr_before_decoding_write_id,
               slice->data() + slice->size() - ptr_before_decoding_write_id).ToDebugHexString());
   }
-  write_id_ = narrow_cast<IntraTxnWriteId>(
+  result.write_id_ = narrow_cast<IntraTxnWriteId>(
       (decoded_shifted_write_id >> kNumBitsForHybridTimeSize) - 1);
 
   const size_t bytes_decoded = previous_size - slice->size();
@@ -126,34 +128,32 @@ Status DocHybridTime::DecodeFrom(Slice *slice) {
         Slice(to_char_ptr(slice->data() - bytes_decoded), bytes_decoded).ToDebugHexString());
   }
 
-  return Status::OK();
+  return result;
 }
 
-Status DocHybridTime::FullyDecodeFrom(const Slice& encoded) {
+Result<DocHybridTime> DocHybridTime::FullyDecodeFrom(const Slice& encoded) {
   Slice s = encoded;
-  RETURN_NOT_OK(DecodeFrom(&s));
-  if (!s.empty()) {
+  auto result = DecodeFrom(&s);
+  if (result.ok() && !s.empty()) {
     return STATUS_SUBSTITUTE(
         Corruption,
         "$0 extra bytes left when decoding a DocHybridTime $1",
         s.size(), FormatSliceAsStr(encoded, QuotesType::kDoubleQuotes, /* max_length = */ 32));
   }
-  return Status::OK();
+  return result;
 }
 
 Result<DocHybridTime> DocHybridTime::DecodeFromEnd(Slice* encoded_key_with_ht_at_end) {
   size_t encoded_size = 0;
   RETURN_NOT_OK(CheckAndGetEncodedSize(*encoded_key_with_ht_at_end, &encoded_size));
   Slice s(encoded_key_with_ht_at_end->end() - encoded_size, encoded_size);
-  DocHybridTime result;
-  RETURN_NOT_OK(result.FullyDecodeFrom(s));
+  DocHybridTime result = VERIFY_RESULT(FullyDecodeFrom(s));
   encoded_key_with_ht_at_end->remove_suffix(encoded_size);
   return result;
 }
 
-Status DocHybridTime::DecodeFromEnd(Slice encoded_key_with_ht_at_end) {
-  *this = VERIFY_RESULT(DecodeFromEnd(&encoded_key_with_ht_at_end));
-  return Status::OK();
+Result<DocHybridTime> DocHybridTime::DecodeFromEnd(Slice encoded_key_with_ht_at_end) {
+  return DecodeFromEnd(&encoded_key_with_ht_at_end);
 }
 
 string DocHybridTime::ToString() const {
@@ -219,13 +219,12 @@ CHECKED_STATUS DocHybridTime::CheckAndGetEncodedSize(
 }
 
 std::string DocHybridTime::DebugSliceToString(Slice input) {
-  DocHybridTime temp;
-  auto status = temp.FullyDecodeFrom(input);
-  if (!status.ok()) {
-    LOG(WARNING) << "Failed to decode DocHybridTime: " << status;
+  auto temp = FullyDecodeFrom(input);
+  if (!temp.ok()) {
+    LOG(WARNING) << "Failed to decode DocHybridTime: " << temp.status();
     return input.ToDebugHexString();
   }
-  return temp.ToString();
+  return temp->ToString();
 }
 
 }  // namespace yb

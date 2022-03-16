@@ -13,6 +13,8 @@
 #include "yb/docdb/doc_write_batch.h"
 
 #include "yb/common/doc_hybrid_time.h"
+#include "yb/common/ql_value.h"
+
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_path.h"
 #include "yb/docdb/doc_ttl_util.h"
@@ -78,14 +80,17 @@ Status DocWriteBatch::SeekToKeyPrefix(IntentAwareIterator* doc_iter, bool has_an
   }
 
   // Checking for expiration.
-  uint64_t merge_flags = 0;
-  MonoDelta ttl;
   Slice recent_value = doc_iter->value();
-  RETURN_NOT_OK(Value::DecodePrimitiveValueType(
-      recent_value, &(current_entry_.value_type),
-      &merge_flags, &ttl, &(current_entry_.user_timestamp)));
+  ValueControlFields control_fields;
+  {
+    auto value_copy = recent_value;
+    control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value_copy));
+    current_entry_.user_timestamp = control_fields.user_timestamp;
+    current_entry_.value_type = DecodeValueType(value_copy);
+  }
 
-  if (HasExpiredTTL(key_data.write_time.hybrid_time(), ttl, doc_iter->read_time().read)) {
+  if (HasExpiredTTL(
+          key_data.write_time.hybrid_time(), control_fields.ttl, doc_iter->read_time().read)) {
     current_entry_.value_type = ValueType::kTombstone;
     current_entry_.doc_hybrid_time = key_data.write_time;
     cache_.Put(key_prefix_, current_entry_);
@@ -103,9 +108,12 @@ Status DocWriteBatch::SeekToKeyPrefix(IntentAwareIterator* doc_iter, bool has_an
   // document/subdocument pointed to by key_prefix_ exists, or has been recently deleted.
   if (key_prefix_.IsPrefixOf(key_data.key)) {
     // No need to decode again if no merge records were encountered.
-    if (value != recent_value)
-      RETURN_NOT_OK(Value::DecodePrimitiveValueType(value, &(current_entry_.value_type),
-          /* merge flags */ nullptr, /* ttl */ nullptr, &(current_entry_.user_timestamp)));
+    if (value != recent_value) {
+      auto value_copy = value;
+      current_entry_.user_timestamp = VERIFY_RESULT(
+          ValueControlFields::Decode(&value_copy)).user_timestamp;
+      current_entry_.value_type = DecodeValueType(value_copy);
+    }
     current_entry_.found_exact_key_prefix = key_prefix_ == key_data.key;
     current_entry_.doc_hybrid_time = key_data.write_time;
 
@@ -149,32 +157,35 @@ Status DocWriteBatch::SeekToKeyPrefix(IntentAwareIterator* doc_iter, bool has_an
 }
 
 Result<bool> DocWriteBatch::SetPrimitiveInternalHandleUserTimestamp(
-    const Value &value,
+    const ValueControlFields& control_fields,
     LazyIterator* iter) {
-  bool should_apply = true;
-  auto user_timestamp = value.user_timestamp();
-  if (user_timestamp != Value::kInvalidUserTimestamp) {
-    // Seek for the older version of the key that we're about to write to. This is essentially a
-    // NOOP if we've already performed the seek due to the cache.
-    RETURN_NOT_OK(SeekToKeyPrefix(iter));
-    // We'd like to include tombstones in our timestamp comparisons as well.
-    if ((subdoc_exists_ || current_entry_.value_type == ValueType::kTombstone) &&
-        current_entry_.found_exact_key_prefix) {
-      if (current_entry_.user_timestamp != Value::kInvalidUserTimestamp) {
-        should_apply = user_timestamp >= current_entry_.user_timestamp;
-      } else {
-        // Look at the hybrid time instead.
-        const DocHybridTime& doc_hybrid_time = current_entry_.doc_hybrid_time;
-        if (doc_hybrid_time.hybrid_time().is_valid()) {
-          should_apply =
-              user_timestamp >= 0 &&
-              implicit_cast<size_t>(user_timestamp) >=
-                  doc_hybrid_time.hybrid_time().GetPhysicalValueMicros();
-        }
-      }
-    }
+  if (!control_fields.has_user_timestamp()) {
+    return true;
   }
-  return should_apply;
+  // Seek for the older version of the key that we're about to write to. This is essentially a
+  // NOOP if we've already performed the seek due to the cache.
+  RETURN_NOT_OK(SeekToKeyPrefix(iter));
+  // We'd like to include tombstones in our timestamp comparisons as well.
+  if (!current_entry_.found_exact_key_prefix) {
+    return true;
+  }
+  if (!subdoc_exists_ && current_entry_.value_type != ValueType::kTombstone) {
+    return true;
+  }
+
+  if (current_entry_.user_timestamp != ValueControlFields::kInvalidUserTimestamp) {
+    return control_fields.user_timestamp >= current_entry_.user_timestamp;
+  }
+
+  // Look at the hybrid time instead.
+  const DocHybridTime& doc_hybrid_time = current_entry_.doc_hybrid_time;
+  if (!doc_hybrid_time.hybrid_time().is_valid()) {
+    return true;
+  }
+
+  return control_fields.user_timestamp >= 0 &&
+         implicit_cast<size_t>(control_fields.user_timestamp) >=
+             doc_hybrid_time.hybrid_time().GetPhysicalValueMicros();
 }
 
 namespace {
@@ -197,10 +208,13 @@ Status AppendToKeySafely(
 
 CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
     const DocPath& doc_path,
-    const Value& value,
+    const ValueControlFields& control_fields,
+    const ValueRef& value,
     LazyIterator* iter,
     const bool is_deletion,
     const size_t num_subkeys) {
+  UpdateMaxValueTtl(control_fields.ttl);
+
   // The write_id is always incremented by one for each new element of the write batch.
   if (put_batch_.size() > numeric_limits<IntraTxnWriteId>::max()) {
     return STATUS_SUBSTITUTE(
@@ -209,7 +223,7 @@ CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
         numeric_limits<IntraTxnWriteId>::max());
   }
 
-  if (value.has_user_timestamp() && !optional_init_markers()) {
+  if (control_fields.has_user_timestamp() && !optional_init_markers()) {
     return STATUS(IllegalState,
                   "User Timestamp is only supported for Optional Init Markers");
   }
@@ -244,7 +258,7 @@ CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
         // check whether the provided user timestamp is higher than what is already present. If
         // an intermediate subdocument is found with a higher timestamp, we consider it as an
         // overwrite and skip the entire write.
-        auto should_apply = SetPrimitiveInternalHandleUserTimestamp(value, iter);
+        auto should_apply = SetPrimitiveInternalHandleUserTimestamp(control_fields, iter);
         RETURN_NOT_OK(should_apply);
         if (!should_apply.get()) {
           return Status::OK();
@@ -299,7 +313,7 @@ CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
         return Status::OK();
       }
 
-      DCHECK(!value.has_user_timestamp());
+      DCHECK(!control_fields.has_user_timestamp());
 
       // Add the parent key to key/value batch before appending the encoded HybridTime to it.
       // (We replicate key/value pairs without the HybridTime and only add it before writing to
@@ -314,16 +328,22 @@ CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
   }
 
   // We need to handle the user timestamp if present.
-  auto should_apply = SetPrimitiveInternalHandleUserTimestamp(value, iter);
-  RETURN_NOT_OK(should_apply);
-  if (should_apply.get()) {
+  if (VERIFY_RESULT(SetPrimitiveInternalHandleUserTimestamp(control_fields, iter))) {
     // The key in the key/value batch does not have an encoded HybridTime.
-    put_batch_.emplace_back(key_prefix_.ToStringBuffer(), value.Encode());
+    put_batch_.emplace_back(key_prefix_.ToStringBuffer(), std::string());
+    auto& encoded_value = put_batch_.back().second;
+    control_fields.AppendEncoded(&encoded_value);
+    size_t prefix_len = encoded_value.size();
+
+    AppendEncodedValue(value.value_pb(), value.sorting_type(), &encoded_value);
+    if (value.custom_value_type() != ValueType::kLowest) {
+      encoded_value[prefix_len] = static_cast<char>(value.custom_value_type());
+    }
 
     // The key we use in the DocWriteBatchCache does not have a final hybrid_time, because that's
     // the key we expect to look up.
-    cache_.Put(key_prefix_, hybrid_time, value.primitive_value().value_type(),
-               value.user_timestamp());
+    cache_.Put(key_prefix_, hybrid_time, static_cast<ValueType>(encoded_value[prefix_len]),
+               control_fields.user_timestamp);
   }
 
   return Status::OK();
@@ -331,13 +351,14 @@ CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
 
 Status DocWriteBatch::SetPrimitive(
     const DocPath& doc_path,
-    const Value& value,
+    const ValueControlFields& control_fields,
+    const ValueRef& value,
     LazyIterator* iter) {
   DOCDB_DEBUG_LOG("Called SetPrimitive with doc_path=$0, value=$1",
                   doc_path.ToString(), value.ToString());
   current_entry_.doc_hybrid_time = DocHybridTime::kMin;
   const auto num_subkeys = doc_path.num_subkeys();
-  const bool is_deletion = value.primitive_value().value_type() == ValueType::kTombstone;
+  const bool is_deletion = value.custom_value_type() == ValueType::kTombstone;
 
   key_prefix_ = doc_path.encoded_doc_key();
 
@@ -360,16 +381,17 @@ Status DocWriteBatch::SetPrimitive(
       }
     }
   }
-  return SetPrimitiveInternal(doc_path, value, iter, is_deletion, num_subkeys);
+  return SetPrimitiveInternal(
+      doc_path, control_fields, value, iter, is_deletion, num_subkeys);
 }
 
 Status DocWriteBatch::SetPrimitive(const DocPath& doc_path,
-                                   const Value& value,
+                                   const ValueControlFields& control_fields,
+                                   const ValueRef& value,
                                    const ReadHybridTime& read_ht,
                                    CoarseTimePoint deadline,
                                    rocksdb::QueryId query_id) {
-  DOCDB_DEBUG_LOG("Called with doc_path=$0, value=$1",
-                  doc_path.ToString(), value.ToString());
+  DOCDB_DEBUG_LOG("Called with doc_path=$0, value=$1", doc_path.ToString(), value.ToString());
 
   std::function<std::unique_ptr<IntentAwareIterator>()> createrator =
     [doc_path, query_id, deadline, read_ht, this]() {
@@ -385,46 +407,68 @@ Status DocWriteBatch::SetPrimitive(const DocPath& doc_path,
 
   LazyIterator iter(&createrator);
 
-  return SetPrimitive(doc_path, value, &iter);
+  return SetPrimitive(doc_path, control_fields, value, &iter);
 }
 
 Status DocWriteBatch::ExtendSubDocument(
     const DocPath& doc_path,
-    const SubDocument& value,
+    const ValueRef& value,
     const ReadHybridTime& read_ht,
     const CoarseTimePoint deadline,
     rocksdb::QueryId query_id,
     MonoDelta ttl,
     UserTimeMicros user_timestamp) {
-  if (IsObjectType(value.value_type())) {
-    const auto& map = value.object_container();
-    for (const auto& ent : map) {
-      DocPath child_doc_path = doc_path;
-      if (ent.first.value_type() != ValueType::kArray)
-          child_doc_path.AddSubKey(ent.first);
-      RETURN_NOT_OK(ExtendSubDocument(child_doc_path, ent.second,
-                                      read_ht, deadline, query_id, ttl, user_timestamp));
-    }
-  } else if (value.value_type() == ValueType::kArray) {
-    RETURN_NOT_OK(ExtendList(
-        doc_path, value, read_ht, deadline, query_id, ttl, user_timestamp));
-  } else {
-    if (!value.IsTombstoneOrPrimitive()) {
-      return STATUS_FORMAT(
-          InvalidArgument,
-          "Found unexpected value type $0. Expecting a PrimitiveType or a Tombstone",
-          value.value_type());
-    }
-    RETURN_NOT_OK(SetPrimitive(doc_path, Value(value, ttl, user_timestamp),
-                               read_ht, deadline, query_id));
+  if (value.is_array()) {
+    return ExtendList(doc_path, value, read_ht, deadline, query_id, ttl, user_timestamp);
   }
-  UpdateMaxValueTtl(ttl);
-  return Status::OK();
+  if (value.is_set()) {
+    ValueRef value_ref(
+        value.write_instruction() == bfql::TSOpcode::kSetRemove ||
+        value.write_instruction() == bfql::TSOpcode::kMapRemove
+        ? ValueType::kTombstone : ValueType::kNullLow);
+    for (const auto& key : value.value_pb().set_value().elems()) {
+      DocPath child_doc_path = doc_path;
+      child_doc_path.AddSubKey(PrimitiveValue::FromQLValuePB(key, value.sorting_type()));
+      RETURN_NOT_OK(ExtendSubDocument(
+          child_doc_path, value_ref, read_ht, deadline, query_id, ttl, user_timestamp));
+    }
+    return Status::OK();
+  }
+  if (value.is_map()) {
+    const auto& map_value = value.value_pb().map_value();
+    int size = map_value.keys().size();
+    for (int i = 0; i != size; ++i) {
+      DocPath child_doc_path = doc_path;
+      const auto& key = map_value.keys(i);
+      if (key.value_case() != QLValuePB::kVirtualValue ||
+          key.virtual_value() != QLVirtualValuePB::ARRAY) {
+        auto sorting_type =
+            value.list_extend_order() == ListExtendOrder::APPEND
+            ? value.sorting_type() : SortingType::kDescending;
+        if (value.write_instruction() == bfql::TSOpcode::kListAppend &&
+            key.value_case() == QLValuePB::kInt64Value) {
+          child_doc_path.AddSubKey(PrimitiveValue::ArrayIndex(key.int64_value()));
+        } else {
+          child_doc_path.AddSubKey(PrimitiveValue::FromQLValuePB(key, sorting_type));
+        }
+      }
+      RETURN_NOT_OK(ExtendSubDocument(
+          child_doc_path,
+          ValueRef(map_value.values(i), value),
+          read_ht, deadline, query_id, ttl, user_timestamp));
+    }
+    return Status::OK();
+  }
+  auto control_fields = ValueControlFields{
+    .ttl = ttl,
+    .user_timestamp = user_timestamp,
+  };
+  return SetPrimitive(doc_path, control_fields, value, read_ht, deadline, query_id);
 }
 
 Status DocWriteBatch::InsertSubDocument(
     const DocPath& doc_path,
-    const SubDocument& value,
+    const ValueRef& value,
     const ReadHybridTime& read_ht,
     const CoarseTimePoint deadline,
     rocksdb::QueryId query_id,
@@ -432,17 +476,21 @@ Status DocWriteBatch::InsertSubDocument(
     UserTimeMicros user_timestamp,
     bool init_marker_ttl) {
   if (!value.IsTombstoneOrPrimitive()) {
-    auto key_ttl = init_marker_ttl ? ttl : Value::kMaxTtl;
+    auto key_ttl = init_marker_ttl ? ttl : ValueControlFields::kMaxTtl;
+    auto control_fields = ValueControlFields {
+      .ttl = key_ttl,
+      .user_timestamp = user_timestamp,
+    };
     RETURN_NOT_OK(SetPrimitive(
-        doc_path, Value(PrimitiveValue(value.value_type()), key_ttl, user_timestamp),
-        read_ht, deadline, query_id));
+        doc_path, control_fields, ValueRef(value.ContainerValueType()), read_ht, deadline,
+        query_id));
   }
   return ExtendSubDocument(doc_path, value, read_ht, deadline, query_id, ttl, user_timestamp);
 }
 
 Status DocWriteBatch::ExtendList(
     const DocPath& doc_path,
-    const SubDocument& value,
+    const ValueRef& value,
     const ReadHybridTime& read_ht,
     const CoarseTimePoint deadline,
     rocksdb::QueryId query_id,
@@ -451,35 +499,32 @@ Status DocWriteBatch::ExtendList(
   if (monotonic_counter_ == nullptr) {
     return STATUS(IllegalState, "List cannot be extended if monotonic_counter_ is uninitialized");
   }
-  if (value.value_type() != ValueType::kArray) {
-    return STATUS_FORMAT(
-        InvalidArgument,
-        "Expecting Subdocument of type kArray, found $0",
-        value.value_type());
-  }
-  const std::vector<SubDocument>& list = value.array_container();
+  SCHECK(value.is_array(), InvalidArgument, Format("Expecting array value ref, found $0", value));
+
+  const auto& array = value.value_pb().list_value().elems();
   // It is assumed that there is an exclusive lock on the list key.
   // The lock ensures that there isn't another thread picking ArrayIndexes for the same list.
   // No additional lock is required.
-  int64_t index =
-      std::atomic_fetch_add(monotonic_counter_, static_cast<int64_t>(list.size()));
+  int64_t index = std::atomic_fetch_add(monotonic_counter_, static_cast<int64_t>(array.size()));
   // PREPEND - adding in reverse order with negated index
-  if (value.GetExtendOrder() == ListExtendOrder::PREPEND_BLOCK) {
-    for (size_t i = list.size(); i > 0; i--) {
+  if (value.list_extend_order() == ListExtendOrder::PREPEND_BLOCK) {
+    for (auto i = array.size(); i-- > 0;) {
       DocPath child_doc_path = doc_path;
       index++;
       child_doc_path.AddSubKey(PrimitiveValue::ArrayIndex(-index));
-      RETURN_NOT_OK(ExtendSubDocument(child_doc_path, list[i - 1],
-                                      read_ht, deadline, query_id, ttl, user_timestamp));
+      RETURN_NOT_OK(ExtendSubDocument(
+          child_doc_path, ValueRef(array.Get(i), value), read_ht, deadline, query_id,
+          ttl, user_timestamp));
     }
   } else {
-    for (size_t i = 0; i < list.size(); i++) {
+    for (const auto& elem : array) {
       DocPath child_doc_path = doc_path;
       index++;
       child_doc_path.AddSubKey(PrimitiveValue::ArrayIndex(
-          value.GetExtendOrder() == ListExtendOrder::APPEND ? index : -index));
-      RETURN_NOT_OK(ExtendSubDocument(child_doc_path, list[i],
-                                      read_ht, deadline, query_id, ttl, user_timestamp));
+          value.list_extend_order() == ListExtendOrder::APPEND ? index : -index));
+      RETURN_NOT_OK(ExtendSubDocument(
+          child_doc_path, ValueRef(elem, value), read_ht, deadline, query_id, ttl,
+          user_timestamp));
     }
   }
   return Status::OK();
@@ -487,8 +532,8 @@ Status DocWriteBatch::ExtendList(
 
 Status DocWriteBatch::ReplaceRedisInList(
     const DocPath &doc_path,
-    const std::vector<int64_t>& indices,
-    const std::vector<SubDocument>& values,
+    int64_t index,
+    const ValueRef& value,
     const ReadHybridTime& read_ht,
     const CoarseTimePoint deadline,
     const rocksdb::QueryId query_id,
@@ -510,11 +555,6 @@ Status DocWriteBatch::ReplaceRedisInList(
       deadline,
       read_ht);
 
-  Slice value_slice;
-  SubDocKey found_key;
-  auto current_index = start_index;
-  size_t replace_index = 0;
-
   if (dir == Direction::kForward) {
     // Ensure we seek directly to indices and skip init marker if it exists.
     key_prefix_.AppendValueType(ValueType::kArrayIndex);
@@ -527,24 +567,20 @@ Status DocWriteBatch::ReplaceRedisInList(
     key_prefix_.AppendValueType(ValueType::kArrayIndex);
   }
 
+  SubDocKey found_key;
   FetchKeyResult key_data;
-  while (true) {
-    if (indices[replace_index] <= 0 || !iter->valid() ||
+  for (auto current_index = start_index;;) {
+    if (index <= 0 || !iter->valid() ||
         !(key_data = VERIFY_RESULT(iter->FetchKey())).key.starts_with(key_prefix_)) {
       return STATUS_SUBSTITUTE(Corruption,
           "Index Error: $0, reached beginning of list with size $1",
-          indices[replace_index] - 1, // YQL layer list index starts from 0, not 1 as in DocDB.
+          index - 1, // YQL layer list index starts from 0, not 1 as in DocDB.
           current_index);
     }
 
     RETURN_NOT_OK(found_key.FullyDecodeFrom(key_data.key, HybridTimeRequired::kFalse));
 
-    MonoDelta entry_ttl;
-    ValueType value_type;
-    value_slice = iter->value();
-    RETURN_NOT_OK(Value::DecodePrimitiveValueType(value_slice, &value_type, nullptr, &entry_ttl));
-
-    if (value_type == ValueType::kTombstone) {
+    if (VERIFY_RESULT(Value::IsTombstoned(iter->value()))) {
       found_key.KeepPrefix(sub_doc_key.num_subkeys() + 1);
       if (dir == Direction::kForward) {
         iter->SeekPastSubKey(key_data.key);
@@ -562,25 +598,20 @@ Status DocWriteBatch::ReplaceRedisInList(
       results->push_back(v.primitive_value().GetString());
     }
 
-    if (dir == Direction::kForward)
+    if (dir == Direction::kForward) {
       current_index++;
-    else
+    } else {
       current_index--;
+    }
 
     // Should we verify that the subkeys are indeed numbers as list indices should be?
     // Or just go in order for the index'th largest key in any subdocument?
-    if (current_index == indices[replace_index]) {
+    if (current_index == index) {
       // When inserting, key_prefix_ is modified.
       KeyBytes array_index_prefix(key_prefix_);
       DocPath child_doc_path = doc_path;
       child_doc_path.AddSubKey(found_key.subkeys()[sub_doc_key.num_subkeys()]);
-      RETURN_NOT_OK(InsertSubDocument(child_doc_path, values[replace_index],
-                                      read_ht, deadline, query_id, write_ttl));
-      replace_index++;
-      if (replace_index == indices.size()) {
-        return Status::OK();
-      }
-      key_prefix_ = array_index_prefix;
+      return InsertSubDocument(child_doc_path, value, read_ht, deadline, query_id, write_ttl);
     }
 
     if (dir == Direction::kForward) {
@@ -594,7 +625,7 @@ Status DocWriteBatch::ReplaceRedisInList(
 void DocWriteBatch::UpdateMaxValueTtl(const MonoDelta& ttl) {
   // Don't update the max value TTL if the value is uninitialized or if it is set to
   // kMaxTtl (i.e. use table TTL).
-  if (!ttl.Initialized() || ttl.Equals(Value::kMaxTtl)) {
+  if (!ttl.Initialized() || ttl.Equals(ValueControlFields::kMaxTtl)) {
     return;
   }
   if (!ttl_.Initialized() || ttl > ttl_) {
@@ -605,7 +636,7 @@ void DocWriteBatch::UpdateMaxValueTtl(const MonoDelta& ttl) {
 Status DocWriteBatch::ReplaceCqlInList(
     const DocPath& doc_path,
     const int target_cql_index,
-    const SubDocument& value,
+    const ValueRef& value,
     const ReadHybridTime& read_ht,
     const CoarseTimePoint deadline,
     const rocksdb::QueryId query_id,
@@ -663,10 +694,9 @@ Status DocWriteBatch::ReplaceCqlInList(
 
     RETURN_NOT_OK(found_key.FullyDecodeFrom(key_data.key, HybridTimeRequired::kFalse));
 
-    MonoDelta entry_ttl;
-    ValueType value_type;
     value_slice = iter->value();
-    RETURN_NOT_OK(Value::DecodePrimitiveValueType(value_slice, &value_type, nullptr, &entry_ttl));
+    auto entry_ttl = VERIFY_RESULT(ValueControlFields::Decode(&value_slice)).ttl;
+    auto value_type = DecodeValueType(value_slice);
 
     bool has_expired = false;
     if (value_type == ValueType::kTombstone || key_data.write_time < collection_write_time) {
@@ -689,14 +719,22 @@ Status DocWriteBatch::ReplaceCqlInList(
       KeyBytes array_index_prefix(key_prefix_);
       DocPath child_doc_path = doc_path;
       child_doc_path.AddSubKey(found_key.subkeys()[sub_doc_key.num_subkeys()]);
-      RETURN_NOT_OK(
-          InsertSubDocument(child_doc_path, value, read_ht, deadline, query_id, write_ttl));
-      return Status::OK();
+      return InsertSubDocument(child_doc_path, value, read_ht, deadline, query_id, write_ttl);
     }
 
     current_cql_index++;
     iter->SeekPastSubKey(key_data.key);
   }
+}
+
+CHECKED_STATUS DocWriteBatch::DeleteSubDoc(
+    const DocPath& doc_path,
+    const ReadHybridTime& read_ht,
+    const CoarseTimePoint deadline,
+    rocksdb::QueryId query_id,
+    UserTimeMicros user_timestamp) {
+  return SetPrimitive(
+      doc_path, ValueRef(ValueType::kTombstone), read_ht, deadline, query_id, user_timestamp);
 }
 
 void DocWriteBatch::Clear() {
@@ -779,6 +817,49 @@ Result<std::string> WriteBatchToString(
       storage_db_type, binary_output_format, batch_output_format, line_prefix);
   RETURN_NOT_OK(write_batch.Iterate(&formatter));
   return formatter.str();
+}
+
+namespace {
+
+const QLValuePB kNullValuePB;
+
+}
+
+ValueRef::ValueRef(ValueType value_type) : value_pb_(&kNullValuePB), value_type_(value_type) {
+}
+
+std::string ValueRef::ToString() const {
+  return YB_CLASS_TO_STRING(value_pb, value_type);
+}
+
+bool ValueRef::IsTombstoneOrPrimitive() const {
+  return !is_array() && !is_map() && !is_set();
+}
+
+ValueType ValueRef::ContainerValueType() const {
+  if (value_type_ != ValueType::kLowest) {
+    return value_type_;
+  }
+  if (is_array()) {
+    return ValueType::kArray;
+  }
+  if (is_map() || is_set()) {
+    return ValueType::kObject;
+  }
+  FATAL_INVALID_ENUM_VALUE(QLValuePB::ValueCase, value_pb_->value_case());
+  return ValueType::kLowest;
+}
+
+bool ValueRef::is_array() const {
+  return value_pb_->value_case() == QLValuePB::kListValue;
+}
+
+bool ValueRef::is_set() const {
+  return value_pb_->value_case() == QLValuePB::kSetValue;
+}
+
+bool ValueRef::is_map() const {
+  return value_pb_->value_case() == QLValuePB::kMapValue;
 }
 
 }  // namespace docdb

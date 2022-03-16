@@ -65,7 +65,7 @@ std::vector<PrimitiveValue> GetRangeKeyScanSpec(
 PrimitiveValue GetQLRangeBoundAsPVal(const QLScanRange::QLRange& ql_range,
                                      SortingType sorting_type,
                                      bool lower_bound) {
-  const auto sort_order = PrimitiveValue::SortOrderFromColumnSchemaSortingType(sorting_type);
+  const auto sort_order = SortOrderFromColumnSchemaSortingType(sorting_type);
 
   // lower bound for ASC column and upper bound for DESC column -> min value
   // otherwise -> max value
