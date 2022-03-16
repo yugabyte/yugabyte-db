@@ -195,7 +195,8 @@ Result<client::YBTransactionPtr> TestWorkload::State::MayBeStartNewTransaction(
     client::YBSession* session, const TestWorkloadOptions& options) {
   client::YBTransactionPtr txn;
   if (options.is_transactional()) {
-    txn = VERIFY_RESULT(transaction_pool_->TakeAndInit(options.isolation_level));
+    txn = VERIFY_RESULT(transaction_pool_->TakeAndInit(
+        options.isolation_level, TransactionRpcDeadline()));
     session->SetTransaction(txn);
   }
   return txn;

@@ -305,7 +305,7 @@ class GeoTransactionsTest : public pgwrapper::PgMiniTestBase {
     ASSERT_OK(conn.CommitTransaction());
 
     auto last_transaction = transaction_pool_->TEST_GetLastTransaction();
-    auto metadata = last_transaction->GetMetadata().get();
+    auto metadata = last_transaction->GetMetadata(TransactionRpcDeadline()).get();
     ASSERT_OK(metadata);
     ASSERT_FALSE(expected_status_tablets.empty());
     ASSERT_TRUE(std::find(expected_status_tablets.begin(),

@@ -75,7 +75,8 @@ Status ExecContext::StartTransaction(
   TRACE("Start Transaction");
   transaction_start_time_ = MonoTime::Now();
   if (!transaction_) {
-    transaction_ = VERIFY_RESULT(ql_env->NewTransaction(transaction_, isolation_level));
+    transaction_ = VERIFY_RESULT(ql_env->NewTransaction(
+        transaction_, isolation_level, rescheduler->GetDeadline()));
   } else if (transaction_->IsRestartRequired()) {
     transaction_ = VERIFY_RESULT(transaction_->CreateRestartedTransaction());
   } else {

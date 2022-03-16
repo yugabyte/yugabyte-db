@@ -85,7 +85,8 @@ class QLEnv {
 
   // Create a new transaction.
   Result<client::YBTransactionPtr> NewTransaction(const client::YBTransactionPtr& transaction,
-                                                  IsolationLevel isolation_level);
+                                                  IsolationLevel isolation_level,
+                                                  CoarseTimePoint deadline);
 
   //------------------------------------------------------------------------------------------------
   // Permission related methods.

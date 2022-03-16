@@ -940,13 +940,14 @@ Status CatalogManager::ImportSnapshotCreateObject(const SnapshotInfoPB& snapshot
 
 Status CatalogManager::ImportSnapshotWaitForTables(const SnapshotInfoPB& snapshot_pb,
                                                    ImportSnapshotMetaResponsePB* resp,
-                                                   ExternalTableSnapshotDataMap* tables_data) {
+                                                   ExternalTableSnapshotDataMap* tables_data,
+                                                   CoarseTimePoint deadline) {
   for (const BackupRowEntryPB& backup_entry : snapshot_pb.backup_entries()) {
     const SysRowEntry& entry = backup_entry.entry();
     if (entry.type() == SysRowEntryType::TABLE) {
       ExternalTableSnapshotData& data = (*tables_data)[entry.id()];
       if (!data.is_index()) {
-        RETURN_NOT_OK(WaitForCreateTableToFinish(data.new_table_id));
+        RETURN_NOT_OK(WaitForCreateTableToFinish(data.new_table_id, deadline));
       }
     }
   }
@@ -1025,7 +1026,8 @@ void CatalogManager::DeleteNewSnapshotObjects(const NamespaceMap& namespace_map,
 }
 
 Status CatalogManager::ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req,
-                                          ImportSnapshotMetaResponsePB* resp) {
+                                          ImportSnapshotMetaResponsePB* resp,
+                                          rpc::RpcContext* rpc) {
   LOG(INFO) << "Servicing ImportSnapshotMeta request: " << req->ShortDebugString();
 
   NamespaceMap namespace_map;
@@ -1058,7 +1060,8 @@ Status CatalogManager::ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req
       snapshot_pb, resp, &namespace_map, &tables_data, CreateObjects::kOnlyTables));
 
   // PHASE 3: Wait for all tables creation complete.
-  RETURN_NOT_OK(ImportSnapshotWaitForTables(snapshot_pb, resp, &tables_data));
+  RETURN_NOT_OK(ImportSnapshotWaitForTables(
+      snapshot_pb, resp, &tables_data, rpc->GetClientDeadline()));
 
   // PHASE 4: Recreate ONLY indexes.
   RETURN_NOT_OK(ImportSnapshotCreateObject(

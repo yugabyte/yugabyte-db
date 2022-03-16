@@ -271,12 +271,12 @@ std::string ToString(const std::tuple<Args...>& tuple) {
   return result;
 }
 
+std::string MillisecondsToString(int64_t milliseconds);
+
 template<class Rep, class Period>
 std::string ToString(const std::chrono::duration<Rep, Period>& duration) {
-  int64_t milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
-  int64_t seconds = milliseconds / 1000;
-  milliseconds -= seconds * 1000;
-  return StringPrintf("%" PRId64 ".%03" PRId64 "s", seconds, milliseconds);
+  return MillisecondsToString(
+      std::chrono::duration_cast<std::chrono::milliseconds>(duration).count());
 }
 
 std::string ToString(const std::chrono::steady_clock::time_point& time_point);

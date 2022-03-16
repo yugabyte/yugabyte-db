@@ -142,7 +142,7 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   // `result` should be prepared with FinishChild of child transaction.
   CHECKED_STATUS ApplyChildResult(const ChildTransactionResultPB& result);
 
-  std::shared_future<Result<TransactionMetadata>> GetMetadata() const;
+  std::shared_future<Result<TransactionMetadata>> GetMetadata(CoarseTimePoint deadline) const;
 
   std::string ToString() const;
 

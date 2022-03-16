@@ -344,7 +344,8 @@ Status PgClientSession::CreateTable(
     const PgCreateTableRequestPB& req, PgCreateTableResponsePB* resp, rpc::RpcContext* context) {
   PgCreateTable helper(req);
   RETURN_NOT_OK(helper.Prepare());
-  const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(req.use_transaction()));
+  const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
+      req.use_transaction(), context->GetClientDeadline()));
   RETURN_NOT_OK(helper.Exec(&client(), metadata, context->GetClientDeadline()));
   VLOG_WITH_PREFIX(1) << __func__ << ": " << req.table_name();
   const auto& indexed_table_id = helper.indexed_table_id();
@@ -365,7 +366,7 @@ Status PgClientSession::CreateDatabase(
       req.source_database_oid() != kPgInvalidOid
           ? GetPgsqlNamespaceId(req.source_database_oid()) : "",
       req.next_oid(),
-      VERIFY_RESULT(GetDdlTransactionMetadata(req.use_transaction())),
+      VERIFY_RESULT(GetDdlTransactionMetadata(req.use_transaction(), context->GetClientDeadline())),
       req.colocated(),
       context->GetClientDeadline());
 }
@@ -411,7 +412,8 @@ Status PgClientSession::AlterTable(
     const PgAlterTableRequestPB& req, PgAlterTableResponsePB* resp, rpc::RpcContext* context) {
   const auto table_id = PgObjectId::GetYbTableIdFromPB(req.table_id());
   const auto alterer = client().NewTableAlterer(table_id);
-  const auto txn = VERIFY_RESULT(GetDdlTransactionMetadata(req.use_transaction()));
+  const auto txn = VERIFY_RESULT(GetDdlTransactionMetadata(
+      req.use_transaction(), context->GetClientDeadline()));
   if (txn) {
     alterer->part_of_transaction(txn);
   }
@@ -508,7 +510,7 @@ Status PgClientSession::SetActiveSubTransaction(
   VLOG_WITH_PREFIX_AND_FUNC(2) << req.ShortDebugString();
 
   if (req.has_options()) {
-    RETURN_NOT_OK(BeginTransactionIfNecessary(req.options()));
+    RETURN_NOT_OK(BeginTransactionIfNecessary(req.options(), context->GetClientDeadline()));
     txn_serial_no_ = req.options().txn_serial_no();
   }
 
@@ -603,10 +605,10 @@ Result<client::YBSession*> PgClientSession::SetupSession(
   } else if (options.ddl_mode()) {
     kind = PgClientSessionKind::kDdl;
     EnsureSession(kind);
-    RETURN_NOT_OK(GetDdlTransactionMetadata(true));
+    RETURN_NOT_OK(GetDdlTransactionMetadata(true, deadline));
   } else {
     kind = PgClientSessionKind::kPlain;
-    RETURN_NOT_OK(BeginTransactionIfNecessary(options));
+    RETURN_NOT_OK(BeginTransactionIfNecessary(options, deadline));
   }
 
   client::YBSession* session = Session(kind).get();
@@ -665,7 +667,8 @@ std::string PgClientSession::LogPrefix() {
   return SessionLogPrefix(id_);
 }
 
-Status PgClientSession::BeginTransactionIfNecessary(const PgPerformOptionsPB& options) {
+Status PgClientSession::BeginTransactionIfNecessary(
+    const PgPerformOptionsPB& options, CoarseTimePoint deadline) {
   const auto isolation = static_cast<IsolationLevel>(options.isolation());
 
   auto priority = options.priority();
@@ -698,7 +701,7 @@ Status PgClientSession::BeginTransactionIfNecessary(const PgPerformOptionsPB& op
   }
 
   txn = transaction_pool_provider_()->Take(
-      client::ForceGlobalTransaction(options.force_global_transaction()));
+      client::ForceGlobalTransaction(options.force_global_transaction()), deadline);
   if ((isolation == IsolationLevel::SNAPSHOT_ISOLATION ||
            isolation == IsolationLevel::READ_COMMITTED) &&
       txn_serial_no_ == options.txn_serial_no()) {
@@ -723,7 +726,7 @@ Status PgClientSession::BeginTransactionIfNecessary(const PgPerformOptionsPB& op
 }
 
 Result<const TransactionMetadata*> PgClientSession::GetDdlTransactionMetadata(
-    bool use_transaction) {
+    bool use_transaction, CoarseTimePoint deadline) {
   if (!use_transaction) {
     return nullptr;
   }
@@ -732,8 +735,8 @@ Result<const TransactionMetadata*> PgClientSession::GetDdlTransactionMetadata(
   if (!txn) {
     const auto isolation = FLAGS_ysql_serializable_isolation_for_ddl_txn
         ? IsolationLevel::SERIALIZABLE_ISOLATION : IsolationLevel::SNAPSHOT_ISOLATION;
-    txn = VERIFY_RESULT(transaction_pool_provider_()->TakeAndInit(isolation));
-    ddl_txn_metadata_ = VERIFY_RESULT(Copy(txn->GetMetadata().get()));
+    txn = VERIFY_RESULT(transaction_pool_provider_()->TakeAndInit(isolation, deadline));
+    ddl_txn_metadata_ = VERIFY_RESULT(Copy(txn->GetMetadata(deadline).get()));
     EnsureSession(PgClientSessionKind::kDdl)->SetTransaction(txn);
   }
 
