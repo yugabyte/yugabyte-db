@@ -9,7 +9,6 @@ import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -17,7 +16,6 @@ import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -84,10 +82,7 @@ public class RestartUniverseTest extends UpgradeTaskTest {
       for (TaskType type : taskSequence) {
         List<TaskInfo> tasks = subTasksByPosition.get(position);
         TaskType taskType = tasks.get(0).getTaskType();
-        // TaskInfo at position 0 will have 2 sub-tasks.
-        int numTasksToAssert = position == 0 ? 2 : 1;
-
-        assertEquals(numTasksToAssert, tasks.size());
+        assertEquals(1, tasks.size());
         assertEquals(type, taskType);
         if (!NON_NODE_TASKS.contains(taskType)) {
           Map<String, Object> assertValues =

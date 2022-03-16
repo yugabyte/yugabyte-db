@@ -3,7 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroup;
+import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
@@ -156,7 +156,8 @@ public class ResizeNode extends UpgradeTaskBase {
   }
 
   private SubTaskGroup createChangeInstanceTypeTask(NodeDetails node) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("ChangeInstanceType", executor);
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("ChangeInstanceType", executor);
     ChangeInstanceType.Params params = new ChangeInstanceType.Params();
 
     params.nodeName = node.nodeName;
@@ -166,13 +167,13 @@ public class ResizeNode extends UpgradeTaskBase {
 
     ChangeInstanceType changeInstanceTypeTask = createTask(ChangeInstanceType.class);
     changeInstanceTypeTask.initialize(params);
-    subTaskGroup.addTask(changeInstanceTypeTask);
-    subTaskGroupQueue.add(subTaskGroup);
+    subTaskGroup.addSubTask(changeInstanceTypeTask);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
   private SubTaskGroup createNodeDetailsUpdateTask(NodeDetails node) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("UpdateNodeDetails", executor);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("UpdateNodeDetails", executor);
     UpdateNodeDetails.Params updateNodeDetailsParams = new UpdateNodeDetails.Params();
     updateNodeDetailsParams.universeUUID = taskParams().universeUUID;
     updateNodeDetailsParams.azUuid = node.azUuid;
@@ -182,9 +183,8 @@ public class ResizeNode extends UpgradeTaskBase {
     UpdateNodeDetails updateNodeTask = createTask(UpdateNodeDetails.class);
     updateNodeTask.initialize(updateNodeDetailsParams);
     updateNodeTask.setUserTaskUUID(userTaskUUID);
-    subTaskGroup.addTask(updateNodeTask);
-
-    subTaskGroupQueue.add(subTaskGroup);
+    subTaskGroup.addSubTask(updateNodeTask);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 }

@@ -3,7 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroup;
+import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
@@ -67,13 +67,14 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
         String.format(
             "AnsibleConfigureServers (%s) for: %s",
             SubTaskGroupType.DownloadingSoftware, taskParams().nodePrefix);
-    SubTaskGroup downloadTaskGroup = new SubTaskGroup(subGroupDescription, executor);
+
+    SubTaskGroup downloadTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription);
     for (NodeDetails node : nodes) {
-      downloadTaskGroup.addTask(
+      downloadTaskGroup.addSubTask(
           getAnsibleConfigureServerTask(node, ServerType.TSERVER, UpgradeTaskSubType.Download));
     }
     downloadTaskGroup.setSubTaskGroupType(SubTaskGroupType.DownloadingSoftware);
-    subTaskGroupQueue.add(downloadTaskGroup);
+    getRunnableTask().addSubTaskGroup(downloadTaskGroup);
   }
 
   private void createSoftwareInstallTasks(List<NodeDetails> nodes, ServerType processType) {
@@ -86,13 +87,13 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
         String.format(
             "AnsibleConfigureServers (%s) for: %s",
             SubTaskGroupType.InstallingSoftware, taskParams().nodePrefix);
-    SubTaskGroup taskGroup = new SubTaskGroup(subGroupDescription, executor);
+    SubTaskGroup taskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription);
     for (NodeDetails node : nodes) {
-      taskGroup.addTask(
+      taskGroup.addSubTask(
           getAnsibleConfigureServerTask(node, processType, UpgradeTaskSubType.Install));
     }
     taskGroup.setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
-    subTaskGroupQueue.add(taskGroup);
+    getRunnableTask().addSubTaskGroup(taskGroup);
   }
 
   private AnsibleConfigureServers getAnsibleConfigureServerTask(

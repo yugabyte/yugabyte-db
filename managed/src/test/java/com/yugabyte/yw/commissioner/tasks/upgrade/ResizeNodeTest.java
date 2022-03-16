@@ -10,9 +10,6 @@ import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
@@ -45,10 +42,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
-import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnitRunner;
-import org.yb.client.ChangeConfigResponse;
-import org.yb.client.YBClient;
 
 @RunWith(MockitoJUnitRunner.class)
 @Slf4j
@@ -307,10 +301,9 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
-    assertEquals(subTasks.size(), subTasksByPosition.size() + 1);
+    assertEquals(subTasks.size(), subTasksByPosition.size());
     int position = startPosition;
     assertTaskType(subTasksByPosition.get(position++), TaskType.ModifyBlackList);
-
     position =
         assertTasksSequence(
             subTasksByPosition,

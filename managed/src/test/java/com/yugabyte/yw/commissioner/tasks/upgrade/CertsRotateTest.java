@@ -13,7 +13,6 @@ import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -166,11 +165,9 @@ public class CertsRotateTest extends UpgradeTaskTest {
         assertTaskType(subTasksByPosition.get(position++), TaskType.UniverseSetTlsParams);
       }
     } else {
-      // Non-root CA updates require a ModifyBlackList task at position 0.
-      int numTasksToAssert = position == 0 ? 4 : 3;
       List<TaskInfo> certUpdateTasks = subTasksByPosition.get(position++);
       assertTaskType(certUpdateTasks, TaskType.AnsibleConfigureServers);
-      assertEquals(numTasksToAssert, certUpdateTasks.size());
+      assertEquals(3, certUpdateTasks.size());
     }
     return position;
   }

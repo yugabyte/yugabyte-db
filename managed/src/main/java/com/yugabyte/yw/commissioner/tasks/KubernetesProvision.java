@@ -11,8 +11,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroup;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
+import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.params.KubernetesClusterInitParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
@@ -35,13 +34,11 @@ public class KubernetesProvision extends CloudTaskBase {
   @Override
   public void run() {
     try {
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
-
       // Create the helm init task for the given cluster(config).
       createKubernetesInitTask(KubernetesCommandExecutor.CommandType.HELM_INIT);
 
       // Run all the tasks.
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
       throw t;
@@ -50,15 +47,16 @@ public class KubernetesProvision extends CloudTaskBase {
   }
 
   public void createKubernetesInitTask(KubernetesCommandExecutor.CommandType commandType) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup(commandType.getSubTaskGroupName(), executor);
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup(commandType.getSubTaskGroupName(), executor);
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
     params.config = taskParams().config;
     params.commandType = commandType;
     params.providerUUID = taskParams().providerUUID;
     KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
     task.initialize(params);
-    subTaskGroup.addTask(task);
-    subTaskGroupQueue.add(subTaskGroup);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     subTaskGroup.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.Provisioning);
   }
 }

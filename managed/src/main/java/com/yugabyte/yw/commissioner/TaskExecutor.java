@@ -406,6 +406,33 @@ public class TaskExecutor {
   }
 
   /**
+   * Creates a SubTaskGroup with the given parameters.
+   *
+   * @param name the name of the group.
+   * @param executorService the executorService to run the tasks for this group.
+   * @return
+   */
+  public SubTaskGroup createSubTaskGroup(String name, ExecutorService executorService) {
+    return createSubTaskGroup(name, executorService, false);
+  }
+
+  /**
+   * Creates a SubTaskGroup with the given parameters.
+   *
+   * @param name the name of the group.
+   * @param executorService the executorService to run the tasks for this group.
+   * @param ignoreErrors ignore individual subtask error until the all the subtasks in the group are
+   *     executed if it is set.
+   * @return
+   */
+  public SubTaskGroup createSubTaskGroup(
+      String name, ExecutorService executorService, boolean ignoreErrors) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup(name, SubTaskGroupType.Invalid, ignoreErrors);
+    subTaskGroup.setSubTaskExecutor(executorService);
+    return subTaskGroup;
+  }
+
+  /**
    * Creates a SubTaskGroup to which subtasks can be added for concurrent execution.
    *
    * @param name the name of the group.
@@ -899,11 +926,12 @@ public class TaskExecutor {
 
     /**
      * Clears the already added subtask groups so that they are not run when the RunnableTask is
-     * re-run.
+     * re-run. When runSubTasks() of RunnableTask returns, the current subtasks are discarded. But,
+     * if any other operations prior to calling runSubTasks() can fail. So, this method can be used
+     * to clean up the previous subtasks.
      */
     public void reset() {
       subTaskGroups.clear();
-      subTaskPosition = 0;
     }
 
     @Override
@@ -946,40 +974,45 @@ public class TaskExecutor {
      */
     public void runSubTasks() {
       RuntimeException anyRe = null;
-      for (SubTaskGroup subTaskGroup : subTaskGroups) {
-        if (subTaskGroup.getSubTaskCount() == 0) {
-          // TODO Some groups are added without any subtasks in a task like
-          // CreateKubernetesUniverse.
-          // It needs to be fixed first before this can prevent empty groups from getting added.
-          continue;
-        }
-        ExecutorService executorService = subTaskGroup.getSubTaskExecutorService();
-        if (executorService == null) {
-          executorService = executorServiceProvider.getExecutorServiceFor(getTaskType());
-          subTaskGroup.setSubTaskExecutor(executorService);
-        }
-        checkNotNull(executorService, "ExecutorService must be set");
-        try {
+      try {
+        for (SubTaskGroup subTaskGroup : subTaskGroups) {
+          if (subTaskGroup.getSubTaskCount() == 0) {
+            // TODO Some groups are added without any subtasks in a task like
+            // CreateKubernetesUniverse.
+            // It needs to be fixed first before this can prevent empty groups from getting added.
+            continue;
+          }
+          ExecutorService executorService = subTaskGroup.getSubTaskExecutorService();
+          if (executorService == null) {
+            executorService = executorServiceProvider.getExecutorServiceFor(getTaskType());
+            subTaskGroup.setSubTaskExecutor(executorService);
+          }
+          checkNotNull(executorService, "ExecutorService must be set");
           try {
-            // This can throw rare exception on task submission error.
-            subTaskGroup.submitSubTasks();
-          } finally {
-            // TODO Does it make sense to abort the task?
-            // There can be conflicts between aborted and failed task states.
-            // Wait for already submitted subtasks.
-            subTaskGroup.waitForSubTasks();
+            try {
+              // This can throw rare exception on task submission error.
+              subTaskGroup.submitSubTasks();
+            } finally {
+              // TODO Does it make sense to abort the task?
+              // There can be conflicts between aborted and failed task states.
+              // Wait for already submitted subtasks.
+              subTaskGroup.waitForSubTasks();
+            }
+          } catch (CancellationException e) {
+            throw new CancellationException(subTaskGroup.toString() + " is cancelled.");
+          } catch (RuntimeException e) {
+            if (subTaskGroup.ignoreErrors) {
+              log.error("Ignoring error for " + subTaskGroup.toString(), e);
+            } else {
+              // Postpone throwing this error later when all the subgroups are done.
+              throw new RuntimeException(subTaskGroup.toString() + " failed.");
+            }
+            anyRe = e;
           }
-        } catch (CancellationException e) {
-          throw new CancellationException(subTaskGroup.toString() + " is cancelled.");
-        } catch (RuntimeException e) {
-          if (subTaskGroup.ignoreErrors) {
-            log.error("Ignoring error for " + subTaskGroup.toString(), e);
-          } else {
-            // Postpone throwing this error later when all the subgroups are done.
-            throw new RuntimeException(subTaskGroup.toString() + " failed.");
-          }
-          anyRe = e;
         }
+      } finally {
+        // Clear the subtasks so that new subtasks can be run from the clean state.
+        subTaskGroups.clear();
       }
       if (anyRe != null) {
         throw new RuntimeException("One or more SubTaskGroups failed while running.");

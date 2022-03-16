@@ -163,9 +163,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
           List<TaskInfo> tasks = subTasksByPosition.get(position);
           TaskType taskType = tasks.get(0).getTaskType();
           UserTaskDetails.SubTaskGroupType subTaskGroupType = tasks.get(0).getSubTaskGroupType();
-          // Leader blacklisting adds a ModifyBlackList task at position 0
-          int numTasksToAssert = position == 0 ? 2 : 1;
-          assertEquals(numTasksToAssert, tasks.size());
+          assertEquals(1, tasks.size());
           assertEquals(type, taskType);
           if (!NON_NODE_TASKS.contains(taskType)) {
             Map<String, Object> assertValues =
@@ -207,9 +205,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
                 ImmutableMap.of(
                     "ybSoftwareVersion", version, "processType", serverType.toString()));
           }
-          // The task at postion 0 adds a ModifyBlacklist sub-task.
-          int numTasksToAssert = position == 0 ? 4 : 3;
-          assertEquals(numTasksToAssert, tasks.size());
+          assertEquals(3, tasks.size());
           assertNodeSubTask(tasks, assertValues);
         }
         position++;
@@ -258,7 +254,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     int position = 0;
     List<TaskInfo> downloadTasks = subTasksByPosition.get(position++);
     assertTaskType(downloadTasks, TaskType.AnsibleConfigureServers);
-    assertEquals(4, downloadTasks.size());
+    assertEquals(3, downloadTasks.size());
     position = assertSequence(subTasksByPosition, MASTER, position, true);
     position =
         assertCommonTasks(
@@ -320,7 +316,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     int position = 0;
     List<TaskInfo> downloadTasks = subTasksByPosition.get(position++);
     assertTaskType(downloadTasks, TaskType.AnsibleConfigureServers);
-    assertEquals(7, downloadTasks.size());
+    assertEquals(6, downloadTasks.size());
     position = assertSequence(subTasksByPosition, MASTER, position, true);
     position =
         assertCommonTasks(
@@ -348,7 +344,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     int position = 0;
     List<TaskInfo> downloadTasks = subTasksByPosition.get(position++);
     assertTaskType(downloadTasks, TaskType.AnsibleConfigureServers);
-    assertEquals(4, downloadTasks.size());
+    assertEquals(3, downloadTasks.size());
     position = assertSequence(subTasksByPosition, MASTER, position, false);
     position = assertSequence(subTasksByPosition, TSERVER, position, false);
     assertCommonTasks(subTasksByPosition, position, UpgradeType.FULL_UPGRADE, true);
