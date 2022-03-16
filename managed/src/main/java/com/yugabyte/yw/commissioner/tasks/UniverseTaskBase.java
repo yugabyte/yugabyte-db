@@ -67,6 +67,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLoadBalance;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServerReady;
+import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMemory;
 import com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeManager;
@@ -572,7 +573,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   /** Create a task to mark the final software version on a universe. */
   public SubTaskGroup createUpdateSoftwareVersionTask(String softwareVersion) {
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("FinalizeUniverseUpdate");
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("FinalizeUniverseUpdate", executor);
     UpdateSoftwareVersion.Params params = new UpdateSoftwareVersion.Params();
     params.universeUUID = taskParams().universeUUID;
     params.softwareVersion = softwareVersion;
@@ -587,7 +589,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   /** Create a task to run YSQL upgrade on the universe. */
   public SubTaskGroup createRunYsqlUpgradeTask(String ybSoftwareVersion) {
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("RunYsqlUpgrade");
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("RunYsqlUpgrade", executor);
 
     RunYsqlUpgrade task = createTask(RunYsqlUpgrade.class);
 
@@ -595,6 +597,23 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.universeUUID = taskParams().universeUUID;
     params.ybSoftwareVersion = ybSoftwareVersion;
 
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /** Create a task to check memory limit on the universe nodes */
+  public SubTaskGroup createAvailabeMemoryCheck(
+      List<NodeDetails> nodes, String memoryType, Long memoryLimitKB) {
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("CheckMemory", executor);
+    CheckMemory task = createTask(CheckMemory.class);
+    CheckMemory.Params params = new CheckMemory.Params();
+    params.universeUUID = taskParams().universeUUID;
+    params.memoryType = memoryType;
+    params.memoryLimitKB = memoryLimitKB;
+    params.nodeIpList =
+        nodes.stream().map(node -> node.cloudInfo.private_ip).collect(Collectors.toList());
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
