@@ -78,7 +78,7 @@ template <class SrcCellType, class DstCellType, class ArenaType>
 Status CopyCellData(const SrcCellType &src, DstCellType* dst, ArenaType *dst_arena) {
   DCHECK_EQ(src.typeinfo()->type(), dst->typeinfo()->type());
 
-  if (src.typeinfo()->physical_type() == BINARY) {
+  if (src.typeinfo()->var_length()) {
     // If it's a Slice column, need to relocate the referred-to data
     // as well as the slice itself.
     // TODO: potential optimization here: if the new value is smaller than
@@ -255,7 +255,7 @@ inline CHECKED_STATUS RelocateIndirectDataToArena(RowType *row, ArenaType *dst_a
   // and update the pointers
   for (size_t i = 0; i < schema->num_columns(); i++) {
     typename RowType::Cell cell = row->cell(i);
-    if (cell.typeinfo()->physical_type() == BINARY) {
+    if (cell.typeinfo()->var_length()) {
       if (cell.is_nullable() && cell.is_null()) {
         continue;
       }
@@ -316,10 +316,10 @@ class ContiguousRowHelper {
 
   static Slice CellSlice(const Schema& schema, const uint8_t *row_data, size_t col_idx) {
     const uint8_t* cell_data_ptr = cell_ptr(schema, row_data, col_idx);
-    if (schema.column(col_idx).type_info()->physical_type() == BINARY) {
+    if (schema.column(col_idx).type_info()->var_length()) {
       return *(reinterpret_cast<const Slice*>(cell_data_ptr));
     } else {
-      return Slice(cell_data_ptr, schema.column(col_idx).type_info()->size());
+      return Slice(cell_data_ptr, schema.column(col_idx).type_info()->size);
     }
   }
 };
@@ -462,192 +462,6 @@ template<>
 void* ContiguousRowCell<ConstContiguousRow>::mutable_ptr() const;
 template<>
 void ContiguousRowCell<ConstContiguousRow>::set_null(bool null) const;
-
-
-// Utility class for building rows corresponding to a given schema.
-// This is used only by tests.
-// TODO: move it into a test utility.
-class RowBuilder {
- public:
-  explicit RowBuilder(const Schema& schema)
-    : schema_(schema),
-      arena_(1024, 1024*1024),
-      bitmap_size_(ContiguousRowHelper::null_bitmap_size(schema)) {
-    Reset();
-  }
-
-  // Reset the RowBuilder so that it is ready to build
-  // the next row.
-  // NOTE: The previous row's data is invalidated. Even
-  // if the previous row's data has been copied, indirected
-  // entries such as strings may end up shared or deallocated
-  // after Reset. So, the previous row must be fully copied
-  // (eg using CopyRowToArena()).
-  void Reset() {
-    arena_.Reset();
-    size_t row_size = schema_.byte_size() + bitmap_size_;
-    buf_ = reinterpret_cast<uint8_t *>(arena_.AllocateBytes(row_size));
-    CHECK(buf_) << "could not allocate " << row_size << " bytes for row builder";
-    col_idx_ = 0;
-    byte_idx_ = 0;
-    ContiguousRowHelper::InitNullsBitmap(schema_, buf_, bitmap_size_);
-  }
-
-  void AddString(const Slice &slice) {
-    CheckNextType(STRING);
-    AddSlice(slice);
-  }
-
-  void AddString(const string &str) {
-    CheckNextType(STRING);
-    AddSlice(str);
-  }
-
-  void AddBinary(const Slice &slice) {
-    CheckNextType(BINARY);
-    AddSlice(slice);
-  }
-
-  void AddBinary(const string &str) {
-    CheckNextType(BINARY);
-    AddSlice(str);
-  }
-
-  void AddInt8(int8_t val) {
-    CheckNextType(INT8);
-    *reinterpret_cast<int8_t *>(&buf_[byte_idx_]) = val;
-    Advance();
-  }
-
-  void AddUint8(uint8_t val) {
-    CheckNextType(UINT8);
-    *reinterpret_cast<uint8_t *>(&buf_[byte_idx_]) = val;
-    Advance();
-  }
-
-  void AddInt16(int16_t val) {
-    CheckNextType(INT16);
-    *reinterpret_cast<int16_t *>(&buf_[byte_idx_]) = val;
-    Advance();
-  }
-
-  void AddUint16(uint16_t val) {
-    CheckNextType(UINT16);
-    *reinterpret_cast<uint16_t *>(&buf_[byte_idx_]) = val;
-    Advance();
-  }
-
-  void AddInt32(int32_t val) {
-    CheckNextType(INT32);
-    *reinterpret_cast<int32_t *>(&buf_[byte_idx_]) = val;
-    Advance();
-  }
-
-  void AddUint32(uint32_t val) {
-    CheckNextType(UINT32);
-    *reinterpret_cast<uint32_t *>(&buf_[byte_idx_]) = val;
-    Advance();
-  }
-
-  void AddInt64(int64_t val) {
-    CheckNextType(INT64);
-    *reinterpret_cast<int64_t *>(&buf_[byte_idx_]) = val;
-    Advance();
-  }
-
-  void AddTimestamp(int64_t micros_utc_since_epoch) {
-    CheckNextType(TIMESTAMP);
-    *reinterpret_cast<int64_t *>(&buf_[byte_idx_]) = micros_utc_since_epoch;
-    Advance();
-  }
-
-  void AddUint64(uint64_t val) {
-    CheckNextType(UINT64);
-    *reinterpret_cast<uint64_t *>(&buf_[byte_idx_]) = val;
-    Advance();
-  }
-
-  void AddFloat(float val) {
-    CheckNextType(FLOAT);
-    *reinterpret_cast<float *>(&buf_[byte_idx_]) = val;
-    Advance();
-  }
-
-  void AddDouble(double val) {
-    CheckNextType(DOUBLE);
-    *reinterpret_cast<double *>(&buf_[byte_idx_]) = val;
-    Advance();
-  }
-
-  void AddNull() {
-    CHECK(schema_.column(col_idx_).is_nullable());
-    BitmapSet(buf_ + schema_.byte_size(), col_idx_);
-    Advance();
-  }
-
-  // Retrieve the data slice from the current row.
-  // The Add*() functions must have been called an appropriate
-  // number of times such that all columns are filled in, or else
-  // a crash will occur.
-  //
-  // The data slice returned by this is only valid until the next
-  // call to Reset().
-  // Note that the Slice may also contain pointers which refer to
-  // other parts of the internal Arena, so even if the returned
-  // data is copied, it is not safe to Reset() before also calling
-  // CopyRowIndirectDataToArena.
-  const Slice data() const {
-    CHECK_EQ(byte_idx_, schema_.byte_size());
-    return Slice(buf_, byte_idx_ + bitmap_size_);
-  }
-
-  const Schema& schema() const {
-    return schema_;
-  }
-
-  ConstContiguousRow row() const {
-    return ConstContiguousRow(&schema_, data());
-  }
-
- private:
-  void AddSlice(const Slice &slice) {
-    Slice *ptr = reinterpret_cast<Slice *>(buf_ + byte_idx_);
-    CHECK(arena_.RelocateSlice(slice, ptr)) << "could not allocate space in arena";
-
-    Advance();
-  }
-
-  void AddSlice(const string &str) {
-    uint8_t *in_arena = arena_.AddSlice(str);
-    CHECK(in_arena) << "could not allocate space in arena";
-
-    Slice *ptr = reinterpret_cast<Slice *>(buf_ + byte_idx_);
-    *ptr = Slice(in_arena, str.size());
-
-    Advance();
-  }
-
-  void CheckNextType(DataType type) {
-    CHECK_EQ(schema_.column(col_idx_).type_info()->type(),
-             type);
-  }
-
-  void Advance() {
-    auto size = schema_.column(col_idx_).type_info()->size();
-    byte_idx_ += size;
-    col_idx_++;
-  }
-
-  const Schema schema_;
-  Arena arena_;
-  uint8_t *buf_;
-
-  size_t col_idx_;
-  size_t byte_idx_;
-  size_t bitmap_size_;
-
-  DISALLOW_COPY_AND_ASSIGN(RowBuilder);
-};
 
 } // namespace yb
 

@@ -43,7 +43,6 @@ void DocWriteBatchCache::Put(const KeyBytes& key_bytes, const DocWriteBatchCache
       BestEffortDocDBKeyToStr(key_bytes),
       entry.doc_hybrid_time.ToString(),
       ToString(entry.value_type));
-
   prefix_to_gen_ht_[key_bytes.data()] = entry;
 }
 
@@ -80,11 +79,13 @@ string DocWriteBatchCache::EntryToStr(const Entry& entry) {
   ostringstream ss;
   ss << "("
      << entry.doc_hybrid_time.ToString() << ", "
-     << entry.value_type << ", "
-     << ((entry.user_timestamp == Value::kInvalidUserTimestamp) ?
-        string("InvalidUserTimestamp") :
-        std::to_string(entry.user_timestamp)) << ", "
-     << entry.found_exact_key_prefix
+     << entry.value_type << ", ";
+  if (entry.user_timestamp == ValueControlFields::kInvalidUserTimestamp) {
+    ss << "InvalidUserTimestamp";
+  } else {
+    ss << entry.user_timestamp;
+  }
+  ss << ", " << entry.found_exact_key_prefix
      << ")";
   return ss.str();
 }

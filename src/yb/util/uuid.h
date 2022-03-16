@@ -81,6 +81,8 @@ class Uuid {
   void EncodeToComparable(uint8_t* output) const;
   void EncodeToComparable(std::string* bytes) const;
 
+  void AppendEncodedComparable(std::string* bytes) const;
+
   // Given a string holding the raw bytes in network byte order, it builds the appropriate
   // UUID object.
   CHECKED_STATUS FromBytes(const std::string& bytes);

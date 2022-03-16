@@ -346,9 +346,8 @@ TEST_F(DocKeyTest, TestBasicSubDocKeyEncodingDecoding) {
     ASSERT_TRUE(temp.empty());
     ASSERT_EQ(range_group[i], value);
   }
-  DocHybridTime time;
   Slice temp = slices[size];
-  ASSERT_OK(time.DecodeFrom(&temp));
+  DocHybridTime time = ASSERT_RESULT(DocHybridTime::DecodeFrom(&temp));
   ASSERT_TRUE(temp.empty());
   ASSERT_EQ(subdoc_key.doc_hybrid_time(), time);
 }

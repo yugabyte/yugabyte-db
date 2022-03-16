@@ -1115,17 +1115,15 @@ std::string DebugIntentKeyToString(Slice intent_key) {
     LOG(WARNING) << "Failed to parse: " << intent_key.ToDebugHexString() << ": " << parsed.status();
     return intent_key.ToDebugHexString();
   }
-  DocHybridTime doc_ht;
-  auto status = doc_ht.DecodeFromEnd(parsed->doc_ht);
-  if (!status.ok()) {
-    LOG(WARNING) << "Failed to decode doc ht: " << intent_key.ToDebugHexString() << ": " << status;
+  auto doc_ht = DocHybridTime::DecodeFromEnd(parsed->doc_ht);
+  if (!doc_ht.ok()) {
+    LOG(WARNING) << "Failed to decode doc ht: " << intent_key.ToDebugHexString() << ": "
+                 << doc_ht.status();
     return intent_key.ToDebugHexString();
   }
-  return Format("$0 (key: $1 type: $2 doc_ht: $3 )",
-                intent_key.ToDebugHexString(),
-                SubDocKey::DebugSliceToString(parsed->doc_path),
-                parsed->types,
-                doc_ht.ToString());
+  return Format("$0 (key: $1 type: $2 doc_ht: $3)",
+                intent_key.ToDebugHexString(), SubDocKey::DebugSliceToString(parsed->doc_path),
+                parsed->types, *doc_ht);
 }
 
 } // namespace docdb

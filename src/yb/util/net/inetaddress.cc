@@ -55,21 +55,20 @@ CHECKED_STATUS InetAddress::ToString(std::string *strval) const {
   return Status::OK();
 }
 
-CHECKED_STATUS InetAddress::ToBytes(std::string* bytes) const {
-  try {
-    if (boost_addr_.is_v4()) {
-      auto v4bytes = boost_addr_.to_v4().to_bytes();
-      bytes->assign(reinterpret_cast<char *>(v4bytes.data()), v4bytes.size());
-    } else if (boost_addr_.is_v6()) {
-      auto v6bytes = boost_addr_.to_v6().to_bytes();
-      bytes->assign(reinterpret_cast<char *>(v6bytes.data()), v6bytes.size());
-    } else {
-      return STATUS(Uninitialized, "InetAddress doesn't hold a valid IPv4 or IPv6 address");
-    }
-  } catch (std::exception& e) {
-    return STATUS(Corruption, "Couldn't serialize InetAddress to raw bytes!");
+std::string InetAddress::ToBytes() const {
+  std::string result;
+  AppendToBytes(&result);
+  return result;
+}
+
+void InetAddress::AppendToBytes(std::string* bytes) const {
+  if (boost_addr_.is_v4()) {
+    auto v4bytes = boost_addr_.to_v4().to_bytes();
+    bytes->append(reinterpret_cast<char *>(v4bytes.data()), v4bytes.size());
+  } else {
+    auto v6bytes = boost_addr_.to_v6().to_bytes();
+    bytes->append(reinterpret_cast<char *>(v6bytes.data()), v6bytes.size());
   }
-  return Status::OK();
 }
 
 CHECKED_STATUS InetAddress::FromSlice(const Slice& slice, size_t size_hint) {
@@ -196,11 +195,7 @@ void FilterAddresses(const string& filter_spec, vector<IpAddress>* addresses) {
 }
 
 bool InetAddress::operator<(const InetAddress& other) const {
-  string this_bytes, other_bytes;
-  Status s = ToBytes(&this_bytes);
-  Status t = other.ToBytes(&other_bytes);
-  DCHECK(s.ok() && t.ok());
-  return this_bytes < other_bytes;
+  return ToBytes() < other.ToBytes();
 }
 
 bool InetAddress::isV4() const {

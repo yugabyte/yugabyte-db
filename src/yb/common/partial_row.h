@@ -197,21 +197,6 @@ class YBPartialRow {
   CHECKED_STATUS GetTimeUuid(size_t col_idx, Slice* val) const WARN_UNUSED_RESULT;
 
   //------------------------------------------------------------
-  // Key-encoding related functions
-  //------------------------------------------------------------
-
-  // Encode a row key suitable for use as a tablet split key, an encoded
-  // key range, etc.
-  //
-  // Requires that all of the key columns must be set; otherwise, returns
-  // InvalidArgument.
-  CHECKED_STATUS EncodeRowKey(std::string* encoded_key) const;
-
-  // Convenience method which is equivalent to the above, but triggers a
-  // FATAL error on failure.
-  std::string ToEncodedRowKeyOrDie() const;
-
-  //------------------------------------------------------------
   // Utility code
   //------------------------------------------------------------
 

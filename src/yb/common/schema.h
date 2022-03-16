@@ -476,7 +476,6 @@ typedef std::string PgSchemaName;
 // Schema::swap() or Schema::Reset() rather than returning by value.
 class Schema {
  public:
-
   static const ssize_t kColumnNotFound = -1;
 
   Schema()
@@ -553,12 +552,6 @@ class Schema {
   size_t byte_size() const {
     DCHECK(initialized());
     return col_offsets_.back();
-  }
-
-  // Return the number of bytes needed to represent
-  // only the key portion of this schema.
-  size_t key_byte_size() const {
-    return col_offsets_[num_key_columns_];
   }
 
   // Return the number of columns in this schema
@@ -733,7 +726,7 @@ class Schema {
 
   // Return true if this Schema is initialized and valid.
   bool initialized() const {
-    return !col_offsets_.empty();
+    return !cols_.empty();
   }
 
   // Returns the highest column id in this Schema.
@@ -787,7 +780,7 @@ class Schema {
     DCHECK_SCHEMA_EQ(*this, *row.schema());
     const ColumnSchema& col_schema = cols_[idx];
     DCHECK_LT(idx, cols_.size());
-    DCHECK_EQ(col_schema.type_info()->type(), Type);
+    DCHECK_EQ(col_schema.type_info()->type, Type);
 
     const void *val;
     if (col_schema.is_nullable()) {
@@ -807,36 +800,6 @@ class Schema {
     DCHECK_SCHEMA_EQ(*this, *row.schema());
     return DebugRowColumns(row, num_columns());
   }
-
-  // Stringify the given row, which must have a schema which is
-  // key-compatible with this one. Per above, this is not for use in
-  // hot paths.
-  template<class RowType>
-  std::string DebugRowKey(const RowType& row) const {
-    DCHECK_KEY_PROJECTION_SCHEMA_EQ(*this, *row.schema());
-    return DebugRowColumns(row, num_key_columns());
-  }
-
-  // Decode the specified encoded key into the given 'buffer', which
-  // must be at least as large as this->key_byte_size().
-  //
-  // 'arena' is used for allocating indirect strings, but is unused
-  // for other datatypes.
-  CHECKED_STATUS DecodeRowKey(Slice encoded_key, uint8_t* buffer, Arena* arena) const;
-
-  // Decode and stringify the given contiguous encoded row key in
-  // order to, e.g., provide print human-readable information about a
-  // tablet's start and end keys.
-  //
-  // If the encoded key is empty then '<start of table>' or '<end of table>'
-  // will be returned based on the value of 'start_or_end'.
-  //
-  // See also: DebugRowKey, DecodeRowKey.
-  enum StartOrEnd {
-    START_KEY,
-    END_KEY
-  };
-  std::string DebugEncodedRowKey(Slice encoded_key, StartOrEnd start_or_end) const;
 
   // Compare two rows of this schema.
   template<class RowTypeA, class RowTypeB>

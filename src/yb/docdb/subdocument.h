@@ -100,12 +100,12 @@ class SubDocument : public PrimitiveValue {
   typedef std::vector<SubDocument> ArrayContainer;
 
   ObjectContainer& object_container() const {
-    assert(has_valid_object_container());
+    DCHECK(has_valid_object_container());
     return *reinterpret_cast<ObjectContainer*>(complex_data_structure_);
   }
 
   ArrayContainer& array_container() const {
-    assert(has_valid_array_container());
+    DCHECK(has_valid_array_container());
     return *reinterpret_cast<ArrayContainer*>(complex_data_structure_);
   }
 
@@ -167,7 +167,7 @@ class SubDocument : public PrimitiveValue {
   // Construct a SubDocument from a QLValuePB.
   static SubDocument FromQLValuePB(const QLValuePB& value,
                                    SortingType sorting_type,
-                                   yb::bfql::TSOpcode write_instr = bfql::TSOpcode::kScalarInsert);
+                                   bfql::TSOpcode write_instr = bfql::TSOpcode::kScalarInsert);
 
   // Construct a QLValuePB from a SubDocument.
   static void ToQLValuePB(const SubDocument& doc,

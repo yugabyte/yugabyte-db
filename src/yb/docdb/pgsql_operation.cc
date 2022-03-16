@@ -440,8 +440,8 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
 
   RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
       DocPath(encoded_doc_key_.as_slice(), PrimitiveValue::kLivenessColumn),
-      Value(PrimitiveValue()),
-      data.read_time, data.deadline, request_.stmt_id()));
+      ValueControlFields(), ValueRef(ValueType::kNullLow), data.read_time, data.deadline,
+      request_.stmt_id()));
 
   for (const auto& column_value : request_.column_values()) {
     // Get the column.
@@ -458,13 +458,12 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
     // Evaluate column value.
     QLExprResult expr_result;
     RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, expr_result.Writer()));
-    const SubDocument sub_doc =
-        SubDocument::FromQLValuePB(expr_result.Value(), column.sorting_type());
 
     // Inserting into specified column.
     DocPath sub_path(encoded_doc_key_.as_slice(), PrimitiveValue(column_id));
     RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-        sub_path, sub_doc, data.read_time, data.deadline, request_.stmt_id()));
+        sub_path, ValueRef(expr_result.Value(), column.sorting_type()),
+        data.read_time, data.deadline, request_.stmt_id()));
   }
 
   RETURN_NOT_OK(PopulateResultSet(table_row));
@@ -537,12 +536,10 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
       }
 
       // Inserting into specified column.
-      const SubDocument sub_doc =
-          SubDocument::FromQLValuePB(expr_result.Value(), column.sorting_type());
-
       DocPath sub_path(encoded_doc_key_.as_slice(), PrimitiveValue(column_id));
       RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-          sub_path, sub_doc, data.read_time, data.deadline, request_.stmt_id()));
+          sub_path, ValueRef(expr_result.Value(), column.sorting_type()), data.read_time,
+          data.deadline, request_.stmt_id()));
       skipped = false;
     }
   } else {
@@ -575,13 +572,11 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
         QLExprResult expr_result;
         RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, expr_result.Writer()));
 
-        const SubDocument sub_doc =
-            SubDocument::FromQLValuePB(expr_result.Value(), column.sorting_type());
-
         // Inserting into specified column.
         DocPath sub_path(encoded_doc_key_.as_slice(), PrimitiveValue(column_id));
         RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-            sub_path, sub_doc, data.read_time, data.deadline, request_.stmt_id()));
+            sub_path, ValueRef(expr_result.Value(), column.sorting_type()), data.read_time,
+            data.deadline, request_.stmt_id()));
         skipped = false;
       }
     }

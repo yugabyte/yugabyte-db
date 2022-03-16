@@ -1107,7 +1107,7 @@ string PartitionSchema::DebugString(const Schema& schema) const {
         string component = "Multi Column Hash Partition. Partition columns: ";
         const std::vector<ColumnSchema>& cols = schema.columns();
         for (size_t idx = 0; idx < schema.num_hash_key_columns(); idx++) {
-          component.append(Substitute("$0($1)  ", cols[idx].name(), cols[idx].type_info()->name()));
+          component.append(Substitute("$0($1)  ", cols[idx].name(), cols[idx].type_info()->name));
         }
         component_types.push_back(component);
         break;

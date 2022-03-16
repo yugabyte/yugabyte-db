@@ -56,6 +56,7 @@ extern const TransactionOperationContext kNonTransactionalOperationContext;
 
 // Generate a random primitive value.
 PrimitiveValue GenRandomPrimitiveValue(RandomNumberGenerator* rng);
+ValueRef GenRandomPrimitiveValue(RandomNumberGenerator* rng, QLValuePB* holder);
 
 // Generate a random sequence of primitive values.
 std::vector<PrimitiveValue> GenRandomPrimitiveValues(RandomNumberGenerator* rng,

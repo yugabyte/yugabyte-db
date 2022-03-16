@@ -25,8 +25,7 @@ class InetAddressTest : public YBTest {
  protected:
   void RunRoundTrip(const std::string& strval) {
     InetAddress addr_orig(ASSERT_RESULT(ParseIpAddress(strval)));
-    std::string bytes;
-    ASSERT_OK(addr_orig.ToBytes(&bytes));
+    std::string bytes = addr_orig.ToBytes();
     InetAddress addr_new;
     ASSERT_OK(addr_new.FromBytes(bytes));
     std::string strval_new;

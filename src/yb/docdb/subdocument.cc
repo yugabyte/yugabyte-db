@@ -406,7 +406,7 @@ SubDocument SubDocument::FromQLValuePB(const QLValuePB& value,
       SubDocument set_doc;
       for (auto& elem : set.elems()) {
         PrimitiveValue pv_key = PrimitiveValue::FromQLValuePB(elem, sorting_type);
-        if (write_instr == TSOpcode::kSetRemove || write_instr == TSOpcode::kMapRemove ) {
+        if (write_instr == TSOpcode::kSetRemove || write_instr == TSOpcode::kMapRemove) {
           // representing sets elems as keys pointing to tombstones to remove those entries
           set_doc.SetChildPrimitive(pv_key, PrimitiveValue::kTombstone);
         }  else {

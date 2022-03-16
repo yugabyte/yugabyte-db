@@ -20,7 +20,7 @@ const TypeInfo* SimpleConstCell::typeinfo() const {
 }
 
 size_t SimpleConstCell::size() const {
-  return col_schema_->type_info()->size();
+  return col_schema_->type_info()->size;
 }
 
 bool SimpleConstCell::is_nullable() const {

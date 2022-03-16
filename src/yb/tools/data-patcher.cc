@@ -414,16 +414,18 @@ CHECKED_STATUS AddDeltaToSstFile(
           bool value_updated = false;
           if (storage_db_type == StorageDbType::kRegular) {
             docdb::Value docdb_value;
-            RETURN_NOT_OK(docdb_value.Decode(iterator->value()));
-            if (docdb_value.intent_doc_ht().is_valid()) {
-              auto intent_ht = docdb_value.intent_doc_ht().hybrid_time();
+            auto value_slice = iterator->value();
+            auto control_fields = VERIFY_RESULT(docdb::ValueControlFields::Decode(&value_slice));
+            if (control_fields.intent_doc_ht.is_valid()) {
+              auto intent_ht = control_fields.intent_doc_ht.hybrid_time();
               if (is_final_pass) {
                 DocHybridTime new_intent_doc_ht(
                     VERIFY_RESULT(delta_data.AddDelta(intent_ht, FileType::kSST)),
                     docdb_value.intent_doc_ht().write_id());
-                docdb_value.set_intent_doc_ht(new_intent_doc_ht);
+                control_fields.intent_doc_ht = new_intent_doc_ht;
                 value_buffer.clear();
-                docdb_value.EncodeAndAppend(&value_buffer);
+                control_fields.AppendEncoded(&value_buffer);
+                value_buffer.append(value_slice.cdata(), value_slice.size());
                 value_updated = true;
               } else {
                 delta_data.AddEarlyTime(intent_ht);

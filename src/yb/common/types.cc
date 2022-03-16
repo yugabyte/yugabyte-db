@@ -45,25 +45,6 @@ using std::unordered_map;
 
 namespace yb {
 
-template<typename TypeTraitsClass>
-TypeInfo::TypeInfo(TypeTraitsClass t)
-  : type_(TypeTraitsClass::type),
-    physical_type_(TypeTraitsClass::physical_type),
-    name_(TypeTraitsClass::name()),
-    size_(TypeTraitsClass::size),
-    min_value_(TypeTraitsClass::min_value()),
-    append_func_(TypeTraitsClass::AppendDebugStringForValue),
-    compare_func_(TypeTraitsClass::Compare) {
-}
-
-void TypeInfo::AppendDebugStringForValue(const void *ptr, string *str) const {
-  append_func_(ptr, str);
-}
-
-int TypeInfo::Compare(const void *lhs, const void *rhs) const {
-  return compare_func_(lhs, rhs);
-}
-
 class TypeInfoResolver {
  public:
   const TypeInfo* GetTypeInfo(DataType t) {
@@ -105,8 +86,16 @@ class TypeInfoResolver {
   }
 
   template<DataType type> void AddMapping() {
-    TypeTraits<type> traits;
-    mapping_.insert(make_pair(type, shared_ptr<TypeInfo>(new TypeInfo(traits))));
+    using TypeTraitsClass = TypeTraits<type>;
+    mapping_.emplace(type, std::make_shared<TypeInfo>(TypeInfo {
+      .type = TypeTraitsClass::type,
+      .physical_type = TypeTraitsClass::physical_type,
+      .name = TypeTraitsClass::name(),
+      .size = TypeTraitsClass::size,
+      .min_value = TypeTraitsClass::min_value(),
+      .append_func = TypeTraitsClass::AppendDebugStringForValue,
+      .compare_func = TypeTraitsClass::Compare,
+    }));
   }
 
   unordered_map<DataType,

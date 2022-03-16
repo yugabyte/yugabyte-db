@@ -854,13 +854,12 @@ IntentAwareIterator::FindMatchingIntentRecordDocHybridTime(const Slice& key_with
 Result<DocHybridTime>
 IntentAwareIterator::GetMatchingRegularRecordDocHybridTime(
     const Slice& key_without_ht) {
-  DocHybridTime doc_ht;
   size_t other_encoded_ht_size = 0;
   RETURN_NOT_OK(CheckHybridTimeSizeAndValueType(iter_.key(), &other_encoded_ht_size));
   Slice iter_key_without_ht = iter_.key();
   iter_key_without_ht.remove_suffix(1 + other_encoded_ht_size);
   if (key_without_ht == iter_key_without_ht) {
-    RETURN_NOT_OK(DecodeHybridTimeFromEndOfKey(iter_.key(), &doc_ht));
+    DocHybridTime doc_ht = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(iter_.key()));
     max_seen_ht_.MakeAtLeast(doc_ht.hybrid_time());
     return doc_ht;
   }

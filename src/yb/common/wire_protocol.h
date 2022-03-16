@@ -52,7 +52,6 @@
 
 namespace yb {
 
-class ConstContiguousRow;
 class ColumnId;
 class ColumnSchema;
 class faststring;

@@ -107,7 +107,7 @@ struct GetRedisSubDocumentData {
     const Slice& subdoc_key,
     SubDocument* result_,
     bool* doc_found_ = nullptr,
-    MonoDelta default_ttl = Value::kMaxTtl)
+    MonoDelta default_ttl = ValueControlFields::kMaxTtl)
       : subdocument_key(subdoc_key),
         result(result_),
         doc_found(doc_found_),

@@ -78,7 +78,6 @@
 namespace yb {
 
 class Histogram;
-class YBPartialRow;
 
 namespace client {
 

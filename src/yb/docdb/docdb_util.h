@@ -35,7 +35,7 @@ void SetValueFromQLBinaryWrapper(
 
 struct ExternalIntent {
   DocPath doc_path;
-  Value value;
+  std::string value;
 };
 
 // A wrapper around a RocksDB instance and provides utility functions on top of it, such as
@@ -115,13 +115,22 @@ class DocDBRocksDBUtil {
 
   CHECKED_STATUS SetPrimitive(
       const DocPath& doc_path,
-      const Value& value,
+      const ValueRef& value,
+      HybridTime hybrid_time,
+      const ReadHybridTime& read_ht = ReadHybridTime::Max()) {
+    return SetPrimitive(doc_path, ValueControlFields(), value, hybrid_time, read_ht);
+  }
+
+  CHECKED_STATUS SetPrimitive(
+      const DocPath& doc_path,
+      const ValueControlFields& control_fields,
+      const ValueRef& value,
       HybridTime hybrid_time,
       const ReadHybridTime& read_ht = ReadHybridTime::Max());
 
   CHECKED_STATUS SetPrimitive(
       const DocPath& doc_path,
-      const PrimitiveValue& value,
+      const QLValuePB& value,
       HybridTime hybrid_time,
       const ReadHybridTime& read_ht = ReadHybridTime::Max());
 
@@ -133,34 +142,34 @@ class DocDBRocksDBUtil {
 
   CHECKED_STATUS InsertSubDocument(
       const DocPath& doc_path,
-      const SubDocument& value,
+      const ValueRef& value,
       HybridTime hybrid_time,
-      MonoDelta ttl = Value::kMaxTtl,
+      MonoDelta ttl = ValueControlFields::kMaxTtl,
       const ReadHybridTime& read_ht = ReadHybridTime::Max());
 
   CHECKED_STATUS ExtendSubDocument(
       const DocPath& doc_path,
-      const SubDocument& value,
+      const ValueRef& value,
       HybridTime hybrid_time,
-      MonoDelta ttl = Value::kMaxTtl,
+      MonoDelta ttl = ValueControlFields::kMaxTtl,
       const ReadHybridTime& read_ht = ReadHybridTime::Max());
 
   CHECKED_STATUS ExtendList(
       const DocPath& doc_path,
-      const SubDocument& value,
+      const ValueRef& value,
       HybridTime hybrid_time,
       const ReadHybridTime& read_ht = ReadHybridTime::Max());
 
   CHECKED_STATUS ReplaceInList(
       const DocPath &doc_path,
       const int target_cql_index,
-      const SubDocument& value,
+      const ValueRef& value,
       const ReadHybridTime& read_ht,
       const HybridTime& hybrid_time,
       const rocksdb::QueryId query_id,
-      MonoDelta default_ttl = Value::kMaxTtl,
-      MonoDelta ttl = Value::kMaxTtl,
-      UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp);
+      MonoDelta default_ttl = ValueControlFields::kMaxTtl,
+      MonoDelta ttl = ValueControlFields::kMaxTtl,
+      UserTimeMicros user_timestamp = ValueControlFields::kInvalidUserTimestamp);
 
   CHECKED_STATUS DeleteSubDoc(
       const DocPath& doc_path,

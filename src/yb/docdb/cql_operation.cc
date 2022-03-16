@@ -242,7 +242,7 @@ CHECKED_STATUS FindMemberForIndex(const QLColumnValuePB& column_value,
 }
 
 CHECKED_STATUS CheckUserTimestampForCollections(const UserTimeMicros user_timestamp) {
-  if (user_timestamp != Value::kInvalidUserTimestamp) {
+  if (user_timestamp != ValueControlFields::kInvalidUserTimestamp) {
     return STATUS(InvalidArgument, "User supplied timestamp is only allowed for "
         "replacing the whole collection");
   }
@@ -715,12 +715,10 @@ Status QLWriteOperation::ApplyForJsonOperators(
 
   existing_row->AllocColumn(col_id).value = qlv.value();
 
-  const SubDocument& sub_doc =
-      SubDocument::FromQLValuePB(qlv.value(), column.sorting_type(),
-                             yb::bfql::TSOpcode::kScalarInsert);
+  ValueRef value_ref(qlv.value(), column.sorting_type(), yb::bfql::TSOpcode::kScalarInsert);
   RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-      sub_path, sub_doc, data.read_time, data.deadline,
-      request_.query_id(), ttl, user_timestamp));
+      sub_path, value_ref, data.read_time, data.deadline, request_.query_id(), ttl,
+      user_timestamp));
 
   return Status::OK();
 }
@@ -734,9 +732,8 @@ Status QLWriteOperation::ApplyForSubscriptArgs(const QLColumnValuePB& column_val
                                                DocPath* sub_path) {
   QLExprResult expr_result;
   RETURN_NOT_OK(EvalExpr(column_value.expr(), existing_row, expr_result.Writer()));
-  const yb::bfql::TSOpcode write_instr = GetTSWriteInstruction(column_value.expr());
-  const SubDocument& sub_doc =
-      SubDocument::FromQLValuePB(expr_result.Value(), column.sorting_type(), write_instr);
+  ValueRef value(
+      expr_result.Value(), column.sorting_type(), GetTSWriteInstruction(column_value.expr()));
   RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
 
   // Setting the value for a sub-column
@@ -752,7 +749,7 @@ Status QLWriteOperation::ApplyForSubscriptArgs(const QLColumnValuePB& column_val
           SortingType::kNotSpecified);
       sub_path->AddSubKey(pv);
       RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-          *sub_path, sub_doc, data.read_time, data.deadline,
+          *sub_path, value, data.read_time, data.deadline,
           request_.query_id(), ttl, user_timestamp));
       break;
     }
@@ -763,7 +760,7 @@ Status QLWriteOperation::ApplyForSubscriptArgs(const QLColumnValuePB& column_val
 
       int target_cql_index = column_value.subscript_args(0).value().int32_value();
       RETURN_NOT_OK(data.doc_write_batch->ReplaceCqlInList(
-          *sub_path, target_cql_index, sub_doc, data.read_time, data.deadline, request_.query_id(),
+          *sub_path, target_cql_index, value, data.read_time, data.deadline, request_.query_id(),
           default_ttl, ttl));
       break;
     }
@@ -788,14 +785,13 @@ Status QLWriteOperation::ApplyForRegularColumns(const QLColumnValuePB& column_va
   // Typical case, setting a columns value
   QLExprResult expr_result;
   RETURN_NOT_OK(EvalExpr(column_value.expr(), existing_row, expr_result.Writer()));
-  const TSOpcode write_instr = GetTSWriteInstruction(column_value.expr());
-  const SubDocument& sub_doc =
-      SubDocument::FromQLValuePB(expr_result.Value(), column.sorting_type(), write_instr);
-  switch (write_instr) {
+  auto write_instruction = GetTSWriteInstruction(column_value.expr());
+  ValueRef value(expr_result.Value(), column.sorting_type(), write_instruction);
+  switch (write_instruction) {
     case TSOpcode::kToJson: FALLTHROUGH_INTENDED;
     case TSOpcode::kScalarInsert:
           RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-              sub_path, sub_doc, data.read_time, data.deadline,
+              sub_path, value, data.read_time, data.deadline,
               request_.query_id(), ttl, user_timestamp));
       break;
     case TSOpcode::kMapExtend:
@@ -804,15 +800,15 @@ Status QLWriteOperation::ApplyForRegularColumns(const QLColumnValuePB& column_va
     case TSOpcode::kSetRemove:
           RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
           RETURN_NOT_OK(data.doc_write_batch->ExtendSubDocument(
-            sub_path, sub_doc, data.read_time, data.deadline, request_.query_id(), ttl));
+            sub_path, value, data.read_time, data.deadline, request_.query_id(), ttl));
       break;
     case TSOpcode::kListPrepend:
-          sub_doc.SetExtendOrder(ListExtendOrder::PREPEND_BLOCK);
+          value.set_list_extend_order(ListExtendOrder::PREPEND_BLOCK);
           FALLTHROUGH_INTENDED;
     case TSOpcode::kListAppend:
           RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
           RETURN_NOT_OK(data.doc_write_batch->ExtendList(
-              sub_path, sub_doc, data.read_time, data.deadline, request_.query_id(), ttl));
+              sub_path, value, data.read_time, data.deadline, request_.query_id(), ttl));
       break;
     case TSOpcode::kListRemove:
       // TODO(akashnil or mihnea) this should call RemoveFromList once thats implemented
@@ -821,11 +817,11 @@ Status QLWriteOperation::ApplyForRegularColumns(const QLColumnValuePB& column_va
       // from EvalQLExpressionPB should be uncommented to enable this optimization.
           RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
           RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-              sub_path, sub_doc, data.read_time, data.deadline,
+              sub_path, value, data.read_time, data.deadline,
               request_.query_id(), ttl, user_timestamp));
       break;
     default:
-      LOG(FATAL) << "Unsupported operation: " << static_cast<int>(write_instr);
+      LOG(FATAL) << "Unsupported operation: " << static_cast<int>(write_instruction);
       break;
   }
 
@@ -883,7 +879,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
   const MonoDelta ttl = request_ttl();
 
   const UserTimeMicros user_timestamp = request_.has_user_timestamp_usec() ?
-      request_.user_timestamp_usec() : Value::kInvalidUserTimestamp;
+      request_.user_timestamp_usec() : ValueControlFields::kInvalidUserTimestamp;
 
   // Initialize the new row being written to either the existing row if read, or just populate
   // the primary key.
@@ -915,9 +911,13 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
       auto is_insert = request_.type() == QLWriteRequestPB::QL_STMT_INSERT;
       if (is_insert && encoded_pk_doc_key_) {
         const DocPath sub_path(encoded_pk_doc_key_.as_slice(), PrimitiveValue::kLivenessColumn);
-        const auto value = Value(PrimitiveValue(), ttl, user_timestamp);
+        const auto control_fields = ValueControlFields {
+          .ttl = ttl,
+          .user_timestamp = user_timestamp,
+        };
         RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
-            sub_path, value, data.read_time, data.deadline, request_.query_id()));
+            sub_path, control_fields, ValueRef(ValueType::kNullLow),
+            data.read_time, data.deadline, request_.query_id()));
       }
 
       std::unordered_map<ColumnIdRep, vector<int>> col_map;
@@ -963,8 +963,9 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
             column.is_static() ?
                 encoded_hashed_doc_key_.as_slice() : encoded_pk_doc_key_.as_slice(),
             PrimitiveValue(column_id));
-        RETURN_NOT_OK(ApplyForJsonOperators(column, entry.first, col_map,
-                        data, sub_path, ttl, user_timestamp, &new_row, is_insert));
+        RETURN_NOT_OK(ApplyForJsonOperators(
+            column, entry.first, col_map, data, sub_path, ttl, user_timestamp, &new_row,
+            is_insert));
       }
 
       if (update_indexes_) {
@@ -1178,7 +1179,8 @@ Result<bool> QLWriteOperation::IsRowDeleted(const QLTableRow& existing_row,
 }
 
 MonoDelta QLWriteOperation::request_ttl() const {
-  return request_.has_ttl() ? MonoDelta::FromMilliseconds(request_.ttl()) : Value::kMaxTtl;
+  return request_.has_ttl() ? MonoDelta::FromMilliseconds(request_.ttl())
+                            : ValueControlFields::kMaxTtl;
 }
 
 namespace {

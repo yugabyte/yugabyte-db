@@ -137,7 +137,7 @@ CHECKED_STATUS BuildSubDocument(
       // We may need to update the TTL in individual columns.
       if (write_time.hybrid_time() >= data.exp.write_ht) {
         // We want to keep the default TTL otherwise.
-        if (doc_value.ttl() != Value::kMaxTtl) {
+        if (doc_value.ttl() != ValueControlFields::kMaxTtl) {
           data.exp.write_ht = write_time.hybrid_time();
           data.exp.ttl = doc_value.ttl();
         } else if (data.exp.ttl.IsNegative()) {
@@ -183,7 +183,7 @@ CHECKED_STATUS BuildSubDocument(
         // Choose the user supplied timestamp if present.
         const UserTimeMicros user_timestamp = doc_value.user_timestamp();
         doc_value.mutable_primitive_value()->SetWriteTime(
-            user_timestamp == Value::kInvalidUserTimestamp
+            user_timestamp == ValueControlFields::kInvalidUserTimestamp
             ? write_time.hybrid_time().GetPhysicalValueMicros()
             : doc_value.user_timestamp());
         if (!data.high_index->CanInclude(current_values_observed)) {
@@ -302,10 +302,9 @@ Status FindLastWriteTime(
     return Status::OK();
   }
 
-  uint64_t merge_flags = 0;
-  MonoDelta ttl;
-  ValueType value_type;
-  RETURN_NOT_OK(Value::DecodePrimitiveValueType(value, &value_type, &merge_flags, &ttl));
+  auto value_copy = value;
+  auto control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value_copy));
+  auto value_type = DecodeValueType(value_copy);
   if (value_type == ValueType::kInvalid) {
     return Status::OK();
   }
@@ -317,9 +316,11 @@ Status FindLastWriteTime(
   Expiration new_exp = *exp;
   if (doc_ht.hybrid_time() >= exp->write_ht) {
     // We want to keep the default TTL otherwise.
-    if (ttl != Value::kMaxTtl || merge_flags == Value::kTtlFlag || exp->always_override) {
+    if (control_fields.ttl != ValueControlFields::kMaxTtl ||
+        control_fields.merge_flags == ValueControlFields::kTtlFlag ||
+        exp->always_override) {
       new_exp.write_ht = doc_ht.hybrid_time();
-      new_exp.ttl = ttl;
+      new_exp.ttl = control_fields.ttl;
     } else if (exp->ttl.IsNegative()) {
       new_exp.ttl = -new_exp.ttl;
     }
@@ -327,7 +328,7 @@ Status FindLastWriteTime(
 
   // If we encounter a TTL row, we assign max_overwrite_time to be the write time of the
   // original value/init marker.
-  if (merge_flags == Value::kTtlFlag) {
+  if (control_fields.merge_flags == ValueControlFields::kTtlFlag) {
     DocHybridTime new_ht;
     RETURN_NOT_OK(iter->NextFullValue(&new_ht, &value));
 
@@ -337,8 +338,7 @@ Status FindLastWriteTime(
     if (!iter->valid() && !new_exp.ttl.IsNegative()) {
       new_exp.ttl = -new_exp.ttl;
     } else {
-      ValueType value_type;
-      RETURN_NOT_OK(Value::DecodePrimitiveValueType(value, &value_type));
+      RETURN_NOT_OK(Value::DecodePrimitiveValueType(value));
       // Because we still do not know whether we are seeking something expired,
       // we must take the max_overwrite_time as if the value were not expired.
       doc_ht = new_ht;
@@ -357,8 +357,9 @@ Status FindLastWriteTime(
             << *max_overwrite_time;
   }
 
-  if (result_value)
+  if (result_value) {
     RETURN_NOT_OK(result_value->Decode(value));
+  }
 
   return Status::OK();
 }
