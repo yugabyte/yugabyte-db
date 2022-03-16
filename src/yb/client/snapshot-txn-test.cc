@@ -122,7 +122,7 @@ void SnapshotTxnTest::TestBankAccountsThread(
       if (key2 >= key1) {
         ++key2;
       }
-      txn = ASSERT_RESULT(pool->TakeAndInit(GetIsolationLevel()));
+      txn = ASSERT_RESULT(pool->TakeAndInit(GetIsolationLevel(), TransactionRpcDeadline()));
     }
     session->SetTransaction(txn);
     int transfer = RandomUniformInt(1, 250);
@@ -142,7 +142,7 @@ void SnapshotTxnTest::TestBankAccountsThread(
       if (!result.ok()) {
         if (txn->IsRestartRequired()) {
           ASSERT_TRUE(result.status().IsQLError()) << result;
-          auto txn_result = pool->TakeRestarted(txn);
+          auto txn_result = pool->TakeRestarted(txn, TransactionRpcDeadline());
           if (!txn_result.ok()) {
             ASSERT_TRUE(txn_result.status().IsIllegalState()) << txn_result.status();
             txn = nullptr;
@@ -257,7 +257,7 @@ void SnapshotTxnTest::TestBankAccounts(
   const int kInitialAmount = 10000;
 
   {
-    auto txn = ASSERT_RESULT(pool.TakeAndInit(GetIsolationLevel()));
+    auto txn = ASSERT_RESULT(pool.TakeAndInit(GetIsolationLevel(), TransactionRpcDeadline()));
     LOG(INFO) << "Initial write transaction: " << txn->id();
     auto init_session = CreateSession(txn);
     for (int i = 1; i <= kAccounts; ++i) {
@@ -322,14 +322,14 @@ void SnapshotTxnTest::TestBankAccounts(
   while (CoarseMonoClock::now() < end_time &&
          !threads.stop_flag().load(std::memory_order_acquire)) {
     if (!txn) {
-      txn = ASSERT_RESULT(pool.TakeAndInit(GetIsolationLevel()));
+      txn = ASSERT_RESULT(pool.TakeAndInit(GetIsolationLevel(), TransactionRpcDeadline()));
     }
     auto txn_id = txn->id();
     session->SetTransaction(txn);
     auto rows = SelectAllRows(session);
     if (!rows.ok()) {
       if (txn->IsRestartRequired()) {
-        auto txn_result = pool.TakeRestarted(txn);
+        auto txn_result = pool.TakeRestarted(txn, TransactionRpcDeadline());
         if (!txn_result.ok()) {
           ASSERT_TRUE(txn_result.status().IsIllegalState()) << txn_result.status();
           txn = nullptr;
@@ -630,7 +630,7 @@ TEST_F(SnapshotTxnTest, HotRow) {
   auto session = CreateSession();
   MonoTime start = MonoTime::Now();
   for (int i = 1; i <= kIterations; ++i) {
-    auto txn = ASSERT_RESULT(pool.TakeAndInit(GetIsolationLevel()));
+    auto txn = ASSERT_RESULT(pool.TakeAndInit(GetIsolationLevel(), TransactionRpcDeadline()));
     session->SetTransaction(txn);
 
     ASSERT_OK(kv_table_test::Increment(&table_, session, kKey));
@@ -727,7 +727,7 @@ void SnapshotTxnTest::TestMultiWriteWithRestart() {
       auto session = CreateSession();
       while (!stop.load(std::memory_order_acquire)) {
         int k = key.fetch_add(1, std::memory_order_acq_rel);
-        auto txn = ASSERT_RESULT(pool.TakeAndInit(GetIsolationLevel()));
+        auto txn = ASSERT_RESULT(pool.TakeAndInit(GetIsolationLevel(), TransactionRpcDeadline()));
         session->SetTransaction(txn);
         bool good = true;
         for (int j = 1; j <= kNumWritesPerKey; ++j) {
@@ -936,7 +936,7 @@ TEST_F_EX(SnapshotTxnTest, ResolveIntents, SingleTabletSnapshotTxnTest) {
   auto session = CreateSession();
   auto prev_ht = clock_->Now();
   for (int i = 0; i != 4; ++i) {
-    auto txn = ASSERT_RESULT(pool.TakeAndInit(isolation_level_));
+    auto txn = ASSERT_RESULT(pool.TakeAndInit(isolation_level_, TransactionRpcDeadline()));
     session->SetTransaction(txn);
     ASSERT_OK(WriteRow(session, i, -i));
     ASSERT_OK(txn->CommitFuture().get());

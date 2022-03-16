@@ -2235,7 +2235,8 @@ void TabletServiceImpl::TakeTransaction(const TakeTransactionRequestPB* req,
                                         TakeTransactionResponsePB* resp,
                                         rpc::RpcContext context) {
   auto transaction = server_->TransactionPool()->Take(
-      client::ForceGlobalTransaction(req->has_is_global() && req->is_global()));
+      client::ForceGlobalTransaction(req->has_is_global() && req->is_global()),
+      context.GetClientDeadline());
   auto metadata = transaction->Release();
   if (!metadata.ok()) {
     LOG(INFO) << "Take failed: " << metadata.status();
