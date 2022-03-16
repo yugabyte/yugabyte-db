@@ -59,7 +59,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                 rpc::RpcContext* rpc);
 
   CHECKED_STATUS ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req,
-                                    ImportSnapshotMetaResponsePB* resp);
+                                    ImportSnapshotMetaResponsePB* resp,
+                                    rpc::RpcContext* rpc);
 
   CHECKED_STATUS CreateSnapshotSchedule(const CreateSnapshotScheduleRequestPB* req,
                                         CreateSnapshotScheduleResponsePB* resp,
@@ -240,7 +241,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                             CreateObjects create_objects);
   CHECKED_STATUS ImportSnapshotWaitForTables(const SnapshotInfoPB& snapshot_pb,
                                              ImportSnapshotMetaResponsePB* resp,
-                                             ExternalTableSnapshotDataMap* tables_data);
+                                             ExternalTableSnapshotDataMap* tables_data,
+                                             CoarseTimePoint deadline);
   CHECKED_STATUS ImportSnapshotProcessTablets(const SnapshotInfoPB& snapshot_pb,
                                               ImportSnapshotMetaResponsePB* resp,
                                               ExternalTableSnapshotDataMap* tables_data);
