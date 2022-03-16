@@ -711,10 +711,12 @@ class NodeChecker():
         remote_cmd = "timedatectl status"
         output = self._remote_check_output(remote_cmd).strip()
 
-        clock_re = re.match(r'((.|\n)*)((NTP enabled: )|(NTP service: )|(Network time on: )|' +
-                            r'(systemd-timesyncd\.service active: ))(.*)$', output, re.MULTILINE)
+        clock_re = re.match(r'((.|\n)*)((NTP enabled: )|(NTP service: )|(Network time on: ))(.*)$',
+                            output, re.MULTILINE)
         if clock_re:
-            ntp_enabled_answer = clock_re.group(8).strip()
+            ntp_enabled_answer = clock_re.group(7).strip()
+        elif "systemd-timesyncd.service active:" in output:  # Ignore this check, see PLAT-3373
+            ntp_enabled_answer = "yes"
         else:
             return e.fill_and_return_entry(["Error getting NTP state - incorrect answer format"],
                                            True)
@@ -748,6 +750,15 @@ class NodeChecker():
             else:
                 errors.append("Error getting NTP synchronization state {}"
                               .format(ntp_synchronized_answer))
+
+        # Check if a time sync service is running. Stderr redirection is necessary since
+        # "service does not exist" prints to stderr but should not error.
+        remote_cmd = ""
+        for ntp_service in ["chronyd", "ntp", "ntpd", "systemd-timesyncd"]:
+            remote_cmd = remote_cmd + "systemctl status " + ntp_service + " 2>&1; "
+        output = self._remote_check_output(remote_cmd).strip()
+        if "Active: active (running)" not in output:
+            errors.append("NTP service not running")
 
         return e.fill_and_return_entry(errors, len(errors) > 0)
 
