@@ -174,21 +174,9 @@ class Report:
 ###################################################################################################
 def check_output(cmd, env):
     try:
-        timeout = CMD_TIMEOUT_SEC
-        command = subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE, env=env)
-        while command.poll() is None and timeout > 0:
-            time.sleep(1)
-            timeout -= 1
-        if command.poll() is None and timeout <= 0:
-            command.kill()
-            command.wait()
-            return 'Error executing command {}: timeout occurred'.format(cmd)
-
-        output, stderr = command.communicate()
-        if not stderr:
-            return output.decode('utf-8').encode("ascii", "ignore").decode("ascii")
-        else:
-            return 'Error executing command {}: {}'.format(cmd, stderr)
+        output = subprocess.check_output(
+            cmd, stderr=subprocess.STDOUT, env=env, timeout=CMD_TIMEOUT_SEC)
+        return str(output.decode('utf-8').encode("ascii", "ignore").decode("ascii"))
     except subprocess.CalledProcessError as e:
         return 'Error executing command {}: {}'.format(
             cmd, e.output.decode("utf-8").encode("ascii", "ignore"))
