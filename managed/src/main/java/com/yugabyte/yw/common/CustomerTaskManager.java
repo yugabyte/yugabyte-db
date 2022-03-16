@@ -11,6 +11,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.CustomerTask.TargetType;
+import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import java.util.List;
@@ -49,6 +50,12 @@ public class CustomerTaskManager {
                 subtask.save();
               });
 
+      UUID taskUUID = taskInfo.getTaskUUID();
+      ScheduleTask scheduleTask = ScheduleTask.fetchByTaskUUID(taskUUID);
+      if (scheduleTask != null) {
+        scheduleTask.setCompletedTime();
+      }
+
       // Use isUniverseTarget() instead of directly comparing with Universe type because some
       // targets like Cluster, Node are Universe targets.
       boolean unlockUniverse = customerTask.getTarget().isUniverseTarget();
@@ -57,7 +64,6 @@ public class CustomerTaskManager {
         TaskType type = customerTask.getType();
         if (TaskType.Create.equals(type)) {
           // Make transition state false for inProgress backups
-          UUID taskUUID = taskInfo.getTaskUUID();
           List<Backup> backupList = Backup.fetchAllBackupsByTaskUUID(taskUUID);
           backupList
               .stream()

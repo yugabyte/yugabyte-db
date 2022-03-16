@@ -89,7 +89,7 @@ public class ShellProcessHandler {
       // We will only read last 20MB of process stdout and stderr file.
       // stdout has `data` so we wont limit that.
       try (BufferedReader outputStream = getLastNReader(tempOutputFile, Long.MAX_VALUE);
-           BufferedReader errorStream = getLastNReader(tempErrorFile, getMaxLogMsgSize())) {
+          BufferedReader errorStream = getLastNReader(tempErrorFile, getMaxLogMsgSize())) {
         String processOutput = outputStream.lines().collect(Collectors.joining("\n")).trim();
         String processError = errorStream.lines().collect(Collectors.joining("\n")).trim();
         if (logCmdOutput) {
@@ -111,8 +111,7 @@ public class ShellProcessHandler {
       if (startMs > 0) {
         response.durationMs = System.currentTimeMillis() - startMs;
       }
-      String status =
-          (0 == response.code) ? "success" : ("failure code=" + response.code);
+      String status = (0 == response.code) ? "success" : ("failure code=" + response.code);
       LOG.info(
           "Completed proc '{}' status={} [ {} ms ]",
           response.description,
@@ -135,13 +134,11 @@ public class ShellProcessHandler {
     return appConfig.getBytes(YB_LOGS_MAX_MSG_SIZE);
   }
 
-  /**
-   * For a given file return a bufferred reader that reads only last N bytes.
-   */
+  /** For a given file return a bufferred reader that reads only last N bytes. */
   private static BufferedReader getLastNReader(File file, long lastNBytes)
-    throws FileNotFoundException {
+      throws FileNotFoundException {
     final BufferedReader reader =
-      new BufferedReader(new InputStreamReader(new FileInputStream(file)));
+        new BufferedReader(new InputStreamReader(new FileInputStream(file)));
     long skip = file.length() - lastNBytes;
     if (skip > 0) {
       try {

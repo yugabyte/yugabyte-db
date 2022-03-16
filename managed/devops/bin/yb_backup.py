@@ -1239,6 +1239,9 @@ class YBBackup:
 
             output = self.create_remote_tmp_dir(server_ip)
             if self.is_k8s():
+                self.k8s_namespace_to_cfg = json.loads(self.args.k8s_config)
+                if self.k8s_namespace_to_cfg is None:
+                    raise BackupException("Couldn't load k8s configs")
                 k8s_details = KubernetesDetails(server_ip, self.k8s_namespace_to_cfg)
                 output += self.run_program([
                     'kubectl',
@@ -1310,6 +1313,9 @@ class YBBackup:
             cmd = "{} {}".format(bash_env_args, cmd)
 
         if self.is_k8s():
+            self.k8s_namespace_to_cfg = json.loads(self.args.k8s_config)
+            if self.k8s_namespace_to_cfg is None:
+                raise BackupException("Couldn't load k8s configs")
             k8s_details = KubernetesDetails(server_ip, self.k8s_namespace_to_cfg)
             return self.run_program([
                 'kubectl',

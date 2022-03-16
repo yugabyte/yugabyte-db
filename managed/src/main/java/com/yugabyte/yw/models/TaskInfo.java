@@ -21,7 +21,6 @@ import javax.persistence.*;
 import java.util.*;
 import play.data.validation.Constraints;
 
-
 import static com.yugabyte.yw.commissioner.UserTaskDetails.createSubTask;
 
 @Entity
