@@ -993,14 +993,21 @@ public class NodeManager extends DevopsBase {
               }
               break;
             case UPDATE_CERT_DIRS:
+              {
+                Map<String, String> gflags = new HashMap<>();
+                if (CertificateHelper.isRootCARequired(taskParam)) {
+                  gflags.put("certs_dir", certsNodeDir);
+                }
+                if (CertificateHelper.isClientRootCARequired(taskParam)) {
+                  gflags.put("certs_for_client_dir", certsForClientDir);
+                }
+                subcommand.add("--gflags");
+                subcommand.add(Json.stringify(Json.toJson(gflags)));
+                subcommand.add("--tags");
+                subcommand.add("override_gflags");
+                break;
+              }
           }
-
-          Map<String, String> gflags = new HashMap<>(taskParam.gflags);
-          subcommand.add("--gflags");
-          subcommand.add(Json.stringify(Json.toJson(gflags)));
-
-          subcommand.add("--tags");
-          subcommand.add("override_gflags");
         }
         break;
       case ToggleTls:
