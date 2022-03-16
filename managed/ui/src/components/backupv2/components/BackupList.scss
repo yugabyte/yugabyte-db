@@ -24,6 +24,15 @@
         }
       }
     }
+
+    .backup-now-button {
+      height: 36px;
+      font-weight: 100;
+      width: 136px;
+      display: flex;
+      align-items: center;
+      font-size: 14px;
+    }
   }
 
   .backup-list-table {
@@ -53,18 +62,20 @@
     z-index: 0 !important;
   }
 
-  .action-danger > a {
+  .action-danger>a {
     color: $YB_ERROR_ICON_COLOR !important;
   }
 
   .backup-list-table {
-    .react-bs-table .table-bordered > tbody > tr > td {
+    .react-bs-table .table-bordered>tbody>tr>td {
       vertical-align: middle;
       height: 45px;
       padding: 0 !important;
     }
+
     .table-bordered thead th {
       font-weight: 700;
+      padding: 0;
     }
 
     .react-bs-table-no-data {
