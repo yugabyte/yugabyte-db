@@ -128,14 +128,9 @@ void FlushJob::ReportStartedFlush() {
   IOSTATS_RESET(bytes_written);
 }
 
-void FlushJob::ReportFlushInputSize(const autovector<MemTable*>& mems) {
-  uint64_t input_size = 0;
-  for (auto* mem : mems) {
-    input_size += mem->ApproximateMemoryUsage();
-  }
-}
-
 void FlushJob::RecordFlushIOStats() {
+  RecordTick(stats_, FLUSH_WRITE_BYTES, IOSTATS(bytes_written));
+  IOSTATS_RESET(bytes_written);
 }
 
 Result<FileNumbersHolder> FlushJob::Run(FileMetaData* file_meta) {
@@ -174,8 +169,6 @@ Result<FileNumbersHolder> FlushJob::Run(FileMetaData* file_meta) {
     return FileNumbersHolder();
   }
 
-  ReportFlushInputSize(mems);
-
   // entries mems are (implicitly) sorted in ascending order by their created
   // time. We will use the first memtable's `edit` to keep the meta info for
   // this flush.
@@ -213,6 +206,8 @@ Result<FileNumbersHolder> FlushJob::Run(FileMetaData* file_meta) {
   if (fnum.ok() && file_meta != nullptr) {
     *file_meta = meta;
   }
+
+  // This includes both SST and MANIFEST files IO.
   RecordFlushIOStats();
 
   auto stream = event_logger_->LogToBuffer(log_buffer_);
@@ -354,7 +349,7 @@ Result<FileNumbersHolder> FlushJob::WriteLevel0Table(
   cfd_->internal_stats()->AddCompactionStats(0 /* level */, stats);
   cfd_->internal_stats()->AddCFStats(InternalStats::BYTES_FLUSHED,
       meta->fd.GetTotalFileSize());
-  RecordTick(stats_, COMPACT_WRITE_BYTES, meta->fd.GetTotalFileSize());
+  RecordFlushIOStats();
   if (s.ok()) {
     return file_number_holder;
   } else {
