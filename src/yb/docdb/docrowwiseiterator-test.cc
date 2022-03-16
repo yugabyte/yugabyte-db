@@ -90,19 +90,19 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTest) {
   // We don't need any seeks for writes, where column values are primitives.
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey1, PrimitiveValue(30_ColId)),
-      PrimitiveValue("row1_c"), HybridTime::FromMicros(1000)));
+      QLValue::Primitive("row1_c"), HybridTime::FromMicros(1000)));
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey1, PrimitiveValue(40_ColId)),
-      PrimitiveValue(10000), HybridTime::FromMicros(1000)));
+      QLValue::PrimitiveInt64(10000), HybridTime::FromMicros(1000)));
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey1, PrimitiveValue(50_ColId)),
-      PrimitiveValue("row1_e"), HybridTime::FromMicros(1000)));
+      QLValue::Primitive("row1_e"), HybridTime::FromMicros(1000)));
 
   // Row 2: one null column, one column that gets deleted and overwritten, another that just gets
   // overwritten. No seeks needed for writes.
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey2, PrimitiveValue(40_ColId)),
-      PrimitiveValue(20000), HybridTime::FromMicros(2000)));
+      QLValue::PrimitiveInt64(20000), HybridTime::FromMicros(2000)));
 
   // Deletions normally perform a lookup of the key to see whether it's already there. We will use
   // that to provide the expected result (the number of rows deleted in SQL or whether a key was
@@ -116,14 +116,14 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTest) {
   // should still be in the write batch's cache, so we should not perform a seek to overwrite it.
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey2, PrimitiveValue(40_ColId)),
-      PrimitiveValue(30000), HybridTime::FromMicros(3000)));
+      QLValue::PrimitiveInt64(30000), HybridTime::FromMicros(3000)));
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey2, PrimitiveValue(50_ColId)),
-      PrimitiveValue("row2_e"), HybridTime::FromMicros(2000)));
+      QLValue::Primitive("row2_e"), HybridTime::FromMicros(2000)));
 
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey2, PrimitiveValue(50_ColId)),
-      PrimitiveValue("row2_e_prime"), HybridTime::FromMicros(4000)));
+      QLValue::Primitive("row2_e_prime"), HybridTime::FromMicros(4000)));
 
   ASSERT_DOCDB_DEBUG_DUMP_STR_EQ(R"#(
       SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30); HT{ physical: 1000 }]) -> "row1_c"
@@ -227,16 +227,16 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTest) {
 TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorDeletedDocumentTest) {
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey1, PrimitiveValue(30_ColId)),
-      PrimitiveValue("row1_c"), HybridTime::FromMicros(1000)));
+      QLValue::Primitive("row1_c"), HybridTime::FromMicros(1000)));
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey1, PrimitiveValue(40_ColId)),
-      PrimitiveValue(10000), HybridTime::FromMicros(1000)));
+      QLValue::PrimitiveInt64(10000), HybridTime::FromMicros(1000)));
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey1, PrimitiveValue(50_ColId)),
-      PrimitiveValue("row1_e"), HybridTime::FromMicros(1000)));
+      QLValue::Primitive("row1_e"), HybridTime::FromMicros(1000)));
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey2, PrimitiveValue(40_ColId)),
-      PrimitiveValue(20000), HybridTime::FromMicros(2000)));
+      QLValue::PrimitiveInt64(20000), HybridTime::FromMicros(2000)));
 
   // Delete entire row1 document to test that iterator can successfully jump to next document
   // when it finds deleted document.
@@ -284,20 +284,20 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTestRowDeletes) {
   auto dwb = MakeDocWriteBatch();
 
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, PrimitiveValue(30_ColId)),
-      PrimitiveValue("row1_c")));
+                             ValueRef(QLValue::Primitive("row1_c"))));
 
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, PrimitiveValue(40_ColId)),
-      PrimitiveValue(10000)));
+                             ValueRef(QLValue::PrimitiveInt64(10000))));
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(1000)));
 
   ASSERT_OK(dwb.DeleteSubDoc(DocPath(kEncodedDocKey1)));
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(2500)));
 
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, PrimitiveValue(50_ColId)),
-      PrimitiveValue("row1_e")));
+                             ValueRef(QLValue::Primitive("row1_e"))));
 
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, PrimitiveValue(40_ColId)),
-      PrimitiveValue(20000)));
+                             ValueRef(QLValue::PrimitiveInt64(20000))));
   ASSERT_OK(WriteToRocksDB(dwb, HybridTime::FromMicros(2800)));
 
   ASSERT_DOCDB_DEBUG_DUMP_STR_EQ(R"#(
@@ -383,23 +383,23 @@ void VerifyOldestRecordTimeIsInvalid(IntentAwareIterator *iter,
 TEST_F(DocRowwiseIteratorTest, BackfillInsert) {
   ASSERT_OK(DeleteSubDoc(DocPath(kEncodedDocKey1), 5000_usec_ht));
   ASSERT_OK(SetPrimitive(DocPath(kEncodedDocKey1, PrimitiveValue(40_ColId)),
-                         PrimitiveValue(10000), 1000_usec_ht));
+                         QLValue::PrimitiveInt64(10000), 1000_usec_ht));
 
   ASSERT_OK(SetPrimitive(DocPath(kEncodedDocKey1, PrimitiveValue(50_ColId)),
-                         PrimitiveValue("row1_e"), 1000_usec_ht));
+                         QLValue::Primitive("row1_e"), 1000_usec_ht));
 
   ASSERT_OK(SetPrimitive(DocPath(kEncodedDocKey1, PrimitiveValue(40_ColId)),
-                         PrimitiveValue(10000), 900_usec_ht));
+                         QLValue::PrimitiveInt64(10000), 900_usec_ht));
 
   ASSERT_OK(SetPrimitive(DocPath(kEncodedDocKey1, PrimitiveValue(50_ColId)),
-                         PrimitiveValue("row1_e"), 900_usec_ht));
+                         QLValue::Primitive("row1_e"), 900_usec_ht));
 
   ASSERT_OK(DeleteSubDoc(DocPath(kEncodedDocKey1), 500_usec_ht));
   ASSERT_OK(SetPrimitive(DocPath(kEncodedDocKey1, PrimitiveValue(40_ColId)),
-                         PrimitiveValue(10000), 300_usec_ht));
+                         QLValue::PrimitiveInt64(10000), 300_usec_ht));
 
   ASSERT_OK(SetPrimitive(DocPath(kEncodedDocKey1, PrimitiveValue(50_ColId)),
-                         PrimitiveValue("row1_e"), 300_usec_ht));
+                         QLValue::Primitive("row1_e"), 300_usec_ht));
 
   ASSERT_OK(DeleteSubDoc(DocPath(kEncodedDocKey2), 900_usec_ht));
   ASSERT_OK(DeleteSubDoc(DocPath(kEncodedDocKey2), 700_usec_ht));
@@ -509,11 +509,11 @@ TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 800 w: 2 } -> \
 TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorHasNextIdempotence) {
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey1, PrimitiveValue(40_ColId)),
-      PrimitiveValue(10000), HybridTime::FromMicros(1000)));
+      QLValue::PrimitiveInt64(10000), HybridTime::FromMicros(1000)));
 
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey1, PrimitiveValue(50_ColId)),
-      PrimitiveValue("row1_e"), HybridTime::FromMicros(2800)));
+      QLValue::Primitive("row1_e"), HybridTime::FromMicros(2800)));
 
   ASSERT_OK(DeleteSubDoc(DocPath(kEncodedDocKey1), HybridTime::FromMicros(2500)));
 
@@ -557,11 +557,11 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorIncompleteProjection) {
   auto dwb = MakeDocWriteBatch();
 
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, PrimitiveValue(40_ColId)),
-      PrimitiveValue(10000)));
+                             ValueRef(QLValue::PrimitiveInt64(10000))));
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, PrimitiveValue(50_ColId)),
-      PrimitiveValue("row1_e")));
+                             ValueRef(QLValue::Primitive("row1_e"))));
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, PrimitiveValue(40_ColId)),
-      PrimitiveValue(20000)));
+                             ValueRef(QLValue::PrimitiveInt64(20000))));
 
   ASSERT_OK(WriteToRocksDB(dwb, HybridTime::FromMicros(1000)));
 
@@ -621,7 +621,7 @@ TEST_F(DocRowwiseIteratorTest, ColocatedTableTombstoneTest) {
 
   ASSERT_OK(dwb.SetPrimitive(
       DocPath(encoded_1_with_colocation_id.Encode(), PrimitiveValue::kLivenessColumn),
-      PrimitiveValue(ValueType::kNullLow)));
+      ValueRef(ValueType::kNullLow)));
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(1000)));
 
   DocKey colocation_key(colocation_id);
@@ -663,9 +663,9 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorMultipleDeletes) {
       HybridTime::FromMicros(2800), ttl_expiry));
 
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, PrimitiveValue(30_ColId)),
-      PrimitiveValue("row1_c")));
+                             ValueRef(QLValue::Primitive("row1_c"))));
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, PrimitiveValue(40_ColId)),
-      PrimitiveValue(10000)));
+                             ValueRef(QLValue::PrimitiveInt64(10000))));
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(1000)));
 
   // Deletes.
@@ -674,15 +674,18 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorMultipleDeletes) {
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(2500)));
   dwb.Clear();
 
-  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, PrimitiveValue(50_ColId)),
-      Value(PrimitiveValue("row1_e"), ttl)));
+  ASSERT_OK(dwb.SetPrimitive(
+      DocPath(kEncodedDocKey1, PrimitiveValue(50_ColId)),
+      ValueControlFields {.ttl = ttl}, ValueRef(QLValue::Primitive("row1_e"))));
 
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, PrimitiveValue(30_ColId)),
-      PrimitiveValue::kTombstone));
+                             ValueRef(ValueType::kTombstone)));
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, PrimitiveValue(40_ColId)),
-      PrimitiveValue(20000)));
-  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, PrimitiveValue(50_ColId)),
-      Value(PrimitiveValue("row2_e"), MonoDelta::FromMilliseconds(3))));
+                             ValueRef(QLValue::PrimitiveInt64(20000))));
+  ASSERT_OK(dwb.SetPrimitive(
+      DocPath(kEncodedDocKey2, PrimitiveValue(50_ColId)),
+      ValueControlFields {.ttl = MonoDelta::FromMilliseconds(3)},
+      ValueRef(QLValue::Primitive("row2_e"))));
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(2800)));
 
   ASSERT_OK(WriteToRocksDB(dwb, HybridTime::FromMicros(1000)));
@@ -732,23 +735,28 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 2800 w: 3 }]
 TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorValidColumnNotInProjection) {
   auto dwb = MakeDocWriteBatch();
 
-  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, PrimitiveValue(40_ColId)),
-      PrimitiveValue(10000)));
-  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, PrimitiveValue(40_ColId)),
-      PrimitiveValue(20000)));
+  ASSERT_OK(dwb.SetPrimitive(
+      DocPath(kEncodedDocKey1, PrimitiveValue(40_ColId)),
+      ValueRef(QLValue::PrimitiveInt64(10000))));
+  ASSERT_OK(dwb.SetPrimitive(
+      DocPath(kEncodedDocKey2, PrimitiveValue(40_ColId)),
+      ValueRef(QLValue::PrimitiveInt64(20000))));
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(1000)));
 
-  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, PrimitiveValue(50_ColId)),
-      PrimitiveValue("row2_e")));
-  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, PrimitiveValue(30_ColId)),
-      PrimitiveValue("row2_c")));
+  ASSERT_OK(dwb.SetPrimitive(
+      DocPath(kEncodedDocKey2, PrimitiveValue(50_ColId)),
+      ValueRef(QLValue::Primitive("row2_e"))));
+  ASSERT_OK(dwb.SetPrimitive(
+      DocPath(kEncodedDocKey2, PrimitiveValue(30_ColId)),
+      ValueRef(QLValue::Primitive("row2_c"))));
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(2000)));
 
   ASSERT_OK(dwb.DeleteSubDoc(DocPath(kEncodedDocKey1)));
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(2500)));
 
-  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, PrimitiveValue(50_ColId)),
-      PrimitiveValue("row1_e")));
+  ASSERT_OK(dwb.SetPrimitive(
+      DocPath(kEncodedDocKey1, PrimitiveValue(50_ColId)),
+      ValueRef(QLValue::Primitive("row1_e"))));
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(2800)));
 
 
@@ -802,10 +810,12 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorKeyProjection) {
   auto dwb = MakeDocWriteBatch();
 
   // Row 1
-  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, PrimitiveValue(40_ColId)),
-      PrimitiveValue(10000)));
-  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, PrimitiveValue(50_ColId)),
-      PrimitiveValue("row1_e")));
+  ASSERT_OK(dwb.SetPrimitive(
+      DocPath(kEncodedDocKey1, PrimitiveValue(40_ColId)),
+      ValueRef(QLValue::PrimitiveInt64(10000))));
+  ASSERT_OK(dwb.SetPrimitive(
+      DocPath(kEncodedDocKey1, PrimitiveValue(50_ColId)),
+      ValueRef(QLValue::Primitive("row1_e"))));
 
   ASSERT_OK(WriteToRocksDB(dwb, HybridTime::FromMicros(1000)));
 
@@ -852,47 +862,47 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorResolveWriteIntents) {
   SetCurrentTransactionId(txn1);
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey1, PrimitiveValue(30_ColId)),
-      PrimitiveValue("row1_c_t1"), HybridTime::FromMicros(500)));
+      QLValue::Primitive("row1_c_t1"), HybridTime::FromMicros(500)));
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey1, PrimitiveValue(40_ColId)),
-      PrimitiveValue(40000), HybridTime::FromMicros(500)));
+      QLValue::PrimitiveInt64(40000), HybridTime::FromMicros(500)));
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey1, PrimitiveValue(50_ColId)),
-      PrimitiveValue("row1_e_t1"), HybridTime::FromMicros(500)));
+      QLValue::Primitive("row1_e_t1"), HybridTime::FromMicros(500)));
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey2, PrimitiveValue(40_ColId)),
-      PrimitiveValue(42000), HybridTime::FromMicros(500)));
+      QLValue::PrimitiveInt64(42000), HybridTime::FromMicros(500)));
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey2, PrimitiveValue(50_ColId)),
-      PrimitiveValue("row2_e_t1"), HybridTime::FromMicros(500)));
+      QLValue::Primitive("row2_e_t1"), HybridTime::FromMicros(500)));
   ResetCurrentTransactionId();
 
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey1, PrimitiveValue(30_ColId)),
-      PrimitiveValue("row1_c"), HybridTime::FromMicros(1000)));
+      QLValue::Primitive("row1_c"), HybridTime::FromMicros(1000)));
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey1, PrimitiveValue(40_ColId)),
-      PrimitiveValue(10000), HybridTime::FromMicros(1000)));
+      QLValue::PrimitiveInt64(10000), HybridTime::FromMicros(1000)));
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey1, PrimitiveValue(50_ColId)),
-      PrimitiveValue("row1_e"), HybridTime::FromMicros(1000)));
+      QLValue::Primitive("row1_e"), HybridTime::FromMicros(1000)));
 
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey2, PrimitiveValue(40_ColId)),
-      PrimitiveValue(20000), HybridTime::FromMicros(2000)));
+      QLValue::PrimitiveInt64(20000), HybridTime::FromMicros(2000)));
 
   ASSERT_OK(DeleteSubDoc(
       DocPath(kEncodedDocKey2, PrimitiveValue(40_ColId)),
       HybridTime::FromMicros(2500)));
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey2, PrimitiveValue(40_ColId)),
-      PrimitiveValue(30000), HybridTime::FromMicros(3000)));
+      QLValue::PrimitiveInt64(30000), HybridTime::FromMicros(3000)));
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey2, PrimitiveValue(50_ColId)),
-      PrimitiveValue("row2_e"), HybridTime::FromMicros(2000)));
+      QLValue::Primitive("row2_e"), HybridTime::FromMicros(2000)));
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey2, PrimitiveValue(50_ColId)),
-      PrimitiveValue("row2_e_prime"), HybridTime::FromMicros(4000)));
+      QLValue::Primitive("row2_e_prime"), HybridTime::FromMicros(4000)));
 
   txn_status_manager.Commit(txn1, HybridTime::FromMicros(3500));
 
@@ -902,7 +912,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorResolveWriteIntents) {
       HybridTime::FromMicros(4000)));
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey2, PrimitiveValue(50_ColId)),
-      PrimitiveValue("row2_e_t2"), HybridTime::FromMicros(4000)));
+      QLValue::Primitive("row2_e_t2"), HybridTime::FromMicros(4000)));
   ResetCurrentTransactionId();
   txn_status_manager.Commit(txn2, HybridTime::FromMicros(6000));
 
@@ -1103,7 +1113,7 @@ TEST_F(DocRowwiseIteratorTest, IntentAwareIteratorSeek) {
   SetCurrentTransactionId(*txn);
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey1, PrimitiveValue(30_ColId)),
-      PrimitiveValue("row1_c_txn"), HybridTime::FromMicros(500)));
+      QLValue::Primitive("row1_c_txn"), HybridTime::FromMicros(500)));
 
   txn_status_manager.Commit(*txn, HybridTime::FromMicros(600));
 
@@ -1111,16 +1121,16 @@ TEST_F(DocRowwiseIteratorTest, IntentAwareIteratorSeek) {
 
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey1, PrimitiveValue(30_ColId)),
-      PrimitiveValue("row1_c"), HybridTime::FromMicros(1000)));
+      QLValue::Primitive("row1_c"), HybridTime::FromMicros(1000)));
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey1, PrimitiveValue(40_ColId)),
-      PrimitiveValue(10000), HybridTime::FromMicros(1000)));
+      QLValue::PrimitiveInt64(10000), HybridTime::FromMicros(1000)));
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey2, PrimitiveValue(30_ColId)),
-      PrimitiveValue("row2_c"), HybridTime::FromMicros(1000)));
+      QLValue::Primitive("row2_c"), HybridTime::FromMicros(1000)));
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey2, PrimitiveValue(40_ColId)),
-      PrimitiveValue(20000), HybridTime::FromMicros(1000)));
+      QLValue::PrimitiveInt64(20000), HybridTime::FromMicros(1000)));
 
   // Verify the content of RocksDB.
   ASSERT_DOCDB_DEBUG_DUMP_STR_EQ(R"#(
@@ -1173,7 +1183,7 @@ TEST_F(DocRowwiseIteratorTest, SeekTwiceWithinTheSameTxn) {
   SetCurrentTransactionId(*txn);
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey1, PrimitiveValue(30_ColId)),
-      PrimitiveValue("row1_c_t1"), HybridTime::FromMicros(500)));
+      QLValue::Primitive("row1_c_t1"), HybridTime::FromMicros(500)));
 
   // Verify the content of RocksDB.
   ASSERT_DOCDB_DEBUG_DUMP_STR_EQ(R"#(
@@ -1217,10 +1227,10 @@ TEST_F(DocRowwiseIteratorTest, ScanWithinTheSameTxn) {
   SetCurrentTransactionId(*txn);
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey2, PrimitiveValue(30_ColId)),
-      PrimitiveValue("row2_c_t1"), HybridTime::FromMicros(500)));
+      QLValue::Primitive("row2_c_t1"), HybridTime::FromMicros(500)));
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey1, PrimitiveValue(30_ColId)),
-      PrimitiveValue("row1_c_t1"), HybridTime::FromMicros(600)));
+      QLValue::Primitive("row1_c_t1"), HybridTime::FromMicros(600)));
 
   LOG(INFO) << "Dump:\n" << DocDBDebugDumpToStr();
 
