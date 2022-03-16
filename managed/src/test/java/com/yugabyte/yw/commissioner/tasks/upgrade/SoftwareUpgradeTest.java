@@ -112,6 +112,11 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
 
     ybAdminFuncName = ArgumentCaptor.forClass(String.class);
 
+    ShellResponse shellResponse = new ShellResponse();
+    shellResponse.message = "COMMAND OUTPUT: \n 2989898";
+    shellResponse.code = 0;
+    when(mockNodeUniverseManager.runCommand(any(), any(), any())).thenReturn(shellResponse);
+
     try {
       when(mockNodeUniverseManager.runYbAdminCommand(
               any(), any(), ybAdminFuncName.capture(), anyLong()))
@@ -271,12 +276,14 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     taskParams.ybSoftwareVersion = "new-version";
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.version);
     verify(mockNodeManager, times(33)).nodeCommand(any(), any());
+    verify(mockNodeUniverseManager, times(5)).runCommand(any(), any(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckMemory);
     List<TaskInfo> downloadTasks = subTasksByPosition.get(position++);
     assertTaskType(downloadTasks, TaskType.AnsibleConfigureServers);
     assertEquals(5, downloadTasks.size());
@@ -286,7 +293,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     position = assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false);
     position = assertSequence(subTasksByPosition, TSERVER, position, true, true);
     assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true);
-    assertEquals(97, position);
+    assertEquals(98, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }
@@ -325,6 +332,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     taskParams.ybSoftwareVersion = "new-version";
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.version);
     verify(mockNodeManager, times(45)).nodeCommand(any(), any());
+    verify(mockNodeUniverseManager, times(8)).runCommand(any(), any(), any());
 
     if (enableYSQL) {
       verify(mockNodeUniverseManager, times(1))
@@ -340,6 +348,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckMemory);
     List<TaskInfo> downloadTasks = subTasksByPosition.get(position++);
     assertTaskType(downloadTasks, TaskType.AnsibleConfigureServers);
     assertEquals(8, downloadTasks.size());
@@ -349,7 +358,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     position = assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false);
     position = assertSequence(subTasksByPosition, TSERVER, position, true, true);
     assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true);
-    assertEquals(133, position);
+    assertEquals(134, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }
@@ -365,11 +374,13 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.version);
     ArgumentCaptor<NodeTaskParams> commandParams = ArgumentCaptor.forClass(NodeTaskParams.class);
     verify(mockNodeManager, times(33)).nodeCommand(any(), commandParams.capture());
+    verify(mockNodeUniverseManager, times(5)).runCommand(any(), any(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckMemory);
     List<TaskInfo> downloadTasks = subTasksByPosition.get(position++);
     assertTaskType(downloadTasks, TaskType.AnsibleConfigureServers);
     assertEquals(5, downloadTasks.size());
@@ -377,7 +388,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     position = assertSequence(subTasksByPosition, MASTER, position, false, false);
     position = assertSequence(subTasksByPosition, TSERVER, position, false, true);
     assertCommonTasks(subTasksByPosition, position, UpgradeType.FULL_UPGRADE, true);
-    assertEquals(17, position);
+    assertEquals(18, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }
