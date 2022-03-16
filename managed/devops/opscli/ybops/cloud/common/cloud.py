@@ -484,6 +484,29 @@ class AbstractCloud(AbstractCommandParser):
         # Reset the write permission as a sanity check.
         remote_shell.run_command('chmod 400 {}/*'.format(self.YSQLSH_CERT_DIR))
 
+    def cleanup_client_certs(self, ssh_options):
+        remote_shell = RemoteShell(ssh_options)
+        yb_root_cert_path = os.path.join(
+            self.YSQLSH_CERT_DIR, self.CLIENT_ROOT_NAME)
+        yb_client_cert_path = os.path.join(
+            self.YSQLSH_CERT_DIR, self.CLIENT_CERT_NAME)
+        yb_client_key_path = os.path.join(
+            self.YSQLSH_CERT_DIR, self.CLIENT_KEY_NAME)
+
+        logging.info("Removing client certs located at {}, {}, {}.".format(
+            yb_root_cert_path, yb_client_cert_path, yb_client_key_path))
+
+        # Give write permissions. If the command fails, ignore.
+        remote_shell.run_command(
+            'chmod -f 666 {}/* || true'.format(self.YSQLSH_CERT_DIR))
+        # Remove client certs
+        remote_shell.run_command(
+            "rm '{}' '{}' '{}' || true".format(
+                yb_root_cert_path, yb_client_cert_path, yb_client_key_path))
+        # Reset the write permission as a sanity check.
+        remote_shell.run_command(
+            'chmod 400 {}/* || true'.format(self.YSQLSH_CERT_DIR))
+
     def create_encryption_at_rest_file(self, extra_vars, ssh_options):
         encryption_key_path = extra_vars["encryption_key_file"]  # Source file path
         key_node_dir = extra_vars["encryption_key_dir"]  # Target file path

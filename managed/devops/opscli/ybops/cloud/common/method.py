@@ -869,6 +869,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                 return
             if args.cert_rotate_action == "ROTATE_CERTS":
                 rotate_certs = True
+                # Clean up client certs to remove old cert traces
+                self.cloud.cleanup_client_certs(ssh_options)
 
         # Copying Server Certs
         logging.info("Copying certificates to {}.".format(args.search_pattern))
