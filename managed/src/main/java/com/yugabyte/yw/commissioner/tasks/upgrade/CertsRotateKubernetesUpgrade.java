@@ -4,7 +4,7 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
-import com.yugabyte.yw.commissioner.SubTaskGroup;
+import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert;
@@ -71,21 +71,22 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
   }
 
   private void createUniverseUpdateRootCertTask(UpdateRootCertAction updateAction) {
-    SubTaskGroup taskGroup = new SubTaskGroup("UniverseUpdateRootCert", executor);
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("UniverseUpdateRootCert", executor);
     UniverseUpdateRootCert.Params params = new UniverseUpdateRootCert.Params();
     params.universeUUID = taskParams().universeUUID;
     params.rootCA = taskParams().rootCA;
     params.action = updateAction;
     UniverseUpdateRootCert task = createTask(UniverseUpdateRootCert.class);
     task.initialize(params);
-    taskGroup.addTask(task);
-    taskGroup.setSubTaskGroupType(getTaskSubGroupType());
-    subTaskGroupQueue.add(taskGroup);
+    subTaskGroup.addSubTask(task);
+    subTaskGroup.setSubTaskGroupType(getTaskSubGroupType());
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
   private void createUniverseSetTlsParamsTask() {
-    SubTaskGroup taskGroup = new SubTaskGroup("UniverseSetTlsParams", executor);
-
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("UniverseSetTlsParams", executor);
     UniverseSetTlsParams.Params params = new UniverseSetTlsParams.Params();
     params.universeUUID = taskParams().universeUUID;
     params.enableNodeToNodeEncrypt = getUserIntent().enableNodeToNodeEncrypt;
@@ -94,12 +95,10 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
     params.rootCA = taskParams().rootCA;
     params.clientRootCA = getUniverse().getUniverseDetails().clientRootCA;
     params.rootAndClientRootCASame = getUniverse().getUniverseDetails().rootAndClientRootCASame;
-
     UniverseSetTlsParams task = createTask(UniverseSetTlsParams.class);
     task.initialize(params);
-    taskGroup.addTask(task);
-
-    taskGroup.setSubTaskGroupType(getTaskSubGroupType());
-    subTaskGroupQueue.add(taskGroup);
+    subTaskGroup.addSubTask(task);
+    subTaskGroup.setSubTaskGroupType(getTaskSubGroupType());
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 }

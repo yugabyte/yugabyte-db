@@ -5,7 +5,7 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.commissioner.SubTaskGroup;
+import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
@@ -528,7 +528,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
   public void createGFlagsOverrideTasks(
       Collection<NodeDetails> nodes, ServerType taskType, boolean isMasterInShellMode) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleConfigureServersGFlags", executor);
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("AnsibleConfigureServersGFlags", executor);
     for (NodeDetails node : nodes) {
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
       Map<String, String> gflags =
@@ -582,15 +583,15 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
       task.initialize(params);
       task.setUserTaskUUID(userTaskUUID);
-      subTaskGroup.addTask(task);
+      subTaskGroup.addSubTask(task);
     }
 
-    if (subTaskGroup.getNumTasks() == 0) {
+    if (subTaskGroup.getSubTaskCount() == 0) {
       return;
     }
 
     subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
-    subTaskGroupQueue.add(subTaskGroup);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
   /**
    * Creates a task list to update tags on the nodes.
@@ -599,7 +600,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param deleteTags : csv version of keys of tags to be deleted, if any.
    */
   public void createUpdateInstanceTagsTasks(Collection<NodeDetails> nodes, String deleteTags) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("InstanceActions", executor);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("InstanceActions", executor);
     for (NodeDetails node : nodes) {
       InstanceActions.Params params = new InstanceActions.Params();
       params.type = NodeManager.NodeCommandType.Tags;
@@ -614,10 +615,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Create and add a task for this node.
       InstanceActions task = createTask(InstanceActions.class);
       task.initialize(params);
-      subTaskGroup.addTask(task);
+      subTaskGroup.addSubTask(task);
     }
     subTaskGroup.setSubTaskGroupType(SubTaskGroupType.Provisioning);
-    subTaskGroupQueue.add(subTaskGroup);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
   /**
@@ -626,7 +627,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param nodes : a collection of nodes that need to be updated.
    */
   public SubTaskGroup createUpdateDiskSizeTasks(Collection<NodeDetails> nodes) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("InstanceActions", executor);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("InstanceActions", executor);
     for (NodeDetails node : nodes) {
       InstanceActions.Params params = new InstanceActions.Params();
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
@@ -654,9 +655,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Create and add a task for this node.
       InstanceActions task = createTask(InstanceActions.class);
       task.initialize(params);
-      subTaskGroup.addTask(task);
+      subTaskGroup.addSubTask(task);
     }
-    subTaskGroupQueue.add(subTaskGroup);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
@@ -667,7 +668,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param nodes : a collection of nodes that need to be created
    */
   public SubTaskGroup createStartTServersTasks(Collection<NodeDetails> nodes) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleClusterServerCtl", executor);
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("AnsibleClusterServerCtl", executor);
     for (NodeDetails node : nodes) {
       AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
@@ -688,21 +690,22 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       AnsibleClusterServerCtl task = createTask(AnsibleClusterServerCtl.class);
       task.initialize(params);
       // Add it to the task list.
-      subTaskGroup.addTask(task);
+      subTaskGroup.addSubTask(task);
     }
-    subTaskGroupQueue.add(subTaskGroup);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
   @Override
   public SubTaskGroup createWaitForMasterLeaderTask() {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("WaitForMasterLeader", executor);
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("WaitForMasterLeader", executor);
     WaitForMasterLeader task = createTask(WaitForMasterLeader.class);
     WaitForMasterLeader.Params params = new WaitForMasterLeader.Params();
     params.universeUUID = taskParams().universeUUID;
     task.initialize(params);
-    subTaskGroup.addTask(task);
-    subTaskGroupQueue.add(subTaskGroup);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
@@ -710,13 +713,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * Creates a task list to wait for a minimum number of tservers to heartbeat to the master leader.
    */
   public SubTaskGroup createWaitForTServerHeartBeatsTask() {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("WaitForTServerHeartBeats", executor);
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("WaitForTServerHeartBeats", executor);
     WaitForTServerHeartBeats task = createTask(WaitForTServerHeartBeats.class);
     WaitForTServerHeartBeats.Params params = new WaitForTServerHeartBeats.Params();
     params.universeUUID = taskParams().universeUUID;
     task.initialize(params);
-    subTaskGroup.addTask(task);
-    subTaskGroupQueue.add(subTaskGroup);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
@@ -737,14 +741,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public SubTaskGroup createFailedPrecheckTask(
       Map<String, String> failedNodes, boolean reserveNodes) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("PrecheckNode", executor);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("PrecheckNode", executor);
     PrecheckNode.Params params = new PrecheckNode.Params();
     params.failedNodeNamesToError = failedNodes;
     params.reserveNodes = reserveNodes;
     PrecheckNode failedCheck = createTask(PrecheckNode.class);
     failedCheck.initialize(params);
-    subTaskGroup.addTask(failedCheck);
-    subTaskGroupQueue.add(subTaskGroup);
+    subTaskGroup.addSubTask(failedCheck);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
@@ -810,7 +814,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public SubTaskGroup createSetupServerTasks(
       Collection<NodeDetails> nodes, boolean isSystemdUpgrade) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleSetupServer", executor);
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("AnsibleSetupServer", executor);
     for (NodeDetails node : nodes) {
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
@@ -822,9 +827,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       AnsibleSetupServer ansibleSetupServer = createTask(AnsibleSetupServer.class);
       ansibleSetupServer.initialize(params);
       // Add it to the task list.
-      subTaskGroup.addTask(ansibleSetupServer);
+      subTaskGroup.addSubTask(ansibleSetupServer);
     }
-    subTaskGroupQueue.add(subTaskGroup);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
@@ -838,7 +843,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param nodes : a collection of nodes that need to be created
    */
   public SubTaskGroup createCreateServerTasks(Collection<NodeDetails> nodes) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleCreateServer", executor);
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("AnsibleCreateServer", executor);
     for (NodeDetails node : nodes) {
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
       AnsibleCreateServer.Params params = new AnsibleCreateServer.Params();
@@ -848,9 +854,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       AnsibleCreateServer ansibleCreateServer = createTask(AnsibleCreateServer.class);
       ansibleCreateServer.initialize(params);
       // Add it to the task list.
-      subTaskGroup.addTask(ansibleCreateServer);
+      subTaskGroup.addSubTask(ansibleCreateServer);
     }
-    subTaskGroupQueue.add(subTaskGroup);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
@@ -892,7 +898,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       boolean updateMasterAddrsOnly,
       boolean isMaster,
       boolean isSystemdUpgrade) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleConfigureServers", executor);
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("AnsibleConfigureServers", executor);
     for (NodeDetails node : nodes) {
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
@@ -954,9 +961,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       task.initialize(params);
       task.setUserTaskUUID(userTaskUUID);
       // Add it to the task list.
-      subTaskGroup.addTask(task);
+      subTaskGroup.addSubTask(task);
     }
-    subTaskGroupQueue.add(subTaskGroup);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
@@ -968,8 +975,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @return subtask group
    */
   public SubTaskGroup createServerInfoTasks(Collection<NodeDetails> nodes) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleUpdateNodeInfo", executor);
-
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("AnsibleUpdateNodeInfo", executor);
     for (NodeDetails node : nodes) {
       NodeTaskParams params = new NodeTaskParams();
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
@@ -987,9 +994,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       ansibleFindCloudHost.initialize(params);
       ansibleFindCloudHost.setUserTaskUUID(userTaskUUID);
       // Add it to the task list.
-      subTaskGroup.addTask(ansibleFindCloudHost);
+      subTaskGroup.addSubTask(ansibleFindCloudHost);
     }
-    subTaskGroupQueue.add(subTaskGroup);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
@@ -1243,7 +1250,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             taskParams().extraDependencies.installNodeExporter;
         PreflightNodeCheck task = createTask(PreflightNodeCheck.class);
         task.initialize(params);
-        subTaskGroup.addTask(task);
+        subTaskGroup.addSubTask(task);
       }
     }
   }
@@ -1264,7 +1271,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     if (onPremClusters.isEmpty()) {
       return;
     }
-    SubTaskGroup subTaskGroup = new SubTaskGroup("SetNodeStatus", executor);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("SetNodeStatus", executor);
     for (Cluster cluster : onPremClusters) {
       Set<NodeDetails> nodesToProvision =
           PlacementInfoUtil.getNodesToProvision(taskParams().getNodesInCluster(cluster.uuid));
@@ -1277,7 +1284,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             createPreflightNodeCheckTasks(subTaskGroup, cluster, filteredNodes);
           });
     }
-    subTaskGroupQueue.add(subTaskGroup);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
   /**

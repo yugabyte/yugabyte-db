@@ -11,7 +11,6 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.forms.TableDefinitionTaskParams;
 import javax.inject.Inject;
@@ -34,9 +33,6 @@ public class CreateCassandraTable extends UniverseTaskBase {
   @Override
   public void run() {
     try {
-      // Create the task list sequence.
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
-
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening. Does not alter 'updateSucceeded' flag so as not
       // to lock out the universe completely in case this task fails.
@@ -52,7 +48,7 @@ public class CreateCassandraTable extends UniverseTaskBase {
       // TODO: wait for table creation
 
       // Run all the tasks.
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
