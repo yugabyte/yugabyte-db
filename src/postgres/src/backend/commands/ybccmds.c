@@ -666,9 +666,7 @@ YBCDropTable(Oid relationId)
 		{
 			HandleYBStatusIgnoreNotFound(YBCPgDmlBindTable(handle), &not_found);
 			int rows_affected_count = 0;
-			HandleYBStatusIgnoreNotFound(YBCPgDmlExecWriteOp(handle,
-															 &rows_affected_count,
-															 false /* use_async_flush */),
+			HandleYBStatusIgnoreNotFound(YBCPgDmlExecWriteOp(handle, &rows_affected_count),
 										 &not_found);
 		}
 	}
@@ -716,13 +714,11 @@ YBCTruncateTable(Relation rel) {
 		/* Create table-level tombstone for colocated tables / tables in tablegroups */
 		HandleYBStatus(YBCPgNewTruncateColocated(databaseId,
 												 relationId,
-												 false /* is_single_row_txn */,
+												 false,
 												 &handle));
 		HandleYBStatus(YBCPgDmlBindTable(handle));
 		int rows_affected_count = 0;
-		HandleYBStatus(YBCPgDmlExecWriteOp(handle,
-										   &rows_affected_count,
-										   false /* use_async_flush */));
+		HandleYBStatus(YBCPgDmlExecWriteOp(handle, &rows_affected_count));
 	}
 	else
 	{
@@ -761,13 +757,11 @@ YBCTruncateTable(Relation rel) {
 			/* Create index-level tombstone for colocated indexes / indexes in tablegroups */
 			HandleYBStatus(YBCPgNewTruncateColocated(databaseId,
 													 indexId,
-													 false /* is_single_row_txn */,
+													 false,
 													 &handle));
 			HandleYBStatus(YBCPgDmlBindTable(handle));
 			int rows_affected_count = 0;
-			HandleYBStatus(YBCPgDmlExecWriteOp(handle,
-											   &rows_affected_count,
-											   false /* use_async_flush */));
+			HandleYBStatus(YBCPgDmlExecWriteOp(handle, &rows_affected_count));
 		}
 		else
 		{
@@ -1258,9 +1252,7 @@ YBCDropIndex(Oid relationId)
 		if (valid_handle) {
 			HandleYBStatusIgnoreNotFound(YBCPgDmlBindTable(handle), &not_found);
 			int rows_affected_count = 0;
-			HandleYBStatusIgnoreNotFound(YBCPgDmlExecWriteOp(handle,
-															 &rows_affected_count,
-															 false /* use_async_flush */),
+			HandleYBStatusIgnoreNotFound(YBCPgDmlExecWriteOp(handle, &rows_affected_count),
 										 &not_found);
 		}
 	}

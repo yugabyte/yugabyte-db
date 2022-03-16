@@ -10,17 +10,17 @@
 import React, { FC, useState } from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { Link } from 'react-router';
-import { Backup_States, IBackup, Keyspace_Table, TableType } from '.';
-import { StatusBadge } from '../common/badge/StatusBadge';
-import { YBButton } from '../common/forms/fields';
+import { Backup_States, IBackup, Keyspace_Table, TableType } from '..';
+import { StatusBadge } from '../../common/badge/StatusBadge';
+import { YBButton } from '../../common/forms/fields';
 import './BackupDetails.scss';
 import {
   calculateDuration,
   FormatUnixTimeStampTimeToTimezone,
   RevealBadge,
-  SearchInput
-} from './BackupUtils';
+} from '../common/BackupUtils';
 import { YCQLTableList, YSQLTableList } from './BackupTableList';
+import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
 interface BackupDetailsProps {
   backup_details: IBackup | null;
   onHide: () => void;
@@ -149,7 +149,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
           {backup_details.state !== Backup_States.FAILED && (
             <Row className="tables-list">
               <Col lg={6} className="no-padding">
-                <SearchInput
+                <YBSearchInput
                   placeHolder="Search keyspace name"
                   onValueChanged={(e: React.ChangeEvent<HTMLInputElement>) => {
                     setSearchKeyspaceText(e.target.value);

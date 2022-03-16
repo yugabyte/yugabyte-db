@@ -214,9 +214,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   typedef std::unique_ptr<const PgDocOp> UniPtrConst;
 
   // Constructors & Destructors.
-  PgDocOp(const PgSession::ScopedRefPtr& pg_session,
-          PgTable* table,
-          const PgObjectId& relation_id = PgObjectId());
+  PgDocOp(const PgSession::ScopedRefPtr& pg_session, PgTable* table);
   virtual ~PgDocOp();
 
   // Initialize doc operator.
@@ -225,8 +223,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   const PgExecParameters& ExecParameters() const;
 
   // Execute the op. Return true if the request has been sent and is awaiting the result.
-  virtual Result<RequestSent> Execute(bool force_non_bufferable = false,
-                                      bool use_async_flush = false);
+  virtual Result<RequestSent> Execute(bool force_non_bufferable = false);
 
   // Instruct this doc_op to abandon execution and querying data by setting end_of_data_ to 'true'.
   // - This op will not send request to tablet server.
@@ -300,9 +297,9 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   void SetReadTime();
 
  private:
-  CHECKED_STATUS SendRequest(bool force_non_bufferable, bool use_async_flush);
+  CHECKED_STATUS SendRequest(bool force_non_bufferable);
 
-  virtual CHECKED_STATUS SendRequestImpl(bool force_non_bufferable, bool use_async_flush);
+  virtual CHECKED_STATUS SendRequestImpl(bool force_non_bufferable);
 
   Result<std::list<PgDocResult>> ProcessResponse(const Status& exec_status);
 
@@ -321,7 +318,6 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
 
   // Target table.
   PgTable& table_;
-  PgObjectId relation_id_;
 
   // Exec control parameters.
   PgExecParameters exec_params_;
@@ -545,7 +541,6 @@ class PgDocWriteOp : public PgDocOp {
   // Constructors & Destructors.
   PgDocWriteOp(const PgSession::ScopedRefPtr& pg_session,
                PgTable* table,
-               const PgObjectId& relation_id,
                PgsqlWriteOpPtr write_op);
 
   // Set write time.
