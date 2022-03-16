@@ -106,9 +106,7 @@ Status DocDBTableReader::UpdateTableTombstoneTime(const Slice& root_doc_key) {
     DocHybridTime doc_ht = DocHybridTime::kMin;
 
     RETURN_NOT_OK(iter_->FindLatestRecord(table_id_encoded, &doc_ht, &value));
-    ValueType value_type;
-    RETURN_NOT_OK(Value::DecodePrimitiveValueType(value, &value_type));
-    if (value_type == ValueType::kTombstone) {
+    if (VERIFY_RESULT(Value::IsTombstoned(value))) {
       SCHECK_NE(doc_ht, DocHybridTime::kInvalid, Corruption,
                 "Invalid hybrid time for table tombstone");
       table_obsolescence_tracker_ = table_obsolescence_tracker_.Child(doc_ht, MonoDelta::kMax);

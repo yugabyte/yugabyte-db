@@ -42,16 +42,6 @@ bool KeyBelongsToDocKeyInTest(const rocksdb::Slice &key, const string &encoded_d
   }
 }
 
-Status ConsumeHybridTimeFromKey(rocksdb::Slice* slice, DocHybridTime* hybrid_time)  {
-  return hybrid_time->DecodeFrom(slice);
-}
-
-Status DecodeHybridTimeFromEndOfKey(
-    const rocksdb::Slice &key,
-    DocHybridTime *dest) {
-  return dest->DecodeFromEnd(key);
-}
-
 // Given a DocDB key stored in RocksDB, validate the DocHybridTime size stored as the
 // last few bits of the final byte of the key, and ensure that the ValueType byte preceding that
 // encoded DocHybridTime is ValueType::kHybridTime.
@@ -207,9 +197,7 @@ Result<DocHybridTime> DecodeInvertedDocHt(Slice key_slice) {
         key_slice.ToDebugHexString());
   }
   key_slice.consume_byte();
-  DocHybridTime doc_ht;
-  RETURN_NOT_OK(doc_ht.DecodeFrom(&key_slice));
-  return doc_ht;
+  return DocHybridTime::DecodeFrom(&key_slice);
 }
 
 Slice InvertEncodedDocHT(const Slice& input, DocHybridTimeWordBuffer* buffer) {

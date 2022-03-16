@@ -530,15 +530,14 @@ Status HybridScanChoices::SkipTargetsUpTo(const Slice& new_target) {
   */
   DocKeyDecoder decoder(new_target);
   RETURN_NOT_OK(decoder.DecodeToRangeGroup());
-  current_scan_target_.Reset(Slice(new_target.data(),
-                                decoder.left_input().data()));
+  current_scan_target_.Reset(Slice(new_target.data(), decoder.left_input().data()));
 
   size_t col_idx = 0;
   PrimitiveValue target_value;
   for (col_idx = 0; col_idx < current_scan_target_idxs_.size(); col_idx++) {
     RETURN_NOT_OK(decoder.DecodePrimitiveValue(&target_value));
-    const auto& lower_choices = (range_cols_scan_options_lower_)[col_idx];
-    const auto& upper_choices = (range_cols_scan_options_upper_)[col_idx];
+    const auto& lower_choices = range_cols_scan_options_lower_[col_idx];
+    const auto& upper_choices = range_cols_scan_options_upper_[col_idx];
     auto current_ind = current_scan_target_idxs_[col_idx];
     DCHECK(current_ind < lower_choices.size());
     const auto& lower = lower_choices[current_ind];

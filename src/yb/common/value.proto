@@ -34,6 +34,12 @@ message QLMapValuePB {
 enum QLVirtualValuePB {
   LIMIT_MAX = 1;
   LIMIT_MIN = 2;
+  COUNTER = 3;
+  SS_FORWARD = 4;
+  SS_REVERSE = 5;
+  TOMBSTONE = 6;
+  NULL_LOW = 7;
+  ARRAY = 8;
 }
 
 // A QL value

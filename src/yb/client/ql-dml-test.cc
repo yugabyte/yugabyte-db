@@ -781,7 +781,7 @@ TEST_F(QLDmlTest, TestConditionalInsert) {
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_EQ(rowblock->schema().column(0).name(), "[applied]");
-    EXPECT_EQ(rowblock->schema().column(0).type_info()->type(), BOOL);
+    EXPECT_EQ(rowblock->schema().column(0).type_info()->type, BOOL);
     EXPECT_FALSE(row.column(0).bool_value());
   }
 
@@ -821,17 +821,17 @@ TEST_F(QLDmlTest, TestConditionalInsert) {
     const auto& row = rowblock->row(0);
     EXPECT_EQ(rowblock->schema().num_columns(), 6);
     EXPECT_EQ(rowblock->schema().column(0).name(), "[applied]");
-    EXPECT_EQ(rowblock->schema().column(0).type_info()->type(), BOOL);
+    EXPECT_EQ(rowblock->schema().column(0).type_info()->type, BOOL);
     EXPECT_EQ(rowblock->schema().column(1).name(), "h1");
-    EXPECT_EQ(rowblock->schema().column(1).type_info()->type(), INT32);
+    EXPECT_EQ(rowblock->schema().column(1).type_info()->type, INT32);
     EXPECT_EQ(rowblock->schema().column(2).name(), "h2");
-    EXPECT_EQ(rowblock->schema().column(2).type_info()->type(), STRING);
+    EXPECT_EQ(rowblock->schema().column(2).type_info()->type, STRING);
     EXPECT_EQ(rowblock->schema().column(3).name(), "r1");
-    EXPECT_EQ(rowblock->schema().column(3).type_info()->type(), INT32);
+    EXPECT_EQ(rowblock->schema().column(3).type_info()->type, INT32);
     EXPECT_EQ(rowblock->schema().column(4).name(), "r2");
-    EXPECT_EQ(rowblock->schema().column(4).type_info()->type(), STRING);
+    EXPECT_EQ(rowblock->schema().column(4).type_info()->type, STRING);
     EXPECT_EQ(rowblock->schema().column(5).name(), "c2");
-    EXPECT_EQ(rowblock->schema().column(5).type_info()->type(), STRING);
+    EXPECT_EQ(rowblock->schema().column(5).type_info()->type, STRING);
     EXPECT_FALSE(row.column(0).bool_value());
     EXPECT_EQ(row.column(1).int32_value(), 1);
     EXPECT_EQ(row.column(2).string_value(), "a");
@@ -875,7 +875,7 @@ TEST_F(QLDmlTest, TestConditionalInsert) {
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_EQ(rowblock->schema().column(0).name(), "[applied]");
-    EXPECT_EQ(rowblock->schema().column(0).type_info()->type(), BOOL);
+    EXPECT_EQ(rowblock->schema().column(0).type_info()->type, BOOL);
     EXPECT_TRUE(row.column(0).bool_value());
   }
 
@@ -950,7 +950,7 @@ TEST_F(QLDmlTest, TestConditionalUpdate) {
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_EQ(rowblock->schema().column(0).name(), "[applied]");
-    EXPECT_EQ(rowblock->schema().column(0).type_info()->type(), BOOL);
+    EXPECT_EQ(rowblock->schema().column(0).type_info()->type, BOOL);
     EXPECT_FALSE(row.column(0).bool_value());
   }
 
@@ -985,7 +985,7 @@ TEST_F(QLDmlTest, TestConditionalUpdate) {
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_EQ(rowblock->schema().column(0).name(), "[applied]");
-    EXPECT_EQ(rowblock->schema().column(0).type_info()->type(), BOOL);
+    EXPECT_EQ(rowblock->schema().column(0).type_info()->type, BOOL);
     EXPECT_TRUE(row.column(0).bool_value());
   }
 
@@ -1042,17 +1042,17 @@ TEST_F(QLDmlTest, TestConditionalDelete) {
     const auto& row = rowblock->row(0);
     EXPECT_EQ(rowblock->schema().num_columns(), 6);
     EXPECT_EQ(rowblock->schema().column(0).name(), "[applied]");
-    EXPECT_EQ(rowblock->schema().column(0).type_info()->type(), BOOL);
+    EXPECT_EQ(rowblock->schema().column(0).type_info()->type, BOOL);
     EXPECT_EQ(rowblock->schema().column(1).name(), "h1");
-    EXPECT_EQ(rowblock->schema().column(1).type_info()->type(), INT32);
+    EXPECT_EQ(rowblock->schema().column(1).type_info()->type, INT32);
     EXPECT_EQ(rowblock->schema().column(2).name(), "h2");
-    EXPECT_EQ(rowblock->schema().column(2).type_info()->type(), STRING);
+    EXPECT_EQ(rowblock->schema().column(2).type_info()->type, STRING);
     EXPECT_EQ(rowblock->schema().column(3).name(), "r1");
-    EXPECT_EQ(rowblock->schema().column(3).type_info()->type(), INT32);
+    EXPECT_EQ(rowblock->schema().column(3).type_info()->type, INT32);
     EXPECT_EQ(rowblock->schema().column(4).name(), "r2");
-    EXPECT_EQ(rowblock->schema().column(4).type_info()->type(), STRING);
+    EXPECT_EQ(rowblock->schema().column(4).type_info()->type, STRING);
     EXPECT_EQ(rowblock->schema().column(5).name(), "c1");
-    EXPECT_EQ(rowblock->schema().column(5).type_info()->type(), INT32);
+    EXPECT_EQ(rowblock->schema().column(5).type_info()->type, INT32);
     EXPECT_FALSE(row.column(0).bool_value());
     EXPECT_EQ(row.column(1).int32_value(), 1);
     EXPECT_EQ(row.column(2).string_value(), "a");
@@ -1095,7 +1095,7 @@ TEST_F(QLDmlTest, TestConditionalDelete) {
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_EQ(rowblock->schema().column(0).name(), "[applied]");
-    EXPECT_EQ(rowblock->schema().column(0).type_info()->type(), BOOL);
+    EXPECT_EQ(rowblock->schema().column(0).type_info()->type, BOOL);
     EXPECT_TRUE(row.column(0).bool_value());
   }
 
@@ -1135,7 +1135,7 @@ TEST_F(QLDmlTest, TestConditionalDelete) {
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_EQ(rowblock->schema().column(0).name(), "[applied]");
-    EXPECT_EQ(rowblock->schema().column(0).type_info()->type(), BOOL);
+    EXPECT_EQ(rowblock->schema().column(0).type_info()->type, BOOL);
     EXPECT_FALSE(row.column(0).bool_value());
   }
 }
