@@ -559,6 +559,11 @@ class AwsCloud(AbstractCloud):
     def get_console_output(self, args):
         instance = self.get_host_info(args)
 
+        if not instance:
+            logging.warning('Could not find instance {}, no console output available'.format(
+                args.search_pattern))
+            return ''
+
         try:
             ec2 = boto3.client('ec2', region_name=instance['region'])
             return ec2.get_console_output(InstanceId=instance['id'], Latest=True).get('Output', '')
