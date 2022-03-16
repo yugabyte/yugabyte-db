@@ -46,6 +46,7 @@ import {
 import './UniverseDetail.scss';
 import { SecurityMenu } from '../SecurityModal/SecurityMenu';
 import Replication from '../../xcluster/Replication';
+import { UniverseLevelBackup } from '../../backupv2/Universe/UniverseLevelBackup';
 
 const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = ['i3', 'c5d', 'c6gd'];
 
@@ -447,7 +448,12 @@ class UniverseDetail extends Component {
                 unmountOnExit={true}
                 disabled={isDisabled(currentCustomer.data.features, 'universes.details.backups')}
               >
-                <ListBackupsContainer currentUniverse={currentUniverse.data} />
+                {
+                  (featureFlags.test['backupv2'] ||
+                  featureFlags.released['backupv2']) ? <UniverseLevelBackup /> : (
+                    <ListBackupsContainer currentUniverse={currentUniverse.data} />
+                  )
+                }
               </Tab.Pane>
             ),
 

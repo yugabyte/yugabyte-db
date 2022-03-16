@@ -18,7 +18,8 @@ export function getBackupsList(
   timeRange: TIME_RANGE_STATE,
   states: any[],
   sortBy: string,
-  direction: string
+  direction: string,
+  universeUUID?:string
 ) {
   const cUUID = localStorage.getItem('customerId');
   const payload = {
@@ -34,7 +35,9 @@ export function getBackupsList(
       universeNameList: [searchText]
     };
   }
-
+  if(universeUUID){
+    payload['filter']['universeUUIDList'] = [universeUUID]
+  }
   if (states.length !== 0 && states[0].label !== 'All') {
     payload.filter['states'] = [states[0].value];
   }

@@ -91,7 +91,12 @@ const DEFAULT_TIME_STATE: TIME_RANGE_STATE = {
   label: null
 };
 
-export const BackupList: FC = () => {
+interface BackupListOptions {
+  allowTakingBackup?: boolean;
+  universeUUID?: string;
+}
+
+export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeUUID }) => {
   const [sizePerPage, setSizePerPage] = useState(10);
   const [page, setPage] = useState(1);
   const [searchText, setSearchText] = useState('');
@@ -130,7 +135,8 @@ export const BackupList: FC = () => {
       timeRange,
       status,
       DEFAULT_SORT_COLUMN,
-      sortDirection
+      sortDirection,
+      universeUUID
     ],
     () =>
       getBackupsList(
@@ -140,7 +146,8 @@ export const BackupList: FC = () => {
         timeRange,
         status,
         DEFAULT_SORT_COLUMN,
-        sortDirection
+        sortDirection,
+        universeUUID
       ),
     {
       refetchInterval: 1000 * 20
@@ -213,7 +220,7 @@ export const BackupList: FC = () => {
   return (
     <Row className="backup-v2">
       <Row className="backup-actions">
-        <Col lg={6} className="no-padding">
+        <Col lg={5} className="no-padding">
           <Row>
             <Col lg={6} className="no-padding">
               <YBSearchInput
@@ -235,7 +242,7 @@ export const BackupList: FC = () => {
             </Col>
           </Row>
         </Col>
-        <Col lg={6} className="actions-delete-filters no-padding">
+        <Col lg={7} className="actions-delete-filters no-padding">
           <YBButton
             btnText="Delete"
             btnIcon="fa fa-trash-o"
@@ -283,9 +290,14 @@ export const BackupList: FC = () => {
                 return { ...styles, ...CALDENDAR_ICON() };
               },
               placeholder: (styles) => ({ ...styles, ...CALDENDAR_ICON() }),
-              singleValue: (styles) => ({ ...styles, ...CALDENDAR_ICON() })
+              singleValue: (styles) => ({ ...styles, ...CALDENDAR_ICON() }),
+              menu: (styles) => ({
+                ...styles,
+                zIndex: 10
+              })
             }}
           ></Select>
+          {allowTakingBackup && <YBButton btnText="Backup now" btnClass="btn btn-orange backup-now-button" btnIcon="fa fa-upload" />}
         </Col>
       </Row>
       <Row className="backup-list-table">
