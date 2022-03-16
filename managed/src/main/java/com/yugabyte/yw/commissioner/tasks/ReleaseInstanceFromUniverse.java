@@ -12,7 +12,6 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.DnsManager;
@@ -52,8 +51,6 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
     boolean hitException = false;
     try {
       checkUniverseVersion();
-      // Create the task list sequence.
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
       // Set the 'updateInProgress' flag to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
@@ -134,7 +131,7 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
 
       // Run all the tasks.
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       hitException = true;
