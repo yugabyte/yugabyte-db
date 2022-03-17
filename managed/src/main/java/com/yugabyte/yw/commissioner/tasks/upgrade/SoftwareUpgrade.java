@@ -3,7 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroup;
+import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
@@ -17,6 +17,13 @@ import javax.inject.Inject;
 import org.apache.commons.lang3.tuple.Pair;
 
 public class SoftwareUpgrade extends UpgradeTaskBase {
+
+  private static final UpgradeContext SOFTWARE_UPGRADE_CONTEXT =
+      UpgradeContext.builder()
+          .reconfigureMaster(false)
+          .runBeforeStopping(false)
+          .processInactiveMaster(true)
+          .build();
 
   @Inject
   protected SoftwareUpgrade(BaseTaskDependencies baseTaskDependencies) {
@@ -43,20 +50,19 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
     runUpgrade(
         () -> {
           Pair<List<NodeDetails>, List<NodeDetails>> nodes = fetchNodes(taskParams().upgradeOption);
-          // Verify the request params and fail if invalid
+          // Verify the request params and fail if invalid.
           taskParams().verifyParams(getUniverse());
-          // Download software to all nodes
+          // Download software to all nodes.
           createDownloadTasks(nodes.getRight());
-          // Install software on nodes
+          // Install software on nodes.
           createUpgradeTaskFlow(
               (nodes1, processTypes) -> createSoftwareInstallTasks(nodes1, getSingle(processTypes)),
-              taskParams().upgradeOption,
               nodes,
-              DEFAULT_CONTEXT);
-          // Run YSQL upgrade on the universe
+              SOFTWARE_UPGRADE_CONTEXT);
+          // Run YSQL upgrade on the universe.
           createRunYsqlUpgradeTask(taskParams().ybSoftwareVersion)
               .setSubTaskGroupType(getTaskSubGroupType());
-          // Mark the final software version on the universe
+          // Update software version in the universe metadata.
           createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
               .setSubTaskGroupType(getTaskSubGroupType());
         });
@@ -67,13 +73,14 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
         String.format(
             "AnsibleConfigureServers (%s) for: %s",
             SubTaskGroupType.DownloadingSoftware, taskParams().nodePrefix);
-    SubTaskGroup downloadTaskGroup = new SubTaskGroup(subGroupDescription, executor);
+
+    SubTaskGroup downloadTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription);
     for (NodeDetails node : nodes) {
-      downloadTaskGroup.addTask(
+      downloadTaskGroup.addSubTask(
           getAnsibleConfigureServerTask(node, ServerType.TSERVER, UpgradeTaskSubType.Download));
     }
     downloadTaskGroup.setSubTaskGroupType(SubTaskGroupType.DownloadingSoftware);
-    subTaskGroupQueue.add(downloadTaskGroup);
+    getRunnableTask().addSubTaskGroup(downloadTaskGroup);
   }
 
   private void createSoftwareInstallTasks(List<NodeDetails> nodes, ServerType processType) {
@@ -86,13 +93,13 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
         String.format(
             "AnsibleConfigureServers (%s) for: %s",
             SubTaskGroupType.InstallingSoftware, taskParams().nodePrefix);
-    SubTaskGroup taskGroup = new SubTaskGroup(subGroupDescription, executor);
+    SubTaskGroup taskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription);
     for (NodeDetails node : nodes) {
-      taskGroup.addTask(
+      taskGroup.addSubTask(
           getAnsibleConfigureServerTask(node, processType, UpgradeTaskSubType.Install));
     }
     taskGroup.setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
-    subTaskGroupQueue.add(taskGroup);
+    getRunnableTask().addSubTaskGroup(taskGroup);
   }
 
   private AnsibleConfigureServers getAnsibleConfigureServerTask(

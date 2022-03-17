@@ -46,8 +46,8 @@ class AbstractCloud(AbstractCommandParser):
     CLIENT_KEY_NAME = "yugabytedb.key"
     CERT_LOCATION_NODE = "node"
     CERT_LOCATION_PLATFORM = "platform"
-    SSH_RETRY_COUNT = 30
-    SSH_WAIT_SECONDS = 30
+    SSH_RETRY_COUNT = 180
+    SSH_WAIT_SECONDS = 5
     SSH_TIMEOUT_SECONDS = 10
 
     def __init__(self, name):
@@ -222,6 +222,8 @@ class AbstractCloud(AbstractCommandParser):
 
     def configure_secondary_interface(self, args, extra_vars, subnet_cidr):
         logging.info("[app] Configuring second NIC")
+        # Adding a wait just for safety.
+        self.wait_for_ssh_port(extra_vars["ssh_host"], args.search_pattern, extra_vars["ssh_port"])
         subnet_network, subnet_netmask = subnet_cidr.split('/')
         # Copy and run script to configure routes
         scp_to_tmp(

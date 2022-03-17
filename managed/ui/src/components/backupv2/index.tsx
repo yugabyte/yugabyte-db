@@ -7,7 +7,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-export * from './IBackup';
-export * from './BackupAPI';
-export * from './AccountLevelBackup';
-export * from './BackupList';
+export * from './common/IBackup';
+export * from './common/BackupAPI';
+export * from './Account/AccountLevelBackup';
+export * from './components/BackupList';

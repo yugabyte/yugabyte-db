@@ -54,7 +54,7 @@ yugabyte=# \i <db-sql-script>
 
 - *db-sql-script*: the SQL script file dumped using `ysql_dump` or `ysql_dumpall`.
 
-For details about using this command, see [`\i`](../../../admin/ysqlsh/#-i-filename-include-filename) in the [`ysqlsh`](../../../admin/ysqlsh/) documentation.
+For details about using this command, see [`\i`](../../../admin/ysqlsh/#i-filename-include-filename) in the [`ysqlsh`](../../../admin/ysqlsh/) documentation.
 
 {{< note title="Note" >}}
 
@@ -64,7 +64,7 @@ To reduce security risks, SQL script files created using `ysql_dump` include `SE
 
 ## Restore databases using `ysqlsh -f`
 
-To restore one database using `ysqlsh` on the command line, open a command line window and run the following command. The `ysqlsh -f` command will read the SQL statements from the specified file and
+To restore one database using `ysqlsh` on the command line, open a command line window and run the following command. The `ysqlsh -f` command will read the SQL statements from the specified file.
 
 ```sh
 $ ysqlsh -f <db-sql-script>
@@ -72,4 +72,4 @@ $ ysqlsh -f <db-sql-script>
 
 - *db-sql-script*: the SQL script file dumped using `ysql_dump` or `ysql_dumpall`.
 
-For details about using this command, see [`-f, -file`](../../../admin/ysqlsh/#-f-filename-file-filename) in the [`ysqlsh`](../../../admin/ysqlsh/) documentation.
+While the `-f` option is largely equivalent to the meta-command [`\i`](../../../admin/ysqlsh/#i-filename-include-filename), it enables some additional features. For details about using this command, see [`-f, --file`](../../../admin/ysqlsh/#f-filename-file-filename) in the [`ysqlsh`](../../../admin/ysqlsh/) documentation.

@@ -13,10 +13,11 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.amazonaws.SDKGlobalConfiguration;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.common.AWSUtil;
 import com.yugabyte.yw.common.AZUtil;
+import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.GCPUtil;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -39,6 +40,8 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
   private static final String GCS = Util.GCS;
   private static final String S3 = Util.S3;
   private static final String NFS = Util.NFS;
+
+  @Inject BackupUtil backupUtil;
 
   @Inject
   public DeleteCustomerConfig(BaseTaskDependencies baseTaskDependencies) {
@@ -68,7 +71,6 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
       // Dell ECS are provided and custom certs are needed to connect
       // Reference: https://yugabyte.atlassian.net/browse/PLAT-2497
       System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
       List<Schedule> scheduleList = Schedule.findAllScheduleWithCustomerConfig(params().configUUID);
       for (Schedule schedule : scheduleList) {
         schedule.stopSchedule();
@@ -79,7 +81,7 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
           Backup.findAllFinishedBackupsWithCustomerConfig(params().configUUID);
 
       if (backupList.size() != 0) {
-        if (isCredentialUsable(customerConfig.data, customerConfig.name)) {
+        if (isCredentialUsable(customerConfig)) {
           List<String> backupLocations;
           switch (customerConfig.name) {
             case S3:
@@ -93,7 +95,7 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
                   backup.transitionState(Backup.BackupState.FailedToDelete);
                 } finally {
                   if (backup.state != Backup.BackupState.FailedToDelete) {
-                    backup.transitionState(Backup.BackupState.Deleted);
+                    backup.delete();
                   }
                 }
               }
@@ -109,7 +111,7 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
                   backup.transitionState(Backup.BackupState.FailedToDelete);
                 } finally {
                   if (backup.state != Backup.BackupState.FailedToDelete) {
-                    backup.transitionState(Backup.BackupState.Deleted);
+                    backup.delete();
                   }
                 }
               }
@@ -125,7 +127,7 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
                   backup.transitionState(Backup.BackupState.FailedToDelete);
                 } finally {
                   if (backup.state != Backup.BackupState.FailedToDelete) {
-                    backup.transitionState(Backup.BackupState.Deleted);
+                    backup.delete();
                   }
                 }
               }
@@ -154,7 +156,7 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
         }
       }
 
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
     } catch (Exception e) {
       log.error(
           "Error while deleting backups associated to Configuration {}", params().configUUID, e);
@@ -186,24 +188,12 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
     return backupLocations;
   }
 
-  private Boolean isCredentialUsable(JsonNode credentials, String configName) {
-    Boolean isValid;
-    switch (configName) {
-      case S3:
-        isValid = AWSUtil.canCredentialListObjects(credentials);
-        break;
-      case GCS:
-        isValid = GCPUtil.canCredentialListObjects(credentials);
-        break;
-      case AZ:
-        isValid = AZUtil.canCredentialListObjects(credentials);
-        break;
-      case NFS:
-        isValid = true;
-        break;
-      default:
-        log.error("Invalid Config type {} provided", configName);
-        isValid = false;
+  private Boolean isCredentialUsable(CustomerConfig config) {
+    Boolean isValid = true;
+    try {
+      backupUtil.validateStorageConfig(config);
+    } catch (PlatformServiceException e) {
+      isValid = false;
     }
     return isValid;
   }

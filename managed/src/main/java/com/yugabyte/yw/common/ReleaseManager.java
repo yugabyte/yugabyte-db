@@ -15,6 +15,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
 import java.nio.file.Paths;
@@ -453,12 +454,20 @@ public class ReleaseManager {
         (version, object) -> {
           ReleaseMetadata rm = metadataFromObject(object);
           // update packages if possible
-          if (rm.packages == null || rm.packages.isEmpty()) {
-            Path fp = Paths.get(rm.filePath);
-            for (Architecture arch : Architecture.values()) {
-              if (getPathMatcher(arch.getGlob()).matches(fp)) {
-                rm.packages = new ArrayList<>();
-                rm = rm.withPackage(rm.filePath, arch);
+          if ((rm.packages == null || rm.packages.isEmpty())
+              && !(rm.filePath == null || rm.filePath.isEmpty())) {
+            Path fp = null;
+            try {
+              fp = Paths.get(rm.filePath);
+            } catch (InvalidPathException e) {
+              LOG.error("Error {} getting package path for version {}", e.getMessage(), version);
+            }
+            if (fp != null) {
+              for (Architecture arch : Architecture.values()) {
+                if (getPathMatcher(arch.getGlob()).matches(fp)) {
+                  rm.packages = new ArrayList<>();
+                  rm = rm.withPackage(rm.filePath, arch);
+                }
               }
             }
             if (rm.packages == null || rm.packages.isEmpty()) {

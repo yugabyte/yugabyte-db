@@ -3,7 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroup;
+import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
@@ -16,8 +16,8 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -77,7 +77,11 @@ public class ResizeNode extends UpgradeTaskBase {
               (nodez, processTypes) ->
                   createResizeNodeTasks(nodez, universe, instanceTypeIsChanging),
               nodes,
-              new UpgradeContext(userIntent.replicationFactor > 1, false));
+              UpgradeContext.builder()
+                  .reconfigureMaster(userIntent.replicationFactor > 1)
+                  .runBeforeStopping(false)
+                  .processInactiveMaster(false)
+                  .build());
 
           Integer newDiskSize = null;
           if (taskParams().getPrimaryCluster().userIntent.deviceInfo != null) {
@@ -156,7 +160,8 @@ public class ResizeNode extends UpgradeTaskBase {
   }
 
   private SubTaskGroup createChangeInstanceTypeTask(NodeDetails node) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("ChangeInstanceType", executor);
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("ChangeInstanceType", executor);
     ChangeInstanceType.Params params = new ChangeInstanceType.Params();
 
     params.nodeName = node.nodeName;
@@ -166,13 +171,13 @@ public class ResizeNode extends UpgradeTaskBase {
 
     ChangeInstanceType changeInstanceTypeTask = createTask(ChangeInstanceType.class);
     changeInstanceTypeTask.initialize(params);
-    subTaskGroup.addTask(changeInstanceTypeTask);
-    subTaskGroupQueue.add(subTaskGroup);
+    subTaskGroup.addSubTask(changeInstanceTypeTask);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
   private SubTaskGroup createNodeDetailsUpdateTask(NodeDetails node) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("UpdateNodeDetails", executor);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("UpdateNodeDetails", executor);
     UpdateNodeDetails.Params updateNodeDetailsParams = new UpdateNodeDetails.Params();
     updateNodeDetailsParams.universeUUID = taskParams().universeUUID;
     updateNodeDetailsParams.azUuid = node.azUuid;
@@ -182,9 +187,8 @@ public class ResizeNode extends UpgradeTaskBase {
     UpdateNodeDetails updateNodeTask = createTask(UpdateNodeDetails.class);
     updateNodeTask.initialize(updateNodeDetailsParams);
     updateNodeTask.setUserTaskUUID(userTaskUUID);
-    subTaskGroup.addTask(updateNodeTask);
-
-    subTaskGroupQueue.add(subTaskGroup);
+    subTaskGroup.addSubTask(updateNodeTask);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 }

@@ -1160,6 +1160,8 @@ COMMIT;
 create table loct3 (f1 text collate "C" unique, f2 text, f3 varchar(10) unique);
 create foreign table ft3 (f1 text collate "C", f2 text, f3 varchar(10))
   server loopback options (table_name 'loct3', use_remote_estimate 'true');
+-- YB note: foreign table does not exist, remove when #11684 is fixed
+select pg_sleep(1);
 
 -- can be sent to remote
 explain (verbose, costs off) select * from ft3 where f1 = 'foo';
@@ -1348,6 +1350,8 @@ SELECT * FROM ft1 ORDER BY c6 ASC NULLS FIRST, c1 OFFSET 15 LIMIT 10;
 
 -- Consistent check constraints provide consistent results
 ALTER FOREIGN TABLE ft1 ADD CONSTRAINT ft1_c2positive CHECK (c2 >= 0);
+-- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
+select pg_sleep(1);
 --EXPLAIN (VERBOSE, COSTS OFF) SELECT count(*) FROM ft1 WHERE c2 < 0;
 SELECT count(*) FROM ft1 WHERE c2 < 0;
 SET constraint_exclusion = 'on';
@@ -1636,6 +1640,8 @@ FOR EACH ROW EXECUTE PROCEDURE trigger_data(23,'skidoo');
 
 CREATE TRIGGER trig_local_before BEFORE INSERT OR UPDATE ON loc1
 FOR EACH ROW EXECUTE PROCEDURE trig_row_before_insupdate();
+-- YB note: triggers don't work immediately, remove once #11555 is fixed
+select pg_sleep(1);
 
 INSERT INTO rem1(f2) VALUES ('test');
 UPDATE rem1 SET f2 = 'testo';
@@ -2306,6 +2312,8 @@ CREATE TABLE import_source.t5 (c1 int, c2 text collate "C", "Col" "Colors");
 CREATE SCHEMA import_dest5;
 BEGIN;
 DROP TYPE "Colors" CASCADE;
+-- YB note: type dropping in transaction is not respected, should error when issue #11742 is fixed
+select pg_sleep(1);
 IMPORT FOREIGN SCHEMA import_source LIMIT TO (t5)
   FROM SERVER loopback INTO import_dest5;  -- ERROR
 

@@ -104,6 +104,8 @@ To keep your cluster from being paused, you (or, where applicable, an applicatio
 - Free clusters can't be scaled.
 - Free clusters are secured by limiting network access using IP allow lists. VPC networking is not supported.
 - No backups.
+- You can't change the maintenance window schedule, set exclusion periods, or delay cluster maintenance for free clusters.
+- You can't pause free clusters.
 
 ## Next steps
 

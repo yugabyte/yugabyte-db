@@ -166,6 +166,11 @@ uint64_t StatisticsMetricImpl::getTickerCount(uint32_t tickerType) const {
   return 0;
 }
 
+const char* StatisticsMetricImpl::GetTickerName(uint32_t ticker_type) const {
+  CHECK_LT(ticker_type, tickers_.size());
+  return tickers_[ticker_type]->prototype()->name();
+}
+
 void StatisticsMetricImpl::histogramData(uint32_t histogramType, HistogramData* const data) const {
   assert(histogramType < histograms_.size());
   assert(data);

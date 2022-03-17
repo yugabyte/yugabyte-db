@@ -202,6 +202,7 @@ DEFINE_test_flag(bool, pause_tserver_get_split_key, false,
                  "Pause before processing a GetSplitKey request.");
 
 DECLARE_int32(heartbeat_interval_ms);
+DECLARE_uint64(rocksdb_max_file_size_for_compaction);
 
 DECLARE_int32(ysql_transaction_abort_timeout_ms);
 
@@ -2234,7 +2235,8 @@ void TabletServiceImpl::TakeTransaction(const TakeTransactionRequestPB* req,
                                         TakeTransactionResponsePB* resp,
                                         rpc::RpcContext context) {
   auto transaction = server_->TransactionPool()->Take(
-      client::ForceGlobalTransaction(req->has_is_global() && req->is_global()));
+      client::ForceGlobalTransaction(req->has_is_global() && req->is_global()),
+      context.GetClientDeadline());
   auto metadata = transaction->Release();
   if (!metadata.ok()) {
     LOG(INFO) << "Take failed: " << metadata.status();
@@ -2252,7 +2254,12 @@ void TabletServiceImpl::GetSplitKey(
   PerformAtLeader(req, resp, &context,
       [resp](const LeaderTabletPeer& leader_tablet_peer) -> Status {
         const auto& tablet = leader_tablet_peer.tablet;
-
+        if (FLAGS_rocksdb_max_file_size_for_compaction > 0 &&
+            tablet->schema()->table_properties().HasDefaultTimeToLive()) {
+          auto s = STATUS(NotSupported, "Tablet splitting not supported for TTL tables.");
+          return s.CloneAndAddErrorCode(
+              TabletServerError(TabletServerErrorPB::TABLET_SPLIT_DISABLED_TTL_EXPIRY));
+        }
         if (tablet->MayHaveOrphanedPostSplitData()) {
           return STATUS(IllegalState, "Tablet has orphaned post-split data");
         }

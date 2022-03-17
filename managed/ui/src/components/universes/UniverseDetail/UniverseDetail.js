@@ -25,7 +25,6 @@ import { ListTablesContainer, ListBackupsContainer, ReplicationContainer } from 
 import { QueriesViewer } from '../../queries';
 import { isEmptyObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
 import {
-  isOnpremUniverse,
   isKubernetesUniverse,
   isPausableUniverse,
   isUniverseType
@@ -40,7 +39,6 @@ import { YBMenuItem } from './compounds/YBMenuItem';
 import { MenuItemsContainer } from './compounds/MenuItemsContainer';
 import {
   isNonAvailable,
-  isEnabled,
   isDisabled,
   isNotHidden,
   getFeatureState
@@ -48,6 +46,7 @@ import {
 import './UniverseDetail.scss';
 import { SecurityMenu } from '../SecurityModal/SecurityMenu';
 import Replication from '../../xcluster/Replication';
+import { UniverseLevelBackup } from '../../backupv2/Universe/UniverseLevelBackup';
 
 const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = ['i3', 'c5d', 'c6gd'];
 
@@ -308,18 +307,6 @@ class UniverseDetail extends Component {
       'universes.details.overview.manageEncryption'
     );
 
-    // enable edit TLS menu item for onprem universes with rootCA of a "CustomCertHostPath" type
-    if (isEnabled(editTLSAvailability)) {
-      if (isOnpremUniverse(currentUniverse.data) && Array.isArray(customer.userCertificates.data)) {
-        const rootCert = customer.userCertificates.data.find(
-          (item) => item.uuid === currentUniverse.data.universeDetails.rootCA
-        );
-        if (rootCert?.certType !== 'CustomCertHostPath') editTLSAvailability = 'disabled';
-      } else {
-        editTLSAvailability = 'disabled';
-      }
-    }
-
     const defaultTab = isNotHidden(currentCustomer.data.features, 'universes.details.overview')
       ? 'overview'
       : 'overview';
@@ -461,7 +448,12 @@ class UniverseDetail extends Component {
                 unmountOnExit={true}
                 disabled={isDisabled(currentCustomer.data.features, 'universes.details.backups')}
               >
-                <ListBackupsContainer currentUniverse={currentUniverse.data} />
+                {
+                  (featureFlags.test['backupv2'] ||
+                  featureFlags.released['backupv2']) ? <UniverseLevelBackup /> : (
+                    <ListBackupsContainer currentUniverse={currentUniverse.data} />
+                  )
+                }
               </Tab.Pane>
             ),
 
@@ -763,7 +755,6 @@ class UniverseDetail extends Component {
                           editTLSAvailability={editTLSAvailability}
                           showManageKeyModal={showManageKeyModal}
                           manageKeyAvailability={manageKeyAvailability}
-                          isItKubernetesUniverse={isItKubernetesUniverse}
                         />
                       </>
                     )

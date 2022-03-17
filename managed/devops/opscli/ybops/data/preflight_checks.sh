@@ -39,6 +39,12 @@ preflight_provision_check() {
     update_result_json_with_rc "Internet Connection" "$?"
   fi
 
+  # Check for yugabyte in AllowUsers in /etc/ssh/sshd_config
+  if sudo grep -q "AllowUsers" /etc/ssh/sshd_config; then
+    sudo egrep -q 'AllowUsers.* yugabyte( |@|$)' /etc/ssh/sshd_config
+    update_result_json_with_rc "AllowUsers has yugabyte" "$?"
+  fi
+
   if [[ $install_node_exporter = true ]]; then
     # Check node exporter isn't already installed.
     no_node_exporter=false

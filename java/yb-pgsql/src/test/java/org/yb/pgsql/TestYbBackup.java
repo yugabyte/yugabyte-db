@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.Set;
 
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.json.JSONObject;
@@ -290,17 +291,36 @@ public class TestYbBackup extends BasePgSQLTest {
   }
 
   @Test
-  public void testColocatedWithTableOidAlreadySet() throws Exception {
+  public void testColocatedWithColocationIdAlreadySet() throws Exception {
+    String ybTablePropsSql = "SELECT c.relname, props.colocation_id"
+        + " FROM pg_class c, yb_table_properties(c.oid) props"
+        + " WHERE c.oid >= 16384"
+        + " ORDER BY c.relname";
+    String uniqueIndexOnlySql = "SELECT b FROM test_tbl WHERE b = 3.14";
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE DATABASE yb1 COLOCATED=TRUE");
     }
     try (Connection connection2 = getConnectionBuilder().withDatabase("yb1").connect();
          Statement stmt = connection2.createStatement()) {
-      // Create a table with a set table_oid.
-      stmt.execute("SET yb_enable_create_with_table_oid = true");
-      stmt.execute("CREATE TABLE test_tbl (h INT PRIMARY KEY, a INT, b FLOAT) " +
-                   "WITH (table_oid = 123456)");
+      // Create a table with a set colocation_id.
+      stmt.execute("CREATE TABLE test_tbl ("
+          + "  h INT PRIMARY KEY,"
+          + "  a INT,"
+          + "  b FLOAT CONSTRAINT test_tbl_uniq UNIQUE WITH (colocation_id=654321)"
+          + ") WITH (colocation_id=123456)");
+      stmt.execute("CREATE INDEX test_tbl_a_idx ON test_tbl (a ASC) WITH (colocation_id=11223344)");
       stmt.execute("INSERT INTO test_tbl (h, a, b) VALUES (1, 101, 3.14)");
+
+      runInvalidQuery(stmt, "INSERT INTO test_tbl (h, a, b) VALUES (2, 202, 3.14)",
+          "violates unique constraint \"test_tbl_uniq\"");
+
+      assertQuery(stmt, ybTablePropsSql,
+          new Row("test_tbl", 123456),
+          new Row("test_tbl_a_idx", 11223344),
+          new Row("test_tbl_pkey", null),
+          new Row("test_tbl_uniq", 654321));
+
+      assertTrue(isIndexOnlyScan(stmt, uniqueIndexOnlySql, "test_tbl_uniq"));
 
       // Check that backup and restore works fine.
       String backupDir = YBBackupUtil.getTempBackupDir();
@@ -315,6 +335,18 @@ public class TestYbBackup extends BasePgSQLTest {
       assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=1", new Row(1, 101, 3.14));
       assertQuery(stmt, "SELECT b FROM test_tbl WHERE h=1", new Row(3.14));
 
+      assertQuery(stmt, ybTablePropsSql,
+          new Row("test_tbl", 123456),
+          new Row("test_tbl_a_idx", 11223344),
+          new Row("test_tbl_pkey", null),
+          new Row("test_tbl_uniq", 654321));
+
+      runInvalidQuery(stmt, "INSERT INTO test_tbl (h, a, b) VALUES (2, 202, 3.14)",
+          "violates unique constraint \"test_tbl_uniq\"");
+
+      assertTrue(isIndexOnlyScan(stmt, uniqueIndexOnlySql, "test_tbl_uniq"));
+      assertQuery(stmt, uniqueIndexOnlySql, new Row(3.14));
+
       // Now try to do a backup/restore of the restored db.
       String backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
@@ -327,6 +359,111 @@ public class TestYbBackup extends BasePgSQLTest {
          Statement stmt = connection2.createStatement()) {
       assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=1", new Row(1, 101, 3.14));
       assertQuery(stmt, "SELECT b FROM test_tbl WHERE h=1", new Row(3.14));
+
+      assertQuery(stmt, ybTablePropsSql,
+          new Row("test_tbl", 123456),
+          new Row("test_tbl_a_idx", 11223344),
+          new Row("test_tbl_pkey", null),
+          new Row("test_tbl_uniq", 654321));
+
+      runInvalidQuery(stmt, "INSERT INTO test_tbl (h, a, b) VALUES (2, 202, 3.14)",
+          "violates unique constraint \"test_tbl_uniq\"");
+
+      assertTrue(isIndexOnlyScan(stmt, uniqueIndexOnlySql, "test_tbl_uniq"));
+      assertQuery(stmt, uniqueIndexOnlySql, new Row(3.14));
+    }
+    // Cleanup.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP DATABASE yb1");
+      stmt.execute("DROP DATABASE yb2");
+      stmt.execute("DROP DATABASE yb3");
+    }
+  }
+
+  @Ignore // TODO(alex): Enable after #11632 is fixed.
+  public void testTablegroups() throws Exception {
+    // TODO: Add constraint with a different tablegroup once #11600 is done.
+    String ybTablePropsSql = "SELECT c.relname, tg.grpname, props.colocation_id"
+        + " FROM pg_class c, yb_table_properties(c.oid) props"
+        + " LEFT JOIN pg_yb_tablegroup tg ON tg.oid = props.tablegroup_oid"
+        + " WHERE c.oid >= 16384"
+        + " ORDER BY c.relname";
+    String uniqueIndexOnlySql = "SELECT b FROM test_tbl WHERE b = 3.14";
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE DATABASE yb1");
+    }
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb1").connect();
+         Statement stmt = connection2.createStatement()) {
+      stmt.execute("CREATE TABLEGROUP tg1");
+      stmt.execute("CREATE TABLEGROUP tg2");
+      stmt.execute("CREATE TABLE test_tbl ("
+          + "  h INT PRIMARY KEY,"
+          + "  a INT,"
+          + "  b FLOAT CONSTRAINT test_tbl_uniq UNIQUE WITH (colocation_id=654321)"
+          + ") WITH (colocation_id=123456)"
+          + " TABLEGROUP tg1");
+      stmt.execute("CREATE INDEX test_tbl_tg2_idx ON test_tbl (a ASC)"
+          + " WITH (colocation_id=11223344) TABLEGROUP tg2");
+      stmt.execute("CREATE INDEX test_tbl_notg_idx ON test_tbl (a ASC) NO TABLEGROUP");
+      stmt.execute("INSERT INTO test_tbl (h, a, b) VALUES (1, 101, 3.14)");
+
+      runInvalidQuery(stmt, "INSERT INTO test_tbl (h, a, b) VALUES (2, 202, 3.14)",
+          "violates unique constraint \"test_tbl_uniq\"");
+
+      assertQuery(stmt, ybTablePropsSql,
+          new Row("test_tbl", "tg1", 123456),
+          new Row("test_tbl_notg_idx", null, null),
+          new Row("test_tbl_pkey", null, null),
+          new Row("test_tbl_tg2_idx", "tg2", 11223344),
+          new Row("test_tbl_uniq", "tg1", 654321));
+
+      assertTrue(isIndexOnlyScan(stmt, uniqueIndexOnlySql, "test_tbl_uniq"));
+
+      // Check that backup and restore works fine.
+      YBBackupUtil.runYbBackupCreate("--keyspace", "ysql.yb1");
+      YBBackupUtil.runYbBackupRestore("--keyspace", "ysql.yb2");
+    }
+    // Verify data is correct.
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection2.createStatement()) {
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=1", new Row(1, 101, 3.14));
+      assertQuery(stmt, "SELECT b FROM test_tbl WHERE h=1", new Row(3.14));
+
+      assertQuery(stmt, ybTablePropsSql,
+          new Row("test_tbl", "tg1", 123456),
+          new Row("test_tbl_notg_idx", null, null),
+          new Row("test_tbl_pkey", null, null),
+          new Row("test_tbl_tg2_idx", "tg2", 11223344),
+          new Row("test_tbl_uniq", "tg1", 654321));
+
+      runInvalidQuery(stmt, "INSERT INTO test_tbl (h, a, b) VALUES (2, 202, 3.14)",
+          "violates unique constraint \"test_tbl_uniq\"");
+
+      assertTrue(isIndexOnlyScan(stmt, uniqueIndexOnlySql, "test_tbl_uniq"));
+      assertQuery(stmt, uniqueIndexOnlySql, new Row(3.14));
+
+      // Now try to do a backup/restore of the restored db.
+      YBBackupUtil.runYbBackupCreate("--keyspace", "ysql.yb2");
+      YBBackupUtil.runYbBackupRestore("--keyspace", "ysql.yb3");
+    }
+    // Verify data is correct.
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb3").connect();
+         Statement stmt = connection2.createStatement()) {
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=1", new Row(1, 101, 3.14));
+      assertQuery(stmt, "SELECT b FROM test_tbl WHERE h=1", new Row(3.14));
+
+      assertQuery(stmt, ybTablePropsSql,
+          new Row("test_tbl", "tg1", 123456),
+          new Row("test_tbl_notg_idx", null, null),
+          new Row("test_tbl_pkey", null, null),
+          new Row("test_tbl_tg2_idx", "tg2", 11223344),
+          new Row("test_tbl_uniq", "tg1", 654321));
+
+      runInvalidQuery(stmt, "INSERT INTO test_tbl (h, a, b) VALUES (2, 202, 3.14)",
+          "violates unique constraint \"test_tbl_uniq\"");
+
+      assertTrue(isIndexOnlyScan(stmt, uniqueIndexOnlySql, "test_tbl_uniq"));
+      assertQuery(stmt, uniqueIndexOnlySql, new Row(3.14));
     }
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {

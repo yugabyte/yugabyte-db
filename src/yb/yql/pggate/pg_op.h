@@ -76,6 +76,8 @@ class PgsqlOp {
   virtual CHECKED_STATUS InitPartitionKey(const PgTableDesc& table) = 0;
 
  private:
+  virtual std::string RequestToString() const = 0;
+
   bool active_ = false;
   PgsqlResponsePB response_;
   rpc::SidecarPtr rows_data_;
@@ -117,6 +119,8 @@ class PgsqlReadOp : public PgsqlOp {
     result->read_from_followers_ = read_from_followers_;
     return result;
   }
+
+  std::string RequestToString() const override;
 
  private:
   CHECKED_STATUS InitPartitionKey(const PgTableDesc& table) override;
@@ -163,6 +167,8 @@ class PgsqlWriteOp : public PgsqlOp {
   void SetWriteTime(HybridTime value) {
     write_time_ = value;
   }
+
+  std::string RequestToString() const override;
 
  private:
   CHECKED_STATUS InitPartitionKey(const PgTableDesc& table) override;

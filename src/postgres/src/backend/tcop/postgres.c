@@ -180,6 +180,13 @@ static StringInfoData row_description_buf;
 /* Flag to mark cache as invalid if discovered within a txn block. */
 static bool yb_need_cache_refresh = false;
 
+/*
+ * String constants used for redacting text after the password token in
+ * CREATE/ALTER ROLE commands.
+ */
+#define TOKEN_PASSWORD "password"
+#define TOKEN_REDACTED "<REDACTED>"
+
 /* ----------------------------------------------------------------
  *		decls for routines only used in this file
  * ----------------------------------------------------------------
@@ -937,13 +944,15 @@ exec_simple_query(const char *query_string)
 	bool		was_logged = false;
 	bool		use_implicit_block;
 	char		msec_str[32];
+	const char *redacted_query_string;
 
 	/*
 	 * Report query to various monitoring facilities.
 	 */
 	debug_query_string = query_string;
 
-	pgstat_report_activity(STATE_RUNNING, query_string);
+	redacted_query_string = RedactPasswordIfExists(query_string);
+	pgstat_report_activity(STATE_RUNNING, redacted_query_string);
 
 	TRACE_POSTGRESQL_QUERY_START(query_string);
 
@@ -982,11 +991,11 @@ exec_simple_query(const char *query_string)
 	 */
 	parsetree_list = pg_parse_query(query_string);
 
-	/* Log immediately if dictated by log_statement */
+	/* Log the redacted query immediately if dictated by log_statement */
 	if (check_log_statement(parsetree_list))
 	{
 		ereport(LOG,
-				(errmsg("statement: %s", query_string),
+				(errmsg("statement: %s", redacted_query_string),
 				 errhidestmt(true),
 				 errdetail_execute(parsetree_list)));
 		was_logged = true;
@@ -1237,7 +1246,7 @@ exec_simple_query(const char *query_string)
 		case 2:
 			ereport(LOG,
 					(errmsg("duration: %s ms  statement: %s",
-							msec_str, query_string),
+							msec_str, redacted_query_string),
 					 errhidestmt(true),
 					 errdetail_execute(parsetree_list)));
 			break;
@@ -1273,13 +1282,15 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	bool		is_named;
 	bool		save_log_statement_stats = log_statement_stats;
 	char		msec_str[32];
+	const char *redacted_query_string;
 
 	/*
 	 * Report query to various monitoring facilities.
 	 */
 	debug_query_string = query_string;
 
-	pgstat_report_activity(STATE_RUNNING, query_string);
+	redacted_query_string = RedactPasswordIfExists(query_string);
+	pgstat_report_activity(STATE_RUNNING, redacted_query_string);
 
 	set_ps_display("PARSE", false);
 
@@ -1289,7 +1300,7 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	ereport(DEBUG2,
 			(errmsg("parse %s: %s",
 					*stmt_name ? stmt_name : "<unnamed>",
-					query_string)));
+					redacted_query_string)));
 
 	/*
 	 * Start up a transaction command so we can run parse analysis etc. (Note
@@ -1504,7 +1515,7 @@ exec_parse_message(const char *query_string,	/* string to execute */
 					(errmsg("duration: %s ms  parse %s: %s",
 							msec_str,
 							*stmt_name ? stmt_name : "<unnamed>",
-							query_string),
+							redacted_query_string),
 					 errhidestmt(true)));
 			break;
 	}
@@ -1534,6 +1545,7 @@ exec_bind_message(StringInfo input_message)
 	CachedPlan *cplan;
 	Portal		portal;
 	char	   *query_string;
+	const char *redacted_query_string;
 	char	   *saved_stmt_name;
 	ParamListInfo params;
 	MemoryContext oldContext;
@@ -1573,7 +1585,8 @@ exec_bind_message(StringInfo input_message)
 	 */
 	debug_query_string = psrc->query_string;
 
-	pgstat_report_activity(STATE_RUNNING, psrc->query_string);
+	redacted_query_string = RedactPasswordIfExists(psrc->query_string);
+	pgstat_report_activity(STATE_RUNNING, redacted_query_string);
 
 	set_ps_display("BIND", false);
 
@@ -1888,7 +1901,7 @@ exec_bind_message(StringInfo input_message)
 							*stmt_name ? stmt_name : "<unnamed>",
 							*portal_name ? "/" : "",
 							*portal_name ? portal_name : "",
-							psrc->query_string),
+							redacted_query_string),
 					 errhidestmt(true),
 					 errdetail_params(params)));
 			break;
@@ -4527,7 +4540,7 @@ yb_exec_query_wrapper(MemoryContext exec_context,
 		{
 			(*functor)(functor_context);
 			/*
-			 * Stop retrying if successfull. Note, break or return could not be
+			 * Stop retrying if successful. Note, break or return could not be
 			 * used here, they would prevent PG_END_TRY();
 			 */
 			retry = false;
@@ -5850,4 +5863,53 @@ disable_statement_timeout(void)
 
 		stmt_timeout_active = false;
 	}
+}
+
+/*
+ * Redact password, if exists in the query text.
+ */
+const char* RedactPasswordIfExists(const char* queryStr) {
+	char *redactedStr;
+	char *passwordToken;
+	int i;
+	int passwordPos;
+	const char *commandTag;
+
+	/*
+	* Parse and check the type of the query. We only redact password
+	* for the CREATE USER / CREATE ROLE / ALTER USER / ALTER ROLE queries.
+	* Use yb_parse_command_tag to suppress error warnings.
+	*/
+	commandTag = yb_parse_command_tag(queryStr);
+	if (commandTag == NULL || (strcmp(commandTag, "CREATE ROLE") != 0 &&
+					strcmp(commandTag, "ALTER ROLE") != 0))
+		return queryStr;
+
+	/* Copy the query string and convert to lower case. */
+  	redactedStr = pstrdup(queryStr);
+
+  	for (i = 0; redactedStr[i]; i++)
+    	redactedStr[i] = (char)pg_tolower((unsigned char)redactedStr[i]);
+
+	/* Find index of password token. */
+	passwordToken = strstr(redactedStr, TOKEN_PASSWORD);
+
+	if (passwordToken != NULL)
+	{
+		/* Copy query string up to password token. */
+		passwordPos = (passwordToken - redactedStr) + strlen(TOKEN_PASSWORD);
+
+		redactedStr = palloc(passwordPos + 1 + strlen(TOKEN_REDACTED) + 1);
+
+		strncpy(redactedStr, queryStr, passwordPos);
+
+		/* And append redacted token. */
+		redactedStr[passwordPos] = ' ';
+
+		strcpy(redactedStr + passwordPos + 1, TOKEN_REDACTED);
+
+		return redactedStr;
+	}
+
+	return queryStr;
 }

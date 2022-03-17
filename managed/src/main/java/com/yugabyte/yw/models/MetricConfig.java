@@ -43,6 +43,7 @@ public class MetricConfig extends Model {
   @Transient public String range;
   @Transient public Map<String, String> filters = new HashMap<>();
   @Transient public String group_by;
+  @Transient public String panel_group;
   @Transient public Layout layout = new Layout();
   @Transient public String operator;
 

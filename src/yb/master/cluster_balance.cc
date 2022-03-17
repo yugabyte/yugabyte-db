@@ -231,18 +231,20 @@ void ClusterLoadBalancer::InitTablespaceManager() {
 }
 
 Status ClusterLoadBalancer::PopulatePlacementInfo(TabletInfo* tablet, PlacementInfoPB* pb) {
+  const auto& replication_info = VERIFY_RESULT(GetTableReplicationInfo(tablet->table()));
   if (state_->options_->type == LIVE) {
-    const auto& replication_info = VERIFY_RESULT(GetTableReplicationInfo(tablet->table()));
     pb->CopyFrom(replication_info.live_replicas());
-    return Status::OK();
   }
-  auto l = tablet->table()->LockForRead();
-  if (state_->options_->type == READ_ONLY &&
-      l->pb.has_replication_info() &&
-      !l->pb.replication_info().read_replicas().empty()) {
-    pb->CopyFrom(GetReadOnlyPlacementFromUuid(l->pb.replication_info()));
-  } else {
-    pb->CopyFrom(GetClusterPlacementInfo());
+  if (state_->options_->type == READ_ONLY) {
+    if (replication_info.read_replicas_size() == 0) {
+      // Should not reach here as tables that should not have read replicas should
+      // have already been skipped before reaching here.
+      return STATUS(IllegalState,
+                    Format("Encountered a table $0 with no read replicas. Placement info $1",
+                      tablet->table()->name(),
+                      replication_info.DebugString()));
+    }
+    pb->CopyFrom(GetReadOnlyPlacementFromUuid(replication_info));
   }
   return Status::OK();
 }
@@ -376,6 +378,23 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
                                << " as its placement information is not available yet";
       master_errors++;
       continue;
+    }
+
+    if (options->type == READ_ONLY) {
+      const auto& result = GetTableReplicationInfo(table.second);
+      if (!result) {
+        YB_LOG_EVERY_N(WARNING, 10) << "Skipping load balancing for " << table.first << ": "
+                                    << "as fetching replication info failed with error "
+                                    << StatusToString(result.status());
+        master_errors++;
+        continue;
+      }
+      if (result.get().read_replicas_size() == 0) {
+        // The table has a replication policy without any read replicas present.
+        // The LoadBalancer is handling read replicas in this run, so this
+        // table can be skipped.
+        continue;
+      }
     }
     ResetTableStatePtr(table_id, options);
 
@@ -1421,12 +1440,11 @@ const TableInfoMap& ClusterLoadBalancer::GetTableMap() const {
 }
 
 const ReplicationInfoPB& ClusterLoadBalancer::GetClusterReplicationInfo() const {
-  return catalog_manager_->cluster_config_->LockForRead()->pb.replication_info();
+  return catalog_manager_->ClusterConfig()->LockForRead()->pb.replication_info();
 }
 
 const PlacementInfoPB& ClusterLoadBalancer::GetClusterPlacementInfo() const {
-  auto l = down_cast<enterprise::CatalogManager*>
-                      (catalog_manager_)->GetClusterConfigInfo()->LockForRead();
+  auto l = catalog_manager_->ClusterConfig()->LockForRead();
   if (state_->options_->type == LIVE) {
     return l->pb.replication_info().live_replicas();
   } else {
@@ -1435,11 +1453,11 @@ const PlacementInfoPB& ClusterLoadBalancer::GetClusterPlacementInfo() const {
 }
 
 const BlacklistPB& ClusterLoadBalancer::GetServerBlacklist() const {
-  return catalog_manager_->cluster_config_->LockForRead()->pb.server_blacklist();
+  return catalog_manager_->ClusterConfig()->LockForRead()->pb.server_blacklist();
 }
 
 const BlacklistPB& ClusterLoadBalancer::GetLeaderBlacklist() const {
-  return catalog_manager_->cluster_config_->LockForRead()->pb.leader_blacklist();
+  return catalog_manager_->ClusterConfig()->LockForRead()->pb.leader_blacklist();
 }
 
 bool ClusterLoadBalancer::SkipLoadBalancing(const TableInfo& table) const {
@@ -1551,8 +1569,7 @@ const PlacementInfoPB& ClusterLoadBalancer::GetReadOnlyPlacementFromUuid(
 }
 
 const PlacementInfoPB& ClusterLoadBalancer::GetLiveClusterPlacementInfo() const {
-  auto l = down_cast<enterprise::CatalogManager*>
-                    (catalog_manager_)->GetClusterConfigInfo()->LockForRead();
+  auto l = catalog_manager_->ClusterConfig()->LockForRead();
   return l->pb.replication_info().live_replicas();
 }
 

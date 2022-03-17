@@ -13,7 +13,6 @@ package com.yugabyte.yw.commissioner.tasks;
 import static com.yugabyte.yw.forms.UniverseTaskParams.isFirstTryForTask;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -42,8 +41,6 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
     log.info("Started {} task for uuid={}", getName(), taskParams().universeUUID);
 
     try {
-      // Create the task list sequence.
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
       // Set the 'updateInProgress' flag to prevent other updates from happening.
       Universe universe =
@@ -116,7 +113,7 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Run all the tasks.
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;

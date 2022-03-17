@@ -76,6 +76,7 @@ DECLARE_bool(get_changes_honor_deadline);
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_int32(TEST_get_changes_read_loop_delay_ms);
 DECLARE_double(cdc_read_safe_deadline_ratio);
+DECLARE_bool(TEST_xcluster_simulate_have_more_records);
 
 METRIC_DECLARE_entity(cdc);
 METRIC_DECLARE_gauge_int64(last_read_opid_index);
@@ -555,6 +556,58 @@ TEST_P(CDCServiceTest, TestDeleteCDCStream) {
   for (const auto& tablet_id : tablet_ids) {
     VerifyStreamDeletedFromCdcState(client_.get(), stream_id_, tablet_id);
   }
+}
+
+TEST_P(CDCServiceTest, TestSafeTime) {
+  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_collect_cdc_metrics) = true;
+
+  std::string tablet_id;
+  GetTablet(&tablet_id);
+  auto leader_tserver = GetLeaderForTablet(tablet_id)->server();
+  std::shared_ptr<tablet::TabletPeer> tablet_peer;
+  ASSERT_OK(leader_tserver->tablet_manager()->GetTabletPeer(tablet_id, &tablet_peer));
+  
+  auto ht_0 = ASSERT_RESULT(tablet_peer->LeaderSafeTime()).ToUint64();
+  ASSERT_NO_FATALS(WriteTestRow(0, 10, "key0", tablet_id, leader_tserver->proxy()));
+  ASSERT_NO_FATALS(WriteTestRow(1, 11, "key0", tablet_id, leader_tserver->proxy()));
+  auto ht_1 = ASSERT_RESULT(tablet_peer->LeaderSafeTime()).ToUint64();
+
+
+  // Get CDC changes.
+  GetChangesRequestPB change_req;
+  GetChangesResponsePB change_resp;
+
+  change_req.set_tablet_id(tablet_id);
+  change_req.set_stream_id(stream_id_);
+  change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(0);
+  change_req.mutable_from_checkpoint()->mutable_op_id()->set_term(0);
+  FLAGS_TEST_xcluster_simulate_have_more_records = true;
+  {
+    RpcController rpc;
+    SCOPED_TRACE(change_req.DebugString());
+    ASSERT_OK(cdc_proxy_->GetChanges(change_req, &change_resp, &rpc));
+    ASSERT_FALSE(change_resp.has_error());
+    ASSERT_TRUE(change_resp.has_safe_hybrid_time());
+    uint64_t safe_hybrid_time = change_resp.safe_hybrid_time();
+    ASSERT_TRUE(ht_0 <= safe_hybrid_time && safe_hybrid_time <= ht_1);
+  }
+
+  FLAGS_TEST_xcluster_simulate_have_more_records = false;
+  {
+    auto pre_get_changes_time = ASSERT_RESULT(tablet_peer->LeaderSafeTime()).ToUint64();;
+    RpcController rpc;
+    SCOPED_TRACE(change_req.DebugString());
+    ASSERT_OK(cdc_proxy_->GetChanges(change_req, &change_resp, &rpc));
+    ASSERT_FALSE(change_resp.has_error());
+    ASSERT_TRUE(change_resp.has_safe_hybrid_time());
+    uint64_t safe_hybrid_time = change_resp.safe_hybrid_time();
+    auto post_get_changes_time = ASSERT_RESULT(tablet_peer->LeaderSafeTime()).ToUint64();
+    ASSERT_TRUE(pre_get_changes_time <= safe_hybrid_time &&
+                safe_hybrid_time <= post_get_changes_time);
+  }
+
+  ASSERT_OK(client_->DeleteCDCStream(stream_id_));
 }
 
 TEST_P(CDCServiceTest, TestMetricsOnDeletedReplication) {

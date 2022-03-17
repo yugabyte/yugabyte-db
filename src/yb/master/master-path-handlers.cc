@@ -880,6 +880,7 @@ string MasterPathHandlers::GetParentTableOid(scoped_refptr<TableInfo> parent_tab
   return std::to_string(*parent_result);
 }
 
+// TODO(alex): This needs a major rework.
 void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
                                               Webserver::WebResponse* resp,
                                               bool only_user_tables) {
@@ -926,27 +927,30 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
       continue;
     }
 
+    const auto& schema = l->schema();
     string table_uuid = table->id();
     string state = SysTablesEntryPB_State_Name(l->pb.state());
     Capitalize(&state);
+
     string ysql_table_oid;
-    string ysql_parent_oid;
-
-    string display_info = Substitute(
-                          "<tr>" \
-                          "<td>$0</td>",
-                          EscapeForHtmlToString(keyspace));
-
-    if (table->GetTableType() == PGSQL_TABLE_TYPE &&
-        !table->IsColocatedParentTable() &&
-        !table->IsTablegroupParentTable()) {
+    if (table_cat == kColocatedParentTable) {
+      // Colocated parent table.
+      ysql_table_oid = GetParentTableOid(table);
+    } else if (table->GetTableType() == PGSQL_TABLE_TYPE) {
       const auto result = GetPgsqlTableOid(table_uuid);
       if (result.ok()) {
         ysql_table_oid = std::to_string(*result);
       } else {
         LOG(ERROR) << "Failed to get OID of '" << table_uuid << "' ysql table";
       }
+    }
 
+    string display_info = Substitute(
+                          "<tr>" \
+                          "<td>$0</td>",
+                          EscapeForHtmlToString(keyspace));
+
+    if (table->GetTableType() == PGSQL_TABLE_TYPE && table_cat != kColocatedParentTable) {
       display_info += Substitute(
                       "<td><a href=\"/table?id=$3\">$0</a></td>" \
                       "<td>$1</td>" \
@@ -962,14 +966,22 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
       if (has_tablegroups) {
         if (table->IsColocatedUserTable()) {
           const auto parent_table = table->GetColocatedTablet()->table();
-          ysql_parent_oid = GetParentTableOid(parent_table);
+          const auto ysql_parent_oid = GetParentTableOid(parent_table);
           display_info += Substitute("<td>$0</td>", ysql_parent_oid);
         } else {
           display_info += Substitute("<td></td>");
         }
       }
-    } else if (table->IsTablegroupParentTable() ||
-               table->IsColocatedParentTable()) {
+
+      if (schema.has_colocated_table_id() &&
+          schema.colocated_table_id().has_colocation_id()) {
+        ColocationId colocation_id = schema.colocated_table_id().colocation_id();
+        display_info += Substitute("<td>$0</td>", colocation_id);
+      } else {
+        display_info += "<td></td>";
+      }
+
+    } else if (table_cat == kColocatedParentTable) {
       // Colocated parent table.
       ysql_table_oid = GetParentTableOid(table);
 
@@ -1005,37 +1017,44 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
     (*ordered_tables[table_cat])[table_uuid] = display_info;
   }
 
-  for (int i = 0; i < kNumTypes; ++i) {
-    if (only_user_tables && (table_type_[i] != "Index" && table_type_[i] != "User")) {
+  for (int tpeIdx = 0; tpeIdx < kNumTypes; ++tpeIdx) {
+    if (only_user_tables && (table_type_[tpeIdx] != "Index" && table_type_[tpeIdx] != "User")) {
       continue;
     }
-    if (ordered_tables[i]->empty() && table_type_[i] == "Colocated") {
+    if (ordered_tables[tpeIdx]->empty() && table_type_[tpeIdx] == "Colocated") {
       continue;
     }
 
     (*output) << "<div class='panel panel-default'>\n"
-              << "<div class='panel-heading'><h2 class='panel-title'>" << table_type_[i]
+              << "<div class='panel-heading'><h2 class='panel-title'>" << table_type_[tpeIdx]
               << " tables</h2></div>\n";
     (*output) << "<div class='panel-body table-responsive'>";
 
-    if (ordered_tables[i]->empty()) {
-      (*output) << "There are no " << static_cast<char>(tolower(table_type_[i][0]))
-                << table_type_[i].substr(1) << " tables.\n";
+    if (ordered_tables[tpeIdx]->empty()) {
+      (*output) << "There are no " << static_cast<char>(tolower(table_type_[tpeIdx][0]))
+                << table_type_[tpeIdx].substr(1) << " tables.\n";
     } else {
       *output << "<table class='table table-striped' style='table-layout: fixed;'>\n";
       *output << "  <tr><th width='14%'>Keyspace</th>\n"
               << "      <th width='21%'>Table Name</th>\n"
               << "      <th width='9%'>State</th>\n"
               << "      <th width='14%'>Message</th>\n";
-      if ((table_type_[i] == "User" || table_type_[i] == "Index") && has_tablegroups) {
+      if (tpeIdx == kColocatedParentTable || tpeIdx == kSystemTable) {
+        *output << "      <th width='28%'>UUID</th>\n"
+                << "      <th width='14%'>YSQL OID</th>\n";
+      } else if (has_tablegroups) {
+        *output << "      <th width='18%'>UUID</th>\n"
+                << "      <th width='8%'>YSQL OID</th>\n"
+                << "      <th width='8%'>Parent OID</th>\n"
+                << "      <th width='10%'>Colocation ID</th>\n";
+      } else {
+        // TODO(alex): We should only show Colocation ID column when there are colocated tables.
         *output << "      <th width='22%'>UUID</th>\n"
                 << "      <th width='10%'>YSQL OID</th>\n"
-                << "      <th width='10%'>Parent OID</th></tr>\n";
-      } else {
-        *output << "      <th width='28%'>UUID</th>\n"
-                << "      <th width='14%'>YSQL OID</th></tr>\n";
+                << "      <th width='10%'>Colocation ID</th>\n";
       }
-      for (const StringMap::value_type &table : *(ordered_tables[i])) {
+      *output << "  </tr>\n";
+      for (const StringMap::value_type &table : *(ordered_tables[tpeIdx])) {
         *output << table.second;
       }
       (*output) << "</table>\n";
@@ -1939,7 +1958,8 @@ void MasterPathHandlers::HandlePrettyLB(
     return;
   }
 
-  BlacklistSet blacklist = master_->catalog_manager()->BlacklistSetFromPB();
+  auto blacklist_result = master_->catalog_manager()->BlacklistSetFromPB();
+  BlacklistSet blacklist = blacklist_result.ok() ? *blacklist_result : BlacklistSet();
 
   // A single zone.
   int color_index = 0;
