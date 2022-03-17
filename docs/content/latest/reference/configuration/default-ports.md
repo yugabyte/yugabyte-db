@@ -17,7 +17,7 @@ showAsideToc: true
 
 ## Client APIs
 
-Application clients connect to these addresses.
+Application clients connect to the following addresses:
 
 | API     | Port  | Server | Flag (default)           |
 | ------- | ----- | ------- |------------------------------------------|
@@ -27,18 +27,20 @@ Application clients connect to these addresses.
 
 ## Internode RPC communication
 
-Internode (server-to-server or node-to-node) communication is managed using RPC calls on these addresses.
+Internode (server-to-server or node-to-node) communication is managed using RPC calls on the following addresses:
 
 | Server    | Port | Flag (default)                              |
 | ---------- | ---- | ------------------------------------------------------------ |
 | yb-master  | 7100 |  [`--rpc_bind_addresses 0.0.0.0:7100`](../yb-master/#rpc-bind-addresses) |
 | yb-tserver | 9100 |  [`--rpc_bind_addresses 0.0.0.0:9100`](../yb-tserver/#rpc-bind-addresses)<br/>[`--tserver_master_addrs 0.0.0.0:7100`](../yb-tserver/#tserver-master-addrs)<br/>[`--server_broadcast_addresses 0.0.0.0:9100`](../yb-tserver/#server-broadcast-addresses) |
 
-If you want to log into the machines running these servers, then the ssh port `22` should be opened as well.
+To enable login to the machines running these servers, the SSH port 22 should be opened.
+
+If you are installing Yugabyte Platform, you also need to make port 54422 available because the Yugabyte Platform installer reconfigures nodes to use this port as a default SSH port.
 
 ## Admin web server
 
-Admin web server UI can be viewed at these addresses.
+Admin web server UI can be viewed at the following addresses:
 
 | Server    | Port  | Flag (default)                             |
 | ---------- | ----- | ------------------------------------------------------------ |
@@ -47,7 +49,7 @@ Admin web server UI can be viewed at these addresses.
 
 ## Firewall Rules
 
-Along with the above, include the following common ports in firewall rules. 
+The following common ports are required for firewall rules:
 
 | Service     | Port
 | ------- | ------------------------- |
