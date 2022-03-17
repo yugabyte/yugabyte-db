@@ -224,14 +224,19 @@ template <class MiniClusterType>
 Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>>
     TabletSplitITestBase<MiniClusterType>::WriteRows(
         client::TableHandle* table, const uint32_t num_rows,
-        const int32_t start_key, const int32_t start_value) {
+        const int32_t start_key, const int32_t start_value, client::YBSessionPtr session) {
   auto min_hash_code = std::numeric_limits<docdb::DocKeyHash>::max();
   auto max_hash_code = std::numeric_limits<docdb::DocKeyHash>::min();
 
   LOG(INFO) << "Writing " << num_rows << " rows...";
 
   auto txn = this->CreateTransaction();
-  auto session = this->CreateSession(txn);
+  client::YBSessionPtr session_holder;
+  if (session) {
+    session->SetTransaction(txn);
+  } else {
+    session = this->CreateSession(txn);
+  }
   for (int32_t i = start_key, v = start_value;
        i < start_key + static_cast<int32_t>(num_rows);
        ++i, ++v) {
