@@ -189,19 +189,27 @@ The following skeleton JSON shows the basic four parts of a change event. Howeve
 
 ```json
 {
- "schema": { 
+ "schema": { --> 1
    ...
   },
- "payload": { 
+ "payload": { --> 2
+   ...
+ },
+ "schema": { --> 3
+   ...
+  },
+ "payload": { --> 4
    ...
  }
 }
 ```
 
-| Field name | Description |
-| :------: | :--- |
-| schema | The schema field contains the Kafka Connect schema which describes what is there in the event structure. In other words, the schema describes the structure of the row that was changed. Typically, this schema contains nested schemas. |
-| payload | The payload field is part of the event value. It has the structure described by the previous schema field and it contains the actual data for the row that was changed. |
+| Item | Field name | Description |
+| :---: | :------: | :--- |
+| 1 | schema | The first `schema` field is part of the event key. It specifies a Kafka Connect schema that describes what is in the event key’s `payload` portion. In other words, the first `schema` field describes the structure of the primary key, or the unique key if the table does not have a primary key, for the table that was changed. |
+| 2 | payload | The first `payload` field is part of the event key. It has the structure described by the previous `schema` field and it contains the key for the row that was changed. |
+| 3 | schema | The second `schema` field is part of the event value. It specifies the Kafka Connect schema that describes what is in the event value’s `payload` portion. In other words, the second `schema` describes the structure of the row that was changed. Typically, this schema contains nested schemas. |
+| 4 | payload | The second `payload` field is part of the event value. It has the structure described by the previous `schema` field and it contains the actual data for the row that was changed. |
 
 {{< warning title="Warning" >}}
 
@@ -211,9 +219,9 @@ This can lead to unexpected conflicts if the logical server name, a schema name,
 
 {{< /warning >}}
 
-### *create* events
+### Change event keys
 
-For a given table, the change event has a structure that contains a field for each column of the table at the time the event was created.
+For a given table, the change event’s key has a structure that contains a field for each column in the primary key of the table at the time the event was created.
 
 Consider a `customers` table defined in the `public` database schema and the example of a change event key for that table.
 
@@ -227,10 +235,61 @@ CREATE TABLE customers (
 );
 ```
 
+#### Example change event key
+
+If the `database.server.name` connector configuration property has the value `dbserver1`, every change event for the `customers` table while it has this definition has the same key structure, which in JSON looks like this:
+
+```json
+{
+  "schema": { --> 1
+    "type": "struct",
+    "name": "dbserver1.public.customers.Key", --> 2
+    "optional": false, --> 3
+    "fields": [ --> 4
+          {
+              "name": "id",
+              "index": "0",
+              "schema": {
+                  "type": "INT32",
+                  "optional": "false"
+              }
+          }
+      ]
+  },
+  "payload": { --> 5
+      "id": "1"
+  },
+}
+```
+
+*Description of a change event key:*
+| Item | Field name | Description |
+| :---: | :--- | :--- |
+| 1 | schema | The schema portion of the key specifies a Kafka Connect schema that describes what is in the key’s `payload` portion. |
+| 2 | dbserver1.public.customers.Key | Name of the schema that defines the structure of the key’s payload. This schema describes the structure of the primary key for the table that was changed. Key schema names have the format *connector-name.database-name.table-name.Key* . In this example: <br/><br/> `dbserver1` is the logical name of the server that generated this event. <br/><br/> `public` is the schema which contains the table which was changed. <br/><br/> `customers` is the table which was updated. |
+| 3 | optional | Indicates whether the event key must contain a value in its `payload` field. In this example, a value in the key’s payload is required. |
+| 4 | fields | Specifies each field that is expected in the `payload`, including each field’s name, index, and schema. |
+| 5 | payload | Contains the key for the row for which this change event was generated. In this example, the key, contains a single `id` field whose value is `1`. |
+
+{{< note title="Note" >}}
+
+Although the `column.exclude.list` and `column.include.list` connector configuration properties allow you to capture only a subset of table columns, all columns in a primary or unique key are always included in the event’s key.
+
+{{< /note >}}
+
+### Change event values
+
+The value in a change event is a bit more complicated than the key. Like the key, the value has a `schema` section and a `payload` section. The `schema` section contains the schema that describes the `Envelope` structure of the `payload` section, including its nested fields. Change events for operations that create, update or delete data all have a value payload with an envelope structure.
+
+### *create* events
+
+For a given table, the change event has a structure that contains a field for each column of the table at the time the event was created.
+
 Now suppose a row is inserted to the table:
 ```sql
 INSERT INTO customers (name, email) VALUES ('Vaibhav Kushwaha', 'foo@bar.com');
 ```
+The following example shows the value portion of a change event that the connector generates for an operation that creates data in the `customers` table:
 
 **Resultant create event:**
 ```json
