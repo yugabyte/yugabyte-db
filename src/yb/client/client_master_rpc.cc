@@ -116,8 +116,9 @@ void ClientMasterRpcBase::Finished(const Status& status) {
       return;
     } else {
       // Operation deadline expired during this latest RPC.
-      new_status = new_status.CloneAndPrepend(
-          "RPC timed out after deadline expired");
+      new_status = STATUS_FORMAT(
+          TimedOut, "$0 timed out after deadline expired, passed $1 of $2",
+          *this, now - retrier().start(), retrier().deadline() - retrier().start());
       ResetMasterLeader(Retry::kFalse);
     }
   }

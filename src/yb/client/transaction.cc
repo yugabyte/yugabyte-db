@@ -538,7 +538,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     return read_point_.IsRestartRequired();
   }
 
-  std::shared_future<Result<TransactionMetadata>> GetMetadata() EXCLUDES(mutex_) {
+  std::shared_future<Result<TransactionMetadata>> GetMetadata(
+      CoarseTimePoint deadline) EXCLUDES(mutex_) {
     UNIQUE_LOCK(lock, mutex_);
     if (metadata_future_.valid()) {
       return metadata_future_;
@@ -556,7 +557,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         }
       });
       lock.unlock();
-      RequestStatusTablet(TransactionRpcDeadline());
+      RequestStatusTablet(deadline);
       lock.lock();
       return metadata_future_;
     }
@@ -1381,8 +1382,9 @@ Result<ChildTransactionResultPB> YBTransaction::FinishChild() {
   return impl_->FinishChild();
 }
 
-std::shared_future<Result<TransactionMetadata>> YBTransaction::GetMetadata() const {
-  return impl_->GetMetadata();
+std::shared_future<Result<TransactionMetadata>> YBTransaction::GetMetadata(
+    CoarseTimePoint deadline) const {
+  return impl_->GetMetadata(deadline);
 }
 
 Status YBTransaction::ApplyChildResult(const ChildTransactionResultPB& result) {

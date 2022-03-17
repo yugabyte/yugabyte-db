@@ -14,7 +14,6 @@ import static com.yugabyte.yw.common.Util.areMastersUnderReplicated;
 
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.models.Universe;
@@ -51,8 +50,6 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
     boolean hitException = false;
     try {
       checkUniverseVersion();
-      // Create the task list sequence.
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
       // Update the DB to prevent other changes from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
@@ -153,7 +150,7 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
 
       // Run all the tasks.
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       hitException = true;

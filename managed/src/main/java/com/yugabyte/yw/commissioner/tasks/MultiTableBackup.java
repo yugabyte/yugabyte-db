@@ -26,7 +26,6 @@ import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.forms.BackupTableParams;
@@ -89,7 +88,6 @@ public class MultiTableBackup extends UniverseTaskBase {
     boolean isUniverseLocked = false;
     try {
       checkUniverseVersion();
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
@@ -240,7 +238,8 @@ public class MultiTableBackup extends UniverseTaskBase {
           throw new RuntimeException("Invalid Keyspace or no tables to backup");
         }
 
-        subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
+        // Clear previous subtasks if any.
+        getRunnableTask().reset();
         if (params().alterLoadBalancer) {
           createLoadBalancerStateChangeTask(false)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
@@ -312,7 +311,7 @@ public class MultiTableBackup extends UniverseTaskBase {
         unlockUniverseForUpdate();
         isUniverseLocked = false;
 
-        subTaskGroupQueue.run();
+        getRunnableTask().runSubTasks();
 
         if (params().actionType == ActionType.CREATE) {
           BACKUP_SUCCESS_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
@@ -321,12 +320,13 @@ public class MultiTableBackup extends UniverseTaskBase {
         }
       } catch (Throwable t) {
         if (params().alterLoadBalancer) {
-          subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
+          // Clear previous subtasks if any.
+          getRunnableTask().reset();
           // If the task failed, we don't want the loadbalancer to be
           // disabled, so we enable it again in case of errors.
           createLoadBalancerStateChangeTask(true)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
-          subTaskGroupQueue.run();
+          getRunnableTask().runSubTasks();
         }
         throw t;
       } finally {
