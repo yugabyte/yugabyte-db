@@ -1,7 +1,7 @@
 ---
 title: KairosDB
 linkTitle: KairosDB
-description: KairosDB
+description: Use KairosDB with YCQL API
 aliases:
 section: INTEGRATIONS
 menu:
@@ -16,18 +16,18 @@ showAsideToc: true
 
 ## Prerequisites
 
-Before you can start using the KairosDB plugin, ensure that you have:
+Before you start using the KairosDB plugin, ensure that you have:
 
 - Java version 1.8 or later.
 - The latest version of [KairosDB](https://kairosdb.github.io/docs/GettingStarted.html).
 - The latest version of [YugabyteDB plugin for KairosDB](https://github.com/yugabyte/kairosdb-yb-plugin/releases/) and explore the [README] for details about the plugin.
-- A YugabyteDB cluster. Refer [YugabyteDB Quick Start Guide](/latest/quick-start/) to install and start a local cluster.
+- A YugabyteDB cluster. Refer [YugabyteDB Quick start guide](/latest/quick-start/) to install and start a local cluster.
 - [Postman API Platform](https://www.postman.com/downloads/).
 - (Optional) YugabyteDB's [cassandra-driver-core-3.10.3-yb-2.jar](https://repo1.maven.org/maven2/com/yugabyte/cassandra-driver-core/3.10.3-yb-2/cassandra-driver-core-3.10.3-yb-2.jar), for better performance.
 
 ## Start KairosDB
 
-- Copy the YugabyteDB plugin jar under the `lib` folder of your downloaded `kairosdb` directory.
+- Copy the YugabyteDB plugin jar for KairosDB under the `lib` folder of your downloaded `kairosdb` directory.
 - (Optional) For better performance, replace the `cassandra-driver-core-3.10.2.jar` with YugabyteDB's `cassandra-driver-core-3.10.3-yb-2.jar` in your `kairosdb/lib` directory.
 - Add YugabyteDB datastore as the `service.datastore` entry in your `kairosdb/conf/kairosdb.conf file`.
 
@@ -53,11 +53,11 @@ $ ./bin/kairosdb.sh run
 18:34:01.145 [main] INFO  [Main.java:380] - ------------------------------------------
 ```
 
-The KairosDB API Server should be available at `localhost:8080`.
+The KairosDB API server should be available at `localhost:8080`.
 
 ## Verify the integration with ycqlsh
 
-- Run ycqlsh to connect and use YugabyteDB's YCQL API.
+- Run [ycqlsh](/latest/admin/ycqlsh/) to connect and use YugabyteDB's YCQL API.
 
 ```sh
 $ ./bin/ycqlsh localhost
@@ -95,7 +95,7 @@ row_keys              data_points    string_index   spec
 
 ## Test KairosDB
 
-- Start your postman and create a new workspace.
+- Start Postman and create a new workspace.
 
 ### Push data
 
@@ -105,7 +105,7 @@ row_keys              data_points    string_index   spec
 http://localhost:8080/api/v1/datapoints
 ```
 
-- In the body of the request, add the following JSON and send it.
+- In the body of the request, add the following JSON, and send it.
 
 ```json
 [
@@ -131,20 +131,21 @@ http://localhost:8080/api/v1/datapoints
 
 Your request should look like:
 
+![kairosdb POST](/images/develop/ecosystem-integrations/kairosdb/kairosdb1.png)
 
-Your response should return a status code as 204, but no body.
+Your response should return a status code of 204 with no body.
 
-
+![kairosdb Response](/images/develop/ecosystem-integrations/kairosdb/kairosdb2.png)
 
 ### Query the data
 
-- Query the data you inserted during the push using the POST API with the following URL in the `Enter request URL` box:
+- Query the data you inserted during the [push data](#push-data) operation using the POST API, with the following URL in the `Enter request URL` box:
 
 ```text
 http://localhost:8080/api/v1/datapoints/query
 ```
 
-- In the body of the request add the following JSON, and send it.
+- In the body of the request, add the following JSON, and send it.
 
 ```json
 {
@@ -163,7 +164,9 @@ http://localhost:8080/api/v1/datapoints/query
 
 Your request should look like:
 
-Your response should return a status code as 200, with the following output:
+![kairosdb3](/images/develop/ecosystem-integrations/kairosdb/kairosdb3.png)
+
+Your response should return a status code of 200, with the following output:
 
 ```output.json
 {
