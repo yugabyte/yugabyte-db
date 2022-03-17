@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
@@ -16,8 +17,10 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.AssertHelper;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.metrics.MetricService;
@@ -38,6 +41,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
+import play.mvc.Result;
 
 @RunWith(MockitoJUnitRunner.class)
 public class DestroyUniverseTest extends CommissionerBaseTest {
@@ -72,7 +76,7 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     try {
       certInfo =
           ModelFactory.createCertificateInfo(
-              defaultCustomer.getUuid(), caFile, CertificateInfo.Type.SelfSigned);
+              defaultCustomer.getUuid(), caFile, CertConfigType.SelfSigned);
     } catch (Exception e) {
 
     }
@@ -133,11 +137,10 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     taskParams.isDeleteAssociatedCerts = Boolean.FALSE;
     TaskInfo taskInfo = submitTask(taskParams, 4);
     assertEquals(Success, taskInfo.getTaskState());
-
-    Backup backup = Backup.get(defaultCustomer.uuid, b.backupUUID);
     verify(mockTableManager, times(1)).deleteBackup(any());
-    // Backup state should be DELETED.
-    assertEquals(Backup.BackupState.Deleted, backup.state);
+    Result result =
+        assertPlatformException(() -> Backup.getOrBadRequest(defaultCustomer.uuid, b.backupUUID));
+    AssertHelper.assertBadRequest(result, "Invalid customer or backup UUID");
     assertFalse(Universe.checkIfUniverseExists(defaultUniverse.name));
   }
 

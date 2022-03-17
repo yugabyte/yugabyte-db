@@ -202,6 +202,14 @@ DEFINE_test_flag(bool, pause_tserver_get_split_key, false,
                  "Pause before processing a GetSplitKey request.");
 
 DECLARE_int32(heartbeat_interval_ms);
+DECLARE_uint64(rocksdb_max_file_size_for_compaction);
+
+DECLARE_int32(ysql_transaction_abort_timeout_ms);
+
+DEFINE_test_flag(bool, fail_alter_schema_after_abort_transactions, false,
+                 "If true, setup an error status in AlterSchema and respond success to rpc call. "
+                 "This failure should not cause the TServer to crash but "
+                 "instead return an error message on the YSQL connection.");
 
 double TEST_delay_create_transaction_probability = 0;
 
@@ -229,6 +237,8 @@ using consensus::RunLeaderElectionRequestPB;
 using consensus::RunLeaderElectionResponsePB;
 using consensus::StartRemoteBootstrapRequestPB;
 using consensus::StartRemoteBootstrapResponsePB;
+using consensus::UnsafeChangeConfigRequestPB;
+using consensus::UnsafeChangeConfigResponsePB;
 using consensus::VoteRequestPB;
 using consensus::VoteResponsePB;
 
@@ -856,8 +866,9 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
           << " to request-schema=" << req_schema.ToString()
           << " for table ID=" << table_info->table_id;
   ScopedRWOperationPause pause_writes;
-  if (tablet.peer->tablet()->table_type() == TableType::YQL_TABLE_TYPE &&
-      !GetAtomicFlag(&FLAGS_disable_alter_vs_write_mutual_exclusion)) {
+  if ((tablet.peer->tablet()->table_type() == TableType::YQL_TABLE_TYPE &&
+       !GetAtomicFlag(&FLAGS_disable_alter_vs_write_mutual_exclusion)) ||
+      tablet.peer->tablet()->table_type() == TableType::PGSQL_TABLE_TYPE) {
     // For schema change operations we will have to pause the write operations
     // until the schema change is done. This will be done synchronously.
     pause_writes = tablet.peer->tablet()->PauseWritePermits(context.GetClientDeadline());
@@ -868,6 +879,44 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
               TryAgain, "Could not lock the tablet against write operations for schema change"),
           &context);
       return;
+    }
+
+    // After write operation is paused, active transactions will be aborted for YSQL transactions.
+    if (tablet.peer->tablet()->table_type() == TableType::PGSQL_TABLE_TYPE &&
+        req->should_abort_active_txns()) {
+      DCHECK(req->has_transaction_id());
+      if (tablet.peer->tablet()->transaction_participant() == nullptr) {
+        auto status = STATUS(
+            IllegalState, "Transaction participant is null for tablet " + req->tablet_id());
+        LOG(ERROR) << status;
+        SetupErrorAndRespond(
+            resp->mutable_error(),
+            status,
+            &context);
+        return;
+      }
+      HybridTime max_cutoff = HybridTime::kMax;
+      CoarseTimePoint deadline =
+          CoarseMonoClock::Now() +
+          MonoDelta::FromMilliseconds(FLAGS_ysql_transaction_abort_timeout_ms);
+      TransactionId txn_id = CHECK_RESULT(TransactionId::FromString(req->transaction_id()));
+      LOG(INFO) << "Aborting transactions that started prior to " << max_cutoff
+                << " for tablet id " << req->tablet_id()
+                << " excluding transaction with id " << txn_id;
+      // There could be a chance where a transaction does not appear by transaction_participant
+      // but has already begun replicating through Raft. Such transactions might succeed rather
+      // than get aborted. This race codnition is dismissable for this intermediate solution.
+      Status status = tablet.peer->tablet()->transaction_participant()->StopActiveTxnsPriorTo(
+            max_cutoff, deadline, &txn_id);
+      if (!status.ok() || PREDICT_FALSE(FLAGS_TEST_fail_alter_schema_after_abort_transactions)) {
+        auto status = STATUS(TryAgain, "Transaction abort failed for tablet " + req->tablet_id());
+        LOG(WARNING) << status;
+        SetupErrorAndRespond(
+            resp->mutable_error(),
+            status,
+            &context);
+        return;
+      }
     }
   }
   auto operation = std::make_unique<ChangeMetadataOperation>(
@@ -1775,6 +1824,31 @@ void ConsensusServiceImpl::ChangeConfig(const ChangeConfigRequestPB* req,
   // The success case is handled when the callback fires.
 }
 
+void ConsensusServiceImpl::UnsafeChangeConfig(const UnsafeChangeConfigRequestPB* req,
+                                              UnsafeChangeConfigResponsePB* resp,
+                                              RpcContext context) {
+  VLOG(1) << "Received UnsafeChangeConfig RPC: " << req->ShortDebugString();
+  if (!CheckUuidMatchOrRespond(tablet_manager_, "UnsafeChangeConfig", req, resp, &context)) {
+    return;
+  }
+  auto peer_tablet = VERIFY_RESULT_OR_RETURN(LookupTabletPeerOrRespond(
+      tablet_manager_, req->tablet_id(), resp, &context));
+  auto tablet_peer = peer_tablet.tablet_peer;
+
+  shared_ptr<Consensus> consensus;
+  if (!GetConsensusOrRespond(tablet_peer, resp, &context, &consensus)) {
+    return;
+  }
+  boost::optional<TabletServerErrorPB::Code> error_code;
+  const Status s = consensus->UnsafeChangeConfig(*req, &error_code);
+  if (PREDICT_FALSE(!s.ok())) {
+    SetupErrorAndRespond(resp->mutable_error(), s, &context);
+    HandleErrorResponse(resp, &context, s, error_code);
+    return;
+  }
+  context.RespondSuccess();
+}
+
 void ConsensusServiceImpl::GetNodeInstance(const GetNodeInstanceRequestPB* req,
                                            GetNodeInstanceResponsePB* resp,
                                            rpc::RpcContext context) {
@@ -2179,7 +2253,12 @@ void TabletServiceImpl::GetSplitKey(
   PerformAtLeader(req, resp, &context,
       [resp](const LeaderTabletPeer& leader_tablet_peer) -> Status {
         const auto& tablet = leader_tablet_peer.tablet;
-
+        if (FLAGS_rocksdb_max_file_size_for_compaction > 0 &&
+            tablet->schema()->table_properties().HasDefaultTimeToLive()) {
+          auto s = STATUS(NotSupported, "Tablet splitting not supported for TTL tables.");
+          return s.CloneAndAddErrorCode(
+              TabletServerError(TabletServerErrorPB::TABLET_SPLIT_DISABLED_TTL_EXPIRY));
+        }
         if (tablet->MayHaveOrphanedPostSplitData()) {
           return STATUS(IllegalState, "Tablet has orphaned post-split data");
         }

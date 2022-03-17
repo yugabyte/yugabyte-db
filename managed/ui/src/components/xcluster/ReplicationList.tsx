@@ -11,7 +11,8 @@ import { YBLoading } from '../common/indicators';
 import { IReplication } from './IClusterReplication';
 
 import './ReplicationList.scss';
-import { GetConfiguredThreshold, GetCurrentLag, getReplicationStatus } from './ReplicationUtils';
+import { convertToLocalTime, GetConfiguredThreshold, GetCurrentLag, getReplicationStatus } from './ReplicationUtils';
+import { useSelector } from 'react-redux';
 
 import RightArrow from './ArrowIcon';
 
@@ -41,12 +42,14 @@ function ReplicationItem({
   replication,
   currentUniverseUUID,
   targetUniverseName,
-  sourceUniverseName
+  sourceUniverseName,
+  currentUserTimezone
 }: {
   replication: IReplication;
   currentUniverseUUID: string;
   targetUniverseName: string;
   sourceUniverseName: string;
+  currentUserTimezone:string;
 }) {
   return (
     <div className="replication-item" key={replication.uuid}>
@@ -60,11 +63,11 @@ function ReplicationItem({
               <Row className="replication-meta-details">
                 <Col lg={4} className="replication-date">
                   <span className="replication-label">Started</span>
-                  <span className="replication-label-value">{replication.createTime}</span>
+                  <span className="replication-label-value">{convertToLocalTime(replication.createTime, currentUserTimezone)}</span>
                 </Col>
                 <Col lg={4} className="replication-date">
                   <span className="replication-label">Last modified</span>
-                  <span>{replication.modifyTime}</span>
+                  <span>{convertToLocalTime(replication.modifyTime, currentUserTimezone)}</span>
                 </Col>
                 <Col lg={4} className="replication-status">
                   {getReplicationStatus(replication.status)}
@@ -109,7 +112,7 @@ function ReplicationItem({
             </Col>
             <Col lg={3} className='lag noPadding'>
               <div className="lag-text">Current Lag</div>
-              <div className="lag-time withinThreshold">
+              <div className="lag-time">
                 <GetCurrentLag
                   replicationUUID={replication.uuid}
                   sourceUniverseUUID={replication.sourceUniverseUUID}
@@ -138,7 +141,7 @@ export function ReplicationList({ currentUniverseUUID }: Props) {
     sourceXClusterConfigs: [],
     targetXClusterConfigs: []
   };
-
+  const currentUserTimezone = useSelector((state: any) => state.customer.currentUser.data.timezone);
   const XclusterConfigList = Array.from(
     new Set([...sourceXClusterConfigs, ...targetXClusterConfigs])
   );
@@ -180,6 +183,7 @@ export function ReplicationList({ currentUniverseUUID }: Props) {
             currentUniverseUUID={currentUniverseUUID}
             targetUniverseName={findTargetUniverseName(replication.data.targetUniverseUUID)}
             sourceUniverseName={findTargetUniverseName(replication.data.sourceUniverseUUID)}
+            currentUserTimezone={currentUserTimezone}
           />
         )
       )}

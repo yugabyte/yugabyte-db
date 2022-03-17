@@ -80,7 +80,7 @@ namespace docdb {
     ((kRedisSortedSet, ',')) /* ASCII code 44 */ \
     ((kInetaddress, '-'))  /* ASCII code 45 */ \
     ((kInetaddressDescending, '.'))  /* ASCII code 46 */ \
-    ((kPgTableOid, '0')) /* ASCII code 48 */ \
+    ((kColocationId, '0')) /* ASCII code 48 */ \
     ((kJsonb, '2')) /* ASCII code 50 */ \
     ((kFrozen, '<')) /* ASCII code 60 */ \
     ((kFrozenDescending, '>')) /* ASCII code 62 */ \
@@ -187,12 +187,31 @@ constexpr inline bool IsCollectionType(const ValueType value_type) {
   return IsObjectType(value_type) || value_type == ValueType::kArray;
 }
 
+constexpr inline bool IsRegulaDBInternalRecordKeyType(const ValueType value_type) {
+  // For regular db:
+  // - transaction apply state records.
+  return value_type == ValueType::kTransactionApplyState;
+}
+
+constexpr inline bool IsIntentsDBInternalRecordKeyType(const ValueType value_type) {
+  // For intents db:
+  // - reverse index from transaction id to keys of write intents belonging to that transaction.
+  // - external transaction records (transactions that originated on a CDC producer).
+  return value_type == ValueType::kExternalTransactionId ||
+         value_type == ValueType::kTransactionId;
+}
+
+constexpr inline bool IsInternalRecordKeyType(const ValueType value_type) {
+  return IsRegulaDBInternalRecordKeyType(value_type) ||
+         IsIntentsDBInternalRecordKeyType(value_type);
+}
+
 constexpr inline bool IsPrimitiveValueType(const ValueType value_type) {
   return (kMinPrimitiveValueType <= value_type && value_type <= kMaxPrimitiveValueType &&
           !IsCollectionType(value_type) &&
           value_type != ValueType::kTombstone) ||
-         value_type == ValueType::kTransactionApplyState ||
-         value_type == ValueType::kExternalTransactionId;
+          value_type == ValueType::kTransactionApplyState ||
+          value_type == ValueType::kExternalTransactionId;
 }
 
 constexpr inline bool IsSpecialValueType(ValueType value_type) {
@@ -207,7 +226,7 @@ constexpr inline bool IsPrimitiveOrSpecialValueType(ValueType value_type) {
 
 // Decode the first byte of the given slice as a ValueType.
 inline ValueType DecodeValueType(const rocksdb::Slice& value) {
-  return value.empty() ? ValueType::kInvalid: static_cast<ValueType>(value.data()[0]);
+  return value.empty() ? ValueType::kInvalid : static_cast<ValueType>(value.data()[0]);
 }
 
 // Decode the first byte of the given slice as a ValueType and consume it.
@@ -216,7 +235,7 @@ inline ValueType ConsumeValueType(rocksdb::Slice* slice) {
                         : static_cast<ValueType>(slice->consume_byte());
 }
 
-inline ValueType DecodeValueType(char value_type_byte) {
+constexpr inline ValueType DecodeValueType(char value_type_byte) {
   return static_cast<ValueType>(value_type_byte);
 }
 

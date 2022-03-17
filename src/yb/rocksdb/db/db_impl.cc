@@ -241,6 +241,7 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
       : ThreadPoolTask(db_impl), manual_compaction_(manual_compaction),
         compaction_(manual_compaction->compaction.get()), priority_(CalcPriority()) {
     db_impl->mutex_.AssertHeld();
+    SetFileAndByteCount();
   }
 
   CompactionTask(DBImpl* db_impl, std::unique_ptr<Compaction> compaction)
@@ -248,6 +249,7 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
         compaction_holder_(std::move(compaction)), compaction_(compaction_holder_.get()),
         priority_(CalcPriority()) {
     db_impl->mutex_.AssertHeld();
+    SetFileAndByteCount();
   }
 
   bool ShouldRemoveWithKey(void* key) override {
@@ -297,6 +299,10 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
           "{ compact db: $0 is_manual: $1 serial_no: $2 job_id: $3}", db_impl_->GetName(),
           manual_compaction_ != nullptr, SerialNo(),
           ((job_id_value == kNoJobId) ? "None" : std::to_string(job_id_value)));
+  }
+
+  yb::CompactionInfo GetFileAndByteInfoIfCompaction() const override {
+    return yb::CompactionInfo{file_count_, byte_count_};
   }
 
   void SetJobID(JobContext* job_context) {
@@ -353,11 +359,23 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
     return result;
   }
 
+  void SetFileAndByteCount() {
+    size_t levels = compaction_->num_input_levels();
+    uint64_t file_count = 0;
+    for (size_t i = 0; i < levels; i++) {
+        file_count += compaction_->num_input_files(i);
+    }
+    file_count_ = file_count;
+    byte_count_ = compaction_->CalculateTotalInputSize();
+  }
+
   DBImpl::ManualCompaction* const manual_compaction_;
   std::unique_ptr<Compaction> compaction_holder_;
   Compaction* compaction_;
   int priority_;
   yb::AtomicInt<int> job_id_{kNoJobId};
+  uint64_t file_count_;
+  uint64_t byte_count_;
 };
 
 class DBImpl::FlushTask : public ThreadPoolTask {
@@ -5188,6 +5206,9 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
           // There were no write failures. Set leader's status
           // in case the write callback returned a non-ok status.
           status = w.FinalStatus();
+        }
+        for (const auto& writer : write_group) {
+          last_sequence += writer->batch->DirectEntries();
         }
 
       } else {

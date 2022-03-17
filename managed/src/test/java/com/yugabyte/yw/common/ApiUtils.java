@@ -28,6 +28,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.yb.ColumnSchema.SortOrder;
 
@@ -166,6 +167,14 @@ public class ApiUtils {
         universeDetails.rootCA = universe.getUniverseDetails().rootCA;
         universe.setUniverseDetails(universeDetails);
       }
+    };
+  }
+
+  public static Universe.UniverseUpdater mockUniverseUpdater(final UUID rootCA) {
+    return universe -> {
+      UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+      universeDetails.rootCA = rootCA;
+      universe.setUniverseDetails(universeDetails);
     };
   }
 
@@ -357,6 +366,32 @@ public class ApiUtils {
     };
   }
 
+  public static Universe.UniverseUpdater mockUniverseUpdaterWithNodeCallback(
+      UserIntent userIntent, Consumer<NodeDetails> callback) {
+    return new Universe.UniverseUpdater() {
+      @Override
+      public void run(Universe universe) {
+        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+        UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
+        // Add a desired number of nodes.
+        universeDetails.nodeDetailsSet = new HashSet<>();
+        userIntent.numNodes = userIntent.replicationFactor;
+        for (int idx = 1; idx <= userIntent.numNodes; idx++) {
+          NodeDetails node =
+              getDummyNodeDetails(
+                  idx, NodeDetails.NodeState.Live, idx <= userIntent.replicationFactor);
+          if (callback != null) {
+            callback.accept(node);
+          }
+          universeDetails.nodeDetailsSet.add(node);
+        }
+        universeDetails.upsertPrimaryCluster(userIntent, null);
+        universeDetails.nodePrefix = "host";
+        universe.setUniverseDetails(universeDetails);
+      }
+    };
+  }
+
   public static UserIntent getDefaultUserIntent(Customer customer) {
     Provider p = ModelFactory.awsProvider(customer);
     return getDefaultUserIntent(p);
@@ -496,6 +531,7 @@ public class ApiUtils {
     }
     node.nodeIdx = idx;
     node.isYsqlServer = isYSQL;
+    node.disksAreMountedByUUID = true;
     return node;
   }
 

@@ -14,6 +14,7 @@ import static com.yugabyte.yw.forms.PlatformResults.YBPSuccess.empty;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.controllers.handlers.UniverseActionsHandler;
 import com.yugabyte.yw.forms.AlertConfigFormData;
@@ -23,6 +24,7 @@ import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import io.swagger.annotations.Api;
@@ -50,7 +52,13 @@ public class UniverseActionsController extends AuthenticatedController {
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
     universeActionsHandler.configureAlerts(
         universe, formFactory.getFormDataOrBadRequest(AlertConfigFormData.class));
-    // TODO Audit ??
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.ConfigUniverseAlert,
+            request().body().asJson());
     return empty();
   }
 
@@ -60,7 +68,13 @@ public class UniverseActionsController extends AuthenticatedController {
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
     UUID taskUUID = universeActionsHandler.pause(customer, universe);
-    auditService().createAuditEntry(ctx(), request(), taskUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.Pause,
+            taskUUID);
     return new YBPTask(taskUUID, universe.universeUUID).asResult();
   }
 
@@ -74,7 +88,13 @@ public class UniverseActionsController extends AuthenticatedController {
 
     UUID taskUUID = universeActionsHandler.resume(customer, universe);
 
-    auditService().createAuditEntry(ctx(), request(), taskUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.Resume,
+            taskUUID);
     return new YBPTask(taskUUID, universe.universeUUID).asResult();
   }
 
@@ -94,7 +114,13 @@ public class UniverseActionsController extends AuthenticatedController {
 
     UUID taskUUID = universeActionsHandler.setUniverseKey(customer, universe, taskParams);
 
-    auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.SetUniverseKey,
+            taskUUID);
     UniverseResp resp =
         UniverseResp.create(universe, taskUUID, runtimeConfigFactory.globalRuntimeConf());
     return PlatformResults.withData(resp);
@@ -113,9 +139,15 @@ public class UniverseActionsController extends AuthenticatedController {
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUuid, customer);
     ObjectNode formData = (ObjectNode) request().body().asJson();
     ToggleTlsParams requestParams = ToggleTlsParams.bindFromFormData(formData);
-
     UUID taskUUID = universeActionsHandler.toggleTls(customer, universe, requestParams);
-    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData), taskUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            universeUuid.toString(),
+            Audit.ActionType.ToggleTls,
+            Json.toJson(formData),
+            taskUUID);
     return PlatformResults.withData(
         UniverseResp.create(universe, taskUUID, runtimeConfigFactory.globalRuntimeConf()));
   }
@@ -135,7 +167,12 @@ public class UniverseActionsController extends AuthenticatedController {
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
     universeActionsHandler.setBackupFlag(universe, markActive);
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.SetBackupFlag);
     return empty();
   }
 
@@ -152,7 +189,12 @@ public class UniverseActionsController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
     universeActionsHandler.setHelm3Compatible(universe);
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.SetHelm3Compatible);
     return empty();
   }
 
@@ -169,7 +211,12 @@ public class UniverseActionsController extends AuthenticatedController {
   public Result resetVersion(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
-
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.ResetUniverseVersion);
     universe.resetVersion();
     return empty();
   }

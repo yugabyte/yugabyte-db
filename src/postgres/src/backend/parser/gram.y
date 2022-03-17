@@ -4308,6 +4308,8 @@ OptTableGroup:
 				}
 			| NO TABLEGROUP
 				{
+					/* This is only intended for indexes. */
+
 					parser_ybc_beta_feature(@1, "tablegroup", true);
 					$$ = makeNode(OptTableGroup);
 					$$->has_tablegroup = false;
@@ -8029,7 +8031,7 @@ opt_concurrently:
 				}
 			| /*EMPTY*/
 				{
-					$$ = !YBCGetDisableIndexBackfill();
+					$$ = !*YBCGetGFlags()->ysql_disable_index_backfill;
 				}
 		;
 

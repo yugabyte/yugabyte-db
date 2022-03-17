@@ -7,7 +7,11 @@ import { Col, Alert } from 'react-bootstrap';
 import { YBModal, YBInputField, YBSelectWithLabel, YBToggle, YBCheckBox } from '../fields';
 import { isNonEmptyArray } from '../../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../../utils/PromiseUtils';
-import { getPrimaryCluster } from '../../../../utils/UniverseUtils';
+import { 
+  isKubernetesUniverse,
+  getPrimaryCluster,
+  getReadOnlyCluster 
+} from '../../../../utils/UniverseUtils';
 import { isDefinedNotNull, isNonEmptyObject } from '../../../../utils/ObjectUtils';
 import './RollingUpgradeForm.scss';
 import { EncryptionInTransit } from './EncryptionInTransit';
@@ -51,7 +55,12 @@ export default class RollingUpgradeForm extends Component {
       universe: {
         currentUniverse: {
           data: {
-            universeDetails: { clusters, nodePrefix },
+            universeDetails: {
+              currentClusterType,
+              clusters,
+              nodePrefix,
+              rootAndClientRootCASame
+            },
             universeUUID
           }
         }
@@ -79,9 +88,15 @@ export default class RollingUpgradeForm extends Component {
         break;
       }
       case 'tlsConfigurationModal': {
+        const cluster = currentClusterType === 'PRIMARY' ?
+          getPrimaryCluster(clusters) : getReadOnlyCluster(clusters);
         payload.taskType = 'Certs';
-        payload.upgradeOption = values.rollingUpgrade ? 'Rolling' : 'Non-Rolling';
-        payload.certUUID = values.tlsCertificate;
+        payload.upgradeOption = 'Rolling';
+        payload.enableNodeToNodeEncrypt = cluster.userIntent.enableNodeToNodeEncrypt;
+        payload.enableClientToNodeEncrypt = cluster.userIntent.enableClientToNodeEncrypt;
+        payload.rootAndClientRootCASame = rootAndClientRootCASame;
+        payload.rootCA = values.tlsCertificate === "Create New Certificate" ? null : values.tlsCertificate;
+        payload.createNewRootCA = values.tlsCertificate === "Create New Certificate";
         break;
       }
       case 'rollingRestart': {
@@ -262,56 +277,60 @@ export default class RollingUpgradeForm extends Component {
             size="large"
             onFormSubmit={submitAction}
             error={error}
-            dialogClassName="gflag-modal"
+            dialogClassName={modalVisible ? 'gflag-modal modal-fade in' : 'modal-fade'}
             showCancelButton={true}
             submitLabel="Apply Changes"
             cancelLabel="Cancel"
           >
-            <FieldArray
-              name="gFlags"
-              component={GFlagComponent}
-              dbVersion={currentVersion}
-              rerenderOnEveryChange={true}
-            />
-            <FlexContainer className="gflag-upgrade-container">
-              <FlexShrink className="gflag-upgrade--label">
-                <span>G-Flag Upgrade Options</span>
-              </FlexShrink>
-              <div className="gflag-upgrade-options">
-                {['Rolling', 'Non-Rolling', 'Non-Restart'].map((target, i) => (
-                  <div key={target} className="row-flex">
-                    <div className={clsx('upgrade-radio-option', i === 1 && 'mb-8')} key={target}>
-                      <Field
-                        name={'upgradeOption'}
-                        type="radio"
-                        component="input"
-                        value={`${target}`}
-                      />
-                      <span className="upgrade-radio-label">{`${target}`}</span>
-                    </div>
-                    {i === 0 && (
-                      <div className="gflag-delay">
-                        <span className="vr-line">|</span>
-                        Delay Between Servers :{' '}
+            <div className="gflag-modal-body">
+              <FieldArray
+                name="gFlags"
+                component={GFlagComponent}
+                dbVersion={currentVersion}
+                rerenderOnEveryChange={true}
+                editMode={true}
+              />
+              <FlexContainer className="gflag-upgrade-container">
+                <FlexShrink className="gflag-upgrade--label">
+                  <span>G-Flag Upgrade Options</span>
+                </FlexShrink>
+                <div className="gflag-upgrade-options">
+                  {['Rolling', 'Non-Rolling', 'Non-Restart'].map((target, i) => (
+                    <div key={target} className="row-flex">
+                      <div className={clsx('upgrade-radio-option', i === 1 && 'mb-8')} key={target}>
                         <Field
-                          name="timeDelay"
-                          type="number"
-                          component={YBInputField}
-                          isReadOnly={formValues.upgradeOption !== 'Rolling'}
+                          name={'upgradeOption'}
+                          type="radio"
+                          component="input"
+                          value={`${target}`}
                         />
-                        seconds
+                        <span className="upgrade-radio-label">{`${target}`}</span>
                       </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </FlexContainer>
-            {errorAlert}
+                      {i === 0 && (
+                        <div className="gflag-delay">
+                          <span className="vr-line">|</span>
+                          Delay Between Servers :{' '}
+                          <Field
+                            name="timeDelay"
+                            type="number"
+                            component={YBInputField}
+                            isReadOnly={formValues.upgradeOption !== 'Rolling'}
+                          />
+                          seconds
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </FlexContainer>
+              {errorAlert}
+            </div>
           </YBModal>
         );
       }
       case 'tlsConfigurationModal': {
-        if (this.props.enableNewEncryptionInTransitModal) {
+        if (this.props.enableNewEncryptionInTransitModal &&
+          !isKubernetesUniverse(universe.currentUniverse.data)) {
           return (
             <EncryptionInTransit
               visible={modalVisible}
@@ -366,7 +385,6 @@ export default class RollingUpgradeForm extends Component {
                 component={YBInputField}
                 label="Upgrade Delay Between Servers (secs)"
               />
-              <Field name="rollingUpgrade" component={YBToggle} label="Rolling Upgrade" />
             </div>
             {errorAlert}
           </YBModal>

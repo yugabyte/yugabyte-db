@@ -18,15 +18,21 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
 
+#include "yb/common/schema.h"
+
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/master_error.h"
+#include "yb/master/master_fwd.h"
 #include "yb/master/tablet_split_manager.h"
+#include "yb/master/ts_descriptor.h"
 
 #include "yb/master/xcluster_split_driver.h"
 #include "yb/server/monitored_task.h"
 
 #include "yb/util/flag_tags.h"
+#include "yb/util/monotime.h"
 #include "yb/util/result.h"
+#include "yb/util/unique_lock.h"
 
 DEFINE_int32(process_split_tablet_candidates_interval_msec, 0,
              "The minimum time between automatic splitting attempts. The actual splitting time "
@@ -63,6 +69,10 @@ DEFINE_uint64(tablet_split_limit_per_table, 256,
               "Limit of the number of tablets per table for tablet splitting. Limitation is "
               "disabled if this value is set to 0.");
 
+DEFINE_uint64(prevent_split_for_ttl_tables_for_seconds, 86400,
+              "Seconds between checks for whether to split a table with TTL. Checks are disabled "
+              "if this value is set to 0.");
+
 namespace yb {
 namespace master {
 
@@ -87,6 +97,23 @@ Status TabletSplitManager::ValidateSplitCandidateTable(const TableInfo& table) {
     return STATUS_FORMAT(
         NotSupported,
         "Table is deleted; ignoring for splitting. table_id: $0", table.id());
+  }
+  {
+    UniqueLock<decltype(mutex_)> lock(mutex_);
+    const auto entry = ignore_table_for_splitting_until_.find(table.id());
+    if (entry != ignore_table_for_splitting_until_.end()) {
+      const auto ignore_for_split_ttl_until = entry->second;
+      if (ignore_for_split_ttl_until > CoarseMonoClock::Now()) {
+        VLOG(1) << Substitute("Table has file expiration for TTL enabled; ignored for "
+            "splitting until $0. table_id: $1",  ToString(ignore_for_split_ttl_until), table.id());
+        return STATUS_FORMAT(
+            NotSupported,
+            "Table has file expiration for TTL enabled; ignored for splitting until $0. "
+            "table_id: $1", ToString(ignore_for_split_ttl_until), table.id());
+      } else {
+        ignore_table_for_splitting_until_.erase(entry);
+      }
+    }
   }
   // Check if this table is covered by a PITR schedule.
   if (!FLAGS_enable_tablet_split_of_pitr_tables &&
@@ -145,6 +172,18 @@ Status TabletSplitManager::ValidateSplitCandidateTablet(const TabletInfo& tablet
   if (PREDICT_FALSE(FLAGS_TEST_validate_all_tablet_candidates)) {
     return Status::OK();
   }
+
+  Schema schema;
+  RETURN_NOT_OK(tablet.table()->GetSchema(&schema));
+  auto ts_desc = VERIFY_RESULT(tablet.GetLeader());
+  if (schema.table_properties().HasDefaultTimeToLive()
+      && ts_desc->get_disable_tablet_split_if_default_ttl()) {
+    MarkTtlTableForSplitIgnore(tablet.table()->id());
+    return STATUS_FORMAT(
+        NotSupported, "Tablet splitting is not supported for tables with default time to live, "
+        "tablet_id: $0", tablet.tablet_id());
+  }
+
   if (tablet.colocated()) {
     return STATUS_FORMAT(
         NotSupported, "Tablet splitting is not supported for colocated tables, tablet_id: $0",
@@ -160,6 +199,18 @@ Status TabletSplitManager::ValidateSplitCandidateTablet(const TabletInfo& tablet
   }
   return Status::OK();
 }
+
+
+
+void TabletSplitManager::MarkTtlTableForSplitIgnore(const TableId& table_id) {
+  if (FLAGS_prevent_split_for_ttl_tables_for_seconds != 0) {
+    const auto recheck_at = CoarseMonoClock::Now()
+        + MonoDelta::FromSeconds(FLAGS_prevent_split_for_ttl_tables_for_seconds);
+    UniqueLock<decltype(mutex_)> lock(mutex_);
+    ignore_table_for_splitting_until_.insert({table_id, recheck_at});
+  }
+}
+
 
 bool AllReplicasHaveFinishedCompaction(const TabletInfo& tablet_info) {
   auto replica_map = tablet_info.GetReplicaLocations();
@@ -263,15 +314,15 @@ void TabletSplitManager::DoSplitting(const TableInfoMap& table_info_map) {
         if (!tablet_lock->is_running()) {
           // Recently split child is not running; restart the split.
           ignore_as_candidate = true;
-          LOG(INFO) << Substitute("Found split child that is not running. Adding parent to list of "
-                                  "splits to reschedule. Split parent id: $0.", parent_id);
+          LOG(INFO) << Substitute("Found split child ($0) that is not running. Adding parent ($1) "
+                                  "to list of splits to reschedule.", tablet->id(), parent_id);
           splits_to_schedule.insert(parent_id);
         } else if (!AllReplicasHaveFinishedCompaction(*tablet)) {
           // This (running) tablet is the child of a split and is still compacting. We assume that
           // this split will eventually complete for both tablets.
           ignore_as_candidate = true;
-          LOG(INFO) << Substitute("Found split child that is compacting. Adding parent to list of "
-                                  "compacting splits. Split parent id: $0.", parent_id);
+          LOG(INFO) << Substitute("Found split child ($0) that is compacting. Adding parent ($1) "
+                                  " to list of compacting splits.", tablet->id(), parent_id);
           compacting_splits.insert(parent_id);
         }
         if (splits_to_schedule.count(parent_id) != 0 && compacting_splits.count(parent_id) != 0) {
@@ -279,8 +330,8 @@ void TabletSplitManager::DoSplitting(const TableInfoMap& table_info_map) {
           // splits_to_schedule, and another leads us to insert into compacting_splits. In this
           // case, it means one of the children is live, thus both children have been created and
           // the split RPC does not need to be scheduled.
-          LOG(INFO) << Substitute("Found compacting split child, so removing split from splits to "
-                                  "schedule. Split parent id: $0.", parent_id);
+          LOG(INFO) << Substitute("Found compacting split child ($0), so removing split parent "
+                                  "($1) from splits to schedule.", tablet->id(), parent_id);
           splits_to_schedule.erase(parent_id);
         }
       }

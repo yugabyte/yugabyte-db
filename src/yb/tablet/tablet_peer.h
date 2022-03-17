@@ -212,7 +212,9 @@ class TabletPeer : public consensus::ConsensusContext,
   HybridTime SafeTimeForTransactionParticipant() override;
   Result<HybridTime> WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) override;
 
-  void GetLastReplicatedData(RemoveIntentsData* data) override;
+  CHECKED_STATUS GetLastReplicatedData(RemoveIntentsData* data) override;
+
+  void GetLastCDCedData(RemoveIntentsData* data) override;
 
   void GetTabletStatusPB(TabletStatusPB* status_pb_out);
 

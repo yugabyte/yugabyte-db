@@ -3,8 +3,6 @@ title: System statistics
 linkTitle: System statistics
 headerTitle: Check system statistics
 description: How to check system statistics on your YugabyteDB cluster
-aliases:
-  - /troubleshoot/nodes/check-stats/
 menu:
   latest:
     parent: troubleshoot-nodes
@@ -18,7 +16,7 @@ showAsideToc: true
 To check the CPU, memory, and disk usage on a Linux machine, you can run the following command.
 
 ```sh
-$ sudo echo -n "CPUs: ";cat /proc/cpuinfo | grep processor | wc -l; echo -n "Mem: ";free -h | grep Mem | tr -s " " | cut -d" " -f 2; echo -n "Disk: "; df -h / | grep -v Filesystem; 
+$ sudo echo -n "CPUs: ";cat /proc/cpuinfo | grep processor | wc -l; echo -n "Mem: ";free -h | grep Mem | tr -s " " | cut -d" " -f 2; echo -n "Disk: "; df -h / | grep -v Filesystem;
 ```
 
 ```output

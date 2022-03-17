@@ -22,7 +22,8 @@ export default class Replication extends Component {
   constructor(props) {
     super(props);
     this.state = {
-      graphWidth: props.hideHeader ? 1700 : 840
+      graphWidth: props.hideHeader ? window.innerWidth - 300 : 840,
+      intervalId: null
     };
   }
 
@@ -31,33 +32,40 @@ export default class Replication extends Component {
   };
 
   componentDidMount() {
-    const { graph, sourceUniverseUUID } = this.props;
+    const {  sourceUniverseUUID } = this.props;
     if (sourceUniverseUUID) {
-      this.props.fetchCurrentUniverse(sourceUniverseUUID).then(()=>{
-        this.queryMetrics(graph.graphFilter);
+      this.props.fetchCurrentUniverse(sourceUniverseUUID).then(() => {
+        this.queryMetrics();
       })
     }
-    else{
-      this.queryMetrics(graph.graphFilter);
+    else {
+      this.queryMetrics();
     }
+    const intervalId = setInterval(() => { this.queryMetrics() }, 10 * 2000);
+    this.setState({
+      intervalId
+    })
   }
 
   componentWillUnmount() {
     this.props.resetMasterLeader();
+    clearInterval(this.state.intervalId)
   }
 
-  queryMetrics = (graphFilter) => {
+  queryMetrics = () => {
     const {
-      universe: { currentUniverse }
+      universe: { currentUniverse },
+      replicationUUID
     } = this.props;
     const universeDetails = getPromiseState(currentUniverse).isSuccess()
       ? currentUniverse.data.universeDetails
       : 'all';
     const params = {
       metrics: [METRIC_NAME],
-      start: graphFilter.startMoment.format('X'),
-      end: graphFilter.endMoment.format('X'),
-      nodePrefix: universeDetails.nodePrefix
+      start: moment().utc().subtract('1', 'hour').format('X'),
+      end: moment().utc().format('X'),
+      nodePrefix: universeDetails.nodePrefix,
+      xClusterConfigUuid: replicationUUID
     };
     this.props.queryMetrics(params, GRAPH_TYPE);
   };
@@ -183,7 +191,7 @@ export default class Replication extends Component {
                   <MetricsPanel
                     currentUser={currentUser}
                     metricKey={METRIC_NAME}
-                    metric={aggregatedMetrics}
+                    metric={JSON.parse(JSON.stringify(aggregatedMetrics))}
                     className={'metrics-panel-container'}
                     width={this.state.graphWidth}
                     height={540}

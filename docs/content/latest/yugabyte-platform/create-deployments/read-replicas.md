@@ -3,8 +3,6 @@ title: Create a read replica cluster
 headerTitle: Create a read replica cluster
 linkTitle: Read replica cluster
 description: Use Yugabyte Platform to create a read replica cluster.
-aliases:
-  - /latest/manage/enterprise-edition/read-replicas/
 menu:
   latest:
     identifier: create-read-replica-cluster
@@ -14,28 +12,28 @@ isTocNested: true
 showAsideToc: true
 ---
 
-You can create a universe that includes both a primary cluster and a [read replica](../../../architecture/docdb-replication/read-replicas) cluster in a hybrid cloud deployment, as well as dynamically add, edit, and remove a read replica cluster. In the example presented in this document, you are first going to deploy a universe with primary cluster in Oregon (US-West) and read replica cluster in Northern Virginia (US-East).
+You can create a universe that includes both a primary cluster and a [read replica](../../../architecture/docdb-replication/read-replicas/) cluster in a hybrid cloud deployment, as well as dynamically add, edit, and remove a read replica cluster. The example presented in this document shows how to deploy a universe with primary cluster in Oregon (US-West) and read replica cluster in Northern Virginia (US-East).
 
 {{< note title="Note" >}}
 
-YSQL read replica support is currently in Beta.
+- YSQL read replica support is currently in Beta.
+- Yugabyte Platform does not support read replica configuration for Kubernetes and OpenShift cloud providers.
 
 {{< /note >}}
 
 ## Create the universe
 
-You start by navigating to **Dashboard** and clicking **Create Universe**. Use the **Primary Cluster > Cloud Configuration** page to enter the following values to create a primary cluster on [GCP](../../configure-yugabyte-platform/set-up-cloud-provider/gcp) provider:
+You start by navigating to **Dashboard** and clicking **Create Universe**. Use the **Primary Cluster > Cloud Configuration** page to enter the following values to create a primary cluster on [GCP](../../configure-yugabyte-platform/set-up-cloud-provider/gcp/) provider:
 
 - Enter a universe name as helloworld3.
 - Enter the set of regions as Oregon.
 - Set the replication factor to 3.
 - Set instance type to n1-standard-8
-- Add the configuration flag for YB-Master and YB-TServer as leader_failure_max_missed_heartbeat_periods 10. Since the data is globally replicated, RPC latencies are higher. You can use this flag to increase the failure detection interval in such a high- RPC latency deployment.<br><br>
+- Add the configuration flag for YB-Master and YB-TServer as `leader_failure_max_missed_heartbeat_periods` 10. Since the data is globally replicated, remote procedure call (RPC) latencies are higher. You can use this flag to increase the failure detection interval in such a high-RPC latency deployment.<br><br>
 
   ![Create Primary Cluster on GCP](/images/ee/primary-cluster-creation.png)
 
-The next step is to click **Configure Read Replica** and then enter the following into the **Read Replica > Cloud Configuration** page to create a read replica
-cluster on [AWS](../../configure-yugabyte-platform/set-up-cloud-provider/aws/):
+The next step is to click **Configure Read Replica** and then specify the following on the **Read Replica > Cloud Configuration** page to create a read replica cluster on [AWS](../../configure-yugabyte-platform/set-up-cloud-provider/aws/):
 
 - Enter the set of regions as US East.
 - Set the replication factor to 3.
@@ -56,7 +54,7 @@ Once the universe has been created, **Dashboard** displays the primary and read 
 
 ### Universe nodes
 
-To see a list of nodes, navigate to **Nodes**. Notice that the nodes are grouped into primary cluster and read replicas, and read replica nodes have a readonly1 identifier appended to their name.
+To see a list of nodes, navigate to **Nodes**. Notice that the nodes are grouped into primary cluster and read replicas, and read replica nodes have a `readonly1` identifier appended to their name.
 
 Navigate to the cloud provider's instances page. In GCP, browse to **Compute Engine > VM Instances** and search for instances that have `helloworld3` in their name. The following illustration shows the result corresponding to your primary cluster:
 

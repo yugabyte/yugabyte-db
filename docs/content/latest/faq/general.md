@@ -62,7 +62,7 @@ YugabyteDB feature highlights are listed below.
 
 ### Cloud native
 
-- Built for the container era with [highly elastic scaling](../../explore/linear-scalability/) and infrastructure portability, including [Kubernetes-driven orchestration](../../quick-start/install/kubernetes).
+- Built for the container era with [highly elastic scaling](../../explore/linear-scalability/) and infrastructure portability, including [Kubernetes-driven orchestration](../../quick-start/install/kubernetes/).
 
 - [Self-healing database](../../explore/fault-tolerance/) that automatically tolerates any failures common in the inherently unreliable modern cloud infrastructure.
 
@@ -72,7 +72,7 @@ YugabyteDB feature highlights are listed below.
 
 ### Built-in enterprise features
 
-- Starting in [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/), YugabyteDB is the only open-source distributed SQL database to have built-in enterprise features such as Distributed Backups, Data Encryption, and Read Replicas. New features such as [Change Data Capture (CDC)](../../architecture/docdb-replication/change-data-capture//) and [2 Data Center Deployments](../../architecture/docdb-replication/async-replication/) are also included in open source.
+- Starting in [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/), YugabyteDB is the only open-source distributed SQL database to have built-in enterprise features such as Distributed Backups, Data Encryption, and Read Replicas. New features such as [Change Data Capture (CDC)](../../architecture/docdb-replication/change-data-capture/) and [2 Data Center Deployments](../../architecture/docdb-replication/async-replication/) are also included in open source.
 
 ## What client APIs are supported by YugabyteDB?
 
@@ -230,7 +230,8 @@ A post on our blog titled [Practical Tradeoffs in Google Cloud Spanner, Azure Co
 
 YugabyteDB has had the following major releases:
 
-- [v2.8](https://blog.yugabyte.com/) in November 2021.
+- [v2.12](https://blog.yugabyte.com/) in February 2022. (There was no v2.10 release.)
+- [v2.8](https://blog.yugabyte.com/announcing-yugabytedb-2-8/) in November 2021.
 - [v2.6](https://blog.yugabyte.com/announcing-yugabytedb-2-6/) in July 2021.
 - [v2.4](https://blog.yugabyte.com/announcing-yugabytedb-2-4/) in January 2021.
 - [v2.2](https://blog.yugabyte.com/announcing-yugabytedb-2-2-distributed-sql-made-easy/) in July 2020.
@@ -242,7 +243,7 @@ YugabyteDB has had the following major releases:
 - [v1.0](https://blog.yugabyte.com/announcing-yugabyte-db-1-0-%F0%9F%8D%BE-%F0%9F%8E%89/) in May 2018.
 - [v0.9 Beta](https://blog.yugabyte.com/yugabyte-has-arrived/) in November 2017.
 
-Releases, including upcoming releases, are outlined on the [Releases Overview](/latest/releases/releases-overview) page. The roadmap for this release can be found on [GitHub](https://github.com/yugabyte/yugabyte-db#whats-being-worked-on).
+Releases, including upcoming releases, are outlined on the [Releases Overview](/latest/releases/) page. The roadmap for this release can be found on [GitHub](https://github.com/yugabyte/yugabyte-db#whats-being-worked-on).
 
 ## Can I deploy YugabyteDB to production?
 
@@ -302,7 +303,7 @@ See [Compare YugabyteDB to other databases](../../comparisons/)
 - [Amazon Aurora](../../comparisons/amazon-aurora/)
 - [Google Cloud Spanner](../../comparisons/google-spanner/)
 - [MongoDB](../../comparisons/mongodb/)
-- [CockroachDB](https://www.yugabyte.com/yugabyte-db-vs-cockroachdb/)
+- [CockroachDB](https://www.yugabyte.com/yugabytedb-vs-cockroachdb/)
 
 ## Why is a group of YugabyteDB nodes called a universe instead of the more commonly used term clusters?
 
@@ -316,11 +317,11 @@ A YugabyteDB universe packs a lot more functionality than what people think of w
 
 ## What is the difference between `ysqlsh` and `psql`?
 
-The YSQL shell (`ysqlsh`) is functionally similar to PostgreSQL's `psql` , but uses different default values for some variables (for example, the default user, default database, and the path to TLS certificates). This is done for the user's convenience. In the Yugabyte `bin` directory, the deprecated `psql` alias opens the `ysqlsh` CLI. For more details, see [ysqlsh](../../admin/ysqlsh).
+The YSQL shell (`ysqlsh`) is functionally similar to PostgreSQL's `psql` , but uses different default values for some variables (for example, the default user, default database, and the path to TLS certificates). This is done for the user's convenience. In the Yugabyte `bin` directory, the deprecated `psql` alias opens the `ysqlsh` CLI. For more details, see [ysqlsh](../../admin/ysqlsh/).
 
 ## What is the status of the YEDIS API?
 
-In the near-term, Yugabyte is not actively working on new feature or driver enhancements to the [YEDIS](../../yedis/) API other than bug fixes and stability improvements. Current focus is on [YSQL](../../api/ysql) and [YCQL](../../api/ycql).
+In the near-term, Yugabyte is not actively working on new feature or driver enhancements to the [YEDIS](../../yedis/) API other than bug fixes and stability improvements. Current focus is on [YSQL](../../api/ysql/) and [YCQL](../../api/ycql/).
 
 For key-value workloads that need persistence, elasticity and fault-tolerance, YCQL (with notion of keyspaces, tables, role-based access control and more) is often a great fit, especially if the application new rather than an existing one already written in Redis. The YCQL drivers are also more clustering aware, and hence YCQL is expected to perform better than YEDIS for equivalent scenarios. In general, our new feature development (support for data types, built-ins, TLS, backups and more), correctness testing (using Jepsen) and performance optimization is in the YSQL and YCQL areas.
 

@@ -26,6 +26,11 @@ const initialValues = {
   username: 'postgres'
 };
 
+export const MODES = {
+  CREATE: 'CREATE',
+  EDIT: 'EDIT'
+};
+
 const downloadAllFilesInObject = (data) => {
   Object.entries(data).forEach((file) => {
     const [filename, content] = file;
@@ -91,7 +96,8 @@ class Certificates extends Component {
     showSubmitting: false,
     selectedCert: {},
     associatedUniverses: [],
-    isVisibleModal: false
+    isVisibleModal: false,
+    mode: MODES.CREATE
   };
   getDateColumn = (key) => (item, row) => {
     if (key in row) {
@@ -162,7 +168,7 @@ class Certificates extends Component {
   };
 
   formatActionButtons = (cell, row) => {
-    const downloadDisabled = row.type !== 'SelfSigned';
+    const downloadEnabled = ['SelfSigned', 'HashicorpVault'].includes(row.type);
     const deleteDisabled = row.inUse;
     const payload = {
       name: row.name,
@@ -171,6 +177,7 @@ class Certificates extends Component {
       expiryDate: row.expiryDate,
       universeDetails: row.universeDetails
     };
+    const disableCertEdit = row.type !== 'HashicorpVault';
     // TODO: Replace dropdown option + modal with a side panel
     return (
       <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown" pullRight>
@@ -179,28 +186,40 @@ class Certificates extends Component {
             if (row.customCertInfo) {
               Object.assign(payload, row.customCertInfo);
             }
-            this.setState({ selectedCert: payload });
+            this.setState({ selectedCert: row });
             this.props.showCertificateDetailsModal();
           }}
         >
           <i className="fa fa-info-circle"></i> Details
         </MenuItem>
         <MenuItem
+          disabled={disableCertEdit}
           onClick={() => {
-            if (!downloadDisabled) {
+            if (!disableCertEdit) {
+              this.setState({ mode: MODES.EDIT, selectedCert: row }, () => {
+                this.props.showAddCertificateModal();
+              });
+            }
+          }}
+        >
+          <i className="fa fa-edit"></i> Edit Certificate
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            if (downloadEnabled) {
               this.setState({ selectedCert: payload });
               this.props.showDownloadCertificateModal();
             }
           }}
-          disabled={downloadDisabled}
+          disabled={!downloadEnabled}
         >
           <i className="fa fa-download"></i> Download YSQL Cert
         </MenuItem>
         <MenuItem
           onClick={() => {
-            !downloadDisabled && this.downloadRootCertificate(row);
+            downloadEnabled && this.downloadRootCertificate(row);
           }}
-          disabled={downloadDisabled}
+          disabled={!downloadEnabled}
         >
           <i className="fa fa-download"></i> Download Root CA Cert
         </MenuItem>
@@ -231,7 +250,7 @@ class Certificates extends Component {
    * Close the modal by setting the local flag.
    */
   closeModal = () => {
-    this.setState({ isVisibleModal: false });
+    this.setState({ isVisibleModal: false, mode: MODES.CREATE });
   };
 
   render() {
@@ -262,7 +281,7 @@ class Certificates extends Component {
               customCertInfo: cert.customCertInfo,
               inUse: cert.inUse,
               universeDetails: cert.universeDetails,
-              hcVaultCertParams: cert.hcVaultCertParams
+              hcVaultCertParams: cert.customHCPKICertInfo
             };
 
             const isVaultCert = cert.certType === 'HashicorpVault';
@@ -287,7 +306,11 @@ class Certificates extends Component {
                 {isNotHidden(currentCustomer.data.features, 'universe.create') && (
                   <YBButton
                     btnClass="universe-button btn btn-lg btn-orange"
-                    onClick={showAddCertificateModal}
+                    onClick={() => {
+                      this.setState({ mode: MODES.CREATE }, () => {
+                        showAddCertificateModal();
+                      });
+                    }}
                     disabled={isDisabled(currentCustomer.data.features, 'universe.create')}
                     btnText="Add Certificate"
                     btnIcon="fa fa-plus"
@@ -351,6 +374,8 @@ class Certificates extends Component {
                 onHide={this.props.closeModal}
                 fetchCustomerCertificates={this.props.fetchCustomerCertificates}
                 isHCVaultEnabled={isHCVaultEnabled}
+                certificate={this.state.selectedCert}
+                mode={this.state.mode}
               />
               <CertificateDetails
                 visible={showModal && visibleModal === 'certificateDetailsModal'}

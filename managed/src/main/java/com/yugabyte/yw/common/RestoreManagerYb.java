@@ -4,7 +4,6 @@ import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.BACKUP_LOCATIO
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.ActionType;
@@ -40,8 +39,6 @@ public class RestoreManagerYb extends DevopsBase {
   private static final String VM_CERT_DIR = "/yugabyte-tls-config/";
   private static final String BACKUP_SCRIPT = "bin/yb_backup.py";
 
-  @Inject CustomerConfigService customerConfigService;
-
   public ShellResponse runCommand(RestoreBackupParams restoreBackupParams) {
     Universe universe = Universe.getOrBadRequest(restoreBackupParams.universeUUID);
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
@@ -66,8 +63,11 @@ public class RestoreManagerYb extends DevopsBase {
 
     List<NodeDetails> tservers = universe.getTServers();
     // Verify if secondary IPs exist. If so, create map.
+    boolean legacyNet =
+        universe.getConfig().getOrDefault(Universe.DUAL_NET_LEGACY, "true").equals("true");
     if (tservers.get(0).cloudInfo.secondary_private_ip != null
-        && !tservers.get(0).cloudInfo.secondary_private_ip.equals("null")) {
+        && !tservers.get(0).cloudInfo.secondary_private_ip.equals("null")
+        && !legacyNet) {
       secondaryToPrimaryIP =
           tservers
               .stream()
@@ -102,7 +102,7 @@ public class RestoreManagerYb extends DevopsBase {
     BackupStorageInfo backupStorageInfo = restoreBackupParams.backupStorageInfoList.get(0);
     ActionType actionType = restoreBackupParams.actionType;
     if (actionType.equals(ActionType.RESTORE)) {
-      if (backupStorageInfo.tableUUIDList != null && !backupStorageInfo.tableUUIDList.isEmpty()) {
+      if (backupStorageInfo.tableNameList != null) {
         for (String tableName : backupStorageInfo.tableNameList) {
           commandArgs.add("--table");
           commandArgs.add(tableName);
@@ -116,7 +116,7 @@ public class RestoreManagerYb extends DevopsBase {
 
     Customer customer = Customer.get(universe.customerId);
     CustomerConfig customerConfig =
-        customerConfigService.getOrBadRequest(customer.uuid, backupStorageInfo.storageConfigUUID);
+        CustomerConfig.get(customer.uuid, restoreBackupParams.storageConfigUUID);
     File backupKeysFile =
         EncryptionAtRestUtil.getUniverseBackupKeysFile(backupStorageInfo.storageLocation);
 
@@ -128,10 +128,6 @@ public class RestoreManagerYb extends DevopsBase {
       }
     }
 
-    if (backupStorageInfo.tableUUIDList != null) {
-      commandArgs.add("--table_uuid");
-      commandArgs.add(backupStorageInfo.tableUUIDList.toString().replace("-", ""));
-    }
     commandArgs.add("--no_auto_name");
     if (backupStorageInfo.sse) {
       commandArgs.add("--sse");
@@ -234,6 +230,7 @@ public class RestoreManagerYb extends DevopsBase {
     commandArgs.add("--backup_location");
     commandArgs.add(backupStorageInfo.storageLocation);
     commandArgs.add("--storage_type");
+
     commandArgs.add(customerConfig.name.toLowerCase());
     if (customerConfig.name.toLowerCase().equals("nfs")) {
       commandArgs.add("--nfs_storage_path");

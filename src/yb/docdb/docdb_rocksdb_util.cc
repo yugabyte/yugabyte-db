@@ -81,9 +81,9 @@ DEFINE_uint64(rocksdb_universal_compaction_always_include_size_threshold, 64_MB,
              "Always include files of smaller or equal size in a compaction.");
 DEFINE_int32(rocksdb_universal_compaction_min_merge_width, 4,
              "The minimum number of files in a single compaction run.");
-DEFINE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec, 256_MB,
+DEFINE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec, 1_GB,
              "Use to control write rate of flush and compaction.");
-DEFINE_string(rocksdb_compact_flush_rate_limit_sharing_mode, "none",
+DEFINE_string(rocksdb_compact_flush_rate_limit_sharing_mode, "tserver",
               "Allows to control rate limit sharing/calculation across RocksDB instances\n"
               "  tserver - rate limit is shared across all RocksDB instances"
               " at tabset server level\n"
@@ -177,15 +177,15 @@ Result<rocksdb::CompressionType> GetConfiguredCompressionType(const std::string&
 
 namespace docdb {
 
-Result<rocksdb::KeyValueEncodingFormat> GetConfiguredKeyValueEncodingFormat(
+  Result<rocksdb::KeyValueEncodingFormat> GetConfiguredKeyValueEncodingFormat(
     const std::string& flag_value) {
-  for (const auto& encoding_format : rocksdb::kKeyValueEncodingFormatList) {
-    if (flag_value == KeyValueEncodingFormatToString(encoding_format)) {
-      return encoding_format;
+    for (const auto& encoding_format : rocksdb::kKeyValueEncodingFormatList) {
+      if (flag_value == KeyValueEncodingFormatToString(encoding_format)) {
+        return encoding_format;
+      }
     }
+    return STATUS_FORMAT(InvalidArgument, "Key-value encoding format $0 is not valid.", flag_value);
   }
-  return STATUS_FORMAT(InvalidArgument, "Key-value encoding format $0 is not valid.", flag_value);
-}
 
 } // namespace docdb
 
@@ -508,10 +508,11 @@ void AddSupportedFilterPolicy(
   table_options->supported_filter_policies->emplace(filter_policy->Name(), filter_policy);
 }
 
-PriorityThreadPool* GetGlobalPriorityThreadPool() {
-  static PriorityThreadPool priority_thread_pool_for_compactions_and_flushes(
-      GetGlobalRocksDBPriorityThreadPoolSize());
-  return &priority_thread_pool_for_compactions_and_flushes;
+PriorityThreadPool* GetGlobalPriorityThreadPool
+  (const scoped_refptr<MetricEntity>& metric_entity = nullptr) {
+    static PriorityThreadPool priority_thread_pool_for_compactions_and_flushes(
+      GetGlobalRocksDBPriorityThreadPoolSize(), metric_entity);
+    return &priority_thread_pool_for_compactions_and_flushes;
 }
 
 } // namespace
@@ -585,7 +586,10 @@ void InitRocksDBOptions(
   }
   options->env = tablet_options.rocksdb_env;
   options->checkpoint_env = rocksdb::Env::Default();
-  options->priority_thread_pool_for_compactions_and_flushes = GetGlobalPriorityThreadPool();
+  options->priority_thread_pool_for_compactions_and_flushes =
+    (tablet_options.ServerMetricEntity) ?
+    GetGlobalPriorityThreadPool(tablet_options.ServerMetricEntity) :
+    GetGlobalPriorityThreadPool();
 
   if (FLAGS_num_reserved_small_compaction_threads != -1) {
     options->num_reserved_small_compaction_threads = FLAGS_num_reserved_small_compaction_threads;

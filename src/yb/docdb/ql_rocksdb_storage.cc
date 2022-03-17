@@ -160,6 +160,7 @@ Status QLRocksDBStorage::GetIterator(const PgsqlReadRequestPB& request,
   auto doc_iter = std::make_unique<DocRowwiseIterator>(
       projection, schema, txn_op_context, doc_db_, deadline, read_time);
 
+
   if (range_components.size() == schema.num_range_key_columns()) {
     // Construct the scan spec basing on the RANGE condition as all range columns are specified.
     RETURN_NOT_OK(doc_iter->Init(DocPgsqlScanSpec(
@@ -181,6 +182,35 @@ Status QLRocksDBStorage::GetIterator(const PgsqlReadRequestPB& request,
   } else {
     // Construct the scan spec basing on the HASH condition.
 
+    DocKey lower_doc_key(schema);
+    if (request.has_lower_bound()
+        && schema.num_hash_key_columns() == 0) {
+        Slice lower_key_slice = request.lower_bound().key();
+        RETURN_NOT_OK(lower_doc_key.DecodeFrom(&lower_key_slice,
+                            DocKeyPart::kWholeDocKey,
+                            AllowSpecial::kTrue));
+        if (request.lower_bound().has_is_inclusive()
+            && !request.lower_bound().is_inclusive()) {
+            lower_doc_key.AddRangeComponent(
+                PrimitiveValue(docdb::ValueType::kHighest));
+        }
+    }
+
+    DocKey upper_doc_key(schema);
+    if (request.has_upper_bound()
+        && schema.num_hash_key_columns() == 0) {
+        Slice upper_key_slice = request.upper_bound().key();
+        RETURN_NOT_OK(upper_doc_key.DecodeFrom(&upper_key_slice,
+                            DocKeyPart::kWholeDocKey,
+                            AllowSpecial::kTrue));
+        if (request.upper_bound().has_is_inclusive()
+            && request.upper_bound().is_inclusive()) {
+            upper_doc_key.AddRangeComponent(
+                PrimitiveValue(docdb::ValueType::kHighest));
+        }
+    }
+
+
     SCHECK(!request.has_where_expr(),
            InternalError,
            "WHERE clause is not yet supported in docdb::pgsql");
@@ -195,7 +225,9 @@ Status QLRocksDBStorage::GetIterator(const PgsqlReadRequestPB& request,
                                     : boost::none,
         nullptr /* where_expr */,
         start_doc_key,
-        request.is_forward_scan())));
+        request.is_forward_scan(),
+        lower_doc_key,
+        upper_doc_key)));
   }
 
   *iter = std::move(doc_iter);

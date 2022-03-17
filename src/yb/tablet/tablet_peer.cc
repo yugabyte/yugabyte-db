@@ -685,9 +685,35 @@ Result<HybridTime> TabletPeer::WaitForSafeTime(HybridTime safe_time, CoarseTimeP
   return tablet_->SafeTime(RequireLease::kFallbackToFollower, safe_time, deadline);
 }
 
-void TabletPeer::GetLastReplicatedData(RemoveIntentsData* data) {
-  data->op_id = consensus_->GetLastCommittedOpId();
-  data->log_ht = tablet_->mvcc_manager()->LastReplicatedHybridTime();
+Status TabletPeer::GetLastReplicatedData(RemoveIntentsData* data) {
+  std::shared_ptr<consensus::RaftConsensus> consensus;
+  TabletPtr tablet;
+  {
+    std::lock_guard<simple_spinlock> lock(lock_);
+    consensus = consensus_;
+    tablet = tablet_;
+  }
+  if (!consensus) {
+    return STATUS(IllegalState, "Consensus destroyed");
+  }
+  if (!tablet) {
+    return STATUS(IllegalState, "Tablet destroyed");
+  }
+  data->op_id = consensus->GetLastCommittedOpId();
+  data->log_ht = tablet->mvcc_manager()->LastReplicatedHybridTime();
+  return Status::OK();
+}
+
+void TabletPeer::GetLastCDCedData(RemoveIntentsData* data) {
+  if (consensus_ != nullptr) {
+    data->op_id.index = consensus_->GetLastCDCedOpId().index;
+    data->op_id.term = consensus_->GetLastCDCedOpId().term;
+  }
+
+  if((tablet_ != nullptr) && (tablet_->mvcc_manager() != nullptr)) {
+    // for now use this hybrid time, ideally it should be of last_updated_time
+    data->log_ht = tablet_->mvcc_manager()->LastReplicatedHybridTime();
+  }
 }
 
 void TabletPeer::UpdateClock(HybridTime hybrid_time) {

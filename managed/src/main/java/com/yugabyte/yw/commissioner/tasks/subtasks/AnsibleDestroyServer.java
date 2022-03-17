@@ -38,6 +38,8 @@ public class AnsibleDestroyServer extends NodeTaskBase {
     public boolean isForceDelete;
     // Flag to track if node info should be deleted from universe db.
     public boolean deleteNode = true;
+    // Flag to delete root volumes which are not auto-deleted on instance termination.
+    public boolean deleteRootVolumes = false;
     // IP of node to be deleted.
     public String nodeIP = null;
   }
@@ -69,8 +71,6 @@ public class AnsibleDestroyServer extends NodeTaskBase {
 
   @Override
   public void run() {
-    // Update the node state as removing.
-    setNodeState(NodeDetails.NodeState.Removing);
     // Execute the ansible command.
     try {
       ShellResponse response =
@@ -81,7 +81,9 @@ public class AnsibleDestroyServer extends NodeTaskBase {
         throw e;
       } else {
         log.debug(
-            "Ignoring error deleting {} due to isForceDelete being set.", taskParams().nodeName, e);
+            "Ignoring error deleting instance {} due to isForceDelete being set.",
+            taskParams().nodeName,
+            e);
       }
     }
 
@@ -90,6 +92,26 @@ public class AnsibleDestroyServer extends NodeTaskBase {
         u.getUniverseDetails()
             .getClusterByUuid(u.getNode(taskParams().nodeName).placementUuid)
             .userIntent;
+
+    if (taskParams().deleteRootVolumes
+        && !userIntent.providerType.equals(Common.CloudType.onprem)) {
+      try {
+        ShellResponse response =
+            getNodeManager()
+                .nodeCommand(NodeManager.NodeCommandType.Delete_Root_Volumes, taskParams());
+        processShellResponse(response);
+      } catch (Exception e) {
+        if (!taskParams().isForceDelete) {
+          throw e;
+        } else {
+          log.debug(
+              "Ignoring error deleting volumes for {} due to isForceDelete being set.",
+              taskParams().nodeName,
+              e);
+        }
+      }
+    }
+
     NodeDetails univNodeDetails = u.getNode(taskParams().nodeName);
 
     if (userIntent.providerType.equals(Common.CloudType.onprem)

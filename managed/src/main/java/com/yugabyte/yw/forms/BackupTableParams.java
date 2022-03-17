@@ -72,6 +72,9 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "Is verbose logging enabled")
   public boolean enableVerboseLogs = false;
 
+  @ApiModelProperty(value = "Alter load balancer state")
+  public boolean alterLoadBalancer = false;
+
   // Should the backup be transactional across tables
   @ApiModelProperty(value = "Is backup transactional across tables")
   public boolean transactionalBackup = false;
@@ -104,6 +107,9 @@ public class BackupTableParams extends TableManagerParams {
 
   @ApiModelProperty(value = "User name of the new tables owner")
   public String newOwner = null;
+
+  @ApiModelProperty(value = "Backup size in bytes")
+  public long backupSizeInBytes = 0L;
 
   @JsonIgnore
   public Set<String> getTableNames() {

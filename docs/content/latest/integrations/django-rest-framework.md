@@ -136,10 +136,12 @@ DATABASES = {
         'HOST': 'localhost',
         'PORT': 5433,
         'USER': 'yugabyte',
-        'PASSWORD': 'yugabyte'
+        'PASSWORD': 'yugabyte',
+        'CONN_MAX_AGE': None
     }
 }
 ```
+We recommend using persistent connections (setting `CONN_MAX_AGE`), for a much better performance with YugabyteDB.
 
 You also need the application and rest framework in the `INSTALLED_APPS` field. Replace the existing code with the following:
 

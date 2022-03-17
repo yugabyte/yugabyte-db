@@ -1,7 +1,7 @@
 ---
 title: Back Up and Restore Yugabyte Platform
 headerTitle: Back Up and Restore Yugabyte Platform
-linkTitle: Back Up and Restore Yugabyte Platform
+linkTitle: Back Up Yugabyte Platform
 description: Use a script file to back up and restore Yugabyte Platform.
 menu:
   stable:

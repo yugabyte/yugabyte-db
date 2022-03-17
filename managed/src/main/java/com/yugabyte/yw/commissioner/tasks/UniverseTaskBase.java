@@ -6,10 +6,10 @@ import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
 import static com.yugabyte.yw.forms.UniverseTaskParams.isFirstTryForTask;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.api.client.util.Objects;
 import com.google.common.base.Strings;
 import com.google.common.collect.Streams;
 import com.google.common.net.HostAndPort;
-import com.google.api.client.util.Objects;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.HealthChecker;
@@ -36,8 +36,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DestroyEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DisableEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.EnableEncryptionAtRest;
-import com.yugabyte.yw.commissioner.tasks.subtasks.RunYsqlUpgrade;
-import com.yugabyte.yw.commissioner.tasks.subtasks.SetActiveUniverseKeys;
 import com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManipulateDnsRecordTask;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ModifyBlackList;
@@ -49,6 +47,8 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreBackupYb;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeys;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeysYb;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.RunYsqlUpgrade;
+import com.yugabyte.yw.commissioner.tasks.subtasks.SetActiveUniverseKeys;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetFlagInMemory;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeState;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeStatus;
@@ -56,6 +56,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.SwamperTargetsFileUpdate;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UnivSetCertificate;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateSucceeded;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistGFlags;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateMountedDisks;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateSoftwareVersion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDataMove;
@@ -68,7 +69,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServerReady;
 import com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess;
-import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellResponse;
@@ -93,6 +93,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.ColumnDetails;
 import com.yugabyte.yw.models.helpers.ColumnDetails.YQLDataType;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.TableDetails;
@@ -117,7 +118,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.MapUtils;
 import org.slf4j.MDC;
 import org.yb.ColumnSchema.SortOrder;
-import org.yb.Common;
 import org.yb.CommonTypes.TableType;
 import org.yb.client.ModifyClusterConfigIncrementVersion;
 import org.yb.client.YBClient;
@@ -568,8 +568,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /** Create a task to mark the final software version on a universe. */
-  public SubTaskGroup createUpdateSoftwareVersionTask(String softwareVersion) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("FinalizeUniverseUpdate", executor);
+  public TaskExecutor.SubTaskGroup createUpdateSoftwareVersionTask(String softwareVersion) {
+    TaskExecutor.SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("FinalizeUniverseUpdate");
     UpdateSoftwareVersion.Params params = new UpdateSoftwareVersion.Params();
     params.universeUUID = taskParams().universeUUID;
     params.softwareVersion = softwareVersion;
@@ -577,8 +578,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     UpdateSoftwareVersion task = createTask(UpdateSoftwareVersion.class);
     task.initialize(params);
     task.setUserTaskUUID(userTaskUUID);
-    subTaskGroup.addTask(task);
-    subTaskGroupQueue.add(subTaskGroup);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
@@ -669,9 +670,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param nodes : a collection of nodes that need to be removed
    * @param isForceDelete if this is true, ignore ansible errors
    * @param deleteNode if true, the node info is deleted from the universe db.
+   * @param deleteRootVolumes if true, the volumes are deleted.
    */
   public SubTaskGroup createDestroyServerTasks(
-      Collection<NodeDetails> nodes, boolean isForceDelete, boolean deleteNode) {
+      Collection<NodeDetails> nodes,
+      boolean isForceDelete,
+      boolean deleteNode,
+      boolean deleteRootVolumes) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleDestroyServers", executor);
     for (NodeDetails node : nodes) {
       // Check if the private ip for the node is set. If not, that means we don't have
@@ -711,6 +716,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       params.isForceDelete = isForceDelete;
       // Flag to track if node info should be deleted from universe db.
       params.deleteNode = deleteNode;
+      // Flag to track if volumes should be deleted from universe.
+      params.deleteRootVolumes = deleteRootVolumes;
       // Add the instance type
       params.instanceType = node.cloudInfo.instance_type;
       // Assign the node IP to ensure deletion of the correct node.
@@ -1115,6 +1122,24 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  protected SubTaskGroup createUpdateMountedDisksTask(
+      NodeDetails node, String currentInstanceType, DeviceInfo currentDeviceInfo) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("UpdateMountedDisks", executor);
+    UpdateMountedDisks.Params params = new UpdateMountedDisks.Params();
+
+    params.nodeName = node.nodeName;
+    params.universeUUID = taskParams().universeUUID;
+    params.azUuid = node.azUuid;
+    params.instanceType = currentInstanceType;
+    params.deviceInfo = currentDeviceInfo;
+
+    UpdateMountedDisks updateMountedDisksTask = createTask(UpdateMountedDisks.class);
+    updateMountedDisksTask.initialize(params);
+    subTaskGroup.addTask(updateMountedDisksTask);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
   /** Creates a task to persist customized gflags to be used by server processes. */
   public SubTaskGroup updateGFlagsPersistTasks(
       Map<String, String> masterGFlags, Map<String, String> tserverGFlags) {
@@ -1149,7 +1174,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *
    * @param nodeName name of a node in the taskparams' uuid universe.
    */
-  public SubTaskGroup deleteNodeFromUniverseTask(String nodeName) {
+  public SubTaskGroup createDeleteNodeFromUniverseTask(String nodeName) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("DeleteNode", executor);
     NodeTaskParams params = new NodeTaskParams();
     params.nodeName = nodeName;
@@ -1611,12 +1636,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param isLeaderBlacklist true if we are leader blacklisting the node
    * @return the created task group.
    */
-  public SubTaskGroup createModifyBlackListTask(
+  public TaskExecutor.SubTaskGroup createModifyBlackListTask(
       Collection<NodeDetails> nodes, boolean isAdd, boolean isLeaderBlacklist) {
+    return createModifyBlackListTask(nodes, isAdd, isLeaderBlacklist, null);
+  }
+
+  public TaskExecutor.SubTaskGroup createModifyBlackListTask(
+      Collection<NodeDetails> nodes,
+      boolean isAdd,
+      boolean isLeaderBlacklist,
+      Integer taskPosition) {
     if (isAdd) {
-      return createModifyBlackListTask(nodes, null, isLeaderBlacklist);
+      return createModifyBlackListTask(nodes, null, isLeaderBlacklist, taskPosition);
     }
-    return createModifyBlackListTask(null, nodes, isLeaderBlacklist);
+    return createModifyBlackListTask(null, nodes, isLeaderBlacklist, taskPosition);
   }
 
   /**
@@ -1627,11 +1660,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param isLeaderBlacklist true if we are leader blacklisting the node
    * @return
    */
-  public SubTaskGroup createModifyBlackListTask(
+  public TaskExecutor.SubTaskGroup createModifyBlackListTask(
       Collection<NodeDetails> addNodes,
       Collection<NodeDetails> removeNodes,
       boolean isLeaderBlacklist) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("ModifyBlackList", executor);
+    return createModifyBlackListTask(addNodes, removeNodes, isLeaderBlacklist, null);
+  }
+
+  public TaskExecutor.SubTaskGroup createModifyBlackListTask(
+      Collection<NodeDetails> addNodes,
+      Collection<NodeDetails> removeNodes,
+      boolean isLeaderBlacklist,
+      Integer taskPosition) {
+    TaskExecutor.SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("ModifyBlackList");
     ModifyBlackList.Params params = new ModifyBlackList.Params();
     params.universeUUID = taskParams().universeUUID;
     params.addNodes = addNodes;
@@ -1641,9 +1683,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     ModifyBlackList modifyBlackList = createTask(ModifyBlackList.class);
     modifyBlackList.initialize(params);
     // Add it to the task list.
-    subTaskGroup.addTask(modifyBlackList);
+    subTaskGroup.addSubTask(modifyBlackList);
     // Add the task list to the task queue.
-    subTaskGroupQueue.add(subTaskGroup);
+    if (taskPosition != null) {
+      getRunnableTask().addSubTaskGroup(subTaskGroup, taskPosition);
+    } else {
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+    }
     return subTaskGroup;
   }
 

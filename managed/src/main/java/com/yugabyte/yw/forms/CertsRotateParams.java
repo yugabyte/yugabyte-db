@@ -6,8 +6,10 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Universe;
 import java.util.UUID;
@@ -33,8 +35,22 @@ public class CertsRotateParams extends UpgradeTaskParams {
   @JsonIgnore public CertRotationType rootCARotationType = CertRotationType.None;
   @JsonIgnore public CertRotationType clientRootCARotationType = CertRotationType.None;
 
+  public boolean isKubernetesUpgradeSupported() {
+    return true;
+  }
+
   @Override
   public void verifyParams(Universe universe) {
+    super.verifyParams(universe);
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    if (!userIntent.providerType.equals(CloudType.kubernetes)) {
+      verifyParamsForNormalUpgrade(universe);
+    } else {
+      verifyParamsForKubernetesUpgrade(universe);
+    }
+  }
+
+  private void verifyParamsForNormalUpgrade(Universe universe) {
     // Validate request params on different constraints based on current universe state.
     // Update rootCA, clientRootCA and rootAndClientRootCASame to their desired final state.
     // Decide what kind of upgrade needs to be done on rootCA and clientRootCA.
@@ -43,8 +59,6 @@ public class CertsRotateParams extends UpgradeTaskParams {
     UUID currentRootCA = universe.getUniverseDetails().rootCA;
     UUID currentClientRootCA = universe.getUniverseDetails().clientRootCA;
     boolean currentRootAndClientRootCASame = universe.getUniverseDetails().rootAndClientRootCASame;
-
-    super.verifyParams(universe);
 
     if (upgradeOption == UpgradeOption.NON_RESTART_UPGRADE) {
       throw new PlatformServiceException(Status.BAD_REQUEST, "Cert upgrade cannot be non restart.");
@@ -67,12 +81,12 @@ public class CertsRotateParams extends UpgradeTaskParams {
     }
 
     boolean isRootCARequired =
-        CertificateHelper.isRootCARequired(
+        EncryptionInTransitUtil.isRootCARequired(
             userIntent.enableNodeToNodeEncrypt,
             userIntent.enableClientToNodeEncrypt,
             rootAndClientRootCASame);
     boolean isClientRootCARequired =
-        CertificateHelper.isClientRootCARequired(
+        EncryptionInTransitUtil.isClientRootCARequired(
             userIntent.enableNodeToNodeEncrypt,
             userIntent.enableClientToNodeEncrypt,
             rootAndClientRootCASame);
@@ -124,7 +138,7 @@ public class CertsRotateParams extends UpgradeTaskParams {
                 Status.BAD_REQUEST,
                 "Certs of type CustomCertHostPath can only be used for on-prem universes.");
           }
-          if (rootCert.getCustomCertInfo() == null) {
+          if (rootCert.getCustomCertPathParams() == null) {
             throw new PlatformServiceException(
                 Status.BAD_REQUEST,
                 String.format(
@@ -139,6 +153,11 @@ public class CertsRotateParams extends UpgradeTaskParams {
         case CustomServerCert:
           throw new PlatformServiceException(
               Status.BAD_REQUEST, "rootCA cannot be of type CustomServerCert.");
+        case HashicorpVault:
+          {
+            rootCARotationType = CertRotationType.RootCert;
+            break;
+          }
       }
     } else {
       // Consider this case:
@@ -172,7 +191,7 @@ public class CertsRotateParams extends UpgradeTaskParams {
                 Status.BAD_REQUEST,
                 "Certs of type CustomCertHostPath can only be used for on-prem universes.");
           }
-          if (clientRootCert.getCustomCertInfo() == null) {
+          if (clientRootCert.getCustomCertPathParams() == null) {
             throw new PlatformServiceException(
                 Status.BAD_REQUEST,
                 String.format(
@@ -201,6 +220,11 @@ public class CertsRotateParams extends UpgradeTaskParams {
             clientRootCARotationType = CertRotationType.RootCert;
           }
           break;
+        case HashicorpVault:
+          {
+            clientRootCARotationType = CertRotationType.RootCert;
+            break;
+          }
       }
     } else {
       // Consider this case:
@@ -225,6 +249,56 @@ public class CertsRotateParams extends UpgradeTaskParams {
         throw new PlatformServiceException(
             Status.BAD_REQUEST, "No changes in rootCA or clientRootCA.");
       }
+    }
+  }
+
+  private void verifyParamsForKubernetesUpgrade(Universe universe) {
+    if (rootCA == null) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST, "rootCA is null. Cannot perform any upgrade.");
+    }
+
+    if (clientRootCA != null) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST, "clientRootCA not applicable for Kubernetes certificate rotation.");
+    }
+
+    if (rootAndClientRootCASame != null && !rootAndClientRootCASame) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST, "rootAndClientRootCASame cannot be false for Kubernetes universes.");
+    }
+
+    if (upgradeOption != UpgradeOption.ROLLING_UPGRADE) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST,
+          "Certificate rotation for kubernetes universes cannot be Non-Rolling or Non-Restart.");
+    }
+
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    UUID currentRootCA = universe.getUniverseDetails().rootCA;
+
+    if (!(userIntent.enableNodeToNodeEncrypt || userIntent.enableClientToNodeEncrypt)) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST,
+          "Encryption-in-Transit is disabled for this universe. "
+              + "Cannot perform certificate rotation.");
+    }
+
+    if (currentRootCA.equals(rootCA)) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST, "Universe is already assigned to the provided rootCA: " + rootCA);
+    }
+
+    CertificateInfo rootCert = CertificateInfo.get(rootCA);
+    if (rootCert == null) {
+      throw new PlatformServiceException(Status.BAD_REQUEST, "Certificate not present: " + rootCA);
+    }
+
+    if (!(rootCert.certType == CertConfigType.SelfSigned
+        || rootCert.certType == CertConfigType.HashicorpVault)) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST,
+          "Kubernetes universes supports only SelfSigned or HashicorpVault certificates.");
     }
   }
 

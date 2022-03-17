@@ -557,6 +557,57 @@ class GoogleCloudAdmin():
                                                 body=body).execute()
         return self.waiter.wait(operation, zone=zone)
 
+    def delete_disks(self, zone, tags):
+        if not tags:
+            raise YBOpsRuntimeError('Tags must be specified')
+        universe_uuid = tags.get('universe-uuid')
+        if universe_uuid is None:
+            raise YBOpsRuntimeError('Universe UUID must be specified')
+        node_uuid = tags.get('node-uuid')
+        if node_uuid is None:
+            raise YBOpsRuntimeError('Node UUID must be specified')
+        filters = []
+        tagPairs = {}
+        tagPairs['universe-uuid'] = universe_uuid
+        tagPairs['node-uuid'] = node_uuid
+        for tag in tagPairs:
+            value = tagPairs[tag]
+            filters.append('labels.{}={}'.format(tag, value))
+        disk_names = []
+        list_disks_args = {
+            'project': self.project,
+            'zone': zone,
+            'filter': ' AND '.join(filters)
+        }
+        while True:
+            response = self.compute.disks().list(**list_disks_args).execute()
+            for disk in response.get('items', []):
+                status = disk['status']
+                disk_name = disk['name']
+                present_tags = disk['labels']
+                users = disk.get('users', [])
+                # API returns READY for used disks as it is the creation state.
+                # Users refer to the users (instance).
+                if status.lower() != 'ready' or users:
+                    continue
+                tag_match_count = 0
+                # Extra caution to make sure tags are present.
+                for tag in tagPairs:
+                    value = tagPairs[tag]
+                    for present_tag in present_tags:
+                        if present_tag == tag and present_tags[present_tag] == value:
+                            tag_match_count += 1
+                            break
+                if tag_match_count == len(tagPairs):
+                    disk_names.append(disk_name)
+            if 'nextPageToken' in response:
+                list_disks_args['pageToken'] = response['nextPageToken']
+            else:
+                break
+        for disk_name in disk_names:
+            logging.info('[app] Deleting disk {}'.format(disk_name))
+            self.compute.disks().delete(project=self.project, zone=zone, disk=disk_name).execute()
+
     def mount_disk(self, zone, instance, body):
         operation = self.compute.instances().attachDisk(project=self.project,
                                                         zone=zone,
@@ -605,10 +656,12 @@ class GoogleCloudAdmin():
     def delete_instance(self, region, zone, instance_name, has_static_ip=False):
         if has_static_ip:
             address = "ip-" + instance_name
-            logging.info("Deleting static ip {} attached to VM {}".format(address, instance_name))
+            logging.info("[app] Deleting static ip {} attached to VM {}".format(
+                address, instance_name))
             self.compute.addresses().delete(
                 project=self.project, region=region, address=address).execute()
-            logging.info("Deleted static ip {} attached to VM {}".format(address, instance_name))
+            logging.info("[app] Deleted static ip {} attached to VM {}".format(
+                address, instance_name))
         operation = self.compute.instances().delete(
             project=self.project, zone=zone, instance=instance_name).execute()
         self.waiter.wait(operation, zone=zone)
@@ -860,7 +913,8 @@ class GoogleCloudAdmin():
         if tags is not None:
             tags_dict = json.loads(tags)
             body.update({"labels": tags_dict})
-            initial_params.update({"labels": tags_dict})
+            if volume_type != GCP_SCRATCH:
+                initial_params.update({"labels": tags_dict})
             boot_disk_init_params.update({"labels": tags_dict})
             body["metadata"]["items"].append(
                 [{"key": k, "value": v} for (k, v) in tags_dict.items()])

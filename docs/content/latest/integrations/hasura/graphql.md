@@ -24,14 +24,14 @@ For information on Hasura, see the following:
 
 Before using Hasura with YugabyteDB, perform the following:
 
-- Install and start YugabyteDB, as described in [Quick Start Guide](../../quick-start/).
+- Install and start YugabyteDB, as described in [Quick Start Guide](../../../quick-start/).
 - Familiarize yourself with information on how to install and start Hasura on an existing database by reading [Run Hasura GraphQL Engine on Kubernetes](https://hasura.io/docs/latest/graphql/core/deployment/deployment-guides/kubernetes.html).
 
 To use Hasura with YugabyteDB, the configuration should be similar to PostgreSQL, except that the port should be `5433`.
 
 ## Setting Up the Benchmark
 
-You can use a [benchmark tool](https://github.com/yugabyte/yugabyte-graphql-apps/tree/master/graphql-subscription-with-yugabytedb/graphql-subscription-perf-tool) to deploy the benchmark setup on a Kubernetes cluster. The entire setup runs inside Kubernetes and includes the following components: 
+You can use a [benchmark tool](https://github.com/yugabyte/yugabyte-graphql-apps/tree/master/graphql-subscription-with-yugabytedb/graphql-subscription-perf-tool) to deploy the benchmark setup on a Kubernetes cluster. The entire setup runs inside Kubernetes and includes the following components:
 
 - A YugabyteDB cluster running natively inside Kubernetes.
 - A Hasura Kubernetes service.
@@ -159,7 +159,7 @@ Deploying the benchmark setup is a multi-step process that involves deployment o
   ```
   ysqlsh (11.2-YB-2.3.3.0-b0)
   Type "help" for help.
-  
+
   yugabyte=#
   ```
 
@@ -238,7 +238,7 @@ There is a procedure that simulates acquiring 100,000 subscribers using the Grap
           range:
               start: 1
               end: 25000
-          headers: 
+          headers:
               content-type: 'application/json'
           variables:
               - id

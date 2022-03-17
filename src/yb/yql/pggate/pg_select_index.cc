@@ -35,48 +35,40 @@ PgSelectIndex::PgSelectIndex(PgSession::ScopedRefPtr pg_session,
                              const PgObjectId& table_id,
                              const PgObjectId& index_id,
                              const PgPrepareParameters *prepare_params)
-    : PgDmlRead(pg_session, table_id, index_id, prepare_params) {
+    : PgSelect(pg_session, table_id, index_id, prepare_params) {
 }
 
-PgSelectIndex::~PgSelectIndex() {
+Result<PgTableDescPtr> PgSelectIndex::LoadTable() {
+  return pg_session_->LoadTable(index_id_);
 }
 
-Status PgSelectIndex::Prepare() {
-  // We get here only if this is an IndexOnly scan.
-  CHECK(prepare_params_.index_only_scan) << "Unexpected IndexOnly scan type";
-  return PrepareQuery(nullptr);
+bool PgSelectIndex::UseSecondaryIndex() const {
+  return false;
 }
 
-Status PgSelectIndex::PrepareSubquery(PgsqlReadRequestPB *read_req) {
-  // We get here if this is an SecondaryIndex scan.
-  CHECK(prepare_params_.use_secondary_index && !prepare_params_.index_only_scan)
-    << "Unexpected Index scan type";
-  return PrepareQuery(read_req);
-}
+Status PgSelectIndex::PrepareSubquery(std::shared_ptr<PgsqlReadRequestPB> read_req) {
+  if (!read_req) {
+    return PgSelect::Prepare();
+  }
 
-Status PgSelectIndex::PrepareQuery(PgsqlReadRequestPB *read_req) {
+  SCHECK(prepare_params_.use_secondary_index && !prepare_params_.index_only_scan,
+         InvalidArgument,
+         "Unexpected Index scan type");
+
   // Setup target and bind descriptor.
   target_ = bind_ = PgTable(VERIFY_RESULT(pg_session_->LoadTable(index_id_)));
 
-  // Allocate READ requests to send to DocDB.
-  if (read_req) {
-    // For (system and user) colocated tables, SelectIndex is a part of Select and being sent
-    // together with the SELECT protobuf request. A read doc_op and request is not needed in this
-    // case.
-    RSTATUS_DCHECK(
-        prepare_params_.querying_colocated_table, InvalidArgument, "Read request invalid");
-    read_req_ = read_req;
-    read_req_->set_table_id(index_id_.GetYBTableId());
-    doc_op_ = nullptr;
-
-  } else {
-    auto read_op = target_->NewPgsqlSelect();
-    read_req_ = read_op->mutable_request();
-    doc_op_ = make_shared<PgDocReadOp>(pg_session_, &target_, std::move(read_op));
-  }
+  // For (system and user) colocated tables, SelectIndex is a part of Select and being sent
+  // together with the SELECT protobuf request. A read doc_op and request is not needed in this
+  // case.
+  RSTATUS_DCHECK(
+      prepare_params_.querying_colocated_table, InvalidArgument, "Read request invalid");
+  read_req_ = std::move(read_req);
+  read_req_->set_table_id(index_id_.GetYbTableId());
 
   // Prepare index key columns.
   PrepareBinds();
+
   return Status::OK();
 }
 

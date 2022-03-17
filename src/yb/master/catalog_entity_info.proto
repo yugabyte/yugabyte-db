@@ -151,7 +151,8 @@ message SysTablesEntryPB {
 
   optional uint32 wal_retention_secs = 24;
 
-  optional bool colocated = 25 [ default = false ]; // Is this a colocated table?
+  // True if the table is colocated (including tablegroups, excluding YSQL system tables).
+  optional bool colocated = 25 [ default = false ];
 
   optional uint32 fully_applied_schema_version = 23;
   repeated IndexInfoPB fully_applied_indexes = 26;
@@ -362,11 +363,19 @@ message SysYSQLCatalogConfigEntryPB {
   optional bool transactional_sys_catalog_enabled = 6;
 }
 
+// Metadata about the current state of transaction tables.
+message SysTransactionTablesConfigEntryPB {
+  // Transaction status tables version. Every time a transaction table is added or has its placement
+  // changed, this version gets incremented.
+  optional uint64 version = 1;
+}
+
 // Various cluster configuration.
 message SysConfigEntryPB {
   oneof config {
     SysSecurityConfigEntryPB security_config = 1;
     SysYSQLCatalogConfigEntryPB ysql_catalog_config = 2;
+    SysTransactionTablesConfigEntryPB transaction_tables_config = 3;
   }
 }
 

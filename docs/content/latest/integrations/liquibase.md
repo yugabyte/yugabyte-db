@@ -28,7 +28,7 @@ Before you can start using Liquibase, ensure that you have the following install
   ./bin/yugabyted status
   ```
 
-- Liquibase (see [Download Liquibase](https://www.liquibase.org/download)). For information on how to extract the package and configure Liquibase, see [Configuring Liquibase](configuring-liquibase).
+- Liquibase (see [Download Liquibase](https://www.liquibase.org/download)). For information on how to extract the package and configure Liquibase, see [Configuring Liquibase](#configuring-liquibase).
 
 - Liquibase-YugabyteDB extension JAR (access [liquibase-yugabytedb repository](https://github.com/liquibase/liquibase-yugabytedb) and download the latest `liquibase-yugabytedb-.jar`). The driver must be located in the `/lib` sub-directory of the directory to which you extracted Liquibase.
 
@@ -48,7 +48,7 @@ You configure Liquibase as follows:
 
   ```bash
   echo "export PATH=$PATH:/<full-path>/liquibase-<version>" >> ~/.bash_profile
-  
+
   source ~/.bash_profile
   ```
 
@@ -61,6 +61,7 @@ You configure Liquibase as follows:
   ```
 
 - Create a changelog file called `master-changelog.xml` by executing the following command:
+
   ```shell
   touch master-changelog.xml
   ```
@@ -73,9 +74,9 @@ You configure Liquibase as follows:
 
   ```xml
   <?xml version="1.1" encoding="UTF-8" standalone="no"?>
-  
+
   <databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog" xmlns:ext="http://www.liquibase.org/xml/ns/dbchangelog-ext" xmlns:pro="http://www.liquibase.org/xml/ns/pro" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog-ext http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-ext.xsd http://www.liquibase.org/xml/ns/pro http://www.liquibase.org/xml/ns/pro/liquibase-pro-4.1.xsd http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.1.xsd">
-  
+
     <changeSet author="abc" id="1">
       <createTable tableName="actor">
         <column autoIncrement="true" name="id" type="INTEGER">
@@ -86,7 +87,7 @@ You configure Liquibase as follows:
         <column name="twitter" type="VARCHAR(15)"/>
       </createTable>
     </changeSet>
-    
+
   </databaseChangeLog>
   ```
 
@@ -99,22 +100,22 @@ You configure Liquibase as follows:
   Add the following to the `liquibase.properties` file:
 
   ```properties
-  changeLogFile:master-changelog.xml 
+  changeLogFile:master-changelog.xml
   url: jdbc:postgresql://localhost:5433/yugabyte
-  username: yugabyte 
+  username: yugabyte
   password: yugabyte
   classpath: <relative-path-to-postgres-jar>/postgresql-42.2.8.jar:<relative-path-to-liquibase-yugabytedb-<version>-jar>/liquibase-yugabytedb-<version>.jar
   ```
 
   Defining the classpath is necessary if you have placed the JAR files in a folder other than `/lib`. For more information, see [Creating and configuring the liquibase.properties file](https://docs.liquibase.com/workflows/liquibase-community/creating-config-properties.html).
 
-  <br>When using the YugabyteDB on-premises and specifying the URL, enter your IP address or host name, and then include the port followed by the database name, as per the following format: 
-  
-  ```
+  <br>When using the YugabyteDB on-premises and specifying the URL, enter your IP address or host name, and then include the port followed by the database name, as per the following format:
+
+  ```sh
   jdbc:postgresql://<IP_OR_HOSTNAME>:<PORT>/<DATABASE>
   ```
-  
-  When specifying the classpath for the PostgreSQL driver, esure that the version matches the version of the downloaded driver.  <br>The default username and password is `yugabyte`. 
+
+  When specifying the classpath for the PostgreSQL driver, esure that the version matches the version of the downloaded driver.  <br>The default username and password is `yugabyte`.
 
 ## Using Liquibase
 

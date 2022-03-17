@@ -241,7 +241,10 @@ public class MultiTableBackup extends UniverseTaskBase {
         }
 
         subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
-
+        if (params().alterLoadBalancer) {
+          createLoadBalancerStateChangeTask(false)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+        }
         log.info("Successfully started scheduled backup of tables.");
         if (params().getKeyspace() == null && params().tableUUIDList.size() == 0) {
           // Full universe backup, each table to be sequentially backed up
@@ -297,6 +300,10 @@ public class MultiTableBackup extends UniverseTaskBase {
         }
 
         // Marks the update of this universe as a success only if all the tasks before it succeeded.
+        if (params().alterLoadBalancer) {
+          createLoadBalancerStateChangeTask(true)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+        }
         createMarkUniverseUpdateSuccessTasks()
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
@@ -313,6 +320,14 @@ public class MultiTableBackup extends UniverseTaskBase {
               buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
         }
       } catch (Throwable t) {
+        if (params().alterLoadBalancer) {
+          subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
+          // If the task failed, we don't want the loadbalancer to be
+          // disabled, so we enable it again in case of errors.
+          createLoadBalancerStateChangeTask(true)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+          subTaskGroupQueue.run();
+        }
         throw t;
       } finally {
         lockedUpdateBackupState(params().universeUUID, this, false);
@@ -322,8 +337,8 @@ public class MultiTableBackup extends UniverseTaskBase {
 
       if (params().actionType == ActionType.CREATE) {
         BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
-        metricService.setStatusMetric(
-            buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe), t.getMessage());
+        metricService.setFailureStatusMetric(
+            buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
       }
       // Run an unlock in case the task failed before getting to the unlock. It is okay if it
       // errors out.

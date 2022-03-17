@@ -18,19 +18,19 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/deploy/kubernetes/single-zone/gke/helm-chart" class="nav-link">
+    <a href="../helm-chart/" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Helm Chart
     </a>
   </li>
   <li >
-    <a href="/latest/deploy/kubernetes/single-zone/gke/statefulset-yaml" class="nav-link">
+    <a href="../statefulset-yaml/" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       YAML (remote disk)
     </a>
   </li>
    <li >
-    <a href="/latest/deploy/kubernetes/single-zone/gke/statefulset-yaml-local-ssd" class="nav-link active">
+    <a href="../statefulset-yaml-local-ssd/" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       YAML (local disk)
     </a>
@@ -185,14 +185,14 @@ You can see the [YAML file to launch a YugabyteDB kubernetes universe on nodes w
 
 Note the following `nodeSelector` snippet in the YAML file which instructs the Kubernetes scheduler to place the YugabyteDB pods on nodes that have local disks:
 
-```
+```yaml
   nodeSelector:
     cloud.google.com/gke-local-ssd: "true"
 ```
 
 Also, note that you instruct the scheduler to place the various pods in the `yb-master` or `yb-tserver` services on different physical nodes with the `antiAffinity` hint:
 
-```
+```yaml
   spec:
     affinity:
       # Set the anti-affinity selector scope to YB masters.
@@ -270,7 +270,7 @@ You can connect to the `ycqlsh` shell on this universe by running the following 
 $ kubectl exec -it yb-tserver-0 -- ycqlsh yb-tserver-0
 ```
 
-```sh
+```output.cql
 Connected to local cluster at 127.0.0.1:9042.
 [ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.

@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Documentation Status](https://readthedocs.org/projects/ansicolortags/badge/?version=latest)](https://docs.yugabyte.com/)
 [![Ask in forum](https://img.shields.io/badge/ask%20us-forum-orange.svg)](https://forum.yugabyte.com/)
-[![Slack chat](https://img.shields.io/badge/Slack:-%23yugabyte_db-blueviolet.svg?logo=slack)](https://www.yugabyte.com/slack)
+[![Slack chat](https://img.shields.io/badge/Slack:-%23yugabyte_db-blueviolet.svg?logo=slack)](https://communityinviter.com/apps/yugabyte-db/register)
 [![Analytics](https://yugabyte.appspot.com/UA-104956980-4/home?pixel&useReferer)](https://github.com/yugabyte/ga-beacon)
 
 # What is YugabyteDB? 
@@ -51,7 +51,7 @@ Read more about YugabyteDB in our [Docs](https://docs.yugabyte.com/latest/introd
   * [Microservices-oriented e-commerce app](https://github.com/yugabyte/yugastore-java)
   * [Streaming IoT app with Kafka and Spark Streaming](https://docs.yugabyte.com/latest/develop/realworld-apps/iot-spark-kafka-ksql/)
 
-Cannot find what you are looking for? Have a question? Please post your questions or comments on our Community [Slack](https://www.yugabyte.com/slack) or [Forum](https://forum.yugabyte.com).
+Cannot find what you are looking for? Have a question? Please post your questions or comments on our Community [Slack](https://communityinviter.com/apps/yugabyte-db/register) or [Forum](https://forum.yugabyte.com).
 
 # Build Apps
 
@@ -70,34 +70,36 @@ YugabyteDB supports several languages and client drivers. Below is a brief list.
 
 # What's being worked on?
 
-> This section was last updated in **December, 2021**.
+> This section was last updated in **March, 2022**.
 
 ## Current roadmap
 
-Here is a list of some of the key features being worked on for the upcoming releases (the YugabyteDB [**v2.11 latest release**](https://blog.yugabyte.com/announcing-yugabytedb-2-11/) has been released in **November, 2021**, and the [**v2.8 stable release**](https://blog.yugabyte.com/announcing-yugabytedb-2-8/) was released in **October 2021**).
+Here is a list of some of the key features being worked on for the upcoming releases (the YugabyteDB [**v2.13 latest release**](https://docs.yugabyte.com/latest/releases/release-notes/v2.13/) has been released in **March, 2022**, and the [**v2.12 stable release**](https://blog.yugabyte.com/announcing-yugabytedb-2-12/) was released in **Feb 2022**).
 
 | Feature                                         | Status    | Release Target | Progress        |  Comments     |
 | ----------------------------------------------- | --------- | -------------- | --------------- | ------------- |
-|[Upgrade to PostgreSQL v13](https://github.com/yugabyte/yugabyte-db/issues/9797)| PROGRESS| v2.13 |[Track](https://github.com/yugabyte/yugabyte-db/issues/9797)| For latest features, new PostgreSQL extensions, performance, and community fixes
-|[Change Data Capture](https://github.com/yugabyte/yugabyte-db/issues/9019)| PROGRESS| v2.13 |[Track](https://github.com/yugabyte/yugabyte-db/issues/9019)|Allows multiple downstream apps and services to consume changes from YugabyteDB|
-|Support for  [in-cluster PITR](https://github.com/yugabyte/yugabyte-db/issues/7120)  | PROGRESS| v2.13 |[Track](https://github.com/yugabyte/yugabyte-db/issues/7120)|Point in time recovery of YSQL databases, to a fixed point in time, across DDL and DML changes|
-|[Support for materalized views](https://github.com/yugabyte/yugabyte-db/issues/10102) | PROGRESS| v2.13 |[Track](https://github.com/yugabyte/yugabyte-db/issues/10102)|Support create, drop, refresh materialized view|
-|[Geo-partitioning support](https://github.com/yugabyte/yugabyte-db/issues/9980) for the transaction status table |PROGRESS| v2.13 |[Track]()|Allows creating multiple transaction status tables|
-| [Automatic tablet splitting enabled by default](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md) | PROGRESS  | v2.13 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1004) |Enables changing the number of tablets (which are splits of data) at runtime.|
-| YSQL-table statistics and cost based optimizer(CBO) | PROGRESS  |  v2.13 | [Track](https://github.com/yugabyte/yugabyte-db/issues/5242) | Improve YSQL query performance |
-| [YSQL-Feature support - ALTER TABLE](https://github.com/yugabyte/yugabyte-db/issues/1124) | PROGRESS | v2.13 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1124) | Support for various `ALTER TABLE` variants |
-| [YSQL-Online schema migration](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-schema-migrations.md)  | PROGRESS  | v2.13 | [Track](https://github.com/yugabyte/yugabyte-db/issues/4192) | Schema migrations(includes DDL operations) to be safely run concurrently with foreground operations |
-| [Row-level geo-partitioning](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-row-level-partitioning.md) | PROGRESS  |  v2.13 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1958) | Enhance YSQL language support |
-| Transparently restart transactions | PROGRESS  | v2.13 | [Track](https://github.com/yugabyte/yugabyte-db/issues/5683) | Decrease the incidence of transaction restart errors seen in various scenarios |
-| Pessimistic locking Design | PROGRESS  | v2.13  | [Track](https://github.com/yugabyte/yugabyte-db/issues/5680) |  |
+|[Faster Bulk-Data Loading in YugabyteDB](https://github.com/yugabyte/yugabyte-db/issues/11765)| PROGRESS| v2.15 |[Track](https://github.com/yugabyte/yugabyte-db/issues/11765)| Master issue to track improvements to make it easier and faster to get large amounts of data into YugabyteDB.
+|[Database-level multi-tenancy with tablegroups](https://github.com/yugabyte/yugabyte-db/issues/11665)| PROGRESS| v2.15 |[Track](https://github.com/yugabyte/yugabyte-db/issues/11665)| Master issue to track Database-level multi-tenancy using tablegroups.
+|[Upgrade to PostgreSQL v13](https://github.com/yugabyte/yugabyte-db/issues/9797)| PROGRESS| v2.15 |[Track](https://github.com/yugabyte/yugabyte-db/issues/9797)| For latest features, new PostgreSQL extensions, performance, and community fixes
+|Support for  [in-cluster PITR](https://github.com/yugabyte/yugabyte-db/issues/7120)  | PROGRESS| v2.15 |[Track](https://github.com/yugabyte/yugabyte-db/issues/7120)|Point in time recovery of YSQL databases, to a fixed point in time, across DDL and DML changes|
+| [Automatic tablet splitting enabled by default](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md) | PROGRESS  | v2.15 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1004) |Enables changing the number of tablets (which are splits of data) at runtime.|
+| YSQL-table statistics and cost based optimizer(CBO) | PROGRESS  |  v2.15 | [Track](https://github.com/yugabyte/yugabyte-db/issues/5242) | Improve YSQL query performance |
+| [YSQL-Feature support - ALTER TABLE](https://github.com/yugabyte/yugabyte-db/issues/1124) | PROGRESS | v2.15 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1124) | Support for various `ALTER TABLE` variants |
+| [YSQL-Online schema migration](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-schema-migrations.md)  | PROGRESS  | v2.15 | [Track](https://github.com/yugabyte/yugabyte-db/issues/4192) | Schema migrations(includes DDL operations) to be safely run concurrently with foreground operations |
+| Pessimistic locking Design | PROGRESS  | v2.15  | [Track](https://github.com/yugabyte/yugabyte-db/issues/5680) |  |
 | Make [`COLOCATED` tables](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-colocated-tables.md) default for YSQL | PLANNING  |  | [Track](https://github.com/yugabyte/yugabyte-db/issues/5239)  |  |
-| Support for transactions in async [xCluster replication](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/multi-region-2DC-deployment.md) | PLANNING  |    | [Track](https://github.com/yugabyte/yugabyte-db/issues/1808) | Apply transactions atomically on consumer cluster. |
+| Support for transactions in async [xCluster replication](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/multi-region-xcluster-async-replication.md) | PLANNING  |    | [Track](https://github.com/yugabyte/yugabyte-db/issues/1808) | Apply transactions atomically on consumer cluster. |
 | Support for GiST indexes | PLANNING  |    | [Track](https://github.com/yugabyte/yugabyte-db/issues/1337) |Suppor for GiST (Generalized Search Tree) based index|
 
 ## Recently released features
 
 | Feature                                         | Status    | Release Target | Docs / Enhancements |  Comments     |
 | ----------------------------------------------- | --------- | -------------- | ------------------- | ------------- |
+|[Change Data Capture](https://github.com/yugabyte/yugabyte-db/issues/9019)|  ✅ *DONE*| v2.13 ||Change data capture (CDC) allows multiple downstream apps and services to consume the continuous and never-ending stream(s) of changes to Yugabyte databases|
+|[Support for materalized views](https://github.com/yugabyte/yugabyte-db/issues/10102) |  ✅ *DONE*| v2.13 |[Docs](https://docs.yugabyte.com/latest/explore/ysql-language-features/advanced-features/views/#materialized-views)|A materialized view is a pre-computed data set derived from a query specification and stored for later use|
+|[Geo-partitioning support](https://github.com/yugabyte/yugabyte-db/issues/9980) for the transaction status table | ✅ *DONE*| v2.13 |[Docs](https://docs.yugabyte.com/latest/explore/multi-region-deployments/row-level-geo-partitioning/)|Instead of central remote transaction execution metatda, it is now optimized for access from different regions. Since the transaction metadata is also geo partitioned, it eliminates the need for round-trip to remote regions to update transaction statuses.|
+| Transparently restart transactions |  ✅ *DONE*| v2.13 | |Decrease the incidence of transaction restart errors seen in various scenarios |
+| [Row-level geo-partitioning](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-row-level-partitioning.md) |  ✅ *DONE*| v2.13 |[Docs](https://docs.yugabyte.com/latest/explore/multi-region-deployments/row-level-geo-partitioning/)|Row-level geo-partitioning allows fine-grained control over pinning data in a user table (at a per-row level) to geographic locations, thereby allowing the data residency to be managed at the table-row level.|
 | [YSQL-Support `GIN` indexes](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-gin-indexes.md) |  ✅ *DONE*  | v2.11 | [Docs](https://docs.yugabyte.com/latest/explore/ysql-language-features/gin/) | Support for generalized inverted indexes for container data types like jsonb, tsvector, and array |
 | [YSQL-Collation Support](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-collation-support.md)  | ✅ *DONE*  | v2.11           |[Docs](https://docs.yugabyte.com/latest/explore/ysql-language-features/collations/) |Allows specifying the sort order and character classification behavior of data per-column, or even per-operation according to language and country-specific rules           |
 [YSQL-Savepoint Support](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/savepoints.md)  |  ✅ *DONE*  | v2.11     |[Docs](https://docs.yugabyte.com/latest/explore/ysql-language-features/savepoints/) | Useful for implementing complex error recovery in multi-statement transaction|
@@ -117,7 +119,7 @@ Review detailed architecture in our [Docs](https://docs.yugabyte.com/latest/arch
 
 # Need Help?
 
-* You can ask questions, find answers, and help others on our Community [Slack](https://www.yugabyte.com/slack), [Forum](https://forum.yugabyte.com), [Stack Overflow](https://stackoverflow.com/questions/tagged/yugabyte-db), as well as Twitter [@Yugabyte](https://twitter.com/yugabyte)
+* You can ask questions, find answers, and help others on our Community [Slack](https://communityinviter.com/apps/yugabyte-db/register), [Forum](https://forum.yugabyte.com), [Stack Overflow](https://stackoverflow.com/questions/tagged/yugabyte-db), as well as Twitter [@Yugabyte](https://twitter.com/yugabyte)
 
 * Please use [GitHub issues](https://github.com/yugabyte/yugabyte-db/issues) to report issues or request new features. 
 

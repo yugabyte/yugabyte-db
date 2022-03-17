@@ -2,7 +2,7 @@
 title: SQL statements [YSQL]
 headerTitle: Categorized list of SQL statements
 linkTitle: SQL statements
-description: List of PostgreSQL-compatible SQL statements supported by Yugabyte SQL (YSQL) 
+description: List of PostgreSQL-compatible SQL statements supported by Yugabyte SQL (YSQL)
 image: /images/section_icons/api/ysql.png
 menu:
   latest:
@@ -17,7 +17,7 @@ showAsideToc: true
 
 The YSQL statements are compatible with the SQL dialect that PostgreSQL supports. The sidebar lists all of the YSQL statements in alphabetical order. The following tables list them by catagory.
 
-## Data definition language (DDL) 
+## Data definition language (DDL)
 
 | Statement | Description |
 | :-------- | :---------- |
@@ -32,7 +32,8 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | [`CREATE DOMAIN`](ddl_create_domain) | Create a user-defined data type with optional constraints |
 | [`CREATE EXTENSION`](ddl_create_extension) | Load an extension |
 | [`CREATE FUNCTION`](ddl_create_function) | Create a function |
-| [`CREATE INDEX`](ddl_create_index) | Create an index |
+| [`CREATE INDEX`](ddl_create_index/) | Create an index |
+| [`CREATE MATERIALIZED VIEW`](ddl_create_matview) | Create a materialized view |
 | [`CREATE OPERATOR`](ddl_create_operator) | Create an operator |
 | [`CREATE OPERATOR CLASS`](ddl_create_operator_class) | Create an operator class |
 | [`CREATE PROCEDURE`](ddl_create_procedure) | Create a procedure |
@@ -50,6 +51,7 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | [`DROP DOMAIN`](ddl_drop_domain) | Delete a domain |
 | [`DROP EXTENSION`](ddl_drop_extension) | Delete an extension |
 | [`DROP FUNCTION`](ddl_drop_function) | Delete a function |
+| [`DROP MATERIALIZED VIEW`](ddl_drop_matview) | Drop a materialized view |
 | [`DROP OPERATOR`](ddl_drop_operator) | Delete an operator |
 | [`DROP OPERATOR CLASS`](ddl_drop_operator_class) | Delete an operator class |
 | [`DROP PROCEDURE`](ddl_drop_procedure) | Delete a procedure |
@@ -58,18 +60,19 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | [`DROP TABLE`](ddl_drop_table) | Delete a table from a database |
 | [`DROP TYPE`](ddl_drop_type) | Delete a user-defined type |
 | [`DROP TRIGGER`](ddl_drop_trigger) | Delete a trigger |
+| [`REFRESH MATERIALIZED VIEW`](ddl_refresh_matview) | Refresh a materialized view |
 | [`TRUNCATE`](ddl_truncate) | Clear all rows from a table |
 
-## Data manipulation language (DML) 
+## Data manipulation language (DML)
 
 | Statement | Description |
 | :-------- | :---------- |
-| [`DELETE`](dml_delete) | Delete rows from a table |
+| [`DELETE`](dml_delete/) | Delete rows from a table |
 | [`INSERT`](dml_insert) | Insert rows into a table |
-| [`SELECT`](dml_select) | Select rows from a table |
-| [`UPDATE`](dml_update) | Update rows in a table |
+| [`SELECT`](dml_select/) | Select rows from a table |
+| [`UPDATE`](dml_update/) | Update rows in a table |
 
-## Data control language (DCL) 
+## Data control language (DCL)
 
 | Statement | Description |
 | :-------- | :---------- |
@@ -93,12 +96,12 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | [`SET ROLE`](dcl_set_role) | Set a role |
 | [`SET SESSION AUTHORIZATION`](dcl_set_session_authorization) | Set session authorization |
 
-## Transaction control language (TCL) 
+## Transaction control language (TCL)
 
 | Statement | Description |
 | :-------- | :---------- |
 | [`ABORT`](txn_abort) | Roll back a transaction |
-| [`BEGIN`](txn_begin) | Start a transaction |
+| [`BEGIN`](txn_begin/) | Start a transaction |
 | [`COMMIT`](txn_commit) | Commit a transaction |
 | [`END`](txn_end) | Commit a transaction |
 | [`LOCK`](txn_lock) | Lock a table |

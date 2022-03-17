@@ -606,8 +606,9 @@ Status Jsonb::FromJsonbInternal(const Slice& jsonb, rapidjson::Document* documen
 
   if ((jsonb_header & kJBObject) == kJBObject) {
     return FromJsonbProcessObject(jsonb, jsonb_header, document);
-  } else if ((jsonb_header & kJBArray) == kJBArray) {
-    rapidjson::Document array_doc;
+  }
+  if ((jsonb_header & kJBArray) == kJBArray) {
+    rapidjson::Document array_doc(&document->GetAllocator());
     RETURN_NOT_OK(FromJsonbProcessArray(jsonb, jsonb_header, &array_doc));
 
     if ((jsonb_header & kJBScalar) && array_doc.GetArray().Size() == 1) {

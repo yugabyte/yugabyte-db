@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.BackupUtil.K8S_CERT_PATH;
+import static com.yugabyte.yw.common.BackupUtil.VM_CERT_DIR;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.TableManager.CommandSubType.BACKUP;
 import static com.yugabyte.yw.common.TableManager.CommandSubType.BULK_IMPORT;
@@ -46,9 +48,6 @@ import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class TableManagerTest extends FakeDBApplication {
-
-  private static final String K8S_CERT_PATH = "/opt/certs/yugabyte/";
-  private static final String VM_CERT_PATH = "/home/yugabyte/yugabyte-tls-config/";
 
   @Mock play.Configuration mockAppConfig;
 
@@ -278,7 +277,10 @@ public class TableManagerTest extends FakeDBApplication {
     }
     if (userIntent.enableNodeToNodeEncrypt) {
       cmd.add("--certs_dir");
-      cmd.add(testProvider.code.equals("kubernetes") ? K8S_CERT_PATH : VM_CERT_PATH);
+      cmd.add(
+          testProvider.code.equals("kubernetes")
+              ? K8S_CERT_PATH
+              : testProvider.getYbHome() + VM_CERT_DIR);
     }
     cmd.add(backupTableParams.actionType.name().toLowerCase());
     if (backupTableParams.enableVerboseLogs) {
@@ -410,7 +412,6 @@ public class TableManagerTest extends FakeDBApplication {
   public void testCreateUniverseBackup() {
     setupUniverse(ModelFactory.awsProvider(testCustomer));
     CustomerConfig storageConfig = ModelFactory.createNfsStorageConfig(testCustomer, "TEST36");
-    ;
     BackupTableParams backupTableParams =
         getBackupUniverseParams(BackupTableParams.ActionType.CREATE, storageConfig.configUUID);
     Backup.create(testCustomer.uuid, backupTableParams);
@@ -611,7 +612,6 @@ public class TableManagerTest extends FakeDBApplication {
   public void testDeleteUniverseBackup() {
     setupUniverse(ModelFactory.awsProvider(testCustomer));
     CustomerConfig storageConfig = ModelFactory.createNfsStorageConfig(testCustomer, "TEST40");
-    ;
     BackupTableParams backupTableParams =
         getBackupUniverseParams(BackupTableParams.ActionType.CREATE, storageConfig.configUUID);
     Backup.create(testCustomer.uuid, backupTableParams);

@@ -16,6 +16,8 @@
 
 #include <random>
 
+#include <boost/preprocessor/cat.hpp>
+
 #include "yb/gutil/endian.h"
 
 #include "yb/util/status_fwd.h"

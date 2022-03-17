@@ -37,15 +37,15 @@ PgSample::~PgSample() {
 Status PgSample::Prepare() {
   // Setup target and bind descriptor.
   target_ = PgTable(VERIFY_RESULT(pg_session_->LoadTable(table_id_)));
-  bind_ = PgTable();
+  bind_ = PgTable(nullptr);
 
   // Setup sample picker as secondary index query
   secondary_index_query_ = std::make_unique<PgSamplePicker>(pg_session_, table_id_);
   RETURN_NOT_OK(secondary_index_query_->Prepare());
 
   // Prepare read op to fetch rows
-  auto read_op = target_->NewPgsqlSelect();
-  read_req_ = read_op->mutable_request();
+  auto read_op = std::make_shared<PgsqlReadOp>(*target_);
+  read_req_ = std::shared_ptr<PgsqlReadRequestPB>(read_op, &read_op->read_request());
   doc_op_ = make_shared<PgDocReadOp>(pg_session_, &target_, std::move(read_op));
 
   return Status::OK();
@@ -89,11 +89,10 @@ PgSamplePicker::~PgSamplePicker() {
 
 Status PgSamplePicker::Prepare() {
   target_ = PgTable(VERIFY_RESULT(pg_session_->LoadTable(table_id_)));
-  bind_ = PgTable();
-  auto read_op = target_->NewPgsqlSample();
-  read_req_ = read_op->mutable_request();
+  bind_ = PgTable(nullptr);
+  auto read_op = std::make_shared<PgsqlReadOp>(*target_);
+  read_req_ = std::shared_ptr<PgsqlReadRequestPB>(read_op, &read_op->read_request());
   doc_op_ = make_shared<PgDocReadOp>(pg_session_, &target_, std::move(read_op));
-
   return Status::OK();
 }
 

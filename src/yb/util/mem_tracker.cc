@@ -113,7 +113,7 @@ DEFINE_int64(mem_tracker_update_consumption_interval_us, 2000000,
              "Interval that is used to update memory consumption from external source. "
              "For instance from tcmalloc statistics.");
 
-DEFINE_int64(mem_tracker_tcmalloc_gc_release_bytes, 128 * 1024L * 1024L,
+DEFINE_int64(mem_tracker_tcmalloc_gc_release_bytes, -1,
              "When the total amount of memory from calls to Release() since the last GC exceeds "
              "this flag, a new tcmalloc GC will be triggered. This GC will clear the tcmalloc "
              "page heap freelist. A higher value implies less aggressive GC, i.e. higher memory "
@@ -253,7 +253,7 @@ void MemTracker::SetTCMallocCacheMemory() {
   if (flag_value_to_use < 0) {
     const auto mem_limit = MemTracker::GetRootTracker()->limit();
     FLAGS_server_tcmalloc_max_total_thread_cache_bytes =
-        std::min(std::max(static_cast<size_t>(1.5 * mem_limit / 100), 256_MB), 2_GB);
+        std::min(std::max(static_cast<size_t>(2.5 * mem_limit / 100), 32_MB), 2_GB);
     FLAGS_tserver_tcmalloc_max_total_thread_cache_bytes =
         FLAGS_server_tcmalloc_max_total_thread_cache_bytes;
   }
@@ -282,6 +282,14 @@ void MemTracker::CreateRootTracker() {
 
   #ifdef TCMALLOC_ENABLED
   consumption_functor = &MemTracker::GetTCMallocActualHeapSizeBytes;
+
+  if (FLAGS_mem_tracker_tcmalloc_gc_release_bytes < 0) {
+    // Allocate 1% of memory to the tcmallc page heap freelist.
+    // On a 4GB RAM machine, the master gets 10%, so 400MB, so 1% is 4MB.
+    // On a 16GB RAM machine, the tserver gets 85%, so 13.6GB, so 1% is 136MB, so cap at 128MB.
+    FLAGS_mem_tracker_tcmalloc_gc_release_bytes =
+        std::min(static_cast<size_t>(1.0 * limit / 100), 128_MB);
+  }
   #endif
 
   root_tracker = std::make_shared<MemTracker>(

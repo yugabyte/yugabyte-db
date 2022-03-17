@@ -83,6 +83,8 @@ bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change)
 		return false;
 
 	YBCPgStatement update_stmt    = NULL;
+	YBCPgTypeAttrs type_attrs = { 0 };
+	YBCPgExpr yb_expr;
 	HeapTuple tuple = NULL;
 	Relation rel = RelationIdGetRelation(YBCatalogVersionRelationId);
 
@@ -107,8 +109,8 @@ bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change)
 	tuple = heap_form_tuple(RelationGetDescr(rel), values, nulls);
 
 	Datum ybctid = YBCGetYBTupleIdFromTuple(rel,
-	                                  tuple,
-	                                  RelationGetDescr(rel));
+											tuple,
+											RelationGetDescr(rel));
 
 	/* Bind ybctid to identify the current row. */
 	YBCPgExpr ybctid_expr = YBCNewConstant(update_stmt, BYTEAOID, InvalidOid, ybctid,
@@ -118,59 +120,49 @@ bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change)
 	/* Set expression c = c + 1 for current version attribute. */
 	AttrNumber attnum = Anum_pg_yb_catalog_version_current_version;
 	Var *arg1 = makeVar(1,
-	                    attnum,
-	                    INT8OID,
-	                    0,
-	                    InvalidOid,
-	                    0);
+						attnum,
+						INT8OID,
+						0,
+						InvalidOid,
+						0);
 
 	Const *arg2 = makeConst(INT8OID,
-	                        0,
-	                        InvalidOid,
-	                        sizeof(int64),
-	                        (Datum) 1,
-	                        false,
-	                        true);
+							0,
+							InvalidOid,
+							sizeof(int64),
+							(Datum) 1,
+							false,
+							true);
 
 	List *args = list_make2(arg1, arg2);
 
 	FuncExpr *expr = makeFuncExpr(F_INT8PL,
-	                              INT8OID,
-	                              args,
-	                              InvalidOid,
-	                              InvalidOid,
-	                              COERCE_EXPLICIT_CALL);
+								  INT8OID,
+								  args,
+								  InvalidOid,
+								  InvalidOid,
+								  COERCE_EXPLICIT_CALL);
 
 	/* INT8 OID. */
-	YBCPgExpr ybc_expr = YBCNewEvalSingleParamExprCall(update_stmt,
-	                                                   (Expr *) expr,
-	                                                   attnum,
-	                                                   INT8OID,
-	                                                   0,
-	                                                   InvalidOid);
+	YBCPgExpr ybc_expr = YBCNewEvalExprCall(update_stmt, (Expr *) expr);
 
 	HandleYBStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr));
+	yb_expr = YBCNewColumnRef(update_stmt,
+							  attnum,
+							  INT8OID,
+							  InvalidOid,
+							  &type_attrs);
+	HandleYBStatus(YbPgDmlAppendColumnRef(update_stmt, yb_expr));
 
 	/* If breaking change set the latest breaking version to the same expression. */
 	if (is_breaking_change)
 	{
-		YBExprParamDesc params[2];
-		params[0].attno = attnum + 1;
-		params[0].typid = INT8OID;
-		params[0].typmod = 0;
-		params[0].collid = InvalidOid;
-
-		params[1].attno = attnum;
-		params[1].typid = INT8OID;
-		params[1].typmod = 0;
-		params[1].collid = InvalidOid;
-
-		YBCPgExpr ybc_expr = YBCNewEvalExprCall(update_stmt, (Expr *) expr, params, 2);
+		ybc_expr = YBCNewEvalExprCall(update_stmt, (Expr *) expr);
 		HandleYBStatus(YBCPgDmlAssignColumn(update_stmt, attnum + 1, ybc_expr));
 	}
 
 	int rows_affected_count = 0;
-	if (YBCGetLogYsqlCatalogVersions())
+	if (*YBCGetGFlags()->log_ysql_catalog_versions)
 		ereport(LOG,
 				(errmsg("%s: incrementing master catalog version (%sbreaking)",
 						__func__, is_breaking_change ? "" : "non")));

@@ -34,6 +34,8 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateMountedDisks;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
@@ -43,7 +45,8 @@ import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.CertificateInfo;
-import com.yugabyte.yw.models.CertificateInfo.Type;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
@@ -53,13 +56,16 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -68,6 +74,8 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
+import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.validator.routines.InetAddressValidator;
@@ -80,6 +88,9 @@ import play.libs.Json;
 @Slf4j
 public class NodeManager extends DevopsBase {
   static final String BOOT_SCRIPT_PATH = "yb.universe_boot_script";
+  static final String BOOT_SCRIPT_TOKEN = "39666ab2-6633-4806-9685-5134321bd0d1";
+  static final String BOOT_SCRIPT_COMPLETE =
+      "\nsync\necho " + BOOT_SCRIPT_TOKEN + " >/etc/yb-boot-script-complete\n";
   private static final String YB_CLOUD_COMMAND_TYPE = "instance";
   public static final String CERT_LOCATION_NODE = "node";
   public static final String CERT_LOCATION_PLATFORM = "platform";
@@ -112,11 +123,13 @@ public class NodeManager extends DevopsBase {
     Tags,
     InitYSQL,
     Disk_Update,
+    Update_Mounted_Disks,
     Change_Instance_Type,
     Pause,
     Resume,
     Create_Root_Volumes,
-    Replace_Root_Volume
+    Replace_Root_Volume,
+    Delete_Root_Volumes
   }
 
   public enum CertRotateAction {
@@ -142,7 +155,11 @@ public class NodeManager extends DevopsBase {
   private UserIntent getUserIntentFromParams(Universe universe, NodeTaskParams nodeTaskParam) {
     NodeDetails nodeDetails = universe.getNode(nodeTaskParam.nodeName);
     if (nodeDetails == null) {
-      nodeDetails = universe.getUniverseDetails().nodeDetailsSet.iterator().next();
+      Iterator<NodeDetails> nodeIter = universe.getUniverseDetails().nodeDetailsSet.iterator();
+      if (!nodeIter.hasNext()) {
+        throw new RuntimeException("No node is found in universe " + universe.name);
+      }
+      nodeDetails = nodeIter.next();
       LOG.info("Node {} not found, so using {}.", nodeTaskParam.nodeName, nodeDetails.nodeName);
     }
     return universe.getUniverseDetails().getClusterByUuid(nodeDetails.placementUuid).userIntent;
@@ -321,6 +338,17 @@ public class NodeManager extends DevopsBase {
     return null;
   }
 
+  /**
+   * Creates certificates if not present. Called from various places like - when node is added to
+   * universe
+   *
+   * @param config
+   * @param userIntent
+   * @param taskParam
+   * @param nodeIP
+   * @param ybHomeDir
+   * @return
+   */
   private List<String> getCertificatePaths(
       Config config,
       UserIntent userIntent,
@@ -332,8 +360,8 @@ public class NodeManager extends DevopsBase {
         config,
         userIntent,
         taskParam,
-        CertificateHelper.isRootCARequired(taskParam),
-        CertificateHelper.isClientRootCARequired(taskParam),
+        EncryptionInTransitUtil.isRootCARequired(taskParam),
+        EncryptionInTransitUtil.isClientRootCARequired(taskParam),
         nodeIP,
         ybHomeDir,
         subjectAltName);
@@ -367,12 +395,20 @@ public class NodeManager extends DevopsBase {
 
       switch (rootCert.certType) {
         case SelfSigned:
+        case HashicorpVault:
           {
             try {
               // Creating a temp directory to save Server Cert and Key from Root for the node
-              Path tempStorageDirectory =
-                  Files.createTempDirectory(String.format("SelfSigned%s", taskParam.rootCA))
-                      .toAbsolutePath();
+              Path tempStorageDirectory;
+              if (rootCert.certType == CertConfigType.SelfSigned) {
+                tempStorageDirectory =
+                    Files.createTempDirectory(String.format("SelfSigned%s", taskParam.rootCA))
+                        .toAbsolutePath();
+              } else {
+                tempStorageDirectory =
+                    Files.createTempDirectory(String.format("Hashicorp%s", taskParam.rootCA))
+                        .toAbsolutePath();
+              }
               CertificateHelper.createServerCertificate(
                   taskParam.rootCA,
                   tempStorageDirectory.toString(),
@@ -405,7 +441,7 @@ public class NodeManager extends DevopsBase {
           }
         case CustomCertHostPath:
           {
-            CertificateParams.CustomCertInfo customCertInfo = rootCert.getCustomCertInfo();
+            CertificateParams.CustomCertInfo customCertInfo = rootCert.getCustomCertPathParams();
             rootCertPath = customCertInfo.rootCertPath;
             serverCertPath = customCertInfo.nodeCertPath;
             serverKeyPath = customCertInfo.nodeKeyPath;
@@ -462,13 +498,20 @@ public class NodeManager extends DevopsBase {
 
       switch (clientRootCert.certType) {
         case SelfSigned:
+        case HashicorpVault:
           {
             try {
               // Creating a temp directory to save Server Cert and Key from Root for the node
-              Path tempStorageDirectory =
-                  Files.createTempDirectory(
-                          String.format("SelfSignedClient%s", taskParam.clientRootCA))
-                      .toAbsolutePath();
+              Path tempStorageDirectory;
+              if (clientRootCert.certType == CertConfigType.SelfSigned) {
+                tempStorageDirectory =
+                    Files.createTempDirectory(String.format("SelfSigned%s", taskParam.rootCA))
+                        .toAbsolutePath();
+              } else {
+                tempStorageDirectory =
+                    Files.createTempDirectory(String.format("Hashicorp%s", taskParam.rootCA))
+                        .toAbsolutePath();
+              }
               CertificateHelper.createServerCertificate(
                   taskParam.clientRootCA,
                   tempStorageDirectory.toString(),
@@ -490,7 +533,8 @@ public class NodeManager extends DevopsBase {
           }
         case CustomCertHostPath:
           {
-            CertificateParams.CustomCertInfo customCertInfo = clientRootCert.getCustomCertInfo();
+            CertificateParams.CustomCertInfo customCertInfo =
+                clientRootCert.getCustomCertPathParams();
             rootCertPath = customCertInfo.rootCertPath;
             serverCertPath = customCertInfo.nodeCertPath;
             serverKeyPath = customCertInfo.nodeKeyPath;
@@ -572,10 +616,10 @@ public class NodeManager extends DevopsBase {
     if (taskParam.enableClientToNodeEncrypt || taskParam.enableNodeToNodeEncrypt) {
       gflags.put("cert_node_filename", node.cloudInfo.private_ip);
     }
-    if (CertificateHelper.isRootCARequired(taskParam)) {
+    if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
       gflags.put("certs_dir", certsDir);
     }
-    if (CertificateHelper.isClientRootCARequired(taskParam)) {
+    if (EncryptionInTransitUtil.isClientRootCARequired(taskParam)) {
       gflags.put("certs_for_client_dir", certsForClientDir);
     }
     return gflags;
@@ -641,7 +685,10 @@ public class NodeManager extends DevopsBase {
   }
 
   private Map<String, String> getMasterDefaultGFlags(
-      AnsibleConfigureServers.Params taskParam, Boolean useHostname, Boolean useSecondaryIp) {
+      AnsibleConfigureServers.Params taskParam,
+      Boolean useHostname,
+      Boolean useSecondaryIp,
+      Boolean isDualNet) {
     Map<String, String> gflags = new HashMap<>();
     Universe universe = Universe.getOrBadRequest(taskParam.universeUUID);
     NodeDetails node = universe.getNode(taskParam.nodeName);
@@ -673,6 +720,8 @@ public class NodeManager extends DevopsBase {
           String.format("%s:%s", node.cloudInfo.secondary_private_ip, node.masterRpcPort);
       String bindAddresses = bindAddressSecondary + "," + bindAddressPrimary;
       gflags.put("rpc_bind_addresses", bindAddresses);
+    } else if (isDualNet) {
+      gflags.put("use_private_ip", "cloud");
     }
 
     gflags.put("webserver_port", Integer.toString(node.masterHttpPort));
@@ -682,7 +731,10 @@ public class NodeManager extends DevopsBase {
   }
 
   private Map<String, String> getTServerDefaultGflags(
-      AnsibleConfigureServers.Params taskParam, Boolean useHostname, Boolean useSecondaryIp) {
+      AnsibleConfigureServers.Params taskParam,
+      Boolean useHostname,
+      Boolean useSecondaryIp,
+      Boolean isDualNet) {
     Map<String, String> gflags = new HashMap<>();
     Universe universe = Universe.getOrBadRequest(taskParam.universeUUID);
     NodeDetails node = universe.getNode(taskParam.nodeName);
@@ -709,6 +761,11 @@ public class NodeManager extends DevopsBase {
           String.format("%s:%s", node.cloudInfo.secondary_private_ip, node.tserverRpcPort);
       String bindAddresses = bindAddressSecondary + "," + bindAddressPrimary;
       gflags.put("rpc_bind_addresses", bindAddresses);
+    } else if (isDualNet) {
+      // We want the broadcast address to be secondary so that
+      // it gets populated correctly for the client discovery tables.
+      gflags.put("server_broadcast_addresses", node.cloudInfo.secondary_private_ip);
+      gflags.put("use_private_ip", "cloud");
     }
 
     gflags.put("webserver_port", Integer.toString(node.tserverHttpPort));
@@ -751,9 +808,13 @@ public class NodeManager extends DevopsBase {
     Universe universe = Universe.getOrBadRequest(taskParam.universeUUID);
     NodeDetails node = universe.getNode(taskParam.nodeName);
     boolean useSecondaryIp = false;
-    if (config.getBoolean("yb.cloud.enabled")
-        && node.cloudInfo.secondary_private_ip != null
-        && !node.cloudInfo.secondary_private_ip.equals("null")) {
+    boolean legacyNet =
+        universe.getConfig().getOrDefault(Universe.DUAL_NET_LEGACY, "true").equals("true");
+    boolean isDualNet =
+        config.getBoolean("yb.cloud.enabled")
+            && node.cloudInfo.secondary_private_ip != null
+            && !node.cloudInfo.secondary_private_ip.equals("null");
+    if (isDualNet && !legacyNet) {
       useSecondaryIp = true;
     }
 
@@ -761,9 +822,11 @@ public class NodeManager extends DevopsBase {
     if (processType == null) {
       extra_gflags.put("master_addresses", "");
     } else if (processType.equals(ServerType.TSERVER.name())) {
-      extra_gflags.putAll(getTServerDefaultGflags(taskParam, useHostname, useSecondaryIp));
+      extra_gflags.putAll(
+          getTServerDefaultGflags(taskParam, useHostname, useSecondaryIp, isDualNet));
     } else {
-      extra_gflags.putAll(getMasterDefaultGFlags(taskParam, useHostname, useSecondaryIp));
+      extra_gflags.putAll(
+          getMasterDefaultGFlags(taskParam, useHostname, useSecondaryIp, isDualNet));
     }
 
     UserIntent userIntent = getUserIntentFromParams(taskParam);
@@ -828,7 +891,7 @@ public class NodeManager extends DevopsBase {
           subcommand.add("--http_package_checksum");
           subcommand.add(releaseMetadata.http.paths.x86_64_checksum);
         } else {
-          ybServerPackage = releaseMetadata.filePath;
+          ybServerPackage = releaseMetadata.getFilePath(taskParam.getRegion());
         }
       }
     }
@@ -855,11 +918,18 @@ public class NodeManager extends DevopsBase {
     subcommand.add("--redis_proxy_rpc_port");
     subcommand.add(Integer.toString(node.redisServerRpcPort));
 
-    // Custom cluster creation flow with prebuilt AMI
-    if (userIntent.providerType.equals(Common.CloudType.aws)
-        && taskParam.getRegion().ybPrebuiltAmi) {
-      subcommand.add("--skip_tags");
-      subcommand.add("yb-prebuilt-ami");
+    // Custom cluster creation flow with prebuilt AMI for cloud
+    if (config.getBoolean("yb.cloud.enabled")
+        && taskParam.type != UpgradeTaskParams.UpgradeTaskType.Software) {
+      if ((userIntent.providerType.equals(Common.CloudType.aws)
+              || userIntent.providerType.equals(Common.CloudType.gcp))
+          && universe
+              .getConfig()
+              .getOrDefault(Universe.SKIP_ANSIBLE_TASKS, "false")
+              .equals("true")) {
+        subcommand.add("--skip_tags");
+        subcommand.add("yb-prebuilt-ami");
+      }
     }
 
     boolean useHostname =
@@ -932,6 +1002,7 @@ public class NodeManager extends DevopsBase {
             subcommand.add(processType.toLowerCase());
           }
 
+          // TODO: PLAT-2782: certificates are generated 3 times for each node.
           if ((taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt)) {
             subcommand.addAll(
                 getCertificatePaths(
@@ -942,6 +1013,7 @@ public class NodeManager extends DevopsBase {
                     taskParam.getProvider().getYbHome(),
                     alternateNames));
           }
+
           Map<String, String> gflags = new HashMap<>(taskParam.gflags);
           subcommand.add("--gflags");
           subcommand.add(Json.stringify(Json.toJson(gflags)));
@@ -970,6 +1042,7 @@ public class NodeManager extends DevopsBase {
                           universe.getUniverseDetails().getPrimaryCluster().userIntent.provider))
                   .getYbHome();
           String certsNodeDir = getCertsNodeDir(ybHomeDir);
+          String certsForClientDir = getCertsForClientDir(ybHomeDir);
 
           subcommand.add("--cert_rotate_action");
           subcommand.add(taskParam.certRotateAction.toString());
@@ -991,19 +1064,22 @@ public class NodeManager extends DevopsBase {
                 if (rootCert == null) {
                   throw new RuntimeException("Certificate is null: " + taskParam.rootCA);
                 }
-                if (rootCert.certType == Type.CustomServerCert) {
+                if (rootCert.certType == CertConfigType.CustomServerCert) {
                   throw new RuntimeException(
                       "Root certificate cannot be of type CustomServerCert.");
                 }
 
                 String rootCertPath = "";
                 String certsLocation = "";
-                if (rootCert.certType == Type.SelfSigned) {
+                if (rootCert.certType == CertConfigType.SelfSigned) {
                   rootCertPath = rootCert.certificate;
                   certsLocation = CERT_LOCATION_PLATFORM;
-                } else if (rootCert.certType == Type.CustomCertHostPath) {
-                  rootCertPath = rootCert.getCustomCertInfo().rootCertPath;
+                } else if (rootCert.certType == CertConfigType.CustomCertHostPath) {
+                  rootCertPath = rootCert.getCustomCertPathParams().rootCertPath;
                   certsLocation = CERT_LOCATION_NODE;
+                } else if (rootCert.certType == CertConfigType.HashicorpVault) {
+                  rootCertPath = rootCert.certificate;
+                  certsLocation = CERT_LOCATION_PLATFORM;
                 }
 
                 subcommand.add("--root_cert_path");
@@ -1029,14 +1105,21 @@ public class NodeManager extends DevopsBase {
               }
               break;
             case UPDATE_CERT_DIRS:
+              {
+                Map<String, String> gflags = new HashMap<>();
+                if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
+                  gflags.put("certs_dir", certsNodeDir);
+                }
+                if (EncryptionInTransitUtil.isClientRootCARequired(taskParam)) {
+                  gflags.put("certs_for_client_dir", certsForClientDir);
+                }
+                subcommand.add("--gflags");
+                subcommand.add(Json.stringify(Json.toJson(gflags)));
+                subcommand.add("--tags");
+                subcommand.add("override_gflags");
+                break;
+              }
           }
-
-          Map<String, String> gflags = new HashMap<>(taskParam.gflags);
-          subcommand.add("--gflags");
-          subcommand.add(Json.stringify(Json.toJson(gflags)));
-
-          subcommand.add("--tags");
-          subcommand.add("override_gflags");
         }
         break;
       case ToggleTls:
@@ -1079,10 +1162,10 @@ public class NodeManager extends DevopsBase {
               gflags.put("use_node_to_node_encryption", nodeToNodeString);
               gflags.put("use_client_to_server_encryption", clientToNodeString);
               gflags.put("allow_insecure_connections", "true");
-              if (CertificateHelper.isRootCARequired(taskParam)) {
+              if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
                 gflags.put("certs_dir", certsDir);
               }
-              if (CertificateHelper.isClientRootCARequired(taskParam)) {
+              if (EncryptionInTransitUtil.isClientRootCARequired(taskParam)) {
                 gflags.put("certs_for_client_dir", certsForClientDir);
               }
             } else if (taskParam.nodeToNodeChange < 0) {
@@ -1091,10 +1174,10 @@ public class NodeManager extends DevopsBase {
               gflags.put("use_node_to_node_encryption", nodeToNodeString);
               gflags.put("use_client_to_server_encryption", clientToNodeString);
               gflags.put("allow_insecure_connections", allowInsecureString);
-              if (CertificateHelper.isRootCARequired(taskParam)) {
+              if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
                 gflags.put("certs_dir", certsDir);
               }
-              if (CertificateHelper.isClientRootCARequired(taskParam)) {
+              if (EncryptionInTransitUtil.isClientRootCARequired(taskParam)) {
                 gflags.put("certs_for_client_dir", certsForClientDir);
               }
             }
@@ -1114,10 +1197,10 @@ public class NodeManager extends DevopsBase {
               gflags.put("use_node_to_node_encryption", nodeToNodeString);
               gflags.put("use_client_to_server_encryption", clientToNodeString);
               gflags.put("allow_insecure_connections", allowInsecureString);
-              if (CertificateHelper.isRootCARequired(taskParam)) {
+              if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
                 gflags.put("certs_dir", certsDir);
               }
-              if (CertificateHelper.isClientRootCARequired(taskParam)) {
+              if (EncryptionInTransitUtil.isClientRootCARequired(taskParam)) {
                 gflags.put("certs_for_client_dir", certsForClientDir);
               }
             } else {
@@ -1260,13 +1343,66 @@ public class NodeManager extends DevopsBase {
         Collections.emptyMap());
   }
 
+  private Path addBootscript(
+      Config config, List<String> commandArgs, NodeTaskParams nodeTaskParam) {
+    Path bootScriptFile = null;
+    String bootScript = config.getString(BOOT_SCRIPT_PATH);
+    commandArgs.add("--boot_script");
+
+    // treat the contents as script body if it starts with a shebang line
+    // otherwise consider the contents to be a path
+    if (bootScript.startsWith("#!")) {
+      try {
+        bootScriptFile = Files.createTempFile(nodeTaskParam.nodeName, "-boot.sh");
+        Files.write(bootScriptFile, bootScript.getBytes());
+        Files.write(bootScriptFile, BOOT_SCRIPT_COMPLETE.getBytes(), StandardOpenOption.APPEND);
+
+      } catch (IOException e) {
+        LOG.error(e.getMessage(), e);
+        throw new RuntimeException(e);
+      }
+    } else {
+      try {
+        bootScriptFile = Files.createTempFile(nodeTaskParam.nodeName, "-boot.sh");
+        Files.write(bootScriptFile, Files.readAllBytes(Paths.get(bootScript)));
+        Files.write(bootScriptFile, BOOT_SCRIPT_COMPLETE.getBytes(), StandardOpenOption.APPEND);
+
+      } catch (IOException e) {
+        LOG.error(e.getMessage(), e);
+        throw new RuntimeException(e);
+      }
+    }
+    commandArgs.add(bootScriptFile.toAbsolutePath().toString());
+    commandArgs.add("--boot_script_token");
+    commandArgs.add(BOOT_SCRIPT_TOKEN);
+    return bootScriptFile;
+  }
+
+  private void addInstanceTags(
+      Universe universe,
+      UserIntent userIntent,
+      NodeTaskParams nodeTaskParam,
+      List<String> commandArgs) {
+    if (Provider.InstanceTagsEnabledProviders.contains(userIntent.providerType)) {
+      // Create an ordered shallow copy of the tags.
+      Map<String, String> useTags =
+          MapUtils.isEmpty(userIntent.instanceTags)
+              ? new TreeMap<>()
+              : new TreeMap<>(userIntent.getInstanceTagsForInstanceOps());
+      addAdditionalInstanceTags(universe, nodeTaskParam, useTags);
+      if (!useTags.isEmpty()) {
+        commandArgs.add("--instance_tags");
+        commandArgs.add(Json.stringify(Json.toJson(useTags)));
+      }
+    }
+  }
+
   public ShellResponse nodeCommand(NodeCommandType type, NodeTaskParams nodeTaskParam) {
     Universe universe = Universe.getOrBadRequest(nodeTaskParam.universeUUID);
     List<String> commandArgs = new ArrayList<>();
     UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
     Path bootScriptFile = null;
     Map<String, String> sensitiveData = new HashMap<>();
-
     switch (type) {
       case Replace_Root_Volume:
         if (!(nodeTaskParam instanceof ReplaceRootVolume.Params)) {
@@ -1321,24 +1457,7 @@ public class NodeManager extends DevopsBase {
             }
 
             if (config.hasPath(BOOT_SCRIPT_PATH)) {
-              String bootScript = config.getString(BOOT_SCRIPT_PATH);
-              commandArgs.add("--boot_script");
-
-              // treat the contents as script body if it starts with a shebang line
-              // otherwise consider the contents to be a path
-              if (bootScript.startsWith("#!")) {
-                try {
-                  bootScriptFile = Files.createTempFile(nodeTaskParam.nodeName, "-boot.sh");
-                  Files.write(bootScriptFile, bootScript.getBytes());
-
-                  commandArgs.add(bootScriptFile.toAbsolutePath().toString());
-                } catch (IOException e) {
-                  LOG.error(e.getMessage(), e);
-                  throw new RuntimeException(e);
-                }
-              } else {
-                commandArgs.add(bootScript);
-              }
+              bootScriptFile = addBootscript(config, commandArgs, nodeTaskParam);
             }
 
             // For now we wouldn't add machine image for aws and fallback on the default
@@ -1366,20 +1485,7 @@ public class NodeManager extends DevopsBase {
               commandArgs.add("--assign_static_public_ip");
             }
           }
-
-          if (Provider.InstanceTagsEnabledProviders.contains(cloudType)) {
-            // Create an ordered shallow copy of the tags.
-            Map<String, String> useTags =
-                MapUtils.isEmpty(userIntent.instanceTags)
-                    ? new TreeMap<>()
-                    : new TreeMap<>(userIntent.getInstanceTagsForInstanceOps());
-            addAdditionalInstanceTags(nodeTaskParam, useTags);
-            if (!useTags.isEmpty()) {
-              commandArgs.add("--instance_tags");
-              commandArgs.add(Json.stringify(Json.toJson(useTags)));
-            }
-          }
-
+          addInstanceTags(universe, userIntent, nodeTaskParam, commandArgs);
           if (cloudType.equals(Common.CloudType.aws)) {
             if (taskParam.cmkArn != null) {
               commandArgs.add("--cmk_res_name");
@@ -1434,12 +1540,6 @@ public class NodeManager extends DevopsBase {
             // aws uses instance_type to determine device names for mounting
             commandArgs.add("--instance_type");
             commandArgs.add(taskParam.instanceType);
-
-            // Custom cluster creation flow with prebuilt AMI
-            if (taskParam.getRegion().ybPrebuiltAmi) {
-              commandArgs.add("--skip_tags");
-              commandArgs.add("yb-prebuilt-ami");
-            }
           }
 
           // gcp uses machine_image for ansible preprovision.yml
@@ -1449,6 +1549,18 @@ public class NodeManager extends DevopsBase {
             if (ybImage != null && !ybImage.isEmpty()) {
               commandArgs.add("--machine_image");
               commandArgs.add(ybImage);
+            }
+          }
+
+          // Custom cluster creation flow with prebuilt AMI for cloud
+          if (runtimeConfigFactory.forUniverse(universe).getBoolean("yb.cloud.enabled")) {
+            if ((cloudType.equals(Common.CloudType.aws) || cloudType.equals(Common.CloudType.gcp))
+                && universe
+                    .getConfig()
+                    .getOrDefault(Universe.SKIP_ANSIBLE_TASKS, "false")
+                    .equals("true")) {
+              commandArgs.add("--skip_tags");
+              commandArgs.add("yb-prebuilt-ami");
             }
           }
 
@@ -1474,6 +1586,11 @@ public class NodeManager extends DevopsBase {
               commandArgs.add("--remote_package_path");
               commandArgs.add(taskParam.remotePackagePath);
             }
+          }
+
+          Config config = this.runtimeConfigFactory.forProvider(nodeTaskParam.getProvider());
+          if (config.hasPath(BOOT_SCRIPT_PATH)) {
+            bootScriptFile = addBootscript(config, commandArgs, nodeTaskParam);
           }
 
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
@@ -1617,13 +1734,7 @@ public class NodeManager extends DevopsBase {
             if (MapUtils.isEmpty(userIntent.instanceTags)) {
               throw new RuntimeException("Invalid instance tags");
             }
-            // Create an ordered shallow copy of the tags.
-            Map<String, String> useTags = new TreeMap<>(userIntent.getInstanceTagsForInstanceOps());
-            addAdditionalInstanceTags(nodeTaskParam, useTags);
-            if (!useTags.isEmpty()) {
-              commandArgs.add("--instance_tags");
-              commandArgs.add(Json.stringify(Json.toJson(useTags)));
-            }
+            addInstanceTags(universe, userIntent, nodeTaskParam, commandArgs);
             if (!taskParam.deleteTags.isEmpty()) {
               commandArgs.add("--remove_tags");
               commandArgs.add(taskParam.deleteTags);
@@ -1647,6 +1758,22 @@ public class NodeManager extends DevopsBase {
           if (taskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(taskParam));
           }
+          break;
+        }
+      case Update_Mounted_Disks:
+        {
+          if (!(nodeTaskParam instanceof UpdateMountedDisks.Params)) {
+            throw new RuntimeException("NodeTaskParams is not UpdateMountedDisksTask.Params");
+          }
+          UpdateMountedDisks.Params taskParam = (UpdateMountedDisks.Params) nodeTaskParam;
+          commandArgs.add("--instance_type");
+          commandArgs.add(taskParam.instanceType);
+          if (nodeTaskParam.deviceInfo != null) {
+            commandArgs.add("--volume_type");
+            commandArgs.add(nodeTaskParam.deviceInfo.storageType.toString().toLowerCase());
+            commandArgs.addAll(getDeviceArgs(nodeTaskParam));
+          }
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           break;
         }
       case Change_Instance_Type:
@@ -1704,6 +1831,11 @@ public class NodeManager extends DevopsBase {
 
           break;
         }
+      case Delete_Root_Volumes:
+        {
+          addInstanceTags(universe, userIntent, nodeTaskParam, commandArgs);
+          break;
+        }
     }
     commandArgs.add(nodeTaskParam.nodeName);
     try {
@@ -1734,12 +1866,12 @@ public class NodeManager extends DevopsBase {
     }
     CertificateInfo rootCert = CertificateInfo.get(rootCA);
     // checking only certs with CustomCertHostPath type, CustomServerCert is not used for onprem
-    if (rootCert.certType != CertificateInfo.Type.CustomCertHostPath) {
+    if (rootCert.certType != CertConfigType.CustomCertHostPath) {
       return;
     }
     String suffix = isClient ? "_client_to_server" : "";
 
-    CertificateParams.CustomCertInfo customCertInfo = rootCert.getCustomCertInfo();
+    CertificateParams.CustomCertInfo customCertInfo = rootCert.getCustomCertPathParams();
 
     commandArgs.add(String.format("--root_cert_path%s", suffix));
     commandArgs.add(customCertInfo.rootCertPath);
@@ -1809,13 +1941,22 @@ public class NodeManager extends DevopsBase {
     return lowMemInstanceTypePrefixes.contains(instanceTypePrefix);
   }
 
-  private void addAdditionalInstanceTags(NodeTaskParams nodeTaskParam, Map<String, String> tags) {
-    if (nodeTaskParam.nodeUuid != null) {
-      tags.put("node-uuid", nodeTaskParam.nodeUuid.toString());
+  private void addAdditionalInstanceTags(
+      Universe universe, NodeTaskParams nodeTaskParam, Map<String, String> tags) {
+    Customer customer = Customer.get(universe.customerId);
+    tags.put("customer-uuid", customer.uuid.toString());
+    tags.put("universe-uuid", universe.universeUUID.toString());
+    if (nodeTaskParam.nodeUuid == null) {
+      NodeDetails nodeDetails = universe.getNode(nodeTaskParam.nodeName);
+      if (nodeDetails != null) {
+        nodeTaskParam.nodeUuid = nodeDetails.nodeUuid;
+      }
     }
-    if (nodeTaskParam.universeUUID != null) {
-      tags.put("universe-uuid", nodeTaskParam.universeUUID.toString());
+    if (nodeTaskParam.nodeUuid == null) {
+      // This is for backward compatibility where node UUID is not set in the Universe.
+      nodeTaskParam.nodeUuid = Util.generateNodeUUID(universe.universeUUID, nodeTaskParam.nodeName);
     }
+    tags.put("node-uuid", nodeTaskParam.nodeUuid.toString());
   }
 
   private Map<String, String> getReleaseSensitiveData(AnsibleConfigureServers.Params taskParam) {

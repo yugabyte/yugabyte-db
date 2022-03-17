@@ -19,6 +19,7 @@
 #include "yb/client/client_fwd.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/constants.h"
 #include "yb/common/common_fwd.h"
 
 #include "yb/gutil/macros.h"
@@ -65,8 +66,11 @@ class YBTableCreator {
   // Tablegroup ID - will be ignored by catalog manager if the table is not in a tablegroup.
   YBTableCreator& tablegroup_id(const std::string& tablegroup_id);
 
-  // Tablespace ID.
+  YBTableCreator& colocation_id(ColocationId colocation_id);
+
   YBTableCreator& tablespace_id(const std::string& tablespace_id);
+
+  YBTableCreator& matview_pg_table_id(const std::string& matview_pg_table_id);
 
   // Sets the schema with which to create the table. Must remain valid for
   // the lifetime of the builder. Required.
@@ -205,13 +209,18 @@ class YBTableCreator {
 
   bool colocated_ = true;
 
-  const TransactionMetadata * txn_ = nullptr;
-
   // The tablegroup id to assign (if a table is in a tablegroup).
   std::string tablegroup_id_;
 
+  // Colocation ID to distinguish a table within a colocation group.
+  ColocationId colocation_id_ = kColocationIdNotSet;
+
   // The id of the tablespace to which this table is to be associated with.
   std::string tablespace_id_;
+
+  std::string matview_pg_table_id_;
+
+  const TransactionMetadata* txn_ = nullptr;
 
   DISALLOW_COPY_AND_ASSIGN(YBTableCreator);
 };

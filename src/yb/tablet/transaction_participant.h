@@ -40,6 +40,7 @@
 #include "yb/util/enums.h"
 #include "yb/util/math_util.h"
 #include "yb/util/opid.h"
+#include "yb/util/opid.pb.h"
 
 namespace rocksdb {
 
@@ -85,6 +86,11 @@ struct RemoveIntentsData {
   HybridTime log_ht;
 };
 
+struct GetIntentsData {
+  OpIdPB op_id;
+  HybridTime log_ht;
+};
+
 struct TransactionalBatchData {
   // Write id of last strong write intent in transaction.
   IntraTxnWriteId next_write_id = 0;
@@ -111,8 +117,8 @@ class TransactionParticipant : public TransactionStatusManager {
   void Start();
 
   // Adds new running transaction.
-  MUST_USE_RESULT bool Add(
-      const TransactionMetadataPB& data, rocksdb::WriteBatch *write_batch);
+  // Returns true if transaction was added, false if transaction already present.
+  Result<bool> Add(const TransactionMetadata& metadata);
 
   Result<TransactionMetadata> PrepareMetadata(const TransactionMetadataPB& id) override;
 

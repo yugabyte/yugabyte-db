@@ -3,8 +3,10 @@
 package com.yugabyte.yw.models;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.helpers.BundleDetails;
@@ -16,8 +18,11 @@ import io.ebean.annotation.DbJson;
 import java.io.File;
 import java.io.InputStream;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Date;
+import java.util.List;
 import java.util.UUID;
+import java.util.List;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
@@ -36,7 +41,7 @@ public class SupportBundle extends Model {
   @Getter
   private UUID bundleUUID;
 
-  @Column @Getter @Setter private Path path;
+  @Column @Getter @Setter private String path;
 
   @Column(nullable = false)
   @Getter
@@ -79,6 +84,34 @@ public class SupportBundle extends Model {
     }
   }
 
+  public SupportBundle() {}
+
+  public SupportBundle(
+      UUID bundleUUID,
+      UUID scopeUUID,
+      String path,
+      Date startDate,
+      Date endDate,
+      BundleDetails bundleDetails,
+      SupportBundleStatusType status) {
+    this.bundleUUID = bundleUUID;
+    this.scopeUUID = scopeUUID;
+    this.path = path;
+    this.startDate = startDate;
+    this.endDate = endDate;
+    this.bundleDetails = bundleDetails;
+    this.status = status;
+  }
+
+  @JsonIgnore
+  public Path getPathObject() {
+    return Paths.get(this.path);
+  }
+
+  public void setPathObject(Path path) {
+    this.path = path.toString();
+  }
+
   public static SupportBundle create(SupportBundleFormData bundleData, Universe universe) {
     SupportBundle supportBundle = new SupportBundle();
     supportBundle.bundleUUID = UUID.randomUUID();
@@ -109,19 +142,45 @@ public class SupportBundle extends Model {
     return find.query().where().eq("bundle_uuid", bundleUUID).findOne();
   }
 
+  public static List<SupportBundle> getAll() {
+    List<SupportBundle> supportBundleList = find.query().findList();
+    return supportBundleList;
+  }
+
   public static InputStream getAsInputStream(UUID bundleUUID) {
     SupportBundle supportBundle = getOrBadRequest(bundleUUID);
-    Path bundlePath = supportBundle.getPath();
+    Path bundlePath = supportBundle.getPathObject();
     File file = bundlePath.toFile();
     InputStream is = Util.getInputStreamOrFail(file);
     return is;
   }
 
+  @JsonIgnore
   public String getFileName() {
-    Path bundlePath = this.getPath();
+    Path bundlePath = this.getPathObject();
     if (bundlePath == null) {
       return null;
     }
     return bundlePath.getFileName().toString();
+  }
+
+  public static List<SupportBundle> getAll(UUID universeUUID) {
+    List<SupportBundle> supportBundleList =
+        find.query().where().eq("scope_uuid", universeUUID).findList();
+    return supportBundleList;
+  }
+
+  public static void delete(UUID bundleUUID) {
+    SupportBundle supportBundle = SupportBundle.getOrBadRequest(bundleUUID);
+    if (supportBundle.getStatus() == SupportBundleStatusType.Running) {
+      throw new PlatformServiceException(BAD_REQUEST, "The support bundle is in running state.");
+    } else {
+      if (supportBundle.delete()) {
+        LOG.info("Successfully deleted the db entry for support bundle: " + bundleUUID.toString());
+      } else {
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR, "Unable to delete the Support Bundle");
+      }
+    }
   }
 }

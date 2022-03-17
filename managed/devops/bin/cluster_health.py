@@ -30,7 +30,7 @@ from six import string_types, PY2, PY3
 
 # Try to read home dir from environment variable, else assume it's /home/yugabyte.
 ALERT_ENHANCEMENTS_RELEASE_BUILD = "2.6.0.0-b0"
-RELEASE_BUILD_PATTERN = "(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)[-]b(\\d+).*"
+RELEASE_BUILD_PATTERN = "(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)[-]b(\\d+|PRE_RELEASE).*"
 YB_HOME_DIR = os.environ.get("YB_HOME_DIR", "/home/yugabyte")
 YB_TSERVER_DIR = os.path.join(YB_HOME_DIR, "tserver")
 YB_CORES_DIR = os.path.join(YB_HOME_DIR, "cores/")
@@ -224,7 +224,7 @@ class NodeChecker():
                  start_time_ms, namespace_to_config, ysql_port, ycql_port, redis_port,
                  enable_tls_client, root_and_client_root_ca_same, ssl_protocol, enable_ysql,
                  enable_ysql_auth, master_http_port, tserver_http_port, ysql_server_http_port,
-                 collect_metrics_script, universe_version):
+                 collect_metrics_script, test_read_write, universe_version):
         self.node = node
         self.node_name = node_name
         self.master_index = master_index
@@ -253,6 +253,7 @@ class NodeChecker():
         self.tserver_http_port = tserver_http_port
         self.ysql_server_http_port = ysql_server_http_port
         self.collect_metrics_script = collect_metrics_script
+        self.test_read_write = test_read_write
         self.universe_version = universe_version
         self.additional_info = {}
 
@@ -325,7 +326,7 @@ class NodeChecker():
         return output
 
     def get_disk_utilization(self):
-        remote_cmd = 'df -hl -x squashfs 2>/dev/null'
+        remote_cmd = 'df -hl -x squashfs -x overlay 2>/dev/null'
         return self._remote_check_output(remote_cmd)
 
     def check_disk_utilization(self):
@@ -725,7 +726,7 @@ class NodeChecker():
         clock_re = re.match(r'((.|\n)*)((NTP enabled: )|(NTP service: )|(Network time on: )|' +
                             r'(systemd-timesyncd\.service active: ))(.*)$', output, re.MULTILINE)
         if clock_re:
-            ntp_enabled_answer = clock_re.group(8)
+            ntp_enabled_answer = clock_re.group(8).strip()
         else:
             return e.fill_and_return_entry(["Error getting NTP state - incorrect answer format"],
                                            True)
@@ -740,7 +741,7 @@ class NodeChecker():
 
         clock_re = re.match(r'((.|\n)*)(NTP service: )(.*)$', output, re.MULTILINE)
         if clock_re:
-            ntp_service_answer = clock_re.group(4)
+            ntp_service_answer = clock_re.group(4).strip()
             # Oracle8 NTP service: n/a not supported anymore
             if ntp_service_answer in ("n/a"):
                 errors = []
@@ -748,7 +749,7 @@ class NodeChecker():
         clock_re = re.match(r'((.|\n)*)((NTP synchronized: )|(System clock synchronized: ))(.*)$',
                             output, re.MULTILINE)
         if clock_re:
-            ntp_synchronized_answer = clock_re.group(6)
+            ntp_synchronized_answer = clock_re.group(6).strip()
         else:
             return e.fill_and_return_entry([
                 "Error getting NTP synchronization state - incorrect answer format"], True)
@@ -787,6 +788,7 @@ class NodeChecker():
         script_content = script_content.replace('{{YSQLSH_CMD_TEMPLATE}}', ysqlsh_cmd_template)
         script_content = script_content.replace('{{MASTER_INDEX}}', str(self.master_index))
         script_content = script_content.replace('{{TSERVER_INDEX}}', str(self.tserver_index))
+        script_content = script_content.replace('{{TEST_READ_WRITE}}', str(self.test_read_write))
 
         script_dir = os.path.dirname(os.path.abspath(self.collect_metrics_script))
         node_script = os.path.join(script_dir, "cluster_health_" + self.node + ".sh")
@@ -975,6 +977,7 @@ class Cluster():
         self.tserver_http_port = data["tserverHttpPort"]
         self.ysql_server_http_port = data["ysqlServerHttpPort"]
         self.collect_metrics_script = data["collectMetricsScript"]
+        self.test_read_write = data["testReadWrite"]
 
 
 class UniverseDefinition():
@@ -1034,7 +1037,8 @@ def main():
                         c.ycql_port, c.redis_port, c.enable_tls_client,
                         c.root_and_client_root_ca_same, c.ssl_protocol, c.enable_ysql,
                         c.enable_ysql_auth, c.master_http_port, c.tserver_http_port,
-                        c.ysql_server_http_port, c.collect_metrics_script, universe_version)
+                        c.ysql_server_http_port, c.collect_metrics_script, c.test_read_write,
+                        universe_version)
 
                 coordinator.add_precheck(checker, "check_openssl_availability")
                 coordinator.add_precheck(checker, "upload_collect_metrics_script")

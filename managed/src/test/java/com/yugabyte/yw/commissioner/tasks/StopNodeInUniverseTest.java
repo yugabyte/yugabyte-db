@@ -38,7 +38,11 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.runners.MockitoJUnitRunner;
+import org.yb.client.ChangeMasterClusterConfigResponse;
+import org.yb.client.GetLoadMovePercentResponse;
+import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.YBClient;
+import org.yb.master.CatalogEntityInfo;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -75,7 +79,22 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     } catch (Exception e) {
     }
 
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+    CatalogEntityInfo.SysClusterConfigEntryPB.Builder configBuilder =
+        CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder().setVersion(1);
+    GetMasterClusterConfigResponse mockConfigResponse =
+        new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
+    ChangeMasterClusterConfigResponse mockMasterChangeConfigResponse =
+        new ChangeMasterClusterConfigResponse(1112, "", null);
+    GetLoadMovePercentResponse mockGetLoadMovePercentResponse =
+        new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null);
+
+    try {
+      when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+      when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
+      when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockMasterChangeConfigResponse);
+      when(mockClient.getLeaderBlacklistCompletion()).thenReturn(mockGetLoadMovePercentResponse);
+    } catch (Exception e) {
+    }
   }
 
   private TaskInfo submitTask(NodeTaskParams taskParams, String nodeName) {
@@ -92,24 +111,36 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> STOP_NODE_TASK_SEQUENCE =
       ImmutableList.of(
+          TaskType.ModifyBlackList,
           TaskType.SetNodeState,
+          TaskType.ModifyBlackList,
+          TaskType.WaitForLeaderBlacklistCompletion,
           TaskType.AnsibleClusterServerCtl,
+          TaskType.ModifyBlackList,
           TaskType.UpdateNodeProcess,
           TaskType.SetNodeState,
           TaskType.UniverseUpdateSucceeded);
 
   private static final List<JsonNode> STOP_NODE_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Stopping")),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "stop")),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", false)),
           Json.toJson(ImmutableMap.of("state", "Stopped")),
           Json.toJson(ImmutableMap.of()));
 
   private static final List<TaskType> STOP_NODE_TASK_SEQUENCE_MASTER =
       ImmutableList.of(
+          TaskType.ModifyBlackList,
           TaskType.SetNodeState,
+          TaskType.ModifyBlackList,
+          TaskType.WaitForLeaderBlacklistCompletion,
           TaskType.AnsibleClusterServerCtl,
+          TaskType.ModifyBlackList,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForMasterLeader,
           TaskType.UpdateNodeProcess,
@@ -120,8 +151,12 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
 
   private static final List<JsonNode> STOP_NODE_TASK_SEQUENCE_MASTER_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Stopping")),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "stop")),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "master", "command", "stop")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", false)),
@@ -136,7 +171,9 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     if (isMaster) {
       for (TaskType taskType : STOP_NODE_TASK_SEQUENCE_MASTER) {
         List<TaskInfo> tasks = subTasksByPosition.get(position);
-        assertEquals(1, tasks.size());
+        // The finally-clause adds 2 tasks at position 0.
+        int numTasksByPosition = position == 0 ? 2 : 1;
+        assertEquals(numTasksByPosition, tasks.size());
         assertEquals(taskType, tasks.get(0).getTaskType());
         JsonNode expectedResults = STOP_NODE_TASK_SEQUENCE_MASTER_RESULTS.get(position);
         List<JsonNode> taskDetails =
@@ -147,7 +184,9 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     } else {
       for (TaskType taskType : STOP_NODE_TASK_SEQUENCE) {
         List<TaskInfo> tasks = subTasksByPosition.get(position);
-        assertEquals(1, tasks.size());
+        // The finally-clause adds 2 tasks at position 0.
+        int numTasksByPosition = position == 0 ? 2 : 1;
+        assertEquals(numTasksByPosition, tasks.size());
         assertEquals(taskType, tasks.get(0).getTaskType());
         JsonNode expectedResults = STOP_NODE_TASK_EXPECTED_RESULTS.get(position);
         List<JsonNode> taskDetails =

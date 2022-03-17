@@ -22,9 +22,11 @@ import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TransactionUtil;
+import io.ebean.Ebean;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.ebean.SqlQuery;
 import io.ebean.annotation.DbJson;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -59,6 +61,8 @@ public class Universe extends Model {
   public static final String DISABLE_ALERTS_UNTIL = "disableAlertsUntilSecs";
   public static final String TAKE_BACKUPS = "takeBackups";
   public static final String HELM2_LEGACY = "helm2Legacy";
+  public static final String DUAL_NET_LEGACY = "dualNetLegacy";
+  public static final String SKIP_ANSIBLE_TASKS = "skipAnsibleTasks";
 
   // This is a key lock for Universe by UUID.
   public static final KeyLock<UUID> UNIVERSE_KEY_LOCK = new KeyLock<UUID>();
@@ -289,6 +293,26 @@ public class Universe extends Model {
         .eq("name", universeName)
         .findOneOrEmpty()
         .map(Universe::fillUniverseDetails);
+  }
+
+  /**
+   * Find a single attribute from universe_details_json column of Universe.
+   *
+   * @param <T> the attribute type.
+   * @param universeUUID the universe UUID to be searched for.
+   * @param fieldName the name of the field.
+   * @return the attribute value.
+   */
+  public static <T> Optional<T> getUniverseDetailsField(
+      Class<T> clazz, UUID universeUUID, String fieldName) {
+    String query =
+        String.format(
+            "select universe_details_json::jsonb->>'%s' as field from universe"
+                + " where universe_uuid = :universeUUID",
+            fieldName);
+    SqlQuery sqlQuery = Ebean.createSqlQuery(query);
+    sqlQuery.setParameter("universeUUID", universeUUID);
+    return sqlQuery.findOneOrEmpty().map(row -> clazz.cast(row.get("field")));
   }
 
   /**
@@ -640,8 +664,13 @@ public class Universe extends Model {
       List<NodeDetails> serverNodes, ServerType type, PortType portType, boolean getSecondary) {
     StringBuilder servers = new StringBuilder();
     for (NodeDetails node : serverNodes) {
+      // Only get secondary if dual net legacy is false.
+      boolean shouldGetSecondary =
+          this.getConfig().getOrDefault(DUAL_NET_LEGACY, "true").equals("false")
+              ? getSecondary
+              : false;
       String nodeIp =
-          getSecondary ? node.cloudInfo.secondary_private_ip : node.cloudInfo.private_ip;
+          shouldGetSecondary ? node.cloudInfo.secondary_private_ip : node.cloudInfo.private_ip;
       // In case the secondary IP is null, just re-assign to primary.
       if (nodeIp == null || nodeIp.equals("null")) {
         nodeIp = node.cloudInfo.private_ip;

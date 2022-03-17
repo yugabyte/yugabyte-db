@@ -17,47 +17,47 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws" class="nav-link">
+    <a href="../aws/" class="nav-link">
       <i class="fab fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp" class="nav-link">
+    <a href="../gcp/" class="nav-link">
       <i class="fab fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure" class="nav-link active">
+    <a href="../azure/" class="nav-link active">
       <i class="icon-azure" aria-hidden="true"></i>
       &nbsp;&nbsp; Azure
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes" class="nav-link">
+    <a href="../kubernetes/" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/vmware-tanzu" class="nav-link">
+    <a href="../vmware-tanzu/" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       VMware Tanzu
     </a>
   </li>
 
 <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/openshift" class="nav-link">
+    <a href="../openshift/" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>OpenShift</a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises" class="nav-link">
+    <a href="../on-premises/" class="nav-link">
       <i class="fas fa-building"></i>
       On-premises
     </a>
@@ -120,7 +120,7 @@ You can set a private DNS zone as follows:
 
     ![Private DNS: basics tab](/images/yb-platform/install/azure/private-dns-basics-tab.png)<br><br>
 
-1. Navigate to the resource page and click **Settings > Virtual Network Links** on the left tab, as per the following illustration:<br><br>
+1. Navigate to the resource page and click **Settings > Virtual Network Links**, as per the following illustration:<br><br>
 
     ![Resource menu](/images/yb-platform/install/azure/resource-menu.png)<br><br>
 
@@ -128,7 +128,7 @@ You can set a private DNS zone as follows:
 
 1. To use the private DNS zone in Yugabyte Platform, add either the resource ID or the name of the DNS zone to the **Private DNS Zone** field of the **Cloud Provider Configuration** page in the Yugabyte Platform UI.<br>
 
-    Note that if you provide the Resource ID, Yugabyte Platform infers the resource group from it. If you provide only the name, then Yugabyte Platform assumes that the resource group is the same as the group used in the cloud provider.
+    If the private DNS zone is defined by an ID, Yugabyte Platform will use it together with the default subscription ID and the resource group. If the private DNS zone is defined by a full URL that contains both the subscription ID and resource group, then these two values will be used instead of default values.
 
 In the setup example shown in the following illustration, the private DNS zone is specified as `dns.example.com`, and the resource group is explicitly specified as `myRG`:
 
@@ -150,19 +150,19 @@ You can specify a region as follows:
 
 1. Click **Add Region**.
 
-2. Use the **Specify Region Info** dialog to select a region and provide a virtual network name from your Azure portal.
+1. Use the **Specify Region Info** dialog to select a region and provide a virtual network name from your Azure portal.
 
-3. Optionally, specify the security group, if the database VM is in a different network than the platform.
+1. Optionally, specify the security group, if the database VM is in a different network than the platform.
 
-4. Provide a URN to a marketplace image or a shared gallery image by following instructions provided in [How to use a shared image gallery](#how-to-use-a-shared-image-gallery). If you are using custom images, you need to specify the SSH port and user, as described in [Configure Azure](#configure-azure).  
+1. Provide a URN to a marketplace image or a shared gallery image by following instructions provided in [How to use a shared image gallery](#how-to-use-a-shared-image-gallery). If you are using custom images, you need to specify the SSH port and user, as described in [Configure Azure](#configure-azure).
 
-5. Provide a mapping of subnet IDs to use for each availability zone you wish to deploy. This is required for ensuring that Yugabyte Platform can deploy nodes in the correct network isolation that you need in your environment.
+1. Provide a mapping of subnet IDs to use for each availability zone you wish to deploy. This is required for ensuring that Yugabyte Platform can deploy nodes in the correct network isolation that you need in your environment.
 
    ![Prepare Azure cloud to install Yugabyte Platform](/images/yb-platform/install/azure/platform-azure-prepare-cloud-env-5.png)
 
-6. Click **Add Region** on the **Specify Region Info** dialog.
+1. Click **Add Region** on the **Specify Region Info** dialog.
 
-7. Click **Save** on the **Cloud Provider Configuration** page. 
+1. Click **Save** on the **Cloud Provider Configuration** page.
 
 Typically, it takes a few minutes for the cloud provider to be configured. When the configuration completes, you will be ready to create a YugabyteDB universe on Azure.
 
@@ -178,17 +178,17 @@ You set up a shared gallery image on Azure as follows:
 
 1. Create a VM of which you want to take a snapshot.
 
-1. Navigate to the VM and click **Capture** on the top menu. 
+1. Navigate to the VM and click **Capture** on the top menu.
 
-1. Fill in the information and then choose the gallery and image definition you created in the previous steps, as per the following illustration:
+1. Fill in the information and then choose the gallery and image definition you created in the previous steps, as per the following illustration:<br><br>
 
     ![img](/images/yb-platform/install/azure/shared-gallery-capture.png)
 
-    Ensure that the images are replicated to each region in which you are planning to use them. For example, configuration shown in the following illustration would only work for US East:
+    <br><br>Ensure that the images are replicated to each region in which you are planning to use them. For example, configuration shown in the following illustration would only work for US East:
 
     ![description](/images/yb-platform/install/azure/shared-gallery-replication.png)
 
-1. To use the image in Yugabyte Platform, enter the image version's resource ID into the **Marketplace Image URN/Shared Gallery Image ID** field of the **Specify Region Info** dialog.
+1. To use the image in Yugabyte Platform, enter the image version's resource ID into the **Marketplace Image URN / Shared Gallery Image ID** field of the **Specify Region Info** dialog.
 
-    
+   <br>The gallery image ID could be defined by a full URL containing a subscription ID, a resource group name, and the resource name itself. If the subscription ID or the resource group is different from the default values, Yugabyte Platform will use them instead.
 

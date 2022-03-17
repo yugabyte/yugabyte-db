@@ -194,7 +194,7 @@ select to_char(
   '9.999') as "clk_2 time minus clk_1 time";
 ```
 
-<a id="avoid-constant-now"></a>You'll see that _"clk_2 time minus clk_1 time"_ differs from _5.0 seconds_ by maybe just a couple of milliseconds. The smaller noise discrepancies in this test than in the previous tests reflect the fact that all the measurements are made within the server-side execution of a single top-level call.
+<a name="avoid-constant-now"></a>You'll see that _"clk_2 time minus clk_1 time"_ differs from _5.0 seconds_ by maybe just a couple of milliseconds. The smaller noise discrepancies in this test than in the previous tests reflect the fact that all the measurements are made within the server-side execution of a single top-level call.
 
 {{< tip title="Don't use the special manifest constant 'now'." >}}
 And, by extension, don't use the related special manifest constants _'today'_, _'tomorrow'_, and _'yesterday'_. (See the section [Special date-time manifest constants](../../../type_datetime/#special-date-time-manifest-constants) for more discussion of the advisability of using these, and other, special _date-time_ manifest constants.)

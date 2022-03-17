@@ -67,6 +67,8 @@ public enum TaskType {
 
   CertsRotate("upgrade.CertsRotate"),
 
+  CertsRotateKubernetesUpgrade("upgrade.CertsRotateKubernetesUpgrade"),
+
   TlsToggle("upgrade.TlsToggle"),
 
   VMImageUpgrade("upgrade.VMImageUpgrade"),
@@ -300,7 +302,9 @@ public enum TaskType {
 
   RunYsqlUpgrade("subtasks.RunYsqlUpgrade"),
 
-  ResizeNode("upgrade.ResizeNode");
+  ResizeNode("upgrade.ResizeNode"),
+
+  UpdateMountedDisks("subtasks.UpdateMountedDisks");
 
   private String relativeClassPath;
 

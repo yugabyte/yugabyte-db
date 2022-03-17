@@ -150,7 +150,7 @@ class CatalogManagerIf {
 
   virtual bool IsUserCreatedTable(const TableInfo& table) const = 0;
 
-  virtual BlacklistSet BlacklistSetFromPB() const = 0;
+  virtual Result<BlacklistSet> BlacklistSetFromPB() const = 0;
 
   virtual void GetAllUDTypes(std::vector<scoped_refptr<UDTypeInfo>>* types) = 0;
 
@@ -227,7 +227,7 @@ class CatalogManagerIf {
       const TabletId& tablet_id, const std::string& split_encoded_key,
       const std::string& split_partition_key) = 0;
 
-  virtual uint64_t GetTxnTableVersionsHash() = 0;
+  virtual uint64_t GetTransactionTablesVersion() = 0;
 
   virtual Result<scoped_refptr<TableInfo>> FindTableById(const TableId& table_id) const = 0;
 

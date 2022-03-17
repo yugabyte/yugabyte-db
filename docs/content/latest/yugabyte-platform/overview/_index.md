@@ -21,14 +21,14 @@ Yugabyte Platform is a containerized application that is installed and managed u
 
 Yugabyte Platform can be accessed using any desktop internet browser that has been supported by its maker in the past 24 months and that has a market share of at least 0.2%. In addition, Yugabyte Platform may be accessed by most mobile browsers, except Opera Mini.
 
-Yugabyte Platform offers three levels of user accounts: Super Admin, Admin, and Read-only, with the latter having rather limited access to functionality. Unless otherwise specified, the Yugabyte Platform documentation describes the funtionality available to a Super Admin user. 
+Yugabyte Platform offers three levels of user accounts: Super Admin, Admin, and Read-only, with the latter having rather limited access to functionality. Unless otherwise specified, the Yugabyte Platform documentation describes the functionality available to a Super Admin user.
 
 ## Getting Started with Yugabyte Platform
 
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="install/">
+    <a class="section-link icon-offset" href="install/public-cloud/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
         <div class="title">Install</div>
@@ -40,7 +40,7 @@ Yugabyte Platform offers three levels of user accounts: Super Admin, Admin, and 
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="configure/">
+    <a class="section-link icon-offset" href="configure/aws/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/create_cluster.png" aria-hidden="true" />
         <div class="title">Configure</div>

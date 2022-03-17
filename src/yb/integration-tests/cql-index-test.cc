@@ -25,6 +25,7 @@
 using namespace std::literals;
 
 DECLARE_bool(allow_index_table_read_write);
+DECLARE_int32(cql_prepare_child_threshold_ms);
 DECLARE_bool(disable_index_backfill);
 DECLARE_bool(transactions_poll_check_aborted);
 DECLARE_bool(TEST_disable_proactive_txn_cleanup_on_abort);
@@ -167,6 +168,40 @@ TEST_F_EX(CqlIndexTest, ConcurrentIndexUpdate, CqlIndexSmallWorkersTest) {
   thread_holder.Stop();
 
   SetAtomicFlag(0, &FLAGS_TEST_inject_txn_get_status_delay_ms);
+}
+
+TEST_F(CqlIndexTest, TestSaturatedWorkers) {
+  /*
+   * (#11258) We set a very short timeout to force failure if child transaction
+   * is not created quickly enough.
+
+   * TODO: when switching to a fully asynchronous model, this failure will disappear.
+   */
+  FLAGS_cql_prepare_child_threshold_ms = 1;
+
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  ASSERT_OK(session.ExecuteQuery(
+      "CREATE TABLE t (key INT PRIMARY KEY, v1 INT, v2 INT) WITH "
+      "transactions = { 'enabled' : true }"));
+  ASSERT_OK(session.ExecuteQuery(
+      "CREATE INDEX i1 ON t(key, v1) WITH "
+      "transactions = { 'enabled' : true }"));
+  ASSERT_OK(session.ExecuteQuery(
+      "CREATE INDEX i2 ON t(key, v2) WITH "
+      "transactions = { 'enabled' : true }"));
+
+  constexpr int kKeys = 10000;
+  std::string expr = "BEGIN TRANSACTION ";
+  for (int i = 0; i < kKeys; i++) {
+    expr += Format("INSERT INTO t (key, v1, v2) VALUES ($0, $1, $2); ", i, i, i);
+  }
+  expr += "END TRANSACTION;";
+
+  // We should expect to see timed out error
+  auto status = session.ExecuteQuery(expr);
+  ASSERT_FALSE(status.ok());
+  ASSERT_NE(status.message().ToBuffer().find("Timed out waiting for prepare child status"),
+            std::string::npos) << status;
 }
 
 YB_STRONGLY_TYPED_BOOL(CheckReady);

@@ -145,9 +145,13 @@ Status DoSplitTablet(master::CatalogManagerIf* catalog_mgr, const tablet::Tablet
   LOG(INFO) << "DB properties: " << properties;
 
   const auto encoded_split_key = VERIFY_RESULT(tablet.GetEncodedMiddleSplitKey());
-  const auto doc_key_hash = VERIFY_RESULT(docdb::DecodeDocKeyHash(encoded_split_key)).value();
-  LOG(INFO) << "Middle hash key: " << doc_key_hash;
-  const auto partition_split_key = PartitionSchema::EncodeMultiColumnHashValue(doc_key_hash);
+  std::string partition_split_key = encoded_split_key;
+  if (tablet.metadata()->partition_schema()->IsHashPartitioning()) {
+    const auto doc_key_hash = VERIFY_RESULT(docdb::DecodeDocKeyHash(encoded_split_key)).value();
+    LOG(INFO) << "Middle hash key: " << doc_key_hash;
+    partition_split_key = PartitionSchema::EncodeMultiColumnHashValue(doc_key_hash);
+  }
+  LOG(INFO) << "Partition split key: " << Slice(partition_split_key).ToDebugHexString();
 
   return catalog_mgr->TEST_SplitTablet(tablet_id, encoded_split_key, partition_split_key);
 }
@@ -219,7 +223,8 @@ tserver::WriteRequestPB TabletSplitITestBase<MiniClusterType>::CreateInsertReque
 template <class MiniClusterType>
 Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>>
     TabletSplitITestBase<MiniClusterType>::WriteRows(
-        client::TableHandle* table, const uint32_t num_rows, const int32_t start_key) {
+        client::TableHandle* table, const uint32_t num_rows,
+        const int32_t start_key, const int32_t start_value) {
   auto min_hash_code = std::numeric_limits<docdb::DocKeyHash>::max();
   auto max_hash_code = std::numeric_limits<docdb::DocKeyHash>::min();
 
@@ -227,18 +232,22 @@ Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>>
 
   auto txn = this->CreateTransaction();
   auto session = this->CreateSession(txn);
-  for (int32_t i = start_key; i < start_key + static_cast<int32_t>(num_rows); ++i) {
+  for (int32_t i = start_key, v = start_value;
+       i < start_key + static_cast<int32_t>(num_rows);
+       ++i, ++v) {
     client::YBqlWriteOpPtr op = VERIFY_RESULT(
         client::kv_table_test::WriteRow(table,
                                         session,
                                         i /* key */,
-                                        i /* value */,
-                                        client::WriteOpType::INSERT));
+                                        v /* value */,
+                                        client::WriteOpType::INSERT,
+                                        client::Flush::kFalse));
     const auto hash_code = op->GetHashCode();
     min_hash_code = std::min(min_hash_code, hash_code);
     max_hash_code = std::max(max_hash_code, hash_code);
     YB_LOG_EVERY_N_SECS(INFO, 10) << "Rows written: " << start_key << "..." << i;
   }
+  RETURN_NOT_OK(session->Flush());
   if (txn) {
     RETURN_NOT_OK(txn->CommitFuture().get());
     LOG(INFO) << "Committed: " << txn->id();
@@ -611,50 +620,6 @@ Result<int> TabletSplitITest::NumPostSplitTabletPeersFullyCompacted() {
   return count;
 }
 
-Result<uint64_t> TabletSplitITest::GetActiveTabletsBytesRead() {
-  uint64_t read_bytes_1 = 0, read_bytes_2 = 0;
-  auto peers = ListTableActiveTabletLeadersPeers(
-      this->cluster_.get(), VERIFY_RESULT(GetTestTableId()));
-  for (auto peer : peers) {
-    auto this_peer_read_bytes = peer->tablet()->regulardb_statistics()->getTickerCount(
-        rocksdb::Tickers::COMPACT_READ_BYTES);
-    if (read_bytes_1 == 0) {
-      read_bytes_1 = this_peer_read_bytes;
-    } else if (read_bytes_2 == 0) {
-      read_bytes_2 = this_peer_read_bytes;
-    } else {
-      if (this_peer_read_bytes != read_bytes_1 && this_peer_read_bytes != read_bytes_2) {
-        return STATUS_FORMAT(IllegalState,
-            "Expected this peer's read bytes ($0) to equal one of the existing peer's read bytes "
-            "($1 or $2)",
-            this_peer_read_bytes, read_bytes_1, read_bytes_2);
-      }
-    }
-  }
-  if (read_bytes_1 <= 0 || read_bytes_2 <= 0) {
-    return STATUS_FORMAT(IllegalState,
-        "Peer's read bytes should be greater than zero. Found $0 and $1",
-        read_bytes_1, read_bytes_2);
-  }
-  return read_bytes_1 + read_bytes_2;
-}
-
-Result<uint64_t> TabletSplitITest::GetInactiveTabletsBytesWritten() {
-  uint64_t write_bytes = 0;
-  for (auto peer : VERIFY_RESULT(ListSplitCompleteTabletPeers())) {
-    auto this_peer_written_bytes = peer->tablet()->regulardb_statistics()->getTickerCount(
-        rocksdb::Tickers::COMPACT_WRITE_BYTES);
-    if (write_bytes == 0) write_bytes = this_peer_written_bytes;
-    if (write_bytes != this_peer_written_bytes) {
-      return STATUS_FORMAT(IllegalState,
-          "Expected the number of written bytes at each peer to be the same. Found one with $0 and "
-          "another with $1",
-          write_bytes, this_peer_written_bytes);
-    }
-  }
-  return write_bytes;
-}
-
 Result<uint64_t> TabletSplitITest::GetMinSstFileSizeAmongAllReplicas(const std::string& tablet_id) {
   const auto test_table_id = VERIFY_RESULT(GetTestTableId());
   auto peers = ListTabletPeers(this->cluster_.get(), [&tablet_id](auto peer) {
@@ -681,12 +646,8 @@ Status TabletSplitITest::CheckPostSplitTabletReplicasData(
   }
 
   const auto test_table_id = VERIFY_RESULT(GetTestTableId());
-  std::vector<tablet::TabletPeerPtr> active_leader_peers;
-  RETURN_NOT_OK(LoggedWaitFor([&] {
-    active_leader_peers = ListTableActiveTabletLeadersPeers(this->cluster_.get(), test_table_id);
-    LOG(INFO) << "active_leader_peers.size(): " << active_leader_peers.size();
-    return active_leader_peers.size() == num_active_tablets;
-  }, 30s * kTimeMultiplier, "Waiting for leaders ..."));
+  auto active_leader_peers = VERIFY_RESULT(WaitForTableActiveTabletLeadersPeers(
+      this->cluster_.get(), test_table_id, num_active_tablets));
 
   std::unordered_map<TabletId, OpId> last_on_leader;
   for (auto peer : active_leader_peers) {

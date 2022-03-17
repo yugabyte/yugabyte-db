@@ -724,6 +724,10 @@ static const YBCPgTypeEntity YbTypeEntityTable[] = {
 		(YBCPgDatumToData)YbDatumToDocdb,
 		(YBCPgDatumFromData)YbDocdbToDatum },
 
+	{ JSONARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1,
+		(YBCPgDatumToData)YbDatumToDocdb,
+		(YBCPgDatumFromData)YbDocdbToDatum },
+
 	{ XMLOID, YB_YQL_DATA_TYPE_BINARY, false, -1,
 		(YBCPgDatumToData)YbDatumToDocdb,
 		(YBCPgDatumFromData)YbDocdbToDatum },
@@ -834,6 +838,10 @@ static const YBCPgTypeEntity YbTypeEntityTable[] = {
 		(YBCPgDatumFromData)YbDocdbToDatum },
 
 	{ CIDROID, YB_YQL_DATA_TYPE_BINARY, false, -1,
+		(YBCPgDatumToData)YbDatumToDocdb,
+		(YBCPgDatumFromData)YbDocdbToDatum },
+
+	{ CIDRARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1,
 		(YBCPgDatumToData)YbDatumToDocdb,
 		(YBCPgDatumFromData)YbDocdbToDatum },
 
@@ -1249,10 +1257,6 @@ static const YBCPgTypeEntity YbTypeEntityTable[] = {
 	{ CSTRINGOID, YB_YQL_DATA_TYPE_STRING, true, -2,
 		(YBCPgDatumToData)YbDatumToCStr,
 		(YBCPgDatumFromData)YbCStrToDatum },
-
-	{ ANYOID, YB_YQL_DATA_TYPE_INT32, true, sizeof(int32),
-		(YBCPgDatumToData)YbDatumToInt32,
-		(YBCPgDatumFromData)YbInt32ToDatum },
 
 	{ ANYARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1,
 		(YBCPgDatumToData)YbDatumToBinary,

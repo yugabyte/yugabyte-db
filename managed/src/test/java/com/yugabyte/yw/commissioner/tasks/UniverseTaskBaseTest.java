@@ -104,7 +104,7 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
       CloudType cloudType, @Nullable String privateIp, boolean detailsCleanExpected) {
 
     List<NodeDetails> nodes = setupNodeDetails(cloudType, privateIp);
-    universeTaskBase.createDestroyServerTasks(nodes, false, false);
+    universeTaskBase.createDestroyServerTasks(nodes, false, false, false);
     for (int i = 0; i < NUM_NODES; i++) {
       // Node should not be in use.
       NodeInstance ni = NodeInstance.get(nodes.get(i).nodeUuid);

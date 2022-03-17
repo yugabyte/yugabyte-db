@@ -23,6 +23,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.List;
 import java.util.UUID;
 import javax.inject.Inject;
@@ -90,9 +91,15 @@ public class DestroyUniverse extends UniverseTaskBase {
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
         }
 
+        // Set the node states to Removing.
+        createSetNodeStateTasks(universe.getNodes(), NodeDetails.NodeState.Removing)
+            .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
         // Create tasks to destroy the existing nodes.
         createDestroyServerTasks(
-                universe.getNodes(), params().isForceDelete, true /* delete node */)
+                universe.getNodes(),
+                params().isForceDelete,
+                true /* delete node */,
+                true /* deleteRootVolumes */)
             .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
       }
 

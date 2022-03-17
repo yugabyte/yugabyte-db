@@ -18,6 +18,7 @@ import static org.yb.AssertionWrappers.assertTrue;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.util.Collections;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -36,12 +37,8 @@ public class TestDropTableWithConcurrentTxn extends BasePgSQLTest {
       "expired or aborted by a conflict";
   private static final String RESOURCE_NONEXISTING_ERROR =
       "does not exist";
-  private static final String TABLET_NONEXISTING_ERROR =
-      "Tablet deleted";
   private static final String SCHEMA_VERSION_MISMATCH_ERROR =
       "schema version mismatch for table";
-  private static final String TABLE_DELETED_ERROR =
-      "Table deleted";
   private static final String NO_ERROR = "";
   private static final boolean executeDmlBeforeDrop = true;
   private static final boolean executeDmlAfterDrop = false;
@@ -287,8 +284,7 @@ public class TestDropTableWithConcurrentTxn extends BasePgSQLTest {
   -- Always use snapshot isolation
   -- DML operation always affects exactly one row
   */
-  @Test
-  public void testDmlTxnDrop() throws Exception {
+  public void testDmlTxnDropInternal() throws Exception {
     boolean withCachedMetadata = true;
 
     //------------------------------------------------------------------------------------------
@@ -304,12 +300,12 @@ public class TestDropTableWithConcurrentTxn extends BasePgSQLTest {
     runDmlTxnWithDropOnCurrentResource(Dml.INSERT, tableDrop, !withCachedMetadata,
         executeDmlAfterDrop, RESOURCE_NONEXISTING_ERROR);
     runDmlTxnWithDropOnCurrentResource(Dml.INSERT, tableDrop, withCachedMetadata,
-        executeDmlAfterDrop, TABLET_NONEXISTING_ERROR);
+        executeDmlAfterDrop, RESOURCE_NONEXISTING_ERROR);
     LOG.info("Run SELECT transactions AFTER drop");
     runDmlTxnWithDropOnCurrentResource(Dml.SELECT, tableDrop, !withCachedMetadata,
         executeDmlAfterDrop, RESOURCE_NONEXISTING_ERROR);
     runDmlTxnWithDropOnCurrentResource(Dml.SELECT, tableDrop, withCachedMetadata,
-        executeDmlAfterDrop, TABLE_DELETED_ERROR);
+        executeDmlAfterDrop, RESOURCE_NONEXISTING_ERROR);
     // For SELECT before DDL on either cached or non-cached table
     // transaction should not conflict because select operation just
     // picks a read time and doesn't take a distributed transaction lock.
@@ -339,7 +335,7 @@ public class TestDropTableWithConcurrentTxn extends BasePgSQLTest {
         executeDmlBeforeDrop, TRANSACTION_CONFLICT_ERROR);
     LOG.info("Run INSERT transaction AFTER drop");
     runDmlTxnWithDropOnCurrentResource(Dml.INSERT, indexDrop, withCachedMetadata,
-        executeDmlAfterDrop, TABLE_DELETED_ERROR);
+        executeDmlAfterDrop, RESOURCE_NONEXISTING_ERROR);
     LOG.info("Run SELECT transaction AFTER drop");
     runDmlTxnWithDropOnCurrentResource(Dml.SELECT, indexDrop, withCachedMetadata,
         executeDmlAfterDrop, SCHEMA_VERSION_MISMATCH_ERROR);
@@ -397,5 +393,18 @@ public class TestDropTableWithConcurrentTxn extends BasePgSQLTest {
     LOG.info("Run INSERT transaction AFTER drop on another resource");
     runInsertTxnWithDropOnUnrelatedResource(viewDrop, !withCachedMetadata, executeDmlAfterDrop);
     runInsertTxnWithDropOnUnrelatedResource(viewDrop, withCachedMetadata, executeDmlAfterDrop);
+  }
+
+  @Test
+  public void testDmlTxnDrop() throws Exception {
+    testDmlTxnDropInternal();
+  }
+
+  @Test
+  public void testDmlTxnDropWithReadCommitted() throws Exception {
+    restartClusterWithFlags(Collections.emptyMap(),
+                            Collections.singletonMap("yb_enable_read_committed_isolation",
+                                                     "true"));
+    testDmlTxnDropInternal();
   }
 }

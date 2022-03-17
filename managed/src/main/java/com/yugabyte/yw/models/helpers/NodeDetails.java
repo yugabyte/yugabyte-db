@@ -54,6 +54,13 @@ public class NodeDetails {
   @ApiModelProperty(value = "Machine image name")
   public String machineImage;
 
+  // Indicates that disks in fstab are mounted using using uuid (not as by path).
+  @ApiModelProperty(value = "Disks are mounted by uuid")
+  public boolean disksAreMountedByUUID;
+
+  @ApiModelProperty(value = "True if this a custom YB AMI")
+  public boolean ybPrebuiltAmi = false;
+
   // Possible states in which this node can exist.
   public enum NodeState {
     // Set when a new node needs to be added into a Universe and has not yet been created.
@@ -66,8 +73,8 @@ public class NodeDetails {
     // the existing cluster.
     ToJoinCluster(REMOVE),
     // Set after the node (without any configuration) is created using the IaaS provider at the
-    // end of the provision step.
-    Provisioned(),
+    // end of the provision step before it is set up and configured.
+    Provisioned(DELETE),
     // Set after the YB software installed and some basic configuration done on a provisioned node.
     SoftwareInstalled(START, DELETE),
     // Set after the YB software is upgraded via Rolling Restart.
@@ -217,6 +224,7 @@ public class NodeDetails {
     clone.nodeUuid = this.nodeUuid;
     clone.placementUuid = this.placementUuid;
     clone.machineImage = this.machineImage;
+    clone.ybPrebuiltAmi = this.ybPrebuiltAmi;
     return clone;
   }
 
@@ -276,6 +284,7 @@ public class NodeDetails {
     return state == NodeState.ToBeAdded
         || state == NodeState.Adding
         || state == NodeState.InstanceCreated
+        || state == NodeState.Provisioned
         || state == NodeState.ServerSetup
         || state == NodeState.SoftwareInstalled
         || state == NodeState.Decommissioned;

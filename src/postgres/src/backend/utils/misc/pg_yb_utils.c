@@ -43,6 +43,7 @@
 #include "catalog/pg_authid.h"
 #include "catalog/pg_collation_d.h"
 #include "catalog/pg_database.h"
+#include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "catalog/catalog.h"
 #include "catalog/yb_catalog_version.h"
@@ -56,6 +57,7 @@
 #include "utils/lsyscache.h"
 #include "utils/pg_locale.h"
 #include "utils/rel.h"
+#include "utils/syscache.h"
 #include "fmgr.h"
 #include "funcapi.h"
 
@@ -148,6 +150,12 @@ IsYBBackedRelation(Relation relation)
 	return IsYBRelation(relation) ||
 		(relation->rd_rel->relkind == RELKIND_VIEW &&
 		relation->rd_rel->relpersistence != RELPERSISTENCE_TEMP);
+}
+
+bool
+YbIsTempRelation(Relation relation)
+{
+	return relation->rd_rel->relpersistence == RELPERSISTENCE_TEMP;
 }
 
 bool IsRealYBColumn(Relation rel, int attrNum)
@@ -545,7 +553,7 @@ YBCAbortTransaction()
 		return;
 
 	if (YBTransactionsEnabled())
-		YBCPgAbortTransaction();
+		HandleYBStatus(YBCPgAbortTransaction());
 }
 
 void
@@ -913,6 +921,7 @@ PowerWithUpperLimit(double base, int exp, double upper_limit)
 
 bool yb_enable_create_with_table_oid = false;
 int yb_index_state_flags_update_delay = 1000;
+bool yb_enable_expression_pushdown = false;
 
 //------------------------------------------------------------------------------
 // YB Debug utils.
@@ -1025,7 +1034,7 @@ YBDecrementDdlNestingLevel(bool is_catalog_version_increment, bool is_breaking_c
 		if (increment_done)
 		{
 			yb_catalog_cache_version += 1;
-			if (YBCGetLogYsqlCatalogVersions())
+			if (*YBCGetGFlags()->log_ysql_catalog_versions)
 				ereport(LOG,
 						(errmsg("%s: set local catalog version: %" PRIu64,
 								__func__, yb_catalog_cache_version)));
@@ -1528,6 +1537,31 @@ bool YBIsSupportedLibcLocale(const char *localebuf) {
 		   strcasecmp(localebuf, "en_US.UTF-8") == 0;
 }
 
+void
+YbGetTableDescAndProps(Oid table_oid,
+					   bool allow_missing,
+					   YBCPgTableDesc *desc,
+					   YBCPgTableProperties *props)
+{
+	if (allow_missing)
+	{
+		bool exists_in_yb = false;
+		HandleYBStatus(YBCPgTableExists(MyDatabaseId, table_oid, &exists_in_yb));
+		if (!exists_in_yb)
+		{
+			desc = NULL;
+			return;
+		}
+	}
+
+	HandleYBStatus(YBCPgGetTableDesc(MyDatabaseId, table_oid, desc));
+	HandleYBStatus(YBCPgGetSomeTableProperties(*desc, props));
+
+	Relation rel = relation_open(table_oid, AccessShareLock);
+	props->tablegroup_oid = RelationGetTablegroupOid(rel);
+	relation_close(rel, AccessShareLock);
+}
+
 Datum
 yb_hash_code(PG_FUNCTION_ARGS)
 {
@@ -1598,39 +1632,87 @@ yb_hash_code(PG_FUNCTION_ARGS)
 	PG_RETURN_UINT16(hashed_val);
 }
 
+/*
+ * For backward compatibility, this function dynamically adapts to the number
+ * of output columns defined in pg_proc.
+ */
 Datum
 yb_table_properties(PG_FUNCTION_ARGS)
 {
 	Oid			relid = PG_GETARG_OID(0);
 	TupleDesc	tupdesc;
-	Datum		values[3];
-	bool		nulls[3];
-	bool		exists_in_yb = false;
+
+	static int ncols = 0; /* Equals to the number of OUT arguments. */
+
+	if (ncols < 5) {
+		/* yb_table_properties function oid hardcoded in pg_proc.dat */
+		Oid funcid = 8033;
+
+		HeapTuple proctup = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
+		if (!HeapTupleIsValid(proctup))
+			elog(ERROR, "cache lookup failed for function %u", funcid);
+
+		bool is_null = false;
+		Datum proargmodes = SysCacheGetAttr(PROCOID, proctup,
+											Anum_pg_proc_proargmodes,
+											&is_null);
+		Assert(!is_null);
+		ArrayType* proargmodes_arr = DatumGetArrayTypeP(proargmodes);
+
+		ncols = 0;
+		for (int i = 0; i < ARR_DIMS(proargmodes_arr)[0]; ++i)
+			if (ARR_DATA_PTR(proargmodes_arr)[i] == PROARGMODE_OUT)
+				++ncols;
+
+		ReleaseSysCache(proctup);
+	}
+
+	Datum		values[ncols];
+	bool		nulls[ncols];
 	YBCPgTableDesc yb_tabledesc = NULL;
 	YBCPgTableProperties yb_table_properties;
 
-	HandleYBStatus(YBCPgTableExists(MyDatabaseId, relid, &exists_in_yb));
-	if (exists_in_yb)
-	{
-		HandleYBStatus(YBCPgGetTableDesc(MyDatabaseId, relid, &yb_tabledesc));
-		HandleYBStatus(YBCPgGetTableProperties(yb_tabledesc, &yb_table_properties));
-	}
+	YbGetTableDescAndProps(relid, true, &yb_tabledesc, &yb_table_properties);
 
-	tupdesc = CreateTemplateTupleDesc(3, false);
+	tupdesc = CreateTemplateTupleDesc(ncols, false);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1,
 					   "num_tablets", INT8OID, -1, 0);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 2,
 					   "num_hash_key_columns", INT8OID, -1, 0);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 3,
 					   "is_colocated", BOOLOID, -1, 0);
+	if (ncols >= 5)
+	{
+		TupleDescInitEntry(tupdesc, (AttrNumber) 4,
+						   "tablegroup_oid", OIDOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 5,
+						   "colocation_id", OIDOID, -1, 0);
+	}
 	BlessTupleDesc(tupdesc);
 
-	if (exists_in_yb)
+	if (yb_tabledesc)
 	{
 		values[0] = Int64GetDatum(yb_table_properties.num_tablets);
 		values[1] = Int64GetDatum(yb_table_properties.num_hash_key_columns);
 		values[2] = BoolGetDatum(yb_table_properties.is_colocated);
+		if (ncols >= 5)
+		{
+			values[3] =
+				OidIsValid(yb_table_properties.colocation_id)
+					? ObjectIdGetDatum(yb_table_properties.tablegroup_oid)
+					: (Datum) 0;
+			values[4] =
+				OidIsValid(yb_table_properties.colocation_id)
+					? ObjectIdGetDatum(yb_table_properties.colocation_id)
+					: (Datum) 0;
+		}
+
 		memset(nulls, 0, sizeof(nulls));
+		if (ncols >= 5)
+		{
+			nulls[3] = !OidIsValid(yb_table_properties.tablegroup_oid);
+			nulls[4] = !OidIsValid(yb_table_properties.colocation_id);
+		}
 	}
 	else
 	{
@@ -2045,9 +2127,31 @@ void YBSetParentDeathSignal()
 }
 
 Oid YbGetStorageRelid(Relation relation) {
-	if (relation->rd_rel->relkind == RELKIND_MATVIEW && 
+	if (relation->rd_rel->relkind == RELKIND_MATVIEW &&
 		relation->rd_rel->relfilenode != InvalidOid) {
 		return relation->rd_rel->relfilenode;
 	}
 	return RelationGetRelid(relation);
+}
+
+bool IsYbDbAdminUser(Oid member) {
+	return IsYugaByteEnabled() && has_privs_of_role(member, DEFAULT_ROLE_YB_DB_ADMIN);
+}
+
+void YbCheckUnsupportedSystemColumns(Var *var, const char *colname, RangeTblEntry *rte) {
+	if (rte->relkind == RELKIND_FOREIGN_TABLE)
+		return;
+	switch (var->varattno)
+	{
+		case SelfItemPointerAttributeNumber:
+		case MinTransactionIdAttributeNumber:
+		case MinCommandIdAttributeNumber:
+		case MaxTransactionIdAttributeNumber:
+		case MaxCommandIdAttributeNumber:
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					errmsg("System column \"%s\" is not supported yet", colname)));
+		default:
+			break;
+	}
 }

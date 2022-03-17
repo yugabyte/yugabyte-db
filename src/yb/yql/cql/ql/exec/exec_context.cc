@@ -31,11 +31,16 @@
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
+#include "yb/util/tsan_util.h"
 
 #include "yb/yql/cql/ql/exec/rescheduler.h"
 #include "yb/yql/cql/ql/ptree/parse_tree.h"
 #include "yb/yql/cql/ql/ptree/pt_select.h"
 #include "yb/yql/cql/ql/util/statement_params.h"
+
+DEFINE_int32(cql_prepare_child_threshold_ms, 2000 * yb::kTimeMultiplier,
+             "Timeout if preparing for child transaction takes longer"
+             "than the prescribed threshold.");
 
 namespace yb {
 namespace ql {
@@ -93,12 +98,26 @@ Status ExecContext::StartTransaction(
 
 Status ExecContext::PrepareChildTransaction(
     CoarseTimePoint deadline, ChildTransactionDataPB* data) {
-  ChildTransactionDataPB result =
-      VERIFY_RESULT(DCHECK_NOTNULL(transaction_.get())->PrepareChildFuture(
-           client::ForceConsistentRead::kTrue,
-           deadline).get());
-  *data = std::move(result);
-  return Status::OK();
+  auto future = DCHECK_NOTNULL(transaction_.get())->PrepareChildFuture(
+      client::ForceConsistentRead::kTrue, deadline);
+
+  // Set the deadline to be the earlier of the input deadline and the current timestamp
+  // plus the waiting time for the prepare child
+  auto future_deadline = std::min(
+      deadline,
+      CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(FLAGS_cql_prepare_child_threshold_ms));
+
+  auto future_status = future.wait_until(future_deadline);
+
+  if (future_status == std::future_status::ready) {
+    *data = VERIFY_RESULT(std::move(future).get());
+    return Status::OK();
+  }
+
+  auto message = Format("Timed out waiting for prepare child status, left to deadline: $0",
+                        MonoDelta(deadline - CoarseMonoClock::now()));
+  LOG(INFO) << message;
+  return STATUS(TimedOut, message);
 }
 
 Status ExecContext::ApplyChildTransactionResult(const ChildTransactionResultPB& result) {

@@ -291,6 +291,7 @@ Status ClusterAdminClient::CreateNamespaceSnapshot(const TypedNamespaceName& ns)
     const auto& table = resp.tables(i);
     tables[i].set_table_id(table.id());
     tables[i].set_namespace_id(table.namespace_().id());
+    tables[i].set_pgschema_name(table.pgschema_name());
 
     RSTATUS_DCHECK(table.relation_type() == master::USER_TABLE_RELATION ||
             table.relation_type() == master::INDEX_TABLE_RELATION, InternalError,
@@ -1118,7 +1119,8 @@ Status ClusterAdminClient::WriteUniverseKeyToFile(
   return Status::OK();
 }
 
-Status ClusterAdminClient::CreateCDCSDKDBStream(const TypedNamespaceName& ns) {
+Status ClusterAdminClient::CreateCDCSDKDBStream(
+  const TypedNamespaceName& ns, const std::string& checkpoint_type) {
   HostPort ts_addr = VERIFY_RESULT(GetFirstRpcAddressForTS());
   auto cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(proxy_cache_.get(), ts_addr);
 
@@ -1129,7 +1131,11 @@ Status ClusterAdminClient::CreateCDCSDKDBStream(const TypedNamespaceName& ns) {
   req.set_record_type(cdc::CDCRecordType::CHANGE);
   req.set_record_format(cdc::CDCRecordFormat::PROTO);
   req.set_source_type(cdc::CDCRequestSource::CDCSDK);
-  req.set_checkpoint_type(cdc::CDCCheckpointType::EXPLICIT);
+  if (checkpoint_type == yb::ToString("EXPLICIT")) {
+    req.set_checkpoint_type(cdc::CDCCheckpointType::EXPLICIT);
+  } else {
+    req.set_checkpoint_type(cdc::CDCCheckpointType::IMPLICIT);
+  }
 
   RpcController rpc;
   rpc.set_timeout(timeout_);
@@ -1335,7 +1341,6 @@ Status ClusterAdminClient::SetupUniverseReplication(
 
   if (resp.has_error()) {
     cout << "Error setting up universe replication: " << resp.error().status().message() << endl;
-
     Status status_from_error = StatusFromPB(resp.error().status());
     CleanupEnvironmentOnSetupUniverseReplicationFailure(producer_uuid, status_from_error);
 
@@ -1346,6 +1351,8 @@ Status ClusterAdminClient::SetupUniverseReplication(
 
   // Clean up config files if setup fails to complete.
   if (!setup_result_status.ok()) {
+    cout << "Error waiting for universe replication setup to complete: "
+         << setup_result_status.message().ToBuffer() << endl;
     CleanupEnvironmentOnSetupUniverseReplicationFailure(producer_uuid, setup_result_status);
     return setup_result_status;
   }

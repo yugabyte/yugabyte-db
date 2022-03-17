@@ -13,7 +13,10 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -35,7 +38,7 @@ public class ResizeNode extends UpgradeTaskBase {
 
   @Override
   public UserTaskDetails.SubTaskGroupType getTaskSubGroupType() {
-    return UserTaskDetails.SubTaskGroupType.Invalid;
+    return UserTaskDetails.SubTaskGroupType.ResizingDisk;
   }
 
   @Override
@@ -54,12 +57,32 @@ public class ResizeNode extends UpgradeTaskBase {
           // Create task sequence for VM Image upgrade.
           final UniverseDefinitionTaskParams.UserIntent userIntent =
               taskParams().getPrimaryCluster().userIntent;
-          createRollingNodesUpgradeTaskFlow(
-              (nodez, processTypes) -> createResizeNodeTasks(nodez, processTypes, universe),
-              nodes,
-              new UpgradeContext(userIntent.replicationFactor > 1, false));
-
           String newInstanceType = userIntent.instanceType;
+          UniverseDefinitionTaskParams.UserIntent currentIntent =
+              universe.getUniverseDetails().getPrimaryCluster().userIntent;
+
+          final boolean instanceTypeIsChanging =
+              !Objects.equals(
+                      newInstanceType,
+                      universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType)
+                  || taskParams().isForceResizeNode();
+
+          if (instanceTypeIsChanging) {
+            Set<NodeDetails> nodez = new HashSet<>(nodes.getLeft());
+            nodez.addAll(nodes.getRight());
+            createPreResizeNodeTasks(nodez, currentIntent.instanceType, currentIntent.deviceInfo);
+          }
+
+          createRollingNodesUpgradeTaskFlow(
+              (nodez, processTypes) ->
+                  createResizeNodeTasks(nodez, universe, instanceTypeIsChanging),
+              nodes,
+              UpgradeContext.builder()
+                  .reconfigureMaster(userIntent.replicationFactor > 1)
+                  .runBeforeStopping(false)
+                  .processInactiveMaster(false)
+                  .build());
+
           Integer newDiskSize = null;
           if (taskParams().getPrimaryCluster().userIntent.deviceInfo != null) {
             newDiskSize = taskParams().getPrimaryCluster().userIntent.deviceInfo.volumeSize;
@@ -69,12 +92,23 @@ public class ResizeNode extends UpgradeTaskBase {
                   newInstanceType,
                   newDiskSize,
                   taskParams().clusters.stream().map(c -> c.uuid).collect(Collectors.toList()))
-              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ResizingDisk);
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ChangeInstanceType);
         });
   }
 
+  private void createPreResizeNodeTasks(
+      Collection<NodeDetails> nodes, String currentInstanceType, DeviceInfo currentDeviceInfo) {
+    // Update mounted disks.
+    for (NodeDetails node : nodes) {
+      if (!node.disksAreMountedByUUID) {
+        createUpdateMountedDisksTask(node, currentInstanceType, currentDeviceInfo)
+            .setSubTaskGroupType(getTaskSubGroupType());
+      }
+    }
+  }
+
   private void createResizeNodeTasks(
-      List<NodeDetails> nodes, Set<ServerType> serverTypes, Universe universe) {
+      List<NodeDetails> nodes, Universe universe, boolean instanceTypeIsChanging) {
 
     UniverseDefinitionTaskParams.UserIntent currUserIntent =
         universe.getUniverseDetails().getPrimaryCluster().userIntent;
@@ -104,7 +138,7 @@ public class ResizeNode extends UpgradeTaskBase {
 
     // Change instance type
     String newInstanceType = taskParams().getPrimaryCluster().userIntent.instanceType;
-    if (taskParams().isForceResizeNode() || !currInstanceType.equals(newInstanceType)) {
+    if (instanceTypeIsChanging) {
       for (NodeDetails node : nodes) {
         // Check if the node needs to be resized.
         if (!taskParams().isForceResizeNode()

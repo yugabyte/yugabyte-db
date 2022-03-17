@@ -34,6 +34,7 @@ import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
+import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Backup.BackupVersion;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
@@ -51,8 +52,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CancellationException;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
 import org.yb.CommonTypes.TableType;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.ListTablesResponse;
@@ -118,8 +121,8 @@ public class CreateBackup extends UniverseTaskBase {
             for (BackupRequestParams.KeyspaceTable keyspaceTable : params().keyspaceTableList) {
               BackupTableParams backupParams =
                   createBackupParams(params().backupType, keyspaceTable.keyspace);
-              Set<UUID> tableSet = new HashSet<>(keyspaceTable.tableUUIDList);
-              if (tableSet.size() != 0) {
+              if (!CollectionUtils.isEmpty(keyspaceTable.tableUUIDList)) {
+                Set<UUID> tableSet = new HashSet<>(keyspaceTable.tableUUIDList);
                 for (UUID tableUUID : tableSet) {
                   GetTableSchemaResponse tableSchema =
                       client.getTableSchemaByUUID(tableUUID.toString().replace("-", ""));
@@ -278,7 +281,10 @@ public class CreateBackup extends UniverseTaskBase {
         }
 
         subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
-
+        if (params().alterLoadBalancer) {
+          createLoadBalancerStateChangeTask(false)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+        }
         Backup backup =
             Backup.create(
                 params().customerUUID,
@@ -297,6 +303,10 @@ public class CreateBackup extends UniverseTaskBase {
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreatingTableBackup);
 
         // Marks the update of this universe as a success only if all the tasks before it succeeded.
+        if (params().alterLoadBalancer) {
+          createLoadBalancerStateChangeTask(true)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+        }
         createMarkUniverseUpdateSuccessTasks()
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
@@ -310,21 +320,36 @@ public class CreateBackup extends UniverseTaskBase {
         metricService.setOkStatusMetric(
             buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
 
+      } catch (CancellationException ce) {
+        log.error("Aborting backups for task: {}", userTaskUUID);
+        Backup.fetchAllBackupsByTaskUUID(userTaskUUID)
+            .forEach((backup) -> backup.transitionState(BackupState.Stopped));
+        throw ce;
       } catch (Throwable t) {
+        if (params().alterLoadBalancer) {
+          subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
+          // If the task failed, we don't want the loadbalancer to be
+          // disabled, so we enable it again in case of errors.
+          createLoadBalancerStateChangeTask(true)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+          subTaskGroupQueue.run();
+        }
         throw t;
       } finally {
         lockedUpdateBackupState(params().universeUUID, this, false);
       }
     } catch (Throwable t) {
-      log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
-
-      BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
-      metricService.setStatusMetric(
-          buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe), t.getMessage());
-      // Run an unlock in case the task failed before getting to the unlock. It is okay if it
-      // errors out.
-      if (isUniverseLocked) {
-        unlockUniverseForUpdate();
+      try {
+        log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+        BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+        metricService.setFailureStatusMetric(
+            buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
+      } finally {
+        // Run an unlock in case the task failed before getting to the unlock. It is okay if it
+        // errors out.
+        if (isUniverseLocked) {
+          unlockUniverseForUpdate();
+        }
       }
       throw t;
     }

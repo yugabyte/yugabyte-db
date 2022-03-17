@@ -63,7 +63,7 @@ For a complete list of prerequisites, refer to [Prerequisites](../../yugabyte-pl
 
 ## What are the requirements to run YugabyteDB data nodes?
 
-Prerequisites for YugabyteDB data nodes are listed in the YugabyteDB [Deployment checklist](../../../deploy/checklist).
+Prerequisites for YugabyteDB data nodes are listed in the YugabyteDB [Deployment checklist](../../../deploy/checklist/).
 
 ## How does the Yugabyte Platform console interact with YugabyteDB data nodes?
 
@@ -75,7 +75,7 @@ Yes, you have access to all machines spawned. The machines are spawned by Yugaby
 
 ## How many machines do I need to try out Yugabyte Platform against my load?
 
-You need:  
+You need:
 
 - One server to install Yugabyte Platform on.
 - A minimum number of servers for the data nodes as determined by the replication factor (RF). For example, one server for RF=1, and 3 servers in case of RF=3.

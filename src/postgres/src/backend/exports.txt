@@ -2,6 +2,9 @@
 # Functions to be exported by postgres DLLs
 
 # Memory Context API
+YbgCreateMemoryContext
+YbgGetCurrentMemoryContext
+YbgSetCurrentMemoryContext
 YbgPrepareMemoryContext
 YbgResetMemoryContext
 YbgDeleteMemoryContext
@@ -11,7 +14,12 @@ YbgGetTypeTable
 
 # Expression Evaluation API
 YbgExprContextCreate
+YbgExprContextReset
 YbgExprContextAddColValue
+YbgPrepareExpr
+YbgExprType
+YbgExprTypmod
+YbgExprCollation
 YbgEvalExpr
 YbgSplitArrayDatum
 
@@ -20,3 +28,9 @@ YbgSamplerCreate
 YbgSamplerGetState
 YbgSamplerRandomFract
 YbgReservoirGetNextS
+
+DecodeDatum
+DecodeTZDatum
+DecodeArrayDatum
+DecodeRangeDatum
+DecodeRangeArrayDatum

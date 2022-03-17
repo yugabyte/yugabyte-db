@@ -143,9 +143,6 @@ YBCStatus YBCPgReserveOids(YBCPgOid database_oid,
 // Retrieve the protobuf-based catalog version (now deprecated for new clusters).
 YBCStatus YBCPgGetCatalogMasterVersion(uint64_t *version);
 
-void YBCPgInvalidateTableCache(
-    const YBCPgOid database_oid,
-    const YBCPgOid table_oid);
 YBCStatus YBCPgInvalidateTableCacheByTableId(const char *table_id);
 
 // TABLEGROUP --------------------------------------------------------------------------------------
@@ -178,7 +175,9 @@ YBCStatus YBCPgNewCreateTable(const char *database_name,
                               bool add_primary_key,
                               const bool colocated,
                               YBCPgOid tablegroup_oid,
+                              YBCPgOid colocation_id,
                               YBCPgOid tablespace_oid,
+                              YBCPgOid matview_pg_table_oid,
                               YBCPgStatement *handle);
 
 YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
@@ -227,8 +226,10 @@ YBCStatus YBCPgGetColumnInfo(YBCPgTableDesc table_desc,
                              int16_t attr_number,
                              YBCPgColumnInfo *column_info);
 
-YBCStatus YBCPgGetTableProperties(YBCPgTableDesc table_desc,
-                                  YBCPgTableProperties *properties);
+// Does not set tablegroup_oid.
+// Callers should probably use YbGetTableDescAndProps instead.
+YBCStatus YBCPgGetSomeTableProperties(YBCPgTableDesc table_desc,
+                                      YBCPgTableProperties *properties);
 
 YBCStatus YBCPgDmlModifiesRow(YBCPgStatement handle, bool *modifies_row);
 
@@ -259,6 +260,7 @@ YBCStatus YBCPgNewCreateIndex(const char *database_name,
                               const bool skip_index_backfill,
                               bool if_not_exist,
                               YBCPgOid tablegroup_oid,
+                              YBCPgOid colocation_id,
                               YBCPgOid tablespace_oid,
                               YBCPgStatement *handle);
 
@@ -289,6 +291,23 @@ YBCStatus YBCPgBackfillIndex(
 // - SELECT target_expr1, target_expr2, ...
 // - INSERT / UPDATE / DELETE ... RETURNING target_expr1, target_expr2, ...
 YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target);
+
+// Add a WHERE clause condition to the statement.
+// Currently only SELECT statement supports WHERE clause conditions.
+// Only serialized Postgres expressions are allowed.
+// Multiple quals added to the same statement are implicitly AND'ed.
+YBCStatus YbPgDmlAppendQual(YBCPgStatement handle, YBCPgExpr qual);
+
+// Add column reference needed to evaluate serialized Postgres expression.
+// PgExpr's other than serialized Postgres expressions are inspected and if they contain any
+// column references, they are added automatically io the DocDB request. We do not do that
+// for serialized postgres expression because it may be expensive to deserialize and analyze
+// potentially complex expressions. While expressions are deserialized anyway by DocDB, the
+// concern about cost of analysis still stands.
+// While optional in regular column refenence expressions, column references needed to evaluate
+// serialized Postgres expression must contain Postgres data type information. DocDB needs to know
+// how to convert values from the DocDB formats to use them to evaluate Postgres expressions.
+YBCStatus YbPgDmlAppendColumnRef(YBCPgStatement handle, YBCPgExpr colref);
 
 // Binding Columns: Bind column with a value (expression) in a statement.
 // + This API is used to identify the rows you want to operate on. If binding columns are not
@@ -325,6 +344,12 @@ YBCStatus YBCPgDmlBindHashCodes(YBCPgStatement handle, bool start_valid,
                                 bool start_inclusive, uint64_t start_hash_val,
                                 bool end_valid, bool end_inclusive,
                                 uint64_t end_hash_val);
+
+YBCStatus YBCPgDmlAddRowUpperBound(YBCPgStatement handle, int n_col_values,
+                                    YBCPgExpr *col_values, bool is_inclusive);
+
+YBCStatus YBCPgDmlAddRowLowerBound(YBCPgStatement handle, int n_col_values,
+                                    YBCPgExpr *col_values, bool is_inclusive);
 
 // Binding Tables: Bind the whole table in a statement.  Do not use with BindColumn.
 YBCStatus YBCPgDmlBindTable(YBCPgStatement handle);
@@ -397,9 +422,6 @@ YBCStatus YBCPgNewUpdate(YBCPgOid database_oid,
 
 YBCStatus YBCPgExecUpdate(YBCPgStatement handle);
 
-// Retrieve value of ysql_enable_update_batching gflag.
-bool YBCGetEnableUpdateBatching();
-
 // DELETE ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewDelete(YBCPgOid database_oid,
                          YBCPgOid table_oid,
@@ -433,9 +455,10 @@ YBCStatus YBCPgExecSelect(YBCPgStatement handle, const YBCPgExecParameters *exec
 YBCStatus YBCPgBeginTransaction();
 YBCStatus YBCPgRecreateTransaction();
 YBCStatus YBCPgRestartTransaction();
-YBCStatus YBCPgMaybeResetTransactionReadPoint();
+YBCStatus YBCPgResetTransactionReadPoint();
+YBCStatus YBCPgRestartReadPoint();
 YBCStatus YBCPgCommitTransaction();
-void YBCPgAbortTransaction();
+YBCStatus YBCPgAbortTransaction();
 YBCStatus YBCPgSetTransactionIsolationLevel(int isolation);
 YBCStatus YBCPgSetTransactionReadOnly(bool read_only);
 YBCStatus YBCPgSetTransactionDeferrable(bool deferrable);
@@ -511,26 +534,7 @@ bool YBCIsInitDbModeEnvVarSet();
 // This is called by initdb. Used to customize some behavior.
 void YBCInitFlags();
 
-// Retrieves value of ysql_max_read_restart_attempts gflag
-int32_t YBCGetMaxReadRestartAttempts();
-
-// Retrieves the value of ysql_max_write_restart_attempts gflag.
-int32_t YBCGetMaxWriteRestartAttempts();
-
-// Retrieves the value of ysql_sleep_before_retry_on_txn_conflict gflag.
-bool YBCShouldSleepBeforeRetryOnTxnConflict();
-
-// Retrieves value of ysql_output_buffer_size gflag
-int32_t YBCGetOutputBufferSize();
-
-// Retrieves value of ysql_sequence_cache_minval gflag
-int32_t YBCGetSequenceCacheMinval();
-
-// Retrieve value of ysql_disable_index_backfill gflag.
-bool YBCGetDisableIndexBackfill();
-
-// Retrieve value of log_ysql_catalog_versions gflag.
-bool YBCGetLogYsqlCatalogVersions();
+const YBCPgGFlagsAccessor* YBCGetGFlags();
 
 bool YBCPgIsYugaByteEnabled();
 

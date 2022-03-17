@@ -584,21 +584,12 @@ typedef struct EState
 	 * YugaByte-specific fields
 	 */
 
-	bool es_yb_is_single_row_modify_txn; /* Is this query a single-row modify
+	bool yb_es_is_single_row_modify_txn; /* Is this query a single-row modify
 																				* and the only stmt in this txn. */
 	TupleTableSlot *yb_conflict_slot; /* If a conflict is to be resolved when inserting data,
 																		 * we cache the conflict tuple here when processing and
 																		 * then free the slot after the conflict is resolved. */
 	YBCPgExecParameters yb_exec_params;
-
-	/*
-	 * Whether we can batch updates - note that enabling this will cause batched
-	 * updates to not return a correct rows_affected_count, thus cannot be used
-	 * for plpgsql (which uses this value for GET DIAGNOSTICS...ROW_COUNT and
-	 * FOUND).
-	 * Currently only enabled for PGSQL functions / procedures.
-	 */
-	bool yb_can_batch_updates;
 
 	/*
 	 *  The read hybrid time used for this query. This value is initialized
@@ -678,6 +669,15 @@ typedef struct YbPgExecOutParam {
 	StringInfo status;
 	int64_t status_code;
 } YbPgExecOutParam;
+
+typedef struct YbExprParamDesc {
+	NodeTag type;
+
+	int32_t attno;
+	int32_t typid;
+	int32_t typmod;
+	int32_t collid;
+} YbExprParamDesc;
 
 
 /* ----------------------------------------------------------------

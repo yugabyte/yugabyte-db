@@ -2646,12 +2646,17 @@ CopyFrom(CopyState cstate)
 		int batch_size = 0;
 
 		if (!IsYBRelation(resultRelInfo->ri_RelationDesc))
+		{
+			Assert(resultRelInfo->ri_RelationDesc->rd_rel->relpersistence == RELPERSISTENCE_TEMP ||
+					resultRelInfo->ri_RelationDesc->rd_rel->relkind == RELKIND_FOREIGN_TABLE);
 			ereport(WARNING,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-			 	 errmsg("Batched COPY is not supported on temporary tables. "
-						"Defaulting to using one transaction for the entire copy."),
+			 	 errmsg("Batched COPY is not supported on %s tables. "
+						"Defaulting to using one transaction for the entire copy.",
+						YbIsTempRelation(resultRelInfo->ri_RelationDesc) ? "temporary" : "foreign"),
 				 errhint("Either copy onto non-temporary table or set rows_per_transaction "
 						 "option to `0` to disable batching and remove this warning.")));
+		}
 		else if (YBIsDataSent())
 			ereport(WARNING,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -3005,11 +3010,13 @@ CopyFrom(CopyState cstate)
 						}
 						else if (resultRelInfo->ri_FdwRoutine != NULL)
 						{
+							MemoryContext saved_context;
+							saved_context = MemoryContextSwitchTo(estate->es_query_cxt);
 							slot = resultRelInfo->ri_FdwRoutine->ExecForeignInsert(estate,
 																				   resultRelInfo,
 																				   slot,
 																				   NULL);
-
+							MemoryContextSwitchTo(saved_context);
 							if (slot == NULL)	/* "do nothing" */
 								goto next_tuple;
 

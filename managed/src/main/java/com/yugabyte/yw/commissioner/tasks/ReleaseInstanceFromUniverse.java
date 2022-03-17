@@ -106,9 +106,15 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
         }
 
+        // Set the node states to Removing.
+        createSetNodeStateTasks(currentNodeDetails, NodeDetails.NodeState.Removing)
+            .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
         // Create tasks to terminate that instance. Force delete and ignore errors.
         createDestroyServerTasks(
-                currentNodeDetails, true /* isForceDelete */, false /* deleteNode */)
+                currentNodeDetails,
+                true /* isForceDelete */,
+                false /* deleteNode */,
+                true /* deleteRootVolumes */)
             .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
       }
 
@@ -134,14 +140,16 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
       hitException = true;
       throw t;
     } finally {
-      // Reset the state, on any failure, so that the actions can be retried.
-      if (currentNode != null && hitException) {
-        setNodeState(taskParams().nodeName, currentNode.state);
+      try {
+        // Reset the state, on any failure, so that the actions can be retried.
+        if (currentNode != null && hitException) {
+          setNodeState(taskParams().nodeName, currentNode.state);
+        }
+      } finally {
+        // Mark the update of the universe as done. This will allow future edits/updates to the
+        // universe to happen.
+        unlockUniverseForUpdate();
       }
-
-      // Mark the update of the universe as done. This will allow future edits/updates to the
-      // universe to happen.
-      unlockUniverseForUpdate();
     }
     log.info("Finished {} task.", getName());
   }

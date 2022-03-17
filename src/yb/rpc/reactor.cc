@@ -605,7 +605,7 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
       this,
       std::move(stream),
       ConnectionDirection::CLIENT,
-      &messenger()->rpc_metrics(),
+      messenger()->rpc_metrics().get(),
       std::move(context));
 
   RETURN_NOT_OK(connection->Start(&loop_));
@@ -928,7 +928,7 @@ void Reactor::RegisterInboundSocket(
   auto conn = std::make_shared<Connection>(this,
                                            std::move(*stream),
                                            ConnectionDirection::SERVER,
-                                           &messenger()->rpc_metrics(),
+                                           messenger()->rpc_metrics().get(),
                                            factory->Create(receive_buffer_size));
   ScheduleReactorFunctor([conn = std::move(conn)](Reactor* reactor) {
     reactor->RegisterConnection(conn);

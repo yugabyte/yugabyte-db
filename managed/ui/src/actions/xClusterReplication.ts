@@ -76,12 +76,13 @@ export function deleteXclusterConfig(
   return axios.delete(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${uuid}`);
 }
 
-export function queryLagMetricsForUniverse(nodePrefix: string | undefined) {
+export function queryLagMetricsForUniverse(nodePrefix: string | undefined, replicationUUID: string) {
   const DEFAULT_GRAPH_FILTER = {
-    start: moment().subtract('1','hour').format('X'),
-    end:  moment().format('X'),
+    start: moment().utc().subtract('1','hour').format('X'),
+    end:  moment().utc().format('X'),
     nodePrefix,
-    metrics: ['tserver_async_replication_lag_micros']
+    metrics: ['tserver_async_replication_lag_micros'],
+    xClusterConfigUuid: replicationUUID
   };
   
   const customerUUID = localStorage.getItem('customerId');
@@ -90,7 +91,7 @@ export function queryLagMetricsForUniverse(nodePrefix: string | undefined) {
 
 export function queryLagMetricsForTable(tableName: string, nodePrefix: string | undefined) {
   const DEFAULT_GRAPH_FILTER = {
-    start: moment().subtract('1', 'minute').format('X'),
+    start: moment().utc().subtract('1', 'minute').format('X'),
     tableName,
     nodePrefix,
     metrics: ['tserver_async_replication_lag_micros']

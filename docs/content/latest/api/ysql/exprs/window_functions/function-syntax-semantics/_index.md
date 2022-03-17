@@ -38,7 +38,7 @@ This property is marked by _"Y"_ in the column _"agg?"_ in the following tables;
 
 {{< note title="Functions with both a 'window' and an 'aggregate' variant" >}}
 
-The definitive description of the use, as an aggregate function, of a window function that has such a variant, is described within the [Aggregate functions](../../aggregate_functions) major section in the section [Within-group hypothetical-set aggregate functions
+The definitive description of the use, as an aggregate function, of a window function that has such a variant, is described within the [Aggregate functions](../../aggregate_functions/) major section in the section [Within-group hypothetical-set aggregate functions
 ](../../aggregate_functions/function-syntax-semantics/rank-dense-rank-percent-rank-cume-dist/).
 
 {{< /note >}}

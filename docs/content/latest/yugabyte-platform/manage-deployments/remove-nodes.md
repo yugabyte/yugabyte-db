@@ -9,12 +9,12 @@ menu:
   latest:
     identifier: remove-nodes
     parent: manage-deployments
-    weight: 30
+    weight: 20
 isTocNested: true
 showAsideToc: true
 ---
 
-If a virtual machine or a physical server in a universe reaches its end of life and has unrecoverable hardware or other system issues, such as problems with its operating system, disk, and so on, it is detected and displayed in the Yugabyte Platform UI as an unreachable node, as per the following illustration: 
+If a virtual machine or a physical server in a universe reaches its end of life and has unrecoverable hardware or other system issues, such as problems with its operating system, disk, and so on, it is detected and displayed in the Yugabyte Platform UI as an unreachable node, as per the following illustration:
 
 ![Unreachable Node Actions](/images/ee/node-actions-unreachable.png)
 
@@ -22,11 +22,11 @@ When this happens, new Master leaders are elected for the underlying data shards
 
 - Step 1: [Remove node](#remove-node)
 - Step 2: [Release instance](#release-instance)
-- Step 3: [Delete node](delete-node)
+- Step 3: [Delete node](#delete-node)
 
 {{< note title="Note" >}}
 
-A node status displayed in the UI is not always entirely indicative of the node's internal state. For example, a node whose status is shown as Unreachable can have various internal states, some of which are recoverable and other are not.
+A node status displayed in the UI is not always entirely indicative of the node's internal state. For example, a node whose status is shown as Unreachable can have various internal states, some of which are recoverable and others are not.
 
 {{< /note >}}
 
@@ -72,6 +72,8 @@ Taking this action transfers the node to a BeingDecommissioned and then Decommis
 5. DNS entries are updated.
 6. Prometheus rules are updated and instructed to stop gathering metrics from this instance.
 
+You can recover a node whose **Status** column displays **Decommissioned** by following instructions provided in [Recover a node](../add-nodes/).
+
 ## Delete node
 
 You can perform the delete action via **Actions** corresponding to the node.
@@ -83,7 +85,7 @@ The action to delete a node is available from the following internal states of t
 - Adding
 - Decommissioned
 
-Taking this action completely eliminates the node, as follows: 
+Taking this action completely eliminates the node, as follows:
 
 1. Removes the node record from the universe metadata.
 2. Updates metadata in the database only.

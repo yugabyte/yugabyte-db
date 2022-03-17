@@ -59,7 +59,7 @@ While this scenario has regulatory compliance requirements where data needs to b
 
 ## Step 1. Create tablespaces
 
-First, we create tablespaces and transaction tables for each geographic region we wish to partition data into:
+First, we create tablespaces for each geographic region we wish to partition data into:
 
 1. Create tablespaces for each region.
 
@@ -84,48 +84,6 @@ First, we create tablespaces and transaction tables for each geographic region w
       {"cloud":"aws","region":"ap-south-1","zone":"ap-south-1b","min_num_replicas":1},
       {"cloud":"aws","region":"ap-south-1","zone":"ap-south-1c","min_num_replicas":1}]}'
     );
-    ```
-
-1. Create transaction tables for use within each region. (Replace the IP addresses with those of your YB-Master servers.)
-
-    ```sh
-    ./bin/yb-admin \
-        -master_addresses 127.0.0.1:7100,127.0.0.4:7100,127.0.0.7:7100 \
-        create_transaction_table transactions_eu_central_1
-    ```
-
-    ```sh
-    ./bin/yb-admin \
-        -master_addresses 127.0.0.1:7100,127.0.0.4:7100,127.0.0.7:7100 \
-        create_transaction_table transactions_us_west_2
-    ```
-
-    ```sh
-    ./bin/yb-admin \
-        -master_addresses 127.0.0.1:7100,127.0.0.4:7100,127.0.0.7:7100 \
-        create_transaction_table transactions_ap_south_1
-    ```
-
-1. Assign placement for each transaction table. (Replace the IP addresses with those of your YB-Master servers.)
-
-    ```sh
-    ./bin/yb-admin \
-        -master_addresses 127.0.0.1:7100,127.0.0.4:7100,127.0.0.7:7100 \
-        modify_table_placement_info system transactions_eu_central_1 \
-        aws.eu-central-1.eu-central-1a,aws.eu-central-1.eu-central-1b,aws.eu-central-1.eu-central-1c 3
-    ```
-
-    ```sh
-    ./bin/yb-admin \
-        -master_addresses 127.0.0.1:7100,127.0.0.4:7100,127.0.0.7:7100 \
-        modify_table_placement_info system transactions_us_west_2 \
-        aws.us-west-2.us-west-2a,aws.us-west-2.us-west-2b,aws.us-west-2.us-west-2c 3
-    ```
-    ```sh
-    ./bin/yb-admin \
-        -master_addresses 127.0.0.1:7100,127.0.0.4:7100,127.0.07:7100 \
-        modify_table_placement_info system transactions_ap_south_1 \
-        aws.ap-south-1.ap-south-1a,aws.ap-south-1.ap-south-1b,aws.ap-south-1.ap-south-1c 3
     ```
 
 ## Step 2. Create table with partitions
@@ -193,6 +151,12 @@ Next, we create the parent table that contains a `geo_partition` column which is
 The data is now arranged as follows:
 
 ![Row-level geo-partitioning](/images/explore/multi-region-deployments/geo-partitioning-2.png)
+
+{{< tip title="Region-local transaction table" >}}
+
+When you create tables using a tablespace with a placement set, YugabyteDB automatically creates a transaction table under the tablespace if one doesn't yet exist, with a name like `system.transactions_90141438-f42c-4a39-8a12-4072c1216d46`.
+
+{{</ tip >}}
 
 ## Step 3. Pinning user partitions specific to geographic locations
 
@@ -395,7 +359,7 @@ created_at    | 2020-11-07 21:28:11.056236
 
 ## Step 5. Running distributed transactions
 
-So far, we have only been running `SELECT` and [single-row transactions](../../architecture/transactions/transactions-overview/#single-row-transactions). Geo-partitioning introduces a new complication for general distributed transactions.
+So far, we have only been running `SELECT` and [single-row transactions](../../../architecture/transactions/transactions-overview/#single-row-transactions). Geo-partitioning introduces a new complication for general distributed transactions.
 
 Let's say we want to run the following transaction:
 
@@ -417,7 +381,7 @@ INSERT INTO bank_transactions VALUES (100, 10002, 'EU', 'checking', 400.00, 'deb
 ERROR:  Illegal state: Nonlocal tablet accessed in local transaction: tablet c5a611afd571455e80450bd553a24a64: . Errors from tablet servers: [Illegal state (yb/client/transaction.cc:284): Nonlocal tablet accessed in local transaction: tablet c5a611afd571455e80450bd553a24a64]
 ```
 
-Because we've created a transaction table for us-west-2, YugabyteDB assumes by default that we want to run a transaction local to that region (using the transaction status table `system.transactions_us_west_2` we created in Step 1), but such a transaction cannot modify data outside of us-west-2.
+Because we have a tablespace with placement set to the us-west-2 region, YugabyteDB assumes by default that we want to run a transaction local to that region (using the automatically-generated transaction status table for the `us_west_2_tablespace` created in Step 1), but such a transaction cannot modify data outside of us-west-2.
 
 However, if we instead connect to a node in eu-central-1 and run the exact same transaction, we are now able to finish and commit the transaction without error:
 
@@ -525,21 +489,7 @@ CREATE TABLESPACE sa_east_1_tablespace WITH (
     );
 ```
 
-Next, create the transaction table and adjust the placement. (Replace the IP addresses with those of your YB-Master servers.)
-
-```sh
-./bin/yb-admin \
-    -master_addresses 127.0.0.1:7100,127.0.0.4:7100,127.0.0.7:7100 \
-    create_transaction_table transactions_sa_east_1
-```
-```sh
-./bin/yb-admin \
-    -master_addresses 127.0.0.1:7100,127.0.0.4:7100,127.0.0.7:7100 \
-    modify_table_placement_info system transactions_sa_east_1 \
-    aws.sa-east-1.sa-east-1a,aws.sa-east-1.sa-east-1b,aws.sa-east-1.sa-east-1c 3
-```
-
-Finally, create the partition for Brazil:
+Then, create the partition for Brazil:
 
 ```sql
 CREATE TABLE bank_transactions_brazil

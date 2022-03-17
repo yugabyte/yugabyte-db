@@ -7,19 +7,6 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
-import com.fasterxml.jackson.annotation.JsonFormat;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.annotations.VisibleForTesting;
-import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.Util.UniverseDetailSubset;
-import com.yugabyte.yw.forms.CertificateParams;
-import io.ebean.Finder;
-import io.ebean.Model;
-import io.ebean.annotation.DbJson;
-import io.ebean.annotation.EnumValue;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
@@ -31,14 +18,35 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
 import javax.persistence.Id;
 import javax.persistence.Transient;
+
+import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.annotations.VisibleForTesting;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.Util.UniverseDetailSubset;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
+import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
+import com.yugabyte.yw.forms.CertificateParams;
+import com.yugabyte.yw.models.helpers.CommonUtils;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import io.ebean.Finder;
+import io.ebean.Model;
+import io.ebean.annotation.DbJson;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 import play.data.validation.Constraints;
 import play.libs.Json;
 
@@ -46,17 +54,10 @@ import play.libs.Json;
 @Entity
 public class CertificateInfo extends Model {
 
-  public enum Type {
-    @EnumValue("SelfSigned")
-    SelfSigned,
-
-    @EnumValue("CustomCertHostPath")
-    CustomCertHostPath,
-
-    @EnumValue("CustomServerCert")
-    CustomServerCert
-  }
-
+  /**
+   * This is the custom certificatePath information certificates received in param are converted to
+   * certs and dumped in file This contains information of file path for respective certs
+   */
   public static class CustomServerCertInfo {
     public String serverCert;
     public String serverKey;
@@ -126,7 +127,7 @@ public class CertificateInfo extends Model {
   @Constraints.Required
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
-  public CertificateInfo.Type certType;
+  public CertConfigType certType;
 
   @ApiModelProperty(value = "The certificate file's checksum", accessMode = READ_ONLY)
   @Column(nullable = true)
@@ -142,10 +143,11 @@ public class CertificateInfo extends Model {
   @ApiModelProperty(value = "Details about the certificate", accessMode = READ_WRITE)
   @Column(columnDefinition = "TEXT", nullable = true)
   @DbJson
+  // @JsonIgnore
   public JsonNode customCertInfo;
 
-  public CertificateParams.CustomCertInfo getCustomCertInfo() {
-    if (this.certType != CertificateInfo.Type.CustomCertHostPath) {
+  public CertificateParams.CustomCertInfo getCustomCertPathParams() {
+    if (this.certType != CertConfigType.CustomCertHostPath) {
       return null;
     }
     if (this.customCertInfo != null) {
@@ -154,7 +156,7 @@ public class CertificateInfo extends Model {
     return null;
   }
 
-  public void setCustomCertInfo(
+  public void setCustomCertPathParams(
       CertificateParams.CustomCertInfo certInfo, UUID certUUID, UUID cudtomerUUID) {
     this.checkEditable(certUUID, customerUUID);
     this.customCertInfo = Json.toJson(certInfo);
@@ -162,13 +164,48 @@ public class CertificateInfo extends Model {
   }
 
   public CustomServerCertInfo getCustomServerCertInfo() {
-    if (this.certType != CertificateInfo.Type.CustomServerCert) {
+    if (this.certType != CertConfigType.CustomServerCert) {
       return null;
     }
     if (this.customCertInfo != null) {
       return Json.fromJson(this.customCertInfo, CustomServerCertInfo.class);
     }
     return null;
+  }
+
+  /**
+   * To be called to return response to API calls, for java.lang.reflect
+   *
+   * @return
+   */
+  public HashicorpVaultConfigParams getCustomHCPKICertInfo() {
+    if (this.certType != CertConfigType.HashicorpVault) {
+      return null;
+    }
+    if (this.customCertInfo == null) {
+      return null;
+    }
+
+    HashicorpVaultConfigParams params = getCustomHCPKICertInfoInternal();
+    params.vaultToken = CommonUtils.getMaskedValue("HC_VAULT_TOKEN", params.vaultToken);
+    return params;
+  }
+
+  @JsonIgnore
+  public HashicorpVaultConfigParams getCustomHCPKICertInfoInternal() {
+    if (this.certType != CertConfigType.HashicorpVault) {
+      return null;
+    }
+    if (this.customCertInfo == null) {
+      return null;
+    }
+
+    HashicorpVaultConfigParams params = new HashicorpVaultConfigParams(this.customCertInfo);
+    String token =
+        EncryptionInTransitUtil.unmaskCertConfigData(this.customerUUID, params.vaultToken);
+    if (token != null) params.vaultToken = token;
+
+    return params;
   }
 
   public static final Logger LOG = LoggerFactory.getLogger(CertificateInfo.class);
@@ -181,7 +218,7 @@ public class CertificateInfo extends Model {
       Date expiryDate,
       String privateKey,
       String certificate,
-      CertificateInfo.Type certType)
+      CertConfigType certType)
       throws IOException, NoSuchAlgorithmException {
     CertificateInfo cert = new CertificateInfo();
     cert.uuid = uuid;
@@ -213,7 +250,7 @@ public class CertificateInfo extends Model {
     cert.startDate = startDate;
     cert.expiryDate = expiryDate;
     cert.certificate = certificate;
-    cert.certType = Type.CustomCertHostPath;
+    cert.certType = CertConfigType.CustomCertHostPath;
     cert.customCertInfo = Json.toJson(customCertInfo);
     cert.checksum = Util.getFileChecksum(certificate);
     cert.save();
@@ -236,8 +273,32 @@ public class CertificateInfo extends Model {
     cert.startDate = startDate;
     cert.expiryDate = expiryDate;
     cert.certificate = certificate;
-    cert.certType = Type.CustomServerCert;
+    cert.certType = CertConfigType.CustomServerCert;
     cert.customCertInfo = Json.toJson(customServerCertInfo);
+    cert.checksum = Util.getFileChecksum(certificate);
+    cert.save();
+    return cert;
+  }
+
+  public static CertificateInfo create(
+      UUID uuid,
+      UUID customerUUID,
+      String label,
+      Date startDate,
+      Date expiryDate,
+      String certificate,
+      HashicorpVaultConfigParams params)
+      throws IOException, NoSuchAlgorithmException {
+    CertificateInfo cert = new CertificateInfo();
+    cert.uuid = uuid;
+    cert.customerUUID = customerUUID;
+    cert.label = label;
+    cert.startDate = startDate;
+    cert.expiryDate = expiryDate;
+    cert.certificate = certificate;
+    cert.certType = CertConfigType.HashicorpVault;
+    JsonNode node = params.toJsonNode();
+    if (node != null) cert.customCertInfo = node;
     cert.checksum = Util.getFileChecksum(certificate);
     cert.save();
     return cert;
@@ -259,6 +320,25 @@ public class CertificateInfo extends Model {
     copy.customCertInfo = certificateInfo.customCertInfo;
     copy.save();
     return copy;
+  }
+
+  public CertificateInfo update(
+      Date sDate, Date eDate, String certPath, HashicorpVaultConfigParams params)
+      throws IOException, NoSuchAlgorithmException {
+
+    LOG.info("Updating uuid: {} with Path:{}", uuid.toString(), certPath);
+
+    if (sDate != null) startDate = sDate;
+    if (eDate != null) expiryDate = eDate;
+
+    certificate = certPath;
+
+    JsonNode node = params.toJsonNode();
+    if (node != null) customCertInfo = node;
+
+    checksum = Util.getFileChecksum(certificate);
+    save();
+    return this;
   }
 
   public static boolean isTemporary(CertificateInfo certificateInfo) {
@@ -303,7 +383,8 @@ public class CertificateInfo extends Model {
     return certificateInfo;
   }
 
-  public static List<CertificateInfo> getWhereLabelStartsWith(String label, Type certType) {
+  public static List<CertificateInfo> getWhereLabelStartsWith(
+      String label, CertConfigType certType) {
     List<CertificateInfo> certificateInfoList =
         find.query().where().eq("cert_type", certType).like("label", label + "%").findList();
     return certificateInfoList
@@ -323,11 +404,13 @@ public class CertificateInfo extends Model {
   public static List<CertificateInfo> getAll(UUID customerUUID) {
     List<CertificateInfo> certificateInfoList =
         find.query().where().eq("customer_uuid", customerUUID).findList();
+
     certificateInfoList =
         certificateInfoList
             .stream()
             .filter(certificateInfo -> !CertificateInfo.isTemporary(certificateInfo))
             .collect(Collectors.toList());
+
     populateUniverseData(customerUUID, certificateInfoList);
     return certificateInfoList;
   }
@@ -340,7 +423,7 @@ public class CertificateInfo extends Model {
     if (certificate == null) {
       return false;
     }
-    if (certificate.certType == CertificateInfo.Type.CustomCertHostPath
+    if (certificate.certType == CertConfigType.CustomCertHostPath
         && certificate.customCertInfo == null) {
       return false;
     }
@@ -440,9 +523,9 @@ public class CertificateInfo extends Model {
     }
   }
 
-  private void checkEditable(UUID certUUID, UUID customerUUID) {
+  public void checkEditable(UUID certUUID, UUID customerUUID) {
     CertificateInfo certInfo = getOrBadRequest(certUUID, customerUUID);
-    if (certInfo.certType == CertificateInfo.Type.SelfSigned) {
+    if (certInfo.certType == CertConfigType.SelfSigned) {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot edit self-signed cert.");
     }
     if (certInfo.customCertInfo != null) {

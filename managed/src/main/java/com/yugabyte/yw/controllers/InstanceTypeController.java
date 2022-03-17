@@ -16,9 +16,11 @@ import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
@@ -58,6 +60,8 @@ public class InstanceTypeController extends AuthenticatedController {
     this.cloudAPIFactory = cloudAPIFactory;
   }
 
+  @Inject RuntimeConfigFactory runtimeConfigFactory;
+
   @Inject ConfigHelper configHelper;
 
   /**
@@ -82,7 +86,13 @@ public class InstanceTypeController extends AuthenticatedController {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     Map<String, InstanceType> instanceTypesMap;
     instanceTypesMap =
-        InstanceType.findByProvider(provider, config, configHelper)
+        InstanceType.findByProvider(
+                provider,
+                config,
+                configHelper,
+                runtimeConfigFactory
+                    .forProvider(provider)
+                    .getBoolean("yb.internal.allow_instances"))
             .stream()
             .collect(toMap(InstanceType::getInstanceTypeCode, identity()));
 
@@ -174,7 +184,13 @@ public class InstanceTypeController extends AuthenticatedController {
             formData.get().numCores,
             formData.get().memSizeGB,
             formData.get().instanceTypeDetails);
-    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.rawData()));
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.CloudProvider,
+            providerUUID.toString(),
+            Audit.ActionType.CreateInstanceType,
+            Json.toJson(formData.rawData()));
     return PlatformResults.withData(it);
   }
 
@@ -195,7 +211,13 @@ public class InstanceTypeController extends AuthenticatedController {
     InstanceType instanceType = InstanceType.getOrBadRequest(provider.uuid, instanceTypeCode);
     instanceType.setActive(false);
     instanceType.save();
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.CloudProvider,
+            providerUUID.toString(),
+            Audit.ActionType.DeleteInstanceType,
+            request().body().asJson());
     return YBPSuccess.empty();
   }
 

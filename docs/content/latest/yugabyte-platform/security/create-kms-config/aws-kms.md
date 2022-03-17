@@ -24,13 +24,6 @@ showAsideToc: true
   </li>
 
   <li >
-    <a href="{{< relref "./equinix-smartkey.md" >}}" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      Equinix SmartKey
-    </a>
-  </li>
-
-  <li >
     <a href="{{< relref "./hashicorp-kms.md" >}}" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       HashiCorp Vault
@@ -41,8 +34,6 @@ showAsideToc: true
 
 Encryption at rest uses universe keys to encrypt and decrypt universe data keys. You can use the Yugabyte Platform UI to create key management service (KMS) configurations for generating the required universe keys for one or more YugabyteDB universes. Encryption at rest in Yugabyte Platform supports the use of [Amazon Web Services (AWS) KMS](https://aws.amazon.com/kms/).
 
-{{< note title="Note" >}}
-
 The AWS user associated with a KMS configuration requires the following minimum Identity and Access Management (IAM) KMS-related permissions:
 
 - `kms:CreateKey`
@@ -51,12 +42,11 @@ The AWS user associated with a KMS configuration requires the following minimum 
 - `kms:CreateAlias`
 - `kms:DeleteAlias`
 - `kms:UpdateAlias`
-
-{{< /note >}}
+- `kms:TagResource`
 
 You can create a KMS configuration that uses AWS KMS as follows:
 
-1. Open the Yugabyte Platform console and navigate to **Configs > Security > Encryption At Rest**. A list of existing configurations appears.
+1. Use the Yugabyte Platform UI to navigate to **Configs > Security > Encryption At Rest** to access the list of existing configurations.
 
 2. Click **Create New Config**.
 
@@ -100,6 +90,8 @@ You can create a KMS configuration that uses AWS KMS as follows:
         }
     ```
 
-5. Click **Save**. Your new configuration should appear in the list of configurations. A saved KMS configuration can only be deleted if it is not in use by any existing universes.
+5. Click **Save**.<br> 
+
+    Your new configuration should appear in the list of configurations. A saved KMS configuration can only be deleted if it is not in use by any existing universes.
 
 6. Optionally, to confirm that the information is correct, click **Show details**. Note that sensitive configuration values are displayed partially masked.

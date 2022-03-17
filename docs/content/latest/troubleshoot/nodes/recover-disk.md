@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-YugabyteDB can be configured to use multiple storage disks by setting the [`--fs_data_dirs`](../../../reference/configuration/yb-tserver) flag.
+YugabyteDB can be configured to use multiple storage disks by setting the [`--fs_data_dirs`](../../../reference/configuration/yb-tserver/) flag.
 This introduces the possibility of disk failure and recovery issues.
 
 ## Cluster replication recovery

@@ -59,6 +59,10 @@ class MiniClusterBase {
 
   std::atomic<bool> running_ { false };
 
+  template<class Options>
+  int32_t NumTabletsPerTransactionTable(Options options) {
+    return std::max(2, static_cast<int32_t>(options.num_tablet_servers));
+  }
  private:
   virtual void ConfigureClientBuilder(client::YBClientBuilder* builder) = 0;
 

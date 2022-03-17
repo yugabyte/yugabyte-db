@@ -19,7 +19,9 @@ import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.jsonwebtoken.lang.Collections;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 import javax.inject.Inject;
@@ -73,10 +75,15 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
 
       // Delete all the read-only cluster nodes.
       Cluster cluster = roClusters.get(0);
+      Collection<NodeDetails> nodesToBeRemoved = universe.getNodesInCluster(cluster.uuid);
+      // Set the node states to Removing.
+      createSetNodeStateTasks(nodesToBeRemoved, NodeDetails.NodeState.Removing)
+          .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
       createDestroyServerTasks(
-              universe.getNodesInCluster(cluster.uuid),
+              nodesToBeRemoved,
               params().isForceDelete,
-              true /* deleteNodeFromDB */)
+              true /* deleteNodeFromDB */,
+              true /* deleteRootVolumes */)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
       // Remove the cluster entry from the universe db entry.

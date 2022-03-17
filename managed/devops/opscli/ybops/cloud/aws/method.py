@@ -11,7 +11,8 @@
 from ybops.cloud.common.method import ListInstancesMethod, CreateInstancesMethod, \
     ProvisionInstancesMethod, DestroyInstancesMethod, AbstractMethod, \
     AbstractAccessMethod, AbstractNetworkMethod, AbstractInstancesMethod, AccessDeleteKeyMethod, \
-    CreateRootVolumesMethod, ReplaceRootVolumeMethod, ChangeInstanceTypeMethod
+    CreateRootVolumesMethod, ReplaceRootVolumeMethod, ChangeInstanceTypeMethod, \
+    UpdateMountedDisksMethod, ConsoleLoggingErrorHandler, DeleteRootVolumesMethod
 from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
 from ybops.cloud.aws.utils import get_yb_sg_name, create_dns_record_set, edit_dns_record_set, \
     delete_dns_record_set, list_dns_record_set, ROOT_VOLUME_LABEL
@@ -128,6 +129,8 @@ class AwsProvisionInstancesMethod(ProvisionInstancesMethod):
 
 
 class AwsCreateRootVolumesMethod(CreateRootVolumesMethod):
+    """Subclass for creating root volumes in AWS
+    """
     def __init__(self, base_command):
         super(AwsCreateRootVolumesMethod, self).__init__(base_command)
         self.create_method = AwsCreateInstancesMethod(base_command)
@@ -135,7 +138,6 @@ class AwsCreateRootVolumesMethod(CreateRootVolumesMethod):
     def create_master_volume(self, args):
         args.auto_delete_boot_disk = False
         args.num_volumes = 0
-        args.instance_tags = None
 
         self.create_method.run_ansible_create(args)
         host_info = self.cloud.get_host_info(args)
@@ -145,6 +147,17 @@ class AwsCreateRootVolumesMethod(CreateRootVolumesMethod):
 
     def delete_instance(self, args, instance_id):
         self.cloud.delete_instance(args.region, instance_id, args.assign_static_public_ip)
+
+
+class AwsDeleteRootVolumesMethod(DeleteRootVolumesMethod):
+    """Subclass for deleting root volumes in AWS.
+    """
+
+    def __init__(self, base_command):
+        super(AwsDeleteRootVolumesMethod, self).__init__(base_command)
+
+    def delete_volumes(self, args):
+        self.cloud.delete_volumes(args)
 
 
 class AwsDestroyInstancesMethod(DestroyInstancesMethod):
@@ -237,7 +250,7 @@ class AwsResumeInstancesMethod(AbstractInstancesMethod):
         if not host_info:
             logging.error("Host {} does not exist.".format(args.search_pattern))
             return
-        self.cloud.start_instance(host_info, int(args.custom_ssh_port))
+        self.cloud.start_instance(host_info, [int(args.custom_ssh_port)])
 
 
 class AwsTagsMethod(AbstractInstancesMethod):
@@ -369,6 +382,46 @@ class AwsQuerySpotPricingMethod(AbstractMethod):
             print(json.dumps({"error": get_exception_message(ye)}))
 
 
+class AwsQueryImageMethod(AbstractMethod):
+    def __init__(self, base_command):
+        super(AwsQueryImageMethod, self).__init__(base_command, "image")
+        self.error_handler = ConsoleLoggingErrorHandler(self.cloud)
+
+    def add_extra_args(self):
+        super(AwsQueryImageMethod, self).add_extra_args()
+        self.parser.add_argument("--machine_image",
+                                 required=True,
+                                 help="The machine image (e.g. an AMI on AWS) to query")
+
+    def callback(self, args):
+        try:
+            if args.region is None:
+                raise YBOpsRuntimeError("Must specify a region to query image")
+            print(json.dumps({"architecture": self.cloud.get_image_arch(args)}))
+        except YBOpsRuntimeError as ye:
+            print(json.dumps({"error": get_exception_message(ye)}))
+
+
+class AwsQueryImageMethod(AbstractMethod):
+    def __init__(self, base_command):
+        super(AwsQueryImageMethod, self).__init__(base_command, "image")
+        self.error_handler = ConsoleLoggingErrorHandler(self.cloud)
+
+    def add_extra_args(self):
+        super(AwsQueryImageMethod, self).add_extra_args()
+        self.parser.add_argument("--machine_image",
+                                 required=True,
+                                 help="The machine image (e.g. an AMI on AWS) to query")
+
+    def callback(self, args):
+        try:
+            if args.region is None:
+                raise YBOpsRuntimeError("Must specify a region to query image")
+            print(json.dumps({"architecture": self.cloud.get_image_arch(args)}))
+        except YBOpsRuntimeError as ye:
+            print(json.dumps({"error": get_exception_message(ye)}))
+
+
 class AwsNetworkBootstrapMethod(AbstractNetworkMethod):
     def __init__(self, base_command):
         super(AwsNetworkBootstrapMethod, self).__init__(base_command, "bootstrap")
@@ -484,3 +537,13 @@ class AwsChangeInstanceTypeMethod(ChangeInstanceTypeMethod):
     # We have to use this to uniform accessing host_info for AWS and GCP
     def _host_info(self, args, host_info):
         return host_info
+
+
+class AwsUpdateMountedDisksMethod(UpdateMountedDisksMethod):
+    def __init__(self, base_command):
+        super(AwsUpdateMountedDisksMethod, self).__init__(base_command)
+
+    def add_extra_args(self):
+        super(AwsUpdateMountedDisksMethod, self).add_extra_args()
+        self.parser.add_argument("--volume_type", choices=["gp3", "gp2", "io1"], default="gp2",
+                                 help="Volume type for volumes on EBS-backed instances.")

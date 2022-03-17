@@ -17,12 +17,14 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
 import play.api.Play;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonDeserialize(converter = ResizeNodeParams.Converter.class)
 @Data
+@EqualsAndHashCode(callSuper = true)
 @Slf4j
 public class ResizeNodeParams extends UpgradeTaskParams {
 
@@ -96,17 +98,11 @@ public class ResizeNodeParams extends UpgradeTaskParams {
     if (!diskChanged && currentUserIntent.instanceType.equals(newInstanceTypeCode)) {
       return "Nothing changed!";
     }
+    if (hasEphemeralStorage(currentUserIntent)) {
+      return "ResizeNode operation is not supported for instances with ephemeral drives";
+    }
     // Checking new instance is valid.
     if (!newInstanceTypeCode.equals(currentUserIntent.instanceType) && !skipInstanceChecking) {
-      if (currentUserIntent.providerType.equals(Common.CloudType.aws)) {
-        if (newInstanceTypeCode.contains("i3")) {
-          return "ResizeNode operation does not support the instance type " + newInstanceTypeCode;
-        }
-        int dotPosition = newInstanceTypeCode.indexOf('.');
-        if (dotPosition > 0 && newInstanceTypeCode.charAt(dotPosition - 1) == 'd') {
-          return "ResizeNode operation does not support the instance type " + newInstanceTypeCode;
-        }
-      }
       String provider = currentUserIntent.provider;
       List<InstanceType> instanceTypes =
           InstanceType.findByProvider(
@@ -125,16 +121,6 @@ public class ResizeNodeParams extends UpgradeTaskParams {
             + currentUserIntent.providerType
             + " does not have the intended instance type "
             + newInstanceTypeCode;
-      }
-      // Make sure instance type has the right storage.
-      if (newInstanceType.instanceTypeDetails != null
-          && newInstanceType.instanceTypeDetails.volumeDetailsList != null
-          && newInstanceType.instanceTypeDetails.volumeDetailsList.size() > 0
-          && newInstanceType.instanceTypeDetails.volumeDetailsList.get(0).volumeType
-              == InstanceType.VolumeType.NVME) {
-        return "Instance type "
-            + newInstanceTypeCode
-            + " has NVME storage and is not supported by the ResizeNode operation";
       }
     }
 

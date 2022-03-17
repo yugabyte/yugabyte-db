@@ -89,34 +89,34 @@ Starting from Ubuntu 20.04, `python` isn't available anymore. An easy fix is to 
     * CentOS: `yum install curl`
     * Ubuntu: `apt install curl`
 
-1. Each tablet maps to its own file, so if you experiment with a few hundred tables and a few tablets per table, you can soon end up creating a large number of files in the current shell. Make sure to [configure ulimit values](../../../deploy/manual-deployment/system-config#ulimits).
+1. Each tablet maps to its own file, so if you experiment with a few hundred tables and a few tablets per table, you can soon end up creating a large number of files in the current shell. Make sure to [configure ulimit values](../../../deploy/manual-deployment/system-config/#ulimits).
 
 ## Download YugabyteDB
 
 1. Download the YugabyteDB package using the following `wget` command.
 
     ```sh
-    $ wget https://downloads.yugabyte.com/releases/2.11.2.0/yugabyte-2.11.2.0-b89-linux-x86_64.tar.gz
+    $ wget https://downloads.yugabyte.com/releases/2.13.0.0/yugabyte-2.13.0.0-b42-linux-x86_64.tar.gz
     ```
 
     \
     OR:
 
     ```sh
-    $ wget https://downloads.yugabyte.com/releases/2.11.2.0/yugabyte-2.11.2.0-b89-el8-aarch64.tar.gz
+    $ wget https://downloads.yugabyte.com/releases/2.13.0.0/yugabyte-2.13.0.0-b42-el8-aarch64.tar.gz
     ```
 
 1. Extract the package and then change directories to the YugabyteDB home.
 
     ```sh
-    $ tar xvfz yugabyte-2.11.2.0-b89-linux-x86_64.tar.gz && cd yugabyte-2.11.2.0/
+    $ tar xvfz yugabyte-2.13.0.0-b42-linux-x86_64.tar.gz && cd yugabyte-2.13.0.0/
     ```
 
     \
     OR:
 
     ```sh
-    $ tar xvfz yugabyte-2.11.2.0-b89-el8-aarch64.tar.gz && cd yugabyte-2.11.2.0/
+    $ tar xvfz yugabyte-2.13.0.0-b42-el8-aarch64.tar.gz && cd yugabyte-2.13.0.0/
     ```
 
 ## Configure YugabyteDB
@@ -129,6 +129,6 @@ $ ./bin/post_install.sh
 
 {{<tip title="Next step" >}}
 
-[Create a local cluster](../../create-local-cluster/linux)
+[Create a local cluster](../../create-local-cluster/linux/)
 
 {{< /tip >}}

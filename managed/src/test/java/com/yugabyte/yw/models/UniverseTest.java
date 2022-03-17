@@ -30,11 +30,11 @@ import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -755,6 +755,8 @@ public class UniverseTest extends FakeDBApplication {
             assertEquals(
                 ImmutableSet.of(NodeActionType.ADD, NodeActionType.DELETE), allowedActions);
           }
+        } else if (nodeState == NodeDetails.NodeState.Provisioned) {
+          assertEquals(ImmutableSet.of(NodeActionType.DELETE), allowedActions);
         } else {
           assertTrue(allowedActions.isEmpty());
         }

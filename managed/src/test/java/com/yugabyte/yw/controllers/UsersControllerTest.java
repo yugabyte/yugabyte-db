@@ -208,7 +208,7 @@ public class UsersControllerTest extends FakeDBApplication {
     testUser1 = Users.get(testUser1.uuid);
     assertEquals(testUser1.getRole(), Role.Admin);
     assertTrue(BCrypt.checkpw("new-Password1", testUser1.passwordHash));
-    assertAuditEntry(0, customer1.uuid);
+    assertAuditEntry(1, customer1.uuid);
   }
 
   @Test

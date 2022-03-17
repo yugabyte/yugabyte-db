@@ -305,17 +305,6 @@ class RpcContext {
     return *params_;
   }
 
-  template <class Response>
-  void RespondTrivial(Result<Response>* result, Response* response) {
-    if (result->ok()) {
-      response->Swap(result->get_ptr());
-    } else {
-      SetupError(ResponseError(response), result->status());
-    }
-    RespondSuccess();
-  }
-
-
   // Panic the server. This logs a fatal error with the given message, and
   // also includes the current RPC request, requestor, trace information, etc,
   // to make it easier to debug.

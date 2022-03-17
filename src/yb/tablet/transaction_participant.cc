@@ -24,6 +24,7 @@
 #include "yb/client/transaction_rpc.h"
 
 #include "yb/common/pgsql_error.h"
+#include "yb/common/transaction_error.h"
 
 #include "yb/consensus/consensus_util.h"
 
@@ -185,41 +186,26 @@ class TransactionParticipant::Impl
   }
 
   // Adds new running transaction.
-  bool Add(const TransactionMetadataPB& data, rocksdb::WriteBatch *write_batch) {
-    auto metadata = TransactionMetadata::FromPB(data);
-    if (!metadata.ok()) {
-      LOG_WITH_PREFIX(DFATAL) << "Invalid transaction id: " << metadata.status().ToString();
+  Result<bool> Add(const TransactionMetadata& metadata) {
+    loader_.WaitLoaded(metadata.transaction_id);
+
+    MinRunningNotifier min_running_notifier(&applier_);
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = transactions_.find(metadata.transaction_id);
+    if (it != transactions_.end()) {
       return false;
     }
-    loader_.WaitLoaded(metadata->transaction_id);
-    bool store = false;
-    {
-      MinRunningNotifier min_running_notifier(&applier_);
-      std::lock_guard<std::mutex> lock(mutex_);
-      auto it = transactions_.find(metadata->transaction_id);
-      if (it == transactions_.end()) {
-        if (WasTransactionRecentlyRemoved(metadata->transaction_id)) {
-          return false;
-        }
-        if (cleanup_cache_.Erase(metadata->transaction_id) != 0) {
-          return false;
-        }
-        VLOG_WITH_PREFIX(4) << "Create new transaction: " << metadata->transaction_id;
-        transactions_.insert(std::make_shared<RunningTransaction>(
-            *metadata, TransactionalBatchData(), OneWayBitmap(), metadata->start_time, this));
-        TransactionsModifiedUnlocked(&min_running_notifier);
-        store = true;
-      }
+    if (WasTransactionRecentlyRemoved(metadata.transaction_id) ||
+        cleanup_cache_.Erase(metadata.transaction_id) != 0) {
+      auto status = STATUS_EC_FORMAT(
+          TryAgain, PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE),
+          "Transaction was recently aborted: $0", metadata.transaction_id);
+      return status.CloneAndAddErrorCode(TransactionError(TransactionErrorCode::kAborted));
     }
-    if (store) {
-      docdb::KeyBytes key;
-      AppendTransactionKeyPrefix(metadata->transaction_id, &key);
-      auto data_copy = data;
-      // We use hybrid time only for backward compatibility, actually wall time is required.
-      data_copy.set_metadata_write_time(GetCurrentTimeMicros());
-      auto value = data_copy.SerializeAsString();
-      write_batch->Put(key.AsSlice(), value);
-    }
+    VLOG_WITH_PREFIX(4) << "Create new transaction: " << metadata.transaction_id;
+    transactions_.insert(std::make_shared<RunningTransaction>(
+        metadata, TransactionalBatchData(), OneWayBitmap(), metadata.start_time, this));
+    TransactionsModifiedUnlocked(&min_running_notifier);
     return true;
   }
 
@@ -388,8 +374,18 @@ class TransactionParticipant::Impl
         break;
       }
       const auto& id = front.transaction_id;
+      RemoveIntentsData checkpoint;
       auto it = transactions_.find(id);
+
       if (it != transactions_.end() && !(**it).ProcessingApply()) {
+        OpId op_id = (**it).GetOpId();
+        participant_context_.GetLastCDCedData(&checkpoint);
+        VLOG_WITH_PREFIX(2) << "Cleaning tx opid is " << op_id.ToString()
+                            << " checkpoint opid is " << checkpoint.op_id.ToString();
+
+        if (checkpoint.op_id < op_id) {
+          break;
+        }
         (**it).ScheduleRemoveIntents(*it);
         RemoveTransaction(it, front.reason, min_running_notifier);
       }
@@ -564,6 +560,7 @@ class TransactionParticipant::Impl
     auto lock_and_iterator = LockAndFind(
         data.transaction_id, "apply"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist});
     if (lock_and_iterator.found()) {
+      lock_and_iterator.transaction().SetOpId(data.op_id);
       if (!apply_state.active()) {
         RemoveUnlocked(lock_and_iterator.iterator, RemoveReason::kApplied, &min_running_notifier);
       } else {
@@ -1125,9 +1122,18 @@ class TransactionParticipant::Impl
   bool RemoveUnlocked(
       const Transactions::iterator& it, RemoveReason reason,
       MinRunningNotifier* min_running_notifier) REQUIRES(mutex_) {
-    if (running_requests_.empty()) {
+    TransactionId txn_id = (**it).id();
+    RemoveIntentsData checkpoint;
+    auto itr = transactions_.find(txn_id);
+    OpId op_id = (**itr).GetOpId();
+    participant_context_.GetLastCDCedData(&checkpoint);
+
+    VLOG_WITH_PREFIX(2) << "Cleaning tx, data opid is " << op_id.ToString()
+              << " checkpoint opid is " << checkpoint.op_id.ToString();
+
+    if (running_requests_.empty() &&
+        (op_id < checkpoint.op_id)) {
       (**it).ScheduleRemoveIntents(*it);
-      TransactionId txn_id = (**it).id();
       RemoveTransaction(it, reason, min_running_notifier);
       VLOG_WITH_PREFIX(2) << "Cleaned transaction: " << txn_id << ", reason: " << reason
                           << ", left: " << transactions_.size();
@@ -1569,9 +1575,8 @@ void TransactionParticipant::Start() {
   impl_->Start();
 }
 
-bool TransactionParticipant::Add(
-    const TransactionMetadataPB& data, rocksdb::WriteBatch *write_batch) {
-  return impl_->Add(data, write_batch);
+Result<bool> TransactionParticipant::Add(const TransactionMetadata& metadata) {
+  return impl_->Add(metadata);
 }
 
 Result<TransactionMetadata> TransactionParticipant::PrepareMetadata(

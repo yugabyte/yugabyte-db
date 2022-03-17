@@ -19,7 +19,7 @@ This applies only in those syntax contexts where _pg_timezone_abbrevs.abbrev_ is
 {{< /tip >}}</br>
 
 {{< tip title="Download and install the date-time utilities code." >}}
-The code on this page depends on the code presented in the [_extended_timezone_names_ view](../../../extended-timezone-names/) section. This is included in the larger [code kit](../../../../download-date-time-utilities/) that includes all of the reusable code that the overall _[date-time](../../../../../type_datetime)_ section describes and uses.
+The code on this page depends on the code presented in the [_extended_timezone_names_ view](../../../extended-timezone-names/) section. This is included in the larger [code kit](../../../../download-date-time-utilities/) that includes all of the reusable code that the overall _[date-time](../../../../../type_datetime/)_ section describes and uses.
 {{< /tip >}}
 
 The page for [Rule 3](../rule-3) tested with a string that's found uniquely in _pg_timezone_abbrevs.abbrev_. It established that for the second two syntax contexts (the _at time zone_ operator and the _text_ literal for a _timestamptz_ value), the string _is_ looked up in this column; and that for the first syntax context (the _set timezone_ statement) this column is _not_ searched.
@@ -40,7 +40,7 @@ from c;
 This is the result:
 
 ```output
- ~names.name | ~names.abbrev | ~abbrevs.abbrev 
+ ~names.name | ~names.abbrev | ~abbrevs.abbrev
 -------------+---------------+-----------------
  true        | false         | false
 ```
@@ -81,7 +81,7 @@ from c;
 This is the result:
 
 ```output
- ~names.name | ~names.abbrev | ~abbrevs.abbrev 
+ ~names.name | ~names.abbrev | ~abbrevs.abbrev
 -------------+---------------+-----------------
  true        | false         | true
 ```
@@ -107,7 +107,7 @@ Predictably, this is the result:
 The [PostgresSQL documentation](https://www.postgresql.org/docs/11/) does not provide the answer. But the question can be answered empirically if _MET_ (or another such string that occurs in both columns) maps to different _UTC_offset_ values in the two different columns. Try this:
 
 ```plpgsql
-with 
+with
   met_names_offsets(string, names_offset, is_dst) as (
     select name, utc_offset, is_dst
     from pg_timezone_names
@@ -125,7 +125,7 @@ possibly_disagreeing_offsets(string, names_offset, is_dst, abbrevs_offset) as (
     inner join
     met_abbrevs_offset as a
     using(string))
-  
+
 select string, names_offset, is_dst::text, abbrevs_offset
 from possibly_disagreeing_offsets;
 ```
@@ -133,12 +133,12 @@ from possibly_disagreeing_offsets;
 This is the result:
 
 ```output
- string | names_offset | is_dst | abbrevs_offset 
+ string | names_offset | is_dst | abbrevs_offset
 --------+--------------+--------+----------------
  MET    | 02:00:00     | true   | 01:00:00
 ```
 
-Of course, there is just one row because both  _pg_timezone_names.name_ and _pg_timezone_abbrevs.abbrev_ have unique values. You can see that the query happens to have been executed during the Day Light Savings Time period for the timezone _MET_. This is fortunate for the usefulness of the test that follows. Look up _MET_ in the [_extended_timezone_names_](../../../extended-timezone-names/) view. 
+Of course, there is just one row because both  _pg_timezone_names.name_ and _pg_timezone_abbrevs.abbrev_ have unique values. You can see that the query happens to have been executed during the Day Light Savings Time period for the timezone _MET_. This is fortunate for the usefulness of the test that follows. Look up _MET_ in the [_extended_timezone_names_](../../../extended-timezone-names/) view.
 
 ```plpgsql
 select name, std_abbrev, dst_abbrev, std_offset, dst_offset
@@ -149,7 +149,7 @@ where name = 'MET';
 This is the result:
 
 ```output
- name | std_abbrev | dst_abbrev | std_offset | dst_offset 
+ name | std_abbrev | dst_abbrev | std_offset | dst_offset
 ------+------------+------------+------------+------------
  MET  | MET        | MEST       | 01:00:00   | 02:00:00
 ```
@@ -209,7 +209,7 @@ order by string;
 This is the result:
 
 ```outout
- string | std_abbrev | dst_abbrev | std offset from ~names | dst offset from ~names | offset from ~abbrevs 
+ string | std_abbrev | dst_abbrev | std offset from ~names | dst offset from ~names | offset from ~abbrevs
 --------+------------+------------+------------------------+------------------------+----------------------
  CET    | CET        | CEST       |  01:00:00              |  02:00:00              |  01:00:00
  EET    | EET        | EEST       |  02:00:00              |  03:00:00              |  02:00:00

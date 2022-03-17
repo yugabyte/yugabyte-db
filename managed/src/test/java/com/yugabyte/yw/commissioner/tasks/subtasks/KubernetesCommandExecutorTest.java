@@ -22,14 +22,13 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.CertificateHelper;
-import com.yugabyte.yw.common.ShellKubernetesManager;
-import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.RegexMatcher;
-import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.ShellKubernetesManager;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
@@ -40,6 +39,10 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import io.fabric8.kubernetes.api.model.Pod;
+import io.fabric8.kubernetes.api.model.PodList;
+import io.fabric8.kubernetes.api.model.Service;
+import io.fabric8.kubernetes.api.model.ServiceList;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -58,15 +61,9 @@ import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
 import org.yaml.snakeyaml.Yaml;
-
-import io.fabric8.kubernetes.api.model.Pod;
-import io.fabric8.kubernetes.api.model.PodList;
-import io.fabric8.kubernetes.api.model.Service;
-import io.fabric8.kubernetes.api.model.ServiceList;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.modules.swagger.SwaggerModule;
-import play.test.Helpers;
 
 public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   private static final String CERTS_DIR = "/tmp/yugaware_tests/kcet_certs";
@@ -543,11 +540,11 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
         Universe.saveDetails(
             defaultUniverse.universeUUID,
             ApiUtils.mockUniverseUpdater(defaultUserIntent, "host", true));
+    u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater(defaultCert.uuid));
     hackPlacementUUID = u.getUniverseDetails().getPrimaryCluster().uuid;
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
-    kubernetesCommandExecutor.taskParams().rootCA = defaultCert.uuid;
     kubernetesCommandExecutor.run();
 
     ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
@@ -591,11 +588,11 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
         Universe.saveDetails(
             defaultUniverse.universeUUID,
             ApiUtils.mockUniverseUpdater(defaultUserIntent, "host", true));
+    u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater(defaultCert.uuid));
     hackPlacementUUID = u.getUniverseDetails().getPrimaryCluster().uuid;
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
-    kubernetesCommandExecutor.taskParams().rootCA = defaultCert.uuid;
     kubernetesCommandExecutor.run();
 
     ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
@@ -639,11 +636,11 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
         Universe.saveDetails(
             defaultUniverse.universeUUID,
             ApiUtils.mockUniverseUpdater(defaultUserIntent, "host", true));
+    u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater(defaultCert.uuid));
     hackPlacementUUID = u.getUniverseDetails().getPrimaryCluster().uuid;
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
-    kubernetesCommandExecutor.taskParams().rootCA = defaultCert.uuid;
     kubernetesCommandExecutor.run();
 
     ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);

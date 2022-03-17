@@ -1,9 +1,11 @@
 package com.yugabyte.yw.cloud;
 
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import org.slf4j.Logger;
@@ -49,4 +51,12 @@ public interface CloudAPI {
    * @return true if credentials are valid otherwise return false.
    */
   boolean isValidCreds(Map<String, String> config, String region);
+
+  /**
+   * Check whether cloud provider's credentials are valid to do KMS operations.
+   *
+   * @param config A JSON object that contains the credentials info.
+   * @return true if credentials are valid otherwise return false.
+   */
+  boolean isValidCredsKms(ObjectNode config, UUID customerUUID);
 }

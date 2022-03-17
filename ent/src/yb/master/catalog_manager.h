@@ -84,7 +84,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   CHECKED_STATUS InitCDCConsumer(const std::vector<CDCConsumerStreamInfo>& consumer_info,
                                  const std::string& master_addrs,
-                                 const std::string& producer_universe_uuid);
+                                 const std::string& producer_universe_uuid,
+                                 std::shared_ptr<CDCRpcTasks> cdc_rpc_tasks);
 
   void HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool error) override;
 
@@ -94,15 +95,6 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
       const SnapshotId& snapshot_id, TabletInfo *tablet, bool error) override;
 
   void DumpState(std::ostream* out, bool on_disk_dump = false) const override;
-
-  CHECKED_STATUS HandlePlacementUsingReplicationInfo(const ReplicationInfoPB& replication_info,
-                                                     const TSDescriptorVector& all_ts_descs,
-                                                     consensus::RaftConfigPB* config) override;
-
-  // Populates ts_descs with all tservers belonging to a certain placement.
-  void GetTsDescsFromPlacementInfo(const PlacementInfoPB& placement_info,
-                                   const TSDescriptorVector& all_ts_descs,
-                                   TSDescriptorVector* ts_descs);
 
   // Fills the heartbeat response with the decrypted universe key registry.
   CHECKED_STATUS FillHeartbeatResponse(const TSHeartbeatRequestPB* req,
@@ -197,7 +189,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
     return snapshot_coordinator_;
   }
 
-  size_t GetNumLiveTServersForActiveCluster() override;
+  Result<size_t> GetNumLiveTServersForActiveCluster() override;
 
  private:
   friend class SnapshotLoader;
@@ -349,17 +341,16 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                           const TSHeartbeatRequestPB* req,
                                           TSHeartbeatResponsePB* resp);
 
-  scoped_refptr<ClusterConfigInfo> GetClusterConfigInfo() const {
-    return cluster_config_;
-  }
+  // Helper functions for GetTableSchemaCallback, GetTablegroupSchemaCallback
+  // and GetColocatedTabletSchemaCallback.
 
-  // Helper functions for GetTableSchemaCallback and GetColocatedTabletSchemaCallback:
   // Validates a single table's schema with the corresponding table on the consumer side, and
-  // updates consumer_table_id with the new table id.
+  // updates consumer_table_id with the new table id. Return the consumer table schema if the
+  // validation is successful.
   CHECKED_STATUS ValidateTableSchema(
       const std::shared_ptr<client::YBTableInfo>& info,
       const std::unordered_map<TableId, std::string>& table_bootstrap_ids,
-      TableId* consumer_table_id);
+      GetTableSchemaResponsePB* resp);
   // Adds a validated table to the sys catalog table map for the given universe, and if all tables
   // have been validated, creates a CDC stream for each table.
   CHECKED_STATUS AddValidatedTableAndCreateCdcStreams(
@@ -370,6 +361,10 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   void GetTableSchemaCallback(
       const std::string& universe_id, const std::shared_ptr<client::YBTableInfo>& info,
+      const std::unordered_map<TableId, std::string>& producer_bootstrap_ids, const Status& s);
+  void GetTablegroupSchemaCallback(
+      const std::string& universe_id, const std::shared_ptr<std::vector<client::YBTableInfo>>& info,
+      const TablegroupId& producer_tablegroup_id,
       const std::unordered_map<TableId, std::string>& producer_bootstrap_ids, const Status& s);
   void GetColocatedTabletSchemaCallback(
       const std::string& universe_id, const std::shared_ptr<std::vector<client::YBTableInfo>>& info,

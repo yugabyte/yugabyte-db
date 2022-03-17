@@ -10,16 +10,20 @@ import com.google.inject.Singleton;
 import com.yugabyte.yw.common.AWSUtil;
 import com.yugabyte.yw.common.AZUtil;
 import com.yugabyte.yw.common.GCPUtil;
+import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableManagerYb;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Backup.BackupState;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -29,7 +33,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 import scala.concurrent.ExecutionContext;
-import scala.concurrent.duration.Duration;
 
 @Singleton
 @Slf4j
@@ -39,11 +42,15 @@ public class BackupGarbageCollector {
 
   private final ExecutionContext executionContext;
 
-  private final int YB_SET_BACKUP_GARBAGE_COLLECTOR_INTERVAL = 15;
-
   private final TableManagerYb tableManagerYb;
 
   private final CustomerConfigService customerConfigService;
+
+  private final BackupUtil backupUtil;
+
+  private final RuntimeConfigFactory runtimeConfigFactory;
+
+  private static final String YB_BACKUP_GARBAGE_COLLECTOR_INTERVAL = "yb.backupGC.gc_run_interval";
 
   private AtomicBoolean running = new AtomicBoolean(false);
 
@@ -57,21 +64,28 @@ public class BackupGarbageCollector {
       ExecutionContext executionContext,
       ActorSystem actorSystem,
       CustomerConfigService customerConfigService,
-      TableManagerYb tableManagerYb) {
+      RuntimeConfigFactory runtimeConfigFactory,
+      TableManagerYb tableManagerYb,
+      BackupUtil backupUtil) {
     this.actorSystem = actorSystem;
     this.executionContext = executionContext;
     this.customerConfigService = customerConfigService;
+    this.runtimeConfigFactory = runtimeConfigFactory;
     this.tableManagerYb = tableManagerYb;
+    this.backupUtil = backupUtil;
   }
 
   public void start() {
+    Duration gcInterval = this.gcRunInterval();
     this.actorSystem
         .scheduler()
-        .schedule(
-            Duration.create(0, TimeUnit.MINUTES),
-            Duration.create(YB_SET_BACKUP_GARBAGE_COLLECTOR_INTERVAL, TimeUnit.MINUTES),
-            this::scheduleRunner,
-            this.executionContext);
+        .schedule(Duration.ZERO, gcInterval, this::scheduleRunner, this.executionContext);
+  }
+
+  private Duration gcRunInterval() {
+    return runtimeConfigFactory
+        .staticApplicationConf()
+        .getDuration(YB_BACKUP_GARBAGE_COLLECTOR_INTERVAL);
   }
 
   @VisibleForTesting
@@ -143,7 +157,7 @@ public class BackupGarbageCollector {
       UUID storageConfigUUID = backup.getBackupInfo().storageConfigUUID;
       CustomerConfig customerConfig =
           customerConfigService.getOrBadRequest(backup.customerUUID, storageConfigUUID);
-      if (isCredentialUsable(customerConfig.data, customerConfig.name)) {
+      if (isCredentialUsable(customerConfig)) {
         List<String> backupLocations = null;
         log.info("Backup {} deletion started", backupUUID);
         backup.transitionState(BackupState.DeleteInProgress);
@@ -266,24 +280,12 @@ public class BackupGarbageCollector {
     return backupLocations;
   }
 
-  private Boolean isCredentialUsable(JsonNode credentials, String configName) {
-    Boolean isValid = false;
-    switch (configName) {
-      case S3:
-        isValid = AWSUtil.canCredentialListObjects(credentials);
-        break;
-      case GCS:
-        isValid = GCPUtil.canCredentialListObjects(credentials);
-        break;
-      case AZ:
-        isValid = AZUtil.canCredentialListObjects(credentials);
-        break;
-      case NFS:
-        isValid = true;
-        break;
-      default:
-        log.error("Invalid Config type {} provided", configName);
-        isValid = false;
+  private Boolean isCredentialUsable(CustomerConfig config) {
+    Boolean isValid = true;
+    try {
+      backupUtil.validateStorageConfig(config);
+    } catch (PlatformServiceException e) {
+      isValid = false;
     }
     return isValid;
   }

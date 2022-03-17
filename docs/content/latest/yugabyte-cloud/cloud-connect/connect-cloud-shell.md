@@ -1,7 +1,7 @@
 ---
-title: Connect using cloud shell
-linkTitle: Cloud shell
-description: Connect to Yugabyte Cloud clusters from any browser using the cloud shell
+title: Connect using Cloud Shell
+linkTitle: Cloud Shell
+description: Connect to Yugabyte Cloud clusters from any browser using Cloud Shell
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
@@ -13,23 +13,23 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Use any browser to connect to Yugabyte Cloud by using the cloud shell. Cloud shell doesn't require a CA certificate or any special network access configured.
+Use any browser to connect to Yugabyte Cloud by using Cloud Shell. Cloud Shell doesn't require a CA certificate or any special network access configured.
 
-You have the option of using the following command line interfaces (CLIs) in the cloud shell:
+You have the option of using the following command line interfaces (CLIs) in Cloud Shell:
 
-- [ysqlsh](../../../admin/ysqlsh/) - YSQL shell for interacting with YugabyteDB using the [YSQL API](../../../api/ysql).
-- [ycqlsh](../../../admin/ycqlsh/) - YCQL shell, which uses the [YCQL API](../../../api/ycql).
+- [ysqlsh](../../../admin/ysqlsh/) - YSQL shell for interacting with YugabyteDB using the [YSQL API](../../../api/ysql/).
+- [ycqlsh](../../../admin/ycqlsh/) - YCQL shell, which uses the [YCQL API](../../../api/ycql/).
 
 ## Limitations
 
-Cloud shell has the following security limitations:
+Cloud Shell has the following security limitations:
 
 - Sessions are limited to 15 minutes. If your session disconnects, close the browser tab and start a new session.
 - You can only use a subset of ysqlsh [meta-commands](#ysqlsh-meta-commands-in-cloud-shell).
 
-{{< tip title="Cloud shell known issues" >}}
+{{< tip title="Cloud Shell known issues" >}}
 
-Cloud shell is updated regularly. Check the [known issues list](../../release-notes/#known-issues-in-cloud-shell) in the release notes for the most-current list of known issues.
+Cloud Shell is updated regularly. Check the [known issues list](../../release-notes/#known-issues-in-cloud-shell) in the release notes for the most-current list of known issues.
 
 {{< /tip >}}
 
@@ -47,7 +47,7 @@ To connect to a cluster via Cloud Shell:
 
 1. Select the API to use (YSQL or YCQL) and click **Confirm**.
 
-    The shell displays in a separate browser page. Cloud shell can take up to 30 seconds to be ready.
+    The shell displays in a separate browser page. Cloud Shell can take up to 30 seconds to be ready.
 
 1. Enter the password for the user you specified.
 
@@ -65,18 +65,16 @@ yugabyte=#
 Connected to local cluster at 3.69.145.48:9042.
 [ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.
-admin@ycqlsh:yugabyte> 
+admin@ycqlsh:yugabyte>
 ```
 
-If you enter an incorrect password, the cloud shell session terminates immediately and you must start a new session.
+If you enter an incorrect password, the shell session terminates immediately and you must start a new session.
 
-Once connected, Yugabyte Cloud adds one or more entries for the cloud shell session to the cluster IP allow list. After the session is closed, these are cleaned up automatically within five minutes.
+## ysqlsh meta-commands in Cloud Shell
 
-## ysqlsh meta-commands in cloud shell
+Cloud Shell supports the use of ysqlsh [meta-commands](../../../admin/ysqlsh/#meta-commands). However, for security reasons, some commands are not available. With the exception of read-only access to the `/share` directory to load the [sample datasets](../../../sample-data/), commands that access the filesystem do not work in Cloud Shell.
 
-Cloud shell supports the use of ysqlsh [meta-commands](../../../admin/ysqlsh/#meta-commands). However, for security reasons, some commands are not available. With the exception of read-only access to the `/share` directory to load the sample datasets, commands that access the filesystem do not work in cloud shell.
-
-The following table lists common meta-commands that can be used in cloud shell.
+The following table lists common meta-commands that can be used in Cloud Shell.
 
 | Command | Description |
 | :--- | :--- |

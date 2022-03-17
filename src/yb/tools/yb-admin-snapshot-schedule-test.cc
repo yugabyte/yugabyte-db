@@ -675,11 +675,13 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAddColumn),
 
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
+  LOG(INFO) << "Create table 'test_table' and insert a row";
   ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'before')"));
 
   Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
-
+  LOG(INFO) << "Time to restore back: " << time;
+  LOG(INFO) << "Alter table test_table -> Add 'value2' column";
   ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN value2 TEXT"));
   ASSERT_OK(conn.Execute("UPDATE test_table SET value = 'now'"));
   ASSERT_OK(conn.Execute("UPDATE test_table SET value2 = 'now2'"));
@@ -688,13 +690,112 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAddColumn),
 
   auto restore_status = RestoreSnapshotSchedule(schedule_id, time);
   ASSERT_OK(restore_status);
+  LOG(INFO) << "Select data from table after restore";
   res = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM test_table"));
   ASSERT_EQ(res, "before");
+  LOG(INFO) << "Insert data to the table after restore";
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, 'one more')"));
+  ASSERT_NOK(conn.Execute("INSERT INTO test_table VALUES (3, 'again one more', 'new_value')"));
   auto result_status = conn.FetchValue<std::string>("SELECT value2 FROM test_table");
   ASSERT_EQ(result_status.ok(), false);
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlSetDefault),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDeleteColumn),
+          YbAdminSnapshotScheduleTestWithYsql) {
+  auto schedule_id = ASSERT_RESULT(PreparePg());
+
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+  LOG(INFO) << "Create table 'test_table' and insert a row";
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'before')"));
+
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+  LOG(INFO) << "Time to restore back: " << time;
+  LOG(INFO) << "Alter table 'test_table' -> Drop 'value' column";
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP COLUMN value"));
+  auto drop_result_status = conn.FetchValue<std::string>("SELECT value FROM test_table");
+  ASSERT_EQ(drop_result_status.ok(), false);
+  LOG(INFO) << "Reading Rows";
+  auto select_res = ASSERT_RESULT(conn.FetchValue<int>("SELECT * FROM test_table"));
+  LOG(INFO) << "Read result: " << select_res;
+  ASSERT_EQ(select_res, 1);
+  ASSERT_NOK(conn.Execute("INSERT INTO test_table VALUES (2, 'new_value')"));
+
+  auto restore_status = RestoreSnapshotSchedule(schedule_id, time);
+  ASSERT_OK(restore_status);
+  LOG(INFO) << "Select data from table after restore";
+  auto res = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM test_table"));
+  ASSERT_EQ(res, "before");
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, 'next value')"));
+}
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlRenameTable),
+          YbAdminSnapshotScheduleTestWithYsql) {
+  auto schedule_id = ASSERT_RESULT(PreparePg());
+
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+  LOG(INFO) << "Create table 'test_table' and insert a row";
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'before')"));
+
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+  LOG(INFO) << "Time to restore back: " << time;
+  LOG(INFO) << "Alter table 'test_table' -> Rename table to 'new_table'";
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table RENAME TO new_table"));
+  auto renamed_result = conn.FetchValue<std::string>("SELECT value FROM new_table");
+  ASSERT_EQ(renamed_result.ok(), true);
+  LOG(INFO) << "Reading Rows";
+  auto select_result = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM new_table"));
+  LOG(INFO) << "Read result: " << select_result;
+  ASSERT_EQ(select_result, "before");
+  auto result_with_old_name = conn.FetchValue<std::string>("SELECT value FROM test_table");
+  ASSERT_EQ(result_with_old_name.ok(), false);
+
+  auto restore_status = RestoreSnapshotSchedule(schedule_id, time);
+  ASSERT_OK(restore_status);
+  LOG(INFO) << "Select data from table after restore";
+  auto renamed_result_after_restore = conn.FetchValue<std::string>("SELECT value FROM new_table");
+  ASSERT_EQ(renamed_result_after_restore.ok(), false);
+  auto res = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM test_table"));
+  ASSERT_EQ(res, "before");
+  LOG(INFO) << "Insert data to table after restore";
+  ASSERT_NOK(conn.Execute("INSERT INTO new_table VALUES (2, 'new value')"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, 'new value')"));
+}
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlRenameColumn),
+          YbAdminSnapshotScheduleTestWithYsql) {
+  auto schedule_id = ASSERT_RESULT(PreparePg());
+
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+  LOG(INFO) << "Create table 'test_table' and insert a row";
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'before')"));
+
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+  LOG(INFO) << "Time to restore back: " << time;
+  LOG(INFO) << "Alter table 'test_table' -> Rename 'value' column to 'value2'";
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table RENAME COLUMN value TO value2"));
+  auto result_with_old_name = conn.FetchValue<std::string>("SELECT value FROM test_table");
+  ASSERT_EQ(result_with_old_name.ok(), false);
+  auto renamed_result = conn.FetchValue<std::string>("SELECT value2 FROM test_table");
+  ASSERT_EQ(renamed_result.ok(), true);
+  LOG(INFO) << "Reading Rows";
+  auto select_res = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value2 FROM test_table"));
+  LOG(INFO) << "Read result: " << select_res;
+  ASSERT_EQ(select_res, "before");
+
+  auto restore_status = RestoreSnapshotSchedule(schedule_id, time);
+  ASSERT_OK(restore_status);
+  LOG(INFO) << "Select data from table after restore";
+  auto res = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM test_table"));
+  ASSERT_EQ(res, "before");
+  LOG(INFO) << "Insert data to table after restore";
+  ASSERT_NOK(conn.Execute("INSERT INTO test_table(key, value2) VALUES (2, 'new_value')"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table(key, value) VALUES (2, 'new_value')"));
+}
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSetDefault),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -731,7 +832,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlSetDefault),
   ASSERT_EQ(result_status.ok(), false);
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlDropDefault),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropDefault),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -774,7 +875,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlDropDefault),
   ASSERT_EQ(result_status.ok(), false);
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlSetNotNull),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSetNotNull),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -805,7 +906,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlSetNotNull),
   ASSERT_EQ(res3, "");
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlDropNotNull),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropNotNull),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -836,7 +937,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlDropNotNull),
   ASSERT_NOK(conn.Execute("INSERT INTO test_table VALUES (3)"));
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlAlterTableAddPK),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAlterTableAddPK),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -868,7 +969,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlAlterTableAddPK),
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'AfterPKRemoval')"));
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlAlterTableAddFK),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAlterTableAddFK),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -898,7 +999,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlAlterTableAddFK),
   ASSERT_OK(conn.Execute("DROP TABLE test_table"));
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlAlterTableSetOwner),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAlterTableSetOwner),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -949,7 +1050,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlAlterTableSetOwner),
   ASSERT_OK(conn.Execute("ALTER TABLE test_table RENAME key TO key_new3"));
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlAddUniqueConstraint),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAddUniqueConstraint),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -977,7 +1078,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlAddUniqueConstraint)
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, 'ABC')"));
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlDropUniqueConstraint),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropUniqueConstraint),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -1019,7 +1120,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlDropUniqueConstraint
 }
 
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlAddCheckConstraint),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAddCheckConstraint),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -1047,7 +1148,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlAddCheckConstraint),
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, 'PQR')"));
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlDropCheckConstraint),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropCheckConstraint),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -1080,6 +1181,90 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlDropCheckConstraint)
   LOG(INFO) << "Verify that the row with key=2 is no longer present after restore";
   auto result_status = conn.FetchValue<std::string>("SELECT * FROM test_table where key=2");
   ASSERT_EQ(result_status.ok(), false);
+}
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSequenceDelete),
+          YbAdminSnapshotScheduleTestWithYsql) {
+  auto schedule_id = ASSERT_RESULT(PreparePg());
+
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+  LOG(INFO) << "Create table 'test_table'";
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value INT)"));
+  LOG(INFO) << "Create Sequence 'value_data'";
+  ASSERT_OK(conn.Execute("CREATE SEQUENCE value_data INCREMENT 5 OWNED BY test_table.value"));
+  LOG(INFO) << "Insert some rows to 'test_table'";
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, nextval('value_data'))"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, nextval('value_data'))"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (3, nextval('value_data'))"));
+  LOG(INFO) << "Reading Rows";
+  auto res = ASSERT_RESULT(conn.FetchValue<int32_t>("SELECT value FROM test_table where key=3"));
+  LOG(INFO) << "Select result " << res;
+  ASSERT_EQ(res, 11);
+
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+
+  LOG(INFO) << "Time to restore back " << time;
+  LOG(INFO) << "Deleting last row";
+  ASSERT_OK(conn.Execute("DELETE FROM test_table where key=3"));
+
+  auto restore_status = RestoreSnapshotSchedule(schedule_id, time);
+  ASSERT_OK(restore_status);
+
+  LOG(INFO) << "Select data from 'test_table' after restore";
+  res = ASSERT_RESULT(conn.FetchValue<int32_t>("SELECT value FROM test_table where key=3"));
+  LOG(INFO) << "Select result " << res;
+  ASSERT_EQ(res, 11);
+  LOG(INFO) << "Insert a row into 'test_table' and validate";
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (4, nextval('value_data'))"));
+  res = ASSERT_RESULT(conn.FetchValue<int32_t>("SELECT value FROM test_table where key=4"));
+  LOG(INFO) << "Select result " << res;
+  ASSERT_EQ(res, 16);
+}
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSequenceInsert),
+          YbAdminSnapshotScheduleTestWithYsql) {
+  auto schedule_id = ASSERT_RESULT(PreparePg());
+
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+  LOG(INFO) << "Create table 'test_table'";
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value INT)"));
+  LOG(INFO) << "Create Sequence 'value_data'";
+  ASSERT_OK(conn.Execute("CREATE SEQUENCE value_data INCREMENT 5 OWNED BY test_table.value"));
+  LOG(INFO) << "Insert some rows to 'test_table'";
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, nextval('value_data'))"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, nextval('value_data'))"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (3, nextval('value_data'))"));
+  LOG(INFO) << "Reading Rows";
+  auto res = ASSERT_RESULT(conn.FetchValue<int32_t>("SELECT value FROM test_table where key=3"));
+  LOG(INFO) << "Select result " << res;
+  ASSERT_EQ(res, 11);
+
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+
+  LOG(INFO) << "Time to restore back " << time;
+  LOG(INFO) << "Inserting new row in 'test_table'";
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (4, nextval('value_data'))"));
+  LOG(INFO) << "Reading Rows from 'test_table'";
+  res = ASSERT_RESULT(conn.FetchValue<int32_t>("SELECT value FROM test_table where key=4"));
+  LOG(INFO) << "Select result " << res;
+  ASSERT_EQ(res, 16);
+
+  auto restore_status = RestoreSnapshotSchedule(schedule_id, time);
+  ASSERT_OK(restore_status);
+
+  LOG(INFO) << "Select row from 'test_table' after restore";
+  auto result_status = conn.FetchValue<int32_t>("SELECT value FROM test_table where key=4");
+  ASSERT_EQ(result_status.ok(), false);
+
+  res = ASSERT_RESULT(conn.FetchValue<int32_t>("SELECT value FROM test_table where key=3"));
+  LOG(INFO) << "Select result " << res;
+  ASSERT_EQ(res, 11);
+  LOG(INFO) << "Insert a row into 'test_table' and validate";
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (4, nextval('value_data'))"));
+  // Here value should be 21 instead of 16 as previous insert has value 16
+  res = ASSERT_RESULT(conn.FetchValue<int32_t>("SELECT value FROM test_table where key=4"));
+  LOG(INFO) << "Select result " << res;
+  ASSERT_EQ(res, 21);
 }
 
 TEST_F(YbAdminSnapshotScheduleTest, UndeleteIndex) {
@@ -1673,6 +1858,26 @@ TEST_F(YbAdminSnapshotScheduleTest, ConsecutiveRestore) {
   ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time1));
 
   ASSERT_OK(WaitTabletsCleaned(CoarseMonoClock::now() + retention + kInterval));
+}
+
+TEST_F(YbAdminSnapshotScheduleTest, CatalogLoadRace) {
+  auto schedule_id = ASSERT_RESULT(PrepareCql());
+
+  auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
+
+  // Change the snapshot throttling flags.
+  ASSERT_OK(cluster_->SetFlagOnMasters("max_concurrent_snapshot_rpcs", "-1"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("max_concurrent_snapshot_rpcs_per_tserver", "1"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("schedule_snapshot_rpcs_out_of_band", "true"));
+  // Delay loading of cluster config by 2 secs (i.e. 4 cycles of snapshot coordinator).
+  // This ensures that the snapshot coordinator accesses an empty cluster config at least once
+  // and thus triggers the codepath where the case is handled
+  // and a default value is used for throttling.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_slow_cluster_config_load_secs", "2"));
+
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+  // Restore to trigger loading cluster config.
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
 }
 
 class YbAdminSnapshotScheduleTestWithoutConsecutiveRestore : public YbAdminSnapshotScheduleTest {

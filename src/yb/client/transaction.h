@@ -36,6 +36,12 @@ class HybridTime;
 
 class Trace;
 
+enum TxnPriorityRequirement {
+  kLowerPriorityRange,
+  kHigherPriorityRange,
+  kHighestPriority
+};
+
 namespace client {
 
 using Waiter = boost::function<void(const Status&)>;
@@ -163,7 +169,9 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
 class YBSubTransaction {
  public:
-  YBSubTransaction();
+  bool active() const {
+    return highest_subtransaction_id_ >= kMinSubTransactionId;
+  }
 
   void SetActiveSubTransaction(SubTransactionId id);
 
@@ -176,7 +184,7 @@ class YBSubTransaction {
 
   // Tracks the highest observed subtransaction_id. Used during "ROLLBACK TO s" to abort from s to
   // the highest live subtransaction_id.
-  SubTransactionId highest_subtransaction_id_ = kMinSubTransactionId;
+  SubTransactionId highest_subtransaction_id_ = 0;
 };
 
 } // namespace client

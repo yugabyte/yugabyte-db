@@ -48,7 +48,13 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
       // Update the universe DB with the update to be performed and set the
       // 'updateInProgress' flag to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-      taskParams().rootCA = universe.getUniverseDetails().rootCA;
+
+      if (taskParams().nodePrefix == null) {
+        taskParams().nodePrefix = universe.getUniverseDetails().nodePrefix;
+      }
+      if (taskParams().clusters == null || taskParams().clusters.isEmpty()) {
+        taskParams().clusters = universe.getUniverseDetails().clusters;
+      }
 
       // Execute the lambda which populates subTaskGroupQueue
       upgradeLambda.run();
@@ -70,14 +76,17 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
 
       throw t;
     } finally {
-      if (isBlacklistLeaders) {
-        subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
-        List<NodeDetails> tServerNodes = getUniverse().getTServers();
-        createModifyBlackListTask(tServerNodes, false /* isAdd */, true /* isLeaderBlacklist */)
-            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-        subTaskGroupQueue.run();
+      try {
+        if (isBlacklistLeaders) {
+          subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
+          List<NodeDetails> tServerNodes = getUniverse().getTServers();
+          createModifyBlackListTask(tServerNodes, false /* isAdd */, true /* isLeaderBlacklist */)
+              .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+          subTaskGroupQueue.run();
+        }
+      } finally {
+        unlockUniverseForUpdate();
       }
-      unlockUniverseForUpdate();
     }
 
     log.info("Finished {} task.", getName());

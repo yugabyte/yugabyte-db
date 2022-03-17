@@ -309,6 +309,7 @@ void TSDescriptor::UpdateMetrics(const TServerMetricsPB& metrics) {
     ts_metrics_.path_metrics[path_metric.path_id()] =
         { path_metric.used_space(), path_metric.total_space() };
   }
+  ts_metrics_.disable_tablet_split_if_default_ttl = metrics.disable_tablet_split_if_default_ttl();
 }
 
 void TSDescriptor::GetMetrics(TServerMetricsPB* metrics) {
@@ -327,6 +328,7 @@ void TSDescriptor::GetMetrics(TServerMetricsPB* metrics) {
     new_path_metric->set_used_space(path_metric.second.used_space);
     new_path_metric->set_total_space(path_metric.second.total_space);
   }
+  metrics->set_disable_tablet_split_if_default_ttl(ts_metrics_.disable_tablet_split_if_default_ttl);
 }
 
 bool TSDescriptor::HasTabletDeletePending() const {

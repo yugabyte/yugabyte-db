@@ -16,6 +16,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.commissioner.tasks.params.KMSConfigTaskParams;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
@@ -26,6 +27,7 @@ import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.KmsConfig;
@@ -69,10 +71,10 @@ public class EncryptionAtRestController extends AuthenticatedController {
   public static final String SMARTKEY_API_KEY_FIELDNAME = "api_key";
   public static final String SMARTKEY_BASE_URL_FIELDNAME = "base_url";
 
-  public static final String HC_ADDR_FNAME = HashicorpEARServiceUtil.HC_VAULT_ADDRESS;
-  public static final String HC_TOKEN_FNAME = HashicorpEARServiceUtil.HC_VAULT_TOKEN;
-  public static final String HC_ENGINE_FNAME = HashicorpEARServiceUtil.HC_VAULT_ENGINE;
-  public static final String HC_MPATH_FNAME = HashicorpEARServiceUtil.HC_VAULT_MOUNT_PATH;
+  public static final String HC_ADDR_FNAME = HashicorpVaultConfigParams.HC_VAULT_ADDRESS;
+  public static final String HC_TOKEN_FNAME = HashicorpVaultConfigParams.HC_VAULT_TOKEN;
+  public static final String HC_ENGINE_FNAME = HashicorpVaultConfigParams.HC_VAULT_ENGINE;
+  public static final String HC_MPATH_FNAME = HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH;
 
   @Inject EncryptionAtRestManager keyManager;
 
@@ -92,18 +94,13 @@ public class EncryptionAtRestController extends AuthenticatedController {
 
   private void validateKMSProviderConfigFormData(
       ObjectNode formData, String keyProvider, UUID customerUUID) {
-    if (keyProvider.toUpperCase().equals(KeyProvider.AWS.toString())
-        && (formData.get(AWS_ACCESS_KEY_ID_FIELDNAME) != null
-            || formData.get(AWS_SECRET_ACCESS_KEY_FIELDNAME) != null)) {
+    if (keyProvider.toUpperCase().equals(KeyProvider.AWS.toString())) {
       CloudAPI cloudAPI = cloudAPIFactory.get(KeyProvider.AWS.toString().toLowerCase());
-      Map<String, String> config = new HashMap<>();
-      config.put(
-          AWS_ACCESS_KEY_ID_FIELDNAME, formData.get(AWS_ACCESS_KEY_ID_FIELDNAME).textValue());
-      config.put(
-          AWS_SECRET_ACCESS_KEY_FIELDNAME,
-          formData.get(AWS_SECRET_ACCESS_KEY_FIELDNAME).textValue());
-      if (cloudAPI != null
-          && !cloudAPI.isValidCreds(config, formData.get(AWS_REGION_FIELDNAME).textValue())) {
+      if (cloudAPI == null) {
+        throw new PlatformServiceException(
+            SERVICE_UNAVAILABLE, "Cloud not create CloudAPI to validate the credentials");
+      }
+      if (!cloudAPI.isValidCredsKms(formData, customerUUID)) {
         throw new PlatformServiceException(BAD_REQUEST, "Invalid AWS Credentials.");
       }
     } else if (keyProvider.toUpperCase().equals(KeyProvider.SMARTKEY.toString())) {
@@ -237,7 +234,9 @@ public class EncryptionAtRestController extends AuthenticatedController {
       LOG.info(
           "Saved task uuid " + taskUUID + " in customer tasks table for customer: " + customerUUID);
 
-      auditService().createAuditEntry(ctx(), request(), formData);
+      auditService()
+          .createAuditEntryWithReqBody(
+              ctx(), Audit.TargetType.KMSConfig, null, Audit.ActionType.Create, formData, taskUUID);
       return new YBPTask(taskUUID).asResult();
     } catch (Exception e) {
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
@@ -296,7 +295,14 @@ public class EncryptionAtRestController extends AuthenticatedController {
           taskParams.getName());
       LOG.info(
           "Saved task uuid " + taskUUID + " in customer tasks table for customer: " + customerUUID);
-      auditService().createAuditEntry(ctx(), request(), formData);
+      auditService()
+          .createAuditEntryWithReqBody(
+              ctx(),
+              Audit.TargetType.KMSConfig,
+              configUUID.toString(),
+              Audit.ActionType.Edit,
+              formData,
+              taskUUID);
       return new YBPTask(taskUUID).asResult();
     } catch (Exception e) {
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
@@ -386,7 +392,13 @@ public class EncryptionAtRestController extends AuthenticatedController {
           taskParams.getName());
       LOG.info(
           "Saved task uuid " + taskUUID + " in customer tasks table for customer: " + customerUUID);
-      auditService().createAuditEntry(ctx(), request());
+      auditService()
+          .createAuditEntryWithReqBody(
+              ctx(),
+              Audit.TargetType.KMSConfig,
+              configUUID.toString(),
+              Audit.ActionType.Delete,
+              taskUUID);
       return new YBPTask(taskUUID).asResult();
     } catch (Exception e) {
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
@@ -410,7 +422,13 @@ public class EncryptionAtRestController extends AuthenticatedController {
         Json.newObject()
             .put("reference", keyRef)
             .put("value", Base64.getEncoder().encodeToString(recoveredKey));
-    auditService().createAuditEntry(ctx(), request(), formData);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.RetrieveKmsKey,
+            formData);
     return PlatformResults.withRawData(result);
   }
 
@@ -453,7 +471,12 @@ public class EncryptionAtRestController extends AuthenticatedController {
             "Removing key ref for customer %s with universe %s",
             customerUUID.toString(), universeUUID.toString()));
     keyManager.cleanupEncryptionAtRest(customerUUID, universeUUID);
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.RemoveKmsKeyReferenceHistory);
     return YBPSuccess.withMessage("Key ref was successfully removed");
   }
 

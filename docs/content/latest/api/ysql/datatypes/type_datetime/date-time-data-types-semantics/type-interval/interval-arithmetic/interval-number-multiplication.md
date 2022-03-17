@@ -13,7 +13,7 @@ showAsideToc: true
 ---
 
 {{< tip title="Download and install the date-time utilities code." >}}
-The code on this page depends on the code presented in the section [User-defined _interval_ utility functions](../../interval-utilities/). This is included in the larger [code kit](../../../../download-date-time-utilities/) that includes all of the reusable code that the overall _[date-time](../../../../../type_datetime)_ section describes and uses.
+The code on this page depends on the code presented in the section [User-defined _interval_ utility functions](../../interval-utilities/). This is included in the larger [code kit](../../../../download-date-time-utilities/) that includes all of the reusable code that the overall _[date-time](../../../../../type_datetime/)_ section describes and uses.
 {{< /tip >}}
 
 This section presents a PL/pgSQL implementation of the model that explains how multiplying or dividing an _interval_ value by a number works. Make sure that you have read the section [Adding or subtracting a pair of _interval_ values](../interval-interval-addition/) before reading this section.
@@ -83,7 +83,7 @@ This is the multiplication result:
  intermediate model mm_dd_ss:          2.4691 months         0.0000 days         0.0000 seconds
  ultimate model mm_dd_ss:              2.0000 months        14.0000 days      6399.4752 seconds
  actual mm_dd_ss:                      2.0000 months        14.0000 days      6399.4752 seconds
- 
+
  ultimate model result: 2 mons 14 days 01:46:39.4752
 ```
 
@@ -94,7 +94,7 @@ And this is the division result:
  intermediate model mm_dd_ss:          1.9753 months         0.0000 days         0.0000 seconds
  ultimate model mm_dd_ss:              1.0000 months        29.0000 days     22399.8912 seconds
  actual mm_dd_ss:                      1.0000 months        29.0000 days     22399.8912 seconds
- 
+
  ultimate model result: 1 mon 29 days 06:13:19.8912
 ```
 
@@ -192,7 +192,7 @@ This is the result:
  intermediate model mm_dd_ss:          1.9200 months         1.9200 days      6912.0000 seconds
  ultimate model mm_dd_ss:              1.0000 months        28.0000 days    138240.0000 seconds
  actual mm_dd_ss:                      1.0000 months        29.0000 days     51840.0000 seconds
- 
+
  ultimate model result: 1 mon 28 days 38:24:00
 ```
 
@@ -251,7 +251,7 @@ select
 This is the result:
 
 ```output
-         actual         |         model          
+         actual         |         model
 ------------------------+------------------------
  1 mon 28 days 21:36:00 | 1 mon 28 days 21:36:00
 ```
@@ -267,7 +267,7 @@ select
 This is the result:
 
 ```output
-         actual         |         model          
+         actual         |         model
 ------------------------+------------------------
  1 mon 29 days 12:28:48 | 1 mon 28 days 36:28:48
 ```
@@ -289,7 +289,7 @@ select
 This is the result:
 
 ```output
-   add then multiply    |   multiply then add    
+   add then multiply    |   multiply then add
 ------------------------+------------------------
  1 mon 29 days 12:28:48 | 1 mon 28 days 36:28:48
 ```
@@ -305,7 +305,7 @@ select
 This is the result:
 
 ```output
-   add then multiply    |   multiply then add    
+   add then multiply    |   multiply then add
 ------------------------+------------------------
  1 mon 28 days 36:28:48 | 1 mon 28 days 36:28:48
 ```

@@ -3,8 +3,6 @@ title: Troubleshooting
 linkTitle: Troubleshooting
 headerTitle: Troubleshooting overview
 description: Troubleshooting overview
-aliases:
-  - /troubleshoot/overview/
 menu:
   latest:
     identifier: troubleshooting-overview
@@ -24,15 +22,15 @@ Follow the instructions on the [check processes](../nodes/check-processes/) page
 
 ## 2. Check cluster-level issues
 
-Next, check the list of [cluster issues](../cluster) and the respective fixes for each of them.
+Next, check the list of [cluster issues](../cluster/) and the respective fixes for each of them.
 
 ## 3. Check logs
 
-Inspect the YugabyteDB logs for more details on your issue. For more details on where to find and how to understand the YugabyteDB log files, see [Inspect logs](../nodes/check-logs).
+Inspect the YugabyteDB logs for more details on your issue. For more details on where to find and how to understand the YugabyteDB log files, see [Inspect logs](../nodes/check-logs/).
 
 ## 4. Explore knowledge base articles
 
-You can find additional troubleshooting resources, and information on errata, on our [Support page](https://support.yugabyte.com).
+You can find additional troubleshooting resources, and information on errata, on our [Support page](https://support.yugabyte.com/).
 
 ## 5. File an issue
 

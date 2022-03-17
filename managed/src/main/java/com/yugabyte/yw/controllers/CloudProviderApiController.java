@@ -20,6 +20,7 @@ import com.yugabyte.yw.forms.EditProviderRequest;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -29,6 +30,7 @@ import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.io.IOException;
+import java.util.Objects;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
@@ -61,15 +63,28 @@ public class CloudProviderApiController extends AuthenticatedController {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
     cloudProviderHandler.delete(customer, provider);
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.CloudProvider,
+            providerUUID.toString(),
+            Audit.ActionType.Delete);
     return YBPSuccess.withMessage("Deleted provider: " + providerUUID);
   }
 
-  @ApiOperation(value = "Refresh pricing", notes = "Refresh provider pricing info")
+  @ApiOperation(
+      value = "Refresh pricing",
+      notes = "Refresh provider pricing info",
+      response = YBPSuccess.class)
   public Result refreshPricing(UUID customerUUID, UUID providerUUID) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     cloudProviderHandler.refreshPricing(customerUUID, provider);
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.CloudProvider,
+            providerUUID.toString(),
+            Audit.ActionType.RefreshPricing);
     return YBPSuccess.withMessage(provider.code.toUpperCase() + " Initialized");
   }
 
@@ -87,7 +102,13 @@ public class CloudProviderApiController extends AuthenticatedController {
     EditProviderRequest editProviderReq =
         formFactory.getFormDataOrBadRequest(request().body().asJson(), EditProviderRequest.class);
     cloudProviderHandler.editProvider(provider, editProviderReq);
-    auditService().createAuditEntry(ctx(), request(), Json.toJson(editProviderReq));
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.CloudProvider,
+            providerUUID.toString(),
+            Audit.ActionType.Update,
+            Json.toJson(editProviderReq));
     return PlatformResults.withData(provider);
   }
 
@@ -124,7 +145,14 @@ public class CloudProviderApiController extends AuthenticatedController {
         CloudBootstrap.Params taskParams = CloudBootstrap.Params.fromProvider(reqProvider);
 
         taskUUID = cloudProviderHandler.bootstrap(customer, providerEbean, taskParams);
-        auditService().createAuditEntry(ctx(), request(), requestBody, taskUUID);
+        auditService()
+            .createAuditEntryWithReqBody(
+                ctx(),
+                Audit.TargetType.CloudProvider,
+                Objects.toString(providerEbean.uuid, null),
+                Audit.ActionType.Create,
+                requestBody,
+                taskUUID);
       } catch (Throwable e) {
         log.warn("Bootstrap failed. Deleting provider");
         providerEbean.delete();
@@ -132,7 +160,14 @@ public class CloudProviderApiController extends AuthenticatedController {
       }
       return new YBPTask(taskUUID, providerEbean.uuid).asResult();
     } else {
-      auditService().createAuditEntry(ctx(), request(), requestBody, null);
+      auditService()
+          .createAuditEntryWithReqBody(
+              ctx(),
+              Audit.TargetType.CloudProvider,
+              Objects.toString(providerEbean.uuid, null),
+              Audit.ActionType.Create,
+              requestBody,
+              null);
       return new YBPTask(null, providerEbean.uuid).asResult();
     }
   }

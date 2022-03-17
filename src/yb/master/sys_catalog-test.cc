@@ -405,22 +405,18 @@ class TestClusterConfigLoader : public Visitor<PersistentClusterConfigInfo> {
   virtual Status Visit(
       const std::string& fake_id, const SysClusterConfigEntryPB& metadata) override {
     CHECK(!config_info) << "We either got multiple config_info entries, or we didn't Reset()";
-    config_info = new ClusterConfigInfo();
+    config_info = std::make_shared<ClusterConfigInfo>();
     auto l = config_info->LockForWrite();
     l.mutable_data()->pb.CopyFrom(metadata);
     l.Commit();
-    config_info->AddRef();
     return Status::OK();
   }
 
   void Reset() {
-    if (config_info) {
-      config_info->Release();
-      config_info = nullptr;
-    }
+    config_info.reset();
   }
 
-  ClusterConfigInfo* config_info = nullptr;
+  std::shared_ptr<ClusterConfigInfo> config_info = nullptr;
 };
 
 // Test the sys-catalog tables basic operations (add, update, delete, visit)
@@ -439,7 +435,7 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
   // Test modifications directly through the Sys catalog API.
 
   // Create a config_info block.
-  scoped_refptr<ClusterConfigInfo> config_info(new ClusterConfigInfo());
+  std::shared_ptr<ClusterConfigInfo> config_info(make_shared<ClusterConfigInfo>());
   {
     auto l = config_info->LockForWrite();
     auto pb = l.mutable_data()
@@ -453,7 +449,7 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
     pb->set_min_num_replicas(100);
 
     // Set it in the sys_catalog. It already has the default entry, so we use update.
-    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, config_info));
+    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, config_info.get()));
     l.Commit();
   }
 
@@ -461,7 +457,7 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
   loader->Reset();
   ASSERT_OK(sys_catalog->Visit(loader.get()));
   ASSERT_TRUE(loader->config_info);
-  ASSERT_METADATA_EQ(config_info.get(), loader->config_info);
+  ASSERT_METADATA_EQ(config_info.get(), loader->config_info.get());
 
   {
     auto l = config_info->LockForWrite();
@@ -474,7 +470,7 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
     cloud_info->set_placement_cloud("cloud2");
     pb->set_min_num_replicas(200);
     // Update it in the sys_catalog.
-    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, config_info));
+    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, config_info.get()));
     l.Commit();
   }
 
@@ -482,7 +478,7 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
   loader->Reset();
   ASSERT_OK(sys_catalog->Visit(loader.get()));
   ASSERT_TRUE(loader->config_info);
-  ASSERT_METADATA_EQ(config_info.get(), loader->config_info);
+  ASSERT_METADATA_EQ(config_info.get(), loader->config_info.get());
 
   // Test data through the CatalogManager API.
 
@@ -827,6 +823,7 @@ TEST_F(SysCatalogTest, TestSysCatalogSysConfigOperations) {
   //   a. "security-config" entry is set up with roles_version = 0.
   //   b. "ysql-catalog-configuration" entry is set up with version = 0 and the transactional YSQL
   //      sys catalog flag is set to true.
+  //   c. "transaction-tables-config" entry is set up with version = 0.
   scoped_refptr<SysConfigInfo> security_config = new SysConfigInfo(kSecurityConfigType);
   {
     auto l = security_config->LockForWrite();
@@ -841,11 +838,20 @@ TEST_F(SysCatalogTest, TestSysCatalogSysConfigOperations) {
     ysql_catalog_config_pb.set_transactional_sys_catalog_enabled(true);
     l.Commit();
   }
+  scoped_refptr<SysConfigInfo> transaction_tables_config =
+      new SysConfigInfo(kTransactionTablesConfigType);
+  {
+    auto l = transaction_tables_config->LockForWrite();
+    auto& transaction_tables_config_pb = *l.mutable_data()->pb.mutable_transaction_tables_config();
+    transaction_tables_config_pb.set_version(0);
+    l.Commit();
+  }
   unique_ptr<TestSysConfigLoader> loader(new TestSysConfigLoader());
   ASSERT_OK(sys_catalog->Visit(loader.get()));
-  ASSERT_EQ(2, loader->sys_configs.size());
+  ASSERT_EQ(3, loader->sys_configs.size());
   ASSERT_METADATA_EQ(security_config.get(), loader->sys_configs[0]);
-  ASSERT_METADATA_EQ(ysql_catalog_config.get(), loader->sys_configs[1]);
+  ASSERT_METADATA_EQ(transaction_tables_config.get(), loader->sys_configs[1]);
+  ASSERT_METADATA_EQ(ysql_catalog_config.get(), loader->sys_configs[2]);
 
   // 2. Add a new SysConfigEntryPB and verify it shows up.
   scoped_refptr<SysConfigInfo> test_config = new SysConfigInfo("test-security-configuration");
@@ -859,18 +865,20 @@ TEST_F(SysCatalogTest, TestSysCatalogSysConfigOperations) {
   }
   loader->Reset();
   ASSERT_OK(sys_catalog->Visit(loader.get()));
-  ASSERT_EQ(3, loader->sys_configs.size());
+  ASSERT_EQ(4, loader->sys_configs.size());
   ASSERT_METADATA_EQ(security_config.get(), loader->sys_configs[0]);
   ASSERT_METADATA_EQ(test_config.get(), loader->sys_configs[1]);
-  ASSERT_METADATA_EQ(ysql_catalog_config.get(), loader->sys_configs[2]);
+  ASSERT_METADATA_EQ(transaction_tables_config.get(), loader->sys_configs[2]);
+  ASSERT_METADATA_EQ(ysql_catalog_config.get(), loader->sys_configs[3]);
 
   // 2. Remove the SysConfigEntry and verify that it got removed.
   ASSERT_OK(sys_catalog->Delete(kLeaderTerm, test_config));
   loader->Reset();
   ASSERT_OK(sys_catalog->Visit(loader.get()));
-  ASSERT_EQ(2, loader->sys_configs.size());
+  ASSERT_EQ(3, loader->sys_configs.size());
   ASSERT_METADATA_EQ(security_config.get(), loader->sys_configs[0]);
-  ASSERT_METADATA_EQ(ysql_catalog_config.get(), loader->sys_configs[1]);
+  ASSERT_METADATA_EQ(transaction_tables_config.get(), loader->sys_configs[1]);
+  ASSERT_METADATA_EQ(ysql_catalog_config.get(), loader->sys_configs[2]);
 }
 
 class TestRoleLoader : public Visitor<PersistentRoleInfo> {

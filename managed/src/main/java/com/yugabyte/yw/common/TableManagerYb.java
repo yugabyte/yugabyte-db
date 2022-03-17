@@ -2,13 +2,23 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.BackupUtil.BACKUP_SCRIPT;
+import static com.yugabyte.yw.common.BackupUtil.EMR_MULTIPLE;
+import static com.yugabyte.yw.common.BackupUtil.K8S_CERT_PATH;
+import static com.yugabyte.yw.common.BackupUtil.VM_CERT_DIR;
+import static com.yugabyte.yw.common.BackupUtil.YB_CLOUD_COMMAND_TYPE;
 import static com.yugabyte.yw.common.TableManagerYb.CommandSubType.BACKUP;
 import static com.yugabyte.yw.common.TableManagerYb.CommandSubType.BULK_IMPORT;
 import static com.yugabyte.yw.common.TableManagerYb.CommandSubType.DELETE;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME;
+import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_LOCATION_FIELDNAME;
+import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_FIELDNAME;
+import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_LOCATIONS_FIELDNAME;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.common.BackupUtil;
+import com.yugabyte.yw.common.BackupUtil.RegionLocations;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
@@ -29,16 +39,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import org.apache.commons.lang.StringUtils;
 import org.yb.CommonTypes.TableType;
 import play.libs.Json;
 
 @Singleton
 public class TableManagerYb extends DevopsBase {
-  private static final int EMR_MULTIPLE = 8;
-  private static final String YB_CLOUD_COMMAND_TYPE = "table";
-  private static final String K8S_CERT_PATH = "/opt/certs/yugabyte/";
-  private static final String VM_CERT_DIR = "/yugabyte-tls-config/";
-  private static final String BACKUP_SCRIPT = "bin/yb_backup.py";
 
   public enum CommandSubType {
     BACKUP(BACKUP_SCRIPT),
@@ -57,6 +63,7 @@ public class TableManagerYb extends DevopsBase {
   }
 
   @Inject ReleaseManager releaseManager;
+  @Inject BackupUtil backupUtil;
 
   public ShellResponse runCommand(CommandSubType subType, TableManagerParams taskParams) {
     Universe universe = Universe.getOrBadRequest(taskParams.universeUUID);
@@ -83,8 +90,11 @@ public class TableManagerYb extends DevopsBase {
 
     List<NodeDetails> tservers = universe.getTServers();
     // Verify if secondary IPs exist. If so, create map.
+    boolean legacyNet =
+        universe.getConfig().getOrDefault(Universe.DUAL_NET_LEGACY, "true").equals("true");
     if (tservers.get(0).cloudInfo.secondary_private_ip != null
-        && !tservers.get(0).cloudInfo.secondary_private_ip.equals("null")) {
+        && !tservers.get(0).cloudInfo.secondary_private_ip.equals("null")
+        && !legacyNet) {
       secondaryToPrimaryIP =
           tservers
               .stream()
@@ -124,6 +134,9 @@ public class TableManagerYb extends DevopsBase {
           } else {
             commandArgs.add(taskParams.getKeyspace());
           }
+          if (runtimeConfigFactory.forUniverse(universe).getBoolean("yb.backup.pg_based")) {
+            commandArgs.add("--pg_based_backup");
+          }
         }
         commandArgs.add("--no_auto_name");
         if (taskParams.sse) {
@@ -131,6 +144,21 @@ public class TableManagerYb extends DevopsBase {
         }
         customer = Customer.find.query().where().idEq(universe.customerId).findOne();
         customerConfig = CustomerConfig.get(customer.uuid, backupTableParams.storageConfigUUID);
+
+        if (!customerConfig.name.toLowerCase().equals("nfs")) {
+          List<RegionLocations> regionLocations =
+              backupUtil.getRegionLocationsList(customerConfig.getData());
+          for (RegionLocations regionLocation : regionLocations) {
+            if (StringUtils.isNotBlank(regionLocation.REGION)
+                && StringUtils.isNotBlank(regionLocation.LOCATION)) {
+              commandArgs.add("--region");
+              commandArgs.add(regionLocation.REGION);
+              commandArgs.add("--region_location");
+              commandArgs.add(regionLocation.LOCATION);
+            }
+          }
+        }
+
         backupKeysFile =
             EncryptionAtRestUtil.getUniverseBackupKeysFile(backupTableParams.storageLocation);
         if (backupKeysFile.exists()) {
@@ -164,7 +192,7 @@ public class TableManagerYb extends DevopsBase {
           throw new RuntimeException(
               "Unable to fetch yugabyte release for version: " + userIntent.ybSoftwareVersion);
         }
-        String ybServerPackage = metadata.filePath;
+        String ybServerPackage = metadata.getFilePath(region);
         if (bulkImportParams.instanceCount == 0) {
           bulkImportParams.instanceCount = userIntent.numNodes * EMR_MULTIPLE;
         }
@@ -248,6 +276,9 @@ public class TableManagerYb extends DevopsBase {
     }
     if (backupTableParams.enableVerboseLogs) {
       commandArgs.add("--verbose");
+    }
+    if (backupTableParams.useTablespaces) {
+      commandArgs.add("--use_tablespaces");
     }
   }
 
