@@ -193,7 +193,9 @@ public class BackupUtil {
   public List<String> getStorageLocationList(JsonNode data) throws PlatformServiceException {
     List<String> locations = new ArrayList<>();
     List<RegionLocations> regionsList = null;
-    if (StringUtils.isNotBlank(data.get(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME).asText())) {
+    if (data.has(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME)
+        && StringUtils.isNotBlank(
+            data.get(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME).asText())) {
       locations.add(data.get(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME).asText());
     } else {
       throw new PlatformServiceException(BAD_REQUEST, "Default backup location cannot be empty");
@@ -210,16 +212,22 @@ public class BackupUtil {
     return locations;
   }
 
-  public List<RegionLocations> getRegionLocationsList(JsonNode data) {
-    List<RegionLocations> regionLocationsList = null;
+  public List<RegionLocations> getRegionLocationsList(JsonNode data)
+      throws PlatformServiceException {
+    List<RegionLocations> regionLocationsList = new ArrayList<>();
     try {
-      ObjectMapper mapper = new ObjectMapper();
-      String jsonLocations =
-          mapper.writeValueAsString(data.get(CustomerConfigConsts.REGION_LOCATIONS_FIELDNAME));
-      regionLocationsList = Arrays.asList(mapper.readValue(jsonLocations, RegionLocations[].class));
-    } catch (IOException e) {
-      LOG.error("Error parsing regionLocations list: ", e);
+      if (data.has(CustomerConfigConsts.REGION_LOCATIONS_FIELDNAME)) {
+        ObjectMapper mapper = new ObjectMapper();
+        String jsonLocations =
+            mapper.writeValueAsString(data.get(CustomerConfigConsts.REGION_LOCATIONS_FIELDNAME));
+        regionLocationsList =
+            Arrays.asList(mapper.readValue(jsonLocations, RegionLocations[].class));
+      }
+    } catch (IOException ex) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Not able to parse region location from the storage config data");
     }
+
     return regionLocationsList;
   }
 
