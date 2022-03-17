@@ -45,6 +45,8 @@ class MasterAdminServiceImpl : public MasterServiceBase, public MasterAdminIf {
       (DdlLog)
       (DeleteNotServingTablet)
       (FlushSysCatalog)
+      (DisableTabletSplitting)
+      (IsTabletSplittingComplete)
       (SplitTablet)
   )
 

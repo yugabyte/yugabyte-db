@@ -83,7 +83,7 @@ geqo(PlannerInfo *root, int number_of_rels, List *initial_rels)
 
 #if defined(ERX)
 	Edge	   *edge_table;		/* list of edges */
-	int			edge_failures = 0;
+	int			edge_failures pg_attribute_unused() = 0;
 #endif
 #if defined(CX) || defined(PX) || defined(OX1) || defined(OX2)
 	City	   *city_table;		/* list of cities */

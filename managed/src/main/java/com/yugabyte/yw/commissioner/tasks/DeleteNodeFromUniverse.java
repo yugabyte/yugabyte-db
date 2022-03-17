@@ -11,7 +11,6 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -40,8 +39,6 @@ public class DeleteNodeFromUniverse extends UniverseTaskBase {
   public void run() {
     try {
       checkUniverseVersion();
-      // Create the task list sequence.
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
@@ -100,7 +97,7 @@ public class DeleteNodeFromUniverse extends UniverseTaskBase {
       // Should probably roll back to a previous success state instead of setting to true
       createMarkUniverseUpdateSuccessTasks()
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeletingNode);
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error(String.format("Error executing task %s, error %s", getName(), t.getMessage()), t);
       throw t;

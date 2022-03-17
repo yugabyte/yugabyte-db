@@ -3,7 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.TaskExecutor;
+import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
@@ -74,8 +74,7 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
             "AnsibleConfigureServers (%s) for: %s",
             SubTaskGroupType.DownloadingSoftware, taskParams().nodePrefix);
 
-    TaskExecutor.SubTaskGroup downloadTaskGroup =
-        getTaskExecutor().createSubTaskGroup(subGroupDescription);
+    SubTaskGroup downloadTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription);
     for (NodeDetails node : nodes) {
       downloadTaskGroup.addSubTask(
           getAnsibleConfigureServerTask(node, ServerType.TSERVER, UpgradeTaskSubType.Download));
@@ -94,7 +93,7 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
         String.format(
             "AnsibleConfigureServers (%s) for: %s",
             SubTaskGroupType.InstallingSoftware, taskParams().nodePrefix);
-    TaskExecutor.SubTaskGroup taskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription);
+    SubTaskGroup taskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription);
     for (NodeDetails node : nodes) {
       taskGroup.addSubTask(
           getAnsibleConfigureServerTask(node, processType, UpgradeTaskSubType.Install));
