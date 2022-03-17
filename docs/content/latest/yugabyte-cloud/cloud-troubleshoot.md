@@ -67,7 +67,7 @@ Ensure that you have entered the correct password for the cluster database you a
 
 The database admin credentials are separate from your Yugabyte Cloud credentials, which are used exclusively to log in to Yugabyte Cloud.
 
-If you are a database user who was added to the database by an administrator, ask them to either re-send your credentials or reset your database password.
+If you are a database user who was added to the database by an administrator, ask your administrator to either re-send your credentials or [change your database password](../cloud-secure-clusters/add-users/).
 
 If you are the database admin and are unable to locate your database admin credentials file, contact {{<support-cloud>}}.
 
@@ -107,6 +107,10 @@ HINT:  Must be superuser to [...].
 ```
 
 For security reasons, the database admin user is not a superuser. The admin user is a member of yb_superuser, which does allow most operations. For more information on database roles and privileges in Yugabyte Cloud, refer to [Database authorization in Yugabyte Cloud clusters](../cloud-secure-clusters/cloud-users/). If you need to perform an operation that requires superuser privileges, contact {{<support-cloud>}}.
+
+### I need to change my database admin password
+
+YugabyteDB uses [role-based access control](../../secure/authorization/) (RBAC) to [manage database authorization](../cloud-secure-clusters/cloud-users/). To change your database admin password, you need to connect to the cluster and use the ALTER ROLE statement. Refer to [Add database users](../cloud-secure-clusters/add-users/).
 
 ## Cluster management
 
