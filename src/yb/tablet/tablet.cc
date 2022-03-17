@@ -472,7 +472,7 @@ Tablet::Tablet(const TabletInitData& data)
 
 Tablet::~Tablet() {
   if (StartShutdown()) {
-    CompleteShutdown();
+    CompleteShutdown(DisableFlushOnShutdown::kFalse);
   } else {
     auto state = state_;
     LOG_IF_WITH_PREFIX(DFATAL, state != kShutdown)
@@ -917,7 +917,7 @@ void Tablet::MarkFinishedBootstrapping() {
   state_ = kOpen;
 }
 
-bool Tablet::StartShutdown(const IsDropTable is_drop_table) {
+bool Tablet::StartShutdown() {
   LOG_WITH_PREFIX(INFO) << __func__;
 
   bool expected = false;
@@ -932,12 +932,12 @@ bool Tablet::StartShutdown(const IsDropTable is_drop_table) {
   return true;
 }
 
-void Tablet::CompleteShutdown(IsDropTable is_drop_table) {
-  LOG_WITH_PREFIX(INFO) << __func__ << "(" << is_drop_table << ")";
+void Tablet::CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown) {
+  LOG_WITH_PREFIX(INFO) << __func__;
 
   StartShutdown();
 
-  auto op_pauses = StartShutdownRocksDBs(DisableFlushOnShutdown(is_drop_table), Stop::kTrue);
+  auto op_pauses = StartShutdownRocksDBs(disable_flush_on_shutdown, Stop::kTrue);
   if (!op_pauses.ok()) {
     LOG_WITH_PREFIX(DFATAL) << "Failed to shut down: " << op_pauses.status();
     return;
