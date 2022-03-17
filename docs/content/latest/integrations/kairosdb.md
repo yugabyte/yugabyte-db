@@ -131,11 +131,11 @@ http://localhost:8080/api/v1/datapoints
 
 Your request should look like:
 
-![kairosdb POST](/images/develop/ecosystem-integrations/kairosdb/kairosdb1.png)
+![kairosdb POST request](/images/develop/ecosystem-integrations/kairosdb/kairosdb1.png)
 
 Your response should return a status code of 204 with no body.
 
-![kairosdb Response](/images/develop/ecosystem-integrations/kairosdb/kairosdb2.png)
+![kairosdb response](/images/develop/ecosystem-integrations/kairosdb/kairosdb2.png)
 
 ### Query the data
 
