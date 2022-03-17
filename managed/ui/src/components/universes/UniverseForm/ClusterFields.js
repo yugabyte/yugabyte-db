@@ -2572,7 +2572,7 @@ export default class ClusterFields extends Component {
                 </div>
               </Col>
               {!this.state.isKubernetesUniverse && (
-                <Col lg={4}>
+                <Col sm={5} md={4}>
                   <div className="form-right-aligned-labels">
                     <Field
                       name={`${clusterType}.accessKeyCode`}
