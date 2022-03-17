@@ -143,7 +143,7 @@ TEST_F(OperationTrackerTest, TestGetPending) {
   ASSERT_EQ(driver.get(), pending_operations.front().get());
 
   // And mark the operation as failed, which will cause it to unregister itself.
-  driver->Abort(STATUS(Aborted, ""));
+  driver->TEST_Abort(STATUS(Aborted, ""));
 
   ASSERT_EQ(0, tracker_.TEST_GetNumPending());
 }
@@ -165,7 +165,7 @@ void OperationTrackerTest::RunOperationsThread(CountDownLatch* finish_latch) {
   // Finish all the operations
   for (const scoped_refptr<OperationDriver>& driver : drivers) {
     // And mark the operation as failed, which will cause it to unregister itself.
-    driver->Abort(STATUS(Aborted, ""));
+    driver->TEST_Abort(STATUS(Aborted, ""));
   }
 }
 
@@ -213,11 +213,11 @@ TEST_F(OperationTrackerTest, TestMetrics) {
   ASSERT_OK(AddDrivers(3, &drivers));
   ASSERT_NO_FATALS(CheckMetrics(entity_, 3, 0, 0));
 
-  drivers[0]->Abort(STATUS(Aborted, ""));
+  drivers[0]->TEST_Abort(STATUS(Aborted, ""));
   ASSERT_NO_FATALS(CheckMetrics(entity_, 2, 0, 0));
 
-  drivers[1]->Abort(STATUS(Aborted, ""));
-  drivers[2]->Abort(STATUS(Aborted, ""));
+  drivers[1]->TEST_Abort(STATUS(Aborted, ""));
+  drivers[2]->TEST_Abort(STATUS(Aborted, ""));
   ASSERT_NO_FATALS(CheckMetrics(entity_, 0, 0, 0));
 }
 
@@ -260,7 +260,7 @@ TEST_F(OperationTrackerTest, TestTooManyOperations) {
   ASSERT_NO_FATALS(CheckMemTracker(t));
 
   // If we abort one operation, we should be able to add one more.
-  drivers.back()->Abort(STATUS(Aborted, ""));
+  drivers.back()->TEST_Abort(STATUS(Aborted, ""));
   drivers.pop_back();
   ASSERT_NO_FATALS(CheckMemTracker(t));
   ASSERT_OK(AddDrivers(1, &drivers));
@@ -268,7 +268,7 @@ TEST_F(OperationTrackerTest, TestTooManyOperations) {
 
   // Clean up.
   for (const scoped_refptr<OperationDriver>& driver : drivers) {
-    driver->Abort(STATUS(Aborted, ""));
+    driver->TEST_Abort(STATUS(Aborted, ""));
   }
 }
 

@@ -140,7 +140,7 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   // multiple stages by multiple executors it might not be possible to stop
   // the operation immediately, but this will make sure it is aborted
   // at the next synchronization point.
-  void Abort(const Status& status);
+  void TEST_Abort(const Status& status);
 
   // Callback from Consensus when replication is complete, and thus the operation
   // is considered "committed" from the consensus perspective (ie it will be

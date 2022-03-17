@@ -5786,7 +5786,8 @@ Result<TabletInfoPtr> CatalogManager::RegisterNewTabletForSplit(
   new_tablet_meta.set_state(SysTabletsEntryPB::CREATING);
   new_tablet_meta.mutable_committed_consensus_state()->CopyFrom(
       source_tablet_meta.committed_consensus_state());
-  new_tablet_meta.set_split_depth(source_tablet_meta.split_depth() + 1);
+  const auto new_split_depth = source_tablet_meta.split_depth() + 1;
+  new_tablet_meta.set_split_depth(new_split_depth);
   new_tablet_meta.set_split_parent_tablet_id(source_tablet_info->tablet_id());
   // TODO(tsplit): consider and handle failure scenarios, for example:
   // - Crash or leader failover before sending out the split tasks.
@@ -5813,10 +5814,12 @@ Result<TabletInfoPtr> CatalogManager::RegisterNewTabletForSplit(
     auto tablet_map_checkout = tablet_map_.CheckOut();
     (*tablet_map_checkout)[new_tablet->id()] = new_tablet;
   }
-  LOG(INFO) << "Registered new tablet " << new_tablet->tablet_id()
-            << " (" << AsString(partition) << ") to split the tablet "
-            << source_tablet_info->tablet_id()
-            << " (" << AsString(source_tablet_meta.partition())
+  LOG(INFO) << "Registered new tablet " << new_tablet->tablet_id() << " (partition_key_start: "
+            << Slice(partition.partition_key_start()).ToDebugString(/* max_length = */ 64)
+            << ", partition_key_end: "
+            << Slice(partition.partition_key_end()).ToDebugString(/* max_length = */ 64)
+            << ", split_depth: " << new_split_depth << ") to split the tablet "
+            << source_tablet_info->tablet_id() << " (" << AsString(source_tablet_meta.partition())
             << ") for table " << table->ToString()
             << ", new partition_list_version: " << new_partition_list_version;
 

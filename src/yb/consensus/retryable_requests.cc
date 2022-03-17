@@ -213,7 +213,7 @@ class RetryableRequests::Impl {
     VLOG_WITH_PREFIX(1) << "Start";
   }
 
-  bool Register(const ConsensusRoundPtr& round, RestartSafeCoarseTimePoint entry_time) {
+  Result<bool> Register(const ConsensusRoundPtr& round, RestartSafeCoarseTimePoint entry_time) {
     auto data = ReplicateData::FromMsg(*round->replicate_msg());
     if (!data) {
       return true;
@@ -229,23 +229,19 @@ class RetryableRequests::Impl {
         data.write().min_running_request_id(), &client_retryable_requests);
 
     if (data.request_id() < client_retryable_requests.min_running_request_id) {
-      round->NotifyReplicationFinished(
-          STATUS_EC_FORMAT(
-              Expired,
-              MinRunningRequestIdStatusData(client_retryable_requests.min_running_request_id),
-              "Request id $0 is less than min running $1", data.request_id(),
-              client_retryable_requests.min_running_request_id),
-          round->bound_term(), nullptr /* applied_op_ids */);
-      return false;
+      return STATUS_EC_FORMAT(
+          Expired, MinRunningRequestIdStatusData(client_retryable_requests.min_running_request_id),
+          "Request id $0 from client $1 is less than min running $2", data.request_id(),
+          data.client_id(), client_retryable_requests.min_running_request_id);
     }
 
     auto& replicated_indexed_by_last_id = client_retryable_requests.replicated.get<LastIdIndex>();
     auto it = replicated_indexed_by_last_id.lower_bound(data.request_id());
     if (it != replicated_indexed_by_last_id.end() && it->first_id <= data.request_id()) {
-      round->NotifyReplicationFinished(
-          STATUS(AlreadyPresent, "Duplicate request"), round->bound_term(),
-          nullptr /* applied_op_ids */);
-      return false;
+      return STATUS_FORMAT(
+              AlreadyPresent, "Duplicate request $0 from client $1 (min running $2)",
+              data.request_id(), data.client_id(),
+              client_retryable_requests.min_running_request_id);
     }
 
     auto& running_indexed_by_request_id = client_retryable_requests.running.get<RequestIdIndex>();
@@ -560,7 +556,7 @@ void RetryableRequests::operator=(RetryableRequests&& rhs) {
   impl_ = std::move(rhs.impl_);
 }
 
-bool RetryableRequests::Register(
+Result<bool> RetryableRequests::Register(
     const ConsensusRoundPtr& round, RestartSafeCoarseTimePoint entry_time) {
   return impl_->Register(round, entry_time);
 }

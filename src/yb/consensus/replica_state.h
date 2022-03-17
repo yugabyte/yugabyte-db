@@ -412,7 +412,7 @@ class ReplicaState {
 
   OpId MinRetryableRequestOpId();
 
-  bool RegisterRetryableRequest(const ConsensusRoundPtr& round);
+  Result<bool> RegisterRetryableRequest(const ConsensusRoundPtr& round);
 
   RestartSafeCoarseMonoClock& Clock();
 

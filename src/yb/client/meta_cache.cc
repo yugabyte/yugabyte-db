@@ -667,7 +667,7 @@ void LookupCallbackVisitor::operator()(
 MetaCache::MetaCache(YBClient* client)
   : client_(client),
     master_lookup_sem_(FLAGS_max_concurrent_master_lookups),
-    log_prefix_(Format("MetaCache($0): ", static_cast<void*>(this))) {
+    log_prefix_(Format("MetaCache($0)(client_id: $1): ", static_cast<void*>(this), client_->id())) {
 }
 
 MetaCache::~MetaCache() {
@@ -1107,8 +1107,9 @@ void MetaCache::MaybeUpdateClientRequests(const RemoteTablet& tablet) {
   auto& tablet_requests = client_->data_->tablet_requests_;
   const auto requests_it = tablet_requests.find(tablet.split_parent_tablet_id());
   if (requests_it == tablet_requests.end()) {
-    VLOG_WITH_PREFIX(2) << "Can't find request_id_seq for tablet "
-                        << tablet.split_parent_tablet_id();
+    VLOG_WITH_PREFIX(2) << "Can't find request_id_seq for parent tablet "
+                        << tablet.split_parent_tablet_id()
+                        << " (split_depth: " << tablet.split_depth() - 1 << ")";
     // This can happen if client wasn't active (for example node was partitioned away) during
     // sequence of splits that resulted in `tablet` creation, so we don't have info about `tablet`
     // split parent.
@@ -1124,7 +1125,8 @@ void MetaCache::MaybeUpdateClientRequests(const RemoteTablet& tablet) {
     return;
   }
   VLOG_WITH_PREFIX(2) << "Setting request_id_seq for tablet " << tablet.tablet_id()
-                      << " from tablet " << tablet.split_parent_tablet_id() << " to "
+                      << " (split_depth: " << tablet.split_depth() << ") from tablet "
+                      << tablet.split_parent_tablet_id() << " to "
                       << requests_it->second.request_id_seq;
   tablet_requests[tablet.tablet_id()].request_id_seq = requests_it->second.request_id_seq;
 }

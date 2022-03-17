@@ -678,8 +678,26 @@ Status ReplicaState::AddPendingOperation(const ConsensusRoundPtr& round, Operati
     }
   } else if (op_type == WRITE_OP) {
     // Leader registers an operation with RetryableRequests even before assigning an op id.
-    if (mode == OperationMode::kFollower && !retryable_requests_.Register(round)) {
-      return STATUS(IllegalState, "Cannot register retryable request on follower");
+    if (mode == OperationMode::kFollower) {
+      auto result = retryable_requests_.Register(round);
+      const auto error_msg = "Cannot register retryable request on follower";
+      if (!result.ok()) {
+        // This can happen if retryable requests have been cleaned up on leader before the follower,
+        // see https://github.com/yugabyte/yugabyte-db/issues/11349.
+        // Just run cleanup in this case and retry.
+        VLOG_WITH_PREFIX(1) << error_msg << ": " << result.status()
+                            << ". Cleaning retryable requests";
+        auto min_op_id ATTRIBUTE_UNUSED = retryable_requests_.CleanExpiredReplicatedAndGetMinOpId();
+        result = retryable_requests_.Register(round);
+      }
+      if (!result.ok()) {
+        return result.status()
+            .CloneAndReplaceCode(Status::kIllegalState)
+            .CloneAndPrepend(error_msg);
+      }
+      if (!*result) {
+        return STATUS(IllegalState, error_msg);
+      }
     }
   } else if (op_type == SPLIT_OP) {
     const auto& split_request = round->replicate_msg()->split_request();
@@ -1319,7 +1337,7 @@ uint64_t ReplicaState::OnDiskSize() const {
   return cmeta_->on_disk_size();
 }
 
-bool ReplicaState::RegisterRetryableRequest(const ConsensusRoundPtr& round) {
+Result<bool> ReplicaState::RegisterRetryableRequest(const ConsensusRoundPtr& round) {
   return retryable_requests_.Register(round);
 }
 

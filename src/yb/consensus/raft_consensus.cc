@@ -271,7 +271,7 @@ bool IsChangeConfigOperation(OperationType op_type) {
 class NonTrackedRoundCallback : public ConsensusRoundCallback {
  public:
   explicit NonTrackedRoundCallback(ConsensusRound* round, const StdStatusCallback& callback)
-      : round_(round), callback_(callback) {
+      : round_(DCHECK_NOTNULL(round)), callback_(callback) {
   }
 
   void AddedToLeader(const OpId& op_id, const OpId& committed_op_id) override {
@@ -1146,7 +1146,7 @@ Status RaftConsensus::ReplicateBatch(const ConsensusRounds& rounds) {
         << " operations as failed with that status";
     // Treat all the operations in the batch as failed.
     for (size_t i = rounds.size(); i != processed_rounds;) {
-      rounds[--i]->callback()->ReplicationFailed(status);
+      rounds[--i]->NotifyReplicationFailed(status);
     }
   }
   return status;
@@ -1171,30 +1171,7 @@ Status RaftConsensus::DoReplicateBatch(const ConsensusRounds& rounds, size_t* pr
     for (const auto& round : rounds) {
       RETURN_NOT_OK(round->CheckBoundTerm(current_term));
     }
-    auto status = AppendNewRoundsToQueueUnlocked(rounds, processed_rounds);
-    if (!status.ok()) {
-      // In general we have 3 kinds of rounds in case of failure:
-      // 1) Rounds that were rejected by retryable requests.
-      //    We should not call ReplicationFinished for them.
-      // 2) Rounds that were registered with retryable requests.
-      //    We should call state_->NotifyReplicationFinishedUnlocked for them.
-      // 3) Rounds that were not registered with retryable requests.
-      //    We should call ReplicationFinished directly for them. Could do it after releasing
-      //    the lock. I.e. in ReplicateBatch.
-      //
-      // (3) is all rounds starting with index *processed_rounds and above.
-      // For (1) we reset bound term, so could use it to distinguish between (1) and (2).
-      for (size_t i = *processed_rounds; i != 0;) {
-        --i;
-        if (rounds[i]->bound_term() == OpId::kUnknownTerm) {
-          // Already rejected by retryable requests.
-          continue;
-        }
-        state_->NotifyReplicationFinishedUnlocked(
-            rounds[i], status, OpId::kUnknownTerm, /* applied_op_ids */ nullptr);
-      }
-      return status;
-    }
+    RETURN_NOT_OK(AppendNewRoundsToQueueUnlocked(rounds, processed_rounds));
   }
 
   peer_manager_->SignalRequest(RequestTriggerMode::kNonEmptyOnly);
@@ -1247,15 +1224,54 @@ Status RaftConsensus::AppendNewRoundsToQueueUnlocked(
 
   std::vector<ReplicateMsgPtr> replicate_msgs;
   replicate_msgs.reserve(rounds.size());
+
+  auto status = DoAppendNewRoundsToQueueUnlocked(rounds, processed_rounds, &replicate_msgs);
+  if (!status.ok()) {
+    for (auto iter = replicate_msgs.rbegin(); iter != replicate_msgs.rend(); ++iter) {
+      RollbackIdAndDeleteOpId(*iter, /* should_exists = */ true);
+    }
+    // In general we have 3 kinds of rounds in case of failure:
+    // 1) Rounds that were rejected by retryable requests.
+    //    We should not call ReplicationFinished for them, because it has been already called.
+    // 2) Rounds that were registered with retryable requests.
+    //    We should call state_->NotifyReplicationFinishedUnlocked for them.
+    // 3) Rounds that were not registered with retryable requests.
+    //    We should call ReplicationFinished directly for them. Could do it after releasing
+    //    the lock. I.e. in ReplicateBatch.
+    //
+    // (3) is all rounds starting with index *processed_rounds and above.
+    // For (1) we reset bound term, so could use it to distinguish between (1) and (2).
+    for (size_t i = *processed_rounds; i != 0;) {
+      --i;
+      if (rounds[i]->bound_term() == OpId::kUnknownTerm) {
+        // Already notified.
+        continue;
+      }
+      state_->NotifyReplicationFinishedUnlocked(
+          rounds[i], status, OpId::kUnknownTerm, /* applied_op_ids */ nullptr);
+    }
+  }
+  return status;
+}
+
+Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
+    const ConsensusRounds& rounds, size_t* processed_rounds,
+    std::vector<ReplicateMsgPtr>* replicate_msgs) {
   const OpId& committed_op_id = state_->GetCommittedOpIdUnlocked();
 
   for (const auto& round : rounds) {
     ++*processed_rounds;
 
-    if (round->replicate_msg()->op_type() == OperationType::WRITE_OP &&
-        !state_->RegisterRetryableRequest(round)) {
-      round->BindToTerm(OpId::kUnknownTerm); // Mark round as non replicating
-      continue;
+    if (round->replicate_msg()->op_type() == OperationType::WRITE_OP) {
+      auto result = state_->RegisterRetryableRequest(round);
+      if (!result.ok()) {
+        round->NotifyReplicationFinished(
+            result.status(), round->bound_term(), /* applied_op_ids = */ nullptr);
+      }
+      if (!result.ok() || !*result) {
+        round->BindToTerm(OpId::kUnknownTerm); // Mark round as non replicating
+        continue;
+      }
     }
 
     OpId op_id = state_->NewIdUnlocked();
@@ -1264,24 +1280,18 @@ Status RaftConsensus::AppendNewRoundsToQueueUnlocked(
     // the write batch inside the write operation.
     //
     // TODO: we could allocate multiple HybridTimes in batch, only reading system clock once.
-    round->callback()->AddedToLeader(op_id, committed_op_id);
+    round->NotifyAddedToLeader(op_id, committed_op_id);
 
-    Status s = state_->AddPendingOperation(round, OperationMode::kLeader);
+    auto s = state_->AddPendingOperation(round, OperationMode::kLeader);
     if (!s.ok()) {
       RollbackIdAndDeleteOpId(round->replicate_msg(), false /* should_exists */);
-
-      // Iterate rounds in the reverse order and release ids.
-      while (!replicate_msgs.empty()) {
-        RollbackIdAndDeleteOpId(replicate_msgs.back(), true /* should_exists */);
-        replicate_msgs.pop_back();
-      }
       return s;
     }
 
-    replicate_msgs.push_back(round->replicate_msg());
+    replicate_msgs->push_back(round->replicate_msg());
   }
 
-  if (replicate_msgs.empty()) {
+  if (replicate_msgs->empty()) {
     return Status::OK();
   }
 
@@ -1290,24 +1300,21 @@ Status RaftConsensus::AppendNewRoundsToQueueUnlocked(
   auto s = CheckLeasesUnlocked(rounds.back());
 
   if (s.ok()) {
-    s = queue_->AppendOperations(replicate_msgs, committed_op_id, state_->Clock().Now());
+    s = queue_->AppendOperations(*replicate_msgs, committed_op_id, state_->Clock().Now());
   }
 
   // Handle Status::ServiceUnavailable(), which means the queue is full.
   // TODO: what are we doing about other errors here? Should we also release OpIds in those cases?
   if (PREDICT_FALSE(!s.ok())) {
-    LOG_WITH_PREFIX(WARNING) << "Could not append replicate request: " << s << ", queue status: "
-                             << queue_->ToString();
-    for (auto iter = replicate_msgs.rbegin(); iter != replicate_msgs.rend(); ++iter) {
-      RollbackIdAndDeleteOpId(*iter, true /* should_exists */);
-      // TODO Possibly evict a dangling peer from the configuration here.
-      // TODO count of number of ops failed due to consensus queue overflow.
-    }
+    LOG_WITH_PREFIX(WARNING) << "Could not append replicate request: " << s
+                             << ", queue status: " << queue_->ToString();
+    // TODO Possibly evict a dangling peer from the configuration here.
+    // TODO count of number of ops failed due to consensus queue overflow.
 
     return s.CloneAndPrepend("Unable to append operations to consensus queue");
   }
 
-  state_->UpdateLastReceivedOpIdUnlocked(replicate_msgs.back()->id());
+  state_->UpdateLastReceivedOpIdUnlocked(replicate_msgs->back()->id());
   return Status::OK();
 }
 
@@ -2825,7 +2832,11 @@ Status RaftConsensus::StartConsensusOnlyRoundUnlocked(const ReplicateMsgPtr& msg
                 &DoNothingStatusCB,
                 std::placeholders::_1);
   round->SetCallback(MakeNonTrackedRoundCallback(round.get(), std::move(client_cb)));
-  return state_->AddPendingOperation(round, OperationMode::kFollower);
+  auto status = state_->AddPendingOperation(round, OperationMode::kFollower);
+  if (!status.ok()) {
+    round->NotifyReplicationFailed(status);
+  }
+  return status;
 }
 
 Status RaftConsensus::WaitForLeaderLeaseImprecise(CoarseTimePoint deadline) {

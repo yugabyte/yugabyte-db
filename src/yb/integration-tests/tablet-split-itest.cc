@@ -30,6 +30,7 @@
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/consensus_util.h"
+#include "yb/consensus/raft_consensus.h"
 
 #include "yb/docdb/doc_key.h"
 
@@ -92,8 +93,10 @@ using namespace yb::client::kv_table_test; // NOLINT
 DECLARE_int64(db_block_size_bytes);
 DECLARE_int64(db_write_buffer_size);
 DECLARE_bool(enable_load_balancing);
+DECLARE_bool(enable_maintenance_manager);
 DECLARE_int32(load_balancer_max_concurrent_adds);
 DECLARE_int32(load_balancer_max_concurrent_removals);
+DECLARE_int32(maintenance_manager_polling_interval_ms);
 DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_bool(rocksdb_disable_compactions);
@@ -107,6 +110,7 @@ DECLARE_bool(TEST_skip_deleting_split_tablets);
 DECLARE_uint64(tablet_split_limit_per_table);
 DECLARE_bool(TEST_pause_before_post_split_compaction);
 DECLARE_int32(TEST_slowdown_backfill_alter_table_rpcs_ms);
+DECLARE_int32(retryable_request_timeout_secs);
 DECLARE_int32(rocksdb_base_background_compactions);
 DECLARE_int32(rocksdb_max_background_compactions);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
@@ -573,10 +577,18 @@ TEST_F(TabletSplitITest, SplitTabletDuringReadWriteLoad) {
   ASSERT_OK(cluster_->RestartSync());
 }
 
-void TabletSplitITest::SplitClientRequestsIds(int split_depth) {
+namespace {
+
+void SetSmallDbBlockSize() {
   // Set data block size low enough, so we have enough data blocks for middle key
   // detection to work correctly.
   FLAGS_db_block_size_bytes = 1_KB;
+}
+
+}
+
+void TabletSplitITest::SplitClientRequestsIds(int split_depth) {
+  SetSmallDbBlockSize();
   const auto kNumRows = 50 * (1 << split_depth);
 
   SetNumTablets(1);
@@ -622,8 +634,83 @@ TEST_F(TabletSplitITest, SplitClientRequestsIdsDepth2) {
   SplitClientRequestsIds(2);
 }
 
+class TabletSplitITestSlowMainenanceManager : public TabletSplitITest {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_maintenance_manager_polling_interval_ms) = 60 * 1000;
+    TabletSplitITest::SetUp();
+  }
+};
+
+TEST_F_EX(TabletSplitITest, SplitClientRequestsClean, TabletSplitITestSlowMainenanceManager) {
+  constexpr auto kSplitDepth = 3;
+  constexpr auto kNumRows = 50 * (1 << kSplitDepth);
+  constexpr auto kRetryableRequestTimeoutSecs = 1;
+  SetSmallDbBlockSize();
+
+  // Prevent periodic retryable requests cleanup by maintenance manager.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_maintenance_manager) = false;
+
+  SetNumTablets(1);
+  CreateTable();
+
+  ASSERT_OK(WriteRows(kNumRows, 1));
+  ASSERT_OK(CheckRowsCount(kNumRows));
+
+  auto* catalog_mgr = ASSERT_RESULT(catalog_manager());
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  LOG(INFO) << "Creating new client, id: " << client->id();
+
+  for (int i = 0; i < kSplitDepth; ++i) {
+    auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id());
+    ASSERT_EQ(peers.size(), 1 << i);
+    for (const auto& peer : peers) {
+      const auto tablet = peer->shared_tablet();
+      ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+      tablet->ForceRocksDBCompactInTest();
+      ASSERT_OK(SplitTablet(catalog_mgr, *tablet));
+    }
+
+    ASSERT_OK(WaitForTabletSplitCompletion(/* expected_non_split_tablets =*/ 1 << (i + 1)));
+
+    if (i == 0) {
+      // This will set client's request_id_seq for tablets with split depth 1 to > 1^24 (see
+      // YBClient::MaybeUpdateMinRunningRequestId) and update min_running_request_id for this
+      // client at tserver side.
+      auto session = client->NewSession();
+      ASSERT_OK(WriteRows(&this->table_, kNumRows, 1, session));
+    }
+  }
+
+  auto leader_peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id());
+  // Force cleaning retryable requests on leaders of active (split depth = kSplitDepth) tablets.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retryable_request_timeout_secs) = kRetryableRequestTimeoutSecs;
+  SleepFor(kRetryableRequestTimeoutSecs * 1s);
+  for (int i = 0; i < 2; ++i) {
+    for (auto& leader_peer : leader_peers) {
+      LOG(INFO) << leader_peer->LogPrefix() << "MinRetryableRequestOpId(): "
+                << AsString(leader_peer->raft_consensus()->MinRetryableRequestOpId());
+      // Delay to make RetryableRequests::CleanExpiredReplicatedAndGetMinOpId (called by
+      // MinRetryableRequestOpId) do delayed cleanup.
+      SleepFor(kRetryableRequestTimeoutSecs * 1s);
+    }
+  }
+
+  auto session = client->NewSession();
+  // Since client doesn't know about tablets with split depth > 1, it will set request_id_seq for
+  // active tablets based on min_running_request_id on leader, but on leader it has been cleaned up.
+  // So, request_id_seq will be set to 0 + 1^24 that is less than min_running_request_id on the
+  // follower (at which retryable requests is not yet cleaned up).
+  // This will test how follower handles getting request_id less than min_running_request_id.
+  LOG(INFO) << "Starting write to active tablets after retryable requests cleanup on leaders...";
+  ASSERT_OK(WriteRows(&this->table_, kNumRows, 1, session));
+  LOG(INFO) << "Write to active tablets completed.";
+}
+
+
 TEST_F(TabletSplitITest, SplitSingleTabletWithLimit) {
-  FLAGS_db_block_size_bytes = 1_KB;
+  SetSmallDbBlockSize();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_validate_all_tablet_candidates) = false;
   const auto kSplitDepth = 3;
   const auto kNumRows = 50 * (1 << kSplitDepth);
