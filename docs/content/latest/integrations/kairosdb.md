@@ -14,39 +14,36 @@ showAsideToc: true
 
 [KairosDB](http://kairosdb.github.io/) is a Java-based time-series metrics API that leverages Cassandra as its underlying distributed database. This page shows how it can be integrated with YugabyteDB's Cassandra-compatible YCQL API.
 
-## 1. Start local cluster
+## Prerequisites
 
-Follow [Quick start](../../quick-start/) to run a local YugabyteDB cluster and test YugabyteDB's YCQL API to confirm that you have a YCQL service running on `localhost:9042`.
+Before you can start using the KairosDB plugin, ensure that you have:
 
-## 2. Download KairosDB
+- Java version 1.8 or later.
+- The latest version of [KairosDB](https://kairosdb.github.io/docs/GettingStarted.html).
+- The latest version of [YugabyteDB plugin for KairosDB](https://github.com/yugabyte/kairosdb-yb-plugin/releases/) and explore the [README] for details about the plugin.
+- A YugabyteDB cluster. Refer [YugabyteDB Quick Start Guide](/latest/quick-start/) to install and start a local cluster.
+- [Postman API Platform](https://www.postman.com/downloads/).
+- (Optional) YugabyteDB's [cassandra-driver-core-3.10.3-yb-2.jar](https://repo1.maven.org/maven2/com/yugabyte/cassandra-driver-core/3.10.3-yb-2/cassandra-driver-core-3.10.3-yb-2.jar), for better performance.
 
-Download KairosDB as stated below. Latest releases are available in [releases](https://github.com/kairosdb/kairosdb/releases) of the KairosDB repository.
+## Start KairosDB
+
+- Copy the YugabyteDB plugin jar under the `lib` folder of your downloaded `kairosdb` directory.
+- (Optional) For better performance, replace the `cassandra-driver-core-3.10.2.jar` with YugabyteDB's `cassandra-driver-core-3.10.3-yb-2.jar` in your `kairosdb/lib` directory.
+- Add YugabyteDB datastore as the `service.datastore` entry in your `kairosdb/conf/kairosdb.conf file`.
 
 ```sh
-$ wget https://github.com/kairosdb/kairosdb/releases/download/v1.3.0/kairosdb-1.3.0-1.tar.gz
-$ tar xvfz tar xvfz kairosdb-1.3.0-1.tar.gz
-$ cd kairosdb/
-```
+#Configure the datastore
 
-You can follow the [Getting started](http://kairosdb.github.io/docs/build/html/GettingStarted.html) to see how to configure KairosDB in general. For the purpose of integrating with the local YugabyteDB cluster running at `localhost:9042`, open `conf/kairosdb.properties` and comment out the default in-memory datastore, as follows:
-
-```cfg
 #service.datastore: "org.kairosdb.datastore.h2.H2Module"
+#service.datastore: "org.kairosdb.datastore.cassandra.CassandraModule"
+service.datastore: "com.yugabyte.kairosdb.datastore.yugabytedb.YugabyteDBModule"
 ```
 
-Uncomment the following line to make Cassandra the datastore:
-
-```cfg
-service.datastore: "org.kairosdb.datastore.cassandra.CassandraModule"
-```
-
-## 3. Start KairosDB
+- Start KairosDB in the foreground.
 
 ```sh
 $ ./bin/kairosdb.sh run
 ```
-
-You should see the following lines if KairosDB starts up successfully.
 
 ```output
 18:34:01.094 [main] INFO  [AbstractConnector.java:338] - Started SelectChannelConnector@0.0.0.0:8080
@@ -56,11 +53,11 @@ You should see the following lines if KairosDB starts up successfully.
 18:34:01.145 [main] INFO  [Main.java:380] - ------------------------------------------
 ```
 
-## 4. Verify Cassandra integration with ycqlsh
+The KairosDB API Server should be available at `localhost:8080`.
 
-Run `ycqlsh` to connect and use YugabyteDB's YCQL API.
+## Verify the integration with ycqlsh
 
-Assuming you are using the macOS or Linux binary, execute the following:
+- Run ycqlsh to connect and use YugabyteDB's YCQL API.
 
 ```sh
 $ ./bin/ycqlsh localhost
@@ -73,9 +70,9 @@ Use HELP for help.
 ycqlsh>
 ```
 
-- Run the following YCQL commands to verify it is working:
+- Run the following YCQL commands, and connect to the `kairosdb` keyspace to verify it is working:
 
-```sql
+```cql
 ycqlsh> describe keyspaces;
 ```
 
@@ -83,22 +80,126 @@ ycqlsh> describe keyspaces;
 kairosdb  system_schema  system_auth  system
 ```
 
-```sql
+```cql
 ycqlsh> use kairosdb;
+```
+
+```cql
 ycqlsh:kairosdb> describe tables;
 ```
 
 ```output
-row_keys       data_points    string_index
-row_key_index  service_index  row_key_time_index
+tag_indexed_row_keys  row_key_index  service_index  row_key_time_index
+row_keys              data_points    string_index   spec
 ```
 
-## 5. Test KairosDB
+## Test KairosDB
+
+- Start your postman and create a new workspace.
 
 ### Push data
 
-Push metric data into KairosDB as per the instructions [here](https://kairosdb.github.io/docs/PushingData.html).
+- Select the POST API request and add the following URL in the `Enter request URL` box:
 
-### Query data
+```text
+http://localhost:8080/api/v1/datapoints
+```
 
-Query metric data into KairosDB as per the instructions [here](https://kairosdb.github.io/docs/QueryingData.html).
+- In the body of the request, add the following JSON and send it.
+
+```json
+[
+  {
+      "name": "archive_file_tracked",
+      "datapoints": [[1359788400000, 123], [1359788300000, 13.2], [1359788410000, 23.1]],
+      "tags": {
+          "host": "server1",
+          "data_center": "DC1"
+      },
+      "ttl": 300.0
+  },
+  {
+      "name": "archive_file_search",
+      "timestamp": 1359786400000,
+      "value": 321,
+      "tags": {
+          "host": "server2"
+      }
+  }
+]
+```
+
+Your request should look like:
+
+
+Your response should return a status code as 204, but no body.
+
+
+
+### Query the data
+
+- Query the data you inserted during the push using the POST API with the following URL in the `Enter request URL` box:
+
+```text
+http://localhost:8080/api/v1/datapoints/query
+```
+
+- In the body of the request add the following JSON, and send it.
+
+```json
+{
+  "start_absolute":1359788400000,
+  "metrics":[
+    {
+      "tags":{
+        "host":"server1",
+        "data_center":"DC1"
+      },
+      "name":"archive_file_tracked"
+    }
+  ]
+}
+```
+
+Your request should look like:
+
+Your response should return a status code as 200, with the following output:
+
+```output.json
+{
+   "queries": [
+       {
+           "sample_size": 2,
+           "results": [
+               {
+                   "name": "archive_file_tracked",
+                   "group_by": [
+                       {
+                           "name": "type",
+                           "type": "number"
+                       }
+                   ],
+                   "tags": {
+                       "data_center": [
+                           "DC1"
+                       ],
+                       "host": [
+                           "server1"
+                       ]
+                   },
+                   "values": [
+                       [
+                           1359788400000,
+                           123
+                       ],
+                       [
+                           1359788410000,
+                           23.1
+                       ]
+                   ]
+               }
+           ]
+       }
+   ]
+}
+```
