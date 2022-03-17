@@ -12,6 +12,7 @@
 //
 
 #include <chrono>
+#include <limits>
 #include <thread>
 
 #include <gtest/gtest.h>
@@ -107,6 +108,7 @@ DECLARE_bool(TEST_pause_before_post_split_compaction);
 DECLARE_int32(TEST_slowdown_backfill_alter_table_rpcs_ms);
 DECLARE_int32(rocksdb_base_background_compactions);
 DECLARE_int32(rocksdb_max_background_compactions);
+DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
 DECLARE_int64(tablet_split_high_phase_shard_count_per_node);
@@ -1013,10 +1015,8 @@ TEST_F(AutomaticTabletSplitITest, TabletSplitHasClusterReplicationInfo) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_force_split_threshold_bytes) = 50_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_post_split_compaction) = true;
   // Disable automatic compactions
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_base_background_compactions) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_background_compactions) = 0;
-  // Disable manual compations from flushes
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) =
+      std::numeric_limits<int32>::max();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_nodes_per_cloud) = 1;
 
   std::vector<string> clouds = {"cloud1_split", "cloud2_split", "cloud3_split", "cloud4_split"};
@@ -1086,10 +1086,8 @@ TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplittingWaitsForAllPeersCompac
   // Disable post split compaction
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_post_split_compaction) = true;
   // Disable automatic compactions
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_base_background_compactions) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_background_compactions) = 0;
-  // Disable manual compations from flushes
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) =
+      std::numeric_limits<int32>::max();
 
   int key = 1;
   CreateSingleTablet();
@@ -1211,8 +1209,8 @@ TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplittingMultiPhase) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_shard_count_per_node) = 2;
   // Disable automatic compactions, but continue to allow manual compactions.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_base_background_compactions) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_background_compactions) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) =
+      std::numeric_limits<int32>::max();
   // Disable post split compactions.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_post_split_compaction) = true;
 
@@ -2187,10 +2185,8 @@ class TabletSplitSystemRecordsITest :
     // Disable automatic tablet splitting.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
     // Disable automatic compactions.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_base_background_compactions) = 0;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_background_compactions) = 0;
-    // Disable manual compations from flushes.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) =
+        std::numeric_limits<int32>::max();
   }
 
   CHECKED_STATUS VerifySplitKeyError(yb::tablet::TabletPtr tablet) {
