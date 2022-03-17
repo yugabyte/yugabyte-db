@@ -784,6 +784,8 @@ class YBClient {
 
   void Shutdown();
 
+  const std::string& LogPrefix() const;
+
  private:
   class Data;
 

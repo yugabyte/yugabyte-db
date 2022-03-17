@@ -5150,17 +5150,20 @@ Result<TabletInfoPtr> CatalogManager::RegisterNewTabletForSplit(
   new_tablet_meta.set_state(SysTabletsEntryPB::CREATING);
   new_tablet_meta.mutable_committed_consensus_state()->CopyFrom(
       source_tablet_meta.committed_consensus_state());
-  new_tablet_meta.set_split_depth(source_tablet_meta.split_depth() + 1);
+  const auto new_split_depth = source_tablet_meta.split_depth() + 1;
+  new_tablet_meta.set_split_depth(new_split_depth);
   new_tablet_meta.set_split_parent_tablet_id(source_tablet_info->tablet_id());
   // TODO(tsplit): consider and handle failure scenarios, for example:
   // - Crash or leader failover before sending out the split tasks.
   // - Long enough partition while trying to send out the splits so that they timeout and
   //   not get executed.
+  int new_partition_list_version;
   {
     LockGuard lock(mutex_);
 
     auto& table_pb = table_write_lock->mutable_data()->pb;
-    table_pb.set_partition_list_version(table_pb.partition_list_version() + 1);
+    new_partition_list_version = table_pb.partition_list_version() + 1;
+    table_pb.set_partition_list_version(new_partition_list_version);
 
     tablet_write_lock->mutable_data()->pb.add_split_tablet_ids(new_tablet->id());
     RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), table, new_tablet, source_tablet_info));
@@ -5175,11 +5178,14 @@ Result<TabletInfoPtr> CatalogManager::RegisterNewTabletForSplit(
     auto tablet_map_checkout = tablet_map_.CheckOut();
     (*tablet_map_checkout)[new_tablet->id()] = new_tablet;
   }
-  LOG(INFO) << "Registered new tablet " << new_tablet->tablet_id()
-            << " (" << AsString(partition) << ") to split the tablet "
-            << source_tablet_info->tablet_id()
-            << " (" << AsString(source_tablet_meta.partition())
-            << ") for table " << table->ToString();
+  LOG(INFO) << "Registered new tablet " << new_tablet->tablet_id() << " (partition_key_start: "
+            << Slice(partition.partition_key_start()).ToDebugString(/* max_length = */ 64)
+            << ", partition_key_end: "
+            << Slice(partition.partition_key_end()).ToDebugString(/* max_length = */ 64)
+            << ", split_depth: " << new_split_depth << ") to split the tablet "
+            << source_tablet_info->tablet_id() << " (" << AsString(source_tablet_meta.partition())
+            << ") for table " << table->ToString()
+            << ", new partition_list_version: " << new_partition_list_version;
 
   return new_tablet;
 }
