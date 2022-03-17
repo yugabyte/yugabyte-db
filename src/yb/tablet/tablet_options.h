@@ -45,8 +45,6 @@ class MetricEntity;
 
 namespace tablet {
 
-YB_STRONGLY_TYPED_BOOL(IsDropTable);
-
 // Common for all tablets within TabletManager.
 struct TabletOptions {
   std::shared_ptr<rocksdb::Cache> block_cache;
