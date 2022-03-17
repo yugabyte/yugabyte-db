@@ -12,7 +12,9 @@ isTocNested: true
 showAsideToc: true
 ---
 
-To uninstall Yugabyte Platform, follow the steps for Docker or Kubernetes environments.
+<!-- You can uninstall Yugabyte Platform in the Kubernetes environments. -->
+
+<!--
 
 ## Uninstall in Docker environments
 
@@ -29,8 +31,11 @@ You can stop and remove Yugabyte Platform on Replicated, as follows:
     ```sh
     /usr/local/bin/replicated app <appid> stop
     ```
+-->
 
-    <!-- The rm command in step 3 doesn't work, as confirmed by dev. We don't know what to do about it. -->
+<!-- The rm command in step 3 doesn't work, as confirmed by dev. We don't know what to do about it. -->
+
+<!--
 
 3. Remove Yugabyte Platform, as follows:
 
@@ -38,21 +43,24 @@ You can stop and remove Yugabyte Platform on Replicated, as follows:
     /usr/local/bin/replicated app <appid> rm
     ```
 
-4. Remove all Yugabyte Platform containers, as follows:
+2. Remove all Yugabyte Platform containers, as follows:
 
     ```sh
     sudo docker images | grep "yuga" | awk '{print $3}' | xargs docker rmi -f
     ```
 
-5. Delete the mapped directory, as follows:
+3. Delete the mapped directory, as follows:
 
     ```sh
     sudo rm -rf /opt/yugabyte
     ```
 
-6. Uninstall Replicated by following instructions provided in [Removing Replicated](https://help.replicated.com/docs/native/customer-installations/installing-via-script/#removing-replicated).
+4. Uninstall Replicated by following instructions provided in [Removing Replicated](https://help.replicated.com/docs/native/customer-installations/installing-via-script/#removing-replicated).
+-->
 
+<!--
 ## Uninstall in Kubernetes environments
+-->
 
 You can uninstall Yugabyte Platform in Kubernetes, as follows:
 
@@ -62,7 +70,7 @@ You can uninstall Yugabyte Platform in Kubernetes, as follows:
     helm del yw-test -n yw-test
     ```
 
-    You should see a message similar to the following, notifying you that the Yugabyte Platform release and the namespace is deleted:
+    <br>You should see a message similar to the following, notifying you that the Yugabyte Platform release and the namespace is deleted:
 
     ```output
     release "yw-test" uninstalled
@@ -74,7 +82,7 @@ You can uninstall Yugabyte Platform in Kubernetes, as follows:
     kubectl delete namespace yw-test
     ```
 
-    You should see a message similar to the following:
+    <br>You should see a message similar to the following:
 
     ```output
     namespace "yw-test" deleted
