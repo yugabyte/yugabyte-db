@@ -54,7 +54,7 @@ PgDocResult::PgDocResult(rpc::SidecarPtr&& data) : data_(std::move(data)) {
 }
 
 PgDocResult::PgDocResult(rpc::SidecarPtr&& data, std::list<int64_t>&& row_orders)
-    : data_(std::move(data)), row_orders_(move(row_orders)) {
+    : data_(std::move(data)), row_orders_(std::move(row_orders)) {
   PgDocData::LoadCache(data_, &row_count_, &row_iterator_);
 }
 
