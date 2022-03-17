@@ -60,6 +60,8 @@ class PgMiniTestBase : public YBMiniClusterTestBase<MiniCluster> {
     return pg_host_port_;
   }
 
+  Result<TableId> GetTableIDFromTableName(const std::string table_name);
+
  private:
   Result<PgProcessConf> CreatePgProcessConf(uint16_t port);
 

@@ -80,6 +80,7 @@ YB_DEFINE_ENUM(RequireLease, (kFalse)(kTrue)(kFallbackToFollower));
 YB_STRONGLY_TYPED_BOOL(Destroy);
 YB_STRONGLY_TYPED_BOOL(DisableFlushOnShutdown);
 YB_STRONGLY_TYPED_BOOL(IsSysCatalogTablet);
+YB_STRONGLY_TYPED_BOOL(ShouldAbortActiveTransactions);
 YB_STRONGLY_TYPED_BOOL(TransactionsEnabled);
 
 // Used to indicate that a transaction-related operation has already been applied to regular RocksDB

@@ -214,7 +214,10 @@ class TabletPeerTest : public YBTabletTest {
 
   void TearDown() override {
     messenger_->Shutdown();
-    WARN_NOT_OK(tablet_peer_->Shutdown(), "Tablet peer shutdown failed");
+    WARN_NOT_OK(
+        tablet_peer_->Shutdown(
+            ShouldAbortActiveTransactions::kFalse, DisableFlushOnShutdown::kFalse),
+        "Tablet peer shutdown failed");
     YBTabletTest::TearDown();
   }
 

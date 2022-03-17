@@ -187,6 +187,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   CHECKED_STATUS DeleteTablet(
       const TabletId& tablet_id,
       tablet::TabletDataState delete_type,
+      tablet::ShouldAbortActiveTransactions should_abort_active_txns,
       const boost::optional<int64_t>& cas_config_opid_index_less_or_equal,
       bool hide_only,
       boost::optional<TabletServerErrorPB::Code>* error_code);

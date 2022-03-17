@@ -84,6 +84,7 @@ namespace tablet {
 
 YB_STRONGLY_TYPED_BOOL(IncludeIntents);
 YB_STRONGLY_TYPED_BOOL(Abortable);
+YB_STRONGLY_TYPED_BOOL(FlushOnShutdown);
 
 inline FlushFlags operator|(FlushFlags lhs, FlushFlags rhs) {
   return static_cast<FlushFlags>(to_underlying(lhs) | to_underlying(rhs));
@@ -276,12 +277,19 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // This can be called to proactively prevent new operations from being handled, even before
   // Shutdown() is called.
   // Returns true if it was the first call to StartShutdown.
-  bool StartShutdown(IsDropTable is_drop_table = IsDropTable::kFalse);
+  bool StartShutdown();
   bool IsShutdownRequested() const {
     return shutdown_requested_.load(std::memory_order::memory_order_acquire);
   }
 
-  void CompleteShutdown(IsDropTable is_drop_table = IsDropTable::kFalse);
+  // Complete the shutdown of this tablet. This includes shutdown of internal structures such as:
+  // - transaction coordinator
+  // - transaction participant
+  // - RocksDB instances
+  // - etc.
+  // By default, RocksDB shutdown flushes the memtable. This behavior is overriden depending on the
+  // provided value of disable_flush_on_shutdown.
+  void CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown);
 
   CHECKED_STATUS ImportData(const std::string& source_dir);
 

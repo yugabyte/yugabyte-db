@@ -300,6 +300,7 @@ TEST_F(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered) {
   boost::optional<TabletServerErrorPB::Code> error_code;
   ASSERT_OK(tablet_manager_->DeleteTablet(kTabletId1,
       tablet::TABLET_DATA_TOMBSTONED,
+      tablet::ShouldAbortActiveTransactions::kFalse,
       cas_config_opid_index_less_or_equal,
       false,
       &error_code));
@@ -314,6 +315,7 @@ TEST_F(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered) {
 
   ASSERT_OK(tablet_manager_->DeleteTablet(kTabletId1,
                                           tablet::TABLET_DATA_DELETED,
+                                          tablet::ShouldAbortActiveTransactions::kFalse,
                                           cas_config_opid_index_less_or_equal,
                                           false,
                                           &error_code));

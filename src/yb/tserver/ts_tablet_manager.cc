@@ -1181,6 +1181,7 @@ Result<TabletPeerPtr> TSTabletManager::CreateAndRegisterTabletPeer(
 Status TSTabletManager::DeleteTablet(
     const string& tablet_id,
     TabletDataState delete_type,
+    tablet::ShouldAbortActiveTransactions should_abort_active_txns,
     const boost::optional<int64_t>& cas_config_opid_index_less_or_equal,
     bool hide_only,
     boost::optional<TabletServerErrorPB::Code>* error_code) {
@@ -1251,12 +1252,8 @@ Status TSTabletManager::DeleteTablet(
     meta->SetHidden(true);
     return meta->Flush();
   }
-  // No matter if the tablet was deleted (drop table), or tombstoned (potentially moved to a
-  // different TS), we do not need to flush rocksdb anymore, as this data is irrelevant.
-  //
-  // Note: This might change for PITR.
-  bool delete_data = delete_type == TABLET_DATA_DELETED || delete_type == TABLET_DATA_TOMBSTONED;
-  RETURN_NOT_OK(tablet_peer->Shutdown(tablet::IsDropTable(delete_data)));
+  RETURN_NOT_OK(tablet_peer->Shutdown(
+      should_abort_active_txns, tablet::DisableFlushOnShutdown::kTrue));
 
   yb::OpId last_logged_opid = tablet_peer->GetLatestLogEntryOpId();
 
@@ -1571,7 +1568,7 @@ void TSTabletManager::StartShutdown() {
 
 void TSTabletManager::CompleteShutdown() {
   for (const TabletPeerPtr& peer : shutting_down_peers_) {
-    peer->CompleteShutdown();
+    peer->CompleteShutdown(tablet::DisableFlushOnShutdown::kFalse);
   }
 
   // Shut down the apply pool.
@@ -2556,7 +2553,7 @@ Status ShutdownAndTombstoneTabletPeerNotOk(
   }
   // If shutdown was initiated by someone else we should not wait for shutdown to complete.
   if (tablet_peer && tablet_peer->StartShutdown()) {
-    tablet_peer->CompleteShutdown();
+    tablet_peer->CompleteShutdown(tablet::DisableFlushOnShutdown::kFalse);
   }
   tserver::LogAndTombstone(meta, msg, uuid, status, ts_tablet_manager);
   return status;
