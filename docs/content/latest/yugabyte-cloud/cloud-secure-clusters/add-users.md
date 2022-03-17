@@ -15,7 +15,13 @@ showAsideToc: true
 
 Add database users to provide team members and applications access to the cluster's YugabyteDB database.
 
-When you create a cluster in Yugabyte Cloud, you set up the database admin credentials, which you use to access the YugabyteDB database. For other team members and applications to be able to connect, you can add them as database users. You should grant them only the privileges that they require. YugabyteDB uses [role-based access control](../../../secure/authorization/) (RBAC) to [manage authorization](../cloud-users/). A database user's access is determined by the roles they are assigned.
+When you create a cluster in Yugabyte Cloud, you set up the database admin credentials, which you use to access the YugabyteDB database. Use this account to:
+
+- add more database users
+- assign privileges to users
+- change your password, or the passwords of other users
+
+YugabyteDB uses [role-based access control](../../../secure/authorization/) (RBAC) to [manage authorization](../cloud-users/). A database user's access is determined by the roles they are assigned. You should grant users only the privileges that they require.
 
 ## Create and manage users and roles
 
@@ -29,7 +35,7 @@ To create and manage database roles and users (users are roles with login privil
 | Delete a user or role. | [DROP ROLE](../../../api/ysql/the-sql-language/statements/dcl_drop_role/) | [DROP ROLE](../../../api/ycql/ddl_drop_role/) |
 | Assign privileges to a user or role. | [GRANT](../../../api/ysql/the-sql-language/statements/dcl_grant/) | [GRANT ROLE](../../../api/ycql/ddl_grant_role/) |
 | Remove privileges from a user or role. | [REVOKE](../../../api/ysql/the-sql-language/statements/dcl_revoke/) | [REVOKE ROLE](../../../api/ycql/ddl_revoke_role/) |
-| Change a user password. | [ALTER ROLE](../../../api/ysql/the-sql-language/statements/dcl_alter_role/) | [ALTER ROLE](../../../api/ycql/ddl_alter_role/) |
+| Change your own or another user's password. | [ALTER ROLE](../../../api/ysql/the-sql-language/statements/dcl_alter_role/) | [ALTER ROLE](../../../api/ycql/ddl_alter_role/) |
 
 ### Create a database user
 
@@ -55,7 +61,7 @@ yugabyte=# GRANT <rolename> TO <username>;
 ```
 
 {{< note title="Note" >}}
-You can't create YSQL superusers in Yugabyte Cloud. Refer to [Database authorization in Yugabyte Cloud clusters](../cloud-users/).
+You can't create YSQL superusers in Yugabyte Cloud. To create another database administrator, grant the `yb_superuser` role. Refer to [Database authorization in Yugabyte Cloud clusters](../cloud-users/).
 {{< /note >}}
 
 #### YCQL
@@ -74,13 +80,15 @@ admin@ycqlsh> GRANT ROLE <rolename> to <username>;
 
 ### Change a user password
 
-To change a user password in YSQL, use the ALTER ROLE statement:
+To change your own or another user's password, use the ALTER ROLE statement.
+
+In YSQL, enter the following:
 
 ```sql
 yugabyte=# ALTER ROLE <username> PASSWORD 'new-password';
 ```
 
-To change a user password in YCQL, use the ALTER ROLE statement:
+In YCQL, enter the following:
 
 ```sql
 cassandra@ycqlsh> ALTER ROLE <username> WITH PASSWORD = 'new-password';

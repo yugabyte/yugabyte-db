@@ -108,6 +108,10 @@ HINT:  Must be superuser to [...].
 
 For security reasons, the database admin user is not a superuser. The admin user is a member of yb_superuser, which does allow most operations. For more information on database roles and privileges in Yugabyte Cloud, refer to [Database authorization in Yugabyte Cloud clusters](../cloud-secure-clusters/cloud-users/). If you need to perform an operation that requires superuser privileges, contact {{<support-cloud>}}.
 
+### I need to change my database admin password
+
+YugabyteDB uses [role-based access control](../../secure/authorization/) (RBAC) to [manage database authorization](../cloud-secure-clusters/cloud-users/). To change your database admin password, you need to connect to the cluster and use the ALTER ROLE statement. Refer to [Add database users](../cloud-secure-clusters/add-users/).
+
 ## Cluster management
 
 ### You are editing your cluster infrastructure and are unable to reduce disk size per node
