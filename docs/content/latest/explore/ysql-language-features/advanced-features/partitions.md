@@ -133,40 +133,24 @@ Note the following:
 - You cannot mix temporary and permanent relations in the same partition hierarchy.
 - If you have a default partition in the partitioning hierarchy, you can add new partitions only if there is no data in the default partition that matches the partition constraint of the new partition.
 
-## Partition Pruning
+## Partition Pruning and Constraint Exclusion
 
-YSQL allows you to optimize queries ran on partitioned tables by eliminating (pruning) partitions that are no longer needed.
+Partition pruning and constraint exclusion are optimization techniques that allow the query planner to exclude unnecessary partitions from the execution. For example, consider the following query:
 
-The following example shows a query that scans every partition of the `order_changes` table:
-
-```sql
+```
 SELECT count(*) FROM order_changes WHERE change_date >= DATE '2020-01-01';
 ```
 
-If you enable partition pruning on the preceding query by setting `enable_partition_pruning` to `on` (default), as shown in the following example, the query planner examines the definition of each partition and proves that the partition does not require scanning because it cannot contain data to satisfy the condition in the `WHERE` clause. This excludes the partition from the query plan.
+If the `order_changes` table is partitioned by `change_date`, there is a big chance that only a subset of partitions needs to be queried. When enabled, both partition pruning and constraint exclusion can provide significant performance improvements for such queries by filtering out partitions that do not satisfy the criteria.
 
-```sql
-SET enable_partition_pruning = on;
-SELECT count(*) FROM order_changes WHERE change_date >= DATE '2020-01-01';
+Even though partition pruning and constraint exclusion target the same goal, the underlying mechanisms are different. Specifically, constraint exclusion is applied during query planning, and therefore only works if `WHERE` clause contains constants or externally supplied parameters. For example, a comparison against a non-immutable function such as `CURRENT_TIMESTAMP` cannot be optimized, since the planner cannot know which child table the function's value might fall into at run time. On the other hand, partition pruning is applied during query execution, and therefore can be more flexible. However, it is only used for `SELECT` queries. Updates can only benefit from constraint exclusion.
+
+Both optimizations are enabled by default, which is the recommended setting for the majority of cases. However, if you know for certain that one of your queries will have to scan all the partitions, you can consider disabling the optimizations for that query:
+
+```
+SET enable_partition_pruning = off;
+SET constraint_exclusion = off;
+SELECT count(*) FROM order_changes WHERE change_date >= DATE '2019-01-01';
 ```
 
-To disable partition pruning, set `enable_partition_pruning` to `off`.
-
-## Constraint Exclusion
-
-You can improve performance of partitioned tables by using a query optimization technique called constraint exclusion, as follows:
-
-```sql
-SET constraint_exclusion = on;
-SELECT count(*) FROM order_changes WHERE change_date >= DATE '2021-01-01';
-```
-
-If you do not apply constraint exclusion, the preceding query would scan every partition of the `order_changes` table. If you add constraint exclusion, the query planner examines the constraints of each partition and attempts to prove that the partition does not require scanning because it cannot contain rows that meet the `WHERE` clause. If proven, the planner removes the partition from the query plan.
-
-`constraint_exclusion` is not enabled (set to `on`) nor disabled (set to `off`) by default; instead, it is set to `partition`, therefore making constraint exclusion applied to queries that are executed on partitioned tables. When constraint exclusion is enabled, the planner examines `CHECK` constraints in all queries regardless of their complexity.
-
-Note the following:
-
-- You should only apply constraint exclusion to queries whose `WHERE` clause contains constants.
-- For the query planner to be able to prove that partitions do not require visits, partitioning constraints need to be relatively simple.
-- Since every constraint on every partition of the partitioned table is examined during constraint exclusion, having a lot of partitions significantly increases query planning time.
+To enable partition pruning back, switch the `enable_partition_pruning` setting to `on`. As for constraint exclusion, the recommended (and default) setting for it is neither `off` or `on`, but rather an intermediate value `partition`, which means that it’s applied only to queries that are executed on partitioned tables.
