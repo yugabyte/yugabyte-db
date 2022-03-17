@@ -117,10 +117,10 @@ public class Users extends Model {
   }
 
   @Column(nullable = false)
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssXXX")
   @ApiModelProperty(
       value = "User creation date",
-      example = "2021-06-17T15:00:05-0400",
+      example = "2021-06-17T15:00:05-04:00",
       accessMode = READ_ONLY)
   public Date creationDate;
 

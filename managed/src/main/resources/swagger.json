@@ -6914,7 +6914,7 @@
         },
         "creationDate" : {
           "description" : "User creation date",
-          "example" : "2021-06-17T15:00:05-0400",
+          "example" : "2021-06-17T15:00:05-04:00",
           "format" : "date-time",
           "readOnly" : true,
           "type" : "string"
@@ -6974,7 +6974,7 @@
         },
         "creationDate" : {
           "description" : "User creation date",
-          "example" : "2021-06-17T15:00:05-0400",
+          "example" : "2021-06-17T15:00:05-04:00",
           "format" : "date-time",
           "readOnly" : true,
           "type" : "string"
