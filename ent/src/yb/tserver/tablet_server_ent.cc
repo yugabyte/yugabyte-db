@@ -44,6 +44,10 @@ DEFINE_int32(ts_backup_svc_queue_length, 50,
              "RPC queue length for the TS backup service");
 TAG_FLAG(ts_backup_svc_queue_length, advanced);
 
+DEFINE_int32(xcluster_svc_queue_length, 5000,
+             "RPC queue length for the xCluster service");
+TAG_FLAG(xcluster_svc_queue_length, advanced);
+
 DECLARE_int32(svc_queue_length_default);
 
 DECLARE_string(cert_node_filename);
@@ -82,7 +86,7 @@ Status TabletServer::RegisterServices() {
       std::make_unique<TabletServiceBackupImpl>(tablet_manager_.get(), metric_entity())));
 
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
-      FLAGS_svc_queue_length_default,
+      FLAGS_xcluster_svc_queue_length,
       std::make_unique<CDCServiceImpl>(tablet_manager_.get(), metric_entity(), metric_registry())));
 
   return super::RegisterServices();
