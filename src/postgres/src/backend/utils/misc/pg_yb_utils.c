@@ -122,7 +122,14 @@ CheckIsYBSupportedRelationByKind(char relkind)
 bool
 IsYBRelation(Relation relation)
 {
-	if (!IsYugaByteEnabled()) return false;
+	/*
+	 * NULL relation is possible if regular ForeignScan is confused for
+	 * Yugabyte sequential scan, which is backed by ForeignScan, too.
+	 * Rather than performing probably not trivial and unreliable checks by
+	 * the caller to distinguish them, we allow NULL argument here.
+	 */
+	if (!IsYugaByteEnabled() || !relation)
+		return false;
 
 	const char relkind = relation->rd_rel->relkind;
 

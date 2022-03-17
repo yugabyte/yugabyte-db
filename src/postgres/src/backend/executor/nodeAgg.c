@@ -1556,7 +1556,7 @@ yb_agg_pushdown_supported(AggState *aggstate)
 	scan_state = castNode(ForeignScanState, outerPlanState(aggstate));
 
 	/* Foreign relation we are scanning is a YB table. */
-	if (!IsYBRelationById(scan_state->ss.ss_currentRelation->rd_id))
+	if (!IsYBRelation(scan_state->ss.ss_currentRelation))
 		return;
 
 	/* No WHERE quals. */
