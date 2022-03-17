@@ -23,7 +23,6 @@ import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
@@ -80,7 +79,6 @@ public class CreateBackup extends UniverseTaskBase {
     BACKUP_ATTEMPT_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
     try {
       checkUniverseVersion();
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
@@ -207,7 +205,8 @@ public class CreateBackup extends UniverseTaskBase {
           throw new RuntimeException("Invalid Keyspace or no tables to backup");
         }
 
-        subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
+        // Clear any previous subtasks if any.
+        getRunnableTask().reset();
 
         // log.info("Successfully started scheduled backup of tables.");
         if (params().getKeyspace() == null && params().tableUUIDList.size() == 0) {
@@ -255,7 +254,7 @@ public class CreateBackup extends UniverseTaskBase {
 
         unlockUniverseForUpdate();
 
-        subTaskGroupQueue.run();
+        getRunnableTask().runSubTasks();
 
         BACKUP_SUCCESS_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
         metricService.setOkStatusMetric(

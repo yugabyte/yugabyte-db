@@ -44,10 +44,8 @@ import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -420,11 +418,14 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTaskInfos.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertEquals(1, subTasksByPosition.size());
-    Set<TaskInfo.State> subTaskStates =
-        subTasksByPosition.get(0).stream().map(TaskInfo::getTaskState).collect(Collectors.toSet());
-    assertEquals(2, subTaskStates.size());
-    assertTrue(subTaskStates.contains(TaskInfo.State.Created));
+    assertEquals(2, subTasksByPosition.size());
+    List<TaskInfo.State> subTaskStates =
+        subTasksByPosition.get(0).stream().map(TaskInfo::getTaskState).collect(Collectors.toList());
+    assertEquals(1, subTaskStates.size());
+    assertEquals(TaskInfo.State.Created, subTaskStates.get(0));
+    subTaskStates =
+        subTasksByPosition.get(1).stream().map(TaskInfo::getTaskState).collect(Collectors.toList());
+    assertEquals(1, subTaskStates.size());
     assertTrue(subTaskStates.contains(TaskInfo.State.Success));
   }
 

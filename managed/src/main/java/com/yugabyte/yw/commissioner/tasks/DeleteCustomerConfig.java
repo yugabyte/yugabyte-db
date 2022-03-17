@@ -13,7 +13,6 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.amazonaws.SDKGlobalConfiguration;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.common.AWSUtil;
 import com.yugabyte.yw.common.AZUtil;
 import com.yugabyte.yw.common.GCPUtil;
@@ -68,7 +67,6 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
       // Dell ECS are provided and custom certs are needed to connect
       // Reference: https://yugabyte.atlassian.net/browse/PLAT-2497
       System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
       List<Schedule> scheduleList = Schedule.findAllScheduleWithCustomerConfig(params().configUUID);
       for (Schedule schedule : scheduleList) {
         schedule.stopSchedule();
@@ -154,7 +152,7 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
         }
       }
 
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
     } catch (Exception e) {
       log.error(
           "Error while deleting backups associated to Configuration {}", params().configUUID, e);
