@@ -16,12 +16,12 @@ For on-premises deployments of Yugabyte universes, you need to import nodes that
 
 ## Ports
 
-The following ports must be opened for intra-cluster communication (they do not need to be exposed to your application, only to other nodes in the cluster and the platform node):
+The following ports must be opened for intra-cluster communication (they do not need to be exposed to your application, only to other nodes in the cluster and the Yugabyte Platform node):
 
 * 7100 - Master RPC
 * 9100 - TServer RPC
 
-The following ports must be exposed for intra-cluster communication, and you should additionally expose these ports to administrators or users monitoring the system, as these ports provide valuable diagnostic troubleshooting and metrics:
+The following ports must be exposed for intra-cluster communication, and you should expose these ports to administrators or users monitoring the system, as these ports provide diagnostic troubleshooting and metrics:
 
 * 9300 - Prometheus metrics
 * 7000 - Master HTTP endpoint
@@ -30,11 +30,13 @@ The following ports must be exposed for intra-cluster communication, and you sho
 * 12000 - YCQL API
 * 13000 - YSQL API
 
-The following nodes must be available to your application or any user attempting to connect to the YugabyteDB, in addition to intra-node communication:
+The following ports must be exposed for intra-node communication and be available to your application or any user attempting to connect to the YugabyteDB:
 
 * 5433 - YSQL server
 * 9042 - YCQL server
 * 6379 - YEDIS server
+
+In addition, port 54422 must be available because the Yugabyte Platform installer reconfigures nodes to use this port as a default SSH port. If it is not included in the security group, the installation will fail due to nodes being unreachable.
 
 For more information on ports used by YugabyteDB, refer to [Default ports](../../../reference/configuration/default-ports).
 
