@@ -67,7 +67,7 @@ Ensure that you have entered the correct password for the cluster database you a
 
 The database admin credentials are separate from your Yugabyte Cloud credentials, which are used exclusively to log in to Yugabyte Cloud.
 
-If you are a database user who was added to the database by an administrator, ask them to either re-send your credentials or reset your database password.
+If you are a database user who was added to the database by an administrator, ask your administrator to either re-send your credentials or [change your database password](../cloud-secure-clusters/add-users/).
 
 If you are the database admin and are unable to locate your database admin credentials file, contact {{<support-cloud>}}.
 
