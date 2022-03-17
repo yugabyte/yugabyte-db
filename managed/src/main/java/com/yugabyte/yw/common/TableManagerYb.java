@@ -65,7 +65,8 @@ public class TableManagerYb extends DevopsBase {
   @Inject ReleaseManager releaseManager;
   @Inject BackupUtil backupUtil;
 
-  public ShellResponse runCommand(CommandSubType subType, TableManagerParams taskParams) {
+  public ShellResponse runCommand(CommandSubType subType, TableManagerParams taskParams)
+      throws PlatformServiceException {
     Universe universe = Universe.getOrBadRequest(taskParams.universeUUID);
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
     Region region = Region.get(primaryCluster.userIntent.regionList.get(0));
@@ -148,6 +149,7 @@ public class TableManagerYb extends DevopsBase {
         if (!customerConfig.name.toLowerCase().equals("nfs")) {
           List<RegionLocations> regionLocations =
               backupUtil.getRegionLocationsList(customerConfig.getData());
+
           for (RegionLocations regionLocation : regionLocations) {
             if (StringUtils.isNotBlank(regionLocation.REGION)
                 && StringUtils.isNotBlank(regionLocation.LOCATION)) {

@@ -284,7 +284,7 @@ public class BackupGarbageCollector {
     Boolean isValid = true;
     try {
       backupUtil.validateStorageConfig(config);
-    } catch (PlatformServiceException e) {
+    } catch (Exception e) {
       isValid = false;
     }
     return isValid;
