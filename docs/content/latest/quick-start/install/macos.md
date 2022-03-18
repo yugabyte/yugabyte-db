@@ -152,7 +152,7 @@ sudo ifconfig lo0 alias 127.0.0.6
 sudo ifconfig lo0 alias 127.0.0.7
 ```
 
-The loopback addresses do not persist after rebooting your Mac.
+The loopback addresses _do not_ persist after rebooting your Mac.
 
 To verify that the extra loopback addresses exist, run the following command.
 
