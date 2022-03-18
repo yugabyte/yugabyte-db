@@ -6496,21 +6496,21 @@ Status DestroyDB(const std::string& dbname, const Options& options) {
       }
     }
 
-    std::vector<std::string> archiveFiles;
-    env->GetChildrenWarnNotOk(archivedir, &archiveFiles);
-    // Delete archival files.
-    for (size_t i = 0; i < archiveFiles.size(); ++i) {
-      if (ParseFileName(archiveFiles[i], &number, &type) &&
-        type == kLogFile) {
-        Status del = env->DeleteFile(archivedir + "/" + archiveFiles[i]);
-        if (result.ok() && !del.ok()) {
-          result = del;
-        }
-      }
-    }
-
     // ignore case where no archival directory is present.
     if (env->FileExists(archivedir).ok()) {
+      std::vector<std::string> archiveFiles;
+      env->GetChildrenWarnNotOk(archivedir, &archiveFiles);
+      // Delete archival files.
+      for (size_t i = 0; i < archiveFiles.size(); ++i) {
+        if (ParseFileName(archiveFiles[i], &number, &type) &&
+          type == kLogFile) {
+          Status del = env->DeleteFile(archivedir + "/" + archiveFiles[i]);
+          if (result.ok() && !del.ok()) {
+            result = del;
+          }
+        }
+      }
+
       WARN_NOT_OK(env->DeleteDir(archivedir), "Failed to cleanup dir " + archivedir);
     }
     WARN_NOT_OK(env->UnlockFile(lock), "Unlock file failed");
