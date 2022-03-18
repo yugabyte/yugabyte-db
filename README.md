@@ -117,6 +117,60 @@ Here is a list of some of the key features being worked on for the upcoming rele
 
 Review detailed architecture in our [Docs](https://docs.yugabyte.com/latest/architecture/).
 
+# Codemap
+
+The YugabyteDB code is split into two top-level section:
+* [`postgres`](src/postgres/)
+<br /> Our modified fork of the Postgresql code. This is mostly C code.
+* [`yb`](src/yb/)
+<br /> The core of the YugabyteDB storage engine. This is mostly C++ code.
+
+The core storage engine is then further split into the following C++ components:
+* [`bfpg`](src/yb/bfpg/)
+<br /> TODO
+* [`bfql`](src/yb/bfql/)
+<br /> TODO
+* [`cdc`](src/yb/cdc/)
+<br /> Main code for our Xcluster Replication product and CDCSDK (generalized Change Data Capture product).
+* [`client`](src/yb/client/)
+<br /> Underlying client component used for RPC communication between servers.
+* [`common`](src/yb/common/)
+<br /> Code that is shared across server, client and query components.
+* [`consensus`](src/yb/consensus/)
+<br /> Raft consensus implementation.
+* [`docdb`](src/yb/docdb/)
+<br /> DocDB encoding implementation.
+* [`encryption`](src/yb/encryption/)
+<br /> Utilities for encryption related work, such as TLS and Encryption at Rest.
+* [`fs`](src/yb/fs/)
+<br /> Abstractions for manipulating the underlying file systems.
+* [`gen_yrpc`](src/yb/gen_yrpc/)
+<br /> Abstraction on top of our protobuf usage, for generating server side code.
+* [`gutil`](src/yb/gutil/)
+<br /> Utilities to augment the standard library, from the upstream Chromium project.
+* [`integration-tests`](src/yb/integration-tests/)
+<br /> Strictly used for tests which depend on several components in the code.
+* [`master`](src/yb/master/)
+<br /> Control path server side of the database. This is responsible for DDLs, Cluster balancing, health checking, etc.
+* [`rocksdb`](src/yb/rocksdb/)
+<br /> Heavily modified fork of the RocksDB single-node storage library.
+* [`rocksutil`](src/yb/rocksutil/)
+<br /> Utilities for working with RocksDB.
+* [`rpc`](src/yb/rpc/)
+<br /> Underlying RPC layer implementation.
+* [`server`](src/yb/server/)
+<br /> Abstract classes used by both master and tserver processes.
+* [`tablet`](src/yb/tablet/)
+<br /> Main data path IO logic, both for single shard and multi shard transactions.
+* [`tools`](src/yb/tools/)
+<br /> Command line utilities to help debug, inspect or modify state on a live running cluster.
+* [`tserver`](src/yb/tserver/)
+<br /> Data path server side of the database. Responsible internally for managing tablets and externally for communication with master and the Postgres clients.
+* [`util`](src/yb/util/)
+<br /> Utilities used across the entire code base. These range from low level atomic abstractions or memory management primitives, to higher level thread pools, metrics and gflag handling.
+* [`yql`](src/yb/yql/)
+<br /> Query layer abstractions. This contains both server side code for YCQL and YEDIS, as well as the C to C++ transition for our YSQL layer.
+
 # Need Help?
 
 * You can ask questions, find answers, and help others on our Community [Slack](https://communityinviter.com/apps/yugabyte-db/register), [Forum](https://forum.yugabyte.com), [Stack Overflow](https://stackoverflow.com/questions/tagged/yugabyte-db), as well as Twitter [@Yugabyte](https://twitter.com/yugabyte)
