@@ -162,7 +162,7 @@ The following **AWS regions** are available:
 - **Clusters** - No support for scaling vCPUs on single node clusters.
 - **Metrics** - The **View Full Screen** option in charts on the cluster **Overview** and **Performance Metrics** pages does not work in some versions of Safari 14.0 (Big Sur).
 - **Metrics** - Some clusters in European regions may show occasional spikes in the YSQL Operations/sec chart. This is due to cluster health checks and can be ignored.
-- **Pausing clusters** - The Once Paused rate shown in the **Pause Cluster** dialog incorrectly refers to usage costs. The Once Resumed rate shown in the **Restore Cluster** dialog does not include additional disk storage costs.
+- **Pausing clusters** - The Once Paused rates shown in the **Pause Cluster** and **Resume Cluster** dialog incorrectly refer to usage costs. The Once Resumed rate shown in the **Resume Cluster** dialog does not include additional disk storage costs.
 
 ### Known issues in [Cloud Shell](../cloud-connect/connect-cloud-shell/)
 
