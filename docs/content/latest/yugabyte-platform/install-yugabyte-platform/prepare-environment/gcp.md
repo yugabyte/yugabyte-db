@@ -102,7 +102,7 @@ In order to access Yugabyte Platform from outside the GCP environment, you have 
 - Check, manage, and upgrade Yugabyte Platform (port `tcp:8800`).
 - View the Yugabyte Platform UI (port `tcp:80`).
 
-If you are using your own Virtual Private Cloud (VPC) as a self-managed configuration, the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 11000, 12000, 13000, 9300, 9042, 5433, 6379. For more information, see [Default ports](../../../../reference/configuration/default-ports).
+If you are using your own Virtual Private Cloud (VPC) as a self-managed configuration, the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 11000, 12000, 13000, 9300, 9042, 5433, 6379, 54422. For more information, see [Default ports](../../../../reference/configuration/default-ports).
 
 Next, you need to create a firewall entry, as follows: 
 

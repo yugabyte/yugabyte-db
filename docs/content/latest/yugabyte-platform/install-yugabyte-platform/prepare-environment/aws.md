@@ -66,7 +66,7 @@ In order to access Yugabyte Platform from outside the AWS environment, you would
 - Check, manage, and upgrade Yugabyte Platform (port `tcp:8800`).
 - View the Yugabyte Platform UI (port `tcp:80`).
 
-If you are using your own Virtual Private Cloud (VPC) as a self-managed configuration, the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 11000, 12000, 13000, 9300, 9042, 5433, 6379. For more information on ports used by YugabyteDB, refer to [Default ports](../../../../reference/configuration/default-ports).
+If you are using your own Virtual Private Cloud (VPC) as a self-managed configuration, the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 11000, 12000, 13000, 9300, 9042, 5433, 6379, 54422. For more information on ports used by YugabyteDB, refer to [Default ports](../../../../reference/configuration/default-ports).
 
 To create a security group that enables these, use the Amazon console to navigate to **EC2 > Security Groups**, click **Create Security Group**, and then add the following values:
 
@@ -78,7 +78,7 @@ To create a security group that enables these, use the Amazon console to navigat
 
 - Add the ports 22, 8800, and 80 to the **Port Range** field. The **Protocol** selected must be TCP.
 
-  For a self-managed configuration, also add the 7000, 7100, 9000, 9100, 11000, 12000, 13000, 9300, 9042, 5433, and 6379 TCP ports.
+  For a self-managed configuration, also add the previously listed TCP ports.
 
 You should see a configuration similar to the one shown in the following illustration:
 
