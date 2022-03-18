@@ -139,17 +139,17 @@ In some fresh dataset cases, new data will be backfilled into the database befor
 When using the `file_expiration_value_ttl_overrides_table_ttl` flag, be sure to set the flag back to `false` *before* all backfilled data has fully expired. Failing to do so can result in unexpected loss of data. For example, if the `default_time_to_live` is 90 days, and data has been backfilled with value-level TTL from 1 day to 89 days, it is important that the `file_expiration_value_ttl_overrides_table_ttl` flag be set back to `false` within 89 days of data ingestion to avoid data loss.
 {{< /warning >}}
 
-#### Configuring for existing YCQL time series datasets with TTL
+### Configuring for existing YCQL time series datasets with TTL
 
 To convert existing YCQL tables to ones configured for file expiration, the same TServer flag values as above can be used. However, expect a **temporary 2x space amplification** of the data should be expected in this case. This amplification happens because the existing file structure will have kept most data in a single large file, and that file will now be excluded from compactions going forward. Thus, this file will be unchanged until its contents has entirely expired, roughly *TTL amount of time* after the file expiration feature was configured.
 
-Additionally, if data files were created with YugabyteDB versions below 2.6.6 or 2.8.1, files may lack the necessary metadata to be expired naturally. The `file_expiration_ignore_value_ttl` flag can be set to `true` to ignore the missing metadata. 
+Additionally, if data files were created with YugabyteDB versions below 2.6.6 or 2.8.1, files may lack the necessary metadata to be expired naturally. The `file_expiration_ignore_value_ttl` flag can be set to `true` to ignore the missing metadata.
 
 {{< warning title="Warning" >}}
 To prevent early data deletion, it is very important that in these cases, the `default_time_to_live` for any tables with TTL should be set to greater than or equal to the largest value-level TTL contained within those tables. It is recommended that once the files lacking the metadata have been removed, the `file_expiration_ignore_value_ttl` flag be set back to `false` (no restart required).
 {{< /warning >}}
 
-#### Best usage and troubleshooting
+### Best usage and troubleshooting
 
 * The file expiration feature is only enabled for tables with a default time to live. Even applications that explicitly set TTL on insert should be configured with a default time to live.
 * The file expiration feature assumes that data arrives in rough chronological order relative to its expected expiration time. The feature is safe to use if this assumption is not met, but will be significantly less effective.
