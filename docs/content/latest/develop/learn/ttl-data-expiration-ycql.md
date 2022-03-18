@@ -114,7 +114,7 @@ YCQL includes a file expiration feature optimized for workloads that primarily r
 
 This feature is available in 2.6.10+, 2.8.2+, and 2.12.1+.
 
-### Configuring for new YCQL datasets with TTL
+### Configuring for new YCQL datasets
 
 If configuring a new YCQL database for time series datasets and using a default time to live, we recommend the following TServer flag configurations:
 
@@ -136,14 +136,14 @@ The value of these flags depends on the number of files expected to hold the ful
 In some fresh dataset cases, new data will be backfilled into the database before the application is turned on. This backfilled data may have a value-level TTL associated with it that is significantly lower than the `default_time_to_live` property on the table, with the desired effect being that this data be removed earlier than the table TTL would allow. By default, such data will *not* expire early. However, the `file_expiration_value_ttl_overrides_table_ttl` flag can be used to ignore table TTL and expire solely based on value TTL.
 
 {{< warning title="Warning" >}}
-When using the `file_expiration_value_ttl_overrides_table_ttl` flag, be sure to set the flag back to `false` *before* all backfilled data has fully expired. Failing to do so can result in unexpected loss of data. For example, if the `default_time_to_live` is 90 days, and data has been backfilled with value-level TTL from 1 day to 89 days, it is important that the `file_expiration_value_ttl_overrides_table_ttl` flag be set back to `false` within 89 days of data ingestion to avoid data loss.
+When using the `file_expiration_value_ttl_overrides_table_ttl` flag, be sure to set the flag back to `false` *before* all data with value-level TTL (for example, backfilled data) has fully expired. Failing to do so can result in unexpected loss of data. For example, if the `default_time_to_live` is 90 days, and data has been backfilled with value-level TTL from 1 day to 89 days, it is important that the `file_expiration_value_ttl_overrides_table_ttl` flag be set back to `false` within 89 days of data ingestion to avoid data loss.
 {{< /warning >}}
 
-### Configuring for existing YCQL time series datasets with TTL
+### Configuring for existing YCQL datasets
 
 To convert existing YCQL tables to ones configured for file expiration, the same TServer flag values as above can be used. However, expect a **temporary 2x space amplification** of the data should be expected in this case. This amplification happens because the existing file structure will have kept most data in a single large file, and that file will now be excluded from compactions going forward. Thus, this file will be unchanged until its contents has entirely expired, roughly *TTL amount of time* after the file expiration feature was configured.
 
-Additionally, if data files were created with YugabyteDB versions below 2.6.6 or 2.8.1, files may lack the necessary metadata to be expired naturally. The `file_expiration_ignore_value_ttl` flag can be set to `true` to ignore the missing metadata.
+Additionally, if data files were created with YugabyteDB versions below 2.6.6 or 2.8.1, files may lack the necessary metadata to be expired naturally. The `file_expiration_ignore_value_ttl` flag can be set to `true` to ignore the missing metadata. This will ignore the row- and column-level TTL metadata, expiring files purely based on the table's `default_time_to_live`.
 
 {{< warning title="Warning" >}}
 To prevent early data deletion, it is very important that in these cases, the `default_time_to_live` for any tables with TTL should be set to greater than or equal to the largest value-level TTL contained within those tables. It is recommended that once the files lacking the metadata have been removed, the `file_expiration_ignore_value_ttl` flag be set back to `false` (no restart required).
