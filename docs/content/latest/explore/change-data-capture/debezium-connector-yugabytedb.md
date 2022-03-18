@@ -5,20 +5,19 @@ linkTitle: Debezium connector YugabyteDB
 description: Debezium is an open source distributed platform used to capture the changes in a database.
 aliases:
   - /latest/explore/change-data-capture/debezium-connector-yugabytedb-ysql
-  - /latest/explore/change-data-capture/debezium-connector-yugabytedb
   - /latest/explore/change-data-capture/debezium-connector
   - /latest/explore/change-data-capture/debezium
 menu:
   latest:
-    parent: explore-change-data-capture
+    parent: change-data-capture
     identifier: debezium-connector-yugabytedb
-    parent: cdc
     weight: 580
 isTocNested: true
 showAsideToc: true
 ---
 
 # Debezium connector for YugabyteDB
+
 The Debezium connector for YugabyteDB captures row-level changes in the schemas of a YugabyteDB database.
 
 The first time it connects to a YugabyteDB cluster or universe, the connector takes a consistent snapshot of the tables it is configured for. After that snapshot is complete, the connector continuously captures row-level changes that insert, update, and delete database content and that were committed to a YugabyteDB database. The connector generates data change event records and streams them to Kafka topics. For each table, the default behavior is that the connector streams all generated events to a separate Kafka topic for that table. Applications and services consume data change event records from that topic.
@@ -45,7 +44,7 @@ To optimally configure and run a Debezium YugabyteDB connector, it is helpful to
 
 ### Security
 
-Currently, any user that has the access to the cluster, the authentication is done via that user. We also support the SSL based verification provided all the required keys and certificates are passed to the connector. 
+Currently, any user that has the access to the cluster, the authentication is done via that user. We also support the SSL based verification provided all the required keys and certificates are passed to the connector.
 
 {{< note title="Note" >}}
 
@@ -759,7 +758,7 @@ YugabyteDB has data types that can store IPv4, IPv6, and MAC addresses. It is be
 | INET | STRING | IPv4 and IPv6 networks. |
 | CIDR | STRING | IPv4 and IPv6 hosts and networks. |
 | MACADDR | STRING | MAC addresses. |
-| MACADDR8 | STRING | MAC addresses in EUI-64 format. | 
+| MACADDR8 | STRING | MAC addresses in EUI-64 format. |
 
 ### Default values
 If there is a default value for any column in a the YugabyteDB database schema, the YugabyteDB Debezium connector will propagate the same value to the Kafka schema.

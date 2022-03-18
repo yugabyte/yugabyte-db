@@ -121,19 +121,17 @@ Use [yb-ctl](../admin/yb-ctl/) local cluster management utility to explore the c
     </a>
   </div>
 
-<!--
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="colocated-tables/macos/">
+    <a class="section-link icon-offset" href="change-data-capture/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/explore/linear_scalability.png" aria-hidden="true" />
-        <div class="title">Colocated tables</div>
+        <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
+        <div class="title">Change data capture</div>
       </div>
       <div class="body">
-        Model large number of relations and databases with fault tolerance.
+        CDC
       </div>
     </a>
   </div>
--->
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="security/security/">
@@ -151,7 +149,7 @@ Use [yb-ctl](../admin/yb-ctl/) local cluster management utility to explore the c
     <a class="section-link icon-offset" href="observability/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
-        <div class="title">Observabililty</div>
+        <div class="title">Observability</div>
       </div>
       <div class="body">
         Observe metrics at every layer of the database using Prometheus.
