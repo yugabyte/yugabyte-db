@@ -302,7 +302,9 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
       const std::vector<TabletInfoPtr>& hidden_tablets,
       const ScheduleMinRestoreTime& schedule_min_restore_time);
   // Will filter tables content, so pass it by value here.
-  void CleanupHiddenTables(std::vector<TableInfoPtr> tables);
+  void CleanupHiddenTables(
+      std::vector<TableInfoPtr> tables,
+      const ScheduleMinRestoreTime& schedule_min_restore_time);
 
   rpc::Scheduler& Scheduler() override;
 
