@@ -7,6 +7,7 @@ import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
@@ -52,6 +53,10 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
           Pair<List<NodeDetails>, List<NodeDetails>> nodes = fetchNodes(taskParams().upgradeOption);
           // Verify the request params and fail if invalid.
           taskParams().verifyParams(getUniverse());
+          // Precheck for Available Memory on tserver nodes.
+          createAvailabeMemoryCheck(
+                  nodes.getRight(), Util.AVAILABLE_MEMORY_CHECK, Util.AVAILABLE_MEMORY_LIMIT_KB)
+              .setSubTaskGroupType(getTaskSubGroupType());
           // Download software to all nodes.
           createDownloadTasks(nodes.getRight());
           // Install software on nodes.

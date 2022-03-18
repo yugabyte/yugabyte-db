@@ -367,9 +367,8 @@ TEST_F(DocOperationTest, TestRedisSetKVWithTTL) {
   ASSERT_TRUE(iter->Valid());
 
   // Verify correct ttl.
-  MonoDelta ttl;
   auto value = iter->value();
-  ASSERT_OK(Value::DecodeTTL(&value, &ttl));
+  auto ttl = ASSERT_RESULT(ValueControlFields::Decode(&value)).ttl;
   EXPECT_EQ(2000, ttl.ToMilliseconds());
 }
 
@@ -513,11 +512,11 @@ TEST_F(DocOperationTest, TestQLReadWithoutLivenessColumn) {
                        PrimitiveValues());
   KeyBytes encoded_doc_key(doc_key.Encode());
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(1))),
-                         Value(PrimitiveValue::Int32(2)), HybridTime(1000)));
+                         QLValue::Primitive(2), HybridTime(1000)));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(2))),
-                         Value(PrimitiveValue::Int32(3)), HybridTime(2000)));
+                         QLValue::Primitive(3), HybridTime(2000)));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(3))),
-                         Value(PrimitiveValue::Int32(4)), HybridTime(3000)));
+                         QLValue::Primitive(4), HybridTime(3000)));
 
   AssertDocDbDebugDumpStrEq(R"#(
 SubDocKey(DocKey(0x0000, [100], []), [ColumnId(1); HT{ physical: 0 logical: 1000 }]) -> 2
@@ -540,11 +539,11 @@ TEST_F(DocOperationTest, TestQLReadWithTombstone) {
   DocKey doc_key(0, PrimitiveValues(PrimitiveValue::Int32(100)), PrimitiveValues());
   KeyBytes encoded_doc_key(doc_key.Encode());
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(1))),
-                         Value(PrimitiveValue::kTombstone), HybridTime(1000)));
+                         ValueRef(ValueType::kTombstone), HybridTime(1000)));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(2))),
-                         Value(PrimitiveValue::kTombstone), HybridTime(2000)));
+                         ValueRef(ValueType::kTombstone), HybridTime(2000)));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(3))),
-                         Value(PrimitiveValue::kTombstone), HybridTime(3000)));
+                         ValueRef(ValueType::kTombstone), HybridTime(3000)));
 
   AssertDocDbDebugDumpStrEq(R"#(
 SubDocKey(DocKey(0x0000, [100], []), [ColumnId(1); HT{ physical: 0 logical: 1000 }]) -> DEL
@@ -563,12 +562,13 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
   doc_key = DocKey(kFixedHashCode, PrimitiveValues(PrimitiveValue::Int32(100)), PrimitiveValues());
   encoded_doc_key = doc_key.Encode();
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(1))),
-                         Value(PrimitiveValue::kTombstone), HybridTime(1001)));
+                         ValueRef(ValueType::kTombstone), HybridTime(1001)));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(2))),
-                         Value(PrimitiveValue::Int32(2),
-                               MonoDelta::FromMilliseconds(1)), HybridTime(2001)));
+                         ValueControlFields{.ttl = MonoDelta::FromMilliseconds(1)},
+                         ValueRef(QLValue::Primitive(2)),
+                         HybridTime(2001)));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(3))),
-                         Value(PrimitiveValue::Int32(101)), HybridTime(3001)));
+                         QLValue::Primitive(101), HybridTime(3001)));
 
   AssertDocDbDebugDumpStrEq(R"#(
 SubDocKey(DocKey(0x0000, [100], []), [ColumnId(1); HT{ physical: 0 logical: 1001 }]) -> DEL
@@ -601,15 +601,16 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
   doc_key = DocKey(kFixedHashCode, PrimitiveValues(PrimitiveValue::Int32(101)), PrimitiveValues());
   encoded_doc_key = doc_key.Encode();
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue::kLivenessColumn),
-                         Value(PrimitiveValue(ValueType::kNullLow)),
+                         ValueRef(ValueType::kNullLow),
                          HybridTime(1000)));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(1))),
-                         Value(PrimitiveValue::kTombstone), HybridTime(1000)));
+                         ValueRef(ValueType::kTombstone), HybridTime(1000)));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(2))),
-                         Value(PrimitiveValue::Int32(2),
-                               MonoDelta::FromMilliseconds(1)), HybridTime(2000)));
+                         ValueControlFields{.ttl = MonoDelta::FromMilliseconds(1)},
+                         ValueRef(QLValue::Primitive(2)),
+                         HybridTime(2000)));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(3))),
-                         Value(PrimitiveValue::kTombstone), HybridTime(3000)));
+                         ValueRef(ValueType::kTombstone), HybridTime(3000)));
 
   AssertDocDbDebugDumpStrEq(R"#(
 SubDocKey(DocKey(0x0000, [100], []), [ColumnId(1); HT{ physical: 0 logical: 1001 }]) -> DEL

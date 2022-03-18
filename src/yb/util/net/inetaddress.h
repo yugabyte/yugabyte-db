@@ -52,7 +52,9 @@ class InetAddress {
   std::string ToString() const;
 
   // Fills in the given string with the raw bytes for the appropriate address in network byte order.
-  CHECKED_STATUS ToBytes(std::string* bytes) const;
+  void AppendToBytes(std::string* bytes) const;
+
+  std::string ToBytes() const;
 
   // Given a string holding the raw bytes in network byte order, it builds the appropriate
   // InetAddress object.

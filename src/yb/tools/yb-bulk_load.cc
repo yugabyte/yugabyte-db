@@ -286,7 +286,7 @@ Status BulkLoadTask::InsertRow(const string &row,
       column_value = req.add_range_column_values();
     }
 
-    RETURN_NOT_OK(PopulateColumnValue(*it, schema.column(i).type_info()->type(), column_value));
+    RETURN_NOT_OK(PopulateColumnValue(*it, schema.column(i).type_info()->type, column_value));
     i++;  // Avoid this if we are skipping the column.
   }
 
@@ -301,7 +301,7 @@ Status BulkLoadTask::InsertRow(const string &row,
       // Use empty value for null.
       column_value->mutable_expr()->mutable_value();
     } else {
-      RETURN_NOT_OK(PopulateColumnValue(*it, schema.column(i).type_info()->type(),
+      RETURN_NOT_OK(PopulateColumnValue(*it, schema.column(i).type_info()->type,
                                         column_value->mutable_expr()));
     }
     i++;  // Avoid this if we are skipping the column.
