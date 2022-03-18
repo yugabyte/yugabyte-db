@@ -29,14 +29,13 @@ The following ports must be exposed for intra-cluster communication, and you sho
 * 11000 - YEDIS API
 * 12000 - YCQL API
 * 13000 - YSQL API
+* 54422 - Custom SSH
 
 The following ports must be exposed for intra-node communication and be available to your application or any user attempting to connect to the YugabyteDB:
 
 * 5433 - YSQL server
 * 9042 - YCQL server
 * 6379 - YEDIS server
-
-In addition, port 54422 must be available because the Yugabyte Platform installer reconfigures nodes to use this port as a default SSH port. If it is not included in the security group, the installation will fail due to nodes being unreachable.
 
 For more information on ports used by YugabyteDB, refer to [Default ports](../../../reference/configuration/default-ports).
 

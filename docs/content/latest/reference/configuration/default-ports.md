@@ -36,8 +36,6 @@ Internode (server-to-server or node-to-node) communication is managed using RPC 
 
 To enable login to the machines running these servers, the SSH port 22 should be opened.
 
-If you are installing Yugabyte Platform, you also need to make port 54422 available because the Yugabyte Platform installer reconfigures nodes to use this port as a default SSH port.
-
 ## Admin web server
 
 Admin web server UI can be viewed at the following addresses:
@@ -58,6 +56,9 @@ The following common ports are required for firewall rules:
 | HTTP for Platform (alternate) | 8080 |
 | HTTPS for Platform  | 443 |
 | HTTP for Replicated | 8800 |
+| SSH  **   | 54422 |
+
+** 54422 is a custom SSH port for universe nodes.
 
 ## Prometheus monitoring
 
