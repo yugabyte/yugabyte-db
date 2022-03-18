@@ -402,6 +402,12 @@ class EncoderResolver;
 template <typename Buffer>
 class KeyEncoder {
  public:
+  template<typename EncoderTraitsClass>
+  explicit KeyEncoder(EncoderTraitsClass t)
+      : encode_func_(EncoderTraitsClass::Encode),
+        encode_with_separators_func_(EncoderTraitsClass::EncodeWithSeparators),
+        decode_key_portion_func_(EncoderTraitsClass::DecodeKeyPortion) {
+  }
 
   // Encodes the provided key to the provided buffer
   void Encode(const void* key, Buffer* dst) const {
@@ -433,14 +439,6 @@ class KeyEncoder {
   }
 
  private:
-  friend class EncoderResolver<Buffer>;
-  template<typename EncoderTraitsClass>
-  explicit KeyEncoder(EncoderTraitsClass t)
-      : encode_func_(EncoderTraitsClass::Encode),
-        encode_with_separators_func_(EncoderTraitsClass::EncodeWithSeparators),
-        decode_key_portion_func_(EncoderTraitsClass::DecodeKeyPortion) {
-  }
-
   typedef void (*EncodeFunc)(const void* key, Buffer* dst);
   const EncodeFunc encode_func_;
   typedef void (*EncodeWithSeparatorsFunc)(const void* key, bool is_last, Buffer* dst);

@@ -94,7 +94,8 @@ CHECKED_STATUS QLEnv::DeleteIndexTable(const YBTableName& name, YBTableName* ind
 
 //------------------------------------------------------------------------------------------------
 Result<YBTransactionPtr> QLEnv::NewTransaction(const YBTransactionPtr& transaction,
-                                               const IsolationLevel isolation_level) {
+                                               const IsolationLevel isolation_level,
+                                               CoarseTimePoint deadline) {
   if (transaction) {
     DCHECK(transaction->IsRestartRequired());
     return transaction->CreateRestartedTransaction();
@@ -106,7 +107,7 @@ Result<YBTransactionPtr> QLEnv::NewTransaction(const YBTransactionPtr& transacti
       return STATUS(InternalError, "No transaction pool provider");
     }
   }
-  auto result = transaction_pool_->Take(client::ForceGlobalTransaction::kTrue);
+  auto result = transaction_pool_->Take(client::ForceGlobalTransaction::kTrue, deadline);
   RETURN_NOT_OK(result->Init(isolation_level));
   return result;
 }

@@ -135,18 +135,20 @@ Status YBPartialRow::Set(size_t col_idx,
                          const typename T::cpp_type& val,
                          bool owned) {
   const ColumnSchema& col = schema_->column(col_idx);
-  if (PREDICT_FALSE(col.type_info()->type() != T::type)) {
+  if (PREDICT_FALSE(col.type_info()->type != T::type)) {
     // TODO: at some point we could allow type coercion here.
     return STATUS(InvalidArgument,
       Substitute("invalid type $0 provided for column '$1' (expected $2)",
                  T::name(),
-                 col.name(), col.type_info()->name()));
+                 col.name(), col.type_info()->name));
   }
 
   ContiguousRow row(schema_, row_data_);
 
   // If we're replacing an existing STRING/BINARY/INET value, deallocate the old value.
-  if (T::physical_type == BINARY) DeallocateStringIfSet(col_idx, col);
+  if (col.type_info()->var_length()) {
+    DeallocateStringIfSet(col_idx, col);
+  }
 
   // Mark the column as set.
   BitmapSet(isset_bitmap_, col_idx);
@@ -166,7 +168,7 @@ Status YBPartialRow::Set(size_t col_idx,
 Status YBPartialRow::Set(size_t column_idx, const uint8_t* val) {
   const ColumnSchema& column_schema = schema()->column(column_idx);
 
-  switch (column_schema.type_info()->type()) {
+  switch (column_schema.type_info()->type) {
     case BOOL: {
       RETURN_NOT_OK(SetBool(column_idx, *reinterpret_cast<const bool*>(val)));
       break;
@@ -239,24 +241,9 @@ Status YBPartialRow::Set(size_t column_idx, const uint8_t* val) {
 void YBPartialRow::DeallocateStringIfSet(size_t col_idx, const ColumnSchema& col) {
   if (BitmapTest(owned_strings_bitmap_, col_idx)) {
     ContiguousRow row(schema_, row_data_);
-    const Slice* dst;
-    if (col.type_info()->type() == BINARY) {
-      dst = schema_->ExtractColumnFromRow<BINARY>(row, col_idx);
-    } else if (col.type_info()->type() == INET) {
-      dst = schema_->ExtractColumnFromRow<INET>(row, col_idx);
-    } else if (col.type_info()->type() == JSONB) {
-      dst = schema_->ExtractColumnFromRow<JSONB>(row, col_idx);
-    } else if (col.type_info()->type() == UUID) {
-      dst = schema_->ExtractColumnFromRow<UUID>(row, col_idx);
-    } else if (col.type_info()->type() == TIMEUUID) {
-      dst = schema_->ExtractColumnFromRow<TIMEUUID>(row, col_idx);
-    } else if (col.type_info()->type() == FROZEN) {
-      dst = schema_->ExtractColumnFromRow<FROZEN>(row, col_idx);
-    } else {
-      CHECK(col.type_info()->type() == STRING);
-      dst = schema_->ExtractColumnFromRow<STRING>(row, col_idx);
-    }
-    delete [] dst->data();
+    CHECK(col.type_info()->var_length());
+    auto dst = row.CellSlice(col_idx);
+    delete [] dst.data();
     BitmapClear(owned_strings_bitmap_, col_idx);
   }
 }
@@ -430,7 +417,7 @@ Status YBPartialRow::SetNull(size_t col_idx) {
     return STATUS(InvalidArgument, "column not nullable", col.ToString());
   }
 
-  if (col.type_info()->physical_type() == BINARY) DeallocateStringIfSet(col_idx, col);
+  if (col.type_info()->physical_type == BINARY) DeallocateStringIfSet(col_idx, col);
 
   ContiguousRow row(schema_, row_data_);
   row.set_null(col_idx, true);
@@ -446,7 +433,7 @@ Status YBPartialRow::Unset(const Slice& col_name) {
 
 Status YBPartialRow::Unset(size_t col_idx) {
   const ColumnSchema& col = schema_->column(col_idx);
-  if (col.type_info()->physical_type() == BINARY) DeallocateStringIfSet(col_idx, col);
+  if (col.type_info()->physical_type == BINARY) DeallocateStringIfSet(col_idx, col);
   BitmapClear(isset_bitmap_, col_idx);
   return Status::OK();
 }
@@ -718,12 +705,12 @@ Status YBPartialRow::Get(const Slice& col_name,
 template<typename T>
 Status YBPartialRow::Get(size_t col_idx, typename T::cpp_type* val) const {
   const ColumnSchema& col = schema_->column(col_idx);
-  if (PREDICT_FALSE(col.type_info()->type() != T::type)) {
+  if (PREDICT_FALSE(col.type_info()->type != T::type)) {
     // TODO: at some point we could allow type coercion here.
     return STATUS(InvalidArgument,
       Substitute("invalid type $0 provided for column '$1' (expected $2)",
                  T::name(),
-                 col.name(), col.type_info()->name()));
+                 col.name(), col.type_info()->name));
   }
 
   if (PREDICT_FALSE(!IsColumnSet(col_idx))) {
@@ -736,38 +723,6 @@ Status YBPartialRow::Get(size_t col_idx, typename T::cpp_type* val) const {
   ContiguousRow row(schema_, row_data_);
   memcpy(val, row.cell_ptr(col_idx), sizeof(*val));
   return Status::OK();
-}
-
-//------------------------------------------------------------
-// Key-encoding related functions
-//------------------------------------------------------------
-Status YBPartialRow::EncodeRowKey(string* encoded_key) const {
-  // Currently, a row key must be fully specified.
-  // TODO: allow specifying a prefix of the key, and automatically
-  // fill the rest with minimum values.
-  for (size_t i = 0; i < schema_->num_key_columns(); i++) {
-    if (PREDICT_FALSE(!IsColumnSet(i))) {
-      return STATUS(InvalidArgument, "All key columns must be set",
-                                     schema_->column(i).name());
-    }
-  }
-
-  encoded_key->clear();
-  ContiguousRow row(schema_, row_data_);
-
-  for (size_t i = 0; i < schema_->num_key_columns(); i++) {
-    bool is_last = i == schema_->num_key_columns() - 1;
-    const TypeInfo* ti = schema_->column(i).type_info();
-    GetKeyEncoder<string>(ti).Encode(row.cell_ptr(i), is_last, encoded_key);
-  }
-
-  return Status::OK();
-}
-
-string YBPartialRow::ToEncodedRowKeyOrDie() const {
-  string ret;
-  CHECK_OK(EncodeRowKey(&ret));
-  return ret;
 }
 
 //------------------------------------------------------------

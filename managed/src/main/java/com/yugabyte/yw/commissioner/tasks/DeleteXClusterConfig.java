@@ -2,7 +2,6 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
@@ -30,12 +29,11 @@ public class DeleteXClusterConfig extends XClusterConfigTaskBase {
             String.format("Cannot delete XClusterConfig(%s) in `Init` state", xClusterConfig.uuid));
       }
 
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
       createXClusterConfigDeleteTask()
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
       createMarkUniverseUpdateSuccessTasks()
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
 
     } catch (Exception e) {
       setXClusterConfigStatus(XClusterConfigStatusType.Failed);

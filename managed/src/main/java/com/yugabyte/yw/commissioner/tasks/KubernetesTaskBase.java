@@ -3,7 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroup;
+import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckNumPod;
@@ -79,23 +79,28 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
 
     // Only used for new deployments, so maybe empty.
     SubTaskGroup createNamespaces =
-        new SubTaskGroup(
-            KubernetesCommandExecutor.CommandType.CREATE_NAMESPACE.getSubTaskGroupName(), executor);
+        getTaskExecutor()
+            .createSubTaskGroup(
+                KubernetesCommandExecutor.CommandType.CREATE_NAMESPACE.getSubTaskGroupName(),
+                executor);
     createNamespaces.setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
     SubTaskGroup applySecrets =
-        new SubTaskGroup(
-            KubernetesCommandExecutor.CommandType.APPLY_SECRET.getSubTaskGroupName(), executor);
+        getTaskExecutor()
+            .createSubTaskGroup(
+                KubernetesCommandExecutor.CommandType.APPLY_SECRET.getSubTaskGroupName(), executor);
     applySecrets.setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
     SubTaskGroup helmInstalls =
-        new SubTaskGroup(
-            KubernetesCommandExecutor.CommandType.HELM_INSTALL.getSubTaskGroupName(), executor);
+        getTaskExecutor()
+            .createSubTaskGroup(
+                KubernetesCommandExecutor.CommandType.HELM_INSTALL.getSubTaskGroupName(), executor);
     helmInstalls.setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
     SubTaskGroup podsWait =
-        new SubTaskGroup(
-            KubernetesCheckNumPod.CommandType.WAIT_FOR_PODS.getSubTaskGroupName(), executor);
+        getTaskExecutor()
+            .createSubTaskGroup(
+                KubernetesCheckNumPod.CommandType.WAIT_FOR_PODS.getSubTaskGroupName(), executor);
     podsWait.setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
     for (Entry<UUID, Map<String, String>> entry : newPlacement.configs.entrySet()) {
@@ -152,7 +157,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             currNumMasters != newNumMasters
                 ? (serverType == ServerType.MASTER ? currNumMasters : newNumMasters)
                 : 0;
-        helmInstalls.addTask(
+        helmInstalls.addSubTask(
             createKubernetesExecutorTaskForServerType(
                 CommandType.HELM_UPGRADE,
                 tempPI,
@@ -170,7 +175,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             serverType == ServerType.MASTER
                 ? newNumMasters + currNumTservers
                 : newNumMasters + newNumTservers;
-        podsWait.addTask(
+        podsWait.addSubTask(
             createKubernetesCheckPodNumTask(
                 KubernetesCheckNumPod.CommandType.WAIT_FOR_PODS, azCode, config, podsToWaitFor));
       } else {
@@ -179,18 +184,18 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         // create namespaces in such cases.
         if (config.get("KUBENAMESPACE") == null) {
           // Create the namespaces of the deployment.
-          createNamespaces.addTask(
+          createNamespaces.addSubTask(
               createKubernetesExecutorTask(
                   KubernetesCommandExecutor.CommandType.CREATE_NAMESPACE, azCode, config));
         }
 
         // Apply the necessary pull secret to each namespace.
-        applySecrets.addTask(
+        applySecrets.addSubTask(
             createKubernetesExecutorTask(
                 KubernetesCommandExecutor.CommandType.APPLY_SECRET, azCode, config));
 
         // Create the helm deployments.
-        helmInstalls.addTask(
+        helmInstalls.addSubTask(
             createKubernetesExecutorTask(
                 KubernetesCommandExecutor.CommandType.HELM_INSTALL,
                 tempPI,
@@ -204,10 +209,10 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       }
     }
 
-    subTaskGroupQueue.add(createNamespaces);
-    subTaskGroupQueue.add(applySecrets);
-    subTaskGroupQueue.add(helmInstalls);
-    subTaskGroupQueue.add(podsWait);
+    getRunnableTask().addSubTaskGroup(createNamespaces);
+    getRunnableTask().addSubTaskGroup(applySecrets);
+    getRunnableTask().addSubTaskGroup(helmInstalls);
+    getRunnableTask().addSubTaskGroup(podsWait);
   }
 
   public void upgradePodsTask(
@@ -368,23 +373,29 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
 
     // If no config in new placement, delete deployment.
     SubTaskGroup helmDeletes =
-        new SubTaskGroup(
-            KubernetesCommandExecutor.CommandType.HELM_DELETE.getSubTaskGroupName(), executor);
+        getTaskExecutor()
+            .createSubTaskGroup(
+                KubernetesCommandExecutor.CommandType.HELM_DELETE.getSubTaskGroupName(), executor);
     helmDeletes.setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
     SubTaskGroup volumeDeletes =
-        new SubTaskGroup(
-            KubernetesCommandExecutor.CommandType.VOLUME_DELETE.getSubTaskGroupName(), executor);
+        getTaskExecutor()
+            .createSubTaskGroup(
+                KubernetesCommandExecutor.CommandType.VOLUME_DELETE.getSubTaskGroupName(),
+                executor);
     volumeDeletes.setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
     SubTaskGroup namespaceDeletes =
-        new SubTaskGroup(
-            KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE.getSubTaskGroupName(), executor);
+        getTaskExecutor()
+            .createSubTaskGroup(
+                KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE.getSubTaskGroupName(),
+                executor);
     namespaceDeletes.setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
     SubTaskGroup podsWait =
-        new SubTaskGroup(
-            KubernetesCheckNumPod.CommandType.WAIT_FOR_PODS.getSubTaskGroupName(), executor);
+        getTaskExecutor()
+            .createSubTaskGroup(
+                KubernetesCheckNumPod.CommandType.WAIT_FOR_PODS.getSubTaskGroupName(), executor);
     podsWait.setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
     for (Entry<UUID, Map<String, String>> entry : currPlacement.configs.entrySet()) {
@@ -407,7 +418,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             newPlacement.tservers.get(azUUID);
         tempPI.cloudList.get(0).regionList.get(0).azList.get(0).replicationFactor =
             newPlacement.masters.getOrDefault(azUUID, 0);
-        helmDeletes.addTask(
+        helmDeletes.addSubTask(
             createKubernetesExecutorTask(
                 CommandType.HELM_UPGRADE,
                 tempPI,
@@ -415,7 +426,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                 masterAddresses,
                 ybSoftwareVersion,
                 config));
-        podsWait.addTask(
+        podsWait.addSubTask(
             createKubernetesCheckPodNumTask(
                 KubernetesCheckNumPod.CommandType.WAIT_FOR_PODS,
                 azCode,
@@ -423,12 +434,12 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                 newPlacement.tservers.get(azUUID) + newPlacement.masters.getOrDefault(azUUID, 0)));
       } else {
         // Delete the helm deployments.
-        helmDeletes.addTask(
+        helmDeletes.addSubTask(
             createKubernetesExecutorTask(
                 KubernetesCommandExecutor.CommandType.HELM_DELETE, azCode, config));
 
         // Delete the PVs created for the deployments.
-        volumeDeletes.addTask(
+        volumeDeletes.addSubTask(
             createKubernetesExecutorTask(
                 KubernetesCommandExecutor.CommandType.VOLUME_DELETE, azCode, config));
 
@@ -436,16 +447,16 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         // it, as it is not created by us.
         if (config.get("KUBENAMESPACE") == null) {
           // Delete the namespaces of the deployments.
-          namespaceDeletes.addTask(
+          namespaceDeletes.addSubTask(
               createKubernetesExecutorTask(
                   KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE, azCode, config));
         }
       }
     }
-    subTaskGroupQueue.add(helmDeletes);
-    subTaskGroupQueue.add(volumeDeletes);
-    subTaskGroupQueue.add(namespaceDeletes);
-    subTaskGroupQueue.add(podsWait);
+    getRunnableTask().addSubTaskGroup(helmDeletes);
+    getRunnableTask().addSubTaskGroup(volumeDeletes);
+    getRunnableTask().addSubTaskGroup(namespaceDeletes);
+    getRunnableTask().addSubTaskGroup(podsWait);
   }
 
   /*
@@ -616,7 +627,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       Map<String, String> config,
       int masterPartition,
       int tserverPartition) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup(commandType.getSubTaskGroupName(), executor);
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup(commandType.getSubTaskGroupName(), executor);
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
     UniverseDefinitionTaskParams.Cluster primary = taskParams().getPrimaryCluster();
     params.providerUUID = UUID.fromString(primary.userIntent.provider);
@@ -650,8 +662,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.serverType = serverType;
     KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
     task.initialize(params);
-    subTaskGroup.addTask(task);
-    subTaskGroupQueue.add(subTaskGroup);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     subTaskGroup.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.Provisioning);
   }
 
@@ -660,7 +672,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       String podName,
       String az,
       Map<String, String> config) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup(commandType.getSubTaskGroupName(), executor);
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup(commandType.getSubTaskGroupName(), executor);
     KubernetesWaitForPod.Params params = new KubernetesWaitForPod.Params();
     UniverseDefinitionTaskParams.Cluster primary = taskParams().getPrimaryCluster();
     params.providerUUID = UUID.fromString(primary.userIntent.provider);
@@ -681,8 +694,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.podName = podName;
     KubernetesWaitForPod task = createTask(KubernetesWaitForPod.class);
     task.initialize(params);
-    subTaskGroup.addTask(task);
-    subTaskGroupQueue.add(subTaskGroup);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     subTaskGroup.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.KubernetesWaitForPod);
   }
 

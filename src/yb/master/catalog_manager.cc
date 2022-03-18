@@ -361,8 +361,6 @@ DEFINE_bool(master_drop_table_after_task_response, true,
 TAG_FLAG(master_drop_table_after_task_response, advanced);
 TAG_FLAG(master_drop_table_after_task_response, runtime);
 
-DECLARE_int32(yb_client_admin_operation_timeout_sec);
-
 DEFINE_test_flag(bool, tablegroup_master_only, false,
                  "This is only for MasterTest to be able to test tablegroups without the"
                  " transaction status table being created.");
@@ -617,18 +615,27 @@ class IndexInfoBuilder {
   IndexInfoPB& index_info_;
 };
 
-template<class Lock, class RespClass>
-Status CheckIfTableDeletedOrNotVisibleToClient(const Lock& lock, RespClass* resp) {
+template<class Lock>
+Status CheckIfTableDeletedOrNotVisibleToClient(const Lock& lock) {
   // This covers both in progress and fully deleted objects.
   if (lock->started_deleting()) {
-    Status s = STATUS_SUBSTITUTE(NotFound,
+    return STATUS_EC_FORMAT(
+        NotFound, MasterError(MasterErrorPB::OBJECT_NOT_FOUND),
         "The object '$0.$1' does not exist", lock->namespace_id(), lock->name());
-    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
   }
   if (!lock->visible_to_client()) {
-    Status s = STATUS_SUBSTITUTE(ServiceUnavailable,
+    return STATUS_EC_FORMAT(
+        ServiceUnavailable, MasterError(MasterErrorPB::OBJECT_NOT_FOUND),
         "The object '$0.$1' is not running", lock->namespace_id(), lock->name());
-    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
+  }
+  return Status::OK();
+}
+
+template<class Lock, class RespClass>
+Status CheckIfTableDeletedOrNotVisibleToClient(const Lock& lock, RespClass* resp) {
+  auto status = CheckIfTableDeletedOrNotVisibleToClient(lock);
+  if (!status.ok()) {
+    return SetupError(resp->mutable_error(), status);
   }
   return Status::OK();
 }
@@ -4058,14 +4065,16 @@ CHECKED_STATUS CatalogManager::CreateGlobalTransactionStatusTableIfNeeded(rpc::R
   return s;
 }
 
-CHECKED_STATUS CatalogManager::GetGlobalTransactionStatusTablets(
-    GetTransactionStatusTabletsResponsePB* resp) {
+Result<TableInfoPtr> CatalogManager::GetGlobalTransactionStatusTable() {
   TableIdentifierPB global_txn_table_identifier;
   global_txn_table_identifier.set_table_name(kGlobalTransactionsTableName);
   global_txn_table_identifier.mutable_namespace_()->set_name(kSystemNamespaceName);
-  scoped_refptr<TableInfo> global_txn_table = VERIFY_RESULT(FindTable(global_txn_table_identifier));
+  return FindTable(global_txn_table_identifier);
+}
 
-  RETURN_NOT_OK(WaitForCreateTableToFinish(global_txn_table->id()));
+CHECKED_STATUS CatalogManager::GetGlobalTransactionStatusTablets(
+    GetTransactionStatusTabletsResponsePB* resp) {
+  auto global_txn_table = VERIFY_RESULT(GetGlobalTransactionStatusTable());
 
   auto l = global_txn_table->LockForRead();
   RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(l, resp));
@@ -4079,9 +4088,9 @@ CHECKED_STATUS CatalogManager::GetGlobalTransactionStatusTablets(
   return Status::OK();
 }
 
-Result<std::vector<TableId>> CatalogManager::GetPlacementLocalTransactionStatusTables(
+Result<std::vector<TableInfoPtr>> CatalogManager::GetPlacementLocalTransactionStatusTables(
     const CloudInfoPB& placement) {
-  std::vector<TableId> same_placement_transaction_tables;
+  std::vector<TableInfoPtr> same_placement_transaction_tables;
   auto tablespace_manager = GetTablespaceManager();
 
   SharedLock lock(mutex_);
@@ -4113,7 +4122,7 @@ Result<std::vector<TableId>> CatalogManager::GetPlacementLocalTransactionStatusT
       continue;
     }
     if (CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(txn_table_replicas, placement)) {
-      same_placement_transaction_tables.push_back(table_id);
+      same_placement_transaction_tables.push_back(table_info);
     }
   }
 
@@ -4121,31 +4130,19 @@ Result<std::vector<TableId>> CatalogManager::GetPlacementLocalTransactionStatusT
 }
 
 CHECKED_STATUS CatalogManager::GetPlacementLocalTransactionStatusTablets(
-    const CloudInfoPB& placement,
+    const std::vector<TableInfoPtr>& placement_local_tables,
     GetTransactionStatusTabletsResponsePB* resp) {
-  auto same_placement_transaction_tables = VERIFY_RESULT(GetPlacementLocalTransactionStatusTables(
-      placement));
+  if (placement_local_tables.empty()) {
+    return Status::OK();
+  }
 
-  if (!same_placement_transaction_tables.empty()) {
-    for (const auto& table_id : same_placement_transaction_tables) {
-      RETURN_NOT_OK(WaitForCreateTableToFinish(table_id));
-    }
-
-    SharedLock lock(mutex_);
-    for (const auto& table_id : same_placement_transaction_tables) {
-      if (!table_ids_map_->count(table_id)) {
-        Status s = STATUS_FORMAT(
-            NotFound, "Transaction table with id $0 does not exist", table_id);
-        return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
-      }
-
-      auto& table_info = *table_ids_map_->at(table_id);
-      auto lock = table_info.LockForRead();
-      for (const auto& tablet : table_info.GetTablets()) {
-        TabletLocationsPB locs_pb;
-        RETURN_NOT_OK(BuildLocationsForTablet(tablet, &locs_pb));
-        resp->add_placement_local_tablet_id(tablet->tablet_id());
-      }
+  SharedLock lock(mutex_);
+  for (const auto& table_info : placement_local_tables) {
+    auto lock = table_info->LockForRead();
+    for (const auto& tablet : table_info->GetTablets()) {
+      TabletLocationsPB locs_pb;
+      RETURN_NOT_OK(BuildLocationsForTablet(tablet, &locs_pb));
+      resp->add_placement_local_tablet_id(tablet->tablet_id());
     }
   }
 
@@ -4156,14 +4153,38 @@ CHECKED_STATUS CatalogManager::GetTransactionStatusTablets(
     const GetTransactionStatusTabletsRequestPB* req,
     GetTransactionStatusTabletsResponsePB* resp,
     rpc::RpcContext *rpc) {
+  for (;;) {
+    SCOPED_LEADER_SHARED_LOCK(lock, this);
+    auto global_txn_table = VERIFY_RESULT(GetGlobalTransactionStatusTable());
+    if (!VERIFY_RESULT(IsCreateTableDone(global_txn_table))) {
+      lock.Unlock();
+      RETURN_NOT_OK(WaitForCreateTableToFinish(global_txn_table->id(), rpc->GetClientDeadline()));
+      continue;
+    }
 
-  RETURN_NOT_OK(GetGlobalTransactionStatusTablets(resp));
+    std::vector<TableInfoPtr> local_tables;
+    if (req->has_placement()) {
+      local_tables = VERIFY_RESULT(GetPlacementLocalTransactionStatusTables(req->placement()));
+      bool need_restart = false;
+      for (const auto& table : local_tables) {
+        if (!VERIFY_RESULT(IsCreateTableDone(table))) {
+          if (!need_restart) {
+            need_restart = true;
+            lock.Unlock();
+          }
+          RETURN_NOT_OK(WaitForCreateTableToFinish(table->id(), rpc->GetClientDeadline()));
+        }
+      }
+      if (need_restart) {
+        continue;
+      }
+    }
 
-  if (req->has_placement()) {
-    RETURN_NOT_OK(GetPlacementLocalTransactionStatusTablets(req->placement(), resp));
+    RETURN_NOT_OK(GetGlobalTransactionStatusTablets(resp));
+    RETURN_NOT_OK(GetPlacementLocalTransactionStatusTablets(local_tables, resp));
+
+    return Status::OK();
   }
-
-  return Status::OK();
 }
 
 Status CatalogManager::CreateMetricsSnapshotsTableIfNeeded(rpc::RpcContext *rpc) {
@@ -4215,20 +4236,15 @@ Status CatalogManager::CreateMetricsSnapshotsTableIfNeeded(rpc::RpcContext *rpc)
   return s;
 }
 
-Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
-                                         IsCreateTableDoneResponsePB* resp) {
-  TRACE("Looking up table");
-  // 1. Lookup the table and verify if it exists.
-  scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTable(req->table()));
-
+Result<bool> CatalogManager::IsCreateTableDone(const TableInfoPtr& table) {
   TRACE("Locking table");
   auto l = table->LockForRead();
-  RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(l, resp));
+  RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(l));
   const auto& pb = l->pb;
 
   // 2. Verify if the create is in-progress.
   TRACE("Verify if the table creation is in progress for $0", table->ToString());
-  resp->set_done(!table->IsCreateInProgress());
+  auto result = !table->IsCreateInProgress();
 
   // 3. Set any current errors, if we are experiencing issues creating the table. This will be
   // bubbled up to the MasterService layer. If it is an error, it gets wrapped around in
@@ -4237,7 +4253,7 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
 
   // 4. If this is an index, we are not done until the index is in the indexed table's schema.  An
   // exception is YSQL system table indexes, which don't get added to their indexed tables' schemas.
-  if (resp->done() && IsIndex(pb)) {
+  if (result && IsIndex(pb)) {
     auto& indexed_table_id = GetIndexedTableId(pb);
     // For user indexes (which add index info to indexed table's schema),
     // - if this index is created without backfill,
@@ -4264,18 +4280,13 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
       GetTableSchemaResponsePB get_schema_resp;
       get_schema_req.mutable_table()->set_table_id(indexed_table_id);
       const bool get_fully_applied_indexes = true;
-      const Status s = GetTableSchemaInternal(&get_schema_req,
-                                              &get_schema_resp,
-                                              get_fully_applied_indexes);
-      if (!s.ok()) {
-        resp->mutable_error()->Swap(get_schema_resp.mutable_error());
-        return s;
-      }
+      RETURN_NOT_OK(GetTableSchemaInternal(
+          &get_schema_req, &get_schema_resp, get_fully_applied_indexes));
 
-      resp->set_done(false);
+      result = false;
       for (const auto& index : get_schema_resp.indexes()) {
         if (index.has_table_id() && index.table_id() == table->id()) {
-          resp->set_done(true);
+          result = true;
           break;
         }
       }
@@ -4286,7 +4297,7 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
   // Only check if we are automatically generating the vtable on changes. If we are creating via
   // the bg task, then there may be a delay.
   if (DCHECK_IS_ON() &&
-      resp->done() &&
+      result &&
       IsYcqlTable(*table) &&
       YQLPartitionsVTable::GeneratePartitionsVTableOnChanges() &&
       FLAGS_TEST_catalog_manager_check_yql_partitions_exist_for_is_create_table_done) {
@@ -4302,23 +4313,32 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
   // However, if we are currently initializing the system catalog snapshot, we don't create the
   // transactions table.
   if (!FLAGS_create_initial_sys_catalog_snapshot &&
-      resp->done() && pb.schema().table_properties().is_transactional()) {
-    RETURN_NOT_OK(IsTransactionStatusTableCreated(resp));
+      result && pb.schema().table_properties().is_transactional()) {
+    result = VERIFY_RESULT(IsTransactionStatusTableCreated());
   }
 
   // We are not done until the metrics snapshots table is created.
-  if (FLAGS_master_enable_metrics_snapshotter && resp->done() &&
+  if (FLAGS_master_enable_metrics_snapshotter && result &&
       !(table->GetTableType() == TableType::YQL_TABLE_TYPE &&
         table->namespace_id() == kSystemNamespaceId &&
         table->name() == kMetricsSnapshotsTableName)) {
-    RETURN_NOT_OK(IsMetricsSnapshotsTableCreated(resp));
+    result = VERIFY_RESULT(IsMetricsSnapshotsTableCreated());
   }
 
   // If this is a colocated table and there is a pending AddTableToTablet task then we are not done.
-  if (resp->done() && pb.colocated()) {
-    resp->set_done(!table->HasTasks(MonitoredTask::Type::ASYNC_ADD_TABLE_TO_TABLET));
+  if (result && pb.colocated()) {
+    result = !table->HasTasks(MonitoredTask::Type::ASYNC_ADD_TABLE_TO_TABLET);
   }
 
+  return result;
+}
+
+Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
+                                         IsCreateTableDoneResponsePB* resp) {
+  TRACE("Looking up table");
+  // 1. Lookup the table and verify if it exists.
+  scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTable(req->table()));
+  resp->set_done(VERIFY_RESULT(IsCreateTableDone(table)));
   return Status::OK();
 }
 
@@ -4341,33 +4361,30 @@ Status CatalogManager::IsCreateTableInProgress(const TableId& table_id,
   return Status::OK();
 }
 
-Status CatalogManager::WaitForCreateTableToFinish(const TableId& table_id) {
-  MonoDelta default_admin_operation_timeout(
-      MonoDelta::FromSeconds(FLAGS_yb_client_admin_operation_timeout_sec));
-  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout;
-
+Status CatalogManager::WaitForCreateTableToFinish(
+    const TableId& table_id, CoarseTimePoint deadline) {
   return client::RetryFunc(
       deadline, "Waiting on Create Table to be completed", "Timed out waiting for Table Creation",
       std::bind(&CatalogManager::IsCreateTableInProgress, this, table_id, _1, _2));
 }
 
-Status CatalogManager::IsTransactionStatusTableCreated(IsCreateTableDoneResponsePB* resp) {
-  IsCreateTableDoneRequestPB req;
+Result<bool> CatalogManager::IsTransactionStatusTableCreated() {
+  TableIdentifierPB table_id;
 
-  req.mutable_table()->set_table_name(kGlobalTransactionsTableName);
-  req.mutable_table()->mutable_namespace_()->set_name(kSystemNamespaceName);
+  table_id.set_table_name(kGlobalTransactionsTableName);
+  table_id.mutable_namespace_()->set_name(kSystemNamespaceName);
 
-  return IsCreateTableDone(&req, resp);
+  return IsCreateTableDone(VERIFY_RESULT(FindTable(table_id)));
 }
 
-Status CatalogManager::IsMetricsSnapshotsTableCreated(IsCreateTableDoneResponsePB* resp) {
-  IsCreateTableDoneRequestPB req;
+Result<bool> CatalogManager::IsMetricsSnapshotsTableCreated() {
+  TableIdentifierPB table_id;
 
-  req.mutable_table()->set_table_name(kMetricsSnapshotsTableName);
-  req.mutable_table()->mutable_namespace_()->set_name(kSystemNamespaceName);
-  req.mutable_table()->mutable_namespace_()->set_database_type(YQLDatabase::YQL_DATABASE_CQL);
+  table_id.set_table_name(kMetricsSnapshotsTableName);
+  table_id.mutable_namespace_()->set_name(kSystemNamespaceName);
+  table_id.mutable_namespace_()->set_database_type(YQLDatabase::YQL_DATABASE_CQL);
 
-  return IsCreateTableDone(&req, resp);
+  return IsCreateTableDone(VERIFY_RESULT(FindTable(table_id)));
 }
 
 std::string CatalogManager::GenerateId(boost::optional<const SysRowEntryType> entity_type) {
@@ -8298,6 +8315,27 @@ Status CatalogManager::ListUDTypes(const ListUDTypesRequestPB* req,
       udtype->mutable_namespace_()->set_name(ns->name());
     }
   }
+  return Status::OK();
+}
+
+Status CatalogManager::DisableTabletSplitting(
+    const DisableTabletSplittingRequestPB* req, DisableTabletSplittingResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  const MonoDelta disable_duration = MonoDelta::FromMilliseconds(req->disable_duration_ms());
+  tablet_split_manager_.DisableSplittingFor(disable_duration);
+  return Status::OK();
+}
+
+Status CatalogManager::IsTabletSplittingComplete(
+    const IsTabletSplittingCompleteRequestPB* req, IsTabletSplittingCompleteResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  TableInfoMap table_info_map;
+  {
+    SharedLock lock(mutex_);
+    table_info_map = *table_ids_map_;
+  }
+  resp->set_is_tablet_splitting_complete(
+      tablet_split_manager_.IsTabletSplittingComplete(table_info_map));
   return Status::OK();
 }
 

@@ -12,6 +12,7 @@
 //
 
 #include <chrono>
+#include <limits>
 #include <thread>
 
 #include <gtest/gtest.h>
@@ -45,6 +46,8 @@
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/master_admin.proxy.h"
+#include "yb/master/master_admin.pb.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
@@ -105,6 +108,7 @@ DECLARE_bool(TEST_pause_before_post_split_compaction);
 DECLARE_int32(TEST_slowdown_backfill_alter_table_rpcs_ms);
 DECLARE_int32(rocksdb_base_background_compactions);
 DECLARE_int32(rocksdb_max_background_compactions);
+DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
 DECLARE_int64(tablet_split_high_phase_shard_count_per_node);
@@ -896,6 +900,109 @@ TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplitting) {
   }
 }
 
+TEST_F(AutomaticTabletSplitITest, IsTabletSplittingComplete) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+
+  CreateSingleTablet();
+  ASSERT_OK(WriteRows(1000, 1));
+  const auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id());
+  // Flush other replicas of this shard to ensure that even if the leader changed we will be in
+  // a state where yb-master should initiate a split.
+  ASSERT_OK(FlushAllTabletReplicas(peers[0]->tablet_id()));
+
+  auto master_admin_proxy = std::make_unique<master::MasterAdminProxy>(
+      proxy_cache_.get(), client_->GetMasterLeaderAddress());
+  rpc::RpcController controller;
+  controller.set_timeout(kRpcTimeout);
+  master::IsTabletSplittingCompleteRequestPB is_tablet_splitting_complete_req;
+  master::IsTabletSplittingCompleteResponsePB is_tablet_splitting_complete_resp;
+
+  auto IsSplittingComplete = [&]() -> Result<bool> {
+    RETURN_NOT_OK(master_admin_proxy->IsTabletSplittingComplete(is_tablet_splitting_complete_req,
+        &is_tablet_splitting_complete_resp, &controller));
+    controller.Reset();
+    return is_tablet_splitting_complete_resp.is_tablet_splitting_complete();
+  };
+
+  // No splits at the beginning.
+  ASSERT_TRUE(ASSERT_RESULT(IsSplittingComplete()));
+
+  // Create a split task by pausing when trying to get split key. IsTabletSplittingComplete should
+  // include this ongoing task.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_tserver_get_split_key) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
+  std::this_thread::sleep_for(FLAGS_catalog_manager_bg_task_wait_ms * 2ms);
+  ASSERT_FALSE(ASSERT_RESULT(IsSplittingComplete()));
+
+  // Now let the split occur on master but not tserver.
+  // IsTabletSplittingComplete should include splits that are only complete on master.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_tablet_split_probability) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_tserver_get_split_key) = 0;
+  ASSERT_FALSE(ASSERT_RESULT(IsSplittingComplete()));
+
+  // Verify that the split finishes, and that IsTabletSplittingComplete returns true even though
+  // compactions are not done.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_tablet_split_probability) = 0;
+  ASSERT_OK(WaitForTabletSplitCompletion(2));
+  ASSERT_TRUE(ASSERT_RESULT(IsSplittingComplete()));
+}
+
+// This test tests both FLAGS_enable_automatic_tablet_splitting and the DisableTabletSplitting API
+// (which temporarily disables splitting).
+TEST_F(AutomaticTabletSplitITest, DisableTabletSplitting) {
+  // Must disable splitting for at least as long as we wait in WaitForTabletSplitCompletion.
+  const auto kExtraSleepDuration = 5s * kTimeMultiplier;
+  const auto kDisableDuration = split_completion_timeout_ + kExtraSleepDuration;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+
+  CreateSingleTablet();
+  ASSERT_OK(WriteRows(1000, 1));
+  const auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id());
+  // Flush other replicas of this shard to ensure that even if the leader changed we will be in
+  // a state where yb-master should initiate a split.
+  ASSERT_OK(FlushAllTabletReplicas(peers[0]->tablet_id()));
+
+  // Splitting should fail while FLAGS_enable_automatic_tablet_splitting is false.
+  ASSERT_NOK(WaitForTabletSplitCompletion(
+      2,                  // expected_non_split_tablets
+      0,                  // expected_split_tablets (default)
+      0,                  // num_replicas_online (default)
+      client::kTableName, // table (default)
+      false));            // core_dump_on_failure
+
+  auto master_admin_proxy = std::make_unique<master::MasterAdminProxy>(
+      proxy_cache_.get(), client_->GetMasterLeaderAddress());
+  rpc::RpcController controller;
+  controller.set_timeout(kRpcTimeout);
+
+  master::DisableTabletSplittingRequestPB disable_req;
+  disable_req.set_disable_duration_ms(kDisableDuration.ToMilliseconds());
+  master::DisableTabletSplittingResponsePB disable_resp;
+  ASSERT_OK(master_admin_proxy->DisableTabletSplitting(disable_req, &disable_resp, &controller));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
+  // Splitting should not occur while it is temporarily disabled.
+  ASSERT_NOK(WaitForTabletSplitCompletion(
+      2,                  // expected_non_split_tablets
+      0,                  // expected_split_tablets (default)
+      0,                  // num_replicas_online (default)
+      client::kTableName, // table (default)
+      false));            // core_dump_on_failure
+
+  // Sleep until the splitting is no longer disabled (we already waited for
+  // split_completion_timeout_ seconds in the previous step).
+  std::this_thread::sleep_for(kExtraSleepDuration);
+  // Splitting should succeed once the delay has expired and FLAGS_enable_automatic_tablet_splitting
+  // is true.
+  ASSERT_OK(WaitForTabletSplitCompletion(2));
+}
 
 TEST_F(AutomaticTabletSplitITest, TabletSplitHasClusterReplicationInfo) {
   constexpr int kNumRowsPerBatch = 1000;
@@ -908,10 +1015,8 @@ TEST_F(AutomaticTabletSplitITest, TabletSplitHasClusterReplicationInfo) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_force_split_threshold_bytes) = 50_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_post_split_compaction) = true;
   // Disable automatic compactions
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_base_background_compactions) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_background_compactions) = 0;
-  // Disable manual compations from flushes
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) =
+      std::numeric_limits<int32>::max();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_nodes_per_cloud) = 1;
 
   std::vector<string> clouds = {"cloud1_split", "cloud2_split", "cloud3_split", "cloud4_split"};
@@ -981,10 +1086,8 @@ TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplittingWaitsForAllPeersCompac
   // Disable post split compaction
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_post_split_compaction) = true;
   // Disable automatic compactions
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_base_background_compactions) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_background_compactions) = 0;
-  // Disable manual compations from flushes
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) =
+      std::numeric_limits<int32>::max();
 
   int key = 1;
   CreateSingleTablet();
@@ -1106,8 +1209,8 @@ TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplittingMultiPhase) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_shard_count_per_node) = 2;
   // Disable automatic compactions, but continue to allow manual compactions.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_base_background_compactions) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_background_compactions) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) =
+      std::numeric_limits<int32>::max();
   // Disable post split compactions.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_post_split_compaction) = true;
 
@@ -1327,9 +1430,12 @@ TEST_F(AutomaticTabletSplitITest, IncludeTasksInOutstandingSplits) {
       client::kTableName,                   // table (default)
       false));                              // core_dump_on_failure
 
-  // Allow no new splits. The stalled split (and no other splits) should finish after the pause is
-  // removed.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_outstanding_tablet_split_limit) = 0;
+  // Allow no new splits. The stalled split task should resume after the pause is removed.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  auto catalog_mgr = ASSERT_RESULT(catalog_manager());
+  ASSERT_OK(WaitFor([&]() {
+    return !catalog_mgr->tablet_split_manager()->IsRunning();
+  }, 10s, "Wait for tablet split manager to stop running."));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_tserver_get_split_key) = false;
   ASSERT_OK(WaitForTabletSplitCompletion(kInitialNumTablets + 1, /* expected_non_split_tablets */
                                          1 /* expected_split_tablets */));
@@ -2079,10 +2185,8 @@ class TabletSplitSystemRecordsITest :
     // Disable automatic tablet splitting.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
     // Disable automatic compactions.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_base_background_compactions) = 0;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_background_compactions) = 0;
-    // Disable manual compations from flushes.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) =
+        std::numeric_limits<int32>::max();
   }
 
   CHECKED_STATUS VerifySplitKeyError(yb::tablet::TabletPtr tablet) {

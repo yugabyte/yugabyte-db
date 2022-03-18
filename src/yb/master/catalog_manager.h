@@ -227,12 +227,12 @@ class CatalogManager :
       GetTransactionStatusTabletsResponsePB* resp) EXCLUDES(mutex_);
 
   // Get ids of transaction status tables matching a given placement.
-  Result<std::vector<TableId>> GetPlacementLocalTransactionStatusTables(
+  Result<std::vector<TableInfoPtr>> GetPlacementLocalTransactionStatusTables(
       const CloudInfoPB& placement) EXCLUDES(mutex_);
 
   // Get tablet ids of local transaction status tables matching a given placement.
   CHECKED_STATUS GetPlacementLocalTransactionStatusTablets(
-      const CloudInfoPB& placement,
+      const std::vector<TableInfoPtr>& placement_local_tables,
       GetTransactionStatusTabletsResponsePB* resp) EXCLUDES(mutex_);
 
   // Get tablet ids of the global transaction status table and local transaction status tables
@@ -254,17 +254,17 @@ class CatalogManager :
                                          CoarseTimePoint deadline,
                                          bool* create_in_progress);
 
-  CHECKED_STATUS WaitForCreateTableToFinish(const TableId& table_id);
+  CHECKED_STATUS WaitForCreateTableToFinish(const TableId& table_id, CoarseTimePoint deadline);
 
   // Check if the transaction status table creation is done.
   //
   // This is called at the end of IsCreateTableDone if the table has transactions enabled.
-  CHECKED_STATUS IsTransactionStatusTableCreated(IsCreateTableDoneResponsePB* resp);
+  Result<bool> IsTransactionStatusTableCreated();
 
   // Check if the metrics snapshots table creation is done.
   //
   // This is called at the end of IsCreateTableDone.
-  CHECKED_STATUS IsMetricsSnapshotsTableCreated(IsCreateTableDoneResponsePB* resp);
+  Result<bool> IsMetricsSnapshotsTableCreated();
 
   // Called when transaction associated with table create finishes. Verifies postgres layer present.
   CHECKED_STATUS VerifyTablePgLayer(scoped_refptr<TableInfo> table, bool txn_query_succeeded);
@@ -477,6 +477,17 @@ class CatalogManager :
   CHECKED_STATUS GetUDTypeInfo(const GetUDTypeInfoRequestPB* req,
                                GetUDTypeInfoResponsePB* resp,
                                rpc::RpcContext* rpc);
+
+  // Disables tablet splitting for a specified amount of time.
+  CHECKED_STATUS DisableTabletSplitting(
+      const DisableTabletSplittingRequestPB* req, DisableTabletSplittingResponsePB* resp,
+      rpc::RpcContext* rpc);
+
+  // Returns true if there are no outstanding tablets and the tablet split manager is not currently
+  // processing tablet splits.
+  CHECKED_STATUS IsTabletSplittingComplete(
+      const IsTabletSplittingCompleteRequestPB* req, IsTabletSplittingCompleteResponsePB* resp,
+      rpc::RpcContext* rpc);
 
   // Delete CDC streams for a table.
   virtual CHECKED_STATUS DeleteCDCStreamsForTable(const TableId& table_id) EXCLUDES(mutex_);
@@ -1399,6 +1410,10 @@ class CatalogManager :
                            rpc::RpcContext* rpc);
 
   std::shared_ptr<ClusterConfigInfo> ClusterConfig() const;
+
+  Result<TableInfoPtr> GetGlobalTransactionStatusTable();
+
+  Result<bool> IsCreateTableDone(const TableInfoPtr& table);
 
   // TODO: the maps are a little wasteful of RAM, since the TableInfo/TabletInfo
   // objects have a copy of the string key. But STL doesn't make it
