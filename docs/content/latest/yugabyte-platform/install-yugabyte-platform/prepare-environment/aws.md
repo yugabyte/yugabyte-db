@@ -135,7 +135,16 @@ In order for Yugabyte Platform to manage YugabyteDB nodes, limited access to you
                 "ec2:DeleteKeyPair",
                 "ec2:DescribeVpcPeeringConnections",
                 "ec2:DescribeRouteTables",
-                "ec2:DescribeInternetGateways"
+                "ec2:DescribeInternetGateways",
+                "ec2:AssociateRouteTable",
+                "ec2:AttachInternetGateway",
+                "ec2:CreateInternetGateway",
+                "ec2:CreateRoute",
+                "ec2:CreateSubnet",
+                "ec2:CreateVpc",
+                "ec2:CreateVpcPeeringConnection",
+                "ec2:DisassociateRouteTable",
+                "ec2:ModifyVpcAttribute"
             ],
             "Resource": "*"
         }
