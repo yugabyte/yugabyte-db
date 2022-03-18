@@ -59,19 +59,21 @@ THE rm COMMAND IN STEP 3 DOESN'T WORK, AS PER DEV. THIS IS WHY THIS WHOLE SECTIO
 
 You can uninstall Yugabyte Platform in Kubernetes, as follows:
 
-1. To remove the Yugabyte Platform, execute the following helm command:
+1. To remove Yugabyte Platform, execute the following Helm command:
 
     ```sh
-    helm del yw-test -n yw-test
+    helm uninstall yw-test -n yw-test
     ```
 
-    <br>You should see a message similar to the following, notifying you that the Yugabyte Platform release and the namespace is deleted:
+    <br>`-n` option specifies the namespace scope for this request.
+
+    You should see a message similar to the following, notifying you that the subject release has been removed:
 
     ```output
     release "yw-test" uninstalled
     ```
 
-2. Execute the following command to remove the namespace:
+2. Execute the following command to remove the `yw-test` namespace:
 
     ```sh
     kubectl delete namespace yw-test
