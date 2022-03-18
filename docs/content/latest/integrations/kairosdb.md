@@ -20,15 +20,15 @@ Before you start using the KairosDB plugin, ensure that you have:
 
 - Java version 1.8 or later.
 - The latest version of [KairosDB](https://kairosdb.github.io/docs/GettingStarted.html).
-- The latest version of [YugabyteDB plugin for KairosDB](https://github.com/yugabyte/kairosdb-yb-plugin/releases/) and explore the [README] for details about the plugin.
-- A YugabyteDB cluster. Refer [YugabyteDB Quick start guide](/latest/quick-start/) to install and start a local cluster.
+- The latest version of [YugabyteDB plugin for KairosDB](https://github.com/yugabyte/kairosdb-yb-plugin); read the README for details about the plugin.
+- A YugabyteDB cluster. Refer to [YugabyteDB Quick start guide](/latest/quick-start/) to install and start a local cluster.
 - [Postman API Platform](https://www.postman.com/downloads/).
-- (Optional) YugabyteDB's [cassandra-driver-core-3.10.3-yb-2.jar](https://repo1.maven.org/maven2/com/yugabyte/cassandra-driver-core/3.10.3-yb-2/cassandra-driver-core-3.10.3-yb-2.jar), for better performance.
+- (Optional) YugabyteDB [cassandra-driver-core-3.10.3-yb-2.jar](https://repo1.maven.org/maven2/com/yugabyte/cassandra-driver-core/3.10.3-yb-2/cassandra-driver-core-3.10.3-yb-2.jar), for better performance.
 
 ## Start KairosDB
 
-- Copy the YugabyteDB plugin jar for KairosDB under the `lib` folder of your downloaded `kairosdb` directory.
-- (Optional) For better performance, replace the `cassandra-driver-core-3.10.2.jar` with YugabyteDB's `cassandra-driver-core-3.10.3-yb-2.jar` in your `kairosdb/lib` directory.
+- Copy the YugabyteDB plugin for KairosDB jar to the `lib` folder of your downloaded `kairosdb` directory.
+- (Optional) For better performance, replace the `cassandra-driver-core-3.10.2.jar` with the YugabyteDB `cassandra-driver-core-3.10.3-yb-2.jar` in the `kairosdb/lib` directory.
 - Add YugabyteDB datastore as the `service.datastore` entry in your `kairosdb/conf/kairosdb.conf file`.
 
 ```sh
@@ -55,9 +55,9 @@ $ ./bin/kairosdb.sh run
 
 The KairosDB API server should be available at `localhost:8080`.
 
-## Verify the integration with ycqlsh
+## Verify the integration using ycqlsh
 
-- Run [ycqlsh](/latest/admin/ycqlsh/) to connect and use YugabyteDB's YCQL API.
+- Run [ycqlsh](/latest/admin/ycqlsh/) to connect to your database using the YCQL API.
 
 ```sh
 $ ./bin/ycqlsh localhost
@@ -105,7 +105,7 @@ row_keys              data_points    string_index   spec
 http://localhost:8080/api/v1/datapoints
 ```
 
-- In the body of the request, add the following JSON, and send it.
+- In the body of the request, add the following JSON, then click **Send**.
 
 ```json
 [
@@ -139,7 +139,7 @@ Your response should return a status code of 204 with no body.
 
 ### Query the data
 
-- Query the data you inserted during the [push data](#push-data) operation using the POST API, with the following URL in the `Enter request URL` box:
+- To query the data you [inserted using the POST API](#push-data), enter the following URL in the `Enter request URL` box:
 
 ```text
 http://localhost:8080/api/v1/datapoints/query
