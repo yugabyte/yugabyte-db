@@ -337,6 +337,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
 
   void RemoveTable(const TableId& table_id);
 
+  // Returns a list of all tables colocated on this tablet.
+  std::vector<TableId> GetAllColocatedTables();
+
   // Set / get the remote bootstrap / tablet data state.
   void set_tablet_data_state(TabletDataState state);
   TabletDataState tablet_data_state() const;

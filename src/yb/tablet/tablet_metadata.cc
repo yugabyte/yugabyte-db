@@ -1192,5 +1192,14 @@ bool RaftGroupMetadata::UsePartialRangeKeyIntents() const {
   return table_type() == TableType::PGSQL_TABLE_TYPE;
 }
 
+std::vector<TableId> RaftGroupMetadata::GetAllColocatedTables() {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  std::vector<TableId> table_ids;
+  for (const auto& id_and_info : kv_store_.tables) {
+    table_ids.emplace_back(id_and_info.first);
+  }
+  return table_ids;
+}
+
 } // namespace tablet
 } // namespace yb
