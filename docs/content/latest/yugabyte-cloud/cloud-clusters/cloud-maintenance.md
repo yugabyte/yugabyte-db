@@ -55,5 +55,5 @@ To set the maintenance exclusion period for a cluster:
 Yugabyte performs rolling maintenance and upgrades on multi-node clusters with zero downtime. However, the cluster is still subject to the following:
 
 - Dropped connections - Connections to the node being maintained are dropped. Verify your connection pool, driver, and application to ensure they handle dropped connections correctly. Any failures need to be retried.
-- No high availability - During maintenance, one node is always offline. For a 3 node cluster, this means that if one of the remaining 2 nodes goes down, you lose quorum, and thus access to the database. For clusters with more nodes, there is less risk.
-- Less bandwidth - During maintenance, all traffic is diverted to the remaining running nodes. To mitigate this, set your maintenance window to a low traffic period. If you want to be extra certain of bandwidth, you can add nodes (scale out) prior to the upgrade.
+- No high availability - During maintenance, one node is always offline. If one of the remaining 2 nodes goes down in a 3 node cluster, you lose access to the database. For clusters with more nodes, there is less risk.
+- Less bandwidth - During maintenance, traffic is diverted to the running nodes. To mitigate this, set your maintenance window to a low traffic period. You can also add nodes (scale out) prior to the upgrade.
