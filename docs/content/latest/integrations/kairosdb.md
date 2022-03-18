@@ -20,7 +20,7 @@ Before you start using the KairosDB plugin, ensure that you have:
 
 - Java version 1.8 or later.
 - The latest version of [KairosDB](https://kairosdb.github.io/docs/GettingStarted.html).
-- The latest version of [YugabyteDB plugin for KairosDB](https://github.com/yugabyte/kairosdb-yb-plugin); read the README for details about the plugin.
+- The latest version of [YugabyteDB plugin for KairosDB](https://github.com/yugabyte/kairosdb-yb-plugin/releases/); read the README for details about the plugin.
 - A YugabyteDB cluster. Refer to [YugabyteDB Quick start guide](/latest/quick-start/) to install and start a local cluster.
 - [Postman API Platform](https://www.postman.com/downloads/).
 - (Optional) YugabyteDB [cassandra-driver-core-3.10.3-yb-2.jar](https://repo1.maven.org/maven2/com/yugabyte/cassandra-driver-core/3.10.3-yb-2/cassandra-driver-core-3.10.3-yb-2.jar), for better performance.
@@ -95,11 +95,20 @@ row_keys              data_points    string_index   spec
 
 ## Test KairosDB
 
-- Start Postman and create a new workspace.
+- Launch Postman via the app or web and create a new workspace from the homepage.
 
+![kairosdb workspace](/images/develop/ecosystem-integrations/kairosdb/kairosdb-workspace.png)
+
+- Select the workspace and click the `+` button to create an HTTP request.
+
+![kairosdb request](/images/develop/ecosystem-integrations/kairosdb/kairosdb-http-request.png)
 ### Push data
 
-- Select the POST API request and add the following URL in the `Enter request URL` box:
+- Select the POST API request in the dropdown as follows:
+
+![kairosdb request type](/images/develop/ecosystem-integrations/kairosdb/kairosdb-request-type.png)
+
+- Add the following URL in the `Enter request URL` box:
 
 ```text
 http://localhost:8080/api/v1/datapoints
@@ -131,11 +140,11 @@ http://localhost:8080/api/v1/datapoints
 
 Your request should look like:
 
-![kairosdb POST request](/images/develop/ecosystem-integrations/kairosdb/kairosdb1.png)
+![kairosdb POST request](/images/develop/ecosystem-integrations/kairosdb/kairosdb-request1.png)
 
 Your response should return a status code of 204 with no body.
 
-![kairosdb response](/images/develop/ecosystem-integrations/kairosdb/kairosdb2.png)
+![kairosdb response](/images/develop/ecosystem-integrations/kairosdb/kairosdb-response.png)
 
 ### Query the data
 
@@ -164,7 +173,7 @@ http://localhost:8080/api/v1/datapoints/query
 
 Your request should look like:
 
-![kairosdb3](/images/develop/ecosystem-integrations/kairosdb/kairosdb3.png)
+![kairosdb3](/images/develop/ecosystem-integrations/kairosdb/kairosdb-request2.png)
 
 Your response should return a status code of 200, with the following output:
 
