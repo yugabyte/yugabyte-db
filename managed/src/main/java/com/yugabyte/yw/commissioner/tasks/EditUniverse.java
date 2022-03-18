@@ -185,6 +185,12 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
     // Set the old nodes' state to to-be-removed.
     if (!nodesToBeRemoved.isEmpty()) {
+      if (nodesToBeRemoved.size() == nodes.size()) {
+        // Cluster must be deleted via cluster delete task.
+        String errMsg = "All nodes cannot be removed for cluster " + cluster.uuid;
+        log.error(errMsg);
+        throw new IllegalStateException(errMsg);
+      }
       createSetNodeStateTasks(nodesToBeRemoved, NodeDetails.NodeState.ToBeRemoved)
           .setSubTaskGroupType(SubTaskGroupType.Provisioning);
     }
