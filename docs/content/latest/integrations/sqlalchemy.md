@@ -7,7 +7,7 @@ section: INTEGRATIONS
 menu:
   latest:
     identifier: sqlalchemy
-    weight: 650
+    weight: 571
 isTocNested: true
 showAsideToc: true
 ---
@@ -20,7 +20,7 @@ Before you can start using SQLAlchemy, ensure that you have the following availa
 
 - YugabyteDB version 2.6 or later (see [YugabyteDB Quick Start Guide](/latest/quick-start/)).
 
-- Yugabyte cluster (see [Create a local cluster](/latest/quick-start/create-local-cluster/macos/)). 
+- Yugabyte cluster (see [Create a local cluster](/latest/quick-start/create-local-cluster/macos/)).
 
 - Python version 2.7 or later.
 
@@ -30,7 +30,7 @@ Before you can start using SQLAlchemy, ensure that you have the following availa
   pip3 install sqlalchemy
   ```
 
-  You can verify the installation as follows: 
+  You can verify the installation as follows:
 
   - Open the Python prompt by executing the following command:
 
@@ -86,32 +86,32 @@ You can start using SQLAlchemy with YugabyteDB as follows:
   from sqlalchemy import MetaData
   from sqlalchemy import Table, Column, Integer, String, DateTime, ForeignKey
   Base = declarative_base()
-   
+
   class Test(Base):
-   
+
      __tablename__ = 'test'
-   
+
      id = Column(Integer, primary_key=True)
      name = Column(String(255), unique=True, nullable=False)
-   
+
   # create connection
   engine = create_engine('postgresql://{0}:{1}@{2}:{3}/{4}'.format(cfg.db_user, cfg.db_password, cfg.db_host, cfg.db_port, cfg.database))
-   
+
   # create metadata
   Base.metadata.create_all(engine)
-   
+
   # create session
   Session = sessionmaker(bind=engine)
   session = Session()
-   
+
   # insert data
   tag_1 = Test(name='Bob')
   tag_2 = Test(name='John')
   tag_3 = Test(name='Ivy')
-   
+
   session.add_all([tag_1, tag_2, tag_3])
   session.commit()
-  
+
   ```
 
 - Execute the code using the following command:
@@ -130,13 +130,13 @@ You can verify the code execution by looking for the changes inside the database
   cd /<path-to-yugabytedb>
   ```
 
-- Run the ysqlsh client by executing the following command: 
+- Run the ysqlsh client by executing the following command:
 
   ```shell
   ./bin/ysqlsh
   ```
 
-- Obtain the list of all the tables in the database by executing the following command:  
+- Obtain the list of all the tables in the database by executing the following command:
 
   ```shell
   \dt
@@ -147,9 +147,9 @@ You can verify the code execution by looking for the changes inside the database
   ```sql
   SELECT * FROM TEST;
   ```
-  
+
   The output should be as follows:
-  
+
   ```output
   id | name
   ---+--------
@@ -163,7 +163,7 @@ You can verify the code execution by looking for the changes inside the database
 
 Consider the following limitations:
 
-- Since YugabyteDB does not support savepoints in transactions, you cannot use savepoints with SQLAlchemy ORM. 
-- Due to the distributed nature of YugabyteDB, rows returned by a query might not be in sequential or expected order. It is, therefore, recommended that you use the `orderby()` function to avoid the wrong data when executing functions such as `first()`. 
+- Since YugabyteDB does not support savepoints in transactions, you cannot use savepoints with SQLAlchemy ORM.
+- Due to the distributed nature of YugabyteDB, rows returned by a query might not be in sequential or expected order. It is, therefore, recommended that you use the `orderby()` function to avoid the wrong data when executing functions such as `first()`.
 - YugabyteDB does not support columns that contain a `PRIMARY KEY` of type `user_defined_type`.
 
