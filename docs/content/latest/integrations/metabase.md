@@ -2,23 +2,22 @@
 title: Metabase
 linkTitle: Metabase
 description: Metabase
-aliases:
 section: INTEGRATIONS
 menu:
   latest:
     identifier: metabase
-    weight: 576
+    weight: 571
 isTocNested: true
 showAsideToc: true
 ---
 
-[Metabase](https://www.metabase.com/) is a Business Intelligence (BI) tool. 
+[Metabase](https://www.metabase.com/) is a Business Intelligence (BI) tool.
 
 This document shows how to set up Metabase to integrate with YugabyteDB's PostgreSQL-compatible API.
 
 ## 1. Start local cluster
 
-Follow [Quick Start](../../quick-start/) instructions to run a local YugabyteDB cluster. Test YugabyteDB's PostgreSQL-compatible YSQL API as [documented](../../quick-start/test-postgresql/) so that you can confirm that you have a PostgresSQL-compatible service running on `localhost:5433`. 
+Follow [Quick Start](../../quick-start/) instructions to run a local YugabyteDB cluster. Test YugabyteDB's PostgreSQL-compatible YSQL API as [documented](../../quick-start/test-postgresql/) so that you can confirm that you have a PostgresSQL-compatible service running on `localhost:5433`.
 
 ## 2. Load data
 

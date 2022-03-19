@@ -6,7 +6,7 @@ section: INTEGRATIONS
 menu:
   latest:
     identifier: django-rest-framework
-    weight: 670
+    weight: 571
 isTocNested: true
 showAsideToc: true
 ---

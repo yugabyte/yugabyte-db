@@ -6,14 +6,14 @@ section: INTEGRATIONS
 menu:
   latest:
     identifier: prisma
-    weight: 579
+    weight: 571
 isTocNested: true
 showAsideToc: true
 ---
 
 Explore how you can use Prisma and its GraphQL support to interact with YugabyteDB. You can build a GraphQL server and then use the Prisma client to write data to and run queries on a YugabyteDB database. Also, you can explore the Prisma's ORM functionality.
 
-[Prisma](https://prisma.io) is an [open source](https://github.com/prisma/prisma) suite of database tools that simplify database workflows by easing database access, migrations, and data management. Prisma replaces traditional ORMs and can be used to build GraphQL servers, REST APIs, microservices, and more. 
+[Prisma](https://prisma.io) is an [open source](https://github.com/prisma/prisma) suite of database tools that simplify database workflows by easing database access, migrations, and data management. Prisma replaces traditional ORMs and can be used to build GraphQL servers, REST APIs, microservices, and more.
 
 For more information, see [Prisma Basics: Datamodel, Prisma Client & Server](https://www.prisma.io/docs/understand-prisma/prisma-basics-datamodel-client-and-server-fgz4/).
 
@@ -42,7 +42,7 @@ To install the Prisma CLI using `npm`, run the following command:
 npm i -g prisma
 ```
 
-For more information, see [Set up Prisma (for a new database)](https://www.prisma.io/docs/get-started/01-setting-up-prisma-new-database-JAVASCRIPT-a002/) in the Prisma documentation. 
+For more information, see [Set up Prisma (for a new database)](https://www.prisma.io/docs/get-started/01-setting-up-prisma-new-database-JAVASCRIPT-a002/) in the Prisma documentation.
 
 ## 1. Set up and connect Prisma with the `prisma-yb` database
 
@@ -119,7 +119,7 @@ The Prisma service is now connected to the `postgres` database and the Prisma UI
 
 ## 5. Create sample data
 
-Use the Prisma client to create the following sample data. Paste the following code examples, using Prisma's `createUser` method, into the left side of a tab, and then click the arrow to process your requests. 
+Use the Prisma client to create the following sample data. Paste the following code examples, using Prisma's `createUser` method, into the left side of a tab, and then click the arrow to process your requests.
 
 For details on writing data with the Prisma client, see [Writing Data (JavaScript)](https://www.prisma.io/docs/prisma-client/basic-data-access/writing-data-JAVASCRIPT-rsc6/).
 
@@ -142,7 +142,7 @@ mutation {
         },
         {
            text:"Jane's Third Post"
-           views: 25 
+           views: 25
         }
       ]
     }
@@ -181,7 +181,7 @@ mutation {
 
 ## 6. Query the data
 
-Now that you have created some sample data, you can run some queries to get a taste of using Prisma to query YugabyteDB. In the following examples, you use the Prisma client to retrieve data. Paste the following code examples into the left side of a tab, and then click the arrow to process your requests. 
+Now that you have created some sample data, you can run some queries to get a taste of using Prisma to query YugabyteDB. In the following examples, you use the Prisma client to retrieve data. Paste the following code examples into the left side of a tab, and then click the arrow to process your requests.
 
 For details on using the Prisma client to read data, see [Reading Data (JavaScript)](https://www.prisma.io/docs/prisma-client/basic-data-access/reading-data-JAVASCRIPT-rsc2/).
 
@@ -280,7 +280,7 @@ async function main() {
   console.log(`Created new user: ${alice.name} (ID: ${alice.id})`)
 
   // Create a new post for 'Alice'
-  
+
   const alicesPost = await prisma.createPost({ text: 'Alice\'s First Post', views: 0, author: {connect: {id : alice.id} }})
   console.log(`Created new post: ${alicesPost.text} (ID: ${alicesPost.id})`)
 
