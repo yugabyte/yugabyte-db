@@ -824,7 +824,7 @@ Status SubDocKey::DoDecode(rocksdb::Slice* slice,
   slice->consume_byte();
 
   auto begin = slice->data();
-  RETURN_NOT_OK(ConsumeHybridTimeFromKey(slice, &callback.doc_hybrid_time()));
+  callback.doc_hybrid_time() = VERIFY_RESULT(DocHybridTime::DecodeFrom(slice));
   callback.DocHybridTimeSlice(Slice(begin, slice->data()));
 
   return Status::OK();

@@ -157,7 +157,7 @@ yugabyte=# select * from books;
 
 ### Using `->` and `->>`
 
-YSQL has two native operators, the `->` opertator (see [this section)](../../../api/ysql/datatypes/type_json/functions-operators/subvalue-operators/#the-160-160-160-160-operator)) and the `->>` operator (see [this section](../../../api/ysql/datatypes/type_json/functions-operators/subvalue-operators/#the-160-160-160-160-and-160-160-160-160-operators)), to query JSON documents. The first operator `->` returns a JSON object, while the operator `->>` returns text. These operators work on both `JSON` as well as `JSONB` columns to select a subset of attributes as well as to inspect the JSON document.
+YSQL has two native operators, the `->` operator (see [this section](../../../api/ysql/datatypes/type_json/functions-operators/subvalue-operators/#the-160-160-160-160-operator)) and the `->>` operator (see [this section](../../../api/ysql/datatypes/type_json/functions-operators/subvalue-operators/#the-160-160-160-160-and-160-160-160-160-operators)), to query JSON documents. The first operator `->` returns a JSON object, while the operator `->>` returns text. These operators work on both `JSON` as well as `JSONB` columns to select a subset of attributes as well as to inspect the JSON document.
 
 
 The example below shows how to select a few attributes from each document.
