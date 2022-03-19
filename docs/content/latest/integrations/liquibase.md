@@ -2,12 +2,11 @@
 title: Using Liquibase with YugabyteDB
 linkTitle: Liquibase
 description: Using Liquibase with YugabyteDB
-aliases:
 section: INTEGRATIONS
 menu:
   latest:
     identifier: liquibase
-    weight: 650
+    weight: 571
 isTocNested: true
 showAsideToc: true
 ---

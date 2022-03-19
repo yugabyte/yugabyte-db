@@ -56,6 +56,7 @@ $ ./bin/yb-admin --help
 * [Security](#security-commands)
   * [Encryption at rest](#encryption-at-rest-commands)
 * [Change data capture (CDC)](#change-data-capture-cdc-commands)
+* [xCluster replication](#xcluster-replication-commands)
 * [Decommissioning](#decommissioning-commands)
 * [Rebalancing](#rebalancing-commands)
 * [Upgrade YSQL system catalog](#upgrade-ysql-system-catalog)
@@ -1491,7 +1492,158 @@ The new key ID (`<key_id_2>`) should be different from the previous one (`<key_i
 Encryption status: ENABLED with key id <key_id_2>
 ```
 
-### Change data capture (CDC) commands
+### Change Data Capture (CDC) commands
+
+#### create_change_data_stream
+
+Creates a change data capture (CDC) DB stream for the specified table.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    create_change_data_stream ysql.<namespace_name>
+```
+
+* _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *namespace_name*: The namespace on which the DB stream ID is to be created.
+
+For example:
+
+```sh
+yb-admin \
+    -master_addresses 127.0.0.1:7100 \
+    create_change_data_stream ysql.yugabyte
+```
+
+A successful operation of the above command returns a message with a DB stream ID:
+
+```output
+CDC Stream ID: d540f5e4890c4d3b812933cbfd703ed3
+```
+
+#### list_change_data_streams
+
+Lists all the created CDC DB streams.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    list_change_data_streams [namespace_name]
+```
+
+* _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *namespace_name*: Optional - The namespace name for which the streams are to be listed, if not provided it would list all the streams without filtering.
+
+**Example:**
+
+```sh
+yb-admin \
+    -master_addresses 127.0.0.1:7100 \
+    list_change_data_streams
+```
+
+This command results in the following response. It will have all the table IDs associated with the stream ID:
+
+```output
+CDC Streams:
+streams {
+  stream_id: "d540f5e4890c4d3b812933cbfd703ed3"
+  table_id: "000033e1000030008000000000004000"
+  options {
+    key: "id_type"
+    value: "NAMESPACEID"
+  }
+  options {
+    key: "checkpoint_type"
+    value: "EXPLICIT"
+  }
+  options {
+    key: "source_type"
+    value: "CDCSDK"
+  }
+  options {
+    key: "record_format"
+    value: "PROTO"
+  }
+  options {
+    key: "record_type"
+    value: "CHANGE"
+  }
+  options {
+    key: "state"
+    value: "ACTIVE"
+  }
+}
+```
+
+#### get_change_data_stream_info
+
+Get the information associated with a particular CDC DB stream.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    get_change_data_stream_info <db_stream_id>
+```
+
+* _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *db_stream_id*: The CDC DB stream ID to get the info of.
+
+**Example:**
+
+```sh
+yb-admin \
+    -master_addresses 127.0.0.1:7100 \
+    get_change_data_stream_info d540f5e4890c4d3b812933cbfd703ed3
+```
+
+The previous command results in the following response. It will have the table_id(s) associated with the stream and the namespace_id on which the stream is created:
+
+```output
+CDC DB Stream Info:
+table_info {
+  stream_id: "d540f5e4890c4d3b812933cbfd703ed3"
+  table_id: "000033e1000030008000000000004000"
+}
+namespace_id: "000033e1000030008000000000000000"
+```
+
+#### delete_change_data_stream
+
+Delete the specified CDC DB stream.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    delete_change_data_stream <db_stream_id>
+```
+
+* _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *db_stream_id*: The CDC DB stream ID to be deleted.
+
+**Example:**
+
+```sh
+yb-admin \
+    -master_addresses 127.0.0.1:7100 \
+    delete_change_data_stream d540f5e4890c4d3b812933cbfd703ed3
+```
+
+The above command results in the following response:
+
+```output
+Successfully deleted CDC DB Stream ID: d540f5e4890c4d3b812933cbfd703ed3
+```
+
+### xCluster Replication commands
 
 #### create_cdc_stream
 

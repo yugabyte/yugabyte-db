@@ -6,7 +6,7 @@ section: INTEGRATIONS
 menu:
   latest:
     identifier: entity-framework
-    weight: 660
+    weight: 571
 isTocNested: true
 showAsideToc: true
 ---

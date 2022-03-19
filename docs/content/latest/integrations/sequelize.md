@@ -3,11 +3,10 @@ title: Using Sequelize with YugabyteDB
 linkTitle: Sequelize
 description: Using Sequelize with YugabyteDB
 section: INTEGRATIONS
-aliases:
 menu:
   latest:
     identifier: sequelize
-    weight: 650
+    weight: 571
 isTocNested: true
 showAsideToc: true
 ---
@@ -20,7 +19,7 @@ Before you can start using Sequelize, ensure that you have the following availab
 
 - YugabyteDB version 2.4 or later (see [YugabyteDB Quick Start Guide](/latest/quick-start/)).
 
-- Yugabyte cluster (see [Create a local cluster](/latest/quick-start/create-local-cluster/macos/)). 
+- Yugabyte cluster (see [Create a local cluster](/latest/quick-start/create-local-cluster/macos/)).
 
 - Node.js (see [Downloading and installing Node.js](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm#using-a-node-installer-to-install-node-js-and-npm)).
 
@@ -90,13 +89,13 @@ You can verify the code execution by looking for the changes inside the database
   cd /<path-to-yugabytedb>
   ```
 
-- Run the ysqlsh client by executing the following command: 
+- Run the ysqlsh client by executing the following command:
 
   ```
   ./bin/ysqlsh
   ```
 
-- Obtain the list of all the tables in the database by executing the following command:  
+- Obtain the list of all the tables in the database by executing the following command:
 
   ```
   \dt

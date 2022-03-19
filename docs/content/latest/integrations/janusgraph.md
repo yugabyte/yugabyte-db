@@ -7,7 +7,7 @@ section: INTEGRATIONS
 menu:
   latest:
     identifier: janusgraph
-    weight: 573
+    weight: 571
 isTocNested: true
 showAsideToc: true
 ---

@@ -11,7 +11,7 @@ section: INTEGRATIONS
 menu:
   latest:
     identifier: spring-framework
-    weight: 645
+    weight: 571
 ---
 
 

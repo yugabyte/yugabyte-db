@@ -7,7 +7,7 @@ section: INTEGRATIONS
 menu:
   latest:
     identifier: kairosdb
-    weight: 574
+    weight: 571
 isTocNested: true
 showAsideToc: true
 ---
