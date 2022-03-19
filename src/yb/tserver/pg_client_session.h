@@ -91,8 +91,10 @@ class PgClientSession {
 
   std::string LogPrefix();
 
-  Result<const TransactionMetadata*> GetDdlTransactionMetadata(bool use_transaction);
-  CHECKED_STATUS BeginTransactionIfNecessary(const PgPerformOptionsPB& options);
+  Result<const TransactionMetadata*> GetDdlTransactionMetadata(
+      bool use_transaction, CoarseTimePoint deadline);
+  CHECKED_STATUS BeginTransactionIfNecessary(
+      const PgPerformOptionsPB& options, CoarseTimePoint deadline);
   Result<client::YBTransactionPtr> RestartTransaction(
       client::YBSession* session, client::YBTransaction* transaction);
 

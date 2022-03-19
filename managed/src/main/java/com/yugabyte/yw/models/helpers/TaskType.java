@@ -304,6 +304,8 @@ public enum TaskType {
 
   ResizeNode("upgrade.ResizeNode"),
 
+  CheckMemory("subtasks.check.CheckMemory"),
+
   UpdateMountedDisks("subtasks.UpdateMountedDisks");
 
   private String relativeClassPath;

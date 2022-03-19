@@ -18,6 +18,7 @@
 #include <sstream>
 
 #include "yb/common/hybrid_time.h"
+#include "yb/common/ql_value.h"
 
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_reader.h"
@@ -132,7 +133,7 @@ const TransactionOperationContext kNonTransactionalOperationContext = {
     TransactionId::Nil(), &kNonTransactionalStatusProvider
 };
 
-PrimitiveValue GenRandomPrimitiveValue(RandomNumberGenerator* rng) {
+ValueRef GenRandomPrimitiveValue(RandomNumberGenerator* rng, QLValuePB* holder) {
   static vector<string> kFruit = {
       "Apple",
       "Apricot",
@@ -227,23 +228,36 @@ PrimitiveValue GenRandomPrimitiveValue(RandomNumberGenerator* rng) {
   };
   switch ((*rng)() % 6) {
     case 0:
-      return PrimitiveValue(static_cast<int64_t>((*rng)()));
+      *holder = QLValue::Primitive(static_cast<int64_t>((*rng)()));
+      return ValueRef(*holder);
     case 1: {
       string s;
       for (size_t j = 0; j < (*rng)() % 50; ++j) {
         s.push_back((*rng)() & 0xff);
       }
-      return PrimitiveValue(s);
+      *holder = QLValue::Primitive(s);
+      return ValueRef(*holder);
     }
-    case 2: return PrimitiveValue(ValueType::kNullLow);
-    case 3: return PrimitiveValue(ValueType::kTrue);
-    case 4: return PrimitiveValue(ValueType::kFalse);
-    case 5: return PrimitiveValue(kFruit[(*rng)() % kFruit.size()]);
+    case 2: return ValueRef(ValueType::kNullLow);
+    case 3: return ValueRef(ValueType::kTrue);
+    case 4: return ValueRef(ValueType::kFalse);
+    case 5: {
+      *holder = QLValue::Primitive(kFruit[(*rng)() % kFruit.size()]);
+      return ValueRef(*holder);
+    }
   }
   LOG(FATAL) << "Should never get here";
-  return PrimitiveValue();  // to make the compiler happy
+  return ValueRef(ValueType::kNullLow);  // to make the compiler happy
 }
 
+PrimitiveValue GenRandomPrimitiveValue(RandomNumberGenerator* rng) {
+  QLValuePB value_holder;
+  auto value_ref = GenRandomPrimitiveValue(rng, &value_holder);
+  if (value_ref.custom_value_type() != ValueType::kLowest) {
+    return PrimitiveValue(value_ref.custom_value_type());
+  }
+  return PrimitiveValue::FromQLValuePB(value_holder, SortingType::kNotSpecified, false);
+}
 
 // Generate a vector of random primitive values.
 vector<PrimitiveValue> GenRandomPrimitiveValues(RandomNumberGenerator* rng, int max_num) {
@@ -391,7 +405,8 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
   }
 
   const DocPath doc_path(encoded_doc_key, subkeys);
-  const auto value = GenRandomPrimitiveValue(&random_);
+  QLValuePB value_holder;
+  const auto value = GenRandomPrimitiveValue(&random_, &value_holder);
   const HybridTime hybrid_time(current_iteration);
   last_operation_ht_ = hybrid_time;
 
@@ -409,7 +424,10 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
   } else {
     DOCDB_DEBUG_LOG("Iteration $0: setting value at doc path $1 to $2",
                     current_iteration, doc_path.ToString(), value.ToString());
-    ASSERT_OK(in_mem_docdb_.SetPrimitive(doc_path, value));
+    auto pv = value.custom_value_type() != ValueType::kLowest
+        ? PrimitiveValue(value.custom_value_type())
+        : PrimitiveValue::FromQLValuePB(value_holder, SortingType::kNotSpecified);
+    ASSERT_OK(in_mem_docdb_.SetPrimitive(doc_path, pv));
     const auto set_primitive_status = dwb.SetPrimitive(doc_path, value);
     if (!set_primitive_status.ok()) {
       DocDBDebugDump(rocksdb(), std::cerr, StorageDbType::kRegular);

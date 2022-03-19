@@ -55,7 +55,6 @@ class PartialRowTest : public YBTest {
 
 TEST_F(PartialRowTest, UnitTest) {
   YBPartialRow row(&schema_);
-  string enc_key;
 
   // Initially all columns are unset.
   EXPECT_FALSE(row.IsColumnSet(0));
@@ -63,10 +62,6 @@ TEST_F(PartialRowTest, UnitTest) {
   EXPECT_FALSE(row.IsColumnSet(2));
   EXPECT_FALSE(row.IsKeySet());
   EXPECT_EQ("", row.ToString());
-
-  // Encoding the key when it is not set should give an error.
-  EXPECT_EQ("Invalid argument: All key columns must be set: key",
-            row.EncodeRowKey(&enc_key).ToString(/* no file/line */ false));
 
   // Set just the key.
   EXPECT_OK(row.SetInt32("key", 12345));
@@ -78,10 +73,6 @@ TEST_F(PartialRowTest, UnitTest) {
   EXPECT_OK(row.GetInt32("key", &x));
   EXPECT_EQ(12345, x);
   EXPECT_FALSE(row.IsNull("key"));
-
-  // Test key encoding.
-  EXPECT_EQ("OK", row.EncodeRowKey(&enc_key).ToString());
-  EXPECT_EQ("80003039", Slice(enc_key).ToDebugString());
 
   // Fill in the other columns.
   EXPECT_OK(row.SetInt32("int_val", 54321));

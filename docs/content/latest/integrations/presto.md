@@ -2,12 +2,11 @@
 title: Presto
 linkTitle: Presto
 description: Presto
-aliases:
 section: INTEGRATIONS
 menu:
   latest:
     identifier: presto
-    weight: 575
+    weight: 571
 isTocNested: true
 showAsideToc: true
 ---
@@ -202,11 +201,11 @@ presto:myapp> describe stock_market;
 ```
 
 ```output
-    Column     |  Type   | Extra | Comment 
+    Column     |  Type   | Extra | Comment
 ---------------+---------+-------+---------
- stock_symbol  | varchar |       |         
- ts            | varchar |       |         
- current_price | real    |       |         
+ stock_symbol  | varchar |       |
+ ts            | varchar |       |
+ current_price | real    |       |
 (3 rows)
 ```
 
@@ -217,10 +216,10 @@ presto:myapp> select * from stock_market where stock_symbol = 'AAPL';
 ```
 
 ```output
- stock_symbol |         ts          | current_price 
+ stock_symbol |         ts          | current_price
 --------------+---------------------+---------------
- AAPL         | 2017-10-26 09:00:00 |        157.41 
- AAPL         | 2017-10-26 10:00:00 |         157.0 
+ AAPL         | 2017-10-26 09:00:00 |        157.41
+ AAPL         | 2017-10-26 10:00:00 |         157.0
 (2 rows)
 ```
 
@@ -231,10 +230,10 @@ presto:myapp> select stock_symbol, avg(current_price) from stock_market group by
 ```
 
 ```output
- stock_symbol |  _col1  
+ stock_symbol |  _col1
 --------------+---------
- GOOG         | 972.235 
- AAPL         | 157.205 
- FB           | 170.365 
+ GOOG         | 972.235
+ AAPL         | 157.205
+ FB           | 170.365
 (3 rows)
 ```

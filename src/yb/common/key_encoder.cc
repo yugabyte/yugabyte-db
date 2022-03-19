@@ -77,7 +77,7 @@ class EncoderResolver {
 
   template<DataType Type> void AddMapping() {
     KeyEncoderTraits<Type, Buffer> traits;
-    InsertOrDie(&encoders_, Type, shared_ptr<KeyEncoder<Buffer> >(new KeyEncoder<Buffer>(traits)));
+    encoders_.emplace(Type, std::make_shared<KeyEncoder<Buffer>>(traits));
   }
 
   friend class Singleton<EncoderResolver<Buffer> >;
@@ -86,13 +86,13 @@ class EncoderResolver {
 
 template <typename Buffer>
 const KeyEncoder<Buffer>& GetKeyEncoder(const TypeInfo* typeinfo) {
-  return Singleton<EncoderResolver<Buffer> >::get()->GetKeyEncoder(typeinfo->physical_type());
+  return Singleton<EncoderResolver<Buffer> >::get()->GetKeyEncoder(typeinfo->physical_type);
 }
 
 // Returns true if the type is allowed in keys.
 bool IsTypeAllowableInKey(const TypeInfo* typeinfo) {
   return Singleton<EncoderResolver<faststring> >::get()->HasKeyEncoderForType(
-      typeinfo->physical_type());
+      typeinfo->physical_type);
 }
 
 //------------------------------------------------------------

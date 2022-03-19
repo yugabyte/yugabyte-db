@@ -653,8 +653,10 @@ Status RestoreSysCatalogState::ProcessPgCatalogRestores(
               docdb::Value value;
               RETURN_NOT_OK(value.Decode(existing_state.value()));
               docdb::DocPath path(sub_doc_key.doc_key().Encode(), sub_doc_key.subkeys());
+              QLValuePB value_pb;
+              value_pb.set_int64_value(value.primitive_value().GetInt64() + 1);
               RETURN_NOT_OK(write_batch->SetPrimitive(
-                  path, docdb::PrimitiveValue(value.primitive_value().GetInt64() + 1)));
+                  path, docdb::ValueRef(value_pb, SortingType::kNotSpecified)));
             }
           }
         }
