@@ -1,13 +1,14 @@
 ---
 title: Debezium and CDC in YugabyteDB
-headerTitle: Running Debezium with YugabyteDB
-linkTitle: Running Debezium with YugabyteDB
+linkTitle: Debezium
 description: Debezium is an open source distributed platform used to capture the changes in a database.
+aliases:
+  - /latest/integrations/cdc/
+section: INTEGRATIONS
 menu:
   latest:
     identifier: cdc-debezium
-    parent: cdc
-    weight: 580
+    weight: 571
 isTocNested: true
 showAsideToc: true
 ---
@@ -26,7 +27,7 @@ docker pull quay.io/yugabyte/debezium-connector:1.1-beta
 
 ### Build the Debezium connector on your own
 
-In case you want to build the connector image yourself, follow the steps listed on the [README for debezium-connector-yugabytedb](https://github.com/yugabyte/debezium/blob/final-connector-ybdb/debezium-connector-yugabytedb2/README.md).
+If you want to build the connector image yourself, follow the steps listed in the [README for debezium-connector-yugabytedb](https://github.com/yugabyte/debezium/blob/final-connector-ybdb/debezium-connector-yugabytedb2/README.md).
 
 ## Run Debezium locally
 
@@ -119,13 +120,13 @@ curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" 
 }'
 ```
 
-For a list of all the configuration options we provide with the Debezium YugabyteDB connector, see the [configuration options](debezium-connector-yugabytedb.md).
+For a list of all the configuration options we provide with the Debezium YugabyteDB connector, see the [configuration options](../../../explore/change-data-capture/debezium-connector-yugabytedb/).
 
 {{< warning title="Warning" >}}
 
-Do note that we do NOT support DROP TABLE and TRUNCATE TABLE commands yet, the behavior of these commands while streaming data from CDC is not defined. If dropping or truncating a table is necessarily needed, delete the stream ID using [yb-admin](../../admin/yb-admin.md#change-data-capture-cdc-commands).<br/><br/>
+YugabyteDB's CDC implementation doesn't support DROP TABLE and TRUNCATE TABLE commands yet, and the behavior of these commands while streaming data from CDC is undefined. If you need to drop or truncate a table, delete the stream ID using [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands).
 
-See [limitations](../../cdc/change-data-capture.md#limitations) to see what else is not supported currently.
+See [limitations](../../../explore/change-data-capture/#limitations) for more details on upcoming feature support.
 
 {{< /warning >}}
 

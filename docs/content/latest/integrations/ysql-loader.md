@@ -2,12 +2,11 @@
 title: YSQL Loader
 linkTitle: YSQL Loader
 description: YSQL Loader
-aliases:
 section: INTEGRATIONS
 menu:
   latest:
     identifier: ysql-loader
-    weight: 577
+    weight: 571
 isTocNested: true
 showAsideToc: true
 ---

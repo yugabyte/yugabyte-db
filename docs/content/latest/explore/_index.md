@@ -128,7 +128,7 @@ Use [yb-ctl](../admin/yb-ctl/) local cluster management utility to explore the c
         <div class="title">Change data capture</div>
       </div>
       <div class="body">
-        CDC
+        Stream database changes to external processes, applications, or other databases.
       </div>
     </a>
   </div>
