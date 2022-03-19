@@ -110,14 +110,14 @@ Since 2DC replication is done asynchronously and by replicating the WAL (and the
 
 #### Kubernetes
 - Technically replication can be setup with kubernetes deployed universes. However, the source and sink must be able to communicate by directly referencing the pods in the other universe. In practice, this either means that the two universes must be part of the same kubernetes cluster, or that two kubernetes clusters must have DNS and routing properly setup amongst themselves.
-- Being able to have two YugabyteDB clusters, each in their own standalone kubernetes cluster, talking to eachother via a LoadBalancer, is not yet supported [#2422](https://github.com/yugabyte/yugabyte-db/issues/2422).
+- Being able to have two YugabyteDB clusters, each in their own standalone kubernetes cluster, talking to each other via a LoadBalancer, is not yet supported [#2422](https://github.com/yugabyte/yugabyte-db/issues/2422).
 
 ### Cross-feature interactions
 
 #### Supported
 - TLS is supported for both client and internal RPC traffic. Universes can also be configured with different certificates.
 - RPC compression is supported. Note, both clusters must be on a version that supports compression, before a compression algorithm is turned on.
-- Encryption at rest is supported. Note, the clusters can technically use different KMS configurations. However, for bootstrapping a sink cluster, we rely on the backup/restore flow. As such, we inherit a limiation from that, which requires that the universe being restored has at least access to the same KMS as the one in which the backup was taken. This means both the source and the sink must have access to the same KMS configurations.
+- Encryption at rest is supported. Note, the clusters can technically use different KMS configurations. However, for bootstrapping a sink cluster, we rely on the backup/restore flow. As such, we inherit a limitation from that, which requires that the universe being restored has at least access to the same KMS as the one in which the backup was taken. This means both the source and the sink must have access to the same KMS configurations.
 - YSQL colocation is supported.
 - YSQL geo-partitioning is supported. Note, you must configure replication on all new partitions manually, as we do not replicate DDL changes automatically.
 
