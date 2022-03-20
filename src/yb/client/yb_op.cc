@@ -526,7 +526,8 @@ namespace {
 
 Status GetRangeComponents(
     const Schema& schema, const google::protobuf::RepeatedPtrField<PgsqlExpressionPB>& range_cols,
-    std::vector<docdb::PrimitiveValue>* range_components) {
+    std::vector<docdb::PrimitiveValue>* range_components,
+    bool lower_bound) {
   int i = 0;
   int num_range_key_columns = schema.num_range_key_columns();
   for (const auto& col_id : schema.column_ids()) {
@@ -536,7 +537,11 @@ Status GetRangeComponents(
 
     const ColumnSchema& column_schema = VERIFY_RESULT(schema.column_by_id(col_id));
     if (i >= range_cols.size() || range_cols[i].value().value_case() == QLValuePB::VALUE_NOT_SET) {
-      range_components->emplace_back(docdb::ValueType::kLowest);
+      if (lower_bound) {
+        range_components->emplace_back(docdb::ValueType::kLowest);
+      } else {
+        range_components->emplace_back(docdb::ValueType::kHighest);
+      }
     } else {
       range_components->push_back(docdb::PrimitiveValue::FromQLValuePB(
           range_cols[i].value(), column_schema.sorting_type()));
@@ -545,6 +550,10 @@ Status GetRangeComponents(
     i++;
     if (i == num_range_key_columns) {
       break;
+    }
+
+    if (!lower_bound) {
+      range_components->emplace_back(docdb::ValueType::kHighest);
     }
   }
   return Status::OK();
@@ -557,7 +566,7 @@ CHECKED_STATUS GetRangePartitionKey(
   RSTATUS_DCHECK(!schema.num_hash_key_columns(), IllegalState,
       "Cannot get range partition key for hash partitioned table");
 
-  RETURN_NOT_OK(GetRangeComponents(schema, range_cols, &range_components));
+  RETURN_NOT_OK(GetRangeComponents(schema, range_cols, &range_components, true));
   *key = docdb::DocKey(std::move(range_components)).Encode().ToStringBuffer();
   return Status::OK();
 }
@@ -580,9 +589,8 @@ CHECKED_STATUS GetRangePartitionBounds(const YBPgsqlReadOp& op,
     *upper_bound = docdb::GetRangeKeyScanSpec(
         schema, &prefixed_range_components, &scan_range, false /* upper_bound */);
   } else if (!range_cols.empty()) {
-    RETURN_NOT_OK(GetRangeComponents(schema, range_cols, lower_bound));
-    *upper_bound = *lower_bound;
-    upper_bound->emplace_back(docdb::ValueType::kHighest);
+    RETURN_NOT_OK(GetRangeComponents(schema, range_cols, lower_bound, true));
+    RETURN_NOT_OK(GetRangeComponents(schema, range_cols, upper_bound, false));
   }
   return Status::OK();
 }
