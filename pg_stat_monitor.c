@@ -1791,7 +1791,12 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 			tmp = e->counters;
 			SpinLockRelease(&e->mutex);
 		}
-		if (!IsBucketValid(bucketid))
+
+        /* In case that query plan is enabled, there is no need to show 0 planid query */
+        if (tmp.info.cmd_type == CMD_SELECT && PGSM_QUERY_PLAN && planid == 0)
+          continue;
+
+        if (!IsBucketValid(bucketid))
 		{
 			if (tmp.state == PGSS_FINISHED)
 				continue;

@@ -51,7 +51,7 @@ init_guc(void)
 	conf[i] = (GucVariable) {
 		.guc_name = "pg_stat_monitor.pgsm_query_max_len",
 		.guc_desc = "Sets the maximum length of query.",
-		.guc_default = 1024,
+		.guc_default = 2048,
 		.guc_min = 1024,
 		.guc_max = INT_MAX,
 		.guc_unit = 0,
@@ -184,7 +184,7 @@ init_guc(void)
 		.guc_name = "pg_stat_monitor.pgsm_track",
 		.guc_desc = "Selects which statements are tracked by pg_stat_monitor.",
 		.n_options = 3,
-		.guc_default = PGSM_TRACK_ALL,
+		.guc_default = PGSM_TRACK_TOP,
 		.guc_min = PSGM_TRACK_NONE,
 		.guc_max = PGSM_TRACK_ALL,
 		.guc_restart = false,
