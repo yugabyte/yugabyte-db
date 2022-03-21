@@ -921,7 +921,8 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     createSetNodeStateTask(node, nodeState).setSubTaskGroupType(subGroupType);
     if (taskParams().taskType == UpgradeTaskType.Software) {
       createServerControlTask(node, processType, "stop").setSubTaskGroupType(subGroupType);
-      createSoftwareInstallTasks(Collections.singletonList(node), processType);
+      createSoftwareInstallTasks(
+          Collections.singletonList(node), processType, taskParams().ybSoftwareVersion);
     } else if (taskParams().taskType == UpgradeTaskType.GFlags) {
       createServerConfFileUpdateTasks(Collections.singletonList(node), processType);
       // Stop is done after conf file update to reduce unavailability.
@@ -1017,7 +1018,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     createServerControlTasks(nodes, processType, "stop").setSubTaskGroupType(subGroupType);
 
     if (taskParams().taskType == UpgradeTaskType.Software) {
-      createSoftwareInstallTasks(nodes, processType);
+      createSoftwareInstallTasks(nodes, processType, taskParams().ybSoftwareVersion);
     }
 
     if (isActiveProcess) {
@@ -1113,26 +1114,6 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
-  private void createSoftwareInstallTasks(List<NodeDetails> nodes, ServerType processType) {
-    // If the node list is empty, we don't need to do anything.
-    if (nodes.isEmpty()) {
-      return;
-    }
-
-    String subGroupDescription =
-        String.format(
-            "AnsibleConfigureServers (%s) for: %s",
-            SubTaskGroupType.InstallingSoftware, taskParams().nodePrefix);
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
-    for (NodeDetails node : nodes) {
-      subTaskGroup.addSubTask(
-          getConfigureTask(
-              node, processType, UpgradeTaskType.Software, UpgradeTaskSubType.Install));
-    }
-    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-  }
-
   private void createToggleTlsTasks(
       List<NodeDetails> nodes, ServerType processType, UpgradeIteration upgradeIteration) {
     // If the node list is empty, we don't need to do anything.
@@ -1198,10 +1179,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     UserIntent userIntent =
-        Universe.getOrBadRequest(taskParams().universeUUID)
-            .getUniverseDetails()
-            .getClusterByUuid(node.placementUuid)
-            .userIntent;
+        universe.getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
     // Set the device information (numVolumes, volumeSize, etc.)
     params.deviceInfo = userIntent.deviceInfo;
     // Add the node name.
