@@ -524,6 +524,16 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     PlacementInfoUtil.selectNumMastersAZ(pi, numTotalMasters);
   }
 
+  /**
+   * Return map of primary cluster gflags based on serverType
+   *
+   * @param taskType
+   */
+  public Map<String, String> getPrimaryClusterGFlags(ServerType taskType, Universe universe) {
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    return taskType.equals(ServerType.MASTER) ? userIntent.masterGFlags : userIntent.tserverGFlags;
+  }
+
   public void createGFlagsOverrideTasks(Collection<NodeDetails> nodes, ServerType taskType) {
     createGFlagsOverrideTasks(nodes, taskType, false /* isShell */);
   }
@@ -532,11 +542,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       Collection<NodeDetails> nodes, ServerType taskType, boolean isMasterInShellMode) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("AnsibleConfigureServersGFlags", executor);
+    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Map<String, String> gflags = getPrimaryClusterGFlags(taskType, universe);
     for (NodeDetails node : nodes) {
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
-      Map<String, String> gflags =
-          taskType.equals(ServerType.MASTER) ? userIntent.masterGFlags : userIntent.tserverGFlags;
-      Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
       params.deviceInfo = userIntent.deviceInfo;
@@ -595,6 +604,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
+
   /**
    * Creates a task list to update tags on the nodes.
    *
@@ -952,10 +962,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         params.type = UpgradeTaskParams.UpgradeTaskType.GFlags;
         if (isMaster) {
           params.setProperty("processType", ServerType.MASTER.toString());
-          params.gflags = userIntent.masterGFlags;
+          params.gflags = getPrimaryClusterGFlags(ServerType.MASTER, universe);
         } else {
           params.setProperty("processType", ServerType.TSERVER.toString());
-          params.gflags = userIntent.tserverGFlags;
+          params.gflags = getPrimaryClusterGFlags(ServerType.TSERVER, universe);
         }
       }
       // Create the Ansible task to get the server info.
@@ -1550,8 +1560,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
     UserIntent userIntent =
         getUniverse(true).getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
-    Map<String, String> gflags =
-        processType.equals(ServerType.MASTER) ? userIntent.masterGFlags : userIntent.tserverGFlags;
+    Map<String, String> gflags = getPrimaryClusterGFlags(processType, getUniverse());
     // Set the device information (numVolumes, volumeSize, etc.)
     params.deviceInfo = userIntent.deviceInfo;
     // Add the node name.
