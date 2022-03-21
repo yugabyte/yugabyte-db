@@ -221,13 +221,11 @@ TEST_F(MasterTestEnt, TestDeleteTableWithCDCStream) {
   ASSERT_OK(GetCDCStream(stream_id, &resp));
   ASSERT_EQ(resp.stream().table_id().Get(0), table_id);
 
-  // Delete the table
+  // Deleting the table will fail since it has a CDC stream attached.
   TableId id;
-  ASSERT_OK(DeleteTableSync(default_namespace_name, kTableName, &id));
+  ASSERT_NOK(DeleteTableSync(default_namespace_name, kTableName, &id));
 
-  ASSERT_NOK(GetCDCStream(stream_id, &resp));
-  ASSERT_TRUE(resp.has_error());
-  ASSERT_EQ(MasterErrorPB::OBJECT_NOT_FOUND, resp.error().code());
+  ASSERT_OK(GetCDCStream(stream_id, &resp));
 }
 
 TEST_F(MasterTestEnt, TestListCDCStreams) {
