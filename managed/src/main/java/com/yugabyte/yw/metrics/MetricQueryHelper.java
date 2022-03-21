@@ -99,6 +99,11 @@ public class MetricQueryHelper {
       timeDifference = endTime - Long.parseLong(startTime);
     }
 
+    if (timeDifference < STEP_SIZE) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Should be at least " + STEP_SIZE + " seconds between start and end time");
+    }
+
     if (params.get("step") == null) {
       int resolution = Math.round(timeDifference / STEP_SIZE);
       params.put("step", String.valueOf(resolution));
