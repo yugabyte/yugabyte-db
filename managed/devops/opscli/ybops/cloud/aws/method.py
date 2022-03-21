@@ -115,14 +115,11 @@ class AwsProvisionInstancesMethod(ProvisionInstancesMethod):
 
     def add_extra_args(self):
         super(AwsProvisionInstancesMethod, self).add_extra_args()
-        self.parser.add_argument("--use_chrony", action="store_true",
-                                 help="Whether to use chrony instead of NTP.")
         self.parser.add_argument("--key_pair_name", default=os.environ.get("YB_EC2_KEY_PAIR_NAME"),
                                  help="AWS Key Pair name")
 
     def update_ansible_vars_with_args(self, args):
         super(AwsProvisionInstancesMethod, self).update_ansible_vars_with_args(args)
-        self.extra_vars["use_chrony"] = args.use_chrony
         self.extra_vars["device_names"] = self.cloud.get_device_names(args)
         self.extra_vars["mount_points"] = self.cloud.get_mount_points_csv(args)
         self.extra_vars.update({"aws_key_pair_name": args.key_pair_name})
