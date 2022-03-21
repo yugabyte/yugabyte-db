@@ -50,6 +50,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
 import java.util.UUID;
@@ -58,6 +59,7 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import javax.annotation.Nullable;
 import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -283,14 +285,17 @@ public class PlacementInfoUtil {
 
   @VisibleForTesting
   /**
-   * Helper API to check if the list of regions is the same in existing nodes of the placement and
-   * the new userIntent's region list.
+   * Helper API to check if PlacementInfo should be recalculated according to provided user intent.
+   * Cases are: 1) Provider was changed 2) Region for one of the nodes was removed from list 3)
+   * Region was added and nodes could be spread more evenly between regions
    *
    * @param cluster The current user proposed cluster.
    * @param nodes The set of nodes used to compare the current region layout.
-   * @return true if the provider or region list changed. false if neither changed.
+   * @param regionsChanged Optional flag to indicate that regions were changed.
+   * @return true if placement should be recalculated
    */
-  static boolean isProviderOrRegionChange(Cluster cluster, Collection<NodeDetails> nodes) {
+  static boolean isRecalculatePlacementInfo(
+      Cluster cluster, Collection<NodeDetails> nodes, @Nullable Boolean regionsChanged) {
     // Initial state. No nodes have been requested, so nothing has changed.
     if (nodes.isEmpty()) {
       return false;
@@ -314,12 +319,26 @@ public class PlacementInfoUtil {
     Set<UUID> nodeRegionSet = getAllRegionUUIDs(nodes, cluster.uuid);
     Set<UUID> intentRegionSet = new HashSet<>(cluster.userIntent.regionList);
     LOG.info(
-        "Intended Regions {} vs existing Regions {} in cluster {}.",
+        "Intended Regions {} vs existing Regions {} in cluster {} (regions changed: {}).",
         intentRegionSet,
         nodeRegionSet,
-        cluster.uuid);
+        cluster.uuid,
+        regionsChanged);
 
-    return !intentRegionSet.containsAll(nodeRegionSet);
+    // Region was removed
+    if (!intentRegionSet.containsAll(nodeRegionSet)) {
+      return true;
+    }
+
+    if (intentRegionSet.equals(nodeRegionSet)) {
+      return false;
+    } else {
+      // If we have more regions than needed - do not recalculate.
+      // regionsChanged=false means that only zone configuration was changed so no need in
+      // rebalance.
+      return cluster.userIntent.numNodes >= intentRegionSet.size()
+          && Optional.ofNullable(regionsChanged).orElse(true).equals(true);
+    }
   }
 
   public static int getNodeCountInPlacement(PlacementInfo placementInfo) {
@@ -386,7 +405,8 @@ public class PlacementInfoUtil {
         customerId,
         placementUuid,
         taskParams.clusterOperation,
-        taskParams.allowGeoPartitioning);
+        taskParams.allowGeoPartitioning,
+        taskParams.regionsChanged);
   }
 
   @VisibleForTesting
@@ -395,7 +415,7 @@ public class PlacementInfoUtil {
       Long customerId,
       UUID placementUuid,
       ClusterOperationType clusterOpType) {
-    updateUniverseDefinition(taskParams, customerId, placementUuid, clusterOpType, false);
+    updateUniverseDefinition(taskParams, customerId, placementUuid, clusterOpType, false, null);
   }
 
   private static void updateUniverseDefinition(
@@ -403,7 +423,8 @@ public class PlacementInfoUtil {
       Long customerId,
       UUID placementUuid,
       ClusterOperationType clusterOpType,
-      boolean allowGeoPartitioning) {
+      boolean allowGeoPartitioning,
+      @Nullable Boolean regionsChanged) {
     Cluster cluster = taskParams.getClusterByUuid(placementUuid);
     taskParams.nodesResizeAvailable = false;
 
@@ -592,7 +613,7 @@ public class PlacementInfoUtil {
       int rf = cluster.userIntent.replicationFactor;
       LOG.info(
           "UserIntent replication factor={} while total zone replication factor={}.", rf, totalRF);
-      int num_zones_intended =
+      int numZonesIntended =
           cluster
               .placementInfo
               .cloudList
@@ -600,19 +621,19 @@ public class PlacementInfoUtil {
               .flatMap(cloud -> cloud.regionList.stream())
               .mapToInt(region -> region.azList.size())
               .sum();
-      if (rf < num_zones_intended) {
+      if (rf < numZonesIntended) {
         if (allowGeoPartitioning) {
           LOG.info(
               "Extended placement mode for universe '{}' - number of zones={} exceeds RF={}.",
               universeName,
-              num_zones_intended,
+              numZonesIntended,
               rf);
         } else {
           cluster.placementInfo =
               getPlacementInfo(
                   cluster.clusterType,
                   cluster.userIntent,
-                  num_zones_intended,
+                  numZonesIntended,
                   allowGeoPartitioning,
                   defaultRegionUUID);
           LOG.info("New placement has {} zones.", getNumZones(cluster.placementInfo));
@@ -627,13 +648,14 @@ public class PlacementInfoUtil {
     // changed, we will pick a new placement (i.e full move, create primary/RO cluster).
     if (!mode_changed && (mode == ConfigureNodesMode.NEW_CONFIG)) {
       boolean changeNodeStates = false;
-      if (isProviderOrRegionChange(
+      if (isRecalculatePlacementInfo(
           cluster,
           (primaryClusterEdit || readOnlyClusterEdit)
               ? universe.getNodes()
-              : taskParams.nodeDetailsSet)) {
+              : taskParams.nodeDetailsSet,
+          regionsChanged)) {
         LOG.info("Provider or region changed, getting new placement info.");
-        int num_zones_intended =
+        int numZonesIntended =
             cluster
                 .placementInfo
                 .cloudList
@@ -645,7 +667,7 @@ public class PlacementInfoUtil {
             getPlacementInfo(
                 cluster.clusterType,
                 cluster.userIntent,
-                num_zones_intended,
+                numZonesIntended,
                 allowGeoPartitioning,
                 defaultRegionUUID);
         changeNodeStates = true;
