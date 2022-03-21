@@ -249,9 +249,13 @@ CREATE TABLE transactions_us
 ```
 
 ### Steps to create Replication(Unidirectional):
-1. Collect child table UUIDs from source universe (partition tables, here transactions_eu, transactions_in and transactions_us) - these will be used while setting up replication. To collect table UUIDs, go to the `Tables` section in the Admin UI (127.0.0.1:7000).
+1. Collect partition table UUIDs from source universe (partition tables, here transactions_eu, transactions_in and transactions_us) - these will be used while setting up replication. To collect table UUIDs, go to the `Tables` section in the Admin UI (127.0.0.1:7000).
 
   ![xCluster_with_GP](/images/explore/yb_xcluster_table_uuids.png)
+
+  {{< note title="Note" >}}
+  xCluster doesn't support parent to parent table replication, You have to use only partition tables for replication setup.
+  {{< /note >}}
 
 2. Run the replication setup command for the source universe:
     ```sh
