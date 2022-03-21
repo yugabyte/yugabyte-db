@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: covering-index-ysql
     parent: explore-indexes-constraints
-    weight: 250
+    weight: 255
 aliases:
    - /latest/explore/ysql-language-features/indexes-1/
    - /latest/explore/indexes-constraints/indexes-1/
@@ -29,7 +29,7 @@ A covering index is an index that includes all those columns required by a query
 ## Syntax
 
 ```ysql
-CREATE INDEX columnA_columnB_index_name ON table_name(columnA, columnB), INCLUDE (columnC);
+CREATE INDEX columnA_columnB_index_name ON table_name(columnA, columnB) INCLUDE (columnC);
 ```
 
 The following exercise demonstrates how to perform an index only scan on functional indexes, and further optimize the query performance using a covering index.
