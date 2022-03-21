@@ -6051,6 +6051,9 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "regionsChanged" : {
+          "type" : "boolean"
+        },
         "remotePackagePath" : {
           "type" : "string"
         },
