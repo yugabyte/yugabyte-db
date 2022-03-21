@@ -1264,6 +1264,11 @@ class YBBackup:
         parser.add_argument(
             '--TEST_yb_admin_unsupported_commands', required=False, action='store_true',
             default=False, help=argparse.SUPPRESS)
+
+        # Do not fsync for unit tests.
+        parser.add_argument(
+            '--TEST_never_fsync', required=False, action='store_true',
+            default=False, help=argparse.SUPPRESS)
         self.args = parser.parse_args()
 
     def post_process_arguments(self):
@@ -1583,6 +1588,7 @@ class YBBackup:
 
         # Convert to list, since some callers like SequencedParallelCmd will send in tuples.
         cmd_line_args = list(cmd_line_args)
+        cmd_line_args.extend(["--never_fsync=" + str(self.args.TEST_never_fsync).lower()])
         # Specify cert file in case TLS is enabled.
         cert_flag = []
         if self.args.certs_dir:

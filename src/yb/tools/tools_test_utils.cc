@@ -41,6 +41,7 @@ Status RunBackupCommand(
       "--nfs_storage_path", tmp_dir,
       "--no_ssh",
       "--no_auto_name",
+      "--TEST_never_fsync",
   };
 
   if (!pg_hp.host().empty()) {
