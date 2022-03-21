@@ -3,7 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroup;
+import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
@@ -106,12 +106,12 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
         String.format(
             "AnsibleConfigureServers (%s) for: %s",
             SubTaskGroupType.UpdatingGFlags, taskParams().nodePrefix);
-    SubTaskGroup taskGroup = new SubTaskGroup(subGroupDescription, executor);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
     for (NodeDetails node : nodes) {
-      taskGroup.addTask(getAnsibleConfigureServerTask(node, getSingle(processTypes)));
+      subTaskGroup.addSubTask(getAnsibleConfigureServerTask(node, getSingle(processTypes)));
     }
-    taskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
-    subTaskGroupQueue.add(taskGroup);
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
   private AnsibleConfigureServers getAnsibleConfigureServerTask(

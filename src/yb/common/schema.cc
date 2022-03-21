@@ -79,7 +79,7 @@ const TypeInfo* ColumnSchema::type_info() const {
 }
 
 bool ColumnSchema::CompTypeInfo(const ColumnSchema &a, const ColumnSchema &b) {
-  return a.type_info()->type() == b.type_info()->type();
+  return a.type_info()->type == b.type_info()->type;
 }
 
 int ColumnSchema::Compare(const void *lhs, const void *rhs) const {
@@ -95,7 +95,7 @@ std::string ColumnSchema::Stringify(const void *cell) const {
 }
 
 void ColumnSchema::DoDebugCellAppend(const void* cell, std::string* ret) const {
-  ret->append(type_info()->name());
+  ret->append(type_info()->name);
   ret->append(" ");
   ret->append(name_);
   ret->append("=");
@@ -116,7 +116,7 @@ string ColumnSchema::ToString() const {
 
 string ColumnSchema::TypeToString() const {
   return strings::Substitute("$0 $1 $2",
-                             type_info()->name(),
+                             type_info()->name,
                              is_nullable_ ? "NULLABLE" : "NOT NULL",
                              is_hash_key_ ? "PARTITION KEY" : "NOT A PARTITION KEY");
 }
@@ -433,7 +433,7 @@ Status Schema::Reset(const vector<ColumnSchema>& cols,
     }
 
     col_offsets_.push_back(off);
-    off += col.type_info()->size();
+    off += col.type_info()->size;
   }
 
   // Add an extra element on the end for the total
@@ -584,43 +584,6 @@ string Schema::ToString() const {
                 cotable_id_.IsNil() ? "" : ("\ncotable_id: " + cotable_id_.ToString()),
                 colocation_id_ == kColocationIdNotSet
                     ? "" : ("\ncolocation_id: " + std::to_string(colocation_id_)));
-}
-
-Status Schema::DecodeRowKey(Slice encoded_key,
-                            uint8_t* buffer,
-                            Arena* arena) const {
-  ContiguousRow row(this, buffer);
-
-  for (size_t col_idx = 0; col_idx < num_key_columns(); ++col_idx) {
-    const ColumnSchema& col = column(col_idx);
-    const KeyEncoder<faststring>& key_encoder = GetKeyEncoder<faststring>(col.type_info());
-    bool is_last = col_idx == (num_key_columns() - 1);
-    RETURN_NOT_OK_PREPEND(key_encoder.Decode(&encoded_key,
-                                             is_last,
-                                             arena,
-                                             row.mutable_cell_ptr(col_idx)),
-                          strings::Substitute("Error decoding composite key component '$0'",
-                                              col.name()));
-  }
-  return Status::OK();
-}
-
-string Schema::DebugEncodedRowKey(Slice encoded_key, StartOrEnd start_or_end) const {
-  if (encoded_key.empty()) {
-    switch (start_or_end) {
-      case START_KEY: return "<start of table>";
-      case END_KEY:   return "<end of table>";
-    }
-  }
-
-  Arena arena(1024, 128 * 1024);
-  uint8_t* buf = reinterpret_cast<uint8_t*>(arena.AllocateBytes(key_byte_size()));
-  Status s = DecodeRowKey(encoded_key, buf, &arena);
-  if (!s.ok()) {
-    return "<invalid key: " + s.ToString(/* no file/line */ false) + ">";
-  }
-  ConstContiguousRow row(this, buf);
-  return DebugRowKey(row);
 }
 
 size_t Schema::memory_footprint_excluding_this() const {

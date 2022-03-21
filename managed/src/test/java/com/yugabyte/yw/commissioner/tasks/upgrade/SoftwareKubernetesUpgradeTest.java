@@ -84,7 +84,8 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
           TaskType.LoadBalancerStateChange,
           TaskType.RunYsqlUpgrade,
           TaskType.UpdateSoftwareVersion,
-          TaskType.UniverseUpdateSucceeded);
+          TaskType.UniverseUpdateSucceeded,
+          TaskType.ModifyBlackList);
 
   @Before
   public void setUp() {
@@ -173,6 +174,7 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
                 "new-version")),
         Json.toJson(
             ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),

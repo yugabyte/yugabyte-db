@@ -76,7 +76,7 @@ Altering tables | ✓ | [`ALTER TABLE`  documentation](https://docs.yugabyte.com
 
  Component | Supported |  Documentation|
 -----------|-----------|---------
- Indexes | ✓ | [Indexes documentation](https://docs.yugabyte.com/latest/explore/indexes-constraints/overview/)|
+ Indexes | ✓ | [Indexes documentation](https://docs.yugabyte.com/latest/explore/indexes-constraints/)|
  GIN indexes | ✓ | [GIN Indexes documentation](https://docs.yugabyte.com/latest/explore/indexes-constraints/gin/)|
  Partial indexes | ✓ | [Partial indexes documentation](https://docs.yugabyte.com/latest/explore/indexes-constraints/partial-index-ysql/)|
  Expression indexes | ✓ | [Expression indexes](https://docs.yugabyte.com/latest/explore/indexes-constraints/expression-index-ysql/)|

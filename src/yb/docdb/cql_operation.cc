@@ -24,6 +24,7 @@
 
 #include "yb/common/index.h"
 #include "yb/common/index_column.h"
+#include "yb/common/jsonb.h"
 #include "yb/common/partition.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_resultset.h"
@@ -241,7 +242,7 @@ CHECKED_STATUS FindMemberForIndex(const QLColumnValuePB& column_value,
 }
 
 CHECKED_STATUS CheckUserTimestampForCollections(const UserTimeMicros user_timestamp) {
-  if (user_timestamp != Value::kInvalidUserTimestamp) {
+  if (user_timestamp != ValueControlFields::kInvalidUserTimestamp) {
     return STATUS(InvalidArgument, "User supplied timestamp is only allowed for "
         "replacing the whole collection");
   }
@@ -622,90 +623,102 @@ Result<HybridTime> QLWriteOperation::FindOldestOverwrittenTimestamp(
 }
 
 Status QLWriteOperation::ApplyForJsonOperators(
-    std::unordered_map<ColumnIdRep, rapidjson::Document>* res_map,
-    const QLColumnValuePB& column_value,
-    const DocOperationApplyData& data,
-    const DocPath& sub_path, const MonoDelta& ttl,
-    const UserTimeMicros& user_timestamp,
     const ColumnSchema& column,
+    const ColumnIdRep col_id,
+    const std::unordered_map<ColumnIdRep, vector<int>>& col_map,
+    const DocOperationApplyData& data,
+    const DocPath& sub_path,
+    const MonoDelta& ttl,
+    const UserTimeMicros& user_timestamp,
     QLTableRow* existing_row,
     bool is_insert) {
   using common::Jsonb;
-  // Read the json column value inorder to perform a read modify write.
-  QLExprResult temp;
-  ColumnIdRep col_id = column_value.column_id();
-  // Do we need to read the column.
-  bool read_needed = res_map->find(col_id) == res_map->end();
-  bool is_null = false;
-  if (read_needed) {
-    auto emplace_result = res_map->emplace(col_id, rapidjson::Document());
-    RETURN_NOT_OK(existing_row->ReadColumn(column_value.column_id(), temp.Writer()));
-    const auto& ql_value = temp.Value();
-    if (!IsNull(ql_value)) {
-      Jsonb jsonb(std::move(ql_value.jsonb_value()));
-      RETURN_NOT_OK(jsonb.ToRapidJson(&emplace_result.first->second));
-    } else {
-      is_null = true;
+  rapidjson::Document document;
+  QLValue qlv;
+  bool read_needed = true;
+  for (int idx : col_map.find(col_id)->second) {
+    const auto& column_value = request_.column_values(idx);
+    if (column_value.column_id() != col_id) continue;
+    if (read_needed) {
+      // Read the json column value in order to perform a read modify write.
+      QLExprResult temp;
+      RETURN_NOT_OK(existing_row->ReadColumn(col_id, temp.Writer()));
+      const auto& ql_value = temp.Value();
+      if (!IsNull(ql_value)) {
+        Jsonb jsonb(std::move(ql_value.jsonb_value()));
+        RETURN_NOT_OK(jsonb.ToRapidJson(&document));
+      } else {
+        if (!is_insert && column_value.json_args_size() > 1) {
+          return STATUS_SUBSTITUTE(QLError, "JSON path depth should be 1 for upsert",
+            column_value.ShortDebugString());
+        }
+        common::Jsonb empty_jsonb;
+        RETURN_NOT_OK(empty_jsonb.FromString("{}"));
+        QLTableColumn& column = existing_row->AllocColumn(column_value.column_id());
+        column.value.set_jsonb_value(empty_jsonb.MoveSerializedJsonb());
+
+        Jsonb jsonb(column.value.jsonb_value());
+        RETURN_NOT_OK(jsonb.ToRapidJson(&document));
+      }
     }
-  }
-  auto iter = res_map->find(col_id);
-  if (is_null) {
-    if (!is_insert && column_value.json_args_size() > 1) {
-      return STATUS_SUBSTITUTE(QLError, "JSON path depth should be 1 for upsert",
-        column_value.ShortDebugString());
-    }
-    common::Jsonb empty_jsonb;
-    RETURN_NOT_OK(empty_jsonb.FromString("{}"));
-    QLTableColumn& column = existing_row->AllocColumn(column_value.column_id());
-    column.value.set_jsonb_value(empty_jsonb.MoveSerializedJsonb());
+    read_needed = false;
 
-    Jsonb jsonb(column.value.jsonb_value());
-    RETURN_NOT_OK(jsonb.ToRapidJson(&iter->second));
-  }
+    // Deserialize the rhs.
+    Jsonb rhs(std::move(column_value.expr().value().jsonb_value()));
+    rapidjson::Document rhs_doc(&document.GetAllocator());
+    RETURN_NOT_OK(rhs.ToRapidJson(&rhs_doc));
 
-  // Deserialize the rhs.
-  Jsonb rhs(std::move(column_value.expr().value().jsonb_value()));
-  rapidjson::Document rhs_doc(&iter->second.GetAllocator());
-  RETURN_NOT_OK(rhs.ToRapidJson(&rhs_doc));
+    // Update the json value.
+    rapidjson::Value::MemberIterator memberit;
+    rapidjson::Value::ValueIterator valueit;
+    bool last_elem_object;
+    rapidjson::Value* node = &document;
 
-  // Update the json value.
-  rapidjson::Value::MemberIterator memberit;
-  rapidjson::Value::ValueIterator valueit;
-  bool last_elem_object;
-  rapidjson::Value* node = &iter->second;
-
-  int i = 0;
-  auto status = FindMemberForIndex(column_value, i, node, &memberit, &valueit,
-      &last_elem_object, is_insert);
-  for (i = 1; i < column_value.json_args_size() && status.ok(); i++) {
-    node = (last_elem_object) ? &(memberit->value) : &(*valueit);
-    status = FindMemberForIndex(column_value, i, node, &memberit, &valueit,
+    int i = 0;
+    auto status = FindMemberForIndex(column_value, i, node, &memberit, &valueit,
         &last_elem_object, is_insert);
-  }
-
-  bool update_missing = false;
-  if (is_insert) {
-    RETURN_NOT_OK(status);
-  } else {
-    update_missing = !status.ok();
-  }
-
-  if (update_missing) {
-    // NOTE: lhs path cannot exceed by more than one hop
-    if (last_elem_object && i == column_value.json_args_size()) {
-      auto val = column_value.json_args(i - 1).operand().value().string_value();
-      rapidjson::Value v(
-          val.c_str(),
-          narrow_cast<rapidjson::SizeType>(val.size()), iter->second.GetAllocator());
-      node->AddMember(v, rhs_doc, iter->second.GetAllocator());
-    } else {
-      RETURN_NOT_OK(status);
+    for (i = 1; i < column_value.json_args_size() && status.ok(); i++) {
+      node = (last_elem_object) ? &(memberit->value) : &(*valueit);
+      status = FindMemberForIndex(column_value, i, node, &memberit, &valueit,
+          &last_elem_object, is_insert);
     }
-  } else if (last_elem_object) {
-    memberit->value = rhs_doc.Move();
-  } else {
-    *valueit = rhs_doc.Move();
-  }
+
+    bool update_missing = false;
+    if (is_insert) {
+      RETURN_NOT_OK(status);
+    } else {
+      update_missing = !status.ok();
+    }
+
+    if (update_missing) {
+      // NOTE: lhs path cannot exceed by more than one hop
+      if (last_elem_object && i == column_value.json_args_size()) {
+        auto val = column_value.json_args(i - 1).operand().value().string_value();
+        rapidjson::Value v(
+            val.c_str(), narrow_cast<rapidjson::SizeType>(val.size()), document.GetAllocator());
+        node->AddMember(v, rhs_doc, document.GetAllocator());
+      } else {
+        RETURN_NOT_OK(status);
+      }
+    } else if (last_elem_object) {
+      memberit->value = rhs_doc.Move();
+    } else {
+      *valueit = rhs_doc.Move();
+    }
+  } // end of column processing
+  // Now write the new json value back.
+  Jsonb jsonb_result;
+  RETURN_NOT_OK(jsonb_result.FromRapidJson(document));
+  // Update the current row as well so that we can accumulate the result of multiple json
+  // operations and write the final value.
+  *(qlv.mutable_jsonb_value()) = std::move(jsonb_result.MoveSerializedJsonb());
+
+  existing_row->AllocColumn(col_id).value = qlv.value();
+
+  ValueRef value_ref(qlv.value(), column.sorting_type(), yb::bfql::TSOpcode::kScalarInsert);
+  RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
+      sub_path, value_ref, data.read_time, data.deadline, request_.query_id(), ttl,
+      user_timestamp));
 
   return Status::OK();
 }
@@ -719,9 +732,8 @@ Status QLWriteOperation::ApplyForSubscriptArgs(const QLColumnValuePB& column_val
                                                DocPath* sub_path) {
   QLExprResult expr_result;
   RETURN_NOT_OK(EvalExpr(column_value.expr(), existing_row, expr_result.Writer()));
-  const yb::bfql::TSOpcode write_instr = GetTSWriteInstruction(column_value.expr());
-  const SubDocument& sub_doc =
-      SubDocument::FromQLValuePB(expr_result.Value(), column.sorting_type(), write_instr);
+  ValueRef value(
+      expr_result.Value(), column.sorting_type(), GetTSWriteInstruction(column_value.expr()));
   RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
 
   // Setting the value for a sub-column
@@ -737,7 +749,7 @@ Status QLWriteOperation::ApplyForSubscriptArgs(const QLColumnValuePB& column_val
           SortingType::kNotSpecified);
       sub_path->AddSubKey(pv);
       RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-          *sub_path, sub_doc, data.read_time, data.deadline,
+          *sub_path, value, data.read_time, data.deadline,
           request_.query_id(), ttl, user_timestamp));
       break;
     }
@@ -748,7 +760,7 @@ Status QLWriteOperation::ApplyForSubscriptArgs(const QLColumnValuePB& column_val
 
       int target_cql_index = column_value.subscript_args(0).value().int32_value();
       RETURN_NOT_OK(data.doc_write_batch->ReplaceCqlInList(
-          *sub_path, target_cql_index, sub_doc, data.read_time, data.deadline, request_.query_id(),
+          *sub_path, target_cql_index, value, data.read_time, data.deadline, request_.query_id(),
           default_ttl, ttl));
       break;
     }
@@ -773,14 +785,13 @@ Status QLWriteOperation::ApplyForRegularColumns(const QLColumnValuePB& column_va
   // Typical case, setting a columns value
   QLExprResult expr_result;
   RETURN_NOT_OK(EvalExpr(column_value.expr(), existing_row, expr_result.Writer()));
-  const TSOpcode write_instr = GetTSWriteInstruction(column_value.expr());
-  const SubDocument& sub_doc =
-      SubDocument::FromQLValuePB(expr_result.Value(), column.sorting_type(), write_instr);
-  switch (write_instr) {
+  auto write_instruction = GetTSWriteInstruction(column_value.expr());
+  ValueRef value(expr_result.Value(), column.sorting_type(), write_instruction);
+  switch (write_instruction) {
     case TSOpcode::kToJson: FALLTHROUGH_INTENDED;
     case TSOpcode::kScalarInsert:
           RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-              sub_path, sub_doc, data.read_time, data.deadline,
+              sub_path, value, data.read_time, data.deadline,
               request_.query_id(), ttl, user_timestamp));
       break;
     case TSOpcode::kMapExtend:
@@ -789,15 +800,15 @@ Status QLWriteOperation::ApplyForRegularColumns(const QLColumnValuePB& column_va
     case TSOpcode::kSetRemove:
           RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
           RETURN_NOT_OK(data.doc_write_batch->ExtendSubDocument(
-            sub_path, sub_doc, data.read_time, data.deadline, request_.query_id(), ttl));
+            sub_path, value, data.read_time, data.deadline, request_.query_id(), ttl));
       break;
     case TSOpcode::kListPrepend:
-          sub_doc.SetExtendOrder(ListExtendOrder::PREPEND_BLOCK);
+          value.set_list_extend_order(ListExtendOrder::PREPEND_BLOCK);
           FALLTHROUGH_INTENDED;
     case TSOpcode::kListAppend:
           RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
           RETURN_NOT_OK(data.doc_write_batch->ExtendList(
-              sub_path, sub_doc, data.read_time, data.deadline, request_.query_id(), ttl));
+              sub_path, value, data.read_time, data.deadline, request_.query_id(), ttl));
       break;
     case TSOpcode::kListRemove:
       // TODO(akashnil or mihnea) this should call RemoveFromList once thats implemented
@@ -806,11 +817,11 @@ Status QLWriteOperation::ApplyForRegularColumns(const QLColumnValuePB& column_va
       // from EvalQLExpressionPB should be uncommented to enable this optimization.
           RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
           RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-              sub_path, sub_doc, data.read_time, data.deadline,
+              sub_path, value, data.read_time, data.deadline,
               request_.query_id(), ttl, user_timestamp));
       break;
     default:
-      LOG(FATAL) << "Unsupported operation: " << static_cast<int>(write_instr);
+      LOG(FATAL) << "Unsupported operation: " << static_cast<int>(write_instruction);
       break;
   }
 
@@ -868,7 +879,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
   const MonoDelta ttl = request_ttl();
 
   const UserTimeMicros user_timestamp = request_.has_user_timestamp_usec() ?
-      request_.user_timestamp_usec() : Value::kInvalidUserTimestamp;
+      request_.user_timestamp_usec() : ValueControlFields::kInvalidUserTimestamp;
 
   // Initialize the new row being written to either the existing row if read, or just populate
   // the primary key.
@@ -900,13 +911,18 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
       auto is_insert = request_.type() == QLWriteRequestPB::QL_STMT_INSERT;
       if (is_insert && encoded_pk_doc_key_) {
         const DocPath sub_path(encoded_pk_doc_key_.as_slice(), PrimitiveValue::kLivenessColumn);
-        const auto value = Value(PrimitiveValue(), ttl, user_timestamp);
+        const auto control_fields = ValueControlFields {
+          .ttl = ttl,
+          .user_timestamp = user_timestamp,
+        };
         RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
-            sub_path, value, data.read_time, data.deadline, request_.query_id()));
+            sub_path, control_fields, ValueRef(ValueType::kNullLow),
+            data.read_time, data.deadline, request_.query_id()));
       }
 
-      std::unordered_map<ColumnIdRep, rapidjson::Document> res_map;
-      for (const auto& column_value : request_.column_values()) {
+      std::unordered_map<ColumnIdRep, vector<int>> col_map;
+      for (int idx = 0; idx < request_.column_values_size(); idx++) {
+        const auto& column_value = request_.column_values(idx);
         if (!column_value.has_column_id()) {
           return STATUS_FORMAT(InvalidArgument, "column id missing: $0",
                                column_value.DebugString());
@@ -923,8 +939,13 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
 
         QLValue expr_result;
         if (!column_value.json_args().empty()) {
-          RETURN_NOT_OK(ApplyForJsonOperators(&res_map, column_value, data, sub_path, ttl,
-                                              user_timestamp, column, &new_row, is_insert));
+          auto iter = col_map.find(column_value.column_id());
+          if (iter == col_map.end()) {
+            // record column id of jsonb column
+            col_map.emplace(column_value.column_id(), vector<int>());
+            iter = col_map.find(column_value.column_id());
+          }
+          iter->second.emplace_back(idx);
         } else if (!column_value.subscript_args().empty()) {
           RETURN_NOT_OK(ApplyForSubscriptArgs(column_value, existing_row, data, ttl,
                                               user_timestamp, column, &sub_path));
@@ -933,8 +954,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
                                                user_timestamp, column, column_id, &new_row));
         }
       }
-      // go over the map and generate (aggregated) SubDocument
-      for (auto& entry : res_map) {
+      for (const auto& entry : col_map) {
         const ColumnId column_id(entry.first);
         const auto maybe_column = schema_->column_by_id(column_id);
         RETURN_NOT_OK(maybe_column);
@@ -943,22 +963,9 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
             column.is_static() ?
                 encoded_hashed_doc_key_.as_slice() : encoded_pk_doc_key_.as_slice(),
             PrimitiveValue(column_id));
-
-        // Now write the new json value back.
-        common::Jsonb jsonb_result;
-        RETURN_NOT_OK(jsonb_result.FromRapidJson(entry.second));
-        // Update the current row with the final value.
-        QLValue val;
-        *(val.mutable_jsonb_value()) = std::move(jsonb_result.MoveSerializedJsonb());
-
-        const SubDocument& sub_doc =
-            SubDocument::FromQLValuePB(val.value(), column.sorting_type(),
-                                 yb::bfql::TSOpcode::kScalarInsert);
-        RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-            sub_path, sub_doc, data.read_time, data.deadline,
-            request_.query_id(), ttl, user_timestamp));
-
-        new_row.AllocColumn(column_id).value = val.value();
+        RETURN_NOT_OK(ApplyForJsonOperators(
+            column, entry.first, col_map, data, sub_path, ttl, user_timestamp, &new_row,
+            is_insert));
       }
 
       if (update_indexes_) {
@@ -1172,7 +1179,8 @@ Result<bool> QLWriteOperation::IsRowDeleted(const QLTableRow& existing_row,
 }
 
 MonoDelta QLWriteOperation::request_ttl() const {
-  return request_.has_ttl() ? MonoDelta::FromMilliseconds(request_.ttl()) : Value::kMaxTtl;
+  return request_.has_ttl() ? MonoDelta::FromMilliseconds(request_.ttl())
+                            : ValueControlFields::kMaxTtl;
 }
 
 namespace {

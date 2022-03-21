@@ -122,6 +122,7 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
     ExternalPrometheusMetricsCb;
 
   scoped_refptr<Counter> FindOrCreateCounter(const CounterPrototype* proto);
+  scoped_refptr<Counter> FindOrCreateCounter(std::unique_ptr<CounterPrototype> proto);
   scoped_refptr<MillisLag> FindOrCreateMillisLag(const MillisLagPrototype* proto);
   scoped_refptr<AtomicMillisLag> FindOrCreateAtomicMillisLag(const MillisLagPrototype* proto);
   scoped_refptr<Histogram> FindOrCreateHistogram(const HistogramPrototype* proto);

@@ -12,8 +12,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.SubTaskGroup;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
+import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudAccessKeySetup;
@@ -52,6 +51,9 @@ public class CloudBootstrap extends CloudTaskBase {
       taskParams.sshPrivateKeyContent = provider.sshPrivateKeyContent;
       taskParams.sshUser = provider.sshUser;
       taskParams.overrideKeyValidate = provider.overrideKeyValidate;
+      taskParams.setUpChrony = provider.setUpChrony;
+      taskParams.ntpServers = provider.ntpServers;
+      taskParams.showSetUpChrony = true; // For all new providers, we should show setUpChrony
       taskParams.perRegionMetadata =
           provider
               .regions
@@ -166,6 +168,13 @@ public class CloudBootstrap extends CloudTaskBase {
     public List<String> customHostCidrs = new ArrayList<>();
     // TODO(bogdan): only used/needed for GCP.
     public String destVpcId = null;
+
+    public boolean setUpChrony = false;
+    public List<String> ntpServers = new ArrayList<>();
+
+    // Dictates whether or not to show the set up NTP option in the provider UI
+    // False by default so the old providers can continue to show useTimeSync
+    public boolean showSetUpChrony = false;
   }
 
   // TODO: these fields should probably be persisted with provider but currently these are lost
@@ -178,7 +187,6 @@ public class CloudBootstrap extends CloudTaskBase {
 
   @Override
   public void run() {
-    subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
     Provider p = Provider.get(taskParams().providerUUID);
     if (p.code.equals(Common.CloudType.gcp.toString())
         || p.code.equals(Common.CloudType.aws.toString())
@@ -204,25 +212,25 @@ public class CloudBootstrap extends CloudTaskBase {
     createInitializerTask()
         .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.InitializeCloudMetadata);
 
-    subTaskGroupQueue.run();
+    getRunnableTask().runSubTasks();
   }
 
   public SubTaskGroup createCloudSetupTask() {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("Create Cloud setup task", executor);
-
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("Create Cloud setup task", executor);
     CloudSetup.Params params = new CloudSetup.Params();
     params.providerUUID = taskParams().providerUUID;
     params.customPayload = Json.stringify(Json.toJson(taskParams()));
     CloudSetup task = createTask(CloudSetup.class);
     task.initialize(params);
-    subTaskGroup.addTask(task);
-    subTaskGroupQueue.add(subTaskGroup);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
   public SubTaskGroup createRegionSetupTask(String regionCode, Params.PerRegionMetadata metadata) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("Create Region task", executor);
-
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("Create Region task", executor);
     CloudRegionSetup.Params params = new CloudRegionSetup.Params();
     params.providerUUID = taskParams().providerUUID;
     params.regionCode = regionCode;
@@ -231,13 +239,13 @@ public class CloudBootstrap extends CloudTaskBase {
 
     CloudRegionSetup task = createTask(CloudRegionSetup.class);
     task.initialize(params);
-    subTaskGroup.addTask(task);
-    subTaskGroupQueue.add(subTaskGroup);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
   public SubTaskGroup createAccessKeySetupTask(String regionCode) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("Create Access Key", executor);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("Create Access Key", executor);
     CloudAccessKeySetup.Params params = new CloudAccessKeySetup.Params();
     params.providerUUID = taskParams().providerUUID;
     params.regionCode = regionCode;
@@ -247,21 +255,25 @@ public class CloudBootstrap extends CloudTaskBase {
     params.sshUser = taskParams().sshUser;
     params.sshPort = taskParams().sshPort;
     params.airGapInstall = taskParams().airGapInstall;
+    params.setUpChrony = taskParams().setUpChrony;
+    params.ntpServers = taskParams().ntpServers;
+    params.showSetUpChrony = taskParams().showSetUpChrony;
     CloudAccessKeySetup task = createTask(CloudAccessKeySetup.class);
     task.initialize(params);
-    subTaskGroup.addTask(task);
-    subTaskGroupQueue.add(subTaskGroup);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
   public SubTaskGroup createInitializerTask() {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("Create Cloud initializer task", executor);
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("Create Cloud initializer task", executor);
     CloudInitializer.Params params = new CloudInitializer.Params();
     params.providerUUID = taskParams().providerUUID;
     CloudInitializer task = createTask(CloudInitializer.class);
     task.initialize(params);
-    subTaskGroup.addTask(task);
-    subTaskGroupQueue.add(subTaskGroup);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 }

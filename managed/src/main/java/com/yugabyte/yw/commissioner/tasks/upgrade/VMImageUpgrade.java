@@ -3,7 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroup;
+import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
@@ -129,7 +129,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
   private SubTaskGroup createRootVolumeCreationTasks(List<NodeDetails> nodes) {
     Map<UUID, List<NodeDetails>> rootVolumesPerAZ =
         nodes.stream().collect(Collectors.groupingBy(n -> n.azUuid));
-    SubTaskGroup subTaskGroup = new SubTaskGroup("CreateRootVolumes", executor);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("CreateRootVolumes", executor);
 
     rootVolumesPerAZ.forEach(
         (key, value) -> {
@@ -168,15 +168,15 @@ public class VMImageUpgrade extends UpgradeTaskBase {
 
           CreateRootVolumes task = createTask(CreateRootVolumes.class);
           task.initialize(params);
-          subTaskGroup.addTask(task);
+          subTaskGroup.addSubTask(task);
         });
 
-    subTaskGroupQueue.add(subTaskGroup);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
   private SubTaskGroup createRootVolumeReplacementTask(NodeDetails node) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("ReplaceRootVolume", executor);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("ReplaceRootVolume", executor);
     ReplaceRootVolume.Params replaceParams = new ReplaceRootVolume.Params();
     replaceParams.nodeName = node.nodeName;
     replaceParams.azUuid = node.azUuid;
@@ -185,14 +185,14 @@ public class VMImageUpgrade extends UpgradeTaskBase {
 
     ReplaceRootVolume replaceDiskTask = createTask(ReplaceRootVolume.class);
     replaceDiskTask.initialize(replaceParams);
-    subTaskGroup.addTask(replaceDiskTask);
+    subTaskGroup.addSubTask(replaceDiskTask);
 
-    subTaskGroupQueue.add(subTaskGroup);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
   private SubTaskGroup createNodeDetailsUpdateTask(NodeDetails node) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("UpdateNodeDetails", executor);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("UpdateNodeDetails", executor);
     UpdateNodeDetails.Params updateNodeDetailsParams = new UpdateNodeDetails.Params();
     updateNodeDetailsParams.universeUUID = taskParams().universeUUID;
     updateNodeDetailsParams.azUuid = node.azUuid;
@@ -202,9 +202,9 @@ public class VMImageUpgrade extends UpgradeTaskBase {
     UpdateNodeDetails updateNodeTask = createTask(UpdateNodeDetails.class);
     updateNodeTask.initialize(updateNodeDetailsParams);
     updateNodeTask.setUserTaskUUID(userTaskUUID);
-    subTaskGroup.addTask(updateNodeTask);
+    subTaskGroup.addSubTask(updateNodeTask);
 
-    subTaskGroupQueue.add(subTaskGroup);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 }

@@ -6,8 +6,8 @@ aliases:
 section: INTEGRATIONS
 menu:
   latest:
-    identifier: form
-    weight: 650
+    identifier: gorm
+    weight: 571
 isTocNested: true
 showAsideToc: true
 ---
@@ -19,7 +19,7 @@ This document describes how to use [GORM](https://gorm.io/index.html), an object
 Before you can start using GORM, ensure that you have the following available:
 
 - YugabyteDB version 2.6 or later (see [YugabyteDB Quick Start Guide](/latest/quick-start/)).
-- Yugabyte cluster (see [Create a local cluster](/latest/quick-start/create-local-cluster/macos/)). 
+- Yugabyte cluster (see [Create a local cluster](/latest/quick-start/create-local-cluster/macos/)).
 - Python version 2.7 or later.
 - Go version 1.8 or later.
 
@@ -63,21 +63,21 @@ You can start using GORM with YugabyteDB as follows:
 
   ```go
   package main
-   
+
   import (
     "fmt"
-   
+
    "github.com/jinzhu/gorm"
    _ "github.com/jinzhu/gorm/dialects/postgres"
   )
-   
+
   type Employee struct {
    Id       int64  `gorm:"primary_key"`
    Name     string `gorm:"size:255"`
    Age      int64
    Language string `gorm:"size:255"`
   }
-   
+
   const (
    host     = "localhost"
    port     = 5433
@@ -85,9 +85,9 @@ You can start using GORM with YugabyteDB as follows:
    password = "yugabyte"
    dbname   = "yugabyte"
   )
-   
+
   var db *gorm.DB
-   
+
   func main() {
    conn := fmt.Sprintf("host= %s port = %d user = %s password = %s dbname = %s sslmode=disable", host, port, user, password, dbname)
    var err error
@@ -95,16 +95,16 @@ You can start using GORM with YugabyteDB as follows:
    if err != nil {
      panic(err)
    }
-   
+
    defer db.Close()
-   
+
    // Create table
    db.Debug().AutoMigrate(&Employee{})
-   
+
    // Insert value
    db.Create(&Employee{Id: 1, Name: "John", Age: 35, Language: "Golang-GORM"})
    db.Create(&Employee{Id: 2, Name: "Smith", Age: 24, Language: "Golang-GORM"})
-    
+
    // Display input data
    var employees []Employee
    db.Find(&employees)
@@ -112,10 +112,10 @@ You can start using GORM with YugabyteDB as follows:
      fmt.Printf("Employee ID:%d\nName:%s\nAge:%d\nLanguage:%s\n", employee.Id, employee.Name, employee.Age, employee.Language)
      fmt.Printf("--------------------------------------------------------------\n")
    }
-   
+
   }
   ```
-  
+
 - Configure YugabyteDB properties, as per your requirements. The default user and password for YugabyteDB is yugabyte, and the default port is 5433.
 
 - Run GORM by executing the following command:

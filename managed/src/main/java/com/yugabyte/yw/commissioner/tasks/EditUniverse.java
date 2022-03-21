@@ -15,7 +15,6 @@ import static com.yugabyte.yw.forms.UniverseTaskParams.isFirstTryForTask;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -63,8 +62,6 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
         // Verify the task params.
         verifyParams(UniverseOpType.EDIT);
       }
-      // Create the task list sequence.
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
       // Update the universe DB with the changes to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
@@ -152,7 +149,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       createMarkUniverseUpdateSuccessTasks()
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       // Run all the tasks.
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       errorString = t.getMessage();
@@ -400,7 +397,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     // Finally send destroy to the old set of nodes and remove them from this universe.
     if (!nodesToBeRemoved.isEmpty()) {
       // Set the node states to Removing.
-      createSetNodeStateTasks(nodesToBeRemoved, NodeDetails.NodeState.Removing)
+      createSetNodeStateTasks(nodesToBeRemoved, NodeDetails.NodeState.Terminating)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
       createDestroyServerTasks(
               nodesToBeRemoved,

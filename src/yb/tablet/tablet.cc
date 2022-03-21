@@ -472,7 +472,7 @@ Tablet::Tablet(const TabletInitData& data)
 
 Tablet::~Tablet() {
   if (StartShutdown()) {
-    CompleteShutdown();
+    CompleteShutdown(DisableFlushOnShutdown::kFalse);
   } else {
     auto state = state_;
     LOG_IF_WITH_PREFIX(DFATAL, state != kShutdown)
@@ -681,7 +681,8 @@ Status Tablet::OpenKeyValueTablet() {
   // for compactions.
   rocksdb_options.max_file_size_for_compaction = MakeMaxFileSizeWithTableTTLFunction([this] {
     if (FLAGS_rocksdb_max_file_size_for_compaction > 0 &&
-        retention_policy_->GetRetentionDirective().table_ttl != docdb::Value::kMaxTtl) {
+        retention_policy_->GetRetentionDirective().table_ttl !=
+            docdb::ValueControlFields::kMaxTtl) {
       return FLAGS_rocksdb_max_file_size_for_compaction;
     }
     return std::numeric_limits<uint64_t>::max();
@@ -916,7 +917,7 @@ void Tablet::MarkFinishedBootstrapping() {
   state_ = kOpen;
 }
 
-bool Tablet::StartShutdown(const IsDropTable is_drop_table) {
+bool Tablet::StartShutdown() {
   LOG_WITH_PREFIX(INFO) << __func__;
 
   bool expected = false;
@@ -931,12 +932,12 @@ bool Tablet::StartShutdown(const IsDropTable is_drop_table) {
   return true;
 }
 
-void Tablet::CompleteShutdown(IsDropTable is_drop_table) {
-  LOG_WITH_PREFIX(INFO) << __func__ << "(" << is_drop_table << ")";
+void Tablet::CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown) {
+  LOG_WITH_PREFIX(INFO) << __func__;
 
   StartShutdown();
 
-  auto op_pauses = StartShutdownRocksDBs(DisableFlushOnShutdown(is_drop_table), Stop::kTrue);
+  auto op_pauses = StartShutdownRocksDBs(disable_flush_on_shutdown, Stop::kTrue);
   if (!op_pauses.ok()) {
     LOG_WITH_PREFIX(DFATAL) << "Failed to shut down: " << op_pauses.status();
     return;
@@ -1148,7 +1149,7 @@ Status Tablet::ApplyOperation(
   if (frontiers_ptr) {
     auto ttl = write_batch.has_ttl()
         ? MonoDelta::FromNanoseconds(write_batch.ttl())
-        : docdb::Value::kMaxTtl;
+        : docdb::ValueControlFields::kMaxTtl;
     frontiers_ptr->Largest().set_max_value_level_ttl_expiration_time(
         docdb::FileExpirationFromValueTTL(operation.hybrid_time(), ttl));
   }

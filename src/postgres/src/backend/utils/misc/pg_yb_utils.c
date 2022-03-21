@@ -122,7 +122,14 @@ CheckIsYBSupportedRelationByKind(char relkind)
 bool
 IsYBRelation(Relation relation)
 {
-	if (!IsYugaByteEnabled()) return false;
+	/*
+	 * NULL relation is possible if regular ForeignScan is confused for
+	 * Yugabyte sequential scan, which is backed by ForeignScan, too.
+	 * Rather than performing probably not trivial and unreliable checks by
+	 * the caller to distinguish them, we allow NULL argument here.
+	 */
+	if (!IsYugaByteEnabled() || !relation)
+		return false;
 
 	const char relkind = relation->rd_rel->relkind;
 
@@ -1549,7 +1556,7 @@ YbGetTableDescAndProps(Oid table_oid,
 		HandleYBStatus(YBCPgTableExists(MyDatabaseId, table_oid, &exists_in_yb));
 		if (!exists_in_yb)
 		{
-			desc = NULL;
+			*desc = NULL;
 			return;
 		}
 	}
@@ -2127,7 +2134,7 @@ void YBSetParentDeathSignal()
 }
 
 Oid YbGetStorageRelid(Relation relation) {
-	if (relation->rd_rel->relkind == RELKIND_MATVIEW && 
+	if (relation->rd_rel->relkind == RELKIND_MATVIEW &&
 		relation->rd_rel->relfilenode != InvalidOid) {
 		return relation->rd_rel->relfilenode;
 	}
@@ -2136,4 +2143,22 @@ Oid YbGetStorageRelid(Relation relation) {
 
 bool IsYbDbAdminUser(Oid member) {
 	return IsYugaByteEnabled() && has_privs_of_role(member, DEFAULT_ROLE_YB_DB_ADMIN);
+}
+
+void YbCheckUnsupportedSystemColumns(Var *var, const char *colname, RangeTblEntry *rte) {
+	if (rte->relkind == RELKIND_FOREIGN_TABLE)
+		return;
+	switch (var->varattno)
+	{
+		case SelfItemPointerAttributeNumber:
+		case MinTransactionIdAttributeNumber:
+		case MinCommandIdAttributeNumber:
+		case MaxTransactionIdAttributeNumber:
+		case MaxCommandIdAttributeNumber:
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					errmsg("System column \"%s\" is not supported yet", colname)));
+		default:
+			break;
+	}
 }
