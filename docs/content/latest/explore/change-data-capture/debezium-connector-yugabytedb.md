@@ -644,7 +644,7 @@ When a row is deleted, the _delete_ event value still works with log compaction,
 
 {{< warning title="Warning" >}}
 
-YugabyteDB doesn't yet support DROP TABLE and TRUNCATE TABLE commands, and the behavior of these commands while streaming data from CDC undefined. If you need to drop or truncate a table, delete the stream ID using [yb-admin](../../admin/yb-admin.md#change-data-capture-cdc-commands). Also, see the [limitations](../../cdc/change-data-capture.md#limitations) section.
+YugabyteDB doesn't yet support DROP TABLE and TRUNCATE TABLE commands, and the behavior of these commands while streaming data from CDC undefined. If you need to drop or truncate a table, delete the stream ID using [yb-admin](../../admin/yb-admin.md#change-data-capture-cdc-commands). Also, see the [limitations](../../explore/change-data-capture/_index.md#limitations) section.
 
 {{< /warning >}}
 

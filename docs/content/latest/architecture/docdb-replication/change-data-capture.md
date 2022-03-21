@@ -50,7 +50,7 @@ In the sections below, the terms "data center", "cluster", and "universe" are us
 
 ## Process architecture
 
-```txt
+```goat
                           ╔═══════════════════════════════════════════╗
                           ║  Node #1                                  ║
                           ║  ╔════════════════╗ ╔══════════════════╗  ║
