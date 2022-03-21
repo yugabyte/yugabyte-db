@@ -160,8 +160,6 @@ class PgMiniTest : public PgMiniTestBase {
 
   void DestroyTable(std::string table_name);
 
-  void GetTableIDFromTableName(const std::string table_name, std::string* table_id);
-
   void StartReadWriteThreads(std::string table_name, TestThreadHolder *thread_holder);
 
   void TestConcurrentDeleteRowAndUpdateColumn(bool select_before_update);
@@ -2153,19 +2151,6 @@ void PgMiniTest::DestroyTable(std::string table_name) {
   ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", table_name));
 }
 
-void PgMiniTest::GetTableIDFromTableName(const std::string table_name, std::string* table_id) {
-  // Get YBClient handler and tablet ID. Using this we can get the number of tablets before starting
-  // the test and before the test ends. With this we can ensure that tablet splitting has occurred.
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
-  const auto tables = ASSERT_RESULT(client->ListTables());
-  for (const auto& table : tables) {
-    if (table.has_table() && table.table_name() == "update_pk_complex_two_hash_one_range_keys") {
-      table_id->assign(table.table_id());
-      break;
-    }
-  }
-}
-
 void PgMiniTest::StartReadWriteThreads(const std::string table_name,
     TestThreadHolder *thread_holder) {
   // Writer thread that does parallel writes into table
@@ -2200,9 +2185,8 @@ TEST_F_EX(
   std::string table_name = "update_pk_complex_two_hash_one_range_keys";
   CreateTableAndInitialize(table_name, 1);
 
-  std::string table_id;
-  GetTableIDFromTableName(table_name, &table_id);
-  int start_num_tablets = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id).size();
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName(table_name));
+  auto start_num_tablets = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id).size();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
 
   // Insert elements into the table using a parallel thread
@@ -2236,7 +2220,7 @@ TEST_F_EX(
   // upper_bound for the tablet is empty to empty. Hence, to test both situations we run this test
   // with one tablet and three tablets respectively.
   CreateTableAndInitialize(table_name, 3);
-  GetTableIDFromTableName(table_name, &table_id);
+  table_id = ASSERT_RESULT(GetTableIDFromTableName(table_name));
   start_num_tablets = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id).size();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
 

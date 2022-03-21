@@ -58,6 +58,8 @@ class PgMiniTestBase : public YBMiniClusterTestBase<MiniCluster> {
     return pg_host_port_;
   }
 
+  Result<TableId> GetTableIDFromTableName(const std::string table_name);
+
  private:
   std::unique_ptr<PgSupervisor> pg_supervisor_;
   HostPort pg_host_port_;

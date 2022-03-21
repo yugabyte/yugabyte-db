@@ -195,6 +195,10 @@ message DeleteTabletRequestPB {
 
   // Hide tablet instead of deleting it.
   optional bool hide_only = 6;
+
+  // Tablet server should trigger abort of all transactions it participates in upon shutting down
+  // this tablet. Should generally be set to true in the case of a dropped table.
+  optional bool should_abort_active_txns = 7;
 }
 
 message DeleteTabletResponsePB {

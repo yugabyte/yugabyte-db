@@ -13,6 +13,7 @@
 
 #include "yb/master/async_rpc_tasks.h"
 
+#include "yb/common/common_types.pb.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.proxy.h"
@@ -727,6 +728,9 @@ bool AsyncDeleteReplica::SendRequest(int attempt) {
   if (cas_config_opid_index_less_or_equal_) {
     req.set_cas_config_opid_index_less_or_equal(*cas_config_opid_index_less_or_equal_);
   }
+  bool should_abort_active_txns = !table() ||
+                                  table()->LockForRead()->started_deleting();
+  req.set_should_abort_active_txns(should_abort_active_txns);
 
   ts_admin_proxy_->DeleteTabletAsync(req, &resp_, &rpc_, BindRpcCallback());
   VLOG_WITH_PREFIX(1) << "Send delete tablet request to " << permanent_uuid_
