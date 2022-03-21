@@ -47,6 +47,7 @@
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stringprintf.h"
+#include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/substitute.h"
@@ -880,31 +881,51 @@ string MasterPathHandlers::GetParentTableOid(scoped_refptr<TableInfo> parent_tab
   return std::to_string(*parent_result);
 }
 
-// TODO(alex): This needs a major rework.
-void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
-                                              Webserver::WebResponse* resp,
-                                              bool only_user_tables) {
-  std::stringstream *output = &resp->output;
+string GetOnDiskSizeInHtml(const TabletReplicaDriveInfo &info) {
+  std::ostringstream disk_size_html;
+  disk_size_html << "<ul>"
+                 << "<li>" << "Total: "
+                 << HumanReadableNumBytes::ToString(info.sst_files_size + info.wal_files_size)
+                 << "<li>" << "WAL Files: "
+                 << HumanReadableNumBytes::ToString(info.wal_files_size)
+                 << "<li>" << "SST Files: "
+                 << HumanReadableNumBytes::ToString(info.sst_files_size)
+                 << "<li>" << "SST Files Uncompressed: "
+                 << HumanReadableNumBytes::ToString(info.uncompressed_sst_file_size)
+                 << "</ul>";
+
+  return disk_size_html.str();
+}
+
+void MasterPathHandlers::HandleCatalogManager(
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp, bool only_user_tables) {
+  std::stringstream* output = &resp->output;
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
   auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kAll);
 
-  bool has_tablegroups = master_->catalog_manager()->HasTablegroups();
+  typedef map<string, string[kNumColumns]> StringMap;
 
-  typedef map<string, string> StringMap;
-
-  // The first stores user tables, the second index tables, and the third system tables.
+  // The first stores user tables, the second index tables, the third parent tables,
+  // and the fourth system tables.
   std::unique_ptr<StringMap> ordered_tables[kNumTypes];
+  bool has_tablegroups[kNumTypes];
+  bool has_colocated_tables[kNumTypes];
+  bool show_missing_size_footer[kNumTypes];
   for (int i = 0; i < kNumTypes; ++i) {
     ordered_tables[i] = std::make_unique<StringMap>();
+    show_missing_size_footer[i] = false;
+    has_tablegroups[i] = false;
+    has_colocated_tables[i] = false;
   }
 
   for (const auto& table : tables) {
-    auto l = table->LockForRead();
-    if (!l->is_running()) {
+    auto table_locked = table->LockForRead();
+    if (!table_locked->is_running()) {
       continue;
     }
 
+    string table_uuid = table->id();
     string keyspace = master_->catalog_manager()->GetNamespaceName(table->namespace_id());
     bool is_platform = keyspace.compare(kSystemPlatformNamespace) == 0;
 
@@ -916,9 +937,8 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
       table_cat = kUserIndex;
     } else if (master_->catalog_manager()->IsUserTable(*table)) {
       table_cat = kUserTable;
-    } else if (table->IsTablegroupParentTable() ||
-               table->IsColocatedParentTable()) {
-      table_cat = kColocatedParentTable;
+    } else if (table->IsTablegroupParentTable() || table->IsColocatedParentTable()) {
+      table_cat = kParentTable;
     } else {
       table_cat = kSystemTable;
     }
@@ -927,101 +947,80 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
       continue;
     }
 
-    const auto& schema = l->schema();
-    string table_uuid = table->id();
-    string state = SysTablesEntryPB_State_Name(l->pb.state());
-    Capitalize(&state);
+    auto& table_row = (*ordered_tables[table_cat])[table_uuid];
+    table_row[kKeyspace] = EscapeForHtmlToString(keyspace);
+    string href_table_id = table_uuid;
+    string table_name = table_locked->name();
+    table_row[kState] = SysTablesEntryPB_State_Name(table_locked->pb.state());
+    Capitalize(&table_row[kState]);
+    table_row[kMessage] = EscapeForHtmlToString(table_locked->pb.state_msg());
 
-    string ysql_table_oid;
-    if (table_cat == kColocatedParentTable) {
-      // Colocated parent table.
-      ysql_table_oid = GetParentTableOid(table);
-    } else if (table->GetTableType() == PGSQL_TABLE_TYPE) {
+    if (table->GetTableType() == PGSQL_TABLE_TYPE && table_cat != kParentTable) {
       const auto result = GetPgsqlTableOid(table_uuid);
       if (result.ok()) {
-        ysql_table_oid = std::to_string(*result);
+        table_row[kYsqlOid] = std::to_string(*result);
       } else {
         LOG(ERROR) << "Failed to get OID of '" << table_uuid << "' ysql table";
       }
+
+      const auto& schema = table_locked->schema();
+      if (schema.has_colocated_table_id() && schema.colocated_table_id().has_colocation_id()) {
+        table_row[kColocationId] = Substitute("$0", schema.colocated_table_id().colocation_id());
+        has_colocated_tables[table_cat] = true;
+      }
+
+      if (table->IsColocatedUserTable()) {
+        const auto parent_table = table->GetColocatedTablet()->table();
+        table_row[kParentOid] = GetParentTableOid(parent_table);
+        has_tablegroups[table_cat] = true;
+      }
+    } else if (table_cat == kParentTable) {
+      // Colocated parent table.
+      table_row[kYsqlOid] = GetParentTableOid(table);
+      std::string parent_name = table_locked->name();
+
+      // Insert a newline in id and name to wrap long tablegroup text.
+      table_name = parent_name.insert(32, "\n");
+      table_uuid = table_uuid.insert(32, "\n");
     }
 
-    string display_info = Substitute(
-                          "<tr>" \
-                          "<td>$0</td>",
-                          EscapeForHtmlToString(keyspace));
-
-    if (table->GetTableType() == PGSQL_TABLE_TYPE && table_cat != kColocatedParentTable) {
-      display_info += Substitute(
-                      "<td><a href=\"/table?id=$3\">$0</a></td>" \
-                      "<td>$1</td>" \
-                      "<td>$2</td>" \
-                      "<td>$3</td>" \
-                      "<td>$4</td>",
-                      EscapeForHtmlToString(l->name()),
-                      state,
-                      EscapeForHtmlToString(l->pb.state_msg()),
-                      EscapeForHtmlToString(table_uuid),
-                      ysql_table_oid);
-
-      if (has_tablegroups) {
-        if (table->IsColocatedUserTable()) {
-          const auto parent_table = table->GetColocatedTablet()->table();
-          const auto ysql_parent_oid = GetParentTableOid(parent_table);
-          display_info += Substitute("<td>$0</td>", ysql_parent_oid);
+    // System tables and colocated user tables do not have size info
+    if (table_cat != kSystemTable && !table->IsColocatedUserTable()) {
+      TabletReplicaDriveInfo aggregated_drive_info;
+      auto tablets = table->GetTablets();
+      bool table_has_missing_size = false;
+      for (const auto& tablet : tablets) {
+        auto drive_info = tablet->GetLeaderReplicaDriveInfo();
+        if (drive_info.ok()) {
+          aggregated_drive_info.wal_files_size += drive_info.get().wal_files_size;
+          aggregated_drive_info.sst_files_size += drive_info.get().sst_files_size;
+          aggregated_drive_info.uncompressed_sst_file_size +=
+              drive_info.get().uncompressed_sst_file_size;
         } else {
-          display_info += Substitute("<td></td>");
+          show_missing_size_footer[table_cat] = true;
+          table_has_missing_size = true;
         }
       }
 
-      if (schema.has_colocated_table_id() &&
-          schema.colocated_table_id().has_colocation_id()) {
-        ColocationId colocation_id = schema.colocated_table_id().colocation_id();
-        display_info += Substitute("<td>$0</td>", colocation_id);
-      } else {
-        display_info += "<td></td>";
+      table_row[kOnDiskSize] = GetOnDiskSizeInHtml(aggregated_drive_info);
+      if (table_has_missing_size) {
+        table_row[kOnDiskSize] += "*";
       }
-
-    } else if (table_cat == kColocatedParentTable) {
-      // Colocated parent table.
-      ysql_table_oid = GetParentTableOid(table);
-
-      // Insert a newline in id and name to wrap long tablegroup text.
-      std::string parent_name = l->name();
-      display_info += Substitute(
-                      "<td><a href=\"/table?id=$0\">$1</a></td>" \
-                      "<td>$2</td>" \
-                      "<td>$3</td>" \
-                      "<td>$4</td>" \
-                      "<td>$5</td>",
-                      EscapeForHtmlToString(table_uuid),
-                      EscapeForHtmlToString(parent_name.insert(32, "\n")),
-                      state,
-                      EscapeForHtmlToString(l->pb.state_msg()),
-                      EscapeForHtmlToString(table_uuid.insert(32, "\n")),
-                      ysql_table_oid);
-    } else {
-      // System table - don't include parent table column
-      display_info += Substitute(
-                      "<td><a href=\"/table?id=$3\">$0</a></td>" \
-                      "<td>$1</td>" \
-                      "<td>$2</td>" \
-                      "<td>$3</td>" \
-                      "<td>$4</td>",
-                      EscapeForHtmlToString(l->name()),
-                      state,
-                      EscapeForHtmlToString(l->pb.state_msg()),
-                      EscapeForHtmlToString(table_uuid),
-                      ysql_table_oid);
     }
-    display_info += "</tr>\n";
-    (*ordered_tables[table_cat])[table_uuid] = display_info;
+
+    table_row[kTableName] = Substitute(
+        "<a href=\"/table?id=$0\">$1</a>",
+        EscapeForHtmlToString(href_table_id),
+        EscapeForHtmlToString(table_name));
+
+    table_row[kUuid] = EscapeForHtmlToString(table_uuid);
   }
 
   for (int tpeIdx = 0; tpeIdx < kNumTypes; ++tpeIdx) {
-    if (only_user_tables && (table_type_[tpeIdx] != "Index" && table_type_[tpeIdx] != "User")) {
+    if (only_user_tables && (tpeIdx != kUserIndex && tpeIdx != kUserTable)) {
       continue;
     }
-    if (ordered_tables[tpeIdx]->empty() && table_type_[tpeIdx] == "Colocated") {
+    if (ordered_tables[tpeIdx]->empty() && tpeIdx == kParentTable) {
       continue;
     }
 
@@ -1034,30 +1033,67 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
       (*output) << "There are no " << static_cast<char>(tolower(table_type_[tpeIdx][0]))
                 << table_type_[tpeIdx].substr(1) << " tables.\n";
     } else {
-      *output << "<table class='table table-striped' style='table-layout: fixed;'>\n";
-      *output << "  <tr><th width='14%'>Keyspace</th>\n"
-              << "      <th width='21%'>Table Name</th>\n"
-              << "      <th width='9%'>State</th>\n"
-              << "      <th width='14%'>Message</th>\n";
-      if (tpeIdx == kColocatedParentTable || tpeIdx == kSystemTable) {
-        *output << "      <th width='28%'>UUID</th>\n"
-                << "      <th width='14%'>YSQL OID</th>\n";
-      } else if (has_tablegroups) {
-        *output << "      <th width='18%'>UUID</th>\n"
-                << "      <th width='8%'>YSQL OID</th>\n"
-                << "      <th width='8%'>Parent OID</th>\n"
-                << "      <th width='10%'>Colocation ID</th>\n";
-      } else {
-        // TODO(alex): We should only show Colocation ID column when there are colocated tables.
-        *output << "      <th width='22%'>UUID</th>\n"
-                << "      <th width='10%'>YSQL OID</th>\n"
-                << "      <th width='10%'>Colocation ID</th>\n";
+      (*output) << "<table class='table table-responsive'>\n";
+      (*output) << "  <tr><th>Keyspace</th>\n"
+                << "  <th>Table Name</th>\n"
+                << "  <th>State</th>\n"
+                << "  <th>Message</th>\n"
+                << "  <th>UUID</th>\n"
+                << "  <th>YSQL OID</th>\n";
+
+      if (tpeIdx == kUserTable || tpeIdx == kUserIndex) {
+        if (has_tablegroups[tpeIdx]) {
+          (*output) << "  <th>Parent OID</th>\n";
+        }
+
+        if (has_colocated_tables[tpeIdx]) {
+          (*output) << "  <th>Colocation ID</th>\n";
+        }
       }
-      *output << "  </tr>\n";
-      for (const StringMap::value_type &table : *(ordered_tables[tpeIdx])) {
-        *output << table.second;
+
+      if (tpeIdx != kSystemTable) {
+        (*output) << "  <th>On-disk size</th></tr>\n";
       }
+
+      for (const StringMap::value_type& table : *(ordered_tables[tpeIdx])) {
+        (*output) << Substitute(
+            "<tr>"
+            "<td>$0</td>"
+            "<td>$1</td>"
+            "<td>$2</td>"
+            "<td>$3</td>"
+            "<td>$4</td>"
+            "<td>$5</td>",
+            table.second[kKeyspace],
+            table.second[kTableName],
+            table.second[kState],
+            table.second[kMessage],
+            table.second[kUuid],
+            table.second[kYsqlOid]);
+
+        if (tpeIdx == kUserTable || tpeIdx == kUserIndex) {
+          if (has_tablegroups[tpeIdx]) {
+            (*output) << Substitute("<td>$0</td>", table.second[kParentOid]);
+          }
+
+          if (has_colocated_tables[tpeIdx]) {
+            (*output) << Substitute("<td>$0</td>", table.second[kColocationId]);
+          }
+        }
+
+        if (tpeIdx != kSystemTable) {
+          (*output) << Substitute("<td>$0</td>", table.second[kOnDiskSize]);
+        }
+
+        (*output) << "</tr>\n";
+      }
+
       (*output) << "</table>\n";
+
+      if (show_missing_size_footer[tpeIdx]) {
+        (*output) << "<p>* Some tablets did not provide disk size estimates,"
+                  << " and were not added to the displayed totals.</p>";
+      }
     }
     (*output) << "</div> <!-- panel-body -->\n";
     (*output) << "</div> <!-- panel -->\n";
@@ -1324,7 +1360,7 @@ Result<std::vector<TabletInfoPtr>> MasterPathHandlers::GetUnderReplicatedTablets
     auto rm = t.get()->GetReplicaLocations();
 
     // Find out the tablets which have been replicated less than the replication factor
-    if(rm->size() < cluster_rf) {
+    if (rm->size() < cluster_rf) {
       underreplicated_tablets.push_back(t);
     }
   }
@@ -1353,7 +1389,7 @@ void MasterPathHandlers::HandleTabletReplicasPage(const Webserver::WebRequest& r
 
   *output << "</table>\n";
 
-  if(!underreplicated_ts.ok()) {
+  if (!underreplicated_ts.ok()) {
     LOG(WARNING) << underreplicated_ts.ToString();
     *output << "<h2>Call to get the cluster replication factor failed</h2>\n";
     return;
@@ -1411,7 +1447,7 @@ void MasterPathHandlers::HandleGetUnderReplicationStatus(const Webserver::WebReq
 
   auto underreplicated_ts = GetUnderReplicatedTablets();
 
-  if(!underreplicated_ts.ok()) {
+  if (!underreplicated_ts.ok()) {
     jw.StartObject();
     jw.String("Error");
     jw.String(underreplicated_ts.status().ToString());
