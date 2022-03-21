@@ -8,7 +8,7 @@ The YugabyteDB code is split into two top-level sections:
 
 **The core storage engine is split into the following C++ components**:
 
-* [`yql`](yb/bfpg/) TODO
+* [`bfpg`](yb/bfpg/) TODO
 
 * [`bfql`](yb/bfql/) TODO
 
