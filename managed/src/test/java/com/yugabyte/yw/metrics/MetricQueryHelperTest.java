@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.metrics;
 
+import static com.yugabyte.yw.metrics.MetricQueryHelper.STEP_SIZE;
 import static junit.framework.TestCase.assertTrue;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
@@ -92,8 +93,25 @@ public class MetricQueryHelperTest extends FakeDBApplication {
   }
 
   @Test
+  public void testQueryShortDifference() {
+    HashMap<String, String> params = new HashMap<>();
+    long startTimestamp = 1646925800;
+    params.put("start", String.valueOf(startTimestamp));
+    params.put("end", String.valueOf(startTimestamp - STEP_SIZE + 1));
+
+    try {
+      metricQueryHelper.query(ImmutableList.of("valid_metric"), params);
+    } catch (PlatformServiceException re) {
+      assertEquals(BAD_REQUEST, re.getResult().status());
+      assertEquals(
+          "Should be at least 100 seconds between start and end time",
+          Json.parse(contentAsString(re.getResult())).get("error").asText());
+    }
+  }
+
+  @Test
   public void testQuerySingleMetricWithoutEndTime() {
-    DateTime date = DateTime.now().minusMinutes(1);
+    DateTime date = DateTime.now().minusSeconds(STEP_SIZE + 100);
     Integer startTimestamp = Math.toIntExact(date.getMillis() / 1000);
     HashMap<String, String> params = new HashMap<>();
     params.put("start", startTimestamp.toString());
