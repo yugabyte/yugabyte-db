@@ -115,8 +115,7 @@ class UniverseLogsComponent implements SupportBundleComponent {
           endDate);
 
       String universeLogsRegexPattern =
-          String.format(
-              config.getString("yb.support_bundle.universe_logs_regex_pattern"), node.nodeName);
+          config.getString("yb.support_bundle.universe_logs_regex_pattern");
 
       // Get and filter master log files that fall within given dates
       List<String> masterLogFilePaths =
@@ -137,14 +136,25 @@ class UniverseLogsComponent implements SupportBundleComponent {
           Stream.concat(masterLogFilePaths.stream(), tserverLogFilePaths.stream())
               .collect(Collectors.toList());
 
-      Path targetFile =
-          universeInfoHandler.downloadNodeFile(
-              customer,
-              universe,
-              node,
-              nodeHomeDir,
-              String.join(";", allLogFilePaths),
-              nodeTargetFile);
+      if (allLogFilePaths.size() > 0) {
+        Path targetFile =
+            universeInfoHandler.downloadNodeFile(
+                customer,
+                universe,
+                node,
+                nodeHomeDir,
+                String.join(";", allLogFilePaths),
+                nodeTargetFile);
+      } else {
+        log.debug(
+            "Found no matching universe logs for node: {}, source path: {}, target path: {}, "
+                + "between start date: {}, end date: {}",
+            nodeName,
+            nodeHomeDir,
+            nodeTargetFile.toString(),
+            startDate,
+            endDate);
+      }
     }
   }
 
@@ -204,8 +214,8 @@ class UniverseLogsComponent implements SupportBundleComponent {
       if (fileNameMatcher.matches()) {
         String fileNameSdfPattern = "yyyyMMdd";
         // Uses capturing and non capturing groups in regex pattern for easier retrieval of
-        // neccessary info. Group 3 = the "yyyyMMdd" format in the file name.
-        Date fileDate = new SimpleDateFormat(fileNameSdfPattern).parse(fileNameMatcher.group(3));
+        // neccessary info. Group 2 = the "yyyyMMdd" format in the file name.
+        Date fileDate = new SimpleDateFormat(fileNameSdfPattern).parse(fileNameMatcher.group(2));
         if (supportBundleUtil.checkDateBetweenDates(fileDate, startDate, endDate)) {
           filteredLogFilePaths.add(trimmedFilePath);
         } else if ((minDate == null && fileDate.before(startDate))
