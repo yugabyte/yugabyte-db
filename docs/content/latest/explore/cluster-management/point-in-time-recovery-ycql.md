@@ -158,10 +158,10 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
     (5 rows)
     ```
 
-1. Restore the snapshot schedule to the timestamp you obtained before you deleted the data, at a terminal prompt:
+1. Restore the snapshot schedule to the timestamp you obtained before you added the data, at a terminal prompt:
 
     ```sh
-    $ ./bin/yb-admin restore_snapshot_schedule 0e4ceb83-fe3d-43da-83c3-013a8ef592ca 1620418801439626
+    $ ./bin/yb-admin restore_snapshot_schedule 0e4ceb83-fe3d-43da-83c3-013a8ef592ca 1620418817729963
     ```
 
     ```output

@@ -138,7 +138,7 @@ maximum of:
 * Last committed Raft entry's hybrid time
 * One of:
   * If there are uncommitted entries in the Raft log: the minimum ofthe first uncommitted entry's
-    hybrid time - &epsilon; (where &epsilon; is the smallest possibledifference in hybrid time)
+    hybrid time - &epsilon; (where &epsilon; is the smallest possible difference in hybrid time)
     and **replicated_ht_lease_exp**.
   * If there are no uncommitted entries in the Raft log: the minimum of the current hybrid time and **replicated_ht_lease_exp**.
 
