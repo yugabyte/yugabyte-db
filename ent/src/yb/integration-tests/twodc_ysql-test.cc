@@ -82,6 +82,7 @@ DECLARE_int32(pgsql_proxy_webserver_port);
 DECLARE_bool(master_auto_run_initdb);
 DECLARE_bool(hide_pg_catalog_table_creation_logs);
 DECLARE_int32(pggate_rpc_timeout_secs);
+DECLARE_bool(enable_delete_truncate_xcluster_replicated_table);
 
 namespace yb {
 
@@ -363,6 +364,19 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
       auto results = ScanToStrings(table, cluster);
       return PQntuples(results.get()) == expected_size;
     }, MonoDelta::FromSeconds(kRpcTimeout), "Verify number of records");
+  }
+
+  Status DeleteTable(Cluster* cluster,
+                     TableId* table_id /* = nullptr */) {
+    RETURN_NOT_OK(cluster->client_->DeleteTable(*table_id));
+
+    return Status::OK();
+  }
+
+  Status TruncateTable(Cluster* cluster,
+                       std::vector<string> table_ids) {
+    RETURN_NOT_OK(cluster->client_->TruncateTables(table_ids));
+    return Status::OK();
   }
 };
 
@@ -832,6 +846,174 @@ TEST_P(TwoDCYsqlTest, ColocatedDatabaseDifferentTableOids) {
 }
 
 // TODO adapt rest of twodc-test.cc tests.
+
+TEST_P(TwoDCYsqlTest, DeleteTableChecks) {
+  YB_SKIP_TEST_IN_TSAN();
+  constexpr int kNTabletsPerTable = 1;
+  std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
+  auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
+  const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
+
+  // tables contains both producer and consumer universe tables (alternately).
+  // Pick out just the producer tables from the list.
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  std::vector<std::shared_ptr<client::YBTable>> consumer_tables;
+  producer_tables.reserve(tables.size() / 2);
+  consumer_tables.reserve(tables.size() / 2);
+  for (size_t i = 0; i < tables.size(); ++i) {
+    if (i % 2 == 0) {
+      producer_tables.push_back(tables[i]);
+    } else {
+      consumer_tables.push_back(tables[i]);
+    }
+  }
+
+  // 1. Write some data.
+  for (const auto& producer_table : producer_tables) {
+    LOG(INFO) << "Writing records for table " << producer_table->name().ToString();
+    WriteWorkload(0, 100, &producer_cluster_, producer_table->name());
+  }
+
+  // Verify data is written on the producer.
+  for (const auto& producer_table : producer_tables) {
+    auto producer_results = ScanToStrings(producer_table->name(), &producer_cluster_);
+    ASSERT_EQ(100, PQntuples(producer_results.get()));
+    int result;
+    for (int i = 0; i < 100; ++i) {
+      result = ASSERT_RESULT(GetInt32(producer_results.get(), i, 0));
+      ASSERT_EQ(i, result);
+    }
+  }
+
+  // 2. Setup replication.
+  ASSERT_OK(SetupUniverseReplication(producer_cluster(), consumer_cluster(), consumer_client(),
+                                     kUniverseId, producer_tables));
+
+  // 3. Verify everything is setup correctly.
+  master::GetUniverseReplicationResponsePB get_universe_replication_resp;
+  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId,
+      &get_universe_replication_resp));
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(),
+                                      tables_vector.size() * kNTabletsPerTable));
+
+  auto data_replicated_correctly = [&](int num_results) -> Result<bool> {
+    for (const auto& consumer_table : consumer_tables) {
+      LOG(INFO) << "Checking records for table " << consumer_table->name().ToString();
+      auto consumer_results = ScanToStrings(consumer_table->name(), &consumer_cluster_);
+
+      if (num_results != PQntuples(consumer_results.get())) {
+        return false;
+      }
+      int result;
+      for (int i = 0; i < num_results; ++i) {
+        result = VERIFY_RESULT(GetInt32(consumer_results.get(), i, 0));
+        if (i != result) {
+          return false;
+        }
+      }
+    }
+    return true;
+  };
+  ASSERT_OK(WaitFor([&]() -> Result<bool> { return data_replicated_correctly(100); },
+                    MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
+
+  // Attempt to destroy the producer and consumer tables.
+  string producer_table_name = producer_tables[0]->name().ToString();
+  string producer_table_id = producer_tables[0]->id();
+  string consumer_table_name = consumer_tables[0]->name().ToString();
+  string consumer_table_id = consumer_tables[0]->id();
+  ASSERT_NOK(DeleteTable(&producer_cluster_, &producer_table_id));
+  ASSERT_NOK(DeleteTable(&consumer_cluster_, &consumer_table_id));
+
+  FLAGS_enable_delete_truncate_xcluster_replicated_table = true;
+  ASSERT_OK(DeleteTable(&producer_cluster_, &producer_table_id));
+  ASSERT_OK(DeleteTable(&consumer_cluster_, &consumer_table_id));
+
+  Destroy();
+}
+
+TEST_P(TwoDCYsqlTest, TruncateTableChecks) {
+  YB_SKIP_TEST_IN_TSAN();
+  constexpr int kNTabletsPerTable = 1;
+  std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
+  auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
+  const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
+
+  // tables contains both producer and consumer universe tables (alternately).
+  // Pick out just the producer tables from the list.
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  std::vector<std::shared_ptr<client::YBTable>> consumer_tables;
+  producer_tables.reserve(tables.size() / 2);
+  consumer_tables.reserve(tables.size() / 2);
+  for (size_t i = 0; i < tables.size(); ++i) {
+    if (i % 2 == 0) {
+      producer_tables.push_back(tables[i]);
+    } else {
+      consumer_tables.push_back(tables[i]);
+    }
+  }
+
+  // 1. Write some data.
+  for (const auto& producer_table : producer_tables) {
+    LOG(INFO) << "Writing records for table " << producer_table->name().ToString();
+    WriteWorkload(0, 100, &producer_cluster_, producer_table->name());
+  }
+
+  // Verify data is written on the producer.
+  for (const auto& producer_table : producer_tables) {
+    auto producer_results = ScanToStrings(producer_table->name(), &producer_cluster_);
+    ASSERT_EQ(100, PQntuples(producer_results.get()));
+    int result;
+    for (int i = 0; i < 100; ++i) {
+      result = ASSERT_RESULT(GetInt32(producer_results.get(), i, 0));
+      ASSERT_EQ(i, result);
+    }
+  }
+
+  // 2. Setup replication.
+  ASSERT_OK(SetupUniverseReplication(producer_cluster(), consumer_cluster(), consumer_client(),
+                                     kUniverseId, producer_tables));
+
+  // 3. Verify everything is setup correctly.
+  master::GetUniverseReplicationResponsePB get_universe_replication_resp;
+  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId,
+      &get_universe_replication_resp));
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(),
+                                      tables_vector.size() * kNTabletsPerTable));
+
+  auto data_replicated_correctly = [&](int num_results) -> Result<bool> {
+    for (const auto& consumer_table : consumer_tables) {
+      LOG(INFO) << "Checking records for table " << consumer_table->name().ToString();
+      auto consumer_results = ScanToStrings(consumer_table->name(), &consumer_cluster_);
+
+      if (num_results != PQntuples(consumer_results.get())) {
+        return false;
+      }
+      int result;
+      for (int i = 0; i < num_results; ++i) {
+        result = VERIFY_RESULT(GetInt32(consumer_results.get(), i, 0));
+        if (i != result) {
+          return false;
+        }
+      }
+    }
+    return true;
+  };
+  ASSERT_OK(WaitFor([&]() -> Result<bool> { return data_replicated_correctly(100); },
+                    MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
+
+  // Attempt to Truncate the producer and consumer tables.
+  string producer_table_id = producer_tables[0]->id();
+  string consumer_table_id = consumer_tables[0]->id();
+  ASSERT_NOK(TruncateTable(&producer_cluster_, {producer_table_id}));
+  ASSERT_NOK(TruncateTable(&consumer_cluster_, {consumer_table_id}));
+
+  FLAGS_enable_delete_truncate_xcluster_replicated_table = true;
+  ASSERT_OK(TruncateTable(&producer_cluster_, {producer_table_id}));
+  ASSERT_OK(TruncateTable(&consumer_cluster_, {consumer_table_id}));
+
+  Destroy();
+}
 
 } // namespace enterprise
 } // namespace yb

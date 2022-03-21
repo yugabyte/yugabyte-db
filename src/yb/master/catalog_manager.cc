@@ -433,6 +433,10 @@ DEFINE_test_flag(bool, reject_delete_not_serving_tablet_rpc, false,
 DEFINE_test_flag(double, crash_after_creating_single_split_tablet, 0.0,
                  "Crash inside CatalogManager::RegisterNewTabletForSplit after calling Upsert");
 
+DEFINE_bool(enable_delete_truncate_xcluster_replicated_table, false,
+            "When set, enables deleting/truncating tables currently in xCluster replication");
+TAG_FLAG(enable_delete_truncate_xcluster_replicated_table, runtime);
+
 namespace yb {
 namespace master {
 
@@ -4083,6 +4087,13 @@ Status CatalogManager::TruncateTable(const TableId& table_id,
   // DML that creates a table-level tombstone.
   LOG_IF(WARNING, IsColocatedUserTable(*table)) << "cannot truncate a colocated table on master";
 
+  if (!FLAGS_enable_delete_truncate_xcluster_replicated_table && IsCdcEnabled(*table)) {
+    return STATUS(NotSupported,
+                  "Cannot truncate a table in replication.",
+                  table_id,
+                  MasterError(MasterErrorPB::INVALID_REQUEST));
+  }
+
   // Send a Truncate() request to each tablet in the table.
   SendTruncateTableRequest(table);
 
@@ -4332,9 +4343,17 @@ Status CatalogManager::DeleteTable(
   LOG(INFO) << "Servicing DeleteTable request from " << RequestorString(rpc) << ": "
             << req->ShortDebugString();
 
+  scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTable(req->table()));
+  bool result = IsCdcEnabled(*table);
+  if (!FLAGS_enable_delete_truncate_xcluster_replicated_table && result) {
+    return STATUS(NotSupported,
+                  "Cannot delete a table in replication.",
+                  req->ShortDebugString(),
+                  MasterError(MasterErrorPB::INVALID_REQUEST));
+  }
+
   if (req->is_index_table()) {
     TRACE("Looking up index");
-    scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTable(req->table()));
     TableId table_id = table->id();
     resp->set_table_id(table_id);
     TableId indexed_table_id;
