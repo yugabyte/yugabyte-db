@@ -306,7 +306,7 @@ Default: `1`
 
 ##### --log_min_seconds_to_retain
 
-The minimum duration, in seconds, to retain WAL segments, regardless of durability requirements. WAL segments can be retained for a longer amount of time, if they are necessary for correct restart. This value should be set long enough such that a tablet server which has temporarily failed can be restarted within the given time period.
+The minimum duration, in seconds, to retain WAL segments, regardless of durability requirements. WAL segments can be retained for a longer amount of time, if they are necessary for correct restart. This value should be set long enough such that a tablet server which has temporarily failed can be restarted in the given time period.
 
 Default: `900` (15 minutes)
 
@@ -412,6 +412,12 @@ The following flags support the use of the [YSQL API](../../../api/ysql/).
 
 ##### --enable_ysql
 
+{{< note title="Note" >}}
+
+Ensure that `enable_ysql` in `yb-tserver` configurations match the values in `yb-master` configurations.
+
+{{< /note >}}
+
 Enables the YSQL API. Replaces the deprecated `--start_pgsql_proxy` flag.
 
 Default: `true`
@@ -460,10 +466,12 @@ To see the current values in the `ysql_hba.conf` file, run the `SHOW hba_file;` 
 
 ##### --ysql_hba_conf_csv
 
-Specifies a comma-separated list of PostgreSQL client authentication settings that is written to the `ysql_hba.conf` file. When writing, the rules are:
+Specifies a comma-separated list of PostgreSQL client authentication settings that is written to the `ysql_hba.conf` file.
 
-1. in case text has `,` or `"` it should be quoted with `"`
-2. the `"` symbol inside quoted text should be doubled (i.e. `""`)
+When writing, the rules are:
+
+1. When text includes `,` or `"` it should be quoted with `"`.
+2. The `"` symbol inside quoted text should be doubled (`""`).
 
 Example:
 
@@ -652,13 +660,13 @@ Default: `256MB`
 
 ##### --rocksdb_universal_compaction_min_merge_width
 
-Compactions run only if there are at least `rocksdb_universal_compaction_min_merge_width` eligible files and their running total (summation of size of files considered so far) is within `rocksdb_universal_compaction_size_ratio` of the next file in consideration to be included into the same compaction.
+Compactions run only if there are at least `rocksdb_universal_compaction_min_merge_width` eligible files and their running total (summation of size of files considered so far) is in `rocksdb_universal_compaction_size_ratio` of the next file in consideration to be included into the same compaction.
 
 Default: `4`
 
 ##### --rocksdb_universal_compaction_size_ratio
 
-Compactions run only if there are at least `rocksdb_universal_compaction_min_merge_width` eligible files and their running total (summation of size of files considered so far) is within `rocksdb_universal_compaction_size_ratio` of the next file in consideration to be included into the same compaction.
+Compactions run only if there are at least `rocksdb_universal_compaction_min_merge_width` eligible files and their running total (summation of size of files considered so far) is in `rocksdb_universal_compaction_size_ratio` of the next file in consideration to be included into the same compaction.
 
 Default: `20`
 
@@ -734,7 +742,7 @@ Default: `""` (Use the same directory as for server-to-server communications.)
 
 ##### --dump_certificate_entries
 
-Adds certificate entries, including IP addresses and hostnames, to log for handshake error messages.  Enabling this flag is useful for debugging certificate issues.
+Adds certificate entries, including IP addresses and hostnames, to log for handshake error messages. Enabling this flag is useful for debugging certificate issues.
 
 Default: `false`
 
@@ -746,7 +754,7 @@ Default: `false`
 
 ##### --use_node_to_node_encryption
 
-Enable server-server, or node-to-node, encryption between YugabyteDB YB-Master and YB-TServer servers in a cluster or universe. To work properly, all YB-Master servers must also have their [`--use_node_to_node_encryption`](../yb-master/#use-node-to-node-encryption) setting enabled. When enabled, then [`--allow_insecure_connections`](#allow-insecure-connections) must be disabled.
+Enable server-server or node-to-node encryption between YugabyteDB YB-Master and YB-TServer servers in a cluster or universe. To work properly, all YB-Master servers must also have their [`--use_node_to_node_encryption`](../yb-master/#use-node-to-node-encryption) setting enabled. When enabled, then [`--allow_insecure_connections`](#allow-insecure-connections) must be disabled.
 
 Default: `false`
 
@@ -822,11 +830,11 @@ Default: `false`
 
 For tables with a `default_time_to_live` table property, sets a size threshold at which files will no longer be considered for compaction. Files over this threshold will still be considered for expiration. Disabled if value is `0`.
 
-Ideally, rocksdb_max_file_size_for_compaction needs to be chosen as a balance between expiring data at a reasonable frequency while also not creating too many SST files (as this can impact read performance). For instance, if 90 days worth of data is stored, perhaps this flag should be set to roughly the size of one day’s worth of data. 
+Ideally, rocksdb_max_file_size_for_compaction needs to be chosen as a balance between expiring data at a reasonable frequency while also not creating too many SST files (as this can impact read performance). For instance, if 90 days worth of data is stored, perhaps this flag should be set to roughly the size of one day's worth of data.
 
 Default: `0`
 
-##### --sst_files_soft_limit 
+##### --sst_files_soft_limit
 
 Threshold for number of SST files per tablet. When exceeded, writes to a tablet will be throttled until the number of files is reduced.
 
@@ -850,7 +858,7 @@ Default: `false`
 
 ##### --file_expiration_value_ttl_overrides_table_ttl
 
-When set to true, allows files to expire purely based on their value-level TTL expiration time (even if it is lower than the table TTL). This is useful for times where a file needs to expire earlier than its table-level TTL would allow. If no value-level TTL metadata is available, then table-level TTL will still be used. 
+When set to true, files expire based on their value-level TTL expiration time, even if it is lower than the table TTL. This is useful when a file needs to expire earlier than its table-level TTL would allow. If no value-level TTL metadata is available, then table-level TTL is still used.
 
 {{< warning title="Warning">}}
 Use of this flag can potentially result in expiration of live data - use at your discretion.

@@ -116,7 +116,7 @@ Default: `""`
 
 ##### --dns_cache_expiration_ms
 
-Specifies the duration, in milliseconds, until a cached DNS resolution expires. When hostnames are used instead of IP addresses, a DNS resolver must be queried to match hostnames to IP addresses. By using a local DNS cache to temporarily store DNS lookups, DNS queries can be resolved quicker and additional queries can be avoided, thereby reducing latency, improving load times, and reducing bandwidth and CPU consumption.
+Specifies the duration, in milliseconds, until a cached DNS resolution expires. When hostnames are used instead of IP addresses, a DNS resolver must be queried to match hostnames to IP addresses. By using a local DNS cache to temporarily store DNS lookups, DNS queries can be resolved quicker and additional queries can be avoided. This reduces latency, improves load times, and reduces bandwidth and CPU consumption.
 
 Default: `60000` (1 minute)
 
@@ -161,6 +161,12 @@ Default: The `www` directory in the YugabyteDB home directory.
 ### YSQL flags
 
 ##### --enable_ysql
+
+{{< note title="Note" >}}
+
+Ensure that `enable_ysql` in `yb-master` configurations match the values in `yb-tserver` configurations.
+
+{{< /note >}}
 
 Enables the YSQL API when value is `true`. Replaces the deprecated `--start_pgsql_proxy` flag.
 
@@ -264,7 +270,7 @@ Ensure that values used for Raft and the write ahead log (WAL) in `yb-master` co
 
 ##### --follower_unavailable_considered_failed_sec
 
-The duration, in seconds, after which a follower is considered to be failed because the leader has not received a heartbeat. The follower is then evicted from the configuration and the data is rereplicated elsewhere.
+The duration, in seconds, after which a follower is considered to be failed because the leader has not received a heartbeat. The follower is then evicted from the configuration and the data is re-replicated elsewhere.
 
 Default: `900` (15 minutes)
 
@@ -322,7 +328,7 @@ Default: `1`
 
 ##### --log_min_seconds_to_retain
 
-The minimum duration, in seconds, to retain WAL segments, regardless of durability requirements. WAL segments can be retained for a longer amount of time, if they are necessary for correct restart. This value should be set long enough such that a tablet server which has temporarily failed can be restarted within the given time period.
+The minimum duration, in seconds, to retain WAL segments, regardless of durability requirements. WAL segments can be retained for a longer amount of time, if they are necessary for correct restart. This value should be set long enough such that a tablet server which has temporarily failed can be restarted in the given time period.
 
 Default: `900` (15 minutes)
 
@@ -572,7 +578,7 @@ Default: `false`
 
 ##### --use_node_to_node_encryption
 
-Enable server-server, or node-to-node, encryption between YugabyteDB YB-Master and YB-TServer servers in a cluster or universe. To work properly, all YB-Master servers must also have their [`--use_node_to_node_encryption`](../yb-master/#use-node-to-node-encryption) flag enabled. When enabled, then [`--allow_insecure_connections`](#allow-insecure-connections) flag must be disabled.
+Enable server-server, or node-to-node, encryption between YB-Master and YB-TServer servers in a cluster or universe. To work properly, all YB-Master servers must also have their [`--use_node_to_node_encryption`](../yb-master/#use-node-to-node-encryption) flag enabled. When enabled, then [`--allow_insecure_connections`](#allow-insecure-connections) flag must be disabled.
 
 Default: `false`
 
