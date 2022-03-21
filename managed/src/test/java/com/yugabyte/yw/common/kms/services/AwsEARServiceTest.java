@@ -34,7 +34,7 @@ import com.amazonaws.services.kms.model.UpdateAliasRequest;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
-import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig;
+import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
