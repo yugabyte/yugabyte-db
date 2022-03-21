@@ -24,11 +24,12 @@ SELECT * FROM pg_stat_monitor_settings ORDER BY name COLLATE "C";
  pg_stat_monitor.pgsm_max_buckets         | 10     | 10            | Sets the maximum number of buckets.                                                                      |       1 |         10 |                | yes
  pg_stat_monitor.pgsm_normalized_query    | yes    | yes           | Selects whether save query in normalized format.                                                         |         |            | yes, no        | no
  pg_stat_monitor.pgsm_overflow_target     | 1      | 1             | Sets the overflow target for pg_stat_monitor                                                             |       0 |          1 |                | yes
- pg_stat_monitor.pgsm_query_max_len       | 1024   | 1024          | Sets the maximum length of query.                                                                        |    1024 | 2147483647 |                | yes
+ pg_stat_monitor.pgsm_query_max_len       | 2048   | 2048          | Sets the maximum length of query.                                                                        |    1024 | 2147483647 |                | yes
  pg_stat_monitor.pgsm_query_shared_buffer | 20     | 20            | Sets the maximum size of shared memory in (MB) used for query tracked by pg_stat_monitor.                |       1 |      10000 |                | yes
- pg_stat_monitor.pgsm_track               | all    | all           | Selects which statements are tracked by pg_stat_monitor.                                                 |         |            | none, top, all | no
+ pg_stat_monitor.pgsm_track               | top    | top           | Selects which statements are tracked by pg_stat_monitor.                                                 |         |            | none, top, all | no
+ pg_stat_monitor.pgsm_track_planning      | no     | no            | Selects whether planning statistics are tracked.                                                         |         |            | yes, no        | no
  pg_stat_monitor.pgsm_track_utility       | yes    | yes           | Selects whether utility commands are tracked.                                                            |         |            | yes, no        | no
-(14 rows)
+(15 rows)
 
 SELECT pg_stat_monitor_reset();
  pg_stat_monitor_reset 

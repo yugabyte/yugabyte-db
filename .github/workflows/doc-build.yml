@@ -1,0 +1,50 @@
+name: Build pg_stat_monitor docs
+on:
+  push:
+    branches: 
+      - main
+      
+      
+jobs:
+  build:
+    name: Deploy docs
+    runs-on: ubuntu-latest
+
+    steps: 
+      #Pull the latest changes
+      - name: Chekout code
+        uses: percona-platform/checkout@v2
+        with:
+          fetch-depth: 0
+      #Prepare the env
+      - name: Set up Python
+        uses: percona-platform/setup-python@v2
+        with:
+          python-version: '3.x'
+      
+      #Configure git
+      - name: Configure git
+        env:
+          ROBOT_TOKEN: ${{ secrets.ROBOT_TOKEN }}
+        run: |
+          git config --global url."https://percona-platform-robot:${ROBOT_TOKEN}@github.com".insteadOf "https://github.com"
+          git config user.name "GitHub Action"
+          git config user.email "github-action@users.noreply.github.com"
+          git config user.password "${ROBOT_TOKEN}"
+          echo "GIT_USER=percona-platform-robot:${ROBOT_TOKEN}" >> $GITHUB_ENV
+
+      #Set up MkDocs
+      - name: Setup MkDocs
+        run: |
+          python -m pip install --upgrade pip
+          pip install wheel
+          if [ -f requirements-doc.txt ]; then pip install -r requirements-doc.txt; fi
+
+     
+     # Deploy docs
+      - name: Deploy docs
+        run: |
+          mike deploy main -p
+          mike set-default main -p
+          mike retitle main  "latest" -p
+

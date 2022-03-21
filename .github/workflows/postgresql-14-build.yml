@@ -27,6 +27,10 @@ jobs:
           sudo rm -rf /usr/share/postgresql
           sudo rm -rf /etc/postgresql
           sudo rm -f /usr/bin/pg_config
+          sudo /usr/bin/perl -MCPAN -e 'install IPC::RUN'
+          sudo /usr/bin/perl -MCPAN -e 'install String::Util'
+          sudo /usr/bin/perl -MCPAN -e 'install Data::Str2Num'
+
       - name: Create pgsql dir
         run: mkdir -p /opt/pgsql
 
@@ -88,12 +92,30 @@ jobs:
           make installcheck
         working-directory: src/pg_stat_monitor/
 
-      - name: Report on pg_stat_monitor test fail
-        uses: actions/upload-artifact@v2
+      - name: Change dir permissions on fail
         if: ${{ failure() }}
+        run: |
+          sudo chmod -R ugo+rwx t
+          sudo chmod -R ugo+rwx tmp_check
+          exit 2 # regenerate error so that we can upload files in next step
+        working-directory: src/pg_stat_monitor/
+
+      - name: Upload logs on fail
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v2
         with:
           name: Regressions diff and postgresql log
           path: |
             src/pg_stat_monitor/regression.diffs
+            src/pg_stat_monitor/regression.out
             src/pg_stat_monitor/logfile
+            src/pg_stat_monitor/t/results/
+            src/pg_stat_monitor/tmp_check/log/
+            !src/pg_stat_monitor/tmp_check/**/archives/*
+            !src/pg_stat_monitor/tmp_check/**/backup/*
+            !src/pg_stat_monitor/tmp_check/**/pgdata/*
+            !src/pg_stat_monitor/tmp_check/**/archives/
+            !src/pg_stat_monitor/tmp_check/**/backup/
+            !src/pg_stat_monitor/tmp_check/**/pgdata/
+          if-no-files-found: warn
           retention-days: 1
