@@ -30,6 +30,7 @@
 #include "yb/cdc/cdc_service.h"
 
 #include "yb/client/client-internal.h"
+#include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
@@ -128,10 +129,15 @@ DEFINE_bool(allow_consecutive_restore, true,
             "Is it allowed to restore to a time before the last restoration was done.");
 TAG_FLAG(allow_consecutive_restore, runtime);
 
+DEFINE_bool(check_bootstrap_required, false,
+            "Is it necessary to check whether bootstrap is required for Universe Replication.");
+
 namespace yb {
 
 using rpc::RpcContext;
 using pb_util::ParseFromSlice;
+using client::internal::RemoteTabletServer;
+using client::internal::RemoteTabletPtr;
 
 namespace master {
 namespace enterprise {
@@ -2989,6 +2995,7 @@ Status CatalogManager::GetCDCStream(const GetCDCStreamRequestPB* req,
     if (option.has_key() && option.key() == cdc::kIdType)
       id_type_option_value = option.value();
   }
+
   if (id_type_option_value == cdc::kNamespaceId) {
     stream_info->set_namespace_id(stream_lock->namespace_id());
   }
@@ -3057,7 +3064,8 @@ Status CatalogManager::ListCDCStreams(const ListCDCStreamsRequestPB* req,
       continue;
     }
 
-    if (filter_table && !entry.second->table_id().empty() &&
+    if (filter_table &&
+        entry.second->table_id().size() > 0 &&
         table->id() != entry.second->table_id().Get(0)) {
       continue; // Skip deleting/deleted streams and streams from other tables.
     }
@@ -3413,6 +3421,69 @@ Status CatalogManager::ValidateTableSchema(
   return Status::OK();
 }
 
+Result<RemoteTabletServer *> CatalogManager::GetLeaderTServer(
+    client::internal::RemoteTabletPtr tablet) {
+  auto ts = tablet->LeaderTServer();
+  if (ts == nullptr) {
+    return STATUS(NotFound, "Tablet leader not found for tablet", tablet->tablet_id());
+  }
+  return ts;
+}
+
+Status CatalogManager::IsBootstrapRequired(scoped_refptr<UniverseReplicationInfo> universe,
+                                           const TableId& producer_table,
+                                           const std::unordered_map<TableId, std::string>&
+                                           table_bootstrap_ids) {
+  if (!FLAGS_check_bootstrap_required) {
+    return Status::OK();
+  }
+  {
+    auto lock = universe->LockForRead();
+    auto master_addresses = lock->pb.producer_master_addresses();
+    auto cdc_rpc = VERIFY_RESULT(universe->GetOrCreateCDCRpcTasks(master_addresses));
+
+    std::string bootstrap_id = (table_bootstrap_ids.count(producer_table) > 0) ?
+      table_bootstrap_ids.at(producer_table) : std::string();
+
+    auto ybclient = cdc_rpc->client();
+    auto table = VERIFY_RESULT(ybclient->OpenTable(producer_table));
+
+    auto future = ybclient->LookupAllTabletsFuture(table,
+        CoarseMonoClock::Now() + MonoDelta::FromSeconds(30));
+
+    auto tablets = VERIFY_RESULT(future.get());
+    std::unordered_map<RemoteTabletServer*,
+                      std::list<RemoteTabletPtr>> ts_to_tablet;
+
+    for (auto& tablet : tablets) {
+      auto ts = VERIFY_RESULT(GetLeaderTServer(tablet));
+      ts_to_tablet[ts].push_back(tablet);
+    }
+
+    for (auto& pair : ts_to_tablet) {
+      auto cdc_service = GetCDCServiceProxy(pair.first);
+
+      cdc::IsBootstrapRequiredRequestPB req;
+      cdc::IsBootstrapRequiredResponsePB resp;
+      if (!bootstrap_id.empty()) req.set_stream_id(bootstrap_id);
+      for (auto& tablet : pair.second) {
+        req.add_tablet_ids(tablet->tablet_id());
+      }
+      rpc::RpcController rpc;
+
+      // TO DO: Make this call Async to allow for parallelization
+      RETURN_NOT_OK(cdc_service->IsBootstrapRequired(req, &resp, &rpc));
+      if (resp.has_error() || resp.bootstrap_required()) {
+        return STATUS(InternalError, Substitute(
+          "Error Missing Data in Logs. Bootstrap is required for producer $0",
+          universe->id()));
+      }
+    }
+  }
+  return Status::OK();
+}
+
+
 Status CatalogManager::AddValidatedTableAndCreateCdcStreams(
       scoped_refptr<UniverseReplicationInfo> universe,
       const std::unordered_map<TableId, std::string>& table_bootstrap_ids,
@@ -3524,6 +3595,13 @@ void CatalogManager::GetTableSchemaCallback(
     LOG(ERROR) << "Found error while validating table schema for table " << info->table_id
                << ": " << status;
     return;
+  }
+
+  status = IsBootstrapRequired(universe, info->table_id, table_bootstrap_ids);
+  if (!status.ok()) {
+    MarkUniverseReplicationFailed(universe, s);
+    LOG(ERROR) << "Found error while checking if bootstrap is required for table " << info->table_id
+               << ": " << status;
   }
 
   status = AddValidatedTableAndCreateCdcStreams(universe,
@@ -3650,7 +3728,14 @@ void CatalogManager::GetTablegroupSchemaCallback(
     return;
   }
 
-  Status status = AddValidatedTableAndCreateCdcStreams(universe,
+  Status status = IsBootstrapRequired(universe, producer_tablegroup_id, table_bootstrap_ids);
+  if (!status.ok()) {
+    MarkUniverseReplicationFailed(universe, s);
+    LOG(ERROR) << "Found error while checking if bootstrap is required for table "
+               << producer_tablegroup_id << ": " << status;
+  }
+
+  status = AddValidatedTableAndCreateCdcStreams(universe,
                                                        table_bootstrap_ids,
                                                        producer_tablegroup_id,
                                                        consumer_tablegroup_id);
@@ -3747,7 +3832,16 @@ void CatalogManager::GetColocatedTabletSchemaCallback(
     return;
   }
 
-  Status status = AddValidatedTableAndCreateCdcStreams(universe,
+  Status status = IsBootstrapRequired(universe,
+                                      *producer_parent_table_ids.begin(),
+                                      table_bootstrap_ids);
+  if (!status.ok()) {
+    MarkUniverseReplicationFailed(universe, s);
+    LOG(ERROR) << "Found error while checking if bootstrap is required for table "
+               << *producer_parent_table_ids.begin() << ": " << status;
+  }
+
+  status = AddValidatedTableAndCreateCdcStreams(universe,
                                                        table_bootstrap_ids,
                                                        *producer_parent_table_ids.begin(),
                                                        *consumer_parent_table_ids.begin());
@@ -4997,6 +5091,16 @@ Status CatalogManager::ClearFailedUniverse() {
   RETURN_NOT_OK(DeleteUniverseReplication(&req, &resp, /* RpcContext */ nullptr));
 
   return Status::OK();
+}
+
+std::shared_ptr<cdc::CDCServiceProxy> CatalogManager::GetCDCServiceProxy(RemoteTabletServer* ts) {
+  auto ybclient = master_->cdc_state_client_initializer().client();
+  auto hostport = HostPortFromPB(ts->DesiredHostPort(ybclient->cloud_info()));
+  DCHECK(!hostport.host().empty());
+
+  auto cdc_service = std::make_shared<cdc::CDCServiceProxy>(&ybclient->proxy_cache(), hostport);
+
+  return cdc_service;
 }
 
 }  // namespace enterprise
