@@ -12,6 +12,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.cloud;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
@@ -26,10 +27,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 import play.api.Play;
 import play.libs.Json;
 
+@Slf4j
 public class CloudRegionSetup extends CloudTaskBase {
+
   @Inject
   protected CloudRegionSetup(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
@@ -85,14 +89,21 @@ public class CloudRegionSetup extends CloudTaskBase {
       region.update();
     }
 
-    // need architecture for AWS providers
+    // Attempt to find architecture for AWS providers.
     if (provider.code.equals(Common.CloudType.aws.toString())) {
       String arch = queryHelper.getImageArchitecture(region);
       if (arch == null || arch.isEmpty()) {
-        throw new RuntimeException("Could not get architecture for image: " + region.ybImage);
+        log.warn(
+            "Could not get architecture for image {} in region {}.", region.ybImage, region.code);
+
+      } else {
+        try {
+          Architecture archEnum = Architecture.valueOf(arch);
+          region.setArchitecture(archEnum);
+        } catch (IllegalArgumentException e) {
+          log.warn("{} not a valid architecture. Skipping for region {}.", arch, region.code);
+        }
       }
-      region.setArchitecture(arch);
-      region.update();
     }
 
     JsonNode zoneInfo;

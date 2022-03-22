@@ -158,11 +158,12 @@ public class Region extends Model {
     return null;
   }
 
-  public void setArchitecture(String arch) {
+  public void setArchitecture(Architecture arch) {
     if (details == null) {
       details = new RegionDetails();
     }
-    details.arch = Architecture.valueOf(arch);
+    details.arch = arch;
+    save();
   }
 
   @ApiModelProperty(required = false)
