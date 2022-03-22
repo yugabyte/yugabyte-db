@@ -23,7 +23,7 @@ As of v2.2, Yugabyte follows a new release versioning convention for YugabyteDB 
 ## On this page
 
 * Current [supported releases](#current-supported-releases)
-* Yugabyte's [release support policy](#release-support-policy) and [timelines](#release-support-timelines
+* Yugabyte's [release support policy](#release-support-policy) and [timelines](#release-support-timelines)
 * Releases that are [no longer supported](#eol-releases)
 * [Release series recommendations](#recommended-release-series-for-projects) for your project
 
