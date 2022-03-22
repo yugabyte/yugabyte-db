@@ -364,6 +364,6 @@ CREATE MATERIALIZED VIEW mv_collate_test_POSIX AS SELECT * FROM collate_test_POS
 INSERT INTO collate_test_POSIX VALUES (1, 'abc'), (2, 'Abc'), (3, 'bbc'), (4, 'ABD'), (5, 'zzz'), (6, 'ZZZ');
 REFRESH MATERIALIZED VIEW mv_collate_test_POSIX;
 SELECT * FROM mv_collate_test_POSIX ORDER BY b;
-SELECT * FROM mv_collate_test_POSIX ORDER BY b COLLATE "en_US.utf8";
-CREATE MATERIALIZED VIEW mv_collate_test_explicit_collation AS SELECT b COLLATE "en_US.utf8" FROM collate_test_POSIX;
+SELECT * FROM mv_collate_test_POSIX ORDER BY b COLLATE "en-US-x-icu";
+CREATE MATERIALIZED VIEW mv_collate_test_explicit_collation AS SELECT b COLLATE "en-US-x-icu" FROM collate_test_POSIX;
 SELECT * FROM mv_collate_test_explicit_collation ORDER BY b;
