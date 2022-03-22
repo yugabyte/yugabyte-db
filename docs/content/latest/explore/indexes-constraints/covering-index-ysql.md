@@ -24,7 +24,8 @@ showAsideToc: true
   </li>
 </ul>
 
-A covering index is an index that includes all those columns required by a query using the INCLUDE keyword.
+A covering index is an index that includes all those columns required by a query using the INCLUDE keyword; this also includes  those columns that would typically not be a part of an index.
+This index is an efficient way to perform [index-only](https://wiki.postgresql.org/wiki/Index-only_scans) scans where there is no necessity to scan the table and instead, just the index to satisfy certain queries.
 
 ## Syntax
 
@@ -32,7 +33,9 @@ A covering index is an index that includes all those columns required by a query
 CREATE INDEX columnA_columnB_index_name ON table_name(columnA, columnB) INCLUDE (columnC);
 ```
 
-The following exercise demonstrates how to perform an index only scan on functional indexes, and further optimize the query performance using a covering index.
+## Example
+
+The following exercise demonstrates how to perform an index-only scan on functional(expression) indexes, and further optimize the query performance using a covering index.
 
 - Follow the steps to create a cluster [locally](/latest/quick-start/) or in [Yugabyte Cloud](/latest/yugabyte-cloud/cloud-connect/).
 
