@@ -656,6 +656,10 @@ export default class ClusterFields extends Component {
         updateFormField(`${clusterType}.provider`, firstProviderUuid);
         this.providerChanged(firstProviderUuid);
       }
+    } else if (type === 'Create' && clusterType === 'async' && formValues['primary']?.provider) {
+      const providerUUID = formValues['primary'].provider;
+      updateFormField(`${clusterType}.provider`, providerUUID);
+      this.providerChanged(providerUUID);
     }
   }
 

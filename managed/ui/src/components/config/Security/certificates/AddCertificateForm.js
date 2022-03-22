@@ -415,7 +415,6 @@ export default class AddCertificateForm extends Component {
       isHCVaultEnabled,
       mode
     } = this.props;
-    console.log(mode);
     const isEditMode = mode === MODES.EDIT;
 
     return (
