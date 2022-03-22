@@ -76,7 +76,8 @@ export default class Replication extends Component {
       aggregatedMetrics = { ...metrics[GRAPH_TYPE][METRIC_NAME] };
       const replicationNodeMetrics = metrics[GRAPH_TYPE][METRIC_NAME].data.filter(
         (x) => x.name === committedLagName
-      );
+      )
+      .sort((a, b) => b.x.length - a.x.length);
       if (replicationNodeMetrics.length) {
         // Get max-value and avg-value metric array
         let avgArr = null,
@@ -126,7 +127,7 @@ export default class Replication extends Component {
           </div>
         );
       }
-      let resourceNumber = <YBResourceCount size={latestStat} kind="ms" inline={true} />;
+      let resourceNumber = <YBResourceCount size={parseFloat(latestStat.toFixed(4))} kind="ms" inline={true} />;
       if (latestStat > MILLI_IN_MIN) {
         resourceNumber = (
           <YBResourceCount size={(latestStat / MILLI_IN_MIN).toFixed(4)} kind="min" inline={true} />
