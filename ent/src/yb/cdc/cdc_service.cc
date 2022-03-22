@@ -42,6 +42,7 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/log.h"
+#include "yb/consensus/log_reader.h"
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/replicate_msgs_holder.h"
 
@@ -1140,6 +1141,9 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
     impl_->UpdateCDCStateMetadata(
         producer_tablet, commit_timestamp, cached_schema, last_streamed_op_id);
   }
+
+  auto tablet_metric = GetCDCTabletMetrics(producer_tablet, tablet_peer);
+  tablet_metric->is_bootstrap_required->set_value(s.IsNotFound());
 
   RPC_STATUS_RETURN_ERROR(
       s,
@@ -2570,6 +2574,114 @@ Status CDCServiceImpl::CheckTabletValidForStream(const ProducerTabletInfo& info)
   // If we don't recognize the stream_id, populate our full tablet list for this stream.
   auto tablets = VERIFY_RESULT(GetTablets(info.stream_id));
   return impl_->CheckTabletValidForStream(info, tablets);
+}
+
+void CDCServiceImpl::TabletLeaderIsBootstrapRequired(
+        const IsBootstrapRequiredRequestPB* req,
+        IsBootstrapRequiredResponsePB* resp,
+        rpc::RpcContext* context,
+        const std::shared_ptr<tablet::TabletPeer>& peer) {
+  auto result = GetLeaderTServer(peer->tablet_id());
+  RPC_CHECK_AND_RETURN_ERROR(result.ok(), result.status(), resp->mutable_error(),
+                            CDCErrorPB::TABLET_NOT_FOUND, *context);
+
+  auto ts_leader = *result;
+  // Check that tablet leader identified by master is not current tablet peer.
+  // This can happen during tablet rebalance if master and tserver have different views of
+  // leader. We need to avoid self-looping in this case.
+  if (peer) {
+    RPC_CHECK_NE_AND_RETURN_ERROR(ts_leader->permanent_uuid(), peer->permanent_uuid(),
+                                  STATUS(IllegalState,
+                                        Format("Tablet leader changed: leader=$0, peer=$1",
+                                                ts_leader->permanent_uuid(),
+                                                peer->permanent_uuid())),
+                                  resp->mutable_error(), CDCErrorPB::NOT_LEADER, *context);
+  }
+
+  auto cdc_proxy = GetCDCServiceProxy(ts_leader);
+  rpc::RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms));
+
+  IsBootstrapRequiredRequestPB new_req;
+  new_req.set_stream_id(req->stream_id());
+  new_req.add_tablet_ids(peer->tablet_id());
+  auto status = cdc_proxy->IsBootstrapRequired(new_req, resp, &rpc);
+  RPC_STATUS_RETURN_ERROR(status, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, *context);
+
+  context->RespondSuccess();
+}
+
+void CDCServiceImpl::IsBootstrapRequired(const IsBootstrapRequiredRequestPB* req,
+                                         IsBootstrapRequiredResponsePB* resp,
+                                         rpc::RpcContext context) {
+  RPC_CHECK_AND_RETURN_ERROR(req->tablet_ids_size() > 0,
+                             STATUS(InvalidArgument,
+                                    "Tablet ID is required to check for replication"),
+                             resp->mutable_error(),
+                             CDCErrorPB::INVALID_REQUEST,
+                             context);
+
+  for (auto& tablet_id : req->tablet_ids()) {
+    std::shared_ptr<tablet::TabletPeer> tablet_peer;
+    auto s = tablet_manager_->GetTabletPeer(tablet_id, &tablet_peer);
+    if (s.IsNotFound() || !IsTabletPeerLeader(tablet_peer)) {
+      TabletLeaderIsBootstrapRequired(req, resp, &context, tablet_peer);
+      continue;
+    }
+
+    auto session = client()->NewSession();
+    CoarseTimePoint deadline = GetDeadline(context, client());
+
+    session->SetDeadline(deadline);
+    OpId op_id = OpId();
+
+    std::shared_ptr<CDCTabletMetrics> tablet_metric = NULL;
+
+    if (req->has_stream_id() && !req->stream_id().empty()) {
+      // Check that requested tablet_id is part of the CDC stream.
+      ProducerTabletInfo producer_tablet = {"" /* UUID */, req->stream_id(), tablet_id};
+      s = CheckTabletValidForStream(producer_tablet);
+      RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
+
+      auto result = GetLastCheckpoint(producer_tablet, session);
+      if (result.ok()) {
+        op_id = *result;
+      }
+
+      tablet_metric = GetCDCTabletMetrics(producer_tablet, tablet_peer);
+    }
+
+    auto log = tablet_peer->log();
+    if (op_id.index == log->GetLatestEntryOpId().index) {
+      // Consumer has caught up to producer
+      continue;
+    }
+
+    int64_t next_index = op_id.index + 1;
+    consensus::ReplicateMsgs replicates;
+    int64_t starting_op_segment_seq_num;
+    yb::SchemaPB schema;
+    uint32_t schema_version;
+
+    auto log_result = log->GetLogReader()->ReadReplicatesInRange(next_index,
+                                                                next_index,
+                                                                0,
+                                                                &replicates,
+                                                                &starting_op_segment_seq_num,
+                                                                &schema,
+                                                                &schema_version);
+
+    bool missing_logs = !log_result.ok();
+    if (missing_logs) {
+      LOG(INFO) << "Bootstrap is required due to missing logs from tablet "
+                << tablet_peer->tablet_id();
+      resp->set_bootstrap_required(missing_logs);
+    }
+    if (tablet_metric) {
+      tablet_metric->is_bootstrap_required->set_value(missing_logs ? 1 : 0);
+    }
+  }
+  context.RespondSuccess();
 }
 
 }  // namespace cdc

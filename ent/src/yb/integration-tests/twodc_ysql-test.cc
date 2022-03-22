@@ -26,6 +26,9 @@
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/consensus/log.h"
+#include "yb/consensus/log_reader.h"
+
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_service.proxy.h"
@@ -88,6 +91,14 @@ DECLARE_bool(hide_pg_catalog_table_creation_logs);
 DECLARE_bool(master_auto_run_initdb);
 DECLARE_int32(pggate_rpc_timeout_secs);
 DECLARE_bool(enable_delete_truncate_xcluster_replicated_table);
+DECLARE_int32(log_cache_size_limit_mb);
+DECLARE_int32(log_min_seconds_to_retain);
+DECLARE_uint64(log_segment_size_bytes);
+DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
+DECLARE_int32(log_max_seconds_to_retain);
+DECLARE_int32(log_min_segments_to_retain);
+DECLARE_bool(check_bootstrap_required);
+DECLARE_bool(enable_load_balancing);
 
 namespace yb {
 
@@ -1089,6 +1100,185 @@ TEST_P(TwoDCYsqlTest, TablegroupReplicationMismatch) {
   master::GetUniverseReplicationResponsePB get_universe_replication_resp;
   ASSERT_NOK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId,
       &get_universe_replication_resp));
+}
+
+// Checks that in regular replication set up, bootstrap is not required
+TEST_P(TwoDCYsqlTest, IsBootstrapRequiredNotFlushed) {
+  YB_SKIP_TEST_IN_TSAN();
+  constexpr int kNTabletsPerTable = 1;
+  std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
+  auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
+  const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
+
+  // tables contains both producer and consumer universe tables (alternately).
+  // Pick out just the producer tables from the list.
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  std::vector<std::shared_ptr<client::YBTable>> consumer_tables;
+  producer_tables.reserve(tables.size() / 2);
+  consumer_tables.reserve(tables.size() / 2);
+  for (size_t i = 0; i < tables.size(); ++i) {
+    if (i % 2 == 0) {
+      producer_tables.push_back(tables[i]);
+    } else {
+      consumer_tables.push_back(tables[i]);
+    }
+  }
+
+  // 1. Write some data.
+  for (const auto& producer_table : producer_tables) {
+    WriteWorkload(0, 100, &producer_cluster_, producer_table->name());
+  }
+
+  // Verify data is written on the producer.
+  for (const auto& producer_table : producer_tables) {
+    auto producer_results = ScanToStrings(producer_table->name(), &producer_cluster_);
+    ASSERT_EQ(100, PQntuples(producer_results.get()));
+    int result;
+    for (int i = 0; i < 100; ++i) {
+      result = ASSERT_RESULT(GetInt32(producer_results.get(), i, 0));
+      ASSERT_EQ(i, result);
+    }
+  }
+
+  // 2. Setup replication.
+  FLAGS_check_bootstrap_required = true;
+  ASSERT_OK(SetupUniverseReplication(producer_cluster(), consumer_cluster(), consumer_client(),
+                                     kUniverseId, producer_tables));
+  master::GetUniverseReplicationResponsePB verify_resp;
+  ASSERT_OK(VerifyUniverseReplication(
+    consumer_cluster(), consumer_client(), kUniverseId, &verify_resp));
+
+  std::unique_ptr<client::YBClient> client;
+  std::unique_ptr<cdc::CDCServiceProxy> producer_cdc_proxy;
+  client = ASSERT_RESULT(consumer_cluster()->CreateClient());
+  producer_cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(
+      &client->proxy_cache(),
+      HostPort::FromBoundEndpoint(producer_cluster()->mini_tablet_server(0)->bound_rpc_addr()));
+
+  master::ListCDCStreamsResponsePB stream_resp;
+  ASSERT_OK(GetCDCStreamForTable(producer_tables[0]->id(), &stream_resp));
+  ASSERT_EQ(stream_resp.streams_size(), 1);
+
+  std::vector<TabletId> tablet_ids;
+  if (producer_tables[0]) {
+    ASSERT_OK(producer_cluster_.client_->GetTablets(producer_tables[0]->name(),
+                                                    (int32_t) 3,
+                                                    &tablet_ids,
+                                                    NULL));
+    ASSERT_GT(tablet_ids.size(), 0);
+  }
+
+  rpc::RpcController rpc;
+  cdc::IsBootstrapRequiredRequestPB req;
+  cdc::IsBootstrapRequiredResponsePB resp;
+  req.set_stream_id(stream_resp.streams(0).stream_id());
+  req.add_tablet_ids(tablet_ids[0]);
+
+  ASSERT_OK(producer_cdc_proxy->IsBootstrapRequired(req, &resp, &rpc));
+  ASSERT_FALSE(resp.has_error());
+  ASSERT_FALSE(resp.bootstrap_required());
+
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+// Checks that with missing logs, replication will require bootstrapping
+TEST_P(TwoDCYsqlTest, IsBootstrapRequiredFlushed) {
+  YB_SKIP_TEST_IN_TSAN();
+
+  FLAGS_enable_load_balancing = false;
+  FLAGS_log_cache_size_limit_mb = 1;
+  FLAGS_log_segment_size_bytes = 5_KB;
+  FLAGS_log_min_segments_to_retain = 1;
+  FLAGS_log_min_seconds_to_retain = 1;
+
+  constexpr int kNTabletsPerTable = 1;
+  std::vector<uint32_t> tables_vector = {kNTabletsPerTable};
+  auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
+  const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
+
+  // tables contains both producer and consumer universe tables (alternately).
+  // Pick out just the producer tables from the list.
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  std::vector<std::shared_ptr<client::YBTable>> consumer_tables;
+  producer_tables.reserve(tables.size() / 2);
+  consumer_tables.reserve(tables.size() / 2);
+  for (size_t i = 0; i < tables.size(); ++i) {
+    if (i % 2 == 0) {
+      producer_tables.push_back(tables[i]);
+    } else {
+      consumer_tables.push_back(tables[i]);
+    }
+  }
+
+  auto table = producer_tables[0];
+  // Write some data.
+  WriteWorkload(0, 50, &producer_cluster_, table->name());
+
+  std::unique_ptr<client::YBClient> client;
+  std::unique_ptr<cdc::CDCServiceProxy> producer_cdc_proxy;
+  client = ASSERT_RESULT(consumer_cluster()->CreateClient());
+  producer_cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(
+      &client->proxy_cache(),
+      HostPort::FromBoundEndpoint(producer_cluster()->mini_tablet_server(0)->bound_rpc_addr()));
+  ASSERT_OK(WaitFor([this]() -> Result<bool> {
+    RETURN_NOT_OK(producer_cluster()->CleanTabletLogs());
+    auto leaders = ListTabletPeers(producer_cluster(), ListPeersFilter::kLeaders);
+    if (leaders.empty()) {
+      return false;
+    }
+    // locate the leader with the expected logs
+    tablet::TabletPeerPtr tablet_peer = leaders.front();
+    for (auto leader : leaders) {
+      if (leader->GetLatestLogEntryOpId().index == 51) {
+        tablet_peer = leader;
+      }
+    }
+
+    RETURN_NOT_OK(producer_cluster()->FlushTablets());
+    RETURN_NOT_OK(producer_cluster()->CleanTabletLogs());
+
+    // Check that first log was garbage collected, so remote bootstrap will be required.
+    consensus::ReplicateMsgs replicates;
+    int64_t starting_op;
+    yb::SchemaPB schema;
+    uint32_t schema_version;
+    return !tablet_peer->log()->GetLogReader()->ReadReplicatesInRange(
+        1, 2, 0, &replicates, &starting_op, &schema, &schema_version).ok();
+  }, MonoDelta::FromSeconds(30), "Logs cleaned"));
+
+  auto leaders = ListTabletPeers(producer_cluster(), ListPeersFilter::kLeaders);
+  // locate the leader with the expected logs
+  tablet::TabletPeerPtr tablet_peer = leaders.front();
+  for (auto leader : leaders) {
+    if (leader->GetLatestLogEntryOpId().index == 51) {
+      tablet_peer = leader;
+    }
+  }
+
+  // Setup replication.
+  FLAGS_check_bootstrap_required = false;
+  ASSERT_OK(SetupUniverseReplication(producer_cluster(), consumer_cluster(), consumer_client(),
+                                     kUniverseId, producer_tables));
+  // Verify everything is setup correctly.
+  master::GetUniverseReplicationResponsePB get_universe_replication_resp;
+  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId,
+      &get_universe_replication_resp));
+
+
+  master::ListCDCStreamsResponsePB stream_resp;
+  ASSERT_OK(GetCDCStreamForTable(table->id(), &stream_resp));
+
+  rpc::RpcController rpc;
+  cdc::IsBootstrapRequiredRequestPB req;
+  cdc::IsBootstrapRequiredResponsePB resp;
+  req.set_stream_id(stream_resp.streams(0).stream_id());
+  req.add_tablet_ids(tablet_peer->log()->tablet_id());
+
+  ASSERT_OK(producer_cdc_proxy->IsBootstrapRequired(req, &resp, &rpc));
+  ASSERT_FALSE(resp.has_error());
+  ASSERT_TRUE(resp.bootstrap_required());
+
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
 // TODO adapt rest of twodc-test.cc tests.

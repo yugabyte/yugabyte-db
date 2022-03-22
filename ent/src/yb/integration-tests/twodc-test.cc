@@ -86,6 +86,7 @@ DECLARE_int32(yb_num_shards_per_tserver);
 DECLARE_uint64(TEST_yb_inbound_big_calls_parse_delay_ms);
 DECLARE_int64(rpc_throttle_threshold_bytes);
 DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_bool(check_bootstrap_required);
 
 namespace yb {
 

@@ -13,6 +13,8 @@
 
 // Tests for the EE yb-admin command-line tool.
 
+#include <gflags/gflags.h>
+
 #include "yb/client/client.h"
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/schema.h"
@@ -46,6 +48,7 @@ DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_uint64(TEST_yb_inbound_big_calls_parse_delay_ms);
 DECLARE_int64(rpc_throttle_threshold_bytes);
 DECLARE_bool(parallelize_bootstrap_producer);
+DECLARE_bool(check_bootstrap_required);
 
 namespace yb {
 namespace tools {
@@ -664,6 +667,7 @@ class XClusterAdminCliTest : public AdminCliTest {
     AdminCliTest::SetUp();
     // Only create a table on the consumer, producer table may differ in tests.
     CreateTable(Transactional::kTrue);
+    FLAGS_check_bootstrap_required = false;
 
     // Create the producer cluster.
     opts.num_tablet_servers = num_tablet_servers();
