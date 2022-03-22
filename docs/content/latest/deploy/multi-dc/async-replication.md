@@ -254,7 +254,7 @@ CREATE TABLE transactions_us
   ![xCluster_with_GP](/images/explore/yb_xcluster_table_uuids.png)
 
   {{< note title="Note" >}}
-  xCluster doesn't support parent to parent table replication, You have to use only partition tables for replication setup.
+  Only the partition tables need to be specified for replication setup - it is not necessary to specify the parent table.
   {{< /note >}}
 
 2. Run the replication setup command for the source universe:
