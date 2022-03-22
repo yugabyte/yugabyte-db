@@ -43,8 +43,9 @@ Along with the Smart drivers, YugabyteDB also provides support for upstream [Pos
 
 | Driver/ORM | Support Level | Example apps |
 | :--------- | :------------ | :----------- |
-| PGX | Full |  |
+| PGX [Recommended] | Full |  |
 | PQ | Full | |
+| GORM | Full | |
 | PG | Full | |
 
 ## [JavaScript](javascript/)
