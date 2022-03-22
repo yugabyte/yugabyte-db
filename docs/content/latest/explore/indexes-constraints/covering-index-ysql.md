@@ -106,6 +106,7 @@ Using a function based index ([expression index](../../indexes-constraints/expre
 {{< note title="Note" >}}
 
 For simplicity, the `username` column is used along with the INCLUDE keyword to create the covering index. Generally, a covering index allows a user to perform an index-only scan if the select list in the query matches the columns that are included in the index and additional columns for the index are specified using the INCLUDE keyword.
+Ideally, use columns that are updated frequently in the INCLUDE clause. But for other cases, it would probably be faster to just have an index on the key columns.
 
 {{< /note >}}
 
