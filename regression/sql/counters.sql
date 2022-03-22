@@ -1,4 +1,5 @@
 CREATE EXTENSION pg_stat_monitor;
+Set pg_stat_monitor.pgsm_track='all';
 SELECT pg_stat_monitor_reset();
 
 CREATE TABLE t1 (a INTEGER);

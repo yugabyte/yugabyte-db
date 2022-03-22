@@ -27,6 +27,10 @@ jobs:
           sudo rm -rf /usr/share/postgresql
           sudo rm -rf /etc/postgresql
           sudo rm -f /usr/bin/pg_config
+          sudo /usr/bin/perl -MCPAN -e 'install IPC::RUN'
+          sudo /usr/bin/perl -MCPAN -e 'install String::Util'
+          sudo /usr/bin/perl -MCPAN -e 'install Data::Str2Num'
+
       - name: Create pgsql dir
         run: mkdir -p /opt/pgsql
 
@@ -41,7 +45,7 @@ jobs:
             '--disable-dependency-tracking' '--with-icu' '--with-tcl' '--with-perl' \
             '--with-python' '--with-pam' '--with-openssl' '--with-libxml' '--with-libxslt' \
             'PYTHON=/usr/bin/python3' '--mandir=/usr/share/postgresql/13/man' \
-            '--docdir=/usr/share/doc/postgresql-doc-13' \
+            '--docdir=/usr/share/doc/postgresql-doc-13' 'AWK=mawk' \
             '--sysconfdir=/etc/postgresql-common' '--datarootdir=/usr/share/' \
             '--datadir=/usr/share/postgresql/13' '--bindir=/usr/lib/postgresql/13/bin' \
             '--libdir=/usr/lib/x86_64-linux-gnu/' '--libexecdir=/usr/lib/postgresql/' \
@@ -49,7 +53,7 @@ jobs:
             '--enable-nls' '--enable-thread-safety' '--enable-tap-tests' '--enable-debug' \
             '--enable-dtrace' '--disable-rpath' '--with-uuid=e2fs' '--with-gnu-ld' \
             '--with-pgport=5432' '--with-system-tzdata=/usr/share/zoneinfo' '--with-llvm' \
-            'LLVM_CONFIG=/usr/bin/llvm-config-11' 'CLANG=/usr/bin/clang-11' \
+            'LLVM_CONFIG=/usr/bin/llvm-config-9' 'CLANG=/usr/bin/clang-9' \
             '--with-systemd' '--with-selinux' 'MKDIR_P=/bin/mkdir -p' 'PROVE=/usr/bin/prove' \
             'TAR=/bin/tar' 'XSLTPROC=xsltproc --nonet' 'CFLAGS=-g -O2 -fstack-protector-strong -Wformat -Werror=format-security -fno-omit-frame-pointer' \
             'LDFLAGS=-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now' '--with-gssapi' '--with-ldap' \
@@ -72,6 +76,7 @@ jobs:
         run: |
           export PATH="/usr/lib/postgresql/13/bin:$PATH"
           sudo cp /usr/lib/postgresql/13/bin/pg_config /usr/bin
+          pg_config
           make USE_PGXS=1
           sudo make USE_PGXS=1 install
         working-directory: src/pg_stat_monitor/
@@ -83,9 +88,43 @@ jobs:
           /usr/lib/postgresql/13/bin/pg_ctl -D /opt/pgsql/data -l logfile start
         working-directory: src/pg_stat_monitor/
 
-      - name: Start Server installcheck-world tests (without TAP)
+      - name: Start pg_stat_monitor_tests
+        run: |
+          make installcheck
+        working-directory: src/pg_stat_monitor/
+
+      - name: Change dir permissions on fail
+        if: ${{ failure() }}
+        run: |
+          sudo chmod -R ugo+rwx t
+          sudo chmod -R ugo+rwx tmp_check
+          exit 2 # regenerate error so that we can upload files in next step
+        working-directory: src/pg_stat_monitor/
+
+      - name: Upload logs on fail
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v2
+        with:
+          name: Regressions diff and postgresql log
+          path: |
+            src/pg_stat_monitor/regression.diffs
+            src/pg_stat_monitor/regression.out
+            src/pg_stat_monitor/logfile
+            src/pg_stat_monitor/t/results/
+            src/pg_stat_monitor/tmp_check/log/
+            !src/pg_stat_monitor/tmp_check/**/archives/*
+            !src/pg_stat_monitor/tmp_check/**/backup/*
+            !src/pg_stat_monitor/tmp_check/**/pgdata/*
+            !src/pg_stat_monitor/tmp_check/**/archives/
+            !src/pg_stat_monitor/tmp_check/**/backup/
+            !src/pg_stat_monitor/tmp_check/**/pgdata/
+          if-no-files-found: warn
+          retention-days: 1
+
+      - name: Start Server installcheck-world tests
         run: |
           make installcheck-world
+
       - name: Report on installcheck-world test suites fail
         uses: actions/upload-artifact@v2
         if: ${{ failure() }}
@@ -94,20 +133,5 @@ jobs:
           path: |
             **/regression.diffs
             **/regression.out
-            src/pg_stat_monitor/logfile
-          retention-days: 1
-
-      - name: Start pg_stat_monitor_tests
-        run: |
-          make installcheck
-        working-directory: src/pg_stat_monitor/
-
-      - name: Report on pg_stat_monitor test fail
-        uses: actions/upload-artifact@v2
-        if: ${{ failure() }}
-        with:
-          name: Regressions diff and postgresql log
-          path: |
-            src/pg_stat_monitor/regression.diffs
             src/pg_stat_monitor/logfile
           retention-days: 1

@@ -23,6 +23,10 @@ jobs:
           sudo rm -rf /usr/share/postgresql
           sudo rm -rf /etc/postgresql
           sudo rm -f /usr/bin/pg_config
+          sudo apt-get install libreadline6-dev systemtap-sdt-dev zlib1g-dev libssl-dev libpam0g-dev python-dev bison flex libipc-run-perl wget -y
+          sudo /usr/bin/perl -MCPAN -e 'install IPC::RUN'
+          sudo /usr/bin/perl -MCPAN -e 'install String::Util'
+          sudo /usr/bin/perl -MCPAN -e 'install Data::Str2Num'
 
       - name: Install PG Distribution Postgresql 13
         run: |
@@ -31,6 +35,8 @@ jobs:
           sudo apt-get update
           sudo apt-get -y install postgresql-13 postgresql-client-13 postgresql-contrib postgresql-server-dev-13
           sudo chown -R postgres:postgres src/
+          sudo cpan install IPC::RUN
+          sudo cpan install String::Util
 
       - name: Build pg_stat_monitor
         run: |
@@ -48,12 +54,30 @@ jobs:
           sudo -u postgres bash -c 'make installcheck USE_PGXS=1'
         working-directory: src/pg_stat_monitor/
 
-      - name: Report on test fail
-        uses: actions/upload-artifact@v2
+      - name: Change dir permissions on fail
         if: ${{ failure() }}
+        run: |
+          sudo chmod -R ugo+rwx t
+          sudo chmod -R ugo+rwx tmp_check
+          exit 2 # regenerate error so that we can upload files in next step
+        working-directory: src/pg_stat_monitor/
+
+      - name: Upload logs on fail
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v2
         with:
           name: Regressions diff and postgresql log
           path: |
             src/pg_stat_monitor/regression.diffs
+            src/pg_stat_monitor/regression.out
             src/pg_stat_monitor/logfile
+            src/pg_stat_monitor/t/results/
+            src/pg_stat_monitor/tmp_check/log/
+            !src/pg_stat_monitor/tmp_check/**/archives/*
+            !src/pg_stat_monitor/tmp_check/**/backup/*
+            !src/pg_stat_monitor/tmp_check/**/pgdata/*
+            !src/pg_stat_monitor/tmp_check/**/archives/
+            !src/pg_stat_monitor/tmp_check/**/backup/
+            !src/pg_stat_monitor/tmp_check/**/pgdata/
+          if-no-files-found: warn
           retention-days: 1

@@ -1,0 +1,80 @@
+CREATE EXTENSION pg_stat_monitor;
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
+
+SELECT * from pg_stat_monitor_settings;
+                   name                   | value  | default_value |                                               description                                                | minimum |  maximum   |    options     | restart 
+------------------------------------------+--------+---------------+----------------------------------------------------------------------------------------------------------+---------+------------+----------------+---------
+ pg_stat_monitor.pgsm_max                 | 100    | 100           | Sets the maximum size of shared memory in (MB) used for statement's metadata tracked by pg_stat_monitor. |       1 |       1000 |                | yes
+ pg_stat_monitor.pgsm_query_max_len       | 2048   | 2048          | Sets the maximum length of query.                                                                        |    1024 | 2147483647 |                | yes
+ pg_stat_monitor.pgsm_track_utility       | yes    | yes           | Selects whether utility commands are tracked.                                                            |         |            | yes, no        | no
+ pg_stat_monitor.pgsm_normalized_query    | yes    | yes           | Selects whether save query in normalized format.                                                         |         |            | yes, no        | no
+ pg_stat_monitor.pgsm_max_buckets         | 10     | 10            | Sets the maximum number of buckets.                                                                      |       1 |         10 |                | yes
+ pg_stat_monitor.pgsm_bucket_time         | 60     | 60            | Sets the time in seconds per bucket.                                                                     |       1 | 2147483647 |                | yes
+ pg_stat_monitor.pgsm_histogram_min       | 0      | 0             | Sets the time in millisecond.                                                                            |       0 | 2147483647 |                | yes
+ pg_stat_monitor.pgsm_histogram_max       | 100000 | 100000        | Sets the time in millisecond.                                                                            |      10 | 2147483647 |                | yes
+ pg_stat_monitor.pgsm_histogram_buckets   | 10     | 10            | Sets the maximum number of histogram buckets                                                             |       2 | 2147483647 |                | yes
+ pg_stat_monitor.pgsm_query_shared_buffer | 20     | 20            | Sets the maximum size of shared memory in (MB) used for query tracked by pg_stat_monitor.                |       1 |      10000 |                | yes
+ pg_stat_monitor.pgsm_overflow_target     | 1      | 1             | Sets the overflow target for pg_stat_monitor                                                             |       0 |          1 |                | yes
+ pg_stat_monitor.pgsm_enable_query_plan   | no     | no            | Enable/Disable query plan monitoring                                                                     |         |            | yes, no        | no
+ pg_stat_monitor.pgsm_track               | top    | top           | Selects which statements are tracked by pg_stat_monitor.                                                 |         |            | none, top, all | no
+ pg_stat_monitor.pgsm_extract_comments    | no     | no            | Enable/Disable extracting comments from queries.                                                         |         |            | yes, no        | no
+ pg_stat_monitor.pgsm_track_planning      | no     | no            | Selects whether planning statistics are tracked.                                                         |         |            | yes, no        | no
+(15 rows)
+
+CREATE database example;
+select datname, substr(query,0,100) as query, calls from pg_stat_monitor order by datname, query, calls desc Limit 20;
+ datname |                                                query                                                | calls 
+---------+-----------------------------------------------------------------------------------------------------+-------
+ example | BEGIN                                                                                               | 10000
+ example | END                                                                                                 | 10000
+ example | INSERT INTO pgbench_history (tid, bid, aid, delta, mtime) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP | 10000
+ example | SELECT abalance FROM pgbench_accounts WHERE aid = $1                                                | 10000
+ example | UPDATE pgbench_accounts SET abalance = abalance + $1 WHERE aid = $2                                 | 10000
+ example | UPDATE pgbench_branches SET bbalance = bbalance + $1 WHERE bid = $2                                 | 10000
+ example | UPDATE pgbench_tellers SET tbalance = tbalance + $1 WHERE tid = $2                                  | 10000
+ example | alter table pgbench_accounts add primary key (aid)                                                  |     1
+ example | alter table pgbench_branches add primary key (bid)                                                  |     1
+ example | alter table pgbench_tellers add primary key (tid)                                                   |     1
+ example | begin                                                                                               |     1
+ example | commit                                                                                              |     1
+ example | copy pgbench_accounts from stdin                                                                    |     1
+ example | create table pgbench_accounts(aid    int not null,bid int,abalance int,filler char(84)) with (fillf |     1
+ example | create table pgbench_branches(bid int not null,bbalance int,filler char(88)) with (fillfactor=100)  |     1
+ example | create table pgbench_history(tid int,bid int,aid    int,delta int,mtime timestamp,filler char(22))  |     1
+ example | create table pgbench_tellers(tid int not null,bid int,tbalance int,filler char(84)) with (fillfacto |     1
+ example | drop table if exists pgbench_accounts, pgbench_branches, pgbench_history, pgbench_tellers           |     1
+ example | insert into pgbench_branches(bid,bbalance) values($1,$2)                                            |    10
+ example | insert into pgbench_tellers(tid,bid,tbalance) values ($1,$2,$3)                                     |   100
+(20 rows)
+
+SELECT * from pg_stat_monitor_settings;
+                   name                   | value  | default_value |                                               description                                                | minimum |  maximum   |    options     | restart 
+------------------------------------------+--------+---------------+----------------------------------------------------------------------------------------------------------+---------+------------+----------------+---------
+ pg_stat_monitor.pgsm_max                 | 100    | 100           | Sets the maximum size of shared memory in (MB) used for statement's metadata tracked by pg_stat_monitor. |       1 |       1000 |                | yes
+ pg_stat_monitor.pgsm_query_max_len       | 2048   | 2048          | Sets the maximum length of query.                                                                        |    1024 | 2147483647 |                | yes
+ pg_stat_monitor.pgsm_track_utility       | yes    | yes           | Selects whether utility commands are tracked.                                                            |         |            | yes, no        | no
+ pg_stat_monitor.pgsm_normalized_query    | yes    | yes           | Selects whether save query in normalized format.                                                         |         |            | yes, no        | no
+ pg_stat_monitor.pgsm_max_buckets         | 10     | 10            | Sets the maximum number of buckets.                                                                      |       1 |         10 |                | yes
+ pg_stat_monitor.pgsm_bucket_time         | 60     | 60            | Sets the time in seconds per bucket.                                                                     |       1 | 2147483647 |                | yes
+ pg_stat_monitor.pgsm_histogram_min       | 0      | 0             | Sets the time in millisecond.                                                                            |       0 | 2147483647 |                | yes
+ pg_stat_monitor.pgsm_histogram_max       | 100000 | 100000        | Sets the time in millisecond.                                                                            |      10 | 2147483647 |                | yes
+ pg_stat_monitor.pgsm_histogram_buckets   | 10     | 10            | Sets the maximum number of histogram buckets                                                             |       2 | 2147483647 |                | yes
+ pg_stat_monitor.pgsm_query_shared_buffer | 20     | 20            | Sets the maximum size of shared memory in (MB) used for query tracked by pg_stat_monitor.                |       1 |      10000 |                | yes
+ pg_stat_monitor.pgsm_overflow_target     | 1      | 1             | Sets the overflow target for pg_stat_monitor                                                             |       0 |          1 |                | yes
+ pg_stat_monitor.pgsm_enable_query_plan   | no     | no            | Enable/Disable query plan monitoring                                                                     |         |            | yes, no        | no
+ pg_stat_monitor.pgsm_track               | top    | top           | Selects which statements are tracked by pg_stat_monitor.                                                 |         |            | none, top, all | no
+ pg_stat_monitor.pgsm_extract_comments    | no     | no            | Enable/Disable extracting comments from queries.                                                         |         |            | yes, no        | no
+ pg_stat_monitor.pgsm_track_planning      | no     | no            | Selects whether planning statistics are tracked.                                                         |         |            | yes, no        | no
+(15 rows)
+
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
+
+Drop extension pg_stat_monitor;

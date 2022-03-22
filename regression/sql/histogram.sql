@@ -29,7 +29,7 @@ $$ LANGUAGE 'plpgsql' STRICT;
 
 CREATE EXTENSION pg_stat_monitor;
 SELECT pg_stat_monitor_reset();
-Set pg_stat_monitor.track='all';
+Set pg_stat_monitor.pgsm_track='all';
 select run_pg_sleep(5);
 
 SELECT substr(query, 0,50) as query, calls, resp_calls FROM pg_stat_monitor ORDER BY query COLLATE "C";
