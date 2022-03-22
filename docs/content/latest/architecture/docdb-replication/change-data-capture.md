@@ -3,7 +3,6 @@ title: Change data capture (CDC)
 headerTitle: Change data capture (CDC)
 linkTitle: Change data capture (CDC)
 description: Learn how YugabyteDB supports asynchronous replication of data changes (inserts, updates, and deletes) to external databases or applications.
-beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
   - /latest/architecture/cdc-architecture/
   - /latest/architecture/change-data-capture/
@@ -35,8 +34,8 @@ Remote systems may subscribe to a stream of data changes and then transform and 
 
 Maintaining multiple data centers enables enterprises to provide:
 
-- High availability (HA) — Redundant systems help ensure that your operations virtually never fail.
-- Geo-redundancy — Geographically dispersed servers provide resiliency against catastrophic events and natural disasters.
+* High availability (HA) — Redundant systems help ensure that your operations virtually never fail.
+* Geo-redundancy — Geographically dispersed servers provide resiliency against catastrophic events and natural disasters.
 
 ### Compliance and auditing
 
@@ -50,31 +49,30 @@ In the sections below, the terms "data center", "cluster", and "universe" are us
 
 ## Process architecture
 
-```txt
-                          ╔═══════════════════════════════════════════╗
-                          ║  Node #1                                  ║
-                          ║  ╔════════════════╗ ╔══════════════════╗  ║
-                          ║  ║    YB-Master   ║ ║    YB-TServer    ║  ║  CDC Service is stateless
-    CDC Streams metadata  ║  ║  (Stores CDC   ║ ║  ╔═════════════╗ ║  ║           |
-    replicated with Raft  ║  ║   metadata)    ║ ║  ║ CDC Service ║ ║  ║<----------'
-             .----------->║  ║                ║ ║  ╚═════════════╝ ║  ║
-             |            ║  ╚════════════════╝ ╚══════════════════╝  ║
-             |            ╚═══════════════════════════════════════════╝
-             |
-             |
-             |_______________________________________________.
-             |                                               |
-             V                                               V
-  ╔═══════════════════════════════════════════╗    ╔═══════════════════════════════════════════╗
-  ║  Node #2                                  ║    ║  Node #3                                  ║
-  ║  ╔════════════════╗ ╔══════════════════╗  ║    ║  ╔════════════════╗ ╔══════════════════╗  ║
-  ║  ║    YB-Master   ║ ║    YB-TServer    ║  ║    ║  ║    YB-Master   ║ ║    YB-TServer    ║  ║
-  ║  ║  (Stores CDC   ║ ║  ╔═════════════╗ ║  ║    ║  ║  (Stores CDC   ║ ║  ╔═════════════╗ ║  ║
-  ║  ║   metadata)    ║ ║  ║ CDC Service ║ ║  ║    ║  ║   metadata)    ║ ║  ║ CDC Service ║ ║  ║
-  ║  ║                ║ ║  ╚═════════════╝ ║  ║    ║  ║                ║ ║  ╚═════════════╝ ║  ║
-  ║  ╚════════════════╝ ╚══════════════════╝  ║    ║  ╚════════════════╝ ╚══════════════════╝  ║
-  ╚═══════════════════════════════════════════╝    ╚═══════════════════════════════════════════╝
-
+```goat
+                        .-------------------------------------------.
+                        |  Node 1                                   |
+                        |  '----------------' '------------------'  |
+                        |  |    YB-Master   | |    YB-TServer    |  |  CDC Service is stateless
+   CDC Streams metadata |  |  (Stores CDC   | |  '-------------' |  |           |
+  replicated with Raft  |  |   metadata)    | |  | CDC Service | |  |           |
+           .----------> |  |                | |  .-------------. |  | <---------'
+           |            |  .----------------. .------------------.  |
+           |            '-------------------------------------------'
+           |
+           |
+           |_______________________________________________
+           |                                               |
+           v                                               v
+.-------------------------------------------.    .-------------------------------------------.
+|  Node 2                                   |    |   Node 3                                  |
+|  '----------------' '------------------'  |    |  '----------------' '------------------'  |
+|  |    YB-Master   | |    YB-TServer    |  |    |  |    YB-Master   | |    YB-TServer    |  |
+|  |  (Stores CDC   | |  '-------------' |  |    |  |  (Stores CDC   | |  '-------------' |  |
+|  |   metadata)    | |  | CDC Service | |  |    |  |   metadata)    | |  | CDC Service | |  |
+|  |                | |  .-------------. |  |    |  |                | |  .-------------. |  |
+|  .----------------. .------------------.  |    |  .----------------. .------------------.  |
+'-------------------------------------------'    '-------------------------------------------'
 ```
 
 Every YB-TServer has a `CDC service` that is stateless. The main beta APIs provided by `CDC Service` are:
@@ -84,11 +82,11 @@ Every YB-TServer has a `CDC service` that is stateless. The main beta APIs provi
 
 ### CDC streams
 
-Creating a new CDC stream will return a stream UUID. This is facilitated via the [yb-admin](../../admin/yb-admin.md#change-data-capture-cdc-commands) tool.
+Creating a new CDC stream will return a stream UUID. This is facilitated via the [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands) tool.
 
 ### Debezium
 
-To consume the events generated by CDC, we will be using Debezium as the connector. It is an open-source distributed platform that needs to be pointed at the database using the stream ID. Steps to setup Debezium for YugabyteDB CDC are documented [here](../../integrations/cdc/debezium-for-cdc.md).
+To consume the events generated by CDC, we will be using Debezium as the connector. It is an open-source distributed platform that needs to be pointed at the database using the stream ID. Steps to set up Debezium for YugabyteDB CDC are documented on the [Debezium integration page](../../../integrations/cdc/debezium/).
 
 ### Pushing changes to external systems
 
@@ -102,9 +100,9 @@ All data changes for one row, or multiple rows in the same tablet, will be recei
 
 For example, let us imagine the following scenario:
 
-- Two rows are being updated concurrently.
-- These two rows belong to different tablets.
-- The first row `row #1` was updated at time `t1` and the second row `row #2` was updated at time `t2`.
+* Two rows are being updated concurrently.
+* These two rows belong to different tablets.
+* The first row `row #1` was updated at time `t1` and the second row `row #2` was updated at time `t2`.
 
 In this case, it is possible for CDC to push the later update corresponding to `row #2` change to Kafka before pushing the earlier update, corresponding to `row #1`.
 
