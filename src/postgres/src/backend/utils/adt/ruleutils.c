@@ -1526,16 +1526,12 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 				/* For range-partitioned tables */
 				if (indexrel->yb_table_properties->num_tablets > 1)
 				{
-					ereport(WARNING,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("exporting SPLIT clause for range-split relations is not yet "
-									"supported"),
-							 errdetail("Index '%s' will be created with default (1) tablets "
-									   "instead of %" PRIu64 ".",
-									   generate_relation_name(indrelid, NIL),
-									   indexrel->yb_table_properties->num_tablets),
-							 errhint("See https://github.com/yugabyte/yugabyte-db/issues/4873."
-									 " Click '+' on the description to raise its priority.")));
+					const char *range_split_clause =
+							DatumGetCString(DirectFunctionCall1(yb_get_range_split_clause,
+																ObjectIdGetDatum(indexrelid)));
+
+					if (strcmp(range_split_clause, "") != 0)
+						appendStringInfo(&buf, " %s", range_split_clause);
 				}
 			}
 

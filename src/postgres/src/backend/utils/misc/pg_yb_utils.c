@@ -78,6 +78,7 @@
 #include "utils/syscache.h"
 #include "fmgr.h"
 #include "funcapi.h"
+#include "mb/pg_wchar.h"
 
 #include "yb/common/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
@@ -1829,6 +1830,324 @@ yb_table_properties(PG_FUNCTION_ARGS)
 	relation_close(rel, AccessShareLock);
 
 	return HeapTupleGetDatum(heap_form_tuple(tupdesc, values, nulls));
+}
+
+/*
+ * This function is adapted from code of PQescapeLiteral() in fe-exec.c.
+ * Convert a string value to an SQL string literal and append it to
+ * the given StringInfo.
+ */
+static void
+appendStringLiteral(StringInfo buf, const char *str, int encoding)
+{
+	const char *s;
+	int			num_quotes = 0;
+	int			num_backslashes = 0;
+	int 		len = strlen(str);
+	int			input_len;
+
+	/* Scan the string for characters that must be escaped. */
+	for (s = str; (s - str) < strlen(str) && *s != '\0'; ++s)
+	{
+		if (*s == '\'')
+			++num_quotes;
+		else if (*s == '\\')
+			++num_backslashes;
+		else if (IS_HIGHBIT_SET(*s))
+		{
+			int			charlen;
+
+			/* Slow path for possible multibyte characters */
+			charlen = pg_encoding_mblen(encoding, s);
+
+			/* Multibyte character overruns allowable length. */
+			if ((s - str) + charlen > len || memchr(s, 0, charlen) != NULL)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_DATA_EXCEPTION),
+						 errmsg("incomplete multibyte character")));
+			}
+
+			/* Adjust s, bearing in mind that for loop will increment it. */
+			s += charlen - 1;
+		}
+	}
+
+	input_len = s - str;
+
+	/*
+	 * If we are escaping a literal that contains backslashes, we use the
+	 * escape string syntax so that the result is correct under either value
+	 * of standard_conforming_strings.
+	 */
+	if (num_backslashes > 0)
+	{
+		appendStringInfoChar(buf, 'E');
+	}
+
+	/* Opening quote. */
+	appendStringInfoChar(buf, '\'');
+
+	/*
+	 * Use fast path if possible.
+	 *
+	 * We've already verified that the input string is well-formed in the
+	 * current encoding.  If it contains no quotes and, in the case of
+	 * literal-escaping, no backslashes, then we can just copy it directly to
+	 * the output buffer, adding the necessary quotes.
+	 *
+	 * If not, we must rescan the input and process each character
+	 * individually.
+	 */
+	if (num_quotes == 0 && num_backslashes == 0)
+	{
+		appendStringInfoString(buf, str);
+	}
+	else
+	{
+		for (s = str; s - str < input_len; ++s)
+		{
+			if (*s == '\'' || *s == '\\')
+			{
+				appendStringInfoChar(buf, *s);
+				appendStringInfoChar(buf, *s);
+			}
+			else if (!IS_HIGHBIT_SET(*s))
+				appendStringInfoChar(buf, *s);
+			else
+			{
+				int	charlen = pg_encoding_mblen(encoding, s);
+
+				while (1)
+				{
+					appendStringInfoChar(buf, *s);
+					if (--charlen == 0)
+						break;
+					++s;		/* for loop will provide the final increment */
+				}
+			}
+		}
+	}
+
+	/* Closing quote. */
+	appendStringInfoChar(buf, '\'');
+}
+
+/*
+ * This function is adapted from code in pg_dump.c.
+ * It converts an internal raw datum value to a output string based on
+ * column type, and append the string to the StringInfo input parameter.
+ * Datum of all types can be generated in a quoted string format
+ * (e.g., '100' for integer 100), and rely on PG's type cast to function
+ * correctly. Here, we specifically handle some cases to ignore quotes to
+ * make the generated string look better.
+ */
+static void
+appendDatumToString(StringInfo str, uint64_t datum, Oid typid, int encoding)
+{
+	const char *datum_str = YBDatumToString(datum, typid);
+	switch (typid)
+	{
+		case INT2OID:
+		case INT4OID:
+		case INT8OID:
+		case OIDOID:
+		case FLOAT4OID:
+		case FLOAT8OID:
+		case NUMERICOID:
+			/*
+			 * These types are converted to string without quotes unless
+			 * they contain values: Infinity and NaN.
+			 */
+			if (strspn(datum_str, "0123456789 +-eE.") == strlen(datum_str))
+				appendStringInfoString(str, datum_str);
+			else
+				appendStringInfo(str, "'%s'", datum_str);
+			break;
+		/*
+		 * Currently, cannot create tables/indexes with a key containing
+		 * type 'BIT' or 'VARBIT'.
+		 */
+		case BITOID:
+		case VARBITOID:
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("type: %s not yet supported",
+							YBPgTypeOidToStr(typid))));
+			break;
+		default:
+			/* All other types are appended as string literals. */
+			appendStringLiteral(str, datum_str, encoding);
+			break;
+	}
+}
+
+/*
+ * This function gets range relations' split point values as PG datums.
+ * It also stores key columns' data types in input parameters: pkeys_atttypid.
+ */
+static void
+getSplitPointsInfo(Oid relid, YBCPgTableDesc yb_tabledesc,
+				   YbTableProperties yb_table_properties,
+				   Oid *pkeys_atttypid,
+				   YBCPgSplitDatum *split_datums)
+{
+	Assert(yb_table_properties->num_tablets > 1);
+
+	/* Get key columns' YBCPgTypeEntity and YBCPgTypeAttrs */
+	size_t num_range_key_columns = yb_table_properties->num_range_key_columns;
+	const YBCPgTypeEntity *type_entities[num_range_key_columns];
+	YBCPgTypeAttrs type_attrs_arr[num_range_key_columns];
+	Relation rel = relation_open(relid, AccessShareLock);
+	TupleDesc tupledesc = rel->rd_att;
+	Bitmapset *pkey = YBGetTablePrimaryKeyBms(rel);
+	AttrNumber attr_offset = YBGetFirstLowInvalidAttributeNumber(rel);
+
+	int key_idx = 0;
+	for (int i = 0; i < tupledesc->natts; ++i)
+	{
+		Form_pg_attribute attr = TupleDescAttr(tupledesc, i);
+		/* Key column */
+		if (bms_is_member(attr->attnum - attr_offset, pkey))
+		{
+			type_entities[key_idx] = YbDataTypeFromOidMod(InvalidAttrNumber,
+														  attr->atttypid);
+			YBCPgTypeAttrs type_attrs;
+			type_attrs.typmod = attr->atttypmod;
+			type_attrs_arr[key_idx] = type_attrs;
+			pkeys_atttypid[key_idx] = attr->atttypid;
+			++key_idx;
+		}
+	}
+
+	/* Get Split point values as Postgres datums */
+	HandleYBStatus(YBCGetSplitPoints(yb_tabledesc, type_entities,
+									 type_attrs_arr, split_datums));
+	relation_close(rel, AccessShareLock);
+}
+
+/*
+ * This function constructs SPLIT AT VALUES clause for range-partitioned tables
+ * with more than one tablet.
+ */
+static void
+rangeSplitClause(Oid relid, YBCPgTableDesc yb_tabledesc,
+				 YbTableProperties yb_table_properties, StringInfo str)
+{
+	Assert(yb_table_properties->num_tablets > 1);
+	size_t num_range_key_columns = yb_table_properties->num_range_key_columns;
+	size_t num_splits = yb_table_properties->num_tablets - 1;
+	Oid pkeys_atttypid[num_range_key_columns];
+	YBCPgSplitDatum split_datums[num_splits * num_range_key_columns];
+	StringInfo prev_split_point = makeStringInfo();
+	StringInfo cur_split_point = makeStringInfo();
+
+	/* Get Split point values as Postgres datum */
+	getSplitPointsInfo(relid, yb_tabledesc, yb_table_properties, pkeys_atttypid,
+					   split_datums);
+
+	/* Process Datum and use StringInfo to accumulate c-string data */
+	appendStringInfoString(str, "SPLIT AT VALUES (");
+	for (int split_idx = 0; split_idx < num_splits; ++split_idx)
+	{
+		if (split_idx)
+		{
+			appendStringInfoString(str, ", ");
+		}
+		appendStringInfoChar(cur_split_point, '(');
+		for (int col_idx = 0; col_idx < num_range_key_columns; ++col_idx)
+		{
+			if (col_idx)
+			{
+				appendStringInfoString(cur_split_point, ", ");
+			}
+			int split_datum_idx = split_idx * num_range_key_columns + col_idx;
+			if (split_datums[split_datum_idx].datum_kind ==
+				YB_YQL_DATUM_LIMIT_MIN)
+			{
+				/* Min boundary */
+				appendStringInfoString(cur_split_point, "MINVALUE");
+			}
+			else if (split_datums[split_datum_idx].datum_kind ==
+					 YB_YQL_DATUM_LIMIT_MAX)
+			{
+				/* Max boundary */
+				appendStringInfoString(cur_split_point, "MAXVALUE");
+			}
+			else
+			{
+				/* Actual datum value */
+				appendDatumToString(cur_split_point,
+									split_datums[split_datum_idx].datum,
+									pkeys_atttypid[col_idx],
+									pg_get_client_encoding());
+			}
+		}
+		appendStringInfoChar(cur_split_point, ')');
+
+		/*
+		 * Check for duplicate split points.
+		 * Given current syntax of SPLIT AT VALUES doesn't allow specifying
+		 * hidden column values for indexes, and tablet splitting can
+		 * happen on hidden columns of indexes,
+		 * duplicate split points (excluding the hidden column)
+		 * can happen for indexes.
+		 */
+		if (strcmp(cur_split_point->data, prev_split_point->data) == 0)
+		{
+			ereport(WARNING,
+					(errcode(ERRCODE_WARNING),
+					 errmsg("duplicate split points in SPLIT AT VALUES clause "
+							"of relation with oid %u", relid)));
+			/* Empty string if duplicate split points exist. */
+			resetStringInfo(str);
+			return;
+		}
+		appendStringInfoString(str, cur_split_point->data);
+		resetStringInfo(prev_split_point);
+		appendStringInfoString(prev_split_point, cur_split_point->data);
+		resetStringInfo(cur_split_point);
+	}
+	appendStringInfoChar(str, ')');
+}
+
+Datum
+yb_get_range_split_clause(PG_FUNCTION_ARGS)
+{
+	Oid			relid = PG_GETARG_OID(0);
+	bool		exists_in_yb = false;
+	YBCPgTableDesc yb_tabledesc = NULL;
+	YbTablePropertiesData yb_table_properties;
+	StringInfoData str;
+	char	   *range_split_clause = NULL;
+
+	HandleYBStatus(YBCPgTableExists(MyDatabaseId, relid, &exists_in_yb));
+	if (!exists_in_yb)
+	{
+		elog(NOTICE, "relation with oid %u is not backed by YB", relid);
+		PG_RETURN_NULL();
+	}
+
+	HandleYBStatus(YBCPgGetTableDesc(MyDatabaseId, relid, &yb_tabledesc));
+	HandleYBStatus(YBCPgGetTableProperties(yb_tabledesc, &yb_table_properties));
+
+	if (yb_table_properties.num_hash_key_columns > 0)
+	{
+		elog(NOTICE, "relation with oid %u is not range-partitioned", relid);
+		PG_RETURN_NULL();
+	}
+
+	/*
+	 * Get SPLIT AT VALUES clause for range relations with more than one tablet.
+	 * Skip one-tablet range-partition relations such that this function
+	 * return an empty string for them.
+	 */
+	initStringInfo(&str);
+	if (yb_table_properties.num_tablets > 1)
+		rangeSplitClause(relid, yb_tabledesc, &yb_table_properties, &str);
+	range_split_clause = str.data;
+
+	PG_RETURN_CSTRING(range_split_clause);
 }
 
 Datum

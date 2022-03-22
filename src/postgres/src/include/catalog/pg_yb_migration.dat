@@ -12,7 +12,7 @@
 [
 
 # For better version control conflict detection, list latest migration filename
-# here: V20__11928__stat_progress_copy.sql
-{ major => '20', minor => '0', name => '<baseline>', time_applied => '_null_' }
+# here: V21__4873__yb_get_range_split_clause.sql
+{ major => '21', minor => '0', name => '<baseline>', time_applied => '_null_' }
 
 ]

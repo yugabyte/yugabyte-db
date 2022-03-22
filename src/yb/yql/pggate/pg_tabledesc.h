@@ -52,6 +52,7 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
 
   const PartitionSchema& partition_schema() const;
 
+  size_t num_range_key_columns() const;
   size_t num_hash_key_columns() const;
   size_t num_key_columns() const;
   size_t num_columns() const;
@@ -94,6 +95,8 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
   YBCPgOid GetTablegroupOid() const;
 
   uint32_t schema_version() const;
+
+  bool IsIndex() const;
 
  private:
   PgObjectId id_;
