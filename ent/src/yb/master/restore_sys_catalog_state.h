@@ -47,7 +47,8 @@ class RestoreSysCatalogState {
   CHECKED_STATUS Process();
 
   // Prepare write batch with object changes.
-  CHECKED_STATUS PrepareWriteBatch(const Schema& schema, docdb::DocWriteBatch* write_batch);
+  CHECKED_STATUS PrepareWriteBatch(
+      const Schema& schema, docdb::DocWriteBatch* write_batch, const HybridTime& now_ht);
 
   void WriteToRocksDB(
       docdb::DocWriteBatch* pg_catalog_write_batch, const yb::HybridTime& write_time,
@@ -108,7 +109,7 @@ class RestoreSysCatalogState {
   // Prepare write batch to delete obsolete table.
   CHECKED_STATUS PrepareTableCleanup(
       const TableId& id, SysTablesEntryPB pb, const Schema& schema,
-      docdb::DocWriteBatch* write_batch);
+      docdb::DocWriteBatch* write_batch, const HybridTime& now_ht);
 
   struct Objects {
     std::unordered_map<NamespaceId, SysNamespaceEntryPB> namespaces;

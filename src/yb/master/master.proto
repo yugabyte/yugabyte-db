@@ -465,6 +465,8 @@ message SysTablesEntryPB {
   repeated BackfillJobPB backfill_jobs = 32;
 
   optional HideState hide_state = 33;
+  // Time when the table was hidden.
+  optional fixed64 hide_hybrid_time = 34;
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for a namespace.
@@ -717,6 +719,9 @@ message ReportedTabletPB {
 
   // Is the tablet hidden.
   optional bool is_hidden = 9;
+
+  // Mapping of table ids to their respective schema version numbers.
+  map<string, uint32> table_to_version = 11;
 }
 
 // Sent by the tablet server to report the set of tablets hosted by that TS.

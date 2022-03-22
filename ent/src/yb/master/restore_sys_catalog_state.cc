@@ -116,9 +116,13 @@ Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
 Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
     const std::string& id, SysTablesEntryPB* pb) {
   if (pb->schema().table_properties().is_ysql_catalog_table()) {
-    LOG(INFO) << "PITR: Adding " << pb->name() << " for restoring. ID: " << id;
-    restoration_.system_tables_to_restore.emplace(id, pb->name());
-
+    if (restoration_.system_tables_to_restore.count(id) == 0) {
+      return STATUS_FORMAT(
+          NotFound,
+          "PG Catalog table $0 not found in the present set of tables"
+          " but found in the objects to restore.",
+          pb->name());
+    }
     return false;
   }
 
@@ -137,6 +141,51 @@ Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
 
 Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
     const std::string& id, SysTabletsEntryPB* pb) {
+  if (!pb->colocated()) {
+    return true;
+  }
+  // If it is a colocated tablet, then set the schedules that prevent
+  // its colocated tables from getting deleted. Also, add to-be hidden table ids
+  // in its colocated list as they won't be present previously.
+  auto it = existing_objects_.tablets.find(id);
+  // Since we are not allowed to drop the database on which schedule was set,
+  // it implies that the colocated tablet for the colocated database must always be present.
+  // TODO(Sanket): Probably these semantics will change for tablegroups.
+  if (it == existing_objects_.tablets.end()) {
+    return STATUS(Corruption, "Colocated tablet should be present.");
+  }
+  bool colocated_table_deleted = false;
+  TableId found_table_id;
+  for (const auto& table_id : it->second.table_ids()) {
+    std::pair<TableId, SysTablesEntryPB> search_table;
+    search_table.first = table_id;
+    bool found = std::binary_search(
+        restoration_.non_system_obsolete_tables.begin(),
+        restoration_.non_system_obsolete_tables.end(),
+        search_table,
+        [](const auto& t1, const auto& t2) {
+          return t1.first < t2.first;
+        });
+    if (found) {
+      // Add this table to the tablet list of the restoring tablet.
+      LOG(INFO) << "PITR: Appending colocated table " << table_id
+                << " to the colocated list of tablet " << id;
+      pb->add_table_ids(table_id);
+      found_table_id = table_id;
+      colocated_table_deleted = true;
+    }
+  }
+  if (colocated_table_deleted) {
+    // Set schedules that retain.
+    auto it = retained_existing_tables_.find(found_table_id);
+    if (it != retained_existing_tables_.end()) {
+      auto& out_schedules = *pb->mutable_retained_by_snapshot_schedules();
+      for (const auto& schedule_id : it->second) {
+        LOG(INFO) << "PITR: " << schedule_id << " schedule retains colocated tablet " << id;
+        out_schedules.Add()->assign(schedule_id.AsSlice().cdata(), schedule_id.size());
+      }
+    }
+  }
   return true;
 }
 
@@ -165,12 +214,6 @@ Status RestoreSysCatalogState::Process() {
 
   VLOG_WITH_FUNC(2) << "Check restoring objects";
   VLOG_WITH_FUNC(4) << "Restoring namespaces: " << AsString(restoring_objects_.namespaces);
-  faststring buffer;
-  RETURN_NOT_OK_PREPEND(DetermineEntries(
-      &restoring_objects_, nullptr,
-      [this, &buffer](const auto& id, auto* pb) {
-        return AddRestoringEntry(id, pb, &buffer);
-  }), "Determine restoring entries failed");
 
   VLOG_WITH_FUNC(2) << "Check existing objects";
   RETURN_NOT_OK_PREPEND(DetermineEntries(
@@ -187,6 +230,13 @@ Status RestoreSysCatalogState::Process() {
   std::sort(restoration_.non_system_obsolete_tables.begin(),
             restoration_.non_system_obsolete_tables.end(),
             compare_by_first);
+
+  faststring buffer;
+  RETURN_NOT_OK_PREPEND(DetermineEntries(
+      &restoring_objects_, nullptr,
+      [this, &buffer](const auto& id, auto* pb) {
+        return AddRestoringEntry(id, pb, &buffer);
+  }), "Determine restoring entries failed");
 
   return Status::OK();
 }
@@ -348,16 +398,11 @@ Status RestoreSysCatalogState::CheckExistingEntry(
 Status RestoreSysCatalogState::CheckExistingEntry(
     const std::string& id, const SysTablesEntryPB& pb) {
   if (pb.schema().table_properties().is_ysql_catalog_table()) {
-    if (restoration_.system_tables_to_restore.count(id) == 0) {
-      return STATUS_FORMAT(
-          NotFound,
-          "PG Catalog table $0 not found in the present set of tables"
-          " but found in the objects to restore.",
-          pb.name());
-    }
+    LOG(INFO) << "PITR: Adding " << pb.name() << " for restoring. ID: " << id;
+    restoration_.system_tables_to_restore.emplace(id, pb.name());
+
     return Status::OK();
   }
-
   VLOG_WITH_FUNC(4) << "Table: " << id << ", " << pb.ShortDebugString();
   if (restoring_objects_.tables.count(id)) {
     return Status::OK();
@@ -375,7 +420,7 @@ Status RestoreSysCatalogState::CheckExistingEntry(
 }
 
 Status RestoreSysCatalogState::PrepareWriteBatch(
-    const Schema& schema, docdb::DocWriteBatch* write_batch) {
+    const Schema& schema, docdb::DocWriteBatch* write_batch, const HybridTime& now_ht) {
   for (const auto& entry : entries_.entries()) {
     QLWriteRequestPB write_request;
     RETURN_NOT_OK(FillSysCatalogWriteRequest(
@@ -390,7 +435,7 @@ Status RestoreSysCatalogState::PrepareWriteBatch(
   }
   for (const auto& table_id_and_pb : restoration_.non_system_obsolete_tables) {
     RETURN_NOT_OK(PrepareTableCleanup(
-        table_id_and_pb.first, table_id_and_pb.second, schema, write_batch));
+        table_id_and_pb.first, table_id_and_pb.second, schema, write_batch, now_ht));
   }
 
   return Status::OK();
@@ -419,11 +464,18 @@ Status RestoreSysCatalogState::PrepareTabletCleanup(
 
 Status RestoreSysCatalogState::PrepareTableCleanup(
     const TableId& id, SysTablesEntryPB pb, const Schema& schema,
-    docdb::DocWriteBatch* write_batch) {
+    docdb::DocWriteBatch* write_batch, const HybridTime& now_ht) {
   VLOG_WITH_FUNC(4) << id;
 
   QLWriteRequestPB write_request;
-  pb.set_hide_state(SysTablesEntryPB::HIDING);
+  // For a colocated table, mark it as HIDDEN.
+  if (pb.colocated()) {
+    pb.set_hide_state(SysTablesEntryPB::HIDDEN);
+    pb.set_hide_hybrid_time(now_ht.ToUint64());
+  } else {
+    pb.set_hide_state(SysTablesEntryPB::HIDING);
+  }
+
   pb.set_version(pb.version() + 1);
   RETURN_NOT_OK(FillSysCatalogWriteRequest(
       SysRowEntry::TABLE, id, pb.SerializeAsString(),

@@ -1061,5 +1061,14 @@ Status MigrateSuperblock(RaftGroupReplicaSuperBlockPB* superblock) {
   return MigrateSuperblockForD5900(superblock);
 }
 
+std::vector<TableId> RaftGroupMetadata::GetAllColocatedTables() {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  std::vector<TableId> table_ids;
+  for (const auto& id_and_info : kv_store_.tables) {
+    table_ids.emplace_back(id_and_info.first);
+  }
+  return table_ids;
+}
+
 } // namespace tablet
 } // namespace yb

@@ -1571,15 +1571,17 @@ class CatalogManager :
       TSDescriptor* ts_desc,
       bool is_incremental,
       const ReportedTabletPB& report,
-      const TableInfo::WriteLock& table_lock,
+      const std::map<TableId, TableInfo::WriteLock>& table_write_locks,
       const TabletInfoPtr& tablet,
       const TabletInfo::WriteLock& tablet_lock,
+      const std::map<TableId, scoped_refptr<TableInfo>>& tables,
       std::vector<RetryingTSRpcTaskPtr>* rpcs);
 
   struct ReportedTablet {
     TabletId tablet_id;
     TabletInfoPtr info;
     const ReportedTabletPB* report;
+    std::map<TableId, scoped_refptr<TableInfo>> tables;
   };
   using ReportedTablets = std::vector<ReportedTablet>;
 
@@ -1587,8 +1589,8 @@ class CatalogManager :
   CHECKED_STATUS ProcessTabletReportBatch(
       TSDescriptor* ts_desc,
       bool is_incremental,
-      ReportedTablets::const_iterator begin,
-      ReportedTablets::const_iterator end,
+      ReportedTablets::iterator begin,
+      ReportedTablets::iterator end,
       TabletReportUpdatesPB* full_report_update,
       std::vector<RetryingTSRpcTaskPtr>* rpcs);
 

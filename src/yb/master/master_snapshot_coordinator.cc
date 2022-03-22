@@ -950,9 +950,16 @@ class MasterSnapshotCoordinator::Impl {
 
     VLOG(1) << __func__ << "(" << AsString(entries) << ", " << imported << ", " << schedule_id
             << ", " << snapshot_id << ")";
+    // There could be more than one entry of the same tablet,
+    // for instance in the case of colocated tables.
+    std::unordered_set<TabletId> unique_tablet_ids;
     for (const auto& entry : entries.entries()) {
       if (entry.type() == SysRowEntry::TABLET) {
-        request->add_tablet_id(entry.id());
+        if (unique_tablet_ids.insert(entry.id()).second) {
+          VLOG(1) << __func__ << "(Adding tablet " << entry.id()
+                  << " for snapshot " << snapshot_id << ")";
+          request->add_tablet_id(entry.id());
+        }
       }
     }
 
