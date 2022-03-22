@@ -165,7 +165,9 @@ public class AccessKeyController extends AuthenticatedController {
           formData.get().passwordlessSudoAccess,
           formData.get().installNodeExporter,
           formData.get().nodeExporterPort,
-          formData.get().nodeExporterUser);
+          formData.get().nodeExporterUser,
+          formData.get().setUpChrony,
+          formData.get().ntpServers);
     }
     auditService()
         .createAuditEntryWithReqBody(
