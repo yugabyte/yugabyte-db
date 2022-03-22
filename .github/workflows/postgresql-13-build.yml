@@ -88,20 +88,6 @@ jobs:
           /usr/lib/postgresql/13/bin/pg_ctl -D /opt/pgsql/data -l logfile start
         working-directory: src/pg_stat_monitor/
 
-      - name: Start Server installcheck-world tests
-        run: |
-          make installcheck-world
-      - name: Report on installcheck-world test suites fail
-        uses: actions/upload-artifact@v2
-        if: ${{ failure() }}
-        with:
-          name: Regressions output files of failed testsuite, and postgresql log
-          path: |
-            **/regression.diffs
-            **/regression.out
-            src/pg_stat_monitor/logfile
-          retention-days: 1
-
       - name: Start pg_stat_monitor_tests
         run: |
           make installcheck
@@ -133,4 +119,19 @@ jobs:
             !src/pg_stat_monitor/tmp_check/**/backup/
             !src/pg_stat_monitor/tmp_check/**/pgdata/
           if-no-files-found: warn
+          retention-days: 1
+
+      - name: Start Server installcheck-world tests
+        run: |
+          make installcheck-world
+
+      - name: Report on installcheck-world test suites fail
+        uses: actions/upload-artifact@v2
+        if: ${{ failure() }}
+        with:
+          name: Regressions output files of failed testsuite, and postgresql log
+          path: |
+            **/regression.diffs
+            **/regression.out
+            src/pg_stat_monitor/logfile
           retention-days: 1
