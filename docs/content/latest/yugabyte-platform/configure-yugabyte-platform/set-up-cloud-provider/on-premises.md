@@ -167,15 +167,16 @@ For each node you want to add, click **Add Instances** to add a YugabyteDB node.
 
 ![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-5.png)
 
-### Provision nodes manually
+<br>Note that if you provide a hostname, the universe might experience issues communicating. To resolve this, you need to delete the failed universe and then recreate it with the `use_node_hostname_for_local_tserver ` g-flag enabled.
+
+### **Provision nodes manually**
 
 To provision your nodes manually, you have the following two options:
 
-* If the SSH user you provided has sudo privileges but requires a password, you can [run the pre-provisioning script](#running-the-pre-provisioning-script).
+1. If the SSH user you provided has sudo privileges but requires a password, you can [run the pre-provisioning script](#running-the-pre-provisioning-script).
+2. If the SSH user does not have any sudo privileges, you need to [set up the database nodes manually](#set-up-database-nodes-manually).
 
-* If the SSH user does not have any sudo privileges, you need to [set up the database nodes manually](#set-up-database-nodes-manually).
-
-#### Running the pre-provisioning script
+#### **Running the pre-provisioning script**
 
 This step is only required if you set **Manually Provision Nodes** to true and the SSH user has sudo privileges which require a password; otherwise you skip this step.
 
@@ -209,7 +210,7 @@ Optionally, use the `--ask_password` flag if the sudo user requires password aut
 
 This completes the on-premises cloud provider configuration. You can proceed to [Configure the backup target](../../backup-target/) or [Create deployments](../../../create-deployments/).
 
-#### Setting up database nodes manually
+#### **Setting up database nodes manually**
 
 This step is only required if you set **Manually Provision Nodes** to true and the SSH user does not have sudo privileges at all; otherwise you skip this step.
 
@@ -268,15 +269,15 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
     <br>Then, run the following command:
 
     ```sh
-    $ sudo chronyc makestep   # (force instant sync to NTP server)
+    sudo chronyc makestep   # (force instant sync to NTP server)
     ```
 
 1. Add a new `yugabyte:yugabyte` user and group (sudo is required):
 
     ```sh
-    $ sudo useradd yugabyte   # (add group yugabyte + create /home/yugabyte)
-    $ sudo passwd yugabyte   # (add a password to the yugabyte user)
-    $ sudo su - yugabyte   # (change to yugabyte user for convenient execution of next steps)
+    sudo useradd yugabyte   # (add group yugabyte + create /home/yugabyte)
+    sudo passwd yugabyte   # (add a password to the yugabyte user)
+    sudo su - yugabyte   # (change to yugabyte user for execution of next steps)
     ```
 
     <br>Ensure that the `yugabyte` user has permissions to SSH into the YugabyteDB nodes (as defined in `/etc/ssh/sshd_config`).
@@ -289,12 +290,12 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
 1. Run the following commands as the `yugabyte` user, after copying the SSH public key file to the user home directory:
 
     ```sh
-    $ cd ~yugabyte
-    $ mkdir .ssh
-    $ chmod 700 .ssh
-    $ cat <pubkey file> >> .ssh/authorized_keys
-    $ chmod 400 .ssh/authorized_keys
-    $ exit   # (exit from the yugabyte user back to previous user)
+    cd ~yugabyte
+    mkdir .ssh
+    chmod 700 .ssh
+    cat <pubkey file> >> .ssh/authorized_keys
+    chmod 400 .ssh/authorized_keys
+    exit   # (exit from the yugabyte user back to previous user)
     ```
 
 1. Add the following lines to the `/etc/security/limits.conf` file (sudo is required):
@@ -323,37 +324,37 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
 1. Install the rsync and OpenSSL packages (sudo is required).
 
     \
-    Note that most Linux distributions include rsync and openssl. If your distribution is missing these packages, install them using the following commands:
+    Note that most Linux distributions include rsync and OpenSSL. If your distribution is missing these packages, install them using the following commands:
 
     ```sh
-    $ sudo yum install openssl
-    $ sudo yum install rsync
+    sudo yum install openssl
+    sudo yum install rsync
     ```
 
     \
-    For airgapped environments, make sure your yum repository mirror contains these packages.
+    For airgapped environments, make sure your Yum repository mirror contains these packages.
 
-1. If running on a virtual machine, tune kernel settings (sudo is required):
+1. If running on a virtual machine, execute the following to tune kernel settings (sudo is required):
 
     ```sh
-    $ sudo bash -c 'sysctl vm.swappiness=0 >> /etc/sysctl.conf'
-    $ sysctl kernel.core_pattern=/home/yugabyte/cores/core_%e.%p >> /etc/sysctl.conf
+    sudo bash -c 'sysctl vm.swappiness=0 >> /etc/sysctl.conf'
+    sysctl kernel.core_pattern=/home/yugabyte/cores/core_%e.%p >> /etc/sysctl.conf
     ```
 
-1. Prepare and mount the data volume (separate partition for database data) (sudo is required):
+1. Perform the following to prepare and mount the data volume (separate partition for database data) (sudo is required):
 
-    * List the available storage volumes:
+    * List the available storage volumes, as follows:
 
       ```sh
-      $ lsblk
+      lsblk
       ```
 
     * Perform the following steps for each available volume (all listed volumes other than the root volume):
 
       ```sh
-      $ sudo mkdir /data   # (or /data1, /data2 etc)
-      $ sudo mkfs -t xfs /dev/nvme1n1   # (create xfs filesystem over entire volume)
-      $ sudo vi /etc/fstab
+      sudo mkdir /data   # (or /data1, /data2 etc)
+      sudo mkfs -t xfs /dev/nvme1n1   # (create xfs filesystem over entire volume)
+      sudo vi /etc/fstab
       ```
 
     * Add the following line to `/etc/fstab`:
@@ -362,12 +363,12 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
       /dev/nvme1n1   /data   xfs   noatime   0   0
       ```
 
-    * Exit from vi, and continue:
+    * Exit from vi, and continue, as follows:
 
       ```sh
-      $ sudo mount -av (mounts the new volume using the fstab entry, to validate)
-      $ sudo chown yugabyte:yugabyte /data
-      $ sudo chmod 755 /data
+      sudo mount -av # (mounts the new volume using the fstab entry, to validate)
+      sudo chown yugabyte:yugabyte /data
+      sudo chmod 755 /data
       ```
 
 ##### Install Prometheus node exporter
@@ -395,32 +396,32 @@ On each node, perform the following as a user with sudo access:
 1. Run the following commands (sudo required):
 
     ```sh
-    $ sudo mkdir /opt/prometheus
-    $ sudo mkdir /etc/prometheus
-    $ sudo mkdir /var/log/prometheus
-    $ sudo mkdir /var/run/prometheus
-    $ sudo mv /tmp/node_exporter-0.13.0.linux-amd64.tar  /opt/prometheus
-    $ sudo adduser prometheus (also adds group “prometheus”)
-    $ sudo chown -R prometheus:prometheus /opt/prometheus
-    $ sudo chown -R prometheus:prometheus /etc/prometheus
-    $ sudo chown -R prometheus:prometheus /var/log/prometheus
-    $ sudo chown -R prometheus:prometheus /var/run/prometheus
-    $ sudo chmod +r /opt/prometheus/node_exporter-0.13.0.linux-amd64.tar
-    $ sudo su - prometheus (user session is now as user “prometheus”)
+    sudo mkdir /opt/prometheus
+    sudo mkdir /etc/prometheus
+    sudo mkdir /var/log/prometheus
+    sudo mkdir /var/run/prometheus
+    sudo mv /tmp/node_exporter-0.13.0.linux-amd64.tar  /opt/prometheus
+    sudo adduser prometheus # (also adds group “prometheus”)
+    sudo chown -R prometheus:prometheus /opt/prometheus
+    sudo chown -R prometheus:prometheus /etc/prometheus
+    sudo chown -R prometheus:prometheus /var/log/prometheus
+    sudo chown -R prometheus:prometheus /var/run/prometheus
+    sudo chmod +r /opt/prometheus/node_exporter-0.13.0.linux-amd64.tar
+    sudo su - prometheus (user session is now as user “prometheus”)
     ```
 
 1. Run the following commands as user `prometheus`:
 
     ```sh
-    $ cd /opt/prometheus
-    $ tar zxf node_exporter-0.13.0.linux-amd64.tar.gz
-    $ exit   # (exit from prometheus user back to previous user)
+    cd /opt/prometheus
+    tar zxf node_exporter-0.13.0.linux-amd64.tar.gz
+    exit   # (exit from prometheus user back to previous user)
     ```
 
 1. Edit the following file (sudo required):
 
     ```sh
-    $ sudo vi /etc/systemd/system/node_exporter.service
+    sudo vi /etc/systemd/system/node_exporter.service
     ```
 
     \
@@ -448,72 +449,71 @@ On each node, perform the following as a user with sudo access:
       ExecStart=/opt/prometheus/node_exporter-0.13.0.linux-amd64/node_exporter  --web.listen-address=:9300 --collector.textfile.directory=/tmp/yugabyte/metrics
       ```
 
-1. Exit from vi, and continue (sudo required):
+1. Exit from vi, and continue, as follows (sudo required):
 
     ```sh
-    $ sudo systemctl daemon-reload
-    $ sudo systemctl enable node_exporter
-    $ sudo systemctl start node_exporter
+    sudo systemctl daemon-reload
+    sudo systemctl enable node_exporter
+    sudo systemctl start node_exporter
     ```
 
 1. Check the status of the `node_exporter` service with the following command:
 
     ```sh
-    $ sudo systemctl status node_exporter
+    sudo systemctl status node_exporter
     ```
 
 ##### Install backup utilities
 
-Yugabyte Platform supports backing up YugabyteDB to AWS S3, Azure Storage, Google Cloud Storage, and NFS. Install the backup utility for the backup storage you plan to use:
+Yugabyte Platform supports backing up YugabyteDB to AWS S3, Azure Storage, Google Cloud Storage, and NFS. 
 
-**NFS** - Install rsync. Yugabyte Platform uses rsync to do NFS backups which you installed in an earlier step.
+You can install the backup utility for the backup storage you plan to use as follows:
 
-**AWS S3** - Install s3cmd. Yugabyte Platform relies on s3cmd to support copying backups to AWS S3. You have the following installation options:
+- NFS - Install rsync. Yugabyte Platform uses rsync to do NFS backups which you installed in an earlier step.
 
-* For a regular installation, execute the following:
+- AWS S3 - Install s3cmd. Yugabyte Platform relies on s3cmd to support copying backups to AWS S3. You have the following installation options:
+  - For a regular installation, execute the following:
 
-    ```sh
-    $ sudo yum install s3cmd
-    ```
+      ```sh
+      sudo yum install s3cmd
+      ```
 
-* For an airgapped installation, copy `/opt/third-party/s3cmd-2.0.1.tar.gz` from the Yugabyte Platform node to the database node, and then extract it into the `/usr/local` directory on the database node, as follows:
+  - For an airgapped installation, copy `/opt/third-party/s3cmd-2.0.1.tar.gz` from the Yugabyte Platform node to the database node, and then extract it into the `/usr/local` directory on the database node, as follows:
 
-    ```sh
-    $ cd /usr/local
-    $ sudo tar xvfz path-to-s3cmd-2.0.1.tar.gz
-    $ sudo ln -s /usr/local/s3cmd-2.0.1/s3cmd /usr/local/bin/s3cmd
-    ```
+      ```sh
+      cd /usr/local
+      sudo tar xvfz path-to-s3cmd-2.0.1.tar.gz
+      sudo ln -s /usr/local/s3cmd-2.0.1/s3cmd /usr/local/bin/s3cmd
+      ```
 
-**Azure Storage** - Install azcopy using one of the following options:
+- Azure Storage - Install azcopy using one of the following options:
+  - Download `azcopy_linux_amd64_10.13.0.tar.gz` using the following command:
 
-* Download `azcopy_linux_amd64_10.13.0.tar.gz` using the following command:
+      ```sh
+      wget https://azcopyvnext.azureedge.net/release20200410/azcopy_linux_amd64_10.13.0.tar.gz
+      ```
 
-    ```sh
-    $ wget https://azcopyvnext.azureedge.net/release20200410/azcopy_linux_amd64_10.13.0.tar.gz
-    ```
+  - For airgapped installations, copy `/opt/third-party/azcopy_linux_amd64_10.13.0.tar.gz` from the Yugabyte Platform node, as follows:
 
-* For airgapped installations, copy `/opt/third-party/azcopy_linux_amd64_10.13.0.tar.gz` from the Yugabyte Platform node, as follows:
+      ```sh
+      cd /usr/local
+      sudo tar xfz path-to-azcopy_linux_amd64_10.13.0.tar.gz -C /usr/local/bin azcopy_linux_amd64_10.13.0/azcopy --strip-components 1
+      ```
 
-    ```sh
-    $ cd /usr/local
-    $ sudo tar xfz path-to-azcopy_linux_amd64_10.13.0.tar.gz -C /usr/local/bin azcopy_linux_amd64_10.13.0/azcopy --strip-components 1
-    ```
+- Google Cloud Storage - Install gsutil using one of the following options:
+  - Download `gsutil_4.60.tar.gz` using the following command:
 
-**Google Cloud Storage** - Install gsutil using one of the following options:
+      ```sh
+      wget https://storage.googleapis.com/pub/gsutil_4.60.tar.gz
+      ```
 
-* Download gsutil_4.60.tar.gz using the following command:
+  - For airgapped installs, copy `/opt/third-party/gsutil_4.60.tar.gz` from the Yugabyte Platform node, as follows:
 
-    ```sh
-    $ wget https://storage.googleapis.com/pub/gsutil_4.60.tar.gz
-    ```
-
-* For airgapped installs, copy `/opt/third-party/gsutil_4.60.tar.gz` from the Yugabyte Platform node, as follows:
-
-    ```sh
-    $ cd /usr/local
-    $ sudo tar xvfz gsutil_4.60.tar.gz
-    $ sudo ln -s /usr/local/gsutil/gsutil /usr/local/bin/gsutil
-    ```
+      ```sh
+      cd /usr/local
+      sudo tar xvfz gsutil_4.60.tar.gz
+      sudo ln -s /usr/local/gsutil/gsutil /usr/local/bin/gsutil
+      ```
 
 ##### Set crontab permissions
 
@@ -521,7 +521,7 @@ Yugabyte Platform supports performing YugabyteDB liveness checks, log file manag
 
 Note that sudo is required to set up this service.
 
-If Yugabyte Platform will be using cron jobs, make sure that the `yugabyte` user is allowed to run crontab:
+If Yugabyte Platform will be using cron jobs, ensure that the `yugabyte` user is allowed to run crontab:
 
 * If you are using the `cron.allow` file to manage crontab access, add the `yugabyte` user to this file.
 * If you are using the `cron.deny` file, remove the `yugabyte` user from this file.
@@ -529,6 +529,7 @@ If Yugabyte Platform will be using cron jobs, make sure that the `yugabyte` user
 If you are not using either file, no changes are required.
 
 <!--
+
 ##### Manage liveness checks, logs, and cores
 
 Yugabyte Platform supports performing YugabyteDB liveness checks, log file management, and core file management using cron jobs or systemd services.
