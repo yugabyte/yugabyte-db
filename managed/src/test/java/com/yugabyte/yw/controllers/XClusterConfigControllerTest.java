@@ -259,11 +259,12 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
         CustomerTask.find.query().where().eq("task_uuid", taskUUID).findOne();
     assertNotNull(customerTask);
     assertThat(customerTask.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
-    assertThat(customerTask.getTargetUUID(), allOf(notNullValue(), equalTo(xClusterConfig.uuid)));
+    assertThat(
+        customerTask.getTargetUUID(),
+        allOf(notNullValue(), equalTo(xClusterConfig.targetUniverseUUID)));
     assertThat(customerTask.getTaskUUID(), allOf(notNullValue(), equalTo(taskUUID)));
     assertThat(customerTask.getTarget(), allOf(notNullValue(), equalTo(TargetType.XClusterConfig)));
-    assertThat(
-        customerTask.getType(), allOf(notNullValue(), equalTo(TaskType.CreateXClusterConfig)));
+    assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(TaskType.Create)));
     assertThat(customerTask.getTargetName(), allOf(notNullValue(), equalTo(configName)));
 
     assertAuditEntry(1, customer.uuid);
@@ -685,10 +686,12 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
         CustomerTask.find.query().where().eq("task_uuid", taskUUID).findOne();
     assertNotNull(customerTask);
     assertThat(customerTask.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
-    assertThat(customerTask.getTargetUUID(), allOf(notNullValue(), equalTo(xClusterConfig.uuid)));
+    assertThat(
+        customerTask.getTargetUUID(),
+        allOf(notNullValue(), equalTo(xClusterConfig.targetUniverseUUID)));
     assertThat(customerTask.getTaskUUID(), allOf(notNullValue(), equalTo(taskUUID)));
     assertThat(customerTask.getTarget(), allOf(notNullValue(), equalTo(TargetType.XClusterConfig)));
-    assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(TaskType.EditXClusterConfig)));
+    assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(TaskType.Edit)));
     assertThat(customerTask.getTargetName(), allOf(notNullValue(), equalTo(configName)));
 
     assertAuditEntry(1, customer.uuid);
@@ -720,10 +723,12 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
         CustomerTask.find.query().where().eq("task_uuid", taskUUID).findOne();
     assertNotNull(customerTask);
     assertThat(customerTask.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
-    assertThat(customerTask.getTargetUUID(), allOf(notNullValue(), equalTo(xClusterConfig.uuid)));
+    assertThat(
+        customerTask.getTargetUUID(),
+        allOf(notNullValue(), equalTo(xClusterConfig.targetUniverseUUID)));
     assertThat(customerTask.getTaskUUID(), allOf(notNullValue(), equalTo(taskUUID)));
     assertThat(customerTask.getTarget(), allOf(notNullValue(), equalTo(TargetType.XClusterConfig)));
-    assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(TaskType.EditXClusterConfig)));
+    assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(TaskType.Edit)));
     assertThat(customerTask.getTargetName(), allOf(notNullValue(), equalTo(configName)));
 
     assertAuditEntry(1, customer.uuid);
@@ -752,10 +757,12 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
         CustomerTask.find.query().where().eq("task_uuid", taskUUID).findOne();
     assertNotNull(customerTask);
     assertThat(customerTask.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
-    assertThat(customerTask.getTargetUUID(), allOf(notNullValue(), equalTo(xClusterConfig.uuid)));
+    assertThat(
+        customerTask.getTargetUUID(),
+        allOf(notNullValue(), equalTo(xClusterConfig.targetUniverseUUID)));
     assertThat(customerTask.getTaskUUID(), allOf(notNullValue(), equalTo(taskUUID)));
     assertThat(customerTask.getTarget(), allOf(notNullValue(), equalTo(TargetType.XClusterConfig)));
-    assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(TaskType.EditXClusterConfig)));
+    assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(TaskType.Edit)));
     assertThat(customerTask.getTargetName(), allOf(notNullValue(), equalTo(configName)));
 
     assertAuditEntry(1, customer.uuid);
@@ -973,11 +980,12 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
         CustomerTask.find.query().where().eq("task_uuid", taskUUID).findOne();
     assertNotNull(customerTask);
     assertThat(customerTask.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
-    assertThat(customerTask.getTargetUUID(), allOf(notNullValue(), equalTo(xClusterConfig.uuid)));
+    assertThat(
+        customerTask.getTargetUUID(),
+        allOf(notNullValue(), equalTo(xClusterConfig.targetUniverseUUID)));
     assertThat(customerTask.getTaskUUID(), allOf(notNullValue(), equalTo(taskUUID)));
     assertThat(customerTask.getTarget(), allOf(notNullValue(), equalTo(TargetType.XClusterConfig)));
-    assertThat(
-        customerTask.getType(), allOf(notNullValue(), equalTo(TaskType.DeleteXClusterConfig)));
+    assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(TaskType.Delete)));
     assertThat(customerTask.getTargetName(), allOf(notNullValue(), equalTo(configName)));
 
     assertAuditEntry(1, customer.uuid);
@@ -1041,8 +1049,8 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     assertThat(customerTask.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
     assertThat(customerTask.getTargetUUID(), allOf(notNullValue(), equalTo(targetUniverseUUID)));
     assertThat(customerTask.getTaskUUID(), allOf(notNullValue(), equalTo(taskUUID)));
-    assertThat(customerTask.getTarget(), allOf(notNullValue(), equalTo(TargetType.Universe)));
-    assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(TaskType.SyncXClusterConfig)));
+    assertThat(customerTask.getTarget(), allOf(notNullValue(), equalTo(TargetType.XClusterConfig)));
+    assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(TaskType.Sync)));
     assertThat(customerTask.getTargetName(), allOf(notNullValue(), equalTo(targetUniverseName)));
 
     assertAuditEntry(1, customer.uuid);
