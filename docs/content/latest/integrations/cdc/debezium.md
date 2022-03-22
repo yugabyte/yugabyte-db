@@ -79,6 +79,8 @@ Follow the steps in this section to run CDC with Debezium on a local YugabyteDB 
 ./bin/yb-admin --master_addresses ${IP}:7100 create_change_data_stream ysql.yugabyte
 ```
 
+The above command will result an output similar to this:
+
 ```output
 CDC Stream ID: d540f5e4890c4d3b812933cbfd703ed3
 ```
