@@ -358,8 +358,18 @@ static void free_VLE_local_context(VLE_local_context *vlelctx)
     }
 
     /* free the stored graph name */
-    pfree(vlelctx->graph_name);
-    vlelctx->graph_name = NULL;
+    if (vlelctx->graph_name != NULL)
+    {
+        pfree(vlelctx->graph_name);
+        vlelctx->graph_name = NULL;
+    }
+
+    /* free the stored edge label name */
+    if (vlelctx->edge_label_name != NULL)
+    {
+        pfree(vlelctx->edge_label_name);
+        vlelctx->edge_label_name = NULL;
+    }
 
     /* we need to free our state hashtable */
     hash_destroy(vlelctx->edge_state_hashtable);
