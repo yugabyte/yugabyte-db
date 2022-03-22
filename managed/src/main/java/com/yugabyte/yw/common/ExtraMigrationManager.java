@@ -37,7 +37,9 @@ public class ExtraMigrationManager extends DevopsBase {
             keyInfo.passwordlessSudoAccess,
             keyInfo.installNodeExporter,
             keyInfo.nodeExporterPort,
-            keyInfo.nodeExporterUser);
+            keyInfo.nodeExporterUser,
+            keyInfo.setUpChrony,
+            keyInfo.ntpServers);
       }
     }
   }

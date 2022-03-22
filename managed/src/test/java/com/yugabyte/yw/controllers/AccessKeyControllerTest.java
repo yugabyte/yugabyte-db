@@ -425,7 +425,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
     assertOk(result);
     assertAuditEntry(1, defaultCustomer.uuid);
     verify(mockTemplateManager, times(1))
-        .createProvisionTemplate(accessKey, true, false, true, 9300, "prometheus");
+        .createProvisionTemplate(accessKey, true, false, true, 9300, "prometheus", false, null);
   }
 
   @Test
@@ -441,7 +441,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             new PlatformServiceException(
                 INTERNAL_SERVER_ERROR, "Unable to create access key: key-code-1"))
         .when(mockTemplateManager)
-        .createProvisionTemplate(accessKey, false, false, true, 9300, "prometheus");
+        .createProvisionTemplate(accessKey, false, false, true, 9300, "prometheus", false, null);
     Result result =
         assertPlatformException(
             () ->
@@ -484,7 +484,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
     assertOk(result);
     assertAuditEntry(1, defaultCustomer.uuid);
     verify(mockTemplateManager, times(1))
-        .createProvisionTemplate(accessKey, true, false, true, 9300, "prometheus");
+        .createProvisionTemplate(accessKey, true, false, true, 9300, "prometheus", false, null);
   }
 
   @Test

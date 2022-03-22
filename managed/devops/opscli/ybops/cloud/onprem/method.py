@@ -227,6 +227,8 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
                                  help='If instances are air gapped or not.')
         self.parser.add_argument("--install_node_exporter", action="store_true",
                                  help='Check if node exporter can be installed properly.')
+        self.parser.add_argument("--skip_ntp_check", action="store_true",
+                                 help='Skip check for time synchronization.')
 
     def verify_certificates(self, cert_type, root_cert_path, cert_path, key_path, ssh_options,
                             skip_cert_validation, results):
@@ -396,6 +398,10 @@ class OnPremFillInstanceProvisionTemplateMethod(AbstractMethod):
                                  help="The port for node_exporter to bind to")
         self.parser.add_argument("--node_exporter_user", default="prometheus")
         self.parser.add_argument("--install_node_exporter", action="store_true")
+        self.parser.add_argument("--use_chrony", action="store_true",
+                                 help="Whether to set up chrony for NTP synchronization.")
+        self.parser.add_argument("--ntp_server", required=False, action="append", default=[],
+                                 help="NTP server to connect to.")
 
     def callback(self, args):
         config = {'devops_home': ybutils.YB_DEVOPS_HOME_PERM, 'cloud': self.cloud.name}

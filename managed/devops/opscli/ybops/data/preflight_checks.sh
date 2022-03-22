@@ -11,6 +11,7 @@
 check_type="provision"
 airgap=false
 install_node_exporter=false
+skip_ntp_check=false
 mount_points=""
 yb_home_dir="/home/yugabyte"
 # This should be a comma separated key-value list. Associative arrays were add in bash 4.0 so
@@ -70,47 +71,48 @@ preflight_provision_check() {
   check_filepath "PAM Limits" $ulimit_filepath true
 
   # Check NTP synchronization
-  # Check timedatectl status output to ensure time sync is set up
-  ntp_status=$(timedatectl status)
-  ntp_check=true
-  enabled_regex='(NTP enabled: |NTP service: |Network time on: )([^'$'\n'']*)'
-  if [[ $ntp_status =~ $enabled_regex ]]; then
-    enabled_status="${BASH_REMATCH[2]}"
-    if [[ "$enabled_status" != "yes" ]] && [[ "$enabled_status" != "active" ]]; then
-      # Oracle8 has the line NTP service: n/a instead. Don't fail if this line exists
-      if [[ ! ("${BASH_REMATCH[1]}" == "NTP service: " && "${BASH_REMATCH[2]}" == "n/a") ]]; then
+  if [[ ! $skip_ntp_check ]]; then
+    ntp_status=$(timedatectl status)
+    ntp_check=true
+    enabled_regex='(NTP enabled: |NTP service: |Network time on: )([^'$'\n'']*)'
+    if [[ $ntp_status =~ $enabled_regex ]]; then
+      enabled_status="${BASH_REMATCH[2]}"
+      if [[ "$enabled_status" != "yes" ]] && [[ "$enabled_status" != "active" ]]; then
+        # Oracle8 has the line NTP service: n/a instead. Don't fail if this line exists
+        if [[ ! ("${BASH_REMATCH[1]}" == "NTP service: " && "${BASH_REMATCH[2]}" == "n/a") ]]; then
+          ntp_check=false
+        fi
+      fi
+    else
+      systemd_regex='systemd-timesyncd.service active:'
+      if [[ ! $ntp_status =~ $systemd_regex ]]; then # See PLAT-3373
         ntp_check=false
       fi
     fi
-  else
-    systemd_regex='systemd-timesyncd.service active:'
-    if [[ ! $ntp_status =~ $systemd_regex ]]; then # See PLAT-3373
+    synchro_regex='(NTP synchronized: |System clock synchronized: )([^'$'\n'']*)'
+    if [[ $ntp_status =~ $synchro_regex ]]; then
+      synchro_status="${BASH_REMATCH[2]}"
+      if [[ "$synchro_status" != "yes" ]]; then
+        ntp_check=false
+      fi
+    else
       ntp_check=false
     fi
-  fi
-  synchro_regex='(NTP synchronized: |System clock synchronized: )([^'$'\n'']*)'
-  if [[ $ntp_status =~ $synchro_regex ]]; then
-    synchro_status="${BASH_REMATCH[2]}"
-    if [[ "$synchro_status" != "yes" ]]; then
-      ntp_check=false
+    # Check if one of chronyd, ntpd and systemd-timesyncd is running on the node
+    service_regex="Active: active \(running\)"
+    service_check=false
+    for ntp_service in chronyd ntp ntpd systemd-timesyncd; do
+      service_status=$(systemctl status $ntp_service)
+      if [[ $service_status =~ $service_regex ]]; then
+        service_check=true
+        break
+      fi
+    done
+    if $service_check && $ntp_check; then
+      update_result_json "NTP time synchronization set up" true
+    else
+      update_result_json "NTP time synchronization set up" false
     fi
-  else
-    ntp_check=false
-  fi
-  # Check if one of chronyd, ntpd and systemd-timesyncd is running on the node
-  service_regex="Active: active \(running\)"
-  service_check=false
-  for ntp_service in chronyd ntp ntpd systemd-timesyncd; do
-    service_status=$(systemctl status $ntp_service)
-    if [[ $service_status =~ $service_regex ]]; then
-      service_check=true
-      break
-    fi
-  done
-  if $service_check && $ntp_check; then
-    update_result_json "NTP time synchronization set up" true
-  else
-    update_result_json "NTP time synchronization set up" false
   fi
 
   # Check mount points are writeable.
@@ -268,6 +270,9 @@ while [[ $# -gt 0 ]]; do
     ;;
     --install_node_exporter)
       install_node_exporter=true
+    ;;
+    --skip_ntp_check)
+      skip_ntp_check=true
     ;;
     --mount_points)
       mount_points="$2"
