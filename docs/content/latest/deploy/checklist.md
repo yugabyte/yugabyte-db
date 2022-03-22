@@ -67,7 +67,7 @@ For typical OLTP workloads, YugabyteDB performance improves with more aggregate 
 
 Memory depends on your application query pattern. Writes require memory but only up to a certain point (say 4GB, but if you have a write-heavy workload you may need a little more). Beyond that, more memory generally helps improve the read throughput and latencies by caching data in the internal cache. If you do not have enough memory to fit the read working set, then you will typically experience higher read latencies because data has to be read from disk. Having a faster disk could help in some of these cases.
 
-YugabyteDB explicitly manages a block cache, and doesn't need the entire data set to fit in memory. It does not rely on OS to keep data in its buffers. If you give YugabyteDB sufficient memory data accessed and present in block cache will stay in memory.
+YugabyteDB explicitly manages a block cache, and doesn't need the entire data set to fit in memory. It does not rely on OS to keep data in its buffers. If you give YugabyteDB sufficient memory, data accessed and present in block cache will stay in memory.
 
 ### Verify support for SSE2
 
