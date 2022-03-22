@@ -141,7 +141,7 @@ class RpcStubTest : public RpcTestBase {
     EXPECT_OK(messenger->StartAcceptor());
     EXPECT_FALSE(messenger->io_service().stopped());
     ProxyCache proxy_cache(messenger.get());
-    return { move(messenger),
+    return { std::move(messenger),
         std::make_unique<CalculatorServiceProxy>(&proxy_cache, HostPort(remote)) };
   }
 

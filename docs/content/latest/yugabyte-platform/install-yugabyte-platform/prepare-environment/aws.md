@@ -144,7 +144,9 @@ In order for Yugabyte Platform to manage YugabyteDB nodes, limited access to you
                 "ec2:CreateVpc",
                 "ec2:CreateVpcPeeringConnection",
                 "ec2:DisassociateRouteTable",
-                "ec2:ModifyVpcAttribute"
+                "ec2:ModifyVpcAttribute",
+                "ec2:GetConsoleOutput",
+                "ec2:DescribeInstanceTypes"
             ],
             "Resource": "*"
         }

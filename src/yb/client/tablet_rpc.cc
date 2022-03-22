@@ -535,9 +535,9 @@ void TabletInvoker::WriteAsync(const tserver::WriteRequestPB& req,
                                rpc::RpcController *controller,
                                std::function<void()>&& cb) {
   if (should_use_local_node_proxy_) {
-    client().GetNodeLocalForwardProxy()->WriteAsync(req, resp, controller, move(cb));
+    client().GetNodeLocalForwardProxy()->WriteAsync(req, resp, controller, std::move(cb));
   } else {
-    current_ts_->proxy()->WriteAsync(req, resp, controller, move(cb));
+    current_ts_->proxy()->WriteAsync(req, resp, controller, std::move(cb));
   }
 }
 
@@ -546,9 +546,9 @@ void TabletInvoker::ReadAsync(const tserver::ReadRequestPB& req,
                               rpc::RpcController *controller,
                               std::function<void()>&& cb) {
   if (should_use_local_node_proxy_) {
-    client().GetNodeLocalForwardProxy()->ReadAsync(req, resp, controller, move(cb));
+    client().GetNodeLocalForwardProxy()->ReadAsync(req, resp, controller, std::move(cb));
   } else {
-    current_ts_->proxy()->ReadAsync(req, resp, controller, move(cb));
+    current_ts_->proxy()->ReadAsync(req, resp, controller, std::move(cb));
   }
 }
 
