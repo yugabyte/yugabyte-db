@@ -895,7 +895,7 @@ For information on using log_line_prefix, refer to [log_line_prefix](https://www
 
 When set, suppresses logging of non-PostgreSQL output.
 
-Default: `false`
+Default: `off`
 
 ## Admin UI
 
