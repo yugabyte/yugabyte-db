@@ -628,4 +628,14 @@ void YbRegisterSysTableForPrefetching(int sys_table_id);
  */
 bool YBCIsRegionLocal(Relation rel);
 
+/*
+ * Return NULL for all non-range-partitioned tables.
+ * Return an empty string for one-tablet range-partitioned tables.
+ * Return SPLIT AT VALUES clause string (i.e. SPLIT AT VALUES(...))
+ * for all range-partitioned tables with more than one tablet.
+ * Return an empty string when duplicate split points exist
+ * after tablet splitting.
+ */
+extern Datum yb_get_range_split_clause(PG_FUNCTION_ARGS);
+
 #endif /* PG_YB_UTILS_H */

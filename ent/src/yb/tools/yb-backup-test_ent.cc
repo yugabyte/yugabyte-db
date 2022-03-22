@@ -203,6 +203,35 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
     return true;
   }
 
+  void ManualSplitTablet(
+      const string& tablet_id, const string& table_name, const int expected_num_tablets) {
+    master::SplitTabletRequestPB req;
+    req.set_tablet_id(tablet_id);
+    master::SplitTabletResponsePB resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(30s * kTimeMultiplier);
+    ASSERT_OK(cluster_->GetMasterProxy<master::MasterAdminProxy>().SplitTablet(req, &resp, &rpc));
+
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          auto res = VERIFY_RESULT(GetTablets(table_name, "wait-split"));
+          return res.size() == expected_num_tablets;
+        }, 20s * kTimeMultiplier, Format("Waiting for tablet count: $0", expected_num_tablets)));
+  }
+
+  void LogTabletsInfo(
+      const google::protobuf::RepeatedPtrField<yb::master::TabletLocationsPB>& tablets) {
+    for (const auto& tablet : tablets) {
+      if (VLOG_IS_ON(1)) {
+        VLOG(1) << "tablet location:\n" << tablet.DebugString();
+      } else {
+        LOG(INFO) << "tablet_id: " << tablet.tablet_id()
+                  << ", split_depth: " << tablet.split_depth()
+                  << ", partition: " << tablet.partition().ShortDebugString();
+      }
+    }
+  }
+
   void DoTestYEDISBackup(helpers::TableOp tableOp);
   void DoTestYSQLKeyspaceBackup(helpers::TableOp tableOp);
   void DoTestYSQLMultiSchemaKeyspaceBackup(helpers::TableOp tableOp);
@@ -980,11 +1009,6 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYCQLBackupWithDefi
 // split points. When restoring, ysql_dump is not able to express the splits, so it will create the
 // constraint as 1 hash tablet. Restore should restore the unique constraint index as 3 tablets
 // since the tablet snapshot files are already split into 3 tablets.
-//
-// TODO(yguan): after the SPLIT AT clause is fully supported by ysql_dump this test needs to
-//              be revisited as the table may no longer need re-partitioning.
-//              Therefore, to exercise CatalogManager::RepartitionTable this test may need
-//              to be updated similar to TestYSQLManualTabletSplit.
 TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLRangeSplitConstraint)) {
   const string table_name = "mytbl";
   const string index_name = "myidx";
@@ -1178,14 +1202,7 @@ TEST_F_EX(YBBackupTest,
 
   // It has three tablets because of --ysql_num_tablets=3.
   auto tablets = ASSERT_RESULT(GetTablets(table_name, "pre-split"));
-  for (const auto& tablet : tablets) {
-    if (VLOG_IS_ON(1)) {
-      VLOG(1) << "tablet location:\n" << tablet.DebugString();
-    } else {
-      LOG(INFO) << "tablet_id: " << tablet.tablet_id()
-                << ", partition: " << tablet.partition().ShortDebugString();
-    }
-  }
+  LogTabletsInfo(tablets);
   ASSERT_EQ(tablets.size(), 3);
   ASSERT_TRUE(CheckPartitions(tablets, {"\x55\x55", "\xaa\xaa"}));
 
@@ -1201,21 +1218,9 @@ TEST_F_EX(YBBackupTest,
   auto table_id = ASSERT_RESULT(GetTableId(table_name, "pre-split"));
   ASSERT_OK(client_->FlushTables({table_id}, false, 30, false));
 
-  // Split it.
-  master::SplitTabletRequestPB req;
-  req.set_tablet_id(tablet_id);
-  master::SplitTabletResponsePB resp;
-  rpc::RpcController rpc;
-  rpc.set_timeout(30s * kTimeMultiplier);
-  ASSERT_OK(cluster_->GetMasterProxy<master::MasterAdminProxy>().SplitTablet(req, &resp, &rpc));
-
-  // Wait for split to complete.
+  // Split it && Wait for split to complete.
   constexpr int num_tablets = 4;
-  ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> {
-        auto res = VERIFY_RESULT(GetTablets(table_name, "wait-split"));
-        return res.size() == num_tablets;
-      }, 20s * kTimeMultiplier, Format("Waiting for tablet count: $0", num_tablets)));
+  ManualSplitTablet(tablet_id, table_name, num_tablets);
 
   // Verify that it has these four tablets:
   // -       -0x5555
@@ -1226,15 +1231,7 @@ TEST_F_EX(YBBackupTest,
   // split point based on the existing data.  Don't verify that it chose the right split point: that
   // is out of scope of this test.  Just trust what it chose.
   tablets = ASSERT_RESULT(GetTablets(table_name, "post-split"));
-  for (const auto& tablet : tablets) {
-    if (VLOG_IS_ON(1)) {
-      VLOG(1) << "tablet location:\n" << tablet.DebugString();
-    } else {
-      LOG(INFO) << "tablet_id: " << tablet.tablet_id()
-                << ", split_depth: " << tablet.split_depth()
-                << ", partition: " << tablet.partition().ShortDebugString();
-    }
-  }
+  LogTabletsInfo(tablets);
   ASSERT_EQ(tablets.size(), num_tablets);
   ASSERT_TRUE(CheckPartitions(tablets, {"\x55\x55", "\x9c\x76", "\xaa\xaa"}));
 
@@ -1272,6 +1269,535 @@ TEST_F_EX(YBBackupTest,
   ASSERT_EQ(tablets.size(), 4);
   ASSERT_TRUE(CheckPartitions(tablets, {"\x55\x55", "\x9c\x76", "\xaa\xaa"}));
   ASSERT_NO_FATALS(RunPsqlCommand(select_query, select_output));
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+// Test backup/restore of a range-partitioned table
+// without tablet splitting happening.
+// Note: make sure there is no CatalogManager::RepartitionTable's log.
+// This indicates the success of backup/restore of range-partitioned tables
+// without the help RepartitionTable.
+// This test exercises that:
+// 1. start with a table with 3 pre-split tablets
+// 2. insert data
+// 3. backup
+// 4. drop table
+// 5. restore
+TEST_F_EX(YBBackupTest,
+          YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestPreSplitYSQLRangeSplitTable),
+          YBBackupTestNumTablets) {
+  const string table_name = "mytbl";
+
+  // Create table
+  ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0 (k INT, v TEXT, PRIMARY KEY(k ASC, v ASC))"
+                                      " SPLIT AT VALUES ((10, 'f'), (20, 'n'))", table_name)));
+
+  // Verify table has 3 tablets
+  auto tablets = ASSERT_RESULT(GetTablets(table_name, "pre-backup"));
+  LogTabletsInfo(tablets);
+  ASSERT_EQ(tablets.size(), 3);
+  // 'H' represents the KeyEntryType for Int32.
+  // \x80\x00\x00\x0a = 0x80000000 ^ 10
+  // \x80\x00\x00\x14 = 0x80000000 ^ 20
+  // 'S' represents the KeyEntryType for String.
+  // "f" and "n" are the split point values of column v
+  // two '\x00' terminate a string value.
+  // '!' indicates the end of the range group of a key.
+  ASSERT_TRUE(CheckPartitions(tablets, {"H\x80\x00\x00\x0aSf\x00\x00!"s,
+                                        "H\x80\x00\x00\x14Sn\x00\x00!"s}));
+
+  // Insert data
+  ASSERT_NO_FATALS(InsertRows(
+      Format("INSERT INTO $0 VALUES (1,'a'), (11,'h'), (21,'o')", table_name), 3));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("SELECT * FROM $0 ORDER BY v", table_name),
+      R"#(
+         k  | v
+        ----+---
+          1 | a
+         11 | h
+         21 | o
+        (3 rows)
+      )#"
+  ));
+
+  // Backup
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+
+  // Drop the table
+  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
+
+  // Restore
+  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
+
+  // Validate
+  tablets = ASSERT_RESULT(GetTablets(table_name, "post-restore"));
+  ASSERT_EQ(tablets.size(), 3);
+  ASSERT_TRUE(CheckPartitions(tablets, {"H\x80\x00\x00\x0aSf\x00\x00!"s,
+                                        "H\x80\x00\x00\x14Sn\x00\x00!"s}));
+
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("SELECT * FROM $0 ORDER BY v", table_name),
+      R"#(
+         k  | v
+        ----+---
+          1 | a
+         11 | h
+         21 | o
+        (3 rows)
+      )#"
+  ));
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+// Test backup/restore of a range-partitioned table with a range-partitioned index
+// without tablet splitting happening.
+// Note: make sure there is no CatalogManager::RepartitionTable's log.
+// This indicates the success of backup/restore of range-partitioned tables
+// without the help RepartitionTable.
+// This test exercises that:
+// 1. start with a table with 3 pre-split tablets
+// 2. create an index with 3 pre-split tablets
+// 3. insert data
+// 4. backup
+// 5. drop table
+// 6. restore
+TEST_F_EX(YBBackupTest,
+          YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestPreSplitYSQLRangeSplitTableAndIndex),
+          YBBackupTestNumTablets) {
+  const string table_name = "mytbl";
+  const string index_name = "myidx";
+
+  // Create table and index
+  ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0 (k INT, v TEXT, PRIMARY KEY(k ASC))"
+                                      " SPLIT AT VALUES ((10), (20))", table_name)));
+  ASSERT_NO_FATALS(CreateIndex(Format("CREATE INDEX $0 ON $1 (v ASC)"
+                                      " SPLIT AT VALUES (('f'), ('n'))", index_name, table_name)));
+
+  // Verify both table and index have 3 tablets
+  auto tablets = ASSERT_RESULT(GetTablets(table_name, "pre-backup"));
+  LogTabletsInfo(tablets);
+  ASSERT_EQ(tablets.size(), 3);
+  // 'H' represents the KeyEntryType for Int32.
+  // \x80\x00\x00\x0a = 0x80000000 ^ 10
+  // \x80\x00\x00\x14 = 0x80000000 ^ 20
+  // '!' indicates the end of the range group of a key.
+  ASSERT_TRUE(CheckPartitions(tablets, {"H\x80\x00\x00\x0a!"s,
+                                        "H\x80\x00\x00\x14!"s}));
+
+  tablets = ASSERT_RESULT(GetTablets(index_name, "pre-backup"));
+  LogTabletsInfo(tablets);
+  ASSERT_EQ(tablets.size(), 3);
+  // 'S' represents the KeyEntryType for String.
+  // "f" and "n" are the split point values.
+  // one '\0' is the default split point value of an index's hidden column.
+  // two '\0' terminate a string value.
+  // '!' indicates the end of the range group of a key.
+  ASSERT_TRUE(CheckPartitions(tablets, {"Sf\0\0\0!"s, "Sn\0\0\0!"s}));
+
+  // Insert data
+  ASSERT_NO_FATALS(InsertRows(
+      Format("INSERT INTO $0 VALUES (1,'a'), (11,'h'), (21,'o')", table_name), 3));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("SELECT * FROM $0 ORDER BY v", table_name),
+      R"#(
+         k  | v
+        ----+---
+          1 | a
+         11 | h
+         21 | o
+        (3 rows)
+      )#"
+  ));
+
+  // Backup
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+
+  // Drop the table
+  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
+
+  // Restore
+  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
+
+  // Validate
+  tablets = ASSERT_RESULT(GetTablets(table_name, "post-restore"));
+  ASSERT_EQ(tablets.size(), 3);
+  ASSERT_TRUE(CheckPartitions(tablets, {"H\x80\x00\x00\x0a!"s,
+                                        "H\x80\x00\x00\x14!"s}));
+  tablets = ASSERT_RESULT(GetTablets(index_name, "post-restore"));
+  ASSERT_EQ(tablets.size(), 3);
+  ASSERT_TRUE(CheckPartitions(tablets, {"Sf\0\0\0!"s, "Sn\0\0\0!"s}));
+
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("SELECT * FROM $0 ORDER BY v", table_name),
+      R"#(
+         k  | v
+        ----+---
+          1 | a
+         11 | h
+         21 | o
+        (3 rows)
+      )#"
+  ));
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+// Test backup/restore when a range-partitioned table undergoes automatic tablet splitting.
+// Note: after #12631 is fixed, make sure there is no CatalogManager::RepartitionTable's log.
+// This indicates the success of backup/restore of range-partitioned tables
+// without the help RepartitionTable.
+// This test exercises that:
+// 1. start with a table with 2 pre-split tablets
+// 2. insert data into the table to trigger automatic tablet splitting
+// 3. backup
+// 4. drop table
+// 5. restore
+TEST_F_EX(YBBackupTest,
+          YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLAutomaticTabletSplitRangeTable),
+          YBBackupTestNumTablets) {
+  ASSERT_OK(cluster_->SetFlagOnMasters("tablet_split_low_phase_size_threshold_bytes", "3500"));
+  // Override the master flag to enable automatic tablet splitting
+  ASSERT_OK(cluster_->SetFlagOnMasters("enable_automatic_tablet_splitting", "true"));
+
+  const string table_name = "mytbl";
+
+  // Create table
+  ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0 (k TEXT, PRIMARY KEY(k ASC))"
+                                      " SPLIT AT VALUES (('4a'))", table_name)));
+
+  auto tablets = ASSERT_RESULT(GetTablets(table_name, "pre-split"));
+  LogTabletsInfo(tablets);
+  ASSERT_EQ(tablets.size(), 2);
+
+  // 'S' represents the KeyEntryType for String.
+  // "4a" is the split point value.
+  // two '\0' terminate a string value.
+  // '!' indicates the end of the range group of a key.
+  ASSERT_TRUE(CheckPartitions(tablets, {"S4a\0\0!"s}));
+
+  // Insert data
+  ASSERT_NO_FATALS(InsertRows(
+      Format("INSERT INTO $0 SELECT i||'a' FROM generate_series(101, 150) i", table_name), 50));
+
+  // Flush table
+  auto table_id = ASSERT_RESULT(GetTableId(table_name, "pre-split"));
+  ASSERT_OK(client_->FlushTables({table_id}, false, 30, false));
+
+  // Wait for automatic split to complete.
+  constexpr int num_tablets = 4;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto res = VERIFY_RESULT(GetTablets(table_name, "wait-split"));
+        return res.size() == num_tablets;
+      }, 20s * kTimeMultiplier, Format("Waiting for tablet count: $0", num_tablets)));
+
+  // Verify that it has these four tablets:
+  tablets = ASSERT_RESULT(GetTablets(table_name, "post-split"));
+  LogTabletsInfo(tablets);
+  ASSERT_EQ(tablets.size(), num_tablets);
+  ASSERT_TRUE(CheckPartitions(tablets, {"S133a\0\0!"s, "S147a\0\0!"s, "S4a\0\0!"s}));
+
+  // Backup
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+
+  // Drop the table
+  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
+
+  // Restore
+  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
+
+  // Validate
+  tablets = ASSERT_RESULT(GetTablets(table_name, "post-restore"));
+  ASSERT_EQ(tablets.size(), 4);
+  ASSERT_TRUE(CheckPartitions(tablets, {"S133a\0\0!"s, "S147a\0\0!"s, "S4a\0\0!"s}));
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+// Test backup/restore when a range-partitioned table undergoes manual tablet splitting.
+// Note: after #12631 is fixed, make sure there is no CatalogManager::RepartitionTable's log.
+// This indicates the success of backup/restore of range-partitioned tables
+// without the help of RepartitionTable.
+// This test exercises that:
+// 1. start with 2 pre-split tablets
+// 2. split one of them (3 tablets)
+// 3. further split one of newly created tablets (4 tablets)
+// 4. backup
+// 5. drop table
+// 6. restore
+TEST_F_EX(YBBackupTest,
+          YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLManualTabletSplitRangeTable),
+          YBBackupTestNumTablets) {
+  const string table_name = "mytbl";
+
+  // Create table
+  ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0 (k TEXT, PRIMARY KEY(k ASC))"
+                                      " SPLIT AT VALUES (('4a'))", table_name)));
+
+  auto tablets = ASSERT_RESULT(GetTablets(table_name, "pre-split"));
+  LogTabletsInfo(tablets);
+  ASSERT_EQ(tablets.size(), 2);
+
+  // 'S' represents the KeyEntryType for String.
+  // "4a" is the split point value.
+  // two '\0' terminate a string value.
+  // '!' indicates the end of the range group of a key.
+  ASSERT_TRUE(CheckPartitions(tablets, {"S4a\0\0!"s}));
+
+  // Insert data
+  ASSERT_NO_FATALS(InsertRows(
+      Format("INSERT INTO $0 SELECT i||'a' FROM generate_series(101, 150) i", table_name), 50));
+
+  // Flush table
+  auto table_id = ASSERT_RESULT(GetTableId(table_name, "pre-split"));
+  ASSERT_OK(client_->FlushTables({table_id}, false, 30, false));
+
+  // Split at split depth 0
+  // Choose the first tablet among tablets: "" --- "4a" and "4a" --- ""
+  int split_index = 0;
+  ASSERT_EQ(tablets[split_index].partition().partition_key_start(), "");
+  ASSERT_EQ(tablets[split_index].partition().partition_key_end(), "S4a\0\0!"s);
+  string tablet_id = tablets[split_index].tablet_id();
+
+  // Split it && Wait for split to complete.
+  int num_tablets = 3;
+  ManualSplitTablet(tablet_id, table_name, num_tablets);
+
+  // Verify that it has these three tablets:
+  tablets = ASSERT_RESULT(GetTablets(table_name, "post-split"));
+  LogTabletsInfo(tablets);
+  ASSERT_EQ(tablets.size(), num_tablets);
+  ASSERT_TRUE(CheckPartitions(tablets, {"S147a\0\0!"s, "S4a\0\0!"s}));
+
+  // Further split at split depth 1
+  // Choose the first tablet among tablets: "" --- "147a", "147a" --- "4a", and "4a" --- ""
+  split_index = 0;
+  ASSERT_EQ(tablets[split_index].partition().partition_key_start(), "");
+  ASSERT_EQ(tablets[split_index].partition().partition_key_end(), "S147a\0\0!"s);
+  tablet_id = tablets[split_index].tablet_id();
+
+  // Split it && Wait for split to complete.
+  num_tablets = 4;
+  ManualSplitTablet(tablet_id, table_name, num_tablets);
+
+  // Verify that it has these four tablets:
+  tablets = ASSERT_RESULT(GetTablets(table_name, "post-split"));
+  LogTabletsInfo(tablets);
+  ASSERT_EQ(tablets.size(), num_tablets);
+  ASSERT_TRUE(CheckPartitions(tablets, {"S133a\0\0!"s, "S147a\0\0!"s, "S4a\0\0!"s}));
+
+  // Backup
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+
+  // Drop the table
+  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
+
+  // Restore
+  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
+
+  // Validate
+  tablets = ASSERT_RESULT(GetTablets(table_name, "post-restore"));
+  ASSERT_EQ(tablets.size(), 4);
+  ASSERT_TRUE(CheckPartitions(tablets, {"S133a\0\0!"s, "S147a\0\0!"s, "S4a\0\0!"s}));
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+// Test backup/restore when a range-partitioned unique index undergoes manual tablet splitting
+// on its hidden column: ybuniqueidxkeysuffix.
+// This test exercises that:
+// 1. create a table and a unique index
+// 2. insert data into the table
+// 3. split the index on its hidden column into 3 tablets
+// 4. backup
+// 5. drop table
+// 6. restore
+TEST_F_EX(YBBackupTest,
+          YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLTabletSplitRangeUniqueIndexOnHiddenColumn),
+          YBBackupTestNumTablets) {
+  const string table_name = "mytbl";
+  const string index_name = "myidx";
+
+  // Create table and index
+  ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", table_name)));
+  ASSERT_NO_FATALS(CreateIndex(Format("CREATE UNIQUE INDEX $0 ON $1 (v ASC)",
+                                      index_name, table_name)));
+
+  // Verify the index has only one tablet
+  auto tablets = ASSERT_RESULT(GetTablets(index_name, "pre-split"));
+  LogTabletsInfo(tablets);
+  ASSERT_EQ(tablets.size(), 1);
+  ASSERT_TRUE(CheckPartitions(tablets, {}));
+
+  // Insert data
+  ASSERT_NO_FATALS(InsertRows(
+      Format("INSERT INTO $0 SELECT *, null FROM generate_series(1, 100)", table_name), 100));
+
+  // Flush index
+  auto index_id = ASSERT_RESULT(GetTableId(index_name, "pre-split"));
+  ASSERT_OK(client_->FlushTables({index_id}, false, 30, false));
+
+  // Split the unique index into three tablets on its hidden column:
+  // tablet-1 boundaries: [ "", (null, <ybctid-1>) )
+  // tablet-2 boundaries: [ (null, <ybctid-1>), (null, <ybctid-2>) )
+  // tablet-3 boundaries: [ (null, <ybctid-2>), "" )
+  // Split at split depth 0
+  int split_index = 0;
+  ASSERT_EQ(tablets[split_index].partition().partition_key_start(), "");
+  ASSERT_EQ(tablets[split_index].partition().partition_key_end(), "");
+  string tablet_id = tablets[split_index].tablet_id();
+
+  // Split it && Wait for split to complete.
+  int num_tablets = 2;
+  ManualSplitTablet(tablet_id, index_name, num_tablets);
+
+  // Verify that it has these two tablets:
+  tablets = ASSERT_RESULT(GetTablets(index_name, "post-split"));
+  LogTabletsInfo(tablets);
+  ASSERT_EQ(tablets.size(), num_tablets);
+  // '|' represents kNullHigh
+  ASSERT_TRUE(CheckPartitions(tablets, {"|SG\230lH\200\000\001\000\001\027!!\000\000!"s}));
+
+  // Further split at split depth 1
+  split_index = 0;
+  ASSERT_EQ(tablets[split_index].partition().partition_key_start(), "");
+  ASSERT_EQ(tablets[split_index].partition().partition_key_end(),
+            "|SG\230lH\200\000\001\000\001\027!!\000\000!"s);
+  tablet_id = tablets[split_index].tablet_id();
+
+  // Split it && Wait for split to complete.
+  num_tablets = 3;
+  ManualSplitTablet(tablet_id, index_name, num_tablets);
+
+  // Verify that it has these three tablets:
+  tablets = ASSERT_RESULT(GetTablets(index_name, "post-split"));
+  LogTabletsInfo(tablets);
+  ASSERT_EQ(tablets.size(), num_tablets);
+  ASSERT_TRUE(CheckPartitions(tablets, {"|SGYUH\200\000\001\000\0010!!\000\000!"s,
+                                        "|SG\230lH\200\000\001\000\001\027!!\000\000!"s}));
+
+  // Backup
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+
+  // Drop the table
+  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
+
+  // Restore
+  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
+
+  // Validate
+  tablets = ASSERT_RESULT(GetTablets(index_name, "post-restore"));
+  ASSERT_EQ(tablets.size(), 3);
+  ASSERT_TRUE(CheckPartitions(tablets, {"|SGYUH\200\000\001\000\0010!!\000\000!"s,
+                                        "|SG\230lH\200\000\001\000\001\027!!\000\000!"s}));
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+// Test backup/restore when a range-partitioned regular index undergoes manual tablet splitting
+// on its hidden column: ybidxbasectid.
+// This test exercises that:
+// 1. create a table and a regular index
+// 2. insert data into the table
+// 3. split the index on its hidden column into 3 tablets
+// 4. backup
+// 5. drop table
+// 6. restore
+TEST_F_EX(YBBackupTest,
+          YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLTabletSplitRangeIndexOnHiddenColumn),
+          YBBackupTestNumTablets) {
+  const string table_name = "mytbl";
+  const string index_name = "myidx";
+
+  // Create table and index
+  ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", table_name)));
+  ASSERT_NO_FATALS(CreateIndex(Format("CREATE INDEX $0 ON $1 (v ASC)", index_name, table_name)));
+
+  // Verify the index has only one tablet
+  auto tablets = ASSERT_RESULT(GetTablets(index_name, "pre-split"));
+  LogTabletsInfo(tablets);
+  ASSERT_EQ(tablets.size(), 1);
+  ASSERT_TRUE(CheckPartitions(tablets, {}));
+
+  // Insert data
+  ASSERT_NO_FATALS(InsertRows(
+      Format("INSERT INTO $0 SELECT *, 200 FROM generate_series(1, 100)", table_name), 100));
+
+  // Flush index
+  auto index_id = ASSERT_RESULT(GetTableId(index_name, "pre-split"));
+  ASSERT_OK(client_->FlushTables({index_id}, false, 30, false));
+
+  // Split the index into three tablets on its hidden column:
+  // tablet-1 boundaries: [ "", (200, <ybctid-1>) )
+  // tablet-2 boundaries: [ (200, <ybctid-1>), (200, <ybctid-2>) )
+  // tablet-3 boundaries: [ (200, <ybctid-2>), "" )
+  // Split at split depth 0
+  int split_index = 0;
+  ASSERT_EQ(tablets[split_index].partition().partition_key_start(), "");
+  ASSERT_EQ(tablets[split_index].partition().partition_key_end(), "");
+  string tablet_id = tablets[split_index].tablet_id();
+
+  // Split it && Wait for split to complete.
+  int num_tablets = 2;
+  ManualSplitTablet(tablet_id, index_name, num_tablets);
+
+  // Verify that it has these two tablets:
+  tablets = ASSERT_RESULT(GetTablets(index_name, "post-split"));
+  LogTabletsInfo(tablets);
+  ASSERT_EQ(tablets.size(), num_tablets);
+  // H\200\000\000\310 represents ascending-order integer value 200
+  ASSERT_TRUE(CheckPartitions(tablets,
+                              {"H\200\000\000\310SG\230lH\200\000\001\000\001\027!!\000\000!"s}));
+
+  // Further split at split depth 1
+  split_index = 0;
+  ASSERT_EQ(tablets[split_index].partition().partition_key_start(), "");
+  ASSERT_EQ(tablets[split_index].partition().partition_key_end(),
+            "H\200\000\000\310SG\230lH\200\000\001\000\001\027!!\000\000!"s);
+  tablet_id = tablets[split_index].tablet_id();
+
+  // Split it && Wait for split to complete.
+  num_tablets = 3;
+  ManualSplitTablet(tablet_id, index_name, num_tablets);
+
+  // Verify that it has these three tablets:
+  tablets = ASSERT_RESULT(GetTablets(index_name, "post-split"));
+  LogTabletsInfo(tablets);
+  ASSERT_EQ(tablets.size(), num_tablets);
+  ASSERT_TRUE(CheckPartitions(tablets,
+                              {"H\200\000\000\310SGq\317H\200\000\001\000\001\n!!\000\000!"s,
+                               "H\200\000\000\310SG\230lH\200\000\001\000\001\027!!\000\000!"s}));
+
+  // Backup
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+
+  // Drop the table
+  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
+
+  // Restore
+  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
+
+  // Validate
+  tablets = ASSERT_RESULT(GetTablets(index_name, "post-restore"));
+  ASSERT_EQ(tablets.size(), 3);
+  ASSERT_TRUE(CheckPartitions(tablets,
+                              {"H\200\000\000\310SGq\317H\200\000\001\000\001\n!!\000\000!"s,
+                               "H\200\000\000\310SG\230lH\200\000\001\000\001\027!!\000\000!"s}));
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
