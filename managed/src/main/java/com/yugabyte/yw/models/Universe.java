@@ -456,6 +456,22 @@ public class Universe extends Model {
   }
 
   /**
+   * Return the list of TServers in the primary cluster for this universe. E.g. the TServers in a
+   * read replica will not be included.
+   *
+   * @return a list of TServers nodes
+   */
+  public List<NodeDetails> getTServersInPrimaryCluster() {
+    List<NodeDetails> servers = getServers(ServerType.TSERVER);
+    Collection<NodeDetails> primaryNodes =
+        getNodesInCluster(getUniverseDetails().getPrimaryCluster().uuid);
+    return servers
+        .stream()
+        .filter(server -> primaryNodes.contains(server))
+        .collect(Collectors.toList());
+  }
+
+  /**
    * Return the list of YQL servers for this universe.
    *
    * @return a list of YQL server nodes

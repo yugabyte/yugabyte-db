@@ -41,6 +41,7 @@ class AbstractCloud(AbstractCommandParser):
     YSQLSH_CERT_DIR = os.path.join(YB_HOME_DIR, ".yugabytedb")
     ROOT_CERT_NAME = "ca.crt"
     ROOT_CERT_NEW_NAME = "ca_new.crt"
+    PRODUCER_CERTS_DIR_NAME = "yugabyte-tls-producer"
     CLIENT_ROOT_NAME = "root.crt"
     CLIENT_CERT_NAME = "yugabytedb.crt"
     CLIENT_KEY_NAME = "yugabytedb.key"
@@ -485,6 +486,59 @@ class AbstractCloud(AbstractCommandParser):
 
         # Reset the write permission as a sanity check.
         remote_shell.run_command('chmod 400 {}/*'.format(certs_dir))
+
+    def copy_xcluster_root_cert(
+            self,
+            ssh_options,
+            root_cert_path,
+            replication_config_name,
+            producer_certs_dir):
+        if producer_certs_dir is None:
+            producer_certs_dir = self.PRODUCER_CERTS_DIR_NAME
+        remote_shell = RemoteShell(ssh_options)
+        node_ip = ssh_options["ssh_host"]
+        src_root_cert_dir_path = os.path.join(producer_certs_dir, replication_config_name)
+        src_root_cert_path = os.path.join(src_root_cert_dir_path, self.ROOT_CERT_NAME)
+        logging.info("Moving server cert located at {} to {}:{}.".format(
+            root_cert_path, node_ip, src_root_cert_dir_path))
+
+        remote_shell.run_command('mkdir -p ' + src_root_cert_dir_path)
+        # Give write permissions. If the command fails, ignore.
+        remote_shell.run_command('chmod -f 666 {}/* || true'.format(src_root_cert_dir_path))
+        remote_shell.put_file(root_cert_path, src_root_cert_path)
+
+        # Reset the write permission as a sanity check.
+        remote_shell.run_command('chmod 400 {}/*'.format(src_root_cert_dir_path))
+
+    def remove_xcluster_root_cert(
+            self,
+            ssh_options,
+            replication_config_name,
+            producer_certs_dir):
+        def check_rm_result(rm_result):
+            if rm_result.exited and rm_result.stderr.find("No such file or directory") == -1:
+                raise YBOpsRuntimeError(
+                    "Remote shell command 'rm' failed with "
+                    "return code '{}' and error '{}'".format(rm_result.stderr.encode('utf-8'),
+                                                             rm_result.exited))
+
+        if producer_certs_dir is None:
+            producer_certs_dir = self.PRODUCER_CERTS_DIR_NAME
+        remote_shell = RemoteShell(ssh_options)
+        node_ip = ssh_options["ssh_host"]
+        src_root_cert_dir_path = os.path.join(producer_certs_dir, replication_config_name)
+        src_root_cert_path = os.path.join(src_root_cert_dir_path, self.ROOT_CERT_NAME)
+        logging.info("Removing server cert located at {} from server {}.".format(
+            src_root_cert_dir_path, node_ip))
+
+        remote_shell.run_command('chmod -f 666 {}/* || true'.format(src_root_cert_dir_path))
+        result = remote_shell.run_command_raw('rm ' + src_root_cert_path)
+        check_rm_result(result)
+        # Remove the directory only if it is empty.
+        result = remote_shell.run_command_raw('rm -d ' + src_root_cert_dir_path)
+        check_rm_result(result)
+        # No need to check the result of this command.
+        remote_shell.run_command_raw('rm -d ' + producer_certs_dir)
 
     def copy_client_certs(
             self,

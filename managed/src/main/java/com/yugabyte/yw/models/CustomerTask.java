@@ -65,7 +65,7 @@ public class CustomerTask extends Model {
     KMSConfiguration(false),
 
     @EnumValue("XCluster Configuration")
-    XClusterConfig(false);
+    XClusterConfig(true);
 
     private final boolean universeTarget;
 
@@ -111,6 +111,12 @@ public class CustomerTask extends Model {
 
     @EnumValue("Release")
     Release,
+
+    @EnumValue("Edit")
+    Edit,
+
+    @EnumValue("Synchronize")
+    Sync,
 
     @EnumValue("RestartUniverse")
     RestartUniverse,
@@ -197,15 +203,23 @@ public class CustomerTask extends Model {
     @EnumValue("ExternalScript")
     ExternalScript,
 
+    /** @deprecated TargetType name must not be part of TaskType. Use {@link #Create} instead. */
+    @Deprecated
     @EnumValue("CreateXClusterConfig")
     CreateXClusterConfig,
 
+    /** @deprecated TargetType name must not be part of TaskType. Use {@link #Edit} instead. */
+    @Deprecated
     @EnumValue("EditXClusterConfig")
     EditXClusterConfig,
 
+    /** @deprecated TargetType name must not be part of TaskType. Use {@link #Delete} instead. */
+    @Deprecated
     @EnumValue("DeleteXClusterConfig")
     DeleteXClusterConfig,
 
+    /** @deprecated TargetType name must not be part of TaskType. Use {@link #Sync} instead. */
+    @Deprecated
     @EnumValue("SyncXClusterConfig")
     SyncXClusterConfig,
 
@@ -239,6 +253,10 @@ public class CustomerTask extends Model {
           return completed ? "Updated " : "Updating ";
         case Delete:
           return completed ? "Deleted " : "Deleting ";
+        case Edit:
+          return completed ? "Edited " : "Editing ";
+        case Sync:
+          return completed ? "Synchronized " : "Synchronizing ";
         case RestartUniverse:
           return completed ? "Restarted " : "Restarting ";
         case SoftwareUpgrade:

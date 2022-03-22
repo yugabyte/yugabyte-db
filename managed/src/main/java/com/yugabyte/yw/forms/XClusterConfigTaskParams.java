@@ -4,7 +4,7 @@ package com.yugabyte.yw.forms;
 import com.yugabyte.yw.models.XClusterConfig;
 import java.util.UUID;
 
-public class XClusterConfigTaskParams extends UniverseTaskParams {
+public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
 
   public XClusterConfig xClusterConfig;
   public XClusterConfigCreateFormData createFormData;

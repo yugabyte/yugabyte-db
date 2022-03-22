@@ -32,8 +32,8 @@ public class PersistResizeNode extends UniverseTaskBase {
     public List<UUID> clusters;
   }
 
-  protected PersistResizeNode.Params taskParams() {
-    return (PersistResizeNode.Params) taskParams;
+  protected Params taskParams() {
+    return (Params) taskParams;
   }
 
   @Override
