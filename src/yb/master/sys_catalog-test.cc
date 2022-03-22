@@ -399,22 +399,18 @@ class TestClusterConfigLoader : public Visitor<PersistentClusterConfigInfo> {
   virtual Status Visit(
       const std::string& fake_id, const SysClusterConfigEntryPB& metadata) override {
     CHECK(!config_info) << "We either got multiple config_info entries, or we didn't Reset()";
-    config_info = new ClusterConfigInfo();
+    config_info = std::make_shared<ClusterConfigInfo>();
     auto l = config_info->LockForWrite();
     l.mutable_data()->pb.CopyFrom(metadata);
     l.Commit();
-    config_info->AddRef();
     return Status::OK();
   }
 
   void Reset() {
-    if (config_info) {
-      config_info->Release();
-      config_info = nullptr;
-    }
+    config_info.reset();
   }
 
-  ClusterConfigInfo* config_info = nullptr;
+  std::shared_ptr<ClusterConfigInfo> config_info = nullptr;
 };
 
 // Test the sys-catalog tables basic operations (add, update, delete, visit)
@@ -433,7 +429,7 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
   // Test modifications directly through the Sys catalog API.
 
   // Create a config_info block.
-  scoped_refptr<ClusterConfigInfo> config_info(new ClusterConfigInfo());
+  std::shared_ptr<ClusterConfigInfo> config_info(make_shared<ClusterConfigInfo>());
   {
     auto l = config_info->LockForWrite();
     auto pb = l.mutable_data()
@@ -447,7 +443,7 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
     pb->set_min_num_replicas(100);
 
     // Set it in the sys_catalog. It already has the default entry, so we use update.
-    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, config_info));
+    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, config_info.get()));
     l.Commit();
   }
 
@@ -455,7 +451,7 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
   loader->Reset();
   ASSERT_OK(sys_catalog->Visit(loader.get()));
   ASSERT_TRUE(loader->config_info);
-  ASSERT_METADATA_EQ(config_info.get(), loader->config_info);
+  ASSERT_METADATA_EQ(config_info.get(), loader->config_info.get());
 
   {
     auto l = config_info->LockForWrite();
@@ -468,7 +464,7 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
     cloud_info->set_placement_cloud("cloud2");
     pb->set_min_num_replicas(200);
     // Update it in the sys_catalog.
-    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, config_info));
+    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, config_info.get()));
     l.Commit();
   }
 
@@ -476,7 +472,7 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
   loader->Reset();
   ASSERT_OK(sys_catalog->Visit(loader.get()));
   ASSERT_TRUE(loader->config_info);
-  ASSERT_METADATA_EQ(config_info.get(), loader->config_info);
+  ASSERT_METADATA_EQ(config_info.get(), loader->config_info.get());
 
   // Test data through the CatalogManager API.
 

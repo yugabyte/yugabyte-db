@@ -1268,7 +1268,7 @@ class MasterSnapshotCoordinator::Impl {
     return Status::OK();
   }
 
-  // Computes the maximum outstanding Snapshot Create/Delete/Restore RPC
+  // Computes the maximum outstanding Snapshot Create/Delete RPC
   // that is permitted. If total limit is specified then it is used otherwise
   // the value is computed by multiplying tserver count with the per tserver limit.
   uint64_t GetRpcLimit(int64_t total_limit, int64_t per_tserver_limit, int64_t leader_term) {
@@ -1283,7 +1283,18 @@ class MasterSnapshotCoordinator::Impl {
     if (total_limit > 0) {
       return total_limit;
     }
-    return context_.GetNumLiveTServersForActiveCluster() * per_tserver_limit;
+    auto num_result = context_.GetNumLiveTServersForActiveCluster();
+    // The cluster config could be empty for e.g. if a restore is in progress
+    // or e.g. if a new master leader is elected. This is a temporary intermediate
+    // state (we have bigger problems if the cluster config remains empty forever).
+    // We use the limit set per tserver as the overall limit in such cases.
+    if (!num_result.ok()) {
+      LOG(INFO) << "Cluster Config is not available. Using per tserver limit of "
+                << per_tserver_limit << " as the throttled limit.";
+      return per_tserver_limit;
+    }
+    uint64_t num_tservers = *num_result;
+    return num_tservers * per_tserver_limit;
   }
 
   SnapshotCoordinatorContext& context_;
