@@ -104,7 +104,43 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     } catch (PlatformServiceException re) {
       assertEquals(BAD_REQUEST, re.getResult().status());
       assertEquals(
-          "Should be at least 100 seconds between start and end time",
+          "Should be at least " + STEP_SIZE + " seconds between start and end time",
+          Json.parse(contentAsString(re.getResult())).get("error").asText());
+    }
+  }
+
+  @Test
+  public void testQueryInvalidStep() {
+    HashMap<String, String> params = new HashMap<>();
+    long startTimestamp = 1646925800;
+    params.put("start", String.valueOf(startTimestamp));
+    params.put("end", String.valueOf(startTimestamp - STEP_SIZE + 1));
+    params.put("step", "qwe");
+
+    try {
+      metricQueryHelper.query(ImmutableList.of("valid_metric"), params);
+    } catch (PlatformServiceException re) {
+      assertEquals(BAD_REQUEST, re.getResult().status());
+      assertEquals(
+          "Step should be a valid integer",
+          Json.parse(contentAsString(re.getResult())).get("error").asText());
+    }
+  }
+
+  @Test
+  public void testQueryLowStep() {
+    HashMap<String, String> params = new HashMap<>();
+    long startTimestamp = 1646925800;
+    params.put("start", String.valueOf(startTimestamp));
+    params.put("end", String.valueOf(startTimestamp - STEP_SIZE + 1));
+    params.put("step", "0");
+
+    try {
+      metricQueryHelper.query(ImmutableList.of("valid_metric"), params);
+    } catch (PlatformServiceException re) {
+      assertEquals(BAD_REQUEST, re.getResult().status());
+      assertEquals(
+          "Step should not be less than 1 second",
           Json.parse(contentAsString(re.getResult())).get("error").asText());
     }
   }
@@ -182,6 +218,48 @@ public class MetricQueryHelperTest extends FakeDBApplication {
         Long.parseLong(graphQueryParam.get("end")),
         allOf(notNullValue(), equalTo(adjustedEndTimestamp)));
     assertThat(Integer.parseInt(graphQueryParam.get("step")), allOf(notNullValue(), equalTo(6)));
+  }
+
+  @Test
+  public void testQuerySingleMetricWithStep() {
+    DateTime date = DateTime.now();
+    long startTimestamp = date.minusMinutes(1).getMillis() / 1000;
+    long endTimestamp = date.getMillis() / 1000;
+    HashMap<String, String> params = new HashMap<>();
+    params.put("start", Long.toString(startTimestamp));
+    params.put("end", Long.toString(endTimestamp));
+    params.put("step", "30");
+    JsonNode responseJson =
+        Json.parse(
+            "{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[{\"metric\":\n"
+                + " {\"cpu\":\"system\"},\"value\":[1479278137,\"0.027751899056199826\"]}]}}");
+
+    int step = 30;
+    long adjustedStartTimestamp = startTimestamp - startTimestamp % step;
+    long adjustedEndTimestamp = endTimestamp - startTimestamp % step;
+
+    ArgumentCaptor<String> queryUrl = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<Map> queryParam = ArgumentCaptor.forClass(Map.class);
+
+    when(mockApiHelper.getRequest(anyString(), anyMap(), anyMap())).thenReturn(responseJson);
+    metricQueryHelper.query(ImmutableList.of("valid_metric"), params);
+    verify(mockApiHelper)
+        .getRequest(queryUrl.capture(), anyMap(), (Map<String, String>) queryParam.capture());
+
+    assertThat(queryUrl.getValue(), allOf(notNullValue(), equalTo("foo://bar/query_range")));
+    assertThat(
+        queryParam.getValue(), allOf(notNullValue(), IsInstanceOf.instanceOf(HashMap.class)));
+
+    Map<String, String> graphQueryParam = queryParam.getValue();
+    assertThat(
+        graphQueryParam.get("query"), allOf(notNullValue(), equalTo("sum(my_valid_metric)")));
+    assertThat(
+        Long.parseLong(graphQueryParam.get("start")),
+        allOf(notNullValue(), equalTo(adjustedStartTimestamp)));
+    assertThat(
+        Long.parseLong(graphQueryParam.get("end")),
+        allOf(notNullValue(), equalTo(adjustedEndTimestamp)));
+    assertThat(Integer.parseInt(graphQueryParam.get("step")), allOf(notNullValue(), equalTo(step)));
   }
 
   @Test
