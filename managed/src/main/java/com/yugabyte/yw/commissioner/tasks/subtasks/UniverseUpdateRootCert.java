@@ -139,7 +139,7 @@ public class UniverseUpdateRootCert extends UniverseTaskBase {
                 });
 
             rootCertFile.delete();
-            if (rootCert.privateKey.contains("ca.multi.root")) {
+            if (rootCert.privateKey != null && rootCert.privateKey.contains("ca.multi.root")) {
               File rootCertKey = new File(rootCert.privateKey);
               rootCertKey.delete();
             }
