@@ -39,23 +39,15 @@ using std::string;
 namespace yb {
 
 TEST(TestStringCase, TestSnakeToCamel) {
-  string out;
-  SnakeToCamelCase("foo_bar", &out);
-  ASSERT_EQ("FooBar", out);
-
-
-  SnakeToCamelCase("foo-bar", &out);
-  ASSERT_EQ("FooBar", out);
-
-  SnakeToCamelCase("foobar", &out);
-  ASSERT_EQ("Foobar", out);
+  ASSERT_EQ("FooBar", SnakeToCamelCase("foo_bar"));
+  ASSERT_EQ("FooBar", SnakeToCamelCase("foo-bar"));
+  ASSERT_EQ("Foobar", SnakeToCamelCase("foobar"));
 }
 
 TEST(TestStringCase, TestAllCapsToCamel) {
   string out;
   AllCapsToCamelCase("FOO_BAR", &out);
   ASSERT_EQ("FooBar", out);
-
 
   AllCapsToCamelCase("FOO-BAR", &out);
   ASSERT_EQ("FooBar", out);
