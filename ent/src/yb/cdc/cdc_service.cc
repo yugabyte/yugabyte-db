@@ -646,6 +646,20 @@ CHECKED_STATUS VerifyArg(const SetCDCCheckpointRequestPB& req) {
   return Status::OK();
 }
 
+// This function is to handle the upgrade scenario where the DB is upgraded from a version
+// without CDCSDK changes to the one with it. So in case, some required options are missing,
+// the default values will be added for the same.
+void AddDefaultOptionsIfMissing(std::unordered_map<std::string, std::string>* options) {
+  if ((*options).find(cdc::kSourceType) == (*options).end()) {
+    (*options).emplace(cdc::kSourceType, CDCRequestSource_Name(cdc::CDCRequestSource::XCLUSTER));
+  }
+
+  if ((*options).find(cdc::kCheckpointType) == (*options).end()) {
+    (*options).emplace(cdc::kCheckpointType,
+                     CDCCheckpointType_Name(cdc::CDCCheckpointType::IMPLICIT));
+  }
+}
+
 } // namespace
 
 template <class ReqType, class RespType>
@@ -2107,6 +2121,9 @@ Result<std::shared_ptr<StreamMetadata>> CDCServiceImpl::GetStream(const std::str
   RETURN_NOT_OK(client()->GetCDCStream(stream_id, &ns_id, &object_ids, &options));
 
   auto stream_metadata = std::make_shared<StreamMetadata>();
+
+  AddDefaultOptionsIfMissing(&options);
+
   for (const auto& option : options) {
     if (option.first == kRecordType) {
       SCHECK(CDCRecordType_Parse(option.second, &stream_metadata->record_type),
