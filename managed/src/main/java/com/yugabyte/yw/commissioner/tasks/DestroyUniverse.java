@@ -88,7 +88,7 @@ public class DestroyUniverse extends UniverseTaskBase {
         }
 
         // Set the node states to Removing.
-        createSetNodeStateTasks(universe.getNodes(), NodeDetails.NodeState.Removing)
+        createSetNodeStateTasks(universe.getNodes(), NodeDetails.NodeState.Terminating)
             .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
         // Create tasks to destroy the existing nodes.
         createDestroyServerTasks(
