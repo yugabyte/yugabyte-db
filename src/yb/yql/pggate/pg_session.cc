@@ -15,14 +15,14 @@
 
 #include "yb/yql/pggate/pg_session.h"
 
+#include <algorithm>
+#include <functional>
+#include <future>
 #include <memory>
-
-#include <boost/optional.hpp>
 
 #include "yb/client/batcher.h"
 #include "yb/client/error.h"
 #include "yb/client/schema.h"
-#include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/tablet_server.h"
 #include "yb/client/transaction.h"
@@ -37,10 +37,6 @@
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction_error.h"
-
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/primitive_value.h"
-#include "yb/docdb/value_type.h"
 
 #include "yb/gutil/casts.h"
 
@@ -78,7 +74,6 @@ using std::unique_ptr;
 using std::shared_ptr;
 using std::string;
 
-using client::YBSession;
 using client::YBMetaDataCache;
 using client::YBSchema;
 using client::YBOperation;
@@ -91,62 +86,6 @@ using yb::master::GetNamespaceInfoResponsePB;
 using yb::tserver::TServerSharedObject;
 
 namespace {
-
-docdb::PrimitiveValue NullValue(SortingType sorting) {
-  using SortingType = SortingType;
-
-  return docdb::PrimitiveValue(
-      sorting == SortingType::kAscendingNullsLast || sorting == SortingType::kDescendingNullsLast
-          ? docdb::ValueType::kNullHigh
-          : docdb::ValueType::kNullLow);
-}
-
-void InitKeyColumnPrimitiveValues(
-    const google::protobuf::RepeatedPtrField<PgsqlExpressionPB> &column_values,
-    const Schema &schema,
-    size_t start_idx,
-    vector<docdb::PrimitiveValue> *components) {
-  size_t column_idx = start_idx;
-  for (const auto& column_value : column_values) {
-    const auto sorting_type = schema.column(column_idx).sorting_type();
-    if (column_value.has_value()) {
-      const auto& value = column_value.value();
-      components->push_back(
-          IsNull(value)
-          ? NullValue(sorting_type)
-          : docdb::PrimitiveValue::FromQLValuePB(value, sorting_type));
-    } else {
-      // TODO(neil) The current setup only works for CQL as it assumes primary key value must not
-      // be dependent on any column values. This needs to be fixed as PostgreSQL expression might
-      // require a read from a table.
-      //
-      // Use regular executor for now.
-      QLExprExecutor executor;
-      QLExprResult result;
-      auto s = executor.EvalExpr(column_value, nullptr, result.Writer());
-
-      components->push_back(docdb::PrimitiveValue::FromQLValuePB(result.Value(), sorting_type));
-    }
-    ++column_idx;
-  }
-}
-
-bool IsTableUsedByRequest(const PgsqlReadRequestPB& request, const string& table_id) {
-  return request.table_id() == table_id ||
-      (request.has_index_request() && IsTableUsedByRequest(request.index_request(), table_id));
-}
-
-bool IsTableUsedByRequest(const PgsqlWriteRequestPB& request, const string& table_id) {
-  return request.table_id() == table_id;
-}
-
-bool IsTableUsedByOperation(const PgsqlOp& op, const string& table_id) {
-  if (op.is_read()) {
-    return IsTableUsedByRequest(down_cast<const PgsqlReadOp&>(op).read_request(), table_id);
-  } else {
-    return IsTableUsedByRequest(down_cast<const PgsqlWriteOp&>(op).write_request(), table_id);
-  }
-}
 
 struct PgForeignKeyReferenceLightweight {
   PgOid table_id;
@@ -220,24 +159,11 @@ Result<SessionType> GetRequiredSessionType(
       : SessionType::kRegular;
 }
 
+bool Empty(const PgOperationBuffer& buffer) {
+  return !buffer.Size();
+}
+
 } // namespace
-
-
-PerformFuture::PerformFuture(
-    std::future<PerformResult> future, PgSession* session, PgObjectIds* relations)
-    : future_(std::move(future)), session_(session), relations_(std::move(*relations)) {}
-
-bool PerformFuture::Valid() const {
-  return session_ != nullptr;
-}
-
-CHECKED_STATUS PerformFuture::Get() {
-  auto result = future_.get();
-  auto session = session_;
-  session_ = nullptr;
-  session->TrySetCatalogReadPoint(result.catalog_read_time);
-  return session->PatchStatus(result.status, relations_);
-}
 
 //--------------------------------------------------------------------------------------------------
 // Class PgSession::RunHelper
@@ -246,44 +172,28 @@ CHECKED_STATUS PerformFuture::Get() {
 class PgSession::RunHelper {
  public:
   RunHelper(PgSession* pg_session, SessionType session_type)
-      : pg_session_(*pg_session),
-        session_type_(session_type),
-        buffer_(IsTransactional(session_type) ? pg_session_.buffered_txn_ops_
-                                              : pg_session_.buffered_ops_) {
+      : pg_session_(*pg_session), session_type_(session_type) {
   }
 
   CHECKED_STATUS Apply(const PgTableDesc& table,
                        const PgsqlOpPtr& op,
                        uint64_t* read_time,
                        bool force_non_bufferable) {
-    auto& buffered_keys = pg_session_.buffered_keys_;
+    auto& buffer = pg_session_.buffer_;
     // Try buffering this operation if it is a write operation, buffering is enabled and no
     // operations have been already applied to current session (yb session does not exist).
     if (operations_.empty() && pg_session_.buffering_enabled_ &&
         !force_non_bufferable && op->is_write()) {
-      const auto& wop = down_cast<PgsqlWriteOp&>(*op).write_request();
-      // Check for buffered operation related to same row.
-      // If multiple operations are performed in context of single RPC second operation will not
-      // see the results of first operation on DocDB side.
-      // Multiple operations on same row must be performed in context of different RPC.
-      // Flush is required in this case.
-      RowIdentifier row_id(table.schema(), wop);
-      if (PREDICT_FALSE(!buffered_keys.insert(row_id).second)) {
-        RETURN_NOT_OK(pg_session_.FlushBufferedOperations());
-        buffered_keys.insert(row_id);
-      }
-      if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {
-        LOG(INFO) << "Buffering operation: " << wop.ShortDebugString();
-      }
-      buffer_.Add(op, table.id());
-      // Flush buffers in case limit of operations in single RPC exceeded.
-      return PREDICT_TRUE(buffered_keys.size() < FLAGS_ysql_session_max_batch_size)
-          ? Status::OK()
-          : pg_session_.FlushBufferedOperations();
+        if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {
+          LOG(INFO) << "Buffering operation: " << op->ToString();
+        }
+        return buffer.Add(table,
+                          PgsqlWriteOpPtr(std::move(op), down_cast<PgsqlWriteOp*>(op.get())),
+                          IsTransactional());
     }
     bool read_only = op->is_read();
     // Flush all buffered operations (if any) before performing non-bufferable operation
-    if (!buffered_keys.empty()) {
+    if (!Empty(buffer)) {
       SCHECK(operations_.empty(),
             IllegalState,
             "Buffered operations must be flushed before applying first non-bufferable operation");
@@ -292,23 +202,10 @@ class PgSession::RunHelper {
       // Buffered operations must be flushed independently in this case.
       // Also operations for catalog session can be combined with buffered operations
       // as catalog session is used for read-only operations.
-      bool full_flush_required = (IsTransactional() && read_time && *read_time) || IsCatalog();
-      // Check for buffered operation that affected same table as current operation.
-      for (auto i = buffered_keys.begin(); !full_flush_required && i != buffered_keys.end(); ++i) {
-        full_flush_required = IsTableUsedByOperation(*op, i->table_id());
-      }
-      if (full_flush_required) {
-        RETURN_NOT_OK(pg_session_.FlushBufferedOperations());
+      if ((IsTransactional() && read_time && *read_time) || IsCatalog()) {
+        RETURN_NOT_OK(buffer.Flush());
       } else {
-        RETURN_NOT_OK(pg_session_.FlushBufferedOperationsImpl(make_lw_function(
-          [this](BufferableOperations ops, IsTransactionalSession transactional) -> Status {
-            if (transactional == IsTransactional()) {
-              // Save buffered operations for further applying before non-buffered operation.
-              operations_.Swap(&ops);
-              return Status::OK();
-            }
-            return pg_session_.FlushOperations(std::move(ops), transactional);
-          })));
+        operations_ = VERIFY_RESULT(buffer.FlushTake(table, *op, IsTransactional()));
         read_only = read_only && operations_.empty();
       }
     }
@@ -344,30 +241,24 @@ class PgSession::RunHelper {
       return PerformFuture();
     }
 
-    auto promise = std::make_shared<std::promise<PerformResult>>();
-
-    pg_session_.Perform(&operations_.operations, IsCatalog(), [promise](PerformResult result) {
-      promise->set_value(result);
-    });
-    return PerformFuture(promise->get_future(), &pg_session_, &operations_.relations);
+    return pg_session_.Perform(std::move(operations_), IsCatalog());
   }
 
  private:
-  static bool IsTransactional(SessionType type) {
+  inline static bool IsTransactional(SessionType type) {
     return type == SessionType::kTransactional;
   }
 
-  bool IsTransactional() const {
+  inline bool IsTransactional() const {
     return IsTransactional(session_type_);
   }
 
-  bool IsCatalog() const {
+  inline bool IsCatalog() const {
     return session_type_ == SessionType::kCatalog;
   }
 
   PgSession& pg_session_;
   const SessionType session_type_;
-  BufferableOperations& buffer_;
   BufferableOperations operations_;
 };
 
@@ -389,55 +280,6 @@ size_t hash_value(const PgForeignKeyReference& key) {
 }
 
 //--------------------------------------------------------------------------------------------------
-// Class RowIdentifier
-//--------------------------------------------------------------------------------------------------
-
-RowIdentifier::RowIdentifier(const Schema& schema, const PgsqlWriteRequestPB& request)
-    : table_id_(&request.table_id()) {
-  if (request.has_ybctid_column_value()) {
-    ybctid_ = &request.ybctid_column_value().value().binary_value();
-  } else {
-    vector<docdb::PrimitiveValue> hashed_components;
-    vector<docdb::PrimitiveValue> range_components;
-    InitKeyColumnPrimitiveValues(request.partition_column_values(),
-                                 schema,
-                                 0 /* start_idx */,
-                                 &hashed_components);
-    InitKeyColumnPrimitiveValues(request.range_column_values(),
-                                 schema,
-                                 schema.num_hash_key_columns(),
-                                 &range_components);
-    if (hashed_components.empty()) {
-      ybctid_holder_ = docdb::DocKey(std::move(range_components)).Encode().ToStringBuffer();
-    } else {
-      ybctid_holder_ = docdb::DocKey(request.hash_code(),
-                                     std::move(hashed_components),
-                                     std::move(range_components)).Encode().ToStringBuffer();
-    }
-    ybctid_ = nullptr;
-  }
-}
-
-const string& RowIdentifier::ybctid() const {
-  return ybctid_ ? *ybctid_ : ybctid_holder_;
-}
-
-const string& RowIdentifier::table_id() const {
-  return *table_id_;
-}
-
-bool operator==(const RowIdentifier& k1, const RowIdentifier& k2) {
-  return k1.table_id() == k2.table_id() && k1.ybctid() == k2.ybctid();
-}
-
-size_t hash_value(const RowIdentifier& key) {
-  size_t hash = 0;
-  boost::hash_combine(hash, key.table_id());
-  boost::hash_combine(hash, key.ybctid());
-  return hash;
-}
-
-//--------------------------------------------------------------------------------------------------
 // Class PgSession
 //--------------------------------------------------------------------------------------------------
 
@@ -451,12 +293,13 @@ PgSession::PgSession(
     : pg_client_(*pg_client),
       pg_txn_manager_(std::move(pg_txn_manager)),
       clock_(std::move(clock)),
+      buffer_(std::bind(
+          &PgSession::FlushOperations, this, std::placeholders::_1, std::placeholders::_2)),
       tserver_shared_object_(tserver_shared_object),
       pg_callbacks_(pg_callbacks) {
 }
 
-PgSession::~PgSession() {
-}
+PgSession::~PgSession() = default;
 
 //--------------------------------------------------------------------------------------------------
 
@@ -605,9 +448,9 @@ void PgSession::InvalidateAllTablesCache() {
 
 Status PgSession::StartOperationsBuffering() {
   SCHECK(!buffering_enabled_, IllegalState, "Buffering has been already started");
-  if (PREDICT_FALSE(!buffered_keys_.empty())) {
+  if (PREDICT_FALSE(!Empty(buffer_))) {
     LOG(DFATAL) << "Buffering hasn't been started yet but "
-                << buffered_keys_.size()
+                << buffer_.Size()
                 << " buffered operations found";
   }
   buffering_enabled_ = true;
@@ -626,49 +469,22 @@ void PgSession::ResetOperationsBuffering() {
 }
 
 Status PgSession::FlushBufferedOperations() {
-  return FlushBufferedOperationsImpl(make_lw_function(
-      [this](BufferableOperations ops, IsTransactionalSession txn) {
-        return this->FlushOperations(std::move(ops), txn);
-      }));
+  return buffer_.Flush();
 }
 
 void PgSession::DropBufferedOperations() {
-  VLOG_IF(1, !buffered_keys_.empty())
-          << "Dropping " << buffered_keys_.size() << " pending operations";
-  buffered_keys_.clear();
-  buffered_ops_.Clear();
-  buffered_txn_ops_.Clear();
+  buffer_.Clear();
 }
 
 PgIsolationLevel PgSession::GetIsolationLevel() {
   return pg_txn_manager_->GetPgIsolationLevel();
 }
 
-Status PgSession::FlushBufferedOperationsImpl(const Flusher& flusher) {
-  auto ops = std::move(buffered_ops_);
-  auto txn_ops = std::move(buffered_txn_ops_);
-  buffered_keys_.clear();
-  buffered_ops_.Clear();
-  buffered_txn_ops_.Clear();
-  if (!ops.empty()) {
-    RETURN_NOT_OK(flusher(std::move(ops), IsTransactionalSession::kFalse));
-  }
-  if (!txn_ops.empty()) {
-    SCHECK(!YBCIsInitDbModeEnvVarSet(),
-           IllegalState,
-           "No transactional operations are expected in the initdb mode");
-    RETURN_NOT_OK(flusher(std::move(txn_ops), IsTransactionalSession::kTrue));
-  }
-  return Status::OK();
-}
-
 Result<bool> PgSession::IsInitDbDone() {
   return pg_client_.IsInitDbDone();
 }
 
-Status PgSession::FlushOperations(BufferableOperations ops, IsTransactionalSession transactional) {
-  DCHECK(ops.size() > 0 && ops.size() <= FLAGS_ysql_session_max_batch_size);
-
+Result<PerformFuture> PgSession::FlushOperations(BufferableOperations ops, bool transactional) {
   if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {
     LOG(INFO) << "Flushing buffered operations, using "
               << (transactional ? "transactional" : "non-transactional")
@@ -685,17 +501,11 @@ Status PgSession::FlushOperations(BufferableOperations ops, IsTransactionalSessi
     in_txn_limit_ = clock_->Now();
   }
 
-  std::promise<PerformResult> promise;
-  Perform(
-    &ops.operations, /* use_catalog_session */ false, [&promise](const PerformResult& result) {
-    promise.set_value(result);
-  });
-  PerformFuture future(promise.get_future(), this, &ops.relations);
-  return future.Get();
+  return Perform(std::move(ops), /* use_catalog_session */ false);
 }
 
-void PgSession::Perform(
-  PgsqlOps* operations, bool use_catalog_session, const PerformCallback& callback) {
+Result<PerformFuture> PgSession::Perform(BufferableOperations ops, bool use_catalog_session) {
+  DCHECK(!ops.empty());
   tserver::PgPerformOptionsPB options;
 
   if (use_catalog_session) {
@@ -716,7 +526,12 @@ void PgSession::Perform(
   }
   options.set_force_global_transaction(yb_force_global_transaction);
 
-  pg_client_.PerformAsync(&options, operations, callback);
+  auto promise = std::make_shared<std::promise<PerformResult>>();
+
+  pg_client_.PerformAsync(&options, &ops.operations, [promise](PerformResult result) {
+    promise->set_value(result);
+  });
+  return PerformFuture(promise->get_future(), this, std::move(ops.relations));
 }
 
 Result<uint64_t> PgSession::GetSharedCatalogVersion() {
@@ -862,7 +677,7 @@ Status PgSession::SetActiveSubTransaction(SubTransactionId id) {
       txn_priority_requirement = kHighestPriority;
     }
     RETURN_NOT_OK(pg_txn_manager_->CalculateIsolation(
-        IsReadOnlyOperation::kFalse, txn_priority_requirement));
+        false /* read_only_op */, txn_priority_requirement));
     options_ptr = &options;
     pg_txn_manager_->SetupPerformOptions(&options);
   }
