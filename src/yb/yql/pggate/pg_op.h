@@ -178,8 +178,6 @@ class PgsqlWriteOp : public PgsqlOp {
   HybridTime write_time_;
 };
 
-using PgsqlWriteOpPtr = std::shared_ptr<PgsqlWriteOp>;
-
 CHECKED_STATUS ReviewResponsePagingState(const PgTableDesc& table, PgsqlReadOp* op);
 
 }  // namespace pggate

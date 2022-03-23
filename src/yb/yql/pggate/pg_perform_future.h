@@ -11,43 +11,37 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGGATE_PG_GATE_FWD_H
-#define YB_YQL_PGGATE_PG_GATE_FWD_H
+#ifndef YB_YQL_PGGATE_PG_PERFORM_FUTURE_H_
+#define YB_YQL_PGGATE_PG_PERFORM_FUTURE_H_
 
-#include <memory>
-
-#include "yb/gutil/ref_counted.h"
+#include <future>
 
 #include "yb/common/common_fwd.h"
 
-#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/status_fwd.h"
 
-namespace google {
-namespace protobuf {
-
-class Message;
-
-}
-}
+#include "yb/yql/pggate/pg_client.h"
 
 namespace yb {
 namespace pggate {
 
-class PgClient;
+class PgSession;
 
-class PgTable;
-class PgTableDesc;
-using PgTableDescPtr = scoped_refptr<PgTableDesc>;
+class PerformFuture {
+ public:
+  PerformFuture() = default;
+  PerformFuture(std::future<PerformResult> future, PgSession* session, PgObjectIds relations);
 
-class PgsqlOp;
-class PgsqlWriteOp;
-using PgsqlOpPtr = std::shared_ptr<PgsqlOp>;
-using PgsqlWriteOpPtr = std::shared_ptr<PgsqlWriteOp>;
-using PgsqlOps = std::vector<PgsqlOpPtr>;
+  bool Valid() const;
+  CHECKED_STATUS Get();
 
-YB_STRONGLY_TYPED_BOOL(Commit);
+ private:
+  std::future<PerformResult> future_;
+  PgSession* session_ = nullptr;
+  PgObjectIds relations_;
+};
 
-}  // namespace pggate
-}  // namespace yb
+} // namespace pggate
+} // namespace yb
 
-#endif  // YB_YQL_PGGATE_PG_GATE_FWD_H
+#endif // YB_YQL_PGGATE_PG_PERFORM_FUTURE_H_
