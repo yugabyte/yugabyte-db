@@ -1463,6 +1463,10 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
       SharedLock lock(mutex_);
       if (VERIFY_RESULT(CheckTableForImport(table, table_data))) {
         LOG_WITH_FUNC(INFO) << "Found existing table: '" << table->ToString() << "'";
+        if (meta.colocated() && IsColocatedParentTableId(table_data->old_table_id)) {
+          // Parent colocated tables don't have partition info, so make sure to mark them.
+          is_parent_colocated_table = true;
+        }
       } else {
         // A property did not match, so this search by ids failed.
         auto table_lock = table->LockForRead();
@@ -1722,7 +1726,11 @@ Status CatalogManager::PreprocessTabletEntry(const SysRowEntry& entry,
   SysTabletsEntryPB meta = VERIFY_RESULT(ParseFromSlice<SysTabletsEntryPB>(entry.data()));
 
   ExternalTableSnapshotData& table_data = (*table_map)[meta.table_id()];
-  ++table_data.num_tablets;
+  if (meta.colocated()) {
+    table_data.num_tablets = 1;
+  } else {
+    ++table_data.num_tablets;
+  }
   if (meta.has_partition()) {
     table_data.partitions.push_back(meta.partition());
   }
