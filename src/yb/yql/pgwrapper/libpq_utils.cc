@@ -160,7 +160,8 @@ Result<PGConn> PGConn::Connect(
 
 Result<PGConn> PGConn::Connect(const std::string& conn_str,
                                CoarseTimePoint deadline,
-                               bool simple_query_protocol) {
+                               bool simple_query_protocol,
+                               const boost::optional<std::string>& conn_str_for_log) {
   auto start = CoarseMonoClock::now();
   for (;;) {
     PGConnPtr result(PQconnectdb(conn_str.c_str()));
@@ -169,7 +170,9 @@ Result<PGConn> PGConn::Connect(const std::string& conn_str,
     }
     auto status = PQstatus(result.get());
     if (status == ConnStatusType::CONNECTION_OK) {
-      LOG(INFO) << "Connected to PG (" << conn_str << "), time taken: "
+      LOG(INFO) << "Connected to PG ("
+                << (conn_str_for_log.has_value() ? conn_str_for_log.value() : conn_str)
+                << "), time taken: "
                 << MonoDelta(CoarseMonoClock::Now() - start);
       return PGConn(std::move(result), simple_query_protocol);
     }
