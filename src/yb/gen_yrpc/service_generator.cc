@@ -141,7 +141,7 @@ void ServiceGenerator::Header(YBPrinter printer, const google::protobuf::FileDes
 
   printer(
       "\n"
-      "$close_namespace$\n"
+      "$close_namespace$"
   );
 }
 

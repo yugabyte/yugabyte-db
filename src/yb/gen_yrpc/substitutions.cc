@@ -26,6 +26,7 @@
 #include "yb/rpc/service.pb.h"
 
 #include "yb/util/format.h"
+#include "yb/util/string_case.h"
 
 namespace yb {
 namespace gen_yrpc {
@@ -87,7 +88,7 @@ Substitutions FileSubstitutions::Create() {
 
 Substitutions CreateSubstitutions(const google::protobuf::Descriptor* message) {
   Substitutions result;
-  auto message_name = UnnestedName(message, Lightweight::kFalse, false);
+  auto message_name = UnnestedName(message, Lightweight::kFalse, FullPath::kFalse);
   result.emplace_back("message_name", message_name);
   std::string message_pb_name;
   if (IsLwAny(message)) {
@@ -100,7 +101,8 @@ Substitutions CreateSubstitutions(const google::protobuf::Descriptor* message) {
     message_pb_name = message_name;
   }
   result.emplace_back("message_pb_name", message_pb_name);
-  result.emplace_back("message_lw_name", UnnestedName(message, Lightweight::kTrue, false));
+  result.emplace_back(
+      "message_lw_name", UnnestedName(message, Lightweight::kTrue, FullPath::kFalse));
   uint32 max_tag = 0;
   for (int i = 0; i != message->field_count(); ++i) {
     auto* field = message->field(i);
@@ -143,10 +145,55 @@ Substitutions CreateSubstitutions(
   return result;
 }
 
+std::unordered_set<std::string> keywords = { "namespace" };
+
+std::string DefaultValueToString(
+    const google::protobuf::FieldDescriptor* field, const std::string& field_type) {
+  switch (field->cpp_type()) {
+    case google::protobuf::FieldDescriptor::CppType::CPPTYPE_BOOL:
+      return field->default_value_bool() ? "true" : "false";
+    case google::protobuf::FieldDescriptor::CPPTYPE_INT32:
+      return std::to_string(field->default_value_int32());
+    case google::protobuf::FieldDescriptor::CPPTYPE_INT64:
+      return std::to_string(field->default_value_int64());
+    case google::protobuf::FieldDescriptor::CPPTYPE_UINT32:
+      return std::to_string(field->default_value_uint32());
+    case google::protobuf::FieldDescriptor::CPPTYPE_UINT64:
+      return std::to_string(field->default_value_uint64());
+    case google::protobuf::FieldDescriptor::CPPTYPE_DOUBLE:
+      return std::to_string(field->default_value_double());
+    case google::protobuf::FieldDescriptor::CPPTYPE_FLOAT:
+      return std::to_string(field->default_value_float());
+    case google::protobuf::FieldDescriptor::CPPTYPE_ENUM:
+      return "::" + ReplaceNamespaceDelimiters(field->default_value_enum()->full_name());
+    case google::protobuf::FieldDescriptor::CPPTYPE_STRING:
+      return field->default_value_string();
+    case google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE:
+      return "NOT SUPPORTED";
+  }
+  return Format("Unknown type: $0", field->cpp_type());
+}
+
 Substitutions CreateSubstitutions(const google::protobuf::FieldDescriptor* field) {
   Substitutions result;
   auto field_name = boost::to_lower_copy(field->name());
+  if (keywords.count(field_name)) {
+    field_name += "_";
+  }
   result.emplace_back("field_name", field_name);
+  if (field->containing_oneof()) {
+    if (StoredAsSlice(field)) {
+      result.emplace_back("field_accessor", "direct_" + field_name + "()");
+    } else {
+      result.emplace_back("field_accessor",
+                          Format("$0_.$1_", field->containing_oneof()->name(), field_name));
+    }
+    result.emplace_back("field_containing_oneof_name", field->containing_oneof()->name());
+    result.emplace_back(
+        "field_containing_oneof_cap_name", SnakeToCamelCase(field->containing_oneof()->name()));
+  } else {
+    result.emplace_back("field_accessor", field_name + "_");
+  }
   result.emplace_back("field_value", field->is_repeated() ? "entry" : field_name + "()");
   auto camelcase_name = field->camelcase_name();
   camelcase_name[0] = std::toupper(camelcase_name[0]);
@@ -170,6 +217,11 @@ Substitutions CreateSubstitutions(const google::protobuf::FieldDescriptor* field
   result.emplace_back(
       "field_serialization_prefix",
       field->is_packed() ? "Packed" : field->is_repeated() ? "Repeated" : "Single");
+  if (field->has_default_value()) {
+    result.emplace_back("field_default_value", DefaultValueToString(field, field_type));
+  } else {
+    result.emplace_back("field_default_value", field_type + "()");
+  }
   return result;
 }
 

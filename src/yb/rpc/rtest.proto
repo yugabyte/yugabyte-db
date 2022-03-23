@@ -183,6 +183,12 @@ message LightweightSubMessagePB {
   repeated bytes rbytes = 4;
 
   optional LightweightSubMessagePB cycle = 5;
+
+  oneof variant {
+    int32 v_i32 = 6;
+    string v_str = 7;
+    LightweightSubMessagePB v_message = 8;
+  }
 }
 
 message LightweightPairPB {
