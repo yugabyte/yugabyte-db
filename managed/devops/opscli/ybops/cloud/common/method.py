@@ -479,6 +479,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
 
         # Check if secondary subnet is present. If so, configure it.
         if host_info.get('secondary_subnet'):
+            # Wait for host to be ready to run ssh commands
+            self.wait_for_host(args, use_default_port)
             self.cloud.configure_secondary_interface(
                 args, self.extra_vars, self.cloud.get_subnet_cidr(args,
                                                                   host_info['secondary_subnet']))
