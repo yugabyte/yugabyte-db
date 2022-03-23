@@ -144,6 +144,9 @@ DEFINE_test_flag(double, crash_during_sys_catalog_restoration, 0.0,
                  "Probability of crash during the RESTORE_SYS_CATALOG phase.");
 TAG_FLAG(TEST_crash_during_sys_catalog_restoration, runtime);
 
+DEFINE_bool(enable_replicate_transaction_status_table, false,
+            "Whether to enable xCluster replication of the transaction status table.");
+
 namespace yb {
 
 using rpc::RpcContext;
@@ -153,6 +156,8 @@ using client::internal::RemoteTabletPtr;
 
 namespace master {
 namespace enterprise {
+
+static const string kSystemXClusterReplicationId = "system";
 
 namespace {
 
@@ -3407,6 +3412,47 @@ Status CatalogManager::IsBootstrapRequired(const IsBootstrapRequiredRequestPB* r
   return Status::OK();
 }
 
+Result<scoped_refptr<UniverseReplicationInfo>>
+CatalogManager::CreateUniverseReplicationInfoForProducer(
+    const std::string& producer_id,
+    const google::protobuf::RepeatedPtrField<HostPortPB>& master_addresses,
+    const google::protobuf::RepeatedPtrField<std::string>& table_ids) {
+  scoped_refptr<UniverseReplicationInfo> ri;
+  {
+    TRACE("Acquired catalog manager lock");
+    SharedLock lock(mutex_);
+
+    if (FindPtrOrNull(universe_replication_map_, producer_id) != nullptr) {
+      return STATUS(InvalidArgument, "Producer already present", producer_id,
+                    MasterError(MasterErrorPB::INVALID_REQUEST));
+    }
+  }
+
+  // Create an entry in the system catalog DocDB for this new universe replication.
+  ri = new UniverseReplicationInfo(producer_id);
+  ri->mutable_metadata()->StartMutation();
+  SysUniverseReplicationEntryPB *metadata = &ri->mutable_metadata()->mutable_dirty()->pb;
+  metadata->set_producer_id(producer_id);
+  metadata->mutable_producer_master_addresses()->CopyFrom(master_addresses);
+  metadata->mutable_tables()->CopyFrom(table_ids);
+  metadata->set_state(SysUniverseReplicationEntryPB::INITIALIZING);
+
+  RETURN_NOT_OK(CheckLeaderStatus(
+      sys_catalog_->Upsert(leader_ready_term(), ri),
+      "inserting universe replication info into sys-catalog"));
+
+  TRACE("Wrote universe replication info to sys-catalog");
+  // Commit the in-memory state now that it's added to the persistent catalog.
+  ri->mutable_metadata()->CommitMutation();
+  LOG(INFO) << "Setup universe replication from producer " << ri->ToString();
+
+  {
+    LockGuard lock(mutex_);
+    universe_replication_map_[ri->id()] = ri;
+  }
+  return ri;
+}
+
 /*
  * UniverseReplication is setup in 4 stages within the Catalog Manager
  * 1. SetupUniverseReplication: Validates user input & requests Producer schema.
@@ -3423,6 +3469,13 @@ Status CatalogManager::SetupUniverseReplication(const SetupUniverseReplicationRe
   // Sanity checking section.
   if (!req->has_producer_id()) {
     return STATUS(InvalidArgument, "Producer universe ID must be provided",
+                  req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
+  }
+
+  if (GetAtomicFlag(&FLAGS_enable_replicate_transaction_status_table) &&
+      req->producer_id() == kSystemXClusterReplicationId) {
+     return STATUS(InvalidArgument, Format("Producer universe ID cannot equal reserved string $0.",
+                                           kSystemXClusterReplicationId) ,
                   req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
   }
 
@@ -3490,43 +3543,11 @@ Status CatalogManager::SetupUniverseReplication(const SetupUniverseReplicationRe
                   MasterError(MasterErrorPB::INVALID_REQUEST));
   }
 
-  scoped_refptr<UniverseReplicationInfo> ri;
-  {
-    TRACE("Acquired catalog manager lock");
-    SharedLock lock(mutex_);
-
-    if (FindPtrOrNull(universe_replication_map_, req->producer_id()) != nullptr) {
-      return STATUS(InvalidArgument, "Producer already present", req->producer_id(),
-                    MasterError(MasterErrorPB::INVALID_REQUEST));
-    }
-  }
-
-  // Create an entry in the system catalog DocDB for this new universe replication.
-  ri = new UniverseReplicationInfo(req->producer_id());
-  ri->mutable_metadata()->StartMutation();
-  SysUniverseReplicationEntryPB *metadata = &ri->mutable_metadata()->mutable_dirty()->pb;
-  metadata->set_producer_id(req->producer_id());
-  metadata->mutable_producer_master_addresses()->CopyFrom(req->producer_master_addresses());
-  metadata->mutable_tables()->CopyFrom(req->producer_table_ids());
-  metadata->set_state(SysUniverseReplicationEntryPB::INITIALIZING);
-
-  RETURN_NOT_OK(CheckLeaderStatusAndSetupError(
-      sys_catalog_->Upsert(leader_ready_term(), ri),
-      "inserting universe replication info into sys-catalog", resp));
-  TRACE("Wrote universe replication info to sys-catalog");
-
-  // Commit the in-memory state now that it's added to the persistent catalog.
-  ri->mutable_metadata()->CommitMutation();
-  LOG(INFO) << "Setup universe replication from producer " << ri->ToString();
-
-  {
-    LockGuard lock(mutex_);
-    universe_replication_map_[ri->id()] = ri;
-  }
+  auto ri = VERIFY_RESULT(CreateUniverseReplicationInfoForProducer(
+      req->producer_id(), req->producer_master_addresses(), req->producer_table_ids()));
 
   // Initialize the CDC Stream by querying the Producer server for RPC sanity checks.
   auto result = ri->GetOrCreateCDCRpcTasks(req->producer_master_addresses());
-  LOG(INFO) << "GetOrCreateCDCRpcTasks: " << result.ok();
   if (!result.ok()) {
     MarkUniverseReplicationFailed(ri, ResultToStatus(result));
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, result.status());
@@ -3566,6 +3587,26 @@ Status CatalogManager::SetupUniverseReplication(const SetupUniverseReplicationRe
   }
 
   LOG(INFO) << "Started schema validation for universe replication " << ri->ToString();
+
+  // Call setup on the transaction status table if it doesn't already exist.
+  if (GetAtomicFlag(&FLAGS_enable_replicate_transaction_status_table) &&
+      FindPtrOrNull(universe_replication_map_, kSystemXClusterReplicationId) == nullptr) {
+    // Create an entry in the system catalog DocDB for this new universe replication.
+    auto system_ri = VERIFY_RESULT(CreateUniverseReplicationInfoForProducer(
+        kSystemXClusterReplicationId, req->producer_master_addresses(), {}));
+    auto table_info = std::make_shared<client::YBTableInfo>();
+    auto transaction_status_table = client::YBTableName(
+        YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
+    Status s = cdc_rpc->client()->GetYBTableInfo(transaction_status_table, table_info,
+              Bind(&enterprise::CatalogManager::GetTableSchemaCallback, Unretained(this),
+                    system_ri->id(), table_info, table_id_to_bootstrap_id));
+    if (!s.ok()) {
+      MarkUniverseReplicationFailed(system_ri, s);
+      return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
+    }
+
+    LOG(INFO) << "Started schema validation for universe replication " << system_ri->ToString();
+  }
   return Status::OK();
 }
 
@@ -3724,6 +3765,11 @@ Status CatalogManager::AddValidatedTableAndCreateCdcStreams(
       const TableId& producer_table,
       const TableId& consumer_table) {
   auto l = universe->LockForWrite();
+  if (universe->id() == kSystemXClusterReplicationId) {
+    // We do this because the target doesn't know the source txn status table id until this
+    // callback.
+    *(l.mutable_data()->pb.add_tables()) = producer_table;
+  }
   auto master_addresses = l->pb.producer_master_addresses();
 
   auto res = universe->GetOrCreateCDCRpcTasks(master_addresses);
@@ -3831,7 +3877,12 @@ void CatalogManager::GetTableSchemaCallback(
     return;
   }
 
-  status = IsBootstrapRequiredOnProducer(universe, info->table_id, table_bootstrap_ids);
+  if (universe->id() != kSystemXClusterReplicationId) {
+    // There is no bootstrap mechanism for the transaction status table, so don't check whether
+    // it is required.
+    status = IsBootstrapRequiredOnProducer(universe, info->table_id, table_bootstrap_ids);
+  }
+
   if (!status.ok()) {
     MarkUniverseReplicationFailed(universe, status);
     LOG(ERROR) << "Found error while checking if bootstrap is required for table " << info->table_id
@@ -4378,7 +4429,6 @@ Status CatalogManager::InitCDCConsumer(
       sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()),
       "updating cluster config in sys-catalog"));
   l.Commit();
-
   return Status::OK();
 }
 
@@ -4465,10 +4515,10 @@ void CatalogManager::MergeUniverseReplication(scoped_refptr<UniverseReplicationI
 }
 
 Status ReturnErrorOrAddWarning(const Status& s,
-                               const DeleteUniverseReplicationRequestPB* req,
+                               bool ignore_errors,
                                DeleteUniverseReplicationResponsePB* resp) {
   if (!s.ok()) {
-    if (req->ignore_errors()) {
+    if (ignore_errors) {
       // Continue executing, save the status as a warning.
       AppStatusPB* warning = resp->add_warnings();
       StatusToPB(s, warning);
@@ -4479,38 +4529,28 @@ Status ReturnErrorOrAddWarning(const Status& s,
   return s;
 }
 
-Status CatalogManager::DeleteUniverseReplication(const DeleteUniverseReplicationRequestPB* req,
-                                                 DeleteUniverseReplicationResponsePB* resp,
-                                                 rpc::RpcContext* rpc) {
-  LOG(INFO) << "Servicing DeleteUniverseReplication request from " << RequestorString(rpc)
-            << ": " << req->ShortDebugString();
-
-  if (!req->has_producer_id()) {
-    return STATUS(InvalidArgument, "Producer universe ID required", req->ShortDebugString(),
-                  MasterError(MasterErrorPB::INVALID_REQUEST));
-  }
-
+Status CatalogManager::DeleteUniverseReplication(const std::string& producer_id,
+                                                 bool ignore_errors,
+                                                 DeleteUniverseReplicationResponsePB* resp) {
   scoped_refptr<UniverseReplicationInfo> ri;
   {
     SharedLock lock(mutex_);
     TRACE("Acquired catalog manager lock");
 
-    ri = FindPtrOrNull(universe_replication_map_, req->producer_id());
+    ri = FindPtrOrNull(universe_replication_map_, producer_id);
     if (ri == nullptr) {
       return STATUS(NotFound, "Universe replication info does not exist",
-                    req->ShortDebugString(), MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
+                    producer_id, MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
     }
   }
 
   {
     auto l = ri->LockForWrite();
     l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::DELETING);
-
-    RETURN_NOT_OK(CheckLeaderStatusAndSetupError(
-      sys_catalog_->Upsert(leader_ready_term(), ri),
-      "Updating delete universe replication info into sys-catalog", resp));
+    Status s = sys_catalog_->Upsert(leader_ready_term(), ri);
+    RETURN_NOT_OK(
+        CheckLeaderStatus(s, "Updating delete universe replication info into sys-catalog"));
     TRACE("Wrote universe replication info to sys-catalog");
-
     l.Commit();
   }
 
@@ -4518,12 +4558,12 @@ Status CatalogManager::DeleteUniverseReplication(const DeleteUniverseReplication
   l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::DELETED);
 
   // Delete subscribers on the Consumer Registry (removes from TServers).
-  LOG(INFO) << "Deleting subscribers for producer " << req->producer_id();
+  LOG(INFO) << "Deleting subscribers for producer " << producer_id;
   {
     auto cluster_config = ClusterConfig();
     auto cl = cluster_config->LockForWrite();
     auto producer_map = cl.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
-    auto it = producer_map->find(req->producer_id());
+    auto it = producer_map->find(producer_id);
     if (it != producer_map->end()) {
       producer_map->erase(it);
       cl.mutable_data()->pb.set_version(cl.mutable_data()->pb.version() + 1);
@@ -4552,7 +4592,7 @@ Status CatalogManager::DeleteUniverseReplication(const DeleteUniverseReplication
       // Set force_delete=true since we are deleting active xCluster streams.
       auto s = cdc_rpc->client()->DeleteCDCStream(streams,
                                                   true, /* force_delete */
-                                                  req->ignore_errors(),
+                                                  ignore_errors /* ignore_errors */,
                                                   &delete_cdc_stream_resp);
 
       if (delete_cdc_stream_resp.not_found_stream_ids().size() > 0) {
@@ -4574,8 +4614,7 @@ Status CatalogManager::DeleteUniverseReplication(const DeleteUniverseReplication
               "Could not find the following streams: [" + missing_streams.str() + "].");
         }
       }
-
-      RETURN_NOT_OK(ReturnErrorOrAddWarning(s, req, resp));
+      RETURN_NOT_OK(ReturnErrorOrAddWarning(s, ignore_errors, resp));
     }
   }
 
@@ -4585,12 +4624,41 @@ Status CatalogManager::DeleteUniverseReplication(const DeleteUniverseReplication
   }
 
   // Delete universe in the Universe Config.
-  RETURN_NOT_OK(ReturnErrorOrAddWarning(DeleteUniverseReplicationUnlocked(ri), req, resp));
+  RETURN_NOT_OK(ReturnErrorOrAddWarning(
+      DeleteUniverseReplicationUnlocked(ri), ignore_errors, resp));
   l.Commit();
+  LOG(INFO) << "Processed delete universe replication of " << ri->ToString();
+  return Status::OK();
+}
 
-  LOG(INFO) << "Processed delete universe replication " << ri->ToString()
-            << " per request from " << RequestorString(rpc);
+Status CatalogManager::DeleteUniverseReplication(const DeleteUniverseReplicationRequestPB* req,
+                                                 DeleteUniverseReplicationResponsePB* resp,
+                                                 rpc::RpcContext* rpc) {
+  LOG(INFO) << "Servicing DeleteUniverseReplication request from " << RequestorString(rpc)
+            << ": " << req->ShortDebugString();
 
+  if (!req->has_producer_id()) {
+    return STATUS(InvalidArgument, "Producer universe ID required", req->ShortDebugString(),
+                  MasterError(MasterErrorPB::INVALID_REQUEST));
+  }
+
+  RETURN_NOT_OK(DeleteUniverseReplication(req->producer_id(), req->ignore_errors(), resp));
+  bool delete_system_replication_id = false;
+  {
+     SharedLock lock(mutex_);
+     delete_system_replication_id =
+        universe_replication_map_.size() == 1 &&
+        universe_replication_map_.count(kSystemXClusterReplicationId) == 1;
+  }
+  if (delete_system_replication_id) {
+    // The only entry left in the universe replication map is the transaction status table, so
+    // it can be removed.
+    RETURN_NOT_OK(DeleteUniverseReplication(
+        kSystemXClusterReplicationId, req->ignore_errors(), resp));
+  }
+
+  LOG(INFO) << "Successfully completed DeleteUniverseReplication request from " <<
+               RequestorString(rpc);
   return Status::OK();
 }
 
