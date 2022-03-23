@@ -26,6 +26,8 @@
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/result.h"
 
+#include <boost/optional.hpp>
+
 namespace yb {
 namespace pgwrapper {
 
@@ -97,17 +99,22 @@ class PGConn {
       const std::string& db_name,
       const std::string& user,
       bool simple_query_protocol = false);
+  // Pass in an optional conn_str_for_log for logging purposes. This is used in case
+  // conn_str contains sensitive information (e.g. password).
   static Result<PGConn> Connect(
       const std::string& conn_str,
-      bool simple_query_protocol = false) {
+      bool simple_query_protocol = false,
+      const boost::optional<std::string>& conn_str_for_log = boost::none) {
     return Connect(conn_str,
                    CoarseMonoClock::Now() + MonoDelta::FromSeconds(60) /* deadline */,
-                   simple_query_protocol);
+                   simple_query_protocol,
+                   conn_str_for_log);
   }
   static Result<PGConn> Connect(
       const std::string& conn_str,
       CoarseTimePoint deadline,
-      bool simple_query_protocol = false);
+      bool simple_query_protocol = false,
+      const boost::optional<std::string>& conn_str_for_log = boost::none);
 
   CHECKED_STATUS Execute(const std::string& command, bool show_query_in_error = true);
 
