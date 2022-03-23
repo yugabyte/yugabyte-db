@@ -63,10 +63,12 @@ Along with the Smart drivers, YugabyteDB also provides support for upstream [Pos
 | Reactjs | Full |  |
 | Nextjs | Full | |
 
-## [.net](dotnet/)
+## [C#](csharp/)
 
 | Driver/ORM | Support Level | Example apps |
 | :--------- | :------------ | :----------- |
+| Npgsql(csharp/postgres-npgsql) | Full | [CRUD Example](/latest/quick-start/build-apps/csharp/ysql) |
+| EntityFramework(csharp/entityframework) | Full | [CRUD Example](csharp/postgres-npgsql) |
 
 ## [Python](python/)
 
