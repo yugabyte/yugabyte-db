@@ -169,14 +169,14 @@ For each node you want to add, click **Add Instances** to add a YugabyteDB node.
 
 <br>Note that if you provide a hostname, the universe might experience issues communicating. To resolve this, you need to delete the failed universe and then recreate it with the `use_node_hostname_for_local_tserver ` g-flag enabled.
 
-### **Provision nodes manually**
+### Provision nodes manually
 
 To provision your nodes manually, you have the following two options:
 
 1. If the SSH user you provided has sudo privileges but requires a password, you can [run the pre-provisioning script](#running-the-pre-provisioning-script).
-2. If the SSH user does not have any sudo privileges, you need to [set up the database nodes manually](#set-up-database-nodes-manually).
+2. If the SSH user does not have any sudo privileges, you need to [set up the database nodes manually](#setting-up-database-nodes-manually).
 
-#### **Running the pre-provisioning script**
+#### Running the pre-provisioning script
 
 This step is only required if you set **Manually Provision Nodes** to true and the SSH user has sudo privileges which require a password; otherwise you skip this step.
 
@@ -210,7 +210,7 @@ Optionally, use the `--ask_password` flag if the sudo user requires password aut
 
 This completes the on-premises cloud provider configuration. You can proceed to [Configure the backup target](../../backup-target/) or [Create deployments](../../../create-deployments/).
 
-#### **Setting up database nodes manually**
+#### Setting up database nodes manually
 
 This step is only required if you set **Manually Provision Nodes** to true and the SSH user does not have sudo privileges at all; otherwise you skip this step.
 
