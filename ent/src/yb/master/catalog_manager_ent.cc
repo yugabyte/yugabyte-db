@@ -210,6 +210,34 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
  public:
   explicit CDCStreamLoader(CatalogManager* catalog_manager) : catalog_manager_(catalog_manager) {}
 
+  void AddDefaultValuesIfMissing(const SysCDCStreamEntryPB& metadata,
+                                 CDCStreamInfo::WriteLock* l) {
+    bool source_type_present = false;
+    bool checkpoint_type_present = false;
+
+    // Iterate over all the options to check if checkpoint_type and source_type are present.
+    for (auto option : metadata.options()) {
+      if (option.key() == cdc::kSourceType) {
+        source_type_present = true;
+      }
+      if (option.key() == cdc::kCheckpointType) {
+        checkpoint_type_present = true;
+      }
+    }
+
+    if (!source_type_present) {
+      auto source_type_opt = l->mutable_data()->pb.add_options();
+      source_type_opt->set_key(cdc::kSourceType);
+      source_type_opt->set_value(cdc::CDCRequestSource_Name(cdc::XCLUSTER));
+    }
+
+    if (!checkpoint_type_present) {
+      auto checkpoint_type_opt = l->mutable_data()->pb.add_options();
+      checkpoint_type_opt->set_key(cdc::kCheckpointType);
+      checkpoint_type_opt->set_value(cdc::CDCCheckpointType_Name(cdc::IMPLICIT));
+    }
+  }
+
   Status Visit(const CDCStreamId& stream_id, const SysCDCStreamEntryPB& metadata)
       REQUIRES(catalog_manager_->mutex_) {
     DCHECK(!ContainsKey(catalog_manager_->cdc_stream_map_, stream_id))
@@ -244,6 +272,10 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
     auto stream = make_scoped_refptr<CDCStreamInfo>(stream_id);
     auto l = stream->LockForWrite();
     l.mutable_data()->pb.CopyFrom(metadata);
+
+    // If no source_type and checkpoint_type is present, that means the stream was created in
+    // a previous version where these options were not present.
+    AddDefaultValuesIfMissing(metadata, &l);
 
     // If the table has been deleted, then mark this stream as DELETING so it can be deleted by the
     // catalog manager background thread. Otherwise if this stream is missing an entry
