@@ -210,7 +210,7 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
   // Since there's a couple of return paths from this function, setup a cleanup, in case we fill in
   // ops inside update_request_, but do not get to use them.
   bool needs_cleanup = true;
-  ScopeExit([&needs_cleanup, this](){
+  const auto scope_exit = ScopeExit([&needs_cleanup, this](){
     if (needs_cleanup) {
       // Since we will not be using update_request_, we should cleanup the reserved ops.
       CleanRequestOps(&update_request_);
