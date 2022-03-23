@@ -46,11 +46,11 @@ Use the `DROP EXTENSION` statement to remove an extension from the database.
 
 ## Semantics
 
-- An error will be thrown if the extension does not exist unless `IF EXISTS` is
-  used.  Then, a notice is issued instead.
+- An error is thrown if the extension does not exist unless `IF EXISTS` is
+  used. Then, a notice is issued instead.
 - `RESTRICT` is the default, and it will not drop the extension if any objects
   depend on it.
-- `CASCADE` will drop any objects that transitively depend on the extension.
+- `CASCADE` drops any objects that transitively depend on the extension.
 
 ## Examples
 
@@ -58,7 +58,7 @@ Use the `DROP EXTENSION` statement to remove an extension from the database.
 DROP EXTENSION IF EXISTS cube;
 ```
 
-```
+```output
 NOTICE:  extension "cube" does not exist, skipping
 ```
 
@@ -68,7 +68,7 @@ CREATE EXTENSION earthdistance;
 DROP EXTENSION IF EXISTS cube RESTRICT;
 ```
 
-```
+```output
 ERROR:  cannot drop extension cube because other objects depend on it
 DETAIL:  extension earthdistance depends on function cube_out(cube)
 HINT:  Use DROP ... CASCADE to drop the dependent objects too.
@@ -78,12 +78,12 @@ HINT:  Use DROP ... CASCADE to drop the dependent objects too.
 DROP EXTENSION IF EXISTS cube CASCADE;
 ```
 
-```
+```output
 NOTICE:  drop cascades to extension earthdistance
 DROP EXTENSION
 ```
 
 ## See also
 
-- [Install and use extensions](../../../extensions)
-- [`CREATE EXTENSION`](../ddl_create_extension)
+- [PostgreSQL Extensions](../../../../../explore/ysql-language-features/pg-extensions/)
+- [CREATE EXTENSION](../ddl_create_extension)

@@ -32,29 +32,29 @@ For information about using a specific extension in YugabyteDB, follow the More 
 | Extension | Status | Description | More information |
 | :-------- | :----- | :---------- | :------ |
 | **PostgreSQL modules** |
-| [fuzzystrmatch module](https://www.postgresql.org/docs/11/fuzzystrmatch.html) | Pre-bundled | Provides several functions to determine similarities and distance between strings. | [fuzzystrmatch example](#fuzzystrmatch-example) |
-| [pgcrypto module](https://www.postgresql.org/docs/11/pgcrypto.html)| Pre-bundled | Provides various cryptographic functions. | [pgcrypto example](#pgcrypto-example) |
-| [pg_stat_statements module](https://www.postgresql.org/docs/11/pgstatstatements.html)| Pre-bundled| Provides a means for tracking execution statistics of all SQL statements executed by a server. | [pg_stat_statements example](#pg-stat-statements-example) |
-| [spi module](https://www.postgresql.org/docs/11/contrib-spi.html)|Pre-bundled | Lets you use the Server Programming Interface (SPI) to create user-defined functions and stored procedures in C, and to run YSQL queries directly against YugabyteDB. | [spi example](#spi-example) |
+| [fuzzystrmatch module](https://www.postgresql.org/docs/11/fuzzystrmatch.html) | Pre-bundled | Provides several functions to determine similarities and distance between strings. | [Example](#fuzzystrmatch-example) |
+| [pgcrypto module](https://www.postgresql.org/docs/11/pgcrypto.html)| Pre-bundled | Provides various cryptographic functions. | [Example](#pgcrypto-example) |
+| [pg_stat_statements module](https://www.postgresql.org/docs/11/pgstatstatements.html)| Pre-bundled| Provides a means for tracking execution statistics of all SQL statements executed by a server. | [Example](#pg-stat-statements-example) |
+| [spi module](https://www.postgresql.org/docs/11/contrib-spi.html)|Pre-bundled | Lets you use the Server Programming Interface (SPI) to create user-defined functions and stored procedures in C, and to run YSQL queries directly against YugabyteDB. | [Example](#spi-example) |
 | [hstore module](https://www.postgresql.org/docs/11/hstore.html) | Pre-bundled | Implements the hstore data type for storing sets of key/value pairs in a single PostgreSQL value. | |
 | [pg_trgm module](https://www.postgresql.org/docs/11/pgtrgm.html) | Pre-bundled | Provides functions and operators for determining the similarity of alphanumeric text based on trigram matching, as well as index operator classes that support fast searching for similar strings. | |
 | [postgres_fdw module](https://www.postgresql.org/docs/11/postgres-fdw.html) | Pre-bundled | Provides the foreign-data wrapper postgres_fdw, which can be used to access data stored in external PostgreSQL servers. | |
 | [file_fdw module](https://www.postgresql.org/docs/11/file-fdw.html) | Pre-bundled | Provides the foreign-data wrapper file_fdw, which can be used to access data files in the server's file system. | |
 | [sslinfo module](https://www.postgresql.org/docs/11/sslinfo.html) | Pre-bundled | Provides information about the SSL certificate that the current client provided when connecting to PostgreSQL. | |
-| [tablefunc module](https://www.postgresql.org/docs/11/tablefunc.html) | Pre-bundled | Provides several table functions. For example, `normal_rand()` creates values, picked using a pseudorandom generator, from an ideal normal distribution. You specify how many values you want, and the mean and standard deviation of the ideal distribution. You use it in the same way that you use `generate_series()` | [tablefunc example](#tablefunc-example) |
-| [uuid-ossp module](https://www.postgresql.org/docs/11/uuid-ossp.html) | Requires installation | Provides functions to generate universally unique identifiers (UUIDs), and functions to produce certain special UUID constants. | [uuid-ossp example](#uuid-ossp-example) |
+| [tablefunc module](https://www.postgresql.org/docs/11/tablefunc.html) | Pre-bundled | Provides several table functions. For example, `normal_rand()` creates values, picked using a pseudorandom generator, from an ideal normal distribution. You specify how many values you want, and the mean and standard deviation of the ideal distribution. You use it in the same way that you use `generate_series()` | [Example](#tablefunc-example) |
+| [uuid-ossp module](https://www.postgresql.org/docs/11/uuid-ossp.html) | Requires installation | Provides functions to generate universally unique identifiers (UUIDs), and functions to produce certain special UUID constants. | [Install and example](#uuid-ossp-example) |
 | **Other** ||||
-| [pg_hint_plan](https://pghintplan.osdn.jp/pg_hint_plan.html) | Pre-bundled | Tweak execution plans using "hints", which are descriptions in the form of SQL comments. | [pg_hint_plan example](../../query-1-performance/pg-hint-plan/#root) |
+| [pg_hint_plan](https://pghintplan.osdn.jp/pg_hint_plan.html) | Pre-bundled | Tweak execution plans using "hints", which are descriptions in the form of SQL comments. | [Example](../../query-1-performance/pg-hint-plan/#root) |
 | [PGAudit](https://www.pgaudit.org/) | Pre-bundled | The PostgreSQL Audit Extension (pgAudit) provides detailed session and/or object audit logging via the standard PostgreSQL logging facility. | |
 | [pg_stat_monitor](https://github.com/percona/pg_stat_monitor) | Pre-bundled | A PostgreSQL query performance monitoring tool, based on the PostgreSQL pg_stat_statements module. | |
 | [Orafce](https://github.com/orafce/orafce)| Pre-bundled | Provides compatibility with Oracle functions and packages that are either missing or implemented differently in YugabyteDB and PostgreSQL. This compatibility layer can help you port your Oracle applications to YugabyteDB. | |
-| [PostGIS](https://postgis.net/) | Requires installation | A spatial database extender for PostgreSQL-compatible object-relational databases. | [PostGIS example](#postgis-example) |
-| [postgresql-hll](https://github.com/citusdata/postgresql-hll) | Requires installation | Introduces the data type `hll`, which is a HyperLogLog data structure. | [postgresql-hll-example](#postgresql-hll-example) |
+| [PostGIS](https://postgis.net/) | Requires installation | A spatial database extender for PostgreSQL-compatible object-relational databases. | [Install and example](#postgis-example) |
+| [postgresql-hll](https://github.com/citusdata/postgresql-hll) | Requires installation | Introduces the data type `hll`, which is a HyperLogLog data structure. | [Install and example](#postgresql-hll-example) |
 | [YCQL_fdw](https://github.com/YugaByte/yugabyte-db/issues/830) | In-progress | Access YCQL tables via the YSQL API. | |
 | [pg_cron](https://github.com/citusdata/pg_cron) | In-progress | Cron-based job scheduler for PostgreSQL. Using the same syntax as regular cron, schedule PostgreSQL commands directly from the database. | |
 | [PostgreSQL Anonymizer](https://postgresql-anonymizer.readthedocs.io/en/latest/) | In-progress | Mask or replace personally identifiable information (PII) or commercially sensitive data from a PostgreSQL database. | |
 | [PG Partition Manager](https://github.com/pgpartman/pg_partman) | In-progress | Create and manage both time-based and serial-based table partition sets. | |
-| [pgsql-postal](https://github.com/pramsey/pgsql-postal) | Requires installation | Parse and normalize street addresses around the world using libpostal. | [pgsql-postal example](#pgsql-postal-example)|
+| [pgsql-postal](https://github.com/pramsey/pgsql-postal) | Requires installation | Parse and normalize street addresses around the world using libpostal. | [Install and example](#pgsql-postal-example)|
 
 ## Installing extensions
 
@@ -294,7 +294,9 @@ You'll see results similar to the following:
 (10 rows)
 ```
 
-Every time you repeat the test, you'll see different generated values for `v`. The section [Analyzing a normal distribution with percent_rank(), cume_dist() and ntile()](https://github.com/yugabyte/yugabyte-db/tree/master/docs/content/latest/api/ysql/exprs/window_functions/analyzing-a-normal-distribution/), in the major documentation section [Window functions](https://github.com/yugabyte/yugabyte-db/tree/master/docs/content/latest/api/ysql/exprs/window_functions), uses `normal_rand()`. It populates a table with a large number (say 100,000) of rows and displays the outcome as a histogram that clearly shows the familiar bell-curve shape.
+Every time you repeat the test, you'll see different generated values for `v`.
+
+For another example that uses `normal_rand()`, refer to [Analyzing a normal distribution with percent_rank(), cume_dist() and ntile()](../../../api/ysql/exprs/window_functions/analyzing-a-normal-distribution/). It populates a table with a large number (say 100,000) of rows and displays the outcome as a histogram that clearly shows the familiar bell-curve shape.
 
 These other functions are brought by `tablefunc`: `connectby()`; and `crosstab()` and `crosstabN()`.
 
@@ -537,35 +539,45 @@ This may take a couple of minutes.
 
 ### pgsql-postal example
 
-pgsql-postal requires manual installation:
+#### Installation
 
-Install `libpostal` [from source](https://github.com/openvenues/libpostal) locally: `make -j$(nproc) && sudo make install`.
+First install `libpostal` [from source](https://github.com/openvenues/libpostal) locally:
 
-To build `pgsql-postal` against the correct Postgres version for YugabyteDB compatibility, first install Postgres 11 on your system as described in the [PostGIS example](#postgis-example).
+```sh
+`make -j$(nproc) && sudo make install`
+```
 
-Build `pgsql-postal` [from source](https://github.com/pramsey/pgsql-postal) locally. First make sure to set `PG_CONFIG` in `Makefile` to the correct PostgreSQL version, for example on CentOS `PG_CONFIG=/usr/pgsql-11/bin/pg_config`, then run `make`.
+To build `pgsql-postal` against the correct PostgreSQL version for YugabyteDB compatibility, install PostgreSQL 11 on your system as described in the [PostGIS example](#postgis-example).
+
+Build `pgsql-postal` [from source](https://github.com/pramsey/pgsql-postal) locally. First make sure to set `PG_CONFIG` in `Makefile` to the correct PostgreSQL version (for example, on CentOS `PG_CONFIG=/usr/pgsql-11/bin/pg_config`), then run `make`.
 
 Copy the needed files into your YugabyteDB installation:
+
 ```sh
 $ cp -v /usr/local/lib/libpostal.so* "$(yb_pg_config --pkglibdir)" &&
   cp -v postal-1.0.sql postal.control "$(yb_pg_config --sharedir)"/extension
 ```
 
-On Linux systems run the post-install tool:
+On Linux systems, run the post-install tool:
+
 ```sh
-# On Linux systems:
 ./bin/post_install.sh -e
 ```
 
-Then create the extension:
+Create the extension:
+
 ```sh
 ./bin/ysqlsh -c "CREATE EXTENSION postal"
 ```
 
-Finally you can run some sample queries by connecting with `ysqlsh` and running:
+#### Example
+
+Run some sample queries by connecting using `ysqlsh` and running the following:
+
 ```sql
 SELECT unnest(postal_normalize('412 first ave, victoria, bc'));
 ```
+
 ```output
                   unnest
 ------------------------------------------
@@ -575,9 +587,11 @@ SELECT unnest(postal_normalize('412 first ave, victoria, bc'));
  412 1 avenue victoria bc
 (4 rows)
 ```
+
 ```sql
 SELECT postal_parse('412 first ave, victoria, bc');
 ```
+
 ```output
                                   postal_parse
 ---------------------------------------------------------------------------------
