@@ -17,6 +17,8 @@
 #include <boost/intrusive/list.hpp>
 #include <boost/iterator/transform_iterator.hpp>
 
+#include "yb/gutil/casts.h"
+
 #include "yb/util/memory/arena.h"
 
 namespace yb {
@@ -107,6 +109,14 @@ class ArenaList {
 
   void clear() {
     list_.clear();
+  }
+
+  void pop_back() {
+    list_.pop_back();
+  }
+
+  void pop_front() {
+    list_.pop_front();
   }
 
   iterator erase(iterator it) {
