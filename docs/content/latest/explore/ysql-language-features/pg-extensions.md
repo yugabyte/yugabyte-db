@@ -73,7 +73,7 @@ Currently, in a multi-node setup, you need to install the extension on _every_ n
 
 In a read replica setup, install extensions on the primary instance, not on the read replica. Once installed, the extension replicates to the read replica.
 
-You cannot install new extensions in Yugabyte Cloud. If you need a database extension that is not pre-bundled with YugabyteDB added to a Yugabyte Cloud cluster, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) with the names of the cluster and extension, or [reach out on Slack](https://yugabyte-db.slack.com/).
+You cannot install new extensions in Yugabyte Cloud. If you need a database extension that is not pre-bundled with YugabyteDB added to a Yugabyte Cloud cluster, contact {{<support-cloud>}} with the names of the cluster and extension, or [reach out on Slack](https://yugabyte-db.slack.com/).
 
 ### Install an extension
 
