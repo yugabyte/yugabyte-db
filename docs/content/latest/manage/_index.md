@@ -19,10 +19,10 @@ menu:
     <a class="section-link icon-offset" href="backup-restore/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Back up and restore</div>
+        <div class="title">Backup and Recovery</div>
       </div>
       <div class="body">
-        Back up and restore data in YugabyteDB.
+        Data backup and recovery in YugabyteDB.
       </div>
     </a>
   </div>
