@@ -704,6 +704,13 @@ Status YBClient::GetTableSchema(const YBTableName& table_name,
   return Status::OK();
 }
 
+Status YBClient::GetYBTableInfo(const YBTableName& table_name, std::shared_ptr<YBTableInfo> info,
+                                StatusCallback callback) {
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  return data_->GetTableSchema(this, table_name, deadline, info, callback);
+}
+
+
 Status YBClient::GetTableSchemaById(const TableId& table_id, std::shared_ptr<YBTableInfo> info,
                                     StatusCallback callback) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
