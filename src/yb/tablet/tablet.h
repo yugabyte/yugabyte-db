@@ -678,6 +678,11 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return (val != additional_metadata_.end()) ? val->second : nullptr;
   }
 
+  size_t RemoveAdditionalMetadata(const std::string& key) {
+    std::lock_guard<std::mutex> lock(control_path_mutex_);
+    return additional_metadata_.erase(key);
+  }
+
   void InitRocksDBOptions(
       rocksdb::Options* options, const std::string& log_prefix,
       rocksdb::BlockBasedTableOptions table_options = rocksdb::BlockBasedTableOptions());

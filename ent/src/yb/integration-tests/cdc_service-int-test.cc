@@ -567,7 +567,7 @@ TEST_P(CDCServiceTest, TestSafeTime) {
   auto leader_tserver = GetLeaderForTablet(tablet_id)->server();
   std::shared_ptr<tablet::TabletPeer> tablet_peer;
   ASSERT_OK(leader_tserver->tablet_manager()->GetTabletPeer(tablet_id, &tablet_peer));
-  
+
   auto ht_0 = ASSERT_RESULT(tablet_peer->LeaderSafeTime()).ToUint64();
   ASSERT_NO_FATALS(WriteTestRow(0, 10, "key0", tablet_id, leader_tserver->proxy()));
   ASSERT_NO_FATALS(WriteTestRow(1, 11, "key0", tablet_id, leader_tserver->proxy()));
@@ -662,6 +662,14 @@ TEST_P(CDCServiceTest, TestMetricsOnDeletedReplication) {
     return metrics->async_replication_sent_lag_micros->value() == 0 &&
         metrics->async_replication_committed_lag_micros->value() == 0;
   }, MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Lag = 0"));
+
+  // Now check that UpdateLagMetrics deletes the metric.
+  cdc_service->UpdateLagMetrics();
+  auto metrics = cdc_service->GetCDCTabletMetrics(
+      {"" /* UUID */, stream_id_, tablet_id},
+      /* tablet_peer */ nullptr,
+      CreateCDCMetricsEntity::kFalse);
+  ASSERT_EQ(metrics, nullptr);
 }
 
 

@@ -53,6 +53,8 @@ namespace cdc {
 typedef std::unordered_map<HostPort, std::shared_ptr<CDCServiceProxy>, HostPortHash>
     CDCServiceProxyMap;
 
+YB_STRONGLY_TYPED_BOOL(CreateCDCMetricsEntity);
+
 static const char* const kRecordType = "record_type";
 static const char* const kRecordFormat = "record_format";
 static const char* const kRetentionSec = "retention_sec";
@@ -122,10 +124,17 @@ class CDCServiceImpl : public CDCServiceIf {
 
   void Shutdown() override;
 
-  // Used in cdc_service-int-test.cc.
+  // Gets the associated metrics entity object stored in the additional metadata of the tablet.
+  // If the metrics object is not present, then create it if create == true (eg if we have just
+  // moved leaders) and not else (used to not recreate deleted metrics).
   std::shared_ptr<CDCTabletMetrics> GetCDCTabletMetrics(
       const ProducerTabletInfo& producer,
-      std::shared_ptr<tablet::TabletPeer> tablet_peer = nullptr);
+      std::shared_ptr<tablet::TabletPeer> tablet_peer = nullptr,
+      CreateCDCMetricsEntity create = CreateCDCMetricsEntity::kTrue);
+
+  void RemoveCDCTabletMetrics(
+      const ProducerTabletInfo& producer,
+      std::shared_ptr<tablet::TabletPeer> tablet_peer);
 
   void UpdateCDCTabletMetrics(const GetChangesResponsePB* resp,
                               const ProducerTabletInfo& producer_tablet,
@@ -141,6 +150,7 @@ class CDCServiceImpl : public CDCServiceIf {
   bool CDCEnabled();
 
  private:
+  FRIEND_TEST(CDCServiceTest, TestMetricsOnDeletedReplication);
   FRIEND_TEST(CDCServiceTestMultipleServersOneTablet, TestMetricsAfterServerFailure);
 
   class Impl;
