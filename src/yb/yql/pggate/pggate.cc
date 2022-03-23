@@ -1491,11 +1491,10 @@ void PgApiImpl::ResetCatalogReadTime() {
 Result<bool> PgApiImpl::ForeignKeyReferenceExists(
     PgOid table_id, const Slice& ybctid, PgOid database_id) {
   return pg_session_->ForeignKeyReferenceExists(
-      table_id, ybctid, std::bind(FetchExistingYbctids,
-                                  pg_session_,
-                                  database_id,
-                                  std::placeholders::_1,
-                                  std::placeholders::_2));
+      table_id, ybctid, make_lw_function(
+          [this, database_id](PgOid table_id, const std::vector<Slice>& ybctids) {
+            return FetchExistingYbctids(pg_session_, database_id, table_id, ybctids);
+          }));
 }
 
 void PgApiImpl::AddForeignKeyReferenceIntent(PgOid table_id, const Slice& ybctid) {
@@ -1510,7 +1509,7 @@ void PgApiImpl::AddForeignKeyReference(PgOid table_id, const Slice& ybctid) {
   pg_session_->AddForeignKeyReference(table_id, ybctid);
 }
 
-void PgApiImpl::SetTimeout(const int timeout_ms) {
+void PgApiImpl::SetTimeout(int timeout_ms) {
   pg_session_->SetTimeout(timeout_ms);
 }
 
