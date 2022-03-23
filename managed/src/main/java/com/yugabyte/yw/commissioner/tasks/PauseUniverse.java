@@ -104,6 +104,7 @@ public class PauseUniverse extends UniverseTaskBase {
             u.setUniverseDetails(universeDetails);
           });
 
+      metricService.markSourceInactive(params().customerUUID, params().universeUUID);
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;

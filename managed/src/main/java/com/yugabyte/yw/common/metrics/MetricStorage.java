@@ -9,10 +9,13 @@
  */
 package com.yugabyte.yw.common.metrics;
 
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.MetricKey;
 import com.yugabyte.yw.models.MetricSourceKey;
 import com.yugabyte.yw.models.filters.MetricFilter;
+import com.yugabyte.yw.models.helpers.MetricSourceState;
+import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -48,12 +51,14 @@ public class MetricStorage {
   private static final UUID NULL_UUID = UUID.fromString("00000000-0000-0000-0000-000000000000");
   private final Map<String, NamedMetricStore> metricsByKey = new ConcurrentHashMap<>();
   private final Map<String, Lock> metricNameLock = new ConcurrentHashMap<>();
+  private final Map<Pair<UUID, UUID>, MetricSourceState> sourceStateMap = new ConcurrentHashMap<>();
 
   public Metric get(MetricKey key) {
     return get(key.getSourceKey().getName())
         .flatMap(namedStore -> namedStore.get(key.getSourceKey().getCustomerUuid()))
         .flatMap(customerStore -> customerStore.get(key.getSourceKey().getSourceUuid()))
         .flatMap(sourceStore -> sourceStore.get(key.getSourceLabels()))
+        .filter(metric -> !metric.isDeleted())
         .orElse(null);
   }
 
@@ -79,6 +84,10 @@ public class MetricStorage {
 
   public void delete(MetricFilter filter) {
     process(filter, metric -> metric.setDeleted(true));
+  }
+
+  public void markSource(UUID customerUuid, UUID metricSource, MetricSourceState state) {
+    sourceStateMap.put(new Pair<>(customerUuid, metricSource), state);
   }
 
   private void acquireLocks(Collection<Metric> metrics) {
@@ -143,6 +152,22 @@ public class MetricStorage {
   }
 
   private void save(Metric metric) {
+    if (metric.getSourceUuid() != null) {
+      MetricSourceState metricSourceState =
+          sourceStateMap.getOrDefault(
+              new Pair<>(metric.getCustomerUUID(), metric.getSourceUuid()),
+              MetricSourceState.ACTIVE);
+      PlatformMetrics platformMetric = PlatformMetrics.fromMetricName(metric.getName());
+      if (!platformMetric.getValidForSourceStates().contains(metricSourceState)) {
+        log.debug(
+            "Skipping metric {} from source {} as it's marked {}",
+            metric.getName(),
+            metric.getSourceUuid(),
+            metricSourceState.name());
+        return;
+      }
+    }
+
     NamedMetricStore store =
         metricsByKey.computeIfAbsent(metric.getName(), n -> new NamedMetricStore());
 
@@ -261,7 +286,6 @@ public class MetricStorage {
                       .stream()
                       .allMatch(
                           l -> Objects.equals(metric.getLabelValue(l.getKey()), l.getValue())))
-          .filter(metric -> !metric.isDeleted())
           .findFirst();
     }
 
@@ -270,7 +294,7 @@ public class MetricStorage {
     }
 
     private void save(Metric metric) {
-      Metric existing = get(metric.getLabels()).orElse(null);
+      Metric existing = get(metric.getKeyLabelValues()).orElse(null);
       if (existing != null) {
         existing.setValue(metric.getValue());
         existing.setUpdateTime(metric.getUpdateTime());

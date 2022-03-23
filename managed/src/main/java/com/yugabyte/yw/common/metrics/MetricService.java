@@ -19,6 +19,7 @@ import com.yugabyte.yw.models.MetricKey;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.filters.MetricFilter.MetricFilterBuilder;
+import com.yugabyte.yw.models.helpers.MetricSourceState;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -88,11 +89,28 @@ public class MetricService {
     save(Collections.singletonList(metric));
   }
 
-  public void handleSourceRemoval(UUID customerUuid, UUID sourceUuid) {
+  public void markSourceActive(UUID customerUuid, UUID sourceUuid) {
+    metricStorage.markSource(customerUuid, sourceUuid, MetricSourceState.ACTIVE);
+  }
+
+  public void markSourceInactive(UUID customerUuid, UUID sourceUuid) {
+    MetricFilterBuilder filter =
+        MetricFilter.builder()
+            .customerUuid(customerUuid)
+            .metricNames(PlatformMetrics.invalidForState(MetricSourceState.INACTIVE));
+    if (sourceUuid != null) {
+      filter.sourceUuid(sourceUuid);
+    }
+    metricStorage.markSource(customerUuid, sourceUuid, MetricSourceState.INACTIVE);
+    metricStorage.delete(filter.build());
+  }
+
+  public void markSourceRemoved(UUID customerUuid, UUID sourceUuid) {
     MetricFilterBuilder filter = MetricFilter.builder().customerUuid(customerUuid);
     if (sourceUuid != null) {
       filter.sourceUuid(sourceUuid);
     }
+    metricStorage.markSource(customerUuid, sourceUuid, MetricSourceState.REMOVED);
     metricStorage.delete(filter.build());
   }
 
