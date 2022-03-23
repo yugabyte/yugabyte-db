@@ -286,6 +286,9 @@ public class NodeManager extends DevopsBase {
         }
       }
 
+      if (keyInfo.setUpChrony) {
+        subCommand.add("--skip_ntp_check");
+      }
       if (keyInfo.airGapInstall) {
         subCommand.add("--air_gap");
       }

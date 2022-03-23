@@ -210,6 +210,34 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
  public:
   explicit CDCStreamLoader(CatalogManager* catalog_manager) : catalog_manager_(catalog_manager) {}
 
+  void AddDefaultValuesIfMissing(const SysCDCStreamEntryPB& metadata,
+                                 CDCStreamInfo::WriteLock* l) {
+    bool source_type_present = false;
+    bool checkpoint_type_present = false;
+
+    // Iterate over all the options to check if checkpoint_type and source_type are present.
+    for (auto option : metadata.options()) {
+      if (option.key() == cdc::kSourceType) {
+        source_type_present = true;
+      }
+      if (option.key() == cdc::kCheckpointType) {
+        checkpoint_type_present = true;
+      }
+    }
+
+    if (!source_type_present) {
+      auto source_type_opt = l->mutable_data()->pb.add_options();
+      source_type_opt->set_key(cdc::kSourceType);
+      source_type_opt->set_value(cdc::CDCRequestSource_Name(cdc::XCLUSTER));
+    }
+
+    if (!checkpoint_type_present) {
+      auto checkpoint_type_opt = l->mutable_data()->pb.add_options();
+      checkpoint_type_opt->set_key(cdc::kCheckpointType);
+      checkpoint_type_opt->set_value(cdc::CDCCheckpointType_Name(cdc::IMPLICIT));
+    }
+  }
+
   Status Visit(const CDCStreamId& stream_id, const SysCDCStreamEntryPB& metadata)
       REQUIRES(catalog_manager_->mutex_) {
     DCHECK(!ContainsKey(catalog_manager_->cdc_stream_map_, stream_id))
@@ -244,6 +272,10 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
     auto stream = make_scoped_refptr<CDCStreamInfo>(stream_id);
     auto l = stream->LockForWrite();
     l.mutable_data()->pb.CopyFrom(metadata);
+
+    // If no source_type and checkpoint_type is present, that means the stream was created in
+    // a previous version where these options were not present.
+    AddDefaultValuesIfMissing(metadata, &l);
 
     // If the table has been deleted, then mark this stream as DELETING so it can be deleted by the
     // catalog manager background thread. Otherwise if this stream is missing an entry
@@ -1492,6 +1524,10 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
       SharedLock lock(mutex_);
       if (VERIFY_RESULT(CheckTableForImport(table, table_data))) {
         LOG_WITH_FUNC(INFO) << "Found existing table: '" << table->ToString() << "'";
+        if (meta.colocated() && IsColocatedParentTableId(table_data->old_table_id)) {
+          // Parent colocated tables don't have partition info, so make sure to mark them.
+          is_parent_colocated_table = true;
+        }
       } else {
         // A property did not match, so this search by ids failed.
         auto table_lock = table->LockForRead();
@@ -1751,7 +1787,11 @@ Status CatalogManager::PreprocessTabletEntry(const SysRowEntry& entry,
   SysTabletsEntryPB meta = VERIFY_RESULT(ParseFromSlice<SysTabletsEntryPB>(entry.data()));
 
   ExternalTableSnapshotData& table_data = (*table_map)[meta.table_id()];
-  ++table_data.num_tablets;
+  if (meta.colocated()) {
+    table_data.num_tablets = 1;
+  } else {
+    ++table_data.num_tablets;
+  }
   if (meta.has_partition()) {
     table_data.partitions.push_back(meta.partition());
   }
@@ -1875,7 +1915,7 @@ Status CatalogManager::RestoreSysCatalog(
   }
 
   // Restore the other tables.
-  RETURN_NOT_OK(state.PrepareWriteBatch(schema(), &write_batch));
+  RETURN_NOT_OK(state.PrepareWriteBatch(schema(), &write_batch, master_->clock()->Now()));
 
   // Apply write batch to RocksDB.
   state.WriteToRocksDB(&write_batch, restoration->write_time, restoration->op_id, tablet);
@@ -1891,7 +1931,13 @@ Status CatalogManager::VerifyRestoredObjects(const SnapshotScheduleRestoration& 
       restoration.schedules[0].second.tables().tables()));
   auto objects_to_restore = restoration.non_system_objects_to_restore;
   VLOG_WITH_PREFIX(1) << "Objects to restore: " << AsString(objects_to_restore);
+  // There could be duplicate entries collected, for instance in the case of
+  // colocated tables.
+  std::unordered_set<std::string> unique_entries;
   for (const auto& entry : entries.entries()) {
+    if (!unique_entries.insert(entry.id()).second) {
+      continue;
+    }
     VLOG_WITH_PREFIX(1)
         << "Alive " << SysRowEntryType_Name(entry.type()) << ": " << entry.id();
     auto it = objects_to_restore.find(entry.id());
@@ -1930,7 +1976,7 @@ void CatalogManager::CleanupHiddenObjects(const ScheduleMinRestoreTime& schedule
     }
   }
   CleanupHiddenTablets(hidden_tablets, schedule_min_restore_time);
-  CleanupHiddenTables(std::move(tables));
+  CleanupHiddenTables(std::move(tables), schedule_min_restore_time);
 }
 
 void CatalogManager::CleanupHiddenTablets(
@@ -1999,11 +2045,46 @@ void CatalogManager::CleanupHiddenTablets(
   }
 }
 
-void CatalogManager::CleanupHiddenTables(std::vector<TableInfoPtr> tables) {
+void CatalogManager::CleanupHiddenTables(
+    std::vector<TableInfoPtr> tables,
+    const ScheduleMinRestoreTime& schedule_min_restore_time) {
   std::vector<TableInfo::WriteLock> locks;
-  EraseIf([this, &locks](const TableInfoPtr& table) {
+  EraseIf([this, &locks, &schedule_min_restore_time](const TableInfoPtr& table) {
     {
       auto lock = table->LockForRead();
+      // If the table is colocated and hidden then remove it from its colocated tablet if
+      // it has expired.
+      if (lock->is_hidden() && !lock->started_deleting() && table->IsColocatedUserTable()) {
+        auto tablet_info = table->GetColocatedTablet();
+        auto tablet_lock = tablet_info->LockForRead();
+        bool cleanup = true;
+        auto hide_hybrid_time = HybridTime::FromPB(lock->pb.hide_hybrid_time());
+
+        for (const auto& schedule_id_str : tablet_lock->pb.retained_by_snapshot_schedules()) {
+          auto schedule_id = TryFullyDecodeSnapshotScheduleId(schedule_id_str);
+          auto it = schedule_min_restore_time.find(schedule_id);
+          // If schedule is not present in schedule_min_restore_time then it means that schedule
+          // was deleted, so it should not retain the tablet.
+          if (it != schedule_min_restore_time.end() && it->second <= hide_hybrid_time) {
+            VLOG_WITH_PREFIX(1)
+                << "Retaining colocated table: " << table->id() << ", hide hybrid time: "
+                << hide_hybrid_time << ", because of schedule: " << schedule_id
+                << ", min restore time: " << it->second;
+            cleanup = false;
+            break;
+          }
+        }
+
+        if (!cleanup) {
+          return true;
+        }
+        LOG(INFO) << "Cleaning up HIDDEN colocated table " << table->name();
+        auto call = std::make_shared<AsyncRemoveTableFromTablet>(
+            master_, AsyncTaskPool(), tablet_info, table);
+        table->AddTask(call);
+        WARN_NOT_OK(ScheduleTask(call), "Failed to send RemoveTableFromTablet request");
+        table->ClearTabletMaps();
+      }
       if (!lock->is_hidden() || lock->started_deleting() || !table->AreAllTabletsDeleted()) {
         return true;
       }

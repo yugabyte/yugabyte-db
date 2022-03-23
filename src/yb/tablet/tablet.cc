@@ -98,6 +98,7 @@
 #include "yb/tablet/write_query.h"
 
 #include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_error.h"
 
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
@@ -472,7 +473,7 @@ Tablet::Tablet(const TabletInitData& data)
 
 Tablet::~Tablet() {
   if (StartShutdown()) {
-    CompleteShutdown();
+    CompleteShutdown(DisableFlushOnShutdown::kFalse);
   } else {
     auto state = state_;
     LOG_IF_WITH_PREFIX(DFATAL, state != kShutdown)
@@ -917,7 +918,7 @@ void Tablet::MarkFinishedBootstrapping() {
   state_ = kOpen;
 }
 
-bool Tablet::StartShutdown(const IsDropTable is_drop_table) {
+bool Tablet::StartShutdown() {
   LOG_WITH_PREFIX(INFO) << __func__;
 
   bool expected = false;
@@ -932,12 +933,12 @@ bool Tablet::StartShutdown(const IsDropTable is_drop_table) {
   return true;
 }
 
-void Tablet::CompleteShutdown(IsDropTable is_drop_table) {
-  LOG_WITH_PREFIX(INFO) << __func__ << "(" << is_drop_table << ")";
+void Tablet::CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown) {
+  LOG_WITH_PREFIX(INFO) << __func__;
 
   StartShutdown();
 
-  auto op_pauses = StartShutdownRocksDBs(DisableFlushOnShutdown(is_drop_table), Stop::kTrue);
+  auto op_pauses = StartShutdownRocksDBs(disable_flush_on_shutdown, Stop::kTrue);
   if (!op_pauses.ok()) {
     LOG_WITH_PREFIX(DFATAL) << "Failed to shut down: " << op_pauses.status();
     return;
@@ -3507,10 +3508,17 @@ Result<std::string> Tablet::GetEncodedMiddleSplitKey() const {
   const Slice middle_key_slice(middle_key);
   if (middle_key_slice.compare(key_bounds_.lower) <= 0 ||
       (!key_bounds_.upper.empty() && middle_key_slice.compare(key_bounds_.upper) >= 0)) {
-    return STATUS_FORMAT(
-        IllegalState,
-        "$0: got \"$1\". This can happen if post-split tablet wasn't fully compacted after split",
-        error_prefix(), middle_key_slice.ToDebugHexString());
+    // This error occurs if there is no key strictly between the tablet lower and upper bound. It
+    // causes the tablet split manager to temporarily delay splitting for this tablet.
+    // The error can occur if:
+    // 1. There are only one or two keys in the tablet (e.g. when indexing a large tablet by a low
+    //    cardinality column), in which case we do not want to keep retrying splits.
+    // 2. A post-split tablet wasn't fully compacted after it split. In this case, delaying splits
+    //    will prevent splits after the compaction completes, but we should not be trying to split
+    //    an uncompacted tablet anyways.
+    return STATUS_EC_FORMAT(IllegalState,
+        tserver::TabletServerError(tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL),
+        "$0: got \"$1\".", error_prefix(), middle_key_slice.ToDebugHexString());
   }
   return middle_key;
 }

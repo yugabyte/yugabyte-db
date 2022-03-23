@@ -48,6 +48,7 @@ import com.google.common.collect.ImmutableMap;
 import static org.yb.AssertionWrappers.assertArrayEquals;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
+import static org.yb.AssertionWrappers.assertGreaterThan;
 import static org.yb.AssertionWrappers.assertLessThan;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
@@ -474,6 +475,66 @@ public class TestYbBackup extends BasePgSQLTest {
   }
 
   @Test
+  public void testColocatedDatabaseRestoreToOriginalDB() throws Exception {
+    String initialDBName = "yb_colocated";
+    int num_tables = 2;
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute(String.format("CREATE DATABASE %s COLOCATED=TRUE", initialDBName));
+    }
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase(initialDBName).connect();
+         Statement stmt = connection2.createStatement()) {
+      stmt.execute("CREATE TABLE test_tbl1 (h INT PRIMARY KEY, a INT, b FLOAT) " +
+                   "WITH (COLOCATED=TRUE)");
+      stmt.execute("CREATE TABLE test_tbl2 (h INT PRIMARY KEY, a INT, b FLOAT) " +
+                   "WITH (COLOCATED=TRUE)");
+
+      // Insert random rows/values for tables to snapshot
+      for (int j = 1; j <= num_tables; ++j) {
+        for (int i = 1; i <= 2000; ++i) {
+          stmt.execute("INSERT INTO test_tbl" + String.valueOf(j) + " (h, a, b) VALUES" +
+            " (" + String.valueOf(i * j) +                       // h
+            ", " + String.valueOf((100 + i) * j) +               // a
+            ", " + String.valueOf((2.14 + (float)i) * j) + ")"); // b
+        }
+      }
+
+      String backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql." + initialDBName);
+      backupDir = new JSONObject(output).getString("snapshot_url");
+
+      // Truncate tables after taking the snapshot.
+      for (int j = 1; j <= num_tables; ++j) {
+        stmt.execute("TRUNCATE TABLE test_tbl" + String.valueOf(j));
+      }
+
+      // Restore back into this same database, this way all the ids will happen to be the same.
+      YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql." + initialDBName);
+
+      // Verify rows.
+      for (int j = 1; j <= num_tables; ++j) {
+        for (int i : new int[] {1, 500, 2000}) {
+          assertQuery(stmt, String.format("SELECT * FROM test_tbl%d WHERE h=%d", j, i * j),
+            new Row(i * j, (100 + i) * j, (2.14 + (float)i) * j));
+          assertQuery(stmt, String.format("SELECT h FROM test_tbl%d WHERE h=%d", j, i * j),
+            new Row(i * j));
+          assertQuery(stmt, String.format("SELECT a FROM test_tbl%d WHERE h=%d", j, i * j),
+            new Row((100 + i) * j));
+          assertQuery(stmt, String.format("SELECT b FROM test_tbl%d WHERE h=%d", j, i * j),
+            new Row((2.14 + (float)i) * j));
+        }
+      }
+    }
+
+    // Cleanup.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute(String.format("DROP DATABASE %s", initialDBName));
+    }
+  }
+
+  @Test
   public void testAlteredTableWithNotNull() throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE TABLE test_tbl(id int)");
@@ -878,8 +939,8 @@ public class TestYbBackup extends BasePgSQLTest {
     }
   }
 
-  public void doTestGeoPartitionedBackup(
-      String targetDB, int numRegions, boolean useTablespaces) throws Exception {
+  public String doCreateGeoPartitionedBackup(int numRegions, boolean useTablespaces)
+      throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute(
           " CREATE TABLESPACE region1_ts " +
@@ -963,13 +1024,25 @@ public class TestYbBackup extends BasePgSQLTest {
           throw new IllegalArgumentException("Unexpected numRegions: " + numRegions);
       }
 
+      return output;
+    }
+  }
+
+  public String doTestGeoPartitionedBackup(String targetDB, int numRegions, boolean useTablespaces)
+      throws Exception {
+    String output = null;
+    try (Statement stmt = connection.createStatement()) {
+      output = doCreateGeoPartitionedBackup(numRegions, useTablespaces);
+      JSONObject json = new JSONObject(output);
+      String backupDir = json.getString("snapshot_url");
+
       stmt.execute("INSERT INTO tbl (id, geo) VALUES (9999, 'R1')");
       assertQuery(stmt, "SELECT * FROM tbl WHERE id=1", new Row(1, "R2"));
       assertQuery(stmt, "SELECT * FROM tbl WHERE id=2000", new Row(2000, "R3"));
       assertQuery(stmt, "SELECT * FROM tbl WHERE id=9999", new Row(9999, "R1"));
       assertQuery(stmt, "SELECT COUNT(*) FROM tbl", new Row(2001));
 
-      args.clear();
+      List<String> args = new ArrayList<>();
       if (useTablespaces) {
         args.add("--use_tablespaces");
       }
@@ -1027,6 +1100,8 @@ public class TestYbBackup extends BasePgSQLTest {
         stmt.execute("DROP DATABASE " + targetDB);
       }
     }
+
+    return output;
   }
 
   @Test
@@ -1067,6 +1142,34 @@ public class TestYbBackup extends BasePgSQLTest {
   @Test
   public void testGeoPartitioningRestoringIntoExistingWithTablespaces() throws Exception {
     doTestGeoPartitionedBackup("yugabyte", 3, true);
+  }
+
+  @Test
+  public void testGeoPartitioningDeleteBackup() throws Exception {
+    String output = doCreateGeoPartitionedBackup(3, false);
+    JSONObject json = new JSONObject(output);
+    String backupDir = json.getString("snapshot_url");
+    List<String> backupDirs = new ArrayList<String>(Arrays.asList(
+        backupDir, json.getString("region1"),
+        json.getString("region2"), json.getString("region3")));
+    LOG.info("Backup folders:" + backupDirs);
+
+    // Ensure the backup folders exist.
+    for (String dirName : backupDirs) {
+      LOG.info("Checking existing folder: " + dirName);
+      File dir = new File(dirName);
+      assertTrue(dir.exists());
+      assertGreaterThan(dir.length(), 0L);
+    }
+
+    YBBackupUtil.runYbBackupDelete(backupDir);
+    // Ensure the backup folders were deleted.
+    for (String dirName : backupDirs) {
+      LOG.info("Checking deleted folder: " + dirName);
+      File dir = new File(dirName);
+      assertFalse(dir.exists());
+      assertEquals(dir.length(), 0L);
+    }
   }
 
   @Test

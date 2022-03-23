@@ -54,6 +54,7 @@ For information about using a specific extension in YugabyteDB, follow the More 
 | [pg_cron](https://github.com/citusdata/pg_cron) | In-progress | Cron-based job scheduler for PostgreSQL. Using the same syntax as regular cron, schedule PostgreSQL commands directly from the database. | |
 | [PostgreSQL Anonymizer](https://postgresql-anonymizer.readthedocs.io/en/latest/) | In-progress | Mask or replace personally identifiable information (PII) or commercially sensitive data from a PostgreSQL database. | |
 | [PG Partition Manager](https://github.com/pgpartman/pg_partman) | In-progress | Create and manage both time-based and serial-based table partition sets. | |
+| [pgsql-postal](https://github.com/pramsey/pgsql-postal) | Requires installation | Parse and normalize street addresses around the world using libpostal. | [pgsql-postal example](#pgsql-postal-example)|
 
 ## Installing extensions
 
@@ -533,3 +534,53 @@ This may take a couple of minutes.
     University of Alberta | Windsor Park
     (7 rows)
     ```
+
+### pgsql-postal example
+
+pgsql-postal requires manual installation:
+
+Install `libpostal` [from source](https://github.com/openvenues/libpostal) locally: `make -j$(nproc) && sudo make install`.
+
+To build `pgsql-postal` against the correct Postgres version for YugabyteDB compatibility, first install Postgres 11 on your system as described in the [PostGIS example](#postgis-example).
+
+Build `pgsql-postal` [from source](https://github.com/pramsey/pgsql-postal) locally. First make sure to set `PG_CONFIG` in `Makefile` to the correct PostgreSQL version, for example on CentOS `PG_CONFIG=/usr/pgsql-11/bin/pg_config`, then run `make`.
+
+Copy the needed files into your YugabyteDB installation:
+```sh
+$ cp -v /usr/local/lib/libpostal.so* "$(yb_pg_config --pkglibdir)" &&
+  cp -v postal-1.0.sql postal.control "$(yb_pg_config --sharedir)"/extension
+```
+
+On Linux systems run the post-install tool:
+```sh
+# On Linux systems:
+./bin/post_install.sh -e
+```
+
+Then create the extension:
+```sh
+./bin/ysqlsh -c "CREATE EXTENSION postal"
+```
+
+Finally you can run some sample queries by connecting with `ysqlsh` and running:
+```sql
+SELECT unnest(postal_normalize('412 first ave, victoria, bc'));
+```
+```output
+                  unnest
+------------------------------------------
+ 412 1st avenue victoria british columbia
+ 412 1st avenue victoria bc
+ 412 1 avenue victoria british columbia
+ 412 1 avenue victoria bc
+(4 rows)
+```
+```sql
+SELECT postal_parse('412 first ave, victoria, bc');
+```
+```output
+                                  postal_parse
+---------------------------------------------------------------------------------
+ {"city": "victoria", "road": "first ave", "state": "bc", "house_number": "412"}
+(1 row)
+```

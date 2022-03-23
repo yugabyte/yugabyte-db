@@ -106,7 +106,7 @@ Expect the following output:
 
 ```output
 NAME                    CHART VERSION   APP VERSION     DESCRIPTION
-yugabytedb/yugabyte     2.13.0           2.13.0.0-b42    YugabyteDB is the high-performance distributed ...
+yugabytedb/yugabyte     2.13.0           2.13.0.1-b2    YugabyteDB is the high-performance distributed ...
 ```
 
 ### Install YugabyteDB
@@ -238,7 +238,7 @@ Expect the following output:
 
 ```output
 REVISION  UPDATED                   STATUS    CHART           APP VERSION   DESCRIPTION
-1         Thu Apr 13 13:29:13 2020  deployed  yugabyte-2.13.0  2.13.0.0-b42  Install complete
+1         Thu Apr 13 13:29:13 2020  deployed  yugabyte-2.13.0  2.13.0.1-b2  Install complete
 ```
 
 ## Connect using YugabyteDB shells
