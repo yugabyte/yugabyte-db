@@ -872,15 +872,15 @@ Default: `false`
 
 ## Using postgresql.conf
 
-Like PostgreSQL, YugabyteDB uses the postgresql.conf settings file to apply server configuration settings to new server instances.
+Like PostgreSQL, YugabyteDB uses the `postgresql.conf` file to apply server configuration settings to new server instances.
 
-For information on using postgresql.conf to configure servers, refer to [Server Configuration](https://www.postgresql.org/docs/11/runtime-config.html) in the PostgreSQL documentation.
+For information on using `postgresql.conf` to configure servers, refer to [Server Configuration](https://www.postgresql.org/docs/11/runtime-config.html) in the PostgreSQL documentation.
 
 The server settings options for YugabyteDB are the same as for PostgreSQL, with the following exceptions.
 
 ### log_line_prefix
 
-YugabyteDB supports the following additional options for the log_line_prefix setting:
+YugabyteDB supports the following additional options for the `log_line_prefix` setting:
 
 - %C = cloud name
 - %R = region / data center name
@@ -889,11 +889,11 @@ YugabyteDB supports the following additional options for the log_line_prefix set
 - %N = node and cluster name
 - %H = current hostname
 
-For information on using log_line_prefix, refer to [log_line_prefix](https://www.postgresql.org/docs/11/runtime-config-logging.html#GUC-LOG-LINE-PREFIX) in the PostgreSQL documentation.
+For information on using `log_line_prefix`, refer to [log_line_prefix](https://www.postgresql.org/docs/11/runtime-config-logging.html#GUC-LOG-LINE-PREFIX) in the PostgreSQL documentation.
 
 ### suppress_nonpg_logs (boolean)
 
-When set, suppresses logging of non-PostgreSQL output.
+When set, suppresses logging of non-PostgreSQL output to the postgresql log file in the `tserver/logs` directory.
 
 Default: `off`
 
