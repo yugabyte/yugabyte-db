@@ -8,9 +8,9 @@ The YugabyteDB code is split into two top-level sections:
 
 **The core storage engine is split into the following C++ components**:
 
-* [`bfpg`](yb/bfpg/) TODO
+* [`bfpg`](yb/bfpg/) covers Builtin Functions for Postgres. This directory is now DEPRECATED, in favor of the respective code in [`postgres`](postgres/).
 
-* [`bfql`](yb/bfql/) TODO
+* [`bfql`](yb/bfql/) covers Builtin Functions for YCQL.
 
 * [`cdc`](yb/cdc/) is the main code for the Xcluster Replication feature and the CDCSDK, generalized Change Data Capture feature.
 
@@ -20,7 +20,7 @@ The YugabyteDB code is split into two top-level sections:
 
 * [`consensus`](yb/consensus/) is the core Raft consensus implementation.
 
-* [`docdb`](yb/docdb/) is the DocDB encoding implementation
+* [`docdb`](yb/docdb/) is the DocDB encoding implementation.
 
 * [`encryption`](yb/encryption/) is a set of utilities for encryption related work, such as TLS and Encryption at Rest.
 
