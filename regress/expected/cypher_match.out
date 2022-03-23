@@ -127,6 +127,17 @@ $$) AS (a agtype);
  {"id": 1125899906842626, "label": "v1", "properties": {"id": "middle"}}::vertex
 (1 row)
 
+SELECT * FROM cypher('cypher_match', $$
+    MATCH p=()-[e]-() RETURN e
+$$) AS (a agtype);
+                                                             a                                                             
+---------------------------------------------------------------------------------------------------------------------------
+ {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge
+ {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge
+ {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
+ {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
+(4 rows)
+
 -- Right Path Test
 SELECT * FROM cypher('cypher_match', $$
 	MATCH (a:v1)-[:e1]->(b:v1)-[:e1]->(c:v1) RETURN a, b, c

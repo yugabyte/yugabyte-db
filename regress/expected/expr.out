@@ -1664,8 +1664,10 @@ SELECT * FROM cypher('expr', $$ MATCH ()-[e]-() RETURN e $$) AS (expression agty
                                                         expression                                                         
 ---------------------------------------------------------------------------------------------------------------------------
  {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
+ {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
  {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge
-(2 rows)
+ {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge
+(4 rows)
 
 -- id()
 SELECT * FROM cypher('expr', $$
@@ -1674,8 +1676,10 @@ $$) AS (id agtype);
         id        
 ------------------
  1407374883553281
+ 1407374883553281
  1407374883553282
-(2 rows)
+ 1407374883553282
+(4 rows)
 
 SELECT * FROM cypher('expr', $$
     MATCH (v) RETURN id(v)
@@ -1714,8 +1718,10 @@ $$) AS (start_id agtype);
      start_id     
 ------------------
  1125899906842626
+ 1125899906842626
  1125899906842625
-(2 rows)
+ 1125899906842625
+(4 rows)
 
 -- should return null
 SELECT * FROM cypher('expr', $$
@@ -1745,8 +1751,10 @@ $$) AS (end_id agtype);
       end_id      
 ------------------
  1125899906842627
+ 1125899906842627
  1125899906842626
-(2 rows)
+ 1125899906842626
+(4 rows)
 
 -- should return null
 SELECT * FROM cypher('expr', $$
@@ -1776,8 +1784,10 @@ $$) AS (id agtype, start_id agtype, startNode agtype);
         id        |     start_id     |                                    startnode                                     
 ------------------+------------------+----------------------------------------------------------------------------------
  1407374883553281 | 1125899906842626 | {"id": 1125899906842626, "label": "v1", "properties": {"id": "middle"}}::vertex
+ 1407374883553281 | 1125899906842626 | {"id": 1125899906842626, "label": "v1", "properties": {"id": "middle"}}::vertex
  1407374883553282 | 1125899906842625 | {"id": 1125899906842625, "label": "v1", "properties": {"id": "initial"}}::vertex
-(2 rows)
+ 1407374883553282 | 1125899906842625 | {"id": 1125899906842625, "label": "v1", "properties": {"id": "initial"}}::vertex
+(4 rows)
 
 -- should return null
 SELECT * FROM cypher('expr', $$
@@ -1807,8 +1817,10 @@ $$) AS (id agtype, end_id agtype, endNode agtype);
         id        |      end_id      |                                     endnode                                     
 ------------------+------------------+---------------------------------------------------------------------------------
  1407374883553281 | 1125899906842627 | {"id": 1125899906842627, "label": "v1", "properties": {"id": "end"}}::vertex
+ 1407374883553281 | 1125899906842627 | {"id": 1125899906842627, "label": "v1", "properties": {"id": "end"}}::vertex
  1407374883553282 | 1125899906842626 | {"id": 1125899906842626, "label": "v1", "properties": {"id": "middle"}}::vertex
-(2 rows)
+ 1407374883553282 | 1125899906842626 | {"id": 1125899906842626, "label": "v1", "properties": {"id": "middle"}}::vertex
+(4 rows)
 
 -- should return null
 SELECT * FROM cypher('expr', $$
@@ -1839,7 +1851,9 @@ $$) AS (type agtype);
 ------
  "e1"
  "e1"
-(2 rows)
+ "e1"
+ "e1"
+(4 rows)
 
 -- should return null
 SELECT * FROM cypher('expr', $$
@@ -2094,7 +2108,9 @@ $$) AS (properties agtype);
 ------------
  {}
  {}
-(2 rows)
+ {}
+ {}
+(4 rows)
 
 -- should return null
 SELECT * FROM cypher('expr', $$
@@ -5641,10 +5657,13 @@ SELECT * FROM cypher('keys', $$MATCH (v) RETURN keys(v)$$) AS (vertex_keys agtyp
 SELECT * FROM cypher('keys', $$MATCH ()-[e]-() RETURN keys(e)$$) AS (edge_keys agtype);
  edge_keys 
 -----------
- ["song"]
- ["song"]
  []
-(3 rows)
+ []
+ ["song"]
+ ["song"]
+ ["song"]
+ ["song"]
+(6 rows)
 
 SELECT * FROM cypher('keys', $$RETURN keys({a:1,b:'two',c:[1,2,3]})$$) AS (keys agtype);
       keys       

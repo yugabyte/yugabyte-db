@@ -3413,6 +3413,7 @@ static List *transform_match_entities(cypher_parsestate *cpstate, Query *query,
     List *entities = NIL;
     int i = 0;
     bool node_declared_in_prev_clause = false;
+    transform_entity *prev_entity = NULL;
 
     /*
      * Iterate through every node in the path, construct the expr node
@@ -3466,11 +3467,14 @@ static List *transform_match_entities(cypher_parsestate *cpstate, Query *query,
 
                 n = create_property_constraint_function(cpstate, entity,
                                                         node->props);
-                cpstate->property_constraint_quals = lappend(cpstate->property_constraint_quals, n);
+                cpstate->property_constraint_quals =
+                    lappend(cpstate->property_constraint_quals, n);
             }
 
             cpstate->entities = lappend(cpstate->entities, entity);
             entities = lappend(entities, entity);
+
+            prev_entity = entity;
         }
         /* odd increments of i are edges */
         else
@@ -3487,6 +3491,29 @@ static List *transform_match_entities(cypher_parsestate *cpstate, Query *query,
             /* if it is a regular edge */
             if (rel->varlen == NULL)
             {
+                /*
+                 * In the case where the MATCH is one edge and two vertices, the
+                 * edge is bidirectional, and neither vertex is included in the
+                 * join tree, we need to force one of the vertices into the join
+                 * tree to ensure the output is generated correctly.
+                 */
+                if (list_length(path->path) == 3 &&
+                        rel->dir == CYPHER_REL_DIR_NONE &&
+                        !prev_entity->in_join_tree)
+                {
+                    cypher_node *node = (cypher_node *)lfirst(lnext(lc));
+
+                    if (!INCLUDE_NODE_IN_JOIN_TREE(path, node))
+                    {
+                        /*
+                         * Assigning a variable name here will ensure that when
+                         * the next vertex is processed, the vertex will be
+                         * included in the join tree.
+                         */
+                        node->name = get_next_default_alias(cpstate);
+                    }
+                }
+
                 expr = transform_cypher_edge(cpstate, rel, &query->targetList);
 
                 entity = make_transform_entity(cpstate, ENT_EDGE, (Node *)rel,
@@ -3499,10 +3526,13 @@ static List *transform_match_entities(cypher_parsestate *cpstate, Query *query,
                     Node *n = create_property_constraint_function(cpstate,
                                                                   entity,
                                                                   rel->props);
-                    cpstate->property_constraint_quals = lappend(cpstate->property_constraint_quals, n);
+                    cpstate->property_constraint_quals =
+                        lappend(cpstate->property_constraint_quals, n);
                 }
 
                 entities = lappend(entities, entity);
+
+                prev_entity = entity;
             }
             /* if we have a VLE edge */
             else
@@ -3534,6 +3564,8 @@ static List *transform_match_entities(cypher_parsestate *cpstate, Query *query,
                 /* add the entity in */
                 cpstate->entities = lappend(cpstate->entities, vle_entity);
                 entities = lappend(entities, vle_entity);
+
+                prev_entity = entity;
             }
 
             node_declared_in_prev_clause = false;

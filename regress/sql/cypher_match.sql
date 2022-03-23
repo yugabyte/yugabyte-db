@@ -64,6 +64,10 @@ SELECT * FROM cypher('cypher_match', $$
 	MATCH (a:v1)-[]->(), ()-[]->(a) RETURN a
 $$) AS (a agtype);
 
+SELECT * FROM cypher('cypher_match', $$
+    MATCH p=()-[e]-() RETURN e
+$$) AS (a agtype);
+
 -- Right Path Test
 SELECT * FROM cypher('cypher_match', $$
 	MATCH (a:v1)-[:e1]->(b:v1)-[:e1]->(c:v1) RETURN a, b, c

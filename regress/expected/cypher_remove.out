@@ -447,13 +447,15 @@ SELECT * FROM cypher('cypher_remove', $$MATCH ()-[e:edge_multi_property]-() RETU
                                                                             a                                                                            
 ---------------------------------------------------------------------------------------------------------------------------------------------------------
  {"id": 3659174697238529, "label": "edge_multi_property", "end_id": 281474976710664, "start_id": 281474976710663, "properties": {"i": 5, "j": 20}}::edge
-(1 row)
+ {"id": 3659174697238529, "label": "edge_multi_property", "end_id": 281474976710664, "start_id": 281474976710663, "properties": {"i": 5, "j": 20}}::edge
+(2 rows)
 
 SELECT * FROM cypher('cypher_remove', $$MATCH ()-[e:edge_multi_property]-() REMOVE e.i, e.j RETURN e$$) AS (a agtype);
                                                                     a                                                                     
 ------------------------------------------------------------------------------------------------------------------------------------------
  {"id": 3659174697238529, "label": "edge_multi_property", "end_id": 281474976710664, "start_id": 281474976710663, "properties": {}}::edge
-(1 row)
+ {"id": 3659174697238529, "label": "edge_multi_property", "end_id": 281474976710664, "start_id": 281474976710663, "properties": {}}::edge
+(2 rows)
 
 --Errors
 SELECT * FROM cypher('cypher_remove', $$REMOVE n.i$$) AS (a agtype);
