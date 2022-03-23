@@ -1,7 +1,7 @@
 ---
 title: Export and Import Data for YSQL
-headerTitle: Export and Import Data for YSQL
-linkTitle: Export and Import Data for YSQL
+headerTitle: Export and Import Data
+linkTitle: Export and Import Data
 description: Export and Import Data for YSQL
 menu:
   latest:
