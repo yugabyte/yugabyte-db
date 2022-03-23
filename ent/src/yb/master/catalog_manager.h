@@ -117,9 +117,9 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                  rpc::RpcContext* rpc);
 
   // Delete the specified CDCStream.
-      Status DeleteCDCStream(const DeleteCDCStreamRequestPB* req,
-                                 DeleteCDCStreamResponsePB* resp,
-                                 rpc::RpcContext* rpc);
+  Status DeleteCDCStream(const DeleteCDCStreamRequestPB* req,
+                         DeleteCDCStreamResponsePB* resp,
+                         rpc::RpcContext* rpc);
 
   // List CDC streams (optionally, for a given table).
   Status ListCDCStreams(const ListCDCStreamsRequestPB* req,
@@ -414,7 +414,12 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   void MergeUniverseReplication(scoped_refptr<UniverseReplicationInfo> info,
                                 std::string original_id);
+
   Status DeleteUniverseReplicationUnlocked(scoped_refptr<UniverseReplicationInfo> info);
+  Status DeleteUniverseReplication(const std::string& producer_id,
+                                   bool ignore_errors,
+                                   DeleteUniverseReplicationResponsePB* resp);
+
   void MarkUniverseReplicationFailed(scoped_refptr<UniverseReplicationInfo> universe,
                                      const Status& failure_status);
 
@@ -461,6 +466,11 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   void SysCatalogLoaded(int64_t term) override;
 
   Result<SysRowEntries> CollectEntriesForSequencesDataTable();
+
+  Result<scoped_refptr<UniverseReplicationInfo>> CreateUniverseReplicationInfoForProducer(
+    const std::string& producer_id,
+    const google::protobuf::RepeatedPtrField<HostPortPB>& master_addresses,
+    const google::protobuf::RepeatedPtrField<std::string>& table_ids);
 
   // Snapshot map: snapshot-id -> SnapshotInfo.
   typedef std::unordered_map<SnapshotId, scoped_refptr<SnapshotInfo>> SnapshotInfoMap;
