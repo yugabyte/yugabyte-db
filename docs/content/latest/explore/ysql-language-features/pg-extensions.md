@@ -60,16 +60,6 @@ For information about using a specific extension in YugabyteDB, follow the More 
 
 If an extension is not pre-bundled, you need to install it manually before you can enable it using the [CREATE EXTENSION](../../../api/ysql/the-sql-language/statements/ddl_create_extension/) statement. You can install only extensions that are supported by YugabyteDB.
 
-Ideally, use the same version of the PostgreSQL extension as that used by YugabyteDB. To see the version of PostgreSQL used in your YugabyteDB installation, enter the following `ysqlsh` command:
-
-```sh
-$ ./bin/ysqlsh --version
-```
-
-```output
-psql (PostgreSQL) 11.2-YB-2.11.2.0-b0
-```
-
 Currently, in a multi-node setup, you need to install the extension on _every_ node in the cluster.
 
 In a read replica setup, install extensions on the primary instance, not on the read replica. Once installed, the extension replicates to the read replica.
@@ -86,9 +76,18 @@ Typically, extensions need three types of files:
 
 To install an extension, you need to copy these files into the respective directories of your YugabyteDB installation.
 
-Shared library files will be in the `pkglibdir` directory, while SQL and control files should be in the `extension` subdirectory of the `libdir` directory.
+Shared library files go in the `pkglibdir` directory, while SQL and control files go in the `extension` subdirectory of the `libdir` directory.
 
-To find these directories on your local installation, use the YugabyteDB `pg_config` executable.
+You can obtain the installation files for the target extension in two ways:
+
+* Build the extension from scratch following the extension's build instructions.
+* Copy the files from an existing PostgreSQL installation.
+
+After copying the files, restart the cluster (or the respective node in a multi-node install).
+
+### Locate the pkglibdir and extension directories using pg_config
+
+To find the directories where you install the extension files on your local installation, use the YugabyteDB `pg_config` executable.
 
 First, alias it to `yb_pg_config` by replacing `<yugabyte-path>` with the path to your YugabyteDB installation as follows:
 
@@ -108,9 +107,21 @@ List SQL and control files for already-installed extensions with:
 $ ls "$(yb_pg_config --sharedir)"/extension/
 ```
 
-To get these files for your target extension, build the extension from scratch following the extension's build instructions.
+### Copying an extension from PostgreSQL
 
-Alternatively, if you already have PostgreSQL (use version `11.2` for best YSQL compatibility) with the extension installed, you can find these files as follows:
+The easiest way to install an extension is to copy the files from an existing PostgreSQL installation.
+
+Ideally, use the same version of the PostgreSQL extension as that used by YugabyteDB. To see the version of PostgreSQL used in your YugabyteDB installation, enter the following `ysqlsh` command:
+
+```sh
+$ ./bin/ysqlsh --version
+```
+
+```output
+psql (PostgreSQL) 11.2-YB-2.11.2.0-b0
+```
+
+If you already have PostgreSQL (use version `11.2` for best YSQL compatibility) with the extension installed, you can find the extension's files as follows:
 
 ```sh
 $ ls "$(pg_config --pkglibdir)" | grep <name>
@@ -120,9 +131,27 @@ $ ls "$(pg_config --pkglibdir)" | grep <name>
 $ ls "$(pg_config --sharedir)"/extension/ | grep <name>
 ```
 
-Copy the files to the YugabyteDB installation, and restart the cluster (or the respective node in a multi-node install).
+If you have multiple PostgreSQL versions installed, make sure you're selecting the correct `pg_config`. On an Ubuntu 18.04 environment with multiple PostgreSQL versions installed:
 
-Finally, connect to the cluster using `ysqlsh` and run the `CREATE EXTENSION` statement to create the extension.
+```sh
+$ pg_config --version
+```
+
+```output
+PostgreSQL 13.0 (Ubuntu 13.0-1.pgdg18.04+1)
+```
+
+```sh
+$ /usr/lib/postgresql/11/bin/pg_config --version
+```
+
+```output
+PostgreSQL 11.9 (Ubuntu 11.9-1.pgdg18.04+1)
+```
+
+In this case, you should be using `/usr/lib/postgresql/11/bin/pg_config`.
+
+On CentOS, the correct path is `/usr/pgsql-11/bin/pg_config`.
 
 ## Using PostgreSQL extensions
 
@@ -298,7 +327,7 @@ Every time you repeat the test, you'll see different generated values for `v`.
 
 For another example that uses `normal_rand()`, refer to [Analyzing a normal distribution with percent_rank(), cume_dist() and ntile()](../../../api/ysql/exprs/window_functions/analyzing-a-normal-distribution/). It populates a table with a large number (say 100,000) of rows and displays the outcome as a histogram that clearly shows the familiar bell-curve shape.
 
-These other functions are brought by `tablefunc`: `connectby()`; and `crosstab()` and `crosstabN()`.
+`tablefunc` also provides the `connectby()`, `crosstab()`, and `crosstabN()` functions.
 
 The `connectby()` function displays a hierarchy of the kind that you see in an _"employees"_ table with a reflexive foreign key constraint where _"manager_id"_ refers to _"employee_id"_. Each next deeper level in the tree is indented from its parent following the well-known pattern.
 
@@ -306,14 +335,7 @@ The `crosstab()`and  `crosstabN()` functions produce "pivot" displays. The _"N"_
 
 ### postgresql-hll example
 
-First, install `postgres-hll` [from source](https://github.com/citusdata/postgresql-hll#from-source) locally in a PostgreSQL instance.
-
-Ideally, use the same PostgreSQL version as that incorporated into YugabyteDB. You can see the PostgreSQL version incorporated in a YugabyteDB installation by using the following `ysqlsh` command:
-
-```sh
-$ ./bin/ysqlsh --version
-psql (PostgreSQL) 11.2-YB-2.1.2.0-b0
-```
+First, install `postgres-hll` [from source](https://github.com/citusdata/postgresql-hll#from-source) locally in a PostgreSQL instance. Use the same PostgreSQL version as that incorporated into YugabyteDB.
 
 After you've installed the extension in PostgreSQL, copy the files to your YugabyteDB instance as follows:
 
@@ -407,35 +429,9 @@ Get the YUM repository from the [PostgreSQL website](https://www.postgresql.org/
 sudo yum install postgresql11-server postgis31_11 postgis31_11-client
 ```
 
-{{< note title="Note" >}}
-
-If you have multiple PostgreSQL versions installed, make sure you're selecting the correct `pg_config`. On an Ubuntu 18.04 environment with multiple PostgreSQL versions installed:
-
-```sh
-$ pg_config --version
-```
-
-```output
-PostgreSQL 13.0 (Ubuntu 13.0-1.pgdg18.04+1)
-```
-
-```sh
-$ /usr/lib/postgresql/11/bin/pg_config --version
-```
-
-```output
-PostgreSQL 11.9 (Ubuntu 11.9-1.pgdg18.04+1)
-```
-
-In this case, you should be using `/usr/lib/postgresql/11/bin/pg_config`.
-
-On CentOS, the correct path is `/usr/pgsql-11/bin/pg_config`.
-
-{{< /note >}}
-
 #### Install the extension
 
-Follow the instructions in [Installing extensions](#installing-extensions) to copy the extension files to your YugabyteDB installation.
+Copy the extension files to your YugabyteDB installation as follows:
 
 ```sh
 $ cp -v "$(pg_config --pkglibdir)"/*postgis*.so "$(yb_pg_config --pkglibdir)" &&
