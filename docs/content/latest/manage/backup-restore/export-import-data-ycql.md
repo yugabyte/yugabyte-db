@@ -1,7 +1,7 @@
 ---
 title: Export and Import Data for YCQL
-headerTitle: Export and Import Data for YCQL
-linkTitle: Export and Import Data for YCQL
+headerTitle: Export and Import Data
+linkTitle: Export and Import Data
 description: Export and Import Data for YCQL
 menu:
   latest:
