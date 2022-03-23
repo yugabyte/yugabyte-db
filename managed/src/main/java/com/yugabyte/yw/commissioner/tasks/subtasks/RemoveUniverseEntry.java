@@ -40,6 +40,6 @@ public class RemoveUniverseEntry extends UniverseTaskBase {
         taskParams().customerUUID,
         AlertConfiguration.TargetType.UNIVERSE,
         taskParams().universeUUID);
-    metricService.handleSourceRemoval(taskParams().customerUUID, taskParams().universeUUID);
+    metricService.markSourceRemoved(taskParams().customerUUID, taskParams().universeUUID);
   }
 }
