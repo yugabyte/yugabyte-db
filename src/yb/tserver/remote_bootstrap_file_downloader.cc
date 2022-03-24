@@ -33,7 +33,7 @@
 using namespace yb::size_literals;
 
 DECLARE_uint64(rpc_max_message_size);
-DEFINE_int32(remote_bootstrap_max_chunk_size, 1_MB,
+DEFINE_int32(remote_bootstrap_max_chunk_size, 64_MB,
              "Maximum chunk size to be transferred at a time during remote bootstrap.");
 
 // Deprecated because it's misspelled.  But if set, this flag takes precedence over
@@ -198,9 +198,10 @@ Status RemoteBootstrapFileDownloader::DownloadFile(
                           Format("Error validating data item $0", data_id));
 
     // Write the data.
+    VLOG_WITH_PREFIX(3) << "Verifying received data";
     RETURN_NOT_OK(appendable->Append(resp.chunk().data()));
-    VLOG_WITH_PREFIX(3)
-        << "resp size: " << resp.ByteSize() << ", chunk size: " << resp.chunk().data().size();
+    VLOG_WITH_PREFIX(3) << "Verified successfully: resp size: " << resp.ByteSize()
+                        << ", chunk size: " << resp.chunk().data().size();
 
     if (offset + resp.chunk().data().size() ==
             implicit_cast<size_t>(resp.chunk().total_data_length())) {
