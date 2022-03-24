@@ -8,6 +8,8 @@ import org.pac4j.play.PlayWebContext;
 import org.pac4j.play.http.DefaultHttpActionAdapter;
 import play.mvc.Result;
 
+// TODO(sbapat): investigate why this class is needed .. looks redundant as
+//  base class provides all the functionality
 public class PlatformHttpActionAdapter extends DefaultHttpActionAdapter {
 
   @Override

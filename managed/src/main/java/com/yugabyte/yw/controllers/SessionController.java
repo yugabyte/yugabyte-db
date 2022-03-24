@@ -373,7 +373,7 @@ public class SessionController extends AbstractPlatformController {
     if (environment.isDev()) {
       return redirect("http://localhost:3000/");
     } else {
-      return redirect(appConfig.getString("yb.url", "/"));
+      return redirect("/");
     }
   }
 
