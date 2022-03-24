@@ -86,11 +86,11 @@
       user: "yugabyte"
       state: absent
 
-  - name: Stop exsisting running master
+  - name: Stop existing running master
     shell:
       cmd: "sudo systemctl stop yb-master"
 
-  - name: Stop exsisting running tserver
+  - name: Stop existing running tserver
     shell:
       cmd: "sudo systemctl stop yb-tserver"
 

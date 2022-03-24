@@ -11,3 +11,4 @@ air_gap: false
 systemd_option: false
 yb_home_dir: "/home/{{ user_name }}"
 pg_max_mem_mb: 0
+install_retry_count: 5
