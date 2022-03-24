@@ -27,9 +27,9 @@ Extensions are either pre-bundled with YugabyteDB, or require installation:
 * **Pre-bundled** extensions are included in the standard YugabyteDB distribution and can be enabled in YSQL by running the [CREATE EXTENSION](../../../api/ysql/the-sql-language/statements/ddl_create_extension/) statement.
 * **Requires installation** - you must install these extensions manually before you can enable them using CREATE EXTENSION. Refer to [Installing an extension](#installing-extensions).
 
-For information about using a specific extension in YugabyteDB, follow the More Information links in the following table.
+For information about using a specific extension in YugabyteDB, follow the Examples links in the following table.
 
-| Extension | Status | Description | More information |
+| Extension | Status | Description | Examples |
 | :-------- | :----- | :---------- | :------ |
 | **PostgreSQL modules** |
 | [fuzzystrmatch](https://www.postgresql.org/docs/11/fuzzystrmatch.html) | Pre-bundled | Provides several functions to determine similarities and distance between strings. | [Example](#fuzzystrmatch-example) |
