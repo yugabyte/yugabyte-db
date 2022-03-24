@@ -118,6 +118,13 @@
   to = "/stable/quick-start/explore/ysql/"
   force = true
 
+# Yugabyte Extensions top hit
+
+[[redirects]]
+  from = "/latest/api/ysql/extensions/"
+  to = "/latest/explore/ysql-language-features/pg-extensions/"
+  force = true
+
 # Docs prior to v1.3 are not online
 
 [[redirects]]
