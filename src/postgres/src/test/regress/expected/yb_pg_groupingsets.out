@@ -10,8 +10,12 @@ create temp view gstest1(a,b,v)
 create temp table gstest2 (a integer, b integer, c integer, d integer,
                            e integer, f integer, g integer, h integer);
 copy gstest2 from stdin;
+WARNING:  Batched COPY is not supported on temporary tables. Defaulting to using one transaction for the entire copy.
+HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 create temp table gstest3 (a integer, b integer, c integer, d integer);
 copy gstest3 from stdin;
+WARNING:  Batched COPY is not supported on temporary tables. Defaulting to using one transaction for the entire copy.
+HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 alter table gstest3 add primary key (a);
 create temp table gstest4(id integer, v integer,
                           unhashable_col bit(4), unsortable_col xid);
@@ -34,7 +38,7 @@ set enable_hashagg = false;  -- test hashing explicitly later
 -- (and with ordering differing from grouping)
 select a, b, grouping(a,b), sum(v), count(*), max(v)
   from gstest1 group by rollup (a,b);
- a | b | grouping | sum | count | max 
+ a | b | grouping | sum | count | max
 ---+---+----------+-----+-------+-----
  1 | 1 |        0 |  21 |     2 |  11
  1 | 2 |        0 |  25 |     2 |  13
@@ -52,7 +56,7 @@ select a, b, grouping(a,b), sum(v), count(*), max(v)
 
 select a, b, grouping(a,b), sum(v), count(*), max(v)
   from gstest1 group by rollup (a,b) order by a,b;
- a | b | grouping | sum | count | max 
+ a | b | grouping | sum | count | max
 ---+---+----------+-----+-------+-----
  1 | 1 |        0 |  21 |     2 |  11
  1 | 2 |        0 |  25 |     2 |  13
@@ -70,7 +74,7 @@ select a, b, grouping(a,b), sum(v), count(*), max(v)
 
 select a, b, grouping(a,b), sum(v), count(*), max(v)
   from gstest1 group by rollup (a,b) order by b desc, a;
- a | b | grouping | sum | count | max 
+ a | b | grouping | sum | count | max
 ---+---+----------+-----+-------+-----
  1 |   |        1 |  60 |     5 |  14
  2 |   |        1 |  15 |     1 |  15
@@ -88,7 +92,7 @@ select a, b, grouping(a,b), sum(v), count(*), max(v)
 
 select a, b, grouping(a,b), sum(v), count(*), max(v)
   from gstest1 group by rollup (a,b) order by coalesce(a,0)+coalesce(b,0);
- a | b | grouping | sum | count | max 
+ a | b | grouping | sum | count | max
 ---+---+----------+-----+-------+-----
    |   |        3 | 145 |    10 |  19
  1 |   |        1 |  60 |     5 |  14
@@ -111,7 +115,7 @@ select a, b, grouping(a,b),
        percentile_disc(0.5) within group (order by v),
        rank(1,2,12) within group (order by a,b,v)
   from gstest1 group by rollup (a,b) order by a,b;
- a | b | grouping |            array_agg            |          string_agg           | percentile_disc | rank 
+ a | b | grouping |            array_agg            |          string_agg           | percentile_disc | rank
 ---+---+----------+---------------------------------+-------------------------------+-----------------+------
  1 | 1 |        0 | {10,11}                         | 11:10                         |              10 |    3
  1 | 2 |        0 | {12,13}                         | 13:12                         |              12 |    1
@@ -133,7 +137,7 @@ select grouping(a), a, array_agg(b),
        rank(a) within group (order by b nulls last)
   from (values (1,1),(1,4),(1,5),(3,1),(3,2)) v(a,b)
  group by rollup (a) order by a;
- grouping | a |  array_agg  | rank | rank 
+ grouping | a |  array_agg  | rank | rank
 ----------+---+-------------+------+------
         0 | 1 | {1,4,5}     |    1 |    1
         0 | 3 | {1,2}       |    3 |    3
@@ -143,7 +147,7 @@ select grouping(a), a, array_agg(b),
 -- nesting with window functions
 select a, b, sum(c), sum(sum(c)) over (order by a,b) as rsum
   from gstest2 group by rollup (a,b) order by rsum, a, b;
- a | b | sum | rsum 
+ a | b | sum | rsum
 ---+---+-----+------
  1 | 1 |   8 |    8
  1 | 2 |   2 |   10
@@ -157,7 +161,7 @@ select a, b, sum(c), sum(sum(c)) over (order by a,b) as rsum
 select sum(c) from gstest2
   group by grouping sets((), grouping sets((), grouping sets(())))
   order by 1 desc;
- sum 
+ sum
 -----
   12
   12
@@ -167,7 +171,7 @@ select sum(c) from gstest2
 select sum(c) from gstest2
   group by grouping sets((), grouping sets((), grouping sets(((a, b)))))
   order by 1 desc;
- sum 
+ sum
 -----
   12
   12
@@ -179,7 +183,7 @@ select sum(c) from gstest2
 select sum(c) from gstest2
   group by grouping sets(grouping sets(rollup(c), grouping sets(cube(c))))
   order by 1 desc;
- sum 
+ sum
 -----
   12
   12
@@ -192,7 +196,7 @@ select sum(c) from gstest2
 select sum(c) from gstest2
   group by grouping sets(a, grouping sets(a, cube(b)))
   order by 1 desc;
- sum 
+ sum
 -----
   12
   10
@@ -206,7 +210,7 @@ select sum(c) from gstest2
 select sum(c) from gstest2
   group by grouping sets(grouping sets((a, (b))))
   order by 1 desc;
- sum 
+ sum
 -----
    8
    2
@@ -216,7 +220,7 @@ select sum(c) from gstest2
 select sum(c) from gstest2
   group by grouping sets(grouping sets((a, b)))
   order by 1 desc;
- sum 
+ sum
 -----
    8
    2
@@ -226,7 +230,7 @@ select sum(c) from gstest2
 select sum(c) from gstest2
   group by grouping sets(grouping sets(a, grouping sets(a), a))
   order by 1 desc;
- sum 
+ sum
 -----
   10
   10
@@ -239,7 +243,7 @@ select sum(c) from gstest2
 select sum(c) from gstest2
   group by grouping sets(grouping sets(a, grouping sets(a, grouping sets(a), ((a)), a, grouping sets(a), (a)), a))
   order by 1 desc;
- sum 
+ sum
 -----
   10
   10
@@ -262,7 +266,7 @@ select sum(c) from gstest2
 select sum(c) from gstest2
   group by grouping sets((a,(a,b)), grouping sets((a,(a,b)),a))
   order by 1 desc;
- sum 
+ sum
 -----
   10
    8
@@ -276,18 +280,18 @@ select sum(c) from gstest2
 
 -- empty input: first is 0 rows, second 1, third 3 etc.
 select a, b, sum(v), count(*) from gstest_empty group by grouping sets ((a,b),a);
- a | b | sum | count 
+ a | b | sum | count
 ---+---+-----+-------
 (0 rows)
 
 select a, b, sum(v), count(*) from gstest_empty group by grouping sets ((a,b),());
- a | b | sum | count 
+ a | b | sum | count
 ---+---+-----+-------
    |   |     |     0
 (1 row)
 
 select a, b, sum(v), count(*) from gstest_empty group by grouping sets ((a,b),(),(),());
- a | b | sum | count 
+ a | b | sum | count
 ---+---+-----+-------
    |   |     |     0
    |   |     |     0
@@ -295,7 +299,7 @@ select a, b, sum(v), count(*) from gstest_empty group by grouping sets ((a,b),()
 (3 rows)
 
 select sum(v), count(*) from gstest_empty group by grouping sets ((),(),());
- sum | count 
+ sum | count
 -----+-------
      |     0
      |     0
@@ -305,7 +309,7 @@ select sum(v), count(*) from gstest_empty group by grouping sets ((),(),());
 -- empty input with joins tests some important code paths
 select t1.a, t2.b, sum(t1.v), count(*) from gstest_empty t1, gstest_empty t2
  group by grouping sets ((t1.a,t2.b),());
- a | b | sum | count 
+ a | b | sum | count
 ---+---+-----+-------
    |   |     |     0
 (1 row)
@@ -314,7 +318,7 @@ select t1.a, t2.b, sum(t1.v), count(*) from gstest_empty t1, gstest_empty t2
 select t1.a, t2.b, grouping(t1.a, t2.b), sum(t1.v), max(t2.a)
   from gstest1 t1, gstest2 t2
  group by grouping sets ((t1.a, t2.b), ());
- a | b | grouping | sum  | max 
+ a | b | grouping | sum  | max
 ---+---+----------+------+-----
  1 | 1 |        0 |  420 |   1
  1 | 2 |        0 |  120 |   2
@@ -330,7 +334,7 @@ select t1.a, t2.b, grouping(t1.a, t2.b), sum(t1.v), max(t2.a)
 select t1.a, t2.b, grouping(t1.a, t2.b), sum(t1.v), max(t2.a)
   from gstest1 t1 join gstest2 t2 on (t1.a=t2.a)
  group by grouping sets ((t1.a, t2.b), ());
- a | b | grouping | sum | max 
+ a | b | grouping | sum | max
 ---+---+----------+-----+-----
  1 | 1 |        0 | 420 |   1
  1 | 2 |        0 |  60 |   1
@@ -341,7 +345,7 @@ select t1.a, t2.b, grouping(t1.a, t2.b), sum(t1.v), max(t2.a)
 select a, b, grouping(a, b), sum(t1.v), max(t2.c)
   from gstest1 t1 join gstest2 t2 using (a,b)
  group by grouping sets ((a, b), ());
- a | b | grouping | sum | max 
+ a | b | grouping | sum | max
 ---+---+----------+-----+-----
  1 | 1 |        0 | 147 |   2
  1 | 2 |        0 |  25 |   2
@@ -352,7 +356,7 @@ select a, b, grouping(a, b), sum(t1.v), max(t2.c)
 select a, d, grouping(a,b,c)
   from gstest3
  group by grouping sets ((a,b), (a,c));
- a | d | grouping 
+ a | d | grouping
 ---+---+----------
  1 | 1 |        1
  2 | 2 |        1
@@ -366,7 +370,7 @@ explain (costs off)
 select g as alias1, g as alias2
   from generate_series(1,3) g
  group by alias1, rollup(alias2);
-                   QUERY PLAN                   
+                   QUERY PLAN
 ------------------------------------------------
  GroupAggregate
    Group Key: g, g
@@ -379,14 +383,14 @@ select g as alias1, g as alias2
 select g as alias1, g as alias2
   from generate_series(1,3) g
  group by alias1, rollup(alias2);
- alias1 | alias2 
+ alias1 | alias2
 --------+--------
       1 |      1
-      1 |       
+      1 |
       2 |      2
-      2 |       
+      2 |
       3 |      3
-      3 |       
+      3 |
 (6 rows)
 
 -- check that pulled-up subquery outputs still go to null when appropriate
@@ -394,7 +398,7 @@ select four, x
   from (select four, ten, 'foo'::text as x from tenk1) as t
   group by grouping sets (four, x)
   having x = 'foo';
- four |  x  
+ four |  x
 ------+-----
       | foo
 (1 row)
@@ -403,19 +407,19 @@ select four, x || 'x'
   from (select four, ten, 'foo'::text as x from tenk1) as t
   group by grouping sets (four, x)
   order by four;
- four | ?column? 
+ four | ?column?
 ------+----------
-    0 | 
-    1 | 
-    2 | 
-    3 | 
+    0 |
+    1 |
+    2 |
+    3 |
       | foox
 (5 rows)
 
 select (x+y)*1, sum(z)
  from (select 1 as x, 2 as y, 3 as z) s
  group by grouping sets (x+y, x);
- ?column? | sum 
+ ?column? | sum
 ----------+-----
         3 |   3
           |   3
@@ -425,20 +429,14 @@ select x, not x as not_x, q2 from
   (select *, q1 = 1 as x from int8_tbl i1) as t
   group by grouping sets(x, q2)
   order by x, q2;
- x | not_x |        q2         
----+-------+-------------------
- f | t     |                  
-   |       | -4567890123456789
-   |       |               123
-   |       |               456
-   |       |  4567890123456789
-(5 rows)
-
+ERROR:  relation "int8_tbl" does not exist
+LINE 2:   (select *, q1 = 1 as x from int8_tbl i1) as t
+                                      ^
 -- simple rescan tests
 select a, b, sum(v.x)
   from (values (1),(2)) v(x), gstest_data(v.x)
  group by rollup (a,b);
- a | b | sum 
+ a | b | sum
 ---+---+-----
  1 | 1 |   1
  1 | 2 |   1
@@ -460,21 +458,19 @@ LINE 3:        lateral (select a, b, sum(v.x) from gstest_data(v.x) ...
 -- min max optimization should still work with GROUP BY ()
 explain (costs off)
   select min(unique1) from tenk1 GROUP BY ();
-                         QUERY PLAN                         
-------------------------------------------------------------
- Result
-   InitPlan 1 (returns $0)
-     ->  Limit
-           ->  Index Only Scan using tenk1_unique1 on tenk1
-                 Index Cond: (unique1 IS NOT NULL)
-(5 rows)
+       QUERY PLAN
+-------------------------
+ Aggregate
+   Group Key: ()
+   ->  Seq Scan on tenk1
+(3 rows)
 
 -- Views with GROUPING SET queries
 CREATE VIEW gstest_view AS select a, b, grouping(a,b), sum(c), count(*), max(c)
   from gstest2 group by rollup ((a,b,c),(c,d));
 NOTICE:  view "gstest_view" will be a temporary view
 select pg_get_viewdef('gstest_view'::regclass, true);
-                                pg_get_viewdef                                 
+                                pg_get_viewdef
 -------------------------------------------------------------------------------
   SELECT gstest2.a,                                                           +
      gstest2.b,                                                               +
@@ -488,7 +484,7 @@ select pg_get_viewdef('gstest_view'::regclass, true);
 
 -- Nested queries with 3 or more levels of nesting
 select(select (select grouping(a,b) from (values (1)) v2(c)) from (values (1,2)) v1(a,b) group by (a,b)) from (values(6,7)) v3(e,f) GROUP BY ROLLUP(e,f);
- grouping 
+ grouping
 ----------
         0
         0
@@ -496,7 +492,7 @@ select(select (select grouping(a,b) from (values (1)) v2(c)) from (values (1,2))
 (3 rows)
 
 select(select (select grouping(e,f) from (values (1)) v2(c)) from (values (1,2)) v1(a,b) group by (a,b)) from (values(6,7)) v3(e,f) GROUP BY ROLLUP(e,f);
- grouping 
+ grouping
 ----------
         0
         1
@@ -504,7 +500,7 @@ select(select (select grouping(e,f) from (values (1)) v2(c)) from (values (1,2))
 (3 rows)
 
 select(select (select grouping(c) from (values (1)) v2(c) GROUP BY c) from (values (1,2)) v1(a,b) group by (a,b)) from (values(6,7)) v3(e,f) GROUP BY ROLLUP(e,f);
- grouping 
+ grouping
 ----------
         0
         0
@@ -513,17 +509,17 @@ select(select (select grouping(c) from (values (1)) v2(c) GROUP BY c) from (valu
 
 -- Combinations of operations
 select a, b, c, d from gstest2 group by rollup(a,b),grouping sets(c,d);
- a | b | c | d 
+ a | b | c | d
 ---+---+---+---
- 1 | 1 | 1 |  
- 1 |   | 1 |  
-   |   | 1 |  
- 1 | 1 | 2 |  
- 1 | 2 | 2 |  
- 1 |   | 2 |  
- 2 | 2 | 2 |  
- 2 |   | 2 |  
-   |   | 2 |  
+ 1 | 1 | 1 |
+ 1 |   | 1 |
+   |   | 1 |
+ 1 | 1 | 2 |
+ 1 | 2 | 2 |
+ 1 |   | 2 |
+ 2 | 2 | 2 |
+ 2 |   | 2 |
+   |   | 2 |
  1 | 1 |   | 1
  1 |   |   | 1
    |   |   | 1
@@ -536,7 +532,7 @@ select a, b, c, d from gstest2 group by rollup(a,b),grouping sets(c,d);
 (18 rows)
 
 select a, b from (values (1,2),(2,3)) v(a,b) group by a,b, grouping sets(a);
- a | b 
+ a | b
 ---+---
  1 | 2
  2 | 3
@@ -545,7 +541,7 @@ select a, b from (values (1,2),(2,3)) v(a,b) group by a,b, grouping sets(a);
 -- Tests for chained aggregates
 select a, b, grouping(a,b), sum(v), count(*), max(v)
   from gstest1 group by grouping sets ((a,b),(a+1,b+1),(a+2,b+2)) order by 3,6;
- a | b | grouping | sum | count | max 
+ a | b | grouping | sum | count | max
 ---+---+----------+-----+-------+-----
  1 | 1 |        0 |  21 |     2 |  11
  1 | 2 |        0 |  25 |     2 |  13
@@ -571,7 +567,7 @@ select a, b, grouping(a,b), sum(v), count(*), max(v)
 (21 rows)
 
 select(select (select grouping(a,b) from (values (1)) v2(c)) from (values (1,2)) v1(a,b) group by (a,b)) from (values(6,7)) v3(e,f) GROUP BY ROLLUP((e+1),(f+1));
- grouping 
+ grouping
 ----------
         0
         0
@@ -579,7 +575,7 @@ select(select (select grouping(a,b) from (values (1)) v2(c)) from (values (1,2))
 (3 rows)
 
 select(select (select grouping(a,b) from (values (1)) v2(c)) from (values (1,2)) v1(a,b) group by (a,b)) from (values(6,7)) v3(e,f) GROUP BY CUBE((e+1),(f+1)) ORDER BY (e+1),(f+1);
- grouping 
+ grouping
 ----------
         0
         0
@@ -589,7 +585,7 @@ select(select (select grouping(a,b) from (values (1)) v2(c)) from (values (1,2))
 
 select a, b, sum(c), sum(sum(c)) over (order by a,b) as rsum
   from gstest2 group by cube (a,b) order by rsum, a, b;
- a | b | sum | rsum 
+ a | b | sum | rsum
 ---+---+-----+------
  1 | 1 |   8 |    8
  1 | 2 |   2 |   10
@@ -602,7 +598,7 @@ select a, b, sum(c), sum(sum(c)) over (order by a,b) as rsum
 (8 rows)
 
 select a, b, sum(c) from (values (1,1,10),(1,1,11),(1,2,12),(1,2,13),(1,3,14),(2,3,15),(3,3,16),(3,4,17),(4,1,18),(4,1,19)) v(a,b,c) group by rollup (a,b);
- a | b | sum 
+ a | b | sum
 ---+---+-----
  1 | 1 |  21
  1 | 2 |  25
@@ -621,7 +617,7 @@ select a, b, sum(c) from (values (1,1,10),(1,1,11),(1,2,12),(1,2,13),(1,3,14),(2
 select a, b, sum(v.x)
   from (values (1),(2)) v(x), gstest_data(v.x)
  group by cube (a,b) order by a,b;
- a | b | sum 
+ a | b | sum
 ---+---+-----
  1 | 1 |   1
  1 | 2 |   1
@@ -644,7 +640,7 @@ LINE 1: select (select grouping(a,b) from gstest2) from gstest2 grou...
                                 ^
 --Nested queries
 select a, b, sum(c), count(*) from gstest2 group by grouping sets (rollup(a,b),a);
- a | b | sum | count 
+ a | b | sum | count
 ---+---+-----+-------
  1 | 1 |   8 |     7
  1 | 2 |   2 |     1
@@ -660,7 +656,7 @@ select a, b, sum(c), count(*) from gstest2 group by grouping sets (rollup(a,b),a
 select ten, sum(distinct four) from onek a
 group by grouping sets((ten,four),(ten))
 having exists (select 1 from onek b where sum(distinct a.four) = b.four);
- ten | sum 
+ ten | sum
 -----+-----
    0 |   0
    0 |   2
@@ -691,7 +687,7 @@ having exists (select 1 from onek b where sum(distinct a.four) = b.four);
 
 -- Tests around pushdown of HAVING clauses, partially testing against previous bugs
 select a,count(*) from gstest2 group by rollup(a) order by a;
- a | count 
+ a | count
 ---+-------
  1 |     8
  2 |     1
@@ -699,7 +695,7 @@ select a,count(*) from gstest2 group by rollup(a) order by a;
 (3 rows)
 
 select a,count(*) from gstest2 group by rollup(a) having a is distinct from 1 order by a;
- a | count 
+ a | count
 ---+-------
  2 |     1
    |     9
@@ -707,7 +703,7 @@ select a,count(*) from gstest2 group by rollup(a) having a is distinct from 1 or
 
 explain (costs off)
   select a,count(*) from gstest2 group by rollup(a) having a is distinct from 1 order by a;
-            QUERY PLAN            
+            QUERY PLAN
 ----------------------------------
  GroupAggregate
    Group Key: a
@@ -720,16 +716,16 @@ explain (costs off)
 
 select v.c, (select count(*) from gstest2 group by () having v.c)
   from (values (false),(true)) v(c) order by v.c;
- c | count 
+ c | count
 ---+-------
- f |      
+ f |
  t |     9
 (2 rows)
 
 explain (costs off)
   select v.c, (select count(*) from gstest2 group by () having v.c)
     from (values (false),(true)) v(c) order by v.c;
-                        QUERY PLAN                         
+                        QUERY PLAN
 -----------------------------------------------------------
  Sort
    Sort Key: "*VALUES*".column1
@@ -747,7 +743,7 @@ explain (costs off)
 select ten, grouping(ten) from onek
 group by grouping sets(ten) having grouping(ten) >= 0
 order by 2,1;
- ten | grouping 
+ ten | grouping
 -----+----------
    0 |        0
    1 |        0
@@ -764,7 +760,7 @@ order by 2,1;
 select ten, grouping(ten) from onek
 group by grouping sets(ten, four) having grouping(ten) > 0
 order by 2,1;
- ten | grouping 
+ ten | grouping
 -----+----------
      |        1
      |        1
@@ -775,7 +771,7 @@ order by 2,1;
 select ten, grouping(ten) from onek
 group by rollup(ten) having grouping(ten) > 0
 order by 2,1;
- ten | grouping 
+ ten | grouping
 -----+----------
      |        1
 (1 row)
@@ -783,7 +779,7 @@ order by 2,1;
 select ten, grouping(ten) from onek
 group by cube(ten) having grouping(ten) > 0
 order by 2,1;
- ten | grouping 
+ ten | grouping
 -----+----------
      |        1
 (1 row)
@@ -791,7 +787,7 @@ order by 2,1;
 select ten, grouping(ten) from onek
 group by (ten) having grouping(ten) >= 0
 order by 2,1;
- ten | grouping 
+ ten | grouping
 -----+----------
    0 |        0
    1 |        0
@@ -808,24 +804,24 @@ order by 2,1;
 -- FILTER queries
 select ten, sum(distinct four) filter (where four::text ~ '123') from onek a
 group by rollup(ten);
- ten | sum 
+ ten | sum
 -----+-----
-   0 |    
-   1 |    
-   2 |    
-   3 |    
-   4 |    
-   5 |    
-   6 |    
-   7 |    
-   8 |    
-   9 |    
-     |    
+   0 |
+   1 |
+   2 |
+   3 |
+   4 |
+   5 |
+   6 |
+   7 |
+   8 |
+   9 |
+     |
 (11 rows)
 
 -- More rescan tests
 select * from (values (1),(2)) v(a) left join lateral (select v.a, four, ten, count(*) from onek group by cube(four,ten)) s on true order by v.a,four,ten;
- a | a | four | ten | count 
+ a | a | four | ten | count
 ---+---+------+-----+-------
  1 | 1 |    0 |   0 |    50
  1 | 1 |    0 |   2 |    50
@@ -900,7 +896,7 @@ select * from (values (1),(2)) v(a) left join lateral (select v.a, four, ten, co
 (70 rows)
 
 select array(select row(v.a,s1.*) from (select two,four, count(*) from onek group by cube(two,four) order by two,four) s1) from (values (1),(2)) v(a);
-                                                                        array                                                                         
+                                                                        array
 ------------------------------------------------------------------------------------------------------------------------------------------------------
  {"(1,0,0,250)","(1,0,2,250)","(1,0,,500)","(1,1,1,250)","(1,1,3,250)","(1,1,,500)","(1,,0,250)","(1,,1,250)","(1,,2,250)","(1,,3,250)","(1,,,1000)"}
  {"(2,0,0,250)","(2,0,2,250)","(2,0,,500)","(2,1,1,250)","(2,1,3,250)","(2,1,,500)","(2,,0,250)","(2,,1,250)","(2,,2,250)","(2,,3,250)","(2,,,1000)"}
@@ -908,7 +904,7 @@ select array(select row(v.a,s1.*) from (select two,four, count(*) from onek grou
 
 -- Grouping on text columns
 select sum(ten) from onek group by two, rollup(four::text) order by 1;
- sum  
+ sum
 ------
  1000
  1000
@@ -919,7 +915,7 @@ select sum(ten) from onek group by two, rollup(four::text) order by 1;
 (6 rows)
 
 select sum(ten) from onek group by rollup(four::text), two order by 1;
- sum  
+ sum
 ------
  1000
  1000
@@ -941,7 +937,7 @@ DETAIL:  Some of the datatypes only support hashing, while others only support s
 -- simple cases
 select a, b, grouping(a,b), sum(v), count(*), max(v)
   from gstest1 group by grouping sets ((a),(b)) order by 3,1,2;
- a | b | grouping | sum | count | max 
+ a | b | grouping | sum | count | max
 ---+---+----------+-----+-------+-----
  1 |   |        1 |  60 |     5 |  14
  2 |   |        1 |  15 |     1 |  15
@@ -955,7 +951,7 @@ select a, b, grouping(a,b), sum(v), count(*), max(v)
 
 explain (costs off) select a, b, grouping(a,b), sum(v), count(*), max(v)
   from gstest1 group by grouping sets ((a),(b)) order by 3,1,2;
-                                               QUERY PLAN                                               
+                                               QUERY PLAN
 --------------------------------------------------------------------------------------------------------
  Sort
    Sort Key: (GROUPING("*VALUES*".column1, "*VALUES*".column2)), "*VALUES*".column1, "*VALUES*".column2
@@ -967,7 +963,7 @@ explain (costs off) select a, b, grouping(a,b), sum(v), count(*), max(v)
 
 select a, b, grouping(a,b), sum(v), count(*), max(v)
   from gstest1 group by cube(a,b) order by 3,1,2;
- a | b | grouping | sum | count | max 
+ a | b | grouping | sum | count | max
 ---+---+----------+-----+-------+-----
  1 | 1 |        0 |  21 |     2 |  11
  1 | 2 |        0 |  25 |     2 |  13
@@ -989,7 +985,7 @@ select a, b, grouping(a,b), sum(v), count(*), max(v)
 
 explain (costs off) select a, b, grouping(a,b), sum(v), count(*), max(v)
   from gstest1 group by cube(a,b) order by 3,1,2;
-                                               QUERY PLAN                                               
+                                               QUERY PLAN
 --------------------------------------------------------------------------------------------------------
  Sort
    Sort Key: (GROUPING("*VALUES*".column1, "*VALUES*".column2)), "*VALUES*".column1, "*VALUES*".column2
@@ -1005,7 +1001,7 @@ explain (costs off) select a, b, grouping(a,b), sum(v), count(*), max(v)
 explain (costs off)
   select a, b, grouping(a,b), array_agg(v order by v)
     from gstest1 group by cube(a,b);
-                        QUERY PLAN                        
+                        QUERY PLAN
 ----------------------------------------------------------
  GroupAggregate
    Group Key: "*VALUES*".column1, "*VALUES*".column2
@@ -1022,7 +1018,7 @@ explain (costs off)
 select unsortable_col, count(*)
   from gstest4 group by grouping sets ((unsortable_col),(unsortable_col))
   order by unsortable_col::text;
- unsortable_col | count 
+ unsortable_col | count
 ----------------+-------
               1 |     4
               1 |     4
@@ -1036,7 +1032,7 @@ select unhashable_col, unsortable_col,
        count(*), sum(v)
   from gstest4 group by grouping sets ((unhashable_col),(unsortable_col))
  order by 3, 5;
- unhashable_col | unsortable_col | grouping | count | sum 
+ unhashable_col | unsortable_col | grouping | count | sum
 ----------------+----------------+----------+-------+-----
  0000           |                |        1 |     2 |  17
  0001           |                |        1 |     2 |  34
@@ -1052,7 +1048,7 @@ explain (costs off)
          count(*), sum(v)
     from gstest4 group by grouping sets ((unhashable_col),(unsortable_col))
    order by 3,5;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  Sort
    Sort Key: (GROUPING(unhashable_col, unsortable_col)), (sum(v))
@@ -1069,7 +1065,7 @@ select unhashable_col, unsortable_col,
        count(*), sum(v)
   from gstest4 group by grouping sets ((v,unhashable_col),(v,unsortable_col))
  order by 3,5;
- unhashable_col | unsortable_col | grouping | count | sum 
+ unhashable_col | unsortable_col | grouping | count | sum
 ----------------+----------------+----------+-------+-----
  0000           |                |        1 |     1 |   1
  0001           |                |        1 |     1 |   2
@@ -1095,7 +1091,7 @@ explain (costs off)
          count(*), sum(v)
     from gstest4 group by grouping sets ((v,unhashable_col),(v,unsortable_col))
    order by 3,5;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  Sort
    Sort Key: (GROUPING(unhashable_col, unsortable_col)), (sum(v))
@@ -1109,13 +1105,13 @@ explain (costs off)
 
 -- empty input: first is 0 rows, second 1, third 3 etc.
 select a, b, sum(v), count(*) from gstest_empty group by grouping sets ((a,b),a);
- a | b | sum | count 
+ a | b | sum | count
 ---+---+-----+-------
 (0 rows)
 
 explain (costs off)
   select a, b, sum(v), count(*) from gstest_empty group by grouping sets ((a,b),a);
-           QUERY PLAN           
+           QUERY PLAN
 --------------------------------
  HashAggregate
    Hash Key: a, b
@@ -1124,13 +1120,13 @@ explain (costs off)
 (4 rows)
 
 select a, b, sum(v), count(*) from gstest_empty group by grouping sets ((a,b),());
- a | b | sum | count 
+ a | b | sum | count
 ---+---+-----+-------
    |   |     |     0
 (1 row)
 
 select a, b, sum(v), count(*) from gstest_empty group by grouping sets ((a,b),(),(),());
- a | b | sum | count 
+ a | b | sum | count
 ---+---+-----+-------
    |   |     |     0
    |   |     |     0
@@ -1139,7 +1135,7 @@ select a, b, sum(v), count(*) from gstest_empty group by grouping sets ((a,b),()
 
 explain (costs off)
   select a, b, sum(v), count(*) from gstest_empty group by grouping sets ((a,b),(),(),());
-           QUERY PLAN           
+           QUERY PLAN
 --------------------------------
  MixedAggregate
    Hash Key: a, b
@@ -1150,7 +1146,7 @@ explain (costs off)
 (6 rows)
 
 select sum(v), count(*) from gstest_empty group by grouping sets ((),(),());
- sum | count 
+ sum | count
 -----+-------
      |     0
      |     0
@@ -1159,7 +1155,7 @@ select sum(v), count(*) from gstest_empty group by grouping sets ((),(),());
 
 explain (costs off)
   select sum(v), count(*) from gstest_empty group by grouping sets ((),(),());
-           QUERY PLAN           
+           QUERY PLAN
 --------------------------------
  Aggregate
    Group Key: ()
@@ -1172,7 +1168,7 @@ explain (costs off)
 select a, d, grouping(a,b,c)
   from gstest3
  group by grouping sets ((a,b), (a,c));
- a | d | grouping 
+ a | d | grouping
 ---+---+----------
  1 | 1 |        1
  2 | 2 |        1
@@ -1184,7 +1180,7 @@ explain (costs off)
   select a, d, grouping(a,b,c)
     from gstest3
    group by grouping sets ((a,b), (a,c));
-        QUERY PLAN         
+        QUERY PLAN
 ---------------------------
  HashAggregate
    Hash Key: a, b
@@ -1197,7 +1193,7 @@ select a, b, sum(v.x)
   from (values (1),(2)) v(x), gstest_data(v.x)
  group by grouping sets (a,b)
  order by 1, 2, 3;
- a | b | sum 
+ a | b | sum
 ---+---+-----
  1 |   |   3
  2 |   |   6
@@ -1211,7 +1207,7 @@ explain (costs off)
     from (values (1),(2)) v(x), gstest_data(v.x)
    group by grouping sets (a,b)
    order by 3, 1, 2;
-                             QUERY PLAN                              
+                             QUERY PLAN
 ---------------------------------------------------------------------
  Sort
    Sort Key: (sum("*VALUES*".column1)), gstest_data.a, gstest_data.b
@@ -1239,7 +1235,7 @@ LINE 4:          lateral (select a, b, sum(v.x) from gstest_data(v.x...
 -- Tests for chained aggregates
 select a, b, grouping(a,b), sum(v), count(*), max(v)
   from gstest1 group by grouping sets ((a,b),(a+1,b+1),(a+2,b+2)) order by 3,6;
- a | b | grouping | sum | count | max 
+ a | b | grouping | sum | count | max
 ---+---+----------+-----+-------+-----
  1 | 1 |        0 |  21 |     2 |  11
  1 | 2 |        0 |  25 |     2 |  13
@@ -1267,7 +1263,7 @@ select a, b, grouping(a,b), sum(v), count(*), max(v)
 explain (costs off)
   select a, b, grouping(a,b), sum(v), count(*), max(v)
     from gstest1 group by grouping sets ((a,b),(a+1,b+1),(a+2,b+2)) order by 3,6;
-                                        QUERY PLAN                                         
+                                        QUERY PLAN
 -------------------------------------------------------------------------------------------
  Sort
    Sort Key: (GROUPING("*VALUES*".column1, "*VALUES*".column2)), (max("*VALUES*".column3))
@@ -1280,7 +1276,7 @@ explain (costs off)
 
 select a, b, sum(c), sum(sum(c)) over (order by a,b) as rsum
   from gstest2 group by cube (a,b) order by rsum, a, b;
- a | b | sum | rsum 
+ a | b | sum | rsum
 ---+---+-----+------
  1 | 1 |   8 |    8
  1 | 2 |   2 |   10
@@ -1295,7 +1291,7 @@ select a, b, sum(c), sum(sum(c)) over (order by a,b) as rsum
 explain (costs off)
   select a, b, sum(c), sum(sum(c)) over (order by a,b) as rsum
     from gstest2 group by cube (a,b) order by rsum, a, b;
-                 QUERY PLAN                  
+                 QUERY PLAN
 ---------------------------------------------
  Sort
    Sort Key: (sum((sum(c))) OVER (?)), a, b
@@ -1313,7 +1309,7 @@ explain (costs off)
 select a, b, sum(v.x)
   from (values (1),(2)) v(x), gstest_data(v.x)
  group by cube (a,b) order by a,b;
- a | b | sum 
+ a | b | sum
 ---+---+-----
  1 | 1 |   1
  1 | 2 |   1
@@ -1333,7 +1329,7 @@ explain (costs off)
   select a, b, sum(v.x)
     from (values (1),(2)) v(x), gstest_data(v.x)
    group by cube (a,b) order by a,b;
-                   QUERY PLAN                   
+                   QUERY PLAN
 ------------------------------------------------
  Sort
    Sort Key: gstest_data.a, gstest_data.b
@@ -1349,7 +1345,7 @@ explain (costs off)
 
 -- More rescan tests
 select * from (values (1),(2)) v(a) left join lateral (select v.a, four, ten, count(*) from onek group by cube(four,ten)) s on true order by v.a,four,ten;
- a | a | four | ten | count 
+ a | a | four | ten | count
 ---+---+------+-----+-------
  1 | 1 |    0 |   0 |    50
  1 | 1 |    0 |   2 |    50
@@ -1424,7 +1420,7 @@ select * from (values (1),(2)) v(a) left join lateral (select v.a, four, ten, co
 (70 rows)
 
 select array(select row(v.a,s1.*) from (select two,four, count(*) from onek group by cube(two,four) order by two,four) s1) from (values (1),(2)) v(a);
-                                                                        array                                                                         
+                                                                        array
 ------------------------------------------------------------------------------------------------------------------------------------------------------
  {"(1,0,0,250)","(1,0,2,250)","(1,0,,500)","(1,1,1,250)","(1,1,3,250)","(1,1,,500)","(1,,0,250)","(1,,1,250)","(1,,2,250)","(1,,3,250)","(1,,,1000)"}
  {"(2,0,0,250)","(2,0,2,250)","(2,0,,500)","(2,1,1,250)","(2,1,3,250)","(2,1,,500)","(2,,0,250)","(2,,1,250)","(2,,2,250)","(2,,3,250)","(2,,,1000)"}
@@ -1433,7 +1429,7 @@ select array(select row(v.a,s1.*) from (select two,four, count(*) from onek grou
 -- Rescan logic changes when there are no empty grouping sets, so test
 -- that too:
 select * from (values (1),(2)) v(a) left join lateral (select v.a, four, ten, count(*) from onek group by grouping sets(four,ten)) s on true order by v.a,four,ten;
- a | a | four | ten | count 
+ a | a | four | ten | count
 ---+---+------+-----+-------
  1 | 1 |    0 |     |   250
  1 | 1 |    1 |     |   250
@@ -1466,7 +1462,7 @@ select * from (values (1),(2)) v(a) left join lateral (select v.a, four, ten, co
 (28 rows)
 
 select array(select row(v.a,s1.*) from (select two,four, count(*) from onek group by grouping sets(two,four) order by two,four) s1) from (values (1),(2)) v(a);
-                                      array                                      
+                                      array
 ---------------------------------------------------------------------------------
  {"(1,0,,500)","(1,1,,500)","(1,,0,250)","(1,,1,250)","(1,,2,250)","(1,,3,250)"}
  {"(2,0,,500)","(2,1,,500)","(2,,0,250)","(2,,1,250)","(2,,2,250)","(2,,3,250)"}
@@ -1481,22 +1477,25 @@ explain (costs off)
          count(hundred), count(thousand), count(twothousand),
          count(*)
     from tenk1 group by grouping sets (unique1,twothousand,thousand,hundred,ten,four,two);
-          QUERY PLAN           
+          QUERY PLAN
 -------------------------------
  MixedAggregate
    Hash Key: two
-   Hash Key: four
-   Hash Key: ten
-   Hash Key: hundred
    Group Key: unique1
    Sort Key: twothousand
      Group Key: twothousand
    Sort Key: thousand
      Group Key: thousand
+   Sort Key: hundred
+     Group Key: hundred
+   Sort Key: ten
+     Group Key: ten
+   Sort Key: four
+     Group Key: four
    ->  Sort
          Sort Key: unique1
          ->  Seq Scan on tenk1
-(13 rows)
+(16 rows)
 
 explain (costs off)
   select unique1,
@@ -1504,18 +1503,21 @@ explain (costs off)
          count(hundred), count(thousand), count(twothousand),
          count(*)
     from tenk1 group by grouping sets (unique1,hundred,ten,four,two);
-          QUERY PLAN           
+          QUERY PLAN
 -------------------------------
  MixedAggregate
    Hash Key: two
-   Hash Key: four
-   Hash Key: ten
-   Hash Key: hundred
    Group Key: unique1
+   Sort Key: hundred
+     Group Key: hundred
+   Sort Key: ten
+     Group Key: ten
+   Sort Key: four
+     Group Key: four
    ->  Sort
          Sort Key: unique1
          ->  Seq Scan on tenk1
-(9 rows)
+(12 rows)
 
 set work_mem = '384kB';
 explain (costs off)
@@ -1524,21 +1526,18 @@ explain (costs off)
          count(hundred), count(thousand), count(twothousand),
          count(*)
     from tenk1 group by grouping sets (unique1,twothousand,thousand,hundred,ten,four,two);
-          QUERY PLAN           
--------------------------------
- MixedAggregate
-   Hash Key: two
-   Hash Key: four
-   Hash Key: ten
-   Hash Key: hundred
+       QUERY PLAN
+-------------------------
+ HashAggregate
+   Hash Key: unique1
+   Hash Key: twothousand
    Hash Key: thousand
-   Group Key: unique1
-   Sort Key: twothousand
-     Group Key: twothousand
-   ->  Sort
-         Sort Key: unique1
-         ->  Seq Scan on tenk1
-(12 rows)
+   Hash Key: hundred
+   Hash Key: ten
+   Hash Key: four
+   Hash Key: two
+   ->  Seq Scan on tenk1
+(9 rows)
 
 -- check collation-sensitive matching between grouping expressions
 -- (similar to a check for aggregates, but there are additional code
@@ -1546,7 +1545,7 @@ explain (costs off)
 select v||'a', case grouping(v||'a') when 1 then 1 else 0 end, count(*)
   from unnest(array[1,1], array['a','b']) u(i,v)
  group by rollup(i, v||'a') order by 1,3;
- ?column? | case | count 
+ ?column? | case | count
 ----------+------+-------
  aa       |    0 |     1
  ba       |    0 |     1
@@ -1557,7 +1556,7 @@ select v||'a', case grouping(v||'a') when 1 then 1 else 0 end, count(*)
 select v||'a', case when grouping(v||'a') = 1 then 1 else 0 end, count(*)
   from unnest(array[1,1], array['a','b']) u(i,v)
  group by rollup(i, v||'a') order by 1,3;
- ?column? | case | count 
+ ?column? | case | count
 ----------+------+-------
  aa       |    0 |     1
  ba       |    0 |     1
@@ -1568,7 +1567,7 @@ select v||'a', case when grouping(v||'a') = 1 then 1 else 0 end, count(*)
 -- test handling of outer GroupingFunc within subqueries
 explain (costs off)
 select (select grouping(v1)) from (values ((select 1))) v(v1) group by cube(v1);
-        QUERY PLAN         
+        QUERY PLAN
 ---------------------------
  GroupAggregate
    Group Key: $2
@@ -1585,7 +1584,7 @@ select (select grouping(v1)) from (values ((select 1))) v(v1) group by cube(v1);
 (12 rows)
 
 select (select grouping(v1)) from (values ((select 1))) v(v1) group by cube(v1);
- grouping 
+ grouping
 ----------
         0
         1
@@ -1593,7 +1592,7 @@ select (select grouping(v1)) from (values ((select 1))) v(v1) group by cube(v1);
 
 explain (costs off)
 select (select grouping(v1)) from (values ((select 1))) v(v1) group by v1;
-        QUERY PLAN         
+        QUERY PLAN
 ---------------------------
  GroupAggregate
    Group Key: $2
@@ -1609,7 +1608,7 @@ select (select grouping(v1)) from (values ((select 1))) v(v1) group by v1;
 (11 rows)
 
 select (select grouping(v1)) from (values ((select 1))) v(v1) group by v1;
- grouping 
+ grouping
 ----------
         0
 (1 row)

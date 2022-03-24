@@ -13,3 +13,4 @@ test: yb_pg_create_table
 test: yb_pg_copy
 
 test: yb_pg_window
+test: yb_pg_groupingsets
