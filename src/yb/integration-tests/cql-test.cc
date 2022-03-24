@@ -33,6 +33,7 @@ DECLARE_int32(client_read_write_timeout_ms);
 
 DECLARE_int32(partitions_vtable_cache_refresh_secs);
 DECLARE_int32(client_read_write_timeout_ms);
+DECLARE_bool(disable_truncate_table);
 
 namespace yb {
 
@@ -126,9 +127,7 @@ TEST_F(CqlTest, ConcurrentDeleteRowAndUpdateColumn) {
 
 TEST_F(CqlTest, TestUpdateListIndexAfterOverwrite) {
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
-  auto cql = [&](const std::string query) {
-    ASSERT_OK(session.ExecuteQuery(query));
-  };
+  auto cql = [&](const std::string query) { ASSERT_OK(session.ExecuteQuery(query)); };
   cql("CREATE TABLE test(h INT, v LIST<INT>, PRIMARY KEY(h))");
   cql("INSERT INTO test (h, v) VALUES (1, [1, 2, 3])");
 
@@ -165,10 +164,10 @@ TEST_F(CqlTest, Timeout) {
     peer->raft_consensus()->TEST_DelayUpdate(100ms);
   }
 
-  auto prepared = ASSERT_RESULT(session.Prepare(
-      "BEGIN TRANSACTION "
-      "  INSERT INTO t (i, j) VALUES (?, ?);"
-      "END TRANSACTION;"));
+  auto prepared =
+      ASSERT_RESULT(session.Prepare("BEGIN TRANSACTION "
+                                    "  INSERT INTO t (i, j) VALUES (?, ?);"
+                                    "END TRANSACTION;"));
   struct Request {
     CassandraFuture future;
     CoarseTimePoint start_time;
@@ -195,7 +194,7 @@ TEST_F(CqlTest, Timeout) {
     auto stmt = prepared.Bind();
     stmt.Bind(0, kKey);
     stmt.Bind(1, ++executed_ops);
-    requests.push_back(Request {
+    requests.push_back(Request{
         .future = session.ExecuteGetFuture(stmt),
         .start_time = CoarseMonoClock::now(),
     });
@@ -234,9 +233,7 @@ class CqlThreeMastersTest : public CqlTest {
     CqlTest::SetUp();
   }
 
-  int num_masters() override {
-    return 3;
-  }
+  int num_masters() override { return 3; }
 };
 
 Status CheckNumAddressesInYqlPartitionsTable(CassandraSession* session, int expected_num_addrs) {
@@ -260,8 +257,8 @@ TEST_F_EX(CqlTest, HostnameResolutionFailureInYqlPartitionsTable, CqlThreeMaster
   ASSERT_OK(CheckNumAddressesInYqlPartitionsTable(&session, 3));
 
   // TEST_RpcAddress is 1-indexed.
-  string hostname = server::TEST_RpcAddress(cluster_->LeaderMasterIdx() + 1,
-                                            server::Private::kFalse);
+  string hostname =
+      server::TEST_RpcAddress(cluster_->LeaderMasterIdx() + 1, server::Private::kFalse);
 
   // Fail resolution of the old leader master's hostname.
   TEST_SetFailToFastResolveAddress(hostname);
@@ -305,4 +302,21 @@ TEST_F_EX(CqlTest, NonRespondingMaster, CqlThreeMastersTest) {
   ASSERT_TRUE(has_ok);
 }
 
-} // namespace yb
+TEST_F(CqlTest, TestTruncateTable) {
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  auto cql = [&](const std::string query) { ASSERT_OK(session.ExecuteQuery(query)); };
+  cql("CREATE TABLE users(userid INT PRIMARY KEY, fullname TEXT)");
+  cql("INSERT INTO users(userid,fullname) values (1, 'yb');");
+  cql("TRUNCATE TABLE users");
+  auto result = ASSERT_RESULT(session.ExecuteWithResult("SELECT count(*) FROM users"));
+  auto iterator = result.CreateIterator();
+  iterator.Next();
+  auto count = iterator.Row().Value(0).As<int64>();
+  LOG(INFO) << "Count : " << count;
+  EXPECT_EQ(count, 0);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_truncate_table) = true;
+  ASSERT_NOK(session.ExecuteQuery("TRUNCATE TABLE users"));
+}
+
+}  // namespace yb

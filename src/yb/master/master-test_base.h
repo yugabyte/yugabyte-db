@@ -171,6 +171,8 @@ class MasterTestBase : public YBTest {
     return DoCreateTable(default_namespace_name, table_name, schema, request, table_id);
   }
 
+  Status TruncateTableById(const TableId& table_id);
+
   Status DeleteTableById(const TableId& table_id);
 
   Status DeleteTable(const NamespaceName& namespace_name,
