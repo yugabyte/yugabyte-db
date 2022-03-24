@@ -16,6 +16,7 @@
 #include <boost/uuid/random_generator.hpp>
 #include <boost/uuid/uuid_io.hpp>
 
+#include "yb/common/wire_protocol.h"
 #include "yb/encryption/encryption.pb.h"
 
 #include "yb/master/master_encryption.pb.h"
@@ -122,6 +123,47 @@ Status EncryptionManager::IsEncryptionEnabled(const EncryptionInfoPB& encryption
   LOG(INFO) << Format("Cluster encrypted with key $0", resp->key_id());
 
   return Status::OK();
+}
+
+EncryptionManager::EncryptionState EncryptionManager::GetEncryptionState(
+    const EncryptionInfoPB& encryption_info, IsEncryptionEnabledResponsePB* encryption_resp) {
+  EncryptionState state = EncryptionState::kUnknown;
+
+  Status encryption_status = IsEncryptionEnabled(encryption_info, encryption_resp);
+  WARN_NOT_OK(encryption_status, "Unable to determine encryption status");
+  if (encryption_status.ok()) {
+    if (encryption_resp->encryption_enabled()) {
+      state = EncryptionState::kEnabled;
+
+      HasUniverseKeyInMemoryRequestPB has_key_in_mem_req;
+      has_key_in_mem_req.set_version_id(encryption_resp->key_id());
+      HasUniverseKeyInMemoryResponsePB has_key_in_mem_res;
+      encryption_status = HasUniverseKeyInMemory(&has_key_in_mem_req, &has_key_in_mem_res);
+      if (encryption_status.ok() && has_key_in_mem_res.has_error()) {
+        encryption_status = StatusFromPB(has_key_in_mem_res.error().status());
+      }
+
+      WARN_NOT_OK(encryption_status, "Unable to determine if encryption keys are in memory");
+      if (!encryption_status.ok()) {
+        state = EncryptionState::kEnabledUnkownIfKeyIsInMem;
+      } else if (!has_key_in_mem_res.has_key()) {
+        state = EncryptionState::kEnabledKeyNotInMem;
+      }
+    } else {
+      state = EncryptionState::kNeverEnabled;
+
+      Slice registry_decrypted(encryption_info.universe_key_registry_encoded());
+      auto universe_key_registry =
+          pb_util::ParseFromSlice<encryption::UniverseKeyRegistryPB>(registry_decrypted);
+      if (!universe_key_registry.ok()) {
+        WARN_NOT_OK(
+            universe_key_registry.status(), "Unable to determine if encryption is Disabled");
+      } else if (!universe_key_registry->universe_keys().empty()) {
+        state = EncryptionState::kDisabled;
+      }
+    }
+  }
+  return state;
 }
 
 CHECKED_STATUS EncryptionManager::FillHeartbeatResponseEncryption(

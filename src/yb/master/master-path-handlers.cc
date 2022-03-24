@@ -55,8 +55,10 @@
 #include "yb/master/master_fwd.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/encryption_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_encryption.pb.h"
 #include "yb/master/master_util.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/sys_catalog.h"
@@ -1589,6 +1591,54 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
   (*output) << Substitute("  <tr><td>$0<span class='yb-overview'>$1</span></td><td>$2</td></tr>\n",
                           "<i class='fa fa-terminal yb-dashboard-icon' aria-hidden='true'></i>",
                           "Build Type ", version_info.build_type());
+
+  // Encryption Status
+  string encryption_status_icon;
+  string encryption_status_str;
+
+  IsEncryptionEnabledResponsePB encryption_resp;
+  auto encryption_state =
+      master_->encryption_manager().GetEncryptionState(config.encryption_info(), &encryption_resp);
+
+  switch (encryption_state) {
+    case EncryptionManager::EncryptionState::kUnknown:
+      encryption_status_icon = "fa-question label label-danger";
+      encryption_status_str = "Unknown";
+      break;
+    case EncryptionManager::EncryptionState::kNeverEnabled:
+      encryption_status_icon = "fa-unlock";
+      encryption_status_str = "Never enabled";
+      break;
+    case EncryptionManager::EncryptionState::kEnabled:
+      encryption_status_icon = "fa-lock";
+      encryption_status_str = Substitute("Enabled with key: $0", encryption_resp.key_id());
+      break;
+    case EncryptionManager::EncryptionState::kEnabledUnkownIfKeyIsInMem:
+      encryption_status_icon = "fa-question label label-danger";
+      encryption_status_str = Substitute(
+          "Enabled with key: $0. Unable to determine if encryption keys are in memory",
+          encryption_resp.key_id());
+      break;
+    case EncryptionManager::EncryptionState::kEnabledKeyNotInMem:
+      encryption_status_icon = "fa-times label label-danger";
+      encryption_status_str = Substitute(
+          "Enabled with key: $0. Node Does not have universe key in memory",
+          encryption_resp.key_id());
+      break;
+    case EncryptionManager::EncryptionState::kDisabled:
+      encryption_status_str = "Disabled";
+      encryption_status_icon = "fa-unlock-alt";
+      break;
+  }
+
+  (*output) << Substitute(
+      " <tr><td>$0<span class='yb-overview'>$1</span></td>"
+      "<td><i class='fa $2' aria-hidden='true'> </i>  $3</td></tr>\n",
+      "<i class='fa fa-key yb-dashboard-icon' aria-hidden='true'></i>",
+      "Encryption Status ",
+      encryption_status_icon,
+      encryption_status_str);
+
   (*output) << "</table>";
   (*output) << "</div> <!-- panel-body -->\n";
   (*output) << "</div> <!-- panel -->\n";

@@ -34,6 +34,15 @@ using HostPortSet = std::unordered_set<HostPort, HostPortHash>;
 
 class EncryptionManager {
  public:
+  enum class EncryptionState {
+    kUnknown,
+    kNeverEnabled,
+    kEnabled,
+    kEnabledUnkownIfKeyIsInMem,
+    kEnabledKeyNotInMem,
+    kDisabled
+  };
+
   EncryptionManager();
 
   CHECKED_STATUS AddUniverseKeys(const AddUniverseKeysRequestPB* req,
@@ -50,6 +59,9 @@ class EncryptionManager {
 
   CHECKED_STATUS IsEncryptionEnabled(const EncryptionInfoPB& encryption_info,
                                      IsEncryptionEnabledResponsePB* resp);
+
+  EncryptionState GetEncryptionState(
+      const EncryptionInfoPB& encryption_info, IsEncryptionEnabledResponsePB* encryption_resp);
 
   CHECKED_STATUS FillHeartbeatResponseEncryption(const EncryptionInfoPB& encryption_info,
                                                  TSHeartbeatResponsePB* resp);
