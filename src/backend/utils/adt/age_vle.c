@@ -158,7 +158,7 @@ static VLE_local_context *get_cached_VLE_local_context(int64 vle_grammar_node_id
     while (vlelctx != NULL)
     {
         /* purge any contexts past the maximum cache size */
-        if (cache_size > MAXIMUM_NUMBER_OF_CACHED_LOCAL_CONTEXTS)
+        if (cache_size >= MAXIMUM_NUMBER_OF_CACHED_LOCAL_CONTEXTS)
         {
             /* set the next pointer to the context that follows */
             next = vlelctx->next;
@@ -185,8 +185,29 @@ static VLE_local_context *get_cached_VLE_local_context(int64 vle_grammar_node_id
             /* and isn't dirty */
             if (vlelctx->is_dirty == false)
             {
-                /* if the context isn't the head of the list, promote it */
-                if (vlelctx != prev)
+                GRAPH_global_context *ggctx = NULL;
+
+                /*
+                 * Get the GRAPH global context associated with this local VLE
+                 * context. We need to verify it still exists and that the
+                 * pointer is valid.
+                 */
+                ggctx = find_GRAPH_global_context(vlelctx->graph_oid);
+
+                /*
+                 * If ggctx == NULL, vlelctx is bad and vlelctx needs to be
+                 * removed.
+                 * If ggctx == vlelctx->ggctx, then vlelctx is good.
+                 * If ggctx != vlelctx->ggctx, then vlelctx needs to be updated.
+                 * In the end, vlelctx->ggctx will be set to ggctx.
+                 */
+                vlelctx->ggctx = ggctx;
+
+                /*
+                 * If the context is good and isn't at the head of the cache,
+                 * promote it to the head.
+                 */
+                if (ggctx != NULL && vlelctx != prev)
                 {
                     /* adjust the links to cut out the node */
                     prev->next = vlelctx->next;
@@ -195,24 +216,29 @@ static VLE_local_context *get_cached_VLE_local_context(int64 vle_grammar_node_id
                     /* point the head to this context */
                     global_vle_local_contexts = vlelctx;
                 }
-                return vlelctx;
+
+                /* if we have a good one, return it. */
+                if (ggctx != NULL)
+                {
+                    return vlelctx;
+                }
             }
+
             /* otherwise, clean and remove it, and return NULL */
+
+            /* set the top if necessary and unlink it */
+            if (prev == NULL)
+            {
+                global_vle_local_contexts = vlelctx->next;
+            }
             else
             {
-                /* set the top if necessary and unlink it */
-                if (prev == NULL)
-                {
-                    global_vle_local_contexts = vlelctx->next;
-                }
-                else
-                {
-                    prev->next = vlelctx->next;
-                }
-                /* now free it and return NULL */
-                free_VLE_local_context(vlelctx);
-                return NULL;
+                prev->next = vlelctx->next;
             }
+
+            /* now free it and return NULL */
+            free_VLE_local_context(vlelctx);
+            return NULL;
         }
         /* save the previous context */
         prev = vlelctx;
@@ -274,6 +300,7 @@ static void create_VLE_local_state_hashtable(VLE_local_context *vlelctx)
                                                 EDGE_STATE_HTAB_INITIAL_SIZE,
                                                 &edge_state_ctl,
                                                 HASH_ELEM | HASH_FUNCTION);
+    pfree(eshn);
 }
 
 /*
@@ -375,10 +402,20 @@ static void free_VLE_local_context(VLE_local_context *vlelctx)
     hash_destroy(vlelctx->edge_state_hashtable);
     vlelctx->edge_state_hashtable = NULL;
 
-    /* we need to free our stacks */
-    free_graphid_stack(vlelctx->dfs_vertex_stack);
-    free_graphid_stack(vlelctx->dfs_edge_stack);
-    free_graphid_stack(vlelctx->dfs_path_stack);
+    /*
+     * We need to free the contents of our stacks if the context is not dirty.
+     * These stacks are created in a more volatile memory context. If the
+     * process was interupted, they will be garbage collected by PG. The only
+     * time we will ever clean them here is if the cache isn't being used.
+     */
+    if (vlelctx->is_dirty == false)
+    {
+        free_graphid_stack(vlelctx->dfs_vertex_stack);
+        free_graphid_stack(vlelctx->dfs_edge_stack);
+        free_graphid_stack(vlelctx->dfs_path_stack);
+    }
+
+    /* free the containers */
     pfree(vlelctx->dfs_vertex_stack);
     pfree(vlelctx->dfs_edge_stack);
     pfree(vlelctx->dfs_path_stack);
@@ -2428,103 +2465,4 @@ Datum _ag_enforce_edge_uniqueness(PG_FUNCTION_ARGS)
     /* if all entries were successfully inserted, we have no duplicates */
     hash_destroy(exists_hash);
     PG_RETURN_BOOL(true);
-}
-
-/* PG wrapper function for age_vertex_degree */
-PG_FUNCTION_INFO_V1(age_vertex_stats);
-
-Datum age_vertex_stats(PG_FUNCTION_ARGS)
-{
-    GRAPH_global_context *ggctx = NULL;
-    vertex_entry *ve = NULL;
-    ListGraphId *edges = NULL;
-    agtype_value *agtv_vertex = NULL;
-    agtype_value *agtv_temp = NULL;
-    agtype_value agtv_integer;
-    agtype_in_state result;
-    char *graph_name = NULL;
-    Oid graph_oid = InvalidOid;
-    graphid vid = 0;
-    int64 self_loops = 0;
-    int64 degree = 0;
-
-    /* get the graph name (required) */
-    agtv_temp = get_agtype_value("vertex_stats", AG_GET_ARG_AGTYPE_P(0),
-                                 AGTV_STRING, true);
-
-    /* get the vertex (required) */
-    agtv_vertex = get_agtype_value("vertex_stats", AG_GET_ARG_AGTYPE_P(1),
-                                   AGTV_VERTEX, true);
-
-    graph_name = pnstrdup(agtv_temp->val.string.val,
-                          agtv_temp->val.string.len);
-
-    /* get the graph oid */
-    graph_oid = get_graph_oid(graph_name);
-
-    /*
-     * Create or retrieve the GRAPH global context for this graph. This function
-     * will also purge off invalidated contexts.
-     */
-    ggctx = manage_GRAPH_global_contexts(graph_name, graph_oid);
-
-    /* get the id */
-    agtv_temp = GET_AGTYPE_VALUE_OBJECT_VALUE(agtv_vertex, "id");
-    vid = agtv_temp->val.int_value;
-
-    /* get the vertex entry */
-    ve = get_vertex_entry(ggctx, vid);
-
-    /* zero the state */
-    memset(&result, 0, sizeof(agtype_in_state));
-
-    /* start the object */
-    result.res = push_agtype_value(&result.parse_state, WAGT_BEGIN_OBJECT,
-                                   NULL);
-    /* store the id */
-    result.res = push_agtype_value(&result.parse_state, WAGT_KEY,
-                                   string_to_agtype_value("id"));
-    result.res = push_agtype_value(&result.parse_state, WAGT_VALUE, agtv_temp);
-
-    /* store the label */
-    agtv_temp = GET_AGTYPE_VALUE_OBJECT_VALUE(agtv_vertex, "label");
-    result.res = push_agtype_value(&result.parse_state, WAGT_KEY,
-                                   string_to_agtype_value("label"));
-    result.res = push_agtype_value(&result.parse_state, WAGT_VALUE, agtv_temp);
-
-    /* set up an integer for returning values */
-    agtv_temp = &agtv_integer;
-    agtv_temp->type = AGTV_INTEGER;
-    agtv_temp->val.int_value = 0;
-
-    /* get and store the self_loops */
-    edges = get_vertex_entry_edges_self(ve);
-    self_loops = (edges != NULL) ? get_list_size(edges) : 0;
-    agtv_temp->val.int_value = self_loops;
-    result.res = push_agtype_value(&result.parse_state, WAGT_KEY,
-                                   string_to_agtype_value("self_loops"));
-    result.res = push_agtype_value(&result.parse_state, WAGT_VALUE, agtv_temp);
-
-    /* get and store the in_degree */
-    edges = get_vertex_entry_edges_in(ve);
-    degree = (edges != NULL) ? get_list_size(edges) : 0;
-    agtv_temp->val.int_value = degree + self_loops;
-    result.res = push_agtype_value(&result.parse_state, WAGT_KEY,
-                                   string_to_agtype_value("in_degree"));
-    result.res = push_agtype_value(&result.parse_state, WAGT_VALUE, agtv_temp);
-
-    /* get and store the out_degree */
-    edges = get_vertex_entry_edges_out(ve);
-    degree = (edges != NULL) ? get_list_size(edges) : 0;
-    agtv_temp->val.int_value = degree + self_loops;
-    result.res = push_agtype_value(&result.parse_state, WAGT_KEY,
-                                   string_to_agtype_value("out_degree"));
-    result.res = push_agtype_value(&result.parse_state, WAGT_VALUE, agtv_temp);
-
-    /* close the object */
-    result.res = push_agtype_value(&result.parse_state, WAGT_END_OBJECT, NULL);
-
-    result.res->type = AGTV_OBJECT;
-
-    PG_RETURN_POINTER(agtype_value_to_agtype(result.res));
 }
