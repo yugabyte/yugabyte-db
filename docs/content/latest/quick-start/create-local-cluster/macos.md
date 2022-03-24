@@ -6,7 +6,7 @@ description: Create a local cluster on macOS in less than five minutes.
 aliases:
   - /quick-start/create-local-cluster/
   - /latest/quick-start/create-local-cluster/
-menu/:
+menu:
   latest:
     parent: quick-start
     name: 2. Create a local cluster
