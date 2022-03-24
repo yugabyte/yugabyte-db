@@ -5426,8 +5426,8 @@ pg_event_trigger_ownercheck(Oid et_oid, Oid roleid)
 	HeapTuple	tuple;
 	Oid			ownerId;
 
-	/* Superusers bypass all permission checking. */
-	if (superuser_arg(roleid))
+	/* Superusers and yb_db_admin bypass all permission checking. */
+	if (superuser_arg(roleid) || IsYbDbAdminUser(roleid))
 		return true;
 
 	tuple = SearchSysCache1(EVENTTRIGGEROID, ObjectIdGetDatum(et_oid));
