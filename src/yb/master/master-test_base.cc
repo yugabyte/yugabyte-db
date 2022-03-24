@@ -225,6 +225,20 @@ void MasterTestBase::DoListAllTables(ListTablesResponsePB* resp,
   DoListTables(req, resp);
 }
 
+Status MasterTestBase::TruncateTableById(const TableId& table_id) {
+  TruncateTableRequestPB req;
+  TruncateTableResponsePB resp;
+  req.add_table_ids(table_id);
+
+  RETURN_NOT_OK(proxy_ddl_->TruncateTable(req, &resp, ResetAndGetController()));
+  SCOPED_TRACE(resp.DebugString());
+
+  if (resp.has_error()) {
+    RETURN_NOT_OK(StatusFromPB(resp.error().status()));
+  }
+  return Status::OK();
+}
+
 Status MasterTestBase::DeleteTableById(const TableId& table_id) {
   DeleteTableRequestPB req;
   DeleteTableResponsePB resp;
