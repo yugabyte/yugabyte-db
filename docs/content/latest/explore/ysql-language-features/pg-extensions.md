@@ -12,7 +12,6 @@ menu:
     weight: 4400
 aliases:
   - /latest/explore/ysql-language-features/advanced-features/extensions/
-  - /latest/api/ysql/extensions/
 isTocNested: true
 showAsideToc: true
 ---
