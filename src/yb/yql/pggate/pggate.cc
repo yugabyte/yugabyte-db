@@ -1008,7 +1008,7 @@ Status PgApiImpl::ProcessYBTupleId(const YBCPgYBTupleIdDescriptor& descr,
                     target_desc->num_key_columns() - target_desc->num_hash_key_columns(),
                     Corruption, "Number of range components does not match column description");
           if (hashed_values.empty()) {
-            return processor(docdb::DocKey(move(range_components)).Encode());
+            return processor(docdb::DocKey(std::move(range_components)).Encode());
           }
           string partition_key;
           const PartitionSchema& partition_schema = target_desc->partition_schema();
@@ -1016,7 +1016,8 @@ Status PgApiImpl::ProcessYBTupleId(const YBCPgYBTupleIdDescriptor& descr,
           const uint16_t hash = PartitionSchema::DecodeMultiColumnHashValue(partition_key);
 
           return processor(
-              docdb::DocKey(hash, move(hashed_components), move(range_components)).Encode());
+              docdb::DocKey(hash, std::move(hashed_components),
+                std::move(range_components)).Encode());
         }
         break;
       }
@@ -1490,11 +1491,10 @@ void PgApiImpl::ResetCatalogReadTime() {
 Result<bool> PgApiImpl::ForeignKeyReferenceExists(
     PgOid table_id, const Slice& ybctid, PgOid database_id) {
   return pg_session_->ForeignKeyReferenceExists(
-      table_id, ybctid, std::bind(FetchExistingYbctids,
-                                  pg_session_,
-                                  database_id,
-                                  std::placeholders::_1,
-                                  std::placeholders::_2));
+      table_id, ybctid, make_lw_function(
+          [this, database_id](PgOid table_id, const std::vector<Slice>& ybctids) {
+            return FetchExistingYbctids(pg_session_, database_id, table_id, ybctids);
+          }));
 }
 
 void PgApiImpl::AddForeignKeyReferenceIntent(PgOid table_id, const Slice& ybctid) {
@@ -1509,7 +1509,7 @@ void PgApiImpl::AddForeignKeyReference(PgOid table_id, const Slice& ybctid) {
   pg_session_->AddForeignKeyReference(table_id, ybctid);
 }
 
-void PgApiImpl::SetTimeout(const int timeout_ms) {
+void PgApiImpl::SetTimeout(int timeout_ms) {
   pg_session_->SetTimeout(timeout_ms);
 }
 

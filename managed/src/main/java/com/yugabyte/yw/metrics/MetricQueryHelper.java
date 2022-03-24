@@ -99,9 +99,22 @@ public class MetricQueryHelper {
       timeDifference = endTime - Long.parseLong(startTime);
     }
 
-    if (params.get("step") == null) {
+    String step = params.get("step");
+    if (step == null) {
+      if (timeDifference <= STEP_SIZE) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Should be at least " + STEP_SIZE + " seconds between start and end time");
+      }
       int resolution = Math.round(timeDifference / STEP_SIZE);
       params.put("step", String.valueOf(resolution));
+    } else {
+      try {
+        if (Integer.parseInt(step) <= 0) {
+          throw new PlatformServiceException(BAD_REQUEST, "Step should not be less than 1 second");
+        }
+      } catch (NumberFormatException nfe) {
+        throw new PlatformServiceException(BAD_REQUEST, "Step should be a valid integer");
+      }
     }
 
     // Adjust the start time so the graphs are consistent for different requests.

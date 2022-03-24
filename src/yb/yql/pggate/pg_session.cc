@@ -300,15 +300,15 @@ class PgSession::RunHelper {
       if (full_flush_required) {
         RETURN_NOT_OK(pg_session_.FlushBufferedOperations());
       } else {
-        RETURN_NOT_OK(pg_session_.FlushBufferedOperationsImpl(
-            [this](auto ops, auto transactional) -> Status {
-              if (transactional == IsTransactional()) {
-                // Save buffered operations for further applying before non-buffered operation.
-                operations_.Swap(&ops);
-                return Status::OK();
-              }
-              return pg_session_.FlushOperations(std::move(ops), transactional);
-            }));
+        RETURN_NOT_OK(pg_session_.FlushBufferedOperationsImpl(make_lw_function(
+          [this](BufferableOperations ops, IsTransactionalSession transactional) -> Status {
+            if (transactional == IsTransactional()) {
+              // Save buffered operations for further applying before non-buffered operation.
+              operations_.Swap(&ops);
+              return Status::OK();
+            }
+            return pg_session_.FlushOperations(std::move(ops), transactional);
+          })));
         read_only = read_only && operations_.empty();
       }
     }
@@ -626,9 +626,10 @@ void PgSession::ResetOperationsBuffering() {
 }
 
 Status PgSession::FlushBufferedOperations() {
-  return FlushBufferedOperationsImpl([this](auto ops, auto txn) {
-    return this->FlushOperations(std::move(ops), txn);
-  });
+  return FlushBufferedOperationsImpl(make_lw_function(
+      [this](BufferableOperations ops, IsTransactionalSession txn) {
+        return this->FlushOperations(std::move(ops), txn);
+      }));
 }
 
 void PgSession::DropBufferedOperations() {

@@ -73,6 +73,14 @@ DEFINE_uint64(prevent_split_for_ttl_tables_for_seconds, 86400,
               "Seconds between checks for whether to split a table with TTL. Checks are disabled "
               "if this value is set to 0.");
 
+DEFINE_uint64(prevent_split_for_small_key_range_tablets_for_seconds, 300,
+              "Seconds between checks for whether to split a tablet whose key range is too small "
+              "to be split. Checks are disabled if this value is set to 0.");
+
+DEFINE_bool(sort_automatic_tablet_splitting_candidates, true,
+            "Whether we should sort candidates for new automatic tablet splits, so the largest "
+            "candidates are picked first.");
+
 namespace yb {
 namespace master {
 
@@ -90,6 +98,34 @@ TabletSplitManager::TabletSplitManager(
     splitting_disabled_until_(CoarseDuration::zero()),
     last_run_time_(CoarseDuration::zero()) {}
 
+struct SplitCandidate {
+  TabletInfoPtr tablet;
+  uint64_t leader_sst_size;
+};
+
+static inline bool LargestTabletFirst(const SplitCandidate& c1, const SplitCandidate& c2) {
+  return c1.leader_sst_size > c2.leader_sst_size;
+}
+
+Status TabletSplitManager::ValidateAgainstDisabledList(
+    const std::string& id, std::unordered_map<std::string, CoarseTimePoint>* map) {
+  UniqueLock<decltype(mutex_)> lock(mutex_);
+  const auto entry = map->find(id);
+  if (entry != map->end()) {
+    const auto ignored_until = entry->second;
+    if (ignored_until > CoarseMonoClock::Now()) {
+      VLOG(1) << Substitute("Table/tablet is ignored for splitting until $0. id: $1",
+                            ToString(ignored_until), id);
+      return STATUS_FORMAT(
+          NotSupported,
+          "Table/tablet is ignored for splitting until $0. id: $1", ToString(ignored_until), id);
+    } else {
+      map->erase(entry);
+    }
+  }
+  return Status::OK();
+}
+
 Status TabletSplitManager::ValidateSplitCandidateTable(const TableInfo& table) {
   if (PREDICT_FALSE(FLAGS_TEST_validate_all_tablet_candidates)) {
     return Status::OK();
@@ -100,23 +136,9 @@ Status TabletSplitManager::ValidateSplitCandidateTable(const TableInfo& table) {
         NotSupported,
         "Table is deleted; ignoring for splitting. table_id: $0", table.id());
   }
-  {
-    UniqueLock<decltype(mutex_)> lock(mutex_);
-    const auto entry = ignore_table_for_splitting_until_.find(table.id());
-    if (entry != ignore_table_for_splitting_until_.end()) {
-      const auto ignore_for_split_ttl_until = entry->second;
-      if (ignore_for_split_ttl_until > CoarseMonoClock::Now()) {
-        VLOG(1) << Substitute("Table has file expiration for TTL enabled; ignored for "
-            "splitting until $0. table_id: $1",  ToString(ignore_for_split_ttl_until), table.id());
-        return STATUS_FORMAT(
-            NotSupported,
-            "Table has file expiration for TTL enabled; ignored for splitting until $0. "
-            "table_id: $1", ToString(ignore_for_split_ttl_until), table.id());
-      } else {
-        ignore_table_for_splitting_until_.erase(entry);
-      }
-    }
-  }
+
+  RETURN_NOT_OK(ValidateAgainstDisabledList(table.id(), &ignore_table_for_splitting_until_));
+
   // Check if this table is covered by a PITR schedule.
   if (!FLAGS_enable_tablet_split_of_pitr_tables &&
       VERIFY_RESULT(filter_->IsTablePartOfSomeSnapshotSchedule(table))) {
@@ -144,6 +166,14 @@ Status TabletSplitManager::ValidateSplitCandidateTable(const TableInfo& table) {
         NotSupported,
         "Tablet splitting is not supported for transaction status tables, table_id: $0",
         table.id());
+  }
+  if (table.is_system()) {
+    VLOG(1) << Substitute("Tablet splitting is not supported for system table: $0 with "
+                          "table_id: $1", table.name(), table.id());
+    return STATUS_FORMAT(
+        NotSupported,
+        "Tablet splitting is not supported for system table: $0 with table_id: $1",
+        table.name(), table.id());
   }
   if (table.GetTableType() == REDIS_TABLE_TYPE) {
     VLOG(1) << Substitute("Tablet splitting is not supported for YEDIS tables, table_id: $0",
@@ -191,6 +221,9 @@ Status TabletSplitManager::ValidateSplitCandidateTablet(const TabletInfo& tablet
         NotSupported, "Tablet splitting is not supported for colocated tables, tablet_id: $0",
         tablet.tablet_id());
   }
+
+  RETURN_NOT_OK(ValidateAgainstDisabledList(tablet.id(), &ignore_tablet_for_splitting_until_));
+
   {
     auto tablet_state = tablet.LockForRead()->pb.state();
     if (tablet_state != SysTabletsEntryPB::RUNNING) {
@@ -202,17 +235,23 @@ Status TabletSplitManager::ValidateSplitCandidateTablet(const TabletInfo& tablet
   return Status::OK();
 }
 
-
-
 void TabletSplitManager::MarkTtlTableForSplitIgnore(const TableId& table_id) {
   if (FLAGS_prevent_split_for_ttl_tables_for_seconds != 0) {
     const auto recheck_at = CoarseMonoClock::Now()
         + MonoDelta::FromSeconds(FLAGS_prevent_split_for_ttl_tables_for_seconds);
     UniqueLock<decltype(mutex_)> lock(mutex_);
-    ignore_table_for_splitting_until_.insert({table_id, recheck_at});
+    ignore_table_for_splitting_until_[table_id] = recheck_at;
   }
 }
 
+void TabletSplitManager::MarkSmallKeyRangeTabletForSplitIgnore(const TabletId& tablet_id) {
+  if (FLAGS_prevent_split_for_small_key_range_tablets_for_seconds != 0) {
+    const auto recheck_at = CoarseMonoClock::Now()
+        + MonoDelta::FromSeconds(FLAGS_prevent_split_for_small_key_range_tablets_for_seconds);
+    UniqueLock<decltype(mutex_)> lock(mutex_);
+    ignore_tablet_for_splitting_until_[tablet_id] = recheck_at;
+  }
+}
 
 bool AllReplicasHaveFinishedCompaction(const TabletInfo& tablet_info) {
   auto replica_map = tablet_info.GetReplicaLocations();
@@ -222,21 +261,6 @@ bool AllReplicasHaveFinishedCompaction(const TabletInfo& tablet_info) {
     }
   }
   return true;
-}
-
-bool TabletSplitManager::ShouldSplitTablet(const TabletInfo& tablet) {
-  auto tablet_lock = tablet.LockForRead();
-  // If no leader for this tablet, skip it for now.
-  auto drive_info_opt = tablet.GetLeaderReplicaDriveInfo();
-  if (!drive_info_opt.ok()) {
-    return false;
-  }
-  if (ValidateSplitCandidateTablet(tablet).ok() &&
-      filter_->ShouldSplitValidCandidate(tablet, drive_info_opt.get()) &&
-      AllReplicasHaveFinishedCompaction(tablet)) {
-    return true;
-  }
-  return false;
 }
 
 void TabletSplitManager::ScheduleSplits(const unordered_set<TabletId>& splits_to_schedule) {
@@ -258,7 +282,7 @@ void TabletSplitManager::DoSplitting(const TableInfoMap& table_info_map) {
   // Splits that need to be started / restarted.
   unordered_set<TabletId> splits_to_schedule;
   // New split candidates. The chosen candidates are eventually added to splits_to_schedule.
-  TabletInfos new_split_candidates;
+  vector<SplitCandidate> new_split_candidates;
 
   // Helper method to determine if more splits can be scheduled, or if we should exit early.
   const auto can_split_more = [&]() {
@@ -338,8 +362,18 @@ void TabletSplitManager::DoSplitting(const TableInfoMap& table_info_map) {
           splits_to_schedule.erase(parent_id);
         }
       }
-      if (!ignore_as_candidate && ShouldSplitTablet(*tablet)) {
-        new_split_candidates.push_back(tablet);
+
+      if (!ignore_as_candidate) {
+        auto drive_info_opt = tablet->GetLeaderReplicaDriveInfo();
+        if (!drive_info_opt.ok()) {
+          continue;
+        }
+        if (ValidateSplitCandidateTablet(*tablet).ok() &&
+            filter_->ShouldSplitValidCandidate(*tablet, drive_info_opt.get()) &&
+            AllReplicasHaveFinishedCompaction(*tablet)) {
+          SplitCandidate candidate = {tablet, drive_info_opt.get().sst_files_size};
+          new_split_candidates.push_back(std::move(candidate));
+        }
       }
     }
     if (!can_split_more()) {
@@ -349,11 +383,16 @@ void TabletSplitManager::DoSplitting(const TableInfoMap& table_info_map) {
 
   // Add any new splits to the set of splits to schedule (while respecting the max number of
   // outstanding splits).
-  for (const auto& tablet : new_split_candidates) {
-    if (!can_split_more()) {
-      break;
+  if (can_split_more()) {
+    if (FLAGS_sort_automatic_tablet_splitting_candidates) {
+      sort(new_split_candidates.begin(), new_split_candidates.end(), LargestTabletFirst);
     }
-    splits_to_schedule.insert(tablet->id());
+    for (const auto& candidate : new_split_candidates) {
+      if (!can_split_more()) {
+        break;
+      }
+      splits_to_schedule.insert(candidate.tablet->id());
+    }
   }
 
   ScheduleSplits(splits_to_schedule);

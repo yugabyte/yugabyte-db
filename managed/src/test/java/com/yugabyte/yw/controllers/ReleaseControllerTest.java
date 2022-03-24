@@ -15,6 +15,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyObject;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -27,15 +28,21 @@ import static play.test.Helpers.contentAsString;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Users;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
@@ -47,15 +54,33 @@ public class ReleaseControllerTest extends FakeDBApplication {
 
   private Customer customer;
   private Users user;
+  private Provider provider;
+  private Region region;
+  private Region mockRegion;
 
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
+    provider = ModelFactory.awsProvider(customer);
+    region = Region.create(provider, "us-west-2", "us-west-2", "yb-image");
+    mockRegion = mock(Region.class);
   }
 
   private Result getReleases(UUID customerUUID) {
     return getReleases(customerUUID, false);
+  }
+
+  private Result getReleasesRegion(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
+    String uri =
+        "/api/customers/"
+            + customerUUID
+            + "/providers/"
+            + providerUUID
+            + "/regions/"
+            + regionUUID
+            + "/releases";
+    return FakeApiHelper.doRequestWithAuthToken("GET", uri, user.createAuthToken());
   }
 
   private Result getReleases(UUID customerUUID, boolean includeMetadata) {
@@ -109,6 +134,52 @@ public class ReleaseControllerTest extends FakeDBApplication {
     }
 
     when(mockReleaseManager.getReleaseMetadata()).thenReturn(data);
+  }
+
+  private void mockNewReleaseData(boolean multiple) {
+    ImmutableMap<String, Object> data;
+    if (multiple) {
+      ReleaseManager.ReleaseMetadata legacyRelease =
+          ReleaseManager.ReleaseMetadata.fromLegacy("0.0.6", "yugabyte-0.0.6.tar.gz");
+      ReleaseManager.ReleaseMetadata armRelease =
+          ReleaseManager.ReleaseMetadata.create("0.0.5")
+              .withFilePath("yugabyte-0.0.5-aarch64.tar.gz")
+              .withPackage("yugabyte-0.0.5-aarch64.tar.gz", Architecture.arm64);
+      ReleaseManager.ReleaseMetadata x86Release =
+          ReleaseManager.ReleaseMetadata.create("0.0.4")
+              .withFilePath("yugabyte-0.0.4-x86_64.tar.gz")
+              .withPackage("yugabyte-0.0.4-x86_64.tar.gz", Architecture.x86_64);
+      ReleaseManager.ReleaseMetadata activeRelease =
+          ReleaseManager.ReleaseMetadata.create("0.0.3")
+              .withFilePath("yugabyte-0.0.3-x86_64.tar.gz")
+              .withPackage("yugabyte-0.0.3-x86_64.tar.gz", Architecture.x86_64)
+              .withPackage("yugabyte-0.0.3-aarch64.tar.gz", Architecture.arm64);
+      ReleaseManager.ReleaseMetadata disabledRelease =
+          ReleaseManager.ReleaseMetadata.create("0.0.2")
+              .withFilePath("yugabyte-0.0.2-x86_64.tar.gz")
+              .withPackage("yugabyte-0.0.2-x86_64.tar.gz", Architecture.x86_64);
+      disabledRelease.state = DISABLED;
+      data =
+          ImmutableMap.of(
+              "0.0.6", legacyRelease,
+              "0.0.5", armRelease,
+              "0.0.4", x86Release,
+              "0.0.3", activeRelease,
+              "0.0.2", disabledRelease);
+    } else {
+      ReleaseManager.ReleaseMetadata activeRelease =
+          ReleaseManager.ReleaseMetadata.create("0.0.1")
+              .withFilePath("yugabyte-0.0.1-x86_64.tar.gz")
+              .withPackage("yugabyte-0.0.1-x86_64.tar.gz", Architecture.x86_64);
+      data = ImmutableMap.of("0.0.1", activeRelease);
+    }
+
+    when(mockReleaseManager.getReleaseMetadata()).thenReturn(data);
+    when(mockReleaseManager.metadataFromObject(any()))
+        .thenAnswer(
+            invocation ->
+                Json.fromJson(
+                    Json.toJson(invocation.getArgument(0)), ReleaseManager.ReleaseMetadata.class));
   }
 
   private void assertReleases(Map expectedMap, HashMap releases) {
@@ -340,6 +411,66 @@ public class ReleaseControllerTest extends FakeDBApplication {
     HashMap releases = Json.fromJson(json, HashMap.class);
     assertReleases(expectedMap, releases);
     assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testGetReleasesByRegionOld() {
+    mockNewReleaseData(true);
+    when(mockRegion.getArchitecture()).thenReturn(null);
+    Result result = getReleasesRegion(customer.uuid, provider.uuid, region.uuid);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals(OK, result.status());
+    Set<String> versions = ImmutableSet.of("0.0.2", "0.0.3", "0.0.4", "0.0.5", "0.0.6");
+    assertEquals(versions.size(), json.size());
+    Iterator<JsonNode> jsonIter = json.iterator();
+    while (jsonIter.hasNext()) {
+      assertTrue(versions.contains(jsonIter.next().asText()));
+    }
+  }
+
+  @Test
+  public void testGetReleasesByRegionx86() {
+    mockNewReleaseData(true);
+    region.setArchitecture("x86_64");
+    Result result = getReleasesRegion(customer.uuid, provider.uuid, region.uuid);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals(OK, result.status());
+    Set<String> versions = ImmutableSet.of("0.0.2", "0.0.3", "0.0.4", "0.0.6");
+    assertEquals(versions.size(), json.size());
+    Iterator<JsonNode> jsonIter = json.iterator();
+    while (jsonIter.hasNext()) {
+      assertTrue(versions.contains(jsonIter.next().asText()));
+    }
+  }
+
+  @Test
+  public void testGetReleasesByRegionArm() {
+    mockNewReleaseData(true);
+    region.setArchitecture("arm64");
+    Result result = getReleasesRegion(customer.uuid, provider.uuid, region.uuid);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals(OK, result.status());
+    Set<String> versions = ImmutableSet.of("0.0.3", "0.0.5", "0.0.6");
+    assertEquals(versions.size(), json.size());
+    Iterator<JsonNode> jsonIter = json.iterator();
+    while (jsonIter.hasNext()) {
+      assertTrue(versions.contains(jsonIter.next().asText()));
+    }
+  }
+
+  @Test
+  public void testGetReleasesByRegionEmpty() {
+    mockNewReleaseData(false);
+    region.setArchitecture("arm64");
+    Result result = getReleasesRegion(customer.uuid, provider.uuid, region.uuid);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals(OK, result.status());
+    Set<String> versions = ImmutableSet.of();
+    assertEquals(versions.size(), json.size());
+    Iterator<JsonNode> jsonIter = json.iterator();
+    while (jsonIter.hasNext()) {
+      assertTrue(versions.contains(jsonIter.next().asText()));
+    }
   }
 
   @Test

@@ -159,6 +159,7 @@ public class BackupUtil {
             .isUniversePresent(isUniversePresent)
             .totalBackupSizeInBytes(Long.valueOf(backup.getBackupInfo().backupSizeInBytes))
             .backupType(backup.getBackupInfo().backupType)
+            .storageConfigType(backup.getBackupInfo().storageConfigType)
             .state(backup.state);
     if (backup.getBackupInfo().backupList == null) {
       KeyspaceTablesList kTList =
@@ -193,7 +194,9 @@ public class BackupUtil {
   public List<String> getStorageLocationList(JsonNode data) throws PlatformServiceException {
     List<String> locations = new ArrayList<>();
     List<RegionLocations> regionsList = null;
-    if (StringUtils.isNotBlank(data.get(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME).asText())) {
+    if (data.has(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME)
+        && StringUtils.isNotBlank(
+            data.get(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME).asText())) {
       locations.add(data.get(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME).asText());
     } else {
       throw new PlatformServiceException(BAD_REQUEST, "Default backup location cannot be empty");
@@ -210,20 +213,26 @@ public class BackupUtil {
     return locations;
   }
 
-  public List<RegionLocations> getRegionLocationsList(JsonNode data) {
-    List<RegionLocations> regionLocationsList = null;
+  public List<RegionLocations> getRegionLocationsList(JsonNode data)
+      throws PlatformServiceException {
+    List<RegionLocations> regionLocationsList = new ArrayList<>();
     try {
-      ObjectMapper mapper = new ObjectMapper();
-      String jsonLocations =
-          mapper.writeValueAsString(data.get(CustomerConfigConsts.REGION_LOCATIONS_FIELDNAME));
-      regionLocationsList = Arrays.asList(mapper.readValue(jsonLocations, RegionLocations[].class));
-    } catch (IOException e) {
-      LOG.error("Error parsing regionLocations list: ", e);
+      if (data.has(CustomerConfigConsts.REGION_LOCATIONS_FIELDNAME)) {
+        ObjectMapper mapper = new ObjectMapper();
+        String jsonLocations =
+            mapper.writeValueAsString(data.get(CustomerConfigConsts.REGION_LOCATIONS_FIELDNAME));
+        regionLocationsList =
+            Arrays.asList(mapper.readValue(jsonLocations, RegionLocations[].class));
+      }
+    } catch (IOException ex) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Not able to parse region location from the storage config data");
     }
+
     return regionLocationsList;
   }
 
-  public void validateStorageConfigOnLocations(CustomerConfig config, List<String> locations) {
+  public Boolean validateStorageConfigOnLocations(CustomerConfig config, List<String> locations) {
     LOG.info(String.format("Validating storage config %s", config.configName));
     Boolean isValid = true;
     switch (config.name) {
@@ -243,13 +252,7 @@ public class BackupUtil {
         throw new PlatformServiceException(
             BAD_REQUEST, String.format("Invalid config type: %s", config.name));
     }
-    if (!isValid) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          String.format(
-              "Storage config %s cannot access location %s",
-              config.configName, config.data.get(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME)));
-    }
+    return isValid;
   }
 
   public void validateStorageConfig(CustomerConfig config) throws PlatformServiceException {
@@ -366,5 +369,18 @@ public class BackupUtil {
     } finally {
       ybService.closeClient(client, masterAddresses);
     }
+  }
+
+  public List<String> getBackupLocations(Backup backup) {
+    BackupTableParams backupParams = backup.getBackupInfo();
+    List<String> backupLocations = new ArrayList<>();
+    if (backupParams.backupList != null) {
+      for (BackupTableParams params : backupParams.backupList) {
+        backupLocations.add(params.storageLocation);
+      }
+    } else {
+      backupLocations.add(backupParams.storageLocation);
+    }
+    return backupLocations;
   }
 }

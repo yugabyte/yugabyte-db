@@ -499,6 +499,7 @@ class YBClient::Data {
   std::unique_ptr<ThreadPool> threadpool_;
 
   const ClientId id_;
+  const std::string log_prefix_;
 
   // Used to track requests that were sent to a particular tablet, so it could track different
   // RPCs related to the same write operation and reject duplicates.

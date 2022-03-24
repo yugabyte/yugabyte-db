@@ -32,6 +32,7 @@
 
 #include "yb/tserver/tserver_util_fwd.h"
 
+#include "yb/util/lw_function.h"
 #include "yb/util/oid_generator.h"
 #include "yb/util/result.h"
 
@@ -219,7 +220,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
     const PgTableDesc* table = nullptr;
   };
 
-  using OperationGenerator = std::function<TableOperation()>;
+  using OperationGenerator = LWFunction<TableOperation()>;
 
   template<class... Args>
   Result<PerformFuture> RunAsync(
@@ -229,7 +230,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
             ? TableOperation { .operation = ops++, .table = &table }
             : TableOperation();
     };
-    return RunAsync(generator, std::forward<Args>(args)...);
+    return RunAsync(make_lw_function(generator), std::forward<Args>(args)...);
   }
 
   Result<PerformFuture> RunAsync(
@@ -290,7 +291,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   Result<uint64_t> GetSharedAuthKey();
 
   using YbctidReader =
-      std::function<Result<std::vector<std::string>>(PgOid, const std::vector<Slice>&)>;
+      LWFunction<Result<std::vector<std::string>>(PgOid, const std::vector<Slice>&)>;
   Result<bool> ForeignKeyReferenceExists(
       PgOid table_id, const Slice& ybctid, const YbctidReader& reader);
   void AddForeignKeyReferenceIntent(PgOid table_id, const Slice& ybctid);
@@ -320,7 +321,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   CHECKED_STATUS RollbackSubTransaction(SubTransactionId id);
 
  private:
-  using Flusher = std::function<Status(BufferableOperations, IsTransactionalSession)>;
+  using Flusher = LWFunction<Status(BufferableOperations, IsTransactionalSession)>;
 
   CHECKED_STATUS FlushBufferedOperationsImpl(const Flusher& flusher);
   CHECKED_STATUS FlushOperations(BufferableOperations ops, IsTransactionalSession transactional);
