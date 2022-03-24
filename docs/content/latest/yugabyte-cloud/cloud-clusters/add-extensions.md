@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Extend the functionality of your cluster using PostgreSQL extensions. YugabyteDB comes bundled with a number of extensions that are tested to work with YSQL. For a list of bundled extensions, refer to [Pre-bundled extensions](../../../explore/ysql-language-features/advanced-features/extensions).
+Extend the functionality of your cluster using PostgreSQL extensions. YugabyteDB comes bundled with a number of extensions that are tested to work with YSQL. For a list of bundled extensions, refer to [PostgreSQL extensions](../../../explore/ysql-language-features/pg-extensions/).
 
 ## Loading extensions
 
@@ -43,7 +43,6 @@ If you need a database extension that is not bundled with YugabyteDB added to a 
 
 ## Learn more
 
-- [Pre-bundled extensions](../../../explore/ysql-language-features/advanced-features/extensions/)
-- [Install and use extensions](../../../api/ysql/extensions/)
+- [PostgreSQL extensions](../../../explore/ysql-language-features/pg-extensions/)
 - [Database authorization in Yugabyte Cloud clusters](../../cloud-secure-clusters/cloud-users/)
 - [Manage Users and Roles in YSQL](../../../secure/authorization/create-roles/)

@@ -35,7 +35,7 @@ cd /home/yugabyte/softwareyb-$VER/
 
 {{< note title="Note" >}}
 
-If you are using PostgreSQL extensions, make sure to install the extensions in the new YugabyteDB version before upgrading. Follow the steps in [Install and use extensions](../../explore/ysql-language-features/advanced-features/extensions/).
+If you are using PostgreSQL extensions, make sure to install the extensions in the new YugabyteDB version before upgrading the servers. Follow the steps in [Installing extensions](../../explore/ysql-language-features/pg-extensions/#installing-extensions).
 
 {{< /note >}}
 
@@ -84,7 +84,7 @@ cd /home/yugabyte/softwareyb-$VER/
 Similar to PostgreSQL, YugabyteDB YSQL stores the system metadata, (also referred to as system catalog) which includes information about tables, columns, functions, users, and so on in special tables separately, for each database in the cluster.
 
 YSQL system catalog comes as an additional layer to store metadata on top of YugabyteDB software itself. It is accessible through YSQL API and is crucial for the YSQL functionality.
-YSQL system catalog upgrades are not required for clusters where YSQL is not enabled. Learn more about configuring YSQL flags [here](../../reference/configuration/yb-tserver/#ysql-flags).
+YSQL system catalog upgrades are not required for clusters where YSQL is not enabled. Learn more about configuring [YSQL flags](../../reference/configuration/yb-tserver/#ysql-flags).
 
 {{< note title="Note" >}}
 YSQL system catalog upgrades are applicable for clusters with YugabyteDB version 2.8 or higher.
@@ -96,7 +96,7 @@ With the addition of new features , there's a need to add more objects such as n
 
 The usual YugabyteDB upgrade process involves only upgrading binaries, and it doesn't affect YSQL system catalog of an existing cluster; it remains in the same state as it was before the upgrade.
 
-While a newly created cluster on the latest release is initialized with the most recent pre packaged YSQL system catalog snapshot, an older cluster might want to manually upgrade YSQL system catalog to the latest state instead, thus getting all the benefits of the latest YSQL features.
+While a newly created cluster on the latest release is initialized with the most recent pre-packaged YSQL system catalog snapshot, an older cluster might want to manually upgrade YSQL system catalog to the latest state instead, thus getting all the benefits of the latest YSQL features.
 
 ### How to upgrade YSQL system catalog
 

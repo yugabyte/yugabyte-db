@@ -14,14 +14,14 @@ isTocNested: true
 showAsideToc: true
 ---
 
-YugabyteDB's YSQL API reuses a fork of the query layer of PostgreSQL as its starting point and runs on top of YugabyteDB's distributed storage layer called DocDB. This architecture allows YSQL to support most PostgreSQL features such as data types, queries, expressions, operators and functions, stored procedures, triggers, extensions, and so on, all of which are expected to work identically on both database systems.
+YugabyteDB's YSQL API reuses a fork of the query layer of PostgreSQL as its starting point and runs on top of YugabyteDB's distributed storage layer called DocDB. This architecture allows YSQL to support most PostgreSQL features, such as data types, queries, expressions, operators and functions, stored procedures, triggers, extensions, and so on, all of which are expected to work identically on both database systems.
 
 {{< tip title="Tip" >}}
 A large portion of the documentation and examples written for PostgreSQL would work against YSQL.
 
 {{< /tip >}}
 
-The following diagram demonstrates how YugabyteDB reuses the PostgreSQL query layer of, specifically its components that receive the query (_postman_), the query _parser_, _rewriter_, _analyzer_, as well as components responsible for _planning_ and _executing_ the query. Some of these components have been modified to perform efficiently in a distributed SQL database.
+The following diagram shows how YugabyteDB reuses the PostgreSQL query layer, specifically the components that receive the query (_postman_), the query _parser_, _rewriter_, _analyzer_, as well as components responsible for _planning_ and _executing_ the query. Some of these components have been modified to perform efficiently in a distributed SQL database.
 
 ![Reusing the PostgreSQL query layer in YSQL](/images/section_icons/architecture/Reusing-PostgreSQL-query-layer.png)
 
@@ -39,6 +39,7 @@ The following table lists the most important YSQL features which you would find 
 | <span style="font-size:16px">[Expressions and Operators](expressions-operators/)</span> | Basic operators and boolean, numeric, date expressions |
 | <span style="font-size:16px">[Stored Procedures](stored-procedures/)</span> | Support for stored procedures |
 | <span style="font-size:16px">[Triggers](triggers/)</span> | Triggers (on data modification) and event triggers (on schema changes) |
+| <span style="font-size:16px">[Extensions](pg-extensions/)</span> | Support for PostgreSQL extensions |
 
 ## Advanced features in YSQL
 
@@ -51,7 +52,6 @@ The following table lists the advanced features in YSQL.
 | <span style="font-size:16px">[Views](advanced-features/views/)</span> | Views and updatable views |
 | <span style="font-size:16px">[Savepoints](advanced-features/savepoints/)</span> | Savepoints in YSQL |
 | <span style="font-size:16px">[Collations](advanced-features/collations/)</span> | Collations in YSQL |
-| <span style="font-size:16px">[Extensions](advanced-features/extensions/)</span> | Pre-bundled extensions for YugabyteDB |
 
 <!--
 | <span style="font-size:16px">[Functions and operators](functions-operators/)</span> | Conditional expressions, math / string / date / time / window functions and operators  |
@@ -60,7 +60,7 @@ The following table lists the advanced features in YSQL.
 
 ## Going beyond SQL
 
-Since YugabyteDB is a distributed SQL database, YSQL has a number of features that are not present in PostgreSQL, as summarized in the following table.
+Because YugabyteDB is a distributed SQL database, YSQL has a number of features that are not present in PostgreSQL, as summarized in the following table.
 
 | YSQL Feature                                                 | Description                                                  |
 | :----------------------------------------------------------- | :----------------------------------------------------------- |
