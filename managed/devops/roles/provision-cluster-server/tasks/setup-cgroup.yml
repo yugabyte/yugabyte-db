@@ -14,6 +14,9 @@
         - libcgroup-tools
       state: present
     when: ansible_os_family == 'RedHat'
+    register: result
+    until: result is succeeded
+    retries: "{{ install_retry_count }}"
 
   - name: Add ysql crgroup info to cgconfig.conf
     template:
