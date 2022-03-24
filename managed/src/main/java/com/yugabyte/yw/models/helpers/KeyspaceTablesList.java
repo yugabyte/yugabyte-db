@@ -1,5 +1,7 @@
 package com.yugabyte.yw.models.helpers;
 
+import com.yugabyte.yw.common.BackupUtil;
+import java.util.List;
 import java.util.Set;
 import lombok.Builder;
 import lombok.Value;
@@ -10,5 +12,6 @@ public class KeyspaceTablesList {
   String keyspace;
   Set<String> tablesList;
   Long backupSizeInBytes;
-  String storageLocation;
+  String defaultLocation;
+  List<BackupUtil.RegionLocations> perRegionLocations;
 }
