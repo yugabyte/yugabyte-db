@@ -156,7 +156,8 @@ public class TableManagerYb extends DevopsBase {
               commandArgs.add("--region");
               commandArgs.add(regionLocation.REGION);
               commandArgs.add("--region_location");
-              commandArgs.add(regionLocation.LOCATION);
+              commandArgs.add(
+                  backupUtil.getExactRegionLocation(backupTableParams, regionLocation.LOCATION));
             }
           }
         }

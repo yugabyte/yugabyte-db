@@ -1676,6 +1676,13 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "regionLocations" : {
+          "description" : "per region locations",
+          "items" : {
+            "$ref" : "#/definitions/RegionLocations"
+          },
+          "type" : "array"
+        },
         "restoreTimeStamp" : {
           "description" : "Restore TimeStamp",
           "type" : "string"
@@ -3417,11 +3424,17 @@
           "format" : "int64",
           "type" : "integer"
         },
+        "defaultLocation" : {
+          "type" : "string"
+        },
         "keyspace" : {
           "type" : "string"
         },
-        "storageLocation" : {
-          "type" : "string"
+        "perRegionLocations" : {
+          "items" : {
+            "$ref" : "#/definitions/RegionLocations"
+          },
+          "type" : "array"
         },
         "tablesList" : {
           "items" : {
@@ -3431,7 +3444,7 @@
           "uniqueItems" : true
         }
       },
-      "required" : [ "backupSizeInBytes", "keyspace", "storageLocation", "tablesList" ],
+      "required" : [ "backupSizeInBytes", "defaultLocation", "keyspace", "perRegionLocations", "tablesList" ],
       "type" : "object"
     },
     "LogData" : {
@@ -3768,6 +3781,13 @@
           "description" : "Previous task UUID only if this task is a retry",
           "format" : "uuid",
           "type" : "string"
+        },
+        "regionLocations" : {
+          "description" : "per region locations",
+          "items" : {
+            "$ref" : "#/definitions/RegionLocations"
+          },
+          "type" : "array"
         },
         "restoreTimeStamp" : {
           "description" : "Restore TimeStamp",
@@ -4593,6 +4613,18 @@
         }
       },
       "required" : [ "code", "destVpcId", "hostVpcId", "hostVpcRegion", "latitude", "longitude", "name", "ybImage" ],
+      "type" : "object"
+    },
+    "RegionLocations" : {
+      "properties" : {
+        "LOCATION" : {
+          "type" : "string"
+        },
+        "REGION" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "LOCATION", "REGION" ],
       "type" : "object"
     },
     "ReleaseFormData" : {

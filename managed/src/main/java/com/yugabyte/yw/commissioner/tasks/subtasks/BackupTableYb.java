@@ -20,9 +20,11 @@ import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Universe;
 import java.util.Date;
+import java.util.List;
 import java.util.Map;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
 import play.libs.Json;
 
 @Slf4j
@@ -50,6 +52,7 @@ public class BackupTableYb extends AbstractTaskBase {
         long totalBackupSize = 0L;
         int backupIdx = 0;
         for (BackupTableParams backupParams : taskParams().backupList) {
+          backupParams.backupUuid = taskParams().backupUuid;
           ShellResponse response = tableManagerYb.createBackup(backupParams);
           processShellResponse(response);
           JsonNode jsonNode = null;
@@ -66,6 +69,11 @@ public class BackupTableYb extends AbstractTaskBase {
 
           log.info("[" + getName() + "] STDOUT: " + response.message);
           long backupSize = BackupUtil.extractBackupSize(jsonNode);
+          List<BackupUtil.RegionLocations> locations =
+              BackupUtil.extractPerRegionLocationsFromBackupScriptResponse(jsonNode);
+          if (CollectionUtils.isNotEmpty(locations)) {
+            backup.setPerRegionLocations(backupIdx, locations);
+          }
           backup.setBackupSizeInBackupList(backupIdx, backupSize);
           totalBackupSize += backupSize;
           backupIdx++;
