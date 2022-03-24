@@ -51,7 +51,7 @@ For best performance as well as lower data transfer costs, you want to minimize 
 - Use the same cloud provider as your application.
 - Locate your cluster in the same region as your application.
 
-For lowest possible network latency and data transfer costs, deploy your cluster in a virtual private cloud (VPC) on the same cloud provider as your application VPC and peer it with the application VPC. This configuration also provides the best security.
+For lowest possible network latency and data transfer costs, deploy your cluster in a VPC on the same cloud provider as your application VPC and peer it with the application VPC. This configuration also provides the best security.
 
 For a list of supported regions, refer to [Cloud provider regions](../../release-notes/#cloud-provider-regions).
 
@@ -76,7 +76,7 @@ For application development and testing, you can set fault tolerance to **None**
 
 ### Sizing
 
-The size of the cluster is based on the number of vCPUs. The basic configuration for Yugabyte Cloud clusters includes 2 vCPUs per node. Each vCPU comes with 50GB of storage. A node has a minimum of 2 vCPUs, and 2 GB of RAM per vCPU. For the cluster to be [fault tolerant](#fault-tolerance), you need a minimum of 3 nodes.
+The size of the cluster is based on the number of vCPUs. The basic configuration for Yugabyte Cloud clusters includes 2 vCPUs per node. Each vCPU comes with 50GB of storage. A node has a minimum of 2 vCPUs, and 2GB of RAM per vCPU. For the cluster to be [fault tolerant](#fault-tolerance), you need a minimum of 3 nodes.
 
 Depending on your performance requirements, you can increase the number of vCPUs per node, as well as the total number of nodes. You can also increase the disk size per node. However, once increased, you can't lower the disk size per node.
 
@@ -108,7 +108,7 @@ If your applications are running in a VPC, deploy your cluster in a VPC to impro
 
 #### User authorization
 
-YugabyteDB uses role based access control to manage database access. When you create a cluster, Yugabyte Cloud adds a default admin user (the credentials for this user are configurable).
+YugabyteDB uses role-based access control to manage database access. When you create a cluster, Yugabyte Cloud adds a default admin user (the credentials for this user are configurable).
 
 After the cluster is provisioned, create a new database and [add users](../../cloud-secure-clusters/add-users/). You can create users specific to each connecting application, and restrict their access accordingly.
 
