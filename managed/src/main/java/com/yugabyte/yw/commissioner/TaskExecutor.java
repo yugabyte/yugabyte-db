@@ -30,6 +30,7 @@ import io.prometheus.client.CollectorRegistry;
 import io.prometheus.client.Summary;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -51,6 +52,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
@@ -120,6 +122,9 @@ public class TaskExecutor {
 
   // Task futures are waited for this long before checking abort status.
   private static final long TASK_SPIN_WAIT_INTERVAL_MS = 2000;
+
+  // Max size of the callstack for task creator thread.
+  private static final int MAX_TASK_CREATOR_CALLSTACK_SIZE = 15;
 
   // Default wait timeout for subtasks to complete since the abort call.
   private final Duration defaultAbortTaskTimeout = Duration.ofSeconds(60);
@@ -700,6 +705,7 @@ public class TaskExecutor {
     final TaskInfo taskInfo;
     // Timeout limit for this task.
     final Duration timeLimit;
+    final String[] creatorCallstack;
 
     Instant taskScheduledTime;
     Instant taskStartTime;
@@ -723,6 +729,23 @@ public class TaskExecutor {
         }
       }
       timeLimit = duration;
+      if (log.isDebugEnabled()) {
+        StackTraceElement[] elements = Thread.currentThread().getStackTrace();
+        // Track who creates this task. Skip the first three which contain getStackTrace and
+        // runnable task creation (concrete and abstract classes).
+        creatorCallstack =
+            IntStream.range(3, elements.length)
+                .limit(MAX_TASK_CREATOR_CALLSTACK_SIZE)
+                .mapToObj(idx -> elements[idx].toString())
+                .toArray(String[]::new);
+      } else {
+        creatorCallstack = new String[0];
+      }
+    }
+
+    @VisibleForTesting
+    String[] getCreatorCallstack() {
+      return creatorCallstack;
     }
 
     // State and error message updates to tasks are done in this method instead of waitForSubTasks
@@ -848,6 +871,12 @@ public class TaskExecutor {
           taskInfo.getTaskUUID(),
           taskDetails,
           t);
+
+      if (log.isDebugEnabled()) {
+        log.debug(
+            "Task creator callstack:\n{}",
+            Arrays.stream(creatorCallstack).collect(Collectors.joining("\n")));
+      }
 
       ObjectNode details = taskDetails.deepCopy();
       details.put("errorString", errorString);
