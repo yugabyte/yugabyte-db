@@ -32,17 +32,17 @@ For information about using a specific extension in YugabyteDB, follow the More 
 | Extension | Status | Description | More information |
 | :-------- | :----- | :---------- | :------ |
 | **PostgreSQL modules** |
-| [fuzzystrmatch module](https://www.postgresql.org/docs/11/fuzzystrmatch.html) | Pre-bundled | Provides several functions to determine similarities and distance between strings. | [Example](#fuzzystrmatch-example) |
-| [pgcrypto module](https://www.postgresql.org/docs/11/pgcrypto.html)| Pre-bundled | Provides various cryptographic functions. | [Example](#pgcrypto-example) |
-| [pg_stat_statements module](https://www.postgresql.org/docs/11/pgstatstatements.html)| Pre-bundled| Provides a means for tracking execution statistics of all SQL statements executed by a server. | [Example](#pg-stat-statements-example) |
-| [spi module](https://www.postgresql.org/docs/11/contrib-spi.html)|Pre-bundled | Lets you use the Server Programming Interface (SPI) to create user-defined functions and stored procedures in C, and to run YSQL queries directly against YugabyteDB. | [Example](#spi-example) |
-| [hstore module](https://www.postgresql.org/docs/11/hstore.html) | Pre-bundled | Implements the hstore data type for storing sets of key/value pairs in a single PostgreSQL value. | |
-| [pg_trgm module](https://www.postgresql.org/docs/11/pgtrgm.html) | Pre-bundled | Provides functions and operators for determining the similarity of alphanumeric text based on trigram matching, as well as index operator classes that support fast searching for similar strings. | |
-| [postgres_fdw module](https://www.postgresql.org/docs/11/postgres-fdw.html) | Pre-bundled | Provides the foreign-data wrapper postgres_fdw, which can be used to access data stored in external PostgreSQL servers. | |
-| [file_fdw module](https://www.postgresql.org/docs/11/file-fdw.html) | Pre-bundled | Provides the foreign-data wrapper file_fdw, which can be used to access data files in the server's file system. | |
-| [sslinfo module](https://www.postgresql.org/docs/11/sslinfo.html) | Pre-bundled | Provides information about the SSL certificate that the current client provided when connecting to PostgreSQL. | |
-| [tablefunc module](https://www.postgresql.org/docs/11/tablefunc.html) | Pre-bundled | Provides several table functions. For example, `normal_rand()` creates values, picked using a pseudorandom generator, from an ideal normal distribution. You specify how many values you want, and the mean and standard deviation of the ideal distribution. You use it in the same way that you use `generate_series()` | [Example](#tablefunc-example) |
-| [uuid-ossp module](https://www.postgresql.org/docs/11/uuid-ossp.html) | Requires installation | Provides functions to generate universally unique identifiers (UUIDs), and functions to produce certain special UUID constants. | [Install and example](#uuid-ossp-example) |
+| [fuzzystrmatch](https://www.postgresql.org/docs/11/fuzzystrmatch.html) | Pre-bundled | Provides several functions to determine similarities and distance between strings. | [Example](#fuzzystrmatch-example) |
+| [pgcrypto](https://www.postgresql.org/docs/11/pgcrypto.html)| Pre-bundled | Provides various cryptographic functions. | [Example](#pgcrypto-example) |
+| [pg_stat_statements](https://www.postgresql.org/docs/11/pgstatstatements.html)| Pre-bundled| Provides a means for tracking execution statistics of all SQL statements executed by a server. | [Example](#pg-stat-statements-example) |
+| [spi](https://www.postgresql.org/docs/11/contrib-spi.html)|Pre-bundled | Lets you use the Server Programming Interface (SPI) to create user-defined functions and stored procedures in C, and to run YSQL queries directly against YugabyteDB. | [Example](#spi-example) |
+| [hstore](https://www.postgresql.org/docs/11/hstore.html) | Pre-bundled | Implements the hstore data type for storing sets of key/value pairs in a single PostgreSQL value. | |
+| [pg_trgm](https://www.postgresql.org/docs/11/pgtrgm.html) | Pre-bundled | Provides functions and operators for determining the similarity of alphanumeric text based on trigram matching, as well as index operator classes that support fast searching for similar strings. | |
+| [postgres_fdw](https://www.postgresql.org/docs/11/postgres-fdw.html) | Pre-bundled | Provides the foreign-data wrapper postgres_fdw, which can be used to access data stored in external PostgreSQL servers. | |
+| [file_fdw](https://www.postgresql.org/docs/11/file-fdw.html) | Pre-bundled | Provides the foreign-data wrapper file_fdw, which can be used to access data files in the server's file system. | |
+| [sslinfo](https://www.postgresql.org/docs/11/sslinfo.html) | Pre-bundled | Provides information about the SSL certificate that the current client provided when connecting to PostgreSQL. | |
+| [tablefunc](https://www.postgresql.org/docs/11/tablefunc.html) | Pre-bundled | Provides several table functions. For example, `normal_rand()` creates values, picked using a pseudorandom generator, from an ideal normal distribution. You specify how many values you want, and the mean and standard deviation of the ideal distribution. You use it in the same way that you use `generate_series()` | [Example](#tablefunc-example) |
+| [uuid-ossp](https://www.postgresql.org/docs/11/uuid-ossp.html) | Requires installation | Provides functions to generate universally unique identifiers (UUIDs), and functions to produce certain special UUID constants. | [Install and example](#uuid-ossp-example) |
 | **Other** ||||
 | [pg_hint_plan](https://pghintplan.osdn.jp/pg_hint_plan.html) | Pre-bundled | Tweak execution plans using "hints", which are descriptions in the form of SQL comments. | [Example](../../query-1-performance/pg-hint-plan/#root) |
 | [PGAudit](https://www.pgaudit.org/) | Pre-bundled | The PostgreSQL Audit Extension (pgAudit) provides detailed session and/or object audit logging via the standard PostgreSQL logging facility. | |
@@ -50,11 +50,11 @@ For information about using a specific extension in YugabyteDB, follow the More 
 | [Orafce](https://github.com/orafce/orafce)| Pre-bundled | Provides compatibility with Oracle functions and packages that are either missing or implemented differently in YugabyteDB and PostgreSQL. This compatibility layer can help you port your Oracle applications to YugabyteDB. | |
 | [PostGIS](https://postgis.net/) | Requires installation | A spatial database extender for PostgreSQL-compatible object-relational databases. | [Install and example](#postgis-example) |
 | [postgresql-hll](https://github.com/citusdata/postgresql-hll) | Requires installation | Introduces the data type `hll`, which is a HyperLogLog data structure. | [Install and example](#postgresql-hll-example) |
+| [pgsql-postal](https://github.com/pramsey/pgsql-postal) | Requires installation | Parse and normalize street addresses around the world using libpostal. | [Install and example](#pgsql-postal-example)|
 | [YCQL_fdw](https://github.com/YugaByte/yugabyte-db/issues/830) | In-progress | Access YCQL tables via the YSQL API. | |
 | [pg_cron](https://github.com/citusdata/pg_cron) | In-progress | Cron-based job scheduler for PostgreSQL. Using the same syntax as regular cron, schedule PostgreSQL commands directly from the database. | |
 | [PostgreSQL Anonymizer](https://postgresql-anonymizer.readthedocs.io/en/latest/) | In-progress | Mask or replace personally identifiable information (PII) or commercially sensitive data from a PostgreSQL database. | |
 | [PG Partition Manager](https://github.com/pgpartman/pg_partman) | In-progress | Create and manage both time-based and serial-based table partition sets. | |
-| [pgsql-postal](https://github.com/pramsey/pgsql-postal) | Requires installation | Parse and normalize street addresses around the world using libpostal. | [Install and example](#pgsql-postal-example)|
 
 ## Installing extensions
 
@@ -85,7 +85,7 @@ You can obtain the installation files for the target extension in two ways:
 
 After copying the files, restart the cluster (or the respective node in a multi-node install).
 
-### Locate the pkglibdir and extension directories using pg_config
+### Locate installation directories using `pg_config`
 
 To find the directories where you install the extension files on your local installation, use the YugabyteDB `pg_config` executable.
 
@@ -107,7 +107,7 @@ List SQL and control files for already-installed extensions with:
 $ ls "$(yb_pg_config --sharedir)"/extension/
 ```
 
-### Copying an extension from PostgreSQL
+### Copying extensions from PostgreSQL
 
 The easiest way to install an extension is to copy the files from an existing PostgreSQL installation.
 
