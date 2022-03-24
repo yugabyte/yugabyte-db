@@ -67,6 +67,7 @@ public class TableManager extends DevopsBase {
   }
 
   @Inject ReleaseManager releaseManager;
+  @Inject BackupUtil backupUtil;
 
   public ShellResponse runCommand(CommandSubType subType, TableManagerParams taskParams) {
     Universe universe = Universe.getOrBadRequest(taskParams.universeUUID);
@@ -239,7 +240,8 @@ public class TableManager extends DevopsBase {
                 commandArgs.add("--region");
                 commandArgs.add(regionName.asText().toLowerCase());
                 commandArgs.add("--region_location");
-                commandArgs.add(regionLocation.asText());
+                commandArgs.add(
+                    backupUtil.getExactRegionLocation(backupTableParams, regionLocation.asText()));
               }
             }
           }
