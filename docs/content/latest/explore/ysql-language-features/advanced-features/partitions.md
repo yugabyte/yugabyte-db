@@ -137,20 +137,22 @@ Note the following:
 
 Partition pruning and constraint exclusion are optimization techniques that allow the query planner to exclude unnecessary partitions from the execution. For example, consider the following query:
 
-```
+```sql
 SELECT count(*) FROM order_changes WHERE change_date >= DATE '2020-01-01';
 ```
 
 If the `order_changes` table is partitioned by `change_date`, there is a big chance that only a subset of partitions needs to be queried. When enabled, both partition pruning and constraint exclusion can provide significant performance improvements for such queries by filtering out partitions that do not satisfy the criteria.
 
-Even though partition pruning and constraint exclusion target the same goal, the underlying mechanisms are different. Specifically, constraint exclusion is applied during query planning, and therefore only works if `WHERE` clause contains constants or externally supplied parameters. For example, a comparison against a non-immutable function such as `CURRENT_TIMESTAMP` cannot be optimized, since the planner cannot know which child table the function's value might fall into at run time. On the other hand, partition pruning is applied during query execution, and therefore can be more flexible. However, it is only used for `SELECT` queries. Updates can only benefit from constraint exclusion.
+Even though partition pruning and constraint exclusion target the same goal, the underlying mechanisms are different. Specifically, constraint exclusion is applied during query planning, and therefore only works if the `WHERE` clause contains constants or externally supplied parameters. For example, a comparison against a non-immutable function such as `CURRENT_TIMESTAMP` cannot be optimized, since the planner cannot know which child table the function's value might fall into at run time. On the other hand, partition pruning is applied during query execution, and therefore can be more flexible. However, it is only used for `SELECT` queries. Updates can only benefit from constraint exclusion.
 
 Both optimizations are enabled by default, which is the recommended setting for the majority of cases. However, if you know for certain that one of your queries will have to scan all the partitions, you can consider disabling the optimizations for that query:
 
-```
+```sql
 SET enable_partition_pruning = off;
 SET constraint_exclusion = off;
 SELECT count(*) FROM order_changes WHERE change_date >= DATE '2019-01-01';
 ```
 
-To enable partition pruning back, switch the `enable_partition_pruning` setting to `on`. As for constraint exclusion, the recommended (and default) setting for it is neither `off` or `on`, but rather an intermediate value `partition`, which means that it’s applied only to queries that are executed on partitioned tables.
+To re-enable partition pruning, set the `enable_partition_pruning` setting to `on`.
+
+For constraint exclusion, the recommended (and default) setting is neither `off` nor `on`, but rather an intermediate value `partition`, which means that it’s applied only to queries that are executed on partitioned tables.
