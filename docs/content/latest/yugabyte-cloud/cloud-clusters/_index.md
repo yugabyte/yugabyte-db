@@ -14,31 +14,13 @@ menu:
 
 Yugabyte Cloud provides the following tools to manage clusters:
 
-### Horizontal and vertical scaling
-
-To ensure the cluster configuration matches its performance requirements, [scale the cluster](configure-clusters/) vertically or horizontally as your requirements change.
-
-### Backups
-
-Configure a regular [backup](backup-clusters/) schedule, run manual backups, and review previous backups.
-
-### Maintenance windows
-
-Yugabyte performs cluster maintenance, including database upgrades, during scheduled [maintenance windows](cloud-maintenance/).
-
-### PostgreSQL extensions
-
-Extend the functionality of your cluster using [PostgreSQL extensions](add-extensions/).
-
-### Pause, resume, and delete
-
-To reduce costs on unused clusters, you can pause or delete them. Deleting a cluster deletes all of its data, including backups.
-
-Paused clusters are not billed for instance vCPU capacity. Disk and backup storage are charged at the standard rate (refer to [Cluster costs](../cloud-admin/cloud-billing-costs/#paused-cluster-costs)). Yugabyte notifies you when a cluster is paused for 30 days.
-
-You can't change the configuration, or read and write data to a paused cluster. Alerts and backups are also stopped. Existing backups remain until they expire.
-
-Access **Pause/Resume Cluster** and **Terminate Cluster** via the cluster **More Links** menu, or click the three dots icon for the cluster on the **Clusters** page.
+| Feature | Description |
+| :--- | :--- |
+| [Scaling](configure-clusters/)  | To ensure the cluster configuration matches its performance requirements, scale the cluster vertically or horizontally as your requirements change. |
+| [Backups](backup-clusters/) | Configure a regular backup schedule, run manual backups, and review previous backups. |
+| [Maintenance windows](cloud-maintenance/) | Yugabyte performs cluster maintenance, including database upgrades, during scheduled maintenance windows. |
+| [PostgreSQL extensions](add-extensions/) | Extend the functionality of your cluster using PostgreSQL extensions. |
+| **Pause**<br>**Resume**<br>**Terminate** | To reduce costs on unused clusters, you can pause or delete them. Deleting a cluster deletes all of its data, including backups. Paused clusters are not billed for instance vCPU capacity. Disk and backup storage are charged at the standard rate (refer to [Cluster costs](../cloud-admin/cloud-billing-costs/#paused-cluster-costs)). Yugabyte notifies you when a cluster is paused for 30 days.<br>You can't change the configuration, or read and write data to a paused cluster. Alerts and backups are also stopped. Existing backups remain until they expire.<br>Access **Pause/Resume Cluster** and **Terminate Cluster** via the cluster **More Links** menu, or click the three dots icon for the cluster on the **Clusters** page. |
 
 <div class="row">
 
@@ -67,18 +49,6 @@ Access **Pause/Resume Cluster** and **Terminate Cluster** via the cluster **More
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="add-extensions/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/administer.png" aria-hidden="true" />
-        <div class="title">Create extensions</div>
-      </div>
-      <div class="body">
-        Create PostgreSQL extensions in Yugabyte Cloud clusters.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="cloud-maintenance/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
@@ -86,6 +56,18 @@ Access **Pause/Resume Cluster** and **Terminate Cluster** via the cluster **More
       </div>
       <div class="body">
         Set up maintenance windows and exclusion periods for cluster upgrades.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="add-extensions/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/administer.png" aria-hidden="true" />
+        <div class="title">Create extensions</div>
+      </div>
+      <div class="body">
+        Create PostgreSQL extensions in Yugabyte Cloud clusters.
       </div>
     </a>
   </div>

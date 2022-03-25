@@ -21,31 +21,7 @@ You must be signed in as an Admin user to perform Admin tasks. Developer users c
 {{< /note >}}
 
 <div class="row">
-<!--
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="integrations/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/ecosystem-integrations.png" aria-hidden="true" />
-        <div class="title">Integrations</div>
-      </div>
-      <div class="body">
-        Set up integrations with third-party applications and services.
-      </div>
-    </a>
-  </div>
---><!--
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="alerts/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Manage alerts</div>
-      </div>
-      <div class="body">
-        Set up billing and cluster alerts, and respond to the alerts you receive.
-      </div>
-    </a>
-  </div>
--->
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="manage-access/">
       <div class="head">
@@ -57,19 +33,7 @@ You must be signed in as an Admin user to perform Admin tasks. Developer users c
       </div>
     </a>
   </div>
-<!--
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="projects/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Manage projects</div>
-      </div>
-      <div class="body">
-        Set up and manage projects on your cloud.
-      </div>
-    </a>
-  </div>
--->
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="cloud-billing-profile/">
       <div class="head">
@@ -94,17 +58,4 @@ You must be signed in as an Admin user to perform Admin tasks. Developer users c
     </a>
   </div>
 
-<!--
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="reports/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Reports</div>
-      </div>
-      <div class="body">
-        Generate reports.
-      </div>
-    </a>
-  </div>
--->
 </div>
