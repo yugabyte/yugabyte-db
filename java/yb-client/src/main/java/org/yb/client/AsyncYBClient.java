@@ -432,10 +432,11 @@ public class AsyncYBClient implements AutoCloseable {
   public Deferred<GetChangesResponse> getChangesCDCSDK(YBTable table, String streamId,
                                                        String tabletId, long term,
                                                        long index, byte[] key,
-                                                       int write_id, long time) {
+                                                       int write_id, long time,
+                                                       boolean needSchemaInfo) {
     checkIsClosed();
     GetChangesRequest rpc = new GetChangesRequest(table, streamId, tabletId, term,
-      index, key, write_id, time);
+      index, key, write_id, time, needSchemaInfo);
     Deferred d = rpc.getDeferred();
     d.addErrback(new Callback<Exception, Exception>() {
       @Override

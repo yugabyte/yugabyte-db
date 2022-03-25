@@ -77,7 +77,8 @@ public class TestGetChanges extends CDCBaseClass {
         // An exception would be thrown for an index less than 0.
         try {
           GetChangesResponse changesResponse =
-            myClient.getChangesCDCSDK(table, dbStreamId, tabletId, 0, -1, new byte[]{}, 0, 0L);
+            myClient.getChangesCDCSDK(
+              table, dbStreamId, tabletId, 0, -1, new byte[]{}, 0, 0L, false);
         } catch (Exception e) {
           exceptionThrown = true;
           break;

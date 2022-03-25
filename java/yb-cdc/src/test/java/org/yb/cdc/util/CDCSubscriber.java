@@ -45,6 +45,8 @@ public class CDCSubscriber {
 
   private Checkpoint checkpoint;
 
+  private boolean needSchemaInfo = false;
+
   /**
    * This is the default number of tablets as specified in AsyncYBClient
    * @see AsyncYBClient
@@ -86,6 +88,14 @@ public class CDCSubscriber {
 
   public void setTableName(String tableName) {
     this.tableName = tableName;
+  }
+
+  public boolean shouldSendSchema() {
+    return needSchemaInfo;
+  }
+
+  public void setNeedSchemaInfo(boolean needSchemaInfo) {
+    this.needSchemaInfo = needSchemaInfo;
   }
 
   public void setNumberOfTablets(int numberOfTablets) {
@@ -461,8 +471,10 @@ public class CDCSubscriber {
 
     for (String tabletId : tabletIds) {
       GetChangesResponse changesResponse =
-        syncClient.getChangesCDCSDK(table, dbStreamId, tabletId,
-          cp.getTerm(), cp.getIndex(), cp.getKey(), cp.getWriteId(), cp.getSnapshotTime());
+        syncClient.getChangesCDCSDK(
+          table, dbStreamId, tabletId,
+          cp.getTerm(), cp.getIndex(), cp.getKey(), cp.getWriteId(), cp.getSnapshotTime(),
+          shouldSendSchema());
 
       if (FORMAT.equalsIgnoreCase("PROTO")) {
         // Add records in proto.

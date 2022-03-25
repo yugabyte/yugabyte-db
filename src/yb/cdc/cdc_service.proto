@@ -195,6 +195,8 @@ message GetChangesRequestPB {
   optional bytes table_id = 7;
 
   optional CDCSDKCheckpointPB from_cdc_sdk_checkpoint = 8;
+
+  optional bool need_schema_info = 9 [default = false];
 }
 
 message KeyValuePairPB {
