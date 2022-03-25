@@ -157,6 +157,11 @@ SELECT count(*) FROM cypher('cypher_vle', $$
         MATCH (a) MATCH ()-[e1*1..1]->(a)
         RETURN e1
 $$) AS (e1 agtype);
+SELECT count(*)
+FROM cypher('cypher_vle', $$
+    MATCH (a)-[e*1..1]->()
+    RETURN a, e
+$$) AS (e1 agtype, e2 agtype);
 -- Should return 1 path
 SELECT * FROM cypher('cypher_vle', $$ MATCH p=()<-[e1*]-(:end)-[e2*]->(:begin) RETURN p $$) AS (result agtype);
 -- Each should return 3

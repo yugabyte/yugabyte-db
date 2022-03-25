@@ -2686,17 +2686,6 @@ static List *make_directed_edge_join_conditions(
     return quals;
 }
 
-static Node *make_null_const(int location)
-{
-    A_Const *n;
-
-    n = makeNode(A_Const);
-    n->val.type = T_Null;
-    n->location = location;
-
-    return (Node *)n;
-}
-
 /*
  * The joins are driven by edges. Under specific conditions, it becomes
  * necessary to have knowledge about the previous edge and vertex and
@@ -2734,43 +2723,31 @@ static List *make_join_condition_for_edge(cypher_parsestate *cpstate,
         List *args = NIL;
         List *quals = NIL;
 
+        /*
+         * If the next node is not in the join tree, we don't need to make any
+         * quals.
+         */
+        if (!next_node->in_join_tree)
+        {
+            return NIL;
+        }
 
         /*
-         * If either the previous node or the next node are in the join tree,
-         * we need to create the age_match_vle_terminal_edge to compare the vle
-         * returned results against the two nodes.
-         *
+         * If the previous node and the next node are in the join tree, we need
+         * to create the age_match_vle_terminal_edge to compare the vle returned
+         * results against the two nodes.
          */
-        if (prev_node->in_join_tree || next_node->in_join_tree)
+        if (prev_node->in_join_tree)
         {
             func_name = makeString("age_match_vle_terminal_edge");
             qualified_func_name = list_make2(ag_catalog, func_name);
 
             /*
-             * When the previous node is in the join tree, get the vertex's id
-             * and pass to the function. Pass in NULL otherwise.
+             * Get the vertex's id and pass to the function. Pass in NULL
+             * otherwise.
              */
-            if (prev_node->in_join_tree)
-            {
-                left_id = (Node *)make_qual(cpstate, prev_node, "id");
-            }
-            else
-            {
-                left_id = make_null_const(-1);
-            }
-
-            /*
-             * When the next node is in the join tree, get the vertex's id and
-             * pass to the function. Pass in NULL otherwise.
-             */
-            if (next_node->in_join_tree)
-            {
-                right_id = (Node *)make_qual(cpstate, next_node, "id");
-            }
-            else
-            {
-                right_id = make_null_const(-1);
-            }
+            left_id = (Node *)make_qual(cpstate, prev_node, "id");
+            right_id = (Node *)make_qual(cpstate, next_node, "id");
 
             // create the argument list
             args = list_make3(left_id, right_id, entity->expr);
