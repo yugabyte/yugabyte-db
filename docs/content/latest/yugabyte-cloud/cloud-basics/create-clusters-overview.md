@@ -19,22 +19,14 @@ Before deploying a production cluster, you need to consider the following factor
 
 The following best practices are recommended for production clusters.
 
-Location and provider
-: Deploy your cluster in a virtual private cloud (VPC). You need to create the VPC before you deploy the cluster. Yugabyte Cloud supports AWS and GCP for VPCs. Refer to [VPC network](../cloud-vpcs/).
-: Locate your VPC and cluster in the same region as your application VPC.
-
-Fault tolerance
-: Availability zone (AZ) level - minimum of three nodes across multiple AZs, with a replication factor of 3.
-
-Sizing
-: For most production applications, at least 3 nodes with 4 to 8 vCPUs per node.
-: When scaling your cluster, for best results increase node size up to 16 vCPUs before adding more nodes. For example, if you have a 3-node cluster with 4 vCPUs per node, consider scaling up to 8 or 16 vCPUs before adding a fourth node.
-
-YugabyteDB version
-: Use the **Stable** release track.
-
-Security and authorization
-: Yugabyte Cloud clusters are secure by default. After deploying, set up IP allow lists and add database users to allow clients, applications, and application VPCs to connect. Refer to [IP allow lists](../../cloud-secure-clusters/add-connections/).
+| Feature | Recommendation |
+| :--- | :--- |
+| [Provider and region](#provider-and-region) | Deploy your cluster in a virtual private cloud (VPC), with the same provider and in the same region as your application VPC. Yugabyte Cloud supports AWS and GCP.<br>You need to create the VPC before you deploy the cluster. Refer to [VPC network](../cloud-vpcs/). |
+| [Fault tolerance](#fault-tolerance) | Availability zone (AZ) level - minimum of three nodes across multiple AZs, with a replication factor of 3. |
+| [Sizing](#sizing) | For most production applications, at least 3 nodes with 4 to 8 vCPUs per node.<br>When scaling your cluster, for best results increase node size up to 16 vCPUs before adding more nodes. For example, for a 3-node cluster with 4 vCPUs per node, scale up to 8 or 16 vCPUs before adding a fourth node. |
+| [YugabyteDB version](#yugabytedb-version) | Use the **Stable** release track. |
+| [Backups](#backups) | Use the default backup schedule (daily, with 8 day retention). |
+| [Security and authorization](#security) | Yugabyte Cloud clusters are secure by default. After deploying, set up IP allow lists and add database users to allow clients, applications, and application VPCs to connect. Refer to [IP allow lists](../../cloud-secure-clusters/add-connections/). |
 
 ## In depth
 
