@@ -168,7 +168,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   template<class... Args>
   Result<PerformFuture> RunAsync(
-    const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table, Args&&... args) {
+      const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
+      Args&&... args) {
     const auto generator = [ops, end = ops + ops_count, &table]() mutable {
         return ops != end
             ? TableOperation { .operation = ops++, .table = &table }
@@ -178,7 +179,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   }
 
   Result<PerformFuture> RunAsync(
-    const OperationGenerator& generator, uint64_t* read_time, bool force_non_bufferable);
+      const OperationGenerator& generator, uint64_t* read_time,
+      bool force_non_bufferable);
 
   // Smart driver functions.
   // -------------
@@ -265,7 +267,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   CHECKED_STATUS RollbackSubTransaction(SubTransactionId id);
 
  private:
-  Result<PerformFuture> FlushOperations(BufferableOperations ops, bool transactional);
+  Result<PerformFuture> FlushOperations(
+      BufferableOperations ops, bool transactional);
 
   class RunHelper;
 
