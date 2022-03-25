@@ -36,12 +36,21 @@ PgSelect::PgSelect(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_i
 PgSelect::~PgSelect() {
 }
 
+Result<PgTableDescPtr> PgSelect::LoadTable() {
+  return pg_session_->LoadTable(table_id_);
+}
+
+bool PgSelect::UseSecondaryIndex() const {
+  return prepare_params_.use_secondary_index;
+}
+
 Status PgSelect::Prepare() {
   // Prepare target and bind descriptors.
-  if (!prepare_params_.use_secondary_index) {
-    target_ = bind_ = PgTable(VERIFY_RESULT(pg_session_->LoadTable(table_id_)));
+  target_ = PgTable(VERIFY_RESULT(LoadTable()));
+
+  if (!UseSecondaryIndex()) {
+    bind_ = target_;
   } else {
-    target_ = PgTable(VERIFY_RESULT(pg_session_->LoadTable(table_id_)));
     bind_ = PgTable(nullptr);
 
     // Create secondary index query.
@@ -50,9 +59,10 @@ Status PgSelect::Prepare() {
   }
 
   // Allocate READ requests to send to DocDB.
-  auto read_op = target_->NewPgsqlSelect();
-  read_req_ = read_op->mutable_request();
-  auto doc_op = make_shared<PgDocReadOp>(pg_session_, &target_, std::move(read_op));
+  auto read_op = std::make_shared<PgsqlReadOp>(*target_);
+  read_req_ = std::shared_ptr<LWPgsqlReadRequestPB>(read_op, &read_op->read_request());
+
+  auto doc_op = std::make_shared<PgDocReadOp>(pg_session_, &target_, std::move(read_op));
 
   // Prepare the index selection if this operation is using the index.
   RETURN_NOT_OK(PrepareSecondaryIndex());
@@ -60,7 +70,6 @@ Status PgSelect::Prepare() {
   // Prepare binds for the request.
   PrepareBinds();
 
-  // Preparation complete.
   doc_op_ = doc_op;
   return Status::OK();
 }
@@ -82,10 +91,11 @@ Status PgSelect::PrepareSecondaryIndex() {
   //
   // - For regular tables, the index subquery will send separate request to tablet servers collect
   //   batches of ybctids which is then used by 'this' outer select to query actual data.
-  PgsqlReadRequestPB *index_req = nullptr;
+  std::shared_ptr<LWPgsqlReadRequestPB> index_req = nullptr;
   if (prepare_params_.querying_colocated_table) {
     // Allocate "index_request" and pass to PgSelectIndex.
-    index_req = read_req_->mutable_index_request();
+    index_req = std::shared_ptr<LWPgsqlReadRequestPB>(
+        read_req_, read_req_->mutable_index_request());
   }
 
   // Prepare subquery. When index_req is not null, it is part of 'this' SELECT request. When it

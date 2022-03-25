@@ -15,6 +15,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.helpers.ProviderAndRegion;
 import io.ebean.Ebean;
@@ -79,12 +80,6 @@ public class Region extends Model {
       accessMode = READ_WRITE)
   public String ybImage;
 
-  @ApiModelProperty(
-      value = "Indicates whether to use YB Prebuilt AMI flow or not for the supplied AMI ID",
-      accessMode = READ_WRITE)
-  @Column(nullable = false, columnDefinition = "boolean default false")
-  public boolean ybPrebuiltAmi = false;
-
   @Column(columnDefinition = "float")
   @ApiModelProperty(value = "The region's longitude", example = "-120.01", accessMode = READ_ONLY)
   @Constraints.Min(-180)
@@ -123,6 +118,7 @@ public class Region extends Model {
 
     public String sg_id; // Security group ID.
     public String vnet; // Vnet key.
+    public Architecture arch; // ybImage architecture.
   }
 
   @DbJson
@@ -160,6 +156,22 @@ public class Region extends Model {
     if (details != null) {
       String vnetNode = details.vnet;
       return vnetNode == null || vnetNode.isEmpty() ? null : vnetNode;
+    }
+    return null;
+  }
+
+  public void setArchitecture(String arch) {
+    if (details == null) {
+      details = new RegionDetails();
+    }
+    details.arch = Architecture.valueOf(arch);
+    save();
+  }
+
+  @ApiModelProperty(required = false)
+  public Architecture getArchitecture() {
+    if (details != null) {
+      return details.arch;
     }
     return null;
   }

@@ -59,23 +59,33 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
           TaskType.KubernetesWaitForPod,
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
-          TaskType.LoadBalancerStateChange,
+          TaskType.ModifyBlackList,
+          TaskType.ModifyBlackList,
+          TaskType.WaitForLeaderBlacklistCompletion,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesWaitForPod,
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
+          TaskType.ModifyBlackList,
+          TaskType.ModifyBlackList,
+          TaskType.WaitForLeaderBlacklistCompletion,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesWaitForPod,
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
+          TaskType.ModifyBlackList,
+          TaskType.ModifyBlackList,
+          TaskType.WaitForLeaderBlacklistCompletion,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesWaitForPod,
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
+          TaskType.ModifyBlackList,
           TaskType.LoadBalancerStateChange,
           TaskType.RunYsqlUpgrade,
           TaskType.UpdateSoftwareVersion,
-          TaskType.UniverseUpdateSucceeded);
+          TaskType.UniverseUpdateSucceeded,
+          TaskType.ModifyBlackList);
 
   @Before
   public void setUp() {
@@ -126,6 +136,8 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(
             ImmutableMap.of(
                 "commandType",
@@ -138,14 +150,7 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
             ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
-        Json.toJson(
-            ImmutableMap.of(
-                "commandType",
-                KubernetesCommandExecutor.CommandType.HELM_UPGRADE.name(),
-                "ybSoftwareVersion",
-                "new-version")),
-        Json.toJson(
-            ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(
@@ -156,6 +161,21 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
                 "new-version")),
         Json.toJson(
             ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(
+            ImmutableMap.of(
+                "commandType",
+                KubernetesCommandExecutor.CommandType.HELM_UPGRADE.name(),
+                "ybSoftwareVersion",
+                "new-version")),
+        Json.toJson(
+            ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),

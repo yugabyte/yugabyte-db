@@ -77,9 +77,6 @@ DEFINE_test_flag(int32, transaction_inject_flushed_delay_ms, 0,
 DEFINE_test_flag(bool, disable_proactive_txn_cleanup_on_abort, false,
                 "Disable cleanup of intents in abort path.");
 
-DECLARE_string(placement_cloud);
-DECLARE_string(placement_region);
-
 namespace yb {
 namespace client {
 
@@ -103,8 +100,6 @@ Result<ChildTransactionData> ChildTransactionData::FromPB(const ChildTransaction
 }
 
 YB_DEFINE_ENUM(MetadataState, (kMissing)(kMaybePresent)(kPresent));
-
-YBSubTransaction::YBSubTransaction() {}
 
 void YBSubTransaction::SetActiveSubTransaction(SubTransactionId id) {
   sub_txn_.subtransaction_id = id;
@@ -280,9 +275,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
       auto tservers = tablet->GetRemoteTabletServers(internal::IncludeFailedReplicas::kTrue);
       for (const auto &tserver : tservers) {
-        auto pb = tserver->cloud_info();
-        if (pb.placement_cloud() != FLAGS_placement_cloud ||
-            pb.placement_region() != FLAGS_placement_region) {
+        if (!tserver->IsLocalRegion()) {
           VLOG_WITH_PREFIX(4) << "Aborting (accessing nonlocal tablet in local transaction)";
           return STATUS_FORMAT(
               IllegalState, "Nonlocal tablet accessed in local transaction: tablet $0", tablet_id);
@@ -366,8 +359,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
     ops_info->metadata = {
       .transaction = metadata_,
-      .subtransaction = subtransaction_opt_ != boost::none
-          ? boost::make_optional(subtransaction_opt_->get())
+      .subtransaction = subtransaction_.active()
+          ? boost::make_optional(subtransaction_.get())
           : boost::none,
     };
 
@@ -545,7 +538,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     return read_point_.IsRestartRequired();
   }
 
-  std::shared_future<Result<TransactionMetadata>> GetMetadata() EXCLUDES(mutex_) {
+  std::shared_future<Result<TransactionMetadata>> GetMetadata(
+      CoarseTimePoint deadline) EXCLUDES(mutex_) {
     UNIQUE_LOCK(lock, mutex_);
     if (metadata_future_.valid()) {
       return metadata_future_;
@@ -563,7 +557,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         }
       });
       lock.unlock();
-      RequestStatusTablet(TransactionRpcDeadline());
+      RequestStatusTablet(deadline);
       lock.lock();
       return metadata_future_;
     }
@@ -713,21 +707,18 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   void SetActiveSubTransaction(SubTransactionId id) {
-    if (subtransaction_opt_ == boost::none) {
-      subtransaction_opt_ = boost::make_optional(YBSubTransaction());
-    }
-    return subtransaction_opt_->SetActiveSubTransaction(id);
+    return subtransaction_.SetActiveSubTransaction(id);
   }
 
   CHECKED_STATUS RollbackSubTransaction(SubTransactionId id) {
     SCHECK(
-        subtransaction_opt_ != boost::none, InternalError,
+        subtransaction_.active(), InternalError,
         "Attempted to rollback to savepoint before creating any savepoints.");
-    return subtransaction_opt_->RollbackSubTransaction(id);
+    return subtransaction_.RollbackSubTransaction(id);
   }
 
   bool HasSubTransactionState() {
-    return subtransaction_opt_ != boost::none;
+    return subtransaction_.active();
   }
 
  private:
@@ -816,8 +807,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       return;
     }
 
-    if (subtransaction_opt_ != boost::none) {
-      subtransaction_opt_->get().aborted.ToPB(state.mutable_aborted()->mutable_set());
+    if (subtransaction_.active()) {
+      subtransaction_.get().aborted.ToPB(state.mutable_aborted()->mutable_set());
     }
 
     manager_->rpcs().RegisterAndStart(
@@ -1224,7 +1215,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   ConsistentReadPoint read_point_;
 
   // Metadata tracking savepoint-related state for the scope of this transaction.
-  boost::optional<YBSubTransaction> subtransaction_opt_ = boost::none;
+  YBSubTransaction subtransaction_;
 
   std::atomic<bool> requested_status_tablet_{false};
   internal::RemoteTabletPtr status_tablet_ GUARDED_BY(mutex_);
@@ -1391,8 +1382,9 @@ Result<ChildTransactionResultPB> YBTransaction::FinishChild() {
   return impl_->FinishChild();
 }
 
-std::shared_future<Result<TransactionMetadata>> YBTransaction::GetMetadata() const {
-  return impl_->GetMetadata();
+std::shared_future<Result<TransactionMetadata>> YBTransaction::GetMetadata(
+    CoarseTimePoint deadline) const {
+  return impl_->GetMetadata(deadline);
 }
 
 Status YBTransaction::ApplyChildResult(const ChildTransactionResultPB& result) {

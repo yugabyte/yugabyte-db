@@ -14,7 +14,7 @@
 
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_value.h"
-#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/pgsql_protocol.messages.h"
 #include "yb/common/schema.h"
 
 #include "yb/docdb/primitive_value.h"
@@ -52,11 +52,31 @@ Status QLKeyColumnValuesToPrimitiveValues(
   return Status::OK();
 }
 
+namespace {
+
+Result<PrimitiveValue> EvalExpr(
+    const PgsqlExpressionPB& expr, const Schema& schema, SortingType sorting_type) {
+  // TODO(neil) The current setup only works for CQL as it assumes primary key value must not
+  // be dependent on any column values. This needs to be fixed as PostgreSQL expression might
+  // require a read from a table.
+  //
+  // Use regular executor for now.
+  QLExprExecutor executor;
+  QLExprResult result;
+  RETURN_NOT_OK(executor.EvalExpr(expr, nullptr, result.Writer(), &schema));
+
+  return PrimitiveValue::FromQLValuePB(result.Value(), sorting_type);
+}
+
+Result<PrimitiveValue> EvalExpr(
+    const LWPgsqlExpressionPB& expr, const Schema& schema, SortingType sorting_type) {
+  return EvalExpr(expr.ToGoogleProtobuf(), schema, sorting_type);
+}
+
 // ------------------------------------------------------------------------------------------------
-Result<vector<PrimitiveValue>> InitKeyColumnPrimitiveValues(
-    const google::protobuf::RepeatedPtrField<PgsqlExpressionPB> &column_values,
-    const Schema &schema,
-    size_t start_idx) {
+template <class Col>
+Result<vector<PrimitiveValue>> DoInitKeyColumnPrimitiveValues(
+    const Col &column_values, const Schema &schema, size_t start_idx) {
   vector<PrimitiveValue> values;
   values.reserve(column_values.size());
   size_t column_idx = start_idx;
@@ -73,20 +93,24 @@ Result<vector<PrimitiveValue>> InitKeyColumnPrimitiveValues(
       values.push_back(IsNull(value) ? PrimitiveValue::NullValue(sorting_type)
                                      : PrimitiveValue::FromQLValuePB(value, sorting_type));
     } else {
-      // TODO(neil) The current setup only works for CQL as it assumes primary key value must not
-      // be dependent on any column values. This needs to be fixed as PostgreSQL expression might
-      // require a read from a table.
-      //
-      // Use regular executor for now.
-      QLExprExecutor executor;
-      QLExprResult result;
-      RETURN_NOT_OK(executor.EvalExpr(column_value, nullptr, result.Writer(), &schema));
-
-      values.push_back(PrimitiveValue::FromQLValuePB(result.Value(), sorting_type));
+      values.push_back(VERIFY_RESULT(EvalExpr(column_value, schema, sorting_type)));
     }
     column_idx++;
   }
   return std::move(values);
+}
+
+} // namespace
+
+Result<vector<PrimitiveValue>> InitKeyColumnPrimitiveValues(
+    const google::protobuf::RepeatedPtrField<PgsqlExpressionPB> &column_values,
+    const Schema &schema, size_t start_idx) {
+  return DoInitKeyColumnPrimitiveValues(column_values, schema, start_idx);
+}
+
+Result<vector<PrimitiveValue>> InitKeyColumnPrimitiveValues(
+    const ArenaList<LWPgsqlExpressionPB> &column_values, const Schema &schema, size_t start_idx) {
+  return DoInitKeyColumnPrimitiveValues(column_values, schema, start_idx);
 }
 
 }  // namespace docdb

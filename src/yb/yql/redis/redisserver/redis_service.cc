@@ -926,7 +926,7 @@ class BatchContextImpl : public BatchContext {
 
   void LookupDone(
       Operation* operation, int retries, const Result<client::internal::RemoteTabletPtr>& result) {
-    const int kMaxRetries = 2;
+    constexpr int kMaxRetries = 2;
     if (!result.ok()) {
       auto status = result.status();
       if (status.IsNotFound() && retries < kMaxRetries) {
@@ -994,19 +994,14 @@ class RedisServiceImpl::Impl {
   void Handle(yb::rpc::InboundCallPtr call_ptr);
 
  private:
+  static constexpr size_t kMaxCommandLen = 32;
+
   void SetupMethod(const RedisCommandInfo& info) {
+    CHECK_LE(info.name.length(), kMaxCommandLen);
     auto info_ptr = std::make_shared<RedisCommandInfo>(info);
     std::string lower_name = boost::to_lower_copy(info.name);
-    std::string upper_name = boost::to_upper_copy(info.name);
-    size_t len = info.name.size();
-    std::string temp(len, 0);
-    for (size_t i = 0; i != (1ULL << len); ++i) {
-      for (size_t j = 0; j != len; ++j) {
-        temp[j] = i & (1 << j) ? upper_name[j] : lower_name[j];
-      }
-      names_.push_back(temp);
-      CHECK(command_name_to_info_map_.emplace(names_.back(), info_ptr).second);
-    }
+    names_.push_back(lower_name);
+    CHECK(command_name_to_info_map_.emplace(names_.back(), info_ptr).second);
   }
 
   bool CheckArgumentSizeOK(const RedisClientCommand& cmd_args) {
@@ -1407,7 +1402,15 @@ const RedisCommandInfo* RedisServiceImpl::Impl::FetchHandler(const RedisClientCo
     return nullptr;
   }
   Slice cmd_name = cmd_args[0];
-  auto iter = command_name_to_info_map_.find(cmd_args[0]);
+  size_t len = cmd_name.size();
+  if (len > kMaxCommandLen) {
+    return nullptr;
+  }
+  char lower_cmd[kMaxCommandLen];
+  for (size_t i = 0; i != len; ++i) {
+    lower_cmd[i] = std::tolower(cmd_name[i]);
+  }
+  auto iter = command_name_to_info_map_.find(Slice(lower_cmd, len));
   if (iter == command_name_to_info_map_.end()) {
     YB_LOG_EVERY_N_SECS(ERROR, 60)
         << "Command " << cmd_name << " not yet supported. "

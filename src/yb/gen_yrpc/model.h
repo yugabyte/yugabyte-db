@@ -26,6 +26,7 @@ namespace yb {
 namespace gen_yrpc {
 
 YB_STRONGLY_TYPED_BOOL(Lightweight);
+YB_STRONGLY_TYPED_BOOL(FullPath);
 
 google::protobuf::internal::WireFormatLite::FieldType FieldType(
     const google::protobuf::FieldDescriptor* field);
@@ -40,7 +41,7 @@ bool HasLightweightMethod(const google::protobuf::FileDescriptor* file, rpc::Rpc
 std::string ReplaceNamespaceDelimiters(const std::string& arg_full_name);
 std::string RelativeClassPath(const std::string& clazz, const std::string& service);
 std::string UnnestedName(
-    const google::protobuf::Descriptor* message, Lightweight lightweight, bool full_path);
+    const google::protobuf::Descriptor* message, Lightweight lightweight, FullPath full_path);
 std::string MapFieldType(const google::protobuf::FieldDescriptor* field, Lightweight lightweight);
 bool IsMessage(const google::protobuf::FieldDescriptor* field);
 bool IsSimple(const google::protobuf::FieldDescriptor* field);

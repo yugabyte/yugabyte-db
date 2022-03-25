@@ -45,7 +45,7 @@ class ProxyContext {
 
   virtual DnsResolver& resolver() = 0;
 
-  virtual RpcMetrics& rpc_metrics() = 0;
+  virtual const std::shared_ptr<RpcMetrics>& rpc_metrics() = 0;
 
   virtual const std::shared_ptr<MemTracker>& parent_mem_tracker() = 0;
 

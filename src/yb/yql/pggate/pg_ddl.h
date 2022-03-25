@@ -15,9 +15,10 @@
 #ifndef YB_YQL_PGGATE_PG_DDL_H_
 #define YB_YQL_PGGATE_PG_DDL_H_
 
+#include "yb/common/constants.h"
 #include "yb/common/transaction.h"
 
-#include "yb/tserver/pg_client.pb.h"
+#include "yb/tserver/pg_client.messages.h"
 
 #include "yb/yql/pggate/pg_statement.h"
 
@@ -44,8 +45,8 @@ class PgCreateDatabase : public PgDdl {
                    const bool colocated);
   virtual ~PgCreateDatabase();
 
-  void AddTransaction(std::shared_future<Result<TransactionMetadata>> transaction) {
-    txn_future_ = transaction;
+  void UseTransaction() {
+    req_.set_use_transaction(true);
   }
 
   StmtOp stmt_op() const override { return StmtOp::STMT_CREATE_DATABASE; }
@@ -54,12 +55,7 @@ class PgCreateDatabase : public PgDdl {
   CHECKED_STATUS Exec();
 
  private:
-  const char *database_name_;
-  const PgOid database_oid_;
-  const PgOid source_database_oid_;
-  const PgOid next_oid_;
-  bool colocated_ = false;
-  boost::optional<std::shared_future<Result<TransactionMetadata>>> txn_future_ = boost::none;
+  tserver::PgCreateDatabaseRequestPB req_;
 };
 
 class PgDropDatabase : public PgDdl {
@@ -149,6 +145,7 @@ class PgCreateTable : public PgDdl {
                 bool add_primary_key,
                 const bool colocated,
                 const PgObjectId& tablegroup_oid,
+                const ColocationId colocation_id,
                 const PgObjectId& tablespace_oid,
                 const PgObjectId& matview_pg_table_oid);
 
@@ -182,8 +179,8 @@ class PgCreateTable : public PgDdl {
 
   CHECKED_STATUS AddSplitBoundary(PgExpr **exprs, int expr_count);
 
-  void UseTransaction(const TransactionMetadata& txn_metadata) {
-    txn_metadata.ToPB(req_.mutable_use_transaction());
+  void UseTransaction() {
+    req_.set_use_transaction(true);
   }
 
   // Execute.
@@ -263,8 +260,8 @@ class PgAlterTable : public PgDdl {
 
   StmtOp stmt_op() const override { return StmtOp::STMT_ALTER_TABLE; }
 
-  void UseTransaction(const TransactionMetadata& txn_metadata) {
-    txn_metadata.ToPB(req_.mutable_use_transaction());
+  void UseTransaction() {
+    req_.set_use_transaction(true);
   }
 
  private:

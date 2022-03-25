@@ -94,8 +94,16 @@ class GeoTransactionsTest : public pgwrapper::PgMiniTestBase {
 
     pgwrapper::PgMiniTestBase::SetUp();
     client_ = ASSERT_RESULT(cluster_->CreateClient());
-    transaction_pool_ = cluster_->mini_tablet_server(0)->server()->TransactionPool();
-    transaction_manager_ = cluster_->mini_tablet_server(0)->server()->TransactionManager();
+    transaction_pool_ = nullptr;
+    for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+      auto mini_ts = cluster_->mini_tablet_server(i);
+      if (AsString(mini_ts->bound_rpc_addr().address()) == pg_host_port().host()) {
+        transaction_pool_ = mini_ts->server()->TransactionPool();
+        transaction_manager_ = mini_ts->server()->TransactionManager();
+        break;
+      }
+    }
+    ASSERT_NE(transaction_pool_, nullptr);
 
     // Wait for system.transactions to be created.
     WaitForStatusTabletsVersion(1);
@@ -296,8 +304,8 @@ class GeoTransactionsTest : public pgwrapper::PgMiniTestBase {
     ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0$1(value) VALUES (0)", kTablePrefix, to_region));
     ASSERT_OK(conn.CommitTransaction());
 
-    auto last_transaction = transaction_pool_->GetLastTransaction();
-    auto metadata = last_transaction->GetMetadata().get();
+    auto last_transaction = transaction_pool_->TEST_GetLastTransaction();
+    auto metadata = last_transaction->GetMetadata(TransactionRpcDeadline()).get();
     ASSERT_OK(metadata);
     ASSERT_FALSE(expected_status_tablets.empty());
     ASSERT_TRUE(std::find(expected_status_tablets.begin(),
@@ -307,8 +315,7 @@ class GeoTransactionsTest : public pgwrapper::PgMiniTestBase {
 
   void CheckAbort(int to_region, SetGlobalTransactionsGFlag set_global_transactions_gflag,
                   SetGlobalTransactionSessionVar session_var, size_t num_aborts) {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) =
-        (set_global_transactions_gflag == SetGlobalTransactionsGFlag::kTrue);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = set_global_transactions_gflag;
 
     auto conn = ASSERT_RESULT(Connect());
     ASSERT_OK(conn.ExecuteFormat("SET force_global_transaction = $0", ToString(session_var)));

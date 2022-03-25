@@ -61,6 +61,8 @@ class StatisticsMetricImpl : public Statistics {
   void measureTime(uint32_t histogram_type, uint64_t value) override;
   void resetTickersForTest() override;
 
+  const char* GetTickerName(uint32_t ticker_type) const override;
+
  private:
   std::vector<scoped_refptr<yb::Histogram>> histograms_;
   std::vector<scoped_refptr<yb::AtomicGauge<uint64_t>>> tickers_;

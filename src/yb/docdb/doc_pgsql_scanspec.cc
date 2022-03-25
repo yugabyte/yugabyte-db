@@ -13,6 +13,8 @@
 
 #include "yb/docdb/doc_pgsql_scanspec.h"
 
+#include <boost/optional/optional_io.hpp>
+
 #include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/schema.h"
 
@@ -145,7 +147,9 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
     const boost::optional<int32_t> max_hash_code,
     const PgsqlExpressionPB *where_expr,
     const DocKey& start_doc_key,
-    bool is_forward_scan)
+    bool is_forward_scan,
+    const DocKey& lower_doc_key,
+    const DocKey& upper_doc_key)
     : PgsqlScanSpec(where_expr),
       range_bounds_(condition ? new QLScanRange(schema, *condition) : nullptr),
       schema_(schema),
@@ -155,9 +159,20 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
       hash_code_(hash_code),
       max_hash_code_(max_hash_code),
       start_doc_key_(start_doc_key.empty() ? KeyBytes() : start_doc_key.Encode()),
-      lower_doc_key_(bound_key(schema, true)),
-      upper_doc_key_(bound_key(schema, false)),
+      lower_doc_key_(lower_doc_key.Encode()),
+      upper_doc_key_(upper_doc_key.Encode()),
       is_forward_scan_(is_forward_scan) {
+
+  auto lower_bound_key = bound_key(schema, true);
+  lower_doc_key_ = lower_bound_key > lower_doc_key_
+                    || lower_doc_key.empty()
+                    ? lower_bound_key : lower_doc_key_;
+
+  auto upper_bound_key = bound_key(schema, false);
+  upper_doc_key_ = upper_bound_key < upper_doc_key_
+                    || upper_doc_key.empty()
+                    ? upper_bound_key : upper_doc_key_;
+
   if (where_expr_) {
     // Should never get here until WHERE clause is supported.
     LOG(FATAL) << "DEVELOPERS: Add support for condition (where clause)";
@@ -281,14 +296,11 @@ KeyBytes DocPgsqlScanSpec::bound_key(const Schema& schema, const bool lower_boun
   }
 
   if (has_hash_columns) {
-    DocKeyHash min_hash = hash_code_ ?
-        static_cast<DocKeyHash> (*hash_code_) : std::numeric_limits<DocKeyHash>::min();
-    DocKeyHash max_hash = max_hash_code_ ?
-        static_cast<DocKeyHash> (*max_hash_code_) : std::numeric_limits<DocKeyHash>::max();
+    uint16_t hash = lower_bound
+        ? hash_code_.get_value_or(std::numeric_limits<DocKeyHash>::min())
+        : max_hash_code_.get_value_or(std::numeric_limits<DocKeyHash>::max());
 
-    encoder.HashAndRange(lower_bound ? min_hash : max_hash,
-                         *hashed_components_,
-                         range_components(lower_bound));
+    encoder.HashAndRange(hash, *hashed_components_, range_components(lower_bound));
   } else {
     // If no hash columns use default hash code (0).
     encoder.Hash(false, 0, *hashed_components_).Range(range_components(lower_bound));

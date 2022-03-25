@@ -142,7 +142,7 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   // `result` should be prepared with FinishChild of child transaction.
   CHECKED_STATUS ApplyChildResult(const ChildTransactionResultPB& result);
 
-  std::shared_future<Result<TransactionMetadata>> GetMetadata() const;
+  std::shared_future<Result<TransactionMetadata>> GetMetadata(CoarseTimePoint deadline) const;
 
   std::string ToString() const;
 
@@ -169,7 +169,9 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
 class YBSubTransaction {
  public:
-  YBSubTransaction();
+  bool active() const {
+    return highest_subtransaction_id_ >= kMinSubTransactionId;
+  }
 
   void SetActiveSubTransaction(SubTransactionId id);
 
@@ -182,7 +184,7 @@ class YBSubTransaction {
 
   // Tracks the highest observed subtransaction_id. Used during "ROLLBACK TO s" to abort from s to
   // the highest live subtransaction_id.
-  SubTransactionId highest_subtransaction_id_ = kMinSubTransactionId;
+  SubTransactionId highest_subtransaction_id_ = 0;
 };
 
 } // namespace client

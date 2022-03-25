@@ -401,6 +401,9 @@ scoped_refptr<Counter> CounterPrototype::Instantiate(
 Counter::Counter(const CounterPrototype* proto) : Metric(proto) {
 }
 
+Counter::Counter(std::unique_ptr<CounterPrototype> proto) : Metric(std::move(proto)) {
+}
+
 int64_t Counter::value() const {
   return value_.Value();
 }

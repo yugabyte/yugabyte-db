@@ -11,8 +11,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroup;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
+import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteClusterFromUniverse;
 import com.yugabyte.yw.common.DnsManager;
@@ -50,8 +49,6 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
     log.info("Started {} task for uuid={}", getName(), params().universeUUID);
 
     try {
-      // Create the task list sequence.
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
       // Set the 'updateInProgress' flag to prevent other updates from happening.
       Universe universe = null;
@@ -77,10 +74,13 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
       Cluster cluster = roClusters.get(0);
       Collection<NodeDetails> nodesToBeRemoved = universe.getNodesInCluster(cluster.uuid);
       // Set the node states to Removing.
-      createSetNodeStateTasks(nodesToBeRemoved, NodeDetails.NodeState.Removing)
+      createSetNodeStateTasks(nodesToBeRemoved, NodeDetails.NodeState.Terminating)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
       createDestroyServerTasks(
-              nodesToBeRemoved, params().isForceDelete, true /* deleteNodeFromDB */)
+              nodesToBeRemoved,
+              params().isForceDelete,
+              true /* deleteNodeFromDB */,
+              true /* deleteRootVolumes */)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
       // Remove the cluster entry from the universe db entry.
@@ -103,7 +103,7 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Run all the tasks.
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
@@ -122,7 +122,8 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
    * @param clusterUUID uuid of the read-only cluster to be removed.
    */
   public void createDeleteClusterFromUniverseTask(UUID clusterUUID) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("DeleteClusterFromUniverse", executor);
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("DeleteClusterFromUniverse", executor);
     DeleteClusterFromUniverse.Params params = new DeleteClusterFromUniverse.Params();
     // Add the universe uuid.
     params.universeUUID = taskParams().universeUUID;
@@ -131,8 +132,8 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
     DeleteClusterFromUniverse task = createTask(DeleteClusterFromUniverse.class);
     task.initialize(params);
     // Add it to the task list.
-    subTaskGroup.addTask(task);
-    subTaskGroupQueue.add(subTaskGroup);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     subTaskGroup.setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }
 }

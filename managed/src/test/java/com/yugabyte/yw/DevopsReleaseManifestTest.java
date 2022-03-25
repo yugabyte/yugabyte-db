@@ -37,7 +37,6 @@ public class DevopsReleaseManifestTest {
                   "ansible_requirements.yml",
                   "create_instance.yml",
                   "local_role.yml",
-                  "remote_role.yml",
                   "python3_requirements.txt",
                   "python_requirements.txt",
                   "replicated.yml",

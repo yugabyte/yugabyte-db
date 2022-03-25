@@ -170,6 +170,14 @@ public class ApiUtils {
     };
   }
 
+  public static Universe.UniverseUpdater mockUniverseUpdater(final UUID rootCA) {
+    return universe -> {
+      UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+      universeDetails.rootCA = rootCA;
+      universe.setUniverseDetails(universeDetails);
+    };
+  }
+
   public static Universe.UniverseUpdater mockUniverseUpdaterWithReadReplica(
       final UserIntent userIntent, final PlacementInfo placementInfo) {
 

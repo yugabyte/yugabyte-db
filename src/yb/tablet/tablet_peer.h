@@ -170,14 +170,16 @@ class TabletPeer : public consensus::ConsensusContext,
 
   // Starts shutdown process.
   // Returns true if shutdown was just initiated, false if shutdown was already running.
-  MUST_USE_RESULT bool StartShutdown(IsDropTable is_drop_table = IsDropTable::kFalse);
+  MUST_USE_RESULT bool StartShutdown();
   // Completes shutdown process and waits for it's completeness.
-  void CompleteShutdown(IsDropTable is_drop_table = IsDropTable::kFalse);
+  void CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown);
 
   // Abort active transactions on the tablet after shutdown is initiated.
   CHECKED_STATUS AbortSQLTransactions();
 
-  CHECKED_STATUS Shutdown(IsDropTable is_drop_table = IsDropTable::kFalse);
+  CHECKED_STATUS Shutdown(
+      ShouldAbortActiveTransactions should_abort_active_txns,
+      DisableFlushOnShutdown disable_flush_on_shutdown);
 
   // Check that the tablet is in a RUNNING state.
   CHECKED_STATUS CheckRunning() const;
@@ -212,7 +214,7 @@ class TabletPeer : public consensus::ConsensusContext,
   HybridTime SafeTimeForTransactionParticipant() override;
   Result<HybridTime> WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) override;
 
-  void GetLastReplicatedData(RemoveIntentsData* data) override;
+  CHECKED_STATUS GetLastReplicatedData(RemoveIntentsData* data) override;
 
   void GetLastCDCedData(RemoveIntentsData* data) override;
 

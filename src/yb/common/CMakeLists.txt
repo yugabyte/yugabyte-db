@@ -38,11 +38,13 @@ YRPC_GENERATE(
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   NO_SERVICE_PROTO_FILES
-      common.proto common_net.proto common_types.proto transaction.proto value.proto
-      wire_protocol.proto redis_protocol.proto ql_protocol.proto pgsql_protocol.proto)
+      redis_protocol.proto ql_protocol.proto
+  NO_SERVICE_MESSAGES_PROTO_FILES
+      common.proto common_net.proto common_types.proto pgsql_protocol.proto transaction.proto
+      value.proto wire_protocol.proto)
 ADD_YB_LIBRARY(yb_common_proto
   SRCS ${COMMON_PROTO_SRCS}
-  DEPS protobuf
+  DEPS protobuf yrpc_base
   NONLINK_DEPS ${COMMON_PROTO_TGTS})
 
 set(COMMON_BASE_SRCS
@@ -89,7 +91,6 @@ set(COMMON_SRCS
   retryable_request.cc
   roles_permissions.cc
   row.cc
-  row_key-util.cc
   row_mark.cc
   schema.cc
   snapshot.cc
@@ -145,7 +146,6 @@ ADD_YB_TEST(ql_table_row-test)
 ADD_YB_TEST(partial_row-test)
 ADD_YB_TEST(partition-test)
 ADD_YB_TEST(placement_info-test)
-ADD_YB_TEST(row_key-util-test)
 ADD_YB_TEST(schema-test)
 ADD_YB_TEST(types-test)
 ADD_YB_TEST(wire_protocol-test)

@@ -22,7 +22,7 @@ This section explains how explicit locking works in YugabyteDB. The transactions
 The two primary mechanisms to achieve concurrency control are *optimistic* and *pessimistic*. Concurrency control in YugabyteDB can accomodate both of these depending on the scenario.
 
 
-DocDB exposes the ability to write [provisional records]() which is exercised by the query layer. Provisional records are used to order persist locks on rows in order to detect conflicts. Provisional records have a *priority* assosciated with them, which is a number. When two transactions conflict, the transaction with the lower priority is aborted.
+DocDB exposes the ability to write [provisional records]() which is exercised by the query layer. Provisional records are used to order persist locks on rows in order to detect conflicts. Provisional records have a *priority* associated with them, which is a number. When two transactions conflict, the transaction with the lower priority is aborted.
 
 ### Optimistic concurrency control
 

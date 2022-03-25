@@ -640,6 +640,8 @@ public class YBClient implements AutoCloseable {
    * @param port RPC port of the host being added or removed.
    * @param isAdd true if we are adding a server to the master configuration, false if removing.
    * @param useHost if caller wants to use host/port instead of uuid of server being removed.
+   * @param hostAddrToAdd if caller wants to use a different address for the master
+   *                      for the config update
    *
    * @return The change config response object.
    */
@@ -650,6 +652,12 @@ public class YBClient implements AutoCloseable {
 
   public ChangeConfigResponse changeMasterConfig(
       String host, int port, boolean isAdd, boolean useHost) throws Exception {
+    return changeMasterConfig(host, port, isAdd, useHost, null /* hostAddrToAdd */);
+  }
+
+  public ChangeConfigResponse changeMasterConfig(String host, int port,
+                                                 boolean isAdd, boolean useHost,
+                                                 String hostAddrToAdd) throws Exception {
     String masterUuid = null;
 
     if (isAdd || !useHost) {
@@ -666,11 +674,16 @@ public class YBClient implements AutoCloseable {
     long timeout = getDefaultAdminOperationTimeoutMs();
     ChangeConfigResponse resp = null;
     boolean changeConfigDone;
+
+    // It is possible that we might need different addresses for reaching from the client
+    // than the one the DB nodes use to communicate. If the client provides an address
+    // to add to the config explicitly, use that.
+    String hostAddr = hostAddrToAdd == null ? host : hostAddrToAdd;
     do {
       changeConfigDone = true;
       try {
         Deferred<ChangeConfigResponse> d =
-            asyncClient.changeMasterConfig(host, port, masterUuid, isAdd, useHost);
+            asyncClient.changeMasterConfig(hostAddr, port, masterUuid, isAdd, useHost);
         resp = d.join(timeout);
         if (!resp.hasError()) {
           asyncClient.updateMasterAdresses(host, port, isAdd);
@@ -1417,9 +1430,10 @@ public class YBClient implements AutoCloseable {
   public GetChangesResponse getChangesCDCSDK(YBTable table, String streamId,
                                              String tabletId, long term,
                                              long index, byte[] key,
-                                             int write_id, long time) throws Exception {
-    Deferred<GetChangesResponse> d = asyncClient
-      .getChangesCDCSDK(table, streamId, tabletId, term, index, key, write_id, time);
+                                             int write_id, long time,
+                                             boolean needSchemaInfo) throws Exception {
+    Deferred<GetChangesResponse> d = asyncClient.getChangesCDCSDK(
+      table, streamId, tabletId, term, index, key, write_id, time, needSchemaInfo);
     return d.join(2*getDefaultAdminOperationTimeoutMs());
   }
 

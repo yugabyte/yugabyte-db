@@ -44,9 +44,10 @@
 
 #include <glog/logging.h>
 
-#include "yb/common/common_fwd.h"
 #include "yb/common/column_id.h"
 #include "yb/common/common_types.pb.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/constants.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/id_mapping.h"
@@ -475,7 +476,6 @@ typedef std::string PgSchemaName;
 // Schema::swap() or Schema::Reset() rather than returning by value.
 class Schema {
  public:
-
   static const ssize_t kColumnNotFound = -1;
 
   Schema()
@@ -488,7 +488,7 @@ class Schema {
                      NameToIndexMapAllocator(&name_to_index_bytes_)),
       has_nullables_(false),
       cotable_id_(Uuid::Nil()),
-      pgtable_id_(0),
+      colocation_id_(kColocationIdNotSet),
       pgschema_name_("") {
   }
 
@@ -509,7 +509,7 @@ class Schema {
          size_t key_columns,
          const TableProperties& table_properties = TableProperties(),
          const Uuid& cotable_id = Uuid::Nil(),
-         const PgTableOid pgtable_id = 0,
+         const ColocationId colocation_id = kColocationIdNotSet,
          const PgSchemaName pgschema_name = "");
 
   // Construct a schema with the given information.
@@ -523,7 +523,7 @@ class Schema {
          size_t key_columns,
          const TableProperties& table_properties = TableProperties(),
          const Uuid& cotable_id = Uuid::Nil(),
-         const PgTableOid pgtable_id = 0,
+         const ColocationId colocation_id = kColocationIdNotSet,
          const PgSchemaName pgschema_name = "");
 
   // Reset this Schema object to the given schema.
@@ -532,7 +532,7 @@ class Schema {
   CHECKED_STATUS Reset(const vector<ColumnSchema>& cols, size_t key_columns,
                        const TableProperties& table_properties = TableProperties(),
                        const Uuid& cotable_id = Uuid::Nil(),
-                       const PgTableOid pgtable_id = 0,
+                       const ColocationId colocation_id = kColocationIdNotSet,
                        const PgSchemaName pgschema_name = "");
 
   // Reset this Schema object to the given schema.
@@ -543,7 +543,7 @@ class Schema {
                        size_t key_columns,
                        const TableProperties& table_properties = TableProperties(),
                        const Uuid& cotable_id = Uuid::Nil(),
-                       const PgTableOid pgtable_id = 0,
+                       const ColocationId colocation_id = kColocationIdNotSet,
                        const PgSchemaName pgschema_name = "");
 
   // Return the number of bytes needed to represent a single row of this schema.
@@ -552,12 +552,6 @@ class Schema {
   size_t byte_size() const {
     DCHECK(initialized());
     return col_offsets_.back();
-  }
-
-  // Return the number of bytes needed to represent
-  // only the key portion of this schema.
-  size_t key_byte_size() const {
-    return col_offsets_[num_key_columns_];
   }
 
   // Return the number of columns in this schema
@@ -732,7 +726,7 @@ class Schema {
 
   // Return true if this Schema is initialized and valid.
   bool initialized() const {
-    return !col_offsets_.empty();
+    return !cols_.empty();
   }
 
   // Returns the highest column id in this Schema.
@@ -751,26 +745,26 @@ class Schema {
 
   void set_cotable_id(const Uuid& cotable_id) {
     if (!cotable_id.IsNil()) {
-      DCHECK_EQ(pgtable_id_, 0);
+      DCHECK_EQ(colocation_id_, kColocationIdNotSet);
     }
     cotable_id_ = cotable_id;
   }
 
-  // Gets and sets the PG table OID of the non-primary table this schema belongs to in a tablet
-  // with colocated tables.
-  PgTableOid pgtable_id() const {
-    return pgtable_id_;
+  // Gets the colocation ID of the non-primary table this schema belongs to in a
+  // tablet with colocated tables.
+  ColocationId colocation_id() const {
+    return colocation_id_;
   }
 
-  bool has_pgtable_id() const {
-    return pgtable_id_ > 0;
+  bool has_colocation_id() const {
+    return colocation_id_ != kColocationIdNotSet;
   }
 
-  void set_pgtable_id(const PgTableOid pgtable_id) {
-    if (pgtable_id > 0) {
+  void set_colocation_id(const ColocationId colocation_id) {
+    if (colocation_id != kColocationIdNotSet) {
       DCHECK(cotable_id_.IsNil());
     }
-    pgtable_id_ = pgtable_id;
+    colocation_id_ = colocation_id;
   }
 
   // Extract a given column from a row where the type is
@@ -786,7 +780,7 @@ class Schema {
     DCHECK_SCHEMA_EQ(*this, *row.schema());
     const ColumnSchema& col_schema = cols_[idx];
     DCHECK_LT(idx, cols_.size());
-    DCHECK_EQ(col_schema.type_info()->type(), Type);
+    DCHECK_EQ(col_schema.type_info()->type, Type);
 
     const void *val;
     if (col_schema.is_nullable()) {
@@ -806,36 +800,6 @@ class Schema {
     DCHECK_SCHEMA_EQ(*this, *row.schema());
     return DebugRowColumns(row, num_columns());
   }
-
-  // Stringify the given row, which must have a schema which is
-  // key-compatible with this one. Per above, this is not for use in
-  // hot paths.
-  template<class RowType>
-  std::string DebugRowKey(const RowType& row) const {
-    DCHECK_KEY_PROJECTION_SCHEMA_EQ(*this, *row.schema());
-    return DebugRowColumns(row, num_key_columns());
-  }
-
-  // Decode the specified encoded key into the given 'buffer', which
-  // must be at least as large as this->key_byte_size().
-  //
-  // 'arena' is used for allocating indirect strings, but is unused
-  // for other datatypes.
-  CHECKED_STATUS DecodeRowKey(Slice encoded_key, uint8_t* buffer, Arena* arena) const;
-
-  // Decode and stringify the given contiguous encoded row key in
-  // order to, e.g., provide print human-readable information about a
-  // tablet's start and end keys.
-  //
-  // If the encoded key is empty then '<start of table>' or '<end of table>'
-  // will be returned based on the value of 'start_or_end'.
-  //
-  // See also: DebugRowKey, DecodeRowKey.
-  enum StartOrEnd {
-    START_KEY,
-    END_KEY
-  };
-  std::string DebugEncodedRowKey(Slice encoded_key, StartOrEnd start_or_end) const;
 
   // Compare two rows of this schema.
   template<class RowTypeA, class RowTypeB>
@@ -1100,9 +1064,9 @@ class Schema {
   // primary or single-tenant table.
   Uuid cotable_id_;
 
-  // PG table OID of the non-primary table this schema belongs to in a tablet with colocated
-  // tables. Nil for the primary or single-tenant table.
-  PgTableOid pgtable_id_;
+  // Colocation ID used to distinguish a table within a colocation group.
+  // kColocationIdNotSet for a primary or single-tenant table.
+  ColocationId colocation_id_;
 
   PgSchemaName pgschema_name_;
 
@@ -1145,12 +1109,12 @@ class SchemaBuilder {
     return next_id_;
   }
 
-  void set_pgtable_id(PgTableOid pgtable_id) {
-    pgtable_id_ = pgtable_id;
+  void set_colocation_id(ColocationId colocation_id) {
+    colocation_id_ = colocation_id;
   }
 
-  PgTableOid pgtable_id() const {
-    return pgtable_id_;
+  ColocationId colocation_id() const {
+    return colocation_id_;
   }
 
   void set_pgschema_name(PgSchemaName pgschema_name) {
@@ -1171,11 +1135,11 @@ class SchemaBuilder {
 
   Schema Build() const {
     return Schema(cols_, col_ids_, num_key_columns_, table_properties_, cotable_id_,
-                  pgtable_id_, pgschema_name_);
+                  colocation_id_, pgschema_name_);
   }
   Schema BuildWithoutIds() const {
     return Schema(cols_, num_key_columns_, table_properties_, cotable_id_,
-                  pgtable_id_, pgschema_name_);
+                  colocation_id_, pgschema_name_);
   }
 
   // assumes type is allowed in primary key -- this should be checked before getting here
@@ -1236,7 +1200,7 @@ class SchemaBuilder {
   std::unordered_set<string> col_names_;
   size_t num_key_columns_;
   TableProperties table_properties_;
-  PgTableOid pgtable_id_ = 0;
+  ColocationId colocation_id_ = kColocationIdNotSet;
   PgSchemaName pgschema_name_ = "";
   Uuid cotable_id_ = Uuid::Nil();
 

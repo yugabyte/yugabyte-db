@@ -22,7 +22,7 @@ from ybops.cloud.common.ansible import AnsibleProcess
 from ybops.cloud.common.base import AbstractCommandParser
 from ybops.utils import (YB_HOME_DIR, YBOpsRuntimeError, get_datafile_path,
                          get_internal_datafile_path, get_ssh_host_port, remote_exec_command,
-                         scp_to_tmp)
+                         scp_to_tmp, wait_for_ssh)
 from ybops.utils.remote_shell import RemoteShell
 
 
@@ -46,8 +46,8 @@ class AbstractCloud(AbstractCommandParser):
     CLIENT_KEY_NAME = "yugabytedb.key"
     CERT_LOCATION_NODE = "node"
     CERT_LOCATION_PLATFORM = "platform"
-    SSH_RETRY_COUNT = 30
-    SSH_WAIT_SECONDS = 30
+    SSH_RETRY_COUNT = 180
+    SSH_WAIT_SECONDS = 5
     SSH_TIMEOUT_SECONDS = 10
 
     def __init__(self, name):
@@ -202,8 +202,6 @@ class AbstractCloud(AbstractCommandParser):
         )
 
     def execute_boot_script(self, args, extra_vars):
-        self.wait_for_ssh_port(extra_vars["ssh_host"], args.search_pattern,
-                               extra_vars["ssh_port"])
         dest_path = os.path.join("/tmp", os.path.basename(args.boot_script))
 
         # Make it executable, in case it isn't one.
@@ -224,8 +222,6 @@ class AbstractCloud(AbstractCommandParser):
 
     def configure_secondary_interface(self, args, extra_vars, subnet_cidr):
         logging.info("[app] Configuring second NIC")
-        self.wait_for_ssh_port(extra_vars["ssh_host"], args.search_pattern,
-                               extra_vars["ssh_port"])
         subnet_network, subnet_netmask = subnet_cidr.split('/')
         # Copy and run script to configure routes
         scp_to_tmp(
@@ -245,8 +241,14 @@ class AbstractCloud(AbstractCommandParser):
         remote_exec_command(
             extra_vars["ssh_host"], extra_vars["ssh_port"], extra_vars["ssh_user"],
             args.private_key_file, 'sudo reboot')
-        self.wait_for_ssh_port(extra_vars["ssh_host"],
-                               args.search_pattern, extra_vars["ssh_port"])
+        self.wait_for_ssh_port(extra_vars["ssh_host"], args.search_pattern, extra_vars["ssh_port"])
+        # Make sure we can ssh into the node after the reboot as well.
+        if wait_for_ssh(extra_vars["ssh_host"], extra_vars["ssh_port"],
+                        extra_vars["ssh_user"], args.private_key_file, num_retries=120):
+            pass
+        else:
+            raise YBOpsRuntimeError("Could not ssh into node {}".format(extra_vars["ssh_host"]))
+
         # Verify that the command ran successfully:
         rc, stdout, stderr = remote_exec_command(extra_vars["ssh_host"], extra_vars["ssh_port"],
                                                  extra_vars["ssh_user"], args.private_key_file,

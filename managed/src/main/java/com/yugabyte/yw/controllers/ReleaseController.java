@@ -5,6 +5,7 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
@@ -12,7 +13,9 @@ import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.forms.ReleaseFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
@@ -68,11 +71,18 @@ public class ReleaseController extends AuthenticatedController {
           ReleaseManager.formDataToReleaseMetadata(versionDataList);
       releases.forEach(
           (version, metadata) -> releaseManager.addReleaseWithMetadata(version, metadata));
+      releaseManager.updateCurrentReleases();
     } catch (RuntimeException re) {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, re.getMessage());
     }
 
-    auditService().createAuditEntry(ctx(), request(), request().body().asJson());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Release,
+            versionDataList.toString(),
+            Audit.ActionType.Create,
+            request().body().asJson());
     return YBPSuccess.empty();
   }
 
@@ -91,6 +101,37 @@ public class ReleaseController extends AuthenticatedController {
             .entrySet()
             .stream()
             .filter(f -> !Json.toJson(f.getValue()).get("state").asText().equals("DELETED"))
+            .collect(Collectors.toMap(p -> p.getKey(), p -> p.getValue()));
+    return PlatformResults.withData(
+        includeMetadata ? CommonUtils.maskObject(filtered) : filtered.keySet());
+  }
+
+  @ApiOperation(
+      value = "List all releases valid in region",
+      response = Object.class,
+      responseContainer = "Map",
+      nickname = "getListOfRegionReleases")
+  public Result listByRegion(
+      UUID customerUUID, UUID providerUUID, UUID regionUUID, Boolean includeMetadata) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Region region = Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
+    Map<String, Object> releases = releaseManager.getReleaseMetadata();
+    Architecture arch = region.getArchitecture();
+    // Old region without architecture. Return all releases.
+    if (arch == null) {
+      LOG.info(
+          "ReleaseController: Could not determine region {} architecture. Listing all releases.",
+          region.code);
+      return list(customerUUID, includeMetadata);
+    }
+
+    // Filter for active and matching region releases
+    Map<String, Object> filtered =
+        releases
+            .entrySet()
+            .stream()
+            .filter(f -> !Json.toJson(f.getValue()).get("state").asText().equals("DELETED"))
+            .filter(f -> releaseManager.metadataFromObject(f.getValue()).matchesRegion(region))
             .collect(Collectors.toMap(p -> p.getKey(), p -> p.getValue()));
     return PlatformResults.withData(
         includeMetadata ? CommonUtils.maskObject(filtered) : filtered.keySet());
@@ -127,7 +168,13 @@ public class ReleaseController extends AuthenticatedController {
     } else {
       throw new PlatformServiceException(BAD_REQUEST, "Missing Required param: State");
     }
-    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData));
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Release,
+            version,
+            Audit.ActionType.Update,
+            Json.toJson(formData));
     return PlatformResults.withData(m);
   }
 
@@ -138,9 +185,13 @@ public class ReleaseController extends AuthenticatedController {
     LOG.info("ReleaseController: refresh");
     try {
       releaseManager.importLocalReleases();
+      releaseManager.updateCurrentReleases();
     } catch (RuntimeException re) {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, re.getMessage());
     }
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(), Audit.TargetType.Release, null, Audit.ActionType.Refresh);
     return YBPSuccess.empty();
   }
 
@@ -161,6 +212,9 @@ public class ReleaseController extends AuthenticatedController {
     } catch (RuntimeException re) {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, re.getMessage());
     }
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(), Audit.TargetType.Release, version, Audit.ActionType.Delete);
     return YBPSuccess.empty();
   }
 }

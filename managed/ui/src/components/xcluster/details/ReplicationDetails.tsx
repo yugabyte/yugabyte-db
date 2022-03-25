@@ -16,6 +16,7 @@ import {
 } from '../../../actions/xClusterReplication';
 import { YBButton } from '../../common/forms/fields';
 import { YBLoading } from '../../common/indicators';
+import { YBConfirmModal } from '../../modals';
 import { YBTabsPanel } from '../../panels';
 import { ReplicationContainer } from '../../tables';
 import { IReplication } from '../IClusterReplication';
@@ -87,7 +88,7 @@ export function ReplicationDetails({ params }: Props) {
 
   const deleteReplication = useMutation((uuid: string) => {
     return deleteXclusterConfig(uuid).then(() => {
-      window.location.href = `/universes/${replication?.sourceUniverseUUID}/replication`;
+      window.location.href = `/universes/${params.uuid}/replication`;
     });
   });
 
@@ -147,8 +148,8 @@ export function ReplicationDetails({ params }: Props) {
                     </MenuItem>
                     <MenuItem
                       eventKey="2"
-                      onClick={(e) => {
-                        deleteReplication.mutateAsync(replication.uuid);
+                      onClick={() => {
+                        dispatch(openDialog('deleteReplicationModal'));
                       }}
                     >
                       Delete replication
@@ -211,6 +212,7 @@ export function ReplicationDetails({ params }: Props) {
                   <ReplicationContainer
                     sourceUniverseUUID={replication.sourceUniverseUUID}
                     hideHeader={true}
+                    replicationUUID={params.replicationUUID}
                   />
                 </Tab>
               </YBTabsPanel>
@@ -227,6 +229,16 @@ export function ReplicationDetails({ params }: Props) {
           visible={showModal && visibleModal === 'editReplicationConfiguration'}
           onHide={hideModal}
         />
+        <YBConfirmModal
+          name="delete-replication"
+          title="Confirm Delete"
+          onConfirm={() => deleteReplication.mutateAsync(replication.uuid)}
+          currentModal={'deleteReplicationModal'}
+          visibleModal={visibleModal}
+          hideConfirmModal={hideModal}
+        >
+          Are you sure you want to delete "{replication.name}"?
+        </YBConfirmModal>
       </div>
     </>
   );

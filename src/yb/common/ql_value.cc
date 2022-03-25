@@ -20,6 +20,7 @@
 #include "yb/common/jsonb.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_type.h"
+#include "yb/common/value.messages.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/escaping.h"
@@ -318,9 +319,7 @@ void QLValue::Serialize(
       return;
     }
     case INET: {
-      std::string bytes;
-      CHECK_OK(inetaddress_value(pb).ToBytes(&bytes));
-      CQLEncodeBytes(bytes, buffer);
+      CQLEncodeBytes(inetaddress_value(pb).ToBytes(), buffer);
       return;
     }
     case JSONB: {
@@ -921,7 +920,8 @@ util::VarInt QLValue::varint_value(const QLValuePB& pb) {
 }
 
 void QLValue::set_inetaddress_value(const InetAddress& val, QLValuePB* pb) {
-  CHECK_OK(val.ToBytes(pb->mutable_inetaddress_value()));
+  pb->mutable_inetaddress_value()->clear();
+  val.AppendToBytes(pb->mutable_inetaddress_value());
 }
 
 void QLValue::set_timeuuid_value(const Uuid& val) {
@@ -949,6 +949,30 @@ CHECKED_STATUS QLValue::CQLDeserializeFloat(
   return Status::OK();
 }
 
+QLValuePB QLValue::Primitive(const std::string& str) {
+  QLValuePB result;
+  result.set_string_value(str);
+  return result;
+}
+
+QLValuePB QLValue::Primitive(double value) {
+  QLValuePB result;
+  result.set_double_value(value);
+  return result;
+}
+
+QLValuePB QLValue::Primitive(int32_t value) {
+  QLValuePB result;
+  result.set_int32_value(value);
+  return result;
+}
+
+QLValuePB QLValue::PrimitiveInt64(int64_t value) {
+  QLValuePB result;
+  result.set_int64_value(value);
+  return result;
+}
+
 //----------------------------------- QLValuePB operators --------------------------------
 
 InternalType type(const QLValuePB& v) {
@@ -957,6 +981,12 @@ InternalType type(const QLValuePB& v) {
 bool IsNull(const QLValuePB& v) {
   return v.value_case() == QLValuePB::VALUE_NOT_SET;
 }
+
+bool IsNull(const LWQLValuePB& v) {
+  return v.value_case() == QLValuePB::VALUE_NOT_SET;
+}
+
+
 void SetNull(QLValuePB* v) {
   v->Clear();
 }

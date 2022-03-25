@@ -62,25 +62,25 @@ class PgDmlWrite : public PgDml {
   void AllocWriteRequest();
 
   // Allocate column expression.
-  PgsqlExpressionPB *AllocColumnBindPB(PgColumn *col) override;
+  LWPgsqlExpressionPB *AllocColumnBindPB(PgColumn *col) override;
 
   // Allocate target for selected or returned expressions.
-  PgsqlExpressionPB *AllocTargetPB() override;
+  LWPgsqlExpressionPB *AllocTargetPB() override;
 
   // Allocate protobuf for a qual in the write request's where_clauses list.
-  PgsqlExpressionPB *AllocQualPB() override;
+  LWPgsqlExpressionPB *AllocQualPB() override;
 
   // Allocate protobuf for a column reference in the write request's col_refs list.
-  PgsqlColRefPB *AllocColRefPB() override;
+  LWPgsqlColRefPB *AllocColRefPB() override;
 
   // Clear the write request's col_refs list.
   void ClearColRefPBs() override;
 
   // Allocate column expression.
-  PgsqlExpressionPB *AllocColumnAssignPB(PgColumn *col) override;
+  LWPgsqlExpressionPB* AllocColumnAssignPB(PgColumn *col) override;
 
   // Protobuf code.
-  PgsqlWriteRequestPB *write_req_ = nullptr;
+  std::shared_ptr<LWPgsqlWriteRequestPB> write_req_;
 
   bool is_single_row_txn_ = false; // default.
 
@@ -89,7 +89,7 @@ class PgDmlWrite : public PgDml {
  private:
   CHECKED_STATUS DeleteEmptyPrimaryBinds();
 
-  virtual std::unique_ptr<client::YBPgsqlWriteOp> AllocWriteOperation() const = 0;
+  virtual PgsqlWriteRequestPB::PgsqlStmtType stmt_type() const = 0;
 };
 
 }  // namespace pggate

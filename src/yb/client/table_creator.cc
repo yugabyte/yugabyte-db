@@ -100,6 +100,11 @@ YBTableCreator& YBTableCreator::tablegroup_id(const std::string& tablegroup_id) 
   return *this;
 }
 
+YBTableCreator& YBTableCreator::colocation_id(ColocationId colocation_id) {
+  colocation_id_ = colocation_id;
+  return *this;
+}
+
 YBTableCreator& YBTableCreator::tablespace_id(const std::string& tablespace_id) {
   tablespace_id_ = tablespace_id;
   return *this;
@@ -254,6 +259,9 @@ Status YBTableCreator::Create() {
 
   if (!tablegroup_id_.empty()) {
     req.set_tablegroup_id(tablegroup_id_);
+  }
+  if (colocation_id_ != kColocationIdNotSet) {
+    req.set_colocation_id(colocation_id_);
   }
 
   if (!tablespace_id_.empty()) {

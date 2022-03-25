@@ -97,6 +97,7 @@ ADD_YB_LIBRARY(remote_bootstrap_proto
 
 YRPC_GENERATE(
   PG_CLIENT_YRPC_SRCS PG_CLIENT_YRPC_HDRS PG_CLIENT_YRPC_TGTS
+  MESSAGES TRUE
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES pg_client.proto)
@@ -195,6 +196,7 @@ set(TSERVER_SRCS
   pg_client_service.cc
   pg_client_session.cc
   pg_create_table.cc
+  pg_table_cache.cc
   read_query.cc
   remote_bootstrap_client.cc
   remote_bootstrap_file_downloader.cc

@@ -86,6 +86,8 @@ public class BackupTable extends AbstractTaskBase {
           }
 
           if (actionType == BackupTableParams.ActionType.CREATE) {
+            backup.save();
+            backup.setCompletionTime(backup.getUpdateTime());
             backup.setTotalBackupSize(totalBackupSize);
           }
           backup.transitionState(Backup.BackupState.Completed);
@@ -106,6 +108,8 @@ public class BackupTable extends AbstractTaskBase {
             log.info("[" + getName() + "] STDOUT: " + response.message);
             if (actionType == BackupTableParams.ActionType.CREATE) {
               long backupSize = BackupUtil.extractBackupSize(jsonNode);
+              backup.save();
+              backup.setCompletionTime(backup.getUpdateTime());
               backup.setTotalBackupSize(backupSize);
             }
             backup.transitionState(Backup.BackupState.Completed);

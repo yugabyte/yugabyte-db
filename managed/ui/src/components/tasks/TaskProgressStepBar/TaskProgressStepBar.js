@@ -14,7 +14,6 @@ export default class TaskProgressStepBar extends Component {
   };
 
   render() {
-    console.log(JSON.stringify(this.props.progressData));
     const {
       progressData: { details }
     } = this.props;

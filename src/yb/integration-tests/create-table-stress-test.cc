@@ -587,26 +587,6 @@ DontVerifyClusterBeforeNextTearDown();
     ASSERT_EQ(FLAGS_num_test_tablets, tablets.size());
   }
   LOG(INFO) << "========================================================";
-
-  // Get a single tablet in the middle, make sure we get that one back
-
-  std::unique_ptr<YBPartialRow> row(schema_.NewRow());
-  ASSERT_OK(row->SetInt32(0, half_tablets - 1));
-  string start_key_middle;
-  ASSERT_OK(row->EncodeRowKey(&start_key_middle));
-
-  LOG(INFO) << "Start key middle: " << start_key_middle;
-  LOG(INFO) << CURRENT_TEST_NAME() << ": Step 7. Asking for single middle tablet...";
-  LOG_TIMING(INFO, "asking for single middle tablet") {
-    req.Clear();
-    resp.Clear();
-    table_name.SetIntoTableIdentifierPB(req.mutable_table());
-    req.set_max_returned_locations(1);
-    req.set_partition_key_start(start_key_middle);
-    ASSERT_OK(cluster_->mini_master()->catalog_manager().GetTableLocations(&req, &resp));
-    ASSERT_EQ(1, resp.tablet_locations_size()) << "Response: [" << resp.DebugString() << "]";
-    ASSERT_EQ(start_key_middle, resp.tablet_locations(0).partition().partition_key_start());
-  }
 }
 
 // Creates tables and reloads on-disk metadata concurrently to test for races

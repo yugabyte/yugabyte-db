@@ -619,8 +619,10 @@ class StrongConflictChecker {
       value_iter_hash_ = hash;
     }
     value_iter_.Seek(intent_key);
-    VLOG_WITH_PREFIX_AND_FUNC(4) << "Check conflicts in regular DB; Seek: "
-                                 << intent_key.ToDebugString() << ", strong: " << strong;
+    VLOG_WITH_PREFIX_AND_FUNC(4)
+        << "Overwrite; Seek: " << intent_key.ToDebugString() << " ("
+        << SubDocKey::DebugSliceToString(intent_key) << "), strong: " << strong << ", wait_policy: "
+        << AsString(wait_policy);
     // If we are resolving conflicts for writing a strong intent, look at records in regular RocksDB
     // with the same key as the intent's key (not including hybrid time) and any child keys. This is
     // because a strong intent indicates deletion or replacement of the entire subdocument tree and
@@ -1113,17 +1115,15 @@ std::string DebugIntentKeyToString(Slice intent_key) {
     LOG(WARNING) << "Failed to parse: " << intent_key.ToDebugHexString() << ": " << parsed.status();
     return intent_key.ToDebugHexString();
   }
-  DocHybridTime doc_ht;
-  auto status = doc_ht.DecodeFromEnd(parsed->doc_ht);
-  if (!status.ok()) {
-    LOG(WARNING) << "Failed to decode doc ht: " << intent_key.ToDebugHexString() << ": " << status;
+  auto doc_ht = DocHybridTime::DecodeFromEnd(parsed->doc_ht);
+  if (!doc_ht.ok()) {
+    LOG(WARNING) << "Failed to decode doc ht: " << intent_key.ToDebugHexString() << ": "
+                 << doc_ht.status();
     return intent_key.ToDebugHexString();
   }
-  return Format("$0 (key: $1 type: $2 doc_ht: $3 )",
-                intent_key.ToDebugHexString(),
-                SubDocKey::DebugSliceToString(parsed->doc_path),
-                parsed->types,
-                doc_ht.ToString());
+  return Format("$0 (key: $1 type: $2 doc_ht: $3)",
+                intent_key.ToDebugHexString(), SubDocKey::DebugSliceToString(parsed->doc_path),
+                parsed->types, *doc_ht);
 }
 
 } // namespace docdb

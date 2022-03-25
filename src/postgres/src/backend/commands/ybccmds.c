@@ -173,12 +173,14 @@ static void CreateTableAddColumn(YBCPgStatement handle,
 /* Utility function to add columns to the YB create statement
  * Columns need to be sent in order first hash columns, then rest of primary
  * key columns, then regular columns.
+ *
+ * Table counts as colocated if it has a tablegroup or resides within the
+ * colocated database and hasn't opted-out from colocation.
  */
 static void CreateTableAddColumns(YBCPgStatement handle,
 								  TupleDesc desc,
 								  Constraint *primary_key,
-								  const bool colocated,
-								  Oid tablegroupId)
+								  const bool colocated)
 {
 	ListCell  *cell;
 	IndexElem *index_elem;
@@ -202,8 +204,7 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 		 * to be a hash column - but that will be caught normally.
 		 */
 		bool is_hash = (order == SORTBY_HASH ||
-						(order == SORTBY_DEFAULT &&
-						 !colocated && tablegroupId == InvalidOid));
+						(order == SORTBY_DEFAULT && !colocated));
 		bool is_desc = false;
 		bool is_nulls_first = false;
 		ColumnSortingOptions(order,
@@ -246,8 +247,7 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 						cell == list_head(primary_key->yb_index_params);
 					bool is_hash = (order == SORTBY_HASH ||
 									(is_first_key &&
-									 order == SORTBY_DEFAULT &&
-									 !colocated && tablegroupId == InvalidOid));
+									 order == SORTBY_DEFAULT && !colocated));
 					bool is_desc = false;
 					bool is_nulls_first = false;
 					ColumnSortingOptions(order,
@@ -374,8 +374,7 @@ static void CreateTableHandleSplitOptions(YBCPgStatement handle,
 										  OptSplit *split_options,
 										  Constraint *primary_key,
 										  Oid namespaceId,
-										  const bool colocated,
-										  YBCPgOid tablegroup_id)
+										  const bool colocated)
 {
 	/* Address both types of split options */
 	switch (split_options->split_type)
@@ -401,7 +400,7 @@ static void CreateTableHandleSplitOptions(YBCPgStatement handle,
 				 * Checking if  table_oid is valid simple means if the table is
 				 * part of a tablegroup.
 				 */
-				hashable = !is_pg_catalog_table_ && !colocated && tablegroup_id == kInvalidOid;
+				hashable = !is_pg_catalog_table_ && !colocated;
 			}
 
 			if (!hashable)
@@ -451,8 +450,8 @@ static void CreateTableHandleSplitOptions(YBCPgStatement handle,
 
 void
 YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
-							 Oid relationId, Oid namespaceId, Oid tablegroupId, Oid tablespaceId,
-							 Oid matviewPgTableId)
+			   Oid relationId, Oid namespaceId, Oid tablegroupId,
+			   Oid colocationId, Oid tablespaceId, Oid matviewPgTableId)
 {
 	if (relkind != RELKIND_RELATION && relkind != RELKIND_PARTITIONED_TABLE &&
 		relkind != RELKIND_MATVIEW)
@@ -559,6 +558,7 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 		heap_close(rel, AccessShareLock);
 	}
 
+	// TODO(alex): Rename to disambiguate colocation via DB vs via tablegroup
 	/* By default, inherit the colocated option from the database */
 	bool colocated = MyDatabaseColocated;
 
@@ -570,7 +570,7 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 
 		if (strcmp(def->defname, "colocated") == 0)
 		{
-			if (tablegroupId != InvalidOid)
+			if (OidIsValid(tablegroupId))
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("cannot use \'colocated=true/false\' with tablegroup")));
@@ -595,6 +595,11 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("cannot create colocated table with a tablespace")));
 
+	if (OidIsValid(colocationId) && !colocated && !OidIsValid(tablegroupId))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("cannot set colocation_id for non-colocated table")));
+
 	HandleYBStatus(YBCPgNewCreateTable(db_name,
 									   schema_name,
 									   stmt->relation->relname,
@@ -605,17 +610,19 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 									   primary_key == NULL /* add_primary_key */,
 									   colocated,
 									   tablegroupId,
+									   colocationId,
 									   tablespaceId,
 									   matviewPgTableId,
 									   &handle));
 
-	CreateTableAddColumns(handle, desc, primary_key, colocated, tablegroupId);
+	CreateTableAddColumns(handle, desc, primary_key, colocated || OidIsValid(tablegroupId));
 
 	/* Handle SPLIT statement, if present */
 	OptSplit *split_options = stmt->split_options;
 	if (split_options)
 		CreateTableHandleSplitOptions(
-			handle, desc, split_options, primary_key, namespaceId, colocated, tablegroupId);
+			handle, desc, split_options, primary_key, namespaceId,
+			colocated || OidIsValid(tablegroupId));
 
 	/* Create the table. */
 	HandleYBStatus(YBCPgExecCreateTable(handle));
@@ -626,6 +633,7 @@ YBCDropTable(Oid relationId)
 {
 	YBCPgStatement  handle     = NULL;
 	Oid             databaseId = YBCGetDatabaseOidByRelid(relationId);
+	// TODO(alex): Rename to disambiguate colocation via DB vs via tablegroup
 	bool            colocated  = false;
 
 	/* Determine if table is colocated */
@@ -690,7 +698,8 @@ YBCTruncateTable(Relation rel) {
 	YBCPgStatement  handle;
 	Oid             relationId = RelationGetRelid(rel);
 	Oid             databaseId = YBCGetDatabaseOid(rel);
-	bool            colocated  = false;
+	// TODO(alex): Rename to disambiguate colocation via DB vs via tablegroup
+	bool            colocated = false;
 
 	/* Determine if table is colocated */
 	if (MyDatabaseColocated)
@@ -819,6 +828,7 @@ YBCCreateIndex(const char *indexName,
 			   OptSplit *split_options,
 			   const bool skip_index_backfill,
 			   Oid tablegroupId,
+			   Oid colocationId,
 			   Oid tablespaceId)
 {
 	char *db_name	  = get_database_name(YBCGetDatabaseOid(rel));
@@ -843,6 +853,7 @@ YBCCreateIndex(const char *indexName,
 									   skip_index_backfill,
 									   false, /* if_not_exists */
 									   tablegroupId,
+									   colocationId,
 									   tablespaceId,
 									   &handle));
 
@@ -888,9 +899,32 @@ YBCCreateIndex(const char *indexName,
 
 static void
 YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, YBCPgStatement handle,
-                        int* col, bool* needsYBAlter,
-                        YBCPgStatement* rollbackHandle)
+						int* col, bool* needsYBAlter,
+						YBCPgStatement* rollbackHandle,
+						bool isPartitionOfAlteredTable)
 {
+	if (isPartitionOfAlteredTable)
+	{
+		/*
+		 * This function was invoked on a child partition table to reflect
+		 * the effects of Alter on its parent.
+		 */
+		switch (cmd->subtype)
+		{
+			case AT_AddColumnRecurse:
+			case AT_DropColumnRecurse:
+			case AT_AddConstraintRecurse:
+			case AT_DropConstraintRecurse:
+				break;
+			default:
+				/*
+				 * This is not an alter command on a partitioned table that
+				 * needs to trickle down to its child partitions. Nothing to
+				 * do.
+				 */
+				return;
+		}
+	}
 	Oid relationId = RelationGetRelid(rel);
 	switch (cmd->subtype)
 	{
@@ -921,7 +955,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, YBCPgStatement handle,
 			const YBCPgTypeEntity *col_type = YbDataTypeFromOidMod(order, typeOid);
 
 			HandleYBStatus(YBCPgAlterTableAddColumn(handle, colDef->colname,
-													order, col_type));
+						   order, col_type));
 			++(*col);
 			*needsYBAlter = true;
 
@@ -1098,7 +1132,8 @@ YBCPgStatement
 YBCPrepareAlterTable(List** subcmds,
 					 int subcmds_size,
 					 Oid relationId,
-					 YBCPgStatement *rollbackHandle)
+					 YBCPgStatement *rollbackHandle,
+					 bool isPartitionOfAlteredTable)
 {
 	/* Appropriate lock was already taken */
 	Relation rel = relation_open(relationId, NoLock);
@@ -1123,7 +1158,8 @@ YBCPrepareAlterTable(List** subcmds,
 		foreach(lcmd, subcmds[cmd_idx])
 		{
 			YBCPrepareAlterTableCmd((AlterTableCmd *) lfirst(lcmd), rel, handle,
-			                        &col, &needsYBAlter, rollbackHandle);
+									 &col, &needsYBAlter, rollbackHandle,
+									 isPartitionOfAlteredTable);
 		}
 	}
 	relation_close(rel, NoLock);
@@ -1186,6 +1222,7 @@ void
 YBCDropIndex(Oid relationId)
 {
 	YBCPgStatement	handle;
+	// TODO(alex): Rename to disambiguate colocation via DB vs via tablegroup
 	bool			colocated  = false;
 	Oid				databaseId = YBCGetDatabaseOidByRelid(relationId);
 
@@ -1239,6 +1276,7 @@ YBCDropIndex(Oid relationId)
 	}
 }
 
+// TODO(alex): Rename to disambiguate colocation via DB vs via tablegroup
 bool
 YBCIsTableColocated(Oid dboid, Oid relationId)
 {
@@ -1259,7 +1297,7 @@ YbBackfillIndex(BackfillIndexStmt *stmt, DestReceiver *dest)
 	TupOutputState *tstate;
 	YbPgExecOutParam *out_param;
 
-	if (YBCGetDisableIndexBackfill())
+	if (*YBCGetGFlags()->ysql_disable_index_backfill)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("backfill is not enabled")));

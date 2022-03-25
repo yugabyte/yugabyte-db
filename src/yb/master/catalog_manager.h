@@ -227,12 +227,12 @@ class CatalogManager :
       GetTransactionStatusTabletsResponsePB* resp) EXCLUDES(mutex_);
 
   // Get ids of transaction status tables matching a given placement.
-  Result<std::vector<TableId>> GetPlacementLocalTransactionStatusTables(
+  Result<std::vector<TableInfoPtr>> GetPlacementLocalTransactionStatusTables(
       const CloudInfoPB& placement) EXCLUDES(mutex_);
 
   // Get tablet ids of local transaction status tables matching a given placement.
   CHECKED_STATUS GetPlacementLocalTransactionStatusTablets(
-      const CloudInfoPB& placement,
+      const std::vector<TableInfoPtr>& placement_local_tables,
       GetTransactionStatusTabletsResponsePB* resp) EXCLUDES(mutex_);
 
   // Get tablet ids of the global transaction status table and local transaction status tables
@@ -254,17 +254,17 @@ class CatalogManager :
                                          CoarseTimePoint deadline,
                                          bool* create_in_progress);
 
-  CHECKED_STATUS WaitForCreateTableToFinish(const TableId& table_id);
+  CHECKED_STATUS WaitForCreateTableToFinish(const TableId& table_id, CoarseTimePoint deadline);
 
   // Check if the transaction status table creation is done.
   //
   // This is called at the end of IsCreateTableDone if the table has transactions enabled.
-  CHECKED_STATUS IsTransactionStatusTableCreated(IsCreateTableDoneResponsePB* resp);
+  Result<bool> IsTransactionStatusTableCreated();
 
   // Check if the metrics snapshots table creation is done.
   //
   // This is called at the end of IsCreateTableDone.
-  CHECKED_STATUS IsMetricsSnapshotsTableCreated(IsCreateTableDoneResponsePB* resp);
+  Result<bool> IsMetricsSnapshotsTableCreated();
 
   // Called when transaction associated with table create finishes. Verifies postgres layer present.
   CHECKED_STATUS VerifyTablePgLayer(scoped_refptr<TableInfo> table, bool txn_query_succeeded);
@@ -477,6 +477,17 @@ class CatalogManager :
   CHECKED_STATUS GetUDTypeInfo(const GetUDTypeInfoRequestPB* req,
                                GetUDTypeInfoResponsePB* resp,
                                rpc::RpcContext* rpc);
+
+  // Disables tablet splitting for a specified amount of time.
+  CHECKED_STATUS DisableTabletSplitting(
+      const DisableTabletSplittingRequestPB* req, DisableTabletSplittingResponsePB* resp,
+      rpc::RpcContext* rpc);
+
+  // Returns true if there are no outstanding tablets and the tablet split manager is not currently
+  // processing tablet splits.
+  CHECKED_STATUS IsTabletSplittingComplete(
+      const IsTabletSplittingCompleteRequestPB* req, IsTabletSplittingCompleteResponsePB* resp,
+      rpc::RpcContext* rpc);
 
   // Delete CDC streams for a table.
   virtual CHECKED_STATUS DeleteCDCStreamsForTable(const TableId& table_id) EXCLUDES(mutex_);
@@ -732,7 +743,7 @@ class CatalogManager :
                                            AreLeadersOnPreferredOnlyResponsePB* resp);
 
   // Return the placement uuid of the primary cluster containing this master.
-  string placement_uuid() const;
+  Result<string> placement_uuid() const;
 
   // Clears out the existing metadata ('table_names_map_', 'table_ids_map_',
   // and 'tablet_map_'), loads tables metadata into memory and if successful
@@ -884,7 +895,7 @@ class CatalogManager :
   bool ShouldSplitValidCandidate(
       const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const override;
 
-  BlacklistSet BlacklistSetFromPB() const override;
+  Result<BlacklistSet> BlacklistSetFromPB() const override;
 
   std::vector<std::string> GetMasterAddresses();
 
@@ -1398,6 +1409,12 @@ class CatalogManager :
                            DeleteNamespaceResponsePB* resp,
                            rpc::RpcContext* rpc);
 
+  std::shared_ptr<ClusterConfigInfo> ClusterConfig() const;
+
+  Result<TableInfoPtr> GetGlobalTransactionStatusTable();
+
+  Result<bool> IsCreateTableDone(const TableInfoPtr& table);
+
   // TODO: the maps are a little wasteful of RAM, since the TableInfo/TabletInfo
   // objects have a copy of the string key. But STL doesn't make it
   // easy to make a "gettable set".
@@ -1443,7 +1460,8 @@ class CatalogManager :
   RedisConfigInfoMap redis_config_map_ GUARDED_BY(mutex_);
 
   // Config information.
-  scoped_refptr<ClusterConfigInfo> cluster_config_ = nullptr; // No GUARD, only write on Load.
+  mutable rw_spinlock config_mutex_;
+  std::shared_ptr<ClusterConfigInfo> cluster_config_ GUARDED_BY(config_mutex_) = nullptr;
 
   // YSQL Catalog information.
   scoped_refptr<SysConfigInfo> ysql_catalog_config_ = nullptr; // No GUARD, only write on Load.
@@ -1551,6 +1569,9 @@ class CatalogManager :
   std::unordered_map<TableId, TableId> matview_pg_table_ids_map_
       GUARDED_BY(mutex_);
 
+  std::unordered_map<TableId, TablegroupId> table_tablegroup_ids_map_
+      GUARDED_BY(mutex_);
+
   boost::optional<std::future<Status>> initdb_future_;
   boost::optional<InitialSysCatalogSnapshotWriter> initial_snapshot_writer_;
 
@@ -1575,7 +1596,7 @@ class CatalogManager :
   // Handles querying and processing YSQL DDL Transactions as a catalog manager background task.
   std::unique_ptr<YsqlTransactionDdl> ysql_transaction_;
 
-  MonoTime time_elected_leader_;
+  std::atomic<MonoTime> time_elected_leader_;
 
   std::unique_ptr<client::YBClient> cdc_state_client_;
 
@@ -1667,15 +1688,17 @@ class CatalogManager :
       TSDescriptor* ts_desc,
       bool is_incremental,
       const ReportedTabletPB& report,
-      const TableInfo::WriteLock& table_lock,
+      const std::map<TableId, TableInfo::WriteLock>& table_write_locks,
       const TabletInfoPtr& tablet,
       const TabletInfo::WriteLock& tablet_lock,
+      const std::map<TableId, scoped_refptr<TableInfo>>& tables,
       std::vector<RetryingTSRpcTaskPtr>* rpcs);
 
   struct ReportedTablet {
     TabletId tablet_id;
     TabletInfoPtr info;
     const ReportedTabletPB* report;
+    std::map<TableId, scoped_refptr<TableInfo>> tables;
   };
   using ReportedTablets = std::vector<ReportedTablet>;
 
@@ -1683,8 +1706,8 @@ class CatalogManager :
   CHECKED_STATUS ProcessTabletReportBatch(
       TSDescriptor* ts_desc,
       bool is_incremental,
-      ReportedTablets::const_iterator begin,
-      ReportedTablets::const_iterator end,
+      ReportedTablets::iterator begin,
+      ReportedTablets::iterator end,
       TabletReportUpdatesPB* full_report_update,
       std::vector<RetryingTSRpcTaskPtr>* rpcs);
 

@@ -255,6 +255,9 @@ message PgsqlWriteRequestPB {
   // to convert between DocDB and Postgres formats.
   // One entry per column referenced.
   repeated PgsqlColRefPB col_refs = 21;
+
+  // Used only in pg client.
+  optional bytes partition_key = 22;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -465,6 +468,9 @@ message PgsqlReadRequestPB {
   // to convert between DocDB and Postgres formats.
   // One entry per column referenced.
   repeated PgsqlColRefPB col_refs = 34;
+
+  // Used only in pg client.
+  optional bytes partition_key = 35;
 }
 
 //--------------------------------------------------------------------------------------------------

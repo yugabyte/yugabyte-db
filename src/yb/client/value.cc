@@ -121,12 +121,12 @@ Status YBValue::Data::CheckTypeAndGetPointer(const string& col_name,
                                              const shared_ptr<QLType>& tp,
                                              void** val_void) {
   const TypeInfo* ti = tp->type_info();
-  switch (ti->physical_type()) {
+  switch (ti->physical_type) {
     case yb::INT8:
     case yb::INT16:
     case yb::INT32:
     case yb::INT64:
-      RETURN_NOT_OK(CheckAndPointToInt(col_name, ti->size(), val_void));
+      RETURN_NOT_OK(CheckAndPointToInt(col_name, ti->size, val_void));
       break;
 
     case yb::BOOL:
@@ -149,7 +149,7 @@ Status YBValue::Data::CheckTypeAndGetPointer(const string& col_name,
 
     default:
       return STATUS(InvalidArgument, Substitute("cannot determine value for column $0 (type $1)",
-                                                col_name, ti->name()));
+                                                col_name, ti->name));
   }
   return Status::OK();
 }

@@ -34,6 +34,10 @@
 #include "yb/util/result.h"
 #include "yb/util/tsan_util.h"
 
+DECLARE_int32(catalog_manager_bg_task_wait_ms);
+DECLARE_int32(heartbeat_interval_ms);
+DECLARE_double(leader_failure_max_missed_heartbeat_periods);
+
 using namespace std::literals;
 
 namespace yb {
@@ -116,50 +120,62 @@ class LoadBalancerMultiTableTest : public YBTableTestBase {
       table_exists_ = false;
     }
   }
+
+  void SetFlagOnAllMasters(const string& flag, const string& value) {
+    for (size_t i = 0; i < num_masters(); ++i) {
+      ASSERT_OK(external_mini_cluster_->SetFlag(external_mini_cluster_->master(i), flag, value));
+    }
+  }
 };
 
 TEST_F(LoadBalancerMultiTableTest, MultipleLeaderTabletMovesPerTable) {
-  const int default_bg_task_wait_ms = std::stoi(ASSERT_RESULT(
-      external_mini_cluster_->master(0)->GetFlag("catalog_manager_bg_task_wait_ms")));
-  const int test_bg_task_wait_ms = 5 * default_bg_task_wait_ms;
-
-  // Start with 3 tables each with 5 tablets on 3 servers.
-  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, ""));
+  // Disable load balancing until we restart ts-0 and want to balance leaders onto it.
+  SetFlagOnAllMasters("enable_load_balancing", "false");
 
   auto ts0 = external_mini_cluster_->tablet_server(0);
   string ts0_uuid = ts0->instance_id().permanent_uuid();
   LOG(INFO) << "Shutting down ts-0. UUID: " << ts0_uuid;
   ts0->Shutdown();
-  SleepFor(MonoDelta::FromMilliseconds(1000));
 
-  // Wait for load balancing to complete.
-  WaitForLoadBalanceCompletion();
-
-  // Get current leader counts.
+  // Wait for leaders to be re-elected onto the other tservers.
   std::unordered_map<string, std::unordered_map<string, int>> initial_leader_counts;
   for (const auto& tn : table_names_) {
-    initial_leader_counts[tn.table_name()] = ASSERT_RESULT(yb_admin_client_->GetLeaderCounts(tn));
-    // Verify that ts-0 has no leaders.
-    ASSERT_EQ(initial_leader_counts[tn.table_name()][ts0_uuid], 0);
+    ASSERT_OK(WaitFor([&]() -> Result<bool> {
+      initial_leader_counts[tn.table_name()] = VERIFY_RESULT(yb_admin_client_->GetLeaderCounts(tn));
+      int total_leaders = 0;
+      for (const auto& lc : initial_leader_counts[tn.table_name()]) {
+        if (lc.first == ts0_uuid) {
+          // Not all leaders moved off of ts0.
+          if (lc.second != 0) {
+            return false;
+          }
+        } else {
+          total_leaders += lc.second;
+        }
+      }
+      // Wait for all leaders to be elected.
+      return total_leaders == num_tablets();
+    }, static_cast<int>(ceil(FLAGS_heartbeat_interval_ms *
+                             FLAGS_leader_failure_max_missed_heartbeat_periods)) * 2ms,
+       "Waiting for leader re-election."));
   }
-
-  for (size_t i = 0; i < num_masters(); ++i) {
-    ASSERT_OK(external_mini_cluster_->SetFlag(external_mini_cluster_->master(i),
-                                              "catalog_manager_bg_task_wait_ms",
-                                              std::to_string(test_bg_task_wait_ms)));
-  }
-
-  // Sleep for default_bg_task_wait_ms * 2 after setting the wait time to test_bg_task_wait_ms, to
-  // ensure that the restart of ts-0 occurs while the load balancer is sleeping. Without this, we
-  // might accidentally sleep through two load balancer runs and overcount leader moves.
-  SleepFor(MonoDelta::FromMilliseconds(default_bg_task_wait_ms * 2));
 
   LOG(INFO) << "Restarting ts-0";
   ASSERT_OK(ts0->Restart());
   LOG(INFO) << "Done restarting ts-0";
 
-  // Wait for one run of the load balancer to complete
-  SleepFor(MonoDelta::FromMilliseconds(test_bg_task_wait_ms));
+  // Wait for one run of the load balancer to complete so we end up at the pause.
+  SetFlagOnAllMasters("TEST_pause_catalog_manager_bg_loop_start", "true");
+  SleepFor(MonoDelta::FromMilliseconds(FLAGS_catalog_manager_bg_task_wait_ms * 2));
+
+  // Re-enable load balancing and continue from the pause, but stop after one iteration.
+  SetFlagOnAllMasters("enable_load_balancing", "true");
+  SetFlagOnAllMasters("TEST_pause_catalog_manager_bg_loop_end", "true");
+  SetFlagOnAllMasters("TEST_pause_catalog_manager_bg_loop_start", "false");
+
+  // Wait for the load balancer run to complete, and for tservers to heartbeat new leaders.
+  SleepFor(MonoDelta::FromMilliseconds(FLAGS_catalog_manager_bg_task_wait_ms * 2 +
+                                       FLAGS_heartbeat_interval_ms * 3 * kTimeMultiplier));
 
   // Check new leader counts.
   int num_leader_moves = 0;
@@ -183,10 +199,7 @@ TEST_F(LoadBalancerMultiTableTest, GlobalLoadBalancing) {
   ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", rf, ""));
 
   // Disable global load balancing.
-  for (size_t i = 0; i < num_masters(); ++i) {
-    ASSERT_OK(external_mini_cluster_->SetFlag(external_mini_cluster_->master(i),
-                                              "enable_global_load_balancing", "false"));
-  }
+  SetFlagOnAllMasters("enable_global_load_balancing", "false");
 
   //// Two tservers:
   // Add a new tserver to c.r.z0.
@@ -212,10 +225,7 @@ TEST_F(LoadBalancerMultiTableTest, GlobalLoadBalancing) {
   ASSERT_FALSE(AreLoadsBalanced(z0_tserver_loads));
 
   // Enable global load balancing.
-  for (size_t i = 0; i < num_masters(); ++i) {
-    ASSERT_OK(external_mini_cluster_->SetFlag(external_mini_cluster_->master(i),
-                                              "enable_global_load_balancing", "true"));
-  }
+  SetFlagOnAllMasters("enable_global_load_balancing", "true");
 
   // Wait for load balancing to complete.
   WaitForLoadBalanceCompletion();
@@ -228,10 +238,7 @@ TEST_F(LoadBalancerMultiTableTest, GlobalLoadBalancing) {
 
   //// Three tservers:
   // Disable global load balancing.
-  for (size_t i = 0; i < num_masters(); ++i) {
-    ASSERT_OK(external_mini_cluster_->SetFlag(external_mini_cluster_->master(i),
-                                              "enable_global_load_balancing", "false"));
-  }
+  SetFlagOnAllMasters("enable_global_load_balancing", "false");
 
   // Add in a third tserver to zone 0.
   ASSERT_OK(external_mini_cluster()->AddTabletServer(true, extra_opts));
@@ -250,10 +257,7 @@ TEST_F(LoadBalancerMultiTableTest, GlobalLoadBalancing) {
   ASSERT_FALSE(AreLoadsBalanced(z0_tserver_loads));
 
   // Enable global load balancing.
-  for (size_t i = 0; i < num_masters(); ++i) {
-    ASSERT_OK(external_mini_cluster_->SetFlag(external_mini_cluster_->master(i),
-                                              "enable_global_load_balancing", "true"));
-  }
+  SetFlagOnAllMasters("enable_global_load_balancing", "true");
 
   // Wait for load balancing to complete.
   WaitForLoadBalanceCompletion();
@@ -324,17 +328,10 @@ TEST_F(LoadBalancerMultiTableTest, TestDeadNodesLeaderBalancing) {
   // on the dead tserver, ~3x time (3s*3).
   static const int tserver_unresponsive_timeout_ms = 10000*kTimeMultiplier;
   bool allow_dead_node_lb = true;
-  for (size_t i = 0; i < num_masters(); ++i) {
-    ASSERT_OK(external_mini_cluster_->SetFlag(external_mini_cluster_->master(i),
-                                              "tserver_unresponsive_timeout_ms",
-                                              std::to_string(tserver_unresponsive_timeout_ms)));
-    ASSERT_OK(external_mini_cluster_->SetFlag(external_mini_cluster_->master(i),
-                                              "allow_leader_balancing_dead_node",
-                                              std::to_string(allow_dead_node_lb)));
-    ASSERT_OK(external_mini_cluster_->SetFlag(external_mini_cluster_->master(i),
-                                              "min_leader_stepdown_retry_interval_ms",
-                                              "3000"));
-  }
+  SetFlagOnAllMasters("tserver_unresponsive_timeout_ms",
+                      std::to_string(tserver_unresponsive_timeout_ms));
+  SetFlagOnAllMasters("allow_leader_balancing_dead_node", std::to_string(allow_dead_node_lb));
+  SetFlagOnAllMasters("min_leader_stepdown_retry_interval_ms", "3000");
 
   for (size_t i = 0; i < num_tablet_servers(); ++i) {
     ASSERT_OK(external_mini_cluster_->SetFlag(external_mini_cluster_->tablet_server(i),
@@ -427,11 +424,8 @@ TEST_F(LoadBalancerMultiTableTest, TestLBWithDeadBlacklistedTS) {
 
   // Reduce the time after which a TS is marked DEAD.
   int tserver_unresponsive_timeout_ms = 5000;
-  for (size_t i = 0; i < num_masters(); ++i) {
-    ASSERT_OK(external_mini_cluster_->SetFlag(external_mini_cluster_->master(i),
-                                              "tserver_unresponsive_timeout_ms",
-                                              std::to_string(tserver_unresponsive_timeout_ms)));
-  }
+  SetFlagOnAllMasters("tserver_unresponsive_timeout_ms",
+                      std::to_string(tserver_unresponsive_timeout_ms));
 
   // Add a TS and wait for LB to complete.
   LOG(INFO) << "Adding a TS";

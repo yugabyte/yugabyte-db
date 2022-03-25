@@ -112,6 +112,8 @@
 
 #include "yb/yql/cql/ql/ptree/pt_option.h"
 
+using namespace std::literals;
+
 using yb::master::AlterTableRequestPB;
 using yb::master::CreateTablegroupRequestPB;
 using yb::master::CreateTablegroupResponsePB;
@@ -586,9 +588,10 @@ Status YBClient::TruncateTables(const vector<string>& table_ids, bool wait) {
   return data_->TruncateTables(this, table_ids, deadline, wait);
 }
 
-Status YBClient::BackfillIndex(const TableId& table_id, bool wait) {
-  auto deadline = (CoarseMonoClock::Now()
-                   + MonoDelta::FromMilliseconds(FLAGS_backfill_index_client_rpc_timeout_ms));
+Status YBClient::BackfillIndex(const TableId& table_id, bool wait, CoarseTimePoint deadline) {
+  if (deadline == CoarseTimePoint()) {
+    deadline = CoarseMonoClock::Now() + FLAGS_backfill_index_client_rpc_timeout_ms * 1ms;
+  }
   return data_->BackfillIndex(this, YBTableName(), table_id, deadline, wait);
 }
 
@@ -1098,7 +1101,7 @@ Status YBClient::CreateTablegroup(const std::string& namespace_name,
                              table_name,
                              internal::GetSchema(ybschema),
                              internal::GetSchema(info.schema));
-        LOG(ERROR) << msg;
+        LOG_WITH_PREFIX(ERROR) << msg;
         return STATUS(AlreadyPresent, msg);
       }
 
@@ -1145,7 +1148,8 @@ Status YBClient::DeleteTablegroup(const std::string& namespace_id,
       // A prior attempt to delete the table has succeeded, but
       // appeared as a failure to the client due to, e.g., an I/O or
       // network issue.
-      LOG(INFO) << "Parent table for tablegroup with ID " << tablegroup_id << " already deleted.";
+      LOG_WITH_PREFIX(INFO) << "Parent table for tablegroup with ID " << tablegroup_id
+                            << " already deleted.";
       return Status::OK();
     } else {
       return StatusFromPB(resp.error().status());
@@ -1163,7 +1167,7 @@ Status YBClient::DeleteTablegroup(const std::string& namespace_id,
       strings::Substitute("Failed waiting for parent table with id $0 to finish being deleted",
                           resp.parent_table_id()));
 
-  LOG(INFO) << "Deleted parent table for tablegroup with ID " << tablegroup_id;
+  LOG_WITH_PREFIX(INFO) << "Deleted parent table for tablegroup with ID " << tablegroup_id;
   return Status::OK();
 }
 
@@ -1355,7 +1359,7 @@ Status YBClient::GetPermissions(client::internal::PermissionsCache* permissions_
   GetPermissionsResponsePB resp;
   CALL_SYNC_LEADER_MASTER_RPC_EX(Dcl, req, resp, GetPermissions);
 
-  VLOG(1) << "Got permissions cache: " << resp.ShortDebugString();
+  VLOG_WITH_PREFIX(1) << "Got permissions cache: " << resp.ShortDebugString();
 
   // The first request is a special case. We always replace the cache since we don't have anything.
   if (!version) {
@@ -1950,7 +1954,7 @@ void YBClient::RequestFinished(const TabletId& tablet_id, RetryableRequestId req
   if (it != tablet.running_requests.end()) {
     tablet.running_requests.erase(it);
   } else {
-    LOG(DFATAL) << "RequestFinished called for an unknown request: "
+    LOG_WITH_PREFIX(DFATAL) << "RequestFinished called for an unknown request: "
                 << tablet_id << ", " << request_id;
   }
 }
@@ -1961,7 +1965,8 @@ void YBClient::MaybeUpdateMinRunningRequestId(
   auto& tablet = data_->tablet_requests_[tablet_id];
   if (tablet.request_id_seq == kInitializeFromMinRunning) {
     tablet.request_id_seq = min_running_request_id + (1 << 24);
-    VLOG(1) << "Set request_id_seq for tablet " << tablet_id << " to " << tablet.request_id_seq;
+    VLOG_WITH_PREFIX(1) << "Set request_id_seq for tablet " << tablet_id << " to "
+                        << tablet.request_id_seq;
   }
 }
 
@@ -2015,7 +2020,7 @@ Status YBClient::ListMasters(CoarseTimePoint deadline, std::vector<std::string>*
   master_uuids->clear();
   for (const ServerEntryPB& master : resp.masters()) {
     if (master.has_error()) {
-      LOG(ERROR) << "Master " << master.ShortDebugString() << " hit error "
+      LOG_WITH_PREFIX(ERROR) << "Master " << master.ShortDebugString() << " hit error "
         << master.error().ShortDebugString();
       return StatusFromPB(master.error());
     }
@@ -2186,11 +2191,11 @@ bool YBClient::IsMultiMaster() const {
 Result<int> YBClient::NumTabletsForUserTable(TableType table_type) {
   if (table_type == TableType::PGSQL_TABLE_TYPE &&
         FLAGS_ysql_num_tablets > 0) {
-    VLOG(1) << "num_tablets = " << FLAGS_ysql_num_tablets
+    VLOG_WITH_PREFIX(1) << "num_tablets = " << FLAGS_ysql_num_tablets
               << ": --ysql_num_tablets is specified.";
     return FLAGS_ysql_num_tablets;
   } else if (FLAGS_ycql_num_tablets > 0) {
-    VLOG(1) << "num_tablets = " << FLAGS_ycql_num_tablets
+    VLOG_WITH_PREFIX(1) << "num_tablets = " << FLAGS_ycql_num_tablets
               << ": --ycql_num_tablets is specified.";
     return FLAGS_ycql_num_tablets;
   } else {
@@ -2199,12 +2204,12 @@ Result<int> YBClient::NumTabletsForUserTable(TableType table_type) {
     int num_tablets = 0;
     if (table_type == TableType::PGSQL_TABLE_TYPE) {
       num_tablets = tserver_count * FLAGS_ysql_num_shards_per_tserver;
-      VLOG(1) << "num_tablets = " << num_tablets << ": "
+      VLOG_WITH_PREFIX(1) << "num_tablets = " << num_tablets << ": "
               << "calculated as tserver_count * FLAGS_ysql_num_shards_per_tserver ("
               << tserver_count << " * " << FLAGS_ysql_num_shards_per_tserver << ")";
     } else {
       num_tablets = tserver_count * FLAGS_yb_num_shards_per_tserver;
-      VLOG(1) << "num_tablets = " << num_tablets << ": "
+      VLOG_WITH_PREFIX(1) << "num_tablets = " << num_tablets << ": "
               << "calculated as tserver_count * FLAGS_yb_num_shards_per_tserver ("
               << tserver_count << " * " << FLAGS_yb_num_shards_per_tserver << ")";
     }
@@ -2259,6 +2264,10 @@ Result<YBTablePtr> YBClient::OpenTable(const YBTableName& name) {
 
 Result<TableId> GetTableId(YBClient* client, const YBTableName& table_name) {
   return VERIFY_RESULT(client->GetYBTableInfo(table_name)).table_id;
+}
+
+const std::string& YBClient::LogPrefix() const {
+  return data_->log_prefix_;
 }
 
 }  // namespace client

@@ -35,7 +35,7 @@ cd /home/yugabyte/softwareyb-$VER/
 
 {{< note title="Note" >}}
 
-If you are using PostgreSQL extensions, make sure to install the extensions in the new YugabyteDB version before upgrading. Follow the steps in [Install and use extensions](../../api/ysql/extensions).
+If you are using PostgreSQL extensions, make sure to install the extensions in the new YugabyteDB version before upgrading the servers. Follow the steps in [Installing extensions](../../explore/ysql-language-features/pg-extensions/#installing-extensions).
 
 {{< /note >}}
 

@@ -148,6 +148,8 @@ class RpcController {
   //
   // May fail if index is invalid.
   Result<Slice> GetSidecar(int idx) const;
+  Result<SidecarPtr> GetSidecarPtr(int idx) const;
+  Result<SidecarHolder> GetSidecarHolder(int idx) const;
 
   int32_t call_id() const;
 

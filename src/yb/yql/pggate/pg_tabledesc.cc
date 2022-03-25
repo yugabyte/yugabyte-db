@@ -22,6 +22,7 @@
 #include "yb/common/partition.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/schema.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/docdb/doc_key.h"
 
@@ -33,13 +34,20 @@
 namespace yb {
 namespace pggate {
 
-PgTableDesc::PgTableDesc(const client::YBTablePtr& table)
-    : table_(table), table_partitions_(table_->GetVersionedPartitions()) {
+PgTableDesc::PgTableDesc(
+    const PgObjectId& id, const master::GetTableSchemaResponsePB& resp,
+    std::shared_ptr<client::VersionedTablePartitionList> partitions)
+    : id_(id), resp_(resp),  table_partitions_(std::move(partitions)) {
+  table_name_.GetFromTableIdentifierPB(resp.identifier());
+}
 
+Status PgTableDesc::Init() {
+  RETURN_NOT_OK(SchemaFromPB(resp_.schema(), &schema_));
   size_t idx = 0;
   for (const auto& column : schema().columns()) {
     attr_num_map_.emplace(column.order(), idx++);
   }
+  return PartitionSchema::FromPB(resp_.partition_schema(), schema_, &partition_schema_);
 }
 
 Result<size_t> PgTableDesc::FindColumn(int attr_num) const {
@@ -71,7 +79,11 @@ Result<YBCPgColumnInfo> PgTableDesc::GetColumnInfo(int16_t attr_number) const {
 }
 
 bool PgTableDesc::IsColocated() const {
-  return table_->colocated();
+  return resp_.colocated();
+}
+
+YBCPgOid PgTableDesc::GetColocationId() const {
+  return schema().has_colocation_id() ? schema().colocation_id() : kColocationIdNotSet;
 }
 
 bool PgTableDesc::IsHashPartitioned() const {
@@ -84,6 +96,10 @@ bool PgTableDesc::IsRangePartitioned() const {
 
 const std::vector<std::string>& PgTableDesc::GetPartitions() const {
   return table_partitions_->keys;
+}
+
+const std::string& PgTableDesc::LastPartition() const {
+  return table_partitions_->keys.back();
 }
 
 size_t PgTableDesc::GetPartitionCount() const {
@@ -117,20 +133,20 @@ Result<size_t> PgTableDesc::FindPartitionIndex(const Slice& ybctid) const {
   return client::FindPartitionStartIndex(table_partitions_->keys, partition_key);
 }
 
-Status PgTableDesc::SetScanBoundary(PgsqlReadRequestPB *req,
+Status PgTableDesc::SetScanBoundary(LWPgsqlReadRequestPB *req,
                                     const string& partition_lower_bound,
                                     bool lower_bound_is_inclusive,
                                     const string& partition_upper_bound,
                                     bool upper_bound_is_inclusive) {
   // Setup lower boundary.
   if (!partition_lower_bound.empty()) {
-    req->mutable_lower_bound()->set_key(partition_lower_bound);
+    req->mutable_lower_bound()->dup_key(partition_lower_bound);
     req->mutable_lower_bound()->set_is_inclusive(lower_bound_is_inclusive);
   }
 
   // Setup upper boundary.
   if (!partition_upper_bound.empty()) {
-    req->mutable_upper_bound()->set_key(partition_upper_bound);
+    req->mutable_upper_bound()->dup_key(partition_upper_bound);
     req->mutable_upper_bound()->set_is_inclusive(upper_bound_is_inclusive);
   }
 
@@ -138,7 +154,7 @@ Status PgTableDesc::SetScanBoundary(PgsqlReadRequestPB *req,
 }
 
 const client::YBTableName& PgTableDesc::table_name() const {
-  return table_->name();
+  return table_name_;
 }
 
 size_t PgTableDesc::num_hash_key_columns() const {
@@ -154,39 +170,15 @@ size_t PgTableDesc::num_columns() const {
 }
 
 const PartitionSchema& PgTableDesc::partition_schema() const {
-  return table_->partition_schema();
+  return partition_schema_;
 }
 
 const Schema& PgTableDesc::schema() const {
-  return table_->InternalSchema();
+  return schema_;
 }
 
 uint32_t PgTableDesc::schema_version() const {
-  return table_->schema().version();
-}
-
-std::unique_ptr<client::YBPgsqlWriteOp> PgTableDesc::NewPgsqlInsert() {
-  return client::YBPgsqlWriteOp::NewInsert(table_);
-}
-
-std::unique_ptr<client::YBPgsqlWriteOp> PgTableDesc::NewPgsqlUpdate() {
-  return client::YBPgsqlWriteOp::NewUpdate(table_);
-}
-
-std::unique_ptr<client::YBPgsqlWriteOp> PgTableDesc::NewPgsqlDelete() {
-  return client::YBPgsqlWriteOp::NewDelete(table_);
-}
-
-std::unique_ptr<client::YBPgsqlWriteOp> PgTableDesc::NewPgsqlTruncateColocated() {
-  return client::YBPgsqlWriteOp::NewTruncateColocated(table_);
-}
-
-std::unique_ptr<client::YBPgsqlReadOp> PgTableDesc::NewPgsqlSelect() {
-  return client::YBPgsqlReadOp::NewSelect(table_);
-}
-
-std::unique_ptr<client::YBPgsqlReadOp> PgTableDesc::NewPgsqlSample() {
-  return client::YBPgsqlReadOp::NewSample(table_);
+  return resp_.version();
 }
 
 }  // namespace pggate

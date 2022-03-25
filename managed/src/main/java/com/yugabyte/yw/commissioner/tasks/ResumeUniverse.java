@@ -11,7 +11,6 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
@@ -44,9 +43,6 @@ public class ResumeUniverse extends UniverseTaskBase {
   @Override
   public void run() {
     try {
-      // Create the task list sequence.
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
-
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */, true);
@@ -81,7 +77,7 @@ public class ResumeUniverse extends UniverseTaskBase {
       // Mark universe task state to success.
       createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
       // Run all the tasks.
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
 
       saveUniverseDetails(
           u -> {
@@ -90,6 +86,7 @@ public class ResumeUniverse extends UniverseTaskBase {
             u.setUniverseDetails(universeDetails);
           });
 
+      metricService.markSourceActive(params().customerUUID, params().universeUUID);
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
