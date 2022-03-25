@@ -76,7 +76,7 @@ In the sections below, the terms "data center", "cluster", and "universe" are us
 '-------------------------------------------'    '-------------------------------------------'
 ```
 
-Every YB-TServer has a `CDC service` that is stateless. The main APIs provided by `CDC Service` are:
+Every YB-TServer has a `CDC service` that is stateless. The main APIs provided by the CDC service are:
 
 * `createCDCSDKStream` API for creating the stream on the database.
 * `getChangesCDCSDK` API that will be use by the client to get the latest set of changes.
