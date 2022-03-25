@@ -14,18 +14,23 @@ weight: 30
 
 Yugabyte Cloud clusters include the following security features:
 
-Network authorization
-: Access to Yugabyte Cloud clusters is limited to IP addresses that you explicitly allow using IP allow lists.
-: You can further enhance security and lower network latencies by deploying clusters in a [virtual private cloud (VPC) network](../cloud-basics/cloud-vpcs/).
+### Network authorization
 
-Database authorization
-: YugabyteDB uses role-based access control for database authorization. Using the default admin user that is created when a cluster is deployed, you can add additional roles and users to provide custom access to database resources to other team members and database clients.
+Access to Yugabyte Cloud clusters is limited to IP addresses that you explicitly allow using IP allow lists.
 
-Encryption in transit
-: Yugabyte Cloud uses encryption-in-transit for client-server and intra-node connectivity.
+You can further enhance security and lower network latencies by deploying clusters in a [virtual private cloud (VPC) network](../cloud-basics/cloud-vpcs/).
 
-Auditing
-: Yugabyte Cloud provides detailed tracking of activity on your cloud, including cluster creation, changes to clusters, changes to IP allow lists, backup activity, and billing.
+### Database authorization
+
+YugabyteDB uses role-based access control for database authorization. Using the default admin user that is created when a cluster is deployed, you can add additional roles and users to provide custom access to database resources to other team members and database clients.
+
+### Encryption in transit
+
+Yugabyte Cloud uses encryption-in-transit for client-server and intra-node connectivity.
+
+### Auditing
+
+Yugabyte Cloud provides detailed tracking of activity on your cloud, including cluster creation, changes to clusters, changes to IP allow lists, backup activity, and billing.
 
 <div class="row">
 
