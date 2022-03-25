@@ -21,11 +21,11 @@ from six.moves.urllib.error import URLError
 from six.moves.urllib.request import urlopen
 from ybops.cloud.aws.command import (AwsAccessCommand, AwsDnsCommand, AwsInstanceCommand,
                                      AwsNetworkCommand, AwsQueryCommand)
-from ybops.cloud.aws.utils import (ROOT_VOLUME_LABEL, AwsBootstrapClient, YbVpcComponents,
+from ybops.cloud.aws.utils import (AwsBootstrapClient, YbVpcComponents,
                                    change_instance_type, create_instance, delete_vpc, get_client,
                                    get_clients, get_device_names, get_spot_pricing,
                                    get_vpc_for_subnet, get_zones, has_ephemerals, modify_tags,
-                                   query_vpc, update_disk, get_image_arch)
+                                   query_vpc, update_disk, get_image_arch, get_root_label)
 from ybops.cloud.common.cloud import AbstractCloud
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.utils import (format_rsa_key, is_valid_ip_address, validated_key_file)
@@ -372,9 +372,6 @@ class AwsCloud(AbstractCloud):
                 universe_uuid_tags = [t["Value"] for t in data["Tags"]
                                       if t["Key"] == "universe-uuid"]
 
-            disks = data.get("BlockDeviceMappings")
-            root_vol = next(disk for disk in disks if disk.get("DeviceName") == ROOT_VOLUME_LABEL)
-
             primary_private_ip = None
             secondary_private_ip = None
             primary_subnet = None
@@ -407,8 +404,14 @@ class AwsCloud(AbstractCloud):
                 node_uuid=node_uuid_tags[0] if node_uuid_tags else None,
                 universe_uuid=universe_uuid_tags[0] if universe_uuid_tags else None,
                 vpc=data["VpcId"],
-                root_volume=root_vol["Ebs"]["VolumeId"]
+                ami=data.get("ImageId", None)
             )
+
+            disks = data.get("BlockDeviceMappings")
+            root_vol = next(d for d in disks if
+                            d.get("DeviceName") == get_root_label(result["region"], result["ami"]))
+            result["root_volume"] = root_vol["Ebs"]["VolumeId"]
+
             if not get_all:
                 return result
             results.append(result)
@@ -532,25 +535,25 @@ class AwsCloud(AbstractCloud):
     def change_instance_type(self, args, newInstanceType):
         change_instance_type(args["region"], args["id"], newInstanceType)
 
-    def stop_instance(self, args):
-        ec2 = boto3.resource('ec2', args["region"])
+    def stop_instance(self, host_info):
+        ec2 = boto3.resource('ec2', host_info["region"])
         try:
-            instance = ec2.Instance(id=args["id"])
+            instance = ec2.Instance(id=host_info["id"])
             instance.stop()
             instance.wait_until_stopped()
         except ClientError as e:
             logging.error(e)
 
-    def start_instance(self, args, ssh_ports):
-        ec2 = boto3.resource('ec2', args["region"])
+    def start_instance(self, host_info, ssh_ports):
+        ec2 = boto3.resource('ec2', host_info["region"])
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            instance = ec2.Instance(id=args["id"])
+            instance = ec2.Instance(id=host_info["id"])
             instance.start()
             instance.wait_until_running()
             # The OS boot up may take some time,
             # so retry until the instance allows SSH connection.
-            self.wait_for_ssh_ports(args["private_ip"], args["id"], ssh_ports)
+            self.wait_for_ssh_ports(host_info["private_ip"], host_info["id"], ssh_ports)
         except ClientError as e:
             logging.error(e)
         finally:
