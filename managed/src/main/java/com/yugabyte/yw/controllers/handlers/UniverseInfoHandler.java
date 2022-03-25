@@ -19,6 +19,7 @@ import com.google.common.net.HostAndPort;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
+import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -39,6 +40,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.YBClient;
@@ -46,11 +48,13 @@ import play.mvc.Http;
 
 @Slf4j
 public class UniverseInfoHandler {
+
   @Inject private MetricQueryHelper metricQueryHelper;
   @Inject private QueryHelper queryHelper;
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
   @Inject private YBClientService ybService;
   @Inject private NodeUniverseManager nodeUniverseManager;
+  @Inject private HealthChecker healthChecker;
 
   public UniverseResourceDetails getUniverseResources(
       Customer customer, UniverseDefinitionTaskParams taskParams) {
@@ -108,7 +112,9 @@ public class UniverseInfoHandler {
       // TODO(API) dig deeper and find root cause of RuntimeException
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     }
-    if (result.has("error")) throw new PlatformServiceException(BAD_REQUEST, result.get("error"));
+    if (result.has("error")) {
+      throw new PlatformServiceException(BAD_REQUEST, result.get("error"));
+    }
     return result;
   }
 
@@ -124,6 +130,16 @@ public class UniverseInfoHandler {
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     }
     return detailsList;
+  }
+
+  public void triggerHealthCheck(Customer customer, Universe universe) {
+    try {
+      // We do not OBSERVE the result of the checkSingleUniverse, we are just interested that
+      // the health check result is queued.
+      healthChecker.checkSingleUniverse(customer, universe);
+    } catch (RuntimeException e) {
+      throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
+    }
   }
 
   public HostAndPort getMasterLeaderIP(Universe universe) {

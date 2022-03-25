@@ -227,6 +227,7 @@ DELETE  /customers/:cUUID/universes/:uniUUID                                   c
 # Universe Info like status, cost, query stats, health, resource usage
 GET     /customers/:cUUID/universes/:uniUUID/status                            com.yugabyte.yw.controllers.UniverseInfoController.universeStatus(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/health_check                      com.yugabyte.yw.controllers.UniverseInfoController.healthCheck(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+GET     /customers/:cUUID/universes/:uniUUID/trigger_health_check              com.yugabyte.yw.controllers.UniverseInfoController.triggerHealthCheck(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/cost                                                 com.yugabyte.yw.controllers.UniverseInfoController.universeListCost(cUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/cost                              com.yugabyte.yw.controllers.UniverseInfoController.universeCost(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/universe_resources                com.yugabyte.yw.controllers.UniverseInfoController.getUniverseResources(cUUID: java.util.UUID, uniUUID: java.util.UUID)
