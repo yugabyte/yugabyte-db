@@ -133,20 +133,20 @@ Result<size_t> PgTableDesc::FindPartitionIndex(const Slice& ybctid) const {
   return client::FindPartitionStartIndex(table_partitions_->keys, partition_key);
 }
 
-Status PgTableDesc::SetScanBoundary(PgsqlReadRequestPB *req,
+Status PgTableDesc::SetScanBoundary(LWPgsqlReadRequestPB *req,
                                     const string& partition_lower_bound,
                                     bool lower_bound_is_inclusive,
                                     const string& partition_upper_bound,
                                     bool upper_bound_is_inclusive) {
   // Setup lower boundary.
   if (!partition_lower_bound.empty()) {
-    req->mutable_lower_bound()->set_key(partition_lower_bound);
+    req->mutable_lower_bound()->dup_key(partition_lower_bound);
     req->mutable_lower_bound()->set_is_inclusive(lower_bound_is_inclusive);
   }
 
   // Setup upper boundary.
   if (!partition_upper_bound.empty()) {
-    req->mutable_upper_bound()->set_key(partition_upper_bound);
+    req->mutable_upper_bound()->dup_key(partition_upper_bound);
     req->mutable_upper_bound()->set_is_inclusive(upper_bound_is_inclusive);
   }
 
