@@ -356,8 +356,7 @@ TEST(FastVarIntTest, TestDecodeIncorrectValues) {
 
 void CheckUnsignedEncoding(uint64_t value) {
   uint8_t buf[kMaxVarIntBufferSize];
-  size_t size = 0;
-  FastEncodeUnsignedVarInt(value, buf, &size);
+  size_t size = FastEncodeUnsignedVarInt(value, buf);
   uint64_t decoded_value;
   size_t decoded_size = 0;
   ASSERT_OK(FastDecodeUnsignedVarInt(buf, size, &decoded_value, &decoded_size));
@@ -380,8 +379,7 @@ TEST(FastVarIntTest, Unsigned) {
     uint64_t value = std::uniform_int_distribution<uint64_t>(0, max_value)(rng);
     values[i] = value;
     uint8_t* buf = big_buffer.data() + kMaxVarIntBufferSize * i;
-    size_t size = 0;
-    FastEncodeUnsignedVarInt(value, buf, &size);
+    size_t size = FastEncodeUnsignedVarInt(value, buf);
     encoded_values[i] = Slice(buf, size);
     uint64_t decoded_value;
     size_t decoded_size = 0;
@@ -419,10 +417,9 @@ TEST(FastVarIntTest, EncodeUnsignedPerformance) {
   const std::vector<uint64_t> values = GenerateRandomValues<uint64_t>();
 
   uint8_t buf[kMaxVarIntBufferSize];
-  size_t encoded_size = 0;
   std::clock_t start_time = std::clock();
   for (auto value : values) {
-    FastEncodeUnsignedVarInt(value, buf, &encoded_size);
+    FastEncodeUnsignedVarInt(value, buf);
   }
   std::clock_t end_time = std::clock();
   LOG(INFO) << std::fixed << std::setprecision(2) << "CPU time used: "

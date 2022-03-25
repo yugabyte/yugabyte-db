@@ -61,16 +61,6 @@ std::string InetAddress::ToBytes() const {
   return result;
 }
 
-void InetAddress::AppendToBytes(std::string* bytes) const {
-  if (boost_addr_.is_v4()) {
-    auto v4bytes = boost_addr_.to_v4().to_bytes();
-    bytes->append(reinterpret_cast<char *>(v4bytes.data()), v4bytes.size());
-  } else {
-    auto v6bytes = boost_addr_.to_v6().to_bytes();
-    bytes->append(reinterpret_cast<char *>(v6bytes.data()), v6bytes.size());
-  }
-}
-
 CHECKED_STATUS InetAddress::FromSlice(const Slice& slice, size_t size_hint) {
   size_t expected_size = (size_hint == 0) ? slice.size() : size_hint;
   if (expected_size > slice.size()) {

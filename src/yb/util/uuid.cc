@@ -82,12 +82,6 @@ void Uuid::EncodeToComparable(std::string* bytes) const {
   bytes->assign(reinterpret_cast<char *>(output), kUuidSize);
 }
 
-void Uuid::AppendEncodedComparable(std::string* bytes) const {
-  uint8_t output[kUuidSize];
-  EncodeToComparable(output);
-  bytes->append(reinterpret_cast<char *>(output), kUuidSize);
-}
-
 void Uuid::ToBytes(std::string* bytes) const {
   bytes->assign(boost_uuid_.begin(), boost_uuid_.end());
 }

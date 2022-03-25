@@ -28,6 +28,7 @@
 #include "yb/docdb/docdb_fwd.h"
 
 #include "yb/util/algorithm_util.h"
+#include "yb/util/kv_util.h"
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/slice.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -354,6 +355,7 @@ inline std::vector<PrimitiveValue> PrimitiveValues(T... args) {
 // SortingType::kDescending gets converted to SortOrder::kDescending.
 SortOrder SortOrderFromColumnSchemaSortingType(SortingType sorting_type);
 
+void AppendEncodedValue(const QLValuePB& value, SortingType sorting_type, ValueBuffer* out);
 void AppendEncodedValue(const QLValuePB& value, SortingType sorting_type, std::string* out);
 
 }  // namespace docdb

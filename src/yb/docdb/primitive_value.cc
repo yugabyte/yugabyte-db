@@ -485,8 +485,11 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
   FATAL_INVALID_ENUM_VALUE(ValueType, type_);
 }
 
+namespace {
+
+template <class Buffer>
 void AddValueType(
-    ValueType ascending, ValueType descending, SortingType sorting_type, std::string* out) {
+    ValueType ascending, ValueType descending, SortingType sorting_type, Buffer* out) {
   if (sorting_type == SortingType::kDescending ||
       sorting_type == SortingType::kDescendingNullsLast) {
     out->push_back(static_cast<char>(descending));
@@ -499,7 +502,8 @@ void AddValueType(
 // Indicates that the stored jsonb is the complete jsonb value and not a partial update to jsonb.
 static constexpr int64_t kCompleteJsonb = 1;
 
-void AppendEncodedValue(const QLValuePB& value, SortingType sorting_type, std::string* out) {
+template <class Buffer>
+void DoAppendEncodedValue(const QLValuePB& value, SortingType sorting_type, Buffer* out) {
   switch (value.value_case()) {
     case QLValuePB::kInt8Value:
       AddValueType(ValueType::kInt32, ValueType::kInt32Descending, sorting_type, out);
@@ -637,6 +641,16 @@ void AppendEncodedValue(const QLValuePB& value, SortingType sorting_type, std::s
   }
 
   FATAL_INVALID_ENUM_VALUE(QLValuePB::ValueCase, value.value_case());
+}
+
+} // namespace
+
+void AppendEncodedValue(const QLValuePB& value, SortingType sorting_type, ValueBuffer* out) {
+  DoAppendEncodedValue(value, sorting_type, out);
+}
+
+void AppendEncodedValue(const QLValuePB& value, SortingType sorting_type, std::string* out) {
+  DoAppendEncodedValue(value, sorting_type, out);
 }
 
 Status PrimitiveValue::DecodeFromKey(rocksdb::Slice* slice) {

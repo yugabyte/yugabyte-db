@@ -28,7 +28,9 @@ void AddKVToPB(int32_t key_val,
     [&](const SubDocKey &subdoc_key, const QLValuePB& value) {
         KeyValuePairPB *const kv = write_batch->add_write_pairs();
         kv->set_key(subdoc_key.Encode().ToStringBuffer());
-        docdb::AppendEncodedValue(value, SortingType::kNotSpecified, kv->mutable_value());
+        ValueBuffer buffer;
+        docdb::AppendEncodedValue(value, SortingType::kNotSpecified, &buffer);
+        kv->set_value(buffer.ToStringBuffer());
     };
 
   std::string hash_key;
