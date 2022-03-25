@@ -1007,6 +1007,14 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
       if (!VERIFY_RESULT(table_iter_->SeekTuple(tuple_id->binary_value()))) {
         DocKey doc_key;
         RETURN_NOT_OK(doc_key.DecodeFrom(tuple_id->binary_value()));
+        const PgsqlReadRequestPB& index_request = request_.index_request();
+        if (index_request.has_table_id()) {
+          return STATUS_FORMAT(
+            Corruption,
+            "ybctid $0 not found in indexed table. index table id is $1",
+            doc_key,
+            index_request.table_id());
+        }
         return STATUS_FORMAT(Corruption, "ybctid $0 not found in indexed table", doc_key);
       }
       row.Clear();
