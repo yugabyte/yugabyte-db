@@ -17,20 +17,10 @@
 
 #include "yb/client/yb_op.h"
 
+#include "yb/util/debug-util.h"
+
 namespace yb {
 namespace pggate {
-
-using std::make_shared;
-using std::shared_ptr;
-using std::string;
-using std::vector;
-using namespace std::literals;  // NOLINT
-
-using client::YBSession;
-using client::YBMetaDataCache;
-
-// TODO(neil) This should be derived from a GFLAGS.
-static MonoDelta kSessionTimeout = 60s;
 
 //--------------------------------------------------------------------------------------------------
 // Class PgStatement

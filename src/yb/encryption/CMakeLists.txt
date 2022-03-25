@@ -37,7 +37,8 @@ ADD_YB_LIBRARY(encryption
       universe_key_manager.cc
   DEPS
       encryption_proto
-      yb_util)
+      yb_util
+      yrpc)
 
 
 ADD_YB_TEST_LIBRARY(
