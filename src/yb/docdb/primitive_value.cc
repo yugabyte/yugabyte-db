@@ -20,6 +20,8 @@
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 
+#include "yb/common/value.messages.h"
+
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/intent.h"
@@ -1926,8 +1928,13 @@ SortOrder SortOrderFromColumnSchemaSortingType(SortingType sorting_type) {
   return SortOrder::kAscending;
 }
 
-PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value,
-                                             SortingType sorting_type,
+PrimitiveValue PrimitiveValue::FromQLValuePB(
+    const LWQLValuePB& value, SortingType sorting_type, bool check_is_collate) {
+  // TODO(LW_PERFORM)
+  return FromQLValuePB(value.ToGoogleProtobuf(), sorting_type, check_is_collate);
+}
+
+PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value, SortingType sorting_type,
                                              bool check_is_collate) {
   const auto sort_order = SortOrderFromColumnSchemaSortingType(sorting_type);
 

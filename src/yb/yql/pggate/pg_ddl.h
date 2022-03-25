@@ -18,7 +18,7 @@
 #include "yb/common/constants.h"
 #include "yb/common/transaction.h"
 
-#include "yb/tserver/pg_client.pb.h"
+#include "yb/tserver/pg_client.messages.h"
 
 #include "yb/yql/pggate/pg_statement.h"
 

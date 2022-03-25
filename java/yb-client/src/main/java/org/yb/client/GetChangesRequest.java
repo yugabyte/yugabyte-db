@@ -35,9 +35,10 @@ public class GetChangesRequest extends YRpc<GetChangesResponse> {
   private final byte[] key;
   private final int write_id;
   private final long time;
+  private final boolean needSchemaInfo;
 
   public GetChangesRequest(YBTable table, String streamId, String tabletId,
-   long term, long index, byte[] key, int write_id, long time) {
+   long term, long index, byte[] key, int write_id, long time, boolean needSchemaInfo) {
     super(table);
     this.streamId = streamId;
     this.tabletId = tabletId;
@@ -46,6 +47,7 @@ public class GetChangesRequest extends YRpc<GetChangesResponse> {
     this.key = key;
     this.write_id = write_id;
     this.time = time;
+    this.needSchemaInfo = needSchemaInfo;
   }
 
   @Override
@@ -54,6 +56,7 @@ public class GetChangesRequest extends YRpc<GetChangesResponse> {
     final GetChangesRequestPB.Builder builder = GetChangesRequestPB.newBuilder();
     builder.setDbStreamId(ByteString.copyFromUtf8(this.streamId));
     builder.setTabletId(ByteString.copyFromUtf8(this.tabletId));
+    builder.setNeedSchemaInfo(this.needSchemaInfo);
     if (term != 0 || index != 0) {
       CdcService.CDCSDKCheckpointPB.Builder checkpointBuilder =
               CdcService.CDCSDKCheckpointPB.newBuilder();

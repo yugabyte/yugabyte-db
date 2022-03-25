@@ -14,14 +14,15 @@
 #ifndef YB_YQL_PGGATE_PG_SESSION_H_
 #define YB_YQL_PGGATE_PG_SESSION_H_
 
-#include <unordered_set>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include <boost/optional.hpp>
 #include <boost/unordered_set.hpp>
 
 #include "yb/client/client_fwd.h"
-#include "yb/client/session.h"
-#include "yb/client/transaction.h"
 
 #include "yb/common/pg_types.h"
 #include "yb/common/transaction.h"
@@ -39,6 +40,8 @@
 #include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_env.h"
+#include "yb/yql/pggate/pg_operation_buffer.h"
+#include "yb/yql/pggate/pg_perform_future.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pg_txn_manager.h"
 
@@ -51,69 +54,10 @@ YB_STRONGLY_TYPED_BOOL(InvalidateOnPgClient);
 class PgTxnManager;
 class PgSession;
 
-struct BufferableOperations {
-  PgsqlOps operations;
-  PgObjectIds relations;
-
-  void Add(PgsqlOpPtr op, const PgObjectId& relation) {
-    operations.push_back(std::move(op));
-    relations.push_back(relation);
-  }
-
-  void Clear() {
-    operations.clear();
-    relations.clear();
-  }
-
-  void Swap(BufferableOperations* rhs) {
-    operations.swap(rhs->operations);
-    relations.swap(rhs->relations);
-  }
-
-  bool empty() const {
-    return operations.empty();
-  }
-
-  size_t size() const {
-    return operations.size();
-  }
-};
-
 struct PgForeignKeyReference {
   PgForeignKeyReference(PgOid table_id, std::string ybctid);
   PgOid table_id;
   std::string ybctid;
-};
-
-// Represents row id (ybctid) from the DocDB's point of view.
-class RowIdentifier {
- public:
-  RowIdentifier(const Schema& schema, const PgsqlWriteRequestPB& request);
-  inline const std::string& ybctid() const;
-  inline const std::string& table_id() const;
-
- private:
-  const std::string* table_id_;
-  const std::string* ybctid_;
-  std::string        ybctid_holder_;
-};
-
-YB_STRONGLY_TYPED_BOOL(IsTransactionalSession);
-YB_STRONGLY_TYPED_BOOL(IsReadOnlyOperation);
-YB_STRONGLY_TYPED_BOOL(IsCatalogOperation);
-
-class PerformFuture {
- public:
-  PerformFuture() = default;
-  PerformFuture(std::future<PerformResult> future, PgSession* session, PgObjectIds* relations);
-
-  bool Valid() const;
-
-  CHECKED_STATUS Get();
- private:
-  std::future<PerformResult> future_;
-  PgSession* session_ = nullptr;
-  PgObjectIds relations_;
 };
 
 // This class is not thread-safe as it is mostly used by a single-threaded PostgreSQL backend
@@ -224,7 +168,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   template<class... Args>
   Result<PerformFuture> RunAsync(
-    const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table, Args&&... args) {
+      const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
+      Args&&... args) {
     const auto generator = [ops, end = ops + ops_count, &table]() mutable {
         return ops != end
             ? TableOperation { .operation = ops++, .table = &table }
@@ -234,7 +179,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   }
 
   Result<PerformFuture> RunAsync(
-    const OperationGenerator& generator, uint64_t* read_time, bool force_non_bufferable);
+      const OperationGenerator& generator, uint64_t* read_time,
+      bool force_non_bufferable);
 
   // Smart driver functions.
   // -------------
@@ -321,17 +267,12 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   CHECKED_STATUS RollbackSubTransaction(SubTransactionId id);
 
  private:
-  using Flusher = LWFunction<Status(BufferableOperations, IsTransactionalSession)>;
-
-  CHECKED_STATUS FlushBufferedOperationsImpl(const Flusher& flusher);
-  CHECKED_STATUS FlushOperations(BufferableOperations ops, IsTransactionalSession transactional);
+  Result<PerformFuture> FlushOperations(
+      BufferableOperations ops, bool transactional);
 
   class RunHelper;
 
-  // Flush buffered write operations from the given buffer.
-  Status FlushBufferedWriteOperations(BufferableOperations* write_ops, bool transactional);
-
-  void Perform(PgsqlOps* operations, bool use_catalog_session, const PerformCallback& callback);
+  Result<PerformFuture> Perform(BufferableOperations ops, bool use_catalog_session);
 
   void UpdateInTxnLimit(uint64_t* read_time);
 
@@ -359,9 +300,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   // Should write operations be buffered?
   bool buffering_enabled_ = false;
-  BufferableOperations buffered_ops_;
-  BufferableOperations buffered_txn_ops_;
-  std::unordered_set<RowIdentifier, boost::hash<RowIdentifier>> buffered_keys_;
+  PgOperationBuffer buffer_;
 
   HybridTime in_txn_limit_;
 

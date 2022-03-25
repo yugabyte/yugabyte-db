@@ -34,19 +34,20 @@ namespace yb {
 namespace pggate {
 
 Status ReviewResponsePagingState(const PgTableDesc& table, PgsqlReadOp* op) {
-  auto& response = op->response();
+  auto* response = op->response();
   if (table.num_hash_key_columns() > 0 ||
       op->read_request().is_forward_scan() ||
-      !response.has_paging_state() ||
-      !response.paging_state().has_next_partition_key() ||
-      response.paging_state().has_next_row_key()) {
+      !response ||
+      !response->has_paging_state() ||
+      !response->paging_state().has_next_partition_key() ||
+      response->paging_state().has_next_row_key()) {
     return Status::OK();
   }
   // Backward scan of range key only table. next_row_key is not specified in paging state.
   // In this case next_partition_key must be corrected as now it points to the partition start key
   // of already scanned tablet. Partition start key of the preceding tablet must be used instead.
   // Also lower bound is checked here because DocDB can check upper bound only.
-  const auto& current_next_partition_key = response.paging_state().next_partition_key();
+  const auto& current_next_partition_key = response->paging_state().next_partition_key();
   std::vector<docdb::PrimitiveValue> lower_bound, upper_bound;
   RETURN_NOT_OK(client::GetRangePartitionBounds(
       table.schema(), op->read_request(), &lower_bound, &upper_bound));
@@ -55,12 +56,13 @@ Status ReviewResponsePagingState(const PgTableDesc& table, PgsqlReadOp* op) {
     VERIFY_RESULT(current_key.DecodeFrom(
         current_next_partition_key, docdb::DocKeyPart::kWholeDocKey, docdb::AllowSpecial::kTrue));
     if (current_key.CompareTo(docdb::DocKey(std::move(lower_bound))) < 0) {
-      response.clear_paging_state();
+      response->clear_paging_state();
       return Status::OK();
     }
   }
   const auto& partitions = table.GetPartitions();
-  const auto idx = client::FindPartitionStartIndex(partitions, current_next_partition_key);
+  const auto idx = client::FindPartitionStartIndex(
+      partitions, current_next_partition_key.ToBuffer());
   SCHECK_GT(
       idx, 0ULL,
       IllegalState, "Paging state for backward scan cannot point to first partition");
@@ -68,7 +70,7 @@ Status ReviewResponsePagingState(const PgTableDesc& table, PgsqlReadOp* op) {
       partitions[idx], current_next_partition_key,
       IllegalState, "Paging state for backward scan must point to partition start key");
   const auto& next_partition_key = partitions[idx - 1];
-  response.mutable_paging_state()->set_next_partition_key(next_partition_key);
+  response->mutable_paging_state()->dup_next_partition_key(next_partition_key);
   return Status::OK();
 }
 
@@ -77,9 +79,13 @@ std::string PgsqlOp::ToString() const {
                 is_read() ? "READ" : "WRITE", active_, read_time_, RequestToString());
 }
 
-PgsqlReadOp::PgsqlReadOp(const PgTableDesc& desc) {
+PgsqlReadOp::PgsqlReadOp() : read_request_(&arena()) {
+}
+
+PgsqlReadOp::PgsqlReadOp(const PgTableDesc& desc)
+    : read_request_(&arena()) {
   read_request_.set_client(YQL_CLIENT_PGSQL);
-  read_request_.set_table_id(desc.id().GetYbTableId());
+  read_request_.dup_table_id(desc.id().GetYbTableId());
   read_request_.set_schema_version(desc.schema_version());
   read_request_.set_stmt_id(reinterpret_cast<int64_t>(&read_request_));
 }
@@ -89,8 +95,19 @@ CHECKED_STATUS PgsqlReadOp::InitPartitionKey(const PgTableDesc& table) {
        table.schema(), table.partition_schema(), table.LastPartition(), &read_request_);
 }
 
+PgsqlOpPtr PgsqlReadOp::DeepCopy() const {
+  auto result = std::make_shared<PgsqlReadOp>();
+  result->read_request() = read_request();
+  result->read_from_followers_ = read_from_followers_;
+  return result;
+}
+
 std::string PgsqlReadOp::RequestToString() const {
   return read_request_.ShortDebugString();
+}
+
+PgsqlWriteOp::PgsqlWriteOp(bool need_transaction)
+    : write_request_(&arena()), need_transaction_(need_transaction) {
 }
 
 CHECKED_STATUS PgsqlWriteOp::InitPartitionKey(const PgTableDesc& table) {
@@ -99,6 +116,12 @@ CHECKED_STATUS PgsqlWriteOp::InitPartitionKey(const PgTableDesc& table) {
 
 std::string PgsqlWriteOp::RequestToString() const {
   return write_request_.ShortDebugString();
+}
+
+PgsqlOpPtr PgsqlWriteOp::DeepCopy() const {
+  auto result = std::make_shared<PgsqlWriteOp>(need_transaction_);
+  result->write_request() = write_request();
+  return result;
 }
 
 }  // namespace pggate
