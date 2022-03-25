@@ -3,6 +3,7 @@ title: Change data capture (CDC)
 headerTitle: Change data capture (CDC)
 linkTitle: Change data capture (CDC)
 description: Learn how YugabyteDB supports asynchronous replication of data changes (inserts, updates, and deletes) to external databases or applications.
+beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
   - /latest/architecture/cdc-architecture/
   - /latest/architecture/change-data-capture/
@@ -75,7 +76,7 @@ In the sections below, the terms "data center", "cluster", and "universe" are us
 '-------------------------------------------'    '-------------------------------------------'
 ```
 
-Every YB-TServer has a `CDC service` that is stateless. The main beta APIs provided by `CDC Service` are:
+Every YB-TServer has a `CDC service` that is stateless. The main APIs provided by `CDC Service` are:
 
 * `createCDCSDKStream` API for creating the stream on the database.
 * `getChangesCDCSDK` API that will be use by the client to get the latest set of changes.
