@@ -26,6 +26,7 @@ set(ROCKSUTIL_SRCS
     ${ROCKSUTIL_SRCS_EXTENSIONS})
 
 set(ROCKSUTIL_LIBS
+    encryption
     gflags
     glog
     gutil

@@ -107,8 +107,10 @@ class PrimitiveValue {
   static PrimitiveValue NullValue(SortingType sorting);
 
   // Construct a primitive value from a QLValuePB.
-  static PrimitiveValue FromQLValuePB(const QLValuePB& value,
-                                      SortingType sorting_type,
+  static PrimitiveValue FromQLValuePB(const QLValuePB& value, SortingType sorting_type,
+                                      bool check_is_collate = true);
+
+  static PrimitiveValue FromQLValuePB(const LWQLValuePB& value, SortingType sorting_type,
                                       bool check_is_collate = true);
 
   // Set a primitive value in a QLValuePB.

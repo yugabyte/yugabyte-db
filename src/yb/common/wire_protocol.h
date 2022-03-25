@@ -66,6 +66,8 @@ void StatusToPB(const Status& status, AppStatusPB* pb);
 // Convert the given protobuf into the equivalent C++ Status object.
 Status StatusFromPB(const AppStatusPB& pb);
 
+Status StatusFromPB(const LWAppStatusPB& pb);
+
 // Convert the specified HostPort to protobuf.
 void HostPortToPB(const HostPort& host_port, HostPortPB* host_port_pb);
 

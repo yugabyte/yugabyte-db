@@ -490,10 +490,10 @@ class PgDocReadOp : public PgDocOp {
   }
 
   // Get the read_req for a specific operation index from pgsql_ops_.
-  PgsqlReadRequestPB& GetReadReq(size_t op_index);
+  LWPgsqlReadRequestPB& GetReadReq(size_t op_index);
 
   // Re-format the request when connecting to older server during rolling upgrade.
-  void FormulateRequestForRollingUpgrade(PgsqlReadRequestPB *read_req);
+  void FormulateRequestForRollingUpgrade(LWPgsqlReadRequestPB *read_req);
 
   //----------------------------------- Data Members -----------------------------------------------
 
@@ -524,7 +524,7 @@ class PgDocReadOp : public PgDocOp {
   // Example:
   // For a query clause "h1 = 1 AND h2 IN (2,3) AND h3 IN (4,5,6) AND h4 = 7",
   // this will be initialized to [[1], [2, 3], [4, 5, 6], [7]]
-  std::vector<std::vector<const PgsqlExpressionPB*>> partition_exprs_;
+  std::vector<std::vector<const LWPgsqlExpressionPB*>> partition_exprs_;
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -566,7 +566,7 @@ class PgDocWriteOp : public PgDocOp {
   }
 
   // Get WRITE operator for a specific operator index in pgsql_ops_.
-  PgsqlWriteRequestPB& GetWriteOp(int op_index);
+  LWPgsqlWriteRequestPB& GetWriteOp(int op_index);
 
   // Clone user data from template to actual protobuf requests.
   PgsqlOpPtr CloneFromTemplate() override {

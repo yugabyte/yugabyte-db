@@ -34,7 +34,6 @@ class EncryptionParamsPB;
 class RandomAccessFile;
 class HeaderManager;
 class BlockAccessCipherStream;
-class OpenSSLInitializer;
 
 // Struct generated for encryption status of existing files.
 struct FileEncryptionStatus {
@@ -185,8 +184,6 @@ Status CreateWritableFile(WritablePtr* result,
 }
 
 Result<uint32_t> GetHeaderSize(SequentialFile* file, HeaderManager* header_manager);
-
-OpenSSLInitializer& InitOpenSSL();
 
 } // namespace encryption
 } // namespace yb

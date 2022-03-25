@@ -106,6 +106,8 @@ StreamFactoryPtr SecureStreamFactory(
     StreamFactoryPtr lower_layer_factory, const MemTrackerPtr& buffer_tracker,
     const SecureContext* context);
 
+void InitOpenSSL();
+
 } // namespace rpc
 } // namespace yb
 

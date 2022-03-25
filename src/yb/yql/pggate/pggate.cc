@@ -127,7 +127,7 @@ Result<std::vector<std::string>> FetchExistingYbctids(PgSession::ScopedRefPtr se
   auto desc  = VERIFY_RESULT(session->LoadTable(PgObjectId(database_id, table_id)));
   PgTable target(desc);
   auto read_op = std::make_shared<PgsqlReadOp>(*target);
-  PgsqlExpressionPB* expr_pb = read_op->read_request().add_targets();
+  auto* expr_pb = read_op->read_request().add_targets();
   expr_pb->set_column_id(to_underlying(PgSystemAttrNum::kYBTupleId));
   auto doc_op = std::make_shared<PgDocReadOp>(session, &target, std::move(read_op));
 
@@ -1012,7 +1012,7 @@ Status PgApiImpl::ProcessYBTupleId(const YBCPgYBTupleIdDescriptor& descr,
           }
           string partition_key;
           const PartitionSchema& partition_schema = target_desc->partition_schema();
-          RETURN_NOT_OK(partition_schema.EncodeKey(hashed_values, &partition_key));
+          RETURN_NOT_OK(partition_schema.EncodePgsqlKey(hashed_values, &partition_key));
           const uint16_t hash = PartitionSchema::DecodeMultiColumnHashValue(partition_key);
 
           return processor(

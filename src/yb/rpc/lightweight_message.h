@@ -227,9 +227,11 @@ inline uint8_t* PackedWrite(const Value& value, size_t body_size, uint8_t* out) 
   return out;
 }
 
+Arena& empty_arena();
+
 template <class T>
 const T& empty_message() {
-  static T result(nullptr);
+  static T result(&empty_arena());
   return result;
 }
 

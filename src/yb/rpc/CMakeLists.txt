@@ -105,7 +105,6 @@ set(YRPC_SRCS
     ${RPC_SRCS_EXTENSIONS})
 
 set(YRPC_LIBS
-  encryption
   gutil
   libev
   lz4

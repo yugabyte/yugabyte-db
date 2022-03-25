@@ -33,7 +33,7 @@ class PgSelectIndex : public PgSelect {
 
   // Prepare NESTED query for secondary index. This function is called when Postgres layer is
   // accessing the IndexTable via an outer select (Sequential or primary scans)
-  CHECKED_STATUS PrepareSubquery(std::shared_ptr<PgsqlReadRequestPB> read_req);
+  CHECKED_STATUS PrepareSubquery(std::shared_ptr<LWPgsqlReadRequestPB> read_req);
 
   Result<PgTableDescPtr> LoadTable() override;
 

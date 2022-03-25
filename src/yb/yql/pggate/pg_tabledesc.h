@@ -20,7 +20,7 @@
 
 #include "yb/common/partition.h"
 #include "yb/common/pg_types.h"
-#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/pgsql_protocol.messages.h"
 #include "yb/common/schema.h"
 
 #include "yb/client/yb_op.h"
@@ -78,7 +78,7 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
   Result<size_t> FindPartitionIndex(const Slice& ybctid) const;
 
   // These values are set by  PgGate to optimize query to narrow the scanning range of a query.
-  CHECKED_STATUS SetScanBoundary(PgsqlReadRequestPB *req,
+  CHECKED_STATUS SetScanBoundary(LWPgsqlReadRequestPB *req,
                                  const string& partition_lower_bound,
                                  bool lower_bound_is_inclusive,
                                  const string& partition_upper_bound,

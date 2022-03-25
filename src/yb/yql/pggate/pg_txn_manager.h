@@ -24,6 +24,7 @@
 #include "yb/common/transaction.h"
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/tserver/pg_client.fwd.h"
 #include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_util_fwd.h"

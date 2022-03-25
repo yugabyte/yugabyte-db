@@ -51,6 +51,7 @@
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
+#include "yb/rpc/secure_stream.h"
 
 #include "yb/server/default-path-handlers.h"
 #include "yb/server/generic_service.h"
@@ -479,7 +480,7 @@ void RpcAndWebServerBase::GenerateInstanceID() {
 }
 
 Status RpcAndWebServerBase::Init() {
-  encryption::InitOpenSSL();
+  rpc::InitOpenSSL();
 
   Status s = fs_manager_->CheckAndOpenFileSystemRoots();
   if (s.IsNotFound() || (!s.ok() && fs_manager_->HasAnyLockFiles())) {

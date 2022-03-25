@@ -284,7 +284,7 @@ class Message {
           if (IsMessage(field)) {
             printer("  $field_name$_.Clear();\n");
           } else {
-            printer("  $field_name$_ = $field_stored_type$();\n");
+            printer("  $field_name$_ = $field_default_value$;\n");
           }
           printer("  has_fields_.Reset($message_name$Fields::k$field_camelcase_name$);\n");
         }

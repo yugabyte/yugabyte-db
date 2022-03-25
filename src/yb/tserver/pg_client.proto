@@ -23,6 +23,7 @@ import "yb/common/pgsql_protocol.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/master/master_ddl.proto";
 import "yb/master/master_types.proto";
+import "yb/rpc/lightweight_message.proto";
 
 service PgClientService {
   rpc Heartbeat(PgHeartbeatRequestPB) returns (PgHeartbeatResponsePB);
@@ -46,7 +47,9 @@ service PgClientService {
   rpc ListLiveTabletServers(PgListLiveTabletServersRequestPB)
       returns (PgListLiveTabletServersResponsePB);
   rpc OpenTable(PgOpenTableRequestPB) returns (PgOpenTableResponsePB);
-  rpc Perform(PgPerformRequestPB) returns (PgPerformResponsePB);
+  rpc Perform(PgPerformRequestPB) returns (PgPerformResponsePB) {
+    option (yb.rpc.lightweight_method).sides = PROXY;
+  };
   rpc ReserveOids(PgReserveOidsRequestPB) returns (PgReserveOidsResponsePB);
   rpc RollbackSubTransaction(PgRollbackSubTransactionRequestPB)
       returns (PgRollbackSubTransactionResponsePB);

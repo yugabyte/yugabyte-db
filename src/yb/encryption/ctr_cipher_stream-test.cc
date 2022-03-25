@@ -21,6 +21,8 @@
 #include "yb/encryption/encryption_util.h"
 #include "yb/encryption/header_manager.h"
 
+#include "yb/rpc/secure_stream.h"
+
 #include "yb/util/random_util.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
@@ -75,7 +77,7 @@ class TestCipherStream : public YBTest {
 };
 
 TEST_F(TestCipherStream, ConcurrentEncryption) {
-  InitOpenSSL();
+  rpc::InitOpenSSL();
 
   constexpr int kBufSize = 10000;
   constexpr int kNumRuns = 10000;

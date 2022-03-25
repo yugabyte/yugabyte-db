@@ -177,12 +177,12 @@ bfpg::TSOpcode PgExpr::OperandTypeToSumTSOpcode(InternalType type) {
   }
 }
 
-Status PgExpr::PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
+Status PgExpr::PrepareForRead(PgDml *pg_stmt, LWPgsqlExpressionPB *expr_pb) {
   // For expression that doesn't need to be setup and prepared at construction time.
   return Status::OK();
 }
 
-Status PgExpr::Eval(PgsqlExpressionPB *expr_pb) {
+Status PgExpr::Eval(LWPgsqlExpressionPB *expr_pb) {
   // Expressions that are neither bind_variable nor constant don't need to be updated.
   // Only values for bind variables and constants need to be updated in the SQL requests.
   return Status::OK();
@@ -726,9 +726,8 @@ void PgConstant::UpdateConstant(const void *value, size_t bytes, bool is_null) {
   }
 }
 
-Status PgConstant::Eval(PgsqlExpressionPB *expr_pb) {
-  QLValuePB *result = expr_pb->mutable_value();
-  *result = ql_value_;
+Status PgConstant::Eval(LWPgsqlExpressionPB *expr_pb) {
+  *expr_pb->mutable_value() = ql_value_;
   return Status::OK();
 }
 
@@ -788,7 +787,7 @@ bool PgColumnRef::is_ybbasetid() const {
   return attr_num_ == static_cast<int>(PgSystemAttrNum::kYBIdxBaseTupleId);
 }
 
-Status PgColumnRef::PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
+Status PgColumnRef::PrepareForRead(PgDml *pg_stmt, LWPgsqlExpressionPB *expr_pb) {
   RETURN_NOT_OK(pg_stmt->PrepareColumnForRead(attr_num_, expr_pb));
   return Status::OK();
 }
@@ -807,8 +806,8 @@ void PgOperator::AppendArg(PgExpr *arg) {
   args_.push_back(arg);
 }
 
-Status PgOperator::PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
-  PgsqlBCallPB *tscall = expr_pb->mutable_tscall();
+Status PgOperator::PrepareForRead(PgDml *pg_stmt, LWPgsqlExpressionPB *expr_pb) {
+  auto *tscall = expr_pb->mutable_tscall();
   bfpg::TSOpcode tsopcode;
   if (opcode_ == Opcode::PG_EXPR_SUM) {
     // SUM is special case as it has input type of the operand column but output
@@ -819,7 +818,7 @@ Status PgOperator::PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
   }
   tscall->set_opcode(static_cast<int32_t>(tsopcode));
   for (const auto& arg : args_) {
-    PgsqlExpressionPB *op = tscall->add_operands();
+    LWPgsqlExpressionPB *op = tscall->add_operands();
     RETURN_NOT_OK(arg->PrepareForRead(pg_stmt, op));
     RETURN_NOT_OK(arg->Eval(op));
   }

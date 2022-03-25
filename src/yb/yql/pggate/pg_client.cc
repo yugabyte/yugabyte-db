@@ -28,6 +28,7 @@
 #include "yb/tserver/pg_client.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/logging.h"
 #include "yb/util/protobuf_util.h"
 #include "yb/util/result.h"
@@ -57,21 +58,32 @@ const auto kExtraTimeout = 2s;
 
 struct PerformData {
   PgsqlOps operations;
-  tserver::PgPerformResponsePB resp;
+  tserver::LWPgPerformResponsePB resp;
   rpc::RpcController controller;
   PerformCallback callback;
+
+  explicit PerformData(Arena* arena) : resp(arena) {
+  }
 
   CHECKED_STATUS Process() {
     auto& responses = *resp.mutable_responses();
     SCHECK_EQ(implicit_cast<size_t>(responses.size()), operations.size(), RuntimeError,
               Format("Wrong number of responses: $0, while $1 expected",
                      responses.size(), operations.size()));
-    for (uint32_t i = 0; i != operations.size(); ++i) {
-      if (responses[i].has_rows_data_sidecar()) {
+    uint32_t i = 0;
+    for (auto& op_response : responses) {
+      if (op_response.has_rows_data_sidecar()) {
         operations[i]->rows_data() = VERIFY_RESULT(
-            controller.GetSidecarPtr(responses[i].rows_data_sidecar()));
+            controller.GetSidecarPtr(op_response.rows_data_sidecar()));
       }
-      operations[i]->response() = std::move(responses[i]);
+      // TODO(LW_PERFORM)
+      if (i) {
+        operations[i]->set_response(operations[i]->arena().NewObject<LWPgsqlResponsePB>(
+            &operations[i]->arena(), op_response));
+      } else {
+        operations[i]->set_response(&op_response);
+      }
+      ++i;
     }
     return Status::OK();
   }
@@ -323,19 +335,13 @@ class PgClient::Impl {
       tserver::PgPerformOptionsPB* options,
       PgsqlOps* operations,
       const PerformCallback& callback) {
-    tserver::PgPerformRequestPB req;
+    auto& arena = operations->front()->arena();
+    tserver::LWPgPerformRequestPB req(&arena);
     req.set_session_id(session_id_);
     *req.mutable_options() = std::move(*options);
-    auto se = ScopeExit([&req] {
-      for (auto& op : *req.mutable_ops()) {
-        if (!op.release_read()) {
-          op.release_write();
-        }
-      }
-    });
     PrepareOperations(&req, operations);
 
-    auto data = std::make_shared<PerformData>();
+    auto data = std::make_shared<PerformData>(&arena);
     data->operations = std::move(*operations);
     data->callback = callback;
     data->controller.set_invoke_callback_mode(rpc::InvokeCallbackMode::kReactorThread);
@@ -356,23 +362,22 @@ class PgClient::Impl {
     });
   }
 
-  void PrepareOperations(tserver::PgPerformRequestPB* req, PgsqlOps* operations) {
+  void PrepareOperations(tserver::LWPgPerformRequestPB* req, PgsqlOps* operations) {
     auto& ops = *req->mutable_ops();
-    ops.Reserve(narrow_cast<int>(operations->size()));
     for (auto& op : *operations) {
-      auto* union_op = ops.Add();
+      auto& union_op = ops.emplace_back();
       if (op->is_read()) {
         auto& read_op = down_cast<PgsqlReadOp&>(*op);
-        union_op->set_allocated_read(&read_op.read_request());
+        union_op.ref_read(&read_op.read_request());
         if (read_op.read_from_followers()) {
-          union_op->set_read_from_followers(true);
+          union_op.set_read_from_followers(true);
         }
       } else {
         auto& write_op = down_cast<PgsqlWriteOp&>(*op);
         if (write_op.write_time()) {
           req->set_write_time(write_op.write_time().ToUint64());
         }
-        union_op->set_allocated_write(&write_op.write_request());
+        union_op.ref_write(&write_op.write_request());
       }
       if (op->read_time()) {
         op->read_time().AddToPB(req->mutable_options());

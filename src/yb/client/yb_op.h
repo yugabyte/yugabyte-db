@@ -589,18 +589,20 @@ class YBNoOp {
 
 CHECKED_STATUS InitPartitionKey(
     const Schema& schema, const PartitionSchema& partition_schema,
-    const std::string& last_partition, PgsqlReadRequestPB* request);
+    const std::string& last_partition, LWPgsqlReadRequestPB* request);
 
 CHECKED_STATUS InitPartitionKey(
-    const Schema& schema, const PartitionSchema& partition_schema, PgsqlWriteRequestPB* request);
-
-Result<std::vector<docdb::PrimitiveValue>> GetRangeComponents(
-    const Schema& schema, const google::protobuf::RepeatedPtrField<PgsqlExpressionPB>& range_cols,
-    bool lower_bound);
+    const Schema& schema, const PartitionSchema& partition_schema, LWPgsqlWriteRequestPB* request);
 
 CHECKED_STATUS GetRangePartitionBounds(
     const Schema& schema,
     const PgsqlReadRequestPB& request,
+    std::vector<docdb::PrimitiveValue>* lower_bound,
+    std::vector<docdb::PrimitiveValue>* upper_bound);
+
+CHECKED_STATUS GetRangePartitionBounds(
+    const Schema& schema,
+    const LWPgsqlReadRequestPB& request,
     std::vector<docdb::PrimitiveValue>* lower_bound,
     std::vector<docdb::PrimitiveValue>* upper_bound);
 

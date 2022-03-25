@@ -44,8 +44,10 @@
 #include "yb/common/column_id.h"
 #include "yb/common/partial_row.h"
 
+#include "yb/util/enums.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/memory/arena_fwd.h"
+#include "yb/util/memory/arena_list.h"
 
 namespace yb {
 
@@ -54,11 +56,10 @@ class YBPartialRow;
 class PartitionSchemaPB;
 class TypeInfo;
 
-enum class YBHashSchema {
-  kMultiColumnHash = 1, // YQL default hashing.
-  kRedisHash = 2, // Redis default hashing.
-  kPgsqlHash = 3 // PGSQL default hashing.
-};
+YB_DEFINE_ENUM(YBHashSchema,
+               ((kMultiColumnHash, 1))
+               ((kRedisHash, 2))
+               ((kPgsqlHash, 3)));
 
 // A Partition describes the set of rows that a Tablet is responsible for
 // serving. Each tablet is assigned a single Partition.
@@ -206,8 +207,23 @@ class PartitionSchema {
   CHECKED_STATUS EncodeKey(const google::protobuf::RepeatedPtrField<QLExpressionPB>& hash_values,
                            std::string* buf) const WARN_UNUSED_RESULT;
 
-  CHECKED_STATUS EncodeKey(const google::protobuf::RepeatedPtrField<PgsqlExpressionPB>& hash_values,
-                           std::string* buf) const WARN_UNUSED_RESULT;
+  template <class Collection>
+  CHECKED_STATUS EncodePgsqlKey(const Collection& hash_values, std::string* buf) const {
+    if (!hash_schema_) {
+      return Status::OK();
+    }
+
+    if (*hash_schema_ != YBHashSchema::kPgsqlHash) {
+      return STATUS_FORMAT(
+          InvalidArgument, "Unexpected hash scheme in EncodePgsqlKey", *hash_schema_);
+    }
+
+    std::string tmp;
+    for (const auto &value : hash_values) {
+      ProcessHashKeyEntry(value, &tmp);
+    }
+    return CompleteEncodeKey(tmp, buf);
+  }
 
   // Appends the row's encoded partition key into the provided buffer.
   // On failure, the buffer may have data partially appended.
@@ -230,13 +246,17 @@ class PartitionSchema {
   static std::string EncodeMultiColumnHashValue(uint16_t hash_value);
 
   // Decode the given partition_key to a 2-byte integer.
-  static uint16_t DecodeMultiColumnHashValue(const std::string& partition_key);
+  static uint16_t DecodeMultiColumnHashValue(Slice partition_key);
 
   // Does [partition_key_start, partition_key_end] form a valid range.
   static CHECKED_STATUS IsValidHashPartitionRange(const std::string& partition_key_start,
                                                   const std::string& partition_key_end);
 
   static bool IsValidHashPartitionKeyBound(const std::string& partition_key);
+
+  static void ProcessHashKeyEntry(const QLValuePB& value_pb, std::string* out);
+  static void ProcessHashKeyEntry(const LWPgsqlExpressionPB& expr, std::string* out);
+  static void ProcessHashKeyEntry(const PgsqlExpressionPB& expr, std::string* out);
 
   // Encoded (sub)doc keys that belong to partition with partition_key lower bound
   // are starting with this prefix or greater than it
@@ -410,6 +430,8 @@ class PartitionSchema {
   // Validates that this partition schema is valid. Returns OK, or an
   // appropriate error code for an invalid partition schema.
   CHECKED_STATUS Validate(const Schema& schema) const;
+
+  static CHECKED_STATUS CompleteEncodeKey(const std::string& temp, std::string* buf);
 
   std::vector<HashBucketSchema> hash_bucket_schemas_;
   RangeSchema range_schema_;

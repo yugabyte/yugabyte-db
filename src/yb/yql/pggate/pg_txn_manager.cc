@@ -23,7 +23,7 @@
 
 #include "yb/rpc/rpc_controller.h"
 
-#include "yb/tserver/pg_client.pb.h"
+#include "yb/tserver/pg_client.messages.h"
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
 

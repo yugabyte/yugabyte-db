@@ -65,6 +65,7 @@ class QLScanRange {
 
   QLScanRange(const Schema& schema, const QLConditionPB& condition);
   QLScanRange(const Schema& schema, const PgsqlConditionPB& condition);
+  QLScanRange(const Schema& schema, const LWPgsqlConditionPB& condition);
 
   QLRange RangeFor(ColumnId col_id) const {
     const auto& iter = ranges_.find(col_id);
@@ -91,6 +92,8 @@ class QLScanRange {
   QLScanRange& operator=(QLScanRange&& other);
 
  private:
+  template <class Cond>
+  void Init(const Cond& cond);
 
   // Table schema being scanned.
   const Schema& schema_;

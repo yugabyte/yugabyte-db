@@ -15,7 +15,7 @@
 
 #include "yb/common/ql_scanspec.h"
 
-#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/pgsql_protocol.messages.h"
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
@@ -29,7 +29,62 @@ using std::vector;
 //-------------------------------------- QL scan range --------------------------------------
 QLScanRange::QLScanRange(const Schema& schema, const QLConditionPB& condition)
     : schema_(schema) {
+  Init(condition);
+}
 
+template <class Value>
+struct ColumnValue {
+  bool lhs_is_column = false;
+  ColumnId column_id;
+  const Value* value = nullptr;
+
+  explicit operator bool() const {
+    return value != nullptr;
+  }
+};
+
+template <class Col>
+auto GetColumnValue(const Col& col) {
+  CHECK_EQ(col.size(), 2);
+  auto it = col.begin();
+  using ResultType = ColumnValue<typename std::remove_reference<decltype(it->value())>::type>;
+  if (it->expr_case() == decltype(it->expr_case())::kColumnId) {
+    ColumnId column_id(it->column_id());
+    ++it;
+    if (it->expr_case() == decltype(it->expr_case())::kValue) {
+      return ResultType {
+        .lhs_is_column = true,
+        .column_id = column_id,
+        .value = &it->value(),
+      };
+    }
+    return ResultType();
+  }
+  if (it->expr_case() == decltype(it->expr_case())::kValue) {
+    auto* value = &it->value();
+    ++it;
+    if (it->expr_case() == decltype(it->expr_case())::kColumnId) {
+      return ResultType {
+        .lhs_is_column = false,
+        .column_id = ColumnId(it->column_id()),
+        .value = value,
+      };
+    }
+    return ResultType();
+  }
+  return ResultType();
+}
+
+void AssignValue(const QLValuePB& value, boost::optional<QLValuePB>* out) {
+  *out = value;
+}
+
+void AssignValue(const LWQLValuePB& value, boost::optional<QLValuePB>* out) {
+  *out = value.ToGoogleProtobuf();
+}
+
+template <class Cond>
+void QLScanRange::Init(const Cond& condition) {
   // If there is no range column, return.
   if (schema_.num_range_key_columns() == 0) {
     return;
@@ -37,41 +92,25 @@ QLScanRange::QLScanRange(const Schema& schema, const QLConditionPB& condition)
 
   // Initialize the lower/upper bounds of each range column to null to mean it is unbounded.
   ranges_.reserve(schema_.num_range_key_columns());
-  for (size_t i = 0; i < schema.num_key_columns(); i++) {
-    if (schema.is_range_column(i)) {
-      ranges_.emplace(schema.column_id(i), QLRange());
+  for (size_t i = 0; i < schema_.num_key_columns(); i++) {
+    if (schema_.is_range_column(i)) {
+      ranges_.emplace(schema_.column_id(i), QLRange());
     }
   }
 
   // Check if there is a range column referenced in the operands.
   const auto& operands = condition.operands();
   bool has_range_column = false;
+  using ExprCase = decltype(operands.begin()->expr_case());
   for (const auto& operand : operands) {
-    if (operand.expr_case() == QLExpressionPB::ExprCase::kColumnId &&
-        schema.is_range_column(ColumnId(operand.column_id()))) {
+    if (operand.expr_case() == ExprCase::kColumnId &&
+        schema_.is_range_column(ColumnId(operand.column_id()))) {
       has_range_column = true;
       break;
     }
   }
 
   switch (condition.op()) {
-
-#define QL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN(col_expr, val_expr)                       \
-      CHECK_EQ(operands.size(), 2);                                                     \
-      QLExpressionPB const* col_expr = nullptr;                                        \
-      QLExpressionPB const* val_expr = nullptr;                                        \
-      if (operands.Get(0).expr_case() == QLExpressionPB::ExprCase::kColumnId &&        \
-          operands.Get(1).expr_case() == QLExpressionPB::ExprCase::kValue) {           \
-        col_expr = &operands.Get(0);                                                    \
-        val_expr = &operands.Get(1);                                                    \
-      } else if (operands.Get(1).expr_case() == QLExpressionPB::ExprCase::kColumnId && \
-                 operands.Get(0).expr_case() == QLExpressionPB::ExprCase::kValue) {    \
-        col_expr = &operands.Get(1);                                                    \
-        val_expr = &operands.Get(0);                                                    \
-      } else {                                                                          \
-        return;                                                                         \
-      }
-
     // For relational conditions, the ranges are as follows. If the column is not a range column,
     // just return since it doesn't impose a bound on a range column.
     //
@@ -83,24 +122,27 @@ QLScanRange::QLScanRange(const Schema& schema, const QLConditionPB& condition)
     case QL_OP_EQUAL: {
       if (has_range_column) {
         // - <column> = <value> --> min/max values = <value>
-        QL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN(col_expr, val_expr);
-        const ColumnId column_id(col_expr->column_id());
-        ranges_.at(column_id).min_value = val_expr->value();
-        ranges_.at(column_id).max_value = val_expr->value();
+        auto column_value = GetColumnValue(operands);
+        if (column_value) {
+          auto& range = ranges_[column_value.column_id];
+          AssignValue(*column_value.value, &range.min_value);
+          AssignValue(*column_value.value, &range.max_value);
+        }
       }
       return;
     }
     case QL_OP_LESS_THAN:
     case QL_OP_LESS_THAN_EQUAL: {
       if (has_range_column) {
-        QL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN(col_expr, val_expr);
-        const ColumnId column_id(col_expr->column_id());
-        if (operands.Get(0).expr_case() == QLExpressionPB::ExprCase::kColumnId) {
-          // - <column> <= <value> --> max_value = <value>
-          ranges_.at(column_id).max_value = val_expr->value();
-        } else {
-          // - <value> <= <column> --> min_value = <value>
-          ranges_.at(column_id).min_value = val_expr->value();
+        auto column_value = GetColumnValue(operands);
+        if (column_value) {
+          if (column_value.lhs_is_column) {
+            // - <column> <= <value> --> max_value = <value>
+            AssignValue(*column_value.value, &ranges_[column_value.column_id].max_value);
+          } else {
+            // - <value> <= <column> --> min_value = <value>
+            AssignValue(*column_value.value, &ranges_[column_value.column_id].min_value);
+          }
         }
       }
       return;
@@ -108,14 +150,15 @@ QLScanRange::QLScanRange(const Schema& schema, const QLConditionPB& condition)
     case QL_OP_GREATER_THAN:
     case QL_OP_GREATER_THAN_EQUAL: {
       if (has_range_column) {
-        QL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN(col_expr, val_expr);
-        const ColumnId column_id(col_expr->column_id());
-        if (operands.Get(0).expr_case() == QLExpressionPB::ExprCase::kColumnId) {
-          // - <column> >= <value> --> min_value = <value>
-          ranges_.at(column_id).min_value = val_expr->value();
-        } else {
-          // - <value> >= <column> --> max_value = <value>
-          ranges_.at(column_id).max_value = val_expr->value();
+        auto column_value = GetColumnValue(operands);
+        if (column_value) {
+          if (column_value.lhs_is_column) {
+            // - <column> >= <value> --> min_value = <value>
+            AssignValue(*column_value.value, &ranges_[column_value.column_id].min_value);
+          } else {
+            // - <value> >= <column> --> max_value = <value>
+            AssignValue(*column_value.value, &ranges_[column_value.column_id].max_value);
+          }
         }
       }
       return;
@@ -126,13 +169,16 @@ QLScanRange::QLScanRange(const Schema& schema, const QLConditionPB& condition)
         // - min_value = <value_1>
         // - max_value = <value_2>
         CHECK_EQ(operands.size(), 3);
-        if (operands.Get(0).expr_case() == QLExpressionPB::ExprCase::kColumnId) {
-          const ColumnId column_id(operands.Get(0).column_id());
-          if (operands.Get(1).expr_case() == QLExpressionPB::ExprCase::kValue) {
-            ranges_.at(column_id).min_value = operands.Get(1).value();
+        auto it = operands.begin();
+        if (it->expr_case() == ExprCase::kColumnId) {
+          const ColumnId column_id(it->column_id());
+          ++it;
+          if (it->expr_case() == ExprCase::kValue) {
+            AssignValue(it->value(), &ranges_[column_id].min_value);
           }
-          if (operands.Get(2).expr_case() == QLExpressionPB::ExprCase::kValue) {
-            ranges_.at(column_id).max_value = operands.Get(2).value();
+          ++it;
+          if (it->expr_case() == ExprCase::kValue) {
+            AssignValue(it->value(), &ranges_[column_id].max_value);
           }
         }
       }
@@ -140,27 +186,29 @@ QLScanRange::QLScanRange(const Schema& schema, const QLConditionPB& condition)
     }
     case QL_OP_IN: {
       if (has_range_column) {
-        QL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN(col_expr, val_expr);
-        // - <column> IN (<value>) --> min/max values = <value>
-        // IN arguments should have already been de-duplicated and ordered by the executor.
-        int in_size = val_expr->value().list_value().elems_size();
-        if (in_size > 0) {
-          const ColumnId column_id(col_expr->column_id());
-          ranges_.at(column_id).min_value = val_expr->value().list_value().elems(0);
-          ranges_.at(column_id).max_value = val_expr->value().list_value().elems(in_size - 1);
+        auto column_value = GetColumnValue(operands);
+        if (column_value) {
+          // - <column> IN (<value>) --> min/max values = <value>
+          // IN arguments should have already been de-duplicated and ordered by the executor.
+          auto in_size = column_value.value->list_value().elems().size();
+          if (in_size > 0) {
+            auto& range = ranges_[column_value.column_id];
+            AssignValue(*column_value.value->list_value().elems().begin(), &range.min_value);
+            auto last = column_value.value->list_value().elems().end();
+            --last;
+            AssignValue(*last, &range.max_value);
+          }
+          has_in_range_options_ = true;
         }
-        has_in_range_options_ = true;
       }
       return;
     }
-
-#undef QL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN
 
       // For logical conditions, the ranges are union/intersect/complement of the operands' ranges.
     case QL_OP_AND: {
       CHECK_GT(operands.size(), 0);
       for (const auto& operand : operands) {
-        CHECK_EQ(operand.expr_case(), QLExpressionPB::ExprCase::kCondition);
+        CHECK_EQ(operand.expr_case(), ExprCase::kCondition);
         *this &= QLScanRange(schema_, operand.condition());
       }
       return;
@@ -168,15 +216,15 @@ QLScanRange::QLScanRange(const Schema& schema, const QLConditionPB& condition)
     case QL_OP_OR: {
       CHECK_GT(operands.size(), 0);
       for (const auto& operand : operands) {
-        CHECK_EQ(operand.expr_case(), QLExpressionPB::ExprCase::kCondition);
+        CHECK_EQ(operand.expr_case(), ExprCase::kCondition);
         *this |= QLScanRange(schema_, operand.condition());
       }
       return;
     }
     case QL_OP_NOT: {
       CHECK_EQ(operands.size(), 1);
-      CHECK_EQ(operands.Get(0).expr_case(), QLExpressionPB::ExprCase::kCondition);
-      *this = std::move(~QLScanRange(schema_, operands.Get(0).condition()));
+      CHECK_EQ(operands.begin()->expr_case(), ExprCase::kCondition);
+      *this = std::move(~QLScanRange(schema_, operands.begin()->condition()));
       return;
     }
 
@@ -205,178 +253,12 @@ QLScanRange::QLScanRange(const Schema& schema, const QLConditionPB& condition)
 
 QLScanRange::QLScanRange(const Schema& schema, const PgsqlConditionPB& condition)
     : schema_(schema) {
+  Init(condition);
+}
 
-  // If there is no range column, return.
-  if (schema_.num_range_key_columns() == 0) {
-    return;
-  }
-
-  // Initialize the lower/upper bounds of each range column to null to mean it is unbounded.
-  ranges_.reserve(schema_.num_range_key_columns());
-  for (size_t i = 0; i < schema.num_key_columns(); i++) {
-    if (schema.is_range_column(i)) {
-      ranges_.emplace(schema.column_id(i), QLRange());
-    }
-  }
-
-  // Check if there is a range column referenced in the operands.
-  const auto& operands = condition.operands();
-  bool has_range_column = false;
-  for (const auto& operand : operands) {
-    if (operand.expr_case() == PgsqlExpressionPB::ExprCase::kColumnId &&
-        schema.is_range_column(ColumnId(operand.column_id()))) {
-      has_range_column = true;
-      break;
-    }
-  }
-
-  switch (condition.op()) {
-
-#define QL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN(col_expr, val_expr)                       \
-      CHECK_EQ(operands.size(), 2);                                                     \
-      PgsqlExpressionPB const* col_expr = nullptr;                                        \
-      PgsqlExpressionPB const* val_expr = nullptr;                                        \
-      if (operands.Get(0).expr_case() == PgsqlExpressionPB::ExprCase::kColumnId &&        \
-          operands.Get(1).expr_case() == PgsqlExpressionPB::ExprCase::kValue) {           \
-        col_expr = &operands.Get(0);                                                    \
-        val_expr = &operands.Get(1);                                                    \
-      } else if (operands.Get(1).expr_case() == PgsqlExpressionPB::ExprCase::kColumnId && \
-                 operands.Get(0).expr_case() == PgsqlExpressionPB::ExprCase::kValue) {    \
-        col_expr = &operands.Get(1);                                                    \
-        val_expr = &operands.Get(0);                                                    \
-      } else {                                                                          \
-        return;                                                                         \
-      }
-
-    // For relational conditions, the ranges are as follows. If the column is not a range column,
-    // just return since it doesn't impose a bound on a range column.
-    //
-    // We are not distinguishing between < and <= currently but treat the bound as inclusive lower
-    // bound. After all, the bound is just a superset of the scan range and as a best-effort
-    // measure. There may be a some ways to optimize and distinguish the two in future, like using
-    // exclusive lower bound in DocRowwiseIterator or increment the bound value by "1" to become
-    // inclusive bound. Same for > and >=.
-    case QL_OP_EQUAL: {
-      if (has_range_column) {
-        // - <column> = <value> --> min/max values = <value>
-        QL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN(col_expr, val_expr);
-        const ColumnId column_id(col_expr->column_id());
-        ranges_.at(column_id).min_value = val_expr->value();
-        ranges_.at(column_id).max_value = val_expr->value();
-      }
-      return;
-    }
-    case QL_OP_LESS_THAN:
-    case QL_OP_LESS_THAN_EQUAL: {
-      if (has_range_column) {
-        QL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN(col_expr, val_expr);
-        const ColumnId column_id(col_expr->column_id());
-        if (operands.Get(0).expr_case() == PgsqlExpressionPB::ExprCase::kColumnId) {
-          // - <column> <= <value> --> max_value = <value>
-          ranges_.at(column_id).max_value = val_expr->value();
-        } else {
-          // - <value> <= <column> --> min_value = <value>
-          ranges_.at(column_id).min_value = val_expr->value();
-        }
-      }
-      return;
-    }
-    case QL_OP_GREATER_THAN:
-    case QL_OP_GREATER_THAN_EQUAL: {
-      if (has_range_column) {
-        QL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN(col_expr, val_expr);
-        const ColumnId column_id (col_expr->column_id());
-        if (operands.Get(0).expr_case() == PgsqlExpressionPB::ExprCase::kColumnId) {
-          // - <column> >= <value> --> min_value = <value>
-          ranges_.at(column_id).min_value = val_expr->value();
-        } else {
-          // - <value> >= <column> --> max_value = <value>
-          ranges_.at(column_id).max_value = val_expr->value();
-        }
-      }
-      return;
-    }
-    case QL_OP_BETWEEN: {
-      if (has_range_column) {
-        // <column> BETWEEN <value_1> <value_2>:
-        // - min_value = <value_1>
-        // - max_value = <value_2>
-        CHECK_EQ(operands.size(), 3);
-        if (operands.Get(0).expr_case() == PgsqlExpressionPB::ExprCase::kColumnId) {
-          const ColumnId column_id(operands.Get(0).column_id());
-          if (operands.Get(1).expr_case() == PgsqlExpressionPB::ExprCase::kValue) {
-            ranges_.at(column_id).min_value = operands.Get(1).value();
-          }
-          if (operands.Get(2).expr_case() == PgsqlExpressionPB::ExprCase::kValue) {
-            ranges_.at(column_id).max_value = operands.Get(2).value();
-          }
-        }
-      }
-      return;
-    }
-    case QL_OP_IN: {
-      if (has_range_column) {
-        QL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN(col_expr, val_expr);
-        // - <column> IN (<value>) --> min/max values = <value>
-        // IN arguments should have already been de-duplicated and ordered by the executor.
-        int in_size = val_expr->value().list_value().elems_size();
-        if (in_size > 0) {
-          const ColumnId column_id(col_expr->column_id());
-          ranges_.at(column_id).min_value = val_expr->value().list_value().elems(0);
-          ranges_.at(column_id).max_value = val_expr->value().list_value().elems(in_size - 1);
-        }
-        has_in_range_options_ = true;
-      }
-      return;
-    }
-
-#undef QL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN
-
-      // For logical conditions, the ranges are union/intersect/complement of the operands' ranges.
-    case QL_OP_AND: {
-      CHECK_GT(operands.size(), 0);
-      for (const auto& operand : operands) {
-        CHECK_EQ(operand.expr_case(), PgsqlExpressionPB::ExprCase::kCondition);
-        *this &= QLScanRange(schema_, operand.condition());
-      }
-      return;
-    }
-    case QL_OP_OR: {
-      CHECK_GT(operands.size(), 0);
-      for (const auto& operand : operands) {
-        CHECK_EQ(operand.expr_case(), PgsqlExpressionPB::ExprCase::kCondition);
-        *this |= QLScanRange(schema_, operand.condition());
-      }
-      return;
-    }
-    case QL_OP_NOT: {
-      CHECK_EQ(operands.size(), 1);
-      CHECK_EQ(operands.Get(0).expr_case(), PgsqlExpressionPB::ExprCase::kCondition);
-      *this = std::move(~QLScanRange(schema_, operands.Get(0).condition()));
-      return;
-    }
-
-    case QL_OP_IS_NULL:     FALLTHROUGH_INTENDED;
-    case QL_OP_IS_NOT_NULL: FALLTHROUGH_INTENDED;
-    case QL_OP_IS_TRUE:     FALLTHROUGH_INTENDED;
-    case QL_OP_IS_FALSE:    FALLTHROUGH_INTENDED;
-    case QL_OP_NOT_EQUAL:   FALLTHROUGH_INTENDED;
-    case QL_OP_LIKE:        FALLTHROUGH_INTENDED;
-    case QL_OP_NOT_LIKE:    FALLTHROUGH_INTENDED;
-    case QL_OP_NOT_IN:      FALLTHROUGH_INTENDED;
-    case QL_OP_NOT_BETWEEN:
-      // No simple range can be deduced from these conditions. So the range will be unbounded.
-      return;
-
-    case QL_OP_EXISTS:     FALLTHROUGH_INTENDED;
-    case QL_OP_NOT_EXISTS: FALLTHROUGH_INTENDED;
-    case QL_OP_NOOP:
-      break;
-
-      // default: fall through
-  }
-
-  LOG(FATAL) << "Internal error: illegal or unknown operator " << condition.op();
+QLScanRange::QLScanRange(const Schema& schema, const LWPgsqlConditionPB& condition)
+    : schema_(schema) {
+  Init(condition);
 }
 
 QLScanRange& QLScanRange::operator&=(const QLScanRange& other) {

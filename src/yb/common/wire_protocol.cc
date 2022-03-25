@@ -37,7 +37,7 @@
 #include "yb/common/common.pb.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
-#include "yb/common/wire_protocol.pb.h"
+#include "yb/common/wire_protocol.messages.h"
 
 #include "yb/gutil/port.h"
 #include "yb/gutil/stl_util.h"
@@ -199,12 +199,14 @@ struct WireProtocolTabletServerErrorTag {
 };
 
 // Backward compatibility.
-Status StatusFromOldPB(const AppStatusPB& pb) {
+template<class PB>
+Status StatusFromOldPB(const PB& pb) {
   auto code = kErrorCodeToStatus[pb.code()];
 
   auto status_factory = [code, &pb](const Slice& errors) {
     return Status(
-        code, pb.source_file().c_str(), pb.source_line(), pb.message(), errors, DupFileName::kTrue);
+        code, Slice(pb.source_file()).cdata(), pb.source_line(), pb.message(), errors,
+        DupFileName::kTrue);
   };
 
   #define ENCODE_ERROR_AND_RETURN_STATUS(Tag, value) \
@@ -233,12 +235,15 @@ Status StatusFromOldPB(const AppStatusPB& pb) {
     }
   }
 
-  return Status(code, pb.source_file().c_str(), pb.source_line(), pb.message(), "",
+  return Status(code, Slice(pb.source_file()).cdata(), pb.source_line(), pb.message(), "",
                 nullptr /* error */, DupFileName::kTrue);
   #undef ENCODE_ERROR_AND_RETURN_STATUS
 }
 
-Status StatusFromPB(const AppStatusPB& pb) {
+namespace {
+
+template<class PB>
+Status DoStatusFromPB(const PB& pb) {
   if (pb.code() == AppStatusPB::OK) {
     return Status::OK();
   } else if (pb.code() == AppStatusPB::UNKNOWN_ERROR ||
@@ -249,11 +254,21 @@ Status StatusFromPB(const AppStatusPB& pb) {
   }
 
   if (pb.has_errors()) {
-    return Status(kErrorCodeToStatus[pb.code()], pb.source_file().c_str(), pb.source_line(),
+    return Status(kErrorCodeToStatus[pb.code()], Slice(pb.source_file()).cdata(), pb.source_line(),
                   pb.message(), pb.errors(), DupFileName::kTrue);
   }
 
   return StatusFromOldPB(pb);
+}
+
+} // namespace
+
+Status StatusFromPB(const AppStatusPB& pb) {
+  return DoStatusFromPB(pb);
+}
+
+Status StatusFromPB(const LWAppStatusPB& pb) {
+  return DoStatusFromPB(pb);
 }
 
 void HostPortToPB(const HostPort& host_port, HostPortPB* host_port_pb) {

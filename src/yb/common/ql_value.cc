@@ -20,6 +20,7 @@
 #include "yb/common/jsonb.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_type.h"
+#include "yb/common/value.messages.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/escaping.h"
@@ -980,6 +981,12 @@ InternalType type(const QLValuePB& v) {
 bool IsNull(const QLValuePB& v) {
   return v.value_case() == QLValuePB::VALUE_NOT_SET;
 }
+
+bool IsNull(const LWQLValuePB& v) {
+  return v.value_case() == QLValuePB::VALUE_NOT_SET;
+}
+
+
 void SetNull(QLValuePB* v) {
   v->Clear();
 }

@@ -40,7 +40,7 @@
 
 #include "yb/gutil/casts.h"
 
-#include "yb/tserver/pg_client.pb.h"
+#include "yb/tserver/pg_client.messages.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/flag_tags.h"
@@ -241,7 +241,8 @@ class PgSession::RunHelper {
       return PerformFuture();
     }
 
-    return pg_session_.Perform(std::move(operations_), IsCatalog());
+    return
+    pg_session_.Perform(std::move(operations_), IsCatalog());
   }
 
  private:
@@ -738,13 +739,13 @@ Result<PerformFuture> PgSession::RunAsync(
   const auto* table = table_op.table;
   const auto* op = table_op.operation;
   const auto group_session_type = VERIFY_RESULT(GetRequiredSessionType(
-    *pg_txn_manager_, *table, **op));
+      *pg_txn_manager_, *table, **op));
   RunHelper runner(this, group_session_type);
   for (; table_op.operation; table_op = generator()) {
     table = table_op.table;
     op = table_op.operation;
     const auto op_session_type = VERIFY_RESULT(GetRequiredSessionType(
-      *pg_txn_manager_, *table, **op));
+        *pg_txn_manager_, *table, **op));
     SCHECK_EQ(op_session_type,
               group_session_type,
               IllegalState,
