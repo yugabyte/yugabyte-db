@@ -1159,6 +1159,14 @@ set session role regress_priv_user1;
 drop table dep_priv_test;
 
 
+-- test yb_db_admin role can set session authorization
+SET SESSION AUTHORIZATION yb_db_admin;
+SET SESSION AUTHORIZATION regress_priv_user1;
+SET SESSION AUTHORIZATION yb_db_admin;
+SET SESSION AUTHORIZATION DEFAULT;
+SET SESSION AUTHORIZATION yb_db_admin;
+RESET SESSION AUTHORIZATION;
+
 -- clean up
 
 \c
