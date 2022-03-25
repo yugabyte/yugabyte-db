@@ -13135,6 +13135,38 @@
         "tags" : [ "Universe management" ]
       }
     },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/trigger_health_check" : {
+      "get" : {
+        "description" : "Trigger a universe health check and return the trigger time.",
+        "operationId" : "triggerHealthCheck",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "uniUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "object"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Trigger a universe health check",
+        "tags" : [ "Universe information" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/update_backup_state" : {
       "put" : {
         "description" : "",
