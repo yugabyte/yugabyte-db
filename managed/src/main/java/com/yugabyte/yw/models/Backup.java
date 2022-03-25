@@ -16,9 +16,6 @@ import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.forms.BackupTableParams;
-import com.yugabyte.yw.models.Backup.BackupCategory;
-import com.yugabyte.yw.models.Backup.BackupState;
-import com.yugabyte.yw.models.Backup.BackupVersion;
 import com.yugabyte.yw.models.filters.BackupFilter;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.paging.BackupPagedApiResponse;
@@ -50,7 +47,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
@@ -111,6 +107,23 @@ public class Backup extends Model {
 
     @EnumValue("V2")
     V2
+  }
+
+  public enum StorageConfigType {
+    @EnumValue("S3")
+    S3,
+
+    @EnumValue("NFS")
+    NFS,
+
+    @EnumValue("AZ")
+    AZ,
+
+    @EnumValue("GCS")
+    GCS,
+
+    @EnumValue("FILE")
+    FILE;
   }
 
   public static final Set<BackupState> IN_PROGRESS_STATES =
@@ -197,6 +210,12 @@ public class Backup extends Model {
     save();
   }
 
+  public void updateStorageConfigUUID(UUID storageConfigUUID) {
+    this.storageConfigUUID = storageConfigUUID;
+    this.backupInfo.storageConfigUUID = storageConfigUUID;
+    save();
+  }
+
   public void setBackupInfo(BackupTableParams params) {
     this.backupInfo = params;
   }
@@ -215,6 +234,18 @@ public class Backup extends Model {
 
   public Date getUpdateTime() {
     return updateTime;
+  }
+
+  @ApiModelProperty(value = "Backup completion time", accessMode = READ_WRITE)
+  @Column
+  private Date completionTime;
+
+  public void setCompletionTime(Date completionTime) {
+    this.completionTime = completionTime;
+  }
+
+  public Date getCompletionTime() {
+    return this.completionTime;
   }
 
   @ApiModelProperty(value = "Category of the backup")
@@ -307,6 +338,10 @@ public class Backup extends Model {
     } else if (params.storageLocation == null) {
       // We would derive the storage location based on the parameters
       backup.updateStorageLocation(params);
+    }
+    CustomerConfig storageConfig = CustomerConfig.get(customerUUID, params.storageConfigUUID);
+    if (storageConfig != null) {
+      params.storageConfigType = StorageConfigType.valueOf(storageConfig.name);
     }
     backup.setBackupInfo(params);
     backup.save();
@@ -419,10 +454,10 @@ public class Backup extends Model {
   public synchronized void transitionState(BackupState newState) {
     // Need updated backup state as multiple threads can access backup object.
     this.refresh();
-
     if (this.state == newState) {
       LOG.error("Skipping state transition as no change in previous and new state");
-    } else if ((this.state == BackupState.InProgress || newState == BackupState.QueuedForDeletion)
+    } else if ((this.state == BackupState.InProgress)
+        || (this.state != BackupState.DeleteInProgress && newState == BackupState.QueuedForDeletion)
         || (this.state == BackupState.QueuedForDeletion && newState == BackupState.DeleteInProgress)
         || (this.state == BackupState.QueuedForDeletion && newState == BackupState.FailedToDelete)
         || (this.state == BackupState.DeleteInProgress && newState == BackupState.FailedToDelete)

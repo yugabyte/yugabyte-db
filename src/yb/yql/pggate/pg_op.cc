@@ -73,13 +73,13 @@ Status ReviewResponsePagingState(const PgTableDesc& table, PgsqlReadOp* op) {
 }
 
 std::string PgsqlOp::ToString() const {
-  return Format("{ $0 active: $1 read_time: $2 }",
-                is_read() ? "READ" : "WRITE", active_, read_time_);
+  return Format("{ $0 active: $1 read_time: $2 request: $3 }",
+                is_read() ? "READ" : "WRITE", active_, read_time_, RequestToString());
 }
 
 PgsqlReadOp::PgsqlReadOp(const PgTableDesc& desc) {
   read_request_.set_client(YQL_CLIENT_PGSQL);
-  read_request_.set_table_id(desc.id().GetYBTableId());
+  read_request_.set_table_id(desc.id().GetYbTableId());
   read_request_.set_schema_version(desc.schema_version());
   read_request_.set_stmt_id(reinterpret_cast<int64_t>(&read_request_));
 }
@@ -89,8 +89,16 @@ CHECKED_STATUS PgsqlReadOp::InitPartitionKey(const PgTableDesc& table) {
        table.schema(), table.partition_schema(), table.LastPartition(), &read_request_);
 }
 
+std::string PgsqlReadOp::RequestToString() const {
+  return read_request_.ShortDebugString();
+}
+
 CHECKED_STATUS PgsqlWriteOp::InitPartitionKey(const PgTableDesc& table) {
   return client::InitPartitionKey(table.schema(), table.partition_schema(), &write_request_);
+}
+
+std::string PgsqlWriteOp::RequestToString() const {
+  return write_request_.ShortDebugString();
 }
 
 }  // namespace pggate

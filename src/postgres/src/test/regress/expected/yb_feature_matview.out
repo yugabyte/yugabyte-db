@@ -751,7 +751,7 @@ SELECT * FROM mv_collate_test_POSIX ORDER BY b;
  5 | zzz
 (6 rows)
 
-SELECT * FROM mv_collate_test_POSIX ORDER BY b COLLATE "en_US.utf8";
+SELECT * FROM mv_collate_test_POSIX ORDER BY b COLLATE "en-US-x-icu";
  a |  b
 ---+-----
  1 | abc
@@ -762,7 +762,7 @@ SELECT * FROM mv_collate_test_POSIX ORDER BY b COLLATE "en_US.utf8";
  6 | ZZZ
 (6 rows)
 
-CREATE MATERIALIZED VIEW mv_collate_test_explicit_collation AS SELECT b COLLATE "en_US.utf8" FROM collate_test_POSIX;
+CREATE MATERIALIZED VIEW mv_collate_test_explicit_collation AS SELECT b COLLATE "en-US-x-icu" FROM collate_test_POSIX;
 SELECT * FROM mv_collate_test_explicit_collation ORDER BY b;
   b
 -----

@@ -4,6 +4,7 @@ package com.yugabyte.yw.forms;
 
 import com.yugabyte.yw.common.AccessManager;
 import java.util.UUID;
+import java.util.List;
 import play.data.validation.Constraints;
 
 public class AccessKeyFormData {
@@ -33,4 +34,8 @@ public class AccessKeyFormData {
   public Integer nodeExporterPort = 9300;
 
   public boolean skipProvisioning = false;
+
+  public boolean setUpChrony = false;
+
+  public List<String> ntpServers;
 }

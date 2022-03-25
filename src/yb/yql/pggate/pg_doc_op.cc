@@ -54,7 +54,7 @@ PgDocResult::PgDocResult(rpc::SidecarPtr&& data) : data_(std::move(data)) {
 }
 
 PgDocResult::PgDocResult(rpc::SidecarPtr&& data, std::list<int64_t>&& row_orders)
-    : data_(std::move(data)), row_orders_(move(row_orders)) {
+    : data_(std::move(data)), row_orders_(std::move(row_orders)) {
   PgDocData::LoadCache(data_, &row_count_, &row_iterator_);
 }
 
@@ -141,10 +141,8 @@ Status PgDocResult::ProcessSparseSystemColumns(std::string *reservoir) {
 
 //--------------------------------------------------------------------------------------------------
 
-PgDocOp::PgDocOp(const PgSession::ScopedRefPtr& pg_session,
-                 PgTable* table,
-                 const PgObjectId& relation_id)
-    : pg_session_(pg_session), table_(*table), relation_id_(relation_id) {
+PgDocOp::PgDocOp(const PgSession::ScopedRefPtr& pg_session, PgTable* table)
+    : pg_session_(pg_session), table_(*table) {
 }
 
 PgDocOp::~PgDocOp() {
@@ -283,8 +281,7 @@ Status PgDocOp::SendRequestImpl(bool force_non_bufferable) {
   // Send at most "parallelism_level_" number of requests at one time.
   size_t send_count = std::min(parallelism_level_, active_op_count_);
   response_ = VERIFY_RESULT(pg_session_->RunAsync(
-      pgsql_ops_.data(), send_count, *table_, relation_id_, &GetReadTime(),
-      force_non_bufferable));
+      pgsql_ops_.data(), send_count, *table_, &GetReadTime(), force_non_bufferable));
 
   return Status::OK();
 }
@@ -1014,9 +1011,8 @@ PgsqlReadRequestPB& PgDocReadOp::GetReadReq(size_t op_index) {
 
 PgDocWriteOp::PgDocWriteOp(const PgSession::ScopedRefPtr& pg_session,
                            PgTable* table,
-                           const PgObjectId& relation_id,
                            PgsqlWriteOpPtr write_op)
-    : PgDocOp(pg_session, table, relation_id), write_op_(std::move(write_op)) {
+    : PgDocOp(pg_session, table), write_op_(std::move(write_op)) {
 }
 
 Result<std::list<PgDocResult>> PgDocWriteOp::ProcessResponseImpl() {

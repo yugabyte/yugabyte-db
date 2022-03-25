@@ -454,6 +454,10 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
                                  help="Flag to set if host OS needs python installed for Ansible.")
         self.parser.add_argument("--pg_max_mem_mb", type=int, default=0,
                                  help="Max memory for postgress process.")
+        self.parser.add_argument("--use_chrony", action="store_true",
+                                 help="Whether to set up chrony for NTP synchronization.")
+        self.parser.add_argument("--ntp_server", required=False, action="append",
+                                 help="NTP server to connect to.")
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -475,6 +479,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
 
         # Check if secondary subnet is present. If so, configure it.
         if host_info.get('secondary_subnet'):
+            # Wait for host to be ready to run ssh commands
+            self.wait_for_host(args, use_default_port)
             self.cloud.configure_secondary_interface(
                 args, self.extra_vars, self.cloud.get_subnet_cidr(args,
                                                                   host_info['secondary_subnet']))
@@ -502,6 +508,9 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
             self.extra_vars.update({"remote_package_path": args.remote_package_path})
         if args.pg_max_mem_mb:
             self.extra_vars.update({"pg_max_mem_mb": args.pg_max_mem_mb})
+        if args.ntp_server:
+            self.extra_vars.update({"ntp_servers": args.ntp_server})
+        self.extra_vars["use_chrony"] = args.use_chrony
         self.extra_vars.update({"systemd_option": args.systemd_services})
         self.extra_vars.update({"instance_type": args.instance_type})
         self.extra_vars["device_names"] = self.cloud.get_device_names(args)
@@ -538,6 +547,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
 
 
 class CreateRootVolumesMethod(AbstractInstancesMethod):
+    """Superclass for create root volumes.
+    """
     def __init__(self, base_command):
         super(CreateRootVolumesMethod, self).__init__(base_command, "create_root_volumes")
         self.create_method = CreateInstancesMethod(self.base_command)
@@ -567,6 +578,19 @@ class CreateRootVolumesMethod(AbstractInstancesMethod):
 
         logging.info("==> Created volumes {}".format(output))
         print(json.dumps(output))
+
+
+class DeleteRootVolumesMethod(AbstractInstancesMethod):
+    """Superclass for deleting root volumes.
+    """
+    def __init__(self, base_command):
+        super(DeleteRootVolumesMethod, self).__init__(base_command, "delete_root_volumes")
+
+    def delete_volumes(self, tags):
+        pass
+
+    def callback(self, args):
+        self.delete_volumes(args)
 
 
 class ListInstancesMethod(AbstractInstancesMethod):

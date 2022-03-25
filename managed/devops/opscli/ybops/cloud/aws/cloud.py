@@ -482,17 +482,33 @@ class AwsCloud(AbstractCloud):
         snapshot = None
 
         try:
+            resource_tags = []
+            tags = json.loads(args.instance_tags) if args.instance_tags is not None else {}
+            for tag in tags:
+                resource_tags.append({
+                    'Key': tag,
+                    'Value': tags[tag]
+                })
+            snapshot_tag_specs = [{
+                'ResourceType': 'snapshot',
+                'Tags': resource_tags
+            }]
+            volume_tag_specs = [{
+                'ResourceType': 'volume',
+                'Tags': resource_tags
+            }]
             ec2 = boto3.resource('ec2', args.region)
             volume = ec2.Volume(volume_id)
             logging.info("==> Going to create a snapshot from {}".format(volume_id))
-            snapshot = volume.create_snapshot()
+            snapshot = volume.create_snapshot(TagSpecifications=snapshot_tag_specs)
             snapshot.wait_until_completed()
             logging.info("==> Created a snapshot {}".format(snapshot.id))
 
             for _ in range(num_disks):
                 vol = ec2.create_volume(
                     AvailabilityZone=args.zone,
-                    SnapshotId=snapshot.id
+                    SnapshotId=snapshot.id,
+                    TagSpecifications=volume_tag_specs
                 )
                 output.append(vol.id)
         finally:
@@ -543,6 +559,11 @@ class AwsCloud(AbstractCloud):
     def get_console_output(self, args):
         instance = self.get_host_info(args)
 
+        if not instance:
+            logging.warning('Could not find instance {}, no console output available'.format(
+                args.search_pattern))
+            return ''
+
         try:
             ec2 = boto3.client('ec2', region_name=instance['region'])
             return ec2.get_console_output(InstanceId=instance['id'], Latest=True).get('Output', '')
@@ -550,3 +571,54 @@ class AwsCloud(AbstractCloud):
             logging.exception('Failed to get console output from {}'.format(args.search_pattern))
 
         return ''
+
+    def delete_volumes(self, args):
+        tags = json.loads(args.instance_tags) if args.instance_tags is not None else {}
+        if not tags:
+            raise YBOpsRuntimeError('Tags must be specified')
+        universe_uuid = tags.get('universe-uuid')
+        if universe_uuid is None:
+            raise YBOpsRuntimeError('Universe UUID must be specified')
+        node_uuid = tags.get('node-uuid')
+        if node_uuid is None:
+            raise YBOpsRuntimeError('Node UUID must be specified')
+        filters = []
+        tagPairs = {}
+        tagPairs['universe-uuid'] = universe_uuid
+        tagPairs['node-uuid'] = node_uuid
+        for tag in tagPairs:
+            value = tagPairs[tag]
+            filters.append({
+                'Name': "tag:{}".format(tag),
+                'Values': [value]
+            })
+        volume_ids = []
+        describe_volumes_args = {
+            'Filters': filters
+        }
+        client = boto3.client('ec2', args.region)
+        while True:
+            response = client.describe_volumes(**describe_volumes_args)
+            for volume in response.get('Volumes', []):
+                status = volume['State']
+                volume_id = volume['VolumeId']
+                present_tags = volume['Tags']
+                if status.lower() != 'available':
+                    continue
+                tag_match_count = 0
+                # Extra caution to make sure tags are present.
+                for tag in tagPairs:
+                    value = tagPairs[tag]
+                    for present_tag in present_tags:
+                        if present_tag['Key'] == tag and present_tag['Value'] == value:
+                            tag_match_count += 1
+                            break
+                if tag_match_count == len(tagPairs):
+                    volume_ids.append(volume_id)
+            if 'NextToken' in response:
+                describe_volumes_args['NextToken'] = response['NextToken']
+            else:
+                break
+        for volume_id in volume_ids:
+            logging.info('[app] Deleting volume {}'.format(volume_id))
+            client.delete_volume(VolumeId=volume_id)

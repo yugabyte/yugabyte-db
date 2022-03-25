@@ -131,7 +131,7 @@ bool IsPgsqlId(const string& id) {
 }
 
 Result<uint32_t> GetPgsqlOid(const std::string& str, size_t offset, const char* name) {
-  DCHECK(IsPgsqlId(str));
+  SCHECK(IsPgsqlId(str), InvalidArgument, Format("Not a YSQL ID string: $0", str));
   try {
     size_t pos = 0;
     const uint32_t oid = static_cast<uint32_t>(

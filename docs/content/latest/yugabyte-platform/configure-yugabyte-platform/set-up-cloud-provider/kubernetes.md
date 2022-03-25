@@ -78,10 +78,7 @@ Before you install YugabyteDB on a Kubernetes cluster, perform the following:
 
 ### Service account
 
-This is the ServiceAccount whose secret can be used to generate a `kubeconfig` file. This account:
-
-- Should not be deleted once it is in use by Yugabyte Platform.
-- `namespace` in the ServiceAccount creation command can be replaced by the desired namespace in which to install YugabyteDB.
+The secret of a service account can be used to generate a `kubeconfig` file. This account should not be deleted once it is in use by Yugabyte Platform. *namespace* in the service account creation command can be replaced with the desired namespace in which to install YugabyteDB.
 
 Run the following `kubectl` command to apply the YAML file:
 
@@ -95,30 +92,31 @@ Expect the following output:
 serviceaccount/yugabyte-platform-universe-management created
 ```
 
-You need to grant access to this ServiceAccount using ClusterRoles and Roles, as well as ClusterRoleBindings and RoleBindings, thus allowing it to manage the YugabyteDB universe's resources for you.
-Ensure that you have replaced the `namespace` from the commands with the correct namespace of the previously created ServiceAccount.
+The next step is to grant access to this service account using ClusterRoles and Roles, as well as ClusterRoleBindings and RoleBindings, thus allowing it to manage the YugabyteDB universe's resources for you. 
+
+The namespace in the following commands needs to be replaced with the correct namespace of the previously created service account.
 
 The tasks you can perform depend on your access level.
 
-Global Admin can grant broad cluster level admin access by executing the following command:
+**Global Admin** can grant broad cluster level admin access by executing the following command:
 
 ```sh
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-global-admin.yaml \
-  | sed "s/namespace: <SA_NAMESPACE>/namespace: <namespace>"/g \
+  | sed "s/namespace: <serviceaccount_namespace>/namespace: <namespace>"/g \
   | kubectl apply -n <namespace> -f -
 ```
 
-Global Restricted can grant access to only the specific cluster roles to create and manage YugabyteDB universes across all the namespaces in a cluster using the following command:
+**Global Restricted** can grant access to only the specific cluster roles to create and manage YugabyteDB universes across all the namespaces in a cluster using the following command:
 
 ```sh
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-global.yaml \
-  | sed "s/namespace: <SA_NAMESPACE>/namespace: <namespace>"/g \
+  | sed "s/namespace: <serviceaccount_namespace>/namespace: <namespace>"/g \
   | kubectl apply -n <namespace> -f -
 ```
 
 This contains ClusterRoles and ClusterRoleBindings for the required set of permissions.
 
-Validate the service account using the following command:
+The following command can be used to validate the service account:
 
 ```sh
 kubectl auth can-i \
@@ -127,17 +125,17 @@ kubectl auth can-i \
     {namespaces|poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
 ```
 
-Namespace Admin can grant namespace-level admin access by using the following command:
+**Namespace Admin** can grant namespace-level admin access by using the following command:
 
 ```sh
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-namespaced-admin.yaml \
-  | sed "s/namespace: <SA_NAMESPACE>/namespace: <namespace>"/g \
+  | sed "s/namespace: <serviceaccount_namespace>/namespace: <namespace>"/g \
   | kubectl apply -n <namespace> -f -
 ```
 
 If you have multiple target namespaces, then you have to apply the YAML in all of them.
 
-Validate the service account using the following command:
+The following command can be used to validate the service account:
 
 ```sh
 kubectl auth can-i \
@@ -146,17 +144,17 @@ kubectl auth can-i \
     {poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
 ```
 
-Namespace Restricted can grant access to only the specific roles required to create and manage YugabyteDB universes in a particular namespace. Contains Roles and RoleBindings for the required set of permissions.
+**Namespace Restricted** can grant access to only the specific roles required to create and manage YugabyteDB universes in a particular namespace. Contains Roles and RoleBindings for the required set of permissions.
 
 For example, if your goal is to allow the platform software to manage YugabyteDB universes in the namespaces `yb-db-demo` and `yb-db-us-east4-a` (the target namespaces), then you need to apply in both the target namespaces, as follows:
 
 ```sh
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-namespaced.yaml \
-  | sed "s/namespace: <SA_NAMESPACE>/namespace: <namespace>"/g \
+  | sed "s/namespace: <serviceaccount_namespace>/namespace: <namespace>"/g \
   | kubectl apply -n <namespace> -f -
 ```
 
-Validate the service account using the following command:
+The following command can be used to validate the service account:
 
 ```sh
 kubectl auth can-i \
@@ -166,9 +164,9 @@ kubectl auth can-i \
     {poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
 ```
 
-### `kubeconfig` file for a Kubernetes cluster
+### `kubeconfig` file
 
-You can create a `kubeconfig` file for previously created `yugabyte-platform-universe-management` service account as follows:
+You can create a `kubeconfig` file for the previously created `yugabyte-platform-universe-management` service account as follows:
 
 1. Run the following `wget` command to get the Python script for generating the `kubeconfig` file:
 
@@ -182,7 +180,7 @@ You can create a `kubeconfig` file for previously created `yugabyte-platform-uni
     python generate_kubeconfig.py -s yugabyte-platform-universe-management -n <namespace>
     ```
 
-    The following output should appear:
+    <br>The following output should appear:
 
     ```output
     Generated the kubeconfig file: /tmp/yugabyte-platform-universe-management.conf
@@ -192,42 +190,37 @@ You can create a `kubeconfig` file for previously created `yugabyte-platform-uni
 
 ## Select the Kubernetes service
 
-You can use the Pivotal Container Service or Managed Kubernetes Service.
+In the Yugabyte Platform UI, navigate to **Configs > Cloud Provider Configuration > Managed Kubernetes Service** and select one of the Kubernetes service providers using the **Type** field, as per the following illustration:<br>
 
-Select the tab for the service you are using, as per the following illustration:<br><br>
-<img title="K8s Configuration -- Tabs" alt="K8s Configuration -- Tabs" class="expandable-image" src="/images/ee/k8s-setup/k8s-provider-tabs.png" />
-
-Use the configuration form shown in the following illustration to select the Kubernetes provider type from **Type** (Pivotal Container Service is the default):
-
-<img title="K8s Configuration -- empty" alt="K8s Configuration -- empty" class="expandable-image" src="/images/ee/k8s-setup/k8s-configure-empty.png" />
+![Kubernetes config](/images/ee/k8s-setup/k8s-configure-empty.png)
 
 ## Configure the cloud provider
 
 Continue configuring your Kubernetes provider as follows:
 
-- Give a meaningful name for your configuration.
-- Choose one of the folloiwng ways to specify **Kube Config** for an availability zone:
+- Specify a meaningful name for your configuration.
+- Choose one of the following ways to specify **Kube Config** for an availability zone:
   - Specify at **provider level** in the provider form. If specified, this configuration file is used for all availability zones in all regions.
   - Specify at **zone level** in the region form. This is required for **multi-az** or **multi-region** deployments.
-- Use **Service Account** to provide the name of the service account which has necessary access to manage the cluster (see [Create cluster](../../../../deploy/kubernetes/single-zone/oss/helm-chart/#create-cluster)).
-- Use **Image Registry** to specify from where to pull YugabyteDB image. Accept the default setting, unless you are hosting the registry.
-- Use the **Pull Secret File** field to upload the pull secret to download the image of the Enterprise YugabyteDB that is in a private repository. Your Yugabyte sales representative should have provided this secret.
-
-The following illustration shows the completed form:
-
-<img title="K8s Configuration -- filled" alt="K8s Configuration -- filled" class="expandable-image" src="/images/ee/k8s-setup/k8s-configure-filled.png" />
+- In the **Service Account** field, provide the name of the service account which has necessary access to manage the cluster (see [Create cluster](../../../../deploy/kubernetes/single-zone/oss/helm-chart/#create-cluster)).
+- In the **Image Registry** field, specify from where to pull the YugabyteDB image. Accept the default setting, unless you are hosting the registry.
+- Use **Pull Secret File** to upload the pull secret to download the image of the Enterprise YugabyteDB that is in a private repository. Your Yugabyte sales representative should have provided this secret.
 
 ## Configure region and zones
 
-Continue configuring your Kubernetes provider by clicking **Add Region** and completing the **Add new region** dialog, as follows:
+Continue configuring your Kubernetes provider by clicking **Add region** and completing the **Add new region** dialog, as follows:
 
-- Use the `Region` field to select the region.
+- Use the **Region** field to select the region.
+
 - Use the **Zone** field to select a zone label that should match with your failure domain zone label `failure-domain.beta.kubernetes.io/zone`.
-- Optionally, use the **Storage Class** field to enter a comma-delimited value. If you do not specify this value, it would default to standard. You need to ensure that this storage class exists in your Kubernetes cluster.
-- Use the **Namespace** field to specify the namespace. If provided SA has the `Cluster Admin` permissions, you are not required to complete this field. The SA used in the provided `kubeconfig` file should have access to this namespace.
-- Use **Kube Config** to upload the configuration file. If this file is available at provider level, you are not required to supply it.
 
-<img title="K8s Configuration -- zone config" alt="K8s Configuration -- zone config" class="expandable-image" src="/images/ee/k8s-setup/k8s-az-kubeconfig.png" />
+- Optionally, use the **Storage Class** field to enter a comma-delimited value. If you do not specify this value, it would default to standard. You need to ensure that this storage class exists in your Kubernetes cluster.
+
+- Use the **Namespace** field to specify the namespace. If provided service account has the `Cluster Admin` permissions, you are not required to complete this field. The service account used in the provided `kubeconfig` file should have access to this namespace.
+
+- Use **Kube Config** to upload the configuration file. If this file is available at provider level, you are not required to supply it.<br><br>
+
+  ![Add new region](/images/ee/k8s-setup/k8s-az-kubeconfig.png)<br><br>
 
 - Complete the **Overrides** field using one of the provided options. If you do not specify anything, Yugabyte Platform would use defaults specified inside the Helm chart. The following overrides are available:
 
@@ -350,9 +343,10 @@ Continue configuring your Kubernetes provider by clicking **Add Region** and com
           tcp-ysql-port: "5433"
     ```
 
+Continue configuring your Kubernetes provider by clicking **Add Zone**, as per the following illustration:
 
-Continue configuring your Kubernetes provider by clicking **Add Zone** and notice that there are might be multiple zones, as per the following illustration:
+![Add new region - multiple](/images/ee/k8s-setup/k8s-add-region-flow.png)
 
-<img title="K8s Configuration -- region" alt="K8s Configuration -- region" class="expandable-image" src="/images/ee/k8s-setup/k8s-add-region-flow.png" />
+Notice that there are might be multiple zones.
 
 Finally, click **Add Region**, and then click **Save** to save the configuration. If successful, you will be redirected to the table view of all configurations.

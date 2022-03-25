@@ -222,14 +222,6 @@ PgApiImpl::PgApiImpl(
       metric_entity_(std::move(context.metric_entity)),
       mem_tracker_(std::move(context.mem_tracker)),
       messenger_holder_(std::move(context.messenger_holder)),
-      async_client_init_(messenger_holder_.messenger.get()->name(),
-                         FLAGS_pggate_ybclient_reactor_threads,
-                         FLAGS_pggate_rpc_timeout_secs,
-                         "" /* tserver_uuid */,
-                         &pggate_options_,
-                         metric_entity_,
-                         mem_tracker_,
-                         messenger_holder_.messenger.get()),
       proxy_cache_(std::move(context.proxy_cache)),
       clock_(new server::HybridClock()),
       tserver_shared_object_(InitTServerSharedObject()),
@@ -244,23 +236,6 @@ PgApiImpl::PgApiImpl(
     const YBCPgTypeEntity *type_entity = &YBCDataTypeArray[idx];
     type_map_[type_entity->type_oid] = type_entity;
   }
-  if (FLAGS_ysql_forward_rpcs_to_local_tserver) {
-    async_client_init_.AddPostCreateHook([this](client::YBClient *client) {
-      const auto& tserver_shared_data = **tserver_shared_object_;
-      HostPort host_port(tserver_shared_data.endpoint());
-      MonoDelta resolve_cache_timeout;
-      if (FLAGS_use_node_hostname_for_local_tserver) {
-        host_port = HostPort(tserver_shared_data.host().ToBuffer(),
-                             tserver_shared_data.endpoint().port());
-        resolve_cache_timeout = MonoDelta::kMax;
-      }
-      auto proxy = std::make_shared<tserver::TabletServerForwardServiceProxy>(
-          &client->proxy_cache(), host_port, nullptr /* protocol */, resolve_cache_timeout);
-      client->SetNodeLocalForwardProxy(proxy);
-      client->SetNodeLocalTServerHostPort(host_port);
-    });
-  }
-  async_client_init_.Start();
 
   CHECK_OK(pg_client_.Start(
       proxy_cache_.get(), &messenger_holder_.messenger->scheduler(),
@@ -269,7 +244,6 @@ PgApiImpl::PgApiImpl(
 
 PgApiImpl::~PgApiImpl() {
   messenger_holder_.messenger->Shutdown();
-  async_client_init_.client()->Shutdown();
   pg_txn_manager_.reset();
   pg_client_.Shutdown();
 }
@@ -299,8 +273,7 @@ Status PgApiImpl::DestroyEnv(PgEnv *pg_env) {
 Status PgApiImpl::InitSession(const PgEnv *pg_env,
                               const string& database_name) {
   CHECK(!pg_session_);
-  auto session = make_scoped_refptr<PgSession>(client(),
-                                               &pg_client_,
+  auto session = make_scoped_refptr<PgSession>(&pg_client_,
                                                database_name,
                                                pg_txn_manager_,
                                                clock_,
@@ -396,9 +369,10 @@ Status PgApiImpl::UpdateSequenceTupleConditionally(int64_t db_oid,
                                                    int64_t expected_last_val,
                                                    bool expected_is_called,
                                                    bool *skipped) {
-  return pg_session_->UpdateSequenceTuple(
+  *skipped = VERIFY_RESULT(pg_session_->UpdateSequenceTuple(
       db_oid, seq_oid, ysql_catalog_version, last_val, is_called,
-      expected_last_val, expected_is_called, skipped);
+      expected_last_val, expected_is_called));
+  return Status::OK();
 }
 
 Status PgApiImpl::UpdateSequenceTuple(int64_t db_oid,
@@ -407,9 +381,13 @@ Status PgApiImpl::UpdateSequenceTuple(int64_t db_oid,
                                       int64_t last_val,
                                       bool is_called,
                                       bool* skipped) {
-  return pg_session_->UpdateSequenceTuple(
+  bool result = VERIFY_RESULT(pg_session_->UpdateSequenceTuple(
       db_oid, seq_oid, ysql_catalog_version, last_val,
-      is_called, boost::none, boost::none, skipped);
+      is_called, boost::none, boost::none));
+  if (skipped) {
+    *skipped = result;
+  }
+  return Status::OK();
 }
 
 Status PgApiImpl::ReadSequenceTuple(int64_t db_oid,
@@ -417,7 +395,14 @@ Status PgApiImpl::ReadSequenceTuple(int64_t db_oid,
                                     uint64_t ysql_catalog_version,
                                     int64_t *last_val,
                                     bool *is_called) {
-  return pg_session_->ReadSequenceTuple(db_oid, seq_oid, ysql_catalog_version, last_val, is_called);
+  auto res = VERIFY_RESULT(pg_session_->ReadSequenceTuple(db_oid, seq_oid, ysql_catalog_version));
+  if (last_val) {
+    *last_val = res.first;
+  }
+  if (is_called) {
+    *is_called = res.second;
+  }
+  return Status::OK();
 }
 
 Status PgApiImpl::DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid) {
@@ -582,13 +567,14 @@ Status PgApiImpl::NewCreateTable(const char *database_name,
                                  bool add_primary_key,
                                  const bool colocated,
                                  const PgObjectId& tablegroup_oid,
+                                 const ColocationId colocation_id,
                                  const PgObjectId& tablespace_oid,
                                  const PgObjectId& matview_pg_table_oid,
                                  PgStatement **handle) {
   auto stmt = std::make_unique<PgCreateTable>(
       pg_session_, database_name, schema_name, table_name,
       table_id, is_shared_table, if_not_exist, add_primary_key, colocated, tablegroup_oid,
-      tablespace_oid, matview_pg_table_oid);
+      colocation_id, tablespace_oid, matview_pg_table_oid);
   if (pg_txn_manager_->IsDdlMode()) {
     stmt->UseTransaction();
   }
@@ -811,13 +797,14 @@ Status PgApiImpl::NewCreateIndex(const char *database_name,
                                  const bool skip_index_backfill,
                                  bool if_not_exist,
                                  const PgObjectId& tablegroup_oid,
+                                 const YBCPgOid& colocation_id,
                                  const PgObjectId& tablespace_oid,
                                  PgStatement **handle) {
   auto stmt = std::make_unique<PgCreateTable>(
       pg_session_, database_name, schema_name, index_name, index_id, is_shared_index,
       if_not_exist, false /* add_primary_key */,
-      tablegroup_oid.IsValid() ? false : true /* colocated */, tablegroup_oid, tablespace_oid,
-      PgObjectId() /* matview_pg_table_id */);
+      tablegroup_oid.IsValid() ? false : true /* colocated */, tablegroup_oid, colocation_id,
+      tablespace_oid, PgObjectId() /* matview_pg_table_id */);
   stmt->SetupIndex(base_table_id, is_unique_index, skip_index_backfill);
   if (pg_txn_manager_->IsDdlMode()) {
       stmt->UseTransaction();
@@ -1021,7 +1008,7 @@ Status PgApiImpl::ProcessYBTupleId(const YBCPgYBTupleIdDescriptor& descr,
                     target_desc->num_key_columns() - target_desc->num_hash_key_columns(),
                     Corruption, "Number of range components does not match column description");
           if (hashed_values.empty()) {
-            return processor(docdb::DocKey(move(range_components)).Encode());
+            return processor(docdb::DocKey(std::move(range_components)).Encode());
           }
           string partition_key;
           const PartitionSchema& partition_schema = target_desc->partition_schema();
@@ -1029,7 +1016,8 @@ Status PgApiImpl::ProcessYBTupleId(const YBCPgYBTupleIdDescriptor& descr,
           const uint16_t hash = PartitionSchema::DecodeMultiColumnHashValue(partition_key);
 
           return processor(
-              docdb::DocKey(hash, move(hashed_components), move(range_components)).Encode());
+              docdb::DocKey(hash, std::move(hashed_components),
+                std::move(range_components)).Encode());
         }
         break;
       }
@@ -1503,11 +1491,10 @@ void PgApiImpl::ResetCatalogReadTime() {
 Result<bool> PgApiImpl::ForeignKeyReferenceExists(
     PgOid table_id, const Slice& ybctid, PgOid database_id) {
   return pg_session_->ForeignKeyReferenceExists(
-      table_id, ybctid, std::bind(FetchExistingYbctids,
-                                  pg_session_,
-                                  database_id,
-                                  std::placeholders::_1,
-                                  std::placeholders::_2));
+      table_id, ybctid, make_lw_function(
+          [this, database_id](PgOid table_id, const std::vector<Slice>& ybctids) {
+            return FetchExistingYbctids(pg_session_, database_id, table_id, ybctids);
+          }));
 }
 
 void PgApiImpl::AddForeignKeyReferenceIntent(PgOid table_id, const Slice& ybctid) {
@@ -1522,7 +1509,7 @@ void PgApiImpl::AddForeignKeyReference(PgOid table_id, const Slice& ybctid) {
   pg_session_->AddForeignKeyReference(table_id, ybctid);
 }
 
-void PgApiImpl::SetTimeout(const int timeout_ms) {
+void PgApiImpl::SetTimeout(int timeout_ms) {
   pg_session_->SetTimeout(timeout_ms);
 }
 

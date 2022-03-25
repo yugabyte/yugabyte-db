@@ -192,16 +192,16 @@ Status KvStoreInfo::LoadTablesFromPB(
     auto table_info = std::make_shared<TableInfo>();
     RETURN_NOT_OK(table_info->LoadFromPB(table_pb));
     if (table_info->table_id != primary_table_id) {
+      // TODO(alex): cotable_id should be loaded from PB schema, do we need this section?
       if (table_pb.schema().table_properties().is_ysql_catalog_table()) {
         Uuid cotable_id;
         CHECK_OK(cotable_id.FromHexString(table_info->table_id));
         // TODO(#79): when adding for multiple KV-stores per Raft group support - check if we need
         // to set cotable ID.
         table_info->schema->set_cotable_id(cotable_id);
-      } else {
-        auto pgtable_id = VERIFY_RESULT(GetPgsqlTableOid(table_info->table_id));
-        table_info->schema->set_pgtable_id(pgtable_id);
       }
+      // Colocation ID is already set in schema.
+      // TODO(alex): We don't have this info when master starts up?
     }
     tables[table_info->table_id] = std::move(table_info);
   }
@@ -700,13 +700,23 @@ void RaftGroupMetadata::SetSchema(const Schema& schema,
                                                             version);
   if (target_table_id != primary_table_id_) {
     if (schema.table_properties().is_ysql_catalog_table()) {
+      // TODO(alex): cotable_id should be copied from original schema, do we need this section?
+      //             Might be related to #5017, #6107
       Uuid cotable_id;
       CHECK_OK(cotable_id.FromHexString(target_table_id));
       new_table_info->schema->set_cotable_id(cotable_id);
-    } else {
-      auto result = CHECK_RESULT(GetPgsqlTableOid(target_table_id));
-      new_table_info->schema->set_pgtable_id(result);
     }
+    // Ensure colocation ID remains unchanged.
+    const auto& old_schema = (*result)->schema;
+    CHECK(old_schema->has_colocation_id() == schema.has_colocation_id())
+            << "Attempted to change colocation state for table " << table_id
+            << " from " << old_schema->has_colocation_id()
+            << " to " << schema.has_colocation_id();
+    CHECK(!old_schema->has_colocation_id() ||
+          old_schema->colocation_id() == schema.colocation_id())
+            << "Attempted to change colocation ID for table " << table_id
+            << " from " << old_schema->colocation_id()
+            << " to " << schema.colocation_id();
   }
   VLOG_WITH_PREFIX(1) << raft_group_id_ << " Updating table " << target_table_id
                       << " to Schema version " << version
@@ -733,14 +743,14 @@ void RaftGroupMetadata::SetTableName(
 }
 
 void RaftGroupMetadata::AddTable(const std::string& table_id,
-                              const std::string& namespace_name,
-                              const std::string& table_name,
-                              const TableType table_type,
-                              const Schema& schema,
-                              const IndexMap& index_map,
-                              const PartitionSchema& partition_schema,
-                              const boost::optional<IndexInfo>& index_info,
-                              const uint32_t schema_version) {
+                                 const std::string& namespace_name,
+                                 const std::string& table_name,
+                                 const TableType table_type,
+                                 const Schema& schema,
+                                 const IndexMap& index_map,
+                                 const PartitionSchema& partition_schema,
+                                 const boost::optional<IndexInfo>& index_info,
+                                 const uint32_t schema_version) {
   DCHECK(schema.has_column_ids());
   TableInfoPtr new_table_info = std::make_shared<TableInfo>(table_id,
                                                             namespace_name,
@@ -753,12 +763,11 @@ void RaftGroupMetadata::AddTable(const std::string& table_id,
                                                             partition_schema);
   if (table_id != primary_table_id_) {
     if (schema.table_properties().is_ysql_catalog_table()) {
+      // TODO(alex): cotable_id seems to be properly copied from schema, do we need this section?
+      //             Might be related to #5017, #6107
       Uuid cotable_id;
       CHECK_OK(cotable_id.FromHexString(table_id));
       new_table_info->schema->set_cotable_id(cotable_id);
-    } else {
-      auto result = CHECK_RESULT(GetPgsqlTableOid(table_id));
-      new_table_info->schema->set_pgtable_id(result);
     }
   }
   std::lock_guard<MutexType> lock(data_mutex_);
@@ -773,6 +782,19 @@ void RaftGroupMetadata::AddTable(const std::string& table_id,
     } else {
       LOG(DFATAL) << "Table " << table_id << " already exists. New table info: "
           << new_table_info->ToString() << ", old table info: " << existing_table.ToString();
+
+      // We never expect colocation IDs to mismatch.
+      const auto& existing_schema = existing_table.schema;
+      CHECK(existing_schema->has_colocation_id() == schema.has_colocation_id())
+              << "Attempted to change colocation state for table " << table_id
+              << " from " << existing_schema->has_colocation_id()
+              << " to " << schema.has_colocation_id();
+
+      CHECK(!existing_schema->has_colocation_id() ||
+            existing_schema->colocation_id() == schema.colocation_id())
+              << "Attempted to change colocation ID for table " << table_id
+              << " from " << existing_schema->colocation_id()
+              << " to " << schema.colocation_id();
     }
   }
   VLOG_WITH_PREFIX(1) << "Updating to Schema version " << schema_version
@@ -1168,6 +1190,15 @@ std::vector<ColumnId> RaftGroupMetadata::index_key_column_ids(const TableId& tab
 
 bool RaftGroupMetadata::UsePartialRangeKeyIntents() const {
   return table_type() == TableType::PGSQL_TABLE_TYPE;
+}
+
+std::vector<TableId> RaftGroupMetadata::GetAllColocatedTables() {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  std::vector<TableId> table_ids;
+  for (const auto& id_and_info : kv_store_.tables) {
+    table_ids.emplace_back(id_and_info.first);
+  }
+  return table_ids;
 }
 
 } // namespace tablet

@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
-import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.EITHER;
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.MASTER;
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.TSERVER;
@@ -10,15 +9,14 @@ import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.ResizeNodeParams;
@@ -45,10 +43,8 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
-import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnitRunner;
-import org.yb.client.ChangeConfigResponse;
-import org.yb.client.YBClient;
+import org.yb.client.ListMastersResponse;
 
 @RunWith(MockitoJUnitRunner.class)
 @Slf4j
@@ -111,10 +107,14 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
     try {
       when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
+      ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
+      when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
+      when(mockClient.listMasters()).thenReturn(listMastersResponse);
     } catch (Exception ignored) {
     }
   }
 
+  @Override
   protected PlacementInfo createPlacementInfo() {
     PlacementInfo placementInfo = new PlacementInfo();
     PlacementInfoUtil.addPlacementZone(az1.uuid, placementInfo, 1, 1, false);
@@ -185,7 +185,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     defaultUniverse =
         Universe.saveDetails(
             defaultUniverse.universeUUID,
-            (univ) -> {
+            univ -> {
               univ.getUniverseDetails().getPrimaryCluster().userIntent.replicationFactor = 1;
             });
     ResizeNodeParams taskParams = createResizeParams();
@@ -241,7 +241,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     defaultUniverse =
         Universe.saveDetails(
             defaultUniverse.universeUUID,
-            (univ) -> {
+            univ -> {
               NodeDetails node = univ.getUniverseDetails().nodeDetailsSet.iterator().next();
               node.disksAreMountedByUUID = false;
               nodeName.set(node.getNodeName());
@@ -307,7 +307,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
-    assertEquals(subTasks.size(), subTasksByPosition.size() + 1);
+    assertEquals(subTasks.size(), subTasksByPosition.size());
     int position = startPosition;
     assertTaskType(subTasksByPosition.get(position++), TaskType.ModifyBlackList);
 

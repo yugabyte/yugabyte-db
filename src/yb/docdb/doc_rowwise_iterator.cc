@@ -399,6 +399,9 @@ class HybridScanChoices : public ScanChoices {
             // SELECT * FROM ... WHERE c1 IN ();
             // then nothing should pass the filter.
             // To enforce this, we create a range bound (kHighest, kLowest)
+            //
+            // As of D15647 we do not send empty options.
+            // This is kept for backward compatibility during rolling upgrades.
             range_cols_scan_options_lower_[idx
               - num_hash_cols].push_back(PrimitiveValue(ValueType::kHighest));
             range_cols_scan_options_upper_[idx
@@ -530,15 +533,14 @@ Status HybridScanChoices::SkipTargetsUpTo(const Slice& new_target) {
   */
   DocKeyDecoder decoder(new_target);
   RETURN_NOT_OK(decoder.DecodeToRangeGroup());
-  current_scan_target_.Reset(Slice(new_target.data(),
-                                decoder.left_input().data()));
+  current_scan_target_.Reset(Slice(new_target.data(), decoder.left_input().data()));
 
   size_t col_idx = 0;
   PrimitiveValue target_value;
   for (col_idx = 0; col_idx < current_scan_target_idxs_.size(); col_idx++) {
     RETURN_NOT_OK(decoder.DecodePrimitiveValue(&target_value));
-    const auto& lower_choices = (range_cols_scan_options_lower_)[col_idx];
-    const auto& upper_choices = (range_cols_scan_options_upper_)[col_idx];
+    const auto& lower_choices = range_cols_scan_options_lower_[col_idx];
+    const auto& upper_choices = range_cols_scan_options_upper_[col_idx];
     auto current_ind = current_scan_target_idxs_[col_idx];
     DCHECK(current_ind < lower_choices.size());
     const auto& lower = lower_choices[current_ind];
@@ -1370,7 +1372,7 @@ Status DocRowwiseIterator::DoNextRow(const Schema& projection, QLTableRow* table
 
   DocKeyDecoder decoder(row_key_);
   RETURN_NOT_OK(decoder.DecodeCotableId());
-  RETURN_NOT_OK(decoder.DecodePgtableId());
+  RETURN_NOT_OK(decoder.DecodeColocationId());
   bool has_hash_components = VERIFY_RESULT(decoder.DecodeHashCode());
 
   // Populate the key column values from the doc key. The key column values in doc key were
@@ -1429,21 +1431,21 @@ CHECKED_STATUS DocRowwiseIterator::GetNextReadSubDocKey(SubDocKey* sub_doc_key) 
 }
 
 Result<Slice> DocRowwiseIterator::GetTupleId() const {
-  // Return tuple id without cotable id / pgtable id if any.
+  // Return tuple id without cotable id / colocation id if any.
   Slice tuple_id = row_key_;
   if (tuple_id.starts_with(ValueTypeAsChar::kTableId)) {
     tuple_id.remove_prefix(1 + kUuidSize);
-  } else if (tuple_id.starts_with(ValueTypeAsChar::kPgTableOid)) {
-    tuple_id.remove_prefix(1 + sizeof(PgTableOid));
+  } else if (tuple_id.starts_with(ValueTypeAsChar::kColocationId)) {
+    tuple_id.remove_prefix(1 + sizeof(ColocationId));
   }
   return tuple_id;
 }
 
 Result<bool> DocRowwiseIterator::SeekTuple(const Slice& tuple_id) {
-  // If cotable id / pgtable id is present in the table schema, then
+  // If cotable id / colocation id is present in the table schema, then
   // we need to prepend it in the tuple key to seek.
-  if (schema_.has_cotable_id() || schema_.has_pgtable_id()) {
-    uint32_t size = schema_.has_pgtable_id() ? sizeof(PgTableOid) : kUuidSize;
+  if (schema_.has_cotable_id() || schema_.has_colocation_id()) {
+    uint32_t size = schema_.has_colocation_id() ? sizeof(ColocationId) : kUuidSize;
     if (!tuple_key_) {
       tuple_key_.emplace();
       tuple_key_->Reserve(1 + size + tuple_id.size());
@@ -1454,8 +1456,8 @@ Result<bool> DocRowwiseIterator::SeekTuple(const Slice& tuple_id) {
         tuple_key_->AppendValueType(ValueType::kTableId);
         tuple_key_->AppendRawBytes(bytes);
       } else {
-        tuple_key_->AppendValueType(ValueType::kPgTableOid);
-        tuple_key_->AppendUInt32(schema_.pgtable_id());
+        tuple_key_->AppendValueType(ValueType::kColocationId);
+        tuple_key_->AppendUInt32(schema_.colocation_id());
       }
     } else {
       tuple_key_->Truncate(1 + size);

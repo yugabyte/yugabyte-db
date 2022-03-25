@@ -247,28 +247,28 @@ public class CustomerConfigValidator {
 
     @Override
     public void doValidate(int level, JsonNode data) {
-      if (this.name.equals("S3") && data.get(AWS_ACCESS_KEY_ID_FIELDNAME) != null) {
-        // Get fields to check.
-        List<Pair<String, String>> toCheck = getCheckedFields(data);
-        if (toCheck.isEmpty()) {
-          return;
-        }
+      try {
+        // Disable cert checking while connecting with s3
+        // Enabling it can potentially fail when s3 compatible storages like
+        // Dell ECS are provided and custom certs are needed to connect
+        // Reference: https://yugabyte.atlassian.net/browse/PLAT-2497
+        System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
 
-        AmazonS3 s3Client = null;
-        String exceptionMsg = null;
-        try {
-          s3Client = create(data);
-        } catch (AmazonS3Exception s3Exception) {
-          exceptionMsg = s3Exception.getErrorMessage();
-          throwBeanValidatorError(fieldNames.get(0), exceptionMsg);
-        }
+        if (this.name.equals("S3") && data.get(AWS_ACCESS_KEY_ID_FIELDNAME) != null) {
+          // Get fields to check.
+          List<Pair<String, String>> toCheck = getCheckedFields(data);
+          if (toCheck.isEmpty()) {
+            return;
+          }
 
-        try {
-          // Disable cert checking while connecting with s3
-          // Enabling it can potentially fail when s3 compatible storages like
-          // Dell ECS are provided and custom certs are needed to connect
-          // Reference: https://yugabyte.atlassian.net/browse/PLAT-2497
-          System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
+          AmazonS3 s3Client = null;
+          String exceptionMsg = null;
+          try {
+            s3Client = create(data);
+          } catch (AmazonS3Exception s3Exception) {
+            exceptionMsg = s3Exception.getErrorMessage();
+            throwBeanValidatorError(fieldNames.get(0), exceptionMsg);
+          }
 
           // Check each field.
           for (Pair<String, String> item : toCheck) {
@@ -310,10 +310,10 @@ public class CustomerConfigValidator {
               }
             }
           }
-        } finally {
-          // Re-enable cert checking as it applies globally
-          System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "false");
         }
+      } finally {
+        // Re-enable cert checking as it applies globally
+        System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "false");
       }
     }
   }

@@ -11,8 +11,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroup;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
+import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -61,9 +60,6 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
         ysqlPassword = taskParams().getPrimaryCluster().userIntent.ysqlPassword;
         taskParams().getPrimaryCluster().userIntent.ysqlPassword = Util.redactString(ysqlPassword);
       }
-
-      // Create the task list sequence.
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
@@ -149,7 +145,7 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Run all the tasks.
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
       throw t;

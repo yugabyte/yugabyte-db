@@ -109,7 +109,9 @@ public class AccessManager extends DevopsBase {
       String sshUser,
       Integer sshPort,
       boolean airGapInstall,
-      boolean skipProvisioning)
+      boolean skipProvisioning,
+      boolean setUpChrony,
+      List<String> ntpServers)
       throws IOException {
     return uploadKeyFile(
         regionUUID,
@@ -120,6 +122,8 @@ public class AccessManager extends DevopsBase {
         sshPort,
         airGapInstall,
         skipProvisioning,
+        setUpChrony,
+        ntpServers,
         true);
   }
 
@@ -133,6 +137,8 @@ public class AccessManager extends DevopsBase {
       Integer sshPort,
       boolean airGapInstall,
       boolean skipProvisioning,
+      boolean setUpChrony,
+      List<String> ntpServers,
       boolean deleteRemote)
       throws IOException {
     Region region = Region.get(regionUUID);
@@ -179,6 +185,9 @@ public class AccessManager extends DevopsBase {
     keyInfo.sshPort = sshPort;
     keyInfo.airGapInstall = airGapInstall;
     keyInfo.skipProvisioning = skipProvisioning;
+    keyInfo.ntpServers = ntpServers;
+    keyInfo.setUpChrony = setUpChrony;
+    keyInfo.showSetUpChrony = true; // New Providers should have this set true
     keyInfo.deleteRemote = deleteRemote;
     return AccessKey.create(region.provider.uuid, keyCode, keyInfo);
   }
@@ -192,6 +201,8 @@ public class AccessManager extends DevopsBase {
       Integer sshPort,
       boolean airGapInstall,
       boolean skipProvisioning,
+      boolean setUpChrony,
+      List<String> ntpServers,
       boolean overrideKeyValidate) {
     AccessKey key = null;
     Path tempFile = null;
@@ -211,13 +222,24 @@ public class AccessManager extends DevopsBase {
               sshPort,
               airGapInstall,
               skipProvisioning,
+              setUpChrony,
+              ntpServers,
               false);
 
       File pemFile = new File(key.getKeyInfo().privateKey);
       // Delete is always false and we don't even try to make AWS calls.
       if (!overrideKeyValidate) {
         key =
-            addKey(regionUUID, keyCode, pemFile, sshUser, sshPort, airGapInstall, skipProvisioning);
+            addKey(
+                regionUUID,
+                keyCode,
+                pemFile,
+                sshUser,
+                sshPort,
+                airGapInstall,
+                skipProvisioning,
+                setUpChrony,
+                ntpServers);
       }
     } catch (NoSuchFileException ioe) {
       LOG.error(ioe.getMessage(), ioe);
@@ -244,8 +266,19 @@ public class AccessManager extends DevopsBase {
       String keyCode,
       Integer sshPort,
       boolean airGapInstall,
-      boolean skipProvisioning) {
-    return addKey(regionUUID, keyCode, null, null, sshPort, airGapInstall, skipProvisioning);
+      boolean skipProvisioning,
+      boolean setUpChrony,
+      List<String> ntpServers) {
+    return addKey(
+        regionUUID,
+        keyCode,
+        null,
+        null,
+        sshPort,
+        airGapInstall,
+        skipProvisioning,
+        setUpChrony,
+        ntpServers);
   }
 
   public AccessKey addKey(
@@ -255,7 +288,17 @@ public class AccessManager extends DevopsBase {
       String sshUser,
       Integer sshPort,
       boolean airGapInstall) {
-    return addKey(regionUUID, keyCode, privateKeyFile, sshUser, sshPort, airGapInstall, false);
+    return addKey(
+        regionUUID, keyCode, privateKeyFile, sshUser, sshPort, airGapInstall, false, false, null);
+  }
+
+  public AccessKey addKey(
+      UUID regionUUID,
+      String keyCode,
+      Integer sshPort,
+      boolean setUpChrony,
+      List<String> ntpServers) {
+    return addKey(regionUUID, keyCode, null, null, sshPort, false, false, setUpChrony, ntpServers);
   }
 
   public AccessKey addKey(
@@ -265,7 +308,9 @@ public class AccessManager extends DevopsBase {
       String sshUser,
       Integer sshPort,
       boolean airGapInstall,
-      boolean skipProvisioning) {
+      boolean skipProvisioning,
+      boolean setUpChrony,
+      List<String> ntpServers) {
     List<String> commandArgs = new ArrayList<String>();
     Region region = Region.get(regionUUID);
     String keyFilePath = getOrCreateKeyFilePath(region.provider.uuid);
@@ -313,6 +358,9 @@ public class AccessManager extends DevopsBase {
       keyInfo.sshPort = sshPort;
       keyInfo.airGapInstall = airGapInstall;
       keyInfo.skipProvisioning = skipProvisioning;
+      keyInfo.setUpChrony = setUpChrony;
+      keyInfo.ntpServers = ntpServers;
+      keyInfo.showSetUpChrony = true; // New Providers should have this set true
       accessKey = AccessKey.create(region.provider.uuid, keyCode, keyInfo);
     }
 

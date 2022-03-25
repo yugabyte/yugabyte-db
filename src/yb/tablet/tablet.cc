@@ -98,6 +98,7 @@
 #include "yb/tablet/write_query.h"
 
 #include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_error.h"
 
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
@@ -472,7 +473,7 @@ Tablet::Tablet(const TabletInitData& data)
 
 Tablet::~Tablet() {
   if (StartShutdown()) {
-    CompleteShutdown();
+    CompleteShutdown(DisableFlushOnShutdown::kFalse);
   } else {
     auto state = state_;
     LOG_IF_WITH_PREFIX(DFATAL, state != kShutdown)
@@ -681,7 +682,8 @@ Status Tablet::OpenKeyValueTablet() {
   // for compactions.
   rocksdb_options.max_file_size_for_compaction = MakeMaxFileSizeWithTableTTLFunction([this] {
     if (FLAGS_rocksdb_max_file_size_for_compaction > 0 &&
-        retention_policy_->GetRetentionDirective().table_ttl != docdb::Value::kMaxTtl) {
+        retention_policy_->GetRetentionDirective().table_ttl !=
+            docdb::ValueControlFields::kMaxTtl) {
       return FLAGS_rocksdb_max_file_size_for_compaction;
     }
     return std::numeric_limits<uint64_t>::max();
@@ -916,7 +918,7 @@ void Tablet::MarkFinishedBootstrapping() {
   state_ = kOpen;
 }
 
-bool Tablet::StartShutdown(const IsDropTable is_drop_table) {
+bool Tablet::StartShutdown() {
   LOG_WITH_PREFIX(INFO) << __func__;
 
   bool expected = false;
@@ -931,12 +933,12 @@ bool Tablet::StartShutdown(const IsDropTable is_drop_table) {
   return true;
 }
 
-void Tablet::CompleteShutdown(IsDropTable is_drop_table) {
-  LOG_WITH_PREFIX(INFO) << __func__ << "(" << is_drop_table << ")";
+void Tablet::CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown) {
+  LOG_WITH_PREFIX(INFO) << __func__;
 
   StartShutdown();
 
-  auto op_pauses = StartShutdownRocksDBs(DisableFlushOnShutdown(is_drop_table), Stop::kTrue);
+  auto op_pauses = StartShutdownRocksDBs(disable_flush_on_shutdown, Stop::kTrue);
   if (!op_pauses.ok()) {
     LOG_WITH_PREFIX(DFATAL) << "Failed to shut down: " << op_pauses.status();
     return;
@@ -1148,7 +1150,7 @@ Status Tablet::ApplyOperation(
   if (frontiers_ptr) {
     auto ttl = write_batch.has_ttl()
         ? MonoDelta::FromNanoseconds(write_batch.ttl())
-        : docdb::Value::kMaxTtl;
+        : docdb::ValueControlFields::kMaxTtl;
     frontiers_ptr->Largest().set_max_value_level_ttl_expiration_time(
         docdb::FileExpirationFromValueTTL(operation.hybrid_time(), ttl));
   }
@@ -1474,7 +1476,7 @@ Result<bool> Tablet::IsQueryOnlyForTablet(
   }
 
   std::shared_ptr<const Schema> schema = metadata_->schema();
-  if (schema->has_pgtable_id() || schema->has_cotable_id())  {
+  if (schema->has_cotable_id() || schema->has_colocation_id())  {
     // This is a colocated table.
     return true;
   }
@@ -1640,7 +1642,12 @@ void Tablet::AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteQuery> que
 Status Tablet::Flush(FlushMode mode, FlushFlags flags, int64_t ignore_if_flushed_after_tick) {
   TRACE_EVENT0("tablet", "Tablet::Flush");
 
-  auto pending_op = CreateNonAbortableScopedRWOperation();
+  ScopedRWOperation pending_op;
+  if (!HasFlags(flags, FlushFlags::kNoScopedOperation)) {
+    pending_op = CreateNonAbortableScopedRWOperation();
+    LOG_IF(DFATAL, !pending_op.ok()) << "CreateNonAbortableScopedRWOperation failed";
+    RETURN_NOT_OK(pending_op);
+  }
 
   rocksdb::FlushOptions options;
   options.ignore_if_flushed_after_tick = ignore_if_flushed_after_tick;
@@ -2787,7 +2794,8 @@ ScopedRWOperation Tablet::CreateNonAbortableScopedRWOperation(
 
 Status Tablet::ModifyFlushedFrontier(
     const docdb::ConsensusFrontier& frontier,
-    rocksdb::FrontierModificationMode mode) {
+    rocksdb::FrontierModificationMode mode,
+    FlushFlags flags) {
   const Status s = regular_db_->ModifyFlushedFrontier(frontier.Clone(), mode);
   if (PREDICT_FALSE(!s.ok())) {
     auto status = STATUS(IllegalState, "Failed to set flushed frontier", s.ToString());
@@ -2841,7 +2849,7 @@ Status Tablet::ModifyFlushedFrontier(
     RETURN_NOT_OK(intents_db_->ModifyFlushedFrontier(frontier.Clone(), mode));
   }
 
-  return Flush(FlushMode::kAsync);
+  return Flush(FlushMode::kAsync, flags);
 }
 
 Status Tablet::Truncate(TruncateOperation* operation) {
@@ -2880,7 +2888,8 @@ Status Tablet::Truncate(TruncateOperation* operation) {
   // We use the kUpdate mode here, because unlike the case of restoring a snapshot to a completely
   // different tablet in an arbitrary Raft group, here there is no possibility of the flushed
   // frontier needing to go backwards.
-  RETURN_NOT_OK(ModifyFlushedFrontier(frontier, rocksdb::FrontierModificationMode::kUpdate));
+  RETURN_NOT_OK(ModifyFlushedFrontier(frontier, rocksdb::FrontierModificationMode::kUpdate,
+                                      FlushFlags::kAllDbs | FlushFlags::kNoScopedOperation));
 
   LOG_WITH_PREFIX(INFO) << "Created new db for truncated tablet";
   LOG_WITH_PREFIX(INFO) << "Sequence numbers: old=" << sequence_number
@@ -3143,7 +3152,7 @@ bool Tablet::ShouldDisableLbMove() {
   //
   // In this case, we want to disable tablet moves. We conservatively return true for any failure
   // if the tablet is part of a colocated table.
-  return metadata_->schema()->has_pgtable_id();
+  return metadata_->schema()->has_colocation_id();
 }
 
 void Tablet::ForceRocksDBCompactInTest() {
@@ -3255,6 +3264,9 @@ std::pair<int, int> Tablet::GetNumMemtables() const {
 
   {
     auto scoped_operation = CreateNonAbortableScopedRWOperation();
+    if (!scoped_operation.ok()) {
+      return std::make_pair(0, 0);
+    }
     std::lock_guard<rw_spinlock> lock(component_lock_);
     if (intents_db_) {
       // NOTE: 1 is added on behalf of cfd->mem().
@@ -3311,6 +3323,10 @@ Result<TransactionOperationContext> Tablet::CreateTransactionOperationContext(
     txn_id = &kArbitraryTxnIdForNonTxnReads;
   } else {
     return TransactionOperationContext();
+  }
+
+  if (!transaction_participant_) {
+    return STATUS(IllegalState, "Transactional operation for non transactional tablet");
   }
 
   if (!subtransaction_metadata) {
@@ -3492,10 +3508,17 @@ Result<std::string> Tablet::GetEncodedMiddleSplitKey() const {
   const Slice middle_key_slice(middle_key);
   if (middle_key_slice.compare(key_bounds_.lower) <= 0 ||
       (!key_bounds_.upper.empty() && middle_key_slice.compare(key_bounds_.upper) >= 0)) {
-    return STATUS_FORMAT(
-        IllegalState,
-        "$0: got \"$1\". This can happen if post-split tablet wasn't fully compacted after split",
-        error_prefix(), middle_key_slice.ToDebugHexString());
+    // This error occurs if there is no key strictly between the tablet lower and upper bound. It
+    // causes the tablet split manager to temporarily delay splitting for this tablet.
+    // The error can occur if:
+    // 1. There are only one or two keys in the tablet (e.g. when indexing a large tablet by a low
+    //    cardinality column), in which case we do not want to keep retrying splits.
+    // 2. A post-split tablet wasn't fully compacted after it split. In this case, delaying splits
+    //    will prevent splits after the compaction completes, but we should not be trying to split
+    //    an uncompacted tablet anyways.
+    return STATUS_EC_FORMAT(IllegalState,
+        tserver::TabletServerError(tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL),
+        "$0: got \"$1\".", error_prefix(), middle_key_slice.ToDebugHexString());
   }
   return middle_key;
 }

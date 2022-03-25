@@ -62,6 +62,8 @@
 #include "yb/util/restart_safe_clock.h"
 #include "yb/util/status_callback.h"
 
+YB_STRONGLY_TYPED_BOOL(HaveMoreMessages);
+
 namespace yb {
 
 class MetricEntity;
@@ -77,7 +79,7 @@ struct ReadOpsResult {
   yb::OpId preceding_op;
   yb::SchemaPB header_schema;
   uint32_t header_schema_version;
-  bool have_more_messages = false;
+  HaveMoreMessages have_more_messages = HaveMoreMessages::kFalse;
   int64_t read_from_disk_size = 0;
 };
 

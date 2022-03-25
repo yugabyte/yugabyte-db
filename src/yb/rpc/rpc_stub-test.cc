@@ -141,7 +141,7 @@ class RpcStubTest : public RpcTestBase {
     EXPECT_OK(messenger->StartAcceptor());
     EXPECT_FALSE(messenger->io_service().stopped());
     ProxyCache proxy_cache(messenger.get());
-    return { move(messenger),
+    return { std::move(messenger),
         std::make_unique<CalculatorServiceProxy>(&proxy_cache, HostPort(remote)) };
   }
 
@@ -899,6 +899,17 @@ void Generate(rpc_test::LightweightSubMessagePB* sub_message) {
   }
   if (RandomUniformBool()) {
     Generate(msg.mutable_cycle());
+  }
+  switch (RandomUniformInt(0, 2)) {
+    case 0:
+      msg.set_v_i32(RandomUniformInt<int32_t>());
+      break;
+    case 1:
+      msg.set_v_str(RandomHumanReadableString(32));
+      break;
+    case 2:
+      Generate(msg.mutable_v_message());
+      break;
   }
 }
 

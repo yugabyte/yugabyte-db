@@ -41,6 +41,7 @@ import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
@@ -259,7 +260,13 @@ public class CustomerController extends AuthenticatedController {
     }
 
     CustomerConfig.upsertCallhomeConfig(customerUUID, alertingFormData.callhomeLevel);
-
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Customer,
+            customerUUID.toString(),
+            Audit.ActionType.Update,
+            Json.toJson(formData));
     return ok(Json.toJson(customer));
   }
 
@@ -280,9 +287,11 @@ public class CustomerController extends AuthenticatedController {
           INTERNAL_SERVER_ERROR, "Unable to delete Customer UUID: " + customerUUID);
     }
 
-    metricService.handleSourceRemoval(customerUUID, null);
+    metricService.markSourceRemoved(customerUUID, null);
 
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(), Audit.TargetType.Customer, customerUUID.toString(), Audit.ActionType.Delete);
     return YBPSuccess.empty();
   }
 
@@ -313,7 +322,13 @@ public class CustomerController extends AuthenticatedController {
 
     customer.upsertFeatures(formData.features);
 
-    auditService().createAuditEntry(ctx(), request(), requestBody);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Customer,
+            customerUUID.toString(),
+            Audit.ActionType.UpsertCustomerFeatures,
+            requestBody);
     return ok(customer.getFeatures());
   }
 
@@ -417,6 +432,13 @@ public class CustomerController extends AuthenticatedController {
     if (response.has("error")) {
       throw new PlatformServiceException(BAD_REQUEST, response.get("error"));
     }
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Customer,
+            customerUUID.toString(),
+            Audit.ActionType.AddMetrics,
+            request().body().asJson());
     return PlatformResults.withRawData(response);
   }
 
