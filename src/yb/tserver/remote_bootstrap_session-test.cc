@@ -47,7 +47,10 @@ void RemoteBootstrapSessionTest::SetUp() {
 void RemoteBootstrapSessionTest::TearDown() {
   messenger_->Shutdown();
   session_.reset();
-  WARN_NOT_OK(tablet_peer_->Shutdown(), "Tablet peer shutdown failed");
+  WARN_NOT_OK(
+    tablet_peer_->Shutdown(
+        tablet::ShouldAbortActiveTransactions::kTrue, tablet::DisableFlushOnShutdown::kFalse),
+    "Tablet peer shutdown failed");
   YBTabletTest::TearDown();
 }
 

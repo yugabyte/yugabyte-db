@@ -1312,11 +1312,13 @@ void TabletServiceAdminImpl::DeleteTablet(const DeleteTabletRequestPB* req,
     cas_config_opid_index_less_or_equal = req->cas_config_opid_index_less_or_equal();
   }
   boost::optional<TabletServerErrorPB::Code> error_code;
-  Status s = server_->tablet_manager()->DeleteTablet(req->tablet_id(),
-                                                     delete_type,
-                                                     cas_config_opid_index_less_or_equal,
-                                                     req->hide_only(),
-                                                     &error_code);
+  Status s = server_->tablet_manager()->DeleteTablet(
+      req->tablet_id(),
+      delete_type,
+      tablet::ShouldAbortActiveTransactions(req->should_abort_active_txns()),
+      cas_config_opid_index_less_or_equal,
+      req->hide_only(),
+      &error_code);
   if (PREDICT_FALSE(!s.ok())) {
     HandleErrorResponse(resp, &context, s, error_code);
     return;

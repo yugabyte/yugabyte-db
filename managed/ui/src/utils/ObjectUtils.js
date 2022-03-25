@@ -97,7 +97,9 @@ export function areIntentsEqual(userIntent1, userIntent2) {
     isDefinedNotNull(userIntent2) &&
     _.isEqual(userIntent1.numNodes, userIntent2.numNodes) &&
     _.isEqual(userIntent1.regionList.sort(), userIntent2.regionList.sort()) &&
-    _.isEqual(userIntent1.deviceInfo, userIntent2.deviceInfo) &&
+    // there was a bug with storageClass absent on server
+    _.isEqual(_.omit(userIntent1.deviceInfo, ['storageClass']),
+              _.omit(userIntent2.deviceInfo, ['storageClass'])) &&
     _.isEqual(userIntent1.replicationFactor, userIntent2.replicationFactor) &&
     _.isEqual(userIntent1.provider, userIntent2.provider) &&
     _.isEqual(userIntent1.universeName, userIntent2.universeName) &&

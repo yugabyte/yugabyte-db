@@ -30,6 +30,8 @@
 // under the License.
 //
 
+#include <boost/algorithm/string/predicate.hpp>
+
 #include <glog/logging.h>
 #include <glog/stl_logging.h>
 #include <gtest/gtest.h>
@@ -57,7 +59,7 @@ class FsManagerTestBase : public YBTest {
     // Initialize File-System Layout
     ReinitFsManager();
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
-    ASSERT_OK(fs_manager_->Open());
+    ASSERT_OK(fs_manager_->CheckAndOpenFileSystemRoots());
   }
 
   void ReinitFsManager() {
@@ -160,7 +162,7 @@ TEST_F(FsManagerTestBase, TestMultiplePaths) {
   vector<string> data_paths = { GetTestPath("a"), GetTestPath("b"), GetTestPath("c") };
   ReinitFsManager(wal_paths, data_paths);
   ASSERT_OK(fs_manager()->CreateInitialFileSystemLayout());
-  ASSERT_OK(fs_manager()->Open());
+  ASSERT_OK(fs_manager()->CheckAndOpenFileSystemRoots());
 }
 
 TEST_F(FsManagerTestBase, TestMatchingPathsWithMismatchedSlashes) {
@@ -287,5 +289,102 @@ TEST_F(FsManagerTestBase, TestLogDirAlsoDeleted) {
   ASSERT_NOK(env_->IsDirectory(log_dir(), &is_dir));
   ASSERT_FALSE(is_dir);
 }
+
+class FailedEmuEnv : public EnvWrapper {
+ public:
+  FailedEmuEnv() : EnvWrapper(Env::Default()) { }
+
+  Status NewRandomAccessFile(const std::string& f,
+                             std::unique_ptr<RandomAccessFile>* r) override {
+    if (IsFailed(f)) {
+      return STATUS(IOError, "Test Error");
+    }
+    return target()->NewRandomAccessFile(f, r);
+  }
+
+  Status NewTempWritableFile(const WritableFileOptions& o, const std::string& t,
+                             std::string* f, std::unique_ptr<WritableFile>* r) override {
+    if (IsFailed(t)) {
+      return STATUS(IOError, "Test Error");
+    }
+    return target()->NewTempWritableFile(o, t, f, r);
+  }
+
+  void AddFailedPath(const std::string& path) {
+    std::lock_guard<std::mutex> lock(data_mutex_);
+    failed_set_.emplace(path);
+  }
+
+ private:
+  bool IsFailed(const std::string& filename) const {
+    std::lock_guard<std::mutex> lock(data_mutex_);
+    if (failed_set_.empty()) {
+      return false;
+    }
+    auto it = failed_set_.lower_bound(filename);
+    if ((it == failed_set_.end() || *it != filename) && it != failed_set_.begin()) {
+      --it;
+    }
+    return boost::starts_with(filename, *it);
+  }
+
+  std::set<std::string> failed_set_ GUARDED_BY(data_mutex_);
+  mutable std::mutex data_mutex_;
+};
+
+class FsManagerTestDriveFault : public YBTest {
+ public:
+  FsManagerTestDriveFault()
+      : metric_entity_(METRIC_ENTITY_server.Instantiate(&metric_registry_, "FsManagerTest")) {}
+
+  void SetUp() override {
+    FailedEmuEnv* new_env = new FailedEmuEnv();
+    env_.reset(new_env);
+    new_env->AddFailedPath(GetTestPath(kFailedDrive));
+    YBTest::SetUp();
+
+    // Initialize File-System Layout
+    ReinitFsManager();
+    Status s = fs_manager_->CheckAndOpenFileSystemRoots();
+    ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
+  }
+
+  void ReinitFsManager() {
+    ASSERT_OK(env_->CreateDirs(GetTestPath(kOkDrive)));
+    ASSERT_OK(env_->CreateDirs(GetTestPath(kFailedDrive)));
+    const vector<string> paths { GetTestPath(kOkDrive), GetTestPath(kFailedDrive) };
+    ReinitFsManager(paths, paths);
+  }
+
+  void ReinitFsManager(const vector<string>& wal_paths, const vector<string>& data_paths) {
+    // Blow away the old memtrackers first.
+    fs_manager_.reset();
+
+    FsManagerOpts opts;
+    opts.wal_paths = wal_paths;
+    opts.data_paths = data_paths;
+    opts.server_type = kServerType;
+    opts.metric_entity = metric_entity_;
+    fs_manager_ = std::make_unique<FsManager>(env_.get(), opts);
+  }
+
+  FsManager *fs_manager() const { return fs_manager_.get(); }
+
+  const char* kServerType = "tserver_test";
+  const char* kOkDrive = "dir1";
+  const char* kFailedDrive = "dir2";
+
+ private:
+  std::unique_ptr<FsManager> fs_manager_;
+  MetricRegistry metric_registry_;
+  scoped_refptr<MetricEntity> metric_entity_;
+};
+
+TEST_F(FsManagerTestDriveFault, SingleDriveFault) {
+  auto dirs = fs_manager()->GetDataRootDirs();
+  EXPECT_EQ(dirs.size(), 1);
+  EXPECT_TRUE(Slice(dirs[0]).starts_with(Slice(GetTestPath(kOkDrive))));
+}
+
 
 } // namespace yb

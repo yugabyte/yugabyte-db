@@ -93,9 +93,22 @@ class MasterPathHandlers {
   enum TableType {
     kUserTable,
     kUserIndex,
-    kColocatedParentTable,
+    kParentTable,
     kSystemTable,
     kNumTypes,
+  };
+
+  enum CatalogTableColumns{
+    kKeyspace,
+    kTableName,
+    kState,
+    kMessage,
+    kUuid,
+    kYsqlOid,
+    kParentOid,
+    kColocationId,
+    kOnDiskSize,
+    kNumColumns
   };
 
   const std::string kSystemPlatformNamespace = "system_platform";
@@ -148,7 +161,7 @@ class MasterPathHandlers {
   // Map of zone -> its tserver tree.
   typedef std::unordered_map<std::string, TServerTree> ZoneToTServer;
 
-  const std::string table_type_[kNumTypes] = {"User", "Index", "Colocated", "System"};
+  const std::string table_type_[kNumTypes] = {"User", "Index", "Parent", "System"};
 
   const std::string kNoPlacementUUID = "NONE";
 

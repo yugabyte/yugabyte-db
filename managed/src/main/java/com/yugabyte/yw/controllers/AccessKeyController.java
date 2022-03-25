@@ -85,6 +85,8 @@ public class AccessKeyController extends AuthenticatedController {
     Integer sshPort = formData.get().sshPort;
     boolean airGapInstall = formData.get().airGapInstall;
     boolean skipProvisioning = formData.get().skipProvisioning;
+    boolean setUpChrony = formData.get().setUpChrony;
+    List<String> ntpServers = formData.get().ntpServers;
     AccessKey accessKey;
 
     LOG.info(
@@ -92,6 +94,14 @@ public class AccessKeyController extends AuthenticatedController {
         keyCode,
         customerUUID,
         providerUUID);
+
+    if (setUpChrony
+        && region.provider.code.equals(onprem.name())
+        && (ntpServers == null || ntpServers.isEmpty())) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "NTP servers not provided for on-premises provider for which chrony setup is desired");
+    }
 
     // Check if a public/private key was uploaded as part of the request
     MultipartFormData<File> multiPartBody = request().body().asMultipartFormData();
@@ -110,7 +120,9 @@ public class AccessKeyController extends AuthenticatedController {
               sshUser,
               sshPort,
               airGapInstall,
-              skipProvisioning);
+              skipProvisioning,
+              setUpChrony,
+              ntpServers);
     } else if (keyContent != null && !keyContent.isEmpty()) {
       if (keyType == null) {
         throw new PlatformServiceException(BAD_REQUEST, "keyType params required.");
@@ -129,10 +141,19 @@ public class AccessKeyController extends AuthenticatedController {
               sshUser,
               sshPort,
               airGapInstall,
-              skipProvisioning);
+              skipProvisioning,
+              setUpChrony,
+              ntpServers);
     } else {
       accessKey =
-          accessManager.addKey(regionUUID, keyCode, sshPort, airGapInstall, skipProvisioning);
+          accessManager.addKey(
+              regionUUID,
+              keyCode,
+              sshPort,
+              airGapInstall,
+              skipProvisioning,
+              setUpChrony,
+              ntpServers);
     }
 
     // In case of onprem provider, we add a couple of additional attributes like passwordlessSudo
@@ -144,7 +165,9 @@ public class AccessKeyController extends AuthenticatedController {
           formData.get().passwordlessSudoAccess,
           formData.get().installNodeExporter,
           formData.get().nodeExporterPort,
-          formData.get().nodeExporterUser);
+          formData.get().nodeExporterUser,
+          formData.get().setUpChrony,
+          formData.get().ntpServers);
     }
     auditService()
         .createAuditEntryWithReqBody(

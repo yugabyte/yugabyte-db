@@ -286,6 +286,9 @@ public class NodeManager extends DevopsBase {
         }
       }
 
+      if (keyInfo.setUpChrony) {
+        subCommand.add("--skip_ntp_check");
+      }
       if (keyInfo.airGapInstall) {
         subCommand.add("--air_gap");
       }
@@ -305,6 +308,16 @@ public class NodeManager extends DevopsBase {
         subCommand.add(Integer.toString(keyInfo.nodeExporterPort));
         subCommand.add("--node_exporter_user");
         subCommand.add(keyInfo.nodeExporterUser);
+      }
+
+      if (keyInfo.setUpChrony) {
+        subCommand.add("--use_chrony");
+        if (keyInfo.ntpServers != null && !keyInfo.ntpServers.isEmpty()) {
+          for (String server : keyInfo.ntpServers) {
+            subCommand.add("--ntp_server");
+            subCommand.add(server);
+          }
+        }
       }
     }
     return subCommand;
@@ -1577,7 +1590,8 @@ public class NodeManager extends DevopsBase {
 
           if (taskParam.useTimeSync
               && (cloudType.equals(Common.CloudType.aws)
-                  || cloudType.equals(Common.CloudType.gcp))) {
+                  || cloudType.equals(Common.CloudType.gcp)
+                  || cloudType.equals(Common.CloudType.azu))) {
             commandArgs.add("--use_chrony");
           }
 

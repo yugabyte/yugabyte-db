@@ -2717,10 +2717,14 @@ Status CatalogManager::SplitTablet(const TabletId& tablet_id, bool select_all_ta
           SplitTabletWithKey(tablet, result->split_encoded_key, result->split_partition_key,
               select_all_tablets_for_split);
         } else if (tserver::TabletServerError(result.status()) ==
-            tserver::TabletServerErrorPB::TABLET_SPLIT_DISABLED_TTL_EXPIRY) {
-          tablet_split_manager()->MarkTtlTableForSplitIgnore(tablet->table()->id());
+                   tserver::TabletServerErrorPB::TABLET_SPLIT_DISABLED_TTL_EXPIRY) {
           LOG(INFO) << "AsyncGetTabletSplitKey task failed for tablet " << tablet->tablet_id()
               << ". Tablet split not supported for tablets with TTL file expiration.";
+          tablet_split_manager()->MarkTtlTableForSplitIgnore(tablet->table()->id());
+        } else if (tserver::TabletServerError(result.status()) ==
+                   tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL) {
+          LOG(INFO) << "Tablet key range is too small to split, disabling splitting temporarily.";
+          tablet_split_manager()->MarkSmallKeyRangeTabletForSplitIgnore(tablet->id());
         } else {
           LOG(WARNING) << "AsyncGetTabletSplitKey task failed with status: " << result.status();
         }
@@ -5085,23 +5089,43 @@ Status CatalogManager::DeleteTableInternal(
 
     // Send a DeleteTablet() request to each tablet replica in the table.
     RETURN_NOT_OK(DeleteTabletsAndSendRequests(table.info, table.retained_by_snapshot_schedules));
-    // Send a RemoveTableFromTablet() request to each colocated parent tablet replica in the table.
-    // TODO(pitr) handle YSQL colocated tables.
     if (table.info->IsColocatedUserTable()) {
-      {
-        LockGuard lock(mutex_);
-        const auto it = table_tablegroup_ids_map_.find(table.info->id());
-        if (it != table_tablegroup_ids_map_.end()) {
-          const TablegroupId& tablegroup_id = it->second;
-          const auto& tablegroup = DCHECK_NOTNULL(tablegroup_ids_map_[tablegroup_id]);
-          tablegroup->DeleteChildTable(table.info->id());
-          table_tablegroup_ids_map_.erase(table.info->id());
+      // Send a RemoveTableFromTablet() request to each
+      // colocated parent tablet replica in the table.
+      if (table.retained_by_snapshot_schedules.empty()) {
+        {
+          LockGuard lock(mutex_);
+          const auto it = table_tablegroup_ids_map_.find(table.info->id());
+          if (it != table_tablegroup_ids_map_.end()) {
+            const TablegroupId& tablegroup_id = it->second;
+            const auto& tablegroup = DCHECK_NOTNULL(tablegroup_ids_map_[tablegroup_id]);
+            tablegroup->DeleteChildTable(table.info->id());
+            table_tablegroup_ids_map_.erase(table.info->id());
+          }
         }
+        LOG(INFO) << "Notifying tablet with id "
+                  << table.info->GetColocatedTablet()->tablet_id()
+                  << " to remove this colocated table " << table.info->name()
+                  << " from its metadata.";
+        auto call = std::make_shared<AsyncRemoveTableFromTablet>(
+            master_, AsyncTaskPool(), table.info->GetColocatedTablet(), table.info);
+        table.info->AddTask(call);
+        WARN_NOT_OK(ScheduleTask(call), "Failed to send RemoveTableFromTablet request");
+      } else {
+        // Hide this table if it is covered by some schedule.
+        {
+          auto tablet_info = table.info->GetColocatedTablet();
+          auto tablet_lock = tablet_info->LockForWrite();
+
+          *tablet_lock.mutable_data()->pb.mutable_retained_by_snapshot_schedules() =
+              table.retained_by_snapshot_schedules;
+
+          // Upsert to sys catalog and commit to memory.
+          RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), tablet_info));
+          tablet_lock.Commit();
+        }
+        CheckTableDeleted(table.info);
       }
-      auto call = std::make_shared<AsyncRemoveTableFromTablet>(
-          master_, AsyncTaskPool(), table.info->GetColocatedTablet(), table.info);
-      table.info->AddTask(call);
-      WARN_NOT_OK(ScheduleTask(call), "Failed to send RemoveTableFromTablet request");
     }
   }
 
@@ -5324,6 +5348,7 @@ TableInfo::WriteLock CatalogManager::MaybeTransitionTableToDeleted(const TableIn
   if (lock->is_hiding()) {
     LOG(INFO) << "Marking table as HIDDEN: " << table->ToString();
     lock.mutable_data()->pb.set_hide_state(SysTablesEntryPB::HIDDEN);
+    lock.mutable_data()->pb.set_hide_hybrid_time(master_->clock()->Now().ToUint64());
     // Erase all the tablets from partitions_ structure.
     table->ClearTabletMaps(DeactivateOnly::kTrue);
     return lock;
@@ -5782,7 +5807,8 @@ Result<TabletInfoPtr> CatalogManager::RegisterNewTabletForSplit(
   new_tablet_meta.set_state(SysTabletsEntryPB::CREATING);
   new_tablet_meta.mutable_committed_consensus_state()->CopyFrom(
       source_tablet_meta.committed_consensus_state());
-  new_tablet_meta.set_split_depth(source_tablet_meta.split_depth() + 1);
+  const auto new_split_depth = source_tablet_meta.split_depth() + 1;
+  new_tablet_meta.set_split_depth(new_split_depth);
   new_tablet_meta.set_split_parent_tablet_id(source_tablet_info->tablet_id());
   // TODO(tsplit): consider and handle failure scenarios, for example:
   // - Crash or leader failover before sending out the split tasks.
@@ -5809,10 +5835,12 @@ Result<TabletInfoPtr> CatalogManager::RegisterNewTabletForSplit(
     auto tablet_map_checkout = tablet_map_.CheckOut();
     (*tablet_map_checkout)[new_tablet->id()] = new_tablet;
   }
-  LOG(INFO) << "Registered new tablet " << new_tablet->tablet_id()
-            << " (" << AsString(partition) << ") to split the tablet "
-            << source_tablet_info->tablet_id()
-            << " (" << AsString(source_tablet_meta.partition())
+  LOG(INFO) << "Registered new tablet " << new_tablet->tablet_id() << " (partition_key_start: "
+            << Slice(partition.partition_key_start()).ToDebugString(/* max_length = */ 64)
+            << ", partition_key_end: "
+            << Slice(partition.partition_key_end()).ToDebugString(/* max_length = */ 64)
+            << ", split_depth: " << new_split_depth << ") to split the tablet "
+            << source_tablet_info->tablet_id() << " (" << AsString(source_tablet_meta.partition())
             << ") for table " << table->ToString()
             << ", new partition_list_version: " << new_partition_list_version;
 
@@ -6367,9 +6395,10 @@ bool CatalogManager::ProcessCommittedConsensusState(
     TSDescriptor* ts_desc,
     bool is_incremental,
     const ReportedTabletPB& report,
-    const TableInfo::WriteLock& table_lock,
+    const std::map<TableId, TableInfo::WriteLock>& table_write_locks,
     const TabletInfoPtr& tablet,
     const TabletInfo::WriteLock& tablet_lock,
+    const std::map<TableId, scoped_refptr<TableInfo>>& tables,
     std::vector<RetryingTSRpcTaskPtr>* rpcs) {
   const ConsensusStatePB& prev_cstate = tablet_lock->pb.committed_consensus_state();
   ConsensusStatePB cstate = report.committed_consensus_state();
@@ -6520,40 +6549,75 @@ bool CatalogManager::ProcessCommittedConsensusState(
   }
 
   // 7. Send an AlterSchema RPC if the tablet has an old schema version.
-  if (report.has_schema_version() &&
-      report.schema_version() != table_lock->pb.version()) {
-    if (report.schema_version() > table_lock->pb.version()) {
-      LOG(ERROR) << "TS " << ts_desc->permanent_uuid()
-                 << " has reported a schema version greater than the current one "
-                 << " for tablet " << tablet->ToString()
-                 << ". Expected version " << table_lock->pb.version()
-                 << " got " << report.schema_version()
-                 << " (corruption)";
-    } else {
-      // TODO: For Alter (rolling apply to tablets), this is an expected transitory state.
-      LOG(INFO) << "TS " << ts_desc->permanent_uuid()
-                << " does not have the latest schema for tablet " << tablet->ToString()
-                << ". Expected version " << table_lock->pb.version()
-                << " got " << report.schema_version();
-    }
-    // It's possible that the tablet being reported is a laggy replica, and in fact
-    // the leader has already received an AlterTable RPC. That's OK, though --
-    // it'll safely ignore it if we send another.
-    TransactionId txn_id = TransactionId::Nil();
-    if (table_lock->pb.has_transaction() &&
-        table_lock->pb.transaction().has_transaction_id()) {
-      LOG(INFO) << "Parsing transaction ID for tablet ID " << tablet->tablet_id();
-      auto txn_id_res = FullyDecodeTransactionId(table_lock->pb.transaction().transaction_id());
-      if (!txn_id_res.ok()) {
-        LOG(WARNING) << "Parsing transaction ID failed for tablet ID " << tablet->tablet_id();
-        return false;
+  if (table_write_locks.count(tablet->table()->id())) {
+    const TableInfo::WriteLock& table_lock = table_write_locks.at(tablet->table()->id());
+    if (report.has_schema_version() &&
+        report.schema_version() != table_lock->pb.version()) {
+      if (report.schema_version() > table_lock->pb.version()) {
+        LOG(ERROR) << "TS " << ts_desc->permanent_uuid()
+                  << " has reported a schema version greater than the current one "
+                  << " for tablet " << tablet->ToString()
+                  << ". Expected version " << table_lock->pb.version()
+                  << " got " << report.schema_version()
+                  << " (corruption)";
+      } else {
+        // TODO: For Alter (rolling apply to tablets), this is an expected transitory state.
+        LOG(INFO) << "TS " << ts_desc->permanent_uuid()
+                  << " does not have the latest schema for tablet " << tablet->ToString()
+                  << ". Expected version " << table_lock->pb.version()
+                  << " got " << report.schema_version();
       }
-      txn_id = txn_id_res.get();
+      // It's possible that the tablet being reported is a laggy replica, and in fact
+      // the leader has already received an AlterTable RPC. That's OK, though --
+      // it'll safely ignore it if we send another.
+      TransactionId txn_id = TransactionId::Nil();
+      if (table_lock->pb.has_transaction() &&
+          table_lock->pb.transaction().has_transaction_id()) {
+        LOG(INFO) << "Parsing transaction ID for tablet ID " << tablet->tablet_id();
+        auto txn_id_res = FullyDecodeTransactionId(table_lock->pb.transaction().transaction_id());
+        if (!txn_id_res.ok()) {
+          LOG(WARNING) << "Parsing transaction ID failed for tablet ID " << tablet->tablet_id();
+          return false;
+        }
+        txn_id = txn_id_res.get();
+      }
+      LOG(INFO) << "Triggering AlterTable with transaction ID " << txn_id
+                << " due to heartbeat delay for tablet ID " << tablet->tablet_id();
+      rpcs->push_back(std::make_shared<AsyncAlterTable>(
+          master_, AsyncTaskPool(), tablet, tablet->table(), txn_id));
     }
-    LOG(INFO) << "Triggering AlterTable with transaction ID " << txn_id
-              << " due to heartbeat delay for tablet ID " << tablet->tablet_id();
-    rpcs->push_back(std::make_shared<AsyncAlterTable>(
-        master_, AsyncTaskPool(), tablet, tablet->table(), txn_id));
+  }
+
+  // Send AlterSchema RPC for colocated tables of this tablet if they are outdated.
+  for (const auto& id_to_version : report.table_to_version()) {
+    // Skip Primary table.
+    if (tablet->table()->id() == id_to_version.first) {
+      continue;
+    }
+    if (tables.count(id_to_version.first)) {
+      const auto& table_lock = table_write_locks.at(id_to_version.first);
+      // Ignore if same version.
+      if (table_lock->pb.version() == id_to_version.second) {
+        continue;
+      }
+      if (id_to_version.second > table_lock->pb.version()) {
+        LOG(ERROR) << "TS " << ts_desc->permanent_uuid()
+                   << " has reported a schema version greater than the current one "
+                   << " for table " << id_to_version.first
+                   << ". Expected version " << table_lock->pb.version()
+                   << " got " << id_to_version.second
+                   << " (corruption)";
+      } else {
+        LOG(INFO) << "TS " << ts_desc->permanent_uuid()
+                  << " does not have the latest schema for table " << id_to_version.first
+                  << ". Expected version " << table_lock->pb.version()
+                  << " got " << id_to_version.second;
+      }
+      LOG(INFO) << "Triggering AlterTable for table id " << id_to_version.first
+                << " due to heartbeat delay for tablet ID " << tablet->tablet_id();
+      rpcs->push_back(std::make_shared<AsyncAlterTable>(
+          master_, AsyncTaskPool(), tablet, tables.at(id_to_version.first), TransactionId::Nil()));
+    }
   }
 
   return tablet_was_mutated;
@@ -6562,8 +6626,8 @@ bool CatalogManager::ProcessCommittedConsensusState(
 Status CatalogManager::ProcessTabletReportBatch(
     TSDescriptor* ts_desc,
     bool is_incremental,
-    ReportedTablets::const_iterator begin,
-    ReportedTablets::const_iterator end,
+    ReportedTablets::iterator begin,
+    ReportedTablets::iterator end,
     TabletReportUpdatesPB* full_report_update,
     std::vector<RetryingTSRpcTaskPtr>* rpcs) {
   // 1. First Pass. Iterate in TabletId Order to discover all Table locks we'll need. Even though
@@ -6575,6 +6639,14 @@ Status CatalogManager::ProcessTabletReportBatch(
     auto& lock = table_write_locks[it->info->table()->id()];
     if (!lock.locked()) {
       lock = it->info->table()->LockForWrite();
+    }
+    // Acquire locks for all colocated tables reported
+    // in sorted order of table ids (We use a map).
+    for (const auto& id_to_info : it->tables) {
+      auto& lock = table_write_locks[id_to_info.first];
+      if (!lock.locked()) {
+        lock = id_to_info.second->LockForWrite();
+      }
     }
   }
 
@@ -6632,10 +6704,10 @@ Status CatalogManager::ProcessTabletReportBatch(
     // 3. Tombstone a replica that is no longer part of the Raft config (and
     // not already tombstoned or deleted outright).
     //
-    // If the report includes a committed raft config, we only tombstone if
-    // the opid_index is strictly less than the latest reported committed
-    // config. This prevents us from spuriously deleting replicas that have
-    // just been added to the committed config and are in the process of copying.
+    // If the report includes a committed raft config, we only tombstone if the opid_index of the
+    // committed raft config is strictly less than the latest reported committed config. This
+    // prevents us from spuriously deleting replicas that have just been added to the committed
+    // config and are in the process of copying.
     const ConsensusStatePB& prev_cstate = tablet_lock->pb.committed_consensus_state();
     const int64_t prev_opid_index = prev_cstate.config().opid_index();
     const int64_t report_opid_index = GetCommittedConsensusStateOpIdIndex(report);
@@ -6689,7 +6761,8 @@ Status CatalogManager::ProcessTabletReportBatch(
     // replica so that the balancer knows how many tablets are in the middle of remote bootstrap.
     if (report.has_committed_consensus_state()) {
       if (ProcessCommittedConsensusState(
-              ts_desc, is_incremental, report, table_lock, tablet, tablet_lock, rpcs)) {
+          ts_desc, is_incremental, report, table_write_locks, tablet, tablet_lock,
+          it->tables, rpcs)) {
         // 6. If the tablet was mutated, add it to the tablets to be re-persisted.
         //
         // Done here and not on a per-mutation basis to avoid duplicate entries.
@@ -6782,7 +6855,7 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
   ReportedTablets reported_tablets;
 
   // Tablet Deletes to process after the catalog lock below.
-  set<TabletId> tablets_to_delete;
+  set<TabletId> orphaned_tablets;
 
   {
     // Lock the catalog to iterate over tablet_ids_map_ & table_ids_map_.
@@ -6799,7 +6872,7 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
         // If a TS reported an unknown tablet, send a delete tablet rpc to the TS.
         LOG(INFO) << "Null tablet reported, possibly the TS was not around when the"
                       " table was being deleted. Sending Delete tablet RPC to this TS.";
-        tablets_to_delete.insert(tablet_id);
+        orphaned_tablets.insert(tablet_id);
         // Every tablet in the report that is processed gets a heartbeat response entry.
         ReportedTabletUpdatesPB* update = full_report_update->add_tablets();
         update->set_tablet_id(tablet_id);
@@ -6808,7 +6881,7 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
       if (!tablet->table() || FindOrNull(*table_ids_map_, tablet->table()->id()) == nullptr) {
         auto table_id = tablet->table() == nullptr ? "(null)" : tablet->table()->id();
         LOG(INFO) << "Got report from an orphaned tablet " << tablet_id << " on table " << table_id;
-        tablets_to_delete.insert(tablet_id);
+        orphaned_tablets.insert(tablet_id);
         // Every tablet in the report that is processed gets a heartbeat response entry.
         ReportedTabletUpdatesPB* update = full_report_update->add_tablets();
         update->set_tablet_id(tablet_id);
@@ -6821,6 +6894,18 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
         .info = tablet,
         .report = &report,
       });
+      // For colocated tablet, update all the tables that need processing.
+      for (const auto& id_to_version : report.table_to_version()) {
+        auto table_info = FindPtrOrNull(*table_ids_map_, id_to_version.first);
+        if(!table_info) {
+          // TODO(Sanket): Do we need to suitably handle these orphaned tables?
+          continue;
+        }
+        VLOG_WITH_PREFIX(1) << "Tablet " << report.tablet_id() << " reported table "
+                            << id_to_version.first << " in its colocated list";
+        reported_tablets[reported_tablets.size() - 1].tables.emplace(
+            id_to_version.first, table_info);
+      }
     }
   }
 
@@ -6829,9 +6914,13 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
   });
 
   // Process any delete requests from orphaned tablets, identified above.
-  for (auto tablet_id : tablets_to_delete) {
-    SendDeleteTabletRequest(tablet_id, TABLET_DATA_DELETED, boost::none, nullptr, ts_desc,
-        "Report from an orphaned tablet");
+  for (const auto& tablet_id : orphaned_tablets) {
+    SendDeleteTabletRequest(
+      tablet_id, TABLET_DATA_DELETED /* delete_type */,
+      boost::none /* cas_config_opid_index_less_or_equal */,
+      nullptr /* table */,
+      ts_desc,
+      "Report from an orphaned tablet" /* reason */);
   }
 
   // Calculate the deadline for this expensive loop coming up.
@@ -8857,7 +8946,7 @@ CHECKED_STATUS CatalogManager::SendAlterTableRequest(const scoped_refptr<TableIn
 
   for (const scoped_refptr<TabletInfo>& tablet : tablets) {
     auto call = std::make_shared<AsyncAlterTable>(master_, AsyncTaskPool(), tablet, table, txn_id);
-    tablet->table()->AddTask(call);
+    table->AddTask(call);
     if (PREDICT_FALSE(FLAGS_TEST_slowdown_alter_table_rpcs_ms > 0)) {
       LOG(INFO) << "Sleeping for " << tablet->id() << " "
                 << FLAGS_TEST_slowdown_alter_table_rpcs_ms

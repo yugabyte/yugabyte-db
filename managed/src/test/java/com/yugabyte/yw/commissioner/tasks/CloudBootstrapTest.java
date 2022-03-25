@@ -160,6 +160,8 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
                 eq(taskParams.sshPort),
                 eq(taskParams.airGapInstall),
                 eq(false),
+                eq(taskParams.setUpChrony),
+                eq(taskParams.ntpServers),
                 eq(false));
       } else {
         String expectedAccessKeyCode = taskParams.keyPairName;
@@ -179,7 +181,9 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
                 eq(taskParams.sshUser),
                 eq(taskParams.sshPort),
                 eq(taskParams.airGapInstall),
-                eq(false));
+                eq(false),
+                eq(taskParams.setUpChrony),
+                eq(taskParams.ntpServers));
       }
       // Check AZ info.
       List<AvailabilityZone> zones = r.zones;

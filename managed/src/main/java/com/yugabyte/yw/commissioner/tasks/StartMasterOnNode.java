@@ -12,7 +12,6 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.Util.areMastersUnderReplicated;
 
-import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
@@ -20,7 +19,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.Arrays;
-import java.util.HashSet;
+import java.util.List;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -107,20 +106,21 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
       createSetNodeStateTask(currentNode, NodeState.Starting)
           .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
 
+      List<NodeDetails> nodeAsList = Arrays.asList(currentNode);
+
       // Set gflags for master.
-      createGFlagsOverrideTasks(
-          ImmutableList.of(currentNode), ServerType.MASTER, true /* isShell */);
+      createGFlagsOverrideTasks(nodeAsList, ServerType.MASTER, true /* isShell */);
+
+      // Check that installed MASTER software version is consistent.
+      createSoftwareInstallTasks(nodeAsList, ServerType.MASTER, null);
 
       // Update master configuration on the node.
       createConfigureServerTasks(
-              Arrays.asList(currentNode),
-              true /* isShell */,
-              true /* updateMasterAddrs */,
-              true /* isMaster */)
+              nodeAsList, true /* isShell */, true /* updateMasterAddrs */, true /* isMaster */)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Start a master process.
-      createStartMasterTasks(new HashSet<NodeDetails>(Arrays.asList(currentNode)))
+      createStartMasterTasks(nodeAsList)
           .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
 
       // Mark node as isMaster in YW DB.
@@ -128,8 +128,7 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
 
       // Wait for the master to be responsive.
-      createWaitForServersTasks(
-              new HashSet<NodeDetails>(Arrays.asList(currentNode)), ServerType.MASTER)
+      createWaitForServersTasks(nodeAsList, ServerType.MASTER)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Add master to the quorum.
