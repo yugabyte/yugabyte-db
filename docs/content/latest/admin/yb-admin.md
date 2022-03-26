@@ -573,6 +573,7 @@ The following backup and snapshot commands are available:
 * [**create_snapshot_schedule**](#create-snapshot-schedule) sets the schedule for snapshot creation
 * [**list_snapshot_schedules**](#list-snapshot-schedules) returns a list of all snapshot schedules
 * [**restore_snapshot_schedule**](#restore-snapshot-schedule) restores all objects in a scheduled snapshot
+* [**delete_snapshot_schedule**](#delete-snapshot-schedule) deletes the specified snapshot schedule
 
 #### create_database_snapshot
 
@@ -889,7 +890,7 @@ yb-admin \
 
 #### create_snapshot_schedule
 
-Creates a snapshot schedule. A schedule consists of a list of objects to be included in a snapshot, a time interval at which to back them up, and a retention time.
+Creates a snapshot schedule. A schedule consists of a list of objects to be included in a snapshot, a time interval at which to take snapshots for them, and a retention time.
 
 Returns a schedule ID in JSON format.
 
@@ -916,7 +917,7 @@ Take a snapshot of the `ysql.yugabyte` database once per minute, and retain each
 yb-admin create_snapshot_schedule 1 10 ysql.yugabyte
 ```
 
-```output
+```output.json
 {
   "schedule_id": "6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256"
 }
@@ -943,10 +944,10 @@ Returns one or more schedule lists in JSON format.
 **Syntax**
 
 ```sh
-yb-admin list_snapshot_schedules <snapshot-id>
+yb-admin list_snapshot_schedules <schedule-id>
 ```
 
-Where _snapshot-id_ is the snapshot's unique identifier. The ID is optional; omit the ID to return all schedules in the system.
+Where _schedule-id_ is the snapshot schedule's unique identifier. The ID is optional; omit the ID to return all schedules in the system.
 
 **Example**
 
@@ -955,7 +956,7 @@ $ ./bin/yb-admin \
     list_snapshot_schedules 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
 ```
 
-```output
+```output.json
 {
   "schedules": [
     {
@@ -1031,10 +1032,39 @@ $ ./bin/yb-admin \
 
 In both cases, the output is similar to the following:
 
-```output
+```output.json
 {
-    "snapshot_id": "f71c265d-4b33-4c71-9fc5-c0acab943ee7",
+    "snapshot_id": "6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256",
     "restoration_id": "b1b96d53-f9f9-46c5-b81c-6937301c8eff"
+}
+```
+
+#### delete_snapshot_schedule
+
+Deletes the snapshot schedule with the given ID, **and all of the snapshots** associated with that schedule.
+
+Returns a JSON object with the schedule_id that was just deleted.
+
+**Syntax**
+
+```sh
+yb-admin delete_snapshot_schedule <schedule-id>
+```
+
+Where _schedule-id_ is the snapshot schedule's unique identifier.
+
+**Example**
+
+```sh
+$ ./bin/yb-admin \
+    delete_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
+```
+
+The output should show the schedule ID we just deleted.
+
+```output.json
+{
+    "schedule_id": "6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256"
 }
 ```
 
