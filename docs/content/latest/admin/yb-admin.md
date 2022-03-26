@@ -1060,11 +1060,11 @@ $ ./bin/yb-admin \
     delete_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
 ```
 
-The output should show the snapshot ID we just deleted.
+The output should show the schedule ID we just deleted.
 
 ```output.json
 {
-    "snapshot_id": "6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256"
+    "schedule_id": "6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256"
 }
 ```
 
