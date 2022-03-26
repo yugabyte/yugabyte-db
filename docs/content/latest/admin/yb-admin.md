@@ -917,7 +917,7 @@ Take a snapshot of the `ysql.yugabyte` database once per minute, and retain each
 yb-admin create_snapshot_schedule 1 10 ysql.yugabyte
 ```
 
-```output
+```output.json
 {
   "schedule_id": "6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256"
 }
@@ -956,7 +956,7 @@ $ ./bin/yb-admin \
     list_snapshot_schedules 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
 ```
 
-```output
+```output.json
 {
   "schedules": [
     {
@@ -1032,7 +1032,7 @@ $ ./bin/yb-admin \
 
 In both cases, the output is similar to the following:
 
-```output
+```output.json
 {
     "snapshot_id": "6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256",
     "restoration_id": "b1b96d53-f9f9-46c5-b81c-6937301c8eff"
@@ -1041,7 +1041,7 @@ In both cases, the output is similar to the following:
 
 #### delete_snapshot_schedule
 
-Deletes the snapshot schedule with this ID. Note, this will also remove all of the snapshots associated with the schedule!
+Deletes the snapshot schedule with the given ID, **and all of the snapshots** associated with that schedule.
 
 Returns a JSON object with the schedule_id that was just deleted.
 
@@ -1061,7 +1061,8 @@ $ ./bin/yb-admin \
 ```
 
 The output should show the snapshot ID we just deleted.
-```output
+
+```output.json
 {
     "snapshot_id": "6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256"
 }
