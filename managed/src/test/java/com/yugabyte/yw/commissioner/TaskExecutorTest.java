@@ -3,6 +3,9 @@
 package com.yugabyte.yw.commissioner;
 
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
+import static org.hamcrest.CoreMatchers.containsString;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
@@ -470,5 +473,16 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
         () -> {
           taskExecutor.submit(taskRunner2, Executors.newFixedThreadPool(1));
         });
+  }
+
+  @Test
+  public void testRunnableTaskCallstack() {
+    ITask task = mockTaskCommon(false);
+    RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
+    String[] callstack = taskRunner.getCreatorCallstack();
+    assertThat(
+        callstack[0],
+        containsString("com.yugabyte.yw.commissioner.TaskExecutor.createRunnableTask"));
+    assertThat(callstack.length, lessThanOrEqualTo(16));
   }
 }
