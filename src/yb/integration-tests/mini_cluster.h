@@ -127,7 +127,7 @@ class MiniCluster : public MiniClusterBase {
   void Shutdown();
   CHECKED_STATUS FlushTablets(
       tablet::FlushMode mode = tablet::FlushMode::kSync,
-      tablet::FlushFlags flags = tablet::FlushFlags::kAll);
+      tablet::FlushFlags flags = tablet::FlushFlags::kAllDbs);
   CHECKED_STATUS CompactTablets();
   CHECKED_STATUS SwitchMemtables();
   CHECKED_STATUS CleanTabletLogs();

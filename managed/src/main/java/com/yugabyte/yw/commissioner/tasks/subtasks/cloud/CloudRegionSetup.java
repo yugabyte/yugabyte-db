@@ -60,10 +60,8 @@ public class CloudRegionSetup extends CloudTaskBase {
     Provider provider = getProvider();
     final Region region = Region.createWithMetadata(provider, regionCode, metaData);
     String customImageId = taskParams().metadata.customImageId;
-    boolean ybPrebuiltAmi = taskParams().metadata.ybPrebuiltAmi;
     if (customImageId != null && !customImageId.isEmpty()) {
       region.ybImage = customImageId;
-      region.ybPrebuiltAmi = ybPrebuiltAmi;
       region.save();
     } else {
       switch (Common.CloudType.valueOf(provider.code)) {
@@ -84,6 +82,16 @@ public class CloudRegionSetup extends CloudTaskBase {
     String customSecurityGroupId = taskParams().metadata.customSecurityGroupId;
     if (customSecurityGroupId != null && !customSecurityGroupId.isEmpty()) {
       region.setSecurityGroupId(customSecurityGroupId);
+      region.save();
+    }
+
+    // need architecture for AWS providers
+    if (provider.code.equals(Common.CloudType.aws.toString())) {
+      String arch = queryHelper.getImageArchitecture(region);
+      if (arch == null || arch.isEmpty()) {
+        throw new RuntimeException("Could not get architecture for image: " + region.ybImage);
+      }
+      region.setArchitecture(arch);
       region.save();
     }
 

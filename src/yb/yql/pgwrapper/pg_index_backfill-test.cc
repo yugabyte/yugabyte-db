@@ -1245,17 +1245,17 @@ TEST_F_EX(PgIndexBackfillTest,
 // thrown.  Simulate the following:
 //   Session A                                    Session B
 //   --------------------------                   ---------------------------------
-//                                                INSERT a row to the indexed table
+//                                                INSERT row(s) to the indexed table
 //   CREATE UNIQUE INDEX
-//                                                INSERT a row to the indexed table
+//                                                INSERT row(s) to the indexed table
 //   - indislive
-//                                                INSERT a row to the indexed table
+//                                                INSERT row(s) to the indexed table
 //   - indisready
-//                                                INSERT a row to the indexed table
+//                                                INSERT row(s) to the indexed table
 //   - backfill
-//                                                INSERT a row to the indexed table
+//                                                INSERT row(s) to the indexed table
 //   - indisvalid
-//                                                INSERT a row to the indexed table
+//                                                INSERT row(s) to the indexed table
 // Particularly pay attention to the insert between indisready and backfill.  The insert
 // should cause a write to go to the index.  Backfill should choose a read time after this write, so
 // it should try to backfill this same row.  Rather than conflicting when we see the row already
@@ -1280,7 +1280,7 @@ TEST_F_EX(PgIndexBackfillTest,
         std::string msg = status.message().ToBuffer();
         const std::vector<std::string> allowed_msgs{
           "Errors occurred while reaching out to the tablet servers",
-          "Resource unavailable : RocksDB",
+          "Resource unavailable",
           "schema version mismatch",
           "Transaction aborted",
           "expired or aborted by a conflict",

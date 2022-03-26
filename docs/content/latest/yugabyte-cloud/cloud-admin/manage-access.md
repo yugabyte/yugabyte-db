@@ -35,7 +35,7 @@ Developer users have access to all cloud features, with the exception of adminis
 
 - invite users to the cloud.
 - delete or change the role of other users.
-- create a billing profile. 
+- create a billing profile.
 
 To access a cluster database, you need to ask an Admin for the username and password of a database user created on your behalf.
 
@@ -52,7 +52,7 @@ To invite a user:
 
 Users will receive a verification email with a link to create their account and set up a password. Invitations expire after 24 hours.
 
-For users that have not responded to their invitation (their status is Invited), you can click **Resend Invite** to send a fresh invitation. 
+For users that have not responded to their invitation (their status is Invited), you can click **Resend Invite** to send a fresh invitation.
 
 ## Delete a user
 

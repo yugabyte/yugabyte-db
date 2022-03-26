@@ -10337,9 +10337,9 @@
 { oid => '8033', descr => 'get the YB table properties',
   proname => 'yb_table_properties', provolatile => 's',
   prorettype => 'record', proargtypes => 'oid',
-  proallargtypes => '{oid,int8,int8,bool}',
-  proargmodes => '{i,o,o,o}',
-  proargnames => '{table_oid,num_tablets,num_hash_key_columns,is_colocated}',
+  proallargtypes => '{oid,int8,int8,bool,oid,oid}',
+  proargmodes => '{i,o,o,o,o,o}',
+  proargnames => '{table_oid,num_tablets,num_hash_key_columns,is_colocated,tablegroup_oid,colocation_id}',
   prosrc => 'yb_table_properties' },
 
 { oid => '8034', descr => 'is the database colocated in the YB server?',

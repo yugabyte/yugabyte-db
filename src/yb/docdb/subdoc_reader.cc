@@ -62,7 +62,7 @@ Expiration GetNewExpiration(
   // We may need to update the TTL in individual columns.
   if (new_write_time.hybrid_time() >= new_exp.write_ht) {
     // We want to keep the default TTL otherwise.
-    if (ttl != Value::kMaxTtl) {
+    if (ttl != ValueControlFields::kMaxTtl) {
       new_exp.write_ht = new_write_time.hybrid_time();
       new_exp.ttl = ttl;
     } else if (new_exp.ttl.IsNegative()) {
@@ -131,7 +131,7 @@ boost::optional<uint64_t> ObsolescenceTracker::GetTtlRemainingSeconds(
   auto ttl_value = expiration_.value().ttl;
   auto doc_read_time = read_time_.value();
 
-  if (ttl_value == Value::kMaxTtl) {
+  if (ttl_value == ValueControlFields::kMaxTtl) {
     return -1;
   }
   int64_t time_since_ttl_write_seconds = (

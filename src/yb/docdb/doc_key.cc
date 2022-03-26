@@ -131,14 +131,14 @@ Status ConsumePrimitiveValuesFromKey(Slice* slice, std::vector<PrimitiveValue>* 
 
 DocKey::DocKey()
     : cotable_id_(Uuid::Nil()),
-      pgtable_id_(0),
+      colocation_id_(kColocationIdNotSet),
       hash_present_(false),
       hash_(0) {
 }
 
 DocKey::DocKey(std::vector<PrimitiveValue> range_components)
     : cotable_id_(Uuid::Nil()),
-      pgtable_id_(0),
+      colocation_id_(kColocationIdNotSet),
       hash_present_(false),
       hash_(0),
       range_group_(std::move(range_components)) {
@@ -148,7 +148,7 @@ DocKey::DocKey(DocKeyHash hash,
                std::vector<PrimitiveValue> hashed_components,
                std::vector<PrimitiveValue> range_components)
     : cotable_id_(Uuid::Nil()),
-      pgtable_id_(0),
+      colocation_id_(kColocationIdNotSet),
       hash_present_(true),
       hash_(hash),
       hashed_group_(std::move(hashed_components)),
@@ -160,19 +160,19 @@ DocKey::DocKey(const Uuid& cotable_id,
                std::vector<PrimitiveValue> hashed_components,
                std::vector<PrimitiveValue> range_components)
     : cotable_id_(cotable_id),
-      pgtable_id_(0),
+      colocation_id_(kColocationIdNotSet),
       hash_present_(true),
       hash_(hash),
       hashed_group_(std::move(hashed_components)),
       range_group_(std::move(range_components)) {
 }
 
-DocKey::DocKey(const PgTableOid pgtable_id,
+DocKey::DocKey(const ColocationId colocation_id,
                DocKeyHash hash,
                std::vector<PrimitiveValue> hashed_components,
                std::vector<PrimitiveValue> range_components)
     : cotable_id_(Uuid::Nil()),
-      pgtable_id_(pgtable_id),
+      colocation_id_(colocation_id),
       hash_present_(true),
       hash_(hash),
       hashed_group_(std::move(hashed_components)),
@@ -181,35 +181,35 @@ DocKey::DocKey(const PgTableOid pgtable_id,
 
 DocKey::DocKey(const Uuid& cotable_id)
     : cotable_id_(cotable_id),
-      pgtable_id_(0),
+      colocation_id_(kColocationIdNotSet),
       hash_present_(false),
       hash_(0) {
 }
 
-DocKey::DocKey(const PgTableOid pgtable_id)
+DocKey::DocKey(const ColocationId colocation_id)
     : cotable_id_(Uuid::Nil()),
-      pgtable_id_(pgtable_id),
+      colocation_id_(colocation_id),
       hash_present_(false),
       hash_(0) {
 }
 
 DocKey::DocKey(const Schema& schema)
     : cotable_id_(schema.cotable_id()),
-      pgtable_id_(schema.pgtable_id()),
+      colocation_id_(schema.colocation_id()),
       hash_present_(false),
       hash_(0) {
 }
 
 DocKey::DocKey(const Schema& schema, DocKeyHash hash)
     : cotable_id_(schema.cotable_id()),
-      pgtable_id_(schema.pgtable_id()),
+      colocation_id_(schema.colocation_id()),
       hash_present_(true),
       hash_(hash) {
 }
 
 DocKey::DocKey(const Schema& schema, std::vector<PrimitiveValue> range_components)
     : cotable_id_(schema.cotable_id()),
-      pgtable_id_(schema.pgtable_id()),
+      colocation_id_(schema.colocation_id()),
       hash_present_(false),
       hash_(0),
       range_group_(std::move(range_components)) {
@@ -219,7 +219,7 @@ DocKey::DocKey(const Schema& schema, DocKeyHash hash,
                std::vector<PrimitiveValue> hashed_components,
                std::vector<PrimitiveValue> range_components)
     : cotable_id_(schema.cotable_id()),
-      pgtable_id_(schema.pgtable_id()),
+      colocation_id_(schema.colocation_id()),
       hash_present_(true),
       hash_(hash),
       hashed_group_(std::move(hashed_components)),
@@ -255,7 +255,9 @@ void DocKey::AppendTo(KeyBytes* out) const {
   if (!cotable_id_.IsNil()) {
     encoder.CotableId(cotable_id_).Hash(hash_present_, hash_, hashed_group_).Range(range_group_);
   } else {
-    encoder.PgtableId(pgtable_id_).Hash(hash_present_, hash_, hashed_group_).Range(range_group_);
+    encoder.ColocationId(colocation_id_)
+           .Hash(hash_present_, hash_, hashed_group_)
+           .Range(range_group_);
   }
 }
 
@@ -292,7 +294,7 @@ class DecodeDocKeyCallback {
 
   void SetCoTableId(const Uuid cotable_id) const {}
 
-  void SetPgTableId(const PgTableOid pgtable_id) const {}
+  void SetColocationId(const ColocationId colocation_id) const {}
 
  private:
   boost::container::small_vector_base<Slice>* out_;
@@ -312,7 +314,7 @@ class DummyCallback {
 
   void SetCoTableId(const Uuid cotable_id) const {}
 
-  void SetPgTableId(const PgTableOid pgtable_id) const {}
+  void SetColocationId(const ColocationId colocation_id) const {}
 
   PrimitiveValue* AddSubkey() const {
     return nullptr;
@@ -336,7 +338,7 @@ class EncodedSizesCallback {
 
   void SetCoTableId(const Uuid cotable_id) const {}
 
-  void SetPgTableId(const PgTableOid pgtable_id) const {}
+  void SetColocationId(const ColocationId colocation_id) const {}
 
   PrimitiveValue* AddSubkey() const {
     return nullptr;
@@ -366,7 +368,7 @@ yb::Status DocKey::PartiallyDecode(Slice *slice,
 Result<DocKeyHash> DocKey::DecodeHash(const Slice& slice) {
   DocKeyDecoder decoder(slice);
   RETURN_NOT_OK(decoder.DecodeCotableId());
-  RETURN_NOT_OK(decoder.DecodePgtableId());
+  RETURN_NOT_OK(decoder.DecodeColocationId());
   uint16_t hash;
   RETURN_NOT_OK(decoder.DecodeHashCode(&hash));
   return hash;
@@ -436,8 +438,8 @@ class DocKey::DecodeFromCallback {
     key_->cotable_id_ = cotable_id;
   }
 
-  void SetPgTableId(const PgTableOid pgtable_id) const {
-    key_->pgtable_id_ = pgtable_id;
+  void SetColocationId(const ColocationId colocation_id) const {
+    key_->colocation_id_ = colocation_id;
   }
 
  private:
@@ -486,11 +488,11 @@ yb::Status DocKey::DoDecode(DocKeyDecoder* decoder,
                             AllowSpecial allow_special,
                             const Callback& callback) {
   Uuid cotable_id;
-  PgTableOid pgtable_id;
+  ColocationId colocation_id;
   if (VERIFY_RESULT(decoder->DecodeCotableId(&cotable_id))) {
     callback.SetCoTableId(cotable_id);
-  } else if (VERIFY_RESULT(decoder->DecodePgtableId(&pgtable_id))) {
-    callback.SetPgTableId(pgtable_id);
+  } else if (VERIFY_RESULT(decoder->DecodeColocationId(&colocation_id))) {
+    callback.SetColocationId(colocation_id);
   }
 
   switch (part_to_decode) {
@@ -578,9 +580,9 @@ string DocKey::ToString(AutoDecodeKeys auto_decode_keys) const {
     result += "CoTableId=";
     result += cotable_id_.ToString();
     result += ", ";
-  } else if (pgtable_id_ > 0) {
-    result += "PgTableId=";
-    result += std::to_string(pgtable_id_);
+  } else if (colocation_id_ != kColocationIdNotSet) {
+    result += "ColocationId=";
+    result += std::to_string(colocation_id_);
     result += ", ";
   }
 
@@ -598,7 +600,7 @@ string DocKey::ToString(AutoDecodeKeys auto_decode_keys) const {
 
 bool DocKey::operator ==(const DocKey& other) const {
   return cotable_id_ == other.cotable_id_ &&
-         pgtable_id_ == other.pgtable_id_ &&
+         colocation_id_ == other.colocation_id_ &&
          HashedComponentsEqual(other) &&
          range_group_ == other.range_group_;
 }
@@ -622,7 +624,7 @@ int DocKey::CompareTo(const DocKey& other) const {
   int result = CompareUsingLessThan(cotable_id_, other.cotable_id_);
   if (result != 0) return result;
 
-  result = CompareUsingLessThan(pgtable_id_, other.pgtable_id_);
+  result = CompareUsingLessThan(colocation_id_, other.colocation_id_);
   if (result != 0) return result;
 
   result = CompareUsingLessThan(hash_present_, other.hash_present_);
@@ -677,10 +679,10 @@ std::string DocKey::DebugSliceToString(Slice slice) {
 bool DocKey::BelongsTo(const Schema& schema) const {
   if (!cotable_id_.IsNil()) {
     return cotable_id_ == schema.cotable_id();
-  } else if (pgtable_id_ > 0) {
-    return pgtable_id_ == schema.pgtable_id();
+  } else if (colocation_id_ != kColocationIdNotSet) {
+    return colocation_id_ == schema.colocation_id();
   }
-  return schema.cotable_id().IsNil() && schema.pgtable_id() == 0;
+  return schema.cotable_id().IsNil() && schema.colocation_id() == kColocationIdNotSet;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -822,7 +824,7 @@ Status SubDocKey::DoDecode(rocksdb::Slice* slice,
   slice->consume_byte();
 
   auto begin = slice->data();
-  RETURN_NOT_OK(ConsumeHybridTimeFromKey(slice, &callback.doc_hybrid_time()));
+  callback.doc_hybrid_time() = VERIFY_RESULT(DocHybridTime::DecodeFrom(slice));
   callback.DocHybridTimeSlice(Slice(begin, slice->data()));
 
   return Status::OK();
@@ -877,7 +879,8 @@ Status SubDocKey::DecodeDocKeyAndSubKeyEnds(
     SCHECK_GE(slice.size(), id_size + 1, Corruption,
               Format("Cannot have exclusively ID in key $0", slice.ToDebugHexString()));
     // Identify table tombstone.
-    if (slice[0] == ValueTypeAsChar::kPgTableOid && slice[id_size] == ValueTypeAsChar::kGroupEnd) {
+    if (slice[0] == ValueTypeAsChar::kColocationId &&
+        slice[id_size] == ValueTypeAsChar::kGroupEnd) {
       SCHECK_GE(slice.size(), id_size + 2, Corruption,
                 Format("Space for kHybridTime expected in key $0", slice.ToDebugHexString()));
       SCHECK_EQ(slice[id_size + 1], ValueTypeAsChar::kHybridTime, Corruption,
@@ -1203,17 +1206,17 @@ DocKeyEncoderAfterTableIdStep DocKeyEncoder::CotableId(const Uuid& cotable_id) {
   return DocKeyEncoderAfterTableIdStep(out_);
 }
 
-DocKeyEncoderAfterTableIdStep DocKeyEncoder::PgtableId(const PgTableOid pgtable_id) {
-  if (pgtable_id > 0) {
-    out_->AppendValueType(ValueType::kPgTableOid);
-    out_->AppendUInt32(pgtable_id);
+DocKeyEncoderAfterTableIdStep DocKeyEncoder::ColocationId(const yb::ColocationId colocation_id) {
+  if (colocation_id != kColocationIdNotSet) {
+    out_->AppendValueType(ValueType::kColocationId);
+    out_->AppendUInt32(colocation_id);
   }
   return DocKeyEncoderAfterTableIdStep(out_);
 }
 
 DocKeyEncoderAfterTableIdStep DocKeyEncoder::Schema(const class Schema& schema) {
-  if (schema.pgtable_id() > 0) {
-    return PgtableId(schema.pgtable_id());
+  if (schema.colocation_id() != kColocationIdNotSet) {
+    return ColocationId(schema.colocation_id());
   } else {
     return CotableId(schema.cotable_id());
   }
@@ -1237,25 +1240,25 @@ Result<bool> DocKeyDecoder::DecodeCotableId(Uuid* uuid) {
   return true;
 }
 
-Result<bool> DocKeyDecoder::DecodePgtableId(PgTableOid* pgtable_id) {
-  if (input_.empty() || input_[0] != ValueTypeAsChar::kPgTableOid) {
+Result<bool> DocKeyDecoder::DecodeColocationId(ColocationId* colocation_id) {
+  if (input_.empty() || input_[0] != ValueTypeAsChar::kColocationId) {
     return false;
   }
 
   input_.consume_byte();
 
-  if (input_.size() < sizeof(PgTableOid)) {
+  if (input_.size() < sizeof(ColocationId)) {
     return STATUS_FORMAT(
-        Corruption, "Not enough bytes for pgtable id: $0", input_.ToDebugHexString());
+        Corruption, "Not enough bytes for a colocation id: $0", input_.ToDebugHexString());
   }
 
   static_assert(
-      sizeof(PgTableOid) == sizeof(uint32_t),
-      "It looks like the pgtable ID's size has changed -- need to update encoder/decoder.");
-  if (pgtable_id) {
-    *pgtable_id = BigEndian::Load32(input_.data());
+      sizeof(ColocationId) == sizeof(uint32_t),
+      "It looks like the colocation ID's size has changed -- need to update encoder/decoder.");
+  if (colocation_id) {
+    *colocation_id = BigEndian::Load32(input_.data());
   }
-  input_.remove_prefix(sizeof(PgTableOid));
+  input_.remove_prefix(sizeof(ColocationId));
 
   return true;
 }
@@ -1332,7 +1335,7 @@ Result<bool> DocKeyDecoder::HasPrimitiveValue() {
 
 Status DocKeyDecoder::DecodeToRangeGroup() {
   RETURN_NOT_OK(DecodeCotableId());
-  RETURN_NOT_OK(DecodePgtableId());
+  RETURN_NOT_OK(DecodeColocationId());
   if (VERIFY_RESULT(DecodeHashCode())) {
     while (VERIFY_RESULT(HasPrimitiveValue())) {
       RETURN_NOT_OK(DecodePrimitiveValue());
@@ -1367,8 +1370,8 @@ Result<bool> HashedOrFirstRangeComponentsEqual(const Slice& lhs, const Slice& rh
   DocKeyDecoder rhs_decoder(rhs);
   RETURN_NOT_OK(lhs_decoder.DecodeCotableId());
   RETURN_NOT_OK(rhs_decoder.DecodeCotableId());
-  RETURN_NOT_OK(lhs_decoder.DecodePgtableId());
-  RETURN_NOT_OK(rhs_decoder.DecodePgtableId());
+  RETURN_NOT_OK(lhs_decoder.DecodeColocationId());
+  RETURN_NOT_OK(rhs_decoder.DecodeColocationId());
 
   const bool hash_present = VERIFY_RESULT(lhs_decoder.DecodeHashCode(AllowSpecial::kTrue));
   if (hash_present != VERIFY_RESULT(rhs_decoder.DecodeHashCode(AllowSpecial::kTrue))) {
@@ -1415,9 +1418,10 @@ Result<bool> HashedOrFirstRangeComponentsEqual(const Slice& lhs, const Slice& rh
 
 bool DocKeyBelongsTo(Slice doc_key, const Schema& schema) {
   bool has_table_id = !doc_key.empty() &&
-      (doc_key[0] == ValueTypeAsChar::kTableId || doc_key[0] == ValueTypeAsChar::kPgTableOid);
+       (doc_key[0] == ValueTypeAsChar::kTableId ||
+        doc_key[0] == ValueTypeAsChar::kColocationId);
 
-  if (schema.cotable_id().IsNil() && schema.pgtable_id() == 0) {
+  if (schema.cotable_id().IsNil() && schema.colocation_id() == kColocationIdNotSet) {
     return !has_table_id;
   }
 
@@ -1432,11 +1436,11 @@ bool DocKeyBelongsTo(Slice doc_key, const Schema& schema) {
     schema.cotable_id().EncodeToComparable(bytes);
     return doc_key.starts_with(Slice(bytes, kUuidSize));
   } else {
-    DCHECK(doc_key[0] == ValueTypeAsChar::kPgTableOid);
+    DCHECK(doc_key[0] == ValueTypeAsChar::kColocationId);
     doc_key.consume_byte();
-    char buf[sizeof(PgTableOid)];
-    BigEndian::Store32(buf, schema.pgtable_id());
-    return doc_key.starts_with(Slice(buf, sizeof(PgTableOid)));
+    char buf[sizeof(ColocationId)];
+    BigEndian::Store32(buf, schema.colocation_id());
+    return doc_key.starts_with(Slice(buf, sizeof(ColocationId)));
   }
 }
 

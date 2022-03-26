@@ -91,12 +91,6 @@ class PgApiImpl {
     return &pg_callbacks_;
   }
 
-  //------------------------------------------------------------------------------------------------
-  // Access function to Pggate attribute.
-  client::YBClient* client() {
-    return async_client_init_.client();
-  }
-
   void ResetCatalogReadTime();
 
   // Initialize ENV within which PGSQL calls will be executed.
@@ -245,6 +239,7 @@ class PgApiImpl {
                                 bool add_primary_key,
                                 const bool colocated,
                                 const PgObjectId& tablegroup_oid,
+                                const ColocationId colocation_id,
                                 const PgObjectId& tablespace_oid,
                                 const PgObjectId& matview_pg_table_oid,
                                 PgStatement **handle);
@@ -308,6 +303,7 @@ class PgApiImpl {
                                 const bool skip_index_backfill,
                                 bool if_not_exist,
                                 const PgObjectId& tablegroup_oid,
+                                const YBCPgOid& colocation_id,
                                 const PgObjectId& tablespace_oid,
                                 PgStatement **handle);
 
@@ -365,6 +361,16 @@ class PgApiImpl {
                                 bool start_inclusive, uint64_t start_hash_val,
                                 bool end_valid, bool end_inclusive,
                                 uint64_t end_hash_val);
+
+  CHECKED_STATUS DmlAddRowUpperBound(YBCPgStatement handle,
+                                    int n_col_values,
+                                    YBCPgExpr *col_values,
+                                    bool is_inclusive);
+
+  CHECKED_STATUS DmlAddRowLowerBound(YBCPgStatement handle,
+                                    int n_col_values,
+                                    YBCPgExpr *col_values,
+                                    bool is_inclusive);
 
   // Binding Tables: Bind the whole table in a statement.  Do not use with BindColumn.
   CHECKED_STATUS DmlBindTable(YBCPgStatement handle);
@@ -559,9 +565,6 @@ class PgApiImpl {
   std::shared_ptr<MemTracker> mem_tracker_;
 
   PgApiContext::MessengerHolder messenger_holder_;
-
-  // YBClient is to communicate with either master or tserver.
-  yb::client::AsyncClientInitialiser async_client_init_;
 
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
 

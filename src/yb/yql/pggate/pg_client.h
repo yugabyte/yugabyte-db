@@ -50,6 +50,10 @@ YB_STRONGLY_TYPED_BOOL(DdlMode);
 struct PerformResult {
   Status status;
   ReadHybridTime catalog_read_time;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(status, catalog_read_time);
+  }
 };
 
 using PerformCallback = std::function<void(const PerformResult&)>;
@@ -95,6 +99,28 @@ class PgClient {
   CHECKED_STATUS RollbackSubTransaction(SubTransactionId id);
 
   CHECKED_STATUS ValidatePlacement(const tserver::PgValidatePlacementRequestPB* req);
+
+  CHECKED_STATUS InsertSequenceTuple(int64_t db_oid,
+                                     int64_t seq_oid,
+                                     uint64_t ysql_catalog_version,
+                                     int64_t last_val,
+                                     bool is_called);
+
+  Result<bool> UpdateSequenceTuple(int64_t db_oid,
+                                   int64_t seq_oid,
+                                   uint64_t ysql_catalog_version,
+                                   int64_t last_val,
+                                   bool is_called,
+                                   boost::optional<int64_t> expected_last_val,
+                                   boost::optional<bool> expected_is_called);
+
+  Result<std::pair<int64_t, bool>> ReadSequenceTuple(int64_t db_oid,
+                                                     int64_t seq_oid,
+                                                     uint64_t ysql_catalog_version);
+
+  CHECKED_STATUS DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid);
+
+  CHECKED_STATUS DeleteDBSequences(int64_t db_oid);
 
   void PerformAsync(
       tserver::PgPerformOptionsPB* options,

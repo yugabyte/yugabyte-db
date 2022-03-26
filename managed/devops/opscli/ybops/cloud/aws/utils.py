@@ -29,7 +29,6 @@ IGW_PREFIX_FORMAT = RESOURCE_PREFIX_FORMAT + "-igw"
 ROUTE_TABLE_PREFIX_FORMAT = RESOURCE_PREFIX_FORMAT + "-rt"
 SG_YUGABYTE_PREFIX_FORMAT = RESOURCE_PREFIX_FORMAT + "-sg"
 PEER_CONN_FORMAT = "yb-peer-conn-{}-to-{}"
-ROOT_VOLUME_LABEL = "/dev/sda1"
 
 
 class AwsBootstrapRegion():
@@ -374,6 +373,22 @@ def get_spot_pricing(region, zone, instance_type):
     if len(spot_price['SpotPriceHistory']) == 0:
         raise YBOpsRuntimeError('Invalid instance type {} for zone {}'.format(instance_type, zone))
     return spot_price['SpotPriceHistory'][0]['SpotPrice']
+
+
+def describe_ami(region, ami):
+    client = boto3.client("ec2", region_name=region)
+    images = client.describe_images(ImageIds=[ami]).get("Images", [])
+    if len(images) == 0:
+        raise YBOpsRuntimeError('Could not find image for AMI {} in region {}'.format(ami, region))
+    return images[0]
+
+
+def get_image_arch(region, ami):
+    return describe_ami(region, ami).get("Architecture")
+
+
+def get_root_label(region, ami):
+    return describe_ami(region, ami).get("RootDeviceName")
 
 
 def get_zones(region, dest_vpc_id=None):
@@ -944,7 +959,7 @@ def create_instance(args):
             "Arn": args.iam_profile_arn
         }
     volumes.append({
-        "DeviceName": ROOT_VOLUME_LABEL,
+        "DeviceName": get_root_label(args.region, args.machine_image),
         "Ebs": ebs
     })
 

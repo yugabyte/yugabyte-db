@@ -3,28 +3,46 @@
 package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.models.CustomerTask.TargetType;
-import static com.yugabyte.yw.models.CustomerTask.TaskType;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange;
+import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.common.services.YBClientService;
+import org.yb.client.ChangeLoadBalancerStateResponse;
+import org.yb.client.YBClient;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.Ebean;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Singleton;
+import javax.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import play.api.Play;
 
 @Singleton
 public class CustomerTaskManager {
 
   public static final Logger LOG = LoggerFactory.getLogger(CustomerTaskManager.class);
+  private static final List<TaskType> LOAD_BALANCER_TASK_TYPES =
+      Arrays.asList(
+          TaskType.RestoreBackup,
+          TaskType.BackupUniverse,
+          TaskType.MultiTableBackup,
+          TaskType.CreateBackup);
+  private static final String ALTER_LOAD_BALANCER = "alterLoadBalancer";
+  @Inject YBClientService ybService;
 
   private void setTaskError(TaskInfo taskInfo) {
     taskInfo.setTaskState(TaskInfo.State.Failure);
@@ -49,24 +67,42 @@ public class CustomerTaskManager {
                 subtask.save();
               });
 
+      if (LOAD_BALANCER_TASK_TYPES.contains(taskInfo.getTaskType())) {
+        Boolean isLoadBalanceAltered = false;
+        JsonNode node = taskInfo.getTaskDetails();
+        if (node.has(ALTER_LOAD_BALANCER)) {
+          isLoadBalanceAltered = node.path(ALTER_LOAD_BALANCER).asBoolean(false);
+        }
+        Optional<Universe> optUniv = Universe.maybeGet(customerTask.getTargetUUID());
+        if (optUniv.isPresent() && isLoadBalanceAltered) {
+          enableLoadBalancer(optUniv.get());
+        }
+      }
+
+      UUID taskUUID = taskInfo.getTaskUUID();
+      ScheduleTask scheduleTask = ScheduleTask.fetchByTaskUUID(taskUUID);
+      if (scheduleTask != null) {
+        scheduleTask.setCompletedTime();
+      }
+
       // Use isUniverseTarget() instead of directly comparing with Universe type because some
       // targets like Cluster, Node are Universe targets.
       boolean unlockUniverse = customerTask.getTarget().isUniverseTarget();
       if (customerTask.getTarget().equals(TargetType.Backup)) {
         // Backup is not universe target.
-        TaskType type = customerTask.getType();
-        if (TaskType.Create.equals(type)) {
+
+        CustomerTask.TaskType type = customerTask.getType();
+        if (CustomerTask.TaskType.Create.equals(type)) {
           // Make transition state false for inProgress backups
-          UUID taskUUID = taskInfo.getTaskUUID();
           List<Backup> backupList = Backup.fetchAllBackupsByTaskUUID(taskUUID);
           backupList
               .stream()
               .filter(backup -> backup.state.equals(Backup.BackupState.InProgress))
               .forEach(backup -> backup.transitionState(Backup.BackupState.Failed));
           unlockUniverse = true;
-        } else if (TaskType.Delete.equals(type)) {
+        } else if (CustomerTask.TaskType.Delete.equals(type)) {
           // NOOP because Delete does not lock Universe.
-        } else if (TaskType.Restore.equals(type)) {
+        } else if (CustomerTask.TaskType.Restore.equals(type)) {
           // Restore only locks the Universe but does not set backupInProgress flag.
           unlockUniverse = true;
         }
@@ -138,6 +174,28 @@ public class CustomerTaskManager {
               });
     } catch (Exception e) {
       LOG.error("Encountered error failing pending tasks", e);
+    }
+  }
+
+  private void enableLoadBalancer(Universe universe) {
+    ChangeLoadBalancerStateResponse resp = null;
+    YBClient client = null;
+    String masterHostPorts = universe.getMasterAddresses();
+    String certificate = universe.getCertificateNodetoNode();
+    try {
+      client = ybService.getClient(masterHostPorts, certificate);
+      resp = client.changeLoadBalancerState(true);
+    } catch (Exception e) {
+      LOG.error(
+          "Setting load balancer to state true has failed for universe: "
+              + universe.getUniverseUUID());
+    } finally {
+      ybService.closeClient(client, masterHostPorts);
+    }
+    if (resp != null && resp.hasError()) {
+      LOG.error(
+          "Setting load balancer to state true has failed for universe: "
+              + universe.getUniverseUUID());
     }
   }
 }

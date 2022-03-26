@@ -82,7 +82,11 @@ void CleanupAbortsTask::Run() {
   }
 
   RemoveIntentsData data;
-  participant_context_.GetLastReplicatedData(&data);
+  auto status = participant_context_.GetLastReplicatedData(&data);
+  if (!status.ok()) {
+    LOG_WITH_PREFIX(INFO) << "Failed to get last replicated data: " << status;
+    return;
+  }
   WARN_NOT_OK(applier_->RemoveIntents(data, transactions_to_cleanup_),
               "RemoveIntents for transaction cleanup in compaction failed.");
   LOG_WITH_PREFIX(INFO)

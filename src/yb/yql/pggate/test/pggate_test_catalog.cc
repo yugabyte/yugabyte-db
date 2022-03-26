@@ -15,6 +15,7 @@
 
 #include <chrono>
 
+#include "yb/common/constants.h"
 #include "yb/common/ybc-internal.h"
 
 #include "yb/gutil/casts.h"
@@ -46,6 +47,7 @@ TEST_F(PggateTestCatalog, TestDml) {
                                        false /* is_shared_table */, true /* if_not_exist */,
                                        false /* add_primary_key */, true /* colocated */,
                                        kInvalidOid /* tablegroup_id */,
+                                       kColocationIdNotSet /* colocation_id */,
                                        kInvalidOid /* tablespace_id */,
                                        kInvalidOid /* matview_pg_table_id */,
                                        &pg_stmt));
@@ -394,6 +396,7 @@ TEST_F(PggateTestCatalog, TestCopydb) {
                                        false /* is_shared_table */, true /* if_not_exist */,
                                        false /* add_primary_key */, true /* colocated */,
                                        kInvalidOid /* tablegroup_id */,
+                                       kColocationIdNotSet /* colocation_id */,
                                        kInvalidOid /* tablespace_id */,
                                        kInvalidOid /* matview_pg_table_id */,
                                        &pg_stmt));

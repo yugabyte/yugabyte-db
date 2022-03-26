@@ -184,6 +184,18 @@ void MasterServiceBase::HandleIn(
 #define HANDLE_ON_LEADER_WITHOUT_LOCK(class_name, method_name) \
     HANDLE_ON_LEADER_IMPL(class_name, method_name, HoldCatalogLock::kFalse)
 
+#define MASTER_SERVICE_IMPL_ON_LEADER_WITHOUT_LOCK_HELPER(r, class_name, method_name) \
+  void method_name( \
+      const BOOST_PP_CAT(method_name, RequestPB)* req, \
+      BOOST_PP_CAT(method_name, ResponsePB)* resp, \
+      rpc::RpcContext rpc) override { \
+    HANDLE_ON_LEADER_WITHOUT_LOCK(class_name, method_name); \
+  }
+
+#define MASTER_SERVICE_IMPL_ON_LEADER_WITHOUT_LOCK(class_name, methods) \
+  BOOST_PP_SEQ_FOR_EACH(MASTER_SERVICE_IMPL_ON_LEADER_WITHOUT_LOCK_HELPER, class_name, methods)
+
+
 } // namespace master
 } // namespace yb
 

@@ -85,7 +85,7 @@ public class AuditTest extends FakeDBApplication {
     assertEquals(entries.get(0).getApiCall(), "/api/customer/test/universe/test");
     assertEquals(entries.get(0).getApiMethod(), "PUT");
     assertNull(entries.get(0).getTarget());
-    assertNull(entries.get(0).getTargetUUID());
+    assertNull(entries.get(0).getTargetID());
     assertNull(entries.get(0).getAction());
     assertNull(entries.get(0).getTaskUUID());
     assertNull(entries.get(0).getPayload());
@@ -103,7 +103,7 @@ public class AuditTest extends FakeDBApplication {
     assertEquals(entries.get(0).getApiCall(), "/api/customer/test/universe/test");
     assertEquals(entries.get(0).getApiMethod(), "PUT");
     assertNull(entries.get(0).getTarget());
-    assertNull(entries.get(0).getTargetUUID());
+    assertNull(entries.get(0).getTargetID());
     assertNull(entries.get(0).getAction());
     assertEquals(entries.get(0).getTaskUUID(), randUUID);
     assertNull(entries.get(0).getPayload());
@@ -113,9 +113,9 @@ public class AuditTest extends FakeDBApplication {
   @Test
   public void testCreateAuditEntryWithTargetAndAction() {
     Audit.TargetType target = Audit.TargetType.Universe;
-    UUID targetUUID = UUID.randomUUID();
-    Audit.ActionType action = Audit.ActionType.CreateUniverse;
-    auditService.createAuditEntry(context, request, target, targetUUID, action);
+    String targetID = "Test TargetID";
+    Audit.ActionType action = Audit.ActionType.Create;
+    auditService.createAuditEntry(context, request, target, targetID, action);
     List<Audit> entries = Audit.getAll(customer.uuid);
     assertEquals(entries.size(), 1);
     assertEquals(entries.get(0).getUserUUID(), user.uuid);
@@ -123,7 +123,7 @@ public class AuditTest extends FakeDBApplication {
     assertEquals(entries.get(0).getApiCall(), "/api/customer/test/universe/test");
     assertEquals(entries.get(0).getApiMethod(), "PUT");
     assertEquals(entries.get(0).getTarget(), target);
-    assertEquals(entries.get(0).getTargetUUID(), targetUUID);
+    assertEquals(entries.get(0).getTargetID(), targetID);
     assertEquals(entries.get(0).getAction(), action);
     assertNull(entries.get(0).getTaskUUID());
     assertNull(entries.get(0).getPayload());
@@ -150,7 +150,7 @@ public class AuditTest extends FakeDBApplication {
     assertEquals(entries.get(0).getApiCall(), "/api/customer/test/universe/test");
     assertEquals(entries.get(0).getApiMethod(), "PUT");
     assertNull(entries.get(0).getTarget());
-    assertNull(entries.get(0).getTargetUUID());
+    assertNull(entries.get(0).getTargetID());
     assertNull(entries.get(0).getAction());
     assertNull(entries.get(0).getTaskUUID());
     assertEquals(entries.get(0).getPayload(), expectedPayload);
@@ -169,7 +169,7 @@ public class AuditTest extends FakeDBApplication {
     assertEquals(entries.get(0).getApiCall(), "/api/customer/test/universe/test");
     assertEquals(entries.get(0).getApiMethod(), "PUT");
     assertNull(entries.get(0).getTarget());
-    assertNull(entries.get(0).getTargetUUID());
+    assertNull(entries.get(0).getTargetID());
     assertNull(entries.get(0).getAction());
     assertEquals(entries.get(0).getTaskUUID(), randUUID);
     assertEquals(entries.get(0).getPayload(), testPayload);
@@ -180,9 +180,9 @@ public class AuditTest extends FakeDBApplication {
   public void testCreateAuditEntryWithPayloadAndTargetAndAction() {
     ObjectNode testPayload = Json.newObject().put("foo", "bar").put("abc", "xyz");
     Audit.TargetType target = Audit.TargetType.Universe;
-    UUID targetUUID = UUID.randomUUID();
-    Audit.ActionType action = Audit.ActionType.CreateUniverse;
-    auditService.createAuditEntry(context, request, target, targetUUID, action, testPayload);
+    String targetID = "Test TargetID";
+    Audit.ActionType action = Audit.ActionType.Create;
+    auditService.createAuditEntry(context, request, target, targetID, action, testPayload);
     List<Audit> entries = Audit.getAll(customer.uuid);
     assertEquals(entries.size(), 1);
     assertEquals(entries.get(0).getUserUUID(), user.uuid);
@@ -190,7 +190,7 @@ public class AuditTest extends FakeDBApplication {
     assertEquals(entries.get(0).getApiCall(), "/api/customer/test/universe/test");
     assertEquals(entries.get(0).getApiMethod(), "PUT");
     assertEquals(entries.get(0).getTarget(), target);
-    assertEquals(entries.get(0).getTargetUUID(), targetUUID);
+    assertEquals(entries.get(0).getTargetID(), targetID);
     assertEquals(entries.get(0).getAction(), action);
     assertNull(entries.get(0).getTaskUUID());
     assertEquals(entries.get(0).getPayload(), testPayload);
@@ -202,10 +202,10 @@ public class AuditTest extends FakeDBApplication {
     UUID taskUUID = UUID.randomUUID();
     ObjectNode testPayload = Json.newObject().put("foo", "bar").put("abc", "xyz");
     Audit.TargetType target = Audit.TargetType.Universe;
-    UUID targetUUID = UUID.randomUUID();
-    Audit.ActionType action = Audit.ActionType.CreateUniverse;
+    String targetID = "Test TargetID";
+    Audit.ActionType action = Audit.ActionType.Create;
     auditService.createAuditEntry(
-        context, request, target, targetUUID, action, testPayload, taskUUID);
+        context, request, target, targetID, action, testPayload, taskUUID);
     List<Audit> entries = Audit.getAll(customer.uuid);
     assertEquals(entries.size(), 1);
     assertEquals(entries.get(0).getUserUUID(), user.uuid);
@@ -213,7 +213,7 @@ public class AuditTest extends FakeDBApplication {
     assertEquals(entries.get(0).getApiCall(), "/api/customer/test/universe/test");
     assertEquals(entries.get(0).getApiMethod(), "PUT");
     assertEquals(entries.get(0).getTarget(), target);
-    assertEquals(entries.get(0).getTargetUUID(), targetUUID);
+    assertEquals(entries.get(0).getTargetID(), targetID);
     assertEquals(entries.get(0).getAction(), action);
     assertEquals(entries.get(0).getTaskUUID(), taskUUID);
     assertEquals(entries.get(0).getPayload(), testPayload);

@@ -58,115 +58,101 @@ showAsideToc: true
 
 </ul>
 
-## 1. Create a new project (optional)
+## Create a project (optional)
 
-A project forms the basis for creating, enabling and using all GCP services, managing APIs, enabling billing, adding and removing collaborators, and managing permissions. Go to the [GCP cloud resource manager](https://console.cloud.google.com/cloud-resource-manager) and click on create project to get started. You can follow these instructions to [create a new GCP project](https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+A project forms the basis for creating, enabling and using all GCP services, managing APIs, enabling billing, adding and removing collaborators, and managing permissions. 
 
-Give the project a suitable name (for example, `yugabyte-gcp`) and note the project ID (for example, `yugabyte-gcp`). You should see a dialog that looks like the screenshot below.
+For instructions on how to create a project using [GCP cloud resource manager](https://console.cloud.google.com/cloud-resource-manager), see [Create and managing projects](https://cloud.google.com/resource-manager/docs/creating-managing-projects) in the GCP documentation.
 
-![Creating a GCP project](/images/ee/gcp-setup/project-create.png)
+You should include `yugabyte` as part of the project name (for example, `yugabyte-gcp`) and note the project ID.
 
-## 2. Set up a new service account
+## Create a service account
 
-The Yugabyte Platform console requires a service account with the appropriate permissions to provision and manage compute instances. Go to *IAM & admin > Service accounts* and click **Create Service Account**. You can follow these instructions to [create a service account](https://cloud.google.com/iam/docs/creating-managing-service-accounts).
+Yugabyte Platform requires a service account with the appropriate permissions to provision and manage compute instances.
 
-Fill the form with the following values:
+To create a service account, perform the following:
 
-- Service account name is `yugaware` (you can customize the name, if needed).
-- Set the **Project** role to `Owner`.
-- Check the box for **Furnish a new private key**, choose the `JSON` option.
+- Open your project in GCP and use the left-side menu to navigate to **IAM & Admin > Service Accounts**.
 
-Here is a screenshot with the above values in the form, click create once the values are filled in.
+- Click **Create Service Account**.
 
-![Service Account -- filled create form](/images/ee/gcp-setup/service-account-filled-create.png)
+- Complete the **Service account details** fields and click **Create and Continue**.
 
-**NOTE**: Your web browser downloads the respective JSON format key. It is important to store it safely. This JSON key is needed to configure the Yugabyte Platform console.
+- In the **Grant this service account access to project** section, select the **Owner** role.
 
-## 3. Give permissions to the service account
+- In the **Grant users access to this service account** section, enter the email associated with this service account. To retrieve the email information, navigate to **IAM & Admin > Service Accounts** and copy the **Email** value.
 
-- Find the email address associated with the service account by going to **IAM & admin > Service accounts**. Copy this value. The screen should look as shown below.
+- Navigate back to **IAM & Admin > Service Accounts**, click the email address of the service account, and then select the **KEYS** tab.
 
-![Service Account Email Address](/images/ee/gcp-setup/gcp-service-account-email.png)
+- Click **ADD KEY** and select **Create new key**.
 
-- Next, go to **IAM & admin > IAM** and click **ADD**. Add the compute admin role for this service account. A screenshot is shown below.
+- In the **Create private key** dialog, select **JSON** as the key type, and then click **Create** to download a service account key file. Note that after you download the key, you need to store this file, as you cannot download it again and this key is required for configuring the Yugabyte Platform UI.
 
-![Service Account Add Roles](/images/ee/gcp-setup/gcp-service-account-permissions.png)
+  For additional information, see [Creating and managing service account keys](https://cloud.google.com/iam/docs/creating-managing-service-account-keys) in the GCP documentation. 
 
-## 4. Creating a firewall rule
+- Navigate to **IAM & Admin > IAM**, click **ADD**, and then provide principals and roles.
 
-In order to access the Yugabyte Platform from outside the GCP environment, you would need to enable firewall rules. You will at minimum need to:
+For more information, see [Creating and managing service accounts](https://cloud.google.com/iam/docs/creating-managing-service-accounts) in the GCP documentation.
 
-- Access the Yugabyte Platform instance over SSH (port `tcp:22`)
-- Check, manage, and upgrade Yugabyte Platform (port `tcp:8800`)
-- View the Yugabyte Platform console (port `tcp:80`)
+## Create a firewall rule
 
-If you are using your own custom VPCs (self-managed configuration), the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 11000, 12000, 9300, 9042, 5433, and 6379. For more information on ports used by YugabyteDB, refer to [Default ports](../../../../reference/configuration/default-ports).
+In order to access Yugabyte Platform from outside the GCP environment, you have to enable firewall rules. At a minimum, you need to be able to do the following:
 
-Create a firewall entry enabling these by going to **VPC network > Firewall rules**:
+- Access the Yugabyte Platform instance over SSH (port `tcp:22`).
+- Check, manage, and upgrade Yugabyte Platform (port `tcp:8800`).
+- View the Yugabyte Platform UI (port `tcp:80`).
 
-![Firewall -- service entry](/images/ee/gcp-setup/firewall-tab.png)
+If you are using your own Virtual Private Cloud (VPC) as a self-managed configuration, the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 11000, 12000, 13000, 9300, 9042, 5433, 6379, 54422. For more information, see [Default ports](../../../../reference/configuration/default-ports).
 
-**NOTE**: If this is a new project, you might see a message saying `Compute Engine is getting ready`. If so, you would need to wait for a while. Once complete, you should see the default set of firewall rules for your default network, as shown below.
+Next, you need to create a firewall entry, as follows: 
 
-![Firewall -- fresh list](/images/ee/gcp-setup/firewall-fresh-list.png)
+- From your project's main page, navigate to **VPC network > Firewall**. 
+- Create firewall rules by following instructions provided in [Using firewall rules](https://cloud.google.com/vpc/docs/using-firewalls) in the GCP documentation. When creating the rules:
+  - Add a tag `yugabyte-server` to the **Target tags** field.
+  - Add the appropriate IP addresses to the **Source IP ranges** field.
+  - Enter a comma-delimited list of TCP ports 22, 8800, 80 to the **Protocol and ports** field. If required, also add TCP ports for a self-managed configuration.
 
-Click **CREATE FIREWALL RULE** and fill in the following.
+## Provision instance for Yugabyte Platform
 
-- Enter `yugaware-firewall-rule` as the name (you can change the name if you want).
-- Add a description (for example, `Firewall setup for Yugabyte Platform console`).
-- Add a tag `yugaware-server` to the **Target tags** field. This will be used later when creating instances.
-- Add the appropriate ip addresses to the **Source IP ranges** field. To allow access from any machine, add `0.0.0.0/0` but note that this is not very secure.
-- Add the ports `tcp:22,8800,80` to the **Protocol and ports** field. For a self-managed configuration, also add 7000, 7100, 9000, 9100, 11000, 12000, 9300, 9042, 5433, and 6379 to the tcp ports list.
+You need to create an instance to run Yugabyte Platform. To do this, from your project's main page, navigate to **Compute Engine > VM instances**, click **Create**, and then follow instructions provided in [Virtual machine instances](https://cloud.google.com/compute/docs/instances) in the GCP documentation. When creating instances:
 
-You should see something like the screenshot below, click **Create** next.
+- Select a region as, for example, us-west1. 
+- Select a zone as, for example, us-west1-b.
+- Select 4 vCPUs (n1-standard-4) as the machine type.
+- Change the boot disk image to Ubuntu 18.04 TLS and increase the boot disk size to 100.
+- Specify whether to use the default or your own service account.
+- Specify whether to use the default or your own VPC.
+- Use the **Networking** tab to add `yugabyte-server` as the network tag (or the custom name you chose when setting up the firewall rules).
 
-![Firewall -- create full](/images/ee/gcp-setup/firewall-create-full.png)
-
-## 5. Provision instance for Yugabyte Platform
-
-Create an instance to run Yugabyte Platform. In order to do so, go to **Compute Engine > VM instances** and click **Create**. Fill in the following values.
-
-- Enter `yugaware-1` as the name.
-- Pick a region/zone (eg: `us-west1-b`).
-- Choose `4 vCPUs` (`n1-standard-4`) as the machine type.
-- Change the boot disk image to `Ubuntu 16.04` and increase the boot disk size to `100GB`.
-- Open **Management, disks, networking, SSH keys -> Networking** tab. Add `yugaware-server` as the network tag (or the custom name you chose when setting up the firewall rules).
-- Switch to the **SSH Keys** tab and add a custom public key and login user to this instance. First create a key-pair.
-
-You can do this as shown below.
+Once the instance has been created, use the **SSH Keys** tab to add a custom public key and a login user to this instance. To do so, you start by creating a key-pair, as follows:
 
 ```sh
-$ ssh-keygen -t rsa -f ~/.ssh/yugaware-1-gcp -C centos
+$ ssh-keygen -t rsa -f ~/.ssh/yugabyte-1-gcp -C centos
 ```
 
-Set the appropriate credentials for the SSH key.
+<br>You can set the appropriate credentials for the SSH key as follows:
 
 ```sh
-$ chmod 400 ~/.ssh/yugaware-1-gcp
+$ chmod 400 ~/.ssh/yugabyte-1-gcp
 ```
 
-Now enter the contents of `yugaware-1-gcp.pub` as the value for this field.
+<br>Enter the contents of `yugabyte-1-gcp.pub` as the value for this field.
 
-[Here are the detailed instructions](https://cloud.google.com/compute/docs/instances/adding-removing-ssh-keys#metadatavalues) to create a new SSH key pair, as well as the expected format for this field (eg: `ssh-rsa [KEY_VALUE] [USERNAME]`). This is important to enable SSH access to this machine.
+For more information, see the following GCP documentation: 
 
-![VM instances -- filled in create](/images/ee/gcp-setup/vm-create-full.png)
+-  [Cloud Key Management Service](https://cloud.google.com/blog/products/gcp/protect-your-compute-engine-resources-with-keys-managed-in-cloud-key-management-service) 
 
-Note on boot disk customization:
+-  [Choosing an access method](https://cloud.google.com/compute/docs/instances/access-overview#metadatavalues) provides details on how to create a new SSH key pair, as well as the expected format for this field: `ssh-rsa [KEY_VALUE] [USERNAME]`.
 
-![VM instances -- pick boot disk](/images/ee/gcp-setup/vm-pick-boot-disk.png)
+## Connect to the Yugabyte Platform server
 
-Note on networking customization:
+Use the GCP Cloud Console to find the public IP address of the instance you launched.
 
-![VM instances -- networking tweaks](/images/ee/gcp-setup/vm-networking.png)
-
-Finally, click **Create** to launch the Yugabyte Platform server.
-
-## 6. Connect to the Yugabyte Platform machine
-
-From the GCP web management console, find the public IP address of the instance you just launched.
-
-You can connect to this machine by running the following command (remember to replace `XX.XX.XX.XX` below with the IP address, and also to enter the appropriate SSH key instead of `yugaware-1-gcp`).
+To connect to this server, execute the following command:
 
 ```sh
-$ ssh -i ~/.ssh/yugaware-1-gcp centos@XX.XX.XX.XX
+$ ssh -i ~/.ssh/yugabyte-1-gcp centos@NN.NN.NN.NN
 ```
+
+Replace `NN.NN.NN.NN` with the IP address and `yugabyte-1-gcp` with the appropriate SSH key.
+

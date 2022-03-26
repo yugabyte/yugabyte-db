@@ -5,12 +5,12 @@
 # https://docs.netlify.com/configure-builds/file-based-configuration/#deploy-contexts
 
 [context.deploy-preview.environment]
-  HUGO_VERSION = "0.89.2"
+  HUGO_VERSION = "0.93.3"
   NODE_VERSION = "16"
   CXXFLAGS = "-std=c++17"
 
 [context.branch-deploy.environment]
-  HUGO_VERSION = "0.89.2"
+  HUGO_VERSION = "0.93.3"
   NODE_VERSION = "16"
   CXXFLAGS = "-std=c++17"
 
@@ -193,6 +193,13 @@
 [[redirects]]
   from = "/stable/quick-start/explore/"
   to = "/stable/quick-start/explore/ysql/"
+  force = true
+
+# Yugabyte Extensions top hit
+
+[[redirects]]
+  from = "/latest/api/ysql/extensions/"
+  to = "/latest/explore/ysql-language-features/pg-extensions/"
   force = true
 
 # Docs prior to v1.3 are not online

@@ -601,26 +601,25 @@ TEST_F(MasterTest, TestCatalogHasBlockCache) {
 }
 
 TEST_F(MasterTest, TestTablegroups) {
-  // Tablegroup ID must be 32 characters in length
-  const char *kTablegroupId = "test_tablegroup00000000000000000";
-  const char *kTableName = "test_table";
+  TablegroupId kTablegroupId = GetPgsqlTablegroupId(12345, 67890);
+  const char*  kTableName = "test_table";
   const Schema kTableSchema({ ColumnSchema("key", INT32) }, 1);
   const NamespaceName ns_name = "test_tablegroup_ns";
 
   // Create a new namespace.
   NamespaceId ns_id;
-  ListNamespacesResponsePB namespaces;
   {
     CreateNamespaceResponsePB resp;
     ASSERT_OK(CreateNamespace(ns_name, YQL_DATABASE_PGSQL, &resp));
     ns_id = resp.id();
   }
+
   {
-    ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
-    ASSERT_EQ(2 + kNumSystemNamespaces, namespaces.namespaces_size());
+    ListNamespacesResponsePB namespaces;
+    ASSERT_NO_FATALS(DoListAllNamespaces(YQL_DATABASE_PGSQL, &namespaces));
+    ASSERT_EQ(1, namespaces.namespaces_size());
     CheckNamespaces(
         {
-            EXPECTED_DEFAULT_AND_SYSTEM_NAMESPACES,
             std::make_tuple(ns_name, ns_id)
         }, namespaces);
   }
@@ -631,37 +630,45 @@ TEST_F(MasterTest, TestTablegroups) {
   SetAtomicFlag(false, &FLAGS_TEST_tablegroup_master_only);
 
   ListTablegroupsRequestPB req;
-  ListTablegroupsResponsePB resp;
   req.set_namespace_id(ns_id);
-  ASSERT_NO_FATALS(DoListTablegroups(req, &resp));
+  {
+    ListTablegroupsResponsePB resp;
+    ASSERT_NO_FATALS(DoListTablegroups(req, &resp));
 
-  bool tablegroup_found = false;
-  for (auto& tg : *resp.mutable_tablegroups()) {
-    if (tg.id().compare(kTablegroupId) == 0) {
-      tablegroup_found = true;
+    bool tablegroup_found = false;
+    for (auto& tg : *resp.mutable_tablegroups()) {
+      if (tg.id().compare(kTablegroupId) == 0) {
+        tablegroup_found = true;
+      }
     }
+    ASSERT_TRUE(tablegroup_found);
   }
-  ASSERT_TRUE(tablegroup_found);
 
   // Restart the master, verify the tablegroup still shows up
   ASSERT_OK(mini_master_->Restart());
   ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
 
-  ListTablegroupsResponsePB new_resp;
-  ASSERT_NO_FATALS(DoListTablegroups(req, &new_resp));
+  {
+    ListTablegroupsResponsePB resp;
+    ASSERT_NO_FATALS(DoListTablegroups(req, &resp));
 
-  tablegroup_found = false;
-  for (auto& tg : *new_resp.mutable_tablegroups()) {
-    if (tg.id().compare(kTablegroupId) == 0) {
-      tablegroup_found = true;
+    bool tablegroup_found = false;
+    for (auto& tg : *resp.mutable_tablegroups()) {
+      if (tg.id().compare(kTablegroupId) == 0) {
+        tablegroup_found = true;
+      }
     }
+    ASSERT_TRUE(tablegroup_found);
   }
-  ASSERT_TRUE(tablegroup_found);
 
   // Now ensure that a table can be created in the tablegroup.
-  ASSERT_OK(CreateTablegroupTable(ns_id, kTableName, kTablegroupId, kTableSchema));
+  TableId table_id;
+  ASSERT_OK(CreateTablegroupTable(ns_id, kTableName, kTablegroupId, kTableSchema, &table_id));
 
-  // Delete the tablegroup
+  // Delete the table to clean up tablegroup.
+  ASSERT_OK(DeleteTableById(table_id));
+
+  // Delete the tablegroup.
   ASSERT_OK(DeleteTablegroup(kTablegroupId, ns_id));
 }
 

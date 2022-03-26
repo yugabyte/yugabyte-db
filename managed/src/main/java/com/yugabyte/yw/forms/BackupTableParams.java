@@ -4,6 +4,7 @@ package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.models.Backup.StorageConfigType;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.HashSet;
@@ -72,6 +73,9 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "Is verbose logging enabled")
   public boolean enableVerboseLogs = false;
 
+  @ApiModelProperty(value = "Alter load balancer state")
+  public boolean alterLoadBalancer = false;
+
   // Should the backup be transactional across tables
   @ApiModelProperty(value = "Is backup transactional across tables")
   public boolean transactionalBackup = false;
@@ -107,6 +111,9 @@ public class BackupTableParams extends TableManagerParams {
 
   @ApiModelProperty(value = "Backup size in bytes")
   public long backupSizeInBytes = 0L;
+
+  @ApiModelProperty(value = "Type of backup storage config")
+  public StorageConfigType storageConfigType = null;
 
   @JsonIgnore
   public Set<String> getTableNames() {

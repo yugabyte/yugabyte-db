@@ -57,6 +57,7 @@ extern void YBCCreateTable(CreateStmt *stmt,
 						   Oid relationId,
 						   Oid namespaceId,
 						   Oid tablegroupId,
+						   Oid colocationId,
 						   Oid tablespaceId,
 						   Oid matviewPgTableId);
 
@@ -74,6 +75,7 @@ extern void YBCCreateIndex(const char *indexName,
 						   OptSplit *split_options,
 						   const bool skip_index_backfill,
 						   Oid tablegroupId,
+						   Oid colocationId,
 						   Oid tablespaceId);
 
 extern void YBCDropIndex(Oid relationId);
@@ -81,7 +83,8 @@ extern void YBCDropIndex(Oid relationId);
 extern YBCPgStatement YBCPrepareAlterTable(List** subcmds,
 										   int subcmds_size,
 										   Oid relationId,
-										   YBCPgStatement *rollbackHandle);
+										   YBCPgStatement *rollbackHandle,
+										   bool isPartitionOfAlteredTable);
 
 extern void YBCExecAlterTable(YBCPgStatement handle, Oid relationId);
 

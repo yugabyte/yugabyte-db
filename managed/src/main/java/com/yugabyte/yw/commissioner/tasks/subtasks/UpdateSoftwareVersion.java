@@ -10,6 +10,7 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -74,6 +75,9 @@ public class UpdateSoftwareVersion extends UniverseTaskBase {
       // Perform the update. If unsuccessful, this will throw a runtime exception which we do not
       // catch as we want to fail.
       saveUniverseDetails(updater);
+
+      // Do not skip ansible tasks after software upgrade.
+      getUniverse().updateConfig(ImmutableMap.of(Universe.SKIP_ANSIBLE_TASKS, "false"));
 
     } catch (Exception e) {
       String msg = getName() + " failed with exception " + e.getMessage();

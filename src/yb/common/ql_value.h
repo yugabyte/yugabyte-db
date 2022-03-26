@@ -277,6 +277,34 @@ class QLValue {
     pb_.set_binary_value(val, size);
   }
 
+  static QLValuePB Primitive(const std::string& str);
+
+  static QLValuePB Primitive(double value);
+
+  static QLValuePB Primitive(int32_t value);
+
+  static QLValuePB Primitive(int64_t value) {
+    return PrimitiveInt64(value);
+  }
+
+  static QLValuePB PrimitiveInt64(int64_t value);
+
+  static void AppendPrimitiveArray(QLValuePB* arr) {
+  }
+
+  template <class Val, class... Args>
+  static void AppendPrimitiveArray(QLValuePB* arr, const Val& val, Args&&... args) {
+    *arr->mutable_list_value()->mutable_elems()->Add() = Primitive(val);
+    AppendPrimitiveArray(arr, std::forward<Args>(args)...);
+  }
+
+  template <class... Args>
+  static QLValuePB PrimitiveArray(Args&&... args) {
+    QLValuePB result;
+    AppendPrimitiveArray(&result, std::forward<Args>(args)...);
+    return result;
+  }
+
   static void set_inetaddress_value(const InetAddress& val, QLValuePB* pb);
 
   void set_inetaddress_value(const InetAddress& val) {
@@ -487,6 +515,8 @@ bool BothNull(const QLValuePB& lhs, const QLValue& rhs);
 int Compare(const QLValuePB& lhs, const QLValue& rhs);
 int Compare(const QLSeqValuePB& lhs, const QLSeqValuePB& rhs);
 int Compare(const bool lhs, const bool rhs);
+
+bool IsNull(const LWQLValuePB& v);
 
 #define YB_SET_INT_VALUE(ql_valuepb, input, bits) \
   case DataType::BOOST_PP_CAT(INT, bits): { \

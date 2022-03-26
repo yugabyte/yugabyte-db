@@ -1,10 +1,11 @@
 import React, { FC, useMemo, useState } from 'react';
 import { Row } from 'react-bootstrap';
-import { YBCheckBox, YBControlledTextInput } from '../../common/forms/fields';
-import { debounce } from 'lodash';
+import { YBCheckBox } from '../../common/forms/fields';
+import { lowerCase, startCase } from 'lodash';
 import Select, { OptionsType } from 'react-select';
 
 import './AlertsFilter.scss';
+import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
 
 export const FILTER_TYPE_NAME = 'name';
 export const FILTER_TYPE_SEVERITY = 'severity';
@@ -23,6 +24,8 @@ export const DEFAULT_DESTINATION_OPTION = [{ name: DEFAULT_DESTINATION }];
 const TARGET_TYPE = ['Platform', 'Universe'];
 const STATE = ['Active', 'Inactive'];
 const SEVERITY = ['Severe', 'Warning'];
+
+export const formatString = (text:string) => startCase(lowerCase(text))
 
 interface MetricsSchema {
   template: string;
@@ -107,6 +110,8 @@ const getSelectControl = (
   selectOptions: OptionsType<{ label: string; value: string }>,
   updateFilters: UpdateFiltersFunction
 ) => {
+  //Only format for metric names
+  const label = filtersMap[filterType] ? (filterType === FILTER_TYPE_METRIC_NAME ? formatString(filtersMap[filterType]): filtersMap[filterType]) : null
   return (
     <Row className="field">
       <div className="field-label">{title}</div>
@@ -115,7 +120,7 @@ const getSelectControl = (
           filtersMap[filterType]
             ? {
                 value: filtersMap[filterType],
-                label: filtersMap[filterType]
+                label 
               }
             : null
         }
@@ -150,7 +155,7 @@ export const AlertListsWithFilter: FC<AlertsFilterProps> = ({
   const metricNames = useMemo(
     () =>
       Array.from(new Set(metrics.map((metric) => metric.template))).map((template) => {
-        return { label: template, value: template };
+        return { label: formatString(template), value: template };
       }),
     [metrics]
   );
@@ -164,7 +169,7 @@ export const AlertListsWithFilter: FC<AlertsFilterProps> = ({
           )
         )
       ).map((destination) => {
-        return { label: destination, value: destination };
+        return { label: formatString(destination), value: destination };
       }),
     [alertDestinationList]
   );
@@ -179,25 +184,17 @@ export const AlertListsWithFilter: FC<AlertsFilterProps> = ({
 
   const [searchText, setSearchText] = useState(alertsFilters[FILTER_TYPE_NAME]);
 
-  const debouncedUpdateFilter = useMemo(
-    () =>
-      debounce((searchText: string) => {
-        updateFilters(FILTER_TYPE_NAME, searchText, 'text');
-      }, 1000),
-    [updateFilters]
-  );
-
   return (
     <div className="filter-panel">
       <Row className="field">
-        <YBControlledTextInput
-          label="Name"
+        <div className="field-label">Name</div>
+        <YBSearchInput
           placeHolder="Search..."
           val={searchText}
           onValueChanged={(e: React.ChangeEvent<HTMLInputElement>) => {
             setSearchText(e.target.value);
-            debouncedUpdateFilter(e.target.value);
           }}
+          onEnterPressed={() => updateFilters(FILTER_TYPE_NAME, searchText, 'text')}
         />
       </Row>
 
@@ -210,7 +207,13 @@ export const AlertListsWithFilter: FC<AlertsFilterProps> = ({
       )}
 
       {alertsFilters[FILTER_TYPE_TARGET_TYPE]?.includes('Universe') &&
-        getSelectControl('Universe', alertsFilters, FILTER_TYPE_UNIVERSE, universeLists, updateFilters)}
+        getSelectControl(
+          'Universe',
+          alertsFilters,
+          FILTER_TYPE_UNIVERSE,
+          universeLists,
+          updateFilters
+        )}
 
       {getSelectControl(
         'Metric Name',
@@ -228,13 +231,7 @@ export const AlertListsWithFilter: FC<AlertsFilterProps> = ({
       )}
 
       {getCheckboxControl('State', FILTER_TYPE_STATE, STATE, updateFilters, alertsFilters)}
-      {getCheckboxControl(
-        'Severity',
-        FILTER_TYPE_SEVERITY,
-        SEVERITY,
-        updateFilters,
-        alertsFilters
-      )}
+      {getCheckboxControl('Severity', FILTER_TYPE_SEVERITY, SEVERITY, updateFilters, alertsFilters)}
     </div>
   );
 };
@@ -251,7 +248,7 @@ const generatePills = (text: string, key: string, removeFilter: Function, icon?:
   return (
     <span key={key} className="pill">
       {icon && <i className={`pill-icon fa fa-${icon}`} />}
-      {text}
+      {formatString(text)}
       <span className="remove-icon" onClick={() => removeFilter()}>
         X
       </span>

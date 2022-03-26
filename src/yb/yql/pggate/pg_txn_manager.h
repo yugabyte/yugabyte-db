@@ -24,6 +24,7 @@
 #include "yb/common/transaction.h"
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/tserver/pg_client.fwd.h"
 #include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_util_fwd.h"
@@ -45,10 +46,6 @@ YB_DEFINE_ENUM(
   ((REPEATABLE_READ, 2))
   ((SERIALIZABLE, 3))
 );
-
-std::shared_ptr<yb::client::YBSession> BuildSession(
-    yb::client::YBClient* client,
-    const scoped_refptr<ClockBase>& clock = nullptr);
 
 class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
  public:

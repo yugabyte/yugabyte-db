@@ -55,6 +55,9 @@ public class BackupRequestParams extends UniverseTaskParams {
   @ApiModelProperty(value = "Should table backup errors be ignored")
   public Boolean ignoreErrors = false;
 
+  @ApiModelProperty(value = "Alter load balancer state")
+  public boolean alterLoadBalancer = false;
+
   // Specifies the frequency for running the backup in milliseconds.
   @ApiModelProperty(value = "Frequency to run the backup, in milliseconds")
   public long schedulingFrequency = 0L;
@@ -62,6 +65,9 @@ public class BackupRequestParams extends UniverseTaskParams {
   // Specifies the cron expression in case a recurring backup is expected.
   @ApiModelProperty(value = "Cron expression for a recurring backup")
   public String cronExpression = null;
+
+  @ApiModelProperty(value = "Is tablespaces information included")
+  public Boolean useTablespaces = false;
 
   // The associated schedule UUID (if applicable)
   @ApiModelProperty(value = "Schedule UUID")

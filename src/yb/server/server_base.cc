@@ -51,6 +51,7 @@
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
+#include "yb/rpc/secure_stream.h"
 
 #include "yb/server/default-path-handlers.h"
 #include "yb/server/generic_service.h"
@@ -479,15 +480,15 @@ void RpcAndWebServerBase::GenerateInstanceID() {
 }
 
 Status RpcAndWebServerBase::Init() {
-  encryption::InitOpenSSL();
+  rpc::InitOpenSSL();
 
-  Status s = fs_manager_->Open();
+  Status s = fs_manager_->CheckAndOpenFileSystemRoots();
   if (s.IsNotFound() || (!s.ok() && fs_manager_->HasAnyLockFiles())) {
     LOG(INFO) << "Could not load existing FS layout: " << s.ToString();
     LOG(INFO) << "Creating new FS layout";
     RETURN_NOT_OK_PREPEND(fs_manager_->CreateInitialFileSystemLayout(true),
                           "Could not create new FS layout");
-    s = fs_manager_->Open();
+    s = fs_manager_->CheckAndOpenFileSystemRoots();
   }
   RETURN_NOT_OK_PREPEND(s, "Failed to load FS layout");
 

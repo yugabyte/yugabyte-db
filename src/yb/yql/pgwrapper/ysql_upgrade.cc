@@ -236,10 +236,23 @@ Result<PGConn> YsqlUpgradeHelper::Connect(const std::string& database_name) {
       PgDeriveSocketDir(ysql_proxy_addr_.host()),
       ysql_proxy_addr_.port(),
       pgwrapper::PqEscapeLiteral(database_name));
+  // Use the string with redacted password for logging purposes.
+  boost::optional<std::string> conn_str_for_log(Format(
+      "user=$0 password=$1 host=$2 port=$3 dbname=$4",
+      "postgres",
+      "<REDACTED>",
+      PgDeriveSocketDir(ysql_proxy_addr_.host()),
+      ysql_proxy_addr_.port(),
+      pgwrapper::PqEscapeLiteral(database_name)));
 
-  PGConn pgconn = VERIFY_RESULT(PGConn::Connect(conn_str));
+  PGConn pgconn = VERIFY_RESULT(
+      PGConn::Connect(conn_str, false /* simple_query_protocol */, conn_str_for_log));
 
   RETURN_NOT_OK(pgconn.Execute("SET ysql_upgrade_mode TO true;"));
+
+  // Force global transactions when running upgrade to avoid transactions being run as local.
+  // This can be removed once #11731 is resolved.
+  RETURN_NOT_OK(pgconn.Execute("SET force_global_transaction TO true;"));
 
   return pgconn;
 }

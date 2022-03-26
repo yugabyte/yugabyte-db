@@ -40,7 +40,9 @@ class PgTableDesc;
 using PgTableDescPtr = scoped_refptr<PgTableDesc>;
 
 class PgsqlOp;
+class PgsqlWriteOp;
 using PgsqlOpPtr = std::shared_ptr<PgsqlOp>;
+using PgsqlWriteOpPtr = std::shared_ptr<PgsqlWriteOp>;
 using PgsqlOps = std::vector<PgsqlOpPtr>;
 
 YB_STRONGLY_TYPED_BOOL(Commit);

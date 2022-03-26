@@ -375,7 +375,7 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.15-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.16-SNAPSHOT"
 
 libraryDependencies ++= Seq(
   // We wont use swagger-ui jar since we want to change some of the assets:
@@ -501,3 +501,15 @@ swaggerGen := Def.taskDyn {
 
 // TODO: Should we trigger swagger gen on compile??
 // swaggerGen := swaggerGen.triggeredBy(compile in Compile).value
+
+val grafanaGen: TaskKey[Unit] = taskKey[Unit](
+  "generate dashboard.json"
+)
+
+grafanaGen := Def.taskDyn {
+  val file = (resourceDirectory in Compile).value / "metric" / "Dashboard.json"
+  Def.sequential(
+    (runMain in Test)
+      .toTask(s" com.yugabyte.yw.controllers.GrafanaGenTest $file") 
+  )
+}.value

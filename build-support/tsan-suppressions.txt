@@ -173,3 +173,6 @@ race:google::protobuf::Any::ByteSizeLong
 # Races on gflag changes should be strictly test-only issues, as we never update gflags from the
 # code, at runtime.
 race:fLI::*
+
+# Known problem with PstackWatcher
+signal:yb::PstackWatcher::DumpStacks

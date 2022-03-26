@@ -1,6 +1,7 @@
 package com.yugabyte.yw.models;
 
 import com.yugabyte.yw.models.Backup.BackupState;
+import com.yugabyte.yw.models.Backup.StorageConfigType;
 import com.yugabyte.yw.models.helpers.KeyspaceTablesList;
 import java.util.Date;
 import java.util.Set;
@@ -20,6 +21,7 @@ public class BackupResp {
   UUID universeUUID;
   UUID scheduleUUID;
   UUID customerUUID;
+  UUID taskUUID;
   String universeName;
   Boolean isStorageConfigPresent;
   Boolean isUniversePresent;
@@ -28,6 +30,8 @@ public class BackupResp {
   Date createTime;
   Date updateTime;
   Date expiryTime;
+  Date completionTime;
   Long totalBackupSizeInBytes;
   Set<KeyspaceTablesList> responseList;
+  StorageConfigType storageConfigType;
 }

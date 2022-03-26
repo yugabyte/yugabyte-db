@@ -30,7 +30,7 @@ from six import string_types, PY2, PY3
 
 # Try to read home dir from environment variable, else assume it's /home/yugabyte.
 ALERT_ENHANCEMENTS_RELEASE_BUILD = "2.6.0.0-b0"
-RELEASE_BUILD_PATTERN = "(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)[-]b(\\d+).*"
+RELEASE_BUILD_PATTERN = "(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)[-]b(\\d+|PRE_RELEASE).*"
 YB_HOME_DIR = os.environ.get("YB_HOME_DIR", "/home/yugabyte")
 YB_TSERVER_DIR = os.path.join(YB_HOME_DIR, "tserver")
 YB_CORES_DIR = os.path.join(YB_HOME_DIR, "cores/")
@@ -174,21 +174,9 @@ class Report:
 ###################################################################################################
 def check_output(cmd, env):
     try:
-        timeout = CMD_TIMEOUT_SEC
-        command = subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE, env=env)
-        while command.poll() is None and timeout > 0:
-            time.sleep(1)
-            timeout -= 1
-        if command.poll() is None and timeout <= 0:
-            command.kill()
-            command.wait()
-            return 'Error executing command {}: timeout occurred'.format(cmd)
-
-        output, stderr = command.communicate()
-        if not stderr:
-            return output.decode('utf-8').encode("ascii", "ignore").decode("ascii")
-        else:
-            return 'Error executing command {}: {}'.format(cmd, stderr)
+        output = subprocess.check_output(
+            cmd, stderr=subprocess.STDOUT, env=env, timeout=CMD_TIMEOUT_SEC)
+        return str(output.decode('utf-8').encode("ascii", "ignore").decode("ascii"))
     except subprocess.CalledProcessError as e:
         return 'Error executing command {}: {}'.format(
             cmd, e.output.decode("utf-8").encode("ascii", "ignore"))
@@ -723,10 +711,12 @@ class NodeChecker():
         remote_cmd = "timedatectl status"
         output = self._remote_check_output(remote_cmd).strip()
 
-        clock_re = re.match(r'((.|\n)*)((NTP enabled: )|(NTP service: )|(Network time on: )|' +
-                            r'(systemd-timesyncd\.service active: ))(.*)$', output, re.MULTILINE)
+        clock_re = re.match(r'((.|\n)*)((NTP enabled: )|(NTP service: )|(Network time on: ))(.*)$',
+                            output, re.MULTILINE)
         if clock_re:
-            ntp_enabled_answer = clock_re.group(8)
+            ntp_enabled_answer = clock_re.group(7).strip()
+        elif "systemd-timesyncd.service active:" in output:  # Ignore this check, see PLAT-3373
+            ntp_enabled_answer = "yes"
         else:
             return e.fill_and_return_entry(["Error getting NTP state - incorrect answer format"],
                                            True)
@@ -741,7 +731,7 @@ class NodeChecker():
 
         clock_re = re.match(r'((.|\n)*)(NTP service: )(.*)$', output, re.MULTILINE)
         if clock_re:
-            ntp_service_answer = clock_re.group(4)
+            ntp_service_answer = clock_re.group(4).strip()
             # Oracle8 NTP service: n/a not supported anymore
             if ntp_service_answer in ("n/a"):
                 errors = []
@@ -749,7 +739,7 @@ class NodeChecker():
         clock_re = re.match(r'((.|\n)*)((NTP synchronized: )|(System clock synchronized: ))(.*)$',
                             output, re.MULTILINE)
         if clock_re:
-            ntp_synchronized_answer = clock_re.group(6)
+            ntp_synchronized_answer = clock_re.group(6).strip()
         else:
             return e.fill_and_return_entry([
                 "Error getting NTP synchronization state - incorrect answer format"], True)
@@ -760,6 +750,15 @@ class NodeChecker():
             else:
                 errors.append("Error getting NTP synchronization state {}"
                               .format(ntp_synchronized_answer))
+
+        # Check if a time sync service is running. Stderr redirection is necessary since
+        # "service does not exist" prints to stderr but should not error.
+        remote_cmd = ""
+        for ntp_service in ["chronyd", "ntp", "ntpd", "systemd-timesyncd"]:
+            remote_cmd = remote_cmd + "systemctl status " + ntp_service + " 2>&1; "
+        output = self._remote_check_output(remote_cmd).strip()
+        if "Active: active (running)" not in output:
+            errors.append("NTP service not running")
 
         return e.fill_and_return_entry(errors, len(errors) > 0)
 

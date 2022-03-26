@@ -46,7 +46,7 @@ bool PgSelectIndex::UseSecondaryIndex() const {
   return false;
 }
 
-Status PgSelectIndex::PrepareSubquery(std::shared_ptr<PgsqlReadRequestPB> read_req) {
+Status PgSelectIndex::PrepareSubquery(std::shared_ptr<LWPgsqlReadRequestPB> read_req) {
   if (!read_req) {
     return PgSelect::Prepare();
   }
@@ -64,7 +64,7 @@ Status PgSelectIndex::PrepareSubquery(std::shared_ptr<PgsqlReadRequestPB> read_r
   RSTATUS_DCHECK(
       prepare_params_.querying_colocated_table, InvalidArgument, "Read request invalid");
   read_req_ = std::move(read_req);
-  read_req_->set_table_id(index_id_.GetYBTableId());
+  read_req_->dup_table_id(index_id_.GetYbTableId()); // TODO(LW_PERFORM)
 
   // Prepare index key columns.
   PrepareBinds();

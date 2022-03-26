@@ -51,13 +51,19 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -464,6 +470,11 @@ public class UniverseCRUDHandler {
       }
     }
 
+    universe.updateConfig(
+        ImmutableMap.of(
+            Universe.SKIP_ANSIBLE_TASKS,
+            taskParams.nodeDetailsSet.stream().allMatch(n -> n.ybPrebuiltAmi) ? "true" : "false"));
+
     // Submit the task to create the universe.
     UUID taskUUID = commissioner.submit(taskType, taskParams);
     LOG.info(
@@ -498,6 +509,7 @@ public class UniverseCRUDHandler {
    */
   public UUID update(Customer customer, Universe u, UniverseDefinitionTaskParams taskParams) {
     checkCanEdit(customer, u);
+    checkTaskParamsForUpdate(u, taskParams);
     if (taskParams.getPrimaryCluster() == null) {
       // Update of a read only cluster.
       return updateCluster(customer, u, taskParams);
@@ -1266,6 +1278,120 @@ public class UniverseCRUDHandler {
       kubernetesManagerFactory.getManager().getHelmPackagePath(ybSoftwareVersion);
     } catch (RuntimeException e) {
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
+    }
+  }
+
+  // This compares and validates an input node with the existing node that is not in ToBeAddedState.
+  private void checkNodesForUpdate(
+      Cluster cluster, NodeDetails existingNode, NodeDetails inputNode) {
+    if (inputNode.cloudInfo == null) {
+      String errMsg = String.format("Node name %s must have cloudInfo", inputNode.nodeName);
+      LOG.error(errMsg);
+      throw new PlatformServiceException(BAD_REQUEST, errMsg);
+    }
+    // TODO compare other node fields here.
+  }
+
+  // This validates the input nodes in a cluster by comparing with the existing nodes in the
+  // universe.
+  private void checkNodesInClusterForUpdate(
+      Cluster cluster, Set<NodeDetails> existingNodes, Set<NodeDetails> inputNodes) {
+    AtomicInteger inputNodesInToBeRemoved = new AtomicInteger();
+    // Collect all the nodes which are not in ToBeAdded state and validate.
+    Map<String, NodeDetails> inputNodesMap =
+        inputNodes
+            .stream()
+            .filter(
+                node -> {
+                  if (node.state != NodeState.ToBeAdded) {
+                    if (node.state == NodeState.ToBeRemoved) {
+                      inputNodesInToBeRemoved.incrementAndGet();
+                    }
+                    return true;
+                  }
+                  // Nodes in ToBeAdded must not have names.
+                  if (StringUtils.isNotBlank(node.nodeName)) {
+                    String errMsg = String.format("Node name %s cannot be present", node.nodeName);
+                    LOG.error(errMsg);
+                    throw new PlatformServiceException(BAD_REQUEST, errMsg);
+                  }
+                  return false;
+                })
+            .collect(
+                Collectors.toMap(
+                    NodeDetails::getNodeName,
+                    Function.identity(),
+                    (existing, replacement) -> {
+                      String errMsg = "Duplicate node name " + existing;
+                      LOG.error(errMsg);
+                      throw new PlatformServiceException(BAD_REQUEST, errMsg);
+                    }));
+
+    // Ensure all the input nodes for a cluster in the input are not set to ToBeRemoved.
+    // If some nodes are in other state, the count will always be smaller.
+    if (inputNodes.size() > 0 && inputNodesInToBeRemoved.get() == inputNodes.size()) {
+      String errMsg = "All nodes cannot be removed for cluster " + cluster.uuid;
+      LOG.error(errMsg);
+      throw new PlatformServiceException(BAD_REQUEST, errMsg);
+    }
+
+    // Ensure all the nodes in the cluster are present in the input.
+    existingNodes
+        .stream()
+        .filter(existingNode -> existingNode.state != NodeState.ToBeAdded)
+        .forEach(
+            existingNode -> {
+              NodeDetails inputNode = inputNodesMap.remove(existingNode.getNodeName());
+              if (inputNode == null) {
+                String errMsg = String.format("Node %s is missing", existingNode.getNodeName());
+                LOG.error(errMsg);
+                throw new PlatformServiceException(BAD_REQUEST, errMsg);
+              }
+              checkNodesForUpdate(cluster, existingNode, inputNode);
+            });
+
+    // Ensure unknown nodes are in the input.
+    if (!inputNodesMap.isEmpty()) {
+      String errMsg = "Unknown nodes " + StringUtils.join(inputNodesMap.keySet(), ",");
+      throw new PlatformServiceException(BAD_REQUEST, errMsg);
+    }
+  }
+
+  // TODO This is used by calls originating from the UI that are not in swagger APIs. More
+  // validations may be needed later like checking the fields of all NodeDetails objects because
+  // the existing nodes in the universe are replaced by these nodes in the task params. UI sends
+  // all the nodes irrespective of the cluster. Only the cluster getting updated, is sent in the
+  // request.
+  private void checkTaskParamsForUpdate(
+      Universe universe, UniverseDefinitionTaskParams taskParams) {
+
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+
+    Set<UUID> taskParamClustersUuids =
+        taskParams
+            .clusters
+            .stream()
+            .map(c -> c.uuid)
+            .collect(Collectors.toCollection(HashSet::new));
+
+    universeDetails
+        .clusters
+        .stream()
+        .forEach(
+            c -> {
+              taskParamClustersUuids.remove(c.uuid);
+              checkNodesInClusterForUpdate(
+                  c,
+                  universeDetails.getNodesInCluster(c.uuid),
+                  taskParams.getNodesInCluster(c.uuid));
+            });
+
+    if (!taskParamClustersUuids.isEmpty()) {
+      // Unknown clusters are found. There can be fewer clusters in the input but all those clusters
+      // must already be in the universe.
+      String errMsg = "Unknown cluster " + StringUtils.join(taskParamClustersUuids, ",");
+      LOG.error(errMsg);
+      throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
   }
 }

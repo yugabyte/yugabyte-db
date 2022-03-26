@@ -33,6 +33,8 @@ namespace tserver {
     (CreateSequencesDataTable) \
     (CreateTable) \
     (CreateTablegroup) \
+    (DeleteDBSequences) \
+    (DeleteSequenceTuple) \
     (DropDatabase) \
     (DropTable) \
     (DropTablegroup) \
@@ -40,14 +42,17 @@ namespace tserver {
     (GetCatalogMasterVersion) \
     (GetDatabaseInfo) \
     (Heartbeat) \
+    (InsertSequenceTuple) \
     (IsInitDbDone) \
     (ListLiveTabletServers) \
     (OpenTable) \
+    (ReadSequenceTuple) \
     (ReserveOids) \
     (RollbackSubTransaction) \
     (SetActiveSubTransaction) \
     (TabletServerCount) \
     (TruncateTable) \
+    (UpdateSequenceTuple) \
     (ValidatePlacement) \
     /**/
 

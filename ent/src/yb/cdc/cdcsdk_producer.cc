@@ -581,7 +581,6 @@ Status GetChangesForCDCSDK(
   // It is snapshot call.
   if (from_op_id.write_id() == -1) {
     auto txn_participant = tablet_peer->tablet()->transaction_participant();
-    tablet::RemoveIntentsData data;
     ReadHybridTime time;
     std::string nextKey;
     SchemaPB schema_pb;
@@ -590,7 +589,8 @@ Status GetChangesForCDCSDK(
       if (txn_participant == nullptr || txn_participant->context() == nullptr)
         return STATUS_SUBSTITUTE(
             Corruption, "Cannot read data as the transaction participant context is null");
-      txn_participant->context()->GetLastReplicatedData(&data);
+      tablet::RemoveIntentsData data;
+      RETURN_NOT_OK(txn_participant->context()->GetLastReplicatedData(&data));
       // Set the checkpoint and communicate to the follower.
       VLOG(1) << "The first snapshot term " << data.op_id.term << "index  " << data.op_id.index
               << "time " << data.log_ht.ToUint64();
@@ -599,10 +599,11 @@ Status GetChangesForCDCSDK(
         std::shared_ptr<consensus::Consensus> shared_consensus = tablet_peer->shared_consensus();
         shared_consensus->UpdateCDCConsumerOpId(data.op_id);
       }
-      if (txn_participant == nullptr || txn_participant->context() == nullptr)
+      if (txn_participant == nullptr || txn_participant->context() == nullptr) {
         return STATUS_SUBSTITUTE(
             Corruption, "Cannot read data as the transaction participant context is null");
-      txn_participant->context()->GetLastReplicatedData(&data);
+      }
+      RETURN_NOT_OK(txn_participant->context()->GetLastReplicatedData(&data));
       time = ReadHybridTime::SingleTime(data.log_ht);
 
       // This should go to cdc_state table.

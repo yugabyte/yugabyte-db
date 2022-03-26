@@ -130,7 +130,7 @@ $ helm search repo yugabytedb/yugabyte
 
 ```output
 NAME                    CHART VERSION   APP VERSION     DESCRIPTION
-yugabytedb/yugabyte     2.11.2           2.11.2.0-b89    YugabyteDB is the high-performance distributed ...
+yugabytedb/yugabyte     2.13.0           2.13.0.1-b2    YugabyteDB is the high-performance distributed ...
 ```
 
 ### Install YugabyteDB
@@ -222,7 +222,7 @@ $ helm history yb-demo -n yb-demo
 
 ```output
 REVISION  UPDATED                   STATUS    CHART           APP VERSION   DESCRIPTION
-1         Tue Apr 21 17:29:01 2020  deployed  yugabyte-2.11.2  2.11.2.0-b89  Install complete
+1         Tue Apr 21 17:29:01 2020  deployed  yugabyte-2.13.0  2.13.0.1-b2  Install complete
 ```
 
 ## Connect using YugabyteDB shells

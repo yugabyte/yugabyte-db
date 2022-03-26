@@ -45,12 +45,17 @@
 #include "yb/util/string_util.h"
 #include "yb/util/yb_pg_errcodes.h"
 
+#include "yb/yql/pggate/util/pg_doc_data.h"
+
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
 
 namespace yb {
 namespace tserver {
 
 namespace {
+
+constexpr const size_t kPgSequenceLastValueColIdx = 2;
+constexpr const size_t kPgSequenceIsCalledColIdx = 3;
 
 std::string SessionLogPrefix(uint64_t id) {
   return Format("S $0: ", id);
@@ -326,11 +331,9 @@ PgClientSession::PgClientSession(
     std::reference_wrapper<const TransactionPoolProvider> transaction_pool_provider,
     PgTableCache* table_cache, uint64_t id)
     : client_(*client),
+      clock_(clock),
       transaction_pool_provider_(transaction_pool_provider.get()),
-      table_cache_(*table_cache), id_(id),
-      session_(CreateSession(client, clock)),
-      ddl_session_(CreateSession(client, clock)),
-      catalog_session_(CreateSession(client, clock)) {
+      table_cache_(*table_cache), id_(id) {
 }
 
 uint64_t PgClientSession::id() const {
@@ -341,12 +344,13 @@ Status PgClientSession::CreateTable(
     const PgCreateTableRequestPB& req, PgCreateTableResponsePB* resp, rpc::RpcContext* context) {
   PgCreateTable helper(req);
   RETURN_NOT_OK(helper.Prepare());
-  const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(req.use_transaction()));
+  const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
+      req.use_transaction(), context->GetClientDeadline()));
   RETURN_NOT_OK(helper.Exec(&client(), metadata, context->GetClientDeadline()));
   VLOG_WITH_PREFIX(1) << __func__ << ": " << req.table_name();
   const auto& indexed_table_id = helper.indexed_table_id();
   if (indexed_table_id.IsValid()) {
-    table_cache_.Invalidate(indexed_table_id.GetYBTableId());
+    table_cache_.Invalidate(indexed_table_id.GetYbTableId());
   }
   return Status::OK();
 }
@@ -362,7 +366,7 @@ Status PgClientSession::CreateDatabase(
       req.source_database_oid() != kPgInvalidOid
           ? GetPgsqlNamespaceId(req.source_database_oid()) : "",
       req.next_oid(),
-      VERIFY_RESULT(GetDdlTransactionMetadata(req.use_transaction())),
+      VERIFY_RESULT(GetDdlTransactionMetadata(req.use_transaction(), context->GetClientDeadline())),
       req.colocated(),
       context->GetClientDeadline());
 }
@@ -378,7 +382,7 @@ Status PgClientSession::DropDatabase(
 
 Status PgClientSession::DropTable(
     const PgDropTableRequestPB& req, PgDropTableResponsePB* resp, rpc::RpcContext* context) {
-  const auto yb_table_id = PgObjectId::GetYBTableIdFromPB(req.table_id());
+  const auto yb_table_id = PgObjectId::GetYbTableIdFromPB(req.table_id());
   if (req.index()) {
     client::YBTableName indexed_table;
     RETURN_NOT_OK(client().DeleteIndexTable(
@@ -406,9 +410,10 @@ Status PgClientSession::AlterDatabase(
 
 Status PgClientSession::AlterTable(
     const PgAlterTableRequestPB& req, PgAlterTableResponsePB* resp, rpc::RpcContext* context) {
-  const auto table_id = PgObjectId::GetYBTableIdFromPB(req.table_id());
+  const auto table_id = PgObjectId::GetYbTableIdFromPB(req.table_id());
   const auto alterer = client().NewTableAlterer(table_id);
-  const auto txn = VERIFY_RESULT(GetDdlTransactionMetadata(req.use_transaction()));
+  const auto txn = VERIFY_RESULT(GetDdlTransactionMetadata(
+      req.use_transaction(), context->GetClientDeadline()));
   if (txn) {
     alterer->part_of_transaction(txn);
   }
@@ -439,14 +444,14 @@ Status PgClientSession::AlterTable(
 Status PgClientSession::TruncateTable(
     const PgTruncateTableRequestPB& req, PgTruncateTableResponsePB* resp,
     rpc::RpcContext* context) {
-  return client().TruncateTable(PgObjectId::GetYBTableIdFromPB(req.table_id()));
+  return client().TruncateTable(PgObjectId::GetYbTableIdFromPB(req.table_id()));
 }
 
 Status PgClientSession::BackfillIndex(
     const PgBackfillIndexRequestPB& req, PgBackfillIndexResponsePB* resp,
     rpc::RpcContext* context) {
   return client().BackfillIndex(
-      PgObjectId::GetYBTableIdFromPB(req.table_id()), /* wait= */ true,
+      PgObjectId::GetYbTableIdFromPB(req.table_id()), /* wait= */ true,
       context->GetClientDeadline());
 }
 
@@ -457,8 +462,8 @@ Status PgClientSession::CreateTablegroup(
   auto tablespace_id = PgObjectId::FromPB(req.tablespace_id());
   auto s = client().CreateTablegroup(
       req.database_name(), GetPgsqlNamespaceId(id.database_oid),
-      id.GetYBTablegroupId(),
-      tablespace_id.IsValid() ? tablespace_id.GetYBTablespaceId() : "");
+      id.GetYbTablegroupId(),
+      tablespace_id.IsValid() ? tablespace_id.GetYbTablespaceId() : "");
   if (s.ok()) {
     return Status::OK();
   }
@@ -493,10 +498,10 @@ Status PgClientSession::RollbackSubTransaction(
     const PgRollbackSubTransactionRequestPB& req, PgRollbackSubTransactionResponsePB* resp,
     rpc::RpcContext* context) {
   VLOG_WITH_PREFIX_AND_FUNC(2) << req.ShortDebugString();
-  SCHECK(txn_, IllegalState,
+  SCHECK(Transaction(PgClientSessionKind::kPlain), IllegalState,
          Format("Rollback sub transaction $0, when not transaction is running",
                 req.sub_transaction_id()));
-  return txn_->RollbackSubTransaction(req.sub_transaction_id());
+  return Transaction(PgClientSessionKind::kPlain)->RollbackSubTransaction(req.sub_transaction_id());
 }
 
 Status PgClientSession::SetActiveSubTransaction(
@@ -505,15 +510,15 @@ Status PgClientSession::SetActiveSubTransaction(
   VLOG_WITH_PREFIX_AND_FUNC(2) << req.ShortDebugString();
 
   if (req.has_options()) {
-    RETURN_NOT_OK(BeginTransactionIfNecessary(req.options()));
+    RETURN_NOT_OK(BeginTransactionIfNecessary(req.options(), context->GetClientDeadline()));
     txn_serial_no_ = req.options().txn_serial_no();
   }
 
-  SCHECK(txn_, IllegalState,
+  SCHECK(Transaction(PgClientSessionKind::kPlain), IllegalState,
          Format("Set active sub transaction $0, when not transaction is running",
                 req.sub_transaction_id()));
 
-  txn_->SetActiveSubTransaction(req.sub_transaction_id());
+  Transaction(PgClientSessionKind::kPlain)->SetActiveSubTransaction(req.sub_transaction_id());
   return Status::OK();
 }
 
@@ -521,13 +526,14 @@ Status PgClientSession::FinishTransaction(
     const PgFinishTransactionRequestPB& req, PgFinishTransactionResponsePB* resp,
     rpc::RpcContext* context) {
   saved_priority_ = boost::none;
-  auto& txn = req.ddl_mode() ? ddl_txn_ : txn_;
+  auto kind = req.ddl_mode() ? PgClientSessionKind::kDdl : PgClientSessionKind::kPlain;
+  auto& txn = Transaction(kind);
   if (!txn) {
     VLOG_WITH_PREFIX_AND_FUNC(2) << "ddl: " << req.ddl_mode() << ", no running transaction";
     return Status::OK();
   }
   const auto txn_value = std::move(txn);
-  (req.ddl_mode() ? ddl_session_ : session_)->SetTransaction(nullptr);
+  Session(kind)->SetTransaction(nullptr);
 
   if (req.commit()) {
     const auto commit_status = txn_value->CommitFuture().get();
@@ -545,9 +551,7 @@ Status PgClientSession::FinishTransaction(
 
 Status PgClientSession::Perform(
     const PgPerformRequestPB& req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
-  auto session = VERIFY_RESULT(SetupSession(req));
-
-  session->SetDeadline(context->GetClientDeadline());
+  auto session = VERIFY_RESULT(SetupSession(req, context->GetClientDeadline()));
 
   auto ops = VERIFY_RESULT(PrepareOperations(req, session, &table_cache_));
   auto data = std::make_shared<PerformData>(PerformData {
@@ -568,14 +572,14 @@ void PgClientSession::ProcessReadTimeManipulation(ReadTimeManipulation manipulat
   switch (manipulation) {
     case ReadTimeManipulation::RESET: {
         // If a txn_ has been created, session_->read_point() returns the read point stored in txn_.
-        ConsistentReadPoint* rp = session_->read_point();
+        ConsistentReadPoint* rp = Session(PgClientSessionKind::kPlain)->read_point();
         rp->SetCurrentReadTime();
 
         VLOG(1) << "Setting current ht as read point " << rp->GetReadTime();
       }
       return;
     case ReadTimeManipulation::RESTART: {
-        ConsistentReadPoint* rp = session_->read_point();
+        ConsistentReadPoint* rp = Session(PgClientSessionKind::kPlain)->read_point();
         rp->Restart();
 
         VLOG(1) << "Restarted read point " << rp->GetReadTime();
@@ -590,24 +594,25 @@ void PgClientSession::ProcessReadTimeManipulation(ReadTimeManipulation manipulat
   FATAL_INVALID_ENUM_VALUE(ReadTimeManipulation, manipulation);
 }
 
-Result<client::YBSession*> PgClientSession::SetupSession(const PgPerformRequestPB& req) {
-  client::YBSession* session;
-  client::YBTransaction* transaction;
+Result<client::YBSession*> PgClientSession::SetupSession(
+    const PgPerformRequestPB& req, CoarseTimePoint deadline) {
 
   const auto& options = req.options();
+  PgClientSessionKind kind;
   if (options.use_catalog_session()) {
-    session = catalog_session_.get();
-    transaction = nullptr;
+    kind = PgClientSessionKind::kCatalog;
+    EnsureSession(kind);
   } else if (options.ddl_mode()) {
-    RETURN_NOT_OK(GetDdlTransactionMetadata(true));
-    session = ddl_session_.get();
-    transaction = ddl_txn_.get();
+    kind = PgClientSessionKind::kDdl;
+    EnsureSession(kind);
+    RETURN_NOT_OK(GetDdlTransactionMetadata(true, deadline));
   } else {
-    RETURN_NOT_OK(BeginTransactionIfNecessary(options));
-
-    session = session_.get();
-    transaction = txn_.get();
+    kind = PgClientSessionKind::kPlain;
+    RETURN_NOT_OK(BeginTransactionIfNecessary(options, deadline));
   }
+
+  client::YBSession* session = Session(kind).get();
+  client::YBTransaction* transaction = Transaction(kind).get();
 
   VLOG_WITH_PREFIX(4) << __func__ << ": " << options.ShortDebugString();
 
@@ -615,8 +620,8 @@ Result<client::YBSession*> PgClientSession::SetupSession(const PgPerformRequestP
     if(options.ddl_mode()) {
       return STATUS(NotSupported, "Not supported to restart DDL transaction");
     }
-    txn_ = VERIFY_RESULT(RestartTransaction(session, transaction));
-    transaction = txn_.get();
+    Transaction(kind) = VERIFY_RESULT(RestartTransaction(session, transaction));
+    transaction = Transaction(kind).get();
   } else {
     ProcessReadTimeManipulation(options.read_time_manipulation());
     if (options.has_read_time() &&
@@ -652,6 +657,9 @@ Result<client::YBSession*> PgClientSession::SetupSession(const PgPerformRequestP
       session->SetInTxnLimit(in_txn_limit);
     }
   }
+
+  session->SetDeadline(deadline);
+
   return session;
 }
 
@@ -659,72 +667,77 @@ std::string PgClientSession::LogPrefix() {
   return SessionLogPrefix(id_);
 }
 
-Status PgClientSession::BeginTransactionIfNecessary(const PgPerformOptionsPB& options) {
+Status PgClientSession::BeginTransactionIfNecessary(
+    const PgPerformOptionsPB& options, CoarseTimePoint deadline) {
   const auto isolation = static_cast<IsolationLevel>(options.isolation());
 
   auto priority = options.priority();
-  if (txn_ && txn_serial_no_ != options.txn_serial_no()) {
+  auto& session = EnsureSession(PgClientSessionKind::kPlain);
+  auto& txn = Transaction(PgClientSessionKind::kPlain);
+  if (txn && txn_serial_no_ != options.txn_serial_no()) {
     VLOG_WITH_PREFIX(2)
         << "Abort previous transaction, use existing priority: " << options.use_existing_priority()
         << ", new isolation: " << IsolationLevel_Name(isolation);
 
     if (options.use_existing_priority()) {
-      saved_priority_ = txn_->GetPriority();
+      saved_priority_ = txn->GetPriority();
     }
-    txn_->Abort();
-    session_->SetTransaction(nullptr);
-    txn_ = nullptr;
+    txn->Abort();
+    session->SetTransaction(nullptr);
+    txn = nullptr;
   }
 
   if (isolation == IsolationLevel::NON_TRANSACTIONAL) {
     return Status::OK();
   }
 
-  if (txn_) {
-    return txn_->isolation() != isolation
+  if (txn) {
+    return txn->isolation() != isolation
         ? STATUS_FORMAT(
             IllegalState,
             "Attempt to change isolation level of running transaction from $0 to $1",
-            txn_->isolation(), isolation)
+            txn->isolation(), isolation)
         : Status::OK();
   }
 
-  txn_ = transaction_pool_provider_()->Take(
-      client::ForceGlobalTransaction(options.force_global_transaction()));
+  txn = transaction_pool_provider_()->Take(
+      client::ForceGlobalTransaction(options.force_global_transaction()), deadline);
   if ((isolation == IsolationLevel::SNAPSHOT_ISOLATION ||
            isolation == IsolationLevel::READ_COMMITTED) &&
       txn_serial_no_ == options.txn_serial_no()) {
-    txn_->InitWithReadPoint(isolation, std::move(*session_->read_point()));
+    txn->InitWithReadPoint(isolation, std::move(*session->read_point()));
     VLOG_WITH_PREFIX(2) << "Start transaction " << IsolationLevel_Name(isolation)
-                        << ", id: " << txn_->id()
-                        << ", kept read time: " << txn_->read_point().GetReadTime();
+                        << ", id: " << txn->id()
+                        << ", kept read time: " << txn->read_point().GetReadTime();
   } else {
     VLOG_WITH_PREFIX(2) << "Start transaction " << IsolationLevel_Name(isolation)
-                        << ", id: " << txn_->id()
+                        << ", id: " << txn->id()
                         << ", new read time";
-    RETURN_NOT_OK(txn_->Init(isolation));
+    RETURN_NOT_OK(txn->Init(isolation));
   }
   if (saved_priority_) {
     priority = *saved_priority_;
     saved_priority_ = boost::none;
   }
-  txn_->SetPriority(priority);
-  session_->SetTransaction(txn_);
+  txn->SetPriority(priority);
+  session->SetTransaction(txn);
 
   return Status::OK();
 }
 
 Result<const TransactionMetadata*> PgClientSession::GetDdlTransactionMetadata(
-    bool use_transaction) {
+    bool use_transaction, CoarseTimePoint deadline) {
   if (!use_transaction) {
     return nullptr;
   }
-  if (!ddl_txn_) {
+
+  auto& txn = Transaction(PgClientSessionKind::kDdl);
+  if (!txn) {
     const auto isolation = FLAGS_ysql_serializable_isolation_for_ddl_txn
         ? IsolationLevel::SERIALIZABLE_ISOLATION : IsolationLevel::SNAPSHOT_ISOLATION;
-    ddl_txn_ = VERIFY_RESULT(transaction_pool_provider_()->TakeAndInit(isolation));
-    ddl_txn_metadata_ = VERIFY_RESULT(Copy(ddl_txn_->GetMetadata().get()));
-    ddl_session_->SetTransaction(ddl_txn_);
+    txn = VERIFY_RESULT(transaction_pool_provider_()->TakeAndInit(isolation, deadline));
+    ddl_txn_metadata_ = VERIFY_RESULT(Copy(txn->GetMetadata(deadline).get()));
+    EnsureSession(PgClientSessionKind::kDdl)->SetTransaction(txn);
   }
 
   return &ddl_txn_metadata_;
@@ -756,6 +769,219 @@ Result<client::YBTransactionPtr> PgClientSession::RestartTransaction(
   session->SetTransaction(result);
   VLOG_WITH_PREFIX(3) << "Restarted transaction";
   return result;
+}
+
+Status PgClientSession::InsertSequenceTuple(
+    const PgInsertSequenceTupleRequestPB& req, PgInsertSequenceTupleResponsePB* resp,
+    rpc::RpcContext* context) {
+  PgObjectId table_oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
+  auto result = table_cache_.Get(table_oid.GetYbTableId());
+  if (!result.ok()) {
+    RETURN_NOT_OK(CreateSequencesDataTable(&client_, context->GetClientDeadline()));
+    // Try one more time.
+    result = table_cache_.Get(table_oid.GetYbTableId());
+  }
+  auto table = VERIFY_RESULT(std::move(result));
+
+  auto psql_write(client::YBPgsqlWriteOp::NewInsert(table));
+
+  auto write_request = psql_write->mutable_request();
+  write_request->set_ysql_catalog_version(req.ysql_catalog_version());
+
+  write_request->add_partition_column_values()->mutable_value()->set_int64_value(req.db_oid());
+  write_request->add_partition_column_values()->mutable_value()->set_int64_value(req.seq_oid());
+
+  PgsqlColumnValuePB* column_value = write_request->add_column_values();
+  column_value->set_column_id(table->schema().ColumnId(kPgSequenceLastValueColIdx));
+  column_value->mutable_expr()->mutable_value()->set_int64_value(req.last_val());
+
+  column_value = write_request->add_column_values();
+  column_value->set_column_id(table->schema().ColumnId(kPgSequenceIsCalledColIdx));
+  column_value->mutable_expr()->mutable_value()->set_bool_value(req.is_called());
+
+  auto& session = EnsureSession(PgClientSessionKind::kSequence);
+  session->SetDeadline(context->GetClientDeadline());
+  return session->ApplyAndFlush(std::move(psql_write));
+}
+
+Status PgClientSession::UpdateSequenceTuple(
+    const PgUpdateSequenceTupleRequestPB& req, PgUpdateSequenceTupleResponsePB* resp,
+    rpc::RpcContext* context) {
+  PgObjectId table_oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
+  auto table = VERIFY_RESULT(table_cache_.Get(table_oid.GetYbTableId()));
+
+  std::shared_ptr<client::YBPgsqlWriteOp> psql_write(client::YBPgsqlWriteOp::NewUpdate(table));
+
+  auto write_request = psql_write->mutable_request();
+  write_request->set_ysql_catalog_version(req.ysql_catalog_version());
+
+  write_request->add_partition_column_values()->mutable_value()->set_int64_value(req.db_oid());
+  write_request->add_partition_column_values()->mutable_value()->set_int64_value(req.seq_oid());
+
+  PgsqlColumnValuePB* column_value = write_request->add_column_new_values();
+  column_value->set_column_id(table->schema().ColumnId(kPgSequenceLastValueColIdx));
+  column_value->mutable_expr()->mutable_value()->set_int64_value(req.last_val());
+
+  column_value = write_request->add_column_new_values();
+  column_value->set_column_id(table->schema().ColumnId(kPgSequenceIsCalledColIdx));
+  column_value->mutable_expr()->mutable_value()->set_bool_value(req.is_called());
+
+  auto where_pb = write_request->mutable_where_expr()->mutable_condition();
+
+  if (req.has_expected()) {
+    // WHERE clause => WHERE last_val == expected_last_val AND is_called == expected_is_called.
+    where_pb->set_op(QL_OP_AND);
+
+    auto cond = where_pb->add_operands()->mutable_condition();
+    cond->set_op(QL_OP_EQUAL);
+    cond->add_operands()->set_column_id(table->schema().ColumnId(kPgSequenceLastValueColIdx));
+    cond->add_operands()->mutable_value()->set_int64_value(req.expected_last_val());
+
+    cond = where_pb->add_operands()->mutable_condition();
+    cond->set_op(QL_OP_EQUAL);
+    cond->add_operands()->set_column_id(table->schema().ColumnId(kPgSequenceIsCalledColIdx));
+    cond->add_operands()->mutable_value()->set_bool_value(req.expected_is_called());
+  } else {
+    where_pb->set_op(QL_OP_EXISTS);
+  }
+
+  // For compatibility set deprecated column_refs
+  write_request->mutable_column_refs()->add_ids(
+      table->schema().ColumnId(kPgSequenceLastValueColIdx));
+  write_request->mutable_column_refs()->add_ids(
+      table->schema().ColumnId(kPgSequenceIsCalledColIdx));
+  // Same values, to be consumed by current TServers
+  write_request->add_col_refs()->set_column_id(
+      table->schema().ColumnId(kPgSequenceLastValueColIdx));
+  write_request->add_col_refs()->set_column_id(
+      table->schema().ColumnId(kPgSequenceIsCalledColIdx));
+
+  auto& session = EnsureSession(PgClientSessionKind::kSequence);
+  session->SetDeadline(context->GetClientDeadline());
+  RETURN_NOT_OK(session->ApplyAndFlush(psql_write));
+  resp->set_skipped(psql_write->response().skipped());
+  return Status::OK();
+}
+
+Status PgClientSession::ReadSequenceTuple(
+    const PgReadSequenceTupleRequestPB& req, PgReadSequenceTupleResponsePB* resp,
+    rpc::RpcContext* context) {
+  using pggate::PgDocData;
+  using pggate::PgWireDataHeader;
+
+  PgObjectId table_oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
+  auto table = VERIFY_RESULT(table_cache_.Get(table_oid.GetYbTableId()));
+
+  std::shared_ptr<client::YBPgsqlReadOp> psql_read(client::YBPgsqlReadOp::NewSelect(table));
+
+  auto read_request = psql_read->mutable_request();
+  read_request->set_ysql_catalog_version(req.ysql_catalog_version());
+
+  read_request->add_partition_column_values()->mutable_value()->set_int64_value(req.db_oid());
+  read_request->add_partition_column_values()->mutable_value()->set_int64_value(req.seq_oid());
+
+  read_request->add_targets()->set_column_id(
+      table->schema().ColumnId(kPgSequenceLastValueColIdx));
+  read_request->add_targets()->set_column_id(
+      table->schema().ColumnId(kPgSequenceIsCalledColIdx));
+
+  // For compatibility set deprecated column_refs
+  read_request->mutable_column_refs()->add_ids(
+      table->schema().ColumnId(kPgSequenceLastValueColIdx));
+  read_request->mutable_column_refs()->add_ids(
+      table->schema().ColumnId(kPgSequenceIsCalledColIdx));
+  // Same values, to be consumed by current TServers
+  read_request->add_col_refs()->set_column_id(
+      table->schema().ColumnId(kPgSequenceLastValueColIdx));
+  read_request->add_col_refs()->set_column_id(
+      table->schema().ColumnId(kPgSequenceIsCalledColIdx));
+
+  auto& session = EnsureSession(PgClientSessionKind::kSequence);
+  session->SetDeadline(context->GetClientDeadline());
+  RETURN_NOT_OK(session->ReadSync(psql_read));
+
+  Slice cursor;
+  int64_t row_count = 0;
+  PgDocData::LoadCache(psql_read->rows_data(), &row_count, &cursor);
+  if (row_count == 0) {
+    return STATUS_SUBSTITUTE(NotFound, "Unable to find relation for sequence $0", req.seq_oid());
+  }
+
+  PgWireDataHeader header = PgDocData::ReadDataHeader(&cursor);
+  if (header.is_null()) {
+    return STATUS_SUBSTITUTE(NotFound, "Unable to find relation for sequence $0", req.seq_oid());
+  }
+  int64_t last_val = 0;
+  size_t read_size = PgDocData::ReadNumber(&cursor, &last_val);
+  cursor.remove_prefix(read_size);
+  resp->set_last_val(last_val);
+
+  header = PgDocData::ReadDataHeader(&cursor);
+  if (header.is_null()) {
+    return STATUS_SUBSTITUTE(NotFound, "Unable to find relation for sequence $0", req.seq_oid());
+  }
+  bool is_called = false;
+  read_size = PgDocData::ReadNumber(&cursor, &is_called);
+  resp->set_is_called(is_called);
+  return Status::OK();
+}
+
+Status PgClientSession::DeleteSequenceTuple(
+    const PgDeleteSequenceTupleRequestPB& req, PgDeleteSequenceTupleResponsePB* resp,
+    rpc::RpcContext* context) {
+  PgObjectId table_oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
+  auto table = VERIFY_RESULT(table_cache_.Get(table_oid.GetYbTableId()));
+
+  auto psql_delete(client::YBPgsqlWriteOp::NewDelete(table));
+  auto delete_request = psql_delete->mutable_request();
+
+  delete_request->add_partition_column_values()->mutable_value()->set_int64_value(req.db_oid());
+  delete_request->add_partition_column_values()->mutable_value()->set_int64_value(req.seq_oid());
+
+  auto& session = EnsureSession(PgClientSessionKind::kSequence);
+  session->SetDeadline(context->GetClientDeadline());
+  return session->ApplyAndFlush(std::move(psql_delete));
+}
+
+Status PgClientSession::DeleteDBSequences(
+    const PgDeleteDBSequencesRequestPB& req, PgDeleteDBSequencesResponsePB* resp,
+    rpc::RpcContext* context) {
+  PgObjectId table_oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
+  auto table_res = table_cache_.Get(table_oid.GetYbTableId());
+  if (!table_res.ok()) {
+    // Sequence table is not yet created.
+    return Status::OK();
+  }
+
+  auto table = std::move(*table_res);
+  if (table == nullptr) {
+    return Status::OK();
+  }
+
+  auto psql_delete(client::YBPgsqlWriteOp::NewDelete(table));
+  auto delete_request = psql_delete->mutable_request();
+
+  delete_request->add_partition_column_values()->mutable_value()->set_int64_value(req.db_oid());
+
+  auto& session = EnsureSession(PgClientSessionKind::kSequence);
+  session->SetDeadline(context->GetClientDeadline());
+  return session->ApplyAndFlush(std::move(psql_delete));
+}
+
+client::YBSessionPtr& PgClientSession::EnsureSession(PgClientSessionKind kind) {
+  auto& session = Session(kind);
+  if (!session) {
+    session = CreateSession(&client_, clock_);
+  }
+  return session;
+}
+
+client::YBSessionPtr& PgClientSession::Session(PgClientSessionKind kind) {
+  return sessions_[to_underlying(kind)].session;
+}
+
+client::YBTransactionPtr& PgClientSession::Transaction(PgClientSessionKind kind) {
+  return sessions_[to_underlying(kind)].transaction;
 }
 
 }  // namespace tserver

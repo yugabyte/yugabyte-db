@@ -45,7 +45,7 @@ Status PgSample::Prepare() {
 
   // Prepare read op to fetch rows
   auto read_op = std::make_shared<PgsqlReadOp>(*target_);
-  read_req_ = std::shared_ptr<PgsqlReadRequestPB>(read_op, &read_op->read_request());
+  read_req_ = std::shared_ptr<LWPgsqlReadRequestPB>(read_op, &read_op->read_request());
   doc_op_ = make_shared<PgDocReadOp>(pg_session_, &target_, std::move(read_op));
 
   return Status::OK();
@@ -91,13 +91,13 @@ Status PgSamplePicker::Prepare() {
   target_ = PgTable(VERIFY_RESULT(pg_session_->LoadTable(table_id_)));
   bind_ = PgTable(nullptr);
   auto read_op = std::make_shared<PgsqlReadOp>(*target_);
-  read_req_ = std::shared_ptr<PgsqlReadRequestPB>(read_op, &read_op->read_request());
+  read_req_ = std::shared_ptr<LWPgsqlReadRequestPB>(read_op, &read_op->read_request());
   doc_op_ = make_shared<PgDocReadOp>(pg_session_, &target_, std::move(read_op));
   return Status::OK();
 }
 
 Status PgSamplePicker::PrepareSamplingState(int targrows, double rstate_w, uint64 rand_state) {
-  PgsqlSamplingStatePB* sampling_state = read_req_->mutable_sampling_state();
+  auto* sampling_state = read_req_->mutable_sampling_state();
   sampling_state->set_targrows(targrows);      // target sample size
   sampling_state->set_numrows(0);              // current number of rows selected
   sampling_state->set_samplerows(0);           // rows scanned so far

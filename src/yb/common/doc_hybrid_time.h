@@ -85,10 +85,10 @@ class DocHybridTime {
   }
 
   // Decodes a DocHybridTime out of the given slice into this object (modifies the slice).
-  CHECKED_STATUS DecodeFrom(Slice *slice);
+  static Result<DocHybridTime> DecodeFrom(Slice *slice);
 
-  CHECKED_STATUS FullyDecodeFrom(const Slice& encoded);
-  CHECKED_STATUS DecodeFromEnd(Slice encoded_key_with_ht);
+  static Result<DocHybridTime> FullyDecodeFrom(const Slice& encoded);
+  static Result<DocHybridTime> DecodeFromEnd(Slice encoded_key_with_ht);
 
   // Decodes doc ht from end of slice, and removes corresponding bytes from provided slice.
   static Result<DocHybridTime> DecodeFromEnd(Slice* encoded_key_with_ht);

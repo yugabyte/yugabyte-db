@@ -790,12 +790,6 @@ For more information, refer to [SSL_CTX_set_cipher_list](https://www.openssl.org
 
 To learn about CDC, see [Change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture/).
 
-##### --cdc_rpc_timeout_ms
-
-The timeout used for CDC->`yb-tserver` asynchronous RPC calls.
-
-Default: `30000`
-
 ##### --cdc_state_checkpoint_update_interval_ms
 
 The rate at which CDC state's checkpoint is updated.
@@ -804,9 +798,113 @@ Default: `15000`
 
 ##### --cdc_ybclient_reactor_threads
 
-The number of reactor threads to be used for processing `ybclient` requests for CDC.
+The number of reactor threads to be used for processing `ybclient` requests for CDC. Increase to improve throughput on large tablet setups.
 
 Default: `50`
+
+##### --cdc_max_stream_intent_records
+
+Maximum number of intent records allowed in a single CDC batch.
+
+Default: `1000`
+
+##### --cdc_snapshot_batch_size 
+
+Number of records fetched in a single batch of snapshot operation of CDC.
+
+Default: `250`
+
+##### --cdc_min_replicated_index_considered_stale_seconds
+
+If cdc_min_replicated_index hasn't been replicated in this amount of time, we reset its value to max int64 to avoid retaining any logs.
+
+Default: `900`
+
+##### --timestamp_history_retention_interval_sec
+
+Time interval, in seconds, to retain history or older versions of data.
+
+Default: `900`
+
+##### --update_min_cdc_indices_interval_secs
+
+How often to read the cdc_state table to get the minimum applied index for each tablet across all streams. This information is used to correctly keep log files that contain unapplied entries. This is also the rate at which a tablet's minimum replicated index across all streams is sent to the other peers in the configuration. If flag `enable_log_retention_by_op_idx` (default: `true`) is disabled, this flag has no effect.
+
+Default: `60`
+
+##### --cdc_checkpoint_opid_interval_ms
+
+The number of seconds for which the client can go down and the intents will be retained. This basically means that if a client has not updated the checkpoint for this interval, the intents would be garbage collected.
+
+Default: `60000`
+
+{{< warning title="Warning" >}}
+
+If you are using multiple streams, it is advised that you set this flag to `1800000` i.e. 30 minutes.
+
+{{< /warning >}}
+
+##### --log_max_seconds_to_retain
+
+Number of seconds to retain log files. Log files older than this value will be deleted even if they contain unreplicated CDC entries. If 0, this flag will be ignored. This flag is ignored if a log segment contains entries that haven't been flushed to RocksDB.
+
+Default: `86400`
+
+##### --log_stop_retaining_min_disk_mb
+
+Stop retaining logs if the space available for the logs falls below this limit, specified in megabytes. As with `log_max_seconds_to_retain`, this flag is ignored if a log segment contains unflushed entries.
+
+Default: `102400`
+
+---
+
+### File expiration based on TTL flags
+
+##### --tablet_enable_ttl_file_filter
+
+Turn on the file expiration for TTL feature.
+
+Default: `false`
+
+##### --rocksdb_max_file_size_for_compaction
+
+For tables with a `default_time_to_live` table property, sets a size threshold at which files will no longer be considered for compaction. Files over this threshold will still be considered for expiration. Disabled if value is `0`.
+
+Ideally, rocksdb_max_file_size_for_compaction needs to be chosen as a balance between expiring data at a reasonable frequency while also not creating too many SST files (as this can impact read performance). For instance, if 90 days worth of data is stored, perhaps this flag should be set to roughly the size of one day’s worth of data. 
+
+Default: `0`
+
+##### --sst_files_soft_limit 
+
+Threshold for number of SST files per tablet. When exceeded, writes to a tablet will be throttled until the number of files is reduced.
+
+Default: `24`
+
+##### --sst_files_hard_limit
+
+Threshold for number of SST files per tablet. When exceeded, writes to a tablet will no longer be allowed until the number of files is reduced.
+
+Default: `48`
+
+##### --file_expiration_ignore_value_ttl
+
+When set to true, ignores any value-level TTL metadata when determining file expiration. Useful in situations where some SST files are missing the necessary value-level metadata (in case of upgrade, for instance).
+
+{{< warning title="Warning">}}
+Use of this flag can potentially result in expiration of live data - use at your discretion.
+{{< /warning >}}
+
+Default: `false`
+
+##### --file_expiration_value_ttl_overrides_table_ttl
+
+When set to true, allows files to expire purely based on their value-level TTL expiration time (even if it is lower than the table TTL). This is useful for times where a file needs to expire earlier than its table-level TTL would allow. If no value-level TTL metadata is available, then table-level TTL will still be used. 
+
+{{< warning title="Warning">}}
+Use of this flag can potentially result in expiration of live data - use at your discretion.
+{{< /warning >}}
+
+Default: `false`
 
 ## Admin UI
 

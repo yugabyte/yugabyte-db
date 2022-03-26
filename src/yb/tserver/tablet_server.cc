@@ -126,6 +126,10 @@ DEFINE_int32(ts_remote_bootstrap_svc_queue_length, 50,
              "RPC queue length for the TS remote bootstrap service");
 TAG_FLAG(ts_remote_bootstrap_svc_queue_length, advanced);
 
+DEFINE_int32(pg_client_svc_queue_length, yb::tserver::TabletServer::kDefaultSvcQueueLength,
+             "RPC queue length for the Pg Client service.");
+TAG_FLAG(pg_client_svc_queue_length, advanced);
+
 DEFINE_bool(enable_direct_local_tablet_server_call,
             true,
             "Enable direct call to local tablet server");
@@ -262,6 +266,12 @@ Status TabletServer::Init() {
   RETURN_NOT_OK(ValidateMasterAddressResolution());
 
   RETURN_NOT_OK(RpcAndWebServerBase::Init());
+
+  // If enabled, creates a proxy to call this tablet server locally.
+  if (FLAGS_enable_direct_local_tablet_server_call) {
+    proxy_ = std::make_shared<TabletServerServiceProxy>(proxy_cache_.get(), HostPort());
+  }
+
   RETURN_NOT_OK(path_handlers_->Register(web_server_.get()));
 
   log_prefix_ = Format("P $0: ", permanent_uuid());
@@ -378,7 +388,7 @@ Status TabletServer::RegisterServices() {
                                                      std::move(forward_service)));
 
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
-      FLAGS_svc_queue_length_default,
+      FLAGS_pg_client_svc_queue_length,
       std::make_unique<PgClientServiceImpl>(
           tablet_manager_->client_future(),
           clock(),
@@ -396,11 +406,6 @@ Status TabletServer::Start() {
 
   RETURN_NOT_OK(RegisterServices());
   RETURN_NOT_OK(RpcAndWebServerBase::Start());
-
-  // If enabled, creates a proxy to call this tablet server locally.
-  if (FLAGS_enable_direct_local_tablet_server_call) {
-    proxy_ = std::make_shared<TabletServerServiceProxy>(proxy_cache_.get(), HostPort());
-  }
 
   RETURN_NOT_OK(tablet_manager_->Start());
 

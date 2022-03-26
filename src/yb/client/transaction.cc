@@ -77,9 +77,6 @@ DEFINE_test_flag(int32, transaction_inject_flushed_delay_ms, 0,
 DEFINE_test_flag(bool, disable_proactive_txn_cleanup_on_abort, false,
                 "Disable cleanup of intents in abort path.");
 
-DECLARE_string(placement_cloud);
-DECLARE_string(placement_region);
-
 namespace yb {
 namespace client {
 
@@ -278,9 +275,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
       auto tservers = tablet->GetRemoteTabletServers(internal::IncludeFailedReplicas::kTrue);
       for (const auto &tserver : tservers) {
-        auto pb = tserver->cloud_info();
-        if (pb.placement_cloud() != FLAGS_placement_cloud ||
-            pb.placement_region() != FLAGS_placement_region) {
+        if (!tserver->IsLocalRegion()) {
           VLOG_WITH_PREFIX(4) << "Aborting (accessing nonlocal tablet in local transaction)";
           return STATUS_FORMAT(
               IllegalState, "Nonlocal tablet accessed in local transaction: tablet $0", tablet_id);
@@ -543,7 +538,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     return read_point_.IsRestartRequired();
   }
 
-  std::shared_future<Result<TransactionMetadata>> GetMetadata() EXCLUDES(mutex_) {
+  std::shared_future<Result<TransactionMetadata>> GetMetadata(
+      CoarseTimePoint deadline) EXCLUDES(mutex_) {
     UNIQUE_LOCK(lock, mutex_);
     if (metadata_future_.valid()) {
       return metadata_future_;
@@ -561,7 +557,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         }
       });
       lock.unlock();
-      RequestStatusTablet(TransactionRpcDeadline());
+      RequestStatusTablet(deadline);
       lock.lock();
       return metadata_future_;
     }
@@ -1386,8 +1382,9 @@ Result<ChildTransactionResultPB> YBTransaction::FinishChild() {
   return impl_->FinishChild();
 }
 
-std::shared_future<Result<TransactionMetadata>> YBTransaction::GetMetadata() const {
-  return impl_->GetMetadata();
+std::shared_future<Result<TransactionMetadata>> YBTransaction::GetMetadata(
+    CoarseTimePoint deadline) const {
+  return impl_->GetMetadata(deadline);
 }
 
 Status YBTransaction::ApplyChildResult(const ChildTransactionResultPB& result) {

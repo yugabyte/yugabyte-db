@@ -49,6 +49,9 @@ public class ConcurrentPoller {
 
   YBClient synClient;
 
+  // We need the schema information in a DDL the very first time we send a getChanges request.
+  boolean needSchemaInfo = true;
+
   public ConcurrentPoller(YBClient synClient,
                           AsyncYBClient client,
                           OutputClient outputClient,
@@ -111,6 +114,7 @@ public class ConcurrentPoller {
     final List result = new ArrayList();
     queue.addAll(listTabletIdTableIdPair);
     queue.add(END_PAIR);
+
     while (true) {
       if (stopExecution) {
         // This signals the CDCConsoleSubscriber to stop polling further and exit.
@@ -134,12 +138,17 @@ public class ConcurrentPoller {
 
       Deferred<GetChangesResponse> response = asyncYBClient.getChangesCDCSDK(
         table, streamId, entry.getKey() /*tabletId*/,
-        cp.getTerm(), cp.getIndex(), cp.getKey(), cp.getWriteId(), cp.getSnapshotTime());
+        cp.getTerm(), cp.getIndex(), cp.getKey(), cp.getWriteId(), cp.getSnapshotTime(),
+        needSchemaInfo);
+
+      // Once we got the response, we do not need the schema in further calls so unset the flag.
+      needSchemaInfo = false;
 
       response.addCallback(resCallback);
       response.addErrback(errCallback);
 
       deferredList.add(response);
+
     }
 
     AtomicInteger totalException = new AtomicInteger();

@@ -1212,12 +1212,15 @@ pgss_store(uint64 queryid,
 	uint64 			dbid = MyDatabaseId;
 	uint64 			ip = pg_get_client_addr();
 	uint64			planid = plan_info ? plan_info->planid: 0;
+	const char      *redacted_query;
 
 	/*  Monitoring is disabled */
 	if (!PGSM_ENABLED)
 		return;
 
 	Assert(query != NULL);
+
+	redacted_query = RedactPasswordIfExists(query);
 
 	/* Safety check... */
 	if (!IsSystemInitialized() || !pgss_qbuf[pgss->current_wbucket])
@@ -1238,7 +1241,7 @@ pgss_store(uint64 queryid,
 		case PGSS_PLAN:
 		{
 			pgssQueryEntry *query_entry;
-			query_entry = pgss_store_query_info(bucketid, queryid, dbid, userid, ip, query, strlen(query), kind);
+			query_entry = pgss_store_query_info(bucketid, queryid, dbid, userid, ip, redacted_query, strlen(redacted_query), kind);
 			if (query_entry == NULL)
 				elog(DEBUG1, "pg_stat_monitor: out of memory");
 			break;
@@ -1248,7 +1251,7 @@ pgss_store(uint64 queryid,
 		case PGSS_FINISHED:
 		{
 			pgssQueryEntry *query_entry;
-			query_entry = pgss_store_query_info(bucketid, queryid, dbid, userid, ip, query, strlen(query), kind);
+			query_entry = pgss_store_query_info(bucketid, queryid, dbid, userid, ip, redacted_query, strlen(redacted_query), kind);
 			if (query_entry == NULL)
 			{
 				elog(DEBUG1, "pg_stat_monitor: out of memory");
@@ -1265,7 +1268,7 @@ pgss_store(uint64 queryid,
 				pgss_update_entry(entry,		/* entry */
 							bucketid,			/* bucketid */
 							queryid,			/* queryid */
-							query, 				/* query */
+							redacted_query, 	/* query */
 							plan_info,			/* PlanInfo */
 							cmd_type,			/* CmdType */
 							sys_info,			/* SysInfo */

@@ -7,12 +7,12 @@ section: INTEGRATIONS
 menu:
   latest:
     identifier: flyway
-    weight: 650
+    weight: 571
 isTocNested: true
 showAsideToc: true
 ---
 
-[Flyway](https://flywaydb.org/) provides the means to manage schema changes to a YugabyteDB database, among others. 
+[Flyway](https://flywaydb.org/) provides the means to manage schema changes to a YugabyteDB database, among others.
 
 The YugabyteDB-specific implementation of the Flyway APIs has been added to the Flyway community project.
 
@@ -22,7 +22,7 @@ Before you can start using Flyway, ensure that you have the following installed 
 
 - YugabyteDB version 2.4 or later (see [YugabyteDB Quick Start Guide](/latest/quick-start/)).
 
-- Yugabyte cluster (see [Create a local cluster](/latest/quick-start/create-local-cluster/macos/)). 
+- Yugabyte cluster (see [Create a local cluster](/latest/quick-start/create-local-cluster/macos/)).
 
 - Flyway community edition version 7.11.2 or later (see [Download Flyway](https://flywaydb.org/download)).
 
@@ -68,7 +68,7 @@ To migrate schema using SQL, perform the following:
   ```
 
   ```sql
-  INSERT INTO motorcycle_manufacturers (manufacturer_id, manufacturer_name) 
+  INSERT INTO motorcycle_manufacturers (manufacturer_id, manufacturer_name)
   VALUES (default, 'Harley-Davidson'), (default, 'Yamaha');
   ```
 
@@ -95,9 +95,9 @@ public class V3__AddHQAdress extends BaseJavaMigration {
 
   public void migrate(Context context) throws Exception {
     try (Statement alter = context.getConnection().createStatement()) {
-      alter.execute("ALTER TABLE motorcycle_manufacturers 
+      alter.execute("ALTER TABLE motorcycle_manufacturers
                     ADD COLUMN hq_address VARCHAR(50)");
-    }                   
+    }
   }
 }
 ```

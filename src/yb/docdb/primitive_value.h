@@ -56,10 +56,6 @@ class PrimitiveValue {
   static const PrimitiveValue kObject;
   static const PrimitiveValue kLivenessColumn;
 
-  // Flags for jsonb.
-  // Indicates that the stored jsonb is the complete jsonb value and not a partial update to jsonb.
-  static constexpr int64_t kCompleteJsonb = 1;
-
   PrimitiveValue();
   explicit PrimitiveValue(ValueType value_type);
 
@@ -110,15 +106,12 @@ class PrimitiveValue {
 
   static PrimitiveValue NullValue(SortingType sorting);
 
-  // Converts a SortingType to its SortOrder equivalent.
-  // SortingType::kAscending and SortingType::kNotSpecified get
-  // converted to SortOrder::kAscending.
-  // SortingType::kDescending gets converted to SortOrder::kDescending.
-  static SortOrder SortOrderFromColumnSchemaSortingType(SortingType sorting_type);
-
   // Construct a primitive value from a QLValuePB.
-  static PrimitiveValue FromQLValuePB(const QLValuePB& value,
-                                      SortingType sorting_type);
+  static PrimitiveValue FromQLValuePB(const QLValuePB& value, SortingType sorting_type,
+                                      bool check_is_collate = true);
+
+  static PrimitiveValue FromQLValuePB(const LWQLValuePB& value, SortingType sorting_type,
+                                      bool check_is_collate = true);
 
   // Set a primitive value in a QLValuePB.
   static void ToQLValuePB(const PrimitiveValue& pv,
@@ -128,8 +121,6 @@ class PrimitiveValue {
   ValueType value_type() const { return type_; }
 
   void AppendToKey(KeyBytes* key_bytes) const;
-
-  std::string ToValue() const;
 
   // Convert this value to a human-readable string for logging / debugging.
   std::string ToString(AutoDecodeKeys auto_decode_keys = AutoDecodeKeys::kFalse) const;
@@ -159,7 +150,7 @@ class PrimitiveValue {
   static PrimitiveValue UInt64(uint64_t v, SortOrder sort_order = SortOrder::kAscending);
   static PrimitiveValue TransactionId(Uuid transaction_id);
   static PrimitiveValue TableId(Uuid table_id);
-  static PrimitiveValue PgTableOid(const PgTableOid pgtable_id);
+  static PrimitiveValue ColocationId(const ColocationId colocation_id);
   static PrimitiveValue Jsonb(const std::string& json);
   static PrimitiveValue GinNull(uint8_t v);
 
@@ -356,6 +347,14 @@ inline std::vector<PrimitiveValue> PrimitiveValues(T... args) {
   AppendPrimitiveValues(&v, args...);
   return v;
 }
+
+// Converts a SortingType to its SortOrder equivalent.
+// SortingType::kAscending and SortingType::kNotSpecified get
+// converted to SortOrder::kAscending.
+// SortingType::kDescending gets converted to SortOrder::kDescending.
+SortOrder SortOrderFromColumnSchemaSortingType(SortingType sorting_type);
+
+void AppendEncodedValue(const QLValuePB& value, SortingType sorting_type, std::string* out);
 
 }  // namespace docdb
 }  // namespace yb

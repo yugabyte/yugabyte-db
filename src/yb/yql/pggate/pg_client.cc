@@ -28,6 +28,7 @@
 #include "yb/tserver/pg_client.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/logging.h"
 #include "yb/util/protobuf_util.h"
 #include "yb/util/result.h"
@@ -57,21 +58,32 @@ const auto kExtraTimeout = 2s;
 
 struct PerformData {
   PgsqlOps operations;
-  tserver::PgPerformResponsePB resp;
+  tserver::LWPgPerformResponsePB resp;
   rpc::RpcController controller;
   PerformCallback callback;
+
+  explicit PerformData(Arena* arena) : resp(arena) {
+  }
 
   CHECKED_STATUS Process() {
     auto& responses = *resp.mutable_responses();
     SCHECK_EQ(implicit_cast<size_t>(responses.size()), operations.size(), RuntimeError,
               Format("Wrong number of responses: $0, while $1 expected",
                      responses.size(), operations.size()));
-    for (uint32_t i = 0; i != operations.size(); ++i) {
-      if (responses[i].has_rows_data_sidecar()) {
+    uint32_t i = 0;
+    for (auto& op_response : responses) {
+      if (op_response.has_rows_data_sidecar()) {
         operations[i]->rows_data() = VERIFY_RESULT(
-            controller.GetSidecarPtr(responses[i].rows_data_sidecar()));
+            controller.GetSidecarPtr(op_response.rows_data_sidecar()));
       }
-      operations[i]->response() = std::move(responses[i]);
+      // TODO(LW_PERFORM)
+      if (i) {
+        operations[i]->set_response(operations[i]->arena().NewObject<LWPgsqlResponsePB>(
+            &operations[i]->arena(), op_response));
+      } else {
+        operations[i]->set_response(&op_response);
+      }
+      ++i;
     }
     return Status::OK();
   }
@@ -166,7 +178,7 @@ class PgClient::Impl {
   Result<PgTableDescPtr> OpenTable(
       const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time) {
     tserver::PgOpenTableRequestPB req;
-    req.set_table_id(table_id.GetYBTableId());
+    req.set_table_id(table_id.GetYbTableId());
     req.set_reopen(reopen);
     if (invalidate_cache_time != CoarseTimePoint()) {
       req.set_invalidate_cache_time_us(ToMicroseconds(invalidate_cache_time.time_since_epoch()));
@@ -176,15 +188,14 @@ class PgClient::Impl {
     RETURN_NOT_OK(proxy_->OpenTable(req, &resp, PrepareController()));
     RETURN_NOT_OK(ResponseStatus(resp));
 
-    client::YBTableInfo info;
-    RETURN_NOT_OK(client::CreateTableInfoFromTableSchemaResp(resp.info(), &info));
-
     auto partitions = std::make_shared<client::VersionedTablePartitionList>();
     partitions->version = resp.partitions().version();
     partitions->keys.assign(resp.partitions().keys().begin(), resp.partitions().keys().end());
 
-    return make_scoped_refptr<PgTableDesc>(
-        table_id, std::make_shared<client::YBTable>(info, std::move(partitions)));
+    auto result = make_scoped_refptr<PgTableDesc>(
+        table_id, resp.info(), std::move(partitions));
+    RETURN_NOT_OK(result->Init());
+    return result;
   }
 
   CHECKED_STATUS FinishTransaction(Commit commit, DdlMode ddl_mode) {
@@ -235,23 +246,102 @@ class PgClient::Impl {
     return ResponseStatus(resp);
   }
 
+  CHECKED_STATUS InsertSequenceTuple(int64_t db_oid,
+                                     int64_t seq_oid,
+                                     uint64_t ysql_catalog_version,
+                                     int64_t last_val,
+                                     bool is_called) {
+    tserver::PgInsertSequenceTupleRequestPB req;
+    req.set_session_id(session_id_);
+    req.set_db_oid(db_oid);
+    req.set_seq_oid(seq_oid);
+    req.set_ysql_catalog_version(ysql_catalog_version);
+    req.set_last_val(last_val);
+    req.set_is_called(is_called);
+
+    tserver::PgInsertSequenceTupleResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->InsertSequenceTuple(req, &resp, PrepareController()));
+    return ResponseStatus(resp);
+  }
+
+  Result<bool> UpdateSequenceTuple(int64_t db_oid,
+                                   int64_t seq_oid,
+                                   uint64_t ysql_catalog_version,
+                                   int64_t last_val,
+                                   bool is_called,
+                                   boost::optional<int64_t> expected_last_val,
+                                   boost::optional<bool> expected_is_called) {
+    tserver::PgUpdateSequenceTupleRequestPB req;
+    req.set_session_id(session_id_);
+    req.set_db_oid(db_oid);
+    req.set_seq_oid(seq_oid);
+    req.set_ysql_catalog_version(ysql_catalog_version);
+    req.set_last_val(last_val);
+    req.set_is_called(is_called);
+    if (expected_last_val && expected_is_called) {
+      req.set_has_expected(true);
+      req.set_expected_last_val(*expected_last_val);
+      req.set_expected_is_called(*expected_is_called);
+    }
+
+    tserver::PgUpdateSequenceTupleResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->UpdateSequenceTuple(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp.skipped();
+  }
+
+  Result<std::pair<int64_t, bool>> ReadSequenceTuple(int64_t db_oid,
+                                                     int64_t seq_oid,
+                                                     uint64_t ysql_catalog_version) {
+    tserver::PgReadSequenceTupleRequestPB req;
+    req.set_session_id(session_id_);
+    req.set_db_oid(db_oid);
+    req.set_seq_oid(seq_oid);
+    req.set_ysql_catalog_version(ysql_catalog_version);
+
+    tserver::PgReadSequenceTupleResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->ReadSequenceTuple(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return std::make_pair(resp.last_val(), resp.is_called());
+  }
+
+  CHECKED_STATUS DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid) {
+    tserver::PgDeleteSequenceTupleRequestPB req;
+    req.set_session_id(session_id_);
+    req.set_db_oid(db_oid);
+    req.set_seq_oid(seq_oid);
+
+    tserver::PgDeleteSequenceTupleResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->DeleteSequenceTuple(req, &resp, PrepareController()));
+    return ResponseStatus(resp);
+  }
+
+  CHECKED_STATUS DeleteDBSequences(int64_t db_oid) {
+    tserver::PgDeleteDBSequencesRequestPB req;
+    req.set_session_id(session_id_);
+    req.set_db_oid(db_oid);
+
+    tserver::PgDeleteDBSequencesResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->DeleteDBSequences(req, &resp, PrepareController()));
+    return ResponseStatus(resp);
+  }
+
   void PerformAsync(
       tserver::PgPerformOptionsPB* options,
       PgsqlOps* operations,
       const PerformCallback& callback) {
-    tserver::PgPerformRequestPB req;
+    auto& arena = operations->front()->arena();
+    tserver::LWPgPerformRequestPB req(&arena);
     req.set_session_id(session_id_);
     *req.mutable_options() = std::move(*options);
-    auto se = ScopeExit([&req] {
-      for (auto& op : *req.mutable_ops()) {
-        if (!op.release_read()) {
-          op.release_write();
-        }
-      }
-    });
     PrepareOperations(&req, operations);
 
-    auto data = std::make_shared<PerformData>();
+    auto data = std::make_shared<PerformData>(&arena);
     data->operations = std::move(*operations);
     data->callback = callback;
     data->controller.set_invoke_callback_mode(rpc::InvokeCallbackMode::kReactorThread);
@@ -272,23 +362,22 @@ class PgClient::Impl {
     });
   }
 
-  void PrepareOperations(tserver::PgPerformRequestPB* req, PgsqlOps* operations) {
+  void PrepareOperations(tserver::LWPgPerformRequestPB* req, PgsqlOps* operations) {
     auto& ops = *req->mutable_ops();
-    ops.Reserve(narrow_cast<int>(operations->size()));
     for (auto& op : *operations) {
-      auto* union_op = ops.Add();
+      auto& union_op = ops.emplace_back();
       if (op->is_read()) {
         auto& read_op = down_cast<PgsqlReadOp&>(*op);
-        union_op->set_allocated_read(&read_op.read_request());
+        union_op.ref_read(&read_op.read_request());
         if (read_op.read_from_followers()) {
-          union_op->set_read_from_followers(true);
+          union_op.set_read_from_followers(true);
         }
       } else {
         auto& write_op = down_cast<PgsqlWriteOp&>(*op);
         if (write_op.write_time()) {
           req->set_write_time(write_op.write_time().ToUint64());
         }
-        union_op->set_allocated_write(&write_op.write_request());
+        union_op.ref_write(&write_op.write_request());
       }
       if (op->read_time()) {
         op->read_time().AddToPB(req->mutable_options());
@@ -528,6 +617,40 @@ Status PgClient::RollbackSubTransaction(SubTransactionId id) {
 
 Status PgClient::ValidatePlacement(const tserver::PgValidatePlacementRequestPB* req) {
   return impl_->ValidatePlacement(req);
+}
+
+Status PgClient::InsertSequenceTuple(int64_t db_oid,
+                                     int64_t seq_oid,
+                                     uint64_t ysql_catalog_version,
+                                     int64_t last_val,
+                                     bool is_called) {
+  return impl_->InsertSequenceTuple(db_oid, seq_oid, ysql_catalog_version, last_val, is_called);
+}
+
+Result<bool> PgClient::UpdateSequenceTuple(int64_t db_oid,
+                                           int64_t seq_oid,
+                                           uint64_t ysql_catalog_version,
+                                           int64_t last_val,
+                                           bool is_called,
+                                           boost::optional<int64_t> expected_last_val,
+                                           boost::optional<bool> expected_is_called) {
+  return impl_->UpdateSequenceTuple(
+      db_oid, seq_oid, ysql_catalog_version, last_val, is_called, expected_last_val,
+      expected_is_called);
+}
+
+Result<std::pair<int64_t, bool>> PgClient::ReadSequenceTuple(int64_t db_oid,
+                                                             int64_t seq_oid,
+                                                             uint64_t ysql_catalog_version) {
+  return impl_->ReadSequenceTuple(db_oid, seq_oid, ysql_catalog_version);
+}
+
+Status PgClient::DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid) {
+  return impl_->DeleteSequenceTuple(db_oid, seq_oid);
+}
+
+Status PgClient::DeleteDBSequences(int64_t db_oid) {
+  return impl_->DeleteDBSequences(db_oid);
 }
 
 void PgClient::PerformAsync(
