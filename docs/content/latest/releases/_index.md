@@ -47,7 +47,7 @@ Support for YugabyteDB stable release series includes:
   * Yugabyte may direct Customers to Upgrade to a current release if a workaround does not exist.
 * **End of Life (EOL):** Yugabyte will post publicly on its website a notice of End of Life (EOL) for the affected Software and the timeline for discontinuing Support Services.
 
-For details, see the [Yugabyte Support Policy](https://www.yugabyte.com/support-policy/).
+For details, see the [Yugabyte Support Services Agreement](https://www.yugabyte.com/yugabyte-software-support-services-agreement/).
 
 ### Release support timelines
 
@@ -83,7 +83,7 @@ For information on key features planned for the upcoming releases, visit [Curren
 | Release series | Planned release |
 | :------------- | :-------------- |
 | v2.14 (stable) | Mid-2022 |
-| v2.13 | Early 2022 |
+| v2.15 | Mid-2022 |
 
 ## Recommended release series for projects
 

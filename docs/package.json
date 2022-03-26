@@ -1,15 +1,17 @@
 {
   "name": "docs",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Yugabyte Docs",
   "main": "public/index.html",
   "scripts": {
     "start": "run-p webpack-watch sass-watch hugo-server",
+    "start-static": "run-p webpack-watch sass-watch hugo-server-static",
     "build": "rm -rf public && npm ci && run-s webpack-build sass-build hugo-build",
     "debug-build": "rm -rf public && npm ci && run-s webpack-build sass-build hugo-build-with-metrics",
     "hugo-build": "hugo -b https://docs.yugabyte.com",
     "hugo-build-with-metrics": "hugo --templateMetrics --templateMetricsHints -b https://docs.yugabyte.com",
     "hugo-server": "hugo server --bind 0.0.0.0 --baseURL ${YB_HUGO_BASE:-localhost}",
+    "hugo-server-static": "hugo server --renderStaticToDisk --bind 0.0.0.0 --baseURL ${YB_HUGO_BASE:-localhost}",
     "sass-build": "node_modules/node-sass/bin/node-sass --output-style compressed styles/site.scss > static/css/site.css",
     "sass-watch": "npm run sass-build; node_modules/node-sass/bin/node-sass --watch --output static/css --output-style compressed styles/site.scss",
     "webpack-build": "webpack --mode=production",
