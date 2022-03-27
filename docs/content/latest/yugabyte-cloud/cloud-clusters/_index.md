@@ -14,13 +14,20 @@ menu:
 
 Yugabyte Cloud provides the following tools to manage clusters:
 
-| Feature | Description |
-| :--- | :--- |
-| [Scaling](configure-clusters/)  | To ensure the cluster configuration matches its performance requirements, scale the cluster vertically or horizontally as your requirements change. |
-| [Backups](backup-clusters/) | Configure a regular backup schedule, run manual backups, and review previous backups. |
-| [Maintenance windows](cloud-maintenance/) | Yugabyte performs cluster maintenance, including database upgrades, during scheduled maintenance windows. |
-| [PostgreSQL extensions](add-extensions/) | Extend the functionality of your cluster using PostgreSQL extensions. |
-| **Pause**<br>**Resume**<br>**Terminate** | To reduce costs on unused clusters, you can pause or delete them. Deleting a cluster deletes all of its data, including backups. Paused clusters are not billed for instance vCPU capacity. Disk and backup storage are charged at the standard rate (refer to [Cluster costs](../cloud-admin/cloud-billing-costs/#paused-cluster-costs)). Yugabyte notifies you when a cluster is paused for 30 days.<br>You can't change the configuration, or read and write data to a paused cluster. Alerts and backups are also stopped. Existing backups remain until they expire.<br>Access **Pause/Resume Cluster** and **Terminate Cluster** via the cluster **More Links** menu, or click the three dots icon for the cluster on the **Clusters** page. |
+- [Scaling](configure-clusters/) - To ensure the cluster configuration matches its performance requirements, scale the cluster vertically or horizontally as your requirements change.
+- [Backups](backup-clusters/) - Configure a regular backup schedule, run manual backups, and review previous backups.
+- [Maintenance windows](cloud-maintenance/) - Yugabyte only performs cluster maintenance, including database upgrades, during a weekly maintenance window that you configure.
+- [PostgreSQL extensions](add-extensions/) - Extend the functionality of your cluster using PostgreSQL extensions.
+
+### Pause, resume, and delete clusters
+
+To reduce costs on unused clusters, you can pause or delete them.
+
+Access **Pause/Resume Cluster** and **Terminate Cluster** via the cluster **More Links** menu, or click the three dots icon for the cluster on the **Clusters** page.
+
+Deleting a cluster deletes all of its data, including backups.
+
+Paused clusters are not billed for instance vCPU capacity. Disk and backup storage are charged at the standard rate (refer to [Cluster costs](../cloud-admin/cloud-billing-costs/#paused-cluster-costs)). You can't change the configuration, or read and write data to a paused cluster. Alerts and backups are also stopped. Existing backups remain until they expire. You can't pause a free cluster. Yugabyte notifies you when a cluster is paused for 30 days.
 
 <div class="row">
 
