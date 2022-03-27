@@ -37,9 +37,9 @@ public class ConfigHelper {
   private static final List<String> AWS_INSTANCE_PREFIXES_SUPPORTED =
       ImmutableList.of("m3.", "c5.", "c5d.", "c4.", "c3.", "i3.");
   private static final List<String> GRAVITON_AWS_INSTANCE_PREFIXES_SUPPORTED =
-      ImmutableList.of("m6g.", "c6gd.", "c6g.");
+      ImmutableList.of("m6g.", "c6gd.", "c6g.", "t4g.");
   private static final List<String> CLOUD_AWS_INSTANCE_PREFIXES_SUPPORTED =
-      ImmutableList.of("m3.", "c5.", "c5d.", "c4.", "c3.", "i3.", "t2.", "t3.");
+      ImmutableList.of("m3.", "c5.", "c5d.", "c4.", "c3.", "i3.", "t2.", "t3.", "t4g.");
 
   public List<String> getAWSInstancePrefixesSupported() {
     if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.cloud.enabled")) {
