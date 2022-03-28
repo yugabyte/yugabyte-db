@@ -118,6 +118,10 @@ DEFINE_double(cdc_read_safe_deadline_ratio, .10,
               "When the heartbeat deadline has this percentage of time remaining, "
               "the master should halt tablet report processing so it can respond in time.");
 
+DEFINE_bool(enable_update_local_peer_min_index, true,
+            "Enable each local peer to update its own log checkpoint instead of the leader "
+            "updating all peers.");
+
 DECLARE_bool(enable_log_retention_by_op_idx);
 
 DECLARE_int32(cdc_checkpoint_opid_interval_ms);
@@ -1403,6 +1407,9 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
     time_since_update_peers = MonoTime::Now();
     LOG(INFO) << "Started to read minimum replicated indices for all tablets";
 
+    auto enable_update_local_peer_min_index =
+        GetAtomicFlag(&FLAGS_enable_update_local_peer_min_index);
+
     auto cdc_state_table_result = GetCdcStateTable();
     if (!cdc_state_table_result.ok()) {
       // It is possible that this runs before the cdc_state table is created. This is
@@ -1471,7 +1478,7 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
       if (s.IsNotFound()) {
         VLOG(2) << "Did not found tablet peer for tablet " << tablet_id;
         continue;
-      } else if (!IsTabletPeerLeader(tablet_peer)) {
+      } else if (!enable_update_local_peer_min_index && !IsTabletPeerLeader(tablet_peer)) {
         VLOG(2) << "Tablet peer " << tablet_peer->permanent_uuid()
                 << " is not the leader for tablet " << tablet_id;
         continue;
@@ -1488,9 +1495,11 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
                      << " and tablet " << tablet_peer->tablet_id()
                      << ": " << s;
       }
-      VLOG(1) << "Updating followers for tablet " << tablet_id << " with index " << min_index;
-      WARN_NOT_OK(UpdatePeersCdcMinReplicatedIndex(tablet_id, min_index, current_term),
-                  "UpdatePeersCdcMinReplicatedIndex failed");
+      if (!enable_update_local_peer_min_index) {
+        VLOG(1) << "Updating followers for tablet " << tablet_id << " with index " << min_index;
+        WARN_NOT_OK(UpdatePeersCdcMinReplicatedIndex(tablet_id, min_index, current_term),
+                    "UpdatePeersCdcMinReplicatedIndex failed");
+      }
     }
     LOG(INFO) << "Done reading all the indices for all tablets and updating peers";
   } while (sleep_while_not_stopped());
@@ -1922,6 +1931,8 @@ void CDCServiceImpl::BootstrapProducer(const BootstrapProducerRequestPB* req,
           return;
         }
         op_id = tablet_peer->log()->GetLatestEntryOpId();
+        // Even though we let each log independently take care of updating its own log checkpoint,
+        // we still call the Update RPC when we create the replication stream.
         RPC_STATUS_RETURN_ERROR(UpdatePeersCdcMinReplicatedIndex(tablet.tablet_id(), op_id.index),
                                 resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR,
                                 context);
