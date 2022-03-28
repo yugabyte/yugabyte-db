@@ -58,7 +58,7 @@ The `OPTIONS` clause specifies options for the foreign-data server. They typical
 Basic example.
 
 ```plpgsql
-yugabyte=#  CREATE USER MAPPING FOR myuser SERVER myserver OPTIONS (user 'john', password 'password');
+yugabyte=#  CREATE USER MAPPING FOR myuser SERVER my_server OPTIONS (user 'john', password 'password');
 ```
 
 ## See also

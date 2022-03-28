@@ -53,10 +53,10 @@ Drop a foreign server named **server_name**. If it doesn’t exist in the databa
 
 ## Examples
 
-Drop the foreign-data wrapper `myserver`, along with any objects that depend on it.
+Drop the foreign-data wrapper `my_server`, along with any objects that depend on it.
 
 ```plpgsql
-yugabyte=# DROP SERVER myserver CASCADE;
+yugabyte=# DROP SERVER my_server CASCADE;
 ```
 ## See also
 

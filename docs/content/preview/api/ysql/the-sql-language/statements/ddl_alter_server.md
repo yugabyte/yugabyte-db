@@ -55,9 +55,9 @@ The `OPTIONS` clause can be used to specify the new options of the foreign serve
 
 ## Examples
 
-Change the server's version to `2.0`, set `opt1` to `true`, and drop `opt2`.
+Change the server's version to `2.0`, set `opt1` to `'true'`, and drop `opt2`.
 ```plpgsql
-yugabyte=# ALTER SERVER myserver SERVER VERSION '2.0' OPTIONS (SET 'opt1' 'true', DROP 'opt2');
+yugabyte=# ALTER SERVER my_server SERVER VERSION '2.0' OPTIONS (SET opt1 'true', DROP opt2);
 ```
 ## See also
 

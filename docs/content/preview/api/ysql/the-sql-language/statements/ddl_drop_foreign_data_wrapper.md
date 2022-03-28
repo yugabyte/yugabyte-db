@@ -53,10 +53,10 @@ Drop a foreign-data wrapper named **fdw_name**. If it doesn’t exist in the dat
 
 ## Examples
 
-Drop the foreign-data wrapper `mywrapper`, along with any objects that depend on it.
+Drop the foreign-data wrapper `my_wrapper`, along with any objects that depend on it.
 
 ```plpgsql
-yugabyte=# DROP FOREIGN DATA WRAPPER mywrapper CASCADE;
+yugabyte=# DROP FOREIGN DATA WRAPPER my_wrapper CASCADE;
 ```
 ## See also
 

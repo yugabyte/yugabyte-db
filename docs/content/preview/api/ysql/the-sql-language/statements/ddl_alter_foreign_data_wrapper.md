@@ -55,7 +55,7 @@ The `NO HANDLER` clause can be used to specify that the foreign-data wrapper has
 The `VALIDATOR` clause can be used to specify the validator function.
 The `NO VALIDATOR` can be used to specify that the foreign-data wrapper has no validator function.
 
-### Options:
+### Options
 The `OPTIONS` clause can be used to specify the new options of the foreign-data wrapper. `ADD`, `SET`, and `DROP` specify the action to be performed. `ADD` is assumed if no operation is explicitly specified.
 
 The new owner of the FDW can be specified using **new_owner**
@@ -66,19 +66,19 @@ The new name of the FDW can be specified using **new_name**
 Change the handler to `newhandler`.
 
 ```plpgsql
-yugabyte=# ALTER FOREIGN DATA WRAPPER mywrapper HANDLER;
+yugabyte=# ALTER FOREIGN DATA WRAPPER my_wrapper HANDLER;
 ```
 
 Alter the foreign-data wrapper to have no validator.
 
 ```plpgsql
-yugabyte=# ALTER FOREIGN DATA WRAPPER mywrapper NO VALIDATOR;
+yugabyte=# ALTER FOREIGN DATA WRAPPER my_wrapper NO VALIDATOR;
 ```
 
-Alter the foreign-data wrapper's options: add `new` and set it to `1`, change the value of `old` to `2`.
+Alter the foreign-data wrapper's options: add `new` and set it to `'1'`, change the value of `old` to `'2'`.
 
 ```plpgsql
-yugabyte=# ALTER FOREIGN DATA WRAPPER mywrapper OPTIONS(ADD 'new' '1', SET 'old' '2');
+yugabyte=# ALTER FOREIGN DATA WRAPPER my_wrapper OPTIONS(ADD new '1', SET old '2');
 ```
 
 ## See also

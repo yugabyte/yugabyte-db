@@ -68,7 +68,7 @@ The `OPTIONS` clause specifies options for the foreign-data wrapper. The permitt
 Basic example.
 
 ```plpgsql
-yugabyte=# CREATE FOREIGN DATA WRAPPER mywrapper HANDLER myhandler OPTIONS (dummy 'true');
+yugabyte=# CREATE FOREIGN DATA WRAPPER my_wrapper HANDLER myhandler OPTIONS (dummy 'true');
 ```
 
 ## See also

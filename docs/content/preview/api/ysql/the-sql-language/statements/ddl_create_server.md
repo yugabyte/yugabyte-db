@@ -66,7 +66,7 @@ The `OPTIONS` clause specifies options for the foreign server. They typically de
 Basic example.
 
 ```plpgsql
-yugabyte=#  CREATE SERVER myserver FOREIGN DATA WRAPPER mywrapper OPTIONS (host '187.51.62.1');
+yugabyte=#  CREATE SERVER my_server FOREIGN DATA WRAPPER my_wrapper OPTIONS (host '187.51.62.1');
 ```
 
 ## See also

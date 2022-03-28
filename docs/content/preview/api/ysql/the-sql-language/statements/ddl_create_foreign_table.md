@@ -62,7 +62,7 @@ The `OPTIONS` clause specifies options for the foreign table. The permitted opti
 Basic example.
 
 ```plpgsql
-yugabyte=#  CREATE FOREIGN TABLE mytable (col1 int, col2 int) SERVER myserver OPTIONS (schema 'external_schema', table 'external_table');
+yugabyte=#  CREATE FOREIGN TABLE mytable (col1 int, col2 int) SERVER my_server OPTIONS (schema 'external_schema', table 'external_table');
 ```
 
 ## See also
