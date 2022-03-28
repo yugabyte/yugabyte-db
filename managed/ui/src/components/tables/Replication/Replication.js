@@ -56,7 +56,8 @@ export default class Replication extends Component {
   render() {
     const {
       universe: { currentUniverse },
-      graph: { metrics }
+      graph: { metrics },
+      customer: { currentUser }
     } = this.props;
 
     const universeDetails = currentUniverse.data.universeDetails;
@@ -169,6 +170,7 @@ export default class Replication extends Component {
               {showMetrics && metrics[GRAPH_TYPE] && (
                 <div className="graph-container">
                   <MetricsPanel
+                    currentUser={currentUser}
                     metricKey={METRIC_NAME}
                     metric={aggregatedMetrics}
                     className={'metrics-panel-container'}
