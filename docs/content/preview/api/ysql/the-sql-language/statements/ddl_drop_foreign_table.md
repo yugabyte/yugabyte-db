@@ -51,8 +51,14 @@ Drop a foreign table named **table_name**. If it doesn’t exist in the database
 `RESTRICT` is the default and it will not drop the foreign table if any objects depend on it. 
 `CASCADE` will drop the foreign table and any objects that transitively depend on it.
 
+## Examples
+
+Drop the foreign-data table `mytable`, along with any objects that depend on it.
+
+```plpgsql
+yugabyte=# DROP FOREIGN TABLE mytable CASCADE;
+```
 ## See also
 
-- [`CREATE SERVER`](../ddl_create_server)
 - [`CREATE FOREIGN TABLE`](../ddl_create_foreign_table)
-- [`IMPORT FOREIGN SCHEMA`](../ddl_import_foreign_schema)
+- [`ALTER FOREIGN TABLE`](../ddl_alter_foreign_table)

@@ -38,8 +38,8 @@ A foreign server can be created using the `CREATE FOREIGN SERVER` command.
 
 Example:
 
-```
-yugabyte=# CREATE SERVER myserver FOREIGN DATA WRAPPER mywrapper OPTIONS (dummy 'true');
+```plpgsql
+yugabyte=# CREATE SERVER myserver FOREIGN DATA WRAPPER mywrapper OPTIONS (host '197.0.2.1');
 ```
 
 ### CREATE USER MAPPINGS
@@ -49,7 +49,7 @@ A user mapping can be created using the `CREATE USER MAPPING` command.
 
 List all databases using the following statements.
 
-```sql
+```plpgsql
 yugabyte=# CREATE USER MAPPING FOR myuser SERVER myserver OPTIONS (user 'john', password 'password');
 ```
 
@@ -58,7 +58,7 @@ yugabyte=# CREATE USER MAPPING FOR myuser SERVER myserver OPTIONS (user 'john', 
 Use the `CREATE FOREIGN TABLE` command to create foreign tables.
 
 ```sql
-yugabyte=# CREATE FOREIGN TABLE mytable (col1 int, col2 int) SERVER myserver OPTIONS (dummy 'true');
+yugabyte=# CREATE FOREIGN TABLE mytable (col1 int, col2 int) SERVER myserver OPTIONS (schema 'external_schema', table 'external_table');
 ```
 
 

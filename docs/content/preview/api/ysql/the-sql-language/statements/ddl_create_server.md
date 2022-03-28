@@ -66,11 +66,13 @@ The `OPTIONS` clause specifies options for the foreign server. They typically de
 Basic example.
 
 ```plpgsql
-yugabyte=#  CREATE SERVER myserver FOREIGN DATA WRAPPER mywrapper OPTIONS (dummy 'true');
+yugabyte=#  CREATE SERVER myserver FOREIGN DATA WRAPPER mywrapper OPTIONS (host '187.51.62.1');
 ```
 
 ## See also
 
-- [`CREATE SERVER`](../ddl_create_server)
+- [`CREATE FOREIGN DATA WRAPPER`](../ddl_create_foreign_data_wrapper)
 - [`CREATE FOREIGN TABLE`](../ddl_create_foreign_table)
+- [`CREATE USER MAPPING`](../ddl_create_user_mapping)
 - [`IMPORT FOREIGN SCHEMA`](../ddl_import_foreign_schema)
+- [`ALTER SERVER`][../ddl_alter_server]

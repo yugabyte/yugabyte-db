@@ -36,10 +36,10 @@ Use the `DROP SERVER` command to remove a foreign server. The user who executes 
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/drop_foreign_server.grammar.md" /%}}
+    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/drop_server.grammar.md" /%}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/drop_foreign_server.diagram.md" /%}}
+    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/drop_server.diagram.md" /%}}
   </div>
 </div>
 
@@ -51,8 +51,14 @@ Drop a foreign server named **server_name**. If it doesn’t exist in the databa
 `RESTRICT` is the default and it will not drop the foreign server if any objects depend on it. 
 `CASCADE` will drop the foreign server and any objects that transitively depend on it.
 
+## Examples
+
+Drop the foreign-data wrapper `myserver`, along with any objects that depend on it.
+
+```plpgsql
+yugabyte=# DROP SERVER myserver CASCADE;
+```
 ## See also
 
 - [`CREATE SERVER`](../ddl_create_server)
-- [`CREATE FOREIGN TABLE`](../ddl_create_foreign_table)
-- [`IMPORT FOREIGN SCHEMA`](../ddl_import_foreign_schema)
+- [`ALTER SERVER`](../ddl_alter_server)

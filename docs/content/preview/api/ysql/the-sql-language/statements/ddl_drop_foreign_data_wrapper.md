@@ -51,8 +51,14 @@ Drop a foreign-data wrapper named **fdw_name**. If it doesn’t exist in the dat
 `RESTRICT` is the default and it will not drop the foreign-data wrapper if any objects depend on it. 
 `CASCADE` will drop the foreign-data wrapper and any objects that transitively depend on it.
 
+## Examples
+
+Drop the foreign-data wrapper `mywrapper`, along with any objects that depend on it.
+
+```plpgsql
+yugabyte=# DROP FOREIGN DATA WRAPPER mywrapper CASCADE;
+```
 ## See also
 
-- [`CREATE SERVER`](../ddl_create_server)
-- [`CREATE FOREIGN TABLE`](../ddl_create_foreign_table)
-- [`IMPORT FOREIGN SCHEMA`](../ddl_import_foreign_schema)
+- [`CREATE FOREIGN DATA WRAPPER`](../ddl_create_foreign_data_wrapper)
+- [`ALTER FOREIGN DATA WRAPPER`](../ddl_alter_foreign_data_wrapper)

@@ -50,11 +50,16 @@ Alter the foreign server named **server_name**.
 ### Version
 The `VERSION` clause can be used to specify the updated version of the server. 
 
-### Options:
+### Options
 The `OPTIONS` clause can be used to specify the new options of the foreign server. `ADD`, `SET`, and `DROP` specify the action to be performed. `ADD` is assumed if no operation is explicitly specified.
 
+## Examples
+
+Change the server's version to `2.0`, set `opt1` to `true`, and drop `opt2`.
+```plpgsql
+yugabyte=# ALTER SERVER myserver SERVER VERSION '2.0' OPTIONS (SET 'opt1' 'true', DROP 'opt2');
+```
 ## See also
 
 - [`CREATE SERVER`](../ddl_create_server)
-- [`CREATE FOREIGN TABLE`](../ddl_create_foreign_table)
-- [`IMPORT FOREIGN SCHEMA`](../ddl_import_foreign_schema)
+- [`DROP SERVER`](../ddl_drop_server)

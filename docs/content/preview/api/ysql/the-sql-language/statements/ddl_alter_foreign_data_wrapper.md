@@ -61,8 +61,27 @@ The `OPTIONS` clause can be used to specify the new options of the foreign-data 
 The new owner of the FDW can be specified using **new_owner**
 The new name of the FDW can be specified using **new_name**
 
+## Examples
+
+Change the handler to `newhandler`.
+
+```plpgsql
+yugabyte=# ALTER FOREIGN DATA WRAPPER mywrapper HANDLER;
+```
+
+Alter the foreign-data wrapper to have no validator.
+
+```plpgsql
+yugabyte=# ALTER FOREIGN DATA WRAPPER mywrapper NO VALIDATOR;
+```
+
+Alter the foreign-data wrapper's options: add `new` and set it to `1`, change the value of `old` to `2`.
+
+```plpgsql
+yugabyte=# ALTER FOREIGN DATA WRAPPER mywrapper OPTIONS(ADD 'new' '1', SET 'old' '2');
+```
+
 ## See also
 
-- [`CREATE SERVER`](../ddl_create_server)
-- [`CREATE FOREIGN TABLE`](../ddl_create_foreign_table)
-- [`IMPORT FOREIGN SCHEMA`](../ddl_import_foreign_schema)
+- [`CREATE FOREIGN DATA WRAPEPR`](../ddl_create_foreign_data_wrapper)
+- [`DROP FOREIGN DATA WRAPPER`](../ddl_create_foreign_data_wrapper)
