@@ -86,6 +86,7 @@
 #include "yb/util/promise.h"
 #include "yb/util/random.h"
 #include "yb/util/rw_mutex.h"
+#include "yb/util/status_callback.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/version_tracker.h"
@@ -860,6 +861,9 @@ class CatalogManager :
       const std::string& split_partition_key) override;
 
   CHECKED_STATUS TEST_IncrementTablePartitionListVersion(const TableId& table_id) override;
+
+  CHECKED_STATUS TEST_SendTestRetryRequest(
+      const PeerId& peer_id, int32_t num_retries, StdStatusCallback callback);
 
   // Schedule a task to run on the async task thread pool.
   CHECKED_STATUS ScheduleTask(std::shared_ptr<RetryingTSRpcTask> task) override;
