@@ -44,7 +44,7 @@ YRPC_GENERATE(
       value.proto wire_protocol.proto)
 ADD_YB_LIBRARY(yb_common_proto
   SRCS ${COMMON_PROTO_SRCS}
-  DEPS protobuf yrpc_base
+  DEPS protobuf yrpc_base rpc_base_proto
   NONLINK_DEPS ${COMMON_PROTO_TGTS})
 
 set(COMMON_BASE_SRCS

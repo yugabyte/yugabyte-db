@@ -26,14 +26,11 @@ namespace pggate {
 // Class PgStatement
 //--------------------------------------------------------------------------------------------------
 
-PgStatement::PgStatement(PgSession::ScopedRefPtr pg_session) : pg_session_(std::move(pg_session)) {
+PgStatement::PgStatement(PgSession::ScopedRefPtr pg_session)
+    : pg_session_(std::move(pg_session)), arena_(std::make_shared<Arena>()) {
 }
 
 PgStatement::~PgStatement() {
-}
-
-void PgStatement::AddExpr(PgExpr::SharedPtr expr) {
-  exprs_.push_back(expr);
 }
 
 }  // namespace pggate

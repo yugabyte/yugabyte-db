@@ -1309,25 +1309,25 @@ PrimitiveValue PrimitiveValue::Float(float f, SortOrder sort_order) {
   return primitive_value;
 }
 
-PrimitiveValue PrimitiveValue::Decimal(const string& encoded_decimal_str, SortOrder sort_order) {
+PrimitiveValue PrimitiveValue::Decimal(const Slice& decimal_str, SortOrder sort_order) {
   PrimitiveValue primitive_value;
   if (sort_order == SortOrder::kDescending) {
     primitive_value.type_ = ValueType::kDecimalDescending;
   } else {
     primitive_value.type_ = ValueType::kDecimal;
   }
-  new(&primitive_value.decimal_val_) string(encoded_decimal_str);
+  new(&primitive_value.decimal_val_) string(decimal_str.cdata(), decimal_str.size());
   return primitive_value;
 }
 
-PrimitiveValue PrimitiveValue::VarInt(const string& encoded_varint_str, SortOrder sort_order) {
+PrimitiveValue PrimitiveValue::VarInt(const Slice& varint_str, SortOrder sort_order) {
   PrimitiveValue primitive_value;
   if (sort_order == SortOrder::kDescending) {
     primitive_value.type_ = ValueType::kVarIntDescending;
   } else {
     primitive_value.type_ = ValueType::kVarInt;
   }
-  new(&primitive_value.varint_val_) string(encoded_varint_str);
+  new(&primitive_value.varint_val_) string(varint_str.cdata(), varint_str.size());
   return primitive_value;
 }
 
@@ -1407,10 +1407,10 @@ PrimitiveValue PrimitiveValue::ColocationId(const yb::ColocationId colocation_id
   return primitive_value;
 }
 
-PrimitiveValue PrimitiveValue::Jsonb(const std::string& json) {
+PrimitiveValue PrimitiveValue::Jsonb(const Slice& json) {
   PrimitiveValue primitive_value;
   primitive_value.type_ = ValueType::kJsonb;
-  new(&primitive_value.json_val_) string(json);
+  new(&primitive_value.json_val_) string(json.cdata(), json.size());
   return primitive_value;
 }
 
@@ -1944,12 +1944,17 @@ SortOrder SortOrderFromColumnSchemaSortingType(SortingType sorting_type) {
 
 PrimitiveValue PrimitiveValue::FromQLValuePB(
     const LWQLValuePB& value, SortingType sorting_type, bool check_is_collate) {
-  // TODO(LW_PERFORM)
-  return FromQLValuePB(value.ToGoogleProtobuf(), sorting_type, check_is_collate);
+  return DoFromQLValuePB(value, sorting_type, check_is_collate);
 }
 
-PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value, SortingType sorting_type,
-                                             bool check_is_collate) {
+PrimitiveValue PrimitiveValue::FromQLValuePB(
+    const QLValuePB& value, SortingType sorting_type, bool check_is_collate) {
+  return DoFromQLValuePB(value, sorting_type, check_is_collate);
+}
+
+template <class PB>
+PrimitiveValue PrimitiveValue::DoFromQLValuePB(
+    const PB& value, SortingType sorting_type, bool check_is_collate) {
   const auto sort_order = SortOrderFromColumnSchemaSortingType(sorting_type);
 
   switch (value.value_case()) {
@@ -1978,7 +1983,7 @@ PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value, SortingType
     case QLValuePB::kVarintValue:
       return PrimitiveValue::VarInt(value.varint_value(), sort_order);
     case QLValuePB::kStringValue: {
-      const string& val = value.string_value();
+      const auto& val = value.string_value();
       // In both Postgres and YCQL, character value cannot have embedded \0 byte.
       // Redis allows embedded \0 byte but it does not use QLValuePB so will not
       // come here to pick up 'is_collate'. Therefore, if the value is not empty
@@ -2015,7 +2020,7 @@ PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value, SortingType
     case QLValuePB::kTimeuuidValue:
       return PrimitiveValue(QLValue::timeuuid_value(value), sort_order);
     case QLValuePB::kFrozenValue: {
-      QLSeqValuePB frozen = value.frozen_value();
+      const auto& frozen = value.frozen_value();
       PrimitiveValue pv(ValueType::kFrozen);
       auto null_value_type = ValueType::kNullLow;
       if (sort_order == SortOrder::kDescending) {
@@ -2023,11 +2028,11 @@ PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value, SortingType
         pv.type_ = ValueType::kFrozenDescending;
       }
 
-      for (int i = 0; i < frozen.elems_size(); i++) {
-        if (IsNull(frozen.elems(i))) {
+      for (const auto& elem : frozen.elems()) {
+        if (IsNull(elem)) {
           pv.frozen_val_->emplace_back(null_value_type);
         } else {
-          pv.frozen_val_->push_back(PrimitiveValue::FromQLValuePB(frozen.elems(i), sorting_type));
+          pv.frozen_val_->push_back(PrimitiveValue::FromQLValuePB(elem, sorting_type));
         }
       }
       return pv;

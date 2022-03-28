@@ -1301,12 +1301,12 @@ YBHashSchema PartitionSchema::hash_schema() const {
   return *hash_schema_;
 }
 
-void PartitionSchema::ProcessHashKeyEntry(const QLValuePB& value_pb, std::string* out) {
+void PartitionSchema::ProcessHashKeyEntry(const LWQLValuePB& value_pb, std::string* out) {
   AppendToKey(value_pb, out);
 }
 
 void PartitionSchema::ProcessHashKeyEntry(const LWPgsqlExpressionPB& expr, std::string* out) {
-  AppendToKey(expr.value().ToGoogleProtobuf(), out);
+  AppendToKey(expr.value(), out);
 }
 
 void PartitionSchema::ProcessHashKeyEntry(const PgsqlExpressionPB& expr, std::string* out) {
