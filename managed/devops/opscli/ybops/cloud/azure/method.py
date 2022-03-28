@@ -55,6 +55,10 @@ class AzureCreateInstancesMethod(CreateInstancesMethod):
                                  help="Azure comma delimited security group IDs.")
         self.parser.add_argument("--vpcId", required=False,
                                  help="name of the virtual network associated with the subnet")
+        self.parser.add_argument("--disk_iops", type=int, default=None,
+                                 help="Desired iops for ultrassd instance volumes.")
+        self.parser.add_argument("--disk_throughput", type=int, default=None,
+                                 help="Desired throughput for ultrassd instance volumes.")
 
     def preprocess_args(self, args):
         super(AzureCreateInstancesMethod, self).preprocess_args(args)

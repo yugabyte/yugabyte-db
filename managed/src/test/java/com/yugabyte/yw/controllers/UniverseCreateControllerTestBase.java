@@ -849,8 +849,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
         PublicCloudConstants.StorageType.UltraSSD_LRS,
         1,
         100,
-        null,
-        null,
+        3000,
+        125,
         null,
         null
       },
@@ -1045,6 +1045,28 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
         null,
         null,
         "Number of volumes field is mandatory"
+      },
+      {
+        Common.CloudType.azu,
+        "c3.xlarge",
+        PublicCloudConstants.StorageType.UltraSSD_LRS,
+        1,
+        100,
+        null,
+        125,
+        null,
+        "Disk IOPS is mandatory for UltraSSD_LRS storage"
+      },
+      {
+        Common.CloudType.azu,
+        "c3.xlarge",
+        PublicCloudConstants.StorageType.UltraSSD_LRS,
+        1,
+        100,
+        3000,
+        null,
+        null,
+        "Disk throughput is mandatory for UltraSSD_LRS storage"
       },
       {
         Common.CloudType.azu,
