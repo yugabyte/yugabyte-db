@@ -14,7 +14,7 @@ import { BootstrapTable, RemoteObjSpec, SortOrder, TableHeaderColumn } from 'rea
 import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
 import Select, { OptionTypeBase } from 'react-select';
-import { Backup_States, getBackupsList, IBackup, IUniverse, TIME_RANGE_STATE } from '..';
+import { Backup_States, getBackupsList, IBackup, TIME_RANGE_STATE } from '..';
 import { StatusBadge } from '../../common/badge/StatusBadge';
 import { YBButton, YBMultiSelectRedesiged } from '../../common/forms/fields';
 import { YBLoading } from '../../common/indicators';
@@ -23,6 +23,7 @@ import {
   BACKUP_STATUS_OPTIONS,
   calculateDuration,
   CALDENDAR_ICON,
+  convertArrayToMap,
   DATE_FORMAT,
   ENTITY_NOT_AVAILABLE,
   FormatUnixTimeStampTimeToTimezone
@@ -30,8 +31,9 @@ import {
 import './BackupList.scss';
 import { BackupCancelModal, BackupDeleteModal } from './BackupDeleteModal';
 import { BackupRestoreModal } from './BackupRestoreModal';
-import { mapValues, keyBy } from 'lodash';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
+import { BackupCreateModal } from './BackupCreateModal';
+import { useSearchParam } from 'react-use';
 
 const reactWidgets = require('react-widgets');
 const momentLocalizer = require('react-widgets-moment');
@@ -42,9 +44,6 @@ momentLocalizer(moment);
 
 const DEFAULT_SORT_COLUMN = 'createTime';
 const DEFAULT_SORT_DIRECTION = 'DESC';
-
-const convertArrayToMap = (arr: IUniverse[], keyStr: string, valueStr: string) =>
-  mapValues(keyBy(arr, keyStr), valueStr);
 
 const TIME_RANGE_OPTIONS = [
   {
@@ -106,6 +105,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showRestoreModal, setShowRestoreModal] = useState(false);
+  const [showBackupCreateModal, setShowBackupCreateModal] = useState(false);
   const [selectedBackups, setSelectedBackups] = useState<IBackup[]>([]);
   const [status, setStatus] = useState<any[]>([]);
 
@@ -124,6 +124,8 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
     };
   };
 
+  const storage_config_uuid = useSearchParam('storage_config_id');
+
   const [timeRange, dispatchTimeRange] = useReducer(timeReducer, DEFAULT_TIME_STATE);
 
   const { data: backupsList, isLoading } = useQuery(
@@ -136,7 +138,8 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
       status,
       DEFAULT_SORT_COLUMN,
       sortDirection,
-      universeUUID
+      universeUUID,
+      storage_config_uuid
     ],
     () =>
       getBackupsList(
@@ -147,7 +150,8 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
         status,
         DEFAULT_SORT_COLUMN,
         sortDirection,
-        universeUUID
+        universeUUID,
+        storage_config_uuid
       ),
     {
       refetchInterval: 1000 * 20
@@ -297,7 +301,16 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
               })
             }}
           ></Select>
-          {allowTakingBackup && <YBButton btnText="Backup now" btnClass="btn btn-orange backup-now-button" btnIcon="fa fa-upload" />}
+          {allowTakingBackup && (
+            <YBButton
+              btnText="Backup now"
+              onClick={() => {
+                setShowBackupCreateModal(true);
+              }}
+              btnClass="btn btn-orange backup-now-button"
+              btnIcon="fa fa-upload"
+            />
+          )}
         </Col>
       </Row>
       <Row className="backup-list-table">
@@ -447,6 +460,13 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
         visible={cancelBackupDetails !== null}
         onHide={() => setCancelBackupDetails(null)}
         backup={cancelBackupDetails}
+      />
+      <BackupCreateModal
+        visible={showBackupCreateModal}
+        onHide={() => {
+          setShowBackupCreateModal(false);
+        }}
+        currentUniverseUUID={universeUUID}
       />
     </Row>
   );

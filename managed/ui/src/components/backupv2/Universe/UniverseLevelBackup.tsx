@@ -27,9 +27,6 @@ const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
       <Tab eventKey="backupList" title="Backups" unmountOnExit>
         <BackupList allowTakingBackup universeUUID={uuid} />
       </Tab>
-      <Tab eventKey="restoreList" title="Restore" unmountOnExit>
-        Restore
-      </Tab>
     </YBTabsPanel>
   );
 };

@@ -8,8 +8,11 @@
  */
 
 import axios from 'axios';
+import { Dictionary, groupBy } from 'lodash';
+import moment from 'moment';
 import { IBackup, Keyspace_Table, RESTORE_ACTION_TYPE, TIME_RANGE_STATE } from '..';
 import { ROOT_URL } from '../../../config';
+import { BACKUP_API_TYPES, Backup_Options_Type, ITable } from './IBackup';
 
 export function getBackupsList(
   page = 0,
@@ -19,7 +22,8 @@ export function getBackupsList(
   states: any[],
   sortBy: string,
   direction: string,
-  universeUUID?:string
+  universeUUID?: string,
+  storageConfigUUID?: string | null
 ) {
   const cUUID = localStorage.getItem('customerId');
   const payload = {
@@ -35,9 +39,14 @@ export function getBackupsList(
       universeNameList: [searchText]
     };
   }
-  if(universeUUID){
-    payload['filter']['universeUUIDList'] = [universeUUID]
+  if (universeUUID) {
+    payload['filter']['universeUUIDList'] = [universeUUID];
   }
+
+  if (storageConfigUUID) {
+    payload['filter']['storageConfigUUIDList'] = [storageConfigUUID];
+  }
+
   if (states.length !== 0 && states[0].label !== 'All') {
     payload.filter['states'] = [states[0].value];
   }
@@ -102,4 +111,67 @@ export function getKMSConfigs() {
   const cUUID = localStorage.getItem('customerId');
   const requestUrl = `${ROOT_URL}/customers/${cUUID}/kms_configs`;
   return axios.get(requestUrl).then((resp) => resp.data);
+}
+
+export function createBackup(values: Record<string, any>) {
+  const cUUID = localStorage.getItem('customerId');
+  const requestUrl = `${ROOT_URL}/customers/${cUUID}/backups`;
+
+  const backup_type = values['api_type'].value;
+
+  const payload = {
+    backupType: backup_type,
+    customerUUID: cUUID,
+    parallelism: values['parallel_threads'],
+    sse: values['storage_config'].name === 'S3',
+    storageConfigUUID: values['storage_config'].value,
+    timeBeforeDelete: 0,
+    universeUUID: values['universeUUID']
+  };
+
+  let dbMap: Dictionary<any> = [];
+
+  const filteredTableList = values['tablesList'].filter((t: ITable) => t.tableType === backup_type);
+
+  if (values['db_to_backup'].value === null) {
+    // All database/ keyspace selected
+    dbMap = groupBy(filteredTableList, 'keySpace');
+  } else {
+    dbMap = {
+      [values['db_to_backup'].value]: filteredTableList.filter(
+        (t: ITable) => t.keySpace === values['db_to_backup'].value
+      )
+    };
+  }
+
+  if (
+    backup_type === BACKUP_API_TYPES.YCQL &&
+    values['backup_tables'] === Backup_Options_Type.CUSTOM
+  ) {
+    dbMap = groupBy(values['selected_ycql_tables'], 'keySpace');
+  }
+
+  payload['keyspaceTableList'] = Object.keys(dbMap).map((keyspace) => {
+    if (backup_type === BACKUP_API_TYPES.YSQL) {
+      return {
+        keyspace
+      };
+    }
+    return {
+      keyspace,
+      tableNameList: dbMap[keyspace].map((t: ITable) => t.tableName),
+      tableUUIDList: dbMap[keyspace].map((t: ITable) => t.tableUUID)
+    };
+  });
+
+  //Calculate TTL
+  if (values['keep_indefinitely']) {
+    payload['timeBeforeDelete'] = 0;
+  } else {
+    payload['timeBeforeDelete'] = moment()
+      .add(values['duration_period'], values['duration_type'].value)
+      .diff(moment(), 'second');
+  }
+
+  return axios.post(requestUrl, payload);
 }

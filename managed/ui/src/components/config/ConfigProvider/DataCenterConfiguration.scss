@@ -75,6 +75,28 @@
   width: 120px !important;
 }
 
+.backup-config-action-but {
+  width: 120px !important;
+}
+
+.storage-config-tab-panel {
+  ul > li {
+    width: 220px;
+  }
+}
+.storage-config-del-err-msg {
+  display: flex;
+  align-items: flex-start;
+  font-size: 14px;
+  height: 100px;
+  span {
+    margin-left: 18px;
+    a {
+      text-decoration: underline;
+    }
+  }
+}
+
 .provider-config-container {
   .provider-row-flex {
     display: flex;

@@ -17,7 +17,7 @@ import './BackupDetails.scss';
 import {
   calculateDuration,
   FormatUnixTimeStampTimeToTimezone,
-  RevealBadge,
+  RevealBadge
 } from '../common/BackupUtils';
 import { YCQLTableList, YSQLTableList } from './BackupTableList';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';

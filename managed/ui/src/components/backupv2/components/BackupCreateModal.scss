@@ -1,0 +1,145 @@
+@import '../../../_style/colors.scss';
+
+.backup-configuration-form {
+  .duration-options {
+    display: flex;
+    align-items: center;
+    margin-top: 5px;
+  }
+
+  label.btn-group-radio {
+    display: flex;
+    align-items: center;
+  }
+
+  label.btn-group-radio,
+  .form-item-custom-label,
+  .form-item-label {
+    font-weight: 100 !important;
+    display: flex;
+    margin-left: 5px;
+
+    input {
+      margin-right: 10px;
+    }
+  }
+
+  .tables-count {
+    background: #f5f4f0;
+    border: 1px solid $YB_BG_WHITE_4;
+    border-radius: 8px;
+    margin-left: 20px;
+    padding: 8px;
+    display: flex;
+    width: 310px;
+    justify-content: space-between;
+
+    .edit-selection {
+      color: $YB_ORANGE;
+      cursor: pointer;
+
+      &:hover {
+        text-decoration: underline;
+      }
+    }
+  }
+
+  .standard-error {
+    color: $YB_ERROR_TEXT_COLOR;
+    margin-left: 6px;
+    margin-bottom: 6px;
+  }
+  .storage-cfg-name {
+    margin-right: 5px;
+  }
+}
+
+.select-ycql-tables-modal {
+  background: $YB_BG_WHITE_3;
+  border: 1px solid $YB_LIGHT_GRAY_BORDER;
+  border-radius: 8px;
+
+  .table-list-panel {
+    padding: 15px;
+    border-right: 1px solid $YB_LIGHT_GRAY_BORDER;
+
+    .select-all {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 10px 0;
+      font-weight: 600;
+      font-size: 12px;
+      font-style: normal;
+    }
+
+    .table-list {
+      border-top: 1px solid $YB_LIGHT_GRAY_BORDER;
+      height: 350px;
+      overflow-y: auto;
+
+      .table-item {
+        height: 40px;
+        cursor: pointer;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        padding: 0px 10px;
+        justify-content: space-between;
+
+        .select-icon {
+          display: none;
+          color: $YB_ORANGE;
+          align-items: center;
+          font-weight: 400;
+          font-size: 12px;
+
+          i {
+            margin-right: 2px;
+          }
+        }
+
+        &:hover {
+          background: $YB_BACKGROUND;
+
+          .select-icon {
+            display: inline-flex;
+          }
+        }
+      }
+    }
+  }
+
+  .selected-tables-list {
+    padding: 12px 15px;
+
+    .info-msg {
+      align-items: center !important;
+      height: 40px;
+    }
+
+    .selected-table-item {
+      background: $YB_GRAY_HOVER;
+      border-radius: 6px;
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      max-width: fit-content;
+      font-style: normal;
+      font-weight: 500;
+      font-size: 12px;
+      margin-bottom: 12px;
+
+      .remove-selected-table {
+        cursor: pointer;
+        margin-left: 8px;
+      }
+    }
+  }
+}
+
+.select-ycql-modal {
+  height: 780px;
+  width: 1100px;
+}

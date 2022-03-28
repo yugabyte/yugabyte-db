@@ -28,6 +28,7 @@ export const BackupDeleteModal: FC<BackupDeleteProps> = ({ backupsList, visible,
     onSuccess: () => onHide(),
     onError: () => {
       toast.error('Unable to delete backup');
+      onHide();
     }
   });
 
