@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: cloud-maintenance
     parent: cloud-clusters
-    weight: 400
+    weight: 300
 isTocNested: true
 showAsideToc: true
 ---

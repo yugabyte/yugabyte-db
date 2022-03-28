@@ -79,16 +79,19 @@ Currently self-service migration is not supported. Contact {{<support-cloud>}} f
 
 Upgrades are automatically handled by Yugabyte. There are two types of upgrades:
 
-Yugabyte Cloud
-: During a [maintenance window](../cloud-clusters/cloud-maintenance/), Yugabyte Cloud may be in read-only mode and not allow any edit changes. The upgrade has no impact on running clusters. Yugabyte will notify you in advance of the maintenance schedule.
+#### Yugabyte Cloud
 
-Cluster (YugabyteDB) version upgrade
-: To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte will upgrade your cluster to the [latest version](#what-version-of-yugabytedb-does-my-cluster-run-on).
+During a [maintenance window](../cloud-clusters/cloud-maintenance/), Yugabyte Cloud may be in read-only mode and not allow any edit changes. The upgrade has no impact on running clusters. Yugabyte will notify you in advance of the maintenance schedule.
 
-: Yugabyte will only upgrade clusters during scheduled maintenance windows. Yugabyte will notify you in advance of any upcoming upgrade via email. The email includes the date and time of the maintenance window. An Upcoming Maintenance badge is also displayed on the cluster. You can start the upgrade any time by signing in to Yugabyte Cloud, selecting the cluster, clicking the **Upcoming Maintenance** badge, and clicking **Upgrade Now**. To delay the maintenance, click **Delay to next available window**. To manage maintenance windows, select the cluster [Maintenance tab](../cloud-clusters/cloud-maintenance/).
+#### Cluster (YugabyteDB) version upgrade
 
-: The database is upgraded to the latest release in the [release track](#what-version-of-yugabytedb-does-my-cluster-run-on) that was selected when the cluster was created (either edge or stable). Free clusters are always in the edge track.
-: Database upgrades of high-availability (multi-node) clusters are done on a rolling basis to avoid any downtime.
+To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte upgrades your cluster database to the [latest version](#what-version-of-yugabytedb-does-my-cluster-run-on).
+
+Yugabyte only upgrades clusters during scheduled maintenance windows. Yugabyte notifies you in advance of any upcoming upgrade via email. The email includes the date and time of the maintenance window. An Upcoming Maintenance badge is also displayed on the cluster. You can start the upgrade any time by signing in to Yugabyte Cloud, selecting the cluster, clicking the **Upcoming Maintenance** badge, and clicking **Upgrade Now**. To delay the maintenance, click **Delay to next available window**. To manage maintenance windows, select the cluster [Maintenance tab](../cloud-clusters/cloud-maintenance/).
+
+The database is upgraded to the latest release in the [release track](#what-version-of-yugabytedb-does-my-cluster-run-on) that was selected when the cluster was created (either edge or stable). Free clusters are always in the edge track.
+
+Database upgrades of high-availability (multi-node) clusters are done on a rolling basis to avoid any downtime.
 
 ## YugabyteDB
 
@@ -156,42 +159,46 @@ For multi-region deployments, including [synchronous replication](../../explore/
 
 You can connect to clusters in the following ways:
 
-Cloud Shell
-: Run the [ysqlsh](../../admin/ysqlsh/) or [ycqlsh](../../admin/ycqlsh/) shell from your browser to connect to and interact with your YugabyteDB database. Cloud Shell does not require a CA certificate or any special network access configured.
+#### Cloud Shell
 
-Client Shell
-: Connect to your YugabyteDB cluster using the YugabyteDB [ysqlsh](../../admin/ysqlsh/) and [ycqlsh](../../admin/ycqlsh/) client shells installed on your computer.
+Run the [ysqlsh](../../admin/ysqlsh/) or [ycqlsh](../../admin/ycqlsh/) shell from your browser to connect to and interact with your YugabyteDB database. Cloud Shell does not require a CA certificate or any special network access configured.
 
-: Before you can connect using a client shell, you need to add your computer to the cluster IP allow list. Refer to [Assign IP Allow Lists](../cloud-secure-clusters/add-connections/).
+#### Client Shell
 
-: You must be running the latest versions of the client shells (Yugabyte Client 2.6 or later), which you can download using the following command on Linux or macOS:
+Connect to your YugabyteDB cluster using the YugabyteDB [ysqlsh](../../admin/ysqlsh/) and [ycqlsh](../../admin/ycqlsh/) client shells installed on your computer.
 
-    ```sh
-    $ curl -sSL https://downloads.yugabyte.com/get_clients.sh | bash
-    ```
+Before you can connect using a client shell, you need to add your computer to the cluster IP allow list. Refer to [Assign IP Allow Lists](../cloud-secure-clusters/add-connections/).
 
-: Windows client shells require Docker:
+You must be running the latest versions of the client shells (Yugabyte Client 2.6 or later), which you can download using the following command on Linux or macOS:
 
-    ```sh
-    docker run -it yugabytedb/yugabyte-client ysqlsh -h <hostname> -p <port>
-    ```
+```sh
+$ curl -sSL https://downloads.yugabyte.com/get_clients.sh | bash
+```
 
-psql
-: Because YugabyteDB is PostgreSQL-compatible, you can use [psql](https://www.postgresql.org/docs/current/app-psql.html) to connect to your clusters. The connection string to use is similar to what you would use for `ysqlsh`, as follows:
+Windows client shells require Docker:
 
-    ```sh
-    psql --host=<HOST_ADDRESS> --port=5433 --username=<DB USER> \
-    --dbname=yugabyte \
-    --set=sslmode=verify-full \
-    --set=sslrootcert=<ROOT_CERT_PATH>
-    ```
+```sh
+docker run -it yugabytedb/yugabyte-client ysqlsh -h <hostname> -p <port>
+```
 
-: For detailed steps for configuring other popular third party tools, see [Third party tools](../../tools/).
+#### psql
 
-Applications
-: Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). Before you can connect an application, you need to install the correct driver. Clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters. For information on available drivers, refer to [Build an application](../../quick-start/build-apps/).
+Because YugabyteDB is PostgreSQL-compatible, you can use [psql](https://www.postgresql.org/docs/current/app-psql.html) to connect to your clusters. The connection string to use is similar to what you would use for `ysqlsh`, as follows:
 
-: Before you can connect, your application has to be able to reach your Yugabyte Cloud. To add inbound network access from your application environment to Yugabyte Cloud, add the public IP addresses to the [cluster IP access list](../cloud-secure-clusters/add-connections/), or use [VPC peering](../cloud-basics/cloud-vpcs/) to add private IP addresses.
+```sh
+psql --host=<HOST_ADDRESS> --port=5433 --username=<DB USER> \
+--dbname=yugabyte \
+--set=sslmode=verify-full \
+--set=sslrootcert=<ROOT_CERT_PATH>
+```
+
+For detailed steps for configuring other popular third party tools, see [Third party tools](../../tools/).
+
+#### Applications
+
+Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). Before you can connect an application, you need to install the correct driver. Clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters. For information on available drivers, refer to [Build an application](../../quick-start/build-apps/).
+
+Before you can connect, your application has to be able to reach your Yugabyte Cloud. To add inbound network access from your application environment to Yugabyte Cloud, add the public IP addresses to the [cluster IP access list](../cloud-secure-clusters/add-connections/), or use [VPC peering](../cloud-basics/cloud-vpcs/) to add private IP addresses.
 
 For more details, refer to [Connect to clusters](../cloud-connect/).
 
