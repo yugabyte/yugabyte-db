@@ -211,17 +211,52 @@ Status SetValueFromQLBinary(const QLValuePB ql_value,
   return Status::OK();
 }
 
-Status ExtractTextArrayFromQLBinaryValue(const QLValuePB& ql_value,
-                                         vector<QLValuePB> *const ql_value_vec) {
+namespace {
+
+// Given a 'ql_value', interpret the binary value in it as an array of type
+// 'array_type' with elements of type 'elem_type' and store the individual
+// elements in 'result'. Here, 'array_type' and 'elem_type' are PG typoids
+// corresponding to the required array and element types.
+// This function expects that YbgPrepareMemoryContext was called by the caller of this function.
+Result<std::vector<std::string>> ExtractVectorFromQLBinaryValueHelper(
+    const QLValuePB& ql_value, const int array_type, const int elem_type) {
+  const uint64_t size = ql_value.binary_value().size();
+  char *val = const_cast<char *>(ql_value.binary_value().c_str());
+
+  YbgTypeDesc pg_arg_type {array_type, -1 /* typmod */};
+  const YBCPgTypeEntity *arg_type = DocPgGetTypeEntity(pg_arg_type);
+  YBCPgTypeAttrs type_attrs {-1 /* typmod */};
+  uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<uint8_t *>(val), size, &type_attrs);
+
+  uint64_t *datum_elements;
+  int num_elems = 0;
+  PG_RETURN_NOT_OK(YbgSplitArrayDatum(datum, elem_type, &datum_elements, &num_elems));
+  YbgTypeDesc elem_pg_arg_type {elem_type, -1 /* typmod */};
+  const YBCPgTypeEntity *elem_arg_type = DocPgGetTypeEntity(elem_pg_arg_type);
+  VLOG(4) << "Number of parsed elements: " << num_elems;
+  Arena arena;
+  std::vector<std::string> result;
+  for (int i = 0; i < num_elems; ++i) {
+    pggate::PgConstant value(&arena,
+                             elem_arg_type,
+                             false /* collate_is_valid_non_c */,
+                             nullptr /* collation_sortkey */,
+                             datum_elements[i], false /* isNull */);
+    const auto& str_val = VERIFY_RESULT(value.Eval())->string_value();
+    VLOG(4) << "Parsed value: " << str_val.ToBuffer();
+    result.emplace_back(str_val.cdata(), str_val.size());
+  }
+  return result;
+}
+
+} // namespace
+
+Result<std::vector<std::string>> ExtractTextArrayFromQLBinaryValue(const QLValuePB& ql_value) {
   PG_RETURN_NOT_OK(YbgPrepareMemoryContext());
 
-  RETURN_NOT_OK(ExtractVectorFromQLBinaryValueHelper(
-      ql_value,
-      TEXTARRAYOID,
-      TEXTOID,
-      ql_value_vec));
+  auto result = ExtractVectorFromQLBinaryValueHelper(ql_value, TEXTARRAYOID, TEXTOID);
   PG_RETURN_NOT_OK(YbgResetMemoryContext());
-  return Status::OK();
+  return result;
 }
 
 void set_decoded_string_value(
@@ -1768,38 +1803,6 @@ Status SetValueFromQLBinaryHelper(
       break;
   }
 
-  return Status::OK();
-}
-
-// This function expects that YbgPrepareMemoryContext was called by the caller of this function.
-Status ExtractVectorFromQLBinaryValueHelper(const QLValuePB& ql_value,
-                                            const int array_type,
-                                            const int elem_type,
-                                            vector<QLValuePB> *const result) {
-  const uint64_t size = ql_value.binary_value().size();
-  char *val = const_cast<char *>(ql_value.binary_value().c_str());
-
-  YbgTypeDesc pg_arg_type {array_type, -1 /* typmod */};
-  const YBCPgTypeEntity *arg_type = DocPgGetTypeEntity(pg_arg_type);
-  YBCPgTypeAttrs type_attrs {-1 /* typmod */};
-  uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<uint8_t *>(val), size, &type_attrs);
-
-  uint64_t *datum_elements;
-  int num_elems = 0;
-  PG_RETURN_NOT_OK(YbgSplitArrayDatum(datum, elem_type, &datum_elements, &num_elems));
-  YbgTypeDesc elem_pg_arg_type {elem_type, -1 /* typmod */};
-  const YBCPgTypeEntity *elem_arg_type = DocPgGetTypeEntity(elem_pg_arg_type);
-  VLOG(4) << "Number of parsed elements: " << num_elems;
-  for (int i = 0; i < num_elems; ++i) {
-    QLValuePB ql_val;
-    pggate::PgConstant value(elem_arg_type,
-                             false /* collate_is_valid_non_c */,
-                             nullptr /* collation_sortkey */,
-                             datum_elements[i], false /* isNull */);
-    RETURN_NOT_OK(value.Eval(&ql_val));
-    VLOG(4) << "Parsed value: " << ql_val.string_value();
-    result->emplace_back(std::move(ql_val));
-  }
   return Status::OK();
 }
 

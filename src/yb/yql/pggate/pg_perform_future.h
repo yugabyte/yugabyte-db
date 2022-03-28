@@ -33,7 +33,7 @@ class PerformFuture {
   PerformFuture(std::future<PerformResult> future, PgSession* session, PgObjectIds relations);
 
   bool Valid() const;
-  CHECKED_STATUS Get();
+  Result<rpc::CallResponsePtr> Get();
 
  private:
   std::future<PerformResult> future_;

@@ -896,9 +896,8 @@ Result<shared_ptr<TablespaceIdToReplicationInfoMap>> SysCatalogTable::ReadPgTabl
     // the ReplicationInfoPB. The ql_value is just the raw value read from the pg_tablespace
     // catalog table. This was stored in postgres as a text array, but processed by DocDB as
     // a binary value. So first process this binary value and convert it to text array of options.
-    vector<QLValuePB> placement_options;
-    RETURN_NOT_OK(yb::docdb::ExtractTextArrayFromQLBinaryValue(
-          options.value(), &placement_options));
+    auto placement_options = VERIFY_RESULT(docdb::ExtractTextArrayFromQLBinaryValue(
+          options.value()));
 
     // Fetch the status and print the tablespace option along with the status.
     ReplicationInfoPB replication_info;
@@ -1086,11 +1085,10 @@ Status SysCatalogTable::ReadPgClassInfo(
             std::to_string(oid));
       }
       if (!reloptions_col->binary_value().empty()) {
-        vector<QLValuePB> reloptions;
-        RETURN_NOT_OK(yb::docdb::ExtractTextArrayFromQLBinaryValue(reloptions_col.value(),
-                                                                   &reloptions));
+        auto reloptions = VERIFY_RESULT(docdb::ExtractTextArrayFromQLBinaryValue(
+            reloptions_col.value()));
         for (const auto& reloption : reloptions) {
-          if (reloption.string_value().compare("colocated=false") == 0) {
+          if (reloption.compare("colocated=false") == 0) {
             is_colocated_table = false;
             break;
           }

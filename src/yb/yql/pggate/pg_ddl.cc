@@ -235,7 +235,11 @@ Status PgCreateTable::SetNumTablets(int32_t num_tablets) {
 Status PgCreateTable::AddSplitBoundary(PgExpr **exprs, int expr_count) {
   auto* values = req_.mutable_split_bounds()->Add()->mutable_values();
   for (int i = 0; i < expr_count; ++i) {
-    RETURN_NOT_OK(exprs[i]->Eval(values->Add()));
+    auto temp_value = VERIFY_RESULT(exprs[i]->Eval());
+    auto out = values->Add();
+    if (temp_value) {
+      temp_value->ToGoogleProtobuf(out);
+    }
   }
   return Status::OK();
 }

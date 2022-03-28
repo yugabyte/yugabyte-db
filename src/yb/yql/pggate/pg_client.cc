@@ -72,14 +72,10 @@ struct PerformData {
                      responses.size(), operations.size()));
     uint32_t i = 0;
     for (auto& op_response : responses) {
-      if (op_response.has_rows_data_sidecar()) {
-        operations[i]->rows_data() = VERIFY_RESULT(
-            controller.GetSidecarPtr(op_response.rows_data_sidecar()));
-      }
       // TODO(LW_PERFORM)
-      if (i) {
-        operations[i]->set_response(operations[i]->arena().NewObject<LWPgsqlResponsePB>(
-            &operations[i]->arena(), op_response));
+      auto& arena = operations[i]->arena();
+      if (&arena != &operations.front()->arena()) {
+        operations[i]->set_response(arena.NewObject<LWPgsqlResponsePB>(&arena, op_response));
       } else {
         operations[i]->set_response(&op_response);
       }
@@ -349,6 +345,7 @@ class PgClient::Impl {
     proxy_->PerformAsync(req, &data->resp, SetupController(&data->controller), [data] {
       PerformResult result;
       result.status = data->controller.status();
+      result.response = data->controller.response();
       if (result.status.ok()) {
         result.status = ResponseStatus(data->resp);
       }

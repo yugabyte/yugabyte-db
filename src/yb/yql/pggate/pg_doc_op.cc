@@ -25,6 +25,8 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/escaping.h"
 
+#include "yb/rpc/outbound_call.h"
+
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
@@ -45,13 +47,13 @@ using std::move;
 namespace yb {
 namespace pggate {
 
-PgDocResult::PgDocResult(rpc::SidecarPtr&& data) : data_(std::move(data)) {
-  PgDocData::LoadCache(data_, &row_count_, &row_iterator_);
+PgDocResult::PgDocResult(rpc::SidecarHolder&& data) : data_(std::move(data)) {
+  PgDocData::LoadCache(data_.second, &row_count_, &row_iterator_);
 }
 
-PgDocResult::PgDocResult(rpc::SidecarPtr&& data, std::list<int64_t>&& row_orders)
+PgDocResult::PgDocResult(rpc::SidecarHolder&& data, std::list<int64_t>&& row_orders)
     : data_(std::move(data)), row_orders_(std::move(row_orders)) {
-  PgDocData::LoadCache(data_, &row_count_, &row_iterator_);
+  PgDocData::LoadCache(data_.second, &row_count_, &row_iterator_);
 }
 
 PgDocResult::~PgDocResult() {
@@ -145,8 +147,7 @@ PgDocOp::~PgDocOp() {
   // Wait for result in case request was sent.
   // Operation can be part of transaction it is necessary to complete it before transaction commit.
   if (response_.Valid()) {
-    auto result = response_.Get();
-    WARN_NOT_OK(result, "Operation completion failed");
+    WARN_NOT_OK(ResultToStatus(response_.Get()), "Operation completion failed");
   }
 }
 
@@ -282,21 +283,24 @@ Status PgDocOp::SendRequestImpl(bool force_non_bufferable) {
   return Status::OK();
 }
 
-Result<std::list<PgDocResult>> PgDocOp::ProcessResponse(const Status& status) {
+Result<std::list<PgDocResult>> PgDocOp::ProcessResponse(
+    const Result<rpc::CallResponsePtr>& response) {
   // Check operation status.
   DCHECK(exec_status_.ok());
-  exec_status_ = status;
-  if (exec_status_.ok()) {
-    auto result = ProcessResponseImpl();
+  if (response.ok()) {
+    auto result = ProcessResponseImpl(*response);
     if (result.ok()) {
       return result;
     }
     exec_status_ = result.status();
+  } else {
+    exec_status_ = response.status();
   }
   return exec_status_;
 }
 
-Result<std::list<PgDocResult>> PgDocOp::ProcessResponseResult() {
+Result<std::list<PgDocResult>> PgDocOp::ProcessResponseResult(
+    const rpc::CallResponsePtr& response) {
   VLOG(1) << __PRETTY_FUNCTION__ << ": Received response for request " << this;
 
   // Process data coming from tablet server.
@@ -307,12 +311,12 @@ Result<std::list<PgDocResult>> PgDocOp::ProcessResponseResult() {
   // Check for errors reported by tablet server.
   for (size_t op_index = 0; op_index < active_op_count_; op_index++) {
     auto& pgsql_op = pgsql_ops_[op_index];
-    auto* response = pgsql_op->response();
-    if (!response) {
+    auto* op_response = pgsql_op->response();
+    if (!op_response) {
       continue;
     }
     // Get total number of rows that are operated on.
-    rows_affected_count_ += response->rows_affected_count();
+    rows_affected_count_ += op_response->rows_affected_count();
 
     // A single batch of requests almost always is directed to fetch data from a single tablet.
     // However, when tablets split, data can be sharded/distributed across multiple tablets.
@@ -337,18 +341,19 @@ Result<std::list<PgDocResult>> PgDocOp::ProcessResponseResult() {
     // so that pg_gate can send responses to the postgres layer in the correct order.
 
     // Get contents.
-    auto& rows_data = pgsql_ops_[op_index]->rows_data();
-    if (rows_data) {
-      if (no_sorting_order) {
-        result.emplace_back(std::move(rows_data));
+    if (!op_response->has_rows_data_sidecar()) {
+      continue;
+    }
+    auto rows_data = VERIFY_RESULT(response->GetSidecarHolder(op_response->rows_data_sidecar()));
+    if (no_sorting_order) {
+      result.emplace_back(std::move(rows_data));
+    } else {
+      const auto& batch_orders = op_response->batch_orders();
+      if (!batch_orders.empty()) {
+        result.emplace_back(std::move(rows_data),
+                            std::list<int64_t>(batch_orders.begin(), batch_orders.end()));
       } else {
-        const auto& batch_orders = response->batch_orders();
-        if (!batch_orders.empty()) {
-          result.emplace_back(std::move(pgsql_op->rows_data()),
-                              std::list<int64_t>(batch_orders.begin(), batch_orders.end()));
-        } else {
-          result.emplace_back(std::move(rows_data), std::move(batch_row_orders_[op_index]));
-        }
+        result.emplace_back(std::move(rows_data), std::move(batch_row_orders_[op_index]));
       }
     }
   }
@@ -411,9 +416,10 @@ Status PgDocReadOp::ExecuteInit(const PgExecParameters *exec_params) {
   return Status::OK();
 }
 
-Result<std::list<PgDocResult>> PgDocReadOp::ProcessResponseImpl() {
+Result<std::list<PgDocResult>> PgDocReadOp::ProcessResponseImpl(
+    const rpc::CallResponsePtr& response) {
   // Process result from tablet server and check result status.
-  auto result = VERIFY_RESULT(ProcessResponseResult());
+  auto result = VERIFY_RESULT(ProcessResponseResult(response));
 
   // Process paging state and check status.
   RETURN_NOT_OK(ProcessResponseReadStates());
@@ -809,8 +815,7 @@ Status PgDocReadOp::ProcessResponseReadStates() {
       while (innermost_req->has_index_request()) {
         innermost_req = innermost_req->mutable_index_request();
       }
-      // TODO(LW_PERFORM)
-      *innermost_req->mutable_paging_state() = res.paging_state();
+      innermost_req->ref_paging_state(res.mutable_paging_state());
       res.clear_paging_state();
       if (innermost_req->paging_state().has_read_time()) {
         read_op.set_read_time(ReadHybridTime::FromPB(innermost_req->paging_state().read_time()));
@@ -818,8 +823,7 @@ Status PgDocReadOp::ProcessResponseReadStates() {
 
       // Setup backfill_spec for the next request.
       if (res.has_backfill_spec()) {
-        // TODO(LW_PERFORM)
-        *innermost_req->mutable_backfill_spec() = res.backfill_spec();
+        innermost_req->ref_backfill_spec(res.backfill_spec());
         res.clear_backfill_spec();
       }
 
@@ -852,8 +856,7 @@ Status PgDocReadOp::ProcessResponseReadStates() {
       if (has_more_arg) {
         // Copy sampling state from the response to the request, to properly continue to sample
         // the next block.
-        // TODO(LW_PERFORM)
-        *req.mutable_sampling_state() = res.sampling_state();
+        req.ref_sampling_state(res.mutable_sampling_state());
         res.clear_sampling_state();
       } else {
         // Partition sampling is completed.
@@ -1004,18 +1007,16 @@ void PgDocReadOp::FormulateRequestForRollingUpgrade(LWPgsqlReadRequestPB *read_r
   }
 
   // Copy first batch-argument to scalar arg because older server does not support batch arguments.
-  const auto& batch_arg = read_req->batch_arguments().front();
+  auto& batch_arg = read_req->mutable_batch_arguments()->front();
 
   if (batch_arg.has_ybctid()) {
-    *read_req->mutable_ybctid_column_value() = std::move(batch_arg.ybctid());
+    read_req->ref_ybctid_column_value(batch_arg.mutable_ybctid());
   }
 
   if (!batch_arg.partition_column_values().empty()) {
     read_req->set_hash_code(batch_arg.hash_code());
     read_req->set_max_hash_code(batch_arg.max_hash_code());
-    // TODO(LW_PERFORM)
-    *read_req->mutable_partition_column_values() =
-      read_req->batch_arguments().front().partition_column_values();
+    read_req->ref_partition_column_values(batch_arg.mutable_partition_column_values());
   }
 }
 
@@ -1031,9 +1032,10 @@ PgDocWriteOp::PgDocWriteOp(const PgSession::ScopedRefPtr& pg_session,
     : PgDocOp(pg_session, table), write_op_(std::move(write_op)) {
 }
 
-Result<std::list<PgDocResult>> PgDocWriteOp::ProcessResponseImpl() {
+Result<std::list<PgDocResult>> PgDocWriteOp::ProcessResponseImpl(
+    const rpc::CallResponsePtr& response) {
   // Process result from tablet server and check result status.
-  auto result = VERIFY_RESULT(ProcessResponseResult());
+  auto result = VERIFY_RESULT(ProcessResponseResult(response));
 
   // End execution and return result.
   end_of_data_ = true;

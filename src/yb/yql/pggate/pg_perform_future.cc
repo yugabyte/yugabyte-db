@@ -29,12 +29,13 @@ bool PerformFuture::Valid() const {
   return session_ != nullptr;
 }
 
-CHECKED_STATUS PerformFuture::Get() {
+Result<rpc::CallResponsePtr> PerformFuture::Get() {
   auto result = future_.get();
   auto session = session_;
   session_ = nullptr;
   session->TrySetCatalogReadPoint(result.catalog_read_time);
-  return session->PatchStatus(result.status, relations_);
+  RETURN_NOT_OK(session->PatchStatus(result.status, relations_));
+  return result.response;
 }
 
 } // namespace pggate

@@ -124,12 +124,12 @@ class PgDmlRead : public PgDml {
   Result<std::vector<std::string>> BuildYbctidsFromPrimaryBinds();
   CHECKED_STATUS SubstitutePrimaryBindsWithYbctids(const PgExecParameters* exec_params);
   Result<docdb::DocKey> EncodeRowKeyForBound(
-      YBCPgStatement handle, int n_col_values, PgExpr **col_values, bool for_lower_bound);
+      YBCPgStatement handle, size_t n_col_values, PgExpr **col_values, bool for_lower_bound);
   CHECKED_STATUS MoveBoundKeyInOperator(PgColumn* col, const LWPgsqlConditionPB& in_operator);
-  CHECKED_STATUS CopyBoundValue(
-      const PgColumn& col, const LWPgsqlExpressionPB& src, QLValuePB* dest) const;
+  Result<LWQLValuePB*> GetBoundValue(
+      const PgColumn& col, const LWPgsqlExpressionPB& src) const;
   Result<docdb::PrimitiveValue> BuildKeyColumnValue(
-      const PgColumn& col, const LWPgsqlExpressionPB& src, QLValuePB* dest);
+      const PgColumn& col, const LWPgsqlExpressionPB& src, LWQLValuePB** dest);
   Result<docdb::PrimitiveValue> BuildKeyColumnValue(
       const PgColumn& col, const LWPgsqlExpressionPB& src);
 };

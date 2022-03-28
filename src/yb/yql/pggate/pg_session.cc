@@ -241,8 +241,7 @@ class PgSession::RunHelper {
       return PerformFuture();
     }
 
-    return
-    pg_session_.Perform(std::move(operations_), IsCatalog());
+    return pg_session_.Perform(std::move(operations_), IsCatalog());
   }
 
  private:
@@ -254,8 +253,8 @@ class PgSession::RunHelper {
     return IsTransactional(session_type_);
   }
 
-  inline bool IsCatalog() const {
-    return session_type_ == SessionType::kCatalog;
+  inline UseCatalogSession IsCatalog() const {
+    return UseCatalogSession(session_type_ == SessionType::kCatalog);
   }
 
   PgSession& pg_session_;
@@ -502,10 +501,11 @@ Result<PerformFuture> PgSession::FlushOperations(BufferableOperations ops, bool 
     in_txn_limit_ = clock_->Now();
   }
 
-  return Perform(std::move(ops), /* use_catalog_session */ false);
+  return Perform(std::move(ops), UseCatalogSession::kFalse);
 }
 
-Result<PerformFuture> PgSession::Perform(BufferableOperations ops, bool use_catalog_session) {
+Result<PerformFuture> PgSession::Perform(
+    BufferableOperations ops, UseCatalogSession use_catalog_session) {
   DCHECK(!ops.empty());
   tserver::PgPerformOptionsPB options;
 
@@ -529,7 +529,7 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations ops, bool use_cata
 
   auto promise = std::make_shared<std::promise<PerformResult>>();
 
-  pg_client_.PerformAsync(&options, &ops.operations, [promise](PerformResult result) {
+  pg_client_.PerformAsync(&options, &ops.operations, [promise](const PerformResult& result) {
     promise->set_value(result);
   });
   return PerformFuture(promise->get_future(), this, std::move(ops.relations));

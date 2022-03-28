@@ -94,17 +94,7 @@ Status DocPgEvalExpr(YbgPreparedExpr expr,
 
 // Given a 'ql_value' with a binary value, interpret the binary value as a text
 // array, and store the individual elements in 'ql_value_vec';
-Status ExtractTextArrayFromQLBinaryValue(const QLValuePB& ql_value,
-                                         std::vector<QLValuePB> *const ql_value_vec);
-
-// Given a 'ql_value', interpret the binary value in it as an array of type
-// 'array_type' with elements of type 'elem_type' and store the individual
-// elements in 'result'. Here, 'array_type' and 'elem_type' are PG typoids
-// corresponding to the required array and element types.
-Status ExtractVectorFromQLBinaryValueHelper(const QLValuePB& ql_value,
-                                            const int array_type,
-                                            const int elem_type,
-                                            std::vector<QLValuePB> *result);
+Result<std::vector<std::string>> ExtractTextArrayFromQLBinaryValue(const QLValuePB& ql_value);
 
 Status SetValueFromQLBinary(const QLValuePB ql_value,
                             const int pg_data_type,

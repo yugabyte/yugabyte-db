@@ -27,6 +27,11 @@ namespace yb {
 namespace pggate {
 
 class PgDml;
+
+using DataTranslator = void(*)(
+    Slice* yb_cursor, const PgWireDataHeader& header, int index,
+    const YBCPgTypeEntity* type_entity, const PgTypeAttrs *type_attrs, PgTuple *pg_tuple);
+
 class PgExpr {
  public:
   enum class Opcode {
@@ -56,19 +61,14 @@ class PgExpr {
     PG_EXPR_GENERATE_ROWID,
   };
 
-  // Public types.
-  typedef std::shared_ptr<PgExpr> SharedPtr;
-  typedef std::shared_ptr<const PgExpr> SharedPtrConst;
-
-  typedef std::unique_ptr<PgExpr> UniPtr;
-  typedef std::unique_ptr<const PgExpr> UniPtrConst;
-
   // Prepare expression when constructing a statement.
   virtual CHECKED_STATUS PrepareForRead(PgDml *pg_stmt, LWPgsqlExpressionPB *expr_pb);
 
   // Convert this expression structure to PB format.
-  virtual CHECKED_STATUS Eval(LWPgsqlExpressionPB *expr_pb);
-  virtual CHECKED_STATUS Eval(QLValuePB *result);
+  CHECKED_STATUS EvalTo(LWPgsqlExpressionPB *expr_pb);
+  CHECKED_STATUS EvalTo(LWQLValuePB *value);
+
+  virtual Result<LWQLValuePB*> Eval();
 
   // Access methods.
   Opcode opcode() const {
@@ -105,88 +105,6 @@ class PgExpr {
   void TranslateData(Slice *yb_cursor, const PgWireDataHeader& header, int index,
                      PgTuple *pg_tuple) const;
 
-  static bool TranslateNumberHelper(
-      const PgWireDataHeader& header, int index, const YBCPgTypeEntity *type_entity,
-      PgTuple *pg_tuple);
-
-  // Implementation for "translate_data()" for each supported datatype.
-  // Translates DocDB-numeric datatypes.
-  template<typename data_type>
-  static void TranslateNumber(Slice *yb_cursor, const PgWireDataHeader& header, int index,
-                              const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
-                              PgTuple *pg_tuple) {
-    if (TranslateNumberHelper(header, index, type_entity, pg_tuple)) {
-      return;
-    }
-
-    data_type result = 0;
-    size_t read_size = PgDocData::ReadNumber(yb_cursor, &result);
-    yb_cursor->remove_prefix(read_size);
-    pg_tuple->WriteDatum(index, type_entity->yb_to_datum(&result, read_size, type_attrs));
-  }
-
-  // Translates DocDB-char-based datatypes.
-  static void TranslateText(Slice *yb_cursor, const PgWireDataHeader& header, int index,
-                            const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
-                            PgTuple *pg_tuple);
-
-  // Translates DocDB collated char-based datatypes.
-  static void TranslateCollateText(Slice *yb_cursor, const PgWireDataHeader& header,
-                                   int index, const YBCPgTypeEntity *type_entity,
-                                   const PgTypeAttrs *type_attrs, PgTuple *pg_tuple);
-
-  // Translates DocDB-binary-based datatypes.
-  static void TranslateBinary(Slice *yb_cursor, const PgWireDataHeader& header, int index,
-                              const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
-                              PgTuple *pg_tuple);
-
-  // Translate DocDB-decimal datatype.
-  static void TranslateDecimal(Slice *yb_cursor, const PgWireDataHeader& header, int index,
-                               const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
-                               PgTuple *pg_tuple);
-
-  // Translate system column.
-  template<typename data_type>
-  static void TranslateSysCol(Slice *yb_cursor, const PgWireDataHeader& header, data_type *value) {
-    *value = 0;
-    if (header.is_null()) {
-      // 0 is an invalid OID.
-      return;
-    }
-    size_t read_size = PgDocData::ReadNumber(yb_cursor, value);
-    yb_cursor->remove_prefix(read_size);
-  }
-
-  static void TranslateSysCol(Slice *yb_cursor, const PgWireDataHeader& header,
-                              PgTuple *pg_tuple, uint8_t **value);
-  static void TranslateCtid(Slice *yb_cursor, const PgWireDataHeader& header, int index,
-                            const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
-                            PgTuple *pg_tuple);
-  static void TranslateOid(Slice *yb_cursor, const PgWireDataHeader& header, int index,
-                           const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
-                           PgTuple *pg_tuple);
-  static void TranslateXmin(Slice *yb_cursor, const PgWireDataHeader& header, int index,
-                            const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
-                            PgTuple *pg_tuple);
-  static void TranslateCmin(Slice *yb_cursor, const PgWireDataHeader& header, int index,
-                            const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
-                            PgTuple *pg_tuple);
-  static void TranslateXmax(Slice *yb_cursor, const PgWireDataHeader& header, int index,
-                            const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
-                            PgTuple *pg_tuple);
-  static void TranslateCmax(Slice *yb_cursor, const PgWireDataHeader& header, int index,
-                            const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
-                            PgTuple *pg_tuple);
-  static void TranslateTableoid(Slice *yb_cursor, const PgWireDataHeader& header, int index,
-                                const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
-                                PgTuple *pg_tuple);
-  static void TranslateYBCtid(Slice *yb_cursor, const PgWireDataHeader& header, int index,
-                              const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
-                              PgTuple *pg_tuple);
-  static void TranslateYBBasectid(Slice *yb_cursor, const PgWireDataHeader& header, int index,
-                                  const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
-                                  PgTuple *pg_tuple);
-
   // Get expression type.
   InternalType internal_type() const;
 
@@ -214,26 +132,20 @@ class PgExpr {
   const PgTypeEntity *type_entity_;
   bool collate_is_valid_non_c_;
   const PgTypeAttrs type_attrs_;
-  std::function<void(Slice *, const PgWireDataHeader&, int, const YBCPgTypeEntity *,
-                     const PgTypeAttrs *, PgTuple *)> translate_data_;
+  DataTranslator translate_data_;
 };
 
 class PgConstant : public PgExpr {
  public:
-  // Public types.
-  typedef std::shared_ptr<PgConstant> SharedPtr;
-  typedef std::shared_ptr<const PgConstant> SharedPtrConst;
-
-  typedef std::unique_ptr<PgConstant> UniPtr;
-  typedef std::unique_ptr<const PgConstant> UniPtrConst;
-
-  PgConstant(const YBCPgTypeEntity *type_entity,
+  PgConstant(Arena* arena,
+             const YBCPgTypeEntity *type_entity,
              bool collate_is_valid_non_c,
              const char* collation_sortkey,
              uint64_t datum,
              bool is_null,
              PgExpr::Opcode opcode = PgExpr::Opcode::PG_EXPR_CONSTANT);
-  PgConstant(const YBCPgTypeEntity *type_entity,
+  PgConstant(Arena* arena,
+             const YBCPgTypeEntity *type_entity,
              bool collate_is_valid_non_c,
              PgDatumKind datum_kind,
              PgExpr::Opcode opcode = PgExpr::Opcode::PG_EXPR_CONSTANT);
@@ -251,8 +163,7 @@ class PgConstant : public PgExpr {
   void UpdateConstant(const void *value, size_t bytes, bool is_null);
 
   // Expression to PB.
-  CHECKED_STATUS Eval(LWPgsqlExpressionPB *expr_pb) override;
-  CHECKED_STATUS Eval(QLValuePB *result) override;
+  Result<LWQLValuePB*> Eval() override;
 
   // Read binary value.
   Slice binary_value() {
@@ -260,19 +171,12 @@ class PgConstant : public PgExpr {
   }
 
  private:
-  QLValuePB ql_value_;
+  LWQLValuePB ql_value_;
   const char *collation_sortkey_;
 };
 
 class PgColumnRef : public PgExpr {
  public:
-  // Public types.
-  typedef std::shared_ptr<PgColumnRef> SharedPtr;
-  typedef std::shared_ptr<const PgColumnRef> SharedPtrConst;
-
-  typedef std::unique_ptr<PgColumnRef> UniPtr;
-  typedef std::unique_ptr<const PgColumnRef> UniPtrConst;
-
   PgColumnRef(int attr_num,
               const PgTypeEntity *type_entity,
               bool collate_is_valid_non_c,
@@ -292,14 +196,8 @@ class PgColumnRef : public PgExpr {
 
 class PgOperator : public PgExpr {
  public:
-  // Public types.
-  typedef std::shared_ptr<PgOperator> SharedPtr;
-  typedef std::shared_ptr<const PgOperator> SharedPtrConst;
-
-  typedef std::unique_ptr<PgOperator> UniPtr;
-  typedef std::unique_ptr<const PgOperator> UniPtrConst;
-
-  PgOperator(const char *name,
+  PgOperator(Arena* arena,
+             const char *name,
              const YBCPgTypeEntity *type_entity,
              bool collate_is_valid_non_c);
 
@@ -310,8 +208,8 @@ class PgOperator : public PgExpr {
   virtual CHECKED_STATUS PrepareForRead(PgDml *pg_stmt, LWPgsqlExpressionPB *expr_pb);
 
  private:
-  const std::string opname_;
-  std::vector<PgExpr*> args_;
+  Slice opname_;
+  ArenaList<PgExpr> args_;
 };
 
 }  // namespace pggate

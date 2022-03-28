@@ -124,15 +124,14 @@ Result<PlacementInfoConverter::Placement> PlacementInfoConverter::FromString(
 }
 
 Result<PlacementInfoConverter::Placement> PlacementInfoConverter::FromQLValue(
-    const vector<QLValuePB>& placement) {
+    const std::vector<std::string>& placement) {
   // Today only one option is supported, so this array should have only one option.
   if (placement.size() != 1) {
     return STATUS_FORMAT(Corruption,
                          "Unexpected number of options: $0", placement.size());
   }
 
-  const string& option = placement[0].string_value();
-  return FromString(option);
+  return FromString(placement.front());
 }
 
 } // namespace yb

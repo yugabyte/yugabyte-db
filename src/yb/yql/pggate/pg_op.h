@@ -29,7 +29,7 @@ namespace pggate {
 
 class PgsqlOp {
  public:
-  PgsqlOp() = default;
+  explicit PgsqlOp(Arena* arena) : arena_(arena) {}
   virtual ~PgsqlOp() = default;
 
   PgsqlOp(const PgsqlOp&) = delete;
@@ -43,8 +43,8 @@ class PgsqlOp {
     return !is_read();
   }
 
-  Arena& arena() {
-    return arena_;
+  Arena& arena() const {
+    return *arena_;
   }
 
   void set_response(LWPgsqlResponsePB* response) {
@@ -57,10 +57,6 @@ class PgsqlOp {
 
   const LWPgsqlResponsePB* response() const {
     return response_;
-  }
-
-  rpc::SidecarPtr& rows_data() {
-    return rows_data_;
   }
 
   bool is_active() const {
@@ -86,17 +82,18 @@ class PgsqlOp {
  private:
   virtual std::string RequestToString() const = 0;
 
-  Arena arena_;
+  // dtor for this class is not invoked, so only fields that could be destroyed with arena are
+  // allowed.
+  Arena* arena_;
   bool active_ = false;
   LWPgsqlResponsePB* response_ = nullptr;
-  rpc::SidecarPtr rows_data_;
   ReadHybridTime read_time_;
 };
 
 class PgsqlReadOp : public PgsqlOp {
  public:
-  PgsqlReadOp();
-  explicit PgsqlReadOp(const PgTableDesc& desc);
+  explicit PgsqlReadOp(Arena* arena);
+  PgsqlReadOp(Arena* arena, const PgTableDesc& desc);
 
   LWPgsqlReadRequestPB& read_request() {
     return read_request_;
@@ -122,7 +119,7 @@ class PgsqlReadOp : public PgsqlOp {
     return read_from_followers_;
   }
 
-  PgsqlOpPtr DeepCopy() const;
+  PgsqlOpPtr DeepCopy(const std::shared_ptr<void>& shared_ptr) const;
 
   std::string RequestToString() const override;
 
@@ -140,7 +137,7 @@ std::shared_ptr<PgsqlReadRequestPB> InitSelect(
 
 class PgsqlWriteOp : public PgsqlOp {
  public:
-  explicit PgsqlWriteOp(bool need_transaction);
+  PgsqlWriteOp(Arena* arena, bool need_transaction);
 
   LWPgsqlWriteRequestPB& write_request() {
     return write_request_;
@@ -158,7 +155,7 @@ class PgsqlWriteOp : public PgsqlOp {
     return need_transaction_;
   }
 
-  PgsqlOpPtr DeepCopy() const;
+  PgsqlOpPtr DeepCopy(const std::shared_ptr<void>& shared_ptr) const;
 
   HybridTime write_time() const {
     return write_time_;
