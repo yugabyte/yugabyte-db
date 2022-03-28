@@ -2286,6 +2286,21 @@ void TabletServiceImpl::GetSharedData(const GetSharedDataRequestPB* req,
   context.RespondSuccess();
 }
 
+void TabletServiceAdminImpl::TestRetry(
+    const TestRetryRequestPB* req, TestRetryResponsePB* resp, rpc::RpcContext context) {
+  if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "TestRetry", req, resp, &context)) {
+    return;
+  }
+  auto num_calls = num_test_retry_calls.fetch_add(1) + 1;
+  if (num_calls < req->num_retries()) {
+    SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS_FORMAT(TryAgain, "Got $0 calls of $1", num_calls, req->num_retries()), &context);
+  } else {
+    context.RespondSuccess();
+  }
+}
+
 void TabletServiceImpl::Shutdown() {
 }
 

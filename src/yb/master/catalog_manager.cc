@@ -2527,6 +2527,13 @@ Status CatalogManager::TEST_IncrementTablePartitionListVersion(const TableId& ta
   return Status::OK();
 }
 
+Status CatalogManager::TEST_SendTestRetryRequest(
+    const PeerId& ts_id, const int32_t num_retries, StdStatusCallback callback) {
+  auto task = std::make_shared<AsyncTestRetry>(
+      master_, AsyncTaskPool(), ts_id, num_retries, std::move(callback));
+  return ScheduleTask(task);
+}
+
 Result<ReplicationInfoPB> CatalogManager::GetTableReplicationInfo(
     const TabletInfo& tablet_info) const {
   auto table = tablet_info.table();
