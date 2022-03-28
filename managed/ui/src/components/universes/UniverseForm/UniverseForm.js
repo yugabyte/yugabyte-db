@@ -35,7 +35,6 @@ const SUBMIT_ACTIONS = {
   FullMove: 'FullMove'
 };
 
-
 const initialState = {
   instanceTypeSelected: '',
   nodeSetViaAZList: false,
@@ -140,14 +139,18 @@ class UniverseForm extends Component {
       } = this.props;
       const readOnlyCluster = universeDetails && getReadOnlyCluster(universeDetails.clusters);
       if (isNonEmptyObject(readOnlyCluster)) {
-        this.editReadReplica();
+        this.editReadReplica().then(() => {
+          this.transitionToDefaultRoute();
+        });
       } else {
-        this.addReadReplica();
+        this.addReadReplica().then(() => {
+          this.transitionToDefaultRoute();
+        });
       }
-      this.transitionToDefaultRoute();
     } else {
-      this.editUniverse();
-      this.transitionToDefaultRoute();
+      this.editUniverse().then(() => {
+        this.transitionToDefaultRoute();
+      });
     }
   };
 
@@ -259,7 +262,7 @@ class UniverseForm extends Component {
         }
       }
     } = this.props;
-    this.props.submitEditUniverse(this.getFormPayload(), universeUUID);
+    return this.props.submitEditUniverse(this.getFormPayload(), universeUUID);
   };
 
   addReadReplica = () => {
@@ -270,7 +273,7 @@ class UniverseForm extends Component {
         }
       }
     } = this.props;
-    this.props.submitAddUniverseReadReplica(this.getFormPayload(), universeUUID);
+    return this.props.submitAddUniverseReadReplica(this.getFormPayload(), universeUUID);
   };
 
   editReadReplica = () => {
@@ -281,7 +284,7 @@ class UniverseForm extends Component {
         }
       }
     } = this.props;
-    this.props.submitEditUniverseReadReplica(this.getFormPayload(), universeUUID);
+    return this.props.submitEditUniverseReadReplica(this.getFormPayload(), universeUUID);
   };
 
   UNSAFE_componentWillMount() {
@@ -748,28 +751,29 @@ class UniverseForm extends Component {
     // check nodes if all live nodes is going to be removed (full move)
     const existingPrimaryNodes = getPromiseState(universeConfigTemplate).isSuccess()
       ? universeConfigTemplate.data.nodeDetailsSet.filter(
-            (node) =>
-                node.nodeName &&
-                (type === 'Async'
-                 ? node.nodeName.includes('readonly')
-                 : !node.nodeName.includes('readonly'))
-        ) : [];
+          (node) =>
+            node.nodeName &&
+            (type === 'Async'
+              ? node.nodeName.includes('readonly')
+              : !node.nodeName.includes('readonly'))
+        )
+      : [];
 
     const resizePossible =
-        getPromiseState(universeConfigTemplate).isSuccess() &&
-        this.state.currentView === 'Primary' &&
-        universeConfigTemplate.data.nodesResizeAvailable;
+      getPromiseState(universeConfigTemplate).isSuccess() &&
+      this.state.currentView === 'Primary' &&
+      universeConfigTemplate.data.nodesResizeAvailable;
 
     const existingNodeRemains =
-        existingPrimaryNodes.length &&
-        existingPrimaryNodes.filter((node) => node.state !== 'ToBeRemoved').length;
+      existingPrimaryNodes.length &&
+      existingPrimaryNodes.filter((node) => node.state !== 'ToBeRemoved').length;
     const hasAddedNodes =
-        getPromiseState(universeConfigTemplate).isSuccess() &&
-        universeConfigTemplate.data.nodeDetailsSet.filter((node) => node.state === 'ToBeAdded')
-            .length;
+      getPromiseState(universeConfigTemplate).isSuccess() &&
+      universeConfigTemplate.data.nodeDetailsSet.filter((node) => node.state === 'ToBeAdded')
+        .length;
     const hasRemovedNodes =
-        existingPrimaryNodes.length &&
-        existingPrimaryNodes.filter((node) => node.state === 'ToBeRemoved').length;
+      existingPrimaryNodes.length &&
+      existingPrimaryNodes.filter((node) => node.state === 'ToBeRemoved').length;
 
     let submitAction = SUBMIT_ACTIONS.None;
     if (existingNodeRemains && !hasAddedNodes && !hasRemovedNodes) {
@@ -780,17 +784,19 @@ class UniverseForm extends Component {
         submitAction = SUBMIT_ACTIONS.Update;
       }
     } else if (
-        existingNodeRemains ||
-        (this.state.currentView === 'Primary' && type === 'Create') ||
-        (this.state.currentView === 'Async' && !readOnlyCluster)
+      existingNodeRemains ||
+      (this.state.currentView === 'Primary' && type === 'Create') ||
+      (this.state.currentView === 'Async' && !readOnlyCluster)
     ) {
       submitAction = SUBMIT_ACTIONS.Update;
     } else if (getPromiseState(universeConfigTemplate).isSuccess()) {
       submitAction = SUBMIT_ACTIONS.FullMove;
     }
 
-    const validateVolumeSizeUnchanged = (type === 'Edit' && this.state.currentView === 'Primary' &&
-      submitAction === SUBMIT_ACTIONS.Update);
+    const validateVolumeSizeUnchanged =
+      type === 'Edit' &&
+      this.state.currentView === 'Primary' &&
+      submitAction === SUBMIT_ACTIONS.Update;
 
     const clusterProps = {
       universe,
@@ -843,7 +849,7 @@ class UniverseForm extends Component {
     let overrideIntentParams = {};
     if (submitAction === SUBMIT_ACTIONS.SmartResize) {
       const newCluster =
-          this.state.currentView === 'Primary'
+        this.state.currentView === 'Primary'
           ? getPrimaryCluster(universeConfigTemplate.data.clusters)
           : getReadOnlyCluster(universeConfigTemplate.data.clusters);
       overrideIntentParams = {
