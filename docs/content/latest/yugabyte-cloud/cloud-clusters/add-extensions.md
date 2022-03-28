@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: add-extensions
     parent: cloud-clusters
-    weight: 300
+    weight: 400
 isTocNested: true
 showAsideToc: true
 ---
