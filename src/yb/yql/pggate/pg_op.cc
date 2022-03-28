@@ -79,11 +79,11 @@ std::string PgsqlOp::ToString() const {
                 is_read() ? "READ" : "WRITE", active_, read_time_, RequestToString());
 }
 
-PgsqlReadOp::PgsqlReadOp() : read_request_(&arena()) {
+PgsqlReadOp::PgsqlReadOp(Arena* arena) : PgsqlOp(arena), read_request_(arena) {
 }
 
-PgsqlReadOp::PgsqlReadOp(const PgTableDesc& desc)
-    : read_request_(&arena()) {
+PgsqlReadOp::PgsqlReadOp(Arena* arena, const PgTableDesc& desc)
+    : PgsqlOp(arena), read_request_(arena) {
   read_request_.set_client(YQL_CLIENT_PGSQL);
   read_request_.dup_table_id(desc.id().GetYbTableId());
   read_request_.set_schema_version(desc.schema_version());
@@ -95,8 +95,9 @@ CHECKED_STATUS PgsqlReadOp::InitPartitionKey(const PgTableDesc& table) {
        table.schema(), table.partition_schema(), table.LastPartition(), &read_request_);
 }
 
-PgsqlOpPtr PgsqlReadOp::DeepCopy() const {
-  auto result = std::make_shared<PgsqlReadOp>();
+PgsqlOpPtr PgsqlReadOp::DeepCopy(const std::shared_ptr<void>& shared_ptr) const {
+  auto result = ArenaMakeShared<PgsqlReadOp>(
+      std::shared_ptr<Arena>(shared_ptr, &arena()), &arena());
   result->read_request() = read_request();
   result->read_from_followers_ = read_from_followers_;
   return result;
@@ -106,8 +107,8 @@ std::string PgsqlReadOp::RequestToString() const {
   return read_request_.ShortDebugString();
 }
 
-PgsqlWriteOp::PgsqlWriteOp(bool need_transaction)
-    : write_request_(&arena()), need_transaction_(need_transaction) {
+PgsqlWriteOp::PgsqlWriteOp(Arena* arena, bool need_transaction)
+    : PgsqlOp(arena), write_request_(arena), need_transaction_(need_transaction) {
 }
 
 CHECKED_STATUS PgsqlWriteOp::InitPartitionKey(const PgTableDesc& table) {
@@ -118,8 +119,9 @@ std::string PgsqlWriteOp::RequestToString() const {
   return write_request_.ShortDebugString();
 }
 
-PgsqlOpPtr PgsqlWriteOp::DeepCopy() const {
-  auto result = std::make_shared<PgsqlWriteOp>(need_transaction_);
+PgsqlOpPtr PgsqlWriteOp::DeepCopy(const std::shared_ptr<void>& shared_ptr) const {
+  auto result = ArenaMakeShared<PgsqlWriteOp>(
+      std::shared_ptr<Arena>(shared_ptr, &arena()), &arena(), need_transaction_);
   result->write_request() = write_request();
   return result;
 }

@@ -137,10 +137,21 @@ int QLValue::CompareTo(const QLValue& other) const {
   return 0;
 }
 
+namespace {
+
+void AppendBytesToKey(const std::string& str, string* bytes) {
+  YBPartition::AppendBytesToKey(str.c_str(), str.length(), bytes);
+}
+
+void AppendBytesToKey(const Slice& str, string* bytes) {
+  YBPartition::AppendBytesToKey(str.cdata(), str.size(), bytes);
+}
+
 // TODO(mihnea) After the hash changes, this method does not do the key encoding anymore
 // (not needed for hash computation), so AppendToBytes() is better describes what this method does.
 // The internal methods such as AppendIntToKey should be renamed accordingly.
-void AppendToKey(const QLValuePB &value_pb, string *bytes) {
+template <class PB>
+void DoAppendToKey(const PB& value_pb, string* bytes) {
   switch (value_pb.value_case()) {
     case InternalType::kBoolValue: {
       YBPartition::AppendIntToKey<bool, uint8>(value_pb.bool_value() ? 1 : 0, bytes);
@@ -183,38 +194,31 @@ void AppendToKey(const QLValuePB &value_pb, string *bytes) {
       break;
     }
     case InternalType::kStringValue: {
-      const string& str = value_pb.string_value();
-      YBPartition::AppendBytesToKey(str.c_str(), str.length(), bytes);
+      AppendBytesToKey(value_pb.string_value(), bytes);
       break;
     }
     case InternalType::kUuidValue: {
-      const string& str = value_pb.uuid_value();
-      YBPartition::AppendBytesToKey(str.c_str(), str.length(), bytes);
+      AppendBytesToKey(value_pb.uuid_value(), bytes);
       break;
     }
     case InternalType::kTimeuuidValue: {
-      const string& str = value_pb.timeuuid_value();
-      YBPartition::AppendBytesToKey(str.c_str(), str.length(), bytes);
+      AppendBytesToKey(value_pb.timeuuid_value(), bytes);
       break;
     }
     case InternalType::kInetaddressValue: {
-      const string& str = value_pb.inetaddress_value();
-      YBPartition::AppendBytesToKey(str.c_str(), str.length(), bytes);
+      AppendBytesToKey(value_pb.inetaddress_value(), bytes);
       break;
     }
     case InternalType::kDecimalValue: {
-      const string& str = value_pb.decimal_value();
-      YBPartition::AppendBytesToKey(str.c_str(), str.length(), bytes);
+      AppendBytesToKey(value_pb.decimal_value(), bytes);
       break;
     }
     case InternalType::kVarintValue: {
-      const string& str = value_pb.varint_value();
-      YBPartition::AppendBytesToKey(str.c_str(), str.length(), bytes);
+      AppendBytesToKey(value_pb.varint_value(), bytes);
       break;
     }
     case InternalType::kBinaryValue: {
-      const string& str = value_pb.binary_value();
-      YBPartition::AppendBytesToKey(str.c_str(), str.length(), bytes);
+      AppendBytesToKey(value_pb.binary_value(), bytes);
       break;
     }
     case InternalType::kFloatValue: {
@@ -252,6 +256,16 @@ void AppendToKey(const QLValuePB &value_pb, string *bytes) {
   }
 }
 
+} // namespace
+
+void AppendToKey(const QLValuePB &value_pb, std::string *bytes) {
+  DoAppendToKey(value_pb, bytes);
+}
+
+void AppendToKey(const LWQLValuePB &value_pb, std::string *bytes) {
+  DoAppendToKey(value_pb, bytes);
+}
+
 void QLValue::Serialize(
     const std::shared_ptr<QLType>& ql_type, const QLClient& client, const QLValuePB& pb,
     faststring* buffer) {
@@ -263,10 +277,10 @@ void QLValue::Serialize(
 
   switch (ql_type->main()) {
     case INT8:
-      CQLEncodeNum(Store8, int8_value(pb), buffer);
+      CQLEncodeNum(Store8, static_cast<uint8_t>(int8_value(pb)), buffer);
       return;
     case INT16:
-      CQLEncodeNum(NetworkByteOrder::Store16, int16_value(pb), buffer);
+      CQLEncodeNum(NetworkByteOrder::Store16, static_cast<uint16_t>(int16_value(pb)), buffer);
       return;
     case INT32:
       CQLEncodeNum(NetworkByteOrder::Store32, int32_value(pb), buffer);
@@ -894,7 +908,13 @@ string QLValue::ToString() const {
 
 InetAddress QLValue::inetaddress_value(const QLValuePB& pb) {
   InetAddress addr;
-  CHECK_OK(addr.FromBytes(inetaddress_value_pb(pb)));
+  CHECK_OK(addr.FromSlice(inetaddress_value_pb(pb)));
+  return addr;
+}
+
+InetAddress QLValue::inetaddress_value(const LWQLValuePB& pb) {
+  InetAddress addr;
+  CHECK_OK(addr.FromSlice(inetaddress_value_pb(pb)));
   return addr;
 }
 
@@ -905,9 +925,22 @@ Uuid QLValue::timeuuid_value(const QLValuePB& pb) {
   return timeuuid;
 }
 
+Uuid QLValue::timeuuid_value(const LWQLValuePB& pb) {
+  Uuid timeuuid;
+  CHECK_OK(timeuuid.FromSlice(timeuuid_value_pb(pb)));
+  CHECK_OK(timeuuid.IsTimeUuid());
+  return timeuuid;
+}
+
 Uuid QLValue::uuid_value(const QLValuePB& pb) {
   Uuid uuid;
   CHECK_OK(uuid.FromBytes(uuid_value_pb(pb)));
+  return uuid;
+}
+
+Uuid QLValue::uuid_value(const LWQLValuePB& pb) {
+  Uuid uuid;
+  CHECK_OK(uuid.FromSlice(uuid_value_pb(pb)));
   return uuid;
 }
 
@@ -973,6 +1006,18 @@ QLValuePB QLValue::PrimitiveInt64(int64_t value) {
   return result;
 }
 
+Timestamp QLValue::timestamp_value(const QLValuePB& pb) {
+  return Timestamp(timestamp_value_pb(pb));
+}
+
+Timestamp QLValue::timestamp_value(const LWQLValuePB& pb) {
+  return Timestamp(timestamp_value_pb(pb));
+}
+
+Timestamp QLValue::timestamp_value(const QLValue& value) {
+  return timestamp_value(value.value());
+}
+
 //----------------------------------- QLValuePB operators --------------------------------
 
 InternalType type(const QLValuePB& v) {
@@ -985,7 +1030,6 @@ bool IsNull(const QLValuePB& v) {
 bool IsNull(const LWQLValuePB& v) {
   return v.value_case() == QLValuePB::VALUE_NOT_SET;
 }
-
 
 void SetNull(QLValuePB* v) {
   v->Clear();
@@ -1109,9 +1153,9 @@ int Compare(const QLValuePB& lhs, const QLValue& rhs) {
   CHECK(BothNotNull(lhs, rhs));
   switch (type(lhs)) {
     case QLValuePB::kInt8Value:
-      return GenericCompare(static_cast<int8_t>(lhs.int8_value()), rhs.int8_value());
+      return GenericCompare<int8_t>(lhs.int8_value(), rhs.int8_value());
     case QLValuePB::kInt16Value:
-      return GenericCompare(static_cast<int16_t>(lhs.int16_value()), rhs.int16_value());
+      return GenericCompare<int16_t>(lhs.int16_value(), rhs.int16_value());
     case QLValuePB::kInt32Value:  return GenericCompare(lhs.int32_value(), rhs.int32_value());
     case QLValuePB::kInt64Value:  return GenericCompare(lhs.int64_value(), rhs.int64_value());
     case QLValuePB::kUint32Value:  return GenericCompare(lhs.uint32_value(), rhs.uint32_value());
@@ -1168,7 +1212,7 @@ int Compare(const QLValuePB& lhs, const QLValue& rhs) {
       }
       break;
     case QLValuePB::kGinNullValue:
-      return GenericCompare(static_cast<uint8_t>(lhs.gin_null_value()), rhs.gin_null_value());
+      return GenericCompare<uint8_t>(lhs.gin_null_value(), rhs.gin_null_value());
 
     // default: fall through
   }
