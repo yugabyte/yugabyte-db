@@ -52,8 +52,8 @@ Along with the Smart drivers, YugabyteDB also provides support for upstream [Pos
 
 | Driver/ORM | Support Level | Example apps |
 | :--------- | :------------ | :----------- |
-| PostgreSQL | Full |   |
-| Sequelize | Full |   |
+| [PostgreSQL](nodejs/postgres-node-driver) | Full |  [CRUD Example](/latest/quick-start/build-apps/nodejs/ysql-pg/) |
+| [Sequelize](nodejs/sequelize) | Full |  [CRUD Example](/latest/quick-start/build-apps/nodejs/ysql-sequelize/)|
 | TypeORM | Full |   |
 
 ### App Framework Support
