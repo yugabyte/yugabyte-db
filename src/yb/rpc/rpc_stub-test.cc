@@ -1038,5 +1038,25 @@ TEST_F(RpcStubTest, CustomServiceName) {
   ASSERT_EQ(resp.result(), "yugabyte");
 }
 
+TEST_F(RpcStubTest, Trivial) {
+  CalculatorServiceProxy proxy(proxy_cache_.get(), server_hostport_);
+
+  RpcController controller;
+  controller.set_timeout(30s);
+
+  rpc_test::TrivialRequestPB req;
+  req.set_value(42);
+  rpc_test::TrivialResponsePB resp;
+  ASSERT_OK(proxy.Trivial(req, &resp, &controller));
+  ASSERT_EQ(resp.value(), req.value());
+
+  req.set_value(-1);
+  controller.Reset();
+  controller.set_timeout(30s);
+  ASSERT_OK(proxy.Trivial(req, &resp, &controller));
+  ASSERT_TRUE(resp.has_error());
+  ASSERT_EQ(resp.error().code(), Status::Code::kInvalidArgument);
+}
+
 } // namespace rpc
 } // namespace yb

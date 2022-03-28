@@ -404,7 +404,7 @@ TEST_P(TwoDCYsqlTest, SetupUniverseReplication) {
     master::ListCDCStreamsResponsePB stream_resp;
     ASSERT_OK(GetCDCStreamForTable(producer_tables[i]->id(), &stream_resp));
     ASSERT_EQ(stream_resp.streams_size(), 1);
-    ASSERT_EQ(stream_resp.streams(0).table_id(), producer_tables[i]->id());
+    ASSERT_EQ(stream_resp.streams(0).table_id().Get(0), producer_tables[i]->id());
   }
 
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));

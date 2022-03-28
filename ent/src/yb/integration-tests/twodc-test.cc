@@ -331,7 +331,7 @@ TEST_P(TwoDCTest, SetupUniverseReplication) {
     master::ListCDCStreamsResponsePB stream_resp;
     ASSERT_OK(GetCDCStreamForTable(producer_tables[i]->id(), &stream_resp));
     ASSERT_EQ(stream_resp.streams_size(), 1);
-    ASSERT_EQ(stream_resp.streams(0).table_id(), producer_tables[i]->id());
+    ASSERT_EQ(stream_resp.streams(0).table_id().Get(0), producer_tables[i]->id());
   }
 
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
@@ -769,7 +769,7 @@ TEST_P(TwoDCTest, PollAndObserveIdleDampening) {
   master::ListCDCStreamsResponsePB stream_resp;
   ASSERT_OK(GetCDCStreamForTable(tables[0]->id(), &stream_resp));
   ASSERT_EQ(stream_resp.streams_size(), 1);
-  ASSERT_EQ(stream_resp.streams(0).table_id(), tables[0]->id());
+  ASSERT_EQ(stream_resp.streams(0).table_id().Get(0), tables[0]->id());
   auto stream_id = stream_resp.streams(0).stream_id();
 
   // Find the tablet id for the stream.
@@ -1657,7 +1657,7 @@ TEST_P(TwoDCTest, TestDeleteCDCStreamWithMissingStreams) {
   master::ListCDCStreamsResponsePB stream_resp;
   ASSERT_OK(GetCDCStreamForTable(tables[0]->id(), &stream_resp));
   ASSERT_EQ(stream_resp.streams_size(), 1);
-  ASSERT_EQ(stream_resp.streams(0).table_id(), tables[0]->id());
+  ASSERT_EQ(stream_resp.streams(0).table_id().Get(0), tables[0]->id());
   auto stream_id = stream_resp.streams(0).stream_id();
 
   rpc::RpcController rpc;

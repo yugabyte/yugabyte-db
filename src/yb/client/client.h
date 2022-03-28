@@ -81,6 +81,9 @@ class CloudInfoPB;
 class MemTracker;
 class MetricEntity;
 
+namespace cdc {
+struct StreamMetaData;
+}
 namespace master {
 class ReplicationInfoPB;
 class TabletLocationsPB;
@@ -516,7 +519,8 @@ class YBClient {
   Result<CDCStreamId> CreateCDCStream(
       const TableId& table_id,
       const std::unordered_map<std::string, std::string>& options,
-      bool active = true);
+      bool active = true,
+      const NamespaceId& namespace_id = "");
 
   void CreateCDCStream(const TableId& table_id,
                        const std::unordered_map<std::string, std::string>& options,
@@ -534,6 +538,16 @@ class YBClient {
                                  bool ignore_errors = false);
 
   void DeleteCDCStream(const CDCStreamId& stream_id, StatusCallback callback);
+
+  // Create a new CDC stream.
+  CHECKED_STATUS GetCDCDBStreamInfo(
+      const std::string& db_stream_id,
+      std::vector<pair<std::string, std::string>>* db_stream_info);
+
+  void GetCDCDBStreamInfo(
+      const std::string& db_stream_id,
+      const std::shared_ptr<std::vector<pair<std::string, std::string>>>& db_stream_info,
+      const StdStatusCallback& callback);
 
   // Retrieve a CDC stream.
   CHECKED_STATUS GetCDCStream(const CDCStreamId &stream_id,
@@ -593,6 +607,11 @@ class YBClient {
   Result<std::vector<YBTableName>> ListTables(
       const std::string& filter = "",
       bool exclude_ysql = false);
+
+  // List tables in a namespace.
+  //
+  // 'tables' is appended to only on success.
+  Result<std::vector<YBTableName>> ListUserTables(const NamespaceId& ns_id = "");
 
   // List all running tablets' uuids for this table.
   // 'tablets' is appended to only on success.

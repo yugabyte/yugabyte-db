@@ -422,9 +422,10 @@ message SysCDCStreamEntryPB {
     // Currently DELETED is not being used because we delete streams entries from sys catalog.
     DELETED = 2;
   }
-  optional string table_id = 1;
+  repeated string table_id = 1;
   repeated CDCStreamOptionsPB options = 2;
   optional State state = 3 [default = ACTIVE];
+  optional string namespace_id = 4;
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for snapshots entries.

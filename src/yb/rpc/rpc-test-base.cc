@@ -379,6 +379,16 @@ class CalculatorService: public CalculatorServiceIf {
     context.RespondSuccess();
   }
 
+  Result<rpc_test::TrivialResponsePB> Trivial(
+      const rpc_test::TrivialRequestPB& req, CoarseTimePoint deadline) override {
+    if (req.value() < 0) {
+      return STATUS_FORMAT(InvalidArgument, "Negative value: $0", req.value());
+    }
+    rpc_test::TrivialResponsePB resp;
+    resp.set_value(req.value());
+    return resp;
+  }
+
  private:
   void DoSleep(const SleepRequestPB* req, RpcContext context) {
     SleepFor(MonoDelta::FromMicroseconds(req->sleep_micros()));
@@ -607,4 +617,13 @@ MessengerBuilder RpcTestBase::CreateMessengerBuilder(const string &name,
 }
 
 } // namespace rpc
+
+namespace rpc_test {
+
+void SetupError(TrivialErrorPB* error, const Status& status) {
+  error->set_code(status.code());
+}
+
+}
+
 } // namespace yb

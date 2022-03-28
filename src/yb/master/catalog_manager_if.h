@@ -200,6 +200,9 @@ class CatalogManagerIf {
   virtual CHECKED_STATUS ListCDCStreams(
       const ListCDCStreamsRequestPB* req, ListCDCStreamsResponsePB* resp) = 0;
 
+  virtual CHECKED_STATUS GetCDCDBStreamInfo(
+    const GetCDCDBStreamInfoRequestPB* req, GetCDCDBStreamInfoResponsePB* resp) = 0;
+
   virtual Result<scoped_refptr<TableInfo>> FindTable(
       const TableIdentifierPB& table_identifier) const = 0;
 

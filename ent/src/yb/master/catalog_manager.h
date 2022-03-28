@@ -115,13 +115,17 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                  rpc::RpcContext* rpc);
 
   // Delete the specified CDCStream.
-  CHECKED_STATUS DeleteCDCStream(const DeleteCDCStreamRequestPB* req,
+      CHECKED_STATUS DeleteCDCStream(const DeleteCDCStreamRequestPB* req,
                                  DeleteCDCStreamResponsePB* resp,
                                  rpc::RpcContext* rpc);
 
   // List CDC streams (optionally, for a given table).
   CHECKED_STATUS ListCDCStreams(const ListCDCStreamsRequestPB* req,
                                 ListCDCStreamsResponsePB* resp) override;
+
+  // Fetch CDC stream info corresponding to a db stream id
+  CHECKED_STATUS GetCDCDBStreamInfo(const GetCDCDBStreamInfoRequestPB* req,
+                                    GetCDCDBStreamInfoResponsePB* resp) override;
 
   // Get CDC stream.
   CHECKED_STATUS GetCDCStream(const GetCDCStreamRequestPB* req,

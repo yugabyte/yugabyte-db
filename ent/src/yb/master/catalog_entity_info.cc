@@ -29,13 +29,21 @@ namespace master {
 // CDCStreamInfo
 // ================================================================================================
 
-const TableId& CDCStreamInfo::table_id() const {
+const google::protobuf::RepeatedPtrField<std::string>& CDCStreamInfo::table_id() const {
   return LockForRead()->pb.table_id();
+}
+
+const NamespaceId& CDCStreamInfo::namespace_id() const {
+  return LockForRead()->pb.namespace_id();
 }
 
 std::string CDCStreamInfo::ToString() const {
   auto l = LockForRead();
-  return Format("$0 [table=$1] {metadata=$2} ", id(), l->pb.table_id(), l->pb.ShortDebugString());
+  if (l->pb.has_namespace_id()) {
+    return Format(
+        "$0 [namespace=$1] {metadata=$2} ", id(), l->pb.namespace_id(), l->pb.ShortDebugString());
+  }
+  return Format("$0 [table=$1] {metadata=$2} ", id(), l->pb.table_id(0), l->pb.ShortDebugString());
 }
 
 // ================================================================================================

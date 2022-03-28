@@ -34,6 +34,8 @@
 
 #include <string>
 
+#include <boost/type_traits/is_detected.hpp>
+
 #include "yb/rpc/rpc_header.pb.h"
 #include "yb/rpc/serialization.h"
 #include "yb/rpc/service_if.h"
@@ -143,6 +145,33 @@ class RpcCallLWParamsImpl : public RpcCallLWParams {
   Req req_;
   Resp resp_;
 };
+
+template <class T>
+using MutableErrorDetector = decltype(std::declval<T&>().mutable_error());
+
+template <bool>
+struct ResponseErrorHelper;
+
+template <>
+struct ResponseErrorHelper<true> {
+  template <class T>
+  static auto Apply(T* t) {
+    return t->mutable_error();
+  }
+};
+
+template <>
+struct ResponseErrorHelper<false> {
+  template <class T>
+  static auto Apply(T* t) {
+    return t->mutable_status();
+  }
+};
+
+template <class T>
+auto ResponseError(T* t) {
+  return ResponseErrorHelper<boost::is_detected_v<MutableErrorDetector, T>>::Apply(t);
+}
 
 // The context provided to a generated ServiceIf. This provides
 // methods to respond to the RPC. In the future, this will also
@@ -275,6 +304,17 @@ class RpcContext {
   RpcCallParams& params() {
     return *params_;
   }
+
+  template <class Response>
+  void RespondTrivial(Result<Response>* result, Response* response) {
+    if (result->ok()) {
+      response->Swap(result->get_ptr());
+    } else {
+      SetupError(ResponseError(response), result->status());
+    }
+    RespondSuccess();
+  }
+
 
   // Panic the server. This logs a fatal error with the given message, and
   // also includes the current RPC request, requestor, trace information, etc,

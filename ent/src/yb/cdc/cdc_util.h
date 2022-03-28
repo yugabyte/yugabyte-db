@@ -18,6 +18,7 @@
 #include <string>
 #include <boost/functional/hash.hpp>
 
+#include "yb/common/entity_ids_types.h"
 #include "yb/util/format.h"
 
 namespace yb {
@@ -25,12 +26,12 @@ namespace cdc {
 
 struct ConsumerTabletInfo {
   std::string tablet_id;
-  std::string table_id;
+  TableId table_id;
 };
 
 struct ProducerTabletInfo {
   std::string universe_uuid; /* needed on Consumer side for uniqueness. Empty on Producer */
-  std::string stream_id; /* unique ID on Producer, but not on Consumer. */
+  CDCStreamId stream_id; /* unique ID on Producer, but not on Consumer. */
   std::string tablet_id;
 
   bool operator==(const ProducerTabletInfo& other) const {
@@ -61,6 +62,16 @@ struct ProducerTabletInfo {
       return hash;
     }
   };
+};
+
+struct CDCCreationState {
+  std::vector<CDCStreamId> created_cdc_streams;
+  std::vector<ProducerTabletInfo> producer_entries_modified;
+
+  void Clear() {
+    created_cdc_streams.clear();
+    producer_entries_modified.clear();
+  }
 };
 
 inline size_t hash_value(const ProducerTabletInfo& p) noexcept {

@@ -47,6 +47,7 @@
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
 
+#include "yb/cdc/cdc_service.h"
 #include "yb/client/client_fwd.h"
 #include "yb/client/callbacks.h"
 #include "yb/client/client-internal.h"
@@ -180,6 +181,8 @@ using yb::master::CreateCDCStreamRequestPB;
 using yb::master::CreateCDCStreamResponsePB;
 using yb::master::DeleteCDCStreamRequestPB;
 using yb::master::DeleteCDCStreamResponsePB;
+using yb::master::GetCDCDBStreamInfoRequestPB;
+using yb::master::GetCDCDBStreamInfoResponsePB;
 using yb::master::GetCDCStreamRequestPB;
 using yb::master::GetCDCStreamResponsePB;
 using yb::master::UpdateCDCStreamRequestPB;
@@ -1399,10 +1402,14 @@ Status YBClient::DeleteUDType(const std::string& namespace_name,
 Result<CDCStreamId> YBClient::CreateCDCStream(
     const TableId& table_id,
     const std::unordered_map<std::string, std::string>& options,
-    bool active) {
+    bool active,
+    const CDCStreamId& db_stream_id) {
   // Setting up request.
   CreateCDCStreamRequestPB req;
   req.set_table_id(table_id);
+  if (!db_stream_id.empty()) {
+    req.set_db_stream_id(db_stream_id);
+  }
   req.mutable_options()->Reserve(options.size());
   for (const auto& option : options) {
     auto new_option = req.add_options();
@@ -1425,7 +1432,7 @@ void YBClient::CreateCDCStream(const TableId& table_id,
 }
 
 Status YBClient::GetCDCStream(const CDCStreamId& stream_id,
-                              TableId* table_id,
+                              ObjectId* object_id,
                               std::unordered_map<std::string, std::string>* options) {
   // Setting up request.
   GetCDCStreamRequestPB req;
@@ -1436,12 +1443,20 @@ Status YBClient::GetCDCStream(const CDCStreamId& stream_id,
   CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, GetCDCStream);
 
   // Filling in return values.
-  *table_id = resp.stream().table_id();
+  if (resp.stream().has_namespace_id()) {
+    *object_id = resp.stream().namespace_id();
+  } else {
+    *object_id = resp.stream().table_id().Get(0);
+  }
 
   options->clear();
   options->reserve(resp.stream().options_size());
   for (const auto& option : resp.stream().options()) {
     options->emplace(option.key(), option.value());
+  }
+
+  if (!resp.stream().has_namespace_id()) {
+    options->emplace(cdc::kIdType, cdc::kTableId);
   }
 
   return Status::OK();
@@ -1498,6 +1513,35 @@ Status YBClient::DeleteCDCStream(const CDCStreamId& stream_id, bool force_delete
 void YBClient::DeleteCDCStream(const CDCStreamId& stream_id, StatusCallback callback) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   data_->DeleteCDCStream(this, stream_id, deadline, callback);
+}
+
+CHECKED_STATUS YBClient::GetCDCDBStreamInfo(
+  const std::string &db_stream_id,
+  std::vector<pair<std::string, std::string>>* db_stream_info) {
+  // Setting up request.
+  GetCDCDBStreamInfoRequestPB req;
+  req.set_db_stream_id(db_stream_id);
+
+  GetCDCDBStreamInfoResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, GetCDCDBStreamInfo);
+  db_stream_info->clear();
+  db_stream_info->reserve(resp.table_info_size());
+  for (const auto& tabinfo : resp.table_info()) {
+    std::string stream_id = tabinfo.stream_id();
+    std::string table_id = tabinfo.table_id();
+
+    db_stream_info->push_back(std::make_pair(stream_id, table_id));
+  }
+
+  return Status::OK();
+}
+
+void YBClient::GetCDCDBStreamInfo(
+    const std::string& db_stream_id,
+    const std::shared_ptr<std::vector<pair<std::string, std::string>>>& db_stream_info,
+    const StdStatusCallback& callback) {
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  data_->GetCDCDBStreamInfo(this, db_stream_id, db_stream_info, deadline, callback);
 }
 
 Status YBClient::UpdateCDCStream(const CDCStreamId& stream_id,
@@ -2001,9 +2045,44 @@ Result<std::vector<YBTableName>> YBClient::ListTables(const std::string& filter,
   if (!filter.empty()) {
     req.set_name_filter(filter);
   }
+
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListTables);
   std::vector<YBTableName> result;
   result.reserve(resp.tables_size());
+
+  for (int i = 0; i < resp.tables_size(); i++) {
+    const ListTablesResponsePB_TableInfo& table_info = resp.tables(i);
+    DCHECK(table_info.has_namespace_());
+    DCHECK(table_info.namespace_().has_name());
+    DCHECK(table_info.namespace_().has_id());
+    if (exclude_ysql && table_info.table_type() == TableType::PGSQL_TABLE_TYPE) {
+      continue;
+    }
+    result.emplace_back(master::GetDatabaseTypeForTable(table_info.table_type()),
+                        table_info.namespace_().id(),
+                        table_info.namespace_().name(),
+                        table_info.id(),
+                        table_info.name(),
+                        table_info.relation_type());
+  }
+  return result;
+}
+
+Result<std::vector<YBTableName>> YBClient::ListUserTables(const NamespaceId& ns_id) {
+  ListTablesRequestPB req;
+  ListTablesResponsePB resp;
+  bool exclude_ysql = false;
+
+  if (!ns_id.empty()) {
+    req.mutable_namespace_()->set_database_type(YQL_DATABASE_PGSQL);
+    req.mutable_namespace_()->set_id(ns_id);
+  }
+
+  req.add_relation_type_filter(master::USER_TABLE_RELATION);
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListTables);
+  std::vector<YBTableName> result;
+  result.reserve(resp.tables_size());
+
   for (int i = 0; i < resp.tables_size(); i++) {
     const ListTablesResponsePB_TableInfo& table_info = resp.tables(i);
     DCHECK(table_info.has_namespace_());

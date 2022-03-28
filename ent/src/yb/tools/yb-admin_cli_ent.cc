@@ -427,6 +427,26 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
+    "create_change_data_stream", " <namespace>",
+    [client](const CLIArguments& args) -> Status {
+      if (args.size() < 1) {
+        return ClusterAdminCli::kInvalidArguments;
+      }
+      const string namespace_name = args[0];
+
+      const TypedNamespaceName database =
+        VERIFY_RESULT(ParseNamespaceName(args[0], YQL_DATABASE_PGSQL));
+      SCHECK_EQ(
+        database.db_type, YQL_DATABASE_PGSQL, InvalidArgument,
+        Format("Wrong database type: $0", YQLDatabase_Name(database.db_type)));
+
+      RETURN_NOT_OK_PREPEND(client->CreateCDCSDKDBStream(database),
+                            Substitute("Unable to create CDC stream for database $0",
+                                       namespace_name));
+      return Status::OK();
+    });
+
+  Register(
       "delete_cdc_stream", " <stream_id> [force_delete]",
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 1) {
@@ -443,6 +463,20 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
+    "delete_change_data_stream", " <db_stream_id>",
+    [client](const CLIArguments& args) -> Status {
+      if (args.size() < 1) {
+        return ClusterAdminCli::kInvalidArguments;
+      }
+
+      const std::string db_stream_id = args[0];
+      RETURN_NOT_OK_PREPEND(client->DeleteCDCSDKDBStream(db_stream_id),
+                            Substitute("Unable to delete CDC database stream id $0",
+                                       db_stream_id));
+      return Status::OK();
+    });
+
+  Register(
       "list_cdc_streams", " [table_id]",
       [client](const CLIArguments& args) -> Status {
         if (args.size() != 0 && args.size() != 1) {
@@ -453,6 +487,34 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
             Substitute("Unable to list CDC streams for table $0", table_id));
         return Status::OK();
       });
+
+  Register(
+    "list_change_data_streams", " [namespace]",
+    [client](const CLIArguments& args) -> Status {
+      if (args.size() != 0 && args.size() != 1) {
+        return ClusterAdminCli::kInvalidArguments;
+      }
+      const string namespace_name = (args.size() == 1 ? args[0] : "");
+      string msg = (args.size() == 1)
+                       ? Substitute("Unable to list CDC streams for namespace $0", namespace_name)
+                       : "Unable to list CDC streams";
+
+      RETURN_NOT_OK_PREPEND(client->ListCDCSDKStreams(namespace_name), msg);
+      return Status::OK();
+    });
+
+  Register(
+    "get_change_data_stream_info", " <db_stream_id>",
+    [client](const CLIArguments& args) -> Status {
+      if (args.size() != 0 && args.size() != 1) {
+        return ClusterAdminCli::kInvalidArguments;
+      }
+      const string db_stream_id = args.size() == 1 ? args[0] : "";
+      RETURN_NOT_OK_PREPEND(client->GetCDCDBStreamInfo(db_stream_id),
+                            Substitute("Unable to list CDC stream info for database stream $0",
+                                       db_stream_id));
+      return Status::OK();
+    });
 
   Register(
       "setup_universe_replication",

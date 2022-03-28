@@ -58,6 +58,12 @@ constexpr size_t kCdcCheckpointIdx = 2;
 static const char* const kCdcData = "data";
 static const char* const kCdcLastReplicationTime = "last_replication_time";
 constexpr size_t kCdcLastReplicationTimeIdx = 4;
+static const char* const kCdcStreamIdMappingTableName = "cdc_stream_id_mapping";
+constexpr size_t kCdcTabletIdIdxforStreamIdMap = 1;
+static const char* const kCdcDbStreamId = "db_stream_id";
+constexpr size_t kCdcDbStreamIdIdx = 0;
+static const char* const kCdcTableId = "table_id";
+constexpr size_t kCdcTableIdIdx = 3;
 
 static const char* const kSystemAuthRolesTableName = "roles";
 static const char* const kSystemAuthRolePermissionsTableName = "role_permissions";
