@@ -238,6 +238,9 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
       UpgradeYsqlResponsePB* resp,
       rpc::RpcContext context) override;
 
+  void TestRetry(
+      const TestRetryRequestPB* req, TestRetryResponsePB* resp, rpc::RpcContext context) override;
+
  private:
   TabletServer* server_;
 
@@ -249,6 +252,7 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
   mutable std::mutex backfill_lock_;
   std::condition_variable backfill_cond_;
   std::atomic<int32_t> num_tablets_backfilling_{0};
+  std::atomic<int32_t> num_test_retry_calls{0};
 };
 
 class ConsensusServiceImpl : public consensus::ConsensusServiceIf {
