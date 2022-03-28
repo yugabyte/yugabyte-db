@@ -140,8 +140,8 @@ class PrimitiveValue {
   static PrimitiveValue Double(double d, SortOrder sort_order = SortOrder::kAscending);
   static PrimitiveValue Float(float f, SortOrder sort_order = SortOrder::kAscending);
   // decimal_str represents a human readable string representing the decimal number, e.g. "0.03".
-  static PrimitiveValue Decimal(const std::string& decimal_str, SortOrder sort_order);
-  static PrimitiveValue VarInt(const std::string& varint_str, SortOrder sort_order);
+  static PrimitiveValue Decimal(const Slice& decimal_str, SortOrder sort_order);
+  static PrimitiveValue VarInt(const Slice& varint_str, SortOrder sort_order);
   static PrimitiveValue ArrayIndex(int64_t index);
   static PrimitiveValue UInt16Hash(uint16_t hash);
   static PrimitiveValue SystemColumnId(ColumnId column_id);
@@ -152,7 +152,7 @@ class PrimitiveValue {
   static PrimitiveValue TransactionId(Uuid transaction_id);
   static PrimitiveValue TableId(Uuid table_id);
   static PrimitiveValue ColocationId(const ColocationId colocation_id);
-  static PrimitiveValue Jsonb(const std::string& json);
+  static PrimitiveValue Jsonb(const Slice& json);
   static PrimitiveValue GinNull(uint8_t v);
 
   KeyBytes ToKeyBytes() const;
@@ -313,6 +313,10 @@ class PrimitiveValue {
   };
 
  private:
+  template <class PB>
+  static PrimitiveValue DoFromQLValuePB(
+      const PB& value, SortingType sorting_type, bool check_is_collate);
+
 
   // This is used in both the move constructor and the move assignment operator. Assumes this object
   // has not been constructed, or that the destructor has just been called.

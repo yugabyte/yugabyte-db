@@ -50,6 +50,7 @@ namespace pggate {
 
 YB_STRONGLY_TYPED_BOOL(OpBuffered);
 YB_STRONGLY_TYPED_BOOL(InvalidateOnPgClient);
+YB_STRONGLY_TYPED_BOOL(UseCatalogSession);
 
 class PgTxnManager;
 class PgSession;
@@ -272,7 +273,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   class RunHelper;
 
-  Result<PerformFuture> Perform(BufferableOperations ops, bool use_catalog_session);
+  Result<PerformFuture> Perform(
+      BufferableOperations ops, UseCatalogSession use_catalog_session);
 
   void UpdateInTxnLimit(uint64_t* read_time);
 
