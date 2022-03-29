@@ -83,7 +83,7 @@ YugabyteDB allows importing schemas and objects from a SQL script. Such a script
 To do the import, use the `ysqlsh` command line tool:
 
 ```sh
-$ ysqlsh -f <sql-script>
+$ ./bin/ysqlsh -f <sql-script>
 ```
 
 Where:
