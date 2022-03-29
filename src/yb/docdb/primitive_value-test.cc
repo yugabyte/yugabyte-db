@@ -39,19 +39,6 @@ namespace docdb {
 
 namespace {
 
-void EncodeAndDecodeValue(const PrimitiveValue& primitive_value) {
-  string bytes = primitive_value.ToValue();
-  rocksdb::Slice slice(bytes);
-  PrimitiveValue decoded;
-  ASSERT_OK_PREPEND(
-      decoded.DecodeFromValue(slice),
-      Substitute(
-          "Could not decode value bytes obtained by encoding primitive value $0: $1",
-          primitive_value.ToString(), bytes));
-  ASSERT_EQ(primitive_value.ToString(), decoded.ToString())
-      << "String representation of decoded value is different from that of the original value.";
-}
-
 void EncodeAndDecode(const PrimitiveValue& primitive_value) {
   KeyBytes key_bytes = primitive_value.ToKeyBytes();
   PrimitiveValue decoded;
@@ -213,19 +200,6 @@ TEST(PrimitiveValueTest, TestRoundTrip) {
   }) {
     EncodeAndDecode(primitive_value);
   }
-
-  for (auto primitive_value : {
-      PrimitiveValue("foo"),
-      PrimitiveValue(string("foo\0bar\x01", 8)),
-      PrimitiveValue(123L),
-      PrimitiveValue::Int32(123),
-      PrimitiveValue::Int32(std::numeric_limits<int32_t>::max()),
-      PrimitiveValue::Int32(std::numeric_limits<int32_t>::min()),
-      PrimitiveValue::Double(3.14),
-      PrimitiveValue::Float(3.14),
-  }) {
-    EncodeAndDecodeValue(primitive_value);
-  }
 }
 
 TEST(PrimitiveValueTest, TestEncoding) {
@@ -262,10 +236,6 @@ TEST(PrimitiveValueTest, TestEncoding) {
 
   TestEncoding(R"#("#\x80\xff\x05T=\xf7)\xbc\x18\x80K")#",
                PrimitiveValue(HybridTime::FromMicros(1000)));
-
-  // Float and Double size, 1 byte for value_type.
-  ASSERT_EQ(1 + sizeof(double), PrimitiveValue::Double(3.14).ToValue().size());
-  ASSERT_EQ(1 + sizeof(float), PrimitiveValue::Float(3.14).ToValue().size());
 }
 
 TEST(PrimitiveValueTest, TestCompareStringsWithEmbeddedZeros) {
@@ -422,8 +392,8 @@ TEST(PrimitiveValueTest, TestAllTypesComparisons) {
 
   InetAddress addr1;
   InetAddress addr2;
-  ASSERT_OK(addr1.FromBytes(RandomHumanReadableString(4)));
-  ASSERT_OK(addr2.FromBytes(RandomHumanReadableString(4)));
+  ASSERT_OK(addr1.FromSlice(RandomHumanReadableString(4)));
+  ASSERT_OK(addr2.FromSlice(RandomHumanReadableString(4)));
   ComparePrimitiveValues(PrimitiveValue(addr1), PrimitiveValue(addr2));
 
   ComparePrimitiveValues(PrimitiveValue(Uuid(Uuid::Generate())),

@@ -50,7 +50,10 @@
 #include <vector>
 
 #include "yb/client/client_fwd.h"
+#include "yb/common/constants.h"
 #include "yb/client/value.h"
+#include "yb/common/schema.h"
+#include "yb/common/pg_types.h"
 
 #include "yb/common/common_types.pb.h"
 #include "yb/common/value.pb.h"
@@ -100,7 +103,8 @@ class YBColumnSchema {
                  bool is_static = false,
                  bool is_counter = false,
                  int32_t order = 0,
-                 SortingType sorting_type = SortingType::kNotSpecified);
+                 SortingType sorting_type = SortingType::kNotSpecified,
+                 int32_t pg_type_oid = kPgInvalidOid);
   YBColumnSchema(const YBColumnSchema& other);
   ~YBColumnSchema();
 
@@ -118,6 +122,7 @@ class YBColumnSchema {
   bool is_static() const;
   bool is_counter() const;
   int32_t order() const;
+  int32_t pg_type_oid() const;
   SortingType sorting_type() const;
 
  private:
@@ -189,6 +194,9 @@ class YBColumnSpec {
   // Identify this column as counter.
   YBColumnSpec* Counter();
 
+  // PgTypeOid
+  YBColumnSpec* PgTypeOid(int32_t oid);
+
   // Add JSON operation.
   YBColumnSpec* JsonOp(JsonOperatorPB op, const std::string& str_value);
   YBColumnSpec* JsonOp(JsonOperatorPB op, int32_t int_value);
@@ -245,6 +253,10 @@ class YBSchemaBuilder {
                                  size_t key_hash_col_count = 0);
 
   YBSchemaBuilder* SetTableProperties(const TableProperties& table_properties);
+
+  YBSchemaBuilder* SetSchemaName(const std::string& pgschema_name);
+
+  std::string SchemaName();
 
   // Resets 'schema' to the result of this builder.
   //
@@ -310,6 +322,12 @@ class YBSchema {
 
   // Returns the total number of columns.
   size_t num_columns() const;
+
+  bool has_colocation_id() const;
+
+  // Gets the colocation ID of the non-primary table this schema belongs to in a
+  // tablet with colocated tables.
+  ColocationId colocation_id() const;
 
   uint32_t version() const;
   void set_version(uint32_t version);

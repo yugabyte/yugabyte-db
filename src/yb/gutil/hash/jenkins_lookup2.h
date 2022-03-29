@@ -29,8 +29,8 @@
 #ifndef UTIL_HASH_JENKINS_LOOKUP2_H_
 #define UTIL_HASH_JENKINS_LOOKUP2_H_
 
+#include "yb/gutil/endian.h"
 #include "yb/gutil/integral_types.h"
-#include "yb/gutil/port.h"
 
 // ----------------------------------------------------------------------
 // mix()
@@ -87,13 +87,12 @@ static inline void mix(uint64& a, uint64& b, uint64& c) {     // 64bit version
 // UNALIGNED_LITTLE_ENDIAN_LOAD32() and UNALIGNED_LITTLE_ENDIAN_LOAD64()
 // but that seems overly verbose.]
 
-#if !defined(NEED_ALIGNED_LOADS) && defined(IS_LITTLE_ENDIAN)
 static inline uint64 Word64At(const char *ptr) {
-  return UNALIGNED_LOAD64(ptr);
+  return LittleEndian::Load64(ptr);
 }
 
 static inline uint32 Word32At(const char *ptr) {
-  return UNALIGNED_LOAD32(ptr);
+  return LittleEndian::Load32(ptr);
 }
 
 // This produces the same results as the byte-by-byte version below.
@@ -121,44 +120,22 @@ static inline uint32 Word32At(const char *ptr) {
 //      [0x8200 - 0x8000 + (-0x8000)] + [0x0081 - 0x80 + (-0x80)]
 //   == 0x8281 - 0x8080 - 0x8000 - 0x80
 //   == 0x8281 - 0x8080 - 0x8080
+//
+// Byte-by-byte version:
+//
+// static inline uint32 Google1At(const char *ptr2) {
+//   const schar * ptr = reinterpret_cast<const schar *>(ptr2);
+//   return (static_cast<schar>(ptr[0]) +
+//          (static_cast<uint32>(ptr[1]) << 8) +
+//          (static_cast<uint32>(ptr[2]) << 16) +
+//          (static_cast<uint32>(ptr[3]) << 24));
+// }
 
 static inline uint32 Google1At(const char *ptr) {
-  uint32 t = UNALIGNED_LOAD32(ptr);
+  uint32 t = LittleEndian::Load32(ptr);
   uint32 masked = t & 0x80808080;
   return t - masked - masked;
 }
-
-#else
-
-// NOTE:  This code is not normally used or tested.
-
-static inline uint64 Word64At(const char *ptr) {
-    return (static_cast<uint64>(ptr[0]) +
-            (static_cast<uint64>(ptr[1]) << 8) +
-            (static_cast<uint64>(ptr[2]) << 16) +
-            (static_cast<uint64>(ptr[3]) << 24) +
-            (static_cast<uint64>(ptr[4]) << 32) +
-            (static_cast<uint64>(ptr[5]) << 40) +
-            (static_cast<uint64>(ptr[6]) << 48) +
-            (static_cast<uint64>(ptr[7]) << 56));
-}
-
-static inline uint32 Word32At(const char *ptr) {
-    return (static_cast<uint32>(ptr[0]) +
-            (static_cast<uint32>(ptr[1]) << 8) +
-            (static_cast<uint32>(ptr[2]) << 16) +
-            (static_cast<uint32>(ptr[3]) << 24));
-}
-
-static inline uint32 Google1At(const char *ptr2) {
-  const schar * ptr = reinterpret_cast<const schar *>(ptr2);
-  return (static_cast<schar>(ptr[0]) +
-	  (static_cast<uint32>(ptr[1]) << 8) +
-	  (static_cast<uint32>(ptr[2]) << 16) +
-	  (static_cast<uint32>(ptr[3]) << 24));
-}
-
-#endif /* !NEED_ALIGNED_LOADS && IS_LITTLE_ENDIAN */
 
 // Historically, WORD_HASH has always been defined as we always run on
 // machines that don't NEED_ALIGNED_LOADS and which IS_LITTLE_ENDIAN.

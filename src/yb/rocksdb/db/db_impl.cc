@@ -1840,7 +1840,7 @@ Status DBImpl::WriteLevel0TableForRecovery(int job_id, ColumnFamilyData* cfd,
   cfd->internal_stats()->AddCompactionStats(level, stats);
   cfd->internal_stats()->AddCFStats(
       InternalStats::BYTES_FLUSHED, meta.fd.GetTotalFileSize());
-  RecordTick(stats_, COMPACT_WRITE_BYTES, meta.fd.GetTotalFileSize());
+  RecordTick(stats_, FLUSH_WRITE_BYTES, meta.fd.GetTotalFileSize());
   return s;
 }
 
@@ -1895,7 +1895,6 @@ Result<FileNumbersHolder> DBImpl::FlushMemTableToOutputFile(
     // true, mark DB read-only
     bg_error_ = file_number_holder.status();
   }
-  RecordFlushIOStats();
   RETURN_NOT_OK(file_number_holder);
   MAYBE_FAULT(FLAGS_fault_crash_after_rocksdb_flush);
 #ifndef ROCKSDB_LITE
@@ -3168,11 +3167,6 @@ void DBImpl::SchedulePendingCompaction(ColumnFamilyData* cfd) {
   TEST_SYNC_POINT("DBImpl::SchedulePendingCompaction:Done");
 }
 
-void DBImpl::RecordFlushIOStats() {
-  RecordTick(stats_, FLUSH_WRITE_BYTES, IOSTATS(bytes_written));
-  IOSTATS_RESET(bytes_written);
-}
-
 void DBImpl::BGWorkFlush(void* db) {
   IOSTATS_SET_THREAD_POOL_ID(Env::Priority::HIGH);
   TEST_SYNC_POINT("DBImpl::BGWorkFlush");
@@ -3339,7 +3333,6 @@ void DBImpl::BackgroundCallFlush(ColumnFamilyData* cfd) {
   bg_flush_scheduled_--;
   // See if there's more work to be done
   MaybeScheduleFlushOrCompaction();
-  RecordFlushIOStats();
   bg_cv_.SignalAll();
   // IMPORTANT: there should be no code after calling SignalAll. This call may
   // signal the DB destructor that it's OK to proceed with destruction. In
@@ -6503,21 +6496,21 @@ Status DestroyDB(const std::string& dbname, const Options& options) {
       }
     }
 
-    std::vector<std::string> archiveFiles;
-    env->GetChildrenWarnNotOk(archivedir, &archiveFiles);
-    // Delete archival files.
-    for (size_t i = 0; i < archiveFiles.size(); ++i) {
-      if (ParseFileName(archiveFiles[i], &number, &type) &&
-        type == kLogFile) {
-        Status del = env->DeleteFile(archivedir + "/" + archiveFiles[i]);
-        if (result.ok() && !del.ok()) {
-          result = del;
-        }
-      }
-    }
-
     // ignore case where no archival directory is present.
     if (env->FileExists(archivedir).ok()) {
+      std::vector<std::string> archiveFiles;
+      env->GetChildrenWarnNotOk(archivedir, &archiveFiles);
+      // Delete archival files.
+      for (size_t i = 0; i < archiveFiles.size(); ++i) {
+        if (ParseFileName(archiveFiles[i], &number, &type) &&
+          type == kLogFile) {
+          Status del = env->DeleteFile(archivedir + "/" + archiveFiles[i]);
+          if (result.ok() && !del.ok()) {
+            result = del;
+          }
+        }
+      }
+
       WARN_NOT_OK(env->DeleteDir(archivedir), "Failed to cleanup dir " + archivedir);
     }
     WARN_NOT_OK(env->UnlockFile(lock), "Unlock file failed");

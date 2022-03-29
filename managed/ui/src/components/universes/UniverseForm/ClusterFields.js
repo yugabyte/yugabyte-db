@@ -24,7 +24,8 @@ import {
   YBRadioButtonBarWithLabel,
   YBToggle,
   YBUnControlledNumericInput,
-  YBControlledNumericInputWithLabel
+  YBControlledNumericInputWithLabel,
+  YBPassword
 } from '../../../components/common/forms/fields';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import AZSelectorTable from './AZSelectorTable';
@@ -655,6 +656,10 @@ export default class ClusterFields extends Component {
         updateFormField(`${clusterType}.provider`, firstProviderUuid);
         this.providerChanged(firstProviderUuid);
       }
+    } else if (type === 'Create' && clusterType === 'async' && formValues['primary']?.provider) {
+      const providerUUID = formValues['primary'].provider;
+      updateFormField(`${clusterType}.provider`, providerUUID);
+      this.providerChanged(providerUUID);
     }
   }
 
@@ -705,7 +710,7 @@ export default class ClusterFields extends Component {
           setPlacementStatus(placementStatusObject);
         }
       }
-      this.configureUniverseNodeList();
+      this.configureUniverseNodeList(!_.isEqual(this.state.regionList, prevState.regionList));
     } else if (currentProvider && currentProvider.code === 'onprem') {
       toggleDisableSubmit(false);
       if (
@@ -759,40 +764,13 @@ export default class ClusterFields extends Component {
       this.props.handleHasFieldChanged(true);
     }
 
-    this.doAuthCheck();
+    this.doAuthAndVolumeSizeValidation();
   }
 
   numNodesChangedViaAzList(value) {
     const { updateFormField, clusterType } = this.props;
     this.setState({ nodeSetViaAZList: true, numNodes: value });
     updateFormField(`${clusterType}.numNodes`, value);
-    this.resetVolumeSizeIfNeeded();
-  }
-
-  resetVolumeSizeIfNeeded() {
-    const { hasInstanceTypeChanged, deviceInfo } = this.state;
-    const {
-      clusterType,
-      universe: { currentUniverse }
-    } = this.props;
-    if (
-      isEmptyObject(currentUniverse.data) ||
-      isEmptyObject(currentUniverse.data.universeDetails)
-    ) {
-      return;
-    }
-    if (!hasInstanceTypeChanged) {
-      const curCluster = getClusterByType(
-        currentUniverse.data.universeDetails.clusters,
-        clusterType
-      );
-      if (
-        !isEmptyObject(curCluster) &&
-        curCluster.userIntent.deviceInfo.volumeSize !== deviceInfo.volumeSize
-      ) {
-        this.volumeSizeChanged(curCluster.userIntent.deviceInfo.volumeSize);
-      }
-    }
   }
 
   setDeviceInfo(instanceTypeCode, instanceTypeList) {
@@ -835,6 +813,7 @@ export default class ClusterFields extends Component {
       updateFormField(`${clusterType}.diskIops`, volumeDetail.diskIops);
       updateFormField(`${clusterType}.throughput`, volumeDetail.throughput);
       updateFormField(`${clusterType}.storageType`, deviceInfo.storageType);
+      updateFormField(`${clusterType}.storageClass`, deviceInfo.storageClass);
       updateFormField(`${clusterType}.mountPoints`, mountPoints);
       this.setState({ deviceInfo: deviceInfo, volumeType: volumeDetail.volumeType });
     }
@@ -874,6 +853,36 @@ export default class ClusterFields extends Component {
     const { updateFormField, clusterType } = this.props;
     updateFormField(`${clusterType}.numVolumes`, val);
     this.setState({ deviceInfo: { ...this.state.deviceInfo, numVolumes: val } });
+  }
+
+  checkVolumeSizeRestrictions() {
+    const {
+      validateVolumeSizeUnchanged,
+      clusterType,
+      universe: { currentUniverse }
+    } = this.props;
+    const {
+      hasInstanceTypeChanged,
+      deviceInfo
+    } = this.state;
+
+    if (!validateVolumeSizeUnchanged ||
+        hasInstanceTypeChanged ||
+        isEmptyObject(currentUniverse.data) ||
+        isEmptyObject(currentUniverse.data.universeDetails)
+    ) {
+      return true;
+    }
+    const curCluster = getClusterByType(
+        currentUniverse.data.universeDetails.clusters,
+        clusterType
+    );
+    if (!isEmptyObject(curCluster) &&
+        Number(curCluster.userIntent.deviceInfo.volumeSize) !== Number(deviceInfo.volumeSize)
+    ) {
+      return false;
+    }
+    return true;
   }
 
   volumeSizeChanged(val) {
@@ -947,8 +956,11 @@ export default class ClusterFields extends Component {
     }
   }
 
-  doAuthCheck() {
-    this.props.toggleDisableSubmit(!this.state.enableYSQL && !this.state.enableYCQL);
+  doAuthAndVolumeSizeValidation() {
+    const { toggleDisableSubmit } = this.props;
+    const { enableYSQL, enableYCQL } = this.state;
+    const authCheck = enableYSQL || enableYCQL;
+    toggleDisableSubmit(!authCheck || !this.checkVolumeSizeRestrictions());
   }
 
   updateFormFields(obj) {
@@ -1268,7 +1280,7 @@ export default class ClusterFields extends Component {
     }
   }
 
-  configureUniverseNodeList() {
+  configureUniverseNodeList(regionsChanged) {
     const {
       universe: { universeConfigTemplate, currentUniverse },
       formValues,
@@ -1320,10 +1332,10 @@ export default class ClusterFields extends Component {
       this.props.type === 'Edit' || (this.props.type === 'Async' && this.state.isReadOnlyExists);
     updateTaskParams(universeTaskParams, userIntent, clusterType, isEdit);
     universeTaskParams.userAZSelected = false;
+    universeTaskParams.regionsChanged = regionsChanged;
 
     const allowGeoPartitioning =
       featureFlags.test['enableGeoPartitioning'] || featureFlags.released['enableGeoPartitioning'];
-    console.log("####### allowGeoPartitioning: " + allowGeoPartitioning);
     universeTaskParams.allowGeoPartitioning = allowGeoPartitioning;
 
     const cluster = getClusterByType(universeTaskParams.clusters, clusterType);
@@ -1346,7 +1358,6 @@ export default class ClusterFields extends Component {
     const { updateFormField, clusterType } = this.props;
     this.setState({ numNodes: value, nodeSetViaAZList: false });
     updateFormField(`${clusterType}.numNodes`, value);
-    this.resetVolumeSizeIfNeeded();
   }
 
   getCurrentProvider(providerUUID) {
@@ -1447,7 +1458,6 @@ export default class ClusterFields extends Component {
     } = this.props;
 
     updateFormField(`${clusterType}.regionList`, value || []);
-
     this.setState({ nodeSetViaAZList: false, regionList: value || [] });
 
     const currentProvider = providers.data.find((a) => a.uuid === formValues[clusterType].provider);
@@ -1664,6 +1674,9 @@ export default class ClusterFields extends Component {
       if (isNonEmptyObject(currentCluster.storageType)) {
         deviceInfo['storageType'] = currentCluster.storageType;
       }
+      if (isNonEmptyObject(currentCluster.storageClass)) {
+        deviceInfo['storageClass'] = currentCluster.storageClass;
+      }
     }
 
     if (isNonEmptyObject(deviceInfo)) {
@@ -1727,7 +1740,10 @@ export default class ClusterFields extends Component {
         const smartResizePossible =
           isDefinedNotNull(currentProvider) &&
           (currentProvider.code === 'aws' || currentProvider.code === 'gcp') &&
+          !this.state.awsInstanceWithEphemeralStorage &&
+          !this.state.gcpInstanceWithEphemeralStorage &&
           clusterType !== 'async';
+
         const volumeSize = (
           <span className="volume-info-field volume-info-size">
             <Field
@@ -1777,13 +1793,13 @@ export default class ClusterFields extends Component {
                 />
               </span>
               {this.state.gcpInstanceWithEphemeralStorage &&
-               (featureFlags.test['pausedUniverse'] ||
-                featureFlags.released['pausedUniverse']) && (
+                (featureFlags.test['pausedUniverse'] ||
+                  featureFlags.released['pausedUniverse']) && (
                   <span className="gcp-ephemeral-storage-warning">
                     ! Selected instance type is with ephemeral storage, If you will pause this
                     universe your data will get lost.
                   </span>
-              )}
+                )}
             </>
           );
         } else if (isInAzu) {
@@ -1864,8 +1880,7 @@ export default class ClusterFields extends Component {
             <div className="form-right-aligned-labels">
               <Field
                 name={`${clusterType}.ysqlPassword`}
-                type="password"
-                component={YBTextInputWithLabel}
+                component={YBPassword}
                 validate={this.validatePassword}
                 autoComplete="new-password"
                 label="YSQL Auth Password"
@@ -1877,8 +1892,7 @@ export default class ClusterFields extends Component {
             <div className="form-right-aligned-labels">
               <Field
                 name={`${clusterType}.ysqlConfirmPassword`}
-                type="password"
-                component={YBTextInputWithLabel}
+                component={YBPassword}
                 validate={this.validateConfirmPassword}
                 autoComplete="new-password"
                 label="Confirm Password"
@@ -1925,8 +1939,7 @@ export default class ClusterFields extends Component {
             <div className="form-right-aligned-labels">
               <Field
                 name={`${clusterType}.ycqlPassword`}
-                type="password"
-                component={YBTextInputWithLabel}
+                component={YBPassword}
                 validate={this.validatePassword}
                 autoComplete="new-password"
                 label="YCQL Auth Password"
@@ -1938,8 +1951,7 @@ export default class ClusterFields extends Component {
             <div className="form-right-aligned-labels">
               <Field
                 name={`${clusterType}.ycqlConfirmPassword`}
-                type="password"
-                component={YBTextInputWithLabel}
+                component={YBPassword}
                 validate={this.validateConfirmPassword}
                 autoComplete="new-password"
                 label="Confirm Password"
@@ -2529,6 +2541,13 @@ export default class ClusterFields extends Component {
                   </div>
                 </div>
               )}
+              {!this.checkVolumeSizeRestrictions() && (
+                <div className="has-error">
+                  <div className="help-block standard-error">
+                    Forbidden change. To perform smart resize only increase volume size
+                  </div>
+                </div>
+              )}
             </Col>
           </Row>
           <Row>
@@ -2550,7 +2569,7 @@ export default class ClusterFields extends Component {
           {currentProviderUUID && !this.state.enableYSQL && !this.state.enableYCQL && (
             <div className="has-error">
               <div className="help-block standard-error">
-                Enable atleast one endpoint among YSQL and YCQL
+                Enable at least one endpoint among YSQL and YCQL
               </div>
             </div>
           )}
@@ -2607,7 +2626,7 @@ export default class ClusterFields extends Component {
                 </div>
               </Col>
               {!this.state.isKubernetesUniverse && (
-                <Col lg={4}>
+                <Col sm={5} md={4}>
                   <div className="form-right-aligned-labels">
                     <Field
                       name={`${clusterType}.accessKeyCode`}

@@ -1,13 +1,13 @@
 ---
-title: Generalized inverted indexes
-linkTitle: Generalized Inverted Indexes
+title: GIN indexes
+linkTitle: GIN indexes
 description: Generalized inverted indexes in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   latest:
     identifier: indexes-constraints-gin
     parent: explore-indexes-constraints
-    weight: 240
+    weight: 260
 aliases:
    - /latest/explore/ysql-language-features/gin/
 isTocNested: true
@@ -16,7 +16,7 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="../indexes-constraints-gin/" class="nav-link active">
+    <a href="../gin/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>

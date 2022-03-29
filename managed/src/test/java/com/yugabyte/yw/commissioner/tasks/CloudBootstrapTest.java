@@ -120,6 +120,8 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
         .thenReturn(zoneInfo);
     String defaultImage = "test_image_id";
     when(mockCloudQueryHelper.getDefaultImage(any(Region.class))).thenReturn(defaultImage);
+    String x86_64 = "x86_64";
+    when(mockCloudQueryHelper.getImageArchitecture(any(Region.class))).thenReturn(x86_64);
     taskParams.providerUUID = provider.uuid;
 
     UUID taskUUID = submitTask(taskParams);
@@ -158,6 +160,8 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
                 eq(taskParams.sshPort),
                 eq(taskParams.airGapInstall),
                 eq(false),
+                eq(taskParams.setUpChrony),
+                eq(taskParams.ntpServers),
                 eq(false));
       } else {
         String expectedAccessKeyCode = taskParams.keyPairName;
@@ -177,7 +181,9 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
                 eq(taskParams.sshUser),
                 eq(taskParams.sshPort),
                 eq(taskParams.airGapInstall),
-                eq(false));
+                eq(false),
+                eq(taskParams.setUpChrony),
+                eq(taskParams.ntpServers));
       }
       // Check AZ info.
       List<AvailabilityZone> zones = r.zones;

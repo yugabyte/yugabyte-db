@@ -34,9 +34,9 @@ LocalOutboundCall::LocalOutboundCall(
     const RemoteMethod* remote_method,
     const shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
     AnyMessagePtr response_storage, RpcController* controller,
-    RpcMetrics* rpc_metrics, ResponseCallback callback)
+    std::shared_ptr<RpcMetrics> rpc_metrics, ResponseCallback callback)
     : OutboundCall(remote_method, outbound_call_metrics, /* method_metrics= */ nullptr,
-                   response_storage, controller, rpc_metrics, std::move(callback),
+                   response_storage, controller, std::move(rpc_metrics), std::move(callback),
                    /* callback_thread_pool= */ nullptr) {
   TRACE_TO(trace_, "LocalOutboundCall");
 }
@@ -66,7 +66,14 @@ Result<Slice> LocalOutboundCall::GetSidecar(size_t idx) const {
   if (idx >= inbound_call_->sidecars_.size()) {
     return STATUS_FORMAT(InvalidArgument, "Index $0 does not reference a valid sidecar", idx);
   }
-  return inbound_call_->sidecars_[idx].as_slice();
+  return inbound_call_->sidecars_[idx].AsSlice();
+}
+
+Result<SidecarHolder> LocalOutboundCall::GetSidecarHolder(size_t idx) const {
+  if (idx >= inbound_call_->sidecars_.size()) {
+    return STATUS_FORMAT(InvalidArgument, "Index $0 does not reference a valid sidecar", idx);
+  }
+  return SidecarHolder(inbound_call_->sidecars_[idx], inbound_call_->sidecars_[idx].AsSlice());
 }
 
 LocalYBInboundCall::LocalYBInboundCall(

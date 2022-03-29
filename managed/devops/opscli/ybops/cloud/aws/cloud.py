@@ -21,11 +21,11 @@ from six.moves.urllib.error import URLError
 from six.moves.urllib.request import urlopen
 from ybops.cloud.aws.command import (AwsAccessCommand, AwsDnsCommand, AwsInstanceCommand,
                                      AwsNetworkCommand, AwsQueryCommand)
-from ybops.cloud.aws.utils import (ROOT_VOLUME_LABEL, AwsBootstrapClient, YbVpcComponents,
+from ybops.cloud.aws.utils import (AwsBootstrapClient, YbVpcComponents,
                                    change_instance_type, create_instance, delete_vpc, get_client,
                                    get_clients, get_device_names, get_spot_pricing,
                                    get_vpc_for_subnet, get_zones, has_ephemerals, modify_tags,
-                                   query_vpc, update_disk)
+                                   query_vpc, update_disk, get_image_arch, get_root_label)
 from ybops.cloud.common.cloud import AbstractCloud
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.utils import (format_rsa_key, is_valid_ip_address, validated_key_file)
@@ -68,6 +68,9 @@ class AwsCloud(AbstractCloud):
         for r in regions:
             output[r] = self.metadata["regions"][r]["image"]
         return output
+
+    def get_image_arch(self, args):
+        return get_image_arch(args.region, args.machine_image)
 
     def get_spot_pricing(self, args):
         return get_spot_pricing(args.region, args.zone, args.instance_type)
@@ -369,9 +372,6 @@ class AwsCloud(AbstractCloud):
                 universe_uuid_tags = [t["Value"] for t in data["Tags"]
                                       if t["Key"] == "universe-uuid"]
 
-            disks = data.get("BlockDeviceMappings")
-            root_vol = next(disk for disk in disks if disk.get("DeviceName") == ROOT_VOLUME_LABEL)
-
             primary_private_ip = None
             secondary_private_ip = None
             primary_subnet = None
@@ -404,8 +404,14 @@ class AwsCloud(AbstractCloud):
                 node_uuid=node_uuid_tags[0] if node_uuid_tags else None,
                 universe_uuid=universe_uuid_tags[0] if universe_uuid_tags else None,
                 vpc=data["VpcId"],
-                root_volume=root_vol["Ebs"]["VolumeId"]
+                ami=data.get("ImageId", None)
             )
+
+            disks = data.get("BlockDeviceMappings")
+            root_vol = next(d for d in disks if
+                            d.get("DeviceName") == get_root_label(result["region"], result["ami"]))
+            result["root_volume"] = root_vol["Ebs"]["VolumeId"]
+
             if not get_all:
                 return result
             results.append(result)
@@ -479,17 +485,33 @@ class AwsCloud(AbstractCloud):
         snapshot = None
 
         try:
+            resource_tags = []
+            tags = json.loads(args.instance_tags) if args.instance_tags is not None else {}
+            for tag in tags:
+                resource_tags.append({
+                    'Key': tag,
+                    'Value': tags[tag]
+                })
+            snapshot_tag_specs = [{
+                'ResourceType': 'snapshot',
+                'Tags': resource_tags
+            }]
+            volume_tag_specs = [{
+                'ResourceType': 'volume',
+                'Tags': resource_tags
+            }]
             ec2 = boto3.resource('ec2', args.region)
             volume = ec2.Volume(volume_id)
             logging.info("==> Going to create a snapshot from {}".format(volume_id))
-            snapshot = volume.create_snapshot()
+            snapshot = volume.create_snapshot(TagSpecifications=snapshot_tag_specs)
             snapshot.wait_until_completed()
             logging.info("==> Created a snapshot {}".format(snapshot.id))
 
             for _ in range(num_disks):
                 vol = ec2.create_volume(
                     AvailabilityZone=args.zone,
-                    SnapshotId=snapshot.id
+                    SnapshotId=snapshot.id,
+                    TagSpecifications=volume_tag_specs
                 )
                 output.append(vol.id)
         finally:
@@ -513,25 +535,25 @@ class AwsCloud(AbstractCloud):
     def change_instance_type(self, args, newInstanceType):
         change_instance_type(args["region"], args["id"], newInstanceType)
 
-    def stop_instance(self, args):
-        ec2 = boto3.resource('ec2', args["region"])
+    def stop_instance(self, host_info):
+        ec2 = boto3.resource('ec2', host_info["region"])
         try:
-            instance = ec2.Instance(id=args["id"])
+            instance = ec2.Instance(id=host_info["id"])
             instance.stop()
             instance.wait_until_stopped()
         except ClientError as e:
             logging.error(e)
 
-    def start_instance(self, args, ssh_port):
-        ec2 = boto3.resource('ec2', args["region"])
+    def start_instance(self, host_info, ssh_ports):
+        ec2 = boto3.resource('ec2', host_info["region"])
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            instance = ec2.Instance(id=args["id"])
+            instance = ec2.Instance(id=host_info["id"])
             instance.start()
             instance.wait_until_running()
             # The OS boot up may take some time,
             # so retry until the instance allows SSH connection.
-            self.wait_for_ssh_port(args["private_ip"], args["id"], ssh_port)
+            self.wait_for_ssh_ports(host_info["private_ip"], host_info["id"], ssh_ports)
         except ClientError as e:
             logging.error(e)
         finally:
@@ -540,6 +562,11 @@ class AwsCloud(AbstractCloud):
     def get_console_output(self, args):
         instance = self.get_host_info(args)
 
+        if not instance:
+            logging.warning('Could not find instance {}, no console output available'.format(
+                args.search_pattern))
+            return ''
+
         try:
             ec2 = boto3.client('ec2', region_name=instance['region'])
             return ec2.get_console_output(InstanceId=instance['id'], Latest=True).get('Output', '')
@@ -547,3 +574,54 @@ class AwsCloud(AbstractCloud):
             logging.exception('Failed to get console output from {}'.format(args.search_pattern))
 
         return ''
+
+    def delete_volumes(self, args):
+        tags = json.loads(args.instance_tags) if args.instance_tags is not None else {}
+        if not tags:
+            raise YBOpsRuntimeError('Tags must be specified')
+        universe_uuid = tags.get('universe-uuid')
+        if universe_uuid is None:
+            raise YBOpsRuntimeError('Universe UUID must be specified')
+        node_uuid = tags.get('node-uuid')
+        if node_uuid is None:
+            raise YBOpsRuntimeError('Node UUID must be specified')
+        filters = []
+        tagPairs = {}
+        tagPairs['universe-uuid'] = universe_uuid
+        tagPairs['node-uuid'] = node_uuid
+        for tag in tagPairs:
+            value = tagPairs[tag]
+            filters.append({
+                'Name': "tag:{}".format(tag),
+                'Values': [value]
+            })
+        volume_ids = []
+        describe_volumes_args = {
+            'Filters': filters
+        }
+        client = boto3.client('ec2', args.region)
+        while True:
+            response = client.describe_volumes(**describe_volumes_args)
+            for volume in response.get('Volumes', []):
+                status = volume['State']
+                volume_id = volume['VolumeId']
+                present_tags = volume['Tags']
+                if status.lower() != 'available':
+                    continue
+                tag_match_count = 0
+                # Extra caution to make sure tags are present.
+                for tag in tagPairs:
+                    value = tagPairs[tag]
+                    for present_tag in present_tags:
+                        if present_tag['Key'] == tag and present_tag['Value'] == value:
+                            tag_match_count += 1
+                            break
+                if tag_match_count == len(tagPairs):
+                    volume_ids.append(volume_id)
+            if 'NextToken' in response:
+                describe_volumes_args['NextToken'] = response['NextToken']
+            else:
+                break
+        for volume_id in volume_ids:
+            logging.info('[app] Deleting volume {}'.format(volume_id))
+            client.delete_volume(VolumeId=volume_id)

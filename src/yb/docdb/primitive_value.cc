@@ -20,11 +20,14 @@
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 
+#include "yb/common/value.messages.h"
+
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/intent.h"
 #include "yb/docdb/value_type.h"
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/substitute.h"
@@ -97,6 +100,28 @@ string RealToString(T val) {
     return StringPrintf("%E", val);
   }
   return s;
+}
+
+ValueType VirtualValueToValueType(QLVirtualValuePB value) {
+  switch (value) {
+    case QLVirtualValuePB::LIMIT_MAX:
+      return ValueType::kHighest;
+    case QLVirtualValuePB::LIMIT_MIN:
+      return ValueType::kLowest;
+    case QLVirtualValuePB::COUNTER:
+      return ValueType::kCounter;
+    case QLVirtualValuePB::SS_FORWARD:
+      return ValueType::kSSForward;
+    case QLVirtualValuePB::SS_REVERSE:
+      return ValueType::kSSReverse;
+    case QLVirtualValuePB::TOMBSTONE:
+      return ValueType::kTombstone;
+    case QLVirtualValuePB::NULL_LOW:
+      return ValueType::kNullLow;
+    case QLVirtualValuePB::ARRAY:
+      return ValueType::kArray;
+  }
+  FATAL_INVALID_ENUM_VALUE(QLVirtualValuePB, value);
 }
 
 } // anonymous namespace
@@ -243,8 +268,8 @@ string PrimitiveValue::ToString(AutoDecodeKeys auto_decode_keys) const {
       return "[]";
     case ValueType::kTableId:
       return Format("TableId($0)", uuid_val_.ToString());
-    case ValueType::kPgTableOid:
-      return Format("PgTableOid($0)", uint32_val_);
+    case ValueType::kColocationId:
+      return Format("ColocationId($0)", uint32_val_);
     case ValueType::kTransactionApplyState: FALLTHROUGH_INTENDED;
     case ValueType::kExternalTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kTransactionId:
@@ -315,7 +340,7 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
       key_bytes->AppendInt32(int32_val_);
       return;
 
-    case ValueType::kPgTableOid: FALLTHROUGH_INTENDED;
+    case ValueType::kColocationId: FALLTHROUGH_INTENDED;
     case ValueType::kSubTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32:
       key_bytes->AppendUInt32(uint32_val_);
@@ -395,16 +420,12 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
       return;
 
     case ValueType::kInetaddress: {
-      std::string bytes;
-      CHECK_OK(inetaddress_val_->ToBytes(&bytes));
-      key_bytes->AppendString(bytes);
+      key_bytes->AppendString(inetaddress_val_->ToBytes());
       return;
     }
 
     case ValueType::kInetaddressDescending: {
-      std::string bytes;
-      CHECK_OK(inetaddress_val_->ToBytes(&bytes));
-      key_bytes->AppendDescendingString(bytes);
+      key_bytes->AppendDescendingString(inetaddress_val_->ToBytes());
       return;
     }
 
@@ -464,172 +485,172 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
   FATAL_INVALID_ENUM_VALUE(ValueType, type_);
 }
 
-string PrimitiveValue::ToValue() const {
-  string result;
-  result.push_back(static_cast<char>(type_));
-  switch (type_) {
-    case ValueType::kNullHigh: FALLTHROUGH_INTENDED;
-    case ValueType::kNullLow: FALLTHROUGH_INTENDED;
-    case ValueType::kCounter: FALLTHROUGH_INTENDED;
-    case ValueType::kSSForward: FALLTHROUGH_INTENDED;
-    case ValueType::kSSReverse: FALLTHROUGH_INTENDED;
-    case ValueType::kFalse: FALLTHROUGH_INTENDED;
-    case ValueType::kTrue: FALLTHROUGH_INTENDED;
-    case ValueType::kFalseDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kTrueDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kTombstone: FALLTHROUGH_INTENDED;
-    case ValueType::kObject: FALLTHROUGH_INTENDED;
-    case ValueType::kArray: FALLTHROUGH_INTENDED;
-    case ValueType::kRedisTS: FALLTHROUGH_INTENDED;
-    case ValueType::kRedisList: FALLTHROUGH_INTENDED;
-    case ValueType::kRedisSortedSet: FALLTHROUGH_INTENDED;
-    case ValueType::kRedisSet: return result;
+namespace {
 
-    case ValueType::kCollStringDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kCollString:
-      LOG(DFATAL) << "collation encoded string found for docdb value";
-      FALLTHROUGH_INTENDED;
-    case ValueType::kStringDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kString:
-      // No zero encoding necessary when storing the string in a value.
-      result.append(str_val_);
-      return result;
-
-    case ValueType::kInt32Descending: FALLTHROUGH_INTENDED;
-    case ValueType::kInt32: FALLTHROUGH_INTENDED;
-    case ValueType::kWriteId:
-      AppendBigEndianUInt32(int32_val_, &result);
-      return result;
-
-    case ValueType::kPgTableOid: FALLTHROUGH_INTENDED;
-    case ValueType::kSubTransactionId: FALLTHROUGH_INTENDED;
-    case ValueType::kUInt32Descending: FALLTHROUGH_INTENDED;
-    case ValueType::kUInt32:
-      AppendBigEndianUInt32(uint32_val_, &result);
-      return result;
-
-    case ValueType::kUInt64Descending: FALLTHROUGH_INTENDED;
-    case ValueType::kUInt64:
-      AppendBigEndianUInt64(uint64_val_, &result);
-      return result;
-
-    case ValueType::kInt64Descending: FALLTHROUGH_INTENDED;
-    case ValueType::kInt64:
-      AppendBigEndianUInt64(int64_val_, &result);
-      return result;
-
-    case ValueType::kArrayIndex:
-      LOG(FATAL) << "Array index cannot be stored in a value";
-      return result;
-
-    case ValueType::kDoubleDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kDouble:
-      static_assert(sizeof(double) == sizeof(uint64_t),
-                    "Expected double to be the same size as uint64_t");
-      // TODO: make sure this is a safe and reasonable representation for doubles.
-      AppendBigEndianUInt64(int64_val_, &result);
-      return result;
-
-    case ValueType::kFloatDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kFloat:
-      static_assert(sizeof(float) == sizeof(uint32_t),
-                    "Expected float to be the same size as uint32_t");
-      // TODO: make sure this is a safe and reasonable representation for floats.
-      AppendBigEndianUInt32(int32_val_, &result);
-      return result;
-
-    case ValueType::kFrozenDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kFrozen: {
-      KeyBytes key(result);
-      for (const auto &pv : *frozen_val_) {
-        pv.AppendToKey(&key);
-      }
-
-      // Still need the end marker for values in case of nested frozen collections.
-      if (type_ == ValueType::kFrozenDescending) {
-        key.AppendValueType(ValueType::kGroupEndDescending);
-      } else {
-        key.AppendValueType(ValueType::kGroupEnd);
-      }
-      return key.ToStringBuffer();
-    }
-
-    case ValueType::kDecimalDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kDecimal:
-      result.append(decimal_val_);
-      return result;
-
-    case ValueType::kVarIntDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kVarInt:
-      result.append(varint_val_);
-      return result;
-
-    case ValueType::kTimestampDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kTimestamp:
-      AppendBigEndianUInt64(timestamp_val_.ToInt64(), &result);
-      return result;
-
-    case ValueType::kInetaddressDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kInetaddress: {
-      std::string bytes;
-      CHECK_OK(inetaddress_val_->ToBytes(&bytes))
-      result.append(bytes);
-      return result;
-    }
-
-    case ValueType::kJsonb: {
-      // Append the jsonb flags.
-      int64_t jsonb_flags = kCompleteJsonb;
-      AppendBigEndianUInt64(jsonb_flags, &result);
-
-      // Append the jsonb serialized blob.
-      result.append(json_val_);
-      return result;
-    }
-
-    case ValueType::kUuidDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kTransactionApplyState: FALLTHROUGH_INTENDED;
-    case ValueType::kExternalTransactionId: FALLTHROUGH_INTENDED;
-    case ValueType::kTransactionId: FALLTHROUGH_INTENDED;
-    case ValueType::kTableId: FALLTHROUGH_INTENDED;
-    case ValueType::kUuid: {
-      std::string bytes;
-      uuid_val_.EncodeToComparable(&bytes);
-      result.append(bytes);
-      return result;
-    }
-
-    case ValueType::kUInt16Hash:
-      // Hashes are not allowed in a value.
-      break;
-
-    case ValueType::kGinNull:
-      result.push_back(static_cast<char>(gin_null_val_));
-      return result;
-
-    case ValueType::kIntentTypeSet: FALLTHROUGH_INTENDED;
-    case ValueType::kObsoleteIntentTypeSet: FALLTHROUGH_INTENDED;
-    case ValueType::kObsoleteIntentType: FALLTHROUGH_INTENDED;
-    case ValueType::kMergeFlags: FALLTHROUGH_INTENDED;
-    case ValueType::kRowLock: FALLTHROUGH_INTENDED;
-    case ValueType::kBitSet: FALLTHROUGH_INTENDED;
-    case ValueType::kGroupEnd: FALLTHROUGH_INTENDED;
-    case ValueType::kGroupEndDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kObsoleteIntentPrefix: FALLTHROUGH_INTENDED;
-    case ValueType::kGreaterThanIntentType: FALLTHROUGH_INTENDED;
-    case ValueType::kTtl: FALLTHROUGH_INTENDED;
-    case ValueType::kUserTimestamp: FALLTHROUGH_INTENDED;
-    case ValueType::kColumnId: FALLTHROUGH_INTENDED;
-    case ValueType::kSystemColumnId: FALLTHROUGH_INTENDED;
-    case ValueType::kHybridTime: FALLTHROUGH_INTENDED;
-    case ValueType::kExternalIntents: FALLTHROUGH_INTENDED;
-    case ValueType::kInvalid: FALLTHROUGH_INTENDED;
-    case ValueType::kLowest: FALLTHROUGH_INTENDED;
-    case ValueType::kHighest: FALLTHROUGH_INTENDED;
-    case ValueType::kMaxByte:
-      break;
+template <class Buffer>
+void AddValueType(
+    ValueType ascending, ValueType descending, SortingType sorting_type, Buffer* out) {
+  if (sorting_type == SortingType::kDescending ||
+      sorting_type == SortingType::kDescendingNullsLast) {
+    out->push_back(static_cast<char>(descending));
+  } else {
+    out->push_back(static_cast<char>(ascending));
   }
-  FATAL_INVALID_ENUM_VALUE(ValueType, type_);
+}
+
+// Flags for jsonb.
+// Indicates that the stored jsonb is the complete jsonb value and not a partial update to jsonb.
+static constexpr int64_t kCompleteJsonb = 1;
+
+template <class Buffer>
+void DoAppendEncodedValue(const QLValuePB& value, SortingType sorting_type, Buffer* out) {
+  switch (value.value_case()) {
+    case QLValuePB::kInt8Value:
+      AddValueType(ValueType::kInt32, ValueType::kInt32Descending, sorting_type, out);
+      AppendBigEndianUInt32(value.int8_value(), out);
+      return;
+    case QLValuePB::kInt16Value:
+      AddValueType(ValueType::kInt32, ValueType::kInt32Descending, sorting_type, out);
+      AppendBigEndianUInt32(value.int16_value(), out);
+      return;
+    case QLValuePB::kInt32Value:
+      AddValueType(ValueType::kInt32, ValueType::kInt32Descending, sorting_type, out);
+      AppendBigEndianUInt32(value.int32_value(), out);
+      return;
+    case QLValuePB::kInt64Value:
+      AddValueType(ValueType::kInt64, ValueType::kInt64Descending, sorting_type, out);
+      AppendBigEndianUInt64(value.int64_value(), out);
+      return;
+    case QLValuePB::kUint32Value:
+      AddValueType(ValueType::kUInt32, ValueType::kUInt32Descending, sorting_type, out);
+      AppendBigEndianUInt32(value.uint32_value(), out);
+      return;
+    case QLValuePB::kUint64Value:
+      AddValueType(ValueType::kUInt64, ValueType::kUInt64Descending, sorting_type, out);
+      AppendBigEndianUInt64(value.uint64_value(), out);
+      return;
+    case QLValuePB::kFloatValue:
+      AddValueType(ValueType::kFloat, ValueType::kFloatDescending, sorting_type, out);
+      AppendBigEndianUInt32(bit_cast<uint32_t>(util::CanonicalizeFloat(value.float_value())), out);
+      return;
+    case QLValuePB::kDoubleValue:
+      AddValueType(ValueType::kDouble, ValueType::kDoubleDescending, sorting_type, out);
+      AppendBigEndianUInt64(
+          bit_cast<uint64_t>(util::CanonicalizeDouble(value.double_value())), out);
+      return;
+    case QLValuePB::kDecimalValue:
+      AddValueType(ValueType::kDecimal, ValueType::kDecimalDescending, sorting_type, out);
+      out->append(value.decimal_value());
+      return;
+    case QLValuePB::kVarintValue:
+      AddValueType(ValueType::kVarInt, ValueType::kVarIntDescending, sorting_type, out);
+      out->append(value.varint_value());
+      return;
+    case QLValuePB::kStringValue: {
+      const string& val = value.string_value();
+      // In both Postgres and YCQL, character value cannot have embedded \0 byte.
+      // Redis allows embedded \0 byte but it does not use QLValuePB so will not
+      // come here to pick up 'is_collate'. Therefore, if the value is not empty
+      // and the first byte is \0, it indicates this is a collation encoded string.
+      if (!val.empty() && val[0] == '\0' && sorting_type != SortingType::kNotSpecified) {
+        // An empty collation encoded string is at least 3 bytes.
+        CHECK_GE(val.size(), 3);
+        AddValueType(ValueType::kCollString, ValueType::kCollStringDescending, sorting_type, out);
+      } else {
+        AddValueType(ValueType::kString, ValueType::kStringDescending, sorting_type, out);
+      }
+      out->append(val);
+      return;
+    }
+    case QLValuePB::kBinaryValue:
+      AddValueType(ValueType::kString, ValueType::kStringDescending, sorting_type, out);
+      out->append(value.binary_value());
+      return;
+    case QLValuePB::kBoolValue:
+      if (value.bool_value()) {
+        AddValueType(ValueType::kTrue, ValueType::kTrueDescending, sorting_type, out);
+      } else {
+        AddValueType(ValueType::kFalse, ValueType::kFalseDescending, sorting_type, out);
+      }
+      return;
+    case QLValuePB::kTimestampValue:
+      AddValueType(ValueType::kTimestamp, ValueType::kTimestampDescending, sorting_type, out);
+      AppendBigEndianUInt64(QLValue::timestamp_value(value).ToInt64(), out);
+      return;
+    case QLValuePB::kDateValue:
+      AddValueType(ValueType::kUInt32, ValueType::kUInt32Descending, sorting_type, out);
+      AppendBigEndianUInt32(value.date_value(), out);
+      return;
+    case QLValuePB::kTimeValue:
+      AddValueType(ValueType::kInt64, ValueType::kInt64Descending, sorting_type, out);
+      AppendBigEndianUInt64(value.time_value(), out);
+      return;
+    case QLValuePB::kInetaddressValue:
+      AddValueType(ValueType::kInetaddress, ValueType::kInetaddressDescending, sorting_type, out);
+      QLValue::inetaddress_value(value).AppendToBytes(out);
+      return;
+    case QLValuePB::kJsonbValue:
+      out->push_back(ValueTypeAsChar::kJsonb);
+      // Append the jsonb flags.
+      AppendBigEndianUInt64(kCompleteJsonb, out);
+      // Append the jsonb serialized blob.
+      out->append(QLValue::jsonb_value(value));
+      return;
+    case QLValuePB::kUuidValue:
+      AddValueType(ValueType::kUuid, ValueType::kUuidDescending, sorting_type, out);
+      QLValue::uuid_value(value).AppendEncodedComparable(out);
+      return;
+    case QLValuePB::kTimeuuidValue:
+      AddValueType(ValueType::kUuid, ValueType::kUuidDescending, sorting_type, out);
+      QLValue::timeuuid_value(value).AppendEncodedComparable(out);
+      return;
+    case QLValuePB::kFrozenValue: {
+      const QLSeqValuePB& frozen = value.frozen_value();
+      AddValueType(ValueType::kFrozen, ValueType::kFrozenDescending, sorting_type, out);
+      auto ascending = SortOrderFromColumnSchemaSortingType(sorting_type) == SortOrder::kAscending;
+      auto null_value_type = ascending ? ValueType::kNullLow : ValueType::kNullHigh;
+      KeyBytes key;
+      for (int i = 0; i < frozen.elems_size(); i++) {
+        if (IsNull(frozen.elems(i))) {
+          key.AppendValueType(null_value_type);
+        } else {
+          PrimitiveValue::FromQLValuePB(frozen.elems(i), sorting_type).AppendToKey(&key);
+        }
+      }
+      key.AppendValueType(ascending ? ValueType::kGroupEnd : ValueType::kGroupEndDescending);
+      out->append(key.data().AsSlice().cdata(), key.data().size());
+      return;
+    }
+    case QLValuePB::VALUE_NOT_SET:
+      out->push_back(ValueTypeAsChar::kTombstone);
+      return;
+
+    case QLValuePB::kMapValue: FALLTHROUGH_INTENDED;
+    case QLValuePB::kSetValue: FALLTHROUGH_INTENDED;
+    case QLValuePB::kListValue:
+      break;
+
+    case QLValuePB::kVirtualValue:
+      out->push_back(static_cast<char>(VirtualValueToValueType(value.virtual_value())));
+      return;
+    case QLValuePB::kGinNullValue:
+      out->push_back(ValueTypeAsChar::kGinNull);
+      out->push_back(static_cast<char>(value.gin_null_value()));
+      return;
+    // default: fall through
+  }
+
+  FATAL_INVALID_ENUM_VALUE(QLValuePB::ValueCase, value.value_case());
+}
+
+} // namespace
+
+void AppendEncodedValue(const QLValuePB& value, SortingType sorting_type, ValueBuffer* out) {
+  DoAppendEncodedValue(value, sorting_type, out);
+}
+
+void AppendEncodedValue(const QLValuePB& value, SortingType sorting_type, std::string* out) {
+  DoAppendEncodedValue(value, sorting_type, out);
 }
 
 Status PrimitiveValue::DecodeFromKey(rocksdb::Slice* slice) {
@@ -804,7 +825,7 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
       type_ref = value_type;
       return Status::OK();
 
-    case ValueType::kPgTableOid: FALLTHROUGH_INTENDED;
+    case ValueType::kColocationId: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32Descending: FALLTHROUGH_INTENDED;
     case ValueType::kSubTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32:
@@ -896,7 +917,7 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
         string bytes;
         RETURN_NOT_OK(DecodeZeroEncodedStr(slice, &bytes));
         out->inetaddress_val_ = new InetAddress();
-        RETURN_NOT_OK(out->inetaddress_val_->FromBytes(bytes));
+        RETURN_NOT_OK(out->inetaddress_val_->FromSlice(bytes));
       } else {
         RETURN_NOT_OK(DecodeZeroEncodedStr(slice, nullptr));
       }
@@ -909,7 +930,7 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
         string bytes;
         RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, &bytes));
         out->inetaddress_val_ = new InetAddress();
-        RETURN_NOT_OK(out->inetaddress_val_->FromBytes(bytes));
+        RETURN_NOT_OK(out->inetaddress_val_->FromSlice(bytes));
       } else {
         RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, nullptr));
       }
@@ -974,11 +995,9 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
 
     case ValueType::kHybridTime: {
       if (out) {
-        new(&out->hybrid_time_val_) DocHybridTime();
-        RETURN_NOT_OK(out->hybrid_time_val_.DecodeFrom(slice));
+        new (&out->hybrid_time_val_) DocHybridTime(VERIFY_RESULT(DocHybridTime::DecodeFrom(slice)));
       } else {
-        DocHybridTime dummy_hybrid_time;
-        RETURN_NOT_OK(dummy_hybrid_time.DecodeFrom(slice));
+        RETURN_NOT_OK(DocHybridTime::DecodeFrom(slice));
       }
 
       type_ref = ValueType::kHybridTime;
@@ -1127,7 +1146,7 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
       int32_val_ = BigEndian::Load32(slice.data());
       return Status::OK();
 
-    case ValueType::kPgTableOid: FALLTHROUGH_INTENDED;
+    case ValueType::kColocationId: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32: FALLTHROUGH_INTENDED;
     case ValueType::kSubTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32Descending:
@@ -1290,25 +1309,25 @@ PrimitiveValue PrimitiveValue::Float(float f, SortOrder sort_order) {
   return primitive_value;
 }
 
-PrimitiveValue PrimitiveValue::Decimal(const string& encoded_decimal_str, SortOrder sort_order) {
+PrimitiveValue PrimitiveValue::Decimal(const Slice& decimal_str, SortOrder sort_order) {
   PrimitiveValue primitive_value;
   if (sort_order == SortOrder::kDescending) {
     primitive_value.type_ = ValueType::kDecimalDescending;
   } else {
     primitive_value.type_ = ValueType::kDecimal;
   }
-  new(&primitive_value.decimal_val_) string(encoded_decimal_str);
+  new(&primitive_value.decimal_val_) string(decimal_str.cdata(), decimal_str.size());
   return primitive_value;
 }
 
-PrimitiveValue PrimitiveValue::VarInt(const string& encoded_varint_str, SortOrder sort_order) {
+PrimitiveValue PrimitiveValue::VarInt(const Slice& varint_str, SortOrder sort_order) {
   PrimitiveValue primitive_value;
   if (sort_order == SortOrder::kDescending) {
     primitive_value.type_ = ValueType::kVarIntDescending;
   } else {
     primitive_value.type_ = ValueType::kVarInt;
   }
-  new(&primitive_value.varint_val_) string(encoded_varint_str);
+  new(&primitive_value.varint_val_) string(varint_str.cdata(), varint_str.size());
   return primitive_value;
 }
 
@@ -1382,16 +1401,16 @@ PrimitiveValue PrimitiveValue::TableId(Uuid table_id) {
   return primitive_value;
 }
 
-PrimitiveValue PrimitiveValue::PgTableOid(const yb::PgTableOid pgtable_id) {
-  PrimitiveValue primitive_value(pgtable_id);
-  primitive_value.type_ = ValueType::kPgTableOid;
+PrimitiveValue PrimitiveValue::ColocationId(const yb::ColocationId colocation_id) {
+  PrimitiveValue primitive_value(colocation_id);
+  primitive_value.type_ = ValueType::kColocationId;
   return primitive_value;
 }
 
-PrimitiveValue PrimitiveValue::Jsonb(const std::string& json) {
+PrimitiveValue PrimitiveValue::Jsonb(const Slice& json) {
   PrimitiveValue primitive_value;
   primitive_value.type_ = ValueType::kJsonb;
-  new(&primitive_value.json_val_) string(json);
+  new(&primitive_value.json_val_) string(json.cdata(), json.size());
   return primitive_value;
 }
 
@@ -1438,7 +1457,7 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
     case ValueType::kWriteId: FALLTHROUGH_INTENDED;
     case ValueType::kInt32: return int32_val_ == other.int32_val_;
 
-    case ValueType::kPgTableOid: FALLTHROUGH_INTENDED;
+    case ValueType::kColocationId: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32Descending: FALLTHROUGH_INTENDED;
     case ValueType::kSubTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32: return uint32_val_ == other.uint32_val_;
@@ -1527,7 +1546,7 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
       return CompareUsingLessThan(int32_val_, other.int32_val_);
     case ValueType::kUInt32Descending:
       return CompareUsingLessThan(other.uint32_val_, uint32_val_);
-    case ValueType::kPgTableOid: FALLTHROUGH_INTENDED;
+    case ValueType::kColocationId: FALLTHROUGH_INTENDED;
     case ValueType::kSubTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32:
       return CompareUsingLessThan(uint32_val_, other.uint32_val_);
@@ -1915,8 +1934,7 @@ void PrimitiveValue::MoveFrom(PrimitiveValue* other) {
   }
 }
 
-SortOrder PrimitiveValue::SortOrderFromColumnSchemaSortingType(
-    SortingType sorting_type) {
+SortOrder SortOrderFromColumnSchemaSortingType(SortingType sorting_type) {
   if (sorting_type == SortingType::kDescending ||
       sorting_type == SortingType::kDescendingNullsLast) {
     return SortOrder::kDescending;
@@ -1924,8 +1942,19 @@ SortOrder PrimitiveValue::SortOrderFromColumnSchemaSortingType(
   return SortOrder::kAscending;
 }
 
-PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value,
-                                             SortingType sorting_type) {
+PrimitiveValue PrimitiveValue::FromQLValuePB(
+    const LWQLValuePB& value, SortingType sorting_type, bool check_is_collate) {
+  return DoFromQLValuePB(value, sorting_type, check_is_collate);
+}
+
+PrimitiveValue PrimitiveValue::FromQLValuePB(
+    const QLValuePB& value, SortingType sorting_type, bool check_is_collate) {
+  return DoFromQLValuePB(value, sorting_type, check_is_collate);
+}
+
+template <class PB>
+PrimitiveValue PrimitiveValue::DoFromQLValuePB(
+    const PB& value, SortingType sorting_type, bool check_is_collate) {
   const auto sort_order = SortOrderFromColumnSchemaSortingType(sorting_type);
 
   switch (value.value_case()) {
@@ -1954,12 +1983,12 @@ PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value,
     case QLValuePB::kVarintValue:
       return PrimitiveValue::VarInt(value.varint_value(), sort_order);
     case QLValuePB::kStringValue: {
-      const string& val = value.string_value();
+      const auto& val = value.string_value();
       // In both Postgres and YCQL, character value cannot have embedded \0 byte.
       // Redis allows embedded \0 byte but it does not use QLValuePB so will not
       // come here to pick up 'is_collate'. Therefore, if the value is not empty
       // and the first byte is \0, it indicates this is a collation encoded string.
-      if (!val.empty() && val[0] == '\0') {
+      if (!val.empty() && val[0] == '\0' && sorting_type != SortingType::kNotSpecified) {
         // An empty collation encoded string is at least 3 bytes.
         CHECK_GE(val.size(), 3);
         return PrimitiveValue(val, sort_order, true /* is_collate */);
@@ -1991,7 +2020,7 @@ PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value,
     case QLValuePB::kTimeuuidValue:
       return PrimitiveValue(QLValue::timeuuid_value(value), sort_order);
     case QLValuePB::kFrozenValue: {
-      QLSeqValuePB frozen = value.frozen_value();
+      const auto& frozen = value.frozen_value();
       PrimitiveValue pv(ValueType::kFrozen);
       auto null_value_type = ValueType::kNullLow;
       if (sort_order == SortOrder::kDescending) {
@@ -1999,11 +2028,11 @@ PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value,
         pv.type_ = ValueType::kFrozenDescending;
       }
 
-      for (int i = 0; i < frozen.elems_size(); i++) {
-        if (IsNull(frozen.elems(i))) {
+      for (const auto& elem : frozen.elems()) {
+        if (IsNull(elem)) {
           pv.frozen_val_->emplace_back(null_value_type);
         } else {
-          pv.frozen_val_->push_back(PrimitiveValue::FromQLValuePB(frozen.elems(i), sorting_type));
+          pv.frozen_val_->push_back(PrimitiveValue::FromQLValuePB(elem, sorting_type));
         }
       }
       return pv;
@@ -2017,9 +2046,7 @@ PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value,
       break;
 
     case QLValuePB::kVirtualValue:
-      return PrimitiveValue(value.virtual_value() == QLVirtualValuePB::LIMIT_MAX ?
-                                docdb::ValueType::kHighest :
-                                docdb::ValueType::kLowest);
+      return PrimitiveValue(VirtualValueToValueType(value.virtual_value()));
     case QLValuePB::kGinNullValue:
       return PrimitiveValue::GinNull(value.gin_null_value());
 

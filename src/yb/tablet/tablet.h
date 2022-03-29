@@ -84,6 +84,7 @@ namespace tablet {
 
 YB_STRONGLY_TYPED_BOOL(IncludeIntents);
 YB_STRONGLY_TYPED_BOOL(Abortable);
+YB_STRONGLY_TYPED_BOOL(FlushOnShutdown);
 
 inline FlushFlags operator|(FlushFlags lhs, FlushFlags rhs) {
   return static_cast<FlushFlags>(to_underlying(lhs) | to_underlying(rhs));
@@ -276,12 +277,19 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // This can be called to proactively prevent new operations from being handled, even before
   // Shutdown() is called.
   // Returns true if it was the first call to StartShutdown.
-  bool StartShutdown(IsDropTable is_drop_table = IsDropTable::kFalse);
+  bool StartShutdown();
   bool IsShutdownRequested() const {
     return shutdown_requested_.load(std::memory_order::memory_order_acquire);
   }
 
-  void CompleteShutdown(IsDropTable is_drop_table = IsDropTable::kFalse);
+  // Complete the shutdown of this tablet. This includes shutdown of internal structures such as:
+  // - transaction coordinator
+  // - transaction participant
+  // - RocksDB instances
+  // - etc.
+  // By default, RocksDB shutdown flushes the memtable. This behavior is overriden depending on the
+  // provided value of disable_flush_on_shutdown.
+  void CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown);
 
   CHECKED_STATUS ImportData(const std::string& source_dir);
 
@@ -291,6 +299,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   CHECKED_STATUS RemoveIntents(
       const RemoveIntentsData& data, const TransactionIdSet& transactions) override;
+
+  CHECKED_STATUS GetIntents(
+      const TransactionId& id, std::vector<docdb::IntentKeyValueForCDC>* keyValueIntents,
+      docdb::ApplyTransactionState* stream_state);
 
   // Apply all of the row operations associated with this transaction.
   CHECKED_STATUS ApplyRowOperations(
@@ -377,15 +389,20 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const ReadHybridTime read_hybrid_time = {},
       const TableId& table_id = "",
       CoarseTimePoint deadline = CoarseTimePoint::max(),
-      AllowBootstrappingState allow_bootstrapping_state = AllowBootstrappingState::kFalse) const;
+      AllowBootstrappingState allow_bootstrapping_state = AllowBootstrappingState::kFalse,
+      const Slice& sub_doc_key = Slice()) const;
 
   Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> NewRowIterator(
       const TableId& table_id) const;
 
+  Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> CreateCDCSnapshotIterator(
+      const Schema& projection,
+      const ReadHybridTime& time,
+      const string& next_key);
   //------------------------------------------------------------------------------------------------
   // Makes RocksDB Flush.
   CHECKED_STATUS Flush(FlushMode mode,
-                       FlushFlags flags = FlushFlags::kAll,
+                       FlushFlags flags = FlushFlags::kAllDbs,
                        int64_t ignore_if_flushed_after_tick = rocksdb::FlushOptions::kNeverIgnore);
 
   CHECKED_STATUS WaitForFlush();
@@ -610,7 +627,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Necessary for cases like truncate or restore snapshot when RocksDB is reset.
   CHECKED_STATUS ModifyFlushedFrontier(
       const docdb::ConsensusFrontier& value,
-      rocksdb::FrontierModificationMode mode);
+      rocksdb::FrontierModificationMode mode,
+      FlushFlags flags = FlushFlags::kAllDbs);
 
   // Get the isolation level of the given transaction from the metadata stored in the provisional
   // records RocksDB.
@@ -644,6 +662,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return snapshot_coordinator_;
   }
 
+  docdb::YQLRowwiseIteratorIf* cdc_iterator() {
+    return cdc_iterator_;
+  }
+
   // Allows us to add tablet-specific information that will get deref'd when the tablet does.
   void AddAdditionalMetadata(const std::string& key, std::shared_ptr<void> additional_metadata) {
     std::lock_guard<std::mutex> lock(control_path_mutex_);
@@ -654,6 +676,11 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     std::lock_guard<std::mutex> lock(control_path_mutex_);
     auto val = additional_metadata_.find(key);
     return (val != additional_metadata_.end()) ? val->second : nullptr;
+  }
+
+  size_t RemoveAdditionalMetadata(const std::string& key) {
+    std::lock_guard<std::mutex> lock(control_path_mutex_);
+    return additional_metadata_.erase(key);
   }
 
   void InitRocksDBOptions(
@@ -962,6 +989,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   SnapshotCoordinator* snapshot_coordinator_ = nullptr;
 
+  docdb::YQLRowwiseIteratorIf* cdc_iterator_ = nullptr;
+
   mutable std::mutex control_path_mutex_;
   std::unordered_map<std::string, std::shared_ptr<void>> additional_metadata_
     GUARDED_BY(control_path_mutex_);
@@ -978,8 +1007,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // compaction if this member is already set, as the existence of this member implies that such a
   // compaction has already been triggered for this instance.
   std::unique_ptr<ThreadPoolToken> post_split_compaction_task_pool_token_ = nullptr;
-
-  std::unique_ptr<ThreadPoolToken> data_integrity_token_;
 
   simple_spinlock operation_filters_mutex_;
 

@@ -347,6 +347,16 @@ lazy val pythongen = project.in(file("client/python"))
     openApiConfigFile := "client/python/openapi-python-config.json"
   )
 
+// Generate a Go API client.
+lazy val gogen = project.in(file("client/go"))
+  .settings(
+    openApiInputSpec := "src/main/resources/swagger.json",
+    openApiGeneratorName := "go",
+    openApiOutputDir := "client/go/generated",
+    openApiValidateSpec := SettingDisabled,
+    openApiConfigFile := "client/go/openapi-go-config.json"
+  )
+
 packageZipTarball.in(Universal) := packageZipTarball.in(Universal).dependsOn(versionGenerate).value
 
 runPlatformTask := {
@@ -365,7 +375,7 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.15-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.16-SNAPSHOT"
 
 libraryDependencies ++= Seq(
   // We wont use swagger-ui jar since we want to change some of the assets:
@@ -484,9 +494,22 @@ swaggerGen := Def.taskDyn {
       .toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest $file"),
     (javagen / openApiGenerate),
     compileJavaGenClient,
-    (pythongen / openApiGenerate)
+    (pythongen / openApiGenerate),
+    (gogen / openApiGenerate)
   )
 }.value
 
 // TODO: Should we trigger swagger gen on compile??
 // swaggerGen := swaggerGen.triggeredBy(compile in Compile).value
+
+val grafanaGen: TaskKey[Unit] = taskKey[Unit](
+  "generate dashboard.json"
+)
+
+grafanaGen := Def.taskDyn {
+  val file = (resourceDirectory in Compile).value / "metric" / "Dashboard.json"
+  Def.sequential(
+    (runMain in Test)
+      .toTask(s" com.yugabyte.yw.controllers.GrafanaGenTest $file") 
+  )
+}.value

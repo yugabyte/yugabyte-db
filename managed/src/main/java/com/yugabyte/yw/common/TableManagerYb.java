@@ -11,10 +11,14 @@ import static com.yugabyte.yw.common.TableManagerYb.CommandSubType.BACKUP;
 import static com.yugabyte.yw.common.TableManagerYb.CommandSubType.BULK_IMPORT;
 import static com.yugabyte.yw.common.TableManagerYb.CommandSubType.DELETE;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME;
+import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_LOCATION_FIELDNAME;
+import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_FIELDNAME;
+import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_LOCATIONS_FIELDNAME;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.BackupUtil;
+import com.yugabyte.yw.common.BackupUtil.RegionLocations;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
@@ -35,6 +39,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import org.apache.commons.lang.StringUtils;
 import org.yb.CommonTypes.TableType;
 import play.libs.Json;
 
@@ -58,8 +63,10 @@ public class TableManagerYb extends DevopsBase {
   }
 
   @Inject ReleaseManager releaseManager;
+  @Inject BackupUtil backupUtil;
 
-  public ShellResponse runCommand(CommandSubType subType, TableManagerParams taskParams) {
+  public ShellResponse runCommand(CommandSubType subType, TableManagerParams taskParams)
+      throws PlatformServiceException {
     Universe universe = Universe.getOrBadRequest(taskParams.universeUUID);
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
     Region region = Region.get(primaryCluster.userIntent.regionList.get(0));
@@ -128,6 +135,9 @@ public class TableManagerYb extends DevopsBase {
           } else {
             commandArgs.add(taskParams.getKeyspace());
           }
+          if (runtimeConfigFactory.forUniverse(universe).getBoolean("yb.backup.pg_based")) {
+            commandArgs.add("--pg_based_backup");
+          }
         }
         commandArgs.add("--no_auto_name");
         if (taskParams.sse) {
@@ -135,6 +145,23 @@ public class TableManagerYb extends DevopsBase {
         }
         customer = Customer.find.query().where().idEq(universe.customerId).findOne();
         customerConfig = CustomerConfig.get(customer.uuid, backupTableParams.storageConfigUUID);
+
+        if (!customerConfig.name.toLowerCase().equals("nfs")) {
+          List<RegionLocations> regionLocations =
+              backupUtil.getRegionLocationsList(customerConfig.getData());
+
+          for (RegionLocations regionLocation : regionLocations) {
+            if (StringUtils.isNotBlank(regionLocation.REGION)
+                && StringUtils.isNotBlank(regionLocation.LOCATION)) {
+              commandArgs.add("--region");
+              commandArgs.add(regionLocation.REGION);
+              commandArgs.add("--region_location");
+              commandArgs.add(
+                  backupUtil.getExactRegionLocation(backupTableParams, regionLocation.LOCATION));
+            }
+          }
+        }
+
         backupKeysFile =
             EncryptionAtRestUtil.getUniverseBackupKeysFile(backupTableParams.storageLocation);
         if (backupKeysFile.exists()) {
@@ -168,7 +195,7 @@ public class TableManagerYb extends DevopsBase {
           throw new RuntimeException(
               "Unable to fetch yugabyte release for version: " + userIntent.ybSoftwareVersion);
         }
-        String ybServerPackage = metadata.filePath;
+        String ybServerPackage = metadata.getFilePath(region);
         if (bulkImportParams.instanceCount == 0) {
           bulkImportParams.instanceCount = userIntent.numNodes * EMR_MULTIPLE;
         }
@@ -252,6 +279,9 @@ public class TableManagerYb extends DevopsBase {
     }
     if (backupTableParams.enableVerboseLogs) {
       commandArgs.add("--verbose");
+    }
+    if (backupTableParams.useTablespaces) {
+      commandArgs.add("--use_tablespaces");
     }
   }
 

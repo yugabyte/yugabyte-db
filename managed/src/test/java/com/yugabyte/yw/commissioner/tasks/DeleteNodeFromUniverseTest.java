@@ -1,3 +1,5 @@
+// Copyright (c) YugaByte, Inc.
+
 package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
@@ -132,8 +134,8 @@ public class DeleteNodeFromUniverseTest extends CommissionerBaseTest {
     nodeDetails = universe.getNode("host-n1");
     assertNull(nodeDetails);
 
-    // Instance existence check + delete.
-    verify(mockNodeManager, times(2)).nodeCommand(any(), any());
+    // Instance existence check + delete instance + delete volume.
+    verify(mockNodeManager, times(3)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));

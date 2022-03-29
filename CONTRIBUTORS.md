@@ -146,3 +146,5 @@ This is a list of people who have contributed code to the [YugabyteDB](https://g
 * [viko600](https://github.com/viko600)
 * [lnguyen](https://github.com/lnguyen-yugabyte)
 * [def-](https://github.com/def-)
+* [hari90](https://github.com/hari90)
+* [tverona1](https://github.com/tverona1)

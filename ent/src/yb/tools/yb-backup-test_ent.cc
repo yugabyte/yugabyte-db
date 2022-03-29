@@ -50,6 +50,7 @@ using std::vector;
 using std::string;
 using strings::Split;
 
+
 namespace yb {
 namespace tools {
 
@@ -972,6 +973,8 @@ class YBBackupTestNumTablets : public YBBackupTest {
     // For convenience, rather than create a subclass for tablet splitting tests, add tablet split
     // flags here since they shouldn't really affect non-tablet splitting tests.
     options->extra_master_flags.push_back("--enable_automatic_tablet_splitting=false");
+    options->extra_tserver_flags.push_back("--db_filter_block_size_bytes=2048");
+    options->extra_tserver_flags.push_back("--db_index_block_size_bytes=2048");
     options->extra_tserver_flags.push_back("--db_block_size_bytes=1024");
     options->extra_tserver_flags.push_back("--ycql_num_tablets=3");
     options->extra_tserver_flags.push_back("--ysql_num_tablets=3");
@@ -1233,6 +1236,44 @@ TEST_F_EX(YBBackupTest,
   ASSERT_TRUE(ASSERT_RESULT(CheckPartitions(tablets, {"\x55\x55", "\x9c\x76", "\xaa\xaa"})));
   ASSERT_NO_FATALS(RunPsqlCommand(select_query, select_output));
 
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+// The backup script should disable automatic tablet splitting temporarily to avoid race conditions.
+TEST_F(YBBackupTest,
+       YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestBackupDisablesAutomaticTabletSplitting)) {
+  const string table_name = "mytbl";
+
+  // Create table.
+  ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0 (k INT PRIMARY KEY)", table_name)));
+  ASSERT_NO_FATALS(InsertRows(
+      Format("INSERT INTO $0 VALUES (generate_series(1, 1000))", table_name), 1000));
+
+  ASSERT_OK(cluster_->SetFlagOnMasters("tablet_split_low_phase_shard_count_per_node", "100"));
+  // This threshold is set to a value less than the initial tablet size (~12KB) so they can split
+  // but larger than the child tablet size (~6KB) to avoid a situation where we repeatedly try to
+  // split tablets that are too small to be split.
+  ASSERT_OK(cluster_->SetFlagOnMasters("tablet_split_low_phase_size_threshold_bytes", "10000"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("process_split_tablet_candidates_interval_msec", "60000"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("enable_automatic_tablet_splitting", "true"));
+
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte",
+       "--TEST_sleep_after_find_snapshot_dirs", "create"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte_new", "restore"}));
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+// When trying to run yb_admin with a command that is not supported, we should get a
+// YbAdminOpNotSupportedException.
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYBAdminUnsupportedCommands)) {
+  // Dummy command for yb_backup.py, no restore actually runs.
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--TEST_yb_admin_unsupported_commands", "restore"}));
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 

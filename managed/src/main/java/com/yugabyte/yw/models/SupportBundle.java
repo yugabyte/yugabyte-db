@@ -84,6 +84,25 @@ public class SupportBundle extends Model {
     }
   }
 
+  public SupportBundle() {}
+
+  public SupportBundle(
+      UUID bundleUUID,
+      UUID scopeUUID,
+      String path,
+      Date startDate,
+      Date endDate,
+      BundleDetails bundleDetails,
+      SupportBundleStatusType status) {
+    this.bundleUUID = bundleUUID;
+    this.scopeUUID = scopeUUID;
+    this.path = path;
+    this.startDate = startDate;
+    this.endDate = endDate;
+    this.bundleDetails = bundleDetails;
+    this.status = status;
+  }
+
   @JsonIgnore
   public Path getPathObject() {
     return Paths.get(this.path);
@@ -154,7 +173,7 @@ public class SupportBundle extends Model {
   public static void delete(UUID bundleUUID) {
     SupportBundle supportBundle = SupportBundle.getOrBadRequest(bundleUUID);
     if (supportBundle.getStatus() == SupportBundleStatusType.Running) {
-      throw new PlatformServiceException(BAD_REQUEST, "The certificate is in running state.");
+      throw new PlatformServiceException(BAD_REQUEST, "The support bundle is in running state.");
     } else {
       if (supportBundle.delete()) {
         LOG.info("Successfully deleted the db entry for support bundle: " + bundleUUID.toString());

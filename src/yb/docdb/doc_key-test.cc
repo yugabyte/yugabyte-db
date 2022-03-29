@@ -62,28 +62,28 @@ class DocKeyTest : public YBTest {
     Uuid cotable_id;
     EXPECT_OK(cotable_id.FromHexString("0123456789abcdef0123456789abcdef"));
 
-    std::vector<std::pair<Uuid, PgTableOid>> table_id_pairs;
-    table_id_pairs.emplace_back(cotable_id, 0);
-    table_id_pairs.emplace_back(Uuid::Nil(), 9911);
-    table_id_pairs.emplace_back(Uuid::Nil(), 0);
+    std::vector<std::pair<Uuid, ColocationId>> colocation_id_pairs;
+    colocation_id_pairs.emplace_back(cotable_id, 0);
+    colocation_id_pairs.emplace_back(Uuid::Nil(), 9911);
+    colocation_id_pairs.emplace_back(Uuid::Nil(), 0);
 
-    for (const auto& table_id_pair : table_id_pairs) {
+    for (const auto& colocation_id_pair : colocation_id_pairs) {
       for (int num_hash_keys = 0; num_hash_keys <= kMaxNumHashKeys; ++num_hash_keys) {
         for (int num_range_keys = 0; num_range_keys <= kMaxNumRangeKeys; ++num_range_keys) {
           for (int num_sub_keys = 0; num_sub_keys <= kMaxNumSubKeys; ++num_sub_keys) {
             for (bool has_hybrid_time : {false, true}) {
               SubDocKey sub_doc_key;
 
-              if (!table_id_pair.first.IsNil()) {
+              if (!colocation_id_pair.first.IsNil()) {
                 sub_doc_key.doc_key().set_cotable_id(cotable_id);
-              } else if (table_id_pair.second > 0) {
+              } else if (colocation_id_pair.second != kColocationIdNotSet) {
                 if ((num_hash_keys == 0 && num_range_keys == 0) &&
                     (num_sub_keys > 0 || !has_hybrid_time)) {
                   // This key format currently cannot ever appear because colocated table tombstones
                   // should both have no subkeys and have a hybrid time, so skip it.
                   continue;
                 }
-                sub_doc_key.doc_key().set_pgtable_id(table_id_pair.second);
+                sub_doc_key.doc_key().set_colocation_id(colocation_id_pair.second);
               }
 
               if (num_hash_keys > 0) {
@@ -346,9 +346,8 @@ TEST_F(DocKeyTest, TestBasicSubDocKeyEncodingDecoding) {
     ASSERT_TRUE(temp.empty());
     ASSERT_EQ(range_group[i], value);
   }
-  DocHybridTime time;
   Slice temp = slices[size];
-  ASSERT_OK(time.DecodeFrom(&temp));
+  DocHybridTime time = ASSERT_RESULT(DocHybridTime::DecodeFrom(&temp));
   ASSERT_TRUE(temp.empty());
   ASSERT_EQ(subdoc_key.doc_hybrid_time(), time);
 }
@@ -482,14 +481,14 @@ TEST_F(DocKeyTest, TestDecodePrefixLengths) {
     SubDocKey cur_key;
     boost::container::small_vector<size_t, 8> prefix_lengths;
     std::vector<size_t> expected_prefix_lengths;
-    if (doc_key.has_hash() || doc_key.has_cotable_id() || doc_key.has_pgtable_id()) {
+    if (doc_key.has_hash() || doc_key.has_cotable_id() || doc_key.has_colocation_id()) {
       if (doc_key.has_hash()) {
         cur_key.doc_key() = DocKey(doc_key.hash(), doc_key.hashed_group());
       }
       if (doc_key.has_cotable_id()) {
         cur_key.doc_key().set_cotable_id(doc_key.cotable_id());
-      } else if (doc_key.has_pgtable_id()) {
-        cur_key.doc_key().set_pgtable_id(doc_key.pgtable_id());
+      } else if (doc_key.has_colocation_id()) {
+        cur_key.doc_key().set_colocation_id(doc_key.colocation_id());
       }
 
       // Subtract one to avoid counting the final kGroupEnd, unless this is the entire key.
@@ -543,11 +542,11 @@ TEST_F(DocKeyTest, DecodeDocKeyAndSubKeyEnds) {
     SCOPED_TRACE(test_description);
 
     // Find ID end.
-    if (doc_key.has_cotable_id() || doc_key.has_pgtable_id()) {
+    if (doc_key.has_cotable_id() || doc_key.has_colocation_id()) {
       if (doc_key.has_cotable_id()) {
         cur_key.doc_key().set_cotable_id(doc_key.cotable_id());
-      } else if (doc_key.has_pgtable_id()) {
-        cur_key.doc_key().set_pgtable_id(doc_key.pgtable_id());
+      } else if (doc_key.has_colocation_id()) {
+        cur_key.doc_key().set_colocation_id(doc_key.colocation_id());
       }
       // Subtract one because kGroupEnd doesn't count.
       expected_ends.push_back(cur_key.Encode().size() - 1);
@@ -565,7 +564,7 @@ TEST_F(DocKeyTest, DecodeDocKeyAndSubKeyEnds) {
     for (const PrimitiveValue& range_group_elem : doc_key.range_group()) {
       cur_key.doc_key().range_group().push_back(range_group_elem);
     }
-    if (doc_key.has_pgtable_id() &&
+    if (doc_key.has_colocation_id() &&
         doc_key.hashed_group().empty() &&
         doc_key.range_group().empty()) {
       // ...but an empty key doesn't count (for colocated table tombstones).
@@ -630,12 +629,12 @@ TEST_F(DocKeyTest, TestEnumerateIntents) {
       std::vector<SubDocKey> expected_intents;
       SubDocKey current_expected_intent;
 
-      if (sub_doc_key.doc_key().has_cotable_id() || sub_doc_key.doc_key().has_pgtable_id()) {
+      if (sub_doc_key.doc_key().has_cotable_id() || sub_doc_key.doc_key().has_colocation_id()) {
         DocKey table_id_only_doc_key;
         if (sub_doc_key.doc_key().has_cotable_id()) {
           table_id_only_doc_key.set_cotable_id(sub_doc_key.doc_key().cotable_id());
         } else {
-          table_id_only_doc_key.set_pgtable_id(sub_doc_key.doc_key().pgtable_id());
+          table_id_only_doc_key.set_colocation_id(sub_doc_key.doc_key().colocation_id());
         }
         current_expected_intent = SubDocKey(table_id_only_doc_key);
         expected_intents.push_back(current_expected_intent);
@@ -651,7 +650,7 @@ TEST_F(DocKeyTest, TestEnumerateIntents) {
               sub_doc_key.doc_key().hashed_group()));
         } else {
           current_expected_intent = SubDocKey(DocKey(
-              sub_doc_key.doc_key().pgtable_id(),
+              sub_doc_key.doc_key().colocation_id(),
               sub_doc_key.doc_key().hash(),
               sub_doc_key.doc_key().hashed_group()));
         }

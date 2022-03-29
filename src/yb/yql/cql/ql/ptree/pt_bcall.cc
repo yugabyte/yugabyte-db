@@ -77,7 +77,7 @@ string PTBcall::QLName(QLNameOption option) const {
   if (strcmp(name_->c_str(), bfql::kCqlCastFuncName) == 0) {
     CHECK_GE(args_->size(), 2);
     const string column_name = args_->element(0)->QLName(option);
-    const string type =  QLType::ToCQLString(args_->element(1)->ql_type()->type_info()->type());
+    const string type =  QLType::ToCQLString(args_->element(1)->ql_type()->type_info()->type);
     return strings::Substitute("cast($0 as $1)", column_name, type);
   }
 

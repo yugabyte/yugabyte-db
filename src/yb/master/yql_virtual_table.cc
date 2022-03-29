@@ -113,7 +113,7 @@ Result<std::pair<int, DataType>> YQLVirtualTable::ColumnIndexAndType(
   if (column_index == Schema::kColumnNotFound) {
     return STATUS_SUBSTITUTE(NotFound, "Couldn't find column $0 in schema", col_name);
   }
-  const DataType data_type = schema_->column(column_index).type_info()->type();
+  const DataType data_type = schema_->column(column_index).type_info()->type;
   return std::make_pair(column_index, data_type);
 }
 

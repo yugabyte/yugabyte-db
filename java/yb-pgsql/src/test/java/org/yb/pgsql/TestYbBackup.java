@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.Set;
 
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.json.JSONObject;
@@ -47,6 +48,7 @@ import com.google.common.collect.ImmutableMap;
 import static org.yb.AssertionWrappers.assertArrayEquals;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
+import static org.yb.AssertionWrappers.assertGreaterThan;
 import static org.yb.AssertionWrappers.assertLessThan;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
@@ -290,17 +292,36 @@ public class TestYbBackup extends BasePgSQLTest {
   }
 
   @Test
-  public void testColocatedWithTableOidAlreadySet() throws Exception {
+  public void testColocatedWithColocationIdAlreadySet() throws Exception {
+    String ybTablePropsSql = "SELECT c.relname, props.colocation_id"
+        + " FROM pg_class c, yb_table_properties(c.oid) props"
+        + " WHERE c.oid >= 16384"
+        + " ORDER BY c.relname";
+    String uniqueIndexOnlySql = "SELECT b FROM test_tbl WHERE b = 3.14";
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE DATABASE yb1 COLOCATED=TRUE");
     }
     try (Connection connection2 = getConnectionBuilder().withDatabase("yb1").connect();
          Statement stmt = connection2.createStatement()) {
-      // Create a table with a set table_oid.
-      stmt.execute("SET yb_enable_create_with_table_oid = true");
-      stmt.execute("CREATE TABLE test_tbl (h INT PRIMARY KEY, a INT, b FLOAT) " +
-                   "WITH (table_oid = 123456)");
+      // Create a table with a set colocation_id.
+      stmt.execute("CREATE TABLE test_tbl ("
+          + "  h INT PRIMARY KEY,"
+          + "  a INT,"
+          + "  b FLOAT CONSTRAINT test_tbl_uniq UNIQUE WITH (colocation_id=654321)"
+          + ") WITH (colocation_id=123456)");
+      stmt.execute("CREATE INDEX test_tbl_a_idx ON test_tbl (a ASC) WITH (colocation_id=11223344)");
       stmt.execute("INSERT INTO test_tbl (h, a, b) VALUES (1, 101, 3.14)");
+
+      runInvalidQuery(stmt, "INSERT INTO test_tbl (h, a, b) VALUES (2, 202, 3.14)",
+          "violates unique constraint \"test_tbl_uniq\"");
+
+      assertQuery(stmt, ybTablePropsSql,
+          new Row("test_tbl", 123456),
+          new Row("test_tbl_a_idx", 11223344),
+          new Row("test_tbl_pkey", null),
+          new Row("test_tbl_uniq", 654321));
+
+      assertTrue(isIndexOnlyScan(stmt, uniqueIndexOnlySql, "test_tbl_uniq"));
 
       // Check that backup and restore works fine.
       String backupDir = YBBackupUtil.getTempBackupDir();
@@ -315,6 +336,18 @@ public class TestYbBackup extends BasePgSQLTest {
       assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=1", new Row(1, 101, 3.14));
       assertQuery(stmt, "SELECT b FROM test_tbl WHERE h=1", new Row(3.14));
 
+      assertQuery(stmt, ybTablePropsSql,
+          new Row("test_tbl", 123456),
+          new Row("test_tbl_a_idx", 11223344),
+          new Row("test_tbl_pkey", null),
+          new Row("test_tbl_uniq", 654321));
+
+      runInvalidQuery(stmt, "INSERT INTO test_tbl (h, a, b) VALUES (2, 202, 3.14)",
+          "violates unique constraint \"test_tbl_uniq\"");
+
+      assertTrue(isIndexOnlyScan(stmt, uniqueIndexOnlySql, "test_tbl_uniq"));
+      assertQuery(stmt, uniqueIndexOnlySql, new Row(3.14));
+
       // Now try to do a backup/restore of the restored db.
       String backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
@@ -327,12 +360,177 @@ public class TestYbBackup extends BasePgSQLTest {
          Statement stmt = connection2.createStatement()) {
       assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=1", new Row(1, 101, 3.14));
       assertQuery(stmt, "SELECT b FROM test_tbl WHERE h=1", new Row(3.14));
+
+      assertQuery(stmt, ybTablePropsSql,
+          new Row("test_tbl", 123456),
+          new Row("test_tbl_a_idx", 11223344),
+          new Row("test_tbl_pkey", null),
+          new Row("test_tbl_uniq", 654321));
+
+      runInvalidQuery(stmt, "INSERT INTO test_tbl (h, a, b) VALUES (2, 202, 3.14)",
+          "violates unique constraint \"test_tbl_uniq\"");
+
+      assertTrue(isIndexOnlyScan(stmt, uniqueIndexOnlySql, "test_tbl_uniq"));
+      assertQuery(stmt, uniqueIndexOnlySql, new Row(3.14));
     }
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("DROP DATABASE yb1");
       stmt.execute("DROP DATABASE yb2");
       stmt.execute("DROP DATABASE yb3");
+    }
+  }
+
+  @Ignore // TODO(alex): Enable after #11632 is fixed.
+  public void testTablegroups() throws Exception {
+    // TODO: Add constraint with a different tablegroup once #11600 is done.
+    String ybTablePropsSql = "SELECT c.relname, tg.grpname, props.colocation_id"
+        + " FROM pg_class c, yb_table_properties(c.oid) props"
+        + " LEFT JOIN pg_yb_tablegroup tg ON tg.oid = props.tablegroup_oid"
+        + " WHERE c.oid >= 16384"
+        + " ORDER BY c.relname";
+    String uniqueIndexOnlySql = "SELECT b FROM test_tbl WHERE b = 3.14";
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE DATABASE yb1");
+    }
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb1").connect();
+         Statement stmt = connection2.createStatement()) {
+      stmt.execute("CREATE TABLEGROUP tg1");
+      stmt.execute("CREATE TABLEGROUP tg2");
+      stmt.execute("CREATE TABLE test_tbl ("
+          + "  h INT PRIMARY KEY,"
+          + "  a INT,"
+          + "  b FLOAT CONSTRAINT test_tbl_uniq UNIQUE WITH (colocation_id=654321)"
+          + ") WITH (colocation_id=123456)"
+          + " TABLEGROUP tg1");
+      stmt.execute("CREATE INDEX test_tbl_tg2_idx ON test_tbl (a ASC)"
+          + " WITH (colocation_id=11223344) TABLEGROUP tg2");
+      stmt.execute("CREATE INDEX test_tbl_notg_idx ON test_tbl (a ASC) NO TABLEGROUP");
+      stmt.execute("INSERT INTO test_tbl (h, a, b) VALUES (1, 101, 3.14)");
+
+      runInvalidQuery(stmt, "INSERT INTO test_tbl (h, a, b) VALUES (2, 202, 3.14)",
+          "violates unique constraint \"test_tbl_uniq\"");
+
+      assertQuery(stmt, ybTablePropsSql,
+          new Row("test_tbl", "tg1", 123456),
+          new Row("test_tbl_notg_idx", null, null),
+          new Row("test_tbl_pkey", null, null),
+          new Row("test_tbl_tg2_idx", "tg2", 11223344),
+          new Row("test_tbl_uniq", "tg1", 654321));
+
+      assertTrue(isIndexOnlyScan(stmt, uniqueIndexOnlySql, "test_tbl_uniq"));
+
+      // Check that backup and restore works fine.
+      YBBackupUtil.runYbBackupCreate("--keyspace", "ysql.yb1");
+      YBBackupUtil.runYbBackupRestore("--keyspace", "ysql.yb2");
+    }
+    // Verify data is correct.
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection2.createStatement()) {
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=1", new Row(1, 101, 3.14));
+      assertQuery(stmt, "SELECT b FROM test_tbl WHERE h=1", new Row(3.14));
+
+      assertQuery(stmt, ybTablePropsSql,
+          new Row("test_tbl", "tg1", 123456),
+          new Row("test_tbl_notg_idx", null, null),
+          new Row("test_tbl_pkey", null, null),
+          new Row("test_tbl_tg2_idx", "tg2", 11223344),
+          new Row("test_tbl_uniq", "tg1", 654321));
+
+      runInvalidQuery(stmt, "INSERT INTO test_tbl (h, a, b) VALUES (2, 202, 3.14)",
+          "violates unique constraint \"test_tbl_uniq\"");
+
+      assertTrue(isIndexOnlyScan(stmt, uniqueIndexOnlySql, "test_tbl_uniq"));
+      assertQuery(stmt, uniqueIndexOnlySql, new Row(3.14));
+
+      // Now try to do a backup/restore of the restored db.
+      YBBackupUtil.runYbBackupCreate("--keyspace", "ysql.yb2");
+      YBBackupUtil.runYbBackupRestore("--keyspace", "ysql.yb3");
+    }
+    // Verify data is correct.
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb3").connect();
+         Statement stmt = connection2.createStatement()) {
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=1", new Row(1, 101, 3.14));
+      assertQuery(stmt, "SELECT b FROM test_tbl WHERE h=1", new Row(3.14));
+
+      assertQuery(stmt, ybTablePropsSql,
+          new Row("test_tbl", "tg1", 123456),
+          new Row("test_tbl_notg_idx", null, null),
+          new Row("test_tbl_pkey", null, null),
+          new Row("test_tbl_tg2_idx", "tg2", 11223344),
+          new Row("test_tbl_uniq", "tg1", 654321));
+
+      runInvalidQuery(stmt, "INSERT INTO test_tbl (h, a, b) VALUES (2, 202, 3.14)",
+          "violates unique constraint \"test_tbl_uniq\"");
+
+      assertTrue(isIndexOnlyScan(stmt, uniqueIndexOnlySql, "test_tbl_uniq"));
+      assertQuery(stmt, uniqueIndexOnlySql, new Row(3.14));
+    }
+    // Cleanup.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP DATABASE yb1");
+      stmt.execute("DROP DATABASE yb2");
+      stmt.execute("DROP DATABASE yb3");
+    }
+  }
+
+  @Test
+  public void testColocatedDatabaseRestoreToOriginalDB() throws Exception {
+    String initialDBName = "yb_colocated";
+    int num_tables = 2;
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute(String.format("CREATE DATABASE %s COLOCATED=TRUE", initialDBName));
+    }
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase(initialDBName).connect();
+         Statement stmt = connection2.createStatement()) {
+      stmt.execute("CREATE TABLE test_tbl1 (h INT PRIMARY KEY, a INT, b FLOAT) " +
+                   "WITH (COLOCATED=TRUE)");
+      stmt.execute("CREATE TABLE test_tbl2 (h INT PRIMARY KEY, a INT, b FLOAT) " +
+                   "WITH (COLOCATED=TRUE)");
+
+      // Insert random rows/values for tables to snapshot
+      for (int j = 1; j <= num_tables; ++j) {
+        for (int i = 1; i <= 2000; ++i) {
+          stmt.execute("INSERT INTO test_tbl" + String.valueOf(j) + " (h, a, b) VALUES" +
+            " (" + String.valueOf(i * j) +                       // h
+            ", " + String.valueOf((100 + i) * j) +               // a
+            ", " + String.valueOf((2.14 + (float)i) * j) + ")"); // b
+        }
+      }
+
+      String backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql." + initialDBName);
+      backupDir = new JSONObject(output).getString("snapshot_url");
+
+      // Truncate tables after taking the snapshot.
+      for (int j = 1; j <= num_tables; ++j) {
+        stmt.execute("TRUNCATE TABLE test_tbl" + String.valueOf(j));
+      }
+
+      // Restore back into this same database, this way all the ids will happen to be the same.
+      YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql." + initialDBName);
+
+      // Verify rows.
+      for (int j = 1; j <= num_tables; ++j) {
+        for (int i : new int[] {1, 500, 2000}) {
+          assertQuery(stmt, String.format("SELECT * FROM test_tbl%d WHERE h=%d", j, i * j),
+            new Row(i * j, (100 + i) * j, (2.14 + (float)i) * j));
+          assertQuery(stmt, String.format("SELECT h FROM test_tbl%d WHERE h=%d", j, i * j),
+            new Row(i * j));
+          assertQuery(stmt, String.format("SELECT a FROM test_tbl%d WHERE h=%d", j, i * j),
+            new Row((100 + i) * j));
+          assertQuery(stmt, String.format("SELECT b FROM test_tbl%d WHERE h=%d", j, i * j),
+            new Row((2.14 + (float)i) * j));
+        }
+      }
+    }
+
+    // Cleanup.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute(String.format("DROP DATABASE %s", initialDBName));
     }
   }
 
@@ -741,8 +939,8 @@ public class TestYbBackup extends BasePgSQLTest {
     }
   }
 
-  public void doTestGeoPartitionedBackup(
-      String targetDB, int numRegions, boolean useTablespaces) throws Exception {
+  public String doCreateGeoPartitionedBackup(int numRegions, boolean useTablespaces)
+      throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute(
           " CREATE TABLESPACE region1_ts " +
@@ -826,13 +1024,25 @@ public class TestYbBackup extends BasePgSQLTest {
           throw new IllegalArgumentException("Unexpected numRegions: " + numRegions);
       }
 
+      return output;
+    }
+  }
+
+  public String doTestGeoPartitionedBackup(String targetDB, int numRegions, boolean useTablespaces)
+      throws Exception {
+    String output = null;
+    try (Statement stmt = connection.createStatement()) {
+      output = doCreateGeoPartitionedBackup(numRegions, useTablespaces);
+      JSONObject json = new JSONObject(output);
+      String backupDir = json.getString("snapshot_url");
+
       stmt.execute("INSERT INTO tbl (id, geo) VALUES (9999, 'R1')");
       assertQuery(stmt, "SELECT * FROM tbl WHERE id=1", new Row(1, "R2"));
       assertQuery(stmt, "SELECT * FROM tbl WHERE id=2000", new Row(2000, "R3"));
       assertQuery(stmt, "SELECT * FROM tbl WHERE id=9999", new Row(9999, "R1"));
       assertQuery(stmt, "SELECT COUNT(*) FROM tbl", new Row(2001));
 
-      args.clear();
+      List<String> args = new ArrayList<>();
       if (useTablespaces) {
         args.add("--use_tablespaces");
       }
@@ -890,6 +1100,8 @@ public class TestYbBackup extends BasePgSQLTest {
         stmt.execute("DROP DATABASE " + targetDB);
       }
     }
+
+    return output;
   }
 
   @Test
@@ -933,8 +1145,37 @@ public class TestYbBackup extends BasePgSQLTest {
   }
 
   @Test
+  public void testGeoPartitioningDeleteBackup() throws Exception {
+    String output = doCreateGeoPartitionedBackup(3, false);
+    JSONObject json = new JSONObject(output);
+    String backupDir = json.getString("snapshot_url");
+    List<String> backupDirs = new ArrayList<String>(Arrays.asList(
+        backupDir, json.getString("region1"),
+        json.getString("region2"), json.getString("region3")));
+    LOG.info("Backup folders:" + backupDirs);
+
+    // Ensure the backup folders exist.
+    for (String dirName : backupDirs) {
+      LOG.info("Checking existing folder: " + dirName);
+      File dir = new File(dirName);
+      assertTrue(dir.exists());
+      assertGreaterThan(dir.length(), 0L);
+    }
+
+    YBBackupUtil.runYbBackupDelete(backupDir);
+    // Ensure the backup folders were deleted.
+    for (String dirName : backupDirs) {
+      LOG.info("Checking deleted folder: " + dirName);
+      File dir = new File(dirName);
+      assertFalse(dir.exists());
+      assertEquals(dir.length(), 0L);
+    }
+  }
+
+  @Test
   public void testUserDefinedTypes() throws Exception {
     // TODO(myang): Add ALTER TYPE test after #1893 is fixed.
+    String backupDir = null;
     try (Statement stmt = connection.createStatement()) {
       // A enum type.
       stmt.execute("CREATE TYPE e_t AS ENUM('c', 'b', 'a')");
@@ -1002,7 +1243,10 @@ public class TestYbBackup extends BasePgSQLTest {
                    "'a', 'b', 'c', 'a'), ('a', 'c', 'b', 'b'), ('b', 'a', 'c', 'c')");
       stmt.execute("ALTER TABLE test_tb11 DROP COLUMN c2");
 
-      YBBackupUtil.runYbBackupCreate("--keyspace", "ysql.yugabyte");
+      backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yugabyte");
+      backupDir = new JSONObject(output).getString("snapshot_url");
 
       stmt.execute("INSERT INTO test_tb1 VALUES ('a')");
       stmt.execute("INSERT INTO test_tb2 VALUES(2)");
@@ -1068,7 +1312,7 @@ public class TestYbBackup extends BasePgSQLTest {
       assertRowList(stmt, "SELECT * FROM test_tb11 ORDER BY c1, c4", expectedRows11);
     }
 
-    YBBackupUtil.runYbBackupRestore("--keyspace", "ysql.yb2");
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
 
     try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
          Statement stmt = connection2.createStatement()) {
@@ -1113,5 +1357,46 @@ public class TestYbBackup extends BasePgSQLTest {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("DROP DATABASE yb2");
     }
+  }
+
+  private void testMaterializedViewsHelper(boolean matviewOnMatview) throws Exception {
+    String backupDir = null;
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS test_tbl");
+      stmt.execute("CREATE TABLE test_tbl (t int)");
+      stmt.execute("CREATE MATERIALIZED VIEW test_mv AS SELECT * FROM test_tbl");
+      if (matviewOnMatview) {
+        stmt.execute("CREATE MATERIALIZED VIEW test_mv_2 AS SELECT * FROM test_mv");
+      }
+      stmt.execute("INSERT INTO test_tbl VALUES (1)");
+      stmt.execute("REFRESH MATERIALIZED VIEW test_mv");
+      if (matviewOnMatview) {
+        stmt.execute("REFRESH MATERIALIZED VIEW test_mv_2");
+      }
+      backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yugabyte");
+      backupDir = new JSONObject(output).getString("snapshot_url");
+    }
+
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection2.createStatement()) {
+        assertQuery(stmt, "SELECT * FROM test_mv WHERE t=1", new Row(1));
+        if (matviewOnMatview) {
+          assertQuery(stmt, "SELECT * FROM test_mv_2 WHERE t=1", new Row(1));
+        }
+    }
+  }
+
+  @Test
+  public void testRefreshedMaterializedViewsBackup() throws Exception {
+    testMaterializedViewsHelper(false);
+  }
+
+  @Test
+  public void testRefreshedMaterializedViewsOnMaterializedViewsBackup() throws Exception {
+    testMaterializedViewsHelper(true);
   }
 }

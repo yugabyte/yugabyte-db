@@ -47,7 +47,7 @@ Result<DecodedIntentKey> DecodeIntentKey(const Slice &encoded_intent_key) {
         Corruption, "Intent key is too short: $0 bytes", encoded_intent_key.size());
   }
   intent_prefix.remove_suffix(doc_ht_size + kBytesBeforeDocHt);
-  RETURN_NOT_OK(result.doc_ht.FullyDecodeFrom(
+  result.doc_ht = VERIFY_RESULT(DocHybridTime::FullyDecodeFrom(
       Slice(intent_prefix.data() + intent_prefix.size() + kBytesBeforeDocHt, doc_ht_size)));
   auto* prefix_end = intent_prefix.end();
 

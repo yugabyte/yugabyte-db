@@ -24,6 +24,7 @@ import javax.inject.Inject;
 import java.util.List;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
 
 @Slf4j
 public class BackupTable extends AbstractTaskBase {
@@ -79,6 +80,11 @@ public class BackupTable extends AbstractTaskBase {
             log.info("[" + getName() + "] STDOUT: " + response.message);
             if (actionType == BackupTableParams.ActionType.CREATE) {
               long backupSize = BackupUtil.extractBackupSize(jsonNode);
+              List<BackupUtil.RegionLocations> locations =
+                  BackupUtil.extractPerRegionLocationsFromBackupScriptResponse(jsonNode);
+              if (CollectionUtils.isNotEmpty(locations)) {
+                backup.setPerRegionLocations(backupIdx, locations);
+              }
               backup.setBackupSizeInBackupList(backupIdx, backupSize);
               totalBackupSize += backupSize;
             }
@@ -86,6 +92,8 @@ public class BackupTable extends AbstractTaskBase {
           }
 
           if (actionType == BackupTableParams.ActionType.CREATE) {
+            backup.save();
+            backup.setCompletionTime(backup.getUpdateTime());
             backup.setTotalBackupSize(totalBackupSize);
           }
           backup.transitionState(Backup.BackupState.Completed);
@@ -106,7 +114,14 @@ public class BackupTable extends AbstractTaskBase {
             log.info("[" + getName() + "] STDOUT: " + response.message);
             if (actionType == BackupTableParams.ActionType.CREATE) {
               long backupSize = BackupUtil.extractBackupSize(jsonNode);
+              backup.save();
+              backup.setCompletionTime(backup.getUpdateTime());
               backup.setTotalBackupSize(backupSize);
+              List<BackupUtil.RegionLocations> locations =
+                  BackupUtil.extractPerRegionLocationsFromBackupScriptResponse(jsonNode);
+              if (CollectionUtils.isNotEmpty(locations)) {
+                backup.setPerRegionLocations(-1, locations);
+              }
             }
             backup.transitionState(Backup.BackupState.Completed);
           }

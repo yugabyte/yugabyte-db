@@ -41,7 +41,7 @@
 #include "yb/common/crc16.h"
 #include "yb/common/key_encoder.h"
 #include "yb/common/partial_row.h"
-#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/pgsql_protocol.messages.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/row.h"
 #include "yb/common/schema.h"
@@ -361,9 +361,7 @@ Status PartitionSchema::EncodeKey(const RepeatedPtrField<QLExpressionPB>& hash_c
       for (const auto &col_expr_pb : hash_col_values) {
         AppendToKey(col_expr_pb.value(), &tmp);
       }
-      const uint16_t hash_value = YBPartition::HashColumnCompoundValue(tmp);
-      *buf = EncodeMultiColumnHashValue(hash_value);
-      return Status::OK();
+      return CompleteEncodeKey(tmp, buf);
     }
     case YBHashSchema::kPgsqlHash:
       DLOG(FATAL) << "Illegal code path. PGSQL hash cannot be computed from CQL expression";
@@ -376,39 +374,7 @@ Status PartitionSchema::EncodeKey(const RepeatedPtrField<QLExpressionPB>& hash_c
   return STATUS(InvalidArgument, "Unsupported Partition Schema Type.");
 }
 
-Status PartitionSchema::EncodeKey(const RepeatedPtrField<PgsqlExpressionPB>& hash_col_values,
-                                  string* buf) const {
-  if (!hash_schema_) {
-    return Status::OK();
-  }
-
-  switch (*hash_schema_) {
-    case YBHashSchema::kPgsqlHash: {
-      // TODO(neil) Discussion is needed. PGSQL hash should be done appropriately.
-      // For now, let's not doing anything. Just borrow code from multi column hashing style.
-      string tmp;
-      for (const auto &col_expr_pb : hash_col_values) {
-        AppendToKey(col_expr_pb.value(), &tmp);
-      }
-      const uint16_t hash_value = YBPartition::HashColumnCompoundValue(tmp);
-      *buf = EncodeMultiColumnHashValue(hash_value);
-      return Status::OK();
-    }
-
-    case YBHashSchema::kMultiColumnHash:
-      DLOG(FATAL) << "Illegal code path. CQL hash cannot be computed from PGSQL expression";
-      break;
-
-    case YBHashSchema::kRedisHash:
-      DLOG(FATAL) << "Illegal code path. REDIS hash cannot be computed from PGSQL expression";
-      break;
-  }
-
-  return STATUS(InvalidArgument, "Unsupported Partition Schema Type.");
-}
-
 Status PartitionSchema::EncodeKey(const YBPartialRow& row, string* buf) const {
-
   if (hash_schema_) {
     switch (*hash_schema_) {
       case YBHashSchema::kPgsqlHash:
@@ -459,15 +425,13 @@ Status PartitionSchema::EncodeKey(const ConstContiguousRow& row, string* buf) co
 
 string PartitionSchema::EncodeMultiColumnHashValue(uint16_t hash_value) {
   char value_bytes[kPartitionKeySize];
-  value_bytes[0] = hash_value >> 8;
-  value_bytes[1] = hash_value & 0xff;
-  return string(value_bytes, kPartitionKeySize);
+  BigEndian::Store16(value_bytes, hash_value);
+  return std::string(value_bytes, kPartitionKeySize);
 }
 
-uint16_t PartitionSchema::DecodeMultiColumnHashValue(const string& partition_key) {
-  DCHECK_EQ(partition_key.size(), kPartitionKeySize);
-  const uint8_t *bytes = reinterpret_cast<const uint8_t *>(partition_key.data());
-  return (bytes[0] << 8) | bytes[1];
+uint16_t PartitionSchema::DecodeMultiColumnHashValue(Slice partition_key) {
+  DCHECK_GE(partition_key.size(), kPartitionKeySize);
+  return BigEndian::Load16(partition_key.data());
 }
 
 string PartitionSchema::GetEncodedKeyPrefix(
@@ -880,6 +844,7 @@ string PartitionSchema::PartitionDebugString(const Partition& partition,
   if (hash_schema_) {
     switch (*hash_schema_) {
       case YBHashSchema::kRedisHash: FALLTHROUGH_INTENDED;
+      case YBHashSchema::kPgsqlHash: FALLTHROUGH_INTENDED;
       case YBHashSchema::kMultiColumnHash: {
         const string& pstart = partition.partition_key_start();
         const string& pend = partition.partition_key_end();
@@ -889,8 +854,6 @@ string PartitionSchema::PartitionDebugString(const Partition& partition,
                             Uint16ToHexString(hash_start), Uint16ToHexString(hash_end)));
         return s;
       }
-      case YBHashSchema::kPgsqlHash:
-        return "Pgsql Hash";
     }
   }
 
@@ -1108,7 +1071,7 @@ string PartitionSchema::DebugString(const Schema& schema) const {
         string component = "Multi Column Hash Partition. Partition columns: ";
         const std::vector<ColumnSchema>& cols = schema.columns();
         for (size_t idx = 0; idx < schema.num_hash_key_columns(); idx++) {
-          component.append(Substitute("$0($1)  ", cols[idx].name(), cols[idx].type_info()->name()));
+          component.append(Substitute("$0($1)  ", cols[idx].name(), cols[idx].type_info()->name));
         }
         component_types.push_back(component);
         break;
@@ -1336,6 +1299,24 @@ bool PartitionSchema::IsHashPartitioning() const {
 YBHashSchema PartitionSchema::hash_schema() const {
   CHECK(hash_schema_);
   return *hash_schema_;
+}
+
+void PartitionSchema::ProcessHashKeyEntry(const LWQLValuePB& value_pb, std::string* out) {
+  AppendToKey(value_pb, out);
+}
+
+void PartitionSchema::ProcessHashKeyEntry(const LWPgsqlExpressionPB& expr, std::string* out) {
+  AppendToKey(expr.value(), out);
+}
+
+void PartitionSchema::ProcessHashKeyEntry(const PgsqlExpressionPB& expr, std::string* out) {
+  AppendToKey(expr.value(), out);
+}
+
+Status PartitionSchema::CompleteEncodeKey(const std::string& key, std::string* buf) {
+  const uint16_t hash_value = YBPartition::HashColumnCompoundValue(key);
+  *buf = EncodeMultiColumnHashValue(hash_value);
+  return Status::OK();
 }
 
 } // namespace yb

@@ -202,6 +202,7 @@ DEFINE_test_flag(bool, pause_tserver_get_split_key, false,
                  "Pause before processing a GetSplitKey request.");
 
 DECLARE_int32(heartbeat_interval_ms);
+DECLARE_uint64(rocksdb_max_file_size_for_compaction);
 
 DECLARE_int32(ysql_transaction_abort_timeout_ms);
 
@@ -1311,11 +1312,13 @@ void TabletServiceAdminImpl::DeleteTablet(const DeleteTabletRequestPB* req,
     cas_config_opid_index_less_or_equal = req->cas_config_opid_index_less_or_equal();
   }
   boost::optional<TabletServerErrorPB::Code> error_code;
-  Status s = server_->tablet_manager()->DeleteTablet(req->tablet_id(),
-                                                     delete_type,
-                                                     cas_config_opid_index_less_or_equal,
-                                                     req->hide_only(),
-                                                     &error_code);
+  Status s = server_->tablet_manager()->DeleteTablet(
+      req->tablet_id(),
+      delete_type,
+      tablet::ShouldAbortActiveTransactions(req->should_abort_active_txns()),
+      cas_config_opid_index_less_or_equal,
+      req->hide_only(),
+      &error_code);
   if (PREDICT_FALSE(!s.ok())) {
     HandleErrorResponse(resp, &context, s, error_code);
     return;
@@ -2234,7 +2237,8 @@ void TabletServiceImpl::TakeTransaction(const TakeTransactionRequestPB* req,
                                         TakeTransactionResponsePB* resp,
                                         rpc::RpcContext context) {
   auto transaction = server_->TransactionPool()->Take(
-      client::ForceGlobalTransaction(req->has_is_global() && req->is_global()));
+      client::ForceGlobalTransaction(req->has_is_global() && req->is_global()),
+      context.GetClientDeadline());
   auto metadata = transaction->Release();
   if (!metadata.ok()) {
     LOG(INFO) << "Take failed: " << metadata.status();
@@ -2252,7 +2256,12 @@ void TabletServiceImpl::GetSplitKey(
   PerformAtLeader(req, resp, &context,
       [resp](const LeaderTabletPeer& leader_tablet_peer) -> Status {
         const auto& tablet = leader_tablet_peer.tablet;
-
+        if (FLAGS_rocksdb_max_file_size_for_compaction > 0 &&
+            tablet->schema()->table_properties().HasDefaultTimeToLive()) {
+          auto s = STATUS(NotSupported, "Tablet splitting not supported for TTL tables.");
+          return s.CloneAndAddErrorCode(
+              TabletServerError(TabletServerErrorPB::TABLET_SPLIT_DISABLED_TTL_EXPIRY));
+        }
         if (tablet->MayHaveOrphanedPostSplitData()) {
           return STATUS(IllegalState, "Tablet has orphaned post-split data");
         }
@@ -2275,6 +2284,21 @@ void TabletServiceImpl::GetSharedData(const GetSharedDataRequestPB* req,
   auto& data = server_->SharedObject();
   resp->mutable_data()->assign(pointer_cast<const char*>(&data), sizeof(data));
   context.RespondSuccess();
+}
+
+void TabletServiceAdminImpl::TestRetry(
+    const TestRetryRequestPB* req, TestRetryResponsePB* resp, rpc::RpcContext context) {
+  if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "TestRetry", req, resp, &context)) {
+    return;
+  }
+  auto num_calls = num_test_retry_calls.fetch_add(1) + 1;
+  if (num_calls < req->num_retries()) {
+    SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS_FORMAT(TryAgain, "Got $0 calls of $1", num_calls, req->num_retries()), &context);
+  } else {
+    context.RespondSuccess();
+  }
 }
 
 void TabletServiceImpl::Shutdown() {

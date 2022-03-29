@@ -4,8 +4,6 @@ headerTitle: Snapshot and restore data for YCQL
 linkTitle: Snapshot and restore data
 description: Snapshot and restore data in YugabyteDB for YCQL.
 image: /images/section_icons/manage/enterprise.png
-aliases:
-  - manage/backup-restore/manage-snapshots
 menu:
   latest:
     identifier: snapshots-2-ycql
@@ -18,14 +16,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/manage/backup-restore/snapshot-ysql" class="nav-link">
+    <a href="../snapshot-ysql/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/manage/backup-restore/snapshots-ycql" class="nav-link active">
+    <a href="../snapshots-ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -40,7 +38,7 @@ You can create a transactional backup for a YCQL table (including associated sec
 * Massively parallel, efficient for very large data sets.
 * Once the snapshot command is issued, the database will “buffer” newly incoming writes to that tablet without writing them immediately.
 * The existing data will be flushed to disk and hard links to the files will be created in a `.snapshots` directory on each tablet.
-* The flush to disk and creation of hard links happen quickly. In most cases, the buffered incoming operations won't time out. 
+* The flush to disk and creation of hard links happen quickly. In most cases, the buffered incoming operations won't time out.
 * The snapshot operation is done. Because YugabyteDB is an LSM database, these files will never get modified.
 * If the snapshot takes an unusually long time, some operations may time out. In practice, users should expect such slowness occasionally when using network storage (such as AWS EBS, Persistent Disk in GCP, or SAN storage).
 
@@ -58,7 +56,7 @@ This guide explains how to snapshot and restore data on YugabyteDB. Yugabyte Pla
 
 1. Create a new cluster.
 
-    For more information on creating a local cluster, refer to [Create a local cluster](../../../quick-start/create-local-cluster). For details on flags, refer to the [yb-ctl reference](../../../admin/yb-ctl).
+    For more information on creating a local cluster, refer to [Create a local cluster](../../../quick-start/create-local-cluster). For details on flags, refer to the [yb-ctl reference](../../../admin/yb-ctl/).
 
     ```sh
     $ ./bin/yb-ctl create
@@ -273,7 +271,7 @@ The `keyspace` and `table` can be different from the exported one.
     Table type: index (attaching to the old table id cb612f9693fb40b6beeaa159078effd0)
     Table being imported: ydb.test_tb_name
     Successfully applied snapshot.
-    Object            Old ID                            New ID                          
+    Object            Old ID                            New ID
     Keyspace          485a915f8f794308a6f39398040fada8  6e407151f7ba41cf991f68dfdd5248b9
     Table             cb612f9693fb40b6beeaa159078effd0  5550206e25d140698be031154a805823
     Tablet 0          6a2bf658a3ea47f0ba2515ce484096ad  4da0ca52f96e4ed88f071196890550fd
@@ -295,7 +293,7 @@ The `keyspace` and `table` can be different from the exported one.
 
     {{< note title="Note" >}}
 
-For each tablet, you need to copy the snapshots folder on all tablet peers and in any configured read replica cluster. 
+For each tablet, you need to copy the snapshots folder on all tablet peers and in any configured read replica cluster.
 
     {{< /note >}}
 

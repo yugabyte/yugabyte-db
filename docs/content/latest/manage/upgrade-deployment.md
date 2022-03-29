@@ -3,9 +3,6 @@ title: Upgrade a deployment
 headerTitle: Upgrade a deployment
 linkTitle: Upgrade a deployment
 description: Upgrade a deployment
-aliases:
-  - /deploy/manual-deployment/upgrade-deployment
-  - /latest/manage/upgrade-deployment
 menu:
   latest:
     identifier: manage-upgrade-deployment
@@ -38,7 +35,7 @@ cd /home/yugabyte/softwareyb-$VER/
 
 {{< note title="Note" >}}
 
-If you are using PostgreSQL extensions, make sure to install the extensions in the new YugabyteDB version before upgrading. Follow the steps in [Install and use extensions](../../api/ysql/extensions).
+If you are using PostgreSQL extensions, make sure to install the extensions in the new YugabyteDB version before upgrading the servers. Follow the steps in [Installing extensions](../../explore/ysql-language-features/pg-extensions/#installing-extensions).
 
 {{< /note >}}
 
@@ -82,47 +79,42 @@ cd /home/yugabyte/softwareyb-$VER/
 
 - Pause ~60 seconds before upgrading the next yb-tserver.
 
-## Upgrade YSQL system catalog
+## Upgrade the YSQL system catalog
 
-Similar to PostgreSQL, YugabyteDB YSQL stores the system metadata, (also referred to as system catalog) which includes information about tables, columns, functions, users, and so on in special tables separately, for each database in the cluster.
+Similar to PostgreSQL, YugabyteDB stores YSQL system metadata, referred to as the YSQL system catalog, in special tables. The metadata includes information about tables, columns, functions, users, and so on. The tables are stored separately, one for each database in the cluster.
 
-YSQL system catalog comes as an additional layer to store metadata on top of YugabyteDB software itself. It is accessible through YSQL API and is crucial for the YSQL functionality.
-YSQL system catalog upgrades are not required for clusters where YSQL is not enabled. Learn more about configuring YSQL flags [here](../../reference/configuration/yb-tserver/#ysql-flags).
+When new features are added to YugabyteDB, objects such as new tables and functions need to be added to the system catalog. When you create a new cluster using the latest release, it is initialized with the most recent pre-packaged YSQL system catalog snapshot.
+
+However, the YugabyteDB upgrade process only upgrades binaries, and doesn't affect the YSQL system catalog of an existing cluster - it remains in the same state as before the upgrade. To derive the benefits of the latest YSQL features when upgrading, you need to manually upgrade the YSQL system catalog.
+
+The YSQL system catalog is accessible through the YSQL API and is required for YSQL functionality. YSQL system catalog upgrades are not required for clusters where [YSQL is not enabled](../../reference/configuration/yb-tserver/#ysql-flags).
 
 {{< note title="Note" >}}
-YSQL system catalog upgrades are applicable for clusters with YugabyteDB version 2.8 or higher.
+YSQL system catalog upgrades apply to clusters with YugabyteDB version 2.8 or higher.
 {{< /note >}}
 
-### Why upgrade YSQL system catalog
+### How to upgrade the YSQL system catalog
 
-With the addition of new features , there's a need to add more objects such as new tables and functions to the YSQL system catalog.
-
-The usual YugabyteDB upgrade process involves only upgrading binaries, and it doesn't affect YSQL system catalog of an existing cluster; it remains in the same state as it was before the upgrade.
-
-While a newly created cluster on the latest release is initialized with the most recent pre packaged YSQL system catalog snapshot, an older cluster might want to manually upgrade YSQL system catalog to the latest state instead, thus getting all the benefits of the latest YSQL features.
-
-### How to upgrade YSQL system catalog
-
-After the YugabyteDB upgrade process completes successfully, use the [yb-admin](../../admin/yb-admin/) utility to perform an upgrade of the YSQL system catalog(YSQL upgrade) as follows:
+After completing the YugabyteDB upgrade process, use the [yb-admin](../../admin/yb-admin/) utility to upgrade the YSQL system catalog as follows:
 
 ```sh
 $ ./bin/yb-admin upgrade_ysql
 ```
 
-For a successful YSQL upgrade, a message will be displayed as follows:
+For a successful YSQL upgrade, you will see the following output:
 
 ```output
 YSQL successfully upgraded to the latest version
 ```
 
-In certain scenarios, a YSQL upgrade can take longer than 60 seconds, which is the default timeout value for `yb-admin`. To account for that, run the command with a higher timeout value:
+In certain scenarios, a YSQL upgrade can take longer than 60 seconds, the default timeout value for `yb-admin`. If this happens, run the command with a higher timeout value:
 
 ```sh
 $ ./bin/yb-admin -timeout_ms 180000 upgrade_ysql
 ```
 
-Running the above command is an online operation and doesn't require stopping a running cluster. This command is idempotent and can be run multiple times without any side effects.
+Upgrading the YSQL system catalog is an online operation and doesn't require stopping a running cluster. `upgrade_ysql` is idempotent and can be run multiple times without any side effects.
 
 {{< note title="Note" >}}
-Concurrent operations in a cluster can lead to various transactional conflicts, catalog version mismatches, and read restart errors. This is expected, and should be addressed by rerunning the upgrade command.
+Concurrent operations in a cluster can lead to various transactional conflicts, catalog version mismatches, and read restart errors. This is expected, and should be addressed by re-running `upgrade_ysql`.
 {{< /note >}}

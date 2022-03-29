@@ -119,6 +119,12 @@ YBColumnSpec* YBColumnSpec::Counter() {
   return this;
 }
 
+YBColumnSpec* YBColumnSpec::PgTypeOid(int32_t oid) {
+  data_->has_pg_type_oid = true;
+  data_->pg_type_oid = oid;
+  return this;
+}
+
 YBColumnSpec* YBColumnSpec::RenameTo(const std::string& new_name) {
   data_->has_rename_to = true;
   data_->rename_to = new_name;
@@ -143,7 +149,7 @@ Status YBColumnSpec::ToColumnSchema(YBColumnSchema* col) const {
 
   *col = YBColumnSchema(data_->name, data_->type, nullable, data_->hash_primary_key,
                         data_->static_column, data_->is_counter, data_->order,
-                        data_->sorting_type);
+                        data_->sorting_type, data_->pg_type_oid);
 
   return Status::OK();
 }
@@ -172,6 +178,7 @@ class YBSchemaBuilder::Data {
 
   vector<YBColumnSpec*> specs;
   TableProperties table_properties;
+  std::string schema_name;
 };
 
 YBSchemaBuilder::YBSchemaBuilder()
@@ -206,6 +213,15 @@ YBSchemaBuilder* YBSchemaBuilder::SetPrimaryKey(
 YBSchemaBuilder* YBSchemaBuilder::SetTableProperties(const TableProperties& table_properties) {
   data_->table_properties = table_properties;
   return this;
+}
+
+YBSchemaBuilder* YBSchemaBuilder::SetSchemaName(const std::string& pgschema_name) {
+  data_->schema_name = pgschema_name;
+  return this;
+}
+
+std::string YBSchemaBuilder::SchemaName() {
+  return data_->schema_name;
 }
 
 Status YBSchemaBuilder::Build(YBSchema* schema) {
@@ -306,6 +322,7 @@ Status YBSchemaBuilder::Build(YBSchema* schema) {
   }
 
   RETURN_NOT_OK(schema->Reset(cols, num_key_cols, data_->table_properties));
+  internal::GetSchema(schema).SetSchemaName(data_->schema_name);
 
   return Status::OK();
 }
@@ -325,9 +342,10 @@ YBColumnSchema::YBColumnSchema(const std::string &name,
                                bool is_static,
                                bool is_counter,
                                int32_t order,
-                               SortingType sorting_type) {
-  col_ = std::make_unique<ColumnSchema>(
-      name, type, is_nullable, is_hash_key, is_static, is_counter, order, sorting_type);
+                               SortingType sorting_type,
+                               int32_t pg_type_oid) {
+  col_ = std::make_unique<ColumnSchema>(name, type, is_nullable, is_hash_key, is_static, is_counter,
+                                        order, sorting_type, pg_type_oid);
 }
 
 YBColumnSchema::YBColumnSchema(const YBColumnSchema& other) {
@@ -386,6 +404,10 @@ bool YBColumnSchema::is_counter() const {
 
 int32_t YBColumnSchema::order() const {
   return DCHECK_NOTNULL(col_)->order();
+}
+
+int32_t YBColumnSchema::pg_type_oid() const {
+  return DCHECK_NOTNULL(col_)->pg_type_oid();
 }
 
 InternalType YBColumnSchema::ToInternalDataType(const std::shared_ptr<QLType>& ql_type) {
@@ -598,6 +620,14 @@ size_t YBSchema::num_hash_key_columns() const {
 
 size_t YBSchema::num_range_key_columns() const {
   return schema_->num_range_key_columns();
+}
+
+bool YBSchema::has_colocation_id() const {
+  return schema_->has_colocation_id();
+}
+
+ColocationId YBSchema::colocation_id() const {
+  return schema_->colocation_id();
 }
 
 bool YBSchema::is_compatible_with_previous_version() const {

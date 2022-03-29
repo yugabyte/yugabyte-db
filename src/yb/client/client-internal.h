@@ -234,6 +234,11 @@ class YBClient::Data {
                                     CoarseTimePoint deadline,
                                     std::shared_ptr<YBTableInfo> info,
                                     StatusCallback callback);
+  CHECKED_STATUS GetTablegroupSchemaById(YBClient* client,
+                                         const TablegroupId& parent_tablegroup_table_id,
+                                         CoarseTimePoint deadline,
+                                         std::shared_ptr<std::vector<YBTableInfo>> info,
+                                         StatusCallback callback);
   CHECKED_STATUS GetColocatedTabletSchemaById(YBClient* client,
                                               const TableId& parent_colocated_table_id,
                                               CoarseTimePoint deadline,
@@ -494,6 +499,7 @@ class YBClient::Data {
   std::unique_ptr<ThreadPool> threadpool_;
 
   const ClientId id_;
+  const std::string log_prefix_;
 
   // Used to track requests that were sent to a particular tablet, so it could track different
   // RPCs related to the same write operation and reject duplicates.
@@ -533,10 +539,6 @@ Status RetryFunc(
     const std::string& timeout_msg,
     const std::function<Status(CoarseTimePoint, bool*)>& func,
     const CoarseDuration max_wait = std::chrono::seconds(2));
-
-// TODO(PgClient) Remove after removing YBTable from postgres.
-CHECKED_STATUS CreateTableInfoFromTableSchemaResp(
-    const master::GetTableSchemaResponsePB& resp, YBTableInfo* info);
 
 } // namespace client
 } // namespace yb

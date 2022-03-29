@@ -121,6 +121,9 @@ METRIC_DEFINE_coarse_histogram(
   yb::MetricUnit::kMicroseconds,
   "Microseconds spent resolving DNS requests during MetaCache::InitProxy");
 
+DECLARE_string(placement_cloud);
+DECLARE_string(placement_region);
+
 namespace yb {
 
 using consensus::RaftPeerPB;
@@ -207,7 +210,7 @@ Status RemoteTabletServer::InitProxy(YBClient* client) {
 
   // TODO: if the TS advertises multiple host/ports, pick the right one
   // based on some kind of policy. For now just use the first always.
-  auto hostport = HostPortFromPB(DesiredHostPort(
+  auto hostport = HostPortFromPB(yb::DesiredHostPort(
       public_rpc_hostports_, private_rpc_hostports_, cloud_info_pb_,
       client->data_->cloud_info_pb_));
   CHECK(!hostport.host().empty());
@@ -235,20 +238,6 @@ bool RemoteTabletServer::IsLocal() const {
 
 const std::string& RemoteTabletServer::permanent_uuid() const {
   return uuid_;
-}
-
-const CloudInfoPB& RemoteTabletServer::cloud_info() const {
-  return cloud_info_pb_;
-}
-
-const google::protobuf::RepeatedPtrField<HostPortPB>&
-    RemoteTabletServer::public_rpc_hostports() const {
-  return public_rpc_hostports_;
-}
-
-const google::protobuf::RepeatedPtrField<HostPortPB>&
-    RemoteTabletServer::private_rpc_hostports() const {
-  return private_rpc_hostports_;
 }
 
 shared_ptr<TabletServerServiceProxy> RemoteTabletServer::proxy() const {
@@ -292,6 +281,36 @@ bool RemoteTabletServer::HasHostFrom(const std::unordered_set<std::string>& host
 bool RemoteTabletServer::HasCapability(CapabilityId capability) const {
   SharedLock<rw_spinlock> lock(mutex_);
   return std::binary_search(capabilities_.begin(), capabilities_.end(), capability);
+}
+
+bool RemoteTabletServer::IsLocalRegion() const {
+  SharedLock<rw_spinlock> lock(mutex_);
+  return cloud_info_pb_.placement_cloud() == FLAGS_placement_cloud &&
+         cloud_info_pb_.placement_region() == FLAGS_placement_region;
+}
+
+LocalityLevel RemoteTabletServer::LocalityLevelWith(const CloudInfoPB& cloud_info) const {
+  SharedLock<rw_spinlock> lock(mutex_);
+  if (!cloud_info_pb_.has_placement_region() || !cloud_info.has_placement_region() ||
+      cloud_info_pb_.placement_region() != cloud_info.placement_region()) {
+    return LocalityLevel::kNone;
+  }
+  if (!cloud_info_pb_.has_placement_zone() || !cloud_info.has_placement_zone() ||
+      cloud_info_pb_.placement_zone() != cloud_info.placement_zone()) {
+    return LocalityLevel::kRegion;
+  }
+  return LocalityLevel::kZone;
+}
+
+HostPortPB RemoteTabletServer::DesiredHostPort(const CloudInfoPB& cloud_info) const {
+  SharedLock<rw_spinlock> lock(mutex_);
+  return yb::DesiredHostPort(
+      public_rpc_hostports_, private_rpc_hostports_, cloud_info_pb_, cloud_info);
+}
+
+std::string RemoteTabletServer::TEST_PlacementZone() const {
+  SharedLock<rw_spinlock> lock(mutex_);
+  return cloud_info_pb_.placement_zone();
 }
 
 std::string ReplicasCount::ToString() {
@@ -648,7 +667,7 @@ void LookupCallbackVisitor::operator()(
 MetaCache::MetaCache(YBClient* client)
   : client_(client),
     master_lookup_sem_(FLAGS_max_concurrent_master_lookups),
-    log_prefix_(Format("MetaCache($0): ", static_cast<void*>(this))) {
+    log_prefix_(Format("MetaCache($0)(client_id: $1): ", static_cast<void*>(this), client_->id())) {
 }
 
 MetaCache::~MetaCache() {
@@ -773,6 +792,15 @@ void LookupRpc::SendRpc() {
     ScheduleRetry(STATUS(TryAgain, "Client has too many outstanding requests to the master"));
     return;
   }
+
+  // See YBClient::Data::SyncLeaderMasterRpc().
+  auto now = CoarseMonoClock::Now();
+  if (retrier().deadline() < now) {
+    Finished(STATUS_FORMAT(TimedOut, "Timed out after deadline expired, passed: $0",
+                           MonoDelta(now - retrier().start())));
+    return;
+  }
+  mutable_retrier()->PrepareController();
 
   ClientMasterRpcBase::SendRpc();
 }
@@ -1079,8 +1107,9 @@ void MetaCache::MaybeUpdateClientRequests(const RemoteTablet& tablet) {
   auto& tablet_requests = client_->data_->tablet_requests_;
   const auto requests_it = tablet_requests.find(tablet.split_parent_tablet_id());
   if (requests_it == tablet_requests.end()) {
-    VLOG_WITH_PREFIX(2) << "Can't find request_id_seq for tablet "
-                        << tablet.split_parent_tablet_id();
+    VLOG_WITH_PREFIX(2) << "Can't find request_id_seq for parent tablet "
+                        << tablet.split_parent_tablet_id()
+                        << " (split_depth: " << tablet.split_depth() - 1 << ")";
     // This can happen if client wasn't active (for example node was partitioned away) during
     // sequence of splits that resulted in `tablet` creation, so we don't have info about `tablet`
     // split parent.
@@ -1096,7 +1125,8 @@ void MetaCache::MaybeUpdateClientRequests(const RemoteTablet& tablet) {
     return;
   }
   VLOG_WITH_PREFIX(2) << "Setting request_id_seq for tablet " << tablet.tablet_id()
-                      << " from tablet " << tablet.split_parent_tablet_id() << " to "
+                      << " (split_depth: " << tablet.split_depth() << ") from tablet "
+                      << tablet.split_parent_tablet_id() << " to "
                       << requests_it->second.request_id_seq;
   tablet_requests[tablet.tablet_id()].request_id_seq = requests_it->second.request_id_seq;
 }
@@ -1996,7 +2026,7 @@ void MetaCache::LookupTabletByKey(const std::shared_ptr<YBTable>& table,
   const auto table_partition_list = table->GetVersionedPartitions();
   const auto partition_start = client::FindPartitionStart(table_partition_list, partition_key);
   VLOG_WITH_PREFIX_AND_FUNC(5) << "Table: " << table->ToString()
-                    << ", partition_list_version: " << table_partition_list->version
+                    << ", table_partition_list: " << table_partition_list->ToString()
                     << ", partition_key: " << Slice(partition_key).ToDebugHexString()
                     << ", partition_start: " << Slice(*partition_start).ToDebugHexString();
 

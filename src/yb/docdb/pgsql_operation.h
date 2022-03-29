@@ -153,7 +153,7 @@ class PgsqlReadOperation : public DocExprExecutor {
                          faststring *result_buffer,
                          HybridTime *restart_read_ht);
 
-  CHECKED_STATUS GetTupleId(QLValue *result) const override;
+  CHECKED_STATUS GetTupleId(QLValuePB *result) const override;
 
   CHECKED_STATUS GetIntents(const Schema& schema, KeyValueWriteBatchPB* out);
 

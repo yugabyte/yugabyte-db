@@ -28,6 +28,7 @@
 #include "yb/util/env.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_trim.h"
+#include "yb/docdb/docdb_pgapi.h"
 
 using std::string;
 using std::make_shared;
@@ -39,6 +40,11 @@ using std::vector;
 
 namespace yb {
 namespace docdb {
+
+void SetValueFromQLBinaryWrapper(
+    QLValuePB ql_value, const int pg_data_type, DatumMessagePB* cdc_datum_message) {
+  WARN_NOT_OK(yb::docdb::SetValueFromQLBinary(ql_value, pg_data_type, cdc_datum_message), "Failed");
+}
 
 rocksdb::DB* DocDBRocksDBUtil::rocksdb() {
   return DCHECK_NOTNULL(regular_db_.get());
@@ -253,8 +259,11 @@ Status DocDBRocksDBUtil::WriteSimple(int index) {
   op_id_.term = index / 2;
   op_id_.index = index;
   auto& dwb = DefaultDocWriteBatch();
+  QLValuePB value;
+  value.set_int32_value(index);
   RETURN_NOT_OK(dwb.SetPrimitive(
-      DocPath(encoded_doc_key, PrimitiveValue(ColumnId(10))), PrimitiveValue(index)));
+      DocPath(encoded_doc_key, PrimitiveValue(ColumnId(10))),
+      ValueRef(value, SortingType::kNotSpecified)));
   return WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(1000 * index));
 }
 
@@ -274,20 +283,21 @@ string DocDBRocksDBUtil::DocDBDebugDumpToStr() {
 
 Status DocDBRocksDBUtil::SetPrimitive(
     const DocPath& doc_path,
-    const Value& value,
+    const ValueControlFields& control_fields,
+    const ValueRef& value,
     const HybridTime hybrid_time,
     const ReadHybridTime& read_ht) {
   auto dwb = MakeDocWriteBatch();
-  RETURN_NOT_OK(dwb.SetPrimitive(doc_path, value, read_ht));
+  RETURN_NOT_OK(dwb.SetPrimitive(doc_path, control_fields, value, read_ht));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
 Status DocDBRocksDBUtil::SetPrimitive(
     const DocPath& doc_path,
-    const PrimitiveValue& primitive_value,
+    const QLValuePB& value,
     const HybridTime hybrid_time,
     const ReadHybridTime& read_ht) {
-  return SetPrimitive(doc_path, Value(primitive_value), hybrid_time, read_ht);
+  return SetPrimitive(doc_path, ValueRef(value), hybrid_time, read_ht);
 }
 
 Status DocDBRocksDBUtil::AddExternalIntents(
@@ -333,7 +343,7 @@ Status DocDBRocksDBUtil::AddExternalIntents(
       for (const auto& subkey : intent.doc_path.subkeys()) {
         subkey.AppendToKey(&intent_key_);
       }
-      intent_value_ = intent.value.Encode();
+      intent_value_ = intent.value;
 
       return std::pair<Slice, Slice>(intent_key_.AsSlice(), intent_value_);
     }
@@ -365,7 +375,7 @@ Status DocDBRocksDBUtil::AddExternalIntents(
 
 Status DocDBRocksDBUtil::InsertSubDocument(
     const DocPath& doc_path,
-    const SubDocument& value,
+    const ValueRef& value,
     const HybridTime hybrid_time,
     MonoDelta ttl,
     const ReadHybridTime& read_ht) {
@@ -377,7 +387,7 @@ Status DocDBRocksDBUtil::InsertSubDocument(
 
 Status DocDBRocksDBUtil::ExtendSubDocument(
     const DocPath& doc_path,
-    const SubDocument& value,
+    const ValueRef& value,
     const HybridTime hybrid_time,
     MonoDelta ttl,
     const ReadHybridTime& read_ht) {
@@ -389,7 +399,7 @@ Status DocDBRocksDBUtil::ExtendSubDocument(
 
 Status DocDBRocksDBUtil::ExtendList(
     const DocPath& doc_path,
-    const SubDocument& value,
+    const ValueRef& value,
     HybridTime hybrid_time,
     const ReadHybridTime& read_ht) {
   auto dwb = MakeDocWriteBatch();
@@ -400,7 +410,7 @@ Status DocDBRocksDBUtil::ExtendList(
 Status DocDBRocksDBUtil::ReplaceInList(
     const DocPath &doc_path,
     const int target_cql_index,
-    const SubDocument& value,
+    const ValueRef& value,
     const ReadHybridTime& read_ht,
     const HybridTime& hybrid_time,
     const rocksdb::QueryId query_id,

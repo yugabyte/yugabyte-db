@@ -23,14 +23,14 @@ public class CallHome {
 
   private final ExecutionContext executionContext;
 
-  private CallHomeManager callHomeManager;
+  private final CallHomeManager callHomeManager;
 
   private final Environment environment;
 
   // Interval at which to send callhome diagnostics in minutes
-  private final int YB_CALLHOME_INTERVAL = 60;
+  private static final int YB_CALLHOME_INTERVAL = 60;
 
-  private AtomicBoolean running = new AtomicBoolean(false);
+  private final AtomicBoolean running = new AtomicBoolean(false);
 
   @Inject
   public CallHome(
@@ -56,7 +56,7 @@ public class CallHome {
         .schedule(
             Duration.create(0, TimeUnit.MINUTES), // initialDelay
             Duration.create(YB_CALLHOME_INTERVAL, TimeUnit.MINUTES), // interval
-            () -> scheduleRunner(),
+            this::scheduleRunner,
             this.executionContext);
   }
 

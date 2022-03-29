@@ -23,7 +23,7 @@ Before starting, you need to verify that the following are installed and configu
 
 - `kubectl`
   - For more information, refer to [Install and Set Up kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl/).
-  - [Kubernetes API v1.18.0](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.18/)
+  - [Kubernetes API](https://kubernetes.io/docs/reference/kubernetes-api/)
 - minikube
   - For more information, refer to [minikube start](https://minikube.sigs.k8s.io/docs/start/).
 - Docker
@@ -60,7 +60,7 @@ Before starting, you need to verify that the following are installed and configu
     🏄  Done! kubectl is now configured to use "minikube" cluster and "default" namespace by default
     ```
 
-1. Open a 2nd terminal and start the minikube dashboard. 
+1. Open a 2nd terminal and start the minikube dashboard.
 
     ```sh
     $ minikube dashboard
@@ -84,7 +84,7 @@ To deploy the application, you first point your shell to minikube’s Docker dae
 
 ### Point your shell to minikube
 
-1. In your first terminal, run the following command: 
+1. In your first terminal, run the following command:
 
     ```sh
     $ minikube docker-env
@@ -117,7 +117,7 @@ To deploy the application, you first point your shell to minikube’s Docker dae
     ```sh
     $ docker tag [image_id] spring-petclinic
     ```
-    
+
     You can find your image id by running `docker image ls`.
 
 ### Create the manifest file and deploy in minikube

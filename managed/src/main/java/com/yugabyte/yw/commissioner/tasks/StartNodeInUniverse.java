@@ -14,12 +14,12 @@ import static com.yugabyte.yw.common.Util.areMastersUnderReplicated;
 
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -51,8 +51,6 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
     NodeDetails currentNode = null;
     try {
       checkUniverseVersion();
-      // Create the task list sequence.
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
       // Set the 'updateInProgress' flag to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
       log.info(
@@ -102,7 +100,10 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
 
         // Set gflags for master.
         createGFlagsOverrideTasks(
-            ImmutableList.of(currentNode), ServerType.MASTER, true /*isShell */);
+            ImmutableList.of(currentNode),
+            ServerType.MASTER,
+            true /*isShell */,
+            VmUpgradeTaskType.None);
 
         // Start a master process.
         createStartMasterTasks(new HashSet<NodeDetails>(Arrays.asList(currentNode)))
@@ -159,7 +160,7 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
       // Mark universe update success to true
       createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.StartingNode);
 
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
       // Reset the state, on any failure, so that the actions can be retried.

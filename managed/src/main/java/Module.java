@@ -6,8 +6,6 @@ import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.cloud.aws.AWSCloudModule;
 import com.yugabyte.yw.commissioner.BackupGarbageCollector;
 import com.yugabyte.yw.commissioner.CallHome;
-import com.yugabyte.yw.common.GFlagsValidation;
-import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.commissioner.DefaultExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.ExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.HealthChecker;
@@ -20,15 +18,16 @@ import com.yugabyte.yw.common.AlertManager;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.ExtraMigrationManager;
+import com.yugabyte.yw.common.GFlagsValidation;
 import com.yugabyte.yw.common.HealthManager;
-import com.yugabyte.yw.common.KubernetesManager;
-import com.yugabyte.yw.common.ShellKubernetesManager;
 import com.yugabyte.yw.common.NativeKubernetesManager;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlatformInstanceClientFactory;
 import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.ShellKubernetesManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.TemplateManager;
 import com.yugabyte.yw.common.YamlWrapper;
@@ -47,13 +46,16 @@ import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.common.services.LocalYBClientService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.ybflyway.YBFlywayInit;
+import com.yugabyte.yw.controllers.MetricGrafanaController;
 import com.yugabyte.yw.controllers.PlatformHttpActionAdapter;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.queries.QueryHelper;
 import com.yugabyte.yw.scheduler.Scheduler;
+import javax.persistence.PersistenceException;
 import lombok.extern.slf4j.Slf4j;
 import org.pac4j.core.client.Clients;
 import org.pac4j.core.config.Config;
+import org.pac4j.core.http.url.DefaultUrlResolver;
 import org.pac4j.oidc.client.OidcClient;
 import org.pac4j.oidc.config.OidcConfiguration;
 import org.pac4j.oidc.profile.OidcProfile;
@@ -62,8 +64,6 @@ import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
 import play.Configuration;
 import play.Environment;
-
-import javax.persistence.PersistenceException;
 
 /**
  * This class is a Guice module that tells Guice to bind different types
@@ -141,9 +141,13 @@ public class Module extends AbstractModule {
       bind(TaskExecutor.class).asEagerSingleton();
       bind(ShellKubernetesManager.class).asEagerSingleton();
       bind(NativeKubernetesManager.class).asEagerSingleton();
+      bind(SupportBundleUtil.class).asEagerSingleton();
+      bind(MetricGrafanaController.class).asEagerSingleton();
 
       final CallbackController callbackController = new CallbackController();
-      callbackController.setDefaultUrl(config.getString("yb.url", ""));
+      // TODO(sbapat): Check whats the use case for setting default url because '/' is anyway
+      //  used when we do not call setDefaultUrl here.
+      callbackController.setDefaultUrl(config.getString("yb.security.oidcDefaultRedirectUrl"));
       bind(CallbackController.class).toInstance(callbackController);
     }
   }
@@ -154,39 +158,40 @@ public class Module extends AbstractModule {
     final OidcConfiguration oidcConfiguration = new OidcConfiguration();
 
     try {
-      if (runtimeConfigFactory.globalRuntimeConf().getString("yb.security.type").equals("OIDC")) {
-        oidcConfiguration.setClientId(
-            runtimeConfigFactory.globalRuntimeConf().getString("yb.security.clientID"));
-        oidcConfiguration.setSecret(
-            runtimeConfigFactory.globalRuntimeConf().getString("yb.security.secret"));
-        oidcConfiguration.setScope(
-            runtimeConfigFactory.globalRuntimeConf().getString("yb.security.oidcScope"));
-        oidcConfiguration.setDiscoveryURI(
-            runtimeConfigFactory.globalRuntimeConf().getString("yb.security.discoveryURI"));
-        oidcConfiguration.setMaxClockSkew(3600);
-        oidcConfiguration.setResponseType("code");
+      final com.typesafe.config.Config config = runtimeConfigFactory.globalRuntimeConf();
+      if (buildOidcClientFromAppConfig(oidcConfiguration, config)) {
         return new OidcClient<>(oidcConfiguration);
       }
     } catch (PersistenceException e) {
+      // TODO(sbapat): This should not be needed.
       log.debug("Defaulting to static configuration since runtime configuration is not available.");
-      if (config.getString("yb.security.type", "").equals("OIDC")) {
-        oidcConfiguration.setClientId(config.getString("yb.security.clientID", ""));
-        oidcConfiguration.setSecret(config.getString("yb.security.secret", ""));
-        oidcConfiguration.setScope(config.getString("yb.security.oidcScope", ""));
-        oidcConfiguration.setDiscoveryURI(config.getString("yb.security.discoveryURI", ""));
-        oidcConfiguration.setMaxClockSkew(3600);
-        oidcConfiguration.setResponseType("code");
+      com.typesafe.config.Config config1 = this.config.underlying();
+      if (buildOidcClientFromAppConfig(oidcConfiguration, config1)) {
         return new OidcClient<>(oidcConfiguration);
       }
     }
     return new OidcClient<>(oidcConfiguration);
   }
 
+  private boolean buildOidcClientFromAppConfig(
+      OidcConfiguration oidcConfiguration, com.typesafe.config.Config config) {
+    if (config.getString("yb.security.type").equals("OIDC")) {
+      oidcConfiguration.setClientId(config.getString("yb.security.clientID"));
+      oidcConfiguration.setSecret(config.getString("yb.security.secret"));
+      oidcConfiguration.setScope(config.getString("yb.security.oidcScope"));
+      oidcConfiguration.setDiscoveryURI(config.getString("yb.security.discoveryURI"));
+      oidcConfiguration.setMaxClockSkew(3600);
+      oidcConfiguration.setResponseType("code");
+      return true;
+    }
+    return false;
+  }
+
   @Provides
-  protected Config provideConfig(OidcClient<OidcProfile, OidcConfiguration> oidcClient) {
+  protected Config providePac4jConfig(OidcClient<OidcProfile, OidcConfiguration> oidcClient) {
     final Clients clients =
-        new Clients(
-            String.format("%s/api/v1/callback", config.getString("yb.url", "")), oidcClient);
+        new Clients(config.getString("yb.security.oidcCallbackUrl"), oidcClient);
+    clients.setUrlResolver(new DefaultUrlResolver(true));
     final Config config = new Config(clients);
     config.setHttpActionAdapter(new PlatformHttpActionAdapter());
     return config;

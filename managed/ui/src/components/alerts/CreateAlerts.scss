@@ -1,3 +1,5 @@
+$ALERT_INACTIVE : #808080;
+
 #alert-config-tab-panel {
   textarea.form-control {
     padding: 12px;
@@ -163,10 +165,34 @@
 }
 
 .name-tag {
-  font-size: 8px;
+  font-size: 10px;
   color: #555555;
   background: #e1e1e1;
-  padding: 2px 5px;
+  padding: 4px 5px;
+  width: 50px;
+  height: 16px;
+  font-weight: 500;
+  line-height: 16px;
+  border-radius: 4px;
+}
+.highlight {
+  background-color: #cbdaff;
+}
+.alert-name{
+  max-width: 200px;
+  display: table-cell;
+}
+.alert-inactive {
+  color: $ALERT_INACTIVE;
+}
+.no-destination-msg{
+  color: $ALERT_INACTIVE;
+  display: flex;
+  align-items: baseline;
+  i {
+    margin-right: 4px;
+    font-size: 16px;
+  }
 }
 
 .actions-dropdown {
@@ -206,7 +232,7 @@
 }
 
 .filters {
-  padding-right: 35px;
+  padding-right: 25px;
 }
 
 .leftBorder {
@@ -223,6 +249,9 @@
 
   .react-bs-table-pagination {
     margin-top: 30px !important;
+    .col-lg-6:first-child{
+      padding: 0;
+    }
   }
 
   .yb-loader-circle {

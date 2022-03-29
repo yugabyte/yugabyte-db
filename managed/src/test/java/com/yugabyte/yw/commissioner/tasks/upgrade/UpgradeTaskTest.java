@@ -12,6 +12,7 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.lenient;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
@@ -44,6 +45,10 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.junit.Before;
+import org.yb.client.ChangeMasterClusterConfigResponse;
+import org.yb.client.GetLoadMovePercentResponse;
+import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.master.CatalogEntityInfo;
 import org.yb.client.IsServerReadyResponse;
 import org.yb.client.YBClient;
 
@@ -98,7 +103,9 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
           TaskType.UnivSetCertificate,
           TaskType.UniverseSetTlsParams,
           TaskType.UniverseUpdateSucceeded,
-          TaskType.WaitForMasterLeader);
+          TaskType.WaitForMasterLeader,
+          TaskType.ModifyBlackList,
+          TaskType.WaitForLeaderBlacklistCompletion);
 
   @Override
   @Before
@@ -158,6 +165,15 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
             defaultUniverse.universeUUID,
             ApiUtils.mockUniverseUpdater(userIntent, placementInfo, true));
 
+    CatalogEntityInfo.SysClusterConfigEntryPB.Builder configBuilder =
+        CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder().setVersion(1);
+    GetMasterClusterConfigResponse mockConfigResponse =
+        new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
+    ChangeMasterClusterConfigResponse mockMasterChangeConfigResponse =
+        new ChangeMasterClusterConfigResponse(1112, "", null);
+    GetLoadMovePercentResponse mockGetLoadMovePercentResponse =
+        new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null);
+
     // Setup mocks
     mockClient = mock(YBClient.class);
     try {
@@ -167,6 +183,11 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
           .thenReturn(HostAndPort.fromString("10.0.0.2").withDefaultPort(11));
       IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
       when(mockClient.isServerReady(any(HostAndPort.class), anyBoolean())).thenReturn(okReadyResp);
+      when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
+      when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockMasterChangeConfigResponse);
+      lenient()
+          .when(mockClient.getLeaderBlacklistCompletion())
+          .thenReturn(mockGetLoadMovePercentResponse);
     } catch (Exception ignored) {
     }
 
@@ -229,6 +250,19 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
   }
 
   protected void assertNodeSubTask(List<TaskInfo> subTasks, Map<String, Object> assertValues) {
+    /*
+     * Leader blacklisting may add ModifyBlackList task to subTasks.
+     * Task details for ModifyBlacklist task do not contain the required
+     * keys being asserted here. So, remove task types of ModifyBlackList
+     * from subTasks before asserting for required keys.
+     */
+    subTasks =
+        subTasks
+            .stream()
+            .filter(t -> t.getTaskType() != TaskType.ModifyBlackList)
+            .collect(Collectors.toList());
+    ;
+
     List<String> nodeNames =
         subTasks
             .stream()

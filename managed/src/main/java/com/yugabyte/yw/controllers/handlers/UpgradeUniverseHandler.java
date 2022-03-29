@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CertsRotateParams;
@@ -20,12 +21,10 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
-import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.HashMap;
 import java.util.Map;
@@ -129,14 +128,7 @@ public class UpgradeUniverseHandler {
         customer,
         universe);
   }
-  /**
-   * Called when TLS CONFIG is toggeled.
-   *
-   * @param requestParams
-   * @param customer
-   * @param universe
-   * @return
-   */
+
   public UUID rotateCerts(CertsRotateParams requestParams, Customer customer, Universe universe) {
     log.debug(
         "rotateCerts called with rootCA: {}",
@@ -147,35 +139,39 @@ public class UpgradeUniverseHandler {
     requestParams.universeUUID = universe.universeUUID;
     requestParams.expectedUniverseVersion = universe.version;
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-
     // Generate client certs if rootAndClientRootCASame is true and rootCA is self-signed.
     // This is there only for legacy support, no need if rootCA and clientRootCA are different.
     if (userIntent.enableClientToNodeEncrypt && requestParams.rootAndClientRootCASame) {
-
-      UUID cliRootCA = requestParams.clientRootCA;
-      if (requestParams.rootAndClientRootCASame) cliRootCA = requestParams.rootCA;
-
-      CertificateInfo rootCert = CertificateInfo.get(cliRootCA);
-      log.debug(
-          "rotateCerts called with clientRootCA: {}",
-          (cliRootCA != null) ? cliRootCA.toString() : "NULL");
+      CertificateInfo rootCert = CertificateInfo.get(requestParams.rootCA);
       if (rootCert.certType == CertConfigType.SelfSigned
           || rootCert.certType == CertConfigType.HashicorpVault) {
         CertificateHelper.createClientCertificate(
-            cliRootCA,
+            requestParams.rootCA,
             String.format(
                 CertificateHelper.CERT_PATH,
                 runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"),
                 customer.uuid.toString(),
-                cliRootCA.toString()),
+                requestParams.rootCA.toString()),
             CertificateHelper.DEFAULT_CLIENT,
             null,
             null);
       }
     }
 
+    if (userIntent.providerType.equals(CloudType.kubernetes)) {
+      // Certs rotate does not change universe version. Check for current version of helm chart.
+      checkHelmChartExists(
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
+    }
+
     return submitUpgradeTask(
-        TaskType.CertsRotate, CustomerTask.TaskType.CertsRotate, requestParams, customer, universe);
+        userIntent.providerType.equals(CloudType.kubernetes)
+            ? TaskType.CertsRotateKubernetesUpgrade
+            : TaskType.CertsRotate,
+        CustomerTask.TaskType.CertsRotate,
+        requestParams,
+        customer,
+        universe);
   }
 
   public UUID resizeNode(ResizeNodeParams requestParams, Customer customer, Universe universe) {
@@ -189,14 +185,7 @@ public class UpgradeUniverseHandler {
         TaskType.ResizeNode, CustomerTask.TaskType.ResizeNode, requestParams, customer, universe);
   }
 
-  /**
-   * Enable/Disable TLS on Cluster
-   *
-   * @param requestParams
-   * @param customer
-   * @param universe
-   * @return
-   */
+  // Enable/Disable TLS on Cluster
   public UUID toggleTls(TlsToggleParams requestParams, Customer customer, Universe universe) {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;

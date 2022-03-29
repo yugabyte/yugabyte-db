@@ -32,6 +32,7 @@ struct PgObjectId {
 
   PgObjectId(PgOid db_oid, PgOid obj_oid)
       : database_oid(db_oid), object_oid(obj_oid) {}
+
   PgObjectId()
       : database_oid(kPgInvalidOid), object_oid(kPgInvalidOid) {}
 
@@ -41,15 +42,15 @@ struct PgObjectId {
     return database_oid != kPgInvalidOid && object_oid != kPgInvalidOid;
   }
 
-  TableId GetYBTableId() const {
+  TableId GetYbTableId() const {
     return GetPgsqlTableId(database_oid, object_oid);
   }
 
-  TablegroupId GetYBTablegroupId() const {
+  TablegroupId GetYbTablegroupId() const {
     return GetPgsqlTablegroupId(database_oid, object_oid);
   }
 
-  TablespaceId GetYBTablespaceId() const {
+  TablespaceId GetYbTablespaceId() const {
     return GetPgsqlTablespaceId(object_oid);
   }
 
@@ -75,6 +76,11 @@ struct PgObjectId {
   template <class PB>
   static PgObjectId FromPB(const PB& pb) {
     return PgObjectId(pb.database_oid(), pb.object_oid());
+  }
+
+  template <class PB>
+  static TableId GetYbTableIdFromPB(const PB& pb) {
+    return FromPB(pb).GetYbTableId();
   }
 };
 

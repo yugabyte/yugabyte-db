@@ -22,7 +22,7 @@ Below is a pictorial illustration of this in the case of a 4-node YugabyteDB uni
 
 ![tserver_overview](/images/architecture/tserver_overview.png)
 
-The tablet-peers corresponding to each tablet hosted on different YB-TServers form a Raft group and replicate data between each other. The system shown above comprises of 16 independent Raft groups. The details of this replication are covered in a previous section on replication.
+The tablet-peers corresponding to each tablet hosted on different YB-TServers form a Raft group and replicate data between each other. The system shown above comprises of 16 independent Raft groups. The details of this replication are covered in another section on replication.
 
 Within each YB-TServer, there is a lot of cross-tablet intelligence built in to maximize resource efficiency. Below are just some of the ways the YB-TServer coordinates operations across tablets hosted by it:
 
@@ -48,7 +48,7 @@ In addition to throttling controls for compactions, YugabyteDB does a variety of
 
 ### Manual compactions
 
-YugabyteDB allows compactions to be externally triggered on a table using the [`compact_table`](../../../admin/yb-admin/#compact-table) command in the [`yb-admin` utility](../../../admin/yb-admin). This can be useful for cases when new data is not coming into the system for a table anymore, users want to reclaim disk space due to overwrites/deletes that have already happened or due to TTL expiry.
+YugabyteDB allows compactions to be externally triggered on a table using the [`compact_table`](../../../admin/yb-admin/#compact-table) command in the [`yb-admin` utility](../../../admin/yb-admin/). This can be useful for cases when new data is not coming into the system for a table anymore, users want to reclaim disk space due to overwrites/deletes that have already happened or due to TTL expiry.
 
 ### Server-global memstore limit
 

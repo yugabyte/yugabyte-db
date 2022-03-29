@@ -21,13 +21,13 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/deploy/kubernetes/single-zone/aks/helm-chart" class="nav-link active">
+    <a href="../helm-chart/" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Helm chart
     </a>
   </li>
   <li >
-    <a href="/latest/deploy/kubernetes/single-zone/aks/statefulset-yaml" class="nav-link">
+    <a href="../statefulset-yaml/" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       StatefulSet YAML
     </a>
@@ -44,7 +44,7 @@ Before you can deploy YugabyteDB on AKS, you need to verify that the following a
 
 - `kubectl`
   - For more information, see [Install and Set Up kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl/).
-  - [Kubernetes API v1.18.0](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.18/)
+  - [Kubernetes API](https://kubernetes.io/docs/reference/kubernetes-api/)
 - Helm 3.4 or later
   - For more information, see [Installing Helm](https://helm.sh/docs/intro/install/).
 
@@ -248,7 +248,7 @@ $ helm search repo yugabytedb/yugabyte
 
 ```output
 NAME                    CHART VERSION   APP VERSION     DESCRIPTION
-yugabytedb/yugabyte     2.11.2           2.11.2.0-b89    YugabyteDB is the high-performance distributed ...
+yugabytedb/yugabyte     2.13.0           2.13.0.1-b2    YugabyteDB is the high-performance distributed ...
 ```
 
 #### Create the namespace

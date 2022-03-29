@@ -32,8 +32,8 @@ class LocalOutboundCall : public OutboundCall {
  public:
   LocalOutboundCall(const RemoteMethod* remote_method,
                     const std::shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
-                    AnyMessagePtr response_storage,
-                    RpcController* controller, RpcMetrics* rpc_metrics, ResponseCallback callback);
+                    AnyMessagePtr response_storage, RpcController* controller,
+                    std::shared_ptr<RpcMetrics> rpc_metrics, ResponseCallback callback);
 
   CHECKED_STATUS SetRequestParam(AnyMessageConstPtr req, const MemTrackerPtr& mem_tracker) override;
 
@@ -49,6 +49,7 @@ class LocalOutboundCall : public OutboundCall {
   void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) override;
 
   Result<Slice> GetSidecar(size_t idx) const override;
+  Result<SidecarHolder> GetSidecarHolder(size_t idx) const override;
 
  private:
   friend class LocalYBInboundCall;
@@ -76,7 +77,8 @@ class LocalYBInboundCall : public YBInboundCall, public RpcCallParams {
   size_t ObjectSize() const override { return sizeof(*this); }
 
   size_t AddRpcSidecar(Slice car) override {
-    sidecars_.push_back(RefCntBuffer(car));
+    auto buf = RefCntBuffer(car);
+    sidecars_.push_back(std::move(buf));
     return sidecars_.size() - 1;
   }
 

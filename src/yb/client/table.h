@@ -45,6 +45,8 @@ struct VersionedTablePartitionList {
   TablePartitionList keys;
   // See SysTablesEntryPB::partition_list_version.
   PartitionListVersion version;
+
+  std::string ToString() const;
 };
 
 typedef Result<VersionedTablePartitionListPtr> FetchPartitionsResult;
@@ -137,6 +139,7 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
  private:
   friend class YBClient;
   friend class internal::GetTableSchemaRpc;
+  friend class internal::GetTablegroupSchemaRpc;
   friend class internal::GetColocatedTabletSchemaRpc;
 
   void InvokeRefreshPartitionsCallbacks(const Status& status);

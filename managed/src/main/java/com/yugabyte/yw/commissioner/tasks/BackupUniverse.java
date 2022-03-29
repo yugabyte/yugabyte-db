@@ -16,7 +16,6 @@ import static com.yugabyte.yw.common.Util.lockedUpdateBackupState;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
@@ -101,8 +100,6 @@ public class BackupUniverse extends UniverseTaskBase {
     BACKUP_ATTEMPT_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
     try {
       checkUniverseVersion();
-      // Create the task list sequence.
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
       lockUniverse(-1 /* expectedUniverseVersion */);
@@ -116,6 +113,10 @@ public class BackupUniverse extends UniverseTaskBase {
         if (universe.getUniverseDetails().backupInProgress) {
           throw new RuntimeException("A backup for this universe is already in progress.");
         }
+      }
+      if (taskParams().alterLoadBalancer) {
+        createLoadBalancerStateChangeTask(false)
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
       }
       try {
         UserTaskDetails.SubTaskGroupType groupType;
@@ -151,7 +152,10 @@ public class BackupUniverse extends UniverseTaskBase {
         backup.setTaskUUID(userTaskUUID);
 
         // Marks the update of this universe as a success only if all the tasks before it succeeded.
-
+        if (taskParams().alterLoadBalancer) {
+          createLoadBalancerStateChangeTask(true)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+        }
         createMarkUniverseUpdateSuccessTasks()
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
@@ -165,7 +169,7 @@ public class BackupUniverse extends UniverseTaskBase {
         taskInfo = String.join(",", tableNames);
 
         // Run all the tasks.
-        subTaskGroupQueue.run();
+        getRunnableTask().runSubTasks();
 
         if (taskParams().actionType == ActionType.CREATE) {
           BACKUP_SUCCESS_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
@@ -176,6 +180,15 @@ public class BackupUniverse extends UniverseTaskBase {
           unlockUniverseForUpdate();
         }
       } catch (Throwable t) {
+        if (taskParams().alterLoadBalancer) {
+          // Clear previous subtasks if any.
+          getRunnableTask().reset();
+          // If the task failed, we don't want the loadbalancer to be
+          // disabled, so we enable it again in case of errors.
+          createLoadBalancerStateChangeTask(true)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+          getRunnableTask().runSubTasks();
+        }
         throw t;
       } finally {
         if (taskParams().actionType == BackupTableParams.ActionType.CREATE) {

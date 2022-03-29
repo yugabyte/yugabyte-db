@@ -83,6 +83,9 @@ public class Util {
   public static final String BLACKLIST_LEADER_WAIT_TIME_MS =
       "yb.upgrade.blacklist_leader_wait_time_ms";
 
+  public static final String AVAILABLE_MEMORY_CHECK = "MemAvailable";
+  public static final Long AVAILABLE_MEMORY_LIMIT_KB = 716800L;
+
   /**
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.
    */
@@ -646,5 +649,10 @@ public class Util {
       ip = node.cloudInfo.private_ip;
     }
     return ip;
+  }
+
+  // Generate a deterministic node UUID from the universe UUID and the node name.
+  public static UUID generateNodeUUID(UUID universeUuid, String nodeName) {
+    return UUID.nameUUIDFromBytes((universeUuid.toString() + nodeName).getBytes());
   }
 }

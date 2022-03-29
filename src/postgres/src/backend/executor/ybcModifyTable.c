@@ -360,7 +360,7 @@ Oid YBCHeapInsertForDb(Oid dboid,
 	ResultRelInfo *resultRelInfo = estate->es_result_relation_info;
 	Relation resultRelationDesc = resultRelInfo->ri_RelationDesc;
 
-	if (estate->es_yb_is_single_row_modify_txn)
+	if (estate->yb_es_is_single_row_modify_txn)
 	{
 		/*
 		 * Try to execute the statement as a single row transaction (rather
@@ -530,7 +530,7 @@ bool YBCExecuteDelete(Relation rel, TupleTableSlot *slot, EState *estate,
 	/* Create DELETE request. */
 	HandleYBStatus(YBCPgNewDelete(dboid,
 								  YbGetStorageRelid(rel),
-								  estate->es_yb_is_single_row_modify_txn,
+								  estate->yb_es_is_single_row_modify_txn,
 								  &delete_stmt));
 
 	/*
@@ -696,7 +696,7 @@ void YBCExecuteDeleteIndex(Relation index,
 	 * TODO(jason): consider how this will unnecessarily cause deletes to be
 	 * persisted when online dropping an index (issue #4936).
 	 */
-	if (!YBCGetDisableIndexBackfill() && !index->rd_index->indisvalid)
+	if (!*YBCGetGFlags()->ysql_disable_index_backfill && !index->rd_index->indisvalid)
 		HandleYBStatus(YBCPgDeleteStmtSetIsPersistNeeded(delete_stmt,
 														 true));
 
@@ -723,7 +723,7 @@ bool YBCExecuteUpdate(Relation rel,
 	/* Create update statement. */
 	HandleYBStatus(YBCPgNewUpdate(dboid,
 								  relid,
-								  estate->es_yb_is_single_row_modify_txn,
+								  estate->yb_es_is_single_row_modify_txn,
 								  &update_stmt));
 
 	/*

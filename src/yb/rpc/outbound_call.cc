@@ -150,7 +150,7 @@ OutboundCall::OutboundCall(const RemoteMethod* remote_method,
                            std::shared_ptr<const OutboundMethodMetrics> method_metrics,
                            AnyMessagePtr response_storage,
                            RpcController* controller,
-                           RpcMetrics* rpc_metrics,
+                           std::shared_ptr<RpcMetrics> rpc_metrics,
                            ResponseCallback callback,
                            ThreadPool* callback_thread_pool)
     : hostname_(&kEmptyString),
@@ -163,7 +163,7 @@ OutboundCall::OutboundCall(const RemoteMethod* remote_method,
       callback_(std::move(callback)),
       callback_thread_pool_(callback_thread_pool),
       outbound_call_metrics_(outbound_call_metrics),
-      rpc_metrics_(rpc_metrics),
+      rpc_metrics_(std::move(rpc_metrics)),
       method_metrics_(std::move(method_metrics)) {
   TRACE_TO_WITH_TIME(trace_, start_, "$0.", remote_method_->ToString());
 
@@ -512,6 +512,10 @@ Result<Slice> OutboundCall::GetSidecar(size_t idx) const {
   return call_response_.GetSidecar(idx);
 }
 
+Result<SidecarHolder> OutboundCall::GetSidecarHolder(size_t idx) const {
+  return call_response_.GetSidecarHolder(idx);
+}
+
 string OutboundCall::ToString() const {
   return Format("RPC call $0 -> $1 , state=$2.", *remote_method_, conn_id_, StateName(state_));
 }
@@ -595,10 +599,13 @@ CallResponse::CallResponse()
 Result<Slice> CallResponse::GetSidecar(size_t idx) const {
   DCHECK(parsed_);
   if (idx + 1 >= sidecar_bounds_.size()) {
-    return STATUS_FORMAT(InvalidArgument,
-        "Index $0 does not reference a valid sidecar", idx);
+    return STATUS_FORMAT(InvalidArgument, "Index $0 does not reference a valid sidecar", idx);
   }
   return Slice(sidecar_bounds_[idx], sidecar_bounds_[idx + 1]);
+}
+
+Result<SidecarHolder> CallResponse::GetSidecarHolder(size_t idx) const {
+  return SidecarHolder(response_data_.buffer(), VERIFY_RESULT(GetSidecar(idx)));
 }
 
 Status CallResponse::ParseFrom(CallData* call_data) {

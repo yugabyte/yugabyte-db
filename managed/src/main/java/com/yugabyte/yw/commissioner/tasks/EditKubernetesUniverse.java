@@ -11,7 +11,6 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
@@ -52,9 +51,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       checkUniverseVersion();
       // Verify the task params.
       verifyParams(UniverseOpType.EDIT);
-
-      // Create the task list sequence.
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
@@ -215,7 +211,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       createMarkUniverseUpdateSuccessTasks()
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
       // Run all the tasks.
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
       throw t;

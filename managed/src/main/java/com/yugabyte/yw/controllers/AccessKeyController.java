@@ -13,6 +13,7 @@ import com.yugabyte.yw.forms.AccessKeyFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -24,6 +25,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -83,6 +85,8 @@ public class AccessKeyController extends AuthenticatedController {
     Integer sshPort = formData.get().sshPort;
     boolean airGapInstall = formData.get().airGapInstall;
     boolean skipProvisioning = formData.get().skipProvisioning;
+    boolean setUpChrony = formData.get().setUpChrony;
+    List<String> ntpServers = formData.get().ntpServers;
     AccessKey accessKey;
 
     LOG.info(
@@ -90,6 +94,14 @@ public class AccessKeyController extends AuthenticatedController {
         keyCode,
         customerUUID,
         providerUUID);
+
+    if (setUpChrony
+        && region.provider.code.equals(onprem.name())
+        && (ntpServers == null || ntpServers.isEmpty())) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "NTP servers not provided for on-premises provider for which chrony setup is desired");
+    }
 
     // Check if a public/private key was uploaded as part of the request
     MultipartFormData<File> multiPartBody = request().body().asMultipartFormData();
@@ -108,7 +120,9 @@ public class AccessKeyController extends AuthenticatedController {
               sshUser,
               sshPort,
               airGapInstall,
-              skipProvisioning);
+              skipProvisioning,
+              setUpChrony,
+              ntpServers);
     } else if (keyContent != null && !keyContent.isEmpty()) {
       if (keyType == null) {
         throw new PlatformServiceException(BAD_REQUEST, "keyType params required.");
@@ -127,10 +141,19 @@ public class AccessKeyController extends AuthenticatedController {
               sshUser,
               sshPort,
               airGapInstall,
-              skipProvisioning);
+              skipProvisioning,
+              setUpChrony,
+              ntpServers);
     } else {
       accessKey =
-          accessManager.addKey(regionUUID, keyCode, sshPort, airGapInstall, skipProvisioning);
+          accessManager.addKey(
+              regionUUID,
+              keyCode,
+              sshPort,
+              airGapInstall,
+              skipProvisioning,
+              setUpChrony,
+              ntpServers);
     }
 
     // In case of onprem provider, we add a couple of additional attributes like passwordlessSudo
@@ -142,9 +165,17 @@ public class AccessKeyController extends AuthenticatedController {
           formData.get().passwordlessSudoAccess,
           formData.get().installNodeExporter,
           formData.get().nodeExporterPort,
-          formData.get().nodeExporterUser);
+          formData.get().nodeExporterUser,
+          formData.get().setUpChrony,
+          formData.get().ntpServers);
     }
-    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.AccessKey,
+            Objects.toString(accessKey.idKey, null),
+            Audit.ActionType.Create,
+            Json.toJson(formData.rawData()));
     return PlatformResults.withData(accessKey);
   }
 
@@ -160,7 +191,12 @@ public class AccessKeyController extends AuthenticatedController {
         "Deleting access key {} for customer {}, provider {}", keyCode, customerUUID, providerUUID);
 
     accessKey.deleteOrThrow();
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.AccessKey,
+            Objects.toString(accessKey.idKey, null),
+            Audit.ActionType.Delete);
     return withMessage("Deleted KeyCode: " + keyCode);
   }
 }

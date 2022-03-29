@@ -15,11 +15,34 @@ menu:
 
 <div class="row">
 
- <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="overview/">
+   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="primary-key-ysql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
-        <div class="title">Indexes Overview</div>
+        <div class="title">Primary keys</div>
+      </div>
+      <div class="body">
+          Explore the use of Primary keys in YSQL and YCQL with examples.
+      </div>
+    </a>
+  </div>
+
+   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="foreign-key-ysql/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
+        <div class="title">Foreign keys</div>
+      </div>
+      <div class="body">
+          Explore the use of Foreign keys associated with Primary keys in YSQL.
+      </div>
+    </a>
+  </div>
+ <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="secondary-indexes/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
+        <div class="title">Secondary indexes</div>
       </div>
       <div class="body">
           Explore Indexes to optimize your database performance.
@@ -31,10 +54,10 @@ menu:
     <a class="section-link icon-offset" href="unique-index-ysql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
-        <div class="title">Unique Indexes</div>
+        <div class="title">Unique indexes</div>
       </div>
       <div class="body">
-          Explore Unique Indexes in YSQL and YCQL with examples.
+          Explore Unique indexes in YSQL and YCQL with examples.
       </div>
     </a>
   </div>
@@ -43,10 +66,10 @@ menu:
     <a class="section-link icon-offset" href="partial-index-ysql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
-        <div class="title">Partial Indexes</div>
+        <div class="title">Partial indexes</div>
       </div>
       <div class="body">
-          Explore Partial Indexes in YSQL and YCQL with examples.
+          Explore Partial indexes in YSQL and YCQL with examples.
       </div>
     </a>
   </div>
@@ -55,10 +78,22 @@ menu:
     <a class="section-link icon-offset" href="expression-index-ysql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
-        <div class="title">Expression Indexes</div>
+        <div class="title">Expression indexes</div>
       </div>
       <div class="body">
-          Explore Expression Indexes in YSQL with examples.
+          Explore Expression indexes in YSQL with examples.
+      </div>
+    </a>
+  </div>
+
+   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="covering-index-ysql/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
+        <div class="title">Covering indexes</div>
+      </div>
+      <div class="body">
+          Explore Covering indexes in YSQL with examples.
       </div>
     </a>
   </div>
@@ -67,7 +102,7 @@ menu:
     <a class="section-link icon-offset" href="gin/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
-        <div class="title">Generalized inverted indexes</div>
+        <div class="title">GIN indexes</div>
       </div>
       <div class="body">
           Use GIN indexes in YSQL to run efficient queries.
@@ -76,37 +111,13 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="primary-key-ysql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
-        <div class="title">Primary Key</div>
-      </div>
-      <div class="body">
-          Explore the use of Primary Keys in YSQL and YCQL with examples.
-      </div>
-    </a>
-  </div>
-
-   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="foreign-key-ysql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
-        <div class="title">Foreign Key</div>
-      </div>
-      <div class="body">
-          Explore the use of Foreign Keys associated with Primary keys in YSQL.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="other-constraints/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
-        <div class="title">Other Constraints</div>
+        <div class="title">Other constraints</div>
       </div>
       <div class="body">
-          Explore Other Constraints to optimize your database performance.
+          Explore CHECK and NOT NULL constraints to optimize your database performance.
       </div>
     </a>
  </div>

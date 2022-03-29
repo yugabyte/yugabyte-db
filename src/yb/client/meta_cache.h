@@ -78,7 +78,6 @@
 namespace yb {
 
 class Histogram;
-class YBPartialRow;
 
 namespace client {
 
@@ -91,6 +90,8 @@ namespace internal {
 class LookupRpc;
 class LookupByKeyRpc;
 class LookupByIdRpc;
+
+YB_DEFINE_ENUM(LocalityLevel, (kNone)(kRegion)(kZone));
 
 // The information cached about a given tablet server in the cluster.
 //
@@ -133,26 +134,28 @@ class RemoteTabletServer {
   // Returns the remote server's uuid.
   const std::string& permanent_uuid() const;
 
-  const CloudInfoPB& cloud_info() const;
-
-  const google::protobuf::RepeatedPtrField<HostPortPB>& public_rpc_hostports() const;
-
-  const google::protobuf::RepeatedPtrField<HostPortPB>& private_rpc_hostports() const;
-
   bool HasCapability(CapabilityId capability) const;
+
+  bool IsLocalRegion() const;
+
+  LocalityLevel LocalityLevelWith(const CloudInfoPB& cloud_info) const;
+
+  HostPortPB DesiredHostPort(const CloudInfoPB& cloud_info) const;
+
+  std::string TEST_PlacementZone() const;
 
  private:
   mutable rw_spinlock mutex_;
   const std::string uuid_;
 
-  google::protobuf::RepeatedPtrField<HostPortPB> public_rpc_hostports_;
-  google::protobuf::RepeatedPtrField<HostPortPB> private_rpc_hostports_;
-  yb::CloudInfoPB cloud_info_pb_;
+  google::protobuf::RepeatedPtrField<HostPortPB> public_rpc_hostports_ GUARDED_BY(mutex_);
+  google::protobuf::RepeatedPtrField<HostPortPB> private_rpc_hostports_ GUARDED_BY(mutex_);
+  yb::CloudInfoPB cloud_info_pb_ GUARDED_BY(mutex_);
   std::shared_ptr<tserver::TabletServerServiceProxy> proxy_;
   ::yb::HostPort proxy_endpoint_;
   const tserver::LocalTabletServer* const local_tserver_ = nullptr;
   scoped_refptr<Histogram> dns_resolve_histogram_;
-  std::vector<CapabilityId> capabilities_;
+  std::vector<CapabilityId> capabilities_ GUARDED_BY(mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(RemoteTabletServer);
 };

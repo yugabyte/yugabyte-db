@@ -48,6 +48,8 @@
 
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/log_fwd.h"
+#include "yb/consensus/log_util.h"
+#include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_types.pb.h"
 
 #include "yb/gutil/macros.h"
@@ -59,6 +61,8 @@
 #include "yb/util/opid.h"
 #include "yb/util/restart_safe_clock.h"
 #include "yb/util/status_callback.h"
+
+YB_STRONGLY_TYPED_BOOL(HaveMoreMessages);
 
 namespace yb {
 
@@ -73,7 +77,9 @@ class ReplicateMsg;
 struct ReadOpsResult {
   ReplicateMsgs messages;
   yb::OpId preceding_op;
-  bool have_more_messages = false;
+  yb::SchemaPB header_schema;
+  uint32_t header_schema_version;
+  HaveMoreMessages have_more_messages = HaveMoreMessages::kFalse;
   int64_t read_from_disk_size = 0;
 };
 

@@ -319,11 +319,13 @@ public class SessionControllerTest {
     registerJson.put("password", "pAssw_0rd");
     registerJson.put("name", "Foo");
 
-    Result result = route(fakeRequest("POST", "/api/register").bodyJson(registerJson));
+    Result result =
+        route(fakeRequest("POST", "/api/register?generateApiToken=true").bodyJson(registerJson));
     JsonNode json = Json.parse(contentAsString(result));
 
     assertEquals(OK, result.status());
     assertNotNull(json.get("authToken"));
+    assertNotNull(json.get("apiToken"));
     Customer c1 = Customer.get(UUID.fromString(json.get("customerUUID").asText()));
 
     ObjectNode loginJson = Json.newObject();
@@ -604,7 +606,7 @@ public class SessionControllerTest {
 
     assertEquals(OK, result.status());
     assertNotNull(json.get("apiToken"));
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -635,7 +637,7 @@ public class SessionControllerTest {
     json = Json.parse(contentAsString(result));
     String apiToken2 = json.get("apiToken").asText();
     assertNotEquals(apiToken1, apiToken2);
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(2, customer.uuid);
   }
 
   @Test

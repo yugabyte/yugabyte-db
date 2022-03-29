@@ -1,5 +1,6 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
@@ -18,6 +19,8 @@ public class UpdateNodeDetails extends NodeTaskBase {
 
   public static class Params extends NodeTaskParams {
     public NodeDetails details;
+    // Update skipAnsibleTasks config for a VM image pgrade without updating the software.
+    public boolean updateCustomImageUsage;
   }
 
   protected Params taskParams() {
@@ -47,6 +50,19 @@ public class UpdateNodeDetails extends NodeTaskBase {
             }
           };
       saveUniverseDetails(updater);
+      if (taskParams().updateCustomImageUsage) {
+        getUniverse()
+            .updateConfig(
+                ImmutableMap.of(
+                    Universe.USE_CUSTOM_IMAGE,
+                    getUniverse()
+                            .getUniverseDetails()
+                            .nodeDetailsSet
+                            .stream()
+                            .allMatch(n -> n.ybPrebuiltAmi)
+                        ? "true"
+                        : "false"));
+      }
     } catch (Exception e) {
       throw new RuntimeException(e);
     }

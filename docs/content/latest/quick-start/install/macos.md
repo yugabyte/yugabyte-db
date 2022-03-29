@@ -128,16 +128,16 @@ showAsideToc: true
 1. Download the YugabyteDB `tar.gz` file using the following `wget` command.
 
     ```sh
-    $ wget https://downloads.yugabyte.com/releases/2.11.2.0/yugabyte-2.11.2.0-b89-darwin-x86_64.tar.gz
+    $ wget https://downloads.yugabyte.com/releases/2.13.0.1/yugabyte-2.13.0.1-b2-darwin-x86_64.tar.gz
     ```
 
 1. Extract the package and then change directories to the YugabyteDB home.
 
     ```sh
-    $ tar xvfz yugabyte-2.11.2.0-b89-darwin-x86_64.tar.gz && cd yugabyte-2.11.2.0/
+    $ tar xvfz yugabyte-2.13.0.1-b2-darwin-x86_64.tar.gz && cd yugabyte-2.13.0.1/
     ```
 
-## Configure
+## Configure loopback addresses
 
 Some of the examples in the [Explore core features](../../../explore/) section require extra loopback addresses that allow you to simulate the use of multiple hosts or nodes.
 
@@ -152,7 +152,7 @@ sudo ifconfig lo0 alias 127.0.0.6
 sudo ifconfig lo0 alias 127.0.0.7
 ```
 
-**Note**: The loopback addresses do not persist upon rebooting of your Mac.
+The loopback addresses _do not_ persist after rebooting your Mac.
 
 To verify that the extra loopback addresses exist, run the following command.
 
@@ -177,8 +177,6 @@ lo0: flags=8049<UP,LOOPBACK,RUNNING,MULTICAST> mtu 16384
   nd6 options=201<PERFORMNUD,DAD>
 ```
 
-{{<tip title="Next step" >}}
+## Next step
 
-[Create a local cluster](../../create-local-cluster/macos)
-
-{{< /tip >}}
+[Create a local cluster](../../create-local-cluster/macos/)

@@ -63,9 +63,9 @@ DEFINE_uint64(snapshot_coordinator_poll_interval_ms, 5000,
 DEFINE_test_flag(bool, skip_sending_restore_finished, false,
                  "Whether we should skip sending RESTORE_FINISHED to tablets.");
 
-DEFINE_bool(schedule_snapshot_rpcs_out_of_band, false,
+DEFINE_bool(schedule_snapshot_rpcs_out_of_band, true,
             "Should tablet snapshot RPCs be scheduled out of band from the periodic"
-            " background thread.");
+            " background scheduling.");
 TAG_FLAG(schedule_snapshot_rpcs_out_of_band, runtime);
 
 DECLARE_bool(allow_consecutive_restore);
@@ -982,9 +982,16 @@ class MasterSnapshotCoordinator::Impl {
 
     VLOG(1) << __func__ << "(" << AsString(entries) << ", " << imported << ", " << schedule_id
             << ", " << snapshot_id << ")";
+    // There could be more than one entry of the same tablet,
+    // for instance in the case of colocated tables.
+    std::unordered_set<TabletId> unique_tablet_ids;
     for (const auto& entry : entries.entries()) {
       if (entry.type() == SysRowEntryType::TABLET) {
-        request->add_tablet_id(entry.id());
+        if (unique_tablet_ids.insert(entry.id()).second) {
+          VLOG(1) << __func__ << "(Adding tablet " << entry.id()
+                  << " for snapshot " << snapshot_id << ")";
+          request->add_tablet_id(entry.id());
+        }
       }
     }
 
@@ -1289,7 +1296,7 @@ class MasterSnapshotCoordinator::Impl {
     return Status::OK();
   }
 
-  // Computes the maximum outstanding Snapshot Create/Delete/Restore RPC
+  // Computes the maximum outstanding Snapshot Create/Delete RPC
   // that is permitted. If total limit is specified then it is used otherwise
   // the value is computed by multiplying tserver count with the per tserver limit.
   uint64_t GetRpcLimit(int64_t total_limit, int64_t per_tserver_limit, int64_t leader_term) {
@@ -1304,7 +1311,18 @@ class MasterSnapshotCoordinator::Impl {
     if (total_limit > 0) {
       return total_limit;
     }
-    return context_.GetNumLiveTServersForActiveCluster() * per_tserver_limit;
+    auto num_result = context_.GetNumLiveTServersForActiveCluster();
+    // The cluster config could be empty for e.g. if a restore is in progress
+    // or e.g. if a new master leader is elected. This is a temporary intermediate
+    // state (we have bigger problems if the cluster config remains empty forever).
+    // We use the limit set per tserver as the overall limit in such cases.
+    if (!num_result.ok()) {
+      LOG(INFO) << "Cluster Config is not available. Using per tserver limit of "
+                << per_tserver_limit << " as the throttled limit.";
+      return per_tserver_limit;
+    }
+    uint64_t num_tservers = *num_result;
+    return num_tservers * per_tserver_limit;
   }
 
   SnapshotCoordinatorContext& context_;

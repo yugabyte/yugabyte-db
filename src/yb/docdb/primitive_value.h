@@ -28,6 +28,7 @@
 #include "yb/docdb/docdb_fwd.h"
 
 #include "yb/util/algorithm_util.h"
+#include "yb/util/kv_util.h"
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/slice.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -55,10 +56,6 @@ class PrimitiveValue {
   static const PrimitiveValue kTombstone;
   static const PrimitiveValue kObject;
   static const PrimitiveValue kLivenessColumn;
-
-  // Flags for jsonb.
-  // Indicates that the stored jsonb is the complete jsonb value and not a partial update to jsonb.
-  static constexpr int64_t kCompleteJsonb = 1;
 
   PrimitiveValue();
   explicit PrimitiveValue(ValueType value_type);
@@ -110,15 +107,12 @@ class PrimitiveValue {
 
   static PrimitiveValue NullValue(SortingType sorting);
 
-  // Converts a SortingType to its SortOrder equivalent.
-  // SortingType::kAscending and SortingType::kNotSpecified get
-  // converted to SortOrder::kAscending.
-  // SortingType::kDescending gets converted to SortOrder::kDescending.
-  static SortOrder SortOrderFromColumnSchemaSortingType(SortingType sorting_type);
-
   // Construct a primitive value from a QLValuePB.
-  static PrimitiveValue FromQLValuePB(const QLValuePB& value,
-                                      SortingType sorting_type);
+  static PrimitiveValue FromQLValuePB(const QLValuePB& value, SortingType sorting_type,
+                                      bool check_is_collate = true);
+
+  static PrimitiveValue FromQLValuePB(const LWQLValuePB& value, SortingType sorting_type,
+                                      bool check_is_collate = true);
 
   // Set a primitive value in a QLValuePB.
   static void ToQLValuePB(const PrimitiveValue& pv,
@@ -128,8 +122,6 @@ class PrimitiveValue {
   ValueType value_type() const { return type_; }
 
   void AppendToKey(KeyBytes* key_bytes) const;
-
-  std::string ToValue() const;
 
   // Convert this value to a human-readable string for logging / debugging.
   std::string ToString(AutoDecodeKeys auto_decode_keys = AutoDecodeKeys::kFalse) const;
@@ -148,8 +140,8 @@ class PrimitiveValue {
   static PrimitiveValue Double(double d, SortOrder sort_order = SortOrder::kAscending);
   static PrimitiveValue Float(float f, SortOrder sort_order = SortOrder::kAscending);
   // decimal_str represents a human readable string representing the decimal number, e.g. "0.03".
-  static PrimitiveValue Decimal(const std::string& decimal_str, SortOrder sort_order);
-  static PrimitiveValue VarInt(const std::string& varint_str, SortOrder sort_order);
+  static PrimitiveValue Decimal(const Slice& decimal_str, SortOrder sort_order);
+  static PrimitiveValue VarInt(const Slice& varint_str, SortOrder sort_order);
   static PrimitiveValue ArrayIndex(int64_t index);
   static PrimitiveValue UInt16Hash(uint16_t hash);
   static PrimitiveValue SystemColumnId(ColumnId column_id);
@@ -159,8 +151,8 @@ class PrimitiveValue {
   static PrimitiveValue UInt64(uint64_t v, SortOrder sort_order = SortOrder::kAscending);
   static PrimitiveValue TransactionId(Uuid transaction_id);
   static PrimitiveValue TableId(Uuid table_id);
-  static PrimitiveValue PgTableOid(const PgTableOid pgtable_id);
-  static PrimitiveValue Jsonb(const std::string& json);
+  static PrimitiveValue ColocationId(const ColocationId colocation_id);
+  static PrimitiveValue Jsonb(const Slice& json);
   static PrimitiveValue GinNull(uint8_t v);
 
   KeyBytes ToKeyBytes() const;
@@ -321,6 +313,10 @@ class PrimitiveValue {
   };
 
  private:
+  template <class PB>
+  static PrimitiveValue DoFromQLValuePB(
+      const PB& value, SortingType sorting_type, bool check_is_collate);
+
 
   // This is used in both the move constructor and the move assignment operator. Assumes this object
   // has not been constructed, or that the destructor has just been called.
@@ -356,6 +352,15 @@ inline std::vector<PrimitiveValue> PrimitiveValues(T... args) {
   AppendPrimitiveValues(&v, args...);
   return v;
 }
+
+// Converts a SortingType to its SortOrder equivalent.
+// SortingType::kAscending and SortingType::kNotSpecified get
+// converted to SortOrder::kAscending.
+// SortingType::kDescending gets converted to SortOrder::kDescending.
+SortOrder SortOrderFromColumnSchemaSortingType(SortingType sorting_type);
+
+void AppendEncodedValue(const QLValuePB& value, SortingType sorting_type, ValueBuffer* out);
+void AppendEncodedValue(const QLValuePB& value, SortingType sorting_type, std::string* out);
 
 }  // namespace docdb
 }  // namespace yb

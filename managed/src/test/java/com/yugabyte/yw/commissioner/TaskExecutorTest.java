@@ -3,6 +3,9 @@
 package com.yugabyte.yw.commissioner;
 
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
+import static org.hamcrest.CoreMatchers.containsString;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
@@ -42,10 +45,8 @@ import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -418,11 +419,14 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTaskInfos.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertEquals(1, subTasksByPosition.size());
-    Set<TaskInfo.State> subTaskStates =
-        subTasksByPosition.get(0).stream().map(TaskInfo::getTaskState).collect(Collectors.toSet());
-    assertEquals(2, subTaskStates.size());
-    assertTrue(subTaskStates.contains(TaskInfo.State.Created));
+    assertEquals(2, subTasksByPosition.size());
+    List<TaskInfo.State> subTaskStates =
+        subTasksByPosition.get(0).stream().map(TaskInfo::getTaskState).collect(Collectors.toList());
+    assertEquals(1, subTaskStates.size());
+    assertEquals(TaskInfo.State.Created, subTaskStates.get(0));
+    subTaskStates =
+        subTasksByPosition.get(1).stream().map(TaskInfo::getTaskState).collect(Collectors.toList());
+    assertEquals(1, subTaskStates.size());
     assertTrue(subTaskStates.contains(TaskInfo.State.Success));
   }
 
@@ -469,5 +473,16 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
         () -> {
           taskExecutor.submit(taskRunner2, Executors.newFixedThreadPool(1));
         });
+  }
+
+  @Test
+  public void testRunnableTaskCallstack() {
+    ITask task = mockTaskCommon(false);
+    RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
+    String[] callstack = taskRunner.getCreatorCallstack();
+    assertThat(
+        callstack[0],
+        containsString("com.yugabyte.yw.commissioner.TaskExecutor.createRunnableTask"));
+    assertThat(callstack.length, lessThanOrEqualTo(16));
   }
 }

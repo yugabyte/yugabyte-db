@@ -14,7 +14,8 @@ from ybops.cloud.common.method import (AbstractInstancesMethod, AbstractAccessMe
                                        AbstractMethod, UpdateMountedDisksMethod,
                                        ChangeInstanceTypeMethod, CreateInstancesMethod,
                                        CreateRootVolumesMethod, DestroyInstancesMethod,
-                                       ProvisionInstancesMethod, ReplaceRootVolumeMethod)
+                                       ProvisionInstancesMethod, ReplaceRootVolumeMethod,
+                                       DeleteRootVolumesMethod)
 from ybops.cloud.gcp.utils import GCP_PERSISTENT, GCP_SCRATCH
 from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
 from ybops.utils import format_rsa_key, validated_key_file
@@ -80,19 +81,18 @@ class GcpProvisionInstancesMethod(ProvisionInstancesMethod):
 
     def add_extra_args(self):
         super(GcpProvisionInstancesMethod, self).add_extra_args()
-        self.parser.add_argument("--use_chrony", action="store_true",
-                                 help="Whether to use chrony instead of NTP.")
         self.parser.add_argument("--volume_type", choices=[GCP_SCRATCH, GCP_PERSISTENT],
                                  default="scratch", help="Storage type for GCP instances.")
 
     def update_ansible_vars_with_args(self, args):
         super(GcpProvisionInstancesMethod, self).update_ansible_vars_with_args(args)
-        self.extra_vars["use_chrony"] = args.use_chrony
         self.extra_vars["device_names"] = self.cloud.get_device_names(args)
         self.extra_vars["mount_points"] = self.cloud.get_mount_points_csv(args)
 
 
 class GcpCreateRootVolumesMethod(CreateRootVolumesMethod):
+    """Subclass for creating root volumes in GCP.
+    """
     def __init__(self, base_command):
         super(GcpCreateRootVolumesMethod, self).__init__(base_command)
         self.create_method = GcpCreateInstancesMethod(base_command)
@@ -110,6 +110,16 @@ class GcpCreateRootVolumesMethod(CreateRootVolumesMethod):
         name = args.search_pattern[:63] if len(args.search_pattern) > 63 else args.search_pattern
         self.cloud.get_admin().delete_instance(
             args.region, args.zone, name, has_static_ip=args.assign_static_public_ip)
+
+
+class GcpDeleteRootVolumesMethod(DeleteRootVolumesMethod):
+    """Subclass for deleting root volumes in GCP.
+    """
+    def __init__(self, base_command):
+        super(GcpDeleteRootVolumesMethod, self).__init__(base_command)
+
+    def delete_volumes(self, args):
+        self.cloud.delete_volumes(args)
 
 
 class GcpDestroyInstancesMethod(DestroyInstancesMethod):
@@ -302,7 +312,7 @@ class GcpResumeInstancesMethod(AbstractInstancesMethod):
                                  help="The ip of the instance to resume.")
 
     def callback(self, args):
-        self.cloud.start_instance(args, args.custom_ssh_port)
+        self.cloud.start_instance(args, [args.custom_ssh_port])
 
 
 class GcpPauseInstancesMethod(AbstractInstancesMethod):

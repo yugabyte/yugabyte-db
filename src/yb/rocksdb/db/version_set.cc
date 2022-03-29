@@ -3570,7 +3570,7 @@ InternalIterator* VersionSet::MakeInputIterator(Compaction* c) {
         const LevelFilesBrief* flevel = c->input_levels(which);
         for (size_t i = 0; i < flevel->num_files; i++) {
           FileMetaData* fmd = c->input(which, i);
-          if (c->input(which, i)->delete_after_compaction) {
+          if (c->input(which, i)->delete_after_compaction()) {
             RLOG(
                 InfoLogLevel::INFO_LEVEL, db_options_->info_log,
                 yb::Format(

@@ -7,12 +7,13 @@ import { Row, Col, OverlayTrigger, Tooltip } from 'react-bootstrap';
 import { Formik, Form, Field } from 'formik';
 import { YBFormInput, YBButton, YBModal, YBToggle } from '../../common/forms/fields';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
+import { YUGABYTE_TITLE } from '../../../config';
 import WarningIcon from '../icons/warning_icon';
 import Bulb from '../../universes/images/bulb.svg';
 
 const VALIDATION_SCHEMA = Yup.object().shape({
   ldap_url: Yup.string()
-    .matches(/^(?:(http|https|ldap)?:\/\/)?[\w.-]+(?:[\w-]+)+:\d{1,5}$/, {
+    .matches(/^(?:(http|https|ldap|ldaps)?:\/\/)?[\w.-]+(?:[\w-]+)+:\d{1,5}$/, {
       message: 'LDAP URL must be a valid URL with port number'
     })
     .required('LDAP URL is Required'),
@@ -494,7 +495,7 @@ export const LDAPAuth = (props) => {
                         &nbsp;
                         <Col>
                           <Row>
-                            <b>Note!</b> Yugabyte platform will use the following format to connect
+                            <b>Note!</b> {YUGABYTE_TITLE} will use the following format to connect
                             to your LDAP server.
                           </Row>
                           <Row>

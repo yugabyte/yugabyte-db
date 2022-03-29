@@ -68,10 +68,9 @@ showAsideToc: true
 
     {{< note title="Note" >}}
 
-By default, CentOS 8 doesn't have an unversioned system-wide `python` command to avoid locking users to a specific version of Python.
-One way to fix this is to set `python3` the alternative for `python` by running: `sudo alternatives --set python /usr/bin/python3`.
+By default, CentOS 8 doesn't have an unversioned system-wide `python` command. To fix this, set `python3` as the alternative for `python` by running: `sudo alternatives --set python /usr/bin/python3`.
 
-Starting from Ubuntu 20.04, `python` isn't available anymore. An easy fix is to install `sudo apt install python-is-python3`.
+Starting from Ubuntu 20.04, `python` isn't available anymore. Install `sudo apt install python-is-python3`.
 
     {{< /note >}}
 
@@ -89,34 +88,34 @@ Starting from Ubuntu 20.04, `python` isn't available anymore. An easy fix is to 
     * CentOS: `yum install curl`
     * Ubuntu: `apt install curl`
 
-1. Each tablet maps to its own file, so if you experiment with a few hundred tables and a few tablets per table, you can soon end up creating a large number of files in the current shell. Make sure to [configure ulimit values](../../../deploy/manual-deployment/system-config#ulimits).
+1. Each tablet maps to its own file, so if you experiment with a few hundred tables and a few tablets per table, you can soon end up creating a large number of files in the current shell. Make sure to [configure ulimit values](../../../deploy/manual-deployment/system-config/#ulimits).
 
 ## Download YugabyteDB
 
 1. Download the YugabyteDB package using the following `wget` command.
 
     ```sh
-    $ wget https://downloads.yugabyte.com/releases/2.11.2.0/yugabyte-2.11.2.0-b89-linux-x86_64.tar.gz
+    $ wget https://downloads.yugabyte.com/releases/2.13.0.1/yugabyte-2.13.0.1-b2-linux-x86_64.tar.gz
     ```
 
     \
     OR:
 
     ```sh
-    $ wget https://downloads.yugabyte.com/releases/2.11.2.0/yugabyte-2.11.2.0-b89-el8-aarch64.tar.gz
+    $ wget https://downloads.yugabyte.com/releases/2.13.0.1/yugabyte-2.13.0.1-b2-el8-aarch64.tar.gz
     ```
 
 1. Extract the package and then change directories to the YugabyteDB home.
 
     ```sh
-    $ tar xvfz yugabyte-2.11.2.0-b89-linux-x86_64.tar.gz && cd yugabyte-2.11.2.0/
+    $ tar xvfz yugabyte-2.13.0.1-b2-linux-x86_64.tar.gz && cd yugabyte-2.13.0.1/
     ```
 
     \
     OR:
 
     ```sh
-    $ tar xvfz yugabyte-2.11.2.0-b89-el8-aarch64.tar.gz && cd yugabyte-2.11.2.0/
+    $ tar xvfz yugabyte-2.13.0.1-b2-el8-aarch64.tar.gz && cd yugabyte-2.13.0.1/
     ```
 
 ## Configure YugabyteDB
@@ -127,8 +126,6 @@ To configure YugabyteDB, run the following shell script.
 $ ./bin/post_install.sh
 ```
 
-{{<tip title="Next step" >}}
+## Next step
 
-[Create a local cluster](../../create-local-cluster/linux)
-
-{{< /tip >}}
+[Create a local cluster](../../create-local-cluster/linux/)
