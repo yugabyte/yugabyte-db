@@ -16,12 +16,12 @@ menu:
 
 Connect your application to your YugabyteDB with one of our supported Drivers, ORMs and AppDev Frameworks.
 
-YugabyteDB supports <b>Smart Language Drivers</b> which enables the clients applications to connect to all nodes of the YugabyteDB cluster by elminating the need for external load balancers. All of the YugabyteDB Smart Driver libraries are actively maintained, and receive bug fixes, performance enhancements, and security patches. The YugabyteDB Smart Drivers have the following features:
+YugabyteDB supports <b>Smart Language Drivers</b> which enables the clients applications to connect to all nodes of the YugabyteDB cluster by eliminating the need for external load balancers. All of the YugabyteDB Smart Driver libraries are actively maintained, and receive bug fixes, performance enhancements, and security patches. The YugabyteDB Smart Drivers have the following features:
 
 - YugabyteDB Drivers are <b>cluster-aware</b>. Drivers have the knowledge of all the data nodes in the YugabyteDB cluster which eliminates the need for an external load balancer.
 - YugabyteDB Driver are [topology-aware](/latest/deploy/multi-dc/), which is essential for geographically-distributed applications. The driver is able to connect to YugabyteDB servers that are part of different geo-locations seamlessly without need of an external load balancer.
 
-Along with the Smart drivers, YugabyteDB also provides support for upstream [PostgreSQL drivers](https://www.postgresql.org/download/products/2-drivers-and-interfaces/) for the respecitve programming languages. The following libraries are officially supported by YugabyteDB.
+Along with the Smart drivers, YugabyteDB also provides support for upstream [PostgreSQL drivers](https://www.postgresql.org/download/products/2-drivers-and-interfaces/) for the respective programming languages. The following libraries are officially supported by YugabyteDB.
 
 ## [Java](java/)
 

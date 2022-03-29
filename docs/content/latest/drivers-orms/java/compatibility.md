@@ -17,14 +17,16 @@ showAsideToc: true
 
 | Driver Version | YugabyteDB Version | Support |
 | :------------- | :----------------- | :------ |
-| [42.3.2](https://mvnrepository.com/artifact/com.yugabyte/jdbc-yugabytedb/42.3.2) | 2.11 (latest) | full
-| 42.3.2 |  2.8 (stable) | full
-| 42.3.2 | 2.6 | Not Supported
+| [42.3.4](https://mvnrepository.com/artifact/com.yugabyte/jdbc-yugabytedb/42.3.2) | 2.13 (latest) | full
+| 42.3.4 |  2.12 (stable) | full
+| 42.3.4 | 2.8 | full
+| 42.3.4 | 2.6 | Not Supported
 
 ## Postgres JDBC Driver Compatibility Matrix
 
 | Driver Version | YugabyteDB Version | Support |
 | :------------- | :----------------- | :------ |
-| [42.2.14](https://mvnrepository.com/artifact/org.postgresql/postgresql/42.2.14) | 2.11 (latest) | full
-| 42.2.14 |  2.8 (stable) | full
+| [42.2.14](https://mvnrepository.com/artifact/org.postgresql/postgresql/42.2.14) | 2.13 (latest) | full
+| 42.2.14 |  2.12 (stable) | full
+| 42.2.14 |  2.8  | full
 | 42.2.14 | 2.6 | full
