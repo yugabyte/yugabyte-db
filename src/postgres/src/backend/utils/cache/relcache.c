@@ -50,9 +50,11 @@
 #include "catalog/pg_auth_members.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_database.h"
+#include "catalog/pg_inherits.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_partitioned_table.h"
+#include "catalog/pg_policy.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_publication.h"
 #include "catalog/pg_rewrite.h"
@@ -1268,6 +1270,13 @@ equalPartitionDescs(PartitionKey key, PartitionDesc partdesc1,
 	return true;
 }
 
+typedef struct YBLoadRelationsResult {
+	bool sys_relations_update_required;
+	bool has_partitioned_tables;
+	bool has_relations_with_trigger;
+	bool has_relations_with_row_security;
+} YBLoadRelationsResult;
+
 /*
  * YugaByte-mode only utility used to load up the relcache on initialization
  * to minimize the number on YB-master queries needed.
@@ -1287,10 +1296,10 @@ equalPartitionDescs(PartitionKey key, PartitionDesc partdesc1,
  *  Note: We assume that any error happening here will fatal so as to not end
  *  up with partial information in the cache.
  */
-static void
-YBLoadRelations(bool* sys_relations_update_required)
+static YBLoadRelationsResult
+YBLoadRelations()
 {
-	*sys_relations_update_required = false;
+	YBLoadRelationsResult result = {0};
 	Relation pg_class_desc = heap_open(RelationRelationId, AccessShareLock);
 	SysScanDesc scandesc = systable_beginscan(
 	    pg_class_desc, RelationRelationId, false /* indexOk */, NULL, 0, NULL);
@@ -1298,7 +1307,6 @@ YBLoadRelations(bool* sys_relations_update_required)
 	HeapTuple pg_class_tuple;
 	while (HeapTupleIsValid(pg_class_tuple = systable_getnext(scandesc)))
 	{
-		YBSetSysCacheTuple(pg_class_desc, pg_class_tuple);
 		Oid relid = HeapTupleGetOid(pg_class_tuple);
 
 		/*
@@ -1395,12 +1403,22 @@ YBLoadRelations(bool* sys_relations_update_required)
 		/* It's fully valid */
 		relation->rd_isvalid = true;
 		/* Sys relation update is required in case at least one new sys relation has been loaded. */
-		*sys_relations_update_required =
-		    *sys_relations_update_required || IsSystemRelation(relation);
+		result.sys_relations_update_required = result.sys_relations_update_required ||
+		                                       IsSystemRelation(relation);
+
+		result.has_relations_with_trigger = result.has_relations_with_trigger ||
+		                                    relation->rd_rel->relhastriggers;
+
+		result.has_relations_with_row_security = result.has_relations_with_row_security ||
+		                                         relation->rd_rel->relrowsecurity;
+
+		result.has_partitioned_tables = result.has_partitioned_tables ||
+		                                relation->rd_rel->relkind == RELKIND_PARTITIONED_TABLE;
 	}
 
 	systable_endscan(scandesc);
 	heap_close(pg_class_desc, AccessShareLock);
+	return result;
 }
 
 typedef struct YbAttrProcessorState {
@@ -1643,7 +1661,6 @@ YBUpdateRelationsAttributes(bool sys_relations_update_required)
 	HeapTuple pg_attribute_tuple;
 	while (HeapTupleIsValid(pg_attribute_tuple = systable_getnext(scandesc)))
 	{
-		YBSetSysCacheTuple(pg_attribute_desc, pg_attribute_tuple);
 		if (!YbApply(&state, pg_attribute_desc, pg_attribute_tuple))
 		{
 			YbCompleteProcessing(&state);
@@ -1666,7 +1683,6 @@ YBUpdateRelationsPartitioning(bool sys_relations_update_required)
 	HeapTuple pg_partition_tuple;
 	while (HeapTupleIsValid(pg_partition_tuple = systable_getnext(scandesc)))
 	{
-		YBSetSysCacheTuple(pg_partitioned_table_desc, pg_partition_tuple);
 		Form_pg_partitioned_table part_table_form =
 		    (Form_pg_partitioned_table) GETSTRUCT(pg_partition_tuple);
 		Relation relation;
@@ -1686,44 +1702,106 @@ YBUpdateRelationsPartitioning(bool sys_relations_update_required)
 	heap_close(pg_partitioned_table_desc, AccessShareLock);
 }
 
+static bool
+YBIsDBConnectionValid()
+{
+	/*
+	 * DB connection is not valid anymore in case:
+	 * - The name is already dropped from the cache.
+	 * - The name is still in the cache, but it is not associated with MyDatabaseId anymore
+	 *   (i.e. invalid or new DB).
+	 * - Any kind of error is raised. The reason of this case is sys table preloading mechanism.
+	 *   To reduce the total number of RPC postgres will send multiple read operations in single RPC.
+	 *   And these read operations tries to read data from MyDatabaseId tables. As a result in case
+	 *   the MyDatabaseId DB is dropped these read operations will fail due to "Not found" error.
+	 */
+
+	PG_TRY();
+	{
+		const char *dbname = get_database_name(MyDatabaseId);
+		return (dbname != NULL && get_database_oid(dbname, true) == MyDatabaseId);
+	}
+	PG_CATCH();
+	{
+		FlushErrorState();
+	}
+	PG_END_TRY();
+	return false;
+}
+
 void
 YBPreloadRelCache()
 {
 	/*
-	 * Make sure that the connection is still valid.
-	 * - If the name is already dropped from the cache, raise error.
-	 * - If the name is still in the cache, we look for the associated OID in the system.
-	 *   Raise error if that OID is not MyDatabaseId, which must be either invalid or new DB.
+	 * During the cache loading process postgres reads the data from multiple sys tables.
+	 * It is reasonable to prefetch all these tables in one shot.
 	 */
-	const char *dbname = get_database_name(MyDatabaseId);
+	YbRegisterSysTableForPrefetching(DatabaseRelationId);              // pg_database
+	YbRegisterSysTableForPrefetching(RelationRelationId);              // pg_class
+	YbRegisterSysTableForPrefetching(AttributeRelationId);             // pg_attribute
+	YbRegisterSysTableForPrefetching(OperatorClassRelationId);         // pg_opclass
+	YbRegisterSysTableForPrefetching(AccessMethodRelationId);          // pg_am
+	YbRegisterSysTableForPrefetching(AccessMethodProcedureRelationId); // pg_amproc
+	YbRegisterSysTableForPrefetching(IndexRelationId);                 // pg_index
+	YbRegisterSysTableForPrefetching(RewriteRelationId);               // pg_rewrite
+	YbRegisterSysTableForPrefetching(AttrDefaultRelationId);           // pg_attrdef
+	YbRegisterSysTableForPrefetching(ConstraintRelationId);            // pg_constraint
+	YbRegisterSysTableForPrefetching(PartitionedRelationId);           // pg_partitioned_table
 
-	if (dbname == NULL || get_database_oid(dbname, true) != MyDatabaseId)
+	if (!YBIsDBConnectionValid())
 		ereport(FATAL,
 		        (errcode(ERRCODE_CONNECTION_FAILURE),
 		         errmsg("Could not reconnect to database"),
 		         errhint("Database might have been dropped by another user")));
 
+	YBLoadRelationsResult relations_result = YBLoadRelations();
+
 	/*
-	 * Loading the relation cache requires per-relation lookups to a number of related system tables
-	 * to assemble the relation data (e.g. columns, indexes, foreign keys, etc).
-	 * This can cause a large number of master queries (since catalog caches are typically not
-	 * loaded when calling this).
-	 * To handle that we preload the catcaches here for the biggest offenders.
-	 *
-	 * Note: For historical reasons pg_attribute is currently handled separately below
-	 * by querying the entire table once and amending the relevant information into each relation.
-	 *
-	 * TODO(mihnea, alex): Consider simplifying pg_attribute handling by simply preloading
-	 *                     the catcache for that too.
+	 * Preload other tables if needed.
+	 * This is the optimization to prevent master node from being overloaded with lots of fat read
+	 * requests (request which reads too much tables) in case there are lots of opened connections.
+	 * Some of our tests has such setup. Reading all the tables in one request on a debug build
+	 * under heavy load may spend up to 5-6 secs.
+	 * This optimization can be removed after the request cache for sys catalog will be
+	 * introduced (#10821). It will be possible to load all the tables with a single request as the
+	 * number of such fat requests will be significantly decreased.
 	 */
+	if (relations_result.has_relations_with_trigger)
+		YbRegisterSysTableForPrefetching(TriggerRelationId);   // pg_trigger
 
-	YBPreloadCatalogCache(INDEXRELID, -1); // pg_index
-	YBPreloadCatalogCache(RULERELNAME, -1); // pg_rewrite
+	if (relations_result.has_relations_with_row_security)
+		YbRegisterSysTableForPrefetching(PolicyRelationId);    // pg_policy
 
-	bool sys_relations_update_required = false;
-	YBLoadRelations(&sys_relations_update_required);
-	YBUpdateRelationsAttributes(sys_relations_update_required);
-	YBUpdateRelationsPartitioning(sys_relations_update_required);
+	if (relations_result.has_partitioned_tables)
+	{
+		YbRegisterSysTableForPrefetching(TypeRelationId);      // pg_type
+		YbRegisterSysTableForPrefetching(ProcedureRelationId); // pg_proc
+		YbRegisterSysTableForPrefetching(InheritsRelationId);  // pg_inherits
+	}
+
+	YBUpdateRelationsAttributes(relations_result.sys_relations_update_required);
+	YBUpdateRelationsPartitioning(relations_result.sys_relations_update_required);
+
+	/*
+	 * It is cheap to build the caches for all preloaded tables.
+	 * No additional RPC requests to a master will be initiated.
+	 */
+	YBPreloadCatalogCache(DATABASEOID, -1);      // pg_database
+	YBPreloadCatalogCache(RELOID, RELNAMENSP);   // pg_class
+	YBPreloadCatalogCache(ATTNAME, ATTNUM);      // pg_attribute
+	YBPreloadCatalogCache(CLAOID, CLAAMNAMENSP); // pg_opclass
+	YBPreloadCatalogCache(AMOID, AMNAME);        // pg_am
+	YBPreloadCatalogCache(INDEXRELID, -1);       // pg_index
+	YBPreloadCatalogCache(RULERELNAME, -1);      // pg_rewrite
+	YBPreloadCatalogCache(CONSTROID, -1);        // pg_constraint
+	YBPreloadCatalogCache(PARTRELID, -1);        // pg_partitioned_table
+
+	if (relations_result.has_partitioned_tables)
+	{
+		YBPreloadCatalogCache(TYPEOID, TYPENAMENSP);     // pg_type
+		YBPreloadCatalogCache(PROCOID, PROCNAMEARGSNSP); // pg_proc
+		YBPreloadCatalogCache(INHERITSRELID, -1);        // pg_inherits
+	}
 
 	criticalRelcachesBuilt = true;
 }
@@ -4189,16 +4267,6 @@ RelationCacheInitializePhase2(void)
 	 */
 	if (IsBootstrapProcessingMode())
 		return;
-
-	/*
-	 * In YugaByte mode initialize the catalog cache version to the latest
-	 * version from the master.
-	 */
-	if (IsYugaByteEnabled())
-	{
-		YBCPgResetCatalogReadTime();
-		yb_catalog_cache_version = YbGetMasterCatalogVersion();
-	}
 
 	/*
 	 * switch to cache memory context
