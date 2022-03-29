@@ -23,22 +23,29 @@ import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.certmgmt.CertificateDetails;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.certmgmt.providers.CertificateProviderInterface;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import io.fabric8.kubernetes.api.model.Pod;
+import io.fabric8.kubernetes.api.model.Service;
 import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -51,11 +58,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.bouncycastle.asn1.x509.GeneralName;
 import org.yaml.snakeyaml.Yaml;
-
-import io.fabric8.kubernetes.api.model.Pod;
-import io.fabric8.kubernetes.api.model.PodCondition;
-import io.fabric8.kubernetes.api.model.Service;
 import play.libs.Json;
 
 @Slf4j
@@ -591,10 +595,54 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       tlsInfo.put("nodeToNode", userIntent.enableNodeToNodeEncrypt);
       tlsInfo.put("clientToServer", userIntent.enableClientToNodeEncrypt);
       tlsInfo.put("insecure", u.getUniverseDetails().allowInsecure);
-      Map<String, Object> rootCA = new HashMap<>();
-      rootCA.put("cert", CertificateHelper.getCertPEM(u.getUniverseDetails().rootCA));
-      rootCA.put("key", CertificateHelper.getKeyPEM(u.getUniverseDetails().rootCA));
-      tlsInfo.put("rootCA", rootCA);
+
+      String rootCert = CertificateHelper.getCertPEM(u.getUniverseDetails().rootCA);
+      String rootKey = CertificateHelper.getKeyPEM(u.getUniverseDetails().rootCA);
+      if (rootKey != null && !rootKey.isEmpty()) {
+        Map<String, Object> rootCA = new HashMap<>();
+        rootCA.put("cert", rootCert);
+        rootCA.put("key", rootKey);
+        tlsInfo.put("rootCA", rootCA);
+      } else {
+        // In case root cert key is null which will be the case with Hashicorp Vault certificates
+        // Generate wildcard node cert and client cert and set them in override file
+        CertificateInfo certInfo = CertificateInfo.get(u.getUniverseDetails().rootCA);
+        CertificateProviderInterface certProvider =
+            EncryptionInTransitUtil.getCertificateProviderInstance(certInfo);
+
+        Map<String, Object> rootCA = new HashMap<>();
+        rootCA.put("cert", rootCert);
+        rootCA.put("key", null);
+        tlsInfo.put("rootCA", rootCA);
+
+        // Generate node cert from cert provider and set nodeCert param
+        // As we are using same node cert for all nodes, set wildcard commonName
+        String dnsWildCard1 = String.format("*.*.%s", taskParams().namespace);
+        String dnsWildCard2 = dnsWildCard1 + ".svc.cluster.local";
+        Map<String, Integer> subjectAltNames = new HashMap<>();
+        subjectAltNames.put(dnsWildCard1, GeneralName.dNSName);
+        subjectAltNames.put(dnsWildCard2, GeneralName.dNSName);
+        CertificateDetails nodeCertDetails =
+            certProvider.createCertificate(
+                null, dnsWildCard2, null, null, null, null, subjectAltNames);
+        Map<String, Object> nodeCert = new HashMap<>();
+        nodeCert.put(
+            "cert", Base64.getEncoder().encodeToString(nodeCertDetails.getCrt().getBytes()));
+        nodeCert.put(
+            "key", Base64.getEncoder().encodeToString(nodeCertDetails.getKey().getBytes()));
+        tlsInfo.put("nodeCert", nodeCert);
+
+        // Generate client cert from cert provider and set clientCert value
+        CertificateDetails clientCertDetails =
+            certProvider.createCertificate(null, "yugabyte", null, null, null, null, null);
+        Map<String, Object> clientCert = new HashMap<>();
+        clientCert.put(
+            "cert", Base64.getEncoder().encodeToString(clientCertDetails.getCrt().getBytes()));
+        clientCert.put(
+            "key", Base64.getEncoder().encodeToString(clientCertDetails.getKey().getBytes()));
+        tlsInfo.put("clientCert", clientCert);
+      }
+
       overrides.put("tls", tlsInfo);
     }
     if (userIntent.enableIPV6) {
