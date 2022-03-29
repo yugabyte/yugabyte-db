@@ -3665,9 +3665,9 @@ SubDocKey(DocKey([], ["c"]), ["k5"; HT{ physical: 1100 }]) -> "vv5"; ttl: 25.000
 }
 
 std::string EncodeValue(const QLValuePB& value) {
-  ValueBuffer result;
+  std::string result;
   AppendEncodedValue(value, SortingType::kNotSpecified, &result);
-  return result.ToStringBuffer();
+  return result;
 }
 
 TEST_P(DocDBTestWrapper, CompactionWithTransactions) {

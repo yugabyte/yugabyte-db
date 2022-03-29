@@ -65,10 +65,6 @@ class InetAddress {
 
   std::string ToBytes() const;
 
-  // Given a string holding the raw bytes in network byte order, it builds the appropriate
-  // InetAddress object.
-  CHECKED_STATUS FromBytes(const std::string& bytes);
-
   // Give a slice holding raw bytes in network byte order, build the appropriate InetAddress
   // object. If size_hint is specified, it indicates the number of bytes to decode from the slice.
   CHECKED_STATUS FromSlice(const Slice& slice, size_t size_hint = 0);

@@ -18,6 +18,7 @@
 #include "yb/bfql/bfql.h"
 
 #include "yb/common/ql_protocol_util.h"
+#include "yb/common/ql_serialization.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
@@ -54,7 +55,7 @@ const std::shared_ptr<QLType>& QLRow::column_type(const size_t col_idx) const {
 
 void QLRow::Serialize(const QLClient client, faststring* buffer) const {
   for (size_t col_idx = 0; col_idx < schema_->num_columns(); ++col_idx) {
-    values_[col_idx].Serialize(column_type(col_idx), client, buffer);
+    SerializeValue(column_type(col_idx), client, values_[col_idx].value(), buffer);
   }
 }
 

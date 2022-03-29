@@ -879,7 +879,7 @@ YBCStatus YBCGetDocDBKeySize(uint64_t data, const YBCPgTypeEntity *typeentity,
   }
 
   QLValue val;
-  Status status = pggate::PgValueToPB(typeentity, data, is_null, &val);
+  Status status = pggate::PgValueToPB(typeentity, data, is_null, val.mutable_value());
   if (!status.IsOk()) {
     return ToYBCStatus(status);
   }
@@ -896,7 +896,7 @@ YBCStatus YBCAppendDatumToKey(uint64_t data, const YBCPgTypeEntity *typeentity,
                               size_t *bytes_written) {
   QLValue val;
 
-  Status status = pggate::PgValueToPB(typeentity, data, is_null, &val);
+  Status status = pggate::PgValueToPB(typeentity, data, is_null, val.mutable_value());
   if (!status.IsOk()) {
     return ToYBCStatus(status);
   }
