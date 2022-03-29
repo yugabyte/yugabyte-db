@@ -87,6 +87,9 @@ public class PauseUniverse extends UniverseTaskBase {
             .setSubTaskGroupType(SubTaskGroupType.PauseUniverse);
       }
       createSwamperTargetUpdateTask(false);
+      // Remove alert definition files.
+      createUnivManageAlertDefinitionsTask(false)
+          .setSubTaskGroupType(SubTaskGroupType.PauseUniverse);
       // Mark universe task state to success.
       createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.PauseUniverse);
       // Run all the tasks.
