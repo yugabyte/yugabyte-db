@@ -278,6 +278,8 @@ public enum TaskType {
 
   CreateAlertDefinitions("subtasks.CreateAlertDefinitions"),
 
+  ManageAlertDefinitions("subtasks.ManageAlertDefinitions"),
+
   UniverseSetTlsParams("subtasks.UniverseSetTlsParams"),
 
   UniverseUpdateRootCert("subtasks.UniverseUpdateRootCert"),

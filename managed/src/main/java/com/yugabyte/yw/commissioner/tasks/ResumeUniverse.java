@@ -73,7 +73,9 @@ public class ResumeUniverse extends UniverseTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       createSwamperTargetUpdateTask(false);
-
+      // Create alert definition files.
+      createUnivManageAlertDefinitionsTask(true)
+          .setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
       // Mark universe task state to success.
       createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
       // Run all the tasks.

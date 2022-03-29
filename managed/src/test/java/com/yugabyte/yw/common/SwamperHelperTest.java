@@ -197,7 +197,32 @@ public class SwamperHelperTest extends FakeDBApplication {
     assertThat(configUuids, containsInAnyOrder(definitionUuid, definition2Uuid));
   }
 
+  @Test
+  public void testGetTargetUniverseUuids() throws IOException {
+    when(appConfig.getString("yb.swamper.targetPath")).thenReturn(SWAMPER_TMP_PATH);
+    UUID universeUuid1 = UUID.randomUUID();
+    UUID universeUuid2 = UUID.randomUUID();
+    String configFilePath = generateNodeFileName(universeUuid1.toString());
+    String configFilePath2 = generateYugabyteFileName(universeUuid2.toString());
+    String wrongFilePath = generateNodeFileName("blablabla");
+
+    new File(configFilePath).createNewFile();
+    new File(configFilePath2).createNewFile();
+    new File(wrongFilePath).createNewFile();
+
+    List<UUID> configUuids = swamperHelper.getTargetUniverseUuids();
+    assertThat(configUuids, containsInAnyOrder(universeUuid1, universeUuid2));
+  }
+
   private String generateRulesFileName(String definitionUuid) {
     return SWAMPER_TMP_PATH + SwamperHelper.ALERT_CONFIG_FILE_PREFIX + definitionUuid + ".yml";
+  }
+
+  private String generateNodeFileName(String universeUuid) {
+    return SWAMPER_TMP_PATH + SwamperHelper.TARGET_FILE_NODE_PREFIX + universeUuid + ".json";
+  }
+
+  private String generateYugabyteFileName(String universeUuid) {
+    return SWAMPER_TMP_PATH + SwamperHelper.TARGET_FILE_YUGABYTE_PREFIX + universeUuid + ".json";
   }
 }

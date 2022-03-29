@@ -234,6 +234,10 @@ public class Universe extends Model {
         find.query().where().eq("customer_id", customer.getCustomerId()).findIds());
   }
 
+  public static Set<UUID> getAllUUIDs() {
+    return ImmutableSet.copyOf(find.query().where().findIds());
+  }
+
   public static Set<Universe> getAllWithoutResources(Customer customer) {
     List<Universe> rawList =
         find.query().where().eq("customer_id", customer.getCustomerId()).findList();
