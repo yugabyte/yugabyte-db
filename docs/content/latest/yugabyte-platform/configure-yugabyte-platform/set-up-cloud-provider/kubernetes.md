@@ -102,7 +102,7 @@ The tasks you can perform depend on your access level.
 
 ```sh
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-global-admin.yaml \
-  | sed "s/namespace: <serviceaccount_namespace>/namespace: <namespace>"/g \
+  | sed "s/namespace: <SA_NAMESPACE>/namespace: <namespace>"/g \
   | kubectl apply -n <namespace> -f -
 ```
 
@@ -110,7 +110,7 @@ curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-g
 
 ```sh
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-global.yaml \
-  | sed "s/namespace: <serviceaccount_namespace>/namespace: <namespace>"/g \
+  | sed "s/namespace: <SA_NAMESPACE>/namespace: <namespace>"/g \
   | kubectl apply -n <namespace> -f -
 ```
 
@@ -129,7 +129,7 @@ kubectl auth can-i \
 
 ```sh
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-namespaced-admin.yaml \
-  | sed "s/namespace: <serviceaccount_namespace>/namespace: <namespace>"/g \
+  | sed "s/namespace: <SA_NAMESPACE>/namespace: <namespace>"/g \
   | kubectl apply -n <namespace> -f -
 ```
 
@@ -150,7 +150,7 @@ For example, if your goal is to allow the platform software to manage YugabyteDB
 
 ```sh
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-namespaced.yaml \
-  | sed "s/namespace: <serviceaccount_namespace>/namespace: <namespace>"/g \
+  | sed "s/namespace: <SA_NAMESPACE>/namespace: <namespace>"/g \
   | kubectl apply -n <namespace> -f -
 ```
 
