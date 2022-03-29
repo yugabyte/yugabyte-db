@@ -14,7 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-## Install prerequisites
+## Prerequisites
 
 To run the docs site locally and edit the docs, you'll need:
 
@@ -38,6 +38,8 @@ To run the docs site locally and edit the docs, you'll need:
   * Using NVM: `nvm use 16`
 
 * **Hugo**: `brew install hugo` gets you the latest version.
+
+* **A GitHub account**
 
 * **Git client**: The system Git binary is out of date, but works. If you like, you can use Homebrew to get a newer version (`brew install git`).
 
@@ -78,12 +80,12 @@ The YugabyteDB documentation is written in Markdown, and processed by Hugo (a st
 To get the docs site running in a live-reload server on your local machine, run the following commands:
 
 ```sh
-cd yugabyte-db/docs
-npm ci      # only necessary the first time you clone the repo!
-npm start   # build the docs, launch the live-reload server
+cd yugabyte-db/docs  # Make sure this is YOUR fork.
+npm ci               # Only necessary the first time you clone the repo.
+npm start            # Builds the docs and launches the live-reload server.
 ```
 
-The live-reload server runs at <http://localhost:1313/> unless port 1313 is already in use. Check the output from the `npm start` command to see the port in use.
+The live-reload server runs at <http://localhost:1313/> unless port 1313 is already in use. Check the output from the `npm start` command to verify the port in use.
 
 When you're done, type Ctrl-C stop the server.
 
@@ -93,7 +95,7 @@ There's a transient bug in the live-reload build. If your local docs site doesn'
 
 ### Optional: Run a full build {#full-build}
 
-The live-reload server is the quickest way to get the docs running locally. If you want to run the build exactly the same way Netlify does for a deployment, do the following:
+The live-reload server is the quickest way to get the docs running locally. If you want to run the build exactly the same way the CI pipeline does for a deployment, do the following:
 
 ```sh
 cd yugabyte-db/docs

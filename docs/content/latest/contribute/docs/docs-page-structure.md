@@ -68,15 +68,11 @@ menu:
 
 ## Types of pages
 
-There are different types of documentation pages as noted below.
+There are two different types of documentation pages: index pages, and content pages.
 
-### Index pages
+**Index pages** have links to subtopics in a topic. These pages are named `_index.html` or `_index.md`.
 
-Index pages have links to subtopics within a topic. These pages are named `_index.html`.
-
-### Content pages
-
-Content pages contain information about topics. The names of these docs page has the format `my-docs-page.md`.
+**Content pages** contain information about topics. These pages are named in the format `my-docs-page.md`.
 
 ## Widgets
 
@@ -131,7 +127,7 @@ This is a warning with a [link](https://www.yugabyte.com).
 
 ### Inline Section Switcher
 
-An inline section switcher lets you switch between content sections **without a separate URL***. If you want to link to sub-sections inside a switcher, use tabs. This widget looks as follows:
+An inline section switcher lets you switch between content sections **without a separate URL**. If you want to link to sub-sections inside a switcher, use tabs. This widget looks as follows:
 
 ![Inline section switcher](https://raw.githubusercontent.com/yugabyte/docs/master/contributing/inline-section-switcher.png)
 

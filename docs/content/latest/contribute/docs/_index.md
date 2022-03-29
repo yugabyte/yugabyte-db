@@ -22,7 +22,7 @@ menu:
         <div class="title">Checklist</div>
       </div>
       <div class="body">
-        Explore the whole contribution process, from clone to pull request
+        Explore the contribution process, from start to finish
       </div>
     </a>
   </div>
@@ -46,7 +46,7 @@ menu:
         <div class="title">Edit the docs</div>
       </div>
       <div class="body">
-        Fork the repository, and edit the docs
+        Fork the repository and edit the docs
       </div>
     </a>
   </div>
