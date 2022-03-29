@@ -27,7 +27,7 @@ class InetAddressTest : public YBTest {
     InetAddress addr_orig(ASSERT_RESULT(ParseIpAddress(strval)));
     std::string bytes = addr_orig.ToBytes();
     InetAddress addr_new;
-    ASSERT_OK(addr_new.FromBytes(bytes));
+    ASSERT_OK(addr_new.FromSlice(bytes));
     std::string strval_new;
     ASSERT_OK(addr_new.ToString(&strval_new));
     ASSERT_EQ(strval, strval_new);
@@ -86,13 +86,13 @@ TEST_F(InetAddressTest, TestErrors) {
   ASSERT_FALSE(ParseIpAddress("2607:g0d0:1002:51::4").ok());
 
   std::string bytes;
-  ASSERT_FALSE(addr.FromBytes(bytes).ok());
+  ASSERT_FALSE(addr.FromSlice(bytes).ok());
   bytes = "0";
-  ASSERT_FALSE(addr.FromBytes(bytes).ok());
+  ASSERT_FALSE(addr.FromSlice(bytes).ok());
   bytes = "012345";
-  ASSERT_FALSE(addr.FromBytes(bytes).ok());
+  ASSERT_FALSE(addr.FromSlice(bytes).ok());
   bytes = "111111111111111111"; // 17 bytes.
-  ASSERT_FALSE(addr.FromBytes(bytes).ok());
+  ASSERT_FALSE(addr.FromSlice(bytes).ok());
 }
 
 TEST_F(InetAddressTest, FilterAddresses) {
