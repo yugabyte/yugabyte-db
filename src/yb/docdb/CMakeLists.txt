@@ -84,7 +84,6 @@ set(DOCDB_SRCS
         compaction_file_filter.cc
         intent_aware_iterator.cc
         lock_batch.cc
-        packed_row.cc
         pgsql_operation.cc
         ql_rocksdb_storage.cc
         ql_rowwise_iterator_interface.cc
@@ -148,7 +147,6 @@ ADD_YB_TEST(doc_operation-test)
 ADD_YB_TEST(docdb_rocksdb_util-test)
 ADD_YB_TEST(docdb-test)
 ADD_YB_TEST(docrowwiseiterator-test)
-ADD_YB_TEST(packed_row-test)
 ADD_YB_TEST(primitive_value-test)
 ADD_YB_TEST(randomized_docdb-test)
 ADD_YB_TEST(shared_lock_manager-test)

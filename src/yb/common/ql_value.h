@@ -62,11 +62,12 @@ class QLValue {
   QLValue() { }
   explicit QLValue(const QLValuePB& pb) : pb_(pb) { }
   explicit QLValue(QLValuePB&& pb) : pb_(std::move(pb)) { }
-  virtual ~QLValue();
 
   //-----------------------------------------------------------------------------------------
   // Access functions to value and type.
   InternalType type() const { return pb_.value_case(); }
+  InternalType value_case() const { return pb_.value_case(); }
+
   const QLValuePB& value() const { return pb_; }
   QLValuePB* mutable_value() { return &pb_; }
 
@@ -495,14 +496,6 @@ class QLValue {
   }
 
   //----------------------------- serializer / deserializer ---------------------------------
-  static void Serialize(const std::shared_ptr<QLType>& ql_type,
-                        const QLClient& client,
-                        const QLValuePB& pb,
-                        faststring* buffer);
-
-  void Serialize(const std::shared_ptr<QLType>& ql_type,
-                 const QLClient& client,
-                 faststring* buffer) const;
   CHECKED_STATUS Deserialize(const std::shared_ptr<QLType>& ql_type,
                              const QLClient& client,
                              Slice* data);
@@ -561,12 +554,25 @@ bool operator ==(const LWQLValuePB& lhs, const LWQLValuePB& rhs);
 bool operator !=(const LWQLValuePB& lhs, const LWQLValuePB& rhs);
 
 InternalType type(const QLValuePB& v);
+
 bool IsNull(const QLValuePB& v);
+
+inline bool IsNull(const QLValue& v) {
+  return IsNull(v.value());
+}
+
 void SetNull(QLValuePB* v);
+void SetNull(LWQLValuePB* v);
+
+inline void SetNull(QLValue* v) {
+  SetNull(v->mutable_value());
+}
+
 bool EitherIsNull(const QLValuePB& lhs, const QLValuePB& rhs);
 bool BothNotNull(const QLValuePB& lhs, const QLValuePB& rhs);
 bool BothNull(const QLValuePB& lhs, const QLValuePB& rhs);
 bool Comparable(const QLValuePB& lhs, const QLValuePB& rhs);
+bool Comparable(const LWQLValuePB& lhs, const LWQLValuePB& rhs);
 int Compare(const QLValuePB& lhs, const QLValuePB& rhs);
 bool EitherIsNull(const QLValuePB& lhs, const QLValue& rhs);
 bool Comparable(const QLValuePB& lhs, const QLValue& rhs);
@@ -577,6 +583,14 @@ int Compare(const QLSeqValuePB& lhs, const QLSeqValuePB& rhs);
 int Compare(const bool lhs, const bool rhs);
 
 bool IsNull(const LWQLValuePB& v);
+
+inline void AppendToKey(const QLValue &value_pb, std::string *bytes) {
+  AppendToKey(value_pb.value(), bytes);
+}
+
+void ConcatStrings(const std::string& lhs, const std::string& rhs, QLValuePB* result);
+void ConcatStrings(const std::string& lhs, const std::string& rhs, QLValue* result);
+void ConcatStrings(const Slice& lhs, const Slice& rhs, LWQLValuePB* result);
 
 #define YB_SET_INT_VALUE(ql_valuepb, input, bits) \
   case DataType::BOOST_PP_CAT(INT, bits): { \
