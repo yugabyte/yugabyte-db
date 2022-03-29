@@ -193,7 +193,7 @@ class UniverseForm extends Component {
         enableNodeToNodeEncrypt: formValues[clusterType].enableNodeToNodeEncrypt,
         enableClientToNodeEncrypt: formValues[clusterType].enableClientToNodeEncrypt
       };
-      if (isNonEmptyObject(formValues[clusterType].mountPoints)) {
+      if (isDefinedNotNull(formValues[clusterType].mountPoints)) {
         intent.deviceInfo['mountPoints'] = formValues[clusterType].mountPoints;
       }
       if (isNonEmptyArray(formValues[clusterType]?.gFlags)) {
@@ -439,7 +439,7 @@ class UniverseForm extends Component {
           storageClass: 'standard'
         }
       };
-      if (isNonEmptyObject(formValues[clusterType].mountPoints)) {
+      if (isDefinedNotNull(formValues[clusterType].mountPoints)) {
         clusterIntent.deviceInfo['mountPoints'] = formValues[clusterType].mountPoints;
       }
       const currentProvider = self.getCurrentProvider(formValues[clusterType].provider).code;
