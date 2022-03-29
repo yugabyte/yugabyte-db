@@ -50,38 +50,16 @@ namespace yb {
 // - Do not add non-static members to this class as QLBfunc is not meant for creating different
 //   objects with different behaviors. For compability reason, all builtin calls must be processed
 //   the same way across all processes and all releases in YugaByte.
-class QLBfunc {
- public:
-  static Status Exec(bfql::BFOpcode opcode,
-                     const std::vector<std::shared_ptr<QLValue>>& params,
-                     const std::shared_ptr<QLValue>& result);
-
-  static Status Exec(bfql::BFOpcode opcode,
-                     const std::vector<QLValue*>& params,
-                     QLValue *result);
-
-  static Status Exec(bfql::BFOpcode opcode,
-                     std::vector<QLValue> *params,
-                     QLValue *result);
-};
+CHECKED_STATUS ExecBfunc(
+    bfql::BFOpcode opcode, std::vector<QLValuePB>* params, QLValuePB* result);
 
 //--------------------------------------------------------------------------------------------------
 // PGSQL support
-class PgsqlBfunc {
- public:
-  static Status Exec(bfpg::BFOpcode opcode,
-                     const std::vector<std::shared_ptr<QLValue>>& params,
-                     const std::shared_ptr<QLValue>& result);
+CHECKED_STATUS ExecBfunc(
+    bfpg::BFOpcode opcode, std::vector<QLValuePB>* params, QLValuePB *result);
 
-  static Status Exec(bfpg::BFOpcode opcode,
-                     const std::vector<QLValue*>& params,
-                     QLValue *result);
-
-  static Status Exec(bfpg::BFOpcode opcode,
-                     std::vector<QLValue> *params,
-                     QLValue *result);
-};
-
+CHECKED_STATUS ExecBfunc(
+    bfpg::BFOpcode opcode, std::vector<LWQLValuePB>* params, LWQLValuePB *result);
 
 } // namespace yb
 
