@@ -15,7 +15,7 @@
 #ifndef YB_YQL_PGGATE_PG_DOC_OP_H_
 #define YB_YQL_PGGATE_PG_DOC_OP_H_
 
-#include <deque>
+#include <list>
 
 #include <boost/optional.hpp>
 
@@ -25,6 +25,7 @@
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_session.h"
+#include "yb/yql/pggate/pg_sys_table_prefetcher.h"
 
 namespace yb {
 namespace pggate {
@@ -37,8 +38,8 @@ YB_STRONGLY_TYPED_BOOL(RequestSent);
 // PgDocResult represents a batch of rows in ONE reply from tablet servers.
 class PgDocResult {
  public:
-  explicit PgDocResult(rpc::SidecarHolder&& data);
-  PgDocResult(rpc::SidecarHolder&& data, std::list<int64_t>&& row_orders);
+  explicit PgDocResult(rpc::SidecarHolder data);
+  PgDocResult(rpc::SidecarHolder data, std::list<int64_t> row_orders);
   ~PgDocResult();
 
   PgDocResult(const PgDocResult&) = delete;
@@ -233,7 +234,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   }
 
   // Get the result of the op. No rows will be added to rowsets in case end of data reached.
-  CHECKED_STATUS GetResult(std::list<PgDocResult> *rowsets);
+  virtual CHECKED_STATUS GetResult(std::list<PgDocResult> *rowsets);
   Result<int32_t> GetRowsAffectedCount() const;
 
   // This operation is requested internally within PgGate, and that request does not go through
@@ -581,6 +582,9 @@ class PgDocWriteOp : public PgDocOp {
   // Template operation all write ops.
   PgsqlWriteOpPtr write_op_;
 };
+
+PgDocOp::SharedPtr MakeDocReadOpWithData(
+    const PgSession::ScopedRefPtr& pg_session, PrefetchedDataHolder data);
 
 }  // namespace pggate
 }  // namespace yb

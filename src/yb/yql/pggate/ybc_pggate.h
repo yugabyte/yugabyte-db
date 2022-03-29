@@ -566,6 +566,13 @@ void YBCPgResetCatalogReadTime();
 
 YBCStatus YBCGetTabletServerHosts(YBCServerDescriptor **tablet_servers, size_t* numservers);
 
+void YBCStartSysTablePrefetching();
+
+void YBCStopSysTablePrefetching();
+
+void YBCRegisterSysTableForPrefetching(
+    YBCPgOid database_oid, YBCPgOid table_oid, YBCPgOid index_oid);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

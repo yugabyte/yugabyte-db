@@ -10,15 +10,24 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include <glog/logging.h>
+#include <chrono>
+#include <functional>
+#include <thread>
+#include <unordered_map>
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
 
 #include "yb/master/master.h"
 #include "yb/master/mini_master.h"
 
+#include "yb/util/metric_entity.h"
 #include "yb/util/metrics.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
 
+#include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
@@ -81,15 +90,15 @@ TEST_F(PgCatalogPerfTest, YB_DISABLE_TEST_IN_TSAN(StartupRPCCount)) {
   };
 
   const auto first_connect_rpc_count = ASSERT_RESULT(ReadRPCCountDelta(connector));
-  ASSERT_EQ(first_connect_rpc_count, 59);
+  ASSERT_EQ(first_connect_rpc_count, 5);
   const auto subsequent_connect_rpc_count = ASSERT_RESULT(ReadRPCCountDelta(connector));
-  ASSERT_EQ(subsequent_connect_rpc_count, 10);
+  ASSERT_EQ(subsequent_connect_rpc_count, 2);
 }
 
 // Test checks number of RPC in case of cache refresh without partitioned tables.
 TEST_F(PgCatalogPerfTest, YB_DISABLE_TEST_IN_TSAN(CacheRefreshRPCCountWithoutPartitionTables)) {
   const auto cache_refresh_rpc_count = ASSERT_RESULT(CacheRefreshRPCCount());
-  ASSERT_EQ(cache_refresh_rpc_count, 10);
+  ASSERT_EQ(cache_refresh_rpc_count, 4);
 }
 
 // Test checks number of RPC in case of cache refresh with partitioned tables.
@@ -104,7 +113,7 @@ TEST_F(PgCatalogPerfTest, YB_DISABLE_TEST_IN_TSAN(CacheRefreshRPCCountWithPartit
     }
   }
   const auto cache_refresh_rpc_count = ASSERT_RESULT(CacheRefreshRPCCount());
-  ASSERT_EQ(cache_refresh_rpc_count, 16);
+  ASSERT_EQ(cache_refresh_rpc_count, 7);
 }
 
 } // namespace pgwrapper

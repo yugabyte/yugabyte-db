@@ -20,6 +20,8 @@
 
 namespace yb {
 
+class Slice;
+
 // Postgres object identifier (OID).
 typedef uint32_t PgOid;
 static constexpr PgOid kPgInvalidOid = 0;
@@ -37,6 +39,7 @@ struct PgObjectId {
       : database_oid(kPgInvalidOid), object_oid(kPgInvalidOid) {}
 
   explicit PgObjectId(const TableId& table_id);
+  explicit PgObjectId(const Slice& table_id);
 
   bool IsValid() const {
     return database_oid != kPgInvalidOid && object_oid != kPgInvalidOid;

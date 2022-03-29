@@ -594,4 +594,9 @@ bool IsYbDbAdminUser(Oid member);
  */
 void YbCheckUnsupportedSystemColumns(Var *var, const char *colname, RangeTblEntry *rte);
 
+/*
+ * Register system table for prefetching.
+ */
+void YbRegisterSysTableForPrefetching(int sys_table_id);
+
 #endif /* PG_YB_UTILS_H */

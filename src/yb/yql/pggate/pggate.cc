@@ -14,15 +14,19 @@
 
 #include "yb/yql/pggate/pggate.h"
 
-#include <boost/optional.hpp>
+#include <list>
+#include <string>
+#include <utility>
+#include <vector>
 
-#include "yb/client/client_fwd.h"
 #include "yb/client/client.h"
+#include "yb/client/client_fwd.h"
 #include "yb/client/client_utils.h"
 #include "yb/client/tablet_server.h"
 
 #include "yb/common/partition.h"
 #include "yb/common/pg_system_attr.h"
+#include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/schema.h"
 
 #include "yb/docdb/doc_key.h"
@@ -37,21 +41,32 @@
 
 #include "yb/server/secure.h"
 
+#include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/tserver_forward_service.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
+#include "yb/util/enums.h"
 #include "yb/util/format.h"
 #include "yb/util/range.h"
 #include "yb/util/shared_mem.h"
 #include "yb/util/status_format.h"
-#include "yb/util/status_log.h"
 
+#include "yb/yql/pggate/pg_column.h"
 #include "yb/yql/pggate/pg_ddl.h"
 #include "yb/yql/pggate/pg_delete.h"
+#include "yb/yql/pggate/pg_dml.h"
+#include "yb/yql/pggate/pg_dml_read.h"
+#include "yb/yql/pggate/pg_dml_write.h"
 #include "yb/yql/pggate/pg_insert.h"
 #include "yb/yql/pggate/pg_memctx.h"
 #include "yb/yql/pggate/pg_sample.h"
 #include "yb/yql/pggate/pg_select.h"
+#include "yb/yql/pggate/pg_select_index.h"
+#include "yb/yql/pggate/pg_session.h"
+#include "yb/yql/pggate/pg_statement.h"
+#include "yb/yql/pggate/pg_sys_table_prefetcher.h"
+#include "yb/yql/pggate/pg_table.h"
+#include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pg_truncate_colocated.h"
 #include "yb/yql/pggate/pg_txn_manager.h"
 #include "yb/yql/pggate/pg_update.h"
@@ -1314,7 +1329,21 @@ Status PgApiImpl::ExecSelect(PgStatement *handle, const PgExecParameters *exec_p
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-  return down_cast<PgDmlRead*>(handle)->Exec(exec_params);
+  auto& dml_read = *down_cast<PgDmlRead*>(handle);
+  if (pg_sys_table_prefetcher_ && dml_read.IsReadFromYsqlCatalog() && dml_read.read_req()) {
+    // In case of sys tables prefething is enabled all reads from sys table must use cached data.
+    auto data = VERIFY_RESULT(pg_sys_table_prefetcher_->GetData(
+        pg_session_.get(), *dml_read.read_req(), dml_read.IsIndexOrderedScan()));
+    if (!data) {
+      // DLOG(FATAL) is used instead of SCHECK to let user on release build proceed by reading
+      // data from a master in a non efficient way (by using separate RPC).
+      DLOG(FATAL) << "Data was not prefetched for request "
+                  << dml_read.read_req()->ShortDebugString();
+    } else {
+      dml_read.UpgradeDocOp(MakeDocReadOpWithData(pg_session_, std::move(data)));
+    }
+  }
+  return dml_read.Exec(exec_params);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -1556,6 +1585,30 @@ Result<client::TabletServersInfo> PgApiImpl::ListTabletServers() {
 
 Status PgApiImpl::ValidatePlacement(const char *placement_info) {
   return pg_session_->ValidatePlacement(placement_info);
+}
+
+void PgApiImpl::StartSysTablePrefetching() {
+  if (pg_sys_table_prefetcher_) {
+    DLOG(FATAL) << "Sys table prefetching was started already";
+  }
+  pg_sys_table_prefetcher_.reset(new PgSysTablePrefetcher());
+}
+
+void PgApiImpl::StopSysTablePrefetching() {
+  if (!pg_sys_table_prefetcher_) {
+    DLOG(FATAL) << "Sys table prefetching was not started yet";
+  } else {
+    pg_sys_table_prefetcher_.reset();
+  }
+}
+
+void PgApiImpl::RegisterSysTableForPrefetching(
+  const PgObjectId& table_id, const PgObjectId& index_id) {
+  if (!pg_sys_table_prefetcher_) {
+    DLOG(FATAL) << "Sys table prefetching was not started yet";
+  } else {
+    pg_sys_table_prefetcher_->Register(table_id, index_id);
+  }
 }
 
 } // namespace pggate

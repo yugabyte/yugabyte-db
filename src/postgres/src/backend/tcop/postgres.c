@@ -3671,6 +3671,22 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 #endif
 }
 
+static void YBPreloadRelCacheHelper()
+{
+	YBCStartSysTablePrefetching();
+	PG_TRY();
+	{
+		YBPreloadRelCache();
+	}
+	PG_CATCH();
+	{
+		YBCStopSysTablePrefetching();
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+	YBCStopSysTablePrefetching();
+}
+
 /*
  * Reload the postgres caches and update the cache version.
  * Note: if catalog changes sneaked in since getting the
@@ -3722,7 +3738,7 @@ static void YBRefreshCache()
 	/* Clear and reload system catalog caches, including all callbacks. */
 	ResetCatalogCaches();
 	CallSystemCacheCallbacks();
-	YBPreloadRelCache();
+	YBPreloadRelCacheHelper();
 
 	/* Also invalidate the pggate cache. */
 	HandleYBStatus(YBCPgInvalidateCache());

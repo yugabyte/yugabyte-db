@@ -1608,29 +1608,44 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
       30s, "Drop database with tablegroup (wait for RPCs to finish)"));
 }
 
+namespace {
+
+class PgLibPqTestRF1: public PgLibPqTest {
+  int GetNumMasters() const override {
+    return 1;
+  }
+
+  int GetNumTabletServers() const override {
+    return 1;
+  }
+};
+
+} // namespace
+
 // Test that the number of RPCs sent to master upon first connection is not too high.
 // See https://github.com/yugabyte/yugabyte-db/issues/3049
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NumberOfInitialRpcs)) {
-  auto get_master_inbound_rpcs_created = [&cluster_ = this->cluster_]() -> Result<int64_t> {
+// Test uses RF1 cluster to avoid possible relelections which affects the number of RPCs received
+// by a master.
+TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NumberOfInitialRpcs), PgLibPqTestRF1) {
+  auto get_master_inbound_rpcs_created = [this]() -> Result<int64_t> {
     int64_t m_in_created = 0;
-    for (auto* master : cluster_->master_daemons()) {
+    for (const auto* master : this->cluster_->master_daemons()) {
       m_in_created += VERIFY_RESULT(master->GetInt64Metric(
           &METRIC_ENTITY_server, "yb.master", &METRIC_rpc_inbound_calls_created, "value"));
     }
     return m_in_created;
   };
 
-  int64_t rpcs_before = ASSERT_RESULT(get_master_inbound_rpcs_created());
+  auto rpcs_before = ASSERT_RESULT(get_master_inbound_rpcs_created());
   ASSERT_RESULT(Connect());
-  int64_t rpcs_after  = ASSERT_RESULT(get_master_inbound_rpcs_created());
-  int64_t rpcs_during = rpcs_after - rpcs_before;
+  auto rpcs_during = ASSERT_RESULT(get_master_inbound_rpcs_created()) - rpcs_before;
 
-  // Real-world numbers (debug build, local Mac): 328 RPCs before, 95 after the fix for #3049
+  // Real-world numbers (debug build, local PC): 58 RPCs
   LOG(INFO) << "Master inbound RPC during connection: " << rpcs_during;
   // RPC counter is affected no only by table read/write operations but also by heartbeat mechanism.
-  // As far as ASAN/TSAN builds are slower they can receive more heartbeats while
-  // processing requests. As a result RPC count might be higher in comparison to other build types.
-  ASSERT_LT(rpcs_during, RegularBuildVsSanitizers(150, 200));
+  // As far as ASAN builds are slower they can receive more heartbeats while processing requests.
+  // As a result RPC count might be higher in comparison to other build types.
+  ASSERT_LT(rpcs_during, 100);
 }
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(RangePresplit)) {
