@@ -134,8 +134,6 @@ yugabytedb/yugabyte  2.13.0          2.13.0.1-b2  YugabyteDB is the high-perform
 
 Now you are ready to create a local YugabyteDB cluster.
 
-{{<tip title="Next step" >}}
+## Next step
 
 [Create a local cluster](../../create-local-cluster/kubernetes/)
-
-{{< /tip >}}
