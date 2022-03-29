@@ -14,6 +14,7 @@ import {
   isNonEmptyString
 } from '../../../utils/ObjectUtils';
 import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
+import { YUGABYTE_TITLE } from '../../../config';
 
 export const panelTypes = {
   container: {
@@ -280,7 +281,7 @@ class GraphPanel extends Component {
       !(type === 'ycql_ops' || type === 'ysql_ops' || type === 'yedis_ops')
     ) {
       panelData = (
-        <div className="oss-unavailable-warning">Only available on Yugabyte Platform.</div>
+        <div className="oss-unavailable-warning">Only available on {YUGABYTE_TITLE}.</div>
       );
     } else {
       if (Object.keys(metrics).length > 0 && isNonEmptyObject(metrics[type])) {
