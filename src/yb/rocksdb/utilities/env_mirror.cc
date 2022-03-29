@@ -49,8 +49,8 @@ class SequentialFileMirror : public SequentialFile {
       size_t left = aslice.size();
       while (left) {
         Status bs = b_->Read(left, &bslice, bscratch.get());
-        assert(as.code() == bs.code());
-        assert(memcmp(bscratch.get(), scratch + off, bslice.size()) == 0);
+        DCHECK(as.code() == bs.code());
+        DCHECK_EQ(memcmp(bscratch.get(), scratch + off, bslice.size()), 0);
         off += bslice.size();
         left -= bslice.size();
       }

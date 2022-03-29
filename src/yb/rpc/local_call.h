@@ -48,7 +48,7 @@ class LocalOutboundCall : public OutboundCall {
  protected:
   void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) override;
 
-  Result<const uint8_t*const*> GetSidecarPtr(size_t idx) const override;
+  Result<Slice> GetSidecar(size_t idx) const override;
   Result<SidecarHolder> GetSidecarHolder(size_t idx) const override;
 
  private:
@@ -78,7 +78,6 @@ class LocalYBInboundCall : public YBInboundCall, public RpcCallParams {
 
   size_t AddRpcSidecar(Slice car) override {
     auto buf = RefCntBuffer(car);
-    sidecar_pointers_.push_back({buf.ubegin(), buf.uend()});
     sidecars_.push_back(std::move(buf));
     return sidecars_.size() - 1;
   }
@@ -97,8 +96,6 @@ class LocalYBInboundCall : public YBInboundCall, public RpcCallParams {
   AnyMessageConstPtr SerializableResponse() override;
 
   boost::container::small_vector<RefCntBuffer, kMinBufferForSidecarSlices> sidecars_;
-  boost::container::small_vector<
-      std::array<const uint8_t*, 2>, kMinBufferForSidecarSlices> sidecar_pointers_;
 
   // Weak pointer back to the outbound call owning this inbound call to avoid circular reference.
   std::weak_ptr<LocalOutboundCall> outbound_call_;
