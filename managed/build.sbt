@@ -145,7 +145,7 @@ libraryDependencies ++= Seq(
   "com.google.inject.extensions" % "guice-multibindings" % "4.2.3",
   "org.mockito" % "mockito-core" % "2.13.0",
   "org.mindrot" % "jbcrypt" % "0.4",
-  "org.postgresql" % "postgresql" % "42.2.23",
+  "org.postgresql" % "postgresql" % "42.2.25",
   "commons-io" % "commons-io" % "2.4",
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
   "org.codehaus.janino" % "janino" % "3.1.6",
@@ -163,7 +163,7 @@ libraryDependencies ++= Seq(
   "com.amazonaws" % "aws-java-sdk-iam" % "1.11.670",
   "com.amazonaws" % "aws-java-sdk-sts" % "1.11.678",
   "com.amazonaws" % "aws-java-sdk-s3" % "1.11.931",
-  "com.cronutils" % "cron-utils" % "9.1.5",
+  "com.cronutils" % "cron-utils" % "9.1.6",
   "com.azure" % "azure-storage-blob" % "12.7.0",
   "com.azure" % "azure-core" % "1.1.0",
   "io.prometheus" % "simpleclient" % "0.11.0",
@@ -189,8 +189,8 @@ libraryDependencies ++= Seq(
   "commons-codec" % "commons-codec" % "1.15",
   "com.google.cloud" % "google-cloud-storage" % "1.115.0",
   "org.projectlombok" % "lombok" % "1.18.20",
-  "com.squareup.okhttp3" % "okhttp" % "4.9.1",
-  "com.squareup.okhttp3" % "mockwebserver" % "4.9.1" % Test,
+  "com.squareup.okhttp3" % "okhttp" % "4.9.2",
+  "com.squareup.okhttp3" % "mockwebserver" % "4.9.2" % Test,
   "io.kamon" %% "kamon-bundle" % "2.2.2",
   "io.kamon" %% "kamon-prometheus" % "2.2.2",
   "org.unix4j" % "unix4j-command" % "0.6",
@@ -374,10 +374,9 @@ libraryDependencies ++= Seq(
   "io.netty" % "netty-codec-http" % "4.1.66.Final",
   "io.netty" % "netty" % "3.10.6.Final",
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.44.Final",
-  "com.cronutils" % "cron-utils" % "9.1.5",
-  "com.nimbusds" % "nimbus-jose-jwt" % "9.11.3",
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor" % "2.9.10",
-  "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % "2.9.10"
+  "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % "2.9.10",
+  "net.minidev" % "json-smart" % "2.4.8"
 )
 // https://mvnrepository.com/artifact/eu.unicredit/sbt-swagger-codegen-lib
 //libraryDependencies += "eu.unicredit" %% "sbt-swagger-codegen-lib" % "0.0.12"
