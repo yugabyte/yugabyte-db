@@ -36,6 +36,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
+import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
@@ -680,10 +681,11 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
             .setSubTaskGroupType(subGroupType);
       }
       // Conditional Provisioning
-      createSetupServerTasks(nodeList, true /* isSystemdUpgrade */)
+      createSetupServerTasks(nodeList, true /* isSystemdUpgrade */, VmUpgradeTaskType.None)
           .setSubTaskGroupType(SubTaskGroupType.Provisioning);
       // Conditional Configuring
-      createConfigureServerTasks(nodeList, false, false, false, true /* isSystemdUpgrade */)
+      createConfigureServerTasks(
+              nodeList, false, false, false, true /* isSystemdUpgrade */, VmUpgradeTaskType.None)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       subGroupType = SubTaskGroupType.ConfigureUniverse;
 

@@ -70,7 +70,8 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
           // Run YSQL upgrade on the universe.
           createRunYsqlUpgradeTask(newVersion).setSubTaskGroupType(getTaskSubGroupType());
           // Update software version in the universe metadata.
-          createUpdateSoftwareVersionTask(newVersion).setSubTaskGroupType(getTaskSubGroupType());
+          createUpdateSoftwareVersionTask(newVersion, false /*isSoftwareUpdateViaVm*/)
+              .setSubTaskGroupType(getTaskSubGroupType());
         });
   }
 
