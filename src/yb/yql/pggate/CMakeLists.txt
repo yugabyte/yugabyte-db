@@ -49,7 +49,8 @@ set(PGGATE_SRCS
     pg_value.cc
     pg_memctx.cc
     pg_callbacks.cc
-    pg_tools.cc)
+    pg_tools.cc
+    pg_sys_table_prefetcher.cc)
 
 ADD_YB_LIBRARY(yb_pggate_flags
                SRCS pggate_flags.cc
