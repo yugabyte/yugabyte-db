@@ -2547,7 +2547,8 @@ std::vector<scoped_refptr<CDCStreamInfo>> CatalogManager::FindCDCStreamsForTable
   for (const auto& entry : cdc_stream_map_) {
     auto ltm = entry.second->LockForRead();
     // for xCluster the first entry will be the table_id
-    if (ltm->table_id().Get(0) == table_id && !ltm->started_deleting()) {
+    if (!ltm->table_id().empty() && ltm->table_id().Get(0) == table_id &&
+        !ltm->started_deleting()) {
       streams.push_back(entry.second);
     }
   }
@@ -3025,7 +3026,8 @@ Status CatalogManager::ListCDCStreams(const ListCDCStreamsRequestPB* req,
       continue;
     }
 
-    if (filter_table && table->id() != entry.second->table_id().Get(0)) {
+    if (filter_table && !entry.second->table_id().empty() &&
+        table->id() != entry.second->table_id().Get(0)) {
       continue; // Skip deleting/deleted streams and streams from other tables.
     }
 

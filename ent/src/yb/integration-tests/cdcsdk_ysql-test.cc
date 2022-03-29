@@ -123,6 +123,14 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     return resp.cluster_config().cluster_uuid();
   }
 
+  Status DropDB(Cluster* cluster) {
+    const std::string db_name = "testdatabase";
+    RETURN_NOT_OK(CreateDatabase(&test_cluster_, db_name, true));
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(db_name));
+    RETURN_NOT_OK(conn.ExecuteFormat("DROP DATABASE $0", kNamespaceName));
+    return Status::OK();
+  }
+
   // The range is exclusive of end i.e. [start, end)
   void WriteRows(uint32_t start, uint32_t end, Cluster* cluster) {
     auto conn = EXPECT_RESULT(cluster->ConnectToDB(kNamespaceName));
@@ -377,6 +385,12 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(MultiRowInsertion)) {
   }
   LOG(INFO) << "Got " << ins_count << " insert records";
   ASSERT_EQ(expected_records_size, ins_count);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(DropDatabase)) {
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream());
+  ASSERT_OK(DropDB(&test_cluster_));
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestNeedSchemaInfoFlag)) {
