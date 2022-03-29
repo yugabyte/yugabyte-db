@@ -183,6 +183,7 @@ public class ResizeNode extends UpgradeTaskBase {
     updateNodeDetailsParams.azUuid = node.azUuid;
     updateNodeDetailsParams.nodeName = node.nodeName;
     updateNodeDetailsParams.details = node;
+    updateNodeDetailsParams.updateCustomImageUsage = false;
 
     UpdateNodeDetails updateNodeTask = createTask(UpdateNodeDetails.class);
     updateNodeTask.initialize(updateNodeDetailsParams);

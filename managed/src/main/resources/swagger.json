@@ -7251,9 +7251,12 @@
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
           "type" : "string"
+        },
+        "ybSoftwareVersion" : {
+          "type" : "string"
         }
       },
-      "required" : [ "clusters", "forceVMImageUpgrade", "kubernetesUpgradeSupported", "machineImages", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "required" : [ "clusters", "forceVMImageUpgrade", "kubernetesUpgradeSupported", "machineImages", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption", "ybSoftwareVersion" ],
       "type" : "object"
     },
     "VolumeDetails" : {

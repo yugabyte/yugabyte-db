@@ -16,16 +16,26 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import org.apache.commons.lang3.StringUtils;
 import play.mvc.Http.Status;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonDeserialize(converter = VMImageUpgradeParams.Converter.class)
 public class VMImageUpgradeParams extends UpgradeTaskParams {
 
+  public enum VmUpgradeTaskType {
+    VmUpgradeWithBaseImages,
+    VmUpgradeWithCustomImages,
+    None
+  }
+
   public Map<UUID, String> machineImages = new HashMap<>();
   public boolean forceVMImageUpgrade = false;
+  public String ybSoftwareVersion = null;
 
   @JsonIgnore public final Map<UUID, UUID> nodeToRegion = new HashMap<>();
+  @JsonIgnore public boolean isSoftwareUpdateViaVm = false;
+  @JsonIgnore public VmUpgradeTaskType vmUpgradeTaskType = VmUpgradeTaskType.None;
 
   public VMImageUpgradeParams() {}
 
@@ -45,6 +55,13 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
     }
 
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    vmUpgradeTaskType =
+        StringUtils.isNotBlank(ybSoftwareVersion)
+            ? VmUpgradeTaskType.VmUpgradeWithCustomImages
+            : VmUpgradeTaskType.VmUpgradeWithBaseImages;
+    isSoftwareUpdateViaVm =
+        (StringUtils.isNotBlank(ybSoftwareVersion)
+            && !ybSoftwareVersion.equals(userIntent.ybSoftwareVersion));
     CloudType provider = userIntent.providerType;
     if (!(provider == CloudType.gcp || provider == CloudType.aws)) {
       throw new PlatformServiceException(

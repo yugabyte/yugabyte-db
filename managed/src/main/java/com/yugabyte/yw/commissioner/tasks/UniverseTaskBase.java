@@ -572,19 +572,25 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /** Create a task to mark the final software version on a universe. */
-  public SubTaskGroup createUpdateSoftwareVersionTask(String softwareVersion) {
+  public SubTaskGroup createUpdateSoftwareVersionTask(
+      String softwareVersion, boolean isSoftwareUpdateViaVm) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("FinalizeUniverseUpdate", executor);
     UpdateSoftwareVersion.Params params = new UpdateSoftwareVersion.Params();
     params.universeUUID = taskParams().universeUUID;
     params.softwareVersion = softwareVersion;
     params.prevSoftwareVersion = taskParams().ybPrevSoftwareVersion;
+    params.isSoftwareUpdateViaVm = isSoftwareUpdateViaVm;
     UpdateSoftwareVersion task = createTask(UpdateSoftwareVersion.class);
     task.initialize(params);
     task.setUserTaskUUID(userTaskUUID);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  public SubTaskGroup createUpdateSoftwareVersionTask(String softwareVersion) {
+    return createUpdateSoftwareVersionTask(softwareVersion, false /*isSoftwareUpdateViaVm*/);
   }
 
   /** Create a task to run YSQL upgrade on the universe. */
