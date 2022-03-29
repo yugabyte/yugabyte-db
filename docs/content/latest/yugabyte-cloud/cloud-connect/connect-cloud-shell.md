@@ -70,8 +70,6 @@ Use HELP for help.
 admin@ycqlsh:yugabyte>
 ```
 
-When you connect to your cluster using Cloud Shell with the YSQL API, the shell window incorporates a [quick start guide](../../cloud-quickstart/qs-explore/), with a series of pre-built queries for you to run.
-
 ## ysqlsh meta-commands in Cloud Shell
 
 Cloud Shell supports the use of ysqlsh [meta-commands](../../../admin/ysqlsh/#meta-commands). However, for security reasons, some commands are not available. With the exception of read-only access to the `/share` directory to load the [sample datasets](../../../sample-data/), commands that access the filesystem do not work in Cloud Shell.

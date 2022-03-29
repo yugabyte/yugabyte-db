@@ -2025,4 +2025,4 @@ Running the above command is an online operation and doesn't require stopping a 
 Concurrent operations in a cluster can lead to various transactional conflicts, catalog version mismatches, and read restart errors. This is expected, and should be addressed by rerunning the upgrade command.
 {{< /note >}}
 
-Refer [Upgrade a deployment](../../manage/upgrade-deployment/) to learn about YB-Master and YB-Tserver upgrades, followed by YSQL system catalog upgrades.
+Refer to [Upgrade a deployment](../../manage/upgrade-deployment/) to learn about YB-Master and YB-Tserver upgrades, followed by YSQL system catalog upgrades.
