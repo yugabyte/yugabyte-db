@@ -27,7 +27,7 @@ Only superusers or users with the yb_fdw role can create foreign data wrappers.
 
 Example:
 
-```
+```plpgsql
 yugabyte=# CREATE FOREIGN DATA WRAPPER mywrapper HANDLER myhandler OPTIONS (dummy 'true');
 ```
 
