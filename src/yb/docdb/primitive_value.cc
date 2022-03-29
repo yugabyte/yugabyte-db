@@ -917,7 +917,7 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
         string bytes;
         RETURN_NOT_OK(DecodeZeroEncodedStr(slice, &bytes));
         out->inetaddress_val_ = new InetAddress();
-        RETURN_NOT_OK(out->inetaddress_val_->FromBytes(bytes));
+        RETURN_NOT_OK(out->inetaddress_val_->FromSlice(bytes));
       } else {
         RETURN_NOT_OK(DecodeZeroEncodedStr(slice, nullptr));
       }
@@ -930,7 +930,7 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
         string bytes;
         RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, &bytes));
         out->inetaddress_val_ = new InetAddress();
-        RETURN_NOT_OK(out->inetaddress_val_->FromBytes(bytes));
+        RETURN_NOT_OK(out->inetaddress_val_->FromSlice(bytes));
       } else {
         RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, nullptr));
       }

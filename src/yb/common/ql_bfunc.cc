@@ -27,47 +27,22 @@ using std::vector;
 //--------------------------------------------------------------------------------------------------
 // CQL support
 
-using QLBfuncExecApi = yb::bfql::BFExecApi<QLValue, QLValue>;
-
-Status QLBfunc::Exec(bfql::BFOpcode opcode,
-                     const vector<shared_ptr<QLValue>>& params,
-                     const shared_ptr<QLValue>& result) {
-  return QLBfuncExecApi::ExecQLOpcode(opcode, params, result);
-}
-
-Status QLBfunc::Exec(bfql::BFOpcode opcode,
-                     const vector<QLValue*>& params,
-                     QLValue *result) {
-  return QLBfuncExecApi::ExecQLOpcode(opcode, params, result);
-}
-
-Status QLBfunc::Exec(bfql::BFOpcode opcode,
-                     vector<QLValue> *params,
-                     QLValue *result) {
-  return QLBfuncExecApi::ExecQLOpcode(opcode, params, result);
+CHECKED_STATUS ExecBfunc(
+    bfql::BFOpcode opcode, std::vector<QLValuePB>* params, QLValuePB* result) {
+  return bfql::BFExecApi<QLValuePB, QLValuePB>::ExecQLOpcode(opcode, params, result);
 }
 
 //--------------------------------------------------------------------------------------------------
 // PGSQL support
 
-using PgsqlBfuncExecApi = yb::bfpg::BFExecApi<QLValue, QLValue>;
-
-Status PgsqlBfunc::Exec(bfpg::BFOpcode opcode,
-                        const vector<shared_ptr<QLValue>>& params,
-                        const shared_ptr<QLValue>& result) {
-  return PgsqlBfuncExecApi::ExecPgsqlOpcode(opcode, params, result);
+CHECKED_STATUS ExecBfunc(
+    bfpg::BFOpcode opcode, std::vector<QLValuePB>* params, QLValuePB *result) {
+  return bfpg::BFExecApi<QLValuePB, QLValuePB>::ExecPgsqlOpcode(opcode, params, result);
 }
 
-Status PgsqlBfunc::Exec(bfpg::BFOpcode opcode,
-                        const vector<QLValue*>& params,
-                        QLValue *result) {
-  return PgsqlBfuncExecApi::ExecPgsqlOpcode(opcode, params, result);
-}
-
-Status PgsqlBfunc::Exec(bfpg::BFOpcode opcode,
-                        vector<QLValue> *params,
-                        QLValue *result) {
-  return PgsqlBfuncExecApi::ExecPgsqlOpcode(opcode, params, result);
+CHECKED_STATUS ExecBfunc(
+    bfpg::BFOpcode opcode, std::vector<LWQLValuePB>* params, LWQLValuePB *result) {
+  return bfpg::BFExecApi<LWQLValuePB, LWQLValuePB>::ExecPgsqlOpcode(opcode, params, result);
 }
 
 } // namespace yb

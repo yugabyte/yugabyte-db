@@ -87,7 +87,7 @@ template<typename PTypePtr, typename RTypePtr>
 uint16_t YBHash(const vector<PTypePtr>& params, RTypePtr result) {
   string encoded_key = "";
   for (const PTypePtr& param : params) {
-    param->AppendToKeyBytes(&encoded_key);
+    AppendToKey(*param, &encoded_key);
   }
 
   return YBPartition::HashColumnCompoundValue(encoded_key);
@@ -110,13 +110,13 @@ CHECKED_STATUS PartitionHash(const vector<PTypePtr>& params, RTypePtr result) {
 template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS ToJson(PTypePtr col, RTypePtr result) {
   common::Jsonb jsonb;
-  Status s = jsonb.FromQLValuePB(col->value());
+  Status s = jsonb.FromQLValue(*col);
 
   if (!s.ok()) {
-    return s.CloneAndPrepend(strings::Substitute(
+    return s.CloneAndPrepend(Format(
         "Cannot convert $0 value $1 to $2",
-        QLType::ToCQLString(InternalToDataType(col->type())),
-        col->ToString(),
+        QLType::ToCQLString(InternalToDataType(col->value_case())),
+        *col,
         QLType::ToCQLString(DataType::JSONB)));
   }
 
@@ -139,7 +139,7 @@ CHECKED_STATUS writetime(PTypePtr col, RTypePtr result) {
 
 template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS IncCounter(PTypePtr x, PTypePtr y, RTypePtr result) {
-  if (x->IsNull()) {
+  if (IsNull(*x)) {
     result->set_int64_value(y->int64_value());
   } else {
     result->set_int64_value(x->int64_value() + y->int64_value());
@@ -149,7 +149,7 @@ CHECKED_STATUS IncCounter(PTypePtr x, PTypePtr y, RTypePtr result) {
 
 template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS DecCounter(PTypePtr x, PTypePtr y, RTypePtr result) {
-  if (x->IsNull()) {
+  if (IsNull(*x)) {
     result->set_int64_value(-y->int64_value());
   } else {
     result->set_int64_value(x->int64_value() - y->int64_value());
@@ -162,8 +162,8 @@ CHECKED_STATUS DecCounter(PTypePtr x, PTypePtr y, RTypePtr result) {
 
 template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS AddI64I64(PTypePtr x, PTypePtr y, RTypePtr result) {
-  if (x->IsNull() || y->IsNull()) {
-    result->SetNull();
+  if (IsNull(*x) || IsNull(*y)) {
+    SetNull(&*result);
   } else {
     result->set_int64_value(x->int64_value() + y->int64_value());
   }
@@ -172,8 +172,8 @@ CHECKED_STATUS AddI64I64(PTypePtr x, PTypePtr y, RTypePtr result) {
 
 template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS AddDoubleDouble(PTypePtr x, PTypePtr y, RTypePtr result) {
-  if (x->IsNull() || y->IsNull()) {
-    result->SetNull();
+  if (IsNull(*x) || IsNull(*y)) {
+    SetNull(&*result);
   } else {
     result->set_double_value(x->double_value() + y->double_value());
   }
@@ -182,8 +182,8 @@ CHECKED_STATUS AddDoubleDouble(PTypePtr x, PTypePtr y, RTypePtr result) {
 
 template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS AddStringString(PTypePtr x, PTypePtr y, RTypePtr result) {
-  if (x->IsNull() || y->IsNull()) {
-    result->SetNull();
+  if (IsNull(*x) || IsNull(*y)) {
+    SetNull(&*result);
   } else {
     result->set_string_value(x->string_value() + y->string_value());
   }
@@ -192,8 +192,8 @@ CHECKED_STATUS AddStringString(PTypePtr x, PTypePtr y, RTypePtr result) {
 
 template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS AddStringDouble(PTypePtr x, PTypePtr y, RTypePtr result) {
-  if (x->IsNull() || y->IsNull()) {
-    result->SetNull();
+  if (IsNull(*x) || IsNull(*y)) {
+    SetNull(&*result);
   } else {
     result->set_string_value(x->string_value() + std::to_string(y->double_value()));
   }
@@ -202,8 +202,8 @@ CHECKED_STATUS AddStringDouble(PTypePtr x, PTypePtr y, RTypePtr result) {
 
 template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS AddDoubleString(PTypePtr x, PTypePtr y, RTypePtr result) {
-  if (x->IsNull() || y->IsNull()) {
-    result->SetNull();
+  if (IsNull(*x) || IsNull(*y)) {
+    SetNull(&*result);
   } else {
     result->set_string_value(std::to_string(x->double_value()) + y->string_value());
   }
@@ -230,8 +230,8 @@ CHECKED_STATUS AddListList(PTypePtr x, PTypePtr y, RTypePtr result) {
 
 template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS SubI64I64(PTypePtr x, PTypePtr y, RTypePtr result) {
-  if (x->IsNull() || y->IsNull()) {
-    result->SetNull();
+  if (IsNull(*x) || IsNull(*y)) {
+    SetNull(&*result);
   } else {
     result->set_int64_value(x->int64_value() - y->int64_value());
   }
@@ -240,8 +240,8 @@ CHECKED_STATUS SubI64I64(PTypePtr x, PTypePtr y, RTypePtr result) {
 
 template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS SubDoubleDouble(PTypePtr x, PTypePtr y, RTypePtr result) {
-  if (x->IsNull() || y->IsNull()) {
-    result->SetNull();
+  if (IsNull(*x) || IsNull(*y)) {
+    SetNull(&*result);
   } else {
     result->set_double_value(x->double_value() - y->double_value());
   }
@@ -267,7 +267,7 @@ CHECKED_STATUS SubListList(PTypePtr x, PTypePtr y, RTypePtr result) {
   // For clarity, this implementation should be removed (see e.g. SubSetSet above) as soon as
   // RemoveFromList is implemented in DocDB.
   result->set_list_value();
-  if (x->IsNull() || y->IsNull()) {
+  if (IsNull(*x) || IsNull(*y)) {
     return Status::OK();
   }
 
@@ -304,7 +304,7 @@ CHECKED_STATUS NowTime(RTypePtr result) {
 
 template<typename RTypePtr>
 CHECKED_STATUS NowTimestamp(RTypePtr result) {
-  result->set_timestamp_value(DateTime::TimestampNow());
+  result->set_timestamp_value(DateTime::TimestampNow().ToInt64());
   return Status::OK();
 }
 
@@ -315,7 +315,7 @@ CHECKED_STATUS NowTimeUuid(RTypePtr result) {
   Uuid time_uuid(linux_time_uuid);
   CHECK_OK(time_uuid.IsTimeUuid());
   CHECK_OK(time_uuid.HashMACAddress());
-  result->set_timeuuid_value(time_uuid);
+  QLValue::set_timeuuid_value(time_uuid, &*result);
   return Status::OK();
 }
 
@@ -330,7 +330,7 @@ CHECKED_STATUS GetUuid(RTypePtr result) {
     return STATUS_FORMAT(IllegalState, "Unexpected UUID type $0, expected $1.",
                          uuid.version(), kUUIDType);
   }
-  result->set_uuid_value(uuid);
+  QLValue::set_uuid_value(uuid, &*result);
   return Status::OK();
 }
 
@@ -341,8 +341,8 @@ CHECKED_STATUS MapConstructor(const vector<PTypePtr>& params, RTypePtr result) {
   auto *qlmap = result->mutable_map_value();
   RSTATUS_DCHECK(params.size()%2 == 0, RuntimeError, "Unexpected argument count for map::map");
   for (size_t i = 0; i < params.size(); i++) {
-    *qlmap->add_keys() = params[i]->value();
-    *qlmap->add_values() = params[++i]->value();
+    QLValue::set_value(*params[i], qlmap->add_keys());
+    QLValue::set_value(*params[++i], qlmap->add_values());
   }
   return Status::OK();
 }
@@ -352,7 +352,7 @@ template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS SetConstructor(const vector<PTypePtr>& params, RTypePtr result) {
   auto *qlset = result->mutable_set_value();
   for (const auto& param : params) {
-    *qlset->add_elems() = param->value();
+    QLValue::set_value(*param, qlset->add_elems());
   }
   return Status::OK();
 }
@@ -362,7 +362,7 @@ template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS ListConstructor(const vector<PTypePtr>& params, RTypePtr result) {
   auto *qllist = result->mutable_list_value();
   for (const auto& param : params) {
-    *qllist->add_elems() = param->value();
+    QLValue::set_value(*param, qllist->add_elems());
   }
   return Status::OK();
 }
@@ -394,8 +394,8 @@ CHECKED_STATUS MapFrozen(const vector<PTypePtr>& params, RTypePtr result) {
 
   auto *frozen_value = result->mutable_frozen_value();
   for (auto &elem : map_elems) {
-    *frozen_value->add_elems() = elem.first.value();
-    *frozen_value->add_elems() = elem.second.value();
+    QLValue::set_value(elem.first, frozen_value->add_elems());
+    QLValue::set_value(elem.second, frozen_value->add_elems());
   }
   return Status::OK();
 }
@@ -425,7 +425,7 @@ CHECKED_STATUS SetFrozen(const vector<PTypePtr>& params, RTypePtr result) {
 
   auto *frozen_value = result->mutable_frozen_value();
   for (auto &elem : set_elems) {
-    *frozen_value->add_elems() = elem.value();
+    QLValue::set_value(elem, frozen_value->add_elems());
   }
   return Status::OK();
 }
@@ -435,7 +435,7 @@ template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS ListFrozen(const vector<PTypePtr>& params, RTypePtr result) {
   auto *frozen_value = result->mutable_frozen_value();
   for (const auto& param : params) {
-    *frozen_value->add_elems() = param->value();
+    QLValue::set_value(*param, frozen_value->add_elems());
   }
   return Status::OK();
 }

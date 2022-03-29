@@ -24,7 +24,8 @@
 namespace yb {
 
 template <class Entry>
-struct ArenaListNode : public boost::intrusive::list_base_hook<> {
+struct ArenaListNode : public boost::intrusive::list_base_hook<boost::intrusive::link_mode<
+    boost::intrusive::normal_link>> {
   Entry* value_ptr = nullptr;
 };
 

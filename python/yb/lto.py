@@ -298,8 +298,7 @@ class LinkHelper:
                     # Dedup .cc.o files already existing on the command line.
                     continue
 
-                if (node.node_type == NodeType.OBJECT and
-                        os.path.basename(os.path.dirname(node.path)) != 'yb_common_base.dir'):
+                if node.node_type == NodeType.OBJECT:
                     self.new_args.add_new_arg(node.path)
 
             for arg in self.yb_pgbackend_link_cmd:

@@ -6,6 +6,7 @@
 #include <limits>
 
 #include "yb/common/jsonb.h"
+#include "yb/common/ql_serialization.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
@@ -58,7 +59,7 @@ struct CQLQueryParameters : public CQLMessage::QueryParameters {
 
   void PushBack(const string& name, const QLValue& qv, const shared_ptr<QLType>& type) {
     faststring buffer;
-    qv.Serialize(type, YQL_CLIENT_CQL, &buffer);
+    SerializeValue(type, YQL_CLIENT_CQL, qv.value(), &buffer);
 
     CQLMessage::Value msg_value;
     msg_value.name = name;

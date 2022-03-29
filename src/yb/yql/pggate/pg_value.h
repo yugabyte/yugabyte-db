@@ -39,7 +39,7 @@ Status PgValueFromPB(const YBCPgTypeEntity *type_entity,
 Status PgValueToPB(const YBCPgTypeEntity *type_entity,
                    uint64_t datum,
                    bool is_null,
-                   QLValue* ql_value);
+                   QLValuePB* ql_value);
 
 }  // namespace pggate
 }  // namespace yb
