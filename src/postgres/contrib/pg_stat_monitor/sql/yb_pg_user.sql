@@ -13,6 +13,12 @@ SET ROLE u1;
 CREATE TABLE t1 (a int);
 SELECT * FROM t1;
 
+-- https://github.com/yugabyte/yugabyte-db/issues/11801
+-- TODO: pg_stat_monitor parsing logic has run to run variability for parsing users.
+-- SET ROLE u2;
+-- CREATE TABLE t2 (a int);
+-- SELECT * FROM t2;
+
 SET ROLE su;
 SELECT userid, query FROM pg_stat_monitor ORDER BY query COLLATE "C";
 SELECT pg_stat_monitor_reset();
