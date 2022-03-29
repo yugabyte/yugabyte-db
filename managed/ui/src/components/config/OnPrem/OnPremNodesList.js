@@ -17,6 +17,7 @@ import { YBCodeBlock } from '../../common/descriptors/index';
 import { YBConfirmModal } from '../../modals';
 import { TASK_SHORT_TIMEOUT } from '../../tasks/constants';
 import { DropdownButton, MenuItem } from 'react-bootstrap';
+import { YUGABYTE_TITLE } from '../../../config';
 
 const TIMEOUT_BEFORE_REFRESH = 2500;
 
@@ -364,7 +365,7 @@ class OnPremNodesList extends Component {
         provisionMessage = (
           <Alert bsStyle="warning" className="pre-provision-message">
             You need to pre-provision your nodes, Please execute the following script on the
-            Yugabyte Platform host machine once for each instance that you add here.
+            {YUGABYTE_TITLE} host machine once for each instance that you add here.
             <YBCodeBlock>
               {onPremKey.keyInfo.provisionInstanceScript + ' --ip '}
               <b>{'<IP Address> '}</b>
