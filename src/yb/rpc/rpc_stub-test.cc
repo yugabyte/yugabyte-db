@@ -900,6 +900,17 @@ void Generate(rpc_test::LightweightSubMessagePB* sub_message) {
   if (RandomUniformBool()) {
     Generate(msg.mutable_cycle());
   }
+  switch (RandomUniformInt(0, 2)) {
+    case 0:
+      msg.set_v_i32(RandomUniformInt<int32_t>());
+      break;
+    case 1:
+      msg.set_v_str(RandomHumanReadableString(32));
+      break;
+    case 2:
+      Generate(msg.mutable_v_message());
+      break;
+  }
 }
 
 TEST_F(RpcStubTest, Lightweight) {

@@ -1487,6 +1487,10 @@
           "enum" : [ "InProgress", "Completed", "Failed", "Deleted", "Skipped", "FailedToDelete", "Stopped", "DeleteInProgress", "QueuedForDeletion" ],
           "type" : "string"
         },
+        "storageConfigType" : {
+          "enum" : [ "S3", "NFS", "AZ", "GCS", "FILE" ],
+          "type" : "string"
+        },
         "storageConfigUUID" : {
           "format" : "uuid",
           "type" : "string"
@@ -1511,7 +1515,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "backupType", "backupUUID", "completionTime", "createTime", "customerUUID", "expiryTime", "isStorageConfigPresent", "isUniversePresent", "onDemand", "responseList", "scheduleUUID", "sse", "state", "storageConfigUUID", "taskUUID", "totalBackupSizeInBytes", "universeName", "universeUUID", "updateTime" ],
+      "required" : [ "backupType", "backupUUID", "completionTime", "createTime", "customerUUID", "expiryTime", "isStorageConfigPresent", "isUniversePresent", "onDemand", "responseList", "scheduleUUID", "sse", "state", "storageConfigType", "storageConfigUUID", "taskUUID", "totalBackupSizeInBytes", "universeName", "universeUUID", "updateTime" ],
       "type" : "object"
     },
     "BackupStorageInfo" : {
@@ -1672,6 +1676,13 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "regionLocations" : {
+          "description" : "per region locations",
+          "items" : {
+            "$ref" : "#/definitions/RegionLocations"
+          },
+          "type" : "array"
+        },
         "restoreTimeStamp" : {
           "description" : "Restore TimeStamp",
           "type" : "string"
@@ -1698,6 +1709,11 @@
         "sse" : {
           "description" : "Is SSE",
           "type" : "boolean"
+        },
+        "storageConfigType" : {
+          "description" : "Type of backup storage config",
+          "enum" : [ "S3", "NFS", "AZ", "GCS", "FILE" ],
+          "type" : "string"
         },
         "storageConfigUUID" : {
           "description" : "Storage configuration UUID",
@@ -2122,6 +2138,12 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "selfSignedClientCertRotate" : {
+          "type" : "boolean"
+        },
+        "selfSignedServerCertRotate" : {
+          "type" : "boolean"
+        },
         "setTxnTableWaitCountFlag" : {
           "type" : "boolean"
         },
@@ -2185,7 +2207,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clientRootCA", "clusters", "kubernetesUpgradeSupported", "rootAndClientRootCASame", "rootCA", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "required" : [ "clientRootCA", "clusters", "kubernetesUpgradeSupported", "rootAndClientRootCASame", "rootCA", "selfSignedClientCertRotate", "selfSignedServerCertRotate", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
     "ClientCertParams" : {
@@ -2871,13 +2893,17 @@
     "EditBackupParams" : {
       "description" : "Edit backup parameters",
       "properties" : {
+        "storageConfigUUID" : {
+          "description" : "New backup Storage config",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "timeBeforeDeleteFromPresentInMillis" : {
           "description" : "Time before deleting the backup from storage, in milliseconds",
           "format" : "int64",
           "type" : "integer"
         }
       },
-      "required" : [ "timeBeforeDeleteFromPresentInMillis" ],
       "type" : "object"
     },
     "EditBackupScheduleParams" : {
@@ -3398,11 +3424,17 @@
           "format" : "int64",
           "type" : "integer"
         },
+        "defaultLocation" : {
+          "type" : "string"
+        },
         "keyspace" : {
           "type" : "string"
         },
-        "storageLocation" : {
-          "type" : "string"
+        "perRegionLocations" : {
+          "items" : {
+            "$ref" : "#/definitions/RegionLocations"
+          },
+          "type" : "array"
         },
         "tablesList" : {
           "items" : {
@@ -3412,7 +3444,7 @@
           "uniqueItems" : true
         }
       },
-      "required" : [ "backupSizeInBytes", "keyspace", "storageLocation", "tablesList" ],
+      "required" : [ "backupSizeInBytes", "defaultLocation", "keyspace", "perRegionLocations", "tablesList" ],
       "type" : "object"
     },
     "LogData" : {
@@ -3750,6 +3782,13 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "regionLocations" : {
+          "description" : "per region locations",
+          "items" : {
+            "$ref" : "#/definitions/RegionLocations"
+          },
+          "type" : "array"
+        },
         "restoreTimeStamp" : {
           "description" : "Restore TimeStamp",
           "type" : "string"
@@ -3776,6 +3815,11 @@
         "sse" : {
           "description" : "Is SSE",
           "type" : "boolean"
+        },
+        "storageConfigType" : {
+          "description" : "Type of backup storage config",
+          "enum" : [ "S3", "NFS", "AZ", "GCS", "FILE" ],
+          "type" : "string"
         },
         "storageConfigUUID" : {
           "description" : "Storage configuration UUID",
@@ -4569,6 +4613,18 @@
         }
       },
       "required" : [ "code", "destVpcId", "hostVpcId", "hostVpcRegion", "latitude", "longitude", "name", "ybImage" ],
+      "type" : "object"
+    },
+    "RegionLocations" : {
+      "properties" : {
+        "LOCATION" : {
+          "type" : "string"
+        },
+        "REGION" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "LOCATION", "REGION" ],
       "type" : "object"
     },
     "ReleaseFormData" : {
@@ -6033,6 +6089,9 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "regionsChanged" : {
+          "type" : "boolean"
+        },
         "remotePackagePath" : {
           "type" : "string"
         },
@@ -7224,9 +7283,12 @@
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
           "type" : "string"
+        },
+        "ybSoftwareVersion" : {
+          "type" : "string"
         }
       },
-      "required" : [ "clusters", "forceVMImageUpgrade", "kubernetesUpgradeSupported", "machineImages", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "required" : [ "clusters", "forceVMImageUpgrade", "kubernetesUpgradeSupported", "machineImages", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption", "ybSoftwareVersion" ],
       "type" : "object"
     },
     "VolumeDetails" : {
@@ -13112,6 +13174,38 @@
         } ],
         "summary" : "Toggle a universe's TLS state",
         "tags" : [ "Universe management" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/trigger_health_check" : {
+      "get" : {
+        "description" : "Trigger a universe health check and return the trigger time.",
+        "operationId" : "triggerHealthCheck",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "uniUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "object"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Trigger a universe health check",
+        "tags" : [ "Universe information" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/update_backup_state" : {

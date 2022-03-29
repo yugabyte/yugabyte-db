@@ -6,11 +6,9 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
-import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.List;
@@ -53,27 +51,31 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
           Pair<List<NodeDetails>, List<NodeDetails>> nodes = fetchNodes(taskParams().upgradeOption);
           // Verify the request params and fail if invalid.
           taskParams().verifyParams(getUniverse());
+
           // Precheck for Available Memory on tserver nodes.
           createAvailabeMemoryCheck(
                   nodes.getRight(), Util.AVAILABLE_MEMORY_CHECK, Util.AVAILABLE_MEMORY_LIMIT_KB)
               .setSubTaskGroupType(getTaskSubGroupType());
+
+          String newVersion = taskParams().ybSoftwareVersion;
+
           // Download software to all nodes.
-          createDownloadTasks(nodes.getRight());
+          createDownloadTasks(nodes.getRight(), newVersion);
           // Install software on nodes.
           createUpgradeTaskFlow(
-              (nodes1, processTypes) -> createSoftwareInstallTasks(nodes1, getSingle(processTypes)),
+              (nodes1, processTypes) ->
+                  createSoftwareInstallTasks(nodes1, getSingle(processTypes), newVersion),
               nodes,
               SOFTWARE_UPGRADE_CONTEXT);
           // Run YSQL upgrade on the universe.
-          createRunYsqlUpgradeTask(taskParams().ybSoftwareVersion)
-              .setSubTaskGroupType(getTaskSubGroupType());
+          createRunYsqlUpgradeTask(newVersion).setSubTaskGroupType(getTaskSubGroupType());
           // Update software version in the universe metadata.
-          createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
+          createUpdateSoftwareVersionTask(newVersion, false /*isSoftwareUpdateViaVm*/)
               .setSubTaskGroupType(getTaskSubGroupType());
         });
   }
 
-  private void createDownloadTasks(List<NodeDetails> nodes) {
+  private void createDownloadTasks(List<NodeDetails> nodes, String softwareVersion) {
     String subGroupDescription =
         String.format(
             "AnsibleConfigureServers (%s) for: %s",
@@ -82,39 +84,10 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
     SubTaskGroup downloadTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription);
     for (NodeDetails node : nodes) {
       downloadTaskGroup.addSubTask(
-          getAnsibleConfigureServerTask(node, ServerType.TSERVER, UpgradeTaskSubType.Download));
+          getAnsibleConfigureServerTask(
+              node, ServerType.TSERVER, UpgradeTaskSubType.Download, softwareVersion));
     }
     downloadTaskGroup.setSubTaskGroupType(SubTaskGroupType.DownloadingSoftware);
     getRunnableTask().addSubTaskGroup(downloadTaskGroup);
-  }
-
-  private void createSoftwareInstallTasks(List<NodeDetails> nodes, ServerType processType) {
-    // If the node list is empty, we don't need to do anything.
-    if (nodes.isEmpty()) {
-      return;
-    }
-
-    String subGroupDescription =
-        String.format(
-            "AnsibleConfigureServers (%s) for: %s",
-            SubTaskGroupType.InstallingSoftware, taskParams().nodePrefix);
-    SubTaskGroup taskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription);
-    for (NodeDetails node : nodes) {
-      taskGroup.addSubTask(
-          getAnsibleConfigureServerTask(node, processType, UpgradeTaskSubType.Install));
-    }
-    taskGroup.setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
-    getRunnableTask().addSubTaskGroup(taskGroup);
-  }
-
-  private AnsibleConfigureServers getAnsibleConfigureServerTask(
-      NodeDetails node, ServerType processType, UpgradeTaskSubType taskSubType) {
-    AnsibleConfigureServers.Params params =
-        getAnsibleConfigureServerParams(node, processType, UpgradeTaskType.Software, taskSubType);
-    params.ybSoftwareVersion = taskParams().ybSoftwareVersion;
-    AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
-    task.initialize(params);
-    task.setUserTaskUUID(userTaskUUID);
-    return task;
   }
 }

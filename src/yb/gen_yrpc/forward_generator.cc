@@ -20,16 +20,21 @@ namespace gen_yrpc {
 
 namespace {
 
-void MessageForward(YBPrinter printer, const google::protobuf::Descriptor* message) {
+void MessageForward(YBPrinter printer, const google::protobuf::Descriptor* message, bool need_lw) {
   for (auto i = 0; i != message->nested_type_count(); ++i) {
-    MessageForward(printer, message->nested_type(i));
+    MessageForward(printer, message->nested_type(i), need_lw);
   }
 
   ScopedSubstituter message_substituter(printer, message);
   printer("class $message_name$;\n");
+  if (need_lw) {
+    printer("class $message_lw_name$;\n");
+  }
 }
 
 } // namespace
+
+ForwardGenerator::ForwardGenerator(bool need_lw) : need_lw_(need_lw) {}
 
 void ForwardGenerator::Header(YBPrinter printer, const google::protobuf::FileDescriptor* file) {
   printer(
@@ -54,11 +59,11 @@ void ForwardGenerator::Header(YBPrinter printer, const google::protobuf::FileDes
   );
 
   for (int i = 0; i != file->message_type_count(); ++i) {
-    MessageForward(printer, file->message_type(i));
+    MessageForward(printer, file->message_type(i), need_lw_);
   }
 
   printer(
-      "\n$close_namespace$\n"
+      "\n$close_namespace$"
   );
 }
 

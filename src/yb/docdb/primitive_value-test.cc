@@ -392,8 +392,8 @@ TEST(PrimitiveValueTest, TestAllTypesComparisons) {
 
   InetAddress addr1;
   InetAddress addr2;
-  ASSERT_OK(addr1.FromBytes(RandomHumanReadableString(4)));
-  ASSERT_OK(addr2.FromBytes(RandomHumanReadableString(4)));
+  ASSERT_OK(addr1.FromSlice(RandomHumanReadableString(4)));
+  ASSERT_OK(addr2.FromSlice(RandomHumanReadableString(4)));
   ComparePrimitiveValues(PrimitiveValue(addr1), PrimitiveValue(addr2));
 
   ComparePrimitiveValues(PrimitiveValue(Uuid(Uuid::Generate())),

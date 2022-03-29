@@ -35,6 +35,8 @@ public class UpdateSoftwareVersion extends UniverseTaskBase {
     public String softwareVersion;
     // The previous software version.
     public String prevSoftwareVersion;
+    // Is it a software update via VM upgrade.
+    public boolean isSoftwareUpdateViaVm;
   }
 
   protected Params taskParams() {
@@ -75,10 +77,12 @@ public class UpdateSoftwareVersion extends UniverseTaskBase {
       // Perform the update. If unsuccessful, this will throw a runtime exception which we do not
       // catch as we want to fail.
       saveUniverseDetails(updater);
-
-      // Do not skip ansible tasks after software upgrade.
-      getUniverse().updateConfig(ImmutableMap.of(Universe.SKIP_ANSIBLE_TASKS, "false"));
-
+      // Update useCustomImage to true if software update was via VM otherise false.
+      getUniverse()
+          .updateConfig(
+              ImmutableMap.of(
+                  Universe.USE_CUSTOM_IMAGE,
+                  taskParams().isSoftwareUpdateViaVm ? "true" : "false"));
     } catch (Exception e) {
       String msg = getName() + " failed with exception " + e.getMessage();
       log.warn(msg, e.getMessage());

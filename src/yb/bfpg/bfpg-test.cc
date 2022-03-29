@@ -42,10 +42,11 @@ class BFTestValue : public QLValue {
     ql_type_id_ = DataType::UNKNOWN_DATA;
   }
 
-  virtual DataType ql_type_id() const {
+  DataType ql_type_id() const {
     return ql_type_id_;
   }
-  virtual void set_ql_type_id(DataType ql_type_id) {
+
+  void set_ql_type_id(DataType ql_type_id) {
     ql_type_id_ = ql_type_id;
   }
 

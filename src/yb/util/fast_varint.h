@@ -96,7 +96,7 @@ Result<int64_t> FastDecodeDescendingSignedVarIntUnsafe(Slice* slice);
 
 size_t UnsignedVarIntLength(uint64_t v);
 void FastAppendUnsignedVarIntToStr(uint64_t v, std::string* dest);
-void FastEncodeUnsignedVarInt(uint64_t v, uint8_t *dest, size_t *size);
+size_t FastEncodeUnsignedVarInt(uint64_t v, uint8_t *dest);
 CHECKED_STATUS FastDecodeUnsignedVarInt(
     const uint8_t* src, size_t src_size, uint64_t* v, size_t* decoded_size);
 Result<uint64_t> FastDecodeUnsignedVarInt(Slice* slice);

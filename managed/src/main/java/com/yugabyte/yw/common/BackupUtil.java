@@ -2,17 +2,17 @@
 
 package com.yugabyte.yw.common;
 
-import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
-
 import com.cronutils.model.Cron;
 import com.cronutils.model.definition.CronDefinitionBuilder;
 import com.cronutils.model.time.ExecutionTime;
 import com.cronutils.parser.CronParser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.collect.Sets;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
+import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.BackupResp;
 import com.yugabyte.yw.models.BackupResp.BackupRespBuilder;
@@ -21,36 +21,34 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import com.yugabyte.yw.models.helpers.KeyspaceTablesList;
 import java.io.IOException;
+import java.text.SimpleDateFormat;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.Date;
 import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import javax.inject.Inject;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
-import java.util.Collections;
-import java.util.List;
-import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.forms.BackupTableParams;
-import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import org.yb.CommonTypes.TableType;
-import org.yb.client.GetTableSchemaResponse;
-import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 import org.yb.master.MasterTypes.RelationType;
-import org.apache.commons.collections.CollectionUtils;
-import javax.inject.Inject;
-import play.api.Play;
 
 import static com.cronutils.model.CronType.UNIX;
+import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
+import static java.lang.Math.abs;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
@@ -76,6 +74,7 @@ public class BackupUtil {
   public static final String BACKUP_SCRIPT = "bin/yb_backup.py";
   public static final String REGION_LOCATIONS = "REGION_LOCATIONS";
   public static final String REGION_NAME = "REGION";
+  public static final String SNAPSHOT_URL_FIELD = "snapshot_url";
 
   public static class RegionLocations {
     public String REGION;
@@ -159,6 +158,7 @@ public class BackupUtil {
             .isUniversePresent(isUniversePresent)
             .totalBackupSizeInBytes(Long.valueOf(backup.getBackupInfo().backupSizeInBytes))
             .backupType(backup.getBackupInfo().backupType)
+            .storageConfigType(backup.getBackupInfo().storageConfigType)
             .state(backup.state);
     if (backup.getBackupInfo().backupList == null) {
       KeyspaceTablesList kTList =
@@ -166,7 +166,8 @@ public class BackupUtil {
               .keyspace(backup.getBackupInfo().getKeyspace())
               .tablesList(backup.getBackupInfo().getTableNames())
               .backupSizeInBytes(Long.valueOf(backup.getBackupInfo().backupSizeInBytes))
-              .storageLocation(backup.getBackupInfo().storageLocation)
+              .defaultLocation(backup.getBackupInfo().storageLocation)
+              .perRegionLocations(backup.getBackupInfo().regionLocations)
               .build();
       builder.responseList(Stream.of(kTList).collect(Collectors.toSet()));
     } else {
@@ -181,7 +182,8 @@ public class BackupUtil {
                         .keyspace(b.getKeyspace())
                         .tablesList(b.getTableNames())
                         .backupSizeInBytes(b.backupSizeInBytes)
-                        .storageLocation(b.storageLocation)
+                        .defaultLocation(b.storageLocation)
+                        .perRegionLocations(b.regionLocations)
                         .build();
                   })
               .collect(Collectors.toSet());
@@ -231,9 +233,84 @@ public class BackupUtil {
     return regionLocationsList;
   }
 
+  // For creating new backup we would set the storage location based on
+  // universe UUID and backup UUID.
+  // univ-<univ_uuid>/backup-<timestamp>-<something_to_disambiguate_from_yugaware>/table-keyspace
+  // .table_name.table_uuid
+  public static String formatStorageLocation(BackupTableParams params) {
+    SimpleDateFormat tsFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
+    String updatedLocation;
+    if (params.tableUUIDList != null) {
+      updatedLocation =
+          String.format(
+              "univ-%s/backup-%s-%d/multi-table-%s",
+              params.universeUUID,
+              tsFormat.format(new Date()),
+              abs(params.backupUuid.hashCode()),
+              params.getKeyspace());
+    } else if (params.getTableName() == null && params.getKeyspace() != null) {
+      updatedLocation =
+          String.format(
+              "univ-%s/backup-%s-%d/keyspace-%s",
+              params.universeUUID,
+              tsFormat.format(new Date()),
+              abs(params.backupUuid.hashCode()),
+              params.getKeyspace());
+    } else {
+      updatedLocation =
+          String.format(
+              "univ-%s/backup-%s-%d/table-%s.%s",
+              params.universeUUID,
+              tsFormat.format(new Date()),
+              abs(params.backupUuid.hashCode()),
+              params.getKeyspace(),
+              params.getTableName());
+      if (params.tableUUID != null) {
+        updatedLocation =
+            String.format("%s-%s", updatedLocation, params.tableUUID.toString().replace("-", ""));
+      }
+    }
+    return updatedLocation;
+  }
+
+  public static List<RegionLocations> extractPerRegionLocationsFromBackupScriptResponse(
+      JsonNode backupScriptResponse) {
+    ObjectMapper objectMapper = new ObjectMapper();
+    List<RegionLocations> regionLocations = new ArrayList<>();
+    Map<String, Object> locations = objectMapper.convertValue(backupScriptResponse, Map.class);
+    for (Entry<String, Object> entry : locations.entrySet()) {
+      if (!(entry.getKey().equals(SNAPSHOT_URL_FIELD)
+          || entry.getKey().equals(BACKUP_SIZE_FIELD))) {
+        String r = entry.getKey();
+        String l = entry.getValue().toString();
+        RegionLocations regionLocation = new RegionLocations();
+        regionLocation.REGION = r;
+        regionLocation.LOCATION = l;
+        regionLocations.add(regionLocation);
+      }
+    }
+    return regionLocations;
+  }
+
+  public static void updateDefaultStorageLocation(BackupTableParams params, UUID customerUUID) {
+    CustomerConfig customerConfig = CustomerConfig.get(customerUUID, params.storageConfigUUID);
+    params.storageLocation = formatStorageLocation(params);
+    if (customerConfig != null) {
+      // TODO: These values, S3 vs NFS / S3_BUCKET vs NFS_PATH come from UI right now...
+      JsonNode storageNode =
+          customerConfig.getData().get(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME);
+      if (storageNode != null) {
+        String storagePath = storageNode.asText();
+        if (storagePath != null && !storagePath.isEmpty()) {
+          params.storageLocation = String.format("%s/%s", storagePath, params.storageLocation);
+        }
+      }
+    }
+  }
+
   public void validateStorageConfigOnLocations(CustomerConfig config, List<String> locations) {
     LOG.info(String.format("Validating storage config %s", config.configName));
-    Boolean isValid = true;
+    boolean isValid = true;
     switch (config.name) {
       case Util.AZ:
         isValid = AZUtil.canCredentialListObjects(config.data, locations);
@@ -254,9 +331,7 @@ public class BackupUtil {
     if (!isValid) {
       throw new PlatformServiceException(
           BAD_REQUEST,
-          String.format(
-              "Storage config %s cannot access location %s",
-              config.configName, config.data.get(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME)));
+          String.format("Storage config %s cannot access backup locations", config.configName));
     }
   }
 
@@ -264,6 +339,13 @@ public class BackupUtil {
     List<String> locations = null;
     locations = getStorageLocationList(config.getData());
     validateStorageConfigOnLocations(config, locations);
+  }
+
+  public static String getExactRegionLocation(
+      BackupTableParams backupTableParams, String regionLocation) {
+    String locationSuffix = formatStorageLocation(backupTableParams);
+    String location = String.format("%s/%s", regionLocation, locationSuffix);
+    return location;
   }
 
   public void validateRestoreOverwrites(
@@ -374,5 +456,28 @@ public class BackupUtil {
     } finally {
       ybService.closeClient(client, masterAddresses);
     }
+  }
+
+  public List<String> getBackupLocations(Backup backup) {
+    BackupTableParams backupParams = backup.getBackupInfo();
+    List<String> backupLocations = new ArrayList<>();
+    if (backupParams.backupList != null) {
+      for (BackupTableParams params : backupParams.backupList) {
+        backupLocations.add(params.storageLocation);
+        if (CollectionUtils.isNotEmpty(params.regionLocations)) {
+          for (RegionLocations regionLocation : params.regionLocations) {
+            backupLocations.add(regionLocation.LOCATION);
+          }
+        }
+      }
+    } else {
+      backupLocations.add(backupParams.storageLocation);
+      if (CollectionUtils.isNotEmpty(backupParams.regionLocations)) {
+        for (RegionLocations regionLocation : backupParams.regionLocations) {
+          backupLocations.add(regionLocation.LOCATION);
+        }
+      }
+    }
+    return backupLocations;
   }
 }

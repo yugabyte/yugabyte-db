@@ -33,6 +33,8 @@ import java.io.File;
 import java.io.InputStream;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -160,9 +162,7 @@ public class UniverseInfoController extends AuthenticatedController {
     Optional<String> optPassword = request().getHeaders().get(YSQL_PASSWORD_HEADER);
     JsonNode resultNode =
         universeInfoHandler.getSlowQueries(
-            universe,
-            optUsername.orElse(null),
-            optPassword.isPresent() ? Util.decodeBase64(optPassword.get()) : null);
+            universe, optUsername.orElse(null), optPassword.map(Util::decodeBase64).orElse(null));
     return Results.ok(resultNode);
   }
 
@@ -202,6 +202,25 @@ public class UniverseInfoController extends AuthenticatedController {
 
     List<Details> detailsList = universeInfoHandler.healthCheck(universeUUID);
     return PlatformResults.withData(detailsList);
+  }
+
+  @ApiOperation(
+      value = "Trigger a universe health check",
+      notes = "Trigger a universe health check and return the trigger time.",
+      response = Object.class)
+  public Result triggerHealthCheck(UUID customerUUID, UUID universeUUID) {
+    if (!runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.cloud.enabled")) {
+      throw new PlatformServiceException(
+          METHOD_NOT_ALLOWED, "Manual health check trigger is disabled.");
+    }
+
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+
+    OffsetDateTime dt = OffsetDateTime.now(ZoneOffset.UTC);
+    universeInfoHandler.triggerHealthCheck(customer, universe);
+
+    return PlatformResults.withData(dt);
   }
 
   /**

@@ -276,6 +276,21 @@ message UpgradeYsqlResponsePB {
   optional TabletServerErrorPB error = 1;
 }
 
+message TestRetryRequestPB {
+  // UUID of server this request is addressed to.
+  optional bytes dest_uuid = 2;
+
+  optional fixed64 propagated_hybrid_time = 3;
+
+  // See TestRetry RPC method description below.
+  required int32 num_retries = 4;
+}
+
+message TestRetryResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional fixed64 propagated_hybrid_time = 2;
+}
+
 service TabletServerAdminService {
   // Create a new, empty tablet with the specified parameters. Only used for
   // brand-new tablets, not for "moves".
@@ -312,4 +327,7 @@ service TabletServerAdminService {
   rpc SplitTablet(tablet.SplitTabletRequestPB) returns (SplitTabletResponsePB);
 
   rpc UpgradeYsql(UpgradeYsqlRequestPB) returns (UpgradeYsqlResponsePB);
+
+  // For test purposes: returns TryAgain error until specified number of calls is done.
+  rpc TestRetry(TestRetryRequestPB) returns (TestRetryResponsePB);
 }

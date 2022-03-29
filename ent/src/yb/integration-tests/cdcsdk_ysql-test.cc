@@ -123,7 +123,15 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     return resp.cluster_config().cluster_uuid();
   }
 
-  // the range is exclusive of end i.e. [start, end)
+  Status DropDB(Cluster* cluster) {
+    const std::string db_name = "testdatabase";
+    RETURN_NOT_OK(CreateDatabase(&test_cluster_, db_name, true));
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(db_name));
+    RETURN_NOT_OK(conn.ExecuteFormat("DROP DATABASE $0", kNamespaceName));
+    return Status::OK();
+  }
+
+  // The range is exclusive of end i.e. [start, end)
   void WriteRows(uint32_t start, uint32_t end, Cluster* cluster) {
     auto conn = EXPECT_RESULT(cluster->ConnectToDB(kNamespaceName));
     LOG(INFO) << "Writing " << end - start << " row(s)";
@@ -157,6 +165,18 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     change_req->mutable_from_cdc_sdk_checkpoint()->set_term(0);
     change_req->mutable_from_cdc_sdk_checkpoint()->set_key("");
     change_req->mutable_from_cdc_sdk_checkpoint()->set_write_id(0);
+  }
+
+  void PrepareChangeRequest(
+      GetChangesRequestPB* change_req, const CDCStreamId& stream_id,
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
+      const CDCSDKCheckpointPB& cp) {
+    change_req->set_stream_id(stream_id);
+    change_req->set_tablet_id(tablets.Get(0).tablet_id());
+    change_req->mutable_from_cdc_sdk_checkpoint()->set_index(cp.index());
+    change_req->mutable_from_cdc_sdk_checkpoint()->set_term(cp.term());
+    change_req->mutable_from_cdc_sdk_checkpoint()->set_key(cp.key());
+    change_req->mutable_from_cdc_sdk_checkpoint()->set_write_id(cp.write_id());
   }
 
   void PrepareSetCheckpointRequest(
@@ -253,6 +273,44 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     LOG(INFO) << "Got " << ins_count << " insert records";
     ASSERT_EQ(expected_records_size, ins_count);
   }
+
+  Result<GetChangesResponsePB> VerifyIfDDLRecordPresent(
+      const CDCStreamId& stream_id,
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
+      bool expect_ddl_record, bool is_first_call, const CDCSDKCheckpointPB* cp = nullptr) {
+    GetChangesRequestPB req;
+    GetChangesResponsePB resp;
+
+    if (cp == nullptr) {
+      PrepareChangeRequest(&req, stream_id, tablets);
+    } else {
+      PrepareChangeRequest(&req, stream_id, tablets, *cp);
+    }
+
+    // The default value for need_schema_info is false.
+    if (expect_ddl_record) {
+      req.set_need_schema_info(true);
+    }
+
+    RpcController get_changes_rpc;
+    RETURN_NOT_OK(cdc_proxy_->GetChanges(req, &resp, &get_changes_rpc));
+
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+
+    auto record = resp.cdc_sdk_proto_records(0);
+
+    // If it's the first call to GetChanges, we will get a DDL record irrespective of the
+    // value of need_schema_info.
+    if (is_first_call || expect_ddl_record) {
+      EXPECT_EQ(record.row_message().op(), RowMessage::DDL);
+    } else {
+      EXPECT_NE(record.row_message().op(), RowMessage::DDL);
+    }
+
+    return resp;
+  }
 };
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBaseFunctions)) {
@@ -327,6 +385,49 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(MultiRowInsertion)) {
   }
   LOG(INFO) << "Got " << ins_count << " insert records";
   ASSERT_EQ(expected_records_size, ins_count);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(DropDatabase)) {
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream());
+  ASSERT_OK(DropDB(&test_cluster_));
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestNeedSchemaInfoFlag)) {
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(
+      table, 0, &tablets, /* partition_list_version = */ nullptr));
+
+  std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream());
+
+  ASSERT_OK(SetInitialCheckpoint(stream_id, tablets));
+
+  // This will write one row with PK = 0.
+  WriteRows(0 /* start */, 1 /* end */, &test_cluster_);
+
+  // This is the first call to GetChanges, we will get a DDL record.
+  GetChangesResponsePB resp = ASSERT_RESULT(VerifyIfDDLRecordPresent(stream_id, tablets, false,
+                                                                     true));
+
+  // Write another row to the database with PK = 1.
+  WriteRows(1 /* start */, 2 /* end */, &test_cluster_);
+
+  // We will not get any DDL record here since this is not the first call and the flag
+  // need_schema_info is also unset.
+  resp = ASSERT_RESULT(VerifyIfDDLRecordPresent(stream_id, tablets, false, false,
+                                                &resp.cdc_sdk_checkpoint()));
+
+  // Write another row to the database with PK = 2.
+  WriteRows(2 /* start */, 3 /* end */, &test_cluster_);
+
+  // We will get a DDL record since we have enabled the need_schema_info flag.
+  resp = ASSERT_RESULT(VerifyIfDDLRecordPresent(stream_id, tablets, true, false,
+                                                &resp.cdc_sdk_checkpoint()));
 }
 }  // namespace enterprise
 }  // namespace cdc

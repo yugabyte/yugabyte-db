@@ -30,6 +30,9 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
+import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
+import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.NodeInstance;
@@ -171,7 +174,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     taskParams
         .getReadOnlyClusters()
         .forEach(
-            (async) -> {
+            async -> {
               // Update read replica cluster TLS params to be same as primary cluster
               async.userIntent.enableNodeToNodeEncrypt =
                   universeDetails.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt;
@@ -522,19 +525,31 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     PlacementInfoUtil.selectNumMastersAZ(pi, numTotalMasters);
   }
 
+  /**
+   * Return map of primary cluster gflags based on serverType
+   *
+   * @param taskType
+   */
+  public Map<String, String> getPrimaryClusterGFlags(ServerType taskType, Universe universe) {
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    return taskType.equals(ServerType.MASTER) ? userIntent.masterGFlags : userIntent.tserverGFlags;
+  }
+
   public void createGFlagsOverrideTasks(Collection<NodeDetails> nodes, ServerType taskType) {
-    createGFlagsOverrideTasks(nodes, taskType, false /* isShell */);
+    createGFlagsOverrideTasks(nodes, taskType, false /* isShell */, VmUpgradeTaskType.None);
   }
 
   public void createGFlagsOverrideTasks(
-      Collection<NodeDetails> nodes, ServerType taskType, boolean isMasterInShellMode) {
+      Collection<NodeDetails> nodes,
+      ServerType taskType,
+      boolean isMasterInShellMode,
+      VmUpgradeTaskType vmUpgradeTaskType) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("AnsibleConfigureServersGFlags", executor);
+    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Map<String, String> gflags = getPrimaryClusterGFlags(taskType, universe);
     for (NodeDetails node : nodes) {
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
-      Map<String, String> gflags =
-          taskType.equals(ServerType.MASTER) ? userIntent.masterGFlags : userIntent.tserverGFlags;
-      Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
       params.deviceInfo = userIntent.deviceInfo;
@@ -554,6 +569,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
       // Update gflags conf file for shell mode.
       params.isMasterInShellMode = isMasterInShellMode;
+      params.vmUpgradeTaskType = vmUpgradeTaskType;
 
       // The software package to install for this cluster.
       params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
@@ -593,6 +609,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
+
   /**
    * Creates a task list to update tags on the nodes.
    *
@@ -813,7 +830,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param nodes : a collection of nodes that need to be created
    */
   public SubTaskGroup createSetupServerTasks(
-      Collection<NodeDetails> nodes, boolean isSystemdUpgrade) {
+      Collection<NodeDetails> nodes,
+      boolean isSystemdUpgrade,
+      VmUpgradeTaskType vmUpgradeTaskType) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("AnsibleSetupServer", executor);
     for (NodeDetails node : nodes) {
@@ -822,6 +841,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       fillSetupParamsForNode(params, userIntent, node);
       params.useSystemd = userIntent.useSystemd;
       params.isSystemdUpgrade = isSystemdUpgrade;
+      params.vmUpgradeTaskType = vmUpgradeTaskType;
 
       // Create the Ansible task to setup the server.
       AnsibleSetupServer ansibleSetupServer = createTask(AnsibleSetupServer.class);
@@ -834,7 +854,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   public SubTaskGroup createSetupServerTasks(Collection<NodeDetails> nodes) {
-    return createSetupServerTasks(nodes, false /* isSystemdUpgrade */);
+    return createSetupServerTasks(nodes, false /* isSystemdUpgrade */, VmUpgradeTaskType.None);
   }
 
   /**
@@ -889,7 +909,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       boolean updateMasterAddrsOnly,
       boolean isMaster) {
     return createConfigureServerTasks(
-        nodes, isMasterInShellMode, updateMasterAddrsOnly, isMaster, false /* isSystemdUpgrade */);
+        nodes,
+        isMasterInShellMode,
+        updateMasterAddrsOnly,
+        isMaster,
+        false /* isSystemdUpgrade */,
+        VmUpgradeTaskType.None);
   }
 
   public SubTaskGroup createConfigureServerTasks(
@@ -897,7 +922,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       boolean isMasterInShellMode,
       boolean updateMasterAddrsOnly,
       boolean isMaster,
-      boolean isSystemdUpgrade) {
+      boolean isSystemdUpgrade,
+      VmUpgradeTaskType vmUpgradeTaskType) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("AnsibleConfigureServers", executor);
     for (NodeDetails node : nodes) {
@@ -936,6 +962,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.enableYEDIS = userIntent.enableYEDIS;
       params.useSystemd = userIntent.useSystemd;
       params.isSystemdUpgrade = isSystemdUpgrade;
+      params.vmUpgradeTaskType = vmUpgradeTaskType;
 
       // Development testing variable.
       params.itestS3PackagePath = taskParams().itestS3PackagePath;
@@ -950,10 +977,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         params.type = UpgradeTaskParams.UpgradeTaskType.GFlags;
         if (isMaster) {
           params.setProperty("processType", ServerType.MASTER.toString());
-          params.gflags = userIntent.masterGFlags;
+          params.gflags = getPrimaryClusterGFlags(ServerType.MASTER, universe);
         } else {
           params.setProperty("processType", ServerType.TSERVER.toString());
-          params.gflags = userIntent.tserverGFlags;
+          params.gflags = getPrimaryClusterGFlags(ServerType.TSERVER, universe);
         }
       }
       // Create the Ansible task to get the server info.
@@ -1392,7 +1419,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                 if (!primaryClusterNodes.isEmpty()) {
                   // Override master (on primary cluster only) and tserver flags as necessary.
                   // These are idempotent operations.
-                  createGFlagsOverrideTasks(primaryClusterNodes, ServerType.MASTER, isShellMode);
+                  createGFlagsOverrideTasks(
+                      primaryClusterNodes, ServerType.MASTER, isShellMode, VmUpgradeTaskType.None);
                 }
               }
               createGFlagsOverrideTasks(nodesToBeConfigured, ServerType.TSERVER);
@@ -1484,5 +1512,118 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                   true /* isMaster */)
               .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
         });
+  }
+
+  /**
+   * Installs software for the specified type of processes on a set of nodes.
+   *
+   * @param nodes a collection of nodes to be processed.
+   * @param processType type of a processes for the installation - MASTER or TSERVER
+   * @param softwareVersion software version to install, if null - takes version from the universe
+   *     userIntent
+   */
+  public void createSoftwareInstallTasks(
+      List<NodeDetails> nodes, ServerType processType, String softwareVersion) {
+    // If the node list is empty, we don't need to do anything.
+    if (nodes.isEmpty()) {
+      return;
+    }
+
+    String subGroupDescription =
+        String.format(
+            "AnsibleConfigureServers (%s) for: %s",
+            SubTaskGroupType.InstallingSoftware, taskParams().nodePrefix);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    for (NodeDetails node : nodes) {
+      subTaskGroup.addSubTask(
+          getAnsibleConfigureServerTask(
+              node, processType, UpgradeTaskSubType.Install, softwareVersion));
+    }
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  protected AnsibleConfigureServers getAnsibleConfigureServerTask(
+      NodeDetails node, ServerType processType, UpgradeTaskSubType taskSubType) {
+    return getAnsibleConfigureServerTask(node, processType, taskSubType, null);
+  }
+
+  protected AnsibleConfigureServers getAnsibleConfigureServerTask(
+      NodeDetails node,
+      ServerType processType,
+      UpgradeTaskSubType taskSubType,
+      String softwareVersion) {
+    AnsibleConfigureServers.Params params =
+        getAnsibleConfigureServerParams(node, processType, UpgradeTaskType.Software, taskSubType);
+    if (softwareVersion == null) {
+      UserIntent userIntent =
+          getUniverse(true).getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
+      params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
+    } else {
+      params.ybSoftwareVersion = softwareVersion;
+    }
+    AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
+    task.initialize(params);
+    task.setUserTaskUUID(userTaskUUID);
+    return task;
+  }
+
+  public AnsibleConfigureServers.Params getAnsibleConfigureServerParams(
+      NodeDetails node,
+      ServerType processType,
+      UpgradeTaskType type,
+      UpgradeTaskSubType taskSubType) {
+    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+    UserIntent userIntent =
+        getUniverse(true).getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
+    Map<String, String> gflags = getPrimaryClusterGFlags(processType, getUniverse());
+    // Set the device information (numVolumes, volumeSize, etc.)
+    params.deviceInfo = userIntent.deviceInfo;
+    // Add the node name.
+    params.nodeName = node.nodeName;
+    // Add the universe uuid.
+    params.universeUUID = taskParams().universeUUID;
+    // Add the az uuid.
+    params.azUuid = node.azUuid;
+    // Add in the node placement uuid.
+    params.placementUuid = node.placementUuid;
+    // Sets the isMaster field
+    params.isMaster = node.isMaster;
+    params.enableYSQL = userIntent.enableYSQL;
+    params.enableYCQL = userIntent.enableYCQL;
+    params.enableYCQLAuth = userIntent.enableYCQLAuth;
+    params.enableYSQLAuth = userIntent.enableYSQLAuth;
+
+    // The software package to install for this cluster.
+    params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
+    // Set the InstanceType
+    params.instanceType = node.cloudInfo.instance_type;
+    params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
+    params.enableClientToNodeEncrypt = userIntent.enableClientToNodeEncrypt;
+    params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
+
+    params.allowInsecure = taskParams().allowInsecure;
+    params.setTxnTableWaitCountFlag = taskParams().setTxnTableWaitCountFlag;
+    params.enableYEDIS = userIntent.enableYEDIS;
+
+    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    UUID custUUID = Customer.get(universe.customerId).uuid;
+    params.callhomeLevel = CustomerConfig.getCallhomeLevel(custUUID);
+    params.rootCA = universe.getUniverseDetails().rootCA;
+    params.clientRootCA = universe.getUniverseDetails().clientRootCA;
+    params.rootAndClientRootCASame = universe.getUniverseDetails().rootAndClientRootCASame;
+
+    // Add testing flag.
+    params.itestS3PackagePath = taskParams().itestS3PackagePath;
+    // Add task type
+    params.type = type;
+    params.setProperty("processType", processType.toString());
+    params.setProperty("taskSubType", taskSubType.toString());
+    params.gflags = gflags;
+    if (userIntent.providerType.equals(CloudType.onprem)) {
+      params.instanceType = node.cloudInfo.instance_type;
+    }
+
+    return params;
   }
 }

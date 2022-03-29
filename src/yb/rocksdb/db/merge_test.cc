@@ -329,8 +329,8 @@ void testCounters(Counters* counters_ptr, DB *db, bool test_compaction) {
 
     dumpDb(db);
 
-    assert(counters.assert_get("a") == 3);
-    assert(counters.assert_get("b") == sum);
+    DCHECK_EQ(counters.assert_get("a"), 3);
+    DCHECK(counters.assert_get("b") == sum);
   }
 }
 
@@ -353,8 +353,8 @@ void testSuccessiveMerge(Counters *counters_ptr, size_t max_num_merges,
     }
 
     resetNumMergeOperatorCalls();
-    assert(counters.assert_get("z") == sum);
-    assert(num_merge_operator_calls == i % (max_num_merges + 1));
+    DCHECK(counters.assert_get("z") == sum);
+    DCHECK(num_merge_operator_calls == i % (max_num_merges + 1));
   }
 }
 

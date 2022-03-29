@@ -21,7 +21,6 @@ from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.cloud.common.utils import request_retry_decorator
 from ybops.cloud.common.cloud import AbstractCloud
 
-
 RESOURCE_PREFIX_FORMAT = "yb-{}"
 IGW_CIDR = "0.0.0.0/0"
 SUBNET_PREFIX_FORMAT = RESOURCE_PREFIX_FORMAT
@@ -29,7 +28,6 @@ IGW_PREFIX_FORMAT = RESOURCE_PREFIX_FORMAT + "-igw"
 ROUTE_TABLE_PREFIX_FORMAT = RESOURCE_PREFIX_FORMAT + "-rt"
 SG_YUGABYTE_PREFIX_FORMAT = RESOURCE_PREFIX_FORMAT + "-sg"
 PEER_CONN_FORMAT = "yb-peer-conn-{}-to-{}"
-ROOT_VOLUME_LABEL = "/dev/sda1"
 
 
 class AwsBootstrapRegion():
@@ -287,10 +285,10 @@ class AwsBootstrapClient():
                 found = False
                 for perm in ip_perms:
                     if perm.get("FromPort") == rule["from_port"] and \
-                        perm.get("ToPort") == rule["to_port"] and \
-                        perm.get("IpProtocol") == rule["ip_protocol"] and \
-                        len([True for r in perm.get("IpRanges", [])
-                             if r.get("CidrIp") == rule["cidr_ip"]]) > 0:
+                            perm.get("ToPort") == rule["to_port"] and \
+                            perm.get("IpProtocol") == rule["ip_protocol"] and \
+                            len([True for r in perm.get("IpRanges", [])
+                                 if r.get("CidrIp") == rule["cidr_ip"]]) > 0:
                         # This rule matches this permission, so no need to add it.
                         found = True
                         break
@@ -376,20 +374,20 @@ def get_spot_pricing(region, zone, instance_type):
     return spot_price['SpotPriceHistory'][0]['SpotPrice']
 
 
-def get_image_arch(region, ami):
+def describe_ami(region, ami):
     client = boto3.client("ec2", region_name=region)
     images = client.describe_images(ImageIds=[ami]).get("Images", [])
     if len(images) == 0:
         raise YBOpsRuntimeError('Could not find image for AMI {} in region {}'.format(ami, region))
-    return images[0].get("Architecture")
+    return images[0]
 
 
 def get_image_arch(region, ami):
-    client = boto3.client("ec2", region_name=region)
-    images = client.describe_images(ImageIds=[ami]).get("Images", [])
-    if len(images) == 0:
-        raise YBOpsRuntimeError('Could not find image for AMI {} in region {}'.format(ami, region))
-    return images[0].get("Architecture")
+    return describe_ami(region, ami).get("Architecture")
+
+
+def get_root_label(region, ami):
+    return describe_ami(region, ami).get("RootDeviceName")
 
 
 def get_zones(region, dest_vpc_id=None):
@@ -670,7 +668,7 @@ def query_vpc(region):
     raw_client = boto3.client("ec2", region_name=region)
     zones = [z["ZoneName"]
              for z in raw_client.describe_availability_zones(
-        Filters=get_filters("state", "available")).get("AvailabilityZones", [])]
+            Filters=get_filters("state", "available")).get("AvailabilityZones", [])]
     # Default to empty lists, in case some zones do not have subnets, so we can use this as a query
     # for all available AZs in this region.
     subnets_by_zone = {z: [] for z in zones}
@@ -891,6 +889,13 @@ def is_nvme(instance):
     return instance.get("InstanceStorageSupported")
 
 
+def is_burstable(instance):
+    """
+    Determines whether or not an instance has burstable performance.
+    """
+    return instance.get("BurstablePerformanceSupported")
+
+
 def has_ephemerals(instance_type, region):
     instance = get_instance_details(instance_type, region)
     return not is_nvme(instance) and not is_ebs_only(instance)
@@ -914,6 +919,7 @@ def __get_security_group(client, args):
 
 def create_instance(args):
     client = get_client(args.region)
+    instance = get_instance_details(args.instance_type, args.region)
     vars = {
         "ImageId": args.machine_image,
         "KeyName": args.key_pair_name,
@@ -960,7 +966,7 @@ def create_instance(args):
             "Arn": args.iam_profile_arn
         }
     volumes.append({
-        "DeviceName": ROOT_VOLUME_LABEL,
+        "DeviceName": get_root_label(args.region, args.machine_image),
         "Ebs": ebs
     })
 
@@ -973,7 +979,7 @@ def create_instance(args):
                 "DeviceName": "/dev/{}".format(device_name),
                 "VirtualName": "ephemeral{}".format(i)
             }
-        elif is_ebs_only(get_instance_details(args.instance_type, args.region)):
+        elif is_ebs_only(instance):
             ebs = {
                 "DeleteOnTermination": True,
                 "VolumeType": args.volume_type,
@@ -1029,7 +1035,7 @@ def create_instance(args):
     vars["TagSpecifications"] = tag_dicts
 
     # Newer instance types have Credit Specification set to unlimited by default
-    if args.instance_type == "t3.small":
+    if is_burstable(instance):
         vars["CreditSpecification"] = {
             "CpuCredits": 'standard'
         }
