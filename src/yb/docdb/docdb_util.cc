@@ -27,6 +27,7 @@
 #include "yb/util/env.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_trim.h"
+#include "yb/docdb/docdb_pgapi.h"
 
 using std::string;
 using std::make_shared;
@@ -38,6 +39,11 @@ using std::vector;
 
 namespace yb {
 namespace docdb {
+
+void SetValueFromQLBinaryWrapper(
+    QLValuePB ql_value, const int pg_data_type, DatumMessagePB* cdc_datum_message) {
+  WARN_NOT_OK(yb::docdb::SetValueFromQLBinary(ql_value, pg_data_type, cdc_datum_message), "Failed");
+}
 
 rocksdb::DB* DocDBRocksDBUtil::rocksdb() {
   return DCHECK_NOTNULL(regular_db_.get());

@@ -29,6 +29,7 @@
 #include "yb/common/common_fwd.h"
 
 #include "yb/util/status_fwd.h"
+#include "yb/util/decimal.h"
 
 #include "ybgate/ybgate_api.h"
 
@@ -70,11 +71,18 @@ Status ExtractTextArrayFromQLBinaryValue(const QLValuePB& ql_value,
 // 'array_type' with elements of type 'elem_type' and store the individual
 // elements in 'result'. Here, 'array_type' and 'elem_type' are PG typoids
 // corresponding to the required array and element types.
-Status ExtractVectorFromQLBinaryValueHelper(
-    const QLValuePB& ql_value,
-    const int array_type,
-    const int elem_type,
-    std::vector<QLValuePB> *result);
+Status ExtractVectorFromQLBinaryValueHelper(const QLValuePB& ql_value,
+                                            const int array_type,
+                                            const int elem_type,
+                                            std::vector<QLValuePB> *result);
+
+Status SetValueFromQLBinary(const QLValuePB ql_value,
+                            const int pg_data_type,
+                            DatumMessagePB* cdc_datum_message = NULL);
+
+Status SetValueFromQLBinaryHelper(const QLValuePB ql_value,
+                                  const int elem_type,
+                                  DatumMessagePB* cdc_datum_message = NULL);
 
 } // namespace docdb
 } // namespace yb

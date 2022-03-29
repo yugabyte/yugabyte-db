@@ -296,6 +296,7 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
         YBTableName yb_table;
         yb_table.set_table_id(table.id());
         yb_table.set_namespace_id(table.namespace_().id());
+        yb_table.set_pgschema_name(table.pgschema_name());
         return yb_table;
       }
     }

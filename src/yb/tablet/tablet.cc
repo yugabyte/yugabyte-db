@@ -1073,7 +1073,8 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
     const ReadHybridTime read_hybrid_time,
     const TableId& table_id,
     CoarseTimePoint deadline,
-    AllowBootstrappingState allow_bootstrapping_state) const {
+    AllowBootstrappingState allow_bootstrapping_state,
+    const Slice& sub_doc_key) const {
   if (state_ != kOpen && (!allow_bootstrapping_state || state_ != kBootstrapping)) {
     return STATUS_FORMAT(IllegalState, "Tablet in wrong state: $0", state_);
   }
@@ -1102,7 +1103,7 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
   auto result = std::make_unique<DocRowwiseIterator>(
       std::move(mapped_projection), schema, txn_op_ctx, doc_db(),
       deadline, read_time, &pending_non_abortable_op_counter_);
-  RETURN_NOT_OK(result->Init(table_type_));
+  RETURN_NOT_OK(result->Init(table_type_, sub_doc_key));
   return std::move(result);
 }
 
@@ -1739,9 +1740,43 @@ Status Tablet::RemoveIntents(const RemoveIntentsData& data, const TransactionIdS
   return RemoveIntentsImpl(data, transactions);
 }
 
+// We batch this as some tx could be very large and may not fit in one batch
+CHECKED_STATUS Tablet::GetIntents(
+    const TransactionId& id,
+    std::vector<docdb::IntentKeyValueForCDC>* key_value_intents,
+    docdb::ApplyTransactionState* stream_state) {
+  auto scoped_read_operation = CreateNonAbortableScopedRWOperation();
+  RETURN_NOT_OK(scoped_read_operation);
+
+  docdb::ApplyTransactionState new_stream_state;
+
+  new_stream_state = VERIFY_RESULT(
+      docdb::GetIntentsBatch(id, &key_bounds_, stream_state, intents_db_.get(), key_value_intents));
+  stream_state->key = new_stream_state.key;
+  stream_state->write_id = new_stream_state.write_id;
+
+  return Status::OK();
+}
+
 Result<HybridTime> Tablet::ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) {
   // We could not use mvcc_ directly, because correct lease should be passed to it.
   return SafeTime(RequireLease::kFalse, min_allowed, deadline);
+}
+
+Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::CreateCDCSnapshotIterator(
+    const Schema& projection, const ReadHybridTime& time, const string& next_key) {
+  VLOG_WITH_PREFIX(2) << "The nextKey is " << next_key;
+
+  Slice next_slice;
+  if (!next_key.empty()) {
+    SubDocKey start_sub_doc_key;
+    docdb::KeyBytes start_key_bytes(next_key);
+    RETURN_NOT_OK(start_sub_doc_key.FullyDecodeFrom(start_key_bytes.AsSlice()));
+    next_slice = start_sub_doc_key.doc_key().Encode().AsSlice();
+    VLOG_WITH_PREFIX(2) << "The nextKey doc is " << next_key;
+  }
+  return NewRowIterator(
+      projection, time, "", CoarseTimePoint::max(), AllowBootstrappingState::kFalse, next_slice);
 }
 
 Status Tablet::CreatePreparedChangeMetadata(

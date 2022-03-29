@@ -11,6 +11,7 @@
 // under the License.
 
 #include "yb/cdc/cdc_producer.h"
+#include "yb/cdc/cdc_common_util.h"
 
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/common/schema.h"
@@ -48,17 +49,6 @@ using consensus::ReplicateMsgPtr;
 using consensus::ReplicateMsgs;
 using docdb::PrimitiveValue;
 using tablet::TransactionParticipant;
-
-YB_STRONGLY_TYPED_BOOL(ReplicateIntents);
-
-namespace {
-
-// Use boost::unordered_map instead of std::unordered_map because gcc release build
-// fails to compile correctly when TxnStatusMap is used with Result<> (due to what seems like
-// a bug in gcc where it tries to incorrectly destroy Status part of Result).
-typedef boost::unordered_map<
-    TransactionId, TransactionStatusResult, TransactionIdHash> TxnStatusMap;
-typedef std::pair<uint64_t, size_t> RecordTimeIndex;
 
 void AddColumnToMap(const ColumnSchema& col_schema,
                     const docdb::PrimitiveValue& col,
@@ -402,18 +392,16 @@ CHECKED_STATUS PopulateTransactionRecord(const ReplicateMsgPtr& msg,
   return Status::OK();
 }
 
-} // namespace
-
-Status GetChanges(const std::string& stream_id,
-                  const std::string& tablet_id,
-                  const OpId& from_op_id,
-                  const StreamMetadata& stream_metadata,
-                  const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-                  const MemTrackerPtr& mem_tracker,
-                  consensus::ReplicateMsgsHolder* msgs_holder,
-                  GetChangesResponsePB* resp,
-                  int64_t* last_readable_opid_index,
-                  const CoarseTimePoint deadline) {
+Status GetChangesForXCluster(const std::string& stream_id,
+                             const std::string& tablet_id,
+                             const OpId& from_op_id,
+                             const StreamMetadata& stream_metadata,
+                             const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+                             const MemTrackerPtr& mem_tracker,
+                             consensus::ReplicateMsgsHolder* msgs_holder,
+                             GetChangesResponsePB* resp,
+                             int64_t* last_readable_opid_index,
+                             const CoarseTimePoint deadline) {
   auto replicate_intents = ReplicateIntents(GetAtomicFlag(&FLAGS_cdc_enable_replicate_intents));
   // Request scope on transaction participant so that transactions are not removed from participant
   // while RequestScope is active.

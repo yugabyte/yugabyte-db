@@ -154,6 +154,7 @@ message ListTablesResponsePB {
     optional NamespaceIdentifierPB namespace = 4;
     optional RelationType relation_type = 5 [default = USER_TABLE_RELATION];
     optional SysTablesEntryPB.State state = 6;
+    optional string pgschema_name = 7;
   }
 
   repeated TableInfo tables = 2;

@@ -101,6 +101,12 @@ DEFINE_int32(cdc_checkpoint_opid_interval_ms, 60 * 1000,
              "specified by cdc_checkpoint_opid_interval, then log cache does not consider that "
              "consumer while determining which op IDs to evict.");
 
+DEFINE_int64(cdc_intent_retention_ms, 4 * 3600 * 1000,
+             "Interval up to which CDC consumer's checkpoint is considered for retaining intents."
+             "If we haven't received an updated checkpoint from CDC consumer within the interval "
+             "specified by cdc_checkpoint_opid_interval, then CDC does not consider that "
+             "consumer while determining which op IDs to delete from the intent.");
+
 DEFINE_bool(enable_consensus_exponential_backoff, true,
             "Whether exponential backoff based on number of retransmissions at tablet leader "
             "for number of entries to replicate to lagging follower is enabled.");
@@ -158,6 +164,8 @@ METRIC_DEFINE_gauge_int64(tablet, in_progress_ops, "Leader Operations in Progres
                           "peers.");
 
 const auto kCDCConsumerCheckpointInterval = FLAGS_cdc_checkpoint_opid_interval_ms * 1ms;
+
+const auto kCDCConsumerIntentRetention = FLAGS_cdc_intent_retention_ms * 1ms;
 
 std::string MajorityReplicatedData::ToString() const {
   return Format(
@@ -773,6 +781,15 @@ yb::OpId PeerMessageQueue::GetCDCConsumerOpIdToEvict() {
   // For log cache eviction, we only want to include CDC consumers that are actively polling.
   // If CDC consumer checkpoint has not been updated recently, we exclude it.
   if (CoarseMonoClock::Now() - cdc_consumer_op_id_last_updated_ <= kCDCConsumerCheckpointInterval) {
+    return cdc_consumer_op_id_;
+  } else {
+    return yb::OpId::Max();
+  }
+}
+
+yb::OpId PeerMessageQueue::GetCDCConsumerOpIdForIntentRemoval() {
+  std::shared_lock<rw_spinlock> l(cdc_consumer_lock_);
+  if (CoarseMonoClock::Now() - cdc_consumer_op_id_last_updated_ <= kCDCConsumerIntentRetention) {
     return cdc_consumer_op_id_;
   } else {
     return yb::OpId::Max();

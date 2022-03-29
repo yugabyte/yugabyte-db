@@ -210,6 +210,35 @@ void PrepareTransactionWriteBatch(
     const Slice& replicated_batches_state,
     IntraTxnWriteId* write_id);
 
+
+struct IntentKeyValueForCDC {
+  Slice key;
+  Slice value;
+  std::string key_buf, value_buf;
+  std::string reverse_index_key;
+  IntraTxnWriteId write_id = 0;
+
+  std::string ToString() const;
+
+  template <class PB>
+  void ToPB(PB* pb) const {
+    pb->set_key(key);
+    pb->set_value(value);
+    pb->set_reverse_index_key(reverse_index_key);
+    pb->set_write_id(write_id);
+  }
+
+  template <class PB>
+  static IntentKeyValueForCDC FromPB(const PB& pb) {
+    return IntentKeyValueForCDC {
+        .key = pb.key(),
+        .value = pb.value(),
+        .reverse_index_key = pb.reverse_index_key(),
+        .write_id = pb.write_id(),
+    };
+  }
+};
+
 // See ApplyTransactionStatePB for details.
 struct ApplyTransactionState {
   std::string key;
@@ -250,6 +279,12 @@ Result<ApplyTransactionState> PrepareApplyIntentsBatch(
     rocksdb::WriteBatch* regular_batch,
     rocksdb::DB* intents_db,
     rocksdb::WriteBatch* intents_batch);
+Result<ApplyTransactionState> GetIntentsBatch(
+    const TransactionId& transaction_id,
+    const KeyBounds* key_bounds,
+    const ApplyTransactionState* stream_state,
+    rocksdb::DB* intents_db,
+    std::vector<IntentKeyValueForCDC>* keyValueIntents);
 
 void AppendTransactionKeyPrefix(const TransactionId& transaction_id, docdb::KeyBytes* out);
 

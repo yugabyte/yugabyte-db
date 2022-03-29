@@ -87,6 +87,8 @@ DEFINE_int32(txn_max_apply_batch_records, 100000,
              "Max number of apply records allowed in single RocksDB batch. "
              "When a transaction's data in one tablet does not fit into specified number of "
              "records, it will be applied using multiple RocksDB write batches.");
+DEFINE_int32(cdc_max_stream_intent_records, 1000,
+             "Max number of intent records allowed in single cdc batch. ");
 
 namespace yb {
 namespace docdb {
@@ -1306,6 +1308,109 @@ Result<ApplyTransactionState> PrepareApplyIntentsBatch(
         ApplyIntents, tablet_id, transaction_id_slice, log_ht, regular_batch->Data());
   }
   return ApplyTransactionState {};
+}
+
+Result<ApplyTransactionState> GetIntentsBatch(
+    const TransactionId& transaction_id,
+    const KeyBounds* key_bounds,
+    const ApplyTransactionState* stream_state,
+    rocksdb::DB* intents_db,
+    std::vector<IntentKeyValueForCDC>* key_value_intents) {
+  KeyBytes txn_reverse_index_prefix;
+  Slice transaction_id_slice = transaction_id.AsSlice();
+  AppendTransactionKeyPrefix(transaction_id, &txn_reverse_index_prefix);
+  txn_reverse_index_prefix.AppendValueType(ValueType::kMaxByte);
+  Slice key_prefix = txn_reverse_index_prefix.AsSlice();
+  key_prefix.remove_suffix(1);
+  const Slice reverse_index_upperbound = txn_reverse_index_prefix.AsSlice();
+
+  auto reverse_index_iter = CreateRocksDBIterator(
+      intents_db, &KeyBounds::kNoBounds, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,
+      rocksdb::kDefaultQueryId, nullptr /* read_filter */, &reverse_index_upperbound);
+
+  BoundedRocksDbIterator intent_iter = CreateRocksDBIterator(
+      intents_db, key_bounds, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,
+      rocksdb::kDefaultQueryId);
+  reverse_index_iter.Seek(key_prefix);
+
+  DocHybridTimeBuffer doc_ht_buffer;
+
+  IntraTxnWriteId write_id = 0;
+  if (stream_state != nullptr && stream_state->active() && stream_state->write_id != 0) {
+    reverse_index_iter.Seek(stream_state->key);
+    write_id = stream_state->write_id;
+    reverse_index_iter.Next();
+  }
+  const uint64_t max_records = FLAGS_cdc_max_stream_intent_records;
+  const uint64_t write_id_limit = write_id + max_records;
+
+  while (reverse_index_iter.Valid()) {
+    const Slice key_slice(reverse_index_iter.key());
+
+    if (!key_slice.starts_with(key_prefix)) {
+      break;
+    }
+    // If the key ends at the transaction id then it is transaction metadata (status tablet,
+    // isolation level etc.).
+    if (key_slice.size() > txn_reverse_index_prefix.size()) {
+      auto reverse_index_value = reverse_index_iter.value();
+      if (!reverse_index_value.empty() && reverse_index_value[0] == ValueTypeAsChar::kBitSet) {
+        reverse_index_value.remove_prefix(1);
+            RETURN_NOT_OK(OneWayBitmap::Skip(&reverse_index_value));
+      }
+      // Value of reverse index is a key of original intent record, so seek it and check match.
+      if ((!key_bounds || key_bounds->IsWithinBounds(reverse_index_iter.value()))) {
+        // return when we have reached the batch limit.
+        if (write_id >= write_id_limit) {
+          return ApplyTransactionState{
+              .key = key_slice.ToBuffer(),
+              .write_id = write_id,
+          };
+        }
+        {
+          intent_iter.Seek(reverse_index_value);
+          if (!intent_iter.Valid() || intent_iter.key() != reverse_index_value) {
+            LOG(WARNING) << "Unable to find intent: " << reverse_index_value.ToDebugHexString()
+                         << " for " << key_slice.ToDebugHexString();
+            return ApplyTransactionState{};
+          }
+
+          auto intent = VERIFY_RESULT(ParseIntentKey(intent_iter.key(), transaction_id_slice));
+
+          if (intent.types.Test(IntentType::kStrongWrite)) {
+            auto decoded_value =
+                VERIFY_RESULT(DecodeIntentValue(intent_iter.value(), &transaction_id_slice));
+            write_id = decoded_value.write_id;
+
+            if (decoded_value.body.starts_with(ValueTypeAsChar::kRowLock)) {
+              continue;
+            }
+
+            std::array<Slice, 1> key_parts = {{
+                                                  intent.doc_path,
+                                              }};
+            std::array<Slice, 1> value_parts = {{
+                                                    decoded_value.body,
+                                                }};
+
+            IntentKeyValueForCDC intent_metadata;
+            intent_metadata.key = Slice(key_parts, &(intent_metadata.key_buf));
+            intent_metadata.value = Slice(value_parts, &(intent_metadata.value_buf));
+            intent_metadata.reverse_index_key = key_slice.ToBuffer();
+            intent_metadata.write_id = write_id;
+            (*key_value_intents).push_back(intent_metadata);
+
+            VLOG(4) << "The size of intentKeyValues in GetIntentList "
+                    << (*key_value_intents).size();
+            ++write_id;
+          }
+        }
+      }
+    }
+    reverse_index_iter.Next();
+  }
+
+  return ApplyTransactionState{};
 }
 
 std::string ApplyTransactionState::ToString() const {

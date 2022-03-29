@@ -661,8 +661,12 @@ TEST_F(LogTest, TestGCWithLogRunning) {
   // Check that we get a NotFound if we try to read before the GCed point.
   {
     ReplicateMsgs repls;
+    int64_t starting_op_segment_seq_num;
+    yb::SchemaPB schema;
+    uint32_t schema_version;
     Status s = log_->GetLogReader()->ReadReplicatesInRange(
-      1, 2, LogReader::kNoSizeLimit, &repls);
+      1, 2, LogReader::kNoSizeLimit, &repls, &starting_op_segment_seq_num,
+        &schema, &schema_version);
     ASSERT_TRUE(s.IsNotFound()) << s.ToString();
   }
 
@@ -1059,11 +1063,16 @@ TEST_F(LogTest, TestReadLogWithReplacedReplicates) {
     for (int random_read = 0; random_read < kNumRandomReads; random_read++) {
       int start_index = RandInRange(&rng, gc_index, max_repl_index - 1);
       int end_index = RandInRange(&rng, start_index, max_repl_index);
+      int64_t starting_op_segment_seq_num;
+      yb::SchemaPB schema;
+      uint32_t schema_version;
       {
         SCOPED_TRACE(Substitute("Reading $0-$1", start_index, end_index));
         consensus::ReplicateMsgs repls;
-        ASSERT_OK(reader->ReadReplicatesInRange(
-                    start_index, end_index, LogReader::kNoSizeLimit, &repls));
+        ASSERT_OK(reader->ReadReplicatesInRange(start_index, end_index,
+                                                LogReader::kNoSizeLimit, &repls,
+                                                &starting_op_segment_seq_num,
+                                                &schema, &schema_version));
         ASSERT_EQ(end_index - start_index + 1, repls.size());
         int expected_index = start_index;
         for (const auto& repl : repls) {
@@ -1086,7 +1095,9 @@ TEST_F(LogTest, TestReadLogWithReplacedReplicates) {
         SCOPED_TRACE(Substitute("Reading $0-$1 with size limit $2",
                                 start_index, end_index, size_limit));
         ReplicateMsgs repls;
-        ASSERT_OK(reader->ReadReplicatesInRange(start_index, end_index, size_limit, &repls));
+        ASSERT_OK(reader->ReadReplicatesInRange(start_index, end_index, size_limit, &repls,
+                                                &starting_op_segment_seq_num,
+                                                &schema, &schema_version));
         ASSERT_LE(repls.size(), end_index - start_index + 1);
         int total_size = 0;
         int expected_index = start_index;
@@ -1128,8 +1139,13 @@ TEST_F(LogTest, TestReadReplicatesHighIndex) {
 
   auto* reader = log_->GetLogReader();
   ReplicateMsgs repls;
+  int64_t starting_op_segment_seq_num;
+  yb::SchemaPB schema;
+  uint32_t schema_version;
   ASSERT_OK(reader->ReadReplicatesInRange(first_log_index, first_log_index + kSequenceLength - 1,
-                                          LogReader::kNoSizeLimit, &repls));
+                                          LogReader::kNoSizeLimit, &repls,
+                                          &starting_op_segment_seq_num,
+                                          &schema, &schema_version));
   ASSERT_EQ(kSequenceLength, repls.size());
 }
 

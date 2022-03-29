@@ -5738,6 +5738,7 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
     table->set_table_type(ltm->table_type());
     table->set_relation_type(relation_type);
     table->set_state(ltm->pb.state());
+    table->set_pgschema_name(ltm->schema().pgschema_name());
   }
   return Status::OK();
 }

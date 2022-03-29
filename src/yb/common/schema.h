@@ -149,7 +149,8 @@ class ColumnSchema {
                bool is_static = false,
                bool is_counter = false,
                int32_t order = 0,
-               SortingType sorting_type = SortingType::kNotSpecified)
+               SortingType sorting_type = SortingType::kNotSpecified,
+               int32_t pg_type_oid = 0 /*kInvalidOid*/)
       : name_(std::move(name)),
         type_(type),
         is_nullable_(is_nullable),
@@ -157,7 +158,8 @@ class ColumnSchema {
         is_static_(is_static),
         is_counter_(is_counter),
         order_(order),
-        sorting_type_(sorting_type) {
+        sorting_type_(sorting_type),
+        pg_type_oid_(pg_type_oid) {
   }
 
   // convenience constructor for creating columns with simple (non-parametric) data types
@@ -168,7 +170,8 @@ class ColumnSchema {
                bool is_static = false,
                bool is_counter = false,
                int32_t order = 0,
-               SortingType sorting_type = SortingType::kNotSpecified);
+               SortingType sorting_type = SortingType::kNotSpecified,
+               int32_t pg_type_oid = 0 /*kInvalidOid*/);
 
   const std::shared_ptr<QLType>& type() const {
     return type_;
@@ -198,6 +201,10 @@ class ColumnSchema {
 
   int32_t order() const {
     return order_;
+  }
+
+  int32_t pg_type_oid() const {
+    return pg_type_oid_;
   }
 
   SortingType sorting_type() const {
@@ -287,6 +294,7 @@ class ColumnSchema {
   bool is_counter_;
   int32_t order_;
   SortingType sorting_type_;
+  int32_t pg_type_oid_;
 };
 
 class ContiguousRow;
@@ -454,6 +462,8 @@ class TableProperties {
   bool is_ysql_catalog_table_ = false;
 };
 
+typedef std::string PgSchemaName;
+
 // The schema for a set of rows.
 //
 // A Schema is simply a set of columns, along with information about
@@ -479,7 +489,8 @@ class Schema {
                      NameToIndexMapAllocator(&name_to_index_bytes_)),
       has_nullables_(false),
       cotable_id_(Uuid::Nil()),
-      colocation_id_(kColocationIdNotSet) {
+      colocation_id_(kColocationIdNotSet),
+      pgschema_name_("") {
   }
 
   Schema(const Schema& other);
@@ -499,7 +510,8 @@ class Schema {
          size_t key_columns,
          const TableProperties& table_properties = TableProperties(),
          const Uuid& cotable_id = Uuid::Nil(),
-         const ColocationId colocation_id = kColocationIdNotSet);
+         const ColocationId colocation_id = kColocationIdNotSet,
+         const PgSchemaName pgschema_name = "");
 
   // Construct a schema with the given information.
   //
@@ -512,7 +524,8 @@ class Schema {
          size_t key_columns,
          const TableProperties& table_properties = TableProperties(),
          const Uuid& cotable_id = Uuid::Nil(),
-         const ColocationId colocation_id = kColocationIdNotSet);
+         const ColocationId colocation_id = kColocationIdNotSet,
+         const PgSchemaName pgschema_name = "");
 
   // Reset this Schema object to the given schema.
   // If this fails, the Schema object is left in an inconsistent
@@ -520,7 +533,8 @@ class Schema {
   CHECKED_STATUS Reset(const vector<ColumnSchema>& cols, size_t key_columns,
                        const TableProperties& table_properties = TableProperties(),
                        const Uuid& cotable_id = Uuid::Nil(),
-                       const ColocationId colocation_id = kColocationIdNotSet);
+                       const ColocationId colocation_id = kColocationIdNotSet,
+                       const PgSchemaName pgschema_name = "");
 
   // Reset this Schema object to the given schema.
   // If this fails, the Schema object is left in an inconsistent
@@ -530,7 +544,8 @@ class Schema {
                        size_t key_columns,
                        const TableProperties& table_properties = TableProperties(),
                        const Uuid& cotable_id = Uuid::Nil(),
-                       const ColocationId colocation_id = kColocationIdNotSet);
+                       const ColocationId colocation_id = kColocationIdNotSet,
+                       const PgSchemaName pgschema_name = "");
 
   // Return the number of bytes needed to represent a single row of this schema.
   //
@@ -632,6 +647,18 @@ class Schema {
 
   void SetRetainDeleteMarkers(bool retain_delete_markers) {
     table_properties_.SetRetainDeleteMarkers(retain_delete_markers);
+  }
+
+  bool has_pgschema_name() const {
+    return !pgschema_name_.empty();
+  }
+
+  void SetSchemaName(std::string pgschema_name) {
+    pgschema_name_ = pgschema_name;
+  }
+
+  PgSchemaName SchemaName() const {
+    return pgschema_name_;
   }
 
   // Return the column index corresponding to the given column,
@@ -1078,6 +1105,8 @@ class Schema {
   // kColocationIdNotSet for a primary or single-tenant table.
   ColocationId colocation_id_;
 
+  PgSchemaName pgschema_name_;
+
   // NOTE: if you add more members, make sure to add the appropriate
   // code to swap() and CopyFrom() as well to prevent subtle bugs.
 };
@@ -1125,6 +1154,14 @@ class SchemaBuilder {
     return colocation_id_;
   }
 
+  void set_pgschema_name(PgSchemaName pgschema_name) {
+    pgschema_name_ = pgschema_name;
+  }
+
+  PgSchemaName pgschema_name() const {
+    return pgschema_name_;
+  }
+
   void set_cotable_id(Uuid cotable_id) {
     cotable_id_ = cotable_id;
   }
@@ -1134,12 +1171,13 @@ class SchemaBuilder {
   }
 
   Schema Build() const {
-    return Schema(cols_, col_ids_, num_key_columns_, table_properties_, cotable_id_,
-                  colocation_id_);
+    return Schema(
+        cols_, col_ids_, num_key_columns_, table_properties_, cotable_id_, colocation_id_,
+        pgschema_name_);
   }
   Schema BuildWithoutIds() const {
-    return Schema(cols_, num_key_columns_, table_properties_, cotable_id_,
-                  colocation_id_);
+    return Schema(
+        cols_, num_key_columns_, table_properties_, cotable_id_, colocation_id_, pgschema_name_);
   }
 
   // assumes type is allowed in primary key -- this should be checked before getting here
@@ -1201,6 +1239,7 @@ class SchemaBuilder {
   size_t num_key_columns_;
   TableProperties table_properties_;
   ColocationId colocation_id_ = kColocationIdNotSet;
+  PgSchemaName pgschema_name_ = "";
   Uuid cotable_id_ = Uuid::Nil();
 
   DISALLOW_COPY_AND_ASSIGN(SchemaBuilder);

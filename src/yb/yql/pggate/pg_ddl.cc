@@ -188,6 +188,7 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
   req_.set_is_shared_table(is_shared_table);
   req_.set_if_not_exist(if_not_exist);
   req_.set_colocated(colocated);
+  req_.set_schema_name(schema_name);
   tablegroup_oid.ToPB(req_.mutable_tablegroup_oid());
   if (colocation_id != kColocationIdNotSet) {
     req_.set_colocation_id(colocation_id);
@@ -209,6 +210,7 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
 Status PgCreateTable::AddColumnImpl(const char *attr_name,
                                     int attr_num,
                                     int attr_ybtype,
+                                    int pg_type_oid,
                                     bool is_hash,
                                     bool is_range,
                                     SortingType sorting_type) {
@@ -219,6 +221,7 @@ Status PgCreateTable::AddColumnImpl(const char *attr_name,
   column.set_is_hash(is_hash);
   column.set_is_range(is_range);
   column.set_sorting_type(sorting_type);
+  column.set_attr_pgoid(pg_type_oid);
   return Status::OK();
 }
 
@@ -348,7 +351,7 @@ Status PgAlterTable::AddColumn(const char *name,
   col.set_attr_name(name);
   col.set_attr_ybtype(attr_type->yb_type);
   col.set_attr_num(order);
-
+  col.set_attr_pgoid(attr_type->type_oid);
   return Status::OK();
 }
 
