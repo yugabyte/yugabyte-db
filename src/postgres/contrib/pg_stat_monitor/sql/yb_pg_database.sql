@@ -1,15 +1,15 @@
-CREATE EXTENSION pg_stat_monitor;
+CREATE EXTENSION IF NOT EXISTS pg_stat_monitor;
 
 CREATE DATABASE db1;
 CREATE DATABASE db2;
 
 \c db1
-CREATE EXTENSION pg_stat_monitor;
+CREATE EXTENSION IF NOT EXISTS pg_stat_monitor;
 CREATE TABLE t1 (a int);
 CREATE TABLE t2 (b int);
 
 \c db2
-CREATE EXTENSION pg_stat_monitor;
+CREATE EXTENSION IF NOT EXISTS pg_stat_monitor;
 CREATE TABLE t3 (c int);
 CREATE TABLE t4 (d int);
 
@@ -34,4 +34,4 @@ DROP TABLE t4;
 \c yugabyte
 DROP DATABASE db1;
 DROP DATABASE db2;
-DROP EXTENSION pg_stat_monitor;
+DROP EXTENSION IF EXISTS pg_stat_monitor;
