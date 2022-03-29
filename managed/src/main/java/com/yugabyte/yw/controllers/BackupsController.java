@@ -361,7 +361,7 @@ public class BackupsController extends AuthenticatedController {
         taskUUID,
         CustomerTask.TargetType.Universe,
         CustomerTask.TaskType.Restore,
-        taskParams.toString());
+        universe.name);
 
     auditService()
         .createAuditEntryWithReqBody(
