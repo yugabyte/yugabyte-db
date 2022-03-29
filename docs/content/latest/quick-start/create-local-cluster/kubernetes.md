@@ -47,7 +47,7 @@ showAsideToc: true
 
 </ul>
 
-## 1. Create a local cluster
+## Create a local cluster
 
 Create a YugabyteDB cluster in Minikube using the commands below. Note that for Helm, you have to first create a namespace.
 
@@ -68,7 +68,7 @@ resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi,\
 replicas.master=1,replicas.tserver=1,enableLoadBalancer=False --namespace yb-demo
 ```
 
-## 2. Check cluster status with kubectl
+## Check cluster status with kubectl
 
 Run the following command to see that you now have two services with one pod each — 1 yb-master pod (`yb-master-0`) and 1 yb-tserver pod (`yb-tserver-0`) running. For details on the roles of these pods in a YugabyteDB cluster (aka Universe), see [Universe](../../../architecture/concepts/universe/) in the Concepts section.
 
@@ -104,7 +104,7 @@ yb-tserver-service   LoadBalancer   10.106.5.69    <pending>     6379:31320/TCP,
 yb-tservers          ClusterIP      None           <none>        7100/TCP,9000/TCP,6379/TCP,9042/TCP,5433/TCP   119s
 ```
 
-## 3. Check cluster status with Admin UI
+## Check cluster status with Admin UI
 
 Under the hood, the cluster you have just created consists of two processes: [YB-Master](../../../architecture/concepts/yb-master/) which keeps track of various metadata (list of tables, users, roles, permissions, and so on), and [YB-TServer](../../../architecture/concepts/yb-tserver/) which is responsible for the actual end user requests for data updates and queries.
 
@@ -120,20 +120,18 @@ Now, you can view the [yb-master-0 Admin UI](../../../reference/configuration/yb
 
 ### Overview and YB-Master status
 
-The `yb-master-0` home page shows that you have a cluster with **Replication Factor** of 1 and **Num Nodes (TServers)** as `1`. The **Num User Tables** is `0` because there are no user tables created yet. The YugabyteDB version is also displayed for your reference.
+The YB-Master home page shows that you have a cluster (or universe) with a replication factor of 1, a single node, and no tables. The YugabyteDB version is also displayed.
 
 ![master-home](/images/admin/master-home-kubernetes-rf1.png)
 
-The **Masters** section highlights the YB-Master service along its corresponding cloud, region and zone placement information.
+The **Masters** section highlights the 1 YB-Master along with its corresponding cloud, region, and zone placement.
 
 ### YB-TServer status
 
-Click **See all nodes** to go to the **Tablet Servers** page where you can observe the one YB-TServer along with the time since it last connected to the YB-Master using regular heartbeats. As new tables get added, new tablets will get automatically created and distributed evenly across all the available YB-TServers.
+Click **See all nodes** to go to the **Tablet Servers** page, which lists the YB-TServer along with the time since it last connected to the YB-Master using regular heartbeats.
 
 ![tserver-list](/images/admin/master-tservers-list-kubernetes-rf1.png)
 
-{{<tip title="Next step" >}}
+## Next step
 
 [Explore YSQL](../../explore/ysql/)
-
-{{< /tip >}}

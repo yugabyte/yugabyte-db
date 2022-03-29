@@ -68,10 +68,9 @@ showAsideToc: true
 
     {{< note title="Note" >}}
 
-By default, CentOS 8 doesn't have an unversioned system-wide `python` command to avoid locking users to a specific version of Python.
-One way to fix this is to set `python3` the alternative for `python` by running: `sudo alternatives --set python /usr/bin/python3`.
+By default, CentOS 8 doesn't have an unversioned system-wide `python` command. To fix this, set `python3` as the alternative for `python` by running: `sudo alternatives --set python /usr/bin/python3`.
 
-Starting from Ubuntu 20.04, `python` isn't available anymore. An easy fix is to install `sudo apt install python-is-python3`.
+Starting from Ubuntu 20.04, `python` isn't available anymore. Install `sudo apt install python-is-python3`.
 
     {{< /note >}}
 
@@ -127,8 +126,6 @@ To configure YugabyteDB, run the following shell script.
 $ ./bin/post_install.sh
 ```
 
-{{<tip title="Next step" >}}
+## Next step
 
 [Create a local cluster](../../create-local-cluster/linux/)
-
-{{< /tip >}}
