@@ -77,5 +77,5 @@ yugabyte=# CREATE FOREIGN DATA WRAPPER my_wrapper HANDLER myhandler OPTIONS (dum
 - [`CREATE SERVER`](../ddl_create_server)
 - [`CREATE USER MAPPING`](../ddl_create_user_mapping)
 - [`IMPORT FOREIGN SCHEMA`](../ddl_import_foreign_schema)
-- [`ALTER FOREIGN DATA WRAPPER`][../ddl_alter_foreign_data_wrapper]
-- [`DROP FOREIGN DATA WRAPPER`][../ddl_drop_foreign_data_wrapper]
+- [`ALTER FOREIGN DATA WRAPPER`](../ddl_alter_foreign_data_wrapper)
+- [`DROP FOREIGN DATA WRAPPER`](../ddl_drop_foreign_data_wrapper)
