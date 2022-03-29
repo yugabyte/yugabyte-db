@@ -36,6 +36,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DestroyEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DisableEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.EnableEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ManageAlertDefinitions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManipulateDnsRecordTask;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ModifyBlackList;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
@@ -684,9 +685,23 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   /** Create a task to create default alert definitions on a universe. */
   public SubTaskGroup createUnivCreateAlertDefinitionsTask() {
     SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("FinalizeUniverseUpdate", executor);
+        getTaskExecutor().createSubTaskGroup("CreateAlertDefinitions", executor);
     CreateAlertDefinitions task = createTask(CreateAlertDefinitions.class);
     task.initialize(taskParams());
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /** Create a task to activate or diactivate universe alert definitions. */
+  public SubTaskGroup createUnivManageAlertDefinitionsTask(boolean active) {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("ManageAlertDefinitions", executor);
+    ManageAlertDefinitions task = createTask(ManageAlertDefinitions.class);
+    ManageAlertDefinitions.Params params = new ManageAlertDefinitions.Params();
+    params.universeUUID = taskParams().universeUUID;
+    params.active = active;
+    task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
