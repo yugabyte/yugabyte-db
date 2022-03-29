@@ -241,8 +241,7 @@ class PgSession::RunHelper {
       return PerformFuture();
     }
 
-    return
-    pg_session_.Perform(std::move(operations_), IsCatalog());
+    return pg_session_.Perform(std::move(operations_), IsCatalog());
   }
 
  private:
@@ -254,8 +253,8 @@ class PgSession::RunHelper {
     return IsTransactional(session_type_);
   }
 
-  inline bool IsCatalog() const {
-    return session_type_ == SessionType::kCatalog;
+  inline UseCatalogSession IsCatalog() const {
+    return UseCatalogSession(session_type_ == SessionType::kCatalog);
   }
 
   PgSession& pg_session_;
@@ -502,10 +501,11 @@ Result<PerformFuture> PgSession::FlushOperations(BufferableOperations ops, bool 
     in_txn_limit_ = clock_->Now();
   }
 
-  return Perform(std::move(ops), /* use_catalog_session */ false);
+  return Perform(std::move(ops), UseCatalogSession::kFalse);
 }
 
-Result<PerformFuture> PgSession::Perform(BufferableOperations ops, bool use_catalog_session) {
+Result<PerformFuture> PgSession::Perform(
+    BufferableOperations ops, UseCatalogSession use_catalog_session) {
   DCHECK(!ops.empty());
   tserver::PgPerformOptionsPB options;
 
@@ -529,7 +529,7 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations ops, bool use_cata
 
   auto promise = std::make_shared<std::promise<PerformResult>>();
 
-  pg_client_.PerformAsync(&options, &ops.operations, [promise](PerformResult result) {
+  pg_client_.PerformAsync(&options, &ops.operations, [promise](const PerformResult& result) {
     promise->set_value(result);
   });
   return PerformFuture(promise->get_future(), this, std::move(ops.relations));
@@ -560,44 +560,35 @@ Result<bool> PgSession::ForeignKeyReferenceExists(PgOid table_id,
 
   // Check existence of required FK intent.
   // Absence means the key was checked by previous batched request and was not found.
-  if (!Erase(&fk_reference_intent_, table_id, ybctid)) {
+  // We don't need to call the reader in this case.
+  auto it = Find(fk_reference_intent_, table_id, ybctid);
+  if (it == fk_reference_intent_.end()) {
     return false;
   }
-  std::vector<Slice> ybctids;
-  const auto reserved_size = std::min<size_t>(FLAGS_ysql_session_max_batch_size,
-                                              fk_reference_intent_.size() + 1);
-  ybctids.reserve(reserved_size);
-  ybctids.push_back(ybctid);
-  // TODO(dmitry): In case number of keys for same table > FLAGS_ysql_session_max_batch_size
-  // two strategy are possible:
-  // 1. select keys belonging to same tablet to reduce number of simultaneous RPC
-  // 2. select keys belonging to different tablets to distribute reads among different nodes
-  const auto intent_match = [table_id](const auto& key) { return key.table_id == table_id; };
+
+  std::vector<TableYbctid> ybctids;
+  ybctids.reserve(std::min<size_t>(
+      fk_reference_intent_.size(), FLAGS_ysql_session_max_batch_size));
+
+  // If the reader fails to get the result, we fail the whole operation (and transaction).
+  // Hence it's ok to extract (erase) the keys from intent before calling reader.
+  auto node = fk_reference_intent_.extract(it);
+  ybctids.push_back({table_id, std::move(node.value().ybctid)});
+
+  // Read up to FLAGS_ysql_session_max_batch_size keys.
   for (auto it = fk_reference_intent_.begin();
-       it != fk_reference_intent_.end() && ybctids.size() < FLAGS_ysql_session_max_batch_size;
-       ++it) {
-    if (intent_match(*it)) {
-      ybctids.push_back(it->ybctid);
-    }
+       it != fk_reference_intent_.end() && ybctids.size() < FLAGS_ysql_session_max_batch_size; ) {
+    node = fk_reference_intent_.extract(it++);
+    auto& key_ref = node.value();
+    ybctids.push_back({key_ref.table_id, std::move(key_ref.ybctid)});
   }
-  for (auto& r : VERIFY_RESULT(reader(table_id, ybctids))) {
-    fk_reference_cache_.emplace(table_id, std::move(r));
+
+  // Add the keys found in docdb to the FK cache.
+  RETURN_NOT_OK(reader(&ybctids));
+  for (auto& it : ybctids) {
+    fk_reference_cache_.emplace(it.table_id, std::move(it.ybctid));
   }
-  // Remove used intents.
-  auto intent_count_for_remove = ybctids.size() - 1;
-  if (intent_count_for_remove == fk_reference_intent_.size()) {
-    fk_reference_intent_.clear();
-  } else {
-    for (auto it = fk_reference_intent_.begin();
-        it != fk_reference_intent_.end() && intent_count_for_remove > 0;) {
-      if (intent_match(*it)) {
-        it = fk_reference_intent_.erase(it);
-        --intent_count_for_remove;
-      } else {
-        ++it;
-      }
-    }
-  }
+
   return Find(fk_reference_cache_, table_id, ybctid) != fk_reference_cache_.end();
 }
 

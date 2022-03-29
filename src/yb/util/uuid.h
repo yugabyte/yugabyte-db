@@ -81,7 +81,12 @@ class Uuid {
   void EncodeToComparable(uint8_t* output) const;
   void EncodeToComparable(std::string* bytes) const;
 
-  void AppendEncodedComparable(std::string* bytes) const;
+  template <class Buffer>
+  void AppendEncodedComparable(Buffer* bytes) const {
+    uint8_t output[kUuidSize];
+    EncodeToComparable(output);
+    bytes->append(reinterpret_cast<char *>(output), kUuidSize);
+  }
 
   // Given a string holding the raw bytes in network byte order, it builds the appropriate
   // UUID object.

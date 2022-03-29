@@ -202,7 +202,12 @@ class ArenaBase {
 
   // Allocate bytes, ensuring a specified alignment.
   // NOTE: alignment MUST be a power of two, or else this will break.
-  void* AllocateBytesAligned(const size_t size, const size_t alignment);
+  void* AllocateBytesAligned(size_t size, size_t alignment);
+
+  template <class T>
+  T* AllocateArray(size_t size) {
+    return static_cast<T*>(AllocateBytesAligned(size * sizeof(T), alignof(T)));
+  }
 
   // Removes all data from the arena. (Invalidates all pointers returned by
   // AddSlice and AllocateBytes). Does not cause memory allocation.
@@ -450,6 +455,14 @@ std::shared_ptr<TObject> ArenaBase<Traits>::ToShared(TObject *raw_ptr) {
 }
 
 } // namespace internal
+
+template <class Result, class Traits, class... Args>
+std::shared_ptr<Result> ArenaMakeShared(
+    const std::shared_ptr<internal::ArenaBase<Traits>>& arena, Args&&... args) {
+  auto result = arena->template NewObject<Result>(std::forward<Args>(args)...);
+  return std::shared_ptr<Result>(arena, result);
+}
+
 } // namespace yb
 
 template<class Traits>
