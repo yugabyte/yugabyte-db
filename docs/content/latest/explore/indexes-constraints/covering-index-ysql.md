@@ -1,16 +1,13 @@
 ---
 title: Covering indexes
 linkTitle: Covering indexes
-description: Using Covering indexes in YSQL
+description: Using covering indexes in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   latest:
     identifier: covering-index-ysql
     parent: explore-indexes-constraints
     weight: 255
-aliases:
-   - /latest/explore/ysql-language-features/indexes-1/
-   - /latest/explore/indexes-constraints/indexes-1/
 isTocNested: true
 showAsideToc: true
 ---
@@ -24,8 +21,8 @@ showAsideToc: true
   </li>
 </ul>
 
-A covering index is an index that includes all those columns required by a query using the INCLUDE keyword; this also includes  those columns that would typically not be a part of an index.
-This index is an efficient way to perform [index-only](https://wiki.postgresql.org/wiki/Index-only_scans) scans where there is no necessity to scan the table and instead, just the index to satisfy certain queries.
+A covering index is an index that includes all the columns required by a query, including columns that would typically not be a part of an index. This is done by using the INCLUDE keyword to list the columns you want to include.
+A covering index is an efficient way to perform [index-only](https://wiki.postgresql.org/wiki/Index-only_scans) scans, where you don't need to scan the table, just the index, to satisfy the query.
 
 ## Syntax
 
@@ -35,11 +32,11 @@ CREATE INDEX columnA_columnB_index_name ON table_name(columnA, columnB) INCLUDE 
 
 ## Example
 
-The following exercise demonstrates how to perform an index-only scan on functional(expression) indexes, and further optimize the query performance using a covering index.
+The following exercise demonstrates how to perform an index-only scan on an [expression (functional) index](../expression-index-ysql/), and further optimize the query performance using a covering index.
 
-- Follow the steps to create a cluster [locally](/latest/quick-start/) or in [Yugabyte Cloud](/latest/yugabyte-cloud/cloud-connect/).
+- Create a cluster [locally](/latest/quick-start/) or in [Yugabyte Cloud](/latest/yugabyte-cloud/cloud-basics/create-clusters-free/).
 
-- Use the [YSQL shell](/latest/admin/ycqlsh/) for local clusters, or [Connect using Cloud shell](/latest/yugabyte-cloud/cloud-connect/connect-cloud-shell/) for Yugabyte Cloud, to create a table.
+- Connect to the cluster using the [YSQL shell](/latest/admin/ysqlsh/) for local clusters, or [using Cloud shell](/latest/yugabyte-cloud/cloud-connect/connect-cloud-shell/) for Yugabyte Cloud.
 
 - Create and insert some rows into a table `demo` with two columns `id` and `username`.
 
@@ -64,7 +61,7 @@ SELECT * FROM demo WHERE username='Number42';
 (1 row)
 ```
 
-- Run another select query which demonstrates a sequential scan before creating an index.
+- Run another select query to show how a sequential scan runs before creating an index.
 
 ```sql
 EXPLAIN ANALYZE SELECT * FROM demo WHERE upper(username)='NUMBER42';
@@ -81,7 +78,7 @@ EXPLAIN ANALYZE SELECT * FROM demo WHERE upper(username)='NUMBER42';
 (5 rows)
 ```
 
-- Optimize the SELECT query by creating a functional index as follows:
+- Optimize the SELECT query by creating an expression index as follows:
 
 ```sql
 CREATE INDEX demo_upper ON demo( (upper(username)) );
@@ -101,16 +98,16 @@ EXPLAIN ANALYZE SELECT upper(username) FROM demo WHERE upper(username)='NUMBER42
 (4 rows)
 ```
 
-Using a function based index ([expression index](../../indexes-constraints/expression-index-ysql/)) enables faster access to the rows requested in the query. The problem is that the query planner just takes the expression, sees that there's an index on it, knows that you'll select the `username` column and apply a function on it. Then it thinks that it needs the `username` column without realizing it already has the value with the function applied. In this case, an index only scan covering the column to the index can optimize the query performance.
+Using an expression index enables faster access to the rows requested in the query. The problem is that the query planner just takes the expression, sees that there's an index on it, and knows that you'll select the `username` column and apply a function to it. It then thinks it needs the `username` column without realizing it already has the value with the function applied. In this case, an index-only scan covering the column to the index can optimize the query performance.
 
 {{< note title="Note" >}}
 
-For simplicity, the `username` column is used along with the INCLUDE keyword to create the covering index. Generally, a covering index allows a user to perform an index-only scan if the select list in the query matches the columns that are included in the index and additional columns for the index are specified using the INCLUDE keyword.
-Ideally, use columns that are updated frequently in the INCLUDE clause. But for other cases, it would probably be faster to just have an index on the key columns.
+For simplicity, the `username` column is used with the INCLUDE keyword to create the covering index. Generally, a covering index allows you to perform an index-only scan if the query select list matches the columns that are included in the index and the additional columns added using the INCLUDE keyword.
+Ideally, specify columns that are updated frequently in the INCLUDE clause. For other cases, it is probably faster to index all the key columns.
 
 {{< /note >}}
 
-- Create a covering index by including the username column along with the INCLUDE keyword.
+- Create a covering index by specifying the username column in the INCLUDE clause.
 
 ```sql
 CREATE INDEX demo_upper_covering ON demo( (upper(username))) INCLUDE (username);
