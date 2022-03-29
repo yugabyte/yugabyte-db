@@ -1222,8 +1222,23 @@ public class YBClient implements AutoCloseable {
    * @return a deferred object for the response from server.
    */
   public CreateCDCStreamResponse createCDCStream(
-          final HostAndPort hp, String tableId) throws Exception{
-    Deferred<CreateCDCStreamResponse> d = asyncClient.createCDCStream(hp, tableId);
+          final HostAndPort hp, String tableId,
+          String nameSpaceName, String format,
+          String checkpointType) throws Exception{
+    Deferred<CreateCDCStreamResponse> d = asyncClient.createCDCStream(hp,
+      tableId,
+      nameSpaceName,
+      format,
+      checkpointType);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public CreateCDCStreamResponse createCDCStream(YBTable table,
+                                                  String nameSpaceName,
+                                                  String format,
+                                                  String checkpointType) throws Exception {
+    Deferred<CreateCDCStreamResponse> d = asyncClient.createCDCStream(table,
+      nameSpaceName, format, checkpointType);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
@@ -1399,12 +1414,55 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  public GetChangesResponse getChangesCDCSDK(YBTable table, String streamId,
+                                             String tabletId, long term,
+                                             long index, byte[] key,
+                                             int write_id, long time,
+                                             boolean needSchemaInfo) throws Exception {
+    Deferred<GetChangesResponse> d = asyncClient.getChangesCDCSDK(
+      table, streamId, tabletId, term, index, key, write_id, time, needSchemaInfo);
+    return d.join(2*getDefaultAdminOperationTimeoutMs());
+  }
+
+  public GetCheckpointResponse getCheckpoint(YBTable table, String streamId,
+                                              String tabletId) throws Exception {
+    Deferred<GetCheckpointResponse> d = asyncClient
+      .getCheckpoint(table, streamId, tabletId);
+    return d.join(2*getDefaultAdminOperationTimeoutMs());
+  }
+
+  public GetDBStreamInfoResponse getDBStreamInfo(String streamId) throws Exception {
+    Deferred<GetDBStreamInfoResponse> d = asyncClient
+      .getDBStreamInfo(streamId);
+    return d.join(2*getDefaultAdminOperationTimeoutMs());
+  }
+
+  public SetCheckpointResponse commitCheckpoint(YBTable table, String streamId,
+                                             String tabletId,
+                                             long term,
+                                             long index) throws Exception {
+    Deferred<SetCheckpointResponse> d = asyncClient
+      .setCheckpoint(table, streamId, tabletId, term, index);
+    d.addErrback(new Callback<Exception, Exception>() {
+      @Override
+      public Exception call(Exception o) throws Exception {
+        o.printStackTrace();
+        throw o;
+      }
+    });
+    d.addCallback(setCheckpointResponse -> {
+      return setCheckpointResponse;
+    });
+    return d.join(2 * getDefaultAdminOperationTimeoutMs());
+  }
+
   public DeleteUniverseReplicationResponse deleteUniverseReplication(
     String replicationGroupName) throws Exception {
     Deferred<DeleteUniverseReplicationResponse> d =
       asyncClient.deleteUniverseReplication(replicationGroupName);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
+
 
   public GetUniverseReplicationResponse getUniverseReplication(
     String replicationGrouopName) throws Exception {
