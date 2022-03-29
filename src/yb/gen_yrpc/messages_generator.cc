@@ -257,7 +257,7 @@ class Message {
 
       mutable_ident.Reset("}\n\n");
 
-      if (!field->is_repeated()) {
+      if (!field->is_repeated() || IsPointerField(field)) {
         printer("bool has_$field_name$() const {\n");
         if (field->containing_oneof()) {
           printer(
@@ -284,15 +284,18 @@ class Message {
           if (IsMessage(field)) {
             printer("  $field_name$_.Clear();\n");
           } else {
-            printer("  $field_name$_ = $field_stored_type$();\n");
+            printer("  $field_name$_ = $field_default_value$;\n");
           }
           printer("  has_fields_.Reset($message_name$Fields::k$field_camelcase_name$);\n");
         }
         printer("}\n\n");
-      } else if (IsMessage(field)) {
+      }
+      if (field->is_repeated() && IsMessage(field)) {
         printer(
             "$field_type$* add_$field_name$() {\n"
-            "  return &$field_name$_.emplace_back();\n"
+            "  return &");
+        printer(IsPointerField(field) ? "mutable_$field_name$()->" : "$field_accessor$.");
+        printer("emplace_back();\n"
             "}\n\n"
         );
       }
@@ -436,7 +439,7 @@ class Message {
     }
     for (int j = 0; j != message_->field_count(); ++j) {
       const auto* field = message_->field(j);
-      if (!field->is_repeated() && (!IsMessage(field) || StoreAsPointer(field))) {
+      if ((!field->is_repeated() && !IsMessage(field)) || StoreAsPointer(field)) {
         continue;
       }
       NextCtorField(printer, &first);
@@ -520,7 +523,13 @@ class Message {
     for (const auto* field : fields) {
       ScopedSubstituter field_substituter(printer, field);
       if (field->is_repeated()) {
-        printer("for (const auto& entry : $field_name$_) {\n");
+        if (IsPointerField(field)) {
+          printer("if ($field_accessor$) {\n"
+                  "  for (const auto& entry : *$field_accessor$) {\n");
+          printer.Indent();
+        } else {
+          printer("for (const auto& entry : $field_accessor$) {\n");
+        }
       } else {
         printer("if (has_$field_name$()) {\n");
       }
@@ -552,6 +561,10 @@ class Message {
           printer("*out += std::to_string($field_value$);\n");
         }
       }
+      if (field->is_repeated() && IsPointerField(field)) {
+        printer.Outdent();
+        printer("}\n");
+      }
       if_indent.Reset("}\n");
     }
     indent.Reset("}\n\n");
@@ -562,7 +575,7 @@ class Message {
     for (int j = 0; j != message_->field_count(); ++j) {
       const auto* field = message_->field(j);
       ScopedSubstituter field_substituter(printer, field);
-      if (field->is_repeated()) {
+      if (field->is_repeated() && !IsPointerField(field)) {
         printer("  $field_name$_.clear();\n");
       } else {
         printer("  clear_$field_name$();\n");
@@ -581,9 +594,7 @@ class Message {
 
       auto source = lightweight && (!StoredAsSlice(field) || !field->containing_oneof())
           ? "rhs.$field_accessor$"s : "rhs.$field_name$()"s;
-      if (lightweight && StoreAsPointer(field)) {
-        source = "*" + source;
-      } else if (!lightweight && message_->options().map_entry()) {
+      if (!lightweight && message_->options().map_entry()) {
         if (field->name() == "key") {
           source = "rhs.first";
         } else {
@@ -593,22 +604,38 @@ class Message {
       if (field->is_repeated()) {
         if (StoredAsSlice(field)) {
           printer(
-              "$field_name$_.reserve(" + source + ".size());\n"
+              "$field_accessor$.clear();\n"
+              "$field_accessor$.reserve(" + source + ".size());\n"
               "for (const auto& entry : " + source + ") {\n"
-              "  $field_name$_.push_back(arena_.DupSlice(entry));\n"
+              "  $field_accessor$.push_back(arena_.DupSlice(entry));\n"
               "}\n"
           );
         } else if (lightweight) {
-          printer("$field_accessor$ = " + source + ";\n");
+          if (StoreAsPointer(field)) {
+            printer(
+                "if (" + source + ") {\n"
+                "  *mutable_$field_name$() = *" + source + ";\n"
+                "} else {\n"
+                "  clear_$field_name$();\n"
+                "}\n");
+          } else {
+            printer("$field_accessor$ = " + source + ";\n");
+          }
         } else if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_ENUM) {
           printer(
+              "$field_accessor$.clear();\n"
               "$field_accessor$.reserve(" + source + ".size());\n"
               "for (auto entry : " + source + ") {\n"
               "  $field_accessor$.push_back(static_cast<$field_type$>(entry));\n"
               "}\n"
           );
         } else {
-          printer("$field_accessor$.assign(" + source + ".begin(), " + source + ".end());\n");
+          if (StoreAsPointer(field)) {
+            printer("mutable_$field_name$()->");
+          } else {
+            printer("$field_accessor$.");
+          }
+          printer("assign(" + source + ".begin(), " + source + ".end());\n");
         }
       } else {
         bool check_has =
@@ -618,7 +645,7 @@ class Message {
         if (StoreAsPointer(field)) {
           printer(
               "if (rhs.has_$field_name$()) {\n"
-              "  mutable_$field_name$()->CopyFrom(" + source + ");\n"
+              "  mutable_$field_name$()->CopyFrom("s + (lightweight ? "*" : "") + source + ");\n"
           );
           if (field->containing_oneof()) {
               printer("  " + SetHasField(field) + "\n");
@@ -696,9 +723,13 @@ class Message {
       auto parse_failed = "  return ::yb::rpc::ParseFailed(\"$field_name$\");\n";
       if (field->is_repeated()) {
         if (IsMessage(field)) {
-          printer(
-              "if (!$field_serialization$::Read(input, &$field_accessor$.emplace_back())) {\n"
-          );
+          printer("if (!$field_serialization$::Read(input, &");
+          if (IsPointerField(field)) {
+            printer("mutable_$field_name$()->");
+          } else {
+            printer("$field_accessor$.");
+          }
+          printer("emplace_back())) {\n");
           printer(parse_failed);
           printer("}\n");
         } else {
@@ -777,6 +808,8 @@ class Message {
       ScopedSubstituter field_substituter(printer, field);
       if (!field->is_repeated()) {
         printer("if (has_$field_name$()) ");
+      } else if (IsPointerField(field)) {
+        printer("if ($field_accessor$) ");
       }
       printer("{\n");
       ScopedIndent field_indent(printer);
@@ -832,8 +865,15 @@ class Message {
       auto* field = message_->field(j);
       ScopedSubstituter field_substituter(printer, field);
 
+      bool has_indent = false;
       if (!field->is_repeated()) {
         printer("if (has_$field_name$()) {\n");
+        has_indent = true;
+      } else if (IsPointerField(field)) {
+        printer("if ($field_accessor$) {\n");
+        has_indent = true;
+      }
+      if (has_indent) {
         printer.printer().Indent();
       }
 
@@ -857,7 +897,7 @@ class Message {
         }
       }
       printer("out);\n");
-      if (!field->is_repeated()) {
+      if (has_indent) {
         printer.printer().Outdent();
         printer("}\n");
       }

@@ -62,12 +62,12 @@
     z-index: 0 !important;
   }
 
-  .action-danger>a {
+  .action-danger > a {
     color: $YB_ERROR_ICON_COLOR !important;
   }
 
   .backup-list-table {
-    .react-bs-table .table-bordered>tbody>tr>td {
+    .react-bs-table .table-bordered > tbody > tr > td {
       vertical-align: middle;
       height: 45px;
       padding: 0 !important;

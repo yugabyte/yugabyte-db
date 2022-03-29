@@ -52,17 +52,17 @@ docdb::PrimitiveValue NullValue(SortingType sorting) {
           : docdb::ValueType::kNullLow);
 }
 
-void InitKeyColumnPrimitiveValues(
-    const google::protobuf::RepeatedPtrField<PgsqlExpressionPB> &column_values,
+std::vector<docdb::PrimitiveValue> InitKeyColumnPrimitiveValues(
+    const ArenaList<LWPgsqlExpressionPB> &column_values,
     const Schema &schema,
-    size_t start_idx,
-    vector<docdb::PrimitiveValue> *components) {
+    size_t start_idx) {
+  std::vector<docdb::PrimitiveValue> result;
   size_t column_idx = start_idx;
   for (const auto& column_value : column_values) {
     const auto sorting_type = schema.column(column_idx).sorting_type();
     if (column_value.has_value()) {
       const auto& value = column_value.value();
-      components->push_back(
+      result.push_back(
           IsNull(value)
           ? NullValue(sorting_type)
           : docdb::PrimitiveValue::FromQLValuePB(value, sorting_type));
@@ -73,56 +73,55 @@ void InitKeyColumnPrimitiveValues(
       //
       // Use regular executor for now.
       QLExprExecutor executor;
-      QLExprResult result;
-      auto s = executor.EvalExpr(column_value, nullptr, result.Writer());
+      QLExprResult expr_result;
+      auto expr = column_value.ToGoogleProtobuf(); // TODO(LW_PERFORM)
+      auto s = executor.EvalExpr(expr, nullptr, expr_result.Writer());
 
-      components->push_back(docdb::PrimitiveValue::FromQLValuePB(result.Value(), sorting_type));
+      result.push_back(docdb::PrimitiveValue::FromQLValuePB(expr_result.Value(), sorting_type));
     }
     ++column_idx;
   }
+  return result;
 }
 
 // Represents row id (ybctid) from the DocDB's point of view.
 class RowIdentifier {
  public:
-  RowIdentifier(const Schema& schema, const PgsqlWriteRequestPB& request)
-      : table_id_(&request.table_id()) {
+  RowIdentifier(
+      const PgObjectId& table_id, const Schema& schema, const LWPgsqlWriteRequestPB& request)
+      : table_id_(table_id) {
     if (request.has_ybctid_column_value()) {
-      ybctid_ = &request.ybctid_column_value().value().binary_value();
+      ybctid_ = request.ybctid_column_value().value().binary_value();
     } else {
-      vector<docdb::PrimitiveValue> hashed_components;
-      vector<docdb::PrimitiveValue> range_components;
-      InitKeyColumnPrimitiveValues(request.partition_column_values(),
-                                  schema,
-                                  0 /* start_idx */,
-                                  &hashed_components);
-      InitKeyColumnPrimitiveValues(request.range_column_values(),
-                                  schema,
-                                  schema.num_hash_key_columns(),
-                                  &range_components);
+      auto hashed_components = InitKeyColumnPrimitiveValues(
+          request.partition_column_values(), schema, 0 /* start_idx */);
+      auto range_components = InitKeyColumnPrimitiveValues(
+          request.range_column_values(), schema, schema.num_hash_key_columns());
       if (hashed_components.empty()) {
         ybctid_holder_ = docdb::DocKey(std::move(range_components)).Encode().ToStringBuffer();
       } else {
         ybctid_holder_ = docdb::DocKey(request.hash_code(),
-                                      std::move(hashed_components),
-                                      std::move(range_components)).Encode().ToStringBuffer();
+                                       std::move(hashed_components),
+                                       std::move(range_components)).Encode().ToStringBuffer();
       }
-      ybctid_ = nullptr;
+      ybctid_ = Slice(static_cast<const char*>(nullptr), static_cast<size_t>(0));
     }
   }
 
-  inline const string& ybctid() const {
-    return ybctid_ ? *ybctid_ : ybctid_holder_;
+  Slice ybctid() const {
+    return ybctid_.data() ? ybctid_ : ybctid_holder_;
   }
 
-  inline const string& table_id() const {
-    return *table_id_;
+  const PgObjectId& table_id() const {
+    return table_id_;
   }
 
  private:
-  const std::string* table_id_;
-  const std::string* ybctid_;
-  std::string        ybctid_holder_;
+  friend bool operator==(const RowIdentifier& k1, const RowIdentifier& k2);
+
+  PgObjectId table_id_;
+  Slice ybctid_;
+  std::string ybctid_holder_;
 };
 
 
@@ -137,7 +136,7 @@ size_t hash_value(const RowIdentifier& key) {
   return hash;
 }
 
-inline bool IsTableUsedByRequest(const PgsqlReadRequestPB& request, const std::string& table_id) {
+inline bool IsTableUsedByRequest(const LWPgsqlReadRequestPB& request, const Slice& table_id) {
   return request.table_id() == table_id ||
       (request.has_index_request() && IsTableUsedByRequest(request.index_request(), table_id));
 }
@@ -184,7 +183,7 @@ class PgOperationBuffer::Impl {
     // see the results of first operation on DocDB side.
     // Multiple operations on same row must be performed in context of different RPC.
     // Flush is required in this case.
-    RowIdentifier row_id(table.schema(), op->write_request());
+    RowIdentifier row_id(table.id(), table.schema(), op->write_request());
     if (PREDICT_FALSE(!keys_.insert(row_id).second)) {
       RETURN_NOT_OK(Flush());
       keys_.insert(row_id);
@@ -199,14 +198,14 @@ class PgOperationBuffer::Impl {
 
   CHECKED_STATUS Flush() {
     return DoFlush(make_lw_function([this](BufferableOperations ops, bool txn) {
-      return VERIFY_RESULT(flusher_(std::move(ops), txn)).Get();
+      return ResultToStatus(VERIFY_RESULT(flusher_(std::move(ops), txn)).Get());
     }));
   }
 
   Result<BufferableOperations> FlushTake(
       const PgTableDesc& table, const PgsqlOp& op, bool transactional) {
     BufferableOperations result;
-    if (IsFullFlushRequired(table.schema(), op)) {
+    if (IsFullFlushRequired(table, op)) {
       RETURN_NOT_OK(Flush());
     } else {
       RETURN_NOT_OK(DoFlush(make_lw_function(
@@ -215,7 +214,7 @@ class PgOperationBuffer::Impl {
               ops.Swap(&result);
               return Status::OK();
             }
-            return VERIFY_RESULT(flusher_(std::move(ops), txn)).Get();
+            return ResultToStatus(VERIFY_RESULT(flusher_(std::move(ops), txn)).Get());
           })));
     }
     return result;
@@ -251,16 +250,17 @@ class PgOperationBuffer::Impl {
     return Status::OK();
   }
 
-  bool IsFullFlushRequired(const Schema& schema, const PgsqlOp& op) const {
+  bool IsFullFlushRequired(const PgTableDesc& table, const PgsqlOp& op) const {
     return op.is_read()
         ? IsSameTableUsedByBufferedOperations(down_cast<const PgsqlReadOp&>(op).read_request())
         : keys_.find(RowIdentifier(
-              schema, down_cast<const PgsqlWriteOp&>(op).write_request())) != keys_.end();
+              table.id(), table.schema(),
+              down_cast<const PgsqlWriteOp&>(op).write_request())) != keys_.end();
   }
 
-  bool IsSameTableUsedByBufferedOperations(const PgsqlReadRequestPB& request) const {
+  bool IsSameTableUsedByBufferedOperations(const LWPgsqlReadRequestPB& request) const {
     for (const auto& k : keys_) {
-      if (IsTableUsedByRequest(request, k.table_id())) {
+      if (IsTableUsedByRequest(request, k.table_id().GetYbTableId())) {
         return true;
       }
     }

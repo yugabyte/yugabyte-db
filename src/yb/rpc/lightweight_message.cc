@@ -373,5 +373,10 @@ void SetupLimit(google::protobuf::io::CodedInputStream* in) {
                          narrow_cast<int>(FLAGS_rpc_max_message_size * 3 / 4));
 }
 
+Arena& empty_arena() {
+  static Arena arena(static_cast<size_t>(0), 0);
+  return arena;
+}
+
 } // namespace rpc
 } // namespace yb

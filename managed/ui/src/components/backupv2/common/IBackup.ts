@@ -63,3 +63,31 @@ export interface TIME_RANGE_STATE {
   endTime: any;
   label: any;
 }
+
+export enum BACKUP_API_TYPES {
+  YSQL = 'PGSQL_TABLE_TYPE',
+  YCQL = 'YQL_TABLE_TYPE'
+}
+
+export interface IStorageConfig {
+  configUUID: string;
+  configName: string;
+  name: string;
+  data: {
+    BACKUP_LOCATION: string;
+  };
+  state: 'ACTIVE' | 'INACTIVE';
+  inUse: boolean;
+}
+
+export interface ITable {
+  tableName: string;
+  keySpace: string;
+  tableUUID: string;
+  tableType: BACKUP_API_TYPES;
+}
+
+export enum Backup_Options_Type {
+  ALL = 'all',
+  CUSTOM = 'custom'
+}

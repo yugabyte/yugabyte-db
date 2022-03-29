@@ -52,7 +52,16 @@ class InetAddress {
   std::string ToString() const;
 
   // Fills in the given string with the raw bytes for the appropriate address in network byte order.
-  void AppendToBytes(std::string* bytes) const;
+  template<class Buffer>
+  void AppendToBytes(Buffer* bytes) const {
+    if (boost_addr_.is_v4()) {
+      auto v4bytes = boost_addr_.to_v4().to_bytes();
+      bytes->append(reinterpret_cast<char *>(v4bytes.data()), v4bytes.size());
+    } else {
+      auto v6bytes = boost_addr_.to_v6().to_bytes();
+      bytes->append(reinterpret_cast<char *>(v6bytes.data()), v6bytes.size());
+    }
+  }
 
   std::string ToBytes() const;
 
