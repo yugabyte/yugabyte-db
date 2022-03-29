@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: java-drivers
     parent: drivers-orms
-    weight: 570
+    weight: 540
 isTocNested: true
 showAsideToc: true
 ---

@@ -29,24 +29,24 @@ Along with the Smart drivers, YugabyteDB also provides support for upstream [Pos
 | :--------- | :------------ | :----------- |
 | [YugabyteDB JDBC Smart Driver](java/yugabyte-jdbc)  [Recommended] | Full | [CRUD Example](/latest/quick-start/build-apps/java/ysql-yb-jdbc) |
 | [Postgres JDBC Driver](java/postgres-jdbc) | Full | [CRUD Example](/latest/quick-start/build-apps/java/ysql-jdbc)  |
-| Hibernate | Full |  |
-| MyBatis | Full |  |
+| [Hibernate](java/hibernate) | Full | [CRUD Example](java/hibernate/#step-1-add-the-hibernate-orm-dependency) |
+<!-- | MyBatis | Full |  | -->
 
 | App Framework | Support Level | Example apps |
 | :--------- | :------------ | :----------- |
-| Spring Data YugabyteDB | Full |  |
-| Spring Data JPA | Full |  |
-| Micronaut | Beta |  |
-| Quarkus | Beta |  |
+| [Spring Data YugabyteDB](/latest/integrations/spring-framework/sdyb/) | Full | [CRUD Example](/latest/quick-start/build-apps/java/ysql-spring-data/) |
+| Spring Data JPA | Full | [CRUD Example](/latest/integrations/spring-framework/sdyb/#examples)|
+<!-- | Micronaut | Beta |  | -->
+<!-- | Quarkus | Beta |  | -->
 
 ## [Go](go/)
 
 | Driver/ORM | Support Level | Example apps |
 | :--------- | :------------ | :----------- |
-| PGX [Recommended] | Full |  |
-| PQ | Full | |
-| GORM | Full | |
-| PG | Full | |
+| [PGX](/latest/reference/drivers/go/pgx-reference/) [Recommended] | Full | [CRUD Example](go/pgx) |
+| [PQ](/latest/reference/drivers/go/pq-reference/) | Full | [CRUD Example](go/pq)|
+| [GORM](go/gorm/) | Full | [CRUD Example](go/gorm)|
+| [PG](go/pg) | Full | [CRUD Example](go/pg) |
 
 ## [JavaScript](javascript/)
 
@@ -54,14 +54,14 @@ Along with the Smart drivers, YugabyteDB also provides support for upstream [Pos
 | :--------- | :------------ | :----------- |
 | [PostgreSQL](nodejs/postgres-node-driver) | Full |  [CRUD Example](/latest/quick-start/build-apps/nodejs/ysql-pg/) |
 | [Sequelize](nodejs/sequelize) | Full |  [CRUD Example](/latest/quick-start/build-apps/nodejs/ysql-sequelize/)|
-| TypeORM | Full |   |
+<!-- | TypeORM | Full |   | -->
 
-### App Framework Support
+<!-- ### App Framework Support
 
 | Framework | Support Level | Example apps |
 | :--------- | :------------ | :----------- |
 | Reactjs | Full |  |
-| Nextjs | Full | |
+| Nextjs | Full | | -->
 
 ## [C#](csharp/)
 
@@ -74,11 +74,13 @@ Along with the Smart drivers, YugabyteDB also provides support for upstream [Pos
 
 | Driver/ORM | Support Level | Example apps |
 | :--------- | :------------ | :----------- |
-| [Yugabyte Psycopg2](/latest/drivers-orms/python/yugabyte-psycopg2)(Recommended) | Full | [CRUD Example](/latest/drivers-orms/python/yugabyte-psycopg2)|
+| [Yugabyte Psycopg2](/latest/drivers-orms/python/yugabyte-psycopg2)  [Recommended] | Full | [CRUD Example](/latest/drivers-orms/python/yugabyte-psycopg2)|
 | [Postgres Psycopg2](/latest/drivers-orms/python/postgres-psycopg2) | Full | [CRUD Example](/latest/quick-start/build-apps/python/ysql-psycopg2) |
 | aiopg | Full | [CRUD Example](/latest/quick-start/build-apps/python/ysql-aiopg) |
 | [Django](/latest/drivers-orms/python/django) | Full | [CRUD Example](/latest/quick-start/build-apps/python/ysql-django) |
 | [SQLAlchemy](/latest/drivers-orms/python/sqlalchemy) | Full | [CRUD Example](/latest/quick-start/build-apps/python/ysql-sqlalchemy) |
+
+<!--
 ## [Ruby](ruby/)
 
 | Driver/ORM | Support Level | Example apps |
@@ -103,6 +105,7 @@ Along with the Smart drivers, YugabyteDB also provides support for upstream [Pos
 
 | Driver/ORM | Support Level | Example apps |
 | :--------- | :------------ | :----------- |
+-->
 
 <!--
 <div class="row">
