@@ -12,6 +12,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.Session;
+import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.NodeUniverseManager;
@@ -25,6 +26,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TableDetails;
 import io.swagger.annotations.ApiModelProperty;
 import java.net.InetSocketAddress;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Random;
@@ -117,15 +119,7 @@ public class CreateTable extends AbstractTaskBase {
             randomTServer.nodeName,
             response.code,
             response.message);
-        try {
-          Thread.sleep(RETRY_DELAY_SEC);
-        } catch (InterruptedException e) {
-          throw new RuntimeException(
-              "Wait between table creation attempts was interrupted "
-                  + "for universe "
-                  + universe.name,
-              e);
-        }
+        waitFor(Duration.ofMillis(RETRY_DELAY_SEC));
       } else {
         tableCreated = true;
         break;

@@ -10,6 +10,7 @@ import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.time.Duration;
 import java.util.ArrayList;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
@@ -69,8 +70,7 @@ public class WaitForFollowerLag extends AbstractTaskBase {
       followerLagMs = getFollowerLagMs(ip, httpPort);
       while ((followerLagMs - (double) maxFollowerLagThresholdMs) >= epsilon) {
         followerLagMs = getFollowerLagMs(ip, httpPort);
-        Thread.sleep(WAIT_EACH_ATTEMPT_MS);
-
+        waitFor(Duration.ofMillis(WAIT_EACH_ATTEMPT_MS));
         numIters++;
         if (numIters % LOG_EVERY_NUM_ITERS == 0) {
           log.info(
