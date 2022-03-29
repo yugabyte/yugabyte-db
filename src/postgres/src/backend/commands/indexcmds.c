@@ -1923,6 +1923,11 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 				if (attribute->ordering == SORTBY_DESC)
 					colOptionP[attn] |= INDOPTION_NULLS_FIRST;
 			}
+			else if (colOptionP[attn] == INDOPTION_HASH)
+				ereport(NOTICE,
+                		(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+                  		 errmsg("nulls sort ordering option is ignored, "
+                        		"NULLS FIRST/NULLS LAST not allowed for a HASH column")));
 			else if (attribute->nulls_ordering == SORTBY_NULLS_FIRST)
 				colOptionP[attn] |= INDOPTION_NULLS_FIRST;
 		}
