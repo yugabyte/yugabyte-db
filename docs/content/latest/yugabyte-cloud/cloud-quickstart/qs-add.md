@@ -15,7 +15,7 @@ showAsideToc: true
 
 The free cluster provides a fully functioning single node YugabyteDB cluster deployed to the region of your choice. The cluster is free forever and includes enough resources to explore the core features available for developing applications with YugabyteDB. No credit card information is required. You can only have one free cluster.
 
-After setting up your Yugabyte Cloud account, [log in](https://cloud.yugabyte.com/login) to access Yugabyte Cloud. Yugabyte Cloud has the following main sections, accessed via the left menu:
+After setting up your Yugabyte Cloud account, [log in](https://cloud.yugabyte.com/login) to display the Yugabyte Cloud console. The console has the following main sections, accessed via the left menu:
 
 - **Getting Started** - Create your free cluster and access documentation.
 
