@@ -76,10 +76,15 @@ showAsideToc: true
 1. Each tablet maps to its own file, so if you experiment with a few hundred tables and a few tablets per table, you can soon end up creating a large number of files in the current shell. Make sure that this command shows a big enough value.
 
     ```sh
-    $ launchctl limit maxfiles
+    $ launchctl limit
     ```
 
-    We recommend setting the soft and hard limits to 1048576.
+    We recommend the following soft and hard limits.
+
+    ```output
+    maxproc     2500        2500
+    maxfiles    1048576     1048576
+    ```
 
     Edit `/etc/sysctl.conf`, if it exists, to include the following:
 
@@ -90,7 +95,7 @@ showAsideToc: true
     kern.maxfilesperproc=1048576
     ```
 
-    If this file does not exist, then create the file `/Library/LaunchDaemons/limit.maxfiles.plist` and insert the following:
+    If this file does not exist, then for setting maxfiles soft and hard limits, create the file `/Library/LaunchDaemons/limit.maxfiles.plist` and insert the following:
 
     ```xml
     <?xml version="1.0" encoding="UTF-8"?>
@@ -115,10 +120,36 @@ showAsideToc: true
       </plist>
     ```
 
-    Ensure that the `plist` file is owned by `root:wheel` and has permissions `-rw-r--r--`. To take effect, you need to reboot your computer or run this command:
+    For setting maxproc soft and hard limits, create the file `/Library/LaunchDaemons/limit.maxproc.plist` and insert the following:
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8"?>
+    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+      <plist version="1.0">
+        <dict>
+          <key>Label</key>
+            <string>limit.maxproc</string>
+          <key>ProgramArguments</key>
+            <array>
+              <string>launchctl</string>
+              <string>limit</string>
+              <string>maxproc</string>
+              <string>2500</string>
+              <string>2500</string>
+            </array>
+          <key>RunAtLoad</key>
+            <true/>
+          <key>ServiceIPC</key>
+            <false/>
+        </dict>
+      </plist>
+    ```
+
+    Ensure that the `plist` files are owned by `root:wheel` and has permissions `-rw-r--r--`. To take effect, you need to reboot your computer or run these command:
 
     ```sh
     $ sudo launchctl load -w /Library/LaunchDaemons/limit.maxfiles.plist
+    $ sudo launchctl load -w /Library/LaunchDaemons/limit.maxproc.plist
     ```
 
     You might have to `unload` the service before loading it.
