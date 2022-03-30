@@ -17,13 +17,18 @@ import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
 import { YBLoading } from '../../common/indicators';
 import { getBackupsList } from '../common/BackupAPI';
 import { ENTITY_NOT_AVAILABLE, FormatUnixTimeStampTimeToTimezone } from '../common/BackupUtils';
-import { Backup_States, IBackup } from '../common/IBackup';
+import { IBackup } from '../common/IBackup';
+import { BackupDeleteModal } from './BackupDeleteModal';
+import { BackupDetails } from './BackupDetails';
 import './AssociatedBackups.scss';
 
 interface AssociatedBackupsProps {
   visible: boolean;
   onHide: () => void;
-  storageConfigUUID: string;
+  storageConfigData: {
+    configUUID: string;
+    configName: string;
+  };
 }
 
 const DEFAULT_SORT_COLUMN = 'createTime';
@@ -32,11 +37,14 @@ const DEFAULT_SORT_DIRECTION = 'DESC';
 export const AssociatedBackups: FC<AssociatedBackupsProps> = ({
   visible,
   onHide,
-  storageConfigUUID
+  storageConfigData
 }) => {
   const [sizePerPage, setSizePerPage] = useState(10);
   const [page, setPage] = useState(1);
   const [searchText, setSearchText] = useState('');
+  const [showDetails, setShowDetails] = useState<IBackup | null>(null);
+  const [selectedBackups, setSelectedBackups] = useState<IBackup[]>([]);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   const { data: backupsList, isLoading } = useQuery(
     ['associated_backups', (page - 1) * sizePerPage, sizePerPage, searchText],
@@ -50,7 +58,7 @@ export const AssociatedBackups: FC<AssociatedBackupsProps> = ({
         DEFAULT_SORT_COLUMN,
         DEFAULT_SORT_DIRECTION,
         undefined,
-        storageConfigUUID
+        storageConfigData.configUUID
       ),
     {
       enabled: visible
@@ -63,87 +71,106 @@ export const AssociatedBackups: FC<AssociatedBackupsProps> = ({
   const associatedBackups: IBackup[] = backupsList?.data.entities;
 
   return (
-    <YBModal
-      title={'Associated backups'}
-      visible={visible}
-      onHide={onHide}
-      dialogClassName="associated-backups-modal"
-      size="large"
-      onFormSubmit={(event: any) => {
-        //prevent parent form from being submitted
-        event.stopPropagation();
-        if (event.target.innerText === 'OK') {
-          onHide();
-        }
-      }}
-    >
-      <Row>
-        <Col lg={12} className="no-padding">
-          <YBSearchInput
-            placeHolder="Search universe name"
-            onEnterPressed={(val: string) => setSearchText(val)}
-          />
-        </Col>
-      </Row>
-      <Row>
-        <Col lg={12} className="associated-backup-list-table">
-          {isLoading ? (
-            <YBLoading />
-          ) : (
-            <BootstrapTable
-              data={associatedBackups}
-              options={{
-                sizePerPage,
-                onSizePerPageList: setSizePerPage,
-                page,
-                prePage: 'Prev',
-                nextPage: 'Next',
-                onPageChange: (page) => setPage(page)
-              }}
-              trClassName="table-row"
-              tableHeaderClass="backup-list-header"
-              pagination={true}
-              remote={(remoteObj: RemoteObjSpec) => {
-                return {
-                  ...remoteObj,
-                  pagination: true
-                };
-              }}
-              fetchInfo={{ dataTotalSize: backupsList?.data.totalCount }}
-            >
-              <TableHeaderColumn dataField="backupUUID" isKey={true} hidden={true} />
-              <TableHeaderColumn
-                dataField="universeUUID"
-                dataFormat={(_name, row: IBackup) =>
-                  row.universeName ? row.universeName : ENTITY_NOT_AVAILABLE
-                }
-              >
-                Source Universe Name
-              </TableHeaderColumn>
-              <TableHeaderColumn
-                dataField="createTime"
-                dataFormat={(time) => <FormatUnixTimeStampTimeToTimezone timestamp={time} />}
-              >
-                Created At
-              </TableHeaderColumn>
-
-              <TableHeaderColumn
-                dataField="state"
-                dataFormat={(state) => {
-                  return (
-                    <StatusBadge
-                      statusType={state}
-                      customLabel={state === Backup_States.STOPPED ? 'Cancelled' : ''}
-                    />
-                  );
+    <>
+      <YBModal
+        title={'Associated backups'}
+        visible={visible}
+        onHide={onHide}
+        dialogClassName="associated-backups-modal"
+        size="large"
+        onFormSubmit={(event: any) => {
+          //prevent parent form from being submitted
+          event.stopPropagation();
+          if (event.target.innerText === 'OK') {
+            onHide();
+          }
+        }}
+      >
+        <Row>
+          <Col lg={12} className="no-padding">
+            <YBSearchInput
+              placeHolder="Search universe name"
+              onEnterPressed={(val: string) => setSearchText(val)}
+            />
+          </Col>
+        </Row>
+        <Row>
+          <Col lg={12} className="associated-backup-list-table">
+            {isLoading ? (
+              <YBLoading />
+            ) : (
+              <BootstrapTable
+                data={associatedBackups}
+                options={{
+                  sizePerPage,
+                  onSizePerPageList: setSizePerPage,
+                  page,
+                  prePage: 'Prev',
+                  nextPage: 'Next',
+                  onPageChange: (page) => setPage(page),
+                  onRowClick: (row) => setShowDetails(row)
                 }}
+                trClassName="table-row"
+                tableHeaderClass="backup-list-header"
+                pagination={true}
+                remote={(remoteObj: RemoteObjSpec) => {
+                  return {
+                    ...remoteObj,
+                    pagination: true
+                  };
+                }}
+                fetchInfo={{ dataTotalSize: backupsList?.data.totalCount }}
               >
-                Status
-              </TableHeaderColumn>
-            </BootstrapTable>
-          )}
-        </Col>
+                <TableHeaderColumn dataField="backupUUID" isKey={true} hidden={true} />
+                <TableHeaderColumn
+                  dataField="universeUUID"
+                  dataFormat={(_name, row: IBackup) =>
+                    row.universeName ? row.universeName : ENTITY_NOT_AVAILABLE
+                  }
+                >
+                  Source Universe Name
+                </TableHeaderColumn>
+                <TableHeaderColumn
+                  dataField="createTime"
+                  dataFormat={(time) => <FormatUnixTimeStampTimeToTimezone timestamp={time} />}
+                >
+                  Created At
+                </TableHeaderColumn>
+
+                <TableHeaderColumn
+                  dataField="state"
+                  dataFormat={(state) => {
+                    return <StatusBadge statusType={state} />;
+                  }}
+                >
+                  Status
+                </TableHeaderColumn>
+              </BootstrapTable>
+            )}
+          </Col>
+        </Row>
+      </YBModal>
+      <Row className="associated-backups-details">
+        <BackupDetails
+          backup_details={showDetails}
+          onHide={() => setShowDetails(null)}
+          storageConfigName={storageConfigData.configName}
+          onDelete={() => {
+            setSelectedBackups([showDetails] as IBackup[]);
+            setShowDeleteModal(true);
+          }}
+          onRestore={() => {}}
+          storageConfigs={{
+            data: []
+          }}
+          hideRestore
+        />
+        <BackupDeleteModal
+          backupsList={selectedBackups}
+          visible={showDeleteModal}
+          onHide={() => setShowDeleteModal(false)}
+        />
       </Row>
-    </YBModal>
+    </>
   );
 };

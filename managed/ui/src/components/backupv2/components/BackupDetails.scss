@@ -15,7 +15,7 @@
   max-height: 100%;
 
   .side-panel {
-    width: 700px !important;
+    width: 880px !important;
   }
 
   .side-panel__title {
@@ -49,7 +49,7 @@
 
     .details-rest {
       display: flex;
-      justify-content: flex-start;
+      justify-content: space-between;
       flex-wrap: wrap;
       margin: -10px 0 0 0;
       border-top: 1px solid $YB_LIGHT_GRAY_BORDER;
@@ -66,7 +66,7 @@
       font-size: 12px;
       line-height: 15px;
       color: #333333;
-      margin-bottom: 10px;
+      margin-bottom: 5px;
     }
   }
 
@@ -80,5 +80,6 @@
 
   .universeLink {
     text-decoration: underline;
+    margin-top: 10px;
   }
 }

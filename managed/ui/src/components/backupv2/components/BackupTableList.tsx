@@ -19,12 +19,18 @@ interface YSQLTableProps {
   keyspaceSearch?: string;
   onRestore: Function;
   backup: IBackup;
+  hideRestore?: boolean;
 }
 
 const COLLAPSED_ICON = <i className="fa fa-caret-right" />;
 const EXPANDED_ICON = <i className="fa fa-caret-down" />;
 
-export const YSQLTableList: FC<YSQLTableProps> = ({ backup, keyspaceSearch, onRestore }) => {
+export const YSQLTableList: FC<YSQLTableProps> = ({
+  backup,
+  keyspaceSearch,
+  onRestore,
+  hideRestore = false
+}) => {
   const databaseList = backup.responseList
     .filter((e) => {
       return !(keyspaceSearch && e.keyspace.indexOf(keyspaceSearch) < 0);
@@ -46,15 +52,17 @@ export const YSQLTableList: FC<YSQLTableProps> = ({ backup, keyspaceSearch, onRe
           dataAlign="right"
           dataFormat={(_, row) => (
             <>
-              <YBButton
-                btnText="Restore"
-                className="restore-detail-button"
-                disabled={backup.state !== Backup_States.COMPLETED}
-                onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
-                  e.stopPropagation();
-                  onRestore([row]);
-                }}
-              />
+              {!hideRestore && (
+                <YBButton
+                  btnText="Restore"
+                  className="restore-detail-button"
+                  disabled={backup.state !== Backup_States.COMPLETED}
+                  onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                    e.stopPropagation();
+                    onRestore([row]);
+                  }}
+                />
+              )}
               <YBButton
                 className="copy-location-button"
                 btnText="Copy Location"
@@ -81,7 +89,12 @@ export const YSQLTableList: FC<YSQLTableProps> = ({ backup, keyspaceSearch, onRe
   );
 };
 
-export const YCQLTableList: FC<YSQLTableProps> = ({ backup, keyspaceSearch, onRestore }) => {
+export const YCQLTableList: FC<YSQLTableProps> = ({
+  backup,
+  keyspaceSearch,
+  onRestore,
+  hideRestore
+}) => {
   const expandTables = (row: any) => {
     return (
       <div className="inset-table">
@@ -121,15 +134,18 @@ export const YCQLTableList: FC<YSQLTableProps> = ({ backup, keyspaceSearch, onRe
           dataAlign="right"
           dataFormat={(_, row) => (
             <>
-              <YBButton
-                btnText="Restore"
-                disabled={backup.state !== Backup_States.COMPLETED}
-                className="restore-detail-button"
-                onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
-                  e.stopPropagation();
-                  onRestore([row]);
-                }}
-              />
+              {!hideRestore && (
+                <YBButton
+                  btnText="Restore"
+                  disabled={backup.state !== Backup_States.COMPLETED}
+                  className="restore-detail-button"
+                  onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                    e.stopPropagation();
+                    onRestore([row]);
+                  }}
+                />
+              )}
+
               <YBButton
                 className="copy-location-button"
                 btnText="Copy Location"

@@ -21,6 +21,7 @@ import {
 } from '../common/BackupUtils';
 import { YCQLTableList, YSQLTableList } from './BackupTableList';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
+import { TABLE_TYPE_MAP } from '../common/IBackup';
 interface BackupDetailsProps {
   backup_details: IBackup | null;
   onHide: () => void;
@@ -30,6 +31,7 @@ interface BackupDetailsProps {
   storageConfigs: {
     data?: any[];
   };
+  hideRestore?: boolean;
 }
 const SOURCE_UNIVERSE_DELETED_MSG = (
   <span className="alert-message warning">
@@ -48,7 +50,8 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
   storageConfigName,
   onRestore,
   onDelete,
-  storageConfigs
+  storageConfigs,
+  hideRestore = false
 }) => {
   const [searchKeyspaceText, setSearchKeyspaceText] = useState('');
 
@@ -82,11 +85,13 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                 backup_details.state === Backup_States.QUEUED_FOR_DELETION
               }
             />
-            <YBButton
-              btnText="Restore Entire Backup"
-              onClick={() => onRestore()}
-              disabled={backup_details.state !== Backup_States.COMPLETED}
-            />
+            {!hideRestore && (
+              <YBButton
+                btnText="Restore Entire Backup"
+                onClick={() => onRestore()}
+                disabled={backup_details.state !== Backup_States.COMPLETED}
+              />
+            )}
           </Row>
           <Row className="backup-details-info">
             <div className="name-and-status">
@@ -95,11 +100,17 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                   Source Universe Name &nbsp;&nbsp;&nbsp;
                   <RevealBadge label="Show UUID" textToShow={backup_details.universeUUID} />
                 </div>
-                <div className="universeLink">
-                  <Link target="_blank" to={`/universes/${backup_details.universeUUID}`}>
-                    {backup_details.universeName}
-                  </Link>
-                </div>
+
+                {backup_details.isUniversePresent ? (
+                  <div className="universeLink">
+                    <Link target="_blank" to={`/universes/${backup_details.universeUUID}`}>
+                      {backup_details.universeName}
+                    </Link>
+                  </div>
+                ) : (
+                  backup_details.universeName
+                )}
+
                 {!backup_details.isUniversePresent && <div>{SOURCE_UNIVERSE_DELETED_MSG}</div>}
               </div>
               <div>
@@ -114,7 +125,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
               </div>
               <div>
                 <div className="header-text">Table Type</div>
-                <div>{backup_details.backupType}</div>
+                <div>{TABLE_TYPE_MAP[backup_details.backupType]}</div>
               </div>
               <div>
                 <div className="header-text">Create Time</div>
@@ -168,6 +179,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                         responseList: tablesList
                       });
                     }}
+                    hideRestore={hideRestore}
                   />
                 ) : (
                   <YSQLTableList
@@ -179,6 +191,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                         responseList: tablesList
                       });
                     }}
+                    hideRestore={hideRestore}
                   />
                 )}
               </Col>
