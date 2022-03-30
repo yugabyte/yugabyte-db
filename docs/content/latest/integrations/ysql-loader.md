@@ -89,7 +89,7 @@ Before starting the migration, ensure that you have the following:
   docker run --rm --name pgloader yugabytedb/pgloader:v1.0 pgloader --version
   ```
 
-  Expect the following output:
+  Expect output similar to the following:
 
   ```output
   pgloader version "3.6.3~devel"
