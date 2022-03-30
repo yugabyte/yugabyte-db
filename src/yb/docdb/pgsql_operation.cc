@@ -1007,6 +1007,14 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
       if (!VERIFY_RESULT(table_iter_->SeekTuple(tuple_id->binary_value()))) {
         DocKey doc_key;
         RETURN_NOT_OK(doc_key.DecodeFrom(tuple_id->binary_value()));
+        const PgsqlReadRequestPB& index_request = request_.index_request();
+        if (index_request.has_table_id()) {
+          return STATUS_FORMAT(
+            Corruption,
+            "ybctid $0 not found in indexed table. index table id is $1",
+            doc_key,
+            index_request.table_id());
+        }
         return STATUS_FORMAT(Corruption, "ybctid $0 not found in indexed table", doc_key);
       }
       row.Clear();
@@ -1145,7 +1153,7 @@ Status PgsqlReadOperation::PopulateResultSet(const QLTableRow& table_row,
   return Status::OK();
 }
 
-Status PgsqlReadOperation::GetTupleId(QLValue *result) const {
+Status PgsqlReadOperation::GetTupleId(QLValuePB *result) const {
   // Get row key and save to QLValue.
   // TODO(neil) Check if we need to append a table_id and other info to TupleID. For example, we
   // might need info to make sure the TupleId by itself is a valid reference to a specific row of

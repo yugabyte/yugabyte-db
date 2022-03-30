@@ -44,11 +44,15 @@ YRPC_GENERATE(
       value.proto wire_protocol.proto)
 ADD_YB_LIBRARY(yb_common_proto
   SRCS ${COMMON_PROTO_SRCS}
-  DEPS protobuf yrpc_base
+  DEPS protobuf yrpc_base rpc_base_proto
   NONLINK_DEPS ${COMMON_PROTO_TGTS})
 
 set(COMMON_BASE_SRCS
+  json_util.cc
+  jsonb.cc
+  ql_datatype.cc
   ql_type.cc
+  ql_value.cc
   types.cc
   )
 
@@ -71,22 +75,18 @@ set(COMMON_SRCS
   doc_hybrid_time.cc # must be after hybrid_time.cc
   id_mapping.cc
   index.cc
-  json_util.cc
-  jsonb.cc
   key_encoder.cc
   partial_row.cc
   pgsql_error.cc
   placement_info.cc
   ql_bfunc.cc
-  ql_datatype.cc
   ql_expr.cc
   ql_name.cc
   ql_protocol_util.cc
   ql_resultset.cc
   ql_rowblock.cc
+  ql_serialization.cc
   ql_scanspec.cc
-  ql_type.cc
-  ql_value.cc
   pg_types.cc
   retryable_request.cc
   roles_permissions.cc
@@ -96,7 +96,6 @@ set(COMMON_SRCS
   snapshot.cc
   transaction.cc
   transaction_error.cc
-  types.cc
   wire_protocol.cc
   ybc_util.cc
   ybc-internal.cc

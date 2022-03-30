@@ -125,7 +125,10 @@ public class AlertConfigurationWriter {
           definition != null
               ? alertConfigurationService.get(definition.getConfigurationUUID())
               : null;
-      if (definition == null || configuration == null || !configuration.isActive()) {
+      if (definition == null
+          || !definition.isActive()
+          || configuration == null
+          || !configuration.isActive()) {
         swamperHelper.removeAlertDefinition(definitionUuid);
         requiresReload.set(true);
         return SyncResult.REMOVED;

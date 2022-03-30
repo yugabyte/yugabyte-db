@@ -1,16 +1,13 @@
 ---
 title: Expression indexes
 linkTitle: Expression indexes
-description: Using Expression indexes in YSQL
+description: Using expression indexes in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   latest:
     identifier: expression-index-ysql
     parent: explore-indexes-constraints
     weight: 250
-aliases:
-   - /latest/explore/ysql-language-features/indexes-1/
-   - /latest/explore/indexes-constraints/indexes-1/
 isTocNested: true
 showAsideToc: true
 ---
@@ -24,7 +21,7 @@ showAsideToc: true
   </li>
 </ul>
 
-Indexes usually are created based on the columns, but the Expression Indexes(also called Function-based Indexes) let you create an index based on a generic expression(function or modification of data entered) involving the table columns.
+Indexes are typically created based solely on the columns, but using an expression index (also called a function-based index) you can create an index based on a generic expression (function or modification of data entered) computed from table columns.
 
 ## Syntax
 
@@ -32,16 +29,16 @@ Indexes usually are created based on the columns, but the Expression Indexes(als
 CREATE INDEX index_name ON table_name( (expression) );
 ```
 
-The parenthesis around the expression can be omitted in cases where the expression involves a function.
-When the index is defined, it is used when the expression that defines the index is included in the `WHERE` or `ORDER BY` clause in the YSQL statement.
+You can omit the parentheses around the expression where the expression is a simple function call.
+Once defined, the index is used when the expression that defines the index is included in the `WHERE` or `ORDER BY` clause in the YSQL statement.
 
 ## Example
 
 A common use case of an expression index is to support case-insensitive text to enable efficient searchability.
 
-For example, let's say there's a `users` table with an `email` column to store their email addresses for signing in, but the user want's to maintain authentication in a case-insensitive manner. This can be done using the `WHERE` clause as WHERE LOWER(email) = '<lower_case_email>', but storing the email address as originally entered by the user.
+For example, suppose you have a `users` table with an `email` column to store login email addresses, and you want to maintain case-insensitive authentication. Using the WHERE clause as WHERE LOWER(email) = '<lower_case_email>' allows you to store the email address as originally entered by the user.
 
-The following example uses the `employees` table from [Create indexes](../../indexes-constraints/overview/#create-indexes) to show how to create an index on an expression that converts the department to lowercase to improve searchability.
+The following example uses the `employees` table from the Secondary indexes [example scenario](../secondary-indexes/#example-scenario-using-ysql) to show how to create an index on an expression that converts the department to lowercase to improve searchability.
 
 - Verify the query plan without creating an expression index for the department `Operations`.
 
@@ -65,7 +62,7 @@ CREATE INDEX index_employees_department_lc
   ON employees(LOWER(department));
 ```
 
-- Run the `EXPLAIN` statement again to verify that the `index_employees_department_lc` index is used to find the department regardless of it's case:
+- Run the `EXPLAIN` statement again to verify that the `index_employees_department_lc` index is used to find the department regardless of case:
 
 ```sql
 EXPLAIN SELECT * FROM employees
@@ -79,8 +76,13 @@ Index Scan using index_employees_department_lc on employees  (cost=0.00..5.25 ro
   Index Cond: (lower(department) = 'operations'::text)
 ```
 
+## Explore covering indexes
+
+- Learn how [covering indexes](../../indexes-constraints/covering-index-ysql/) can optimize the query performance by covering all the columns needed by a query.
+
+- [Benefits of an Index-only scan](https://blog.yugabyte.com/how-a-distributed-sql-database-boosts-secondary-index-queries-with-index-only-scan/)
+
 ## Learn more
 
 - [Partial and expression indexes](../../json-support/jsonb-ysql/#partial-and-expression-indexes)
 - [SQL Puzzle: Partial Versus Expression Indexes](https://blog.yugabyte.com/sql-puzzle-partial-versus-expression-indexes/)
-- [Benefits of Index-only scan](https://blog.yugabyte.com/how-a-distributed-sql-database-boosts-secondary-index-queries-with-index-only-scan/)

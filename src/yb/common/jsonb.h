@@ -78,7 +78,8 @@ class Jsonb {
   CHECKED_STATUS FromRapidJson(const rapidjson::Value& value);
 
   // Creates a serialized jsonb string from QLValuePB.
-  CHECKED_STATUS FromQLValuePB(const QLValuePB& value_pb);
+  CHECKED_STATUS FromQLValue(const QLValuePB& value_pb);
+  CHECKED_STATUS FromQLValue(const QLValue& value);
 
   // Builds a json document from serialized jsonb.
   CHECKED_STATUS ToRapidJson(rapidjson::Document* document) const;
@@ -87,7 +88,7 @@ class Jsonb {
   CHECKED_STATUS ToJsonString(std::string* json) const;
 
   CHECKED_STATUS ApplyJsonbOperators(const QLJsonColumnOperationsPB& json_ops,
-                                     QLValue* result) const;
+                                     QLValuePB* result) const;
 
   const std::string& SerializedJsonb() const;
 

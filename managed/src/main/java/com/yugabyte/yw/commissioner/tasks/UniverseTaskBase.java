@@ -36,6 +36,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DestroyEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DisableEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.EnableEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ManageAlertDefinitions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManipulateDnsRecordTask;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ModifyBlackList;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
@@ -572,19 +573,25 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /** Create a task to mark the final software version on a universe. */
-  public SubTaskGroup createUpdateSoftwareVersionTask(String softwareVersion) {
+  public SubTaskGroup createUpdateSoftwareVersionTask(
+      String softwareVersion, boolean isSoftwareUpdateViaVm) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("FinalizeUniverseUpdate", executor);
     UpdateSoftwareVersion.Params params = new UpdateSoftwareVersion.Params();
     params.universeUUID = taskParams().universeUUID;
     params.softwareVersion = softwareVersion;
     params.prevSoftwareVersion = taskParams().ybPrevSoftwareVersion;
+    params.isSoftwareUpdateViaVm = isSoftwareUpdateViaVm;
     UpdateSoftwareVersion task = createTask(UpdateSoftwareVersion.class);
     task.initialize(params);
     task.setUserTaskUUID(userTaskUUID);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  public SubTaskGroup createUpdateSoftwareVersionTask(String softwareVersion) {
+    return createUpdateSoftwareVersionTask(softwareVersion, false /*isSoftwareUpdateViaVm*/);
   }
 
   /** Create a task to run YSQL upgrade on the universe. */
@@ -678,9 +685,23 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   /** Create a task to create default alert definitions on a universe. */
   public SubTaskGroup createUnivCreateAlertDefinitionsTask() {
     SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("FinalizeUniverseUpdate", executor);
+        getTaskExecutor().createSubTaskGroup("CreateAlertDefinitions", executor);
     CreateAlertDefinitions task = createTask(CreateAlertDefinitions.class);
     task.initialize(taskParams());
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /** Create a task to activate or diactivate universe alert definitions. */
+  public SubTaskGroup createUnivManageAlertDefinitionsTask(boolean active) {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("ManageAlertDefinitions", executor);
+    ManageAlertDefinitions task = createTask(ManageAlertDefinitions.class);
+    ManageAlertDefinitions.Params params = new ManageAlertDefinitions.Params();
+    params.universeUUID = taskParams().universeUUID;
+    params.active = active;
+    task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
@@ -1955,19 +1976,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     final YBClientService ybService = Play.current().injector().instanceOf(YBClientService.class);
     final String hostPorts = universe.getMasterAddresses();
     final String certificate = universe.getCertificateNodetoNode();
-    YBClient client = null;
     int version;
+    YBClient client = ybService.getClient(hostPorts, certificate);
     try {
-      client = ybService.getClient(hostPorts, certificate);
       version = client.getMasterClusterConfig().getConfig().getVersion();
-      ybService.closeClient(client, hostPorts);
     } catch (Exception e) {
       log.error("Error occurred retrieving cluster config version", e);
       throw new RuntimeException("Error incrementing cluster config version", e);
     } finally {
       ybService.closeClient(client, hostPorts);
     }
-
     return version;
   }
 
@@ -2025,14 +2043,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     YBClientService ybService = Play.current().injector().instanceOf(YBClientService.class);
     final String hostPorts = universe.getMasterAddresses();
     String certificate = universe.getCertificateNodetoNode();
-    YBClient client = null;
+    YBClient client = ybService.getClient(hostPorts, certificate);
     try {
-      client = ybService.getClient(hostPorts, certificate);
       int version = universe.version;
       ModifyClusterConfigIncrementVersion modifyConfig =
           new ModifyClusterConfigIncrementVersion(client, version);
       int newVersion = modifyConfig.incrementVersion();
-      ybService.closeClient(client, hostPorts);
       log.info(
           "Updated cluster config version for universe {} from {} to {}",
           universeUUID,

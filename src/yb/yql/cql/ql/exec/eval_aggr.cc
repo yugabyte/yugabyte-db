@@ -15,6 +15,7 @@
 
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_rowblock.h"
+#include "yb/common/ql_serialization.h"
 #include "yb/common/ql_value.h"
 
 #include "yb/util/decimal.h"
@@ -75,7 +76,7 @@ Status Executor::AggregateResultSets(const PTSelectStmt* pt_select, TnodeContext
     }
 
     // Serialize the return value.
-    ql_value.Serialize(expr_node->ql_type(), rows_result->client(), &buffer);
+    SerializeValue(expr_node->ql_type(), rows_result->client(), ql_value.value(), &buffer);
     column_index++;
   }
 

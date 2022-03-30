@@ -103,7 +103,7 @@ python ./gen_csv.py file04.csv 5120 &
 You can do this as shown below.
 
 ```sh
-$ wget https://github.com/yugabyte/cassandra-loader/releases/download/v0.0.27-yb-3/cassandra-loader
+$ wget https://github.com/yugabyte/cassandra-loader/releases/download/v0.0.27-yb-2/cassandra-loader
 ```
 
 ```sh
@@ -134,7 +134,7 @@ For additional options to cassandra-loader, see [here](https://github.com/yugaby
 ### Install cassandra-unloader
 
 ```sh
-$ wget https://github.com/brianmhess/cassandra-loader/releases/download/v0.0.27-yb-3/cassandra-unloader
+$ wget https://github.com/brianmhess/cassandra-loader/releases/download/v0.0.27/cassandra-unloader
 ```
 
 ```sh

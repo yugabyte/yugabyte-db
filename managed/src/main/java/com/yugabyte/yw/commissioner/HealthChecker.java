@@ -189,11 +189,9 @@ public class HealthChecker {
     this.lifecycle = lifecycle;
     this.healthMetrics = healthMetrics;
     this.executor = executorService;
-
-    this.initialize();
   }
 
-  private void initialize() {
+  public void initialize() {
     log.info("Scheduling health checker every " + this.healthCheckIntervalMs() + " ms");
     this.actorSystem
         .scheduler()
@@ -241,7 +239,7 @@ public class HealthChecker {
    * @param sendMailAlways Force the email sending.
    * @param reportOnlyErrors Include only errors into the report.
    * @param onlyMetrics Don't send email, only metrics collection.
-   * @return
+   * @return true if success
    */
   private boolean processResults(
       Customer c,

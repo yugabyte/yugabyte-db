@@ -75,13 +75,19 @@ class Uuid {
   // Fills in the given string with the raw bytes for the appropriate address in network byte order.
   void ToBytes(std::string* bytes) const;
   void ToBytes(std::array<uint8_t, kUuidSize>* out) const;
+  void ToBytes(void* buffer) const;
   Slice AsSlice() const;
 
   // Encodes the UUID into the time comparable uuid to be stored in RocksDB.
   void EncodeToComparable(uint8_t* output) const;
   void EncodeToComparable(std::string* bytes) const;
 
-  void AppendEncodedComparable(std::string* bytes) const;
+  template <class Buffer>
+  void AppendEncodedComparable(Buffer* bytes) const {
+    uint8_t output[kUuidSize];
+    EncodeToComparable(output);
+    bytes->append(reinterpret_cast<char *>(output), kUuidSize);
+  }
 
   // Given a string holding the raw bytes in network byte order, it builds the appropriate
   // UUID object.

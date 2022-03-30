@@ -346,14 +346,7 @@ public class BackupsController extends AuthenticatedController {
     for (BackupStorageInfo storageInfo : taskParams.backupStorageInfoList) {
       storageLocations.add(storageInfo.storageLocation);
     }
-    if (!backupUtil.validateStorageConfigOnLocations(customerConfig, storageLocations)) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          String.format(
-              "Storage config %s cannot access location %s",
-              customerConfig.configName,
-              customerConfig.data.get(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME)));
-    }
+    backupUtil.validateStorageConfigOnLocations(customerConfig, storageLocations);
     UUID taskUUID = commissioner.submit(TaskType.RestoreBackup, taskParams);
     CustomerTask.create(
         customer,
@@ -361,7 +354,7 @@ public class BackupsController extends AuthenticatedController {
         taskUUID,
         CustomerTask.TargetType.Universe,
         CustomerTask.TaskType.Restore,
-        taskParams.toString());
+        universe.name);
 
     auditService()
         .createAuditEntryWithReqBody(
@@ -740,10 +733,7 @@ public class BackupsController extends AuthenticatedController {
               + backupConfigType);
     }
     List<String> locations = backupUtil.getBackupLocations(backup);
-    if (!backupUtil.validateStorageConfigOnLocations(newConfig, locations)) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Cannot assign storage config as it cannot access backup location");
-    }
+    backupUtil.validateStorageConfigOnLocations(newConfig, locations);
     backup.updateStorageConfigUUID(taskParams.storageConfigUUID);
   }
 }

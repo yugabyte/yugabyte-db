@@ -254,7 +254,14 @@ class PartitionSchema {
 
   static bool IsValidHashPartitionKeyBound(const std::string& partition_key);
 
-  static void ProcessHashKeyEntry(const QLValuePB& value_pb, std::string* out);
+  template <class T>
+  static void ProcessHashKeyEntry(const T* value_pb, std::string* out) {
+    if (value_pb) {
+      ProcessHashKeyEntry(*value_pb, out);
+    }
+  }
+
+  static void ProcessHashKeyEntry(const LWQLValuePB& value_pb, std::string* out);
   static void ProcessHashKeyEntry(const LWPgsqlExpressionPB& expr, std::string* out);
   static void ProcessHashKeyEntry(const PgsqlExpressionPB& expr, std::string* out);
 

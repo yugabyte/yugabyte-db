@@ -48,6 +48,7 @@ namespace yb {
 
 //--------------------------------------------------------------------------------------------------
 void AppendToKey(const QLValuePB &value_pb, std::string *bytes);
+void AppendToKey(const LWQLValuePB &value_pb, std::string *bytes);
 
 //--------------------------------------------------------------------------------------------------
 // An abstract class that defines a QL value interface to support different implementations
@@ -61,11 +62,12 @@ class QLValue {
   QLValue() { }
   explicit QLValue(const QLValuePB& pb) : pb_(pb) { }
   explicit QLValue(QLValuePB&& pb) : pb_(std::move(pb)) { }
-  virtual ~QLValue();
 
   //-----------------------------------------------------------------------------------------
   // Access functions to value and type.
   InternalType type() const { return pb_.value_case(); }
+  InternalType value_case() const { return pb_.value_case(); }
+
   const QLValuePB& value() const { return pb_; }
   QLValuePB* mutable_value() { return &pb_; }
 
@@ -98,44 +100,48 @@ class QLValue {
   // Get different datatype values. CHECK failure will result if the value stored is not of the
   // expected datatype or the value is null.
 
-  #define QLVALUE_PRIMITIVE_GETTER(type, name) \
-  static type BOOST_PP_CAT(name, _value)(const QLValuePB& pb) { \
+  #define QLVALUE_PRIMITIVE_GETTER(name) \
+  template <class PB> \
+  static auto BOOST_PP_CAT(name, _value)(const PB& pb) -> \
+      decltype(pb.BOOST_PP_CAT(name, _value)()) { \
     CHECK(pb.BOOST_PP_CAT(has_, BOOST_PP_CAT(name, _value))()) \
         << "Value: " << pb.ShortDebugString(); \
     return pb.BOOST_PP_CAT(name, _value)(); \
   } \
   \
-  type BOOST_PP_CAT(name, _value)() const { \
+  auto BOOST_PP_CAT(name, _value)() const -> \
+      decltype(BOOST_PP_CAT(name, _value)(std::declval<QLValuePB>())) { \
     return BOOST_PP_CAT(name, _value)(pb_); \
   } \
 
-  QLVALUE_PRIMITIVE_GETTER(int8_t, int8);
-  QLVALUE_PRIMITIVE_GETTER(int16_t, int16);
-  QLVALUE_PRIMITIVE_GETTER(int32_t, int32);
-  QLVALUE_PRIMITIVE_GETTER(int64_t, int64);
-  QLVALUE_PRIMITIVE_GETTER(uint32_t, uint32);
-  QLVALUE_PRIMITIVE_GETTER(uint64_t, uint64);
-  QLVALUE_PRIMITIVE_GETTER(float, float);
-  QLVALUE_PRIMITIVE_GETTER(double, double);
-  QLVALUE_PRIMITIVE_GETTER(bool, bool);
-  QLVALUE_PRIMITIVE_GETTER(const std::string&, decimal);
-  QLVALUE_PRIMITIVE_GETTER(const std::string&, string);
-  QLVALUE_PRIMITIVE_GETTER(const std::string&, binary);
-  QLVALUE_PRIMITIVE_GETTER(const std::string&, jsonb);
-  QLVALUE_PRIMITIVE_GETTER(uint32_t, date);
-  QLVALUE_PRIMITIVE_GETTER(int64_t, time);
-  QLVALUE_PRIMITIVE_GETTER(const QLMapValuePB&, map);
-  QLVALUE_PRIMITIVE_GETTER(const QLSeqValuePB&, set);
-  QLVALUE_PRIMITIVE_GETTER(const QLSeqValuePB&, list);
-  QLVALUE_PRIMITIVE_GETTER(const QLSeqValuePB&, frozen);
-  QLVALUE_PRIMITIVE_GETTER(uint8_t, gin_null);
+  QLVALUE_PRIMITIVE_GETTER(int8);
+  QLVALUE_PRIMITIVE_GETTER(int16);
+  QLVALUE_PRIMITIVE_GETTER(int32);
+  QLVALUE_PRIMITIVE_GETTER(int64);
+  QLVALUE_PRIMITIVE_GETTER(uint32);
+  QLVALUE_PRIMITIVE_GETTER(uint64);
+  QLVALUE_PRIMITIVE_GETTER(float);
+  QLVALUE_PRIMITIVE_GETTER(double);
+  QLVALUE_PRIMITIVE_GETTER(bool);
+  QLVALUE_PRIMITIVE_GETTER(decimal);
+  QLVALUE_PRIMITIVE_GETTER(string);
+  QLVALUE_PRIMITIVE_GETTER(binary);
+  QLVALUE_PRIMITIVE_GETTER(jsonb);
+  QLVALUE_PRIMITIVE_GETTER(date);
+  QLVALUE_PRIMITIVE_GETTER(time);
+  QLVALUE_PRIMITIVE_GETTER(map);
+  QLVALUE_PRIMITIVE_GETTER(set);
+  QLVALUE_PRIMITIVE_GETTER(list);
+  QLVALUE_PRIMITIVE_GETTER(frozen);
+  QLVALUE_PRIMITIVE_GETTER(gin_null);
   #undef QLVALUE_PRIMITIVE_GETTER
 
-  static Timestamp timestamp_value(const QLValuePB& pb) {
-    return Timestamp(timestamp_value_pb(pb));
-  }
+  static Timestamp timestamp_value(const QLValuePB& pb);
+  static Timestamp timestamp_value(const LWQLValuePB& pb);
+  static Timestamp timestamp_value(const QLValue& value);
 
-  static int64_t timestamp_value_pb(const QLValuePB& pb) {
+  template <class PB>
+  static int64_t timestamp_value_pb(const PB& pb) {
     // Caller of this function should already read and know the PB value type before calling.
     CHECK(pb.has_timestamp_value()) << "Value: " << pb.ShortDebugString();
     return pb.timestamp_value();
@@ -149,14 +155,20 @@ class QLValue {
     return timestamp_value_pb(pb_);
   }
 
-  static const std::string& inetaddress_value_pb(const QLValuePB& pb) {
+  template <class PB>
+  static Slice inetaddress_value_pb(const PB& pb) {
     CHECK(pb.has_inetaddress_value()) << "Value: " << pb.ShortDebugString();
     return pb.inetaddress_value();
   }
 
   static InetAddress inetaddress_value(const QLValuePB& pb);
+  static InetAddress inetaddress_value(const LWQLValuePB& pb);
 
-  const std::string& inetaddress_value_pb() const {
+  static InetAddress inetaddress_value(const QLValue& pb) {
+    return inetaddress_value(pb.value());
+  }
+
+  Slice inetaddress_value_pb() const {
     return inetaddress_value_pb(pb_);
   }
 
@@ -164,11 +176,19 @@ class QLValue {
     return inetaddress_value(pb_);
   }
 
-  static const std::string& uuid_value_pb(const QLValuePB& pb) {
+  template <class PB>
+  static auto uuid_value_pb(const PB& pb) -> decltype(pb.uuid_value()) {
     CHECK(pb.has_uuid_value()) << "Value: " << pb.ShortDebugString();
     return pb.uuid_value();
   }
+
   static Uuid uuid_value(const QLValuePB& pb);
+  static Uuid uuid_value(const LWQLValuePB& pb);
+
+  static Uuid uuid_value(const QLValue& value) {
+    return uuid_value(value.value());
+  }
+
   const std::string& uuid_value_pb() const {
     return uuid_value_pb(pb_);
   }
@@ -176,22 +196,35 @@ class QLValue {
     return uuid_value(pb_);
   }
 
-  static const std::string& timeuuid_value_pb(const QLValuePB& pb) {
+  template <class PB>
+  static auto timeuuid_value_pb(const PB& pb) -> decltype(pb.timeuuid_value()) {
     // Caller of this function should already read and know the PB value type before calling.
     DCHECK(pb.has_timeuuid_value()) << "Value: " << pb.ShortDebugString();
     return pb.timeuuid_value();
   }
 
+  static Uuid timeuuid_value(const QLValue& pb) {
+    return timeuuid_value(pb.value());
+  }
+
   static Uuid timeuuid_value(const QLValuePB& pb);
+  static Uuid timeuuid_value(const LWQLValuePB& pb);
 
   const std::string& timeuuid_value_pb() const {
     return timeuuid_value_pb(pb_);
   }
+
   Uuid timeuuid_value() const {
     return timeuuid_value(pb_);
   }
 
   static util::VarInt varint_value(const QLValuePB& pb);
+  static util::VarInt varint_value(const LWQLValuePB& pb);
+
+  static util::VarInt varint_value(const QLValue& value) {
+    return varint_value(value.pb_);
+  }
+
   util::VarInt varint_value() const {
     return varint_value(pb_);
   }
@@ -202,78 +235,78 @@ class QLValue {
 
   //----------------------------------- set value methods -----------------------------------
   // Set different datatype values.
-  virtual void set_int8_value(int8_t val) {
+  void set_int8_value(int8_t val) {
     pb_.set_int8_value(val);
   }
-  virtual void set_int16_value(int16_t val) {
+  void set_int16_value(int16_t val) {
     pb_.set_int16_value(val);
   }
-  virtual void set_int32_value(int32_t val) {
+  void set_int32_value(int32_t val) {
     pb_.set_int32_value(val);
   }
-  virtual void set_int64_value(int64_t val) {
+  void set_int64_value(int64_t val) {
     pb_.set_int64_value(val);
   }
-  virtual void set_uint32_value(uint32_t val) {
+  void set_uint32_value(uint32_t val) {
     pb_.set_uint32_value(val);
   }
-  virtual void set_uint64_value(uint64_t val) {
+  void set_uint64_value(uint64_t val) {
     pb_.set_uint64_value(val);
   }
-  virtual void set_float_value(float val) {
+  void set_float_value(float val) {
     pb_.set_float_value(val);
   }
-  virtual void set_double_value(double val) {
+  void set_double_value(double val) {
     pb_.set_double_value(val);
   }
   // val is a serialized binary representation of a decimal, not a plaintext
-  virtual void set_decimal_value(const std::string& val) {
+  void set_decimal_value(const std::string& val) {
     pb_.set_decimal_value(val);
   }
   // val is a serialized binary representation of a decimal, not a plaintext
-  virtual void set_decimal_value(std::string&& val) {
+  void set_decimal_value(std::string&& val) {
     pb_.set_decimal_value(std::move(val));
   }
-  virtual void set_jsonb_value(std::string&& val) {
+  void set_jsonb_value(std::string&& val) {
     pb_.set_jsonb_value(std::move(val));
   }
   void set_jsonb_value(const std::string& val) {
     pb_.set_jsonb_value(val);
   }
-  virtual void set_bool_value(bool val) {
+  void set_bool_value(bool val) {
     pb_.set_bool_value(val);
   }
-  virtual void set_string_value(const std::string& val) {
+  void set_string_value(const std::string& val) {
     pb_.set_string_value(val);
   }
-  virtual void set_string_value(std::string&& val) {
+  void set_string_value(std::string&& val) {
     pb_.set_string_value(std::move(val));
   }
-  virtual void set_string_value(const char* val) {
+  void set_string_value(const char* val) {
     pb_.set_string_value(val);
   }
-  virtual void set_string_value(const char* val, size_t size) {
+  void set_string_value(const char* val, size_t size) {
     pb_.set_string_value(val, size);
   }
-  virtual void set_timestamp_value(const Timestamp& val) {
+  void set_timestamp_value(const Timestamp& val) {
     pb_.set_timestamp_value(val.ToInt64());
   }
-  virtual void set_timestamp_value(int64_t val) {
+  void set_timestamp_value(int64_t val) {
     pb_.set_timestamp_value(val);
   }
-  virtual void set_date_value(uint32_t val) {
+  void set_date_value(uint32_t val) {
     pb_.set_date_value(val);
   }
-  virtual void set_time_value(int64_t val) {
+  void set_time_value(int64_t val) {
     pb_.set_time_value(val);
   }
-  virtual void set_binary_value(const std::string& val) {
+  void set_binary_value(const std::string& val) {
     pb_.set_binary_value(val);
   }
-  virtual void set_binary_value(std::string&& val) {
+  void set_binary_value(std::string&& val) {
     pb_.set_binary_value(std::move(val));
   }
-  virtual void set_binary_value(const void* val, size_t size) {
+  void set_binary_value(const void* val, size_t size) {
     pb_.set_binary_value(val, size);
   }
 
@@ -305,6 +338,14 @@ class QLValue {
     return result;
   }
 
+  static void set_value(const QLValue& src, QLValuePB* dest) {
+    set_value(src.value(), dest);
+  }
+
+  static void set_value(const QLValuePB& src, QLValuePB* dest) {
+    *dest = src;
+  }
+
   static void set_inetaddress_value(const InetAddress& val, QLValuePB* pb);
 
   void set_inetaddress_value(const InetAddress& val) {
@@ -315,16 +356,29 @@ class QLValue {
     val.ToBytes(out->mutable_uuid_value());
   }
 
+  static void set_uuid_value(const Uuid& val, QLValue* out) {
+    set_uuid_value(val, out->mutable_value());
+  }
+
   void set_uuid_value(const Uuid& val) {
     set_uuid_value(val, &pb_);
   }
 
-  virtual void set_timeuuid_value(const Uuid& val);
-  virtual void set_varint_value(const util::VarInt& val) {
+  void set_timeuuid_value(const Uuid& val);
+
+  static void set_timeuuid_value(const Uuid& val, LWQLValuePB* out);
+  static void set_timeuuid_value(const Uuid& val, QLValuePB* out);
+  static void set_timeuuid_value(const Uuid& val, QLValue* out);
+
+  void set_varint_value(const util::VarInt& val) {
     pb_.set_varint_value(val.EncodeToComparable());
   }
 
-  virtual void set_gin_null_value(uint8_t val) {
+  void set_varint_value(const std::string& encoded_val) {
+    pb_.set_varint_value(encoded_val);
+  }
+
+  void set_gin_null_value(uint8_t val) {
     pb_.set_gin_null_value(val);
   }
 
@@ -358,35 +412,35 @@ class QLValue {
   }
 
   // To extend/construct collections we return freshly allocated elements for the caller to set.
-  virtual QLValuePB* add_map_key() {
+  QLValuePB* add_map_key() {
     return pb_.mutable_map_value()->add_keys();
   }
-  virtual QLValuePB* add_map_value() {
+  QLValuePB* add_map_value() {
     return pb_.mutable_map_value()->add_values();
   }
-  virtual QLValuePB* add_set_elem() {
+  QLValuePB* add_set_elem() {
     return pb_.mutable_set_value()->add_elems();
   }
-  virtual QLValuePB* add_list_elem() {
+  QLValuePB* add_list_elem() {
     return pb_.mutable_list_value()->add_elems();
   }
-  virtual QLValuePB* add_frozen_elem() {
+  QLValuePB* add_frozen_elem() {
     return pb_.mutable_frozen_value()->add_elems();
   }
 
   // For collections, the call to `mutable_foo` takes care of setting the correct type to `foo`
   // internally and allocating the message if needed
   // TODO(neil) Change these set to "mutable_xxx_value()".
-  virtual void set_map_value() {
+  void set_map_value() {
     pb_.mutable_map_value();
   }
-  virtual void set_set_value() {
+  void set_set_value() {
     pb_.mutable_set_value();
   }
-  virtual void set_list_value() {
+  void set_list_value() {
     pb_.mutable_list_value();
   }
-  virtual void set_frozen_value() {
+  void set_frozen_value() {
     pb_.mutable_frozen_value();
   }
 
@@ -401,55 +455,47 @@ class QLValue {
   }
 
   //----------------------------------- comparison methods -----------------------------------
-  virtual bool Comparable(const QLValue& other) const {
+  bool Comparable(const QLValue& other) const {
     return type() == other.type() || EitherIsNull(other) || EitherIsVirtual(other);
   }
-  virtual bool BothNotNull(const QLValue& other) const {
+  bool BothNotNull(const QLValue& other) const {
     return !IsNull() && !other.IsNull();
   }
-  virtual bool BothNull(const QLValue& other) const {
+  bool BothNull(const QLValue& other) const {
     return IsNull() && other.IsNull();
   }
-  virtual bool EitherIsNull(const QLValue& other) const {
+  bool EitherIsNull(const QLValue& other) const {
     return IsNull() || other.IsNull();
   }
-  virtual bool EitherIsVirtual(const QLValue& other) const {
+  bool EitherIsVirtual(const QLValue& other) const {
     return IsVirtual() || other.IsVirtual();
   }
 
-  virtual int CompareTo(const QLValue& other) const;
+  int CompareTo(const QLValue& other) const;
 
   // In YCQL null is not comparable with regular values (w.r.t. ordering).
-  virtual bool operator <(const QLValue& v) const {
+  bool operator <(const QLValue& v) const {
     return BothNotNull(v) && CompareTo(v) < 0;
   }
-  virtual bool operator >(const QLValue& v) const {
+  bool operator >(const QLValue& v) const {
     return BothNotNull(v) && CompareTo(v) > 0;
   }
 
   // In YCQL equality holds for null values.
-  virtual bool operator <=(const QLValue& v) const {
+  bool operator <=(const QLValue& v) const {
     return (BothNotNull(v) && CompareTo(v) <= 0) || BothNull(v);
   }
-  virtual bool operator >=(const QLValue& v) const {
+  bool operator >=(const QLValue& v) const {
     return (BothNotNull(v) && CompareTo(v) >= 0) || BothNull(v);
   }
-  virtual bool operator ==(const QLValue& v) const {
+  bool operator ==(const QLValue& v) const {
     return (BothNotNull(v) && CompareTo(v) == 0) || BothNull(v);
   }
-  virtual bool operator !=(const QLValue& v) const {
+  bool operator !=(const QLValue& v) const {
     return !(*this == v);
   }
 
   //----------------------------- serializer / deserializer ---------------------------------
-  static void Serialize(const std::shared_ptr<QLType>& ql_type,
-                        const QLClient& client,
-                        const QLValuePB& pb,
-                        faststring* buffer);
-
-  void Serialize(const std::shared_ptr<QLType>& ql_type,
-                 const QLClient& client,
-                 faststring* buffer) const;
   CHECKED_STATUS Deserialize(const std::shared_ptr<QLType>& ql_type,
                              const QLClient& client,
                              Slice* data);
@@ -500,13 +546,33 @@ bool operator >=(const QLValuePB& lhs, const QLValue& rhs);
 bool operator ==(const QLValuePB& lhs, const QLValue& rhs);
 bool operator !=(const QLValuePB& lhs, const QLValue& rhs);
 
+bool operator <(const LWQLValuePB& lhs, const LWQLValuePB& rhs);
+bool operator >(const LWQLValuePB& lhs, const LWQLValuePB& rhs);
+bool operator <=(const LWQLValuePB& lhs, const LWQLValuePB& rhs);
+bool operator >=(const LWQLValuePB& lhs, const LWQLValuePB& rhs);
+bool operator ==(const LWQLValuePB& lhs, const LWQLValuePB& rhs);
+bool operator !=(const LWQLValuePB& lhs, const LWQLValuePB& rhs);
+
 InternalType type(const QLValuePB& v);
+
 bool IsNull(const QLValuePB& v);
+
+inline bool IsNull(const QLValue& v) {
+  return IsNull(v.value());
+}
+
 void SetNull(QLValuePB* v);
+void SetNull(LWQLValuePB* v);
+
+inline void SetNull(QLValue* v) {
+  SetNull(v->mutable_value());
+}
+
 bool EitherIsNull(const QLValuePB& lhs, const QLValuePB& rhs);
 bool BothNotNull(const QLValuePB& lhs, const QLValuePB& rhs);
 bool BothNull(const QLValuePB& lhs, const QLValuePB& rhs);
 bool Comparable(const QLValuePB& lhs, const QLValuePB& rhs);
+bool Comparable(const LWQLValuePB& lhs, const LWQLValuePB& rhs);
 int Compare(const QLValuePB& lhs, const QLValuePB& rhs);
 bool EitherIsNull(const QLValuePB& lhs, const QLValue& rhs);
 bool Comparable(const QLValuePB& lhs, const QLValue& rhs);
@@ -517,6 +583,14 @@ int Compare(const QLSeqValuePB& lhs, const QLSeqValuePB& rhs);
 int Compare(const bool lhs, const bool rhs);
 
 bool IsNull(const LWQLValuePB& v);
+
+inline void AppendToKey(const QLValue &value_pb, std::string *bytes) {
+  AppendToKey(value_pb.value(), bytes);
+}
+
+void ConcatStrings(const std::string& lhs, const std::string& rhs, QLValuePB* result);
+void ConcatStrings(const std::string& lhs, const std::string& rhs, QLValue* result);
+void ConcatStrings(const Slice& lhs, const Slice& rhs, LWQLValuePB* result);
 
 #define YB_SET_INT_VALUE(ql_valuepb, input, bits) \
   case DataType::BOOST_PP_CAT(INT, bits): { \

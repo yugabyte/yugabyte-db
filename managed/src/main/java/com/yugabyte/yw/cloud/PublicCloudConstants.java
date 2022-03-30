@@ -69,7 +69,7 @@ public class PublicCloudConstants {
     Persistent(Common.CloudType.gcp, false, false),
     StandardSSD_LRS(Common.CloudType.azu, false, false),
     Premium_LRS(Common.CloudType.azu, false, false),
-    UltraSSD_LRS(Common.CloudType.azu, false, false);
+    UltraSSD_LRS(Common.CloudType.azu, true, true);
 
     private final Common.CloudType cloudType;
     private final boolean iopsProvisioning;
