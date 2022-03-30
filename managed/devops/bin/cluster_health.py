@@ -669,8 +669,8 @@ class NodeChecker():
             host = '__local_ysql_socket__'
             port_args = ""
 
-        ysqlsh_cmd = "{} -h {} {} -U yugabyte".format(
-            ysqlsh, host, port_args, '"sslmode=require"' if self.enable_tls_client else '')
+        ysqlsh_cmd = "{} {} -h {} {} -U yugabyte".format(
+            'env sslmode="require"' if (self.enable_tls_client) else '', ysqlsh, host, port_args, )
 
         return ysqlsh_cmd
 
@@ -700,7 +700,7 @@ class NodeChecker():
 
         errors = []
         output = self._remote_check_output(remote_cmd).strip()
-        if not (output.startswith('You are connected to database')):
+        if 'You are connected to database' not in output:
             errors = [output]
         return e.fill_and_return_entry(errors, len(errors) > 0)
 
