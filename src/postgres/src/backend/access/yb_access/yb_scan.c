@@ -926,11 +926,11 @@ ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 			int last_att_no = YBFirstLowInvalidAttributeNumber;
 
 			/* 
-				* We can only push down right now if the full primary key
-				* is specified in the correct order and the primary key 
-				* has no hashed columns. We also need to ensure that 
-				* the same comparison operation is done to all subkeys.
-				*/
+			 * We can only push down right now if the primary key columns
+			 * are specified in the correct order and the primary key 
+			 * has no hashed columns. We also need to ensure that 
+			 * the same comparison operation is done to all subkeys.
+			 */
 			bool can_pushdown = true;
 
 			int strategy = subkeys[0].sk_strategy;
@@ -945,9 +945,9 @@ ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 				}
 
 				/*
-					* Make sure that the same comparator is applied to
-					* all subkeys.
-					*/
+				 * Make sure that the same comparator is applied to
+				 * all subkeys.
+				 */
 				if (strategy != current->sk_strategy)
 				{
 					can_pushdown = false;
@@ -957,7 +957,8 @@ ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 
 				/* Make sure that there are no hash key columns. */
 				if (index->rd_indoption[current->sk_attno - 1] 
-					& INDOPTION_HASH) {
+					& INDOPTION_HASH)
+				{
 					can_pushdown = false;
 					break;
 				}
@@ -966,9 +967,18 @@ ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 			while((subkeys[j++].sk_flags & SK_ROW_END) == 0);
 			
 			/*
-				* Make sure that the full primary key is specified in order
-				* to push down.
-				*/
+			 * Make sure that the primary key has no hash columns in order
+			 * to push down.
+			 */
+			
+			for (int i = 0; i < index->rd_index->indnkeyatts; i++)
+			{
+				if (index->rd_indoption[i] & INDOPTION_HASH)
+				{
+					can_pushdown = false;
+					break;
+				}
+			}
 
 			if (can_pushdown)
 			{
@@ -976,33 +986,33 @@ ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 				YBCPgExpr *col_values = palloc(sizeof(YBCPgExpr)
 											* index->rd_index->indnkeyatts);
 				/*
-					* Prepare upper/lower bound tuples determined from this
-					* clause for bind. Care must be taken in the case 
-					* that primary key columns in the index are ordered
-					* differently from each other. For example, consider
-					* if the underlying index has primary key
-					* (r1 ASC, r2 DESC, r3 ASC) and we are dealing with
-					* a clause like (r1, r2, r3) <= (40, 35, 12).
-					* We cannot simply bind (40, 35, 12) as an upper bound
-					* as that will miss tuples such as (40, 32, 0).
-					* Instead we must push down (40, Inf, 12) in this case 
-					* for correctness. (Note that +Inf in this context
-					* is higher in STORAGE order than all other values not
-					* necessarily logical order, similar to the role of
-					* docdb::ValueType::kHighest.
-					*/
+				 * Prepare upper/lower bound tuples determined from this
+				 * clause for bind. Care must be taken in the case 
+				 * that primary key columns in the index are ordered
+				 * differently from each other. For example, consider
+				 * if the underlying index has primary key
+				 * (r1 ASC, r2 DESC, r3 ASC) and we are dealing with
+				 * a clause like (r1, r2, r3) <= (40, 35, 12).
+				 * We cannot simply bind (40, 35, 12) as an upper bound
+				 * as that will miss tuples such as (40, 32, 0).
+				 * Instead we must push down (40, Inf, 12) in this case 
+				 * for correctness. (Note that +Inf in this context
+				 * is higher in STORAGE order than all other values not
+				 * necessarily logical order, similar to the role of
+				 * docdb::ValueType::kHighest.
+				 */
 
 				/*
-					* Is the first column in ascending order in the index?
-					* This is important because whether or not the RHS of a
-					* (row key) >= (row key values) expression is
-					* considered an upper bound is dependent on the answer
-					* to this question. The RHS of such an expression will
-					* be the scan upper bound if the first column is in
-					* descending order and lower if else. Similar logic
-					* applies to the RHS of (row key) <= (row key values)
-					* expressions.
-					*/
+				 * Is the first column in ascending order in the index?
+				 * This is important because whether or not the RHS of a
+				 * (row key) >= (row key values) expression is
+				 * considered an upper bound is dependent on the answer
+				 * to this question. The RHS of such an expression will
+				 * be the scan upper bound if the first column is in
+				 * descending order and lower if else. Similar logic
+				 * applies to the RHS of (row key) <= (row key values)
+				 * expressions.
+				 */
 				bool is_direction_asc = 
 									(index->rd_indoption[
 										subkeys[0].sk_attno - 1] 
@@ -1025,16 +1035,16 @@ ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 											&& (subkeys[subkey_index]
 												.sk_attno - 1) == j;
 					/*
-						* Is the current column stored in ascending order in the
-						* underlying index?
-						*/
+					 * Is the current column stored in ascending order in the
+					 * underlying index?
+					 */
 					bool asc = (index->rd_indoption[j] & INDOPTION_DESC) == 0;
 
 					/*
-						* If this column has different directionality than the
-						* first column then we have to adjust the bounds on this
-						* column.
-						*/
+					 * If this column has different directionality than the
+					 * first column then we have to adjust the bounds on this
+					 * column.
+					 */
 					if(!is_column_specified
 						|| (asc != is_direction_asc &&
 							!is_point_scan))
