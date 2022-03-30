@@ -96,11 +96,11 @@ $ helm repo update
 $ helm search repo yugabytedb/yugabyte
 ```
 
-Expect the following output:
+Expect output similar to the following:
 
 ```output
 NAME                    CHART VERSION   APP VERSION     DESCRIPTION
-yugabytedb/yugabyte     2.12.1           2.12.1.0-b41    YugabyteDB is the high-performance distributed ...
+yugabytedb/yugabyte     2.12.2           2.12.2.0-b58    YugabyteDB is the high-performance distributed ...
 ```
 
 ### Install YugabyteDB
@@ -156,7 +156,7 @@ You can check the status of the cluster using the following commands:
 $ helm status yb-demo -n yb-demo
 ```
 
-Expect the following output:
+Expect output similar to the following:
 
 ```output
 NAME: yb-demo
@@ -194,7 +194,7 @@ Check the pods, as follows:
 $ kubectl get pods --namespace yb-demo
 ```
 
-Expect the following output:
+Expect output similar to the following:
 
 ```output
 NAME           READY     STATUS    RESTARTS   AGE
@@ -212,7 +212,7 @@ Check the services, as follows:
 $ kubectl get services --namespace yb-demo
 ```
 
-Expect the following output:
+Expect output similar to the following:
 
 ```output
 NAME                 TYPE           CLUSTER-IP      EXTERNAL-IP    PORT(S)                                        AGE
@@ -228,11 +228,11 @@ You can also check the history of the `yb-demo` deployment, as follows:
 $ helm history yb-demo -n yb-demo
 ```
 
-Expect the following output:
+Expect output similar to the following:
 
 ```output
 REVISION  UPDATED                   STATUS    CHART           APP VERSION   DESCRIPTION
-1         Thu Apr 13 13:29:13 2020  deployed  yugabyte-2.12.1  2.12.1.0-b41  Install complete
+1         Thu Apr 13 13:29:13 2020  deployed  yugabyte-2.12.2  2.12.2.0-b58  Install complete
 ```
 
 ## Connect using YugabyteDB shells
@@ -257,7 +257,7 @@ To connect an external program, get the load balancer `EXTERNAL-IP` IP address o
 $ kubectl get services --namespace yb-demo
 ```
 
-Expect the following output:
+Expect output similar to the following:
 
 ```output
 NAME                 TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)                                        AGE

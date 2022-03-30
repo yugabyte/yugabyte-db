@@ -193,7 +193,7 @@ Alternatively, you can execute the following command to check status of the pods
 oc get pods -n yb-platform -l chart=yugabyte
 ```
 
-Expect the following output:
+Expect output similar to the following:
 
 ```output
 # output

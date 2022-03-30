@@ -142,11 +142,11 @@ You can create a provider as follows:
 - Click **Add Region** and complete the **Add new region** dialog shown in the following illustration by first selecting the region you found previously (US East), and then entering the following information:
   - In the **Zone** field, enter the exact zone label (us-east4-a).
   - In the **Namespace** field, enter yb-platform.<br><br>
-  
+
   ![Add Region](/images/ee/openshift-add-region.png)
-  
+
 - Click **Add Region**.
-- Click **Save**. 
+- Click **Save**.
 
 You should see the newly-added provider under **Red Hat OpenShift configs**.
 
@@ -154,7 +154,7 @@ You should see the newly-added provider under **Red Hat OpenShift configs**.
 
 You can create a universe using the provider as follows:
 
-- Use the Yugabyte Platform web UI to navigate to **Universes** and then click **Create Universe**. 
+- Use the Yugabyte Platform web UI to navigate to **Universes** and then click **Create Universe**.
 
 - Complete the **Create Universe** page shown in the following illustration by entering the following information:
 
@@ -162,10 +162,10 @@ You can create a universe using the provider as follows:
   - In the **Provider** field, enter ocp-test.
   - In the **Regions** field, enter US East.
   - In the **Instance Type** field, enter xsmall (2 cores, 4GB RAM).<br><br>
-  
+
   ![Create Universe](/images/ee/openshift-create-uni.png)
-  
-- Click **Create**. 
+
+- Click **Create**.
 
 The following illustration shows the universe creation progress:
 
@@ -191,7 +191,7 @@ Alternatively, you can execute the following command to check status of the pods
 oc get pods -n yb-platform -l chart=yugabyte
 ```
 
-Expect the following output:
+Expect output similar to the following:
 
 ```output
 # output
@@ -204,10 +204,10 @@ yb-tserver-1  2/2   Running  0     5m58s
 yb-tserver-2  2/2   Running  0     5m58s
 ```
 
-If any of the pods are in pending state, perform the following: 
+If any of the pods are in pending state, perform the following:
 
 - Login with an admin account and navigate to **Compute > Machine Sets**.
-- Open the Machine Set corresponding to your zone label (us-east4-a). 
+- Open the Machine Set corresponding to your zone label (us-east4-a).
 - Click **Desired Count** and increase the count by 1 or 2, as shown in the following illustration.
 - Click **Save**.
 

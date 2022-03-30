@@ -48,7 +48,7 @@ You configure Kafka Connect Sink as follows:
   confluent local services start
   ```
 
-  Expect the following output:
+  Expect output similar to the following:
 
   ```output
   The local commands are intended for a single-node development environment only,
@@ -75,7 +75,7 @@ You configure Kafka Connect Sink as follows:
   confluent local services connect stop
   ```
 
-  Expect the following output:
+  Expect output similar to the following:
 
   ```output
   The local commands are intended for a single-node development environment only,

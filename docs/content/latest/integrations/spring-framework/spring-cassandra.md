@@ -16,7 +16,7 @@ This document describes how to use Spring Data Cassandra and reactive Spring Dat
 
 ## Spring Data Cassandra and YCQL
 
-YCQL provides Cassandra wire-compatible query language for client applications to query the YugabyteDB database. YCQL is integrated with the Spring Data Cassandra project and supports POJO-based annotations, data templates, repositories, and so on. 
+YCQL provides Cassandra wire-compatible query language for client applications to query the YugabyteDB database. YCQL is integrated with the Spring Data Cassandra project and supports POJO-based annotations, data templates, repositories, and so on.
 
 The following is a non-exhaustive list of supported features:
 
@@ -56,8 +56,8 @@ The following shows how to exclude and add dependencies via Gradle:
 
 ```gradle
 dependencies {
-  compile('org.springframework.data:spring-data-cassandra:2.2.12.RELEASE') { 
-  exclude group: "com.datastax.cassandra", name: "cassandra-driver-core" 
+  compile('org.springframework.data:spring-data-cassandra:2.2.12.RELEASE') {
+  exclude group: "com.datastax.cassandra", name: "cassandra-driver-core"
 }
   compile('com.yugabyte:cassandra-driver-core:3.8.0-yb-6')
 }
@@ -90,8 +90,8 @@ The following shows how to exclude and add dependencies via Gradle:
 
 ```gradle
 dependencies {
-  compile('org.springframework.data:spring-data-cassandra:3.0.6.RELEASE') { 
-  exclude group: "com.datastax.oss", name: "java-driver-core" 
+  compile('org.springframework.data:spring-data-cassandra:3.0.6.RELEASE') {
+  exclude group: "com.datastax.oss", name: "java-driver-core"
 }
   compile('com.yugabyte:java-driver-core:4.6.0-yb-6')
 }
@@ -163,14 +163,14 @@ public class Customer {
 ​    id, firstName, lastName);
   }
 
- // define getters and setters 
+ // define getters and setters
  // ...
 }
 ```
 
 #### Store and Retrieve Data
 
-Spring Data Cassandra provides the `CassandraRepositories` interface that removes all the boilerplate code and simplifies definition of CRUD operations against YugabyteDB tables. Most of the YugabyteDB connection handling, exception handling, and general error handling is performed by repositories, leaving you to implement the business logic. 
+Spring Data Cassandra provides the `CassandraRepositories` interface that removes all the boilerplate code and simplifies definition of CRUD operations against YugabyteDB tables. Most of the YugabyteDB connection handling, exception handling, and general error handling is performed by repositories, leaving you to implement the business logic.
 
 Create the `CustomerRepository` interface, as follows:
 
@@ -224,8 +224,8 @@ public class YcqlDataAccesssApplication implements CommandLineRunner {
 ​   log.info("Creating Keyspace");
 ​   ycqlSession.execute("CREATE KEYSPACE IF NOT EXISTS demo;");
 ​   log.info("Creating table");
-​   ycqlSession.execute("CREATE TABLE demo.customer 
-      (\n" + "  id INT PRIMARY KEY,\n" + " firstName text,\n" \+ 
+​   ycqlSession.execute("CREATE TABLE demo.customer
+      (\n" + "  id INT PRIMARY KEY,\n" + " firstName text,\n" \+
        " lastName text\n" + ") WITH default_time_to_live = 0\n"
       \+ " AND transactions = {'enabled': 'true'};");
 
@@ -233,7 +233,7 @@ public class YcqlDataAccesssApplication implements CommandLineRunner {
 ​    List<Object[]> splitUpNames = Arrays.asList(
                     "Tim Bun", "Mike Dean", "Alan Row", "Josh Rambo")
                     .stream().map(name -> name.split(" ")).collect(Collectors.toList());
-​    
+​
     // Use a Java 8 stream to print out each tuple of the list
 ​   splitUpNames.forEach(name -> {
 ​      int id = 1;
@@ -259,10 +259,10 @@ The next step is to run the Spring application from the command line using Maven
 ./mvnw spring-boot:run
 ```
 
-Alternatively, you can build an uber JAR file by using the following command: 
+Alternatively, you can build an uber JAR file by using the following command:
 
 ```shell
-./mvnw clean package 
+./mvnw clean package
 ```
 
 Then you run the JAR file using the following command:
@@ -271,7 +271,7 @@ Then you run the JAR file using the following command:
 java -jar target/ycqldataaccess-1.0.0.jar
 ```
 
-Expect the following output:
+Expect output similar to the following:
 
 ```output
 INFO 28010 --- [main] c.y.e.y.YcqlDataAccesssApplication    : Started YcqlDataAccesssApplication in 1.7 seconds (JVM running for 2.139)
@@ -295,7 +295,7 @@ INFO 28010 --- [main] c.y.e.y.YcqlDataAccesssApplication    : Optional[Customer[
 
 ## Spring Data Reactive Repositories and YCQL
 
-YCQL API is compatible with Spring Data reactive repositories for Apache Cassandra. 
+YCQL API is compatible with Spring Data reactive repositories for Apache Cassandra.
 
 Using Spring WebFlux and Spring Data reactive repositories, you can implement fully reactive Spring Microservices with YCQL API.
 
@@ -311,7 +311,7 @@ Reactive Spring Data Cassandra projects are bundled with the Apache Cassandra Ja
     <exclusion>
         <groupId>com.datastax.oss</groupId>
         <artifactId>java-driver-core</artifactId>
-    </exclusion>  
+    </exclusion>
   </exclusions>
 </dependency>
 
@@ -387,14 +387,14 @@ public class Customer {
     id, firstName, lastName);
   }
 
- // define getters and setters 
+ // define getters and setters
  // ...
 }
 ```
 
 #### Store and Retrieve Data
 
-Spring Data Cassandra Reactive provides the `ReactiveCassandraRepositories` interface that removes all the boilerplate code and simplifies definition of CRUD operations against YugabyteDB tables. Most of the YugabyteDB connection handling, exception handling, and general error handling is performed by repositories, leaving you to implement the business logic. 
+Spring Data Cassandra Reactive provides the `ReactiveCassandraRepositories` interface that removes all the boilerplate code and simplifies definition of CRUD operations against YugabyteDB tables. Most of the YugabyteDB connection handling, exception handling, and general error handling is performed by repositories, leaving you to implement the business logic.
 
 Create the `CustomerReactiveRepository` interface, as follows:
 
@@ -404,7 +404,7 @@ package com.yugabyte.example.ycqldataaccess;
 import org.springframework.data.cassandra.repository.ReactiveCassandraRepository;
 import reactor.core.publisher.Mono;
 
-public interface CustomerReactiveRepository extends 
+public interface CustomerReactiveRepository extends
                  ReactiveCassandraRepository<Customer, String> {
   Mono<Customer> findByFirstName(String firstName);
 }
@@ -446,13 +446,13 @@ public class YcqlReactiveDataAccessApplication implements CommandLineRunner {
   @Override
   public void run(String... args) throws Exception {
     log.info("Creating table");
-    ycqlSession.execute("CREATE TABLE IF NOT EXISTS demo.customer (\n" +  
-                        " id INT PRIMARY KEY,\n"+ " firstName text,\n" + 
-                        " lastName text\n" + ") WITH default_time_to_live = 0\n" + 
+    ycqlSession.execute("CREATE TABLE IF NOT EXISTS demo.customer (\n" +
+                        " id INT PRIMARY KEY,\n"+ " firstName text,\n" +
+                        " lastName text\n" + ") WITH default_time_to_live = 0\n" +
                         " AND transactions = {'enabled': 'true'};");
 
     // Split the array of whole names into an array of first/last names
-    List<Object[]> splitUpNames = 
+    List<Object[]> splitUpNames =
       Arrays.asList("Tim Bun", "Mike Dean", "Alan Row", "Josh Rambo")
                     .stream().map(name -> name.split(" "))
                     .collect(Collectors.toList());
@@ -460,9 +460,9 @@ public class YcqlReactiveDataAccessApplication implements CommandLineRunner {
     // Use a Java 8 stream to print out each tuple of the list
     splitUpNames.forEach(name -> {
             int id = 1;
-            log.info(String.format("Inserting customer record for %s %s", 
+            log.info(String.format("Inserting customer record for %s %s",
                                    name[0], name[1]));
-            customerReactiveRepository.save(new Customer(id, (String) name[0], 
+            customerReactiveRepository.save(new Customer(id, (String) name[0],
                                                              (String) name[1]));
             id++;
      });

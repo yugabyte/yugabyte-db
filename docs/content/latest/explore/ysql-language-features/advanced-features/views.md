@@ -218,6 +218,7 @@ employee_no | name
 ```
 
 For detailed documentation on materialized views please refer to the following links:
+
 - [`CREATE MATERIALIZED VIEW`](../../../../api/ysql/the-sql-language/statements/ddl_create_matview/)
 - [`REFRESH MATERIALIZED VIEW`](../../../../api/ysql/the-sql-language/statements/ddl_refresh_matview/)
 - [`DROP MATERIALIZED VIEW`](../../../../api/ysql/the-sql-language/statements/ddl_drop_matview/)
