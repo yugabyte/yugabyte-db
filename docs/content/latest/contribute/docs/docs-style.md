@@ -32,7 +32,7 @@ Yugabyte's documentation voice should be informal and authoritative. Speak (or r
 
 ### Headings
 
-**Sentence case.** Headings should be sentence case. For example, "Provision your cluster", not "Provision Your Cluster". Obvious exceptions include proper nouns, product names, and more.
+**Sentence case.** For example, "Provision your cluster", not "Provision Your Cluster". Obvious exceptions include proper nouns, product names, and more.
 
 **Avoid numbered headings.** Occasionally, it might make sense to add numbers to headings, but in general, avoid it. It's a common error to delete a section and forget to re-number the ones that follow; and even if you do remember, manual re-numbering is just a nuisance. (This is the main reason for auto-numbering ordered lists, too!)
 
@@ -42,7 +42,7 @@ Yugabyte's documentation voice should be informal and authoritative. Speak (or r
 
 ### Code blocks
 
-**Code language is required.** Every code block needs a language tag. Use `output` for all output, and append a language if you want to have source highlighting but still omit the Copy button (for example, `output.json`). The Hugo docs have a [all language names](https://gohugo.io/content-management/syntax-highlighting/#list-of-chroma-highlighting-languages) you can use for fenced code blocks.
+**Code language is required.** Every code block needs a language tag. Use `output` for all output, and append a language if you want to have source highlighting but still omit the Copy button (for example, `output.json`). The Hugo docs list [all language names](https://gohugo.io/content-management/syntax-highlighting/#list-of-chroma-highlighting-languages) you can use for fenced code blocks.
 
 **Prompts may be necessary.** In a given procedure, the first code block should show the prompt; subsequent blocks can omit it, provided it doesn't impact clarity. Don't omit prompts (particularly shell prompts) if a procedure takes input in more than one way, such as an operation in ysqlsh followed by one in bash.
 

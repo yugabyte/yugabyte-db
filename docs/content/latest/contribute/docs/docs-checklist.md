@@ -30,9 +30,9 @@ Regardless of the type of problem (such as errors, bad links, out-of-date conten
 
 Every YugabyteDB docs page has a Contribute button that lets you file an issue or make a suggestion, both of which help you to create a GitHub issue. You can also create an issue [directly from GitHub](https://github.com/yugabyte/yugabyte-db/issues/new/choose).
 
-The GitHub issue template starts your issue title with `[docs]` for faster scanning, and adds the `area/documentation` label. You can also add the section of the docs (for example, `[docs] [troubleshooting]`) for added context. If you're an internal users, please add your ticket directly to the Documentation project.
+The GitHub issue template starts your issue title with `[docs]` for faster scanning, and adds the `area/documentation` label. You can also add the section of the docs (for example, `[docs] [troubleshooting]`) for added context.
 
-**Internal users**, please add a member of the docs team as a reviewer, in addition to any other technical reviewers.
+**Internal users**, add a member of the docs team as a reviewer, in addition to any other technical reviewers, and add your ticket directly to the Documentation project.
 
 ## Run the docs site locally
 

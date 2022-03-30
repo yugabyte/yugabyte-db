@@ -27,7 +27,7 @@ The YugabyteDB docs are divided into several sections:
 
 ### YugabyteDB core docs
 
-The [core docs](/latest/) are landing pages with overview and getting-started information. Pages in this section should have a high-level overview of a feature, what's supported, limitations, and a link to any roadmap GitHub issues. These docs pages can have "Further reading" sections, and we should add links to blogs or Reference section docs as appropriate.
+The [core docs](/latest/) are landing pages with overview and getting-started information. Pages in this section should have a high-level overview of a feature, what's supported, limitations, and a link to any roadmap GitHub issues. These docs pages can have "Further reading" sections, where you can add links to blogs or Reference section docs as appropriate.
 
 #### Explore section
 
