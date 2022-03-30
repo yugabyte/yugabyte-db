@@ -640,18 +640,18 @@ class NodeChecker():
                 return e.fill_and_return_entry(errors, True)
 
         if not self.enable_tls_client:
-            remote_cmd = "{} -h {} {} -U yugabyte -c \"\conninfo\"".format(
+            remote_cmd = "{} -h {} {} -U yugabyte -c \"\\conninfo\"".format(
                 ysqlsh, host, port_args)
         else:
-            remote_cmd = "{} -h {} {} -U yugabyte {} -c \"\conninfo\"".format(
-                ysqlsh, host, port_args, '"sslmode=require"')
+            remote_cmd = "{} {} -h {} {} -U yugabyte -c \"\\conninfo\"".format(
+                'env sslmode="require"', ysqlsh, host, port_args,)
         # Passing dbname template1 explicitly as ysqlsh fails to connect if
         # yugabyte database is deleted. We assume template1 will always be there
         # in ysqlsh.
         remote_cmd = "{} --dbname=template1".format(remote_cmd)
 
         output = self._remote_check_output(remote_cmd).strip()
-        if not (output.startswith('You are connected to database')):
+        if 'You are connected to database' not in output:
             errors = [output]
         return e.fill_and_return_entry(errors, len(errors) > 0)
 
