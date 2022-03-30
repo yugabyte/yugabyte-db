@@ -94,10 +94,10 @@ export const BackupList = (props) => {
           <MenuItem onClick={() => onEditConfig(row)}>
             Edit Configuration
           </MenuItem>
-          <MenuItem onClick={(e)=>{
+          <MenuItem onClick={(e) => {
             e.stopPropagation();
             setShowAssociatedBackups(true);
-            setConfigData(configUUID);
+            setConfigData({ configUUID, configName });
           }}>
             Show associated backups
           </MenuItem>
@@ -132,7 +132,7 @@ export const BackupList = (props) => {
             onHide={hideDeleteStorageConfig}
             configName={configName}
             configUUID={configData}
-            onDelete={()=>{
+            onDelete={() => {
               deleteStorageConfig(configData)
             }}
           />
@@ -143,7 +143,7 @@ export const BackupList = (props) => {
               setIsUniverseVisible(true);
             }}
           >
-          Show Universes
+            Show Universes
           </MenuItem>
         </DropdownButton>
       </>
@@ -200,7 +200,7 @@ export const BackupList = (props) => {
             associatedUniverses={associatedUniverses}
             title={`Backup Configuration ${configData}`}
           />
-          <AssociatedBackups visible={showAssociatedBackups} onHide={()=>setShowAssociatedBackups(false)} storageConfigUUID={configData}/>
+          <AssociatedBackups visible={showAssociatedBackups} onHide={() => setShowAssociatedBackups(false)} storageConfigData={configData} />
         </>
       }
       noBackground
