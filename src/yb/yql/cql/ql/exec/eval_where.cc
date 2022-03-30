@@ -247,8 +247,9 @@ Result<uint64_t> Executor::WhereClauseToPB(QLReadRequestPB *req,
       if (col_op.desc()->is_primary()) {
         if (cond->op() == QL_OP_IN) {
           int in_size = cond->operands(1).value().list_value().elems_size();
-          if (in_size == 0 || // Can happen when binding an empty list as 'IN' argument.
-              max_rows_estimate <= std::numeric_limits<uint64_t>::max() / in_size) {
+          if (in_size == 0) {  // Fast path for returning no results when 'IN' list is empty.
+            return 0;
+          } else if (max_rows_estimate <= std::numeric_limits<uint64_t>::max() / in_size) {
             max_rows_estimate *= in_size;
           } else {
             max_rows_estimate = std::numeric_limits<uint64_t>::max();
@@ -273,7 +274,7 @@ Result<uint64_t> Executor::WhereClauseToPB(QLReadRequestPB *req,
     }
   }
 
-  // If not all primary keys have '=' or 'IN' conditions the max rows estimate is not reliable.
+  // If not all primary keys have '=' or 'IN' conditions, the max rows estimate is not reliable.
   if (!static_cast<const PTSelectStmt*>(tnode_context->tnode())->HasPrimaryKeysSet()) {
     return std::numeric_limits<uint64_t>::max();
   }

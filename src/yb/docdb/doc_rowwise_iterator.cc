@@ -399,6 +399,9 @@ class HybridScanChoices : public ScanChoices {
             // SELECT * FROM ... WHERE c1 IN ();
             // then nothing should pass the filter.
             // To enforce this, we create a range bound (kHighest, kLowest)
+            //
+            // As of D15647 we do not send empty options.
+            // This is kept for backward compatibility during rolling upgrades.
             range_cols_scan_options_lower_[idx
               - num_hash_cols].push_back(PrimitiveValue(ValueType::kHighest));
             range_cols_scan_options_upper_[idx
