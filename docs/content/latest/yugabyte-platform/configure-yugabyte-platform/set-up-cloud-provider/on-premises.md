@@ -542,3 +542,102 @@ If you plan to have Platform use **systemd services** to perform the monitoring 
 -->
 
 You have finished configuring your on-premises cloud provider. Proceed to [Configure the backup target](../../backup-target/), or [Create deployments](../../../create-deployments/).
+
+## Remove YugabyteDB components from the server
+
+As described in [Eliminate an unresponsive node](../../../create-deployments/remove-nodes/), when a node enters an undesirable state, you can delete such node, with Yugabyte Platform clearing up all the remaining artifacts except the `prometheus` and `yugabyte` user.
+
+You can manually remove Yugabyte components from existing server images. Before attempting this, you have to determine whether or not Yugaware Platform is operational. If it is, you either need to delete the universe or delete the nodes from the universe.
+
+In order to completely eliminate all traces of Yugabyte Platform and configuration, you should consider reinstalling the operating system image (or rolling back to a previous image, if available).  
+
+### Delete database server nodes
+
+You can remove YugabyteDB components and configuration from the database server nodes as follows: 
+
+- Login to the server node as the `yugabyte` user. 
+
+- Navigate to the `/home/yugabyte/bin` directory that contains a number of scripts including `yb-server-ctl.sh`. The arguments set in this script allow you to perform various functions on the YugabyteDB processes running on the node.
+
+- Execute the following command:
+
+  ```shell
+  ./bin/yb-server-ctl.sh clean-instance
+  ```
+
+  <br>This removes all YugabyteDB code and settings from the node, removing it from the Universe.
+
+{{< note title="Note" >}}
+
+If you cannot find the `bin` directory, it means Yugabyte Platform already cleared it during a successful deletion of the universe.
+
+{{< /note >}}
+
+You shoud also erase the data from the volume mounted under the `/data` subdirectory, unless this volume is to be permanently erased by the underlying storage subsystem when the volume is deleted.
+
+To erase this data, execute the following commands from the `centos` user on the node (or any user with access to sudo):
+
+```sh
+sudo umount /data
+```
+
+```sh
+sudo dd if=/dev/zero of=/dev/sdb bs=1M
+```
+
+The preceding commands assume the data volume is attached to the server as `/dev/sdb`.
+
+If there is a requirement to remove the `yugabyte` user, execute the following command:
+
+```sh
+sudo userdel -r yugabyte
+```
+
+If there is a requirement to remove the `prometheus` user, execute the following command:
+
+```sh
+sudo rm -rf /opt/prometheus 
+```
+
+You may now choose to reverse the system settings that you configured in [Provision nodes manually](#provision-nodes-manually).
+
+### Delete Yugabyte Platform from the server
+
+To remove Yugabyte Platform and Replicated components from the host server, execute the following commands as the `root` user (or prepend `sudo` to each command) :
+
+```sh
+systemctl stop replicated replicated-ui replicated-operator
+service replicated stop
+service replicated-ui stop
+service replicated-operator stop
+docker stop replicated-premkit
+docker stop replicated-statsd
+```
+
+```sh
+docker rm -f replicated replicated-ui replicated-operator \ replicated-premkit replicated-statsd retraced-api retraced-processor \ retraced-cron retraced-nsqd retraced-postgres
+```
+
+```sh
+docker images | grep "quay.io/replicated" | awk '{print $3}' | xargs sudo docker rmi -f
+```
+
+```sh
+docker images | grep "registry.replicated.com/library/retraced" | awk '{print $3}' | xargs sudo docker rmi -f
+```
+
+```sh
+yum remove -y replicated replicated-ui replicated-operator
+```
+
+```sh
+rm -rf /var/lib/replicated* /etc/replicated* /etc/init/replicated* \ /etc/default/replicated* /etc/systemd/system/replicated* \ /etc/sysconfig/replicated* \ /etc/systemd/system/multi-user.target.wants/replicated* \ /run/replicated*
+```
+
+```sh
+rpm -qa | grep -i docker
+yum remove docker-ce
+rpm -qa | grep -i docker
+yum remove docker-ce-cli
+```
+
