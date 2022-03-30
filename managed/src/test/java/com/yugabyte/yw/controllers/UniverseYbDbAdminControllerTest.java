@@ -107,7 +107,7 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
       String responseError) {
     Universe u = createUniverse(customer.getCustomerId());
     if (isCloudCustomer) {
-      customer.code = "cloud";
+      when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
     }
     customer.addUniverseUUID(u.universeUUID);
     customer.save();
@@ -180,7 +180,7 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
       String responseError) {
     Universe u = createUniverse(customer.getCustomerId());
     if (isCloudCustomer) {
-      customer.code = "cloud";
+      when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
     }
     customer.addUniverseUUID(u.universeUUID);
     customer.save();
