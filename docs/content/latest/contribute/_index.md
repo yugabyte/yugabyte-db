@@ -53,7 +53,7 @@ Issues are tagged with labels, as described in the following table.
 
 * If you're just starting out contributing to YugabyteDB, first off welcome and thanks! Look for issues labelled [good first issue](https://github.com/yugabyte/yugabyte-db/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22).
 
-* If you have already contributed and are familiar, then look for issues with the [help wanted](https://github.com/yugabyte/yugabyte-db/issues?q=is%3Aopen+is%3Aissue+label%3A%22help+wanted%22) label.
+* If you've already contributed and are familiar, then look for issues with the [help wanted](https://github.com/yugabyte/yugabyte-db/issues?q=is%3Aopen+is%3Aissue+label%3A%22help+wanted%22) label.
 
 {{< note title="Note" >}}
 

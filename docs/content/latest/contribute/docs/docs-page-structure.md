@@ -45,6 +45,8 @@ menu:
     identifier: page-identifier
     parent: parent-page-identifier
     weight: number-to-decide-display-order
+isTocNested: true
+showAsideToc: true
 ---
 ```
 
@@ -56,6 +58,7 @@ menu:
 | `headerTitle`   | Title text to appear as the page title                         |
 | `linkTitle`     | Title text to display in the navigation bar                    |
 | `description`   | Description text to display in search engine results           |
+| `headcontent`   | Subtitle text below the headerTitle (Index pages only)           |
 
 ### Optional frontmatter attributes
 
@@ -63,7 +66,7 @@ menu:
 | :-------------: | :-----: | --------------------- |
 | `image`         | -       | Optional icon that is displayed next to the title |
 | `isTocNested`   | `false` | Should sub-sections be displayed in the TOC on the right |
-| `showAsideToc`  | `false` | Should the TOC on the right be enabled |
+| `showAsideToc`  | `false` | Should the TOC on the right be enabled. In most cases, set to true. |
 | `hidePagination`| `false` | Should the automatic navigation links be displayed at the bottom of the page |
 
 ## Types of pages
