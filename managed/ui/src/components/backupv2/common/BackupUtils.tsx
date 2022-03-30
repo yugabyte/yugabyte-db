@@ -12,7 +12,7 @@ import moment from 'moment';
 import { useSelector } from 'react-redux';
 import { keyBy, mapValues } from 'lodash';
 import { IUniverse } from './IBackup';
-import { Backup_States } from '..';
+import { Backup_States } from '../common/IBackup';
 import './BackupUtils.scss';
 
 /**
