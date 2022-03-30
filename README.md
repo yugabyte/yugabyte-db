@@ -168,7 +168,10 @@ ALTER SYSTEM SET shared_preload_libraries = 'pg_stat_monitor';
 >
 >:warning: For PostgreSQL 13 and earlier versions,`pg_stat_monitor` **must** follow `pg_stat_statements`. For example, `ALTER SYSTEM SET shared_preload_libraries = 'foo, pg_stat_statements, pg_stat_monitor'`.
 >
->In PostgreSQL 14, modules can be specified in any order.
+>In PostgreSQL 14, you can specify `pg_stat_statements` and `pg_stat_monitor` in any order. However, due to the extensions' architecture, if both `pg_stat_statements` and `pg_stat_monitor` are loaded, only the last listed extension captures utility queries, CREATE TABLE, Analyze, etc. The first listed extension captures  most common queries like SELECT, UPDATE, INSERT, but does not capture utility queries.
+>
+>Thus, to collect the whole statistics with pg_stat_monitor, we recommend to specify the extensions as follows: ALTER SYSTEM SET shared_preload_libraries = 'pg_stat_statements, pg_stat_monitor'.
+
 
 Start or restart the `postgresql` instance to apply the changes.
 
