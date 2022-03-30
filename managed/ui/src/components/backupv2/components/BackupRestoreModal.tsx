@@ -185,9 +185,7 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
           {isFetchingTables && (
             <Row>
               <Col lg={12} className="keyspace-loading">
-                <Alert bsStyle="info">
-                  {SPINNER_ICON} Keyspaces are being fetched. Please wait
-                </Alert>
+                <Alert bsStyle="info">{SPINNER_ICON} Please wait. Doing pre-flight check</Alert>
               </Col>
             </Row>
           )}
