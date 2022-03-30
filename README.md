@@ -39,7 +39,9 @@ The `pg_stat_monitor` is a **_Query Performance Monitoring_** tool for PostgreSQ
 
 `pg_stat_monitor` provides improved insights that allow database users to understand query origins, execution, planning statistics and details, query information, and metadata. This significantly improves observability, enabling users to debug and tune query performance. `pg_stat_monitor` is developed on the basis of `pg_stat_statements` as its more advanced replacement.
 
-While `pg_stat_statements` provides ever-increasing metrics, `pg_stat_monitor` aggregates the collected data, saving user efforts for doing it themselves. `pg_stat_monitor`  stores statistics in configurable time-based units – buckets. This allows focusing on statistics generated for shorter time periods and makes query timing information such as max/min/mean time more accurate.
+While `pg_stat_statements` provides ever-increasing metrics, `pg_stat_monitor` aggregates the collected data, saving user efforts for doing it themselves. `pg_stat_monitor`  stores statistics in configurable time-based units – buckets. This allows focusing on statistics generated for shorter time periods and makes query timing information such as max/min/mean time more accurate. 
+
+>**NOTE**: Because of these differences in data processing, memory blocks and WAL (Write Ahead Logs) related statistics data are displayed inconsistently when both `pg_stat_monitor` and `pg_stat_statements` are used together. 
 
 To learn about other features, available in `pg_stat_monitor`, see the [Features](#pg_stat_monitor-features) section and the [User Guide](https://github.com/percona/pg_stat_monitor/blob/master/docs/USER_GUIDE.md).
 
