@@ -325,13 +325,15 @@ Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
   auto table_info = std::make_shared<tablet::TableInfo>(
       kSysCatalogTableId, "", table_name(), TableType::YQL_TABLE_TYPE, schema, IndexMap(),
       boost::none /* index_info */, 0 /* schema_version */, partition_schema);
+  string data_root_dir = fs_manager->GetDataRootDirs()[0];
+  fs_manager->SetTabletPathByDataPath(kSysCatalogTabletId, data_root_dir);
   auto metadata = VERIFY_RESULT(tablet::RaftGroupMetadata::CreateNew(tablet::RaftGroupMetadataData {
     .fs_manager = fs_manager,
     .table_info = table_info,
     .raft_group_id = kSysCatalogTabletId,
     .partition = partitions[0],
     .tablet_data_state = tablet::TABLET_DATA_READY,
-  }));
+  }, data_root_dir));
 
   RaftConfigPB config;
   RETURN_NOT_OK_PREPEND(SetupConfig(master_->opts(), &config),

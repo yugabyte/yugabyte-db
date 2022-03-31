@@ -282,23 +282,24 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateNew(
     const std::string& wal_root_dir) {
   auto* fs_manager = data.fs_manager;
   // Verify that no existing Raft group exists with the same ID.
-  if (fs_manager->env()->FileExists(fs_manager->GetRaftGroupMetadataPath(data.raft_group_id))) {
+  if (fs_manager->LookupTablet(data.raft_group_id)) {
     return STATUS(AlreadyPresent, "Raft group already exists", data.raft_group_id);
   }
 
   auto wal_top_dir = wal_root_dir;
   auto data_top_dir = data_root_dir;
-  // Use the original randomized logic if the indices are not explicitly passed in
+  // Use first dirs if the indices are not explicitly passed in.
+  // Master don't pass dirs for SysCatalog.
   if (data_root_dir.empty()) {
     auto data_root_dirs = fs_manager->GetDataRootDirs();
     CHECK(!data_root_dirs.empty()) << "No data root directories found";
-    data_top_dir = RandomElement(data_root_dirs);
+    data_top_dir = data_root_dirs[0];
   }
 
   if (wal_root_dir.empty()) {
     auto wal_root_dirs = fs_manager->GetWalRootDirs();
     CHECK(!wal_root_dirs.empty()) << "No wal root directories found";
-    wal_top_dir = RandomElement(wal_root_dirs);
+    wal_top_dir = wal_root_dirs[0];
   }
 
   const string table_dir_name = Substitute("table-$0", data.table_info->table_id);
@@ -319,22 +320,23 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::Load(
   return ret;
 }
 
-Result<RaftGroupMetadataPtr> RaftGroupMetadata::LoadOrCreate(const RaftGroupMetadataData& data) {
-  auto metadata = Load(data.fs_manager, data.raft_group_id);
-  if (metadata.ok()) {
-    if (!(**metadata).schema()->Equals(data.table_info->schema())) {
-      return STATUS_FORMAT(
-          Corruption, "Schema on disk ($0) does not match expected schema ($1)",
-          *(*metadata)->schema(), data.table_info->schema());
+Result<RaftGroupMetadataPtr> RaftGroupMetadata::TEST_LoadOrCreate(
+    const RaftGroupMetadataData& data) {
+  if (data.fs_manager->LookupTablet(data.raft_group_id)) {
+    auto metadata = Load(data.fs_manager, data.raft_group_id);
+    if (metadata.ok()) {
+      if (!(**metadata).schema()->Equals(data.table_info->schema())) {
+        return STATUS_FORMAT(
+            Corruption, "Schema on disk ($0) does not match expected schema ($1)",
+            *(*metadata)->schema(), data.table_info->schema());
+      }
+      return *metadata;
     }
-    return *metadata;
+    return metadata.status();
   }
-
-  if (metadata.status().IsNotFound()) {
-    return CreateNew(data);
-  }
-
-  return metadata.status();
+  string data_root_dir = data.fs_manager->GetDataRootDirs()[0];
+  data.fs_manager->SetTabletPathByDataPath(data.raft_group_id, data_root_dir);
+  return CreateNew(data, data_root_dir);
 }
 
 template <class TablesMap>
@@ -473,7 +475,7 @@ Status RaftGroupMetadata::DeleteSuperBlock() {
                    tablet_data_state_));
   }
 
-  string path = fs_manager_->GetRaftGroupMetadataPath(raft_group_id_);
+  string path = VERIFY_RESULT(fs_manager_->GetRaftGroupMetadataPath(raft_group_id_));
   RETURN_NOT_OK_PREPEND(fs_manager_->env()->DeleteFile(path),
                         "Unable to delete superblock for Raft group " + raft_group_id_);
   return Status::OK();
@@ -621,7 +623,7 @@ Status RaftGroupMetadata::ReplaceSuperBlock(const RaftGroupReplicaSuperBlockPB &
 Status RaftGroupMetadata::SaveToDiskUnlocked(const RaftGroupReplicaSuperBlockPB &pb) {
   flush_lock_.AssertAcquired();
 
-  string path = fs_manager_->GetRaftGroupMetadataPath(raft_group_id_);
+  string path = VERIFY_RESULT(fs_manager_->GetRaftGroupMetadataPath(raft_group_id_));
   RETURN_NOT_OK_PREPEND(pb_util::WritePBContainerToPath(
                             fs_manager_->env(), path, pb,
                             pb_util::OVERWRITE, pb_util::SYNC),
@@ -631,7 +633,7 @@ Status RaftGroupMetadata::SaveToDiskUnlocked(const RaftGroupReplicaSuperBlockPB 
 }
 
 Status RaftGroupMetadata::ReadSuperBlockFromDisk(RaftGroupReplicaSuperBlockPB* superblock) const {
-  string path = fs_manager_->GetRaftGroupMetadataPath(raft_group_id_);
+  string path = VERIFY_RESULT(fs_manager_->GetRaftGroupMetadataPath(raft_group_id_));
   RETURN_NOT_OK_PREPEND(
       pb_util::ReadPBContainerFromPath(fs_manager_->env(), path, superblock),
       Substitute("Could not load Raft group metadata from $0", path));
@@ -1029,7 +1031,8 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSubtabletMetadata(
     const NO_THREAD_SAFETY_ANALYSIS {
   RaftGroupReplicaSuperBlockPB superblock;
   ToSuperBlock(&superblock);
-
+  fs_manager_->SetTabletPathByDataPath(raft_group_id,
+                                         DirName(DirName(DirName(kv_store_.rocksdb_dir))));
   RaftGroupMetadataPtr metadata(new RaftGroupMetadata(fs_manager_, raft_group_id_));
   RETURN_NOT_OK(metadata->LoadFromSuperBlock(superblock, /* local_superblock = */ true));
   metadata->raft_group_id_ = raft_group_id;
