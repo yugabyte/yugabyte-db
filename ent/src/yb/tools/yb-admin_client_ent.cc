@@ -58,6 +58,7 @@
 #include "yb/util/timestamp.h"
 #include "yb/util/format.h"
 #include "yb/util/status_format.h"
+#include "yb/util/test_util.h"
 
 DEFINE_test_flag(int32, metadata_file_format_version, 0,
                  "Used in 'export_snapshot' metadata file format (0 means using latest format).");
@@ -1333,51 +1334,24 @@ Status ClusterAdminClient::SetupUniverseReplication(
   rpc.set_timeout(timeout_);
   auto setup_result_status = master_replication_proxy_->SetupUniverseReplication(req, &resp, &rpc);
 
-  // Clean up config files if setup fails.
-  if (!setup_result_status.ok()) {
-    CleanupEnvironmentOnSetupUniverseReplicationFailure(producer_uuid, setup_result_status);
-    return setup_result_status;
-  }
+  setup_result_status = WaitForSetupUniverseReplicationToFinish(producer_uuid);
 
   if (resp.has_error()) {
     cout << "Error setting up universe replication: " << resp.error().status().message() << endl;
     Status status_from_error = StatusFromPB(resp.error().status());
-    CleanupEnvironmentOnSetupUniverseReplicationFailure(producer_uuid, status_from_error);
 
     return status_from_error;
   }
 
-  setup_result_status = WaitForSetupUniverseReplicationToFinish(producer_uuid);
-
-  // Clean up config files if setup fails to complete.
+    // Clean up config files if setup fails to complete.
   if (!setup_result_status.ok()) {
     cout << "Error waiting for universe replication setup to complete: "
          << setup_result_status.message().ToBuffer() << endl;
-    CleanupEnvironmentOnSetupUniverseReplicationFailure(producer_uuid, setup_result_status);
     return setup_result_status;
   }
 
   cout << "Replication setup successfully" << endl;
   return Status::OK();
-}
-
-// Helper function for deleting the universe if SetupUniverseReplicaion fails.
-void ClusterAdminClient::CleanupEnvironmentOnSetupUniverseReplicationFailure(
-  const std::string& producer_uuid, const Status& failure_status) {
-  // We don't need to delete the universe if the call to SetupUniverseReplication
-  // failed due to one of the sanity checks.
-  if (failure_status.IsInvalidArgument()) {
-    return;
-  }
-
-  cout << "Replication setup failed, cleaning up environment" << endl;
-
-  Status delete_result_status = DeleteUniverseReplication(producer_uuid, false);
-  if (!delete_result_status.ok()) {
-    cout << "Could not clean up environment: " << delete_result_status.message() << endl;
-  } else {
-    cout << "Successfully cleaned up environment" << endl;
-  }
 }
 
 Status ClusterAdminClient::DeleteUniverseReplication(const std::string& producer_id,

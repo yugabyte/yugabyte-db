@@ -1907,5 +1907,54 @@ TEST_P(TwoDCTest, TestAlterWhenProducerIsInaccessible) {
   ASSERT_TRUE(alter_resp.has_error());
 }
 
+TEST_P(TwoDCTest, TestFailedUniverseDeletionOnRestart) {
+  auto tables = ASSERT_RESULT(SetUpWithParams({8, 4}, {6, 6}, 3));
+
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  // tables contains both producer and consumer universe tables (alternately).
+  // Pick out just the producer tables from the list.
+  producer_tables.reserve(tables.size() / 2);
+  for (size_t i = 0; i < tables.size(); i += 2) {
+    producer_tables.push_back(tables[i]);
+  }
+
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+      &consumer_client()->proxy_cache(),
+      ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+
+  // manually call SetupUniverseReplication to ensure it fails
+  master::SetupUniverseReplicationRequestPB req;
+  master::SetupUniverseReplicationResponsePB resp;
+  string master_addr = producer_cluster()->GetMasterAddresses();
+  auto hp_vec = ASSERT_RESULT(HostPort::ParseStrings(master_addr, 0));
+  HostPortsToPBs(hp_vec, req.mutable_producer_master_addresses());
+  req.set_producer_id(kUniverseId);
+  req.mutable_producer_table_ids()->Reserve(1);
+  req.add_producer_table_ids("Fake Table Id");
+
+  rpc::RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+  ASSERT_OK(master_proxy->SetupUniverseReplication(req, &resp, &rpc));
+  // Sleep to allow the universe to be marked as failed
+  std::this_thread::sleep_for(2s);
+
+  master::GetUniverseReplicationRequestPB new_req;
+  new_req.set_producer_id(kUniverseId);
+  master::GetUniverseReplicationResponsePB new_resp;
+  rpc.Reset();
+  ASSERT_OK(master_proxy->GetUniverseReplication(new_req, &new_resp, &rpc));
+  ASSERT_TRUE(new_resp.entry().state() == master::SysUniverseReplicationEntryPB::FAILED);
+
+  // Restart the ENTIRE Consumer cluster.
+  ASSERT_OK(consumer_cluster()->RestartSync());
+
+  // Should delete on restart
+  ASSERT_OK(WaitForSetupUniverseReplicationCleanUp(kUniverseId));
+  rpc.Reset();
+  Status s = master_proxy->GetUniverseReplication(new_req, &new_resp, &rpc);
+  ASSERT_OK(s);
+  ASSERT_TRUE(new_resp.has_error());
+}
+
 } // namespace enterprise
 } // namespace yb

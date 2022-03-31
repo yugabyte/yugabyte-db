@@ -339,6 +339,11 @@ class UniverseReplicationLoader : public Visitor<PersistentUniverseReplicationIn
       // Add universe replication info to the universe replication map.
       catalog_manager_->universe_replication_map_[ri->id()] = ri;
 
+      // Add any failed universes to be cleared
+      if (l->pb.state() == SysUniverseReplicationEntryPB::FAILED) {
+        catalog_manager_->universes_to_clear_.push_back(ri->id());
+      }
+
       l.Commit();
     }
 
@@ -4741,6 +4746,13 @@ Status CatalogManager::IsSetupUniverseReplicationDone(
       LOG(WARNING) << "Did not find setup universe replication error status.";
       StatusToPB(STATUS(InternalError, "unknown error"), resp->mutable_replication_error());
     }
+
+    // Add universe to universes_to_clear_
+    {
+      SharedLock lock(mutex_);
+      universes_to_clear_.push_back(universe->id());
+    }
+
     return Status::OK();
   }
 
@@ -4915,6 +4927,38 @@ Result<size_t> CatalogManager::GetNumLiveTServersForActiveCluster() {
   auto uuid = VERIFY_RESULT(placement_uuid());
   master_->ts_manager()->GetAllLiveDescriptorsInCluster(&ts_descs, uuid, blacklist);
   return ts_descs.size();
+}
+
+Status CatalogManager::ClearFailedUniverse() {
+  // Delete a single failed universe from universes_to_clear_.
+  std::string universe_id;
+  {
+    SharedLock lock(mutex_);
+
+    if (universes_to_clear_.empty()) {
+      return Status::OK();
+    }
+    // Get the first universe.  Only try once to avoid failure loops.
+    universe_id = universes_to_clear_.front();
+    universes_to_clear_.pop_front();
+  }
+
+  GetUniverseReplicationRequestPB universe_req;
+  GetUniverseReplicationResponsePB universe_resp;
+  universe_req.set_producer_id(universe_id);
+
+  RETURN_NOT_OK(GetUniverseReplication(&universe_req, &universe_resp, /* RpcContext */ nullptr));
+  if (universe_resp.entry().state() != SysUniverseReplicationEntryPB::FAILED) {
+    return STATUS(IllegalState, "Universe is not Failed, and cannot be cleared.");
+  }
+
+  DeleteUniverseReplicationRequestPB req;
+  DeleteUniverseReplicationResponsePB resp;
+  req.set_producer_id(universe_id);
+
+  RETURN_NOT_OK(DeleteUniverseReplication(&req, &resp, /* RpcContext */ nullptr));
+
+  return Status::OK();
 }
 
 }  // namespace enterprise
