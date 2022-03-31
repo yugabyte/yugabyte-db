@@ -469,6 +469,9 @@ DEFINE_test_flag(bool, sequential_colocation_ids, false,
                  "rather than at random. This is especially useful for making pg_regress "
                  "tests output consistent and predictable.");
 
+DEFINE_bool(disable_truncate_table, false, "When enabled, truncate table will be disallowed");
+TAG_FLAG(disable_truncate_table, runtime);
+
 namespace yb {
 namespace master {
 
@@ -4724,6 +4727,14 @@ Status CatalogManager::TruncateTable(const TableId& table_id,
   // Truncate on a colocated table should not hit master because it should be handled by a write
   // DML that creates a table-level tombstone.
   LOG_IF(WARNING, table->IsColocatedUserTable()) << "cannot truncate a colocated table on master";
+
+  if (FLAGS_disable_truncate_table) {
+    return STATUS(
+        NotSupported,
+        "TRUNCATE table is disallowed",
+        table_id,
+        MasterError(MasterErrorPB::INVALID_REQUEST));
+  }
 
   if (!FLAGS_enable_delete_truncate_xcluster_replicated_table && IsCdcEnabled(*table)) {
     return STATUS(NotSupported,

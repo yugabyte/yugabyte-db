@@ -297,9 +297,16 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
               singleValue: (styles) => ({ ...styles, ...CALDENDAR_ICON() }),
               menu: (styles) => ({
                 ...styles,
-                zIndex: 10
+                zIndex: 10,
+                height: '325px'
+              }),
+              menuList: (base) => ({
+                ...base,
+                minHeight: '325px'
               })
             }}
+            defaultValue={TIME_RANGE_OPTIONS.find((t) => t.label === 'All time')}
+            maxMenuHeight={300}
           ></Select>
           {allowTakingBackup && (
             <YBButton
@@ -345,7 +352,9 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
               return true;
             }
           }}
-          trClassName="table-row"
+          trClassName={(row) =>
+            `table-row ${showDetails?.backupUUID === row.backupUUID ? 'selected-row' : ''}`
+          }
           tableHeaderClass="backup-list-header"
           pagination={true}
           remote={(remoteObj: RemoteObjSpec) => {
@@ -364,6 +373,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
               row.universeName ? row.universeName : ENTITY_NOT_AVAILABLE
             }
             width="20%"
+            hidden={allowTakingBackup}
           >
             Source Universe Name
           </TableHeaderColumn>
@@ -410,12 +420,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
           <TableHeaderColumn
             dataField="state"
             dataFormat={(state) => {
-              return (
-                <StatusBadge
-                  statusType={state}
-                  customLabel={state === Backup_States.STOPPED ? 'Cancelled' : ''}
-                />
-              );
+              return <StatusBadge statusType={state} />;
             }}
             width="15%"
           >

@@ -27,6 +27,12 @@ const colourStyles = {
     padding: hasValue ? '5px 0px 5px 8px' : '0',
     width: 'auto'
   }),
+  singleValue: (styles) => ({
+    ...styles,
+    backgroundColor: '#E5E5E9',
+    borderRadius: '6px',
+    padding: '5px 8px'
+  }),
   multiValue: (styles) => ({
     ...styles,
     backgroundColor: '#E5E5E9',

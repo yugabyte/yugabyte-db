@@ -17,7 +17,7 @@ After [creating a free cluster](../qs-add/), the easiest way to connect to it is
 
 Using Cloud Shell, you can connect to your Yugabyte Cloud cluster from your browser, and interact with it using distributed SQL.
 
-The shell has a 15 minute connection limit. If your session expires, close your browser tab and connect again.
+The shell has a one hour connection limit. If your session is idle for more than 5 minutes, it may disconnect. If your session expires, close your browser tab and connect again.
 
 ## Connect to your cluster using Cloud Shell
 
@@ -34,7 +34,7 @@ To connect to your cluster, do the following:
     Cloud Shell opens in a separate browser window. Cloud Shell can take up to 30 seconds to be ready.
 
     ```output
-    Password for user admin:
+    Enter the password for your database user:
     ```
 
 1. Enter the password for the admin user credentials that you saved when you created the cluster.\
@@ -46,7 +46,7 @@ To connect to your cluster, do the following:
     SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
     Type "help" for help.
 
-    yugabyte=#
+    yugabyte=>
     ```
 
 The command line interface (CLI) being used is called ysqlsh. ysqlsh is the CLI for interacting with YugabyteDB using the PostgreSQL-compatible YSQL API.
@@ -63,4 +63,4 @@ For information on other ways to connect to your cluster, refer to [Connect to c
 
 ## Next step
 
-[Create a database and load data](../qs-data/)
+[Explore distributed SQL](../qs-explore)

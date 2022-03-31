@@ -10,6 +10,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
@@ -484,5 +485,47 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
         callstack[0],
         containsString("com.yugabyte.yw.commissioner.TaskExecutor.createRunnableTask"));
     assertThat(callstack.length, lessThanOrEqualTo(16));
+  }
+
+  @Test
+  public void testRunnableTaskWaitFor() throws InterruptedException {
+    ITask task = mockTaskCommon(true);
+    ITask subTask = mockTaskCommon(true);
+    CountDownLatch latch = new CountDownLatch(1);
+    AtomicReference<UUID> taskUUIDRef = new AtomicReference<>();
+
+    doAnswer(
+            inv -> {
+              latch.countDown();
+              while (true) {
+                taskExecutor.getRunnableTask(taskUUIDRef.get()).waitFor(Duration.ofMillis(200));
+              }
+            })
+        .when(subTask)
+        .run();
+
+    doAnswer(
+            inv -> {
+              RunnableTask runnable = taskExecutor.getRunnableTask(taskUUIDRef.get());
+              // Invoke subTask from the parent task.
+              SubTaskGroup subTasksGroup = taskExecutor.createSubTaskGroup("test");
+              subTasksGroup.addSubTask(subTask);
+              runnable.addSubTaskGroup(subTasksGroup);
+              runnable.runSubTasks();
+              return null;
+            })
+        .when(task)
+        .run();
+
+    RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
+    UUID taskUUID = taskExecutor.submit(taskRunner, Executors.newFixedThreadPool(1));
+    taskUUIDRef.set(taskUUID);
+    latch.await();
+    taskExecutor.abort(taskUUID);
+    TaskInfo taskInfo = waitForTask(taskUUID);
+    verify(subTask).setUserTaskUUID(eq(taskUUID));
+    assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
+    JsonNode errNode = taskInfo.getSubTasks().get(0).getTaskDetails().get("errorString");
+    assertThat(errNode.toString(), containsString("is aborted while waiting"));
   }
 }

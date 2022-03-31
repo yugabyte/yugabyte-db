@@ -8,6 +8,7 @@
  */
 
 import React, { FC } from 'react';
+import { BACKUP_LABEL_MAP } from '../../backupv2';
 import './StatusBadge.scss';
 
 export enum Badge_Types {
@@ -50,9 +51,10 @@ const getIcon = (statusType: Badge_Types) => {
 };
 
 export const StatusBadge: FC<StatusBadgeProps> = ({ statusType, customLabel, ...others }) => {
+  const label = customLabel || BACKUP_LABEL_MAP[statusType];
   return (
     <span {...others} className={`status-badge ${statusType}`}>
-      {customLabel || statusType} 
+      {label} 
       {getIcon(statusType)}
     </span>
   );

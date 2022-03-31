@@ -67,6 +67,11 @@ public class AlertDefinition extends Model {
   @JsonIgnore
   private boolean configWritten = false;
 
+  @NotNull
+  @Column(nullable = false)
+  @JsonIgnore
+  private boolean active = true;
+
   @Version
   @Column(nullable = false)
   private int version;
