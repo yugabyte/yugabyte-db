@@ -175,6 +175,8 @@ Status Master::Init() {
 
   RETURN_NOT_OK(RpcAndWebServerBase::Init());
 
+  RETURN_NOT_OK(fs_manager_->ListTabletIds());
+
   RETURN_NOT_OK(path_handlers_->Register(web_server_.get()));
 
   auto bound_addresses = rpc_server()->GetBoundAddresses();

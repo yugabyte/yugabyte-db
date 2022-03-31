@@ -96,7 +96,7 @@ Status TabletServer::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
   RETURN_NOT_OK(super::SetupMessengerBuilder(builder));
   if (!FLAGS_cert_node_filename.empty()) {
     secure_context_ = VERIFY_RESULT(server::SetupSecureContext(
-        server::DefaultRootDir(*fs_manager_),
+        fs_manager_->GetDefaultRootDir(),
         FLAGS_cert_node_filename,
         server::SecureContextType::kInternal,
         builder));

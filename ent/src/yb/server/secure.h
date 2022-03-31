@@ -36,8 +36,6 @@ namespace server {
 
 YB_DEFINE_ENUM(SecureContextType, (kInternal)(kExternal));
 
-std::string DefaultRootDir(const FsManager& fs_manager);
-
 std::string DefaultCertsDir(const FsManager& fs_manager);
 
 // Creates secure context and sets up messenger builder to use it.

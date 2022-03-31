@@ -345,6 +345,7 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
         IndexMap(table.indexes()),
         table.has_index_info() ? boost::optional<IndexInfo>(table.index_info()) : boost::none,
         table.schema_version(), partition_schema);
+    fs_manager().SetTabletPathByDataPath(tablet_id_, data_root_dir);
     auto create_result = RaftGroupMetadata::CreateNew(tablet::RaftGroupMetadataData {
         .fs_manager = &fs_manager(),
         .table_info = table_info,
@@ -433,7 +434,7 @@ Status RemoteBootstrapClient::Finish() {
   RETURN_NOT_OK(meta_->ReplaceSuperBlock(new_superblock_));
 
   if (FLAGS_remote_bootstrap_save_downloaded_metadata) {
-    string meta_path = fs_manager().GetRaftGroupMetadataPath(tablet_id_);
+    string meta_path = VERIFY_RESULT(fs_manager().GetRaftGroupMetadataPath(tablet_id_));
     string meta_copy_path = Substitute("$0.copy.$1.tmp", meta_path, start_time_micros_);
     RETURN_NOT_OK_PREPEND(CopyFile(Env::Default(), meta_path, meta_copy_path,
                                    WritableFileOptions()),
@@ -731,7 +732,7 @@ Status RemoteBootstrapClient::WriteConsensusMetadata() {
   RETURN_NOT_OK(cmeta_->Flush());
 
   if (FLAGS_remote_bootstrap_save_downloaded_metadata) {
-    string cmeta_path = fs_manager().GetConsensusMetadataPath(tablet_id_);
+    string cmeta_path = VERIFY_RESULT(fs_manager().GetConsensusMetadataPath(tablet_id_));
     string cmeta_copy_path = Substitute("$0.copy.$1.tmp", cmeta_path, start_time_micros_);
     RETURN_NOT_OK_PREPEND(CopyFile(Env::Default(), cmeta_path, cmeta_copy_path,
                                    WritableFileOptions()),
