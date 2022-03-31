@@ -1509,7 +1509,7 @@ yb_servers(PG_FUNCTION_ARGS)
     MemoryContextSwitchTo(oldcontext);
   }
   funcctx = SRF_PERCALL_SETUP();
-  while (funcctx->call_cntr < funcctx->max_calls)
+  if (funcctx->call_cntr < funcctx->max_calls)
   {
     Datum		values[8];
     bool		nulls[8];
@@ -1531,7 +1531,8 @@ yb_servers(PG_FUNCTION_ARGS)
     tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
     SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
   }
-  SRF_RETURN_DONE(funcctx);
+  else
+    SRF_RETURN_DONE(funcctx);
 }
 
 bool YBIsSupportedLibcLocale(const char *localebuf) {
