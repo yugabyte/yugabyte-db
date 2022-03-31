@@ -22,6 +22,7 @@
 #include "yb/integration-tests/external_mini_cluster_ent.h"
 
 #include "yb/master/master_backup.proxy.h"
+#include "yb/master/master_replication.proxy.h"
 
 #include "yb/rpc/secure_stream.h"
 
@@ -40,6 +41,7 @@
 #include "yb/util/tsan_util.h"
 
 DECLARE_string(certs_dir);
+DECLARE_int32(catalog_manager_bg_task_wait_ms);
 
 namespace yb {
 namespace tools {
@@ -58,6 +60,7 @@ using master::ListSnapshotsResponsePB;
 using master::ListSnapshotRestorationsRequestPB;
 using master::ListSnapshotRestorationsResponsePB;
 using master::MasterBackupProxy;
+using master::MasterReplicationProxy;
 using master::SysCDCStreamEntryPB;
 using master::SysSnapshotEntryPB;
 using rpc::RpcController;
@@ -670,6 +673,22 @@ class XClusterAdminCliTest : public AdminCliTest {
     AdminCliTest::DoTearDown();
   }
 
+  CHECKED_STATUS WaitForSetupUniverseReplicationCleanUp(string producer_uuid) {
+    auto proxy = std::make_shared<master::MasterReplicationProxy>(
+        &client_->proxy_cache(),
+        VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
+
+    master::GetUniverseReplicationRequestPB req;
+    master::GetUniverseReplicationResponsePB resp;
+    return WaitFor([proxy, &req, &resp, producer_uuid]() -> Result<bool> {
+      req.set_producer_id(producer_uuid);
+      RpcController rpc;
+      Status s = proxy->GetUniverseReplication(req, &resp, &rpc);
+
+      return resp.has_error();
+    }, 20s, "Waiting for universe to delete");
+  }
+
  protected:
   Status CheckTableIsBeingReplicated(
     const std::vector<TableId>& tables,
@@ -838,8 +857,8 @@ TEST_F(XClusterAdminCliTest, TestSetupUniverseReplicationFailsWithInvalidSchema)
                                                   producer_cluster_->GetMasterAddresses(),
                                                   producer_cluster_table->id() + "-BAD"));
 
-  // Verify that error message has relevant information.
-  ASSERT_TRUE(error_msg.find(producer_cluster_table->id() + "-BAD not found") != string::npos);
+  // Wait for the universe to be cleaned up
+  ASSERT_OK(WaitForSetupUniverseReplicationCleanUp(kProducerClusterId));
 
   // Now try with the correct table id.
   // Note that SetupUniverseReplication should call DeleteUniverseReplication to
@@ -895,6 +914,9 @@ TEST_F(XClusterAdminCliTest, TestSetupUniverseReplicationCleanupOnFailure) {
                                                   producer_cluster_table->id(),
                                                   "fake-bootstrap-id"));
 
+  // Wait for the universe to be cleaned up
+  ASSERT_OK(WaitForSetupUniverseReplicationCleanUp(kProducerClusterId));
+
   // Try to setup universe replication with fake producer master address.
   ASSERT_NOK(RunAdminToolCommandAndGetErrorOutput(&error_msg,
                                                   "setup_universe_replication",
@@ -902,12 +924,18 @@ TEST_F(XClusterAdminCliTest, TestSetupUniverseReplicationCleanupOnFailure) {
                                                   "fake-producer-address",
                                                   producer_cluster_table->id()));
 
-  // Try to setup universe replication with fake producer master address.
+  // Wait for the universe to be cleaned up
+  ASSERT_OK(WaitForSetupUniverseReplicationCleanUp(kProducerClusterId));
+
+  // Try to setup universe replication with fake producer table id.
   ASSERT_NOK(RunAdminToolCommandAndGetErrorOutput(&error_msg,
                                                   "setup_universe_replication",
                                                   kProducerClusterId,
                                                   producer_cluster_->GetMasterAddresses(),
                                                   "fake-producer-table-id"));
+
+  // Wait for the universe to be cleaned up
+  ASSERT_OK(WaitForSetupUniverseReplicationCleanUp(kProducerClusterId));
 
   // Test when producer and local table have different schema.
   client::TableHandle producer_cluster_table2;
@@ -924,11 +952,15 @@ TEST_F(XClusterAdminCliTest, TestSetupUniverseReplicationCleanupOnFailure) {
                                      client_.get(),
                                      &consumer_table2,
                                      kTableName2);
+
   ASSERT_NOK(RunAdminToolCommandAndGetErrorOutput(&error_msg,
                                                   "setup_universe_replication",
                                                   kProducerClusterId,
                                                   producer_cluster_->GetMasterAddresses(),
                                                   producer_cluster_table2->id()));
+
+  // Wait for the universe to be cleaned up
+  ASSERT_OK(WaitForSetupUniverseReplicationCleanUp(kProducerClusterId));
 
   // Verify that the environment is cleaned up correctly after failure.
   // A valid call to SetupUniverseReplication after the failure should succeed
@@ -1259,6 +1291,35 @@ TEST_F(AdminCliTest, TestDeleteCDCStreamWithCreateCDCStream) {
 
   // Should be deleted.
   ASSERT_OK(RunAdminToolCommand(cluster_.get(), "delete_cdc_stream", stream_id));
+}
+
+TEST_F(XClusterAdminCliTest, TestFailedSetupUniverseWithDeletion) {
+  client::TableHandle producer_cluster_table;
+
+  // Create an identical table on the producer.
+  client::kv_table_test::CreateTable(
+      Transactional::kTrue, NumTablets(), producer_cluster_client_.get(), &producer_cluster_table);
+
+  string error_msg;
+  // Setup universe replication, this should only return once complete.
+  // First provide a non-existant table id.
+  // ASSERT_NOK since this should fail.
+  ASSERT_NOK(RunAdminToolCommandAndGetErrorOutput(&error_msg,
+                                                  "setup_universe_replication",
+                                                  kProducerClusterId,
+                                                  producer_cluster_->GetMasterAddresses(),
+                                                  producer_cluster_table->id() + "-BAD"));
+
+  ASSERT_OK(WaitForSetupUniverseReplicationCleanUp(kProducerClusterId));
+
+  // Universe should be deleted by BG cleanup
+  ASSERT_NOK(RunAdminToolCommand("delete_universe_replication", kProducerClusterId));
+
+  ASSERT_OK(RunAdminToolCommand("setup_universe_replication",
+                                kProducerClusterId,
+                                producer_cluster_->GetMasterAddresses(),
+                                producer_cluster_table->id()));
+  std::this_thread::sleep_for(5s);
 }
 
 }  // namespace tools
