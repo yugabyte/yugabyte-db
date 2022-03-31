@@ -125,9 +125,9 @@ The Yugabyte Cloud SLA, terms of service, acceptable use policy, and more can be
 
 ### How do I check the status of Yugabyte Cloud?
 
-The [Yugabyte Cloud Status](https://status.yugabyte.cloud/) page displays the current uptime status of Yugabyte Cloud and the [Yugabyte Support Portal](https://support.yugabyte.com/).
+The [Yugabyte Cloud Status](https://status.yugabyte.cloud/) page displays the current uptime status of Yugabyte Cloud, customer clusters, and the [Yugabyte Support Portal](https://support.yugabyte.com/).
 
-The status page also provides notices of scheduled maintenance and current and past incidents.
+The status page also provides notices of scheduled maintenance, current incidents and incident history, and historical uptime.
 
 Subscribe to the status page by clicking **Subscribe to Updates**. Email notifications are sent when incidents are created, updated, and resolved.
 
