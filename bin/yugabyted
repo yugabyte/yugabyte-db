@@ -2,6 +2,7 @@
 from __future__ import unicode_literals
 
 import argparse
+import shlex
 import atexit
 import json
 import logging
@@ -54,6 +55,10 @@ yugabyte
 |   |   +-- bin...
 |   |   +-- ...
 """
+# OS constants
+OS_DETAILS = os.uname()
+OS_NAME = OS_DETAILS[0]
+
 # Script constants.
 SCRIPT_NAME = os.path.basename(__file__)
 YUGABYTE_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -71,6 +76,39 @@ SAMPLE_DATA_LINKS = {
     "northwind": "https://docs.yugabyte.com/latest/sample-data/northwind/"
 }
 EXIT_SIGNALS = (SIGABRT, SIGINT, SIGTERM)
+REQUIRED_TRANSPARENT_HUGEPAGES_LINUX = "always"
+REQUIRED_LOOPBACK_ADDRESSES = [
+    '127\.0\.0\.2',
+    '127\.0\.0\.3',
+    '127\.0\.0\.4',
+    '127\.0\.0\.5',
+    '127\.0\.0\.6',
+    '127\.0\.0\.7'
+]
+MAX_PROC = {
+    'Linux' : 12000,
+    'Darwin' : 2500,
+}
+PREREQS_ERROR_MSGS = {
+    'open_files' :'open files ulimits value set low. Please set soft and hard limits to 1048576.',
+    'max_user_processes' :'max user processes ulimits value set low.' \
+        ' Please set soft and hard limits to {}.'.format(MAX_PROC[OS_NAME]),
+    'transparent_hugepages' :'Transparent hugepages disabled. Please enable transparent_hugepages.',
+    'loopback' :'Six loopback IPs are required. Please add six loopback addresses.',
+    'ntp' :'ntp package missing. We recommend installing ntp package.'
+}
+QUICK_START_LINKS = {
+    'mac' : 'https://docs.yugabyte.com/latest/quick-start/install/macos/',
+    'linux' : 'https://docs.yugabyte.com/latest/quick-start/install/linux/',
+}
+LINUX_PREREQS_CMDS = {
+    'transparent_hugepages' : 'cat /sys/kernel/mm/transparent_hugepage/enabled',
+    'ntp' : 'ntpd'
+}
+MAC_PREREQS_CMDS = {
+    'loopback' : 'ifconfig lo0'
+}
+CONFIG_LINK = "https://docs.yugabyte.com/latest/deploy/manual-deployment/system-config"
 
 # YugabyteDB configs.
 IP_ANY = "0.0.0.0"
@@ -198,6 +236,7 @@ class ControlScript(object):
         if self.script.is_running():
             Output.print_out("{} is already running!".format(SCRIPT_NAME))
             sys.exit(1)
+
         Output.print_and_log("Starting {}...".format(SCRIPT_NAME))
         self.set_env_vars()
 
@@ -207,9 +246,6 @@ class ControlScript(object):
             # a status message can be printed to the terminal and then exits within daemonize.
             self.daemonize()
         self.script.write_pid(os.getpid())
-        errors = self.script.set_rlimits(print_info=True)
-        if errors:
-            self.alerts.append((ALERT_WARNING, ULIMIT_ERR_CODE, errors))
 
         self.set_signals(self.kill_children)
         atexit.register(self.kill_children)
@@ -425,6 +461,108 @@ class ControlScript(object):
         else:
             Output.print_and_log("Logs are packaged into {}".format(tarpath))
 
+    #All Pre-requisites check for Linux
+    def linux_prereqs_check(self):
+        prereqs_failed = set()
+        prereqs_warn = set()
+        prereqs_failed_flag = False
+        prereqs_warn_flag = False
+
+        transparent_hugepages_check = run_process(shlex
+                .split(LINUX_PREREQS_CMDS.get('transparent_hugepages')))
+        transparent_hugepages = re.search("\[(.*)\]", transparent_hugepages_check[0]).group(1)
+        if transparent_hugepages != REQUIRED_TRANSPARENT_HUGEPAGES_LINUX:
+            prereqs_warn.add('transparent_hugepages')
+            prereqs_warn_flag = True
+
+        ntp_check = run_process(shlex.split(LINUX_PREREQS_CMDS.get('ntp')), shell=True)
+        ntp_exit_code = ntp_check[2]
+        if ntp_exit_code == 127:
+            prereqs_warn.add('ntp')
+            prereqs_warn_flag = True
+
+        return (prereqs_failed_flag, prereqs_failed, prereqs_warn_flag, prereqs_warn)
+
+    #All Pre-requistes check for MacOS
+    def mac_prereqs_check(self):
+        prereqs_failed = set()
+        prereqs_warn = set()
+        prereqs_failed_flag = False
+        prereqs_warn_flag = False
+
+        loopback_check = run_process(shlex
+                .split(MAC_PREREQS_CMDS.get('loopback')))
+        loopback_check_flag = False
+        for loopback_address in REQUIRED_LOOPBACK_ADDRESSES:
+            check = re.findall(loopback_address+".*$",loopback_check[0],re.MULTILINE)
+            if not check:
+                loopback_check_flag = True
+                break
+        if loopback_check_flag:
+            prereqs_warn.add('loopback')
+            prereqs_warn_flag = True
+
+        return (prereqs_failed_flag, prereqs_failed, prereqs_warn_flag, prereqs_warn)
+
+    # Checks whether the prerequisites are met or not
+    def prereqs_check(self, ulimits=False):
+        help_msg = "Review the following docs and rerun the start command.\n"
+        if OS_NAME == "Linux":
+            check = self.linux_prereqs_check()
+            help_msg+=('Quick start for Linux: '+QUICK_START_LINKS['linux']+'\n')
+        else:
+            check = self.mac_prereqs_check()
+            help_msg+=('Quick start for Mac: '+QUICK_START_LINKS['mac']+'\n')
+
+        prereqs_failed_flag, prereqs_failed, prereqs_warn_flag, prereqs_warn = check
+
+        msg = " System checks. Following pre-reqs are not met:\n"
+        failed_msg = ""
+        for prereq in prereqs_failed:
+            failed_msg+=("- "+PREREQS_ERROR_MSGS[prereq]+"\n")
+        warning_msg = ""
+        for prereq in prereqs_warn:
+            warning_msg+=("- "+PREREQS_ERROR_MSGS[prereq]+"\n")
+        ulimit_msg = {
+            'open_files' :"- "+PREREQS_ERROR_MSGS['open_files']+"\n",
+            'max_user_processes' :"- "+PREREQS_ERROR_MSGS['max_user_processes']+"\n",
+        }
+
+        final_msg = ""
+        check_status = None
+        if prereqs_failed_flag:
+            final_msg += (Output.make_red("FAILED") + msg)
+            final_msg += (failed_msg+warning_msg)
+            if ulimits:
+                for ulimit in ulimits:
+                    final_msg+=ulimit_msg[ulimit]
+            final_msg += ("\n"+help_msg+"\n")
+            check_status = Output.ANIMATION_FAIL
+        elif prereqs_warn_flag:
+            final_msg += (Output.make_yellow("WARNING") + msg)
+            final_msg += warning_msg
+            if ulimits:
+                for ulimit in ulimits:
+                    final_msg+=ulimit_msg[ulimit]
+            final_msg += ("\n"+help_msg+"\n")
+            check_status = Output.ANIMATION_WARNING
+        elif ulimits:
+            final_msg += (Output.make_yellow("WARNING") + msg)
+            for ulimit in ulimits:
+                final_msg+=ulimit_msg[ulimit]
+            final_msg += ("\n"+help_msg+"\n")
+            check_status = Output.ANIMATION_WARNING
+        else:
+            final_msg = "System checks"
+            check_status = Output.ANIMATION_SUCCESS
+
+        result = {
+            'msg' : final_msg,
+            'status' : check_status,
+        }
+
+        return result
+
     # Checks yb-master and yb-tserver are running. Returns failed processes.
     # TODO: Check postmaster.pid.
     def get_failed_node_processes(self):
@@ -639,6 +777,22 @@ class ControlScript(object):
             if is_first_run:
                 Output.init_animation("Running system checks...")
 
+                ulimits_failed = self.script.set_rlimits(print_info=True)
+                if ulimits_failed:
+                    msg = "Failed to meet recommended settings. Ulimits too low - {}.\n".format(
+                    ", ".join(ulimits_failed))
+                    ulimit_warn_msg = msg + "Note {} will still run, although it may fail for " \
+                        "larger workloads. For more info, see {}".format(SCRIPT_NAME, CONFIG_LINK)
+                    self.alerts.append((ALERT_WARNING, ULIMIT_ERR_CODE, ulimit_warn_msg))
+
+                prereqs_check_result = self.prereqs_check(ulimits=ulimits_failed)
+                Output.update_animation(msg=prereqs_check_result['msg'],
+                    status=prereqs_check_result['status'])
+                if prereqs_check_result['status']==Output.ANIMATION_FAIL:
+                    Output.log(msg=prereqs_check_result['msg'], level=logging.ERROR)
+
+                Output.init_animation("Starting the YugabyteDB Processes...")
+
                 self.post_install_yb()
 
                 ret = self.start_first_master_tserver(master_addresses)
@@ -649,8 +803,7 @@ class ControlScript(object):
 
                 # Persist the config after successful start
                 self.configs.save_configs()
-
-                Output.update_animation("System checks")
+                Output.update_animation("YugabyteDB Started")
             else:
                 for name in ("master", "tserver"):
                     process = self.processes.get(name)
@@ -1762,9 +1915,9 @@ class ProcessManager(object):
             # "RLIMIT_FSIZE": (rlim_max, "file_size"),
             # "RLIMIT_MEMLOCK": (rlim_max, "max_locked_memory"),
             # "RLIMIT_AS": (rlim_max, "max_memory_size"),
-            "RLIMIT_NOFILE": (64000, "open_files"),
+            "RLIMIT_NOFILE": (1048576, "open_files"),
             # "RLIMIT_CPU": (rlim_max, "cpu_time"),
-            "RLIMIT_NPROC": (64, "max_user_processes"),
+            "RLIMIT_NPROC": (MAX_PROC[OS_NAME], "max_user_processes"),
             # "RLIMIT_VMEM": (rlim_max, "virtual_memory"),
         }
 
@@ -1791,16 +1944,7 @@ class ProcessManager(object):
                             logging.ERROR)
 
         if failed and print_info:
-            config_link = "https://docs.yugabyte.com/latest/deploy/manual-deployment/system-config"
-            msg = "Failed to meet recommended settings. Ulimits too low - {}.\n".format(
-                ", ".join(list(zip(*failed))[0]))
-            yw_alert = msg + "Note {} will still run, although it may fail for larger " \
-                "workloads. For more info, see {}".format(SCRIPT_NAME, config_link)
-            msg += "Note {} will still run, although it may fail for larger workloads. " \
-                "For more info, see {}\n".format(SCRIPT_NAME, Output.make_underline(config_link))
-            msg = Output.make_yellow("WARNING: ") + msg
-            Output.print_and_log(msg, logging.WARNING)
-            return yw_alert
+            return list(zip(*failed))[0]
 
     # Returns the command that was run with the input pid.
     @staticmethod
@@ -2423,6 +2567,7 @@ class Output(object):
     ANIMATION_SUCCESS = 0
     ANIMATION_FAIL = -1
     ANIMATION_RUNNING = 1
+    ANIMATION_WARNING = 2
     # Tuple of (animation_status, animation_message) to ensure atomicity.
     animation_status = (ANIMATION_SUCCESS, "")
     animation_thread = None
@@ -2456,6 +2601,7 @@ class Output(object):
             end_symbols = {
                 Output.ANIMATION_SUCCESS: '\u2705',
                 Output.ANIMATION_FAIL: '\u274C',
+                Output.ANIMATION_WARNING: '\u26A0',
             }
             line_len = 0
             i = 0
@@ -2608,10 +2754,11 @@ def get_kv(map):
     else:
         return map.items()
 
-def run_process(cmd, timeout=None, log_cmd=False, env_vars=None):
+def run_process(cmd, timeout=None, log_cmd=False, env_vars=None, shell=False):
     if log_cmd:
         Output.log("run_process: cmd: {}".format(str(cmd)))
-    proc = subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE, env=env_vars)
+    proc = subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE,
+                            env=env_vars, shell=shell)
     if PY_VERSION >= 3:
         try:
             out, err = proc.communicate(timeout=timeout)
