@@ -46,7 +46,7 @@ To connect to your cluster, do the following:
     SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
     Type "help" for help.
 
-    yugabyte=#
+    yugabyte=>
     ```
 
 The command line interface (CLI) being used is called ysqlsh. ysqlsh is the CLI for interacting with YugabyteDB using the PostgreSQL-compatible YSQL API.
