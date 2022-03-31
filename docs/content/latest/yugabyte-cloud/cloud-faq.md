@@ -125,9 +125,9 @@ The Yugabyte Cloud SLA, terms of service, acceptable use policy, and more can be
 
 ### How do I check the status of Yugabyte Cloud?
 
-The [Yugabyte Cloud Status](https://status.yugabyte.cloud/) page displays the current uptime status of Yugabyte Cloud and the [Yugabyte Support Portal](https://support.yugabyte.com/).
+The [Yugabyte Cloud Status](https://status.yugabyte.cloud/) page displays the current uptime status of Yugabyte Cloud, customer clusters, and the [Yugabyte Support Portal](https://support.yugabyte.com/).
 
-The status page also provides notices of scheduled maintenance and current and past incidents.
+The status page also provides notices of scheduled maintenance, current incidents and incident history, and historical uptime.
 
 Subscribe to the status page by clicking **Subscribe to Updates**. Email notifications are sent when incidents are created, updated, and resolved.
 
@@ -163,7 +163,7 @@ You can connect to clusters in the following ways:
 
 #### Cloud Shell
 
-Run the [ysqlsh](../../admin/ysqlsh/) or [ycqlsh](../../admin/ycqlsh/) shell from your browser to connect to and interact with your YugabyteDB database. Cloud Shell does not require a CA certificate or any special network access configured.
+Run the [ysqlsh](../../admin/ysqlsh/) or [ycqlsh](../../admin/ycqlsh/) shell from your browser to connect to and interact with your YugabyteDB database. Cloud Shell does not require a CA certificate or any special network access configured. When you connect using Cloud Shell with the YSQL API, the shell window also incorporates a [Quick Start Guide](../cloud-quickstart/qs-explore/), with a series of pre-built queries for you to run.
 
 #### Client Shell
 
@@ -198,7 +198,7 @@ For detailed steps for configuring other popular third party tools, see [Third p
 
 #### Applications
 
-Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). Before you can connect an application, you need to install the correct driver. Clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters. For information on available drivers, refer to [Build an application](../../quick-start/build-apps/).
+Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). Before you can connect an application, you need to install the correct driver. Clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters. To build sample applications using popular drivers, refer to [Build an application](../cloud-quickstart/cloud-build-apps/).
 
 Before you can connect, your application has to be able to reach your Yugabyte Cloud. To add inbound network access from your application environment to Yugabyte Cloud, add the public IP addresses to the [cluster IP access list](../cloud-secure-clusters/add-connections/), or use [VPC peering](../cloud-basics/cloud-vpcs/) to add private IP addresses.
 
