@@ -17,7 +17,7 @@ After [creating a free cluster](../qs-add/), the easiest way to connect to it is
 
 Using Cloud Shell, you can connect to your Yugabyte Cloud cluster from your browser, and interact with it using distributed SQL.
 
-The shell has a 15 minute connection limit. If your session expires, close your browser tab and connect again.
+The shell has a one hour connection limit. If your session is idle for more than 5 minutes, it may disconnect. If your session expires, close your browser tab and connect again.
 
 ## Connect to your cluster using Cloud Shell
 
