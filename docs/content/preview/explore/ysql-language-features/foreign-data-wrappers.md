@@ -16,13 +16,13 @@ This document describes how to use foreign data wrappers.
 
 ## Overview
 
-A foreign data wrapper is a library that can be used to access and interact with an external data (foreign data) source. They allow us to query foreign objects from remote servers as if they were local objects. 
+A foreign data wrapper is a library that you can use to access and interact with an external data (foreign data) source. They allow you to query foreign objects from remote servers as if they were local objects.
 
 In order to access foreign data, we first need to create the foreign data wrapper. Then, we need to create a foreign server, which specifies how to connect to the external data source. We may also need to create a user mapping which defines the mapping of a specific user to authorization credentials in the foreign server. Lastly, we need to create foreign tables, which represent the structure of the data on the external source. 
 
 ### CREATING FOREIGN DATA WRAPPERS
 
-Foreign data wrappers can be created using the `CREATE FOREIGN DATA WRAPPER` command.
+Foreign data wrappers can be created using the [`CREATE FOREIGN DATA WRAPPER`](../../api/ysql/the-sql-language/statements/ddl_create_foreign_data_wrapper.md) command.
 Only superusers or users with the yb_fdw role can create foreign data wrappers.
 
 Example:
@@ -34,7 +34,7 @@ yugabyte=# CREATE FOREIGN DATA WRAPPER mywrapper HANDLER myhandler OPTIONS (dumm
 ### CREATING A FOREIGN SERVER
 
 Foreign servers can be used to specify connection information for an external data source.
-A foreign server can be created using the `CREATE FOREIGN SERVER` command.
+A foreign server can be created using the [`CREATE FOREIGN SERVER`](../../api/ysql/the-sql-language/statements/ddl_create_server.md) command.
 
 Example:
 
@@ -45,7 +45,7 @@ yugabyte=# CREATE SERVER myserver FOREIGN DATA WRAPPER mywrapper OPTIONS (host '
 ### CREATE USER MAPPINGS
 
 User mappings can be used to define the mapping of a user to authorization credentials in the foreign server.
-A user mapping can be created using the `CREATE USER MAPPING` command.
+A user mapping can be created using the [`CREATE USER MAPPING`](../../api/ysql/the-sql-language/statements/ddl_create_user_mapping.md) command.
 
 List all databases using the following statements.
 
@@ -55,7 +55,7 @@ yugabyte=# CREATE USER MAPPING FOR myuser SERVER myserver OPTIONS (user 'john', 
 
 ### CREATE FOREIGN TABLES
 
-Use the `CREATE FOREIGN TABLE` command to create foreign tables.
+Use the [`CREATE FOREIGN TABLE`](../../api/ysql/the-sql-language/statements/ddl_create_foreign_table.md) command to create foreign tables.
 
 ```sql
 yugabyte=# CREATE FOREIGN TABLE mytable (col1 int, col2 int) SERVER myserver OPTIONS (schema 'external_schema', table 'external_table');
@@ -63,5 +63,5 @@ yugabyte=# CREATE FOREIGN TABLE mytable (col1 int, col2 int) SERVER myserver OPT
 
 
 The following foreign data wrappers are bundled with YB:
-- postgres_fdw
-- file_fdw
+- [postgres_fdw](../../explore/ysql-language-features/pg-extensions.md#postgresfdw-example)
+- [file_fdw](../../explore/ysql-language-features/pg-extensions.md#filefdw-example)
