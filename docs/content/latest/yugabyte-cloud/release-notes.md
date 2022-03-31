@@ -15,11 +15,17 @@ showAsideToc: true
 
 ## Releases
 
+### March 31, 2021
+
+#### New features
+
+- Self-guided quickstart incorporated in Cloud Shell. Launch Cloud Shell using the YSQL API to begin a [self-guided tutorial](../cloud-quickstart/qs-explore/) exploring distributed SQL.
+- Enhancements to Cloud Shell to allow longer sessions (up to one hour) and up to five concurrent sessions.
+
 ### March 10, 2021
 
 #### New features
 
-<!-- Self-guided quickstart incorporated in Cloud Shell. Launch Cloud Shell using the YSQL API to begin a self-guided tutorial exploring distributed SQL. -->
 - Ability to schedule the maintenance window and exclusion periods for upcoming maintenance and database upgrades. The maintenance window is a weekly four-hour time slot during which Yugabyte may maintain or upgrade clusters. Yugabyte does not maintain or upgrade clusters outside the scheduled maintenance window, or during exclusion periods. Manage maintenance windows on the cluster **Maintenance** tab.
 - Ability to manually pause and resume clusters. To pause a cluster, select the cluster, click **More Links**, and choose **Pause Cluster**. Yugabyte suspends instance vCPU capacity charges for paused clusters; disk and backup storage are charged at the standard rate.
 
@@ -163,11 +169,9 @@ The following **AWS regions** are available:
 - **Clusters** - No support for scaling vCPUs on single node clusters.
 - **Metrics** - The **View Full Screen** option in charts on the cluster **Overview** and **Performance Metrics** pages does not work in some versions of Safari 14.0 (Big Sur).
 - **Metrics** - Some clusters in European regions may show occasional spikes in the YSQL Operations/sec chart. This is due to cluster health checks and can be ignored.
-- **Pausing clusters** - The **Pause Cluster** and **Resume Cluster** dialogs incorrectly refer to usage costs for paused clusters, and do not include the additional disk storage costs of running clusters.
 
 ### Known issues in [Cloud Shell](../cloud-connect/connect-cloud-shell/)
 
-- You can run up to five concurrent Cloud Shell sessions.
 - If Cloud Shell stops responding, close the browser tab and restart Cloud Shell.
 - Cloud Shell is unavailable for clusters in a VPC.
 - Cloud Shell is unavailable during any edit and backup/restore operations. Wait until the operations are complete before you launch the shell.

@@ -34,8 +34,8 @@ Standard clusters include the following features:
 
 ## Prerequisites
 
-- You need to create a billing profile and add a payment method before you can create a standard cluster. Refer to [Manage your billing profile and payment method](../../cloud-admin/cloud-billing-profile/).
-- If you want to use dedicated VPCs for network isolation and security, you need to create the VPC before you create your cluster. Yugabyte Cloud supports AWC and GCP for peering. Refer to [VPC networking](../../cloud-basics/cloud-vpcs/).
+- Create a billing profile and add a payment method before you can create a standard cluster. Refer to [Manage your billing profile and payment method](../../cloud-admin/cloud-billing-profile/).
+- If you want to use dedicated VPCs for network isolation and security, create the VPC before you create your cluster. Yugabyte Cloud supports AWC and GCP for peering. Refer to [VPC networking](../../cloud-basics/cloud-vpcs/).
 
 ## Create a cluster
 
@@ -61,7 +61,7 @@ Set the following options:
 
 - **Provider**: Choose a cloud provider - AWS or GCP. (For Azure, contact {{<support-cloud>}}.)
 - **Cluster Name**: Enter a name for the cluster.
-- **Region**: Choose the [region](../../release-notes#cloud-provider-regions) where the cluster will be located.
+- **Region**: Choose the [region](../../release-notes#cloud-provider-regions) where the cluster will be located, or click **Request a multi-region cluster** to contact Yugabyte Support to arrange multi-region deployment.
 
 - **Fault Tolerance** determines how resilient the cluster is to node and cloud zone failures:
 
