@@ -37,7 +37,7 @@ To begin using Yugabyte Cloud, go to [Quick start](../cloud-quickstart/).
 | [Manage billing](../cloud-admin/cloud-billing-profile/) | Create your billing profile, manage your payment methods, and review invoices. |
 | **Reference** | |
 | [What's new](../release-notes/) | See what's new in Yugabyte Cloud, what regions are supported, and known issues. |
-| [Troubleshooting](../cloud-troubleshoot/) | Get solutions to common problems. |
+| [Troubleshooting](../cloud-troubleshoot/) | Get solutions to common problems. To check cloud status, go to [cloud status](https://status.yugabyte.cloud/). |
 | [FAQ](../cloud-faq/) | Get answers to frequently asked questions. |
 | [Security architecture](../cloud-security/) | Review Yugabyte Cloud's security architecture and shared responsibility model. |
 | [Cluster costs](../cloud-admin/cloud-billing-costs/) | Review how Yugabyte Cloud charges for clusters. |

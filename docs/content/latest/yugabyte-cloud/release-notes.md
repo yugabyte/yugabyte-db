@@ -167,8 +167,8 @@ The following **AWS regions** are available:
 
 ### Known issues in [Cloud Shell](../cloud-connect/connect-cloud-shell/)
 
-- At this time, we recommend running only a single Cloud Shell session. Running more than one session may produce unexpected results.
+- You can run up to five concurrent Cloud Shell sessions.
 - If Cloud Shell stops responding, close the browser tab and restart Cloud Shell.
 - Cloud Shell is unavailable for clusters in a VPC.
 - Cloud Shell is unavailable during any edit and backup/restore operations. Wait until the operations are complete before you launch the shell.
-- The browser may prematurely disconnect a Cloud Shell session after switching to a different tab.
+- If a Cloud Shell session is inactive for more than five minutes, it may be disconnected.

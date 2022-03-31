@@ -13,6 +13,8 @@ isTocNested: true
 showAsideToc: true
 ---
 
+If you are unable to reach Yugabyte Cloud or having issues, first check the [cloud status](https://status.yugabyte.cloud/).
+
 ## Connectivity
 
 ### Connection timed out
