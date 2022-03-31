@@ -118,3 +118,13 @@ CREATE TYPE tt_t1 AS (x int, y numeric(8,2));
 ALTER TABLE tt7 OF tt_t1;			-- reassign an already-typed table
 ALTER TABLE tt7 NOT OF;
 \d tt7
+
+---
+--- Verfy yb_db_admin role can ALTER table
+---
+CREATE TABLE table_other(a int, b int);
+SET SESSION AUTHORIZATION yb_db_admin;
+ALTER TABLE table_other RENAME to table_new;
+ALTER TABLE table_new OWNER TO regress_alter_table_user1;
+DROP TABLE table_new;
+

@@ -200,3 +200,12 @@ LINE 1: ALTER TABLE tt7 NOT OF;
                         ^
 HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
 \d tt7
+---
+--- Verfy yb_db_admin role can ALTER table
+---
+CREATE TABLE table_other(a int, b int);
+SET SESSION AUTHORIZATION yb_db_admin;
+ALTER TABLE table_other RENAME to table_new;
+ALTER TABLE table_new OWNER TO regress_alter_table_user1;
+DROP TABLE table_new;
+
