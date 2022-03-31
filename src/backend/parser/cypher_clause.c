@@ -394,7 +394,20 @@ Query *transform_cypher_clause(cypher_parsestate *cpstate,
     // examine the type of clause and call the transform logic for it
     if (is_ag_node(self, cypher_return))
     {
-        result = transform_cypher_return(cpstate, clause);
+        cypher_return *n = (cypher_return *) self;
+
+        if (n->op == SETOP_NONE)
+        {
+            result = transform_cypher_return(cpstate, clause);
+        }
+        else if (n->op == SETOP_UNION)
+        {
+            result = transform_cypher_union(cpstate, clause);
+        }
+        else
+        {
+            ereport(ERROR, (errmsg_internal("unexpected Node for cypher_return")));
+        }
     }
     else if (is_ag_node(self, cypher_with))
     {
@@ -423,10 +436,6 @@ Query *transform_cypher_clause(cypher_parsestate *cpstate,
     else if (is_ag_node(self, cypher_sub_pattern))
     {
         result = transform_cypher_sub_pattern(cpstate, clause);
-    }
-    else if (is_ag_node(self, cypher_union))
-    {
-        result = transform_cypher_union(cpstate, clause);
     }
     else if (is_ag_node(self, cypher_unwind))
     {
@@ -480,7 +489,7 @@ static cypher_clause *make_cypher_clause(List *stmt)
 /*
  * transform_cypher_union -
  *    transforms a union tree, derived from postgresql's
- *    transformSetOperationStmt.A lot of the general logic is similar,
+ *    transformSetOperationStmt. A lot of the general logic is similar,
  *    with adjustments made for AGE.
  *
  * A union tree is just a return, but with UNION structure to it.
@@ -500,8 +509,9 @@ static Query *transform_cypher_union(cypher_parsestate *cpstate,
     SetOperationStmt *cypher_union_statement;
     Node *skip = NULL; /* equivalent to postgres limitOffset */
     Node *limit = NULL; /* equivalent to postgres limitCount */
+    List *order_by = NIL;
     Node *node;
-
+    cypher_return *self = (cypher_return *)clause->self;
     ListCell *left_tlist, *lct, *lcm, *lcc;
     List *targetvars, *targetnames, *sv_namespace;
     int sv_rtable_length;
@@ -523,6 +533,14 @@ static Query *transform_cypher_union(cypher_parsestate *cpstate,
                         parser_errposition(&cpstate->pstate, 0)));
     }
 
+    order_by = self->order_by;
+    skip = self->skip;
+    limit = self->limit;
+
+    self->order_by = NIL;
+    self->skip = NULL;
+    self->limit = NULL;
+
     /*
      * Recursively transform the components of the tree.
      */
@@ -538,7 +556,7 @@ static Query *transform_cypher_union(cypher_parsestate *cpstate,
     node = cypher_union_statement->larg;
     while (node && IsA(node, SetOperationStmt))
     {
-        node = ((SetOperationStmt *) cypher_union_statement)->larg;
+        node = ((SetOperationStmt *) node)->larg;
     }
     Assert(node && IsA(node, RangeTblRef));
     leftmostRTI = ((RangeTblRef *) node)->rtindex;
@@ -619,6 +637,12 @@ static Query *transform_cypher_union(cypher_parsestate *cpstate,
 
     tllen = list_length(qry->targetList);
 
+    qry->sortClause = transformSortClause(pstate,
+                                          order_by,
+                                          &qry->targetList,
+                                          EXPR_KIND_ORDER_BY,
+                                          false /* allow SQL92 rules */ );
+
     /* restore namespace, remove jrte from rtable */
     pstate->p_namespace = sv_namespace;
     pstate->p_rtable = list_truncate(pstate->p_rtable, sv_rtable_length);
@@ -634,7 +658,7 @@ static Query *transform_cypher_union(cypher_parsestate *cpstate,
     }
 
     qry->limitOffset = transform_cypher_limit(cpstate, skip,
-                                              EXPR_KIND_OFFSET, "SKIP");
+                                              EXPR_KIND_OFFSET, "OFFSET");
     qry->limitCount = transform_cypher_limit(cpstate, limit,
                                               EXPR_KIND_LIMIT, "LIMIT");
 
@@ -678,24 +702,51 @@ transform_cypher_union_tree(cypher_parsestate *cpstate, cypher_clause *clause,
     bool isLeaf;
 
     ParseState *pstate = (ParseState *)cpstate;
+    cypher_return *cmp;
+
+    /* Guard against stack overflow due to overly complex set-expressions */
+    check_stack_depth();
 
     if (IsA(clause, List))
     {
-        isLeaf = true;
+        clause = make_cypher_clause((List *)clause);
     }
-    else if (is_ag_node(clause->self, cypher_union))
+
+    if (is_ag_node(clause->self, cypher_return))
     {
-        isLeaf = false;
+        cmp = (cypher_return *) clause->self;
     }
     else
     {
         ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                errmsg("Cypher union found a clause type it does not support"),
+                errmsg("Cypher found an unsupported node"),
                 parser_errposition(pstate, 0)));
     }
 
-    /* Guard against stack overflow due to overly complex set-expressions */
-    check_stack_depth();
+
+    if (cmp->op == SETOP_NONE)
+    {
+        Assert(cmp->larg == NULL && cmp->rarg == NULL);
+        isLeaf = true;
+    }
+    else if (cmp->op == SETOP_UNION)
+    {
+        Assert(cmp->larg != NULL && cmp->rarg != NULL);
+        if (cmp->order_by || cmp->limit || cmp->skip)
+        {
+            isLeaf = true;
+        }
+        else
+        {
+            isLeaf = false;
+        }
+    }
+    else
+    {
+        ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                errmsg("Cypher found an unsupported SETOP"),
+                parser_errposition(pstate, 0)));
+    }
 
     if (isLeaf)
     {
@@ -705,7 +756,6 @@ transform_cypher_union_tree(cypher_parsestate *cpstate, cypher_clause *clause,
         RangeTblEntry *rte PG_USED_FOR_ASSERTS_ONLY;
         RangeTblRef *rtr;
         ListCell *tl;
-        cypher_clause *leaf_clause;
 
         /*
          * Transform SelectStmt into a Query.
@@ -727,10 +777,9 @@ transform_cypher_union_tree(cypher_parsestate *cpstate, cypher_clause *clause,
          * cypher_analyze doesn't do this because the cypher_union clause
          * is hiding it.
          */
-        leaf_clause = make_cypher_clause((List *)clause);
 
-        returnQuery = cypher_parse_sub_analyze_union( (cypher_clause *) leaf_clause, cpstate,
-                                               NULL, false, false);
+        returnQuery = cypher_parse_sub_analyze_union((cypher_clause *) clause, cpstate,
+                                                     NULL, false, false);
         /*
          * Check for bogus references to Vars on the current query level (but
          * upper-level references are okay). Normally this can't happen
@@ -791,7 +840,7 @@ transform_cypher_union_tree(cypher_parsestate *cpstate, cypher_clause *clause,
         List *rtargetlist;
         ListCell *ltl;
         ListCell *rtl;
-        cypher_union *self = (cypher_union *) clause->self;
+        cypher_return *self = (cypher_return *) clause->self;
         const char *context;
 
         context = "UNION";
@@ -802,7 +851,8 @@ transform_cypher_union_tree(cypher_parsestate *cpstate, cypher_clause *clause,
         /*
          * Recursively transform the left child node.
          */
-        op->larg = transform_cypher_union_tree(cpstate ,(cypher_clause *) self->larg,
+        op->larg = transform_cypher_union_tree(cpstate,
+                                               (cypher_clause *) self->larg,
                                                false,
                                                &ltargetlist);
 
@@ -823,7 +873,8 @@ transform_cypher_union_tree(cypher_parsestate *cpstate, cypher_clause *clause,
         /*
          * Recursively transform the right child node.
          */
-        op->rarg = transform_cypher_union_tree(cpstate, (cypher_clause *) self->rarg,
+        op->rarg = transform_cypher_union_tree(cpstate,
+                                               (cypher_clause *) self->rarg,
                                                false,
                                                &rtargetlist);
 

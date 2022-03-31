@@ -55,6 +55,11 @@ typedef struct cypher_return
     List *order_by;
     Node *skip;
     Node *limit;
+
+    bool all_or_distinct;
+    SetOperation op;
+    List *larg; /* lefthand argument of the unions */
+    List *rarg; /*righthand argument of the unions */
 } cypher_return;
 
 typedef struct cypher_with
@@ -106,15 +111,6 @@ typedef struct cypher_delete
     List *exprs; // targets of this deletion
     int location;
 } cypher_delete;
-
-typedef struct cypher_union
-{
-    ExtensibleNode extensible;
-    bool all_or_distinct;
-    SetOperation op;
-    List *larg; /* lefthand argument of the unions */
-    List *rarg; /*righthand argument of the unions */
-} cypher_union;
 
 typedef struct cypher_unwind
 {

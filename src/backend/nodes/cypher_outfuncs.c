@@ -107,6 +107,11 @@ void out_cypher_return(StringInfo str, const ExtensibleNode *node)
     WRITE_NODE_FIELD(order_by);
     WRITE_NODE_FIELD(skip);
     WRITE_NODE_FIELD(limit);
+
+    WRITE_BOOL_FIELD(all_or_distinct);
+    WRITE_ENUM_FIELD(op, SetOperation);
+    WRITE_NODE_FIELD(larg);
+    WRITE_NODE_FIELD(rarg);
 }
 
 // serialization function for the cypher_with ExtensibleNode.
@@ -376,16 +381,6 @@ void out_cypher_delete_item(StringInfo str, const ExtensibleNode *node)
 
     WRITE_NODE_FIELD(entity_position);
     WRITE_STRING_FIELD(var_name);
-}
-
-void out_cypher_union(StringInfo str, const ExtensibleNode *node)
-{
-    DEFINE_AG_NODE(cypher_union);
-
-    WRITE_BOOL_FIELD(all_or_distinct);
-    WRITE_ENUM_FIELD(op, SetOperation);
-    WRITE_NODE_FIELD(larg);
-    WRITE_NODE_FIELD(rarg);
 }
 
 // serialization function for the cypher_merge_information ExtensibleNode.

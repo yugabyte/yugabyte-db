@@ -98,7 +98,7 @@
 
 /* query */
 %type <node> stmt
-%type <list> single_query query_part_init query_part_last query_list
+%type <list> single_query query_part_init query_part_last cypher_stmt
              reading_clause_list updating_clause_list_0 updating_clause_list_1
 %type <node> reading_clause updating_clause
 
@@ -208,8 +208,10 @@ static Node *make_typecast_expr(Node *expr, char *typecast, int location);
 
 // functions
 static Node *make_function_expr(List *func_name, List *exprs, int location);
-%}
 
+// setops
+static Node *make_set_op(SetOperation op, bool all_or_distinct, List *larg, List *rarg);
+%}
 %%
 
 /*
@@ -217,7 +219,7 @@ static Node *make_function_expr(List *func_name, List *exprs, int location);
  */
 
 stmt:
-    query_list semicolon_opt
+    cypher_stmt semicolon_opt
         {
             /*
              * If there is no transition for the lookahead token and the
@@ -238,7 +240,7 @@ stmt:
             extra->result = $1;
             extra->extra = NULL;
         }
-    | EXPLAIN query_list semicolon_opt
+    | EXPLAIN cypher_stmt semicolon_opt
         {
             ExplainStmt *estmt = NULL;
 
@@ -252,7 +254,7 @@ stmt:
             estmt->options = NIL;
             extra->extra = (Node *)estmt;
         }
-    | EXPLAIN VERBOSE query_list semicolon_opt
+    | EXPLAIN VERBOSE cypher_stmt semicolon_opt
         {
             ExplainStmt *estmt = NULL;
 
@@ -266,7 +268,7 @@ stmt:
             estmt->options = list_make1(makeDefElem("verbose", NULL, @2));;
             extra->extra = (Node *)estmt;
         }
-    | EXPLAIN ANALYZE query_list semicolon_opt
+    | EXPLAIN ANALYZE cypher_stmt semicolon_opt
         {
             ExplainStmt *estmt = NULL;
 
@@ -280,7 +282,7 @@ stmt:
             estmt->options = list_make1(makeDefElem("analyze", NULL, @2));;
             extra->extra = (Node *)estmt;
         }
-    | EXPLAIN ANALYZE VERBOSE query_list semicolon_opt
+    | EXPLAIN ANALYZE VERBOSE cypher_stmt semicolon_opt
         {
             ExplainStmt *estmt = NULL;
 
@@ -297,21 +299,14 @@ stmt:
         }
     ;
 
-query_list:
+cypher_stmt:
     single_query
         {
             $$ = $1;
         }
-    | single_query UNION all_or_distinct query_list
+    | cypher_stmt UNION all_or_distinct cypher_stmt
         {
-            cypher_union *u = make_ag_node(cypher_union);
-
-            u->all_or_distinct = $3;
-            u->op = SETOP_UNION;
-            u->larg = $1;
-            u->rarg = $4;
-
-            $$ = list_make1((Node *) u);
+            $$ = list_make1(make_set_op(SETOP_UNION, $3, $1, $4));
         }
     ;
 
@@ -2199,4 +2194,18 @@ static unsigned long get_a_unique_number(void)
     static unsigned long unique_counter = 0;
 
     return unique_counter++;
+}
+
+/*set operation function node to make a set op node*/
+
+static Node *
+make_set_op(SetOperation op, bool all_or_distinct, List *larg, List *rarg)
+{
+    cypher_return *n = make_ag_node(cypher_return);
+
+    n->op = op;
+    n->all_or_distinct = all_or_distinct;
+    n->larg = (List *) larg;
+    n->rarg = (List *) rarg;
+    return (Node *) n;
 }
