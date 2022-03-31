@@ -170,8 +170,8 @@ public class TlsToggle extends UpgradeTaskBase {
     SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
     for (NodeDetails node : nodes) {
       subTaskGroup.addSubTask(
-          getAnsibleConfigureServerTask(
-              node, ServerType.TSERVER, UpgradeTaskSubType.CopyCerts, null));
+          getAnsibleConfigureServerTaskForToggleTls(
+              node, ServerType.TSERVER, UpgradeTaskSubType.CopyCerts));
     }
     subTaskGroup.setSubTaskGroupType(getTaskSubGroupType());
     getRunnableTask().addSubTaskGroup(subTaskGroup);

@@ -1544,11 +1544,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   protected AnsibleConfigureServers getAnsibleConfigureServerTask(
-      NodeDetails node, ServerType processType, UpgradeTaskSubType taskSubType) {
-    return getAnsibleConfigureServerTask(node, processType, taskSubType, null);
-  }
-
-  protected AnsibleConfigureServers getAnsibleConfigureServerTask(
       NodeDetails node,
       ServerType processType,
       UpgradeTaskSubType taskSubType,
