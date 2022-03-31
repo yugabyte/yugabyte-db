@@ -25,13 +25,13 @@ While optional, it's good practise to create separate databases for different ap
 To create a database, enter the following command:
 
 ```sql
-yugabyte=# CREATE DATABASE yb_demo;
+yugabyte=> CREATE DATABASE yb_demo;
 ```
 
 Next, connect to the new database using the ysqlsh `\c` meta-command:
 
 ```sql
-yugabyte=# \c yb_demo;
+yugabyte=> \c yb_demo;
 ```
 
 ## Run the tutorial
