@@ -2551,10 +2551,14 @@ Status CatalogManager::SplitTablet(const TabletId& tablet_id, bool select_all_ta
           SplitTabletWithKey(tablet, result->split_encoded_key, result->split_partition_key,
               select_all_tablets_for_split);
         } else if (tserver::TabletServerError(result.status()) ==
-            tserver::TabletServerErrorPB::TABLET_SPLIT_DISABLED_TTL_EXPIRY) {
-          tablet_split_manager()->MarkTtlTableForSplitIgnore(tablet->table()->id());
+                   tserver::TabletServerErrorPB::TABLET_SPLIT_DISABLED_TTL_EXPIRY) {
           LOG(INFO) << "AsyncGetTabletSplitKey task failed for tablet " << tablet->tablet_id()
               << ". Tablet split not supported for tablets with TTL file expiration.";
+          tablet_split_manager()->MarkTtlTableForSplitIgnore(tablet->table()->id());
+        } else if (tserver::TabletServerError(result.status()) ==
+                   tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL) {
+          LOG(INFO) << "Tablet key range is too small to split, disabling splitting temporarily.";
+          tablet_split_manager()->MarkSmallKeyRangeTabletForSplitIgnore(tablet->id());
         } else {
           LOG(WARNING) << "AsyncGetTabletSplitKey task failed with status: " << result.status();
         }

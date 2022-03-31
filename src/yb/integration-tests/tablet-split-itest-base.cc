@@ -251,7 +251,7 @@ Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>>
     LOG(INFO) << "Committed: " << txn->id();
   }
 
-  LOG(INFO) << num_rows << " rows has been written";
+  LOG(INFO) << num_rows << " rows have been written";
   LOG(INFO) << "min_hash_code = " << min_hash_code;
   LOG(INFO) << "max_hash_code = " << max_hash_code;
   return std::make_pair(min_hash_code, max_hash_code);
