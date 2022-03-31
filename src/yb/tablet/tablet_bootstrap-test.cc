@@ -180,7 +180,7 @@ class BootstrapTest : public LogTestBase {
     auto table_info = std::make_shared<TableInfo>(
         log::kTestTable, log::kTestNamespace, log::kTestTable, kTableType, schema, IndexMap(),
         boost::none /* index_info */, 0 /* schema_version */, partition.first);
-    *meta = VERIFY_RESULT(RaftGroupMetadata::LoadOrCreate(RaftGroupMetadataData {
+    *meta = VERIFY_RESULT(RaftGroupMetadata::TEST_LoadOrCreate(RaftGroupMetadataData {
       .fs_manager = fs_manager_.get(),
       .table_info = table_info,
       .raft_group_id = log::kTestTablet,

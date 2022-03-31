@@ -180,15 +180,19 @@ class FsManager {
     return JoinPathSegments(wal_path, GetWalSegmentFileName(sequence_number));
   }
 
+  std::vector<std::string> GetRaftGroupMetadataDirs() const;
   // Return the directory where Raft group superblocks should be stored.
-  std::string GetRaftGroupMetadataDir() const;
   static std::string GetRaftGroupMetadataDir(const std::string& data_dir);
 
+  void SetTabletPathByDataPath(const std::string& tablet_id, const std::string& path);
+  Result<std::string> GetTabletPath(const string& tablet_id) const;
+  bool LookupTablet(const std::string& tablet_id);
+
   // Return the path for a specific Raft group's superblock.
-  std::string GetRaftGroupMetadataPath(const std::string& tablet_id) const;
+  Result<std::string> GetRaftGroupMetadataPath(const std::string& tablet_id) const;
 
   // List the tablet IDs in the metadata directory.
-  CHECKED_STATUS ListTabletIds(std::vector<std::string>* tablet_ids);
+  Result<std::vector<std::string>> ListTabletIds();
 
   // Return the path where InstanceMetadataPB is stored.
   std::string GetInstanceMetadataPath(const std::string& root) const;
@@ -196,14 +200,16 @@ class FsManager {
   // Return the path where the fs lock file is stored.
   std::string GetFsLockFilePath(const std::string& root) const;
 
+  // Return the directory where the certs are stored.
+  std::string GetDefaultRootDir() const;
+  static std::string GetCertsDir(const std::string& root_dir);
+
+  std::vector<std::string> GetConsensusMetadataDirs() const;
   // Return the directory where the consensus metadata is stored.
-  std::string GetConsensusMetadataDir() const;
   static std::string GetConsensusMetadataDir(const std::string& data_dir);
 
   // Return the path where ConsensusMetadataPB is stored.
-  std::string GetConsensusMetadataPath(const std::string& tablet_id) const {
-    return JoinPathSegments(GetConsensusMetadataDir(), tablet_id);
-  }
+  Result<std::string> GetConsensusMetadataPath(const std::string& tablet_id) const;
 
   Env *env() { return env_; }
 
@@ -233,11 +239,10 @@ class FsManager {
   CHECKED_STATUS Init();
 
   // Creates filesystem roots, writing new on-disk instances using 'metadata'.
-  CHECKED_STATUS CreateFileSystemRoots(bool create_metadata_dir,
-                                       const InstanceMetadataPB& metadata,
+  CHECKED_STATUS CreateFileSystemRoots(const InstanceMetadataPB& metadata,
                                        bool create_lock = false);
 
-  std::set<std::string> GetAncillaryDirs(bool add_metadata_dirs) const;
+  std::set<std::string> GetAncillaryDirs() const;
 
   // Create a new InstanceMetadataPB.
   void CreateInstanceMetadata(InstanceMetadataPB* metadata);
@@ -288,11 +293,14 @@ class FsManager {
   // - The first data root is used as the metadata root.
   // - Common roots in the collections have been deduplicated.
   std::set<std::string> canonicalized_wal_fs_roots_;
-  std::string canonicalized_metadata_fs_root_;
+  std::string canonicalized_default_fs_root_;
   std::set<std::string> canonicalized_data_fs_roots_;
   std::set<std::string> canonicalized_all_fs_roots_;
 
   std::map<std::string, scoped_refptr<Counter>> counters_;
+
+  std::unordered_map<std::string, std::string> tablet_id_to_path_ GUARDED_BY(data_mutex_);
+  mutable std::mutex data_mutex_;
 
   std::unique_ptr<InstanceMetadataPB> metadata_;
 

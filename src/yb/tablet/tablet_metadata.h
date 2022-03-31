@@ -203,7 +203,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   // provided 'schema'.
   //
   // This is mostly useful for tests which instantiate Raft groups directly.
-  static Result<RaftGroupMetadataPtr> LoadOrCreate(const RaftGroupMetadataData& data);
+  static Result<RaftGroupMetadataPtr> TEST_LoadOrCreate(const RaftGroupMetadataData& data);
 
   Result<TableInfoPtr> GetTableInfo(const TableId& table_id) const;
   Result<TableInfoPtr> GetTableInfoUnlocked(const TableId& table_id) const;

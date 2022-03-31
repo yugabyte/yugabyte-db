@@ -231,6 +231,7 @@ class RaftConsensusTest : public YBTest {
     fs_manager_.reset(new FsManager(env_.get(), test_path, "tserver_test"));
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
     ASSERT_OK(fs_manager_->CheckAndOpenFileSystemRoots());
+    fs_manager_->SetTabletPathByDataPath(kTestTablet, fs_manager_->GetDataRootDirs()[0]);
     ASSERT_OK(ThreadPoolBuilder("log").Build(&log_thread_pool_));
     ASSERT_OK(Log::Open(LogOptions(),
                        kTestTablet,

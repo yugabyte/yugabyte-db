@@ -457,8 +457,7 @@ Status TSTabletManager::Init() {
   CleanupCheckpoints();
 
   // Search for tablets in the metadata dir.
-  vector<string> tablet_ids;
-  RETURN_NOT_OK(fs_manager_->ListTabletIds(&tablet_ids));
+  vector<string> tablet_ids = VERIFY_RESULT(fs_manager_->ListTabletIds());
 
   InitLocalRaftPeerPB();
 
@@ -673,6 +672,7 @@ Result<TabletPeerPtr> TSTabletManager::CreateNewTablet(
   string wal_root_dir;
   GetAndRegisterDataAndWalDir(
       fs_manager_, table_info->table_id, tablet_id, &data_root_dir, &wal_root_dir);
+  fs_manager_->SetTabletPathByDataPath(tablet_id, data_root_dir);
   auto create_result = RaftGroupMetadata::CreateNew(tablet::RaftGroupMetadataData {
     .fs_manager = fs_manager_,
     .table_info = table_info,
@@ -772,12 +772,14 @@ Status TSTabletManager::StartSubtabletsSplit(
     }
 
     // Try to load metadata from previous not completed split.
-    auto load_result = RaftGroupMetadata::Load(fs_manager_, subtablet_id);
-    if (load_result.ok() && CanServeTabletData((*load_result)->tablet_data_state())) {
-      // Sub tablet has been already created and ready during previous split attempt at this node or
-      // as a result of remote bootstrap from another node, no need to re-create.
-      iter = tcmetas->erase(iter);
-      continue;
+    if (fs_manager_->LookupTablet(subtablet_id)) {
+      auto load_result = RaftGroupMetadata::Load(fs_manager_, subtablet_id);
+      if (load_result.ok() && CanServeTabletData((*load_result)->tablet_data_state())) {
+        // Sub tablet has been already created and ready during previous split attempt at this node
+        // or as a result of remote bootstrap from another node, no need to re-create.
+        iter = tcmetas->erase(iter);
+        continue;
+      }
     }
 
     // Delete on-disk data for new tablet IDs in case it is present as a leftover from previously
@@ -892,6 +894,7 @@ Status TSTabletManager::ApplyTabletSplit(
 
   for (const auto& tcmeta : tcmetas) {
     RegisterDataAndWalDir(fs_manager_, table_id, tcmeta.tablet_id, data_root_dir, wal_root_dir);
+    fs_manager_->SetTabletPathByDataPath(tcmeta.tablet_id, data_root_dir);
   }
 
   bool successfully_completed = false;
@@ -2195,9 +2198,9 @@ void TSTabletManager::RegisterDataAndWalDir(FsManager* fs_manager,
   CHECK(!data_root_dirs.empty()) << "No data root directories found";
   auto table_data_assignment_iter = table_data_assignment_map_.find(table_id);
   if (table_data_assignment_iter == table_data_assignment_map_.end()) {
-    for (string data_root_iter : data_root_dirs) {
+    for (const string& data_root : data_root_dirs) {
       unordered_set<string> tablet_id_set;
-      table_data_assignment_map_[table_id][data_root_iter] = tablet_id_set;
+      table_data_assignment_map_[table_id][data_root] = tablet_id_set;
     }
   }
   // Increment the count for data_root_dir.
@@ -2205,6 +2208,7 @@ void TSTabletManager::RegisterDataAndWalDir(FsManager* fs_manager,
   auto data_assignment_value_map = table_data_assignment_iter->second;
   auto data_assignment_value_iter = table_data_assignment_map_[table_id].find(data_root_dir);
   if (data_assignment_value_iter == table_data_assignment_map_[table_id].end()) {
+    LOG(DFATAL) << "Unexpected data dir: " << data_root_dir;
     unordered_set<string> tablet_id_set;
     tablet_id_set.insert(tablet_id);
     table_data_assignment_map_[table_id][data_root_dir] = tablet_id_set;
@@ -2216,9 +2220,9 @@ void TSTabletManager::RegisterDataAndWalDir(FsManager* fs_manager,
   CHECK(!wal_root_dirs.empty()) << "No wal root directories found";
   auto table_wal_assignment_iter = table_wal_assignment_map_.find(table_id);
   if (table_wal_assignment_iter == table_wal_assignment_map_.end()) {
-    for (string wal_root_iter : wal_root_dirs) {
+    for (const string& wal_root : wal_root_dirs) {
       unordered_set<string> tablet_id_set;
-      table_wal_assignment_map_[table_id][wal_root_iter] = tablet_id_set;
+      table_wal_assignment_map_[table_id][wal_root] = tablet_id_set;
     }
   }
   // Increment the count for wal_root_dir.
@@ -2227,6 +2231,7 @@ void TSTabletManager::RegisterDataAndWalDir(FsManager* fs_manager,
   auto wal_assignment_value_map = table_wal_assignment_iter->second;
   auto wal_assignment_value_iter = table_wal_assignment_map_[table_id].find(wal_root_dir);
   if (wal_assignment_value_iter == table_wal_assignment_map_[table_id].end()) {
+    LOG(DFATAL) << "Unexpected wal dir: " << wal_root_dir;
     unordered_set<string> tablet_id_set;
     tablet_id_set.insert(tablet_id);
     table_wal_assignment_map_[table_id][wal_root_dir] = tablet_id_set;
