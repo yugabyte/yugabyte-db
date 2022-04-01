@@ -17,6 +17,7 @@ import static play.mvc.Http.Status.NOT_FOUND;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.net.HostAndPort;
 import com.google.inject.Inject;
+import com.google.inject.Provider;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
 import com.yugabyte.yw.commissioner.HealthChecker;
@@ -54,7 +55,7 @@ public class UniverseInfoHandler {
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
   @Inject private YBClientService ybService;
   @Inject private NodeUniverseManager nodeUniverseManager;
-  @Inject private HealthChecker healthChecker;
+  @Inject private Provider<HealthChecker> healthChecker;
 
   public UniverseResourceDetails getUniverseResources(
       Customer customer, UniverseDefinitionTaskParams taskParams) {
@@ -136,7 +137,7 @@ public class UniverseInfoHandler {
     try {
       // We do not OBSERVE the result of the checkSingleUniverse, we are just interested that
       // the health check result is queued.
-      healthChecker.checkSingleUniverse(customer, universe);
+      healthChecker.get().checkSingleUniverse(customer, universe);
     } catch (RuntimeException e) {
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     }
