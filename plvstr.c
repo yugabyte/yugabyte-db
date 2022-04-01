@@ -21,6 +21,12 @@
 #include "mb/pg_wchar.h"
 #include "nodes/execnodes.h"
 
+#if PG_VERSION_NUM < 100000
+
+#include "utils/bytea.h"
+
+#endif
+
 #include "catalog/pg_type.h"
 #include "libpq/pqformat.h"
 #include "orafce.h"
@@ -55,6 +61,9 @@ PG_FUNCTION_INFO_V1(plvchr_char_name);
 
 PG_FUNCTION_INFO_V1(oracle_substr2);
 PG_FUNCTION_INFO_V1(oracle_substr3);
+
+PG_FUNCTION_INFO_V1(oracle_substrb2);
+PG_FUNCTION_INFO_V1(oracle_substrb3);
 
 static text *ora_substr(Datum str, int start, int len);
 
@@ -1341,4 +1350,48 @@ plvstr_betwn_c(PG_FUNCTION_ARGS)
 	PG_RETURN_TEXT_P(ora_substr_text(string_in,
 									 v_start,
 									 v_end - v_start + 1));
+}
+
+/*
+ * len < 0 means "length is not specified".
+ */
+static bytea *
+ora_substrb(Datum str, int start, int len)
+{
+	if (start == 0)
+		start = 1;	/* 0 is interpreted as 1 */
+	else if (start < 0)
+	{
+		bytea	   *t = DatumGetByteaPP(str);
+		int			n = VARSIZE_ANY_EXHDR(t);
+
+		start = n + start + 1;
+		if (start <= 0)
+			return DatumGetByteaPP(DirectFunctionCall1(byteain, CStringGetDatum("")));
+
+		str = PointerGetDatum(t);	/* save detoasted text */
+	}
+
+	if (len < 0)
+		return DatumGetByteaP(DirectFunctionCall2(bytea_substr_no_len,
+			str, Int32GetDatum(start)));
+	else
+		return DatumGetByteaP(DirectFunctionCall3(bytea_substr,
+			str, Int32GetDatum(start), Int32GetDatum(len)));
+}
+
+Datum
+oracle_substrb2(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_BYTEA_P(ora_substrb(PG_GETARG_DATUM(0),
+							   PG_GETARG_INT32(1),
+							   -1));
+}
+
+Datum
+oracle_substrb3(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_BYTEA_P(ora_substrb(PG_GETARG_DATUM(0),
+							   PG_GETARG_INT32(1),
+							   PG_GETARG_INT32(2)));
 }
