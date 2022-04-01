@@ -70,7 +70,7 @@ $ gcloud config set compute/zone us-west1-b
 
 - Install `kubectl`
 
-Refer to your specific [operating system](https://kubernetes.io/docs/tasks/tools/) for kubectl installation instructions.
+Refer to kubectl installation instructions for your specific [operating system](https://kubernetes.io/docs/tasks/tools/).
 
 
 Note that GKE is usually 2 or 3 major releases behind the upstream/OSS Kubernetes release. This means you have to make sure that you have the latest kubectl version that is compatible across different Kubernetes distributions if that's what you intend to.
