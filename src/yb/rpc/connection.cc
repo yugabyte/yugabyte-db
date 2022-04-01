@@ -40,6 +40,7 @@
 
 #include "yb/rpc/connection_context.h"
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/network_error.h"
 #include "yb/rpc/reactor.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_introspection.pb.h"
@@ -190,8 +191,9 @@ void Connection::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
       auto passed = reactor_->cur_time() - last_activity_time_;
       reactor_->DestroyConnection(
           this,
-          STATUS_FORMAT(
-              HostUnreachable, "Connect timeout, passed: $0, timeout: $1", passed, timeout));
+          STATUS_EC_FORMAT(NetworkError, NetworkError(NetworkErrorCode::kConnectFailed),
+                           "Connect timeout $0, passed: $1, timeout: $2",
+                           ToString(), passed, timeout));
       return;
     }
   }

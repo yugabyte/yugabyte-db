@@ -83,7 +83,7 @@ message AppStatusPB {
     MERGE_IN_PROGRESS = 28;
     COMBINED_ERROR = 29;
     SNAPSHOT_TOO_OLD = 30;
-    HOST_UNREACHABLE = 31;
+    DEPRECATED_HOST_UNREACHABLE = 31;
   }
 
   required ErrorCode code = 1;
