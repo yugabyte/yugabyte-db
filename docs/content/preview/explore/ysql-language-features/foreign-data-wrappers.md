@@ -22,8 +22,7 @@ In order to access foreign data, we first need to create the foreign data wrappe
 
 ### CREATING FOREIGN DATA WRAPPERS
 
-Foreign data wrappers can be created using the [`CREATE FOREIGN DATA WRAPPER`](../../../api/ysql/the-sql-language/statements/ddl_create_foreign_data_wrapper) command.
-Only superusers or users with the yb_fdw role can create foreign data wrappers.
+Use the [`CREATE FOREIGN DATA WRAPPER`](../../../api/ysql/the-sql-language/statements/ddl_create_foreign_data_wrapper/) command to create foreign data wrappers.
 
 Example:
 
@@ -33,9 +32,8 @@ yugabyte=# CREATE FOREIGN DATA WRAPPER mywrapper HANDLER myhandler OPTIONS (dumm
 
 ### CREATING A FOREIGN SERVER
 
-Foreign servers can be used to specify connection information for an external data source.
-A foreign server can be created using the [`CREATE FOREIGN SERVER`](../../api/ysql/the-sql-language/statements/ddl_create_server) command.
-
+You can use _foreign servers_ to specify connection information for an external data source.
+Create foreign servers using the [`CREATE FOREIGN SERVER`](../../../api/ysql/the-sql-language/statements/ddl_create_server/) command.
 Example:
 
 ```plpgsql
@@ -44,8 +42,8 @@ yugabyte=# CREATE SERVER myserver FOREIGN DATA WRAPPER mywrapper OPTIONS (host '
 
 ### CREATE USER MAPPINGS
 
-User mappings can be used to define the mapping of a user to authorization credentials in the foreign server.
-A user mapping can be created using the [`CREATE USER MAPPING`](../../api/ysql/the-sql-language/statements/ddl_create_user_mapping) command.
+User mappings associate a user with authorization credentials in the foreign server.
+You can create a user mapping with the [`CREATE USER MAPPING`](../../../api/ysql/the-sql-language/statements/ddl_create_user_mapping.md) command.
 
 List all databases using the following statements.
 
@@ -58,10 +56,11 @@ yugabyte=# CREATE USER MAPPING FOR myuser SERVER myserver OPTIONS (user 'john', 
 Use the [`CREATE FOREIGN TABLE`](../../api/ysql/the-sql-language/statements/ddl_create_foreign_table) command to create foreign tables.
 
 ```sql
-yugabyte=# CREATE FOREIGN TABLE mytable (col1 int, col2 int) SERVER myserver OPTIONS (schema 'external_schema', table 'external_table');
+yugabyte=# CREATE FOREIGN TABLE mytable (col1 int, col2 int)
+           SERVER myserver
+           OPTIONS (schema 'external_schema', table 'external_table');
 ```
 
-
-The following foreign data wrappers are bundled with YB:
-- [postgres_fdw](./pg-extensions/#postgres-fdw-example)
-- [file_fdw](./pg-extensions/#file-fdw-example)
+The following foreign data wrappers are bundled with YugabyteDB:
+- [postgres_fdw](../pg-extensions/#postgres-fdw-example)
+- [file_fdw](../pg-extensions/#file-fdw-example)
