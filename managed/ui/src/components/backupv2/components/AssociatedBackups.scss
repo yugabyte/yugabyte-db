@@ -20,3 +20,13 @@
     }
   }
 }
+.associated-backups-details .backup-details-actions > button {
+  width: unset;
+}
+.associated-backups-details {
+  .restore-detail-button,
+  .copy-location-button {
+    width: unset;
+    float: unset;
+  }
+}

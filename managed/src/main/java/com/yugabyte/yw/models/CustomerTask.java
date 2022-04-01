@@ -191,6 +191,9 @@ public class CustomerTask extends Model {
     @EnumValue("CreateAlertDefinitions")
     CreateAlertDefinitions,
 
+    @EnumValue("ManageAlertDefinitions")
+    ManageAlertDefinitions,
+
     @EnumValue("ExternalScript")
     ExternalScript,
 
@@ -285,6 +288,8 @@ public class CustomerTask extends Model {
           return completed ? "Started Master process on " : "Starting Master process on ";
         case CreateAlertDefinitions:
           return completed ? "Created alert definitions " : "Creating alert definitions ";
+        case ManageAlertDefinitions:
+          return completed ? "Managed alert definitions " : "Managing alert definitions ";
         case ExternalScript:
           return completed ? "Script execution completed " : "Script execution is running";
         case CreateXClusterConfig:

@@ -62,10 +62,11 @@ std::string InetAddress::ToBytes() const {
 }
 
 CHECKED_STATUS InetAddress::FromSlice(const Slice& slice, size_t size_hint) {
-  size_t expected_size = (size_hint == 0) ? slice.size() : size_hint;
+  size_t expected_size = size_hint == 0 ? slice.size() : size_hint;
   if (expected_size > slice.size()) {
-    return STATUS_SUBSTITUTE(InvalidArgument, "Size of slice: $0 is smaller than provided "
-        "size_hint: $1", slice.size(), expected_size);
+    return STATUS_FORMAT(
+        InvalidArgument, "Size of slice: $0 is smaller than provided size_hint: $1",
+        slice.size(), expected_size);
   }
   if (expected_size == kInetAddressV4Size) {
     address_v4::bytes_type v4bytes;
@@ -80,14 +81,9 @@ CHECKED_STATUS InetAddress::FromSlice(const Slice& slice, size_t size_hint) {
     address_v6 v6address(v6bytes);
     boost_addr_ = v6address;
   } else {
-    return STATUS_SUBSTITUTE(InvalidArgument, "Size of slice is invalid: $0", expected_size);
+    return STATUS_FORMAT(InvalidArgument, "Size of slice is invalid: $0", expected_size);
   }
   return Status::OK();
-}
-
-CHECKED_STATUS InetAddress::FromBytes(const std::string& bytes) {
-  Slice slice (bytes.data(), bytes.size());
-  return FromSlice(slice);
 }
 
 bool IsIPv6NonLinkLocal(const IpAddress& address) {

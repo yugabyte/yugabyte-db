@@ -39,6 +39,7 @@
 #include "yb/tserver/tserver_admin.pb.h"
 #include "yb/tserver/tserver_service.pb.h"
 
+#include "yb/util/status_callback.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/metrics_fwd.h"
@@ -733,6 +734,30 @@ class AsyncSplitTablet : public AsyncTabletLeaderTask {
   tablet::SplitTabletRequestPB req_;
   tserver::SplitTabletResponsePB resp_;
   TabletSplitCompleteHandlerIf* tablet_split_complete_handler_;
+};
+
+class AsyncTestRetry : public RetrySpecificTSRpcTask {
+ public:
+  AsyncTestRetry(
+      Master* master, ThreadPool* callback_pool, const TabletServerId& ts_uuid,
+      int32_t num_retries, StdStatusCallback callback);
+
+  Type type() const override { return ASYNC_TEST_RETRY; }
+
+  std::string type_name() const override { return "Test retry"; }
+
+  std::string description() const override;
+
+ private:
+  TabletId tablet_id() const override { return TabletId(); }
+  TabletServerId permanent_uuid() const;
+
+  void HandleResponse(int attempt) override;
+  bool SendRequest(int attempt) override;
+
+  tserver::TestRetryResponsePB resp_;
+  int32_t num_retries_;
+  StdStatusCallback callback_;
 };
 
 } // namespace master

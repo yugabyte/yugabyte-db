@@ -73,9 +73,8 @@ std::vector<docdb::PrimitiveValue> InitKeyColumnPrimitiveValues(
       //
       // Use regular executor for now.
       QLExprExecutor executor;
-      QLExprResult expr_result;
-      auto expr = column_value.ToGoogleProtobuf(); // TODO(LW_PERFORM)
-      auto s = executor.EvalExpr(expr, nullptr, expr_result.Writer());
+      LWExprResult expr_result(&column_value.arena());
+      auto s = executor.EvalExpr(column_value, nullptr, expr_result.Writer());
 
       result.push_back(docdb::PrimitiveValue::FromQLValuePB(expr_result.Value(), sorting_type));
     }

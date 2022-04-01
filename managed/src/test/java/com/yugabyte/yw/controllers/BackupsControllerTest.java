@@ -881,7 +881,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     backup.transitionState(BackupState.Completed);
     UUID invalidConfigUUID = UUID.randomUUID();
     backup.updateStorageConfigUUID(invalidConfigUUID);
-    when(mockBackupUtil.validateStorageConfigOnLocations(any(), any())).thenReturn(true);
+    // when(mockBackupUtil.validateStorageConfigOnLocations(any(), any())).thenReturn(true);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
     Result result = editBackup(defaultUser, bodyJson, backup.backupUUID);
@@ -1016,12 +1016,16 @@ public class BackupsControllerTest extends FakeDBApplication {
     backup.transitionState(BackupState.Completed);
     UUID invalidConfigUUID = UUID.randomUUID();
     backup.updateStorageConfigUUID(invalidConfigUUID);
-    when(mockBackupUtil.validateStorageConfigOnLocations(any(), any())).thenReturn(false);
+    doThrow(
+            new PlatformServiceException(
+                BAD_REQUEST, "Storage config TEST14 cannot access backup locations"))
+        .when(mockBackupUtil)
+        .validateStorageConfigOnLocations(any(), any());
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
     Result result =
         assertPlatformException(() -> editBackup(defaultUser, bodyJson, backup.backupUUID));
-    assertBadRequest(result, "Cannot assign storage config as it cannot access backup location");
+    assertBadRequest(result, "Storage config TEST14 cannot access backup locations");
     assertAuditEntry(0, defaultCustomer.uuid);
     backup.refresh();
     assertEquals(invalidConfigUUID, backup.storageConfigUUID);
@@ -1038,7 +1042,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     backup.transitionState(BackupState.Completed);
     UUID invalidConfigUUID = UUID.randomUUID();
     backup.updateStorageConfigUUID(invalidConfigUUID);
-    when(mockBackupUtil.validateStorageConfigOnLocations(any(), any())).thenReturn(false);
+    // when(mockBackupUtil.validateStorageConfigOnLocations(any(), any())).thenReturn(false);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("timeBeforeDeleteFromPresentInMillis", "0");
     Result result =

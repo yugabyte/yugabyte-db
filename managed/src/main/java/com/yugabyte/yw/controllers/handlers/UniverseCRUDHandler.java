@@ -472,7 +472,7 @@ public class UniverseCRUDHandler {
 
     universe.updateConfig(
         ImmutableMap.of(
-            Universe.SKIP_ANSIBLE_TASKS,
+            Universe.USE_CUSTOM_IMAGE,
             taskParams.nodeDetailsSet.stream().allMatch(n -> n.ybPrebuiltAmi) ? "true" : "false"));
 
     // Submit the task to create the universe.

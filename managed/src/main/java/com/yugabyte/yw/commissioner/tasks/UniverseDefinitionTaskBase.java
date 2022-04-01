@@ -32,6 +32,7 @@ import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
+import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.NodeInstance;
@@ -535,11 +536,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   public void createGFlagsOverrideTasks(Collection<NodeDetails> nodes, ServerType taskType) {
-    createGFlagsOverrideTasks(nodes, taskType, false /* isShell */);
+    createGFlagsOverrideTasks(nodes, taskType, false /* isShell */, VmUpgradeTaskType.None);
   }
 
   public void createGFlagsOverrideTasks(
-      Collection<NodeDetails> nodes, ServerType taskType, boolean isMasterInShellMode) {
+      Collection<NodeDetails> nodes,
+      ServerType taskType,
+      boolean isMasterInShellMode,
+      VmUpgradeTaskType vmUpgradeTaskType) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("AnsibleConfigureServersGFlags", executor);
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
@@ -565,6 +569,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
       // Update gflags conf file for shell mode.
       params.isMasterInShellMode = isMasterInShellMode;
+      params.vmUpgradeTaskType = vmUpgradeTaskType;
 
       // The software package to install for this cluster.
       params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
@@ -825,7 +830,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param nodes : a collection of nodes that need to be created
    */
   public SubTaskGroup createSetupServerTasks(
-      Collection<NodeDetails> nodes, boolean isSystemdUpgrade) {
+      Collection<NodeDetails> nodes,
+      boolean isSystemdUpgrade,
+      VmUpgradeTaskType vmUpgradeTaskType) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("AnsibleSetupServer", executor);
     for (NodeDetails node : nodes) {
@@ -834,6 +841,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       fillSetupParamsForNode(params, userIntent, node);
       params.useSystemd = userIntent.useSystemd;
       params.isSystemdUpgrade = isSystemdUpgrade;
+      params.vmUpgradeTaskType = vmUpgradeTaskType;
 
       // Create the Ansible task to setup the server.
       AnsibleSetupServer ansibleSetupServer = createTask(AnsibleSetupServer.class);
@@ -846,7 +854,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   public SubTaskGroup createSetupServerTasks(Collection<NodeDetails> nodes) {
-    return createSetupServerTasks(nodes, false /* isSystemdUpgrade */);
+    return createSetupServerTasks(nodes, false /* isSystemdUpgrade */, VmUpgradeTaskType.None);
   }
 
   /**
@@ -901,7 +909,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       boolean updateMasterAddrsOnly,
       boolean isMaster) {
     return createConfigureServerTasks(
-        nodes, isMasterInShellMode, updateMasterAddrsOnly, isMaster, false /* isSystemdUpgrade */);
+        nodes,
+        isMasterInShellMode,
+        updateMasterAddrsOnly,
+        isMaster,
+        false /* isSystemdUpgrade */,
+        VmUpgradeTaskType.None);
   }
 
   public SubTaskGroup createConfigureServerTasks(
@@ -909,7 +922,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       boolean isMasterInShellMode,
       boolean updateMasterAddrsOnly,
       boolean isMaster,
-      boolean isSystemdUpgrade) {
+      boolean isSystemdUpgrade,
+      VmUpgradeTaskType vmUpgradeTaskType) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("AnsibleConfigureServers", executor);
     for (NodeDetails node : nodes) {
@@ -948,6 +962,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.enableYEDIS = userIntent.enableYEDIS;
       params.useSystemd = userIntent.useSystemd;
       params.isSystemdUpgrade = isSystemdUpgrade;
+      params.vmUpgradeTaskType = vmUpgradeTaskType;
 
       // Development testing variable.
       params.itestS3PackagePath = taskParams().itestS3PackagePath;
@@ -1404,7 +1419,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                 if (!primaryClusterNodes.isEmpty()) {
                   // Override master (on primary cluster only) and tserver flags as necessary.
                   // These are idempotent operations.
-                  createGFlagsOverrideTasks(primaryClusterNodes, ServerType.MASTER, isShellMode);
+                  createGFlagsOverrideTasks(
+                      primaryClusterNodes, ServerType.MASTER, isShellMode, VmUpgradeTaskType.None);
                 }
               }
               createGFlagsOverrideTasks(nodesToBeConfigured, ServerType.TSERVER);
@@ -1525,11 +1541,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
     subTaskGroup.setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
-  }
-
-  protected AnsibleConfigureServers getAnsibleConfigureServerTask(
-      NodeDetails node, ServerType processType, UpgradeTaskSubType taskSubType) {
-    return getAnsibleConfigureServerTask(node, processType, taskSubType, null);
   }
 
   protected AnsibleConfigureServers getAnsibleConfigureServerTask(

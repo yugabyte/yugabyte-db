@@ -86,6 +86,18 @@ menu:
     </a>
   </div>
 
+   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="covering-index-ysql/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
+        <div class="title">Covering indexes</div>
+      </div>
+      <div class="body">
+          Explore Covering indexes in YSQL with examples.
+      </div>
+    </a>
+  </div>
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="gin/">
       <div class="head">
