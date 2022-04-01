@@ -45,7 +45,7 @@ You must have a GKE cluster that has Helm configured. If you have not installed 
 
 The YugabyteDB Helm Chart has been tested with the following software versions:
 
-- GKE running Kubernetes 1.18 (or later). The helm chart you will use here to install yugabytedb requires 3 master servers and 3 t-servers each with 2 cpus - total 12 cpus. Thus you will need a kubernetes cluster with more than 12 cpus. With standard 3 nodes cluster, you will need each node with 8 cpus. 
+- GKE running Kubernetes 1.18 (or later). The helm chart you use to install YugabyteDB creates 3 master servers and 3 tablet servers, each with 2 CPU cores, for a total of 12 CPU cores. This means you need a Kubernetes cluster with more than 12 CPU cores. If the cluster contains 3 nodes then each node should have more than 4 cores.
 
 - Helm 3.4 or later
 - For optimal performance, ensure you set the appropriate [system limits using `ulimit`](../../../../manual-deployment/system-config/#ulimits) on each node in your Kubernetes cluster.
