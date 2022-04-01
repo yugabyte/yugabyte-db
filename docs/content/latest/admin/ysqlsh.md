@@ -561,7 +561,7 @@ Lists database tablegroups. If the form `\dgr+` is used, additional information 
 
 ##### \dgrt[+] [ [pattern](#patterns) ]
 
-Lists database tables and indexes in tablegroups. If the form `\dgrt+` is used, additional information is shown about each tablegroup and table.
+Lists tables and indexes in database tablegroups matching the *pattern*. If the form `\dgrt+` is used, additional information is shown about each tablegroup and table.
 
 ##### \dl
 
