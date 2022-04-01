@@ -21,6 +21,7 @@
 #include "yb/client/client_error.h"
 #include "yb/client/meta_cache.h"
 
+#include "yb/rpc/network_error.h"
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver_error.h"
 #include "yb/util/flag_tags.h"
@@ -276,7 +277,7 @@ Status TabletInvoker::FailToNewReplica(const Status& reason,
             << ", old replica: " << yb::ToString(current_ts_);
 
     if (GetAtomicFlag(&FLAGS_update_all_tablets_upon_network_failure) &&
-        reason.IsHostUnreachable()) {
+        rpc::NetworkError(reason) == rpc::NetworkErrorCode::kConnectFailed) {
       YB_LOG_EVERY_N_SECS(WARNING, 1) << "Marking TServer " << current_ts_->ToString()
                                       << " as unreachable due to " << reason.ToString();
       client_->data_->meta_cache_->MarkTSFailed(current_ts_, reason);
@@ -326,7 +327,7 @@ bool TabletInvoker::Done(Status* status) {
   //
   // TODO: This is probably too harsh; some network failures should be
   // retried on the current replica.
-  if (status->IsHostUnreachable() || status->IsNetworkError()) {
+  if (status->IsNetworkError()) {
     // The whole operation is completed if we can't schedule a retry.
     return !FailToNewReplica(*status).ok();
   }

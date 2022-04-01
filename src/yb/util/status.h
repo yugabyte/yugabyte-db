@@ -179,7 +179,6 @@ namespace yb {
     ((MergeInProgress, MERGE_IN_PROGRESS, 28, "Merge in progress")) \
     ((Combined, COMBINED_ERROR, 29, "Combined status representing multiple status failures.")) \
     ((SnapshotTooOld, SNAPSHOT_TOO_OLD, 30, "Snapshot too old")) \
-    ((HostUnreachable, HOST_UNREACHABLE, 31, "Host unreachable")) \
     /**/
 
 #define YB_STATUS_CODE_DECLARE(name, pb_name, value, message) \
