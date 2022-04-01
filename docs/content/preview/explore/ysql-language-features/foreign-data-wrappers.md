@@ -43,7 +43,7 @@ yugabyte=# CREATE SERVER myserver FOREIGN DATA WRAPPER mywrapper OPTIONS (host '
 ### CREATE USER MAPPINGS
 
 User mappings associate a user with authorization credentials in the foreign server.
-You can create a user mapping with the [`CREATE USER MAPPING`](../../../api/ysql/the-sql-language/statements/ddl_create_user_mapping.md) command.
+You can create a user mapping with the [`CREATE USER MAPPING`](../../../api/ysql/the-sql-language/statements/ddl_create_user_mapping) command.
 
 List all databases using the following statements.
 
@@ -53,7 +53,7 @@ yugabyte=# CREATE USER MAPPING FOR myuser SERVER myserver OPTIONS (user 'john', 
 
 ### CREATE FOREIGN TABLES
 
-Use the [`CREATE FOREIGN TABLE`](../../api/ysql/the-sql-language/statements/ddl_create_foreign_table) command to create foreign tables.
+Use the [`CREATE FOREIGN TABLE`](../../../api/ysql/the-sql-language/statements/ddl_create_foreign_table) command to create foreign tables.
 
 ```sql
 yugabyte=# CREATE FOREIGN TABLE mytable (col1 int, col2 int)
