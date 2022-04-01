@@ -46,6 +46,8 @@ class SnapshotOperationState :
 
   CHECKED_STATUS Apply(int64_t leader_term);
 
+  CHECKED_STATUS ApplyAndFlushFrontier(int64_t leader_term);
+
   std::string ToString() const override;
 
   // Returns the snapshot directory, based on the tablet's top directory for all snapshots, and any
