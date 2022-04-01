@@ -898,6 +898,7 @@ class TabletBootstrap {
 
     SnapshotOperation operation(tablet_.get(), snapshot);
     operation.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
+    operation.set_op_id(OpId::FromPB(replicate_msg->id()));
 
     return operation.Replicated(/* leader_term= */ yb::OpId::kUnknownTerm);
   }

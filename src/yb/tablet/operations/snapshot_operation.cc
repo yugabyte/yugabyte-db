@@ -19,9 +19,15 @@
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tserver/backup.pb.h"
 #include "yb/tserver/tserver_error.h"
+
+#include "yb/util/flag_tags.h"
 #include "yb/util/trace.h"
 
 DEFINE_bool(consistent_restore, false, "Whether to enable consistent restoration of snapshots");
+
+DEFINE_test_flag(bool, modify_flushed_frontier_snapshot_op, true,
+                 "Whether to modify flushed frontier after "
+                 "a create snapshot operation.");
 
 namespace yb {
 namespace tablet {
@@ -206,11 +212,16 @@ Status SnapshotOperation::DoReplicated(int64_t leader_term, Status* complete_sta
   // the flushed frontier to have this exact value, although in practice it will, since this is the
   // latest operation we've ever executed in this Raft group. This way we keep the current value
   // of history cutoff.
-  docdb::ConsensusFrontier frontier;
-  frontier.set_op_id(op_id());
-  frontier.set_hybrid_time(hybrid_time());
-  return tablet()->ModifyFlushedFrontier(
-      frontier, rocksdb::FrontierModificationMode::kUpdate);
+  if (FLAGS_TEST_modify_flushed_frontier_snapshot_op) {
+    docdb::ConsensusFrontier frontier;
+    frontier.set_op_id(op_id());
+    frontier.set_hybrid_time(hybrid_time());
+    LOG(INFO) << "Forcing modify flushed frontier to " << frontier.op_id();
+    return tablet()->ModifyFlushedFrontier(
+        frontier, rocksdb::FrontierModificationMode::kUpdate);
+  } else {
+    return Status::OK();
+  }
 }
 
 }  // namespace tablet

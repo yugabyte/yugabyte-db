@@ -63,6 +63,11 @@ DEFINE_bool(schedule_snapshot_rpcs_out_of_band, true,
             " background scheduling.");
 TAG_FLAG(schedule_snapshot_rpcs_out_of_band, runtime);
 
+DEFINE_bool(skip_crash_on_duplicate_snapshot, false,
+            "Should we not crash when we get a create snapshot request with the same "
+            "id as one of the previous snapshots.");
+TAG_FLAG(skip_crash_on_duplicate_snapshot, runtime);
+
 DECLARE_bool(allow_consecutive_restore);
 
 namespace yb {
@@ -198,7 +203,13 @@ class MasterSnapshotCoordinator::Impl {
       std::lock_guard<std::mutex> lock(mutex_);
       auto emplace_result = snapshots_.emplace(std::move(snapshot));
       if (!emplace_result.second) {
-        return STATUS_FORMAT(IllegalState, "Duplicate snapshot id: $0", id);
+        LOG(INFO) << "Received a duplicate create snapshot request for id: " << id;
+        if (FLAGS_skip_crash_on_duplicate_snapshot) {
+          LOG(INFO) << "Skipping duplicate create snapshot request gracefully.";
+          return Status::OK();
+        } else {
+          return STATUS_FORMAT(IllegalState, "Duplicate snapshot id: $0", id);
+        }
       }
 
       if (leader_term >= 0) {
