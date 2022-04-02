@@ -184,6 +184,7 @@ public class AuditService {
       JsonNode params,
       UUID taskUUID) {
     UserWithFeatures user = (UserWithFeatures) ctx.args.get("user");
+    ctx.args.put("isAudited", true);
     String method = request.method();
     String path = request.path();
     JsonNode redactedParams = filterSecretFields(params);
