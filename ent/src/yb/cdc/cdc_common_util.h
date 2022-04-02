@@ -20,6 +20,7 @@
 #include "yb/cdc/cdc_service.pb.h"
 
 #include "yb/common/common_fwd.h"
+#include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/raft_consensus.h"
@@ -53,10 +54,12 @@ typedef boost::unordered_map<TransactionId,
                              TransactionIdHash> TxnStatusMap;
 typedef std::pair<uint64_t, size_t> RecordTimeIndex;
 
+template <class Value>
 void AddColumnToMap(
-    const ColumnSchema &col_schema,
-    const docdb::PrimitiveValue &col,
-    cdc::KeyValuePairPB *kv_pair);
+    const ColumnSchema &col_schema, const Value &col, cdc::KeyValuePairPB *kv_pair) {
+  kv_pair->set_key(col_schema.name());
+  col.ToQLValuePB(col_schema.type(), kv_pair->mutable_value());
+}
 
 void AddProtoRecordColumnToMap(
     const ColumnSchema &col_schema,

@@ -36,10 +36,10 @@ Result<ColumnId> MetadataColumnId(SnapshotCoordinatorContext* context) {
 
 Result<docdb::KeyBytes> EncodedKey(
     SysRowEntryType type, const Slice& id, SnapshotCoordinatorContext* context) {
-  docdb::DocKey doc_key({ docdb::PrimitiveValue::Int32(type),
-                          docdb::PrimitiveValue(id.ToBuffer()) });
+  docdb::DocKey doc_key({ docdb::KeyEntryValue::Int32(type),
+                          docdb::KeyEntryValue(id.ToBuffer()) });
   docdb::SubDocKey sub_doc_key(
-      doc_key, docdb::PrimitiveValue(VERIFY_RESULT(MetadataColumnId(context))));
+      doc_key, docdb::KeyEntryValue::MakeColumnId(VERIFY_RESULT(MetadataColumnId(context))));
   return sub_doc_key.Encode();
 }
 

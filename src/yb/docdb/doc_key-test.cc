@@ -91,15 +91,15 @@ class DocKeyTest : public YBTest {
               }
               for (int hIndex = 0; hIndex < num_hash_keys; ++hIndex) {
                 sub_doc_key.doc_key().hashed_group().push_back(
-                    PrimitiveValue(Format("h$0_$1", hIndex, std::string(hIndex + 1, 'h'))));
+                    KeyEntryValue(Format("h$0_$1", hIndex, std::string(hIndex + 1, 'h'))));
               }
               for (int rIndex = 0; rIndex < num_range_keys; ++rIndex) {
                 sub_doc_key.doc_key().range_group().push_back(
-                    PrimitiveValue(Format("r$0_$1", rIndex, std::string(rIndex + 1, 'r'))));
+                    KeyEntryValue(Format("r$0_$1", rIndex, std::string(rIndex + 1, 'r'))));
               }
               for (int skIndex = 0; skIndex < num_sub_keys; ++skIndex) {
                 sub_doc_key.subkeys().push_back(
-                    PrimitiveValue(Format("sk$0_$1", skIndex, std::string(skIndex + 1, 's'))));
+                    KeyEntryValue(Format("sk$0_$1", skIndex, std::string(skIndex + 1, 's'))));
               }
               if (has_hybrid_time) {
                 sub_doc_key.set_hybrid_time(DocHybridTime(HybridTime::FromMicros(123456), 1));
@@ -219,31 +219,33 @@ void TestDocOrSubDocKeyComparison() {
 TEST_F(DocKeyTest, TestDocKeyToString) {
   ASSERT_EQ(
       "DocKey([], [10, \"foo\", 20, \"bar\"])",
-      DocKey(PrimitiveValues(10, "foo", 20, "bar")).ToString());
+      DocKey(KeyEntryValues(10, "foo", 20, "bar")).ToString());
   ASSERT_EQ(
       "DocKey(0x1234, "
       "[\"hashed_key1\", 123, \"hashed_key2\", 234], [10, \"foo\", 20, \"bar\"])",
       DocKey(0x1234,
-             PrimitiveValues("hashed_key1", 123, "hashed_key2", 234),
-             PrimitiveValues(10, "foo", 20, "bar")).ToString());
+             KeyEntryValues("hashed_key1", 123, "hashed_key2", 234),
+             KeyEntryValues(10, "foo", 20, "bar")).ToString());
 }
 
 TEST_F(DocKeyTest, TestSubDocKeyToString) {
   ASSERT_EQ(
       "SubDocKey(DocKey([], [\"range_key1\", 1000, \"range_key_3\"]), [HT{ physical: 12345 }])",
-      SubDocKey(DocKey(PrimitiveValues("range_key1", 1000, "range_key_3")),
+      SubDocKey(DocKey(KeyEntryValues("range_key1", 1000, "range_key_3")),
                 HybridTime::FromMicros(12345L)).ToString());
   ASSERT_EQ(
       "SubDocKey(DocKey([], [\"range_key1\", 1000, \"range_key_3\"]), "
       "[\"subkey1\"; HT{ physical: 20000 }])",
       SubDocKey(
-          DocKey(PrimitiveValues("range_key1", 1000, "range_key_3")),
-          PrimitiveValue("subkey1"), HybridTime::FromMicros(20000L)
+          DocKey(KeyEntryValues("range_key1", 1000, "range_key_3")),
+          KeyEntryValue("subkey1"), HybridTime::FromMicros(20000L)
       ).ToString());
 
 }
 
 TEST_F(DocKeyTest, TestDocKeyEncoding) {
+  constexpr int64_t kIntKey1 = 1000;
+  constexpr int64_t kIntKey2 = 2000;
   // A few points to make it easier to understand the expected binary representations here:
   // - Initial bytes such as 'S', 'I' correspond the ValueType enum.
   // - Strings are terminated with \x00\x00.
@@ -259,7 +261,8 @@ TEST_F(DocKeyTest, TestDocKeyEncoding) {
                I\x80\x00\x00\x00\x00\x00\x07\xd0\
                !"
           )#"),
-      FormatSliceAsStr(DocKey(PrimitiveValues("val1", 1000, "val2", 2000)).Encode().AsSlice()));
+      FormatSliceAsStr(
+          DocKey(KeyEntryValues("val1", kIntKey1, "val2", kIntKey2)).Encode().AsSlice()));
 
   InetAddress addr(ASSERT_RESULT(ParseIpAddress("1.2.3.4")));
 
@@ -279,16 +282,16 @@ TEST_F(DocKeyTest, TestDocKeyEncoding) {
              !"
           )#"),
       FormatSliceAsStr(DocKey({
-          PrimitiveValue("val1", SortOrder::kDescending),
-          PrimitiveValue(1000),
-          PrimitiveValue(1000, SortOrder::kDescending),
-          PrimitiveValue(BINARY_STRING("val1""\x00"), SortOrder::kDescending),
-          PrimitiveValue(addr, SortOrder::kDescending),
-          PrimitiveValue(Timestamp(1000), SortOrder::kDescending),
-          PrimitiveValue::Decimal(util::Decimal("100.02").EncodeToComparable(),
-                                  SortOrder::kDescending),
-          PrimitiveValue::Decimal(util::Decimal("0.001").EncodeToComparable(),
-                                  SortOrder::kAscending),
+          KeyEntryValue("val1", SortOrder::kDescending),
+          KeyEntryValue::Int64(1000),
+          KeyEntryValue::Int64(1000, SortOrder::kDescending),
+          KeyEntryValue(BINARY_STRING("val1""\x00"), SortOrder::kDescending),
+          KeyEntryValue::MakeInetAddress(addr, SortOrder::kDescending),
+          KeyEntryValue::MakeTimestamp(Timestamp(1000), SortOrder::kDescending),
+          KeyEntryValue::Decimal(util::Decimal("100.02").EncodeToComparable(),
+                                 SortOrder::kDescending),
+          KeyEntryValue::Decimal(util::Decimal("0.001").EncodeToComparable(),
+                                 SortOrder::kAscending),
                               }).Encode().AsSlice()));
 
   ASSERT_STR_EQ_VERBOSE_TRIMMED(
@@ -305,15 +308,15 @@ TEST_F(DocKeyTest, TestDocKeyEncoding) {
                !")#"),
       FormatSliceAsStr(DocKey(
           0xcafe,
-          PrimitiveValues("hashed1", "hashed2"),
-          PrimitiveValues("range1", 1000, "range2", 2000)).Encode().AsSlice()));
+          KeyEntryValues("hashed1", "hashed2"),
+          KeyEntryValues("range1", kIntKey1, "range2", kIntKey2)).Encode().AsSlice()));
 }
 
 TEST_F(DocKeyTest, TestBasicSubDocKeyEncodingDecoding) {
-  const SubDocKey subdoc_key(DocKey({PrimitiveValue("some_doc_key")}),
-                             PrimitiveValue("sk1"),
-                             PrimitiveValue("sk2"),
-                             PrimitiveValue(BINARY_STRING("sk3""\x00"), SortOrder::kDescending),
+  const SubDocKey subdoc_key(DocKey({KeyEntryValue("some_doc_key")}),
+                             KeyEntryValue("sk1"),
+                             KeyEntryValue("sk2"),
+                             KeyEntryValue(BINARY_STRING("sk3""\x00"), SortOrder::kDescending),
                              HybridTime::FromMicros(1000));
   const KeyBytes encoded_subdoc_key(subdoc_key.Encode());
   ASSERT_STR_EQ_VERBOSE_TRIMMED(
@@ -340,7 +343,7 @@ TEST_F(DocKeyTest, TestBasicSubDocKeyEncodingDecoding) {
   ASSERT_EQ(range_group.size() + 1, size);
   --size; // the last one is time
   for (size_t i = 0; i != size; ++i) {
-    PrimitiveValue value;
+    KeyEntryValue value;
     Slice temp = slices[i];
     ASSERT_OK(value.DecodeFromKey(&temp));
     ASSERT_TRUE(temp.empty());
@@ -390,9 +393,9 @@ TEST_F(DocKeyTest, TestSubDocKeyStartsWith) {
 
 std::string EncodeSubDocKey(const std::string& hash_key,
     const std::string& range_key, const std::string& sub_key, uint64_t time) {
-  DocKey dk(DocKey(0, PrimitiveValues(hash_key), PrimitiveValues(range_key)));
+  DocKey dk(DocKey(0, KeyEntryValues(hash_key), KeyEntryValues(range_key)));
   return SubDocKey(
-      dk, PrimitiveValue(sub_key), HybridTime::FromMicros(time)).Encode().ToStringBuffer();
+      dk, KeyEntryValue(sub_key), HybridTime::FromMicros(time)).Encode().ToStringBuffer();
 }
 
 std::string EncodeSimpleSubDocKey(const std::string& hash_key) {
@@ -432,7 +435,7 @@ TEST_F(DocKeyTest, TestKeyMatching) {
 }
 
 TEST_F(DocKeyTest, TestWriteId) {
-  SubDocKey subdoc_key(DocKey({PrimitiveValue("a"), PrimitiveValue(135)}),
+  SubDocKey subdoc_key(DocKey({KeyEntryValue("a"), KeyEntryValue::Int32(135)}),
                        DocHybridTime(1000000, 4091, 135));
   TestRoundTripDocOrSubDocKeyEncodingDecoding(subdoc_key);
 }
@@ -557,11 +560,11 @@ TEST_F(DocKeyTest, DecodeDocKeyAndSubKeyEnds) {
     // Find whole DocKey end.
     if (doc_key.has_hash()) {
       cur_key.doc_key().set_hash(doc_key.hash());
-      for (const PrimitiveValue& hashed_group_elem : doc_key.hashed_group()) {
+      for (const auto& hashed_group_elem : doc_key.hashed_group()) {
         cur_key.doc_key().hashed_group().push_back(hashed_group_elem);
       }
     }
-    for (const PrimitiveValue& range_group_elem : doc_key.range_group()) {
+    for (const auto& range_group_elem : doc_key.range_group()) {
       cur_key.doc_key().range_group().push_back(range_group_elem);
     }
     if (doc_key.has_colocation_id() &&

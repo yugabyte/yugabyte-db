@@ -22,13 +22,13 @@
 namespace yb {
 namespace docdb {
 
-std::vector<PrimitiveValue> GetRangeKeyScanSpec(
+std::vector<KeyEntryValue> GetRangeKeyScanSpec(
     const Schema& schema,
-    const std::vector<PrimitiveValue>* prefixed_hash_components,
+    const std::vector<KeyEntryValue>* prefixed_hash_components,
     const QLScanRange* scan_range,
     bool lower_bound,
     bool include_static_columns) {
-  std::vector<PrimitiveValue> range_components;
+  std::vector<KeyEntryValue> range_components;
   range_components.reserve(schema.num_range_key_columns());
   if (prefixed_hash_components) {
     range_components.insert(range_components.begin(),
@@ -43,28 +43,28 @@ std::vector<PrimitiveValue> GetRangeKeyScanSpec(
          i++) {
       const auto& column = schema.column(i);
       const auto& range = scan_range->RangeFor(schema.column_id(i));
-      range_components.emplace_back(GetQLRangeBoundAsPVal(range,
-                                                          column.sorting_type(),
-                                                          lower_bound));
+      range_components.push_back(
+          GetQLRangeBoundAsPVal(range, column.sorting_type(), lower_bound));
     }
   }
 
   if (!lower_bound) {
     // We add +inf as an extra component to make sure this is greater than all keys in range.
     // For lower bound, this is true already, because dockey + suffix is > dockey
-    range_components.emplace_back(PrimitiveValue(ValueType::kHighest));
+    range_components.emplace_back(KeyEntryType::kHighest);
   } else if (schema.has_statics() && !include_static_columns && range_components.empty()) {
     // If we want to skip static columns, make sure the range components are non-empty.
     // We use kMinPrimitiveValueType instead of kLowest because it compares as higher than
     // kHybridTime in RocksDB.
-    range_components.emplace_back(kMinPrimitiveValueType);
+    range_components.emplace_back(
+        static_cast<KeyEntryType>(to_underlying(KeyEntryType::kHybridTime) + 1));
   }
   return range_components;
 }
 
-PrimitiveValue GetQLRangeBoundAsPVal(const QLScanRange::QLRange& ql_range,
-                                     SortingType sorting_type,
-                                     bool lower_bound) {
+KeyEntryValue GetQLRangeBoundAsPVal(const QLScanRange::QLRange& ql_range,
+                                    SortingType sorting_type,
+                                    bool lower_bound) {
   const auto sort_order = SortOrderFromColumnSchemaSortingType(sorting_type);
 
   // lower bound for ASC column and upper bound for DESC column -> min value
@@ -76,14 +76,13 @@ PrimitiveValue GetQLRangeBoundAsPVal(const QLScanRange::QLRange& ql_range,
   if (ql_bound) {
     // Special case for nulls because FromQLValuePB will turn them into kTombstone instead.
     if (IsNull(*ql_bound)) {
-      return PrimitiveValue::NullValue(sorting_type);
+      return KeyEntryValue::NullValue(sorting_type);
     }
-    return PrimitiveValue::FromQLValuePB(*ql_bound, sorting_type);
+    return KeyEntryValue::FromQLValuePB(*ql_bound, sorting_type);
   }
 
   // For unset use kLowest/kHighest to ensure we cover entire scanned range.
-  return lower_bound ? PrimitiveValue(ValueType::kLowest)
-                     : PrimitiveValue(ValueType::kHighest);
+  return KeyEntryValue(lower_bound ? KeyEntryType::kLowest : KeyEntryType::kHighest);
 }
 
 }  // namespace docdb

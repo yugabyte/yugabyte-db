@@ -3485,7 +3485,7 @@ Result<std::string> Tablet::GetEncodedMiddleSplitKey() const {
   // to have two child tablets with alive user records after the splitting, but the split
   // by the internal record will lead to a case when one tablet will consist of internal records
   // only and these records will be compacted out at some point making an empty tablet.
-  if (PREDICT_FALSE(docdb::IsInternalRecordKeyType(docdb::DecodeValueType(middle_key[0])))) {
+  if (PREDICT_FALSE(docdb::IsInternalRecordKeyType(docdb::DecodeKeyEntryType(middle_key[0])))) {
     return STATUS_FORMAT(
         IllegalState, "$0: got internal record \"$1\"",
         error_prefix(), Slice(middle_key).ToDebugHexString());

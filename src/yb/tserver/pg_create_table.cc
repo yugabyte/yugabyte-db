@@ -257,14 +257,14 @@ Result<std::vector<std::string>> PgCreateTable::BuildSplitRows(const client::YBS
         PrimaryKeyRangeColumnCount() - (ybbasectid_added_ ? 1 : 0),
         IllegalState,
         "Number of split row values must be equal to number of primary key columns");
-    std::vector<docdb::PrimitiveValue> range_components;
+    std::vector<docdb::KeyEntryValue> range_components;
     range_components.reserve(row.size());
     bool compare_columns = true;
     for (const auto& row_value : row) {
       const auto column_index = range_components.size();
       range_components.push_back(row_value.value_case() == QLValuePB::VALUE_NOT_SET
-        ? docdb::PrimitiveValue(docdb::ValueType::kLowest)
-        : docdb::PrimitiveValue::FromQLValuePB(
+        ? docdb::KeyEntryValue(docdb::KeyEntryType::kLowest)
+        : docdb::KeyEntryValue::FromQLValuePB(
             row_value,
             schema.Column(schema.FindColumn(range_columns_[column_index])).sorting_type()));
 

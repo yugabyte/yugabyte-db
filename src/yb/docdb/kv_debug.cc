@@ -49,7 +49,7 @@ Result<std::string> DocDBKeyToDebugStr(Slice key_slice, StorageDbType db_type) {
     }
     case KeyType::kReverseTxnKey:
     {
-      RETURN_NOT_OK(key_slice.consume_byte(ValueTypeAsChar::kTransactionId));
+      RETURN_NOT_OK(key_slice.consume_byte(KeyEntryTypeAsChar::kTransactionId));
       auto transaction_id = VERIFY_RESULT(DecodeTransactionId(&key_slice));
       auto doc_ht = VERIFY_RESULT_PREPEND(
           DecodeInvertedDocHt(key_slice), Format("Reverse txn record for: $0", transaction_id));
@@ -57,7 +57,7 @@ Result<std::string> DocDBKeyToDebugStr(Slice key_slice, StorageDbType db_type) {
     }
     case KeyType::kTransactionMetadata:
     {
-      RETURN_NOT_OK(key_slice.consume_byte(ValueTypeAsChar::kTransactionId));
+      RETURN_NOT_OK(key_slice.consume_byte(KeyEntryTypeAsChar::kTransactionId));
       auto transaction_id = DecodeTransactionId(&key_slice);
       RETURN_NOT_OK(transaction_id);
       return Format("TXN META $0", *transaction_id);
@@ -71,7 +71,7 @@ Result<std::string> DocDBKeyToDebugStr(Slice key_slice, StorageDbType db_type) {
       return subdoc_key.ToString(AutoDecodeKeys::kTrue);
     case KeyType::kExternalIntents:
     {
-      RETURN_NOT_OK(key_slice.consume_byte(ValueTypeAsChar::kExternalTransactionId));
+      RETURN_NOT_OK(key_slice.consume_byte(KeyEntryTypeAsChar::kExternalTransactionId));
       auto transaction_id = VERIFY_RESULT(DecodeTransactionId(&key_slice));
       auto doc_hybrid_time = VERIFY_RESULT_PREPEND(
           DecodeInvertedDocHt(key_slice), Format("External txn record for: $0", transaction_id));
@@ -89,7 +89,7 @@ Result<std::string> DocDBValueToDebugStrInternal(Slice value_slice, KeyType key_
     auto txn_id_res = VERIFY_RESULT(DecodeTransactionIdFromIntentValue(&value_slice));
     prefix = Format("TransactionId($0) ", txn_id_res);
     if (!value_slice.empty()) {
-      RETURN_NOT_OK(value_slice.consume_byte(ValueTypeAsChar::kWriteId));
+      RETURN_NOT_OK(value_slice.consume_byte(ValueEntryTypeAsChar::kWriteId));
       if (value_slice.size() < sizeof(IntraTxnWriteId)) {
         return STATUS_FORMAT(Corruption, "Not enough bytes for write id: $0", value_slice.size());
       }
@@ -133,11 +133,11 @@ Result<std::string> DocDBValueToDebugStr(KeyType key_type, Slice key, Slice valu
     case KeyType::kExternalIntents: {
       std::vector<std::string> intents;
       SubDocKey sub_doc_key;
-      RETURN_NOT_OK(value.consume_byte(ValueTypeAsChar::kUuid));
+      RETURN_NOT_OK(value.consume_byte(ValueEntryTypeAsChar::kUuid));
       Uuid involved_tablet;
       RETURN_NOT_OK(involved_tablet.FromSlice(value.Prefix(kUuidSize)));
       value.remove_prefix(kUuidSize);
-      RETURN_NOT_OK(value.consume_byte(ValueTypeAsChar::kExternalIntents));
+      RETURN_NOT_OK(value.consume_byte(KeyEntryTypeAsChar::kExternalIntents));
       for (;;) {
         auto len = VERIFY_RESULT(util::FastDecodeUnsignedVarInt(&value));
         if (len == 0) {

@@ -72,7 +72,7 @@ namespace yb {
 namespace pggate {
 
 using docdb::PrimitiveValue;
-using docdb::ValueType;
+using docdb::KeyEntryType;
 
 namespace {
 
@@ -998,11 +998,11 @@ Status PgApiImpl::ProcessYBTupleId(const YBCPgYBTupleIdDescriptor& descr,
       PgObjectId(descr.database_oid, descr.table_oid)));
   SCHECK_EQ(descr.nattrs, target_desc->num_key_columns(), Corruption,
             "Number of key components does not match column description");
-  vector<PrimitiveValue> *values = nullptr;
+  vector<docdb::KeyEntryValue> *values = nullptr;
   PgsqlExpressionPB *expr_pb;
   PgsqlExpressionPB temp_expr_pb;
   google::protobuf::RepeatedPtrField<PgsqlExpressionPB> hashed_values;
-  vector<docdb::PrimitiveValue> hashed_components, range_components;
+  vector<docdb::KeyEntryValue> hashed_components, range_components;
   hashed_components.reserve(target_desc->num_hash_key_columns());
   range_components.reserve(target_desc->num_key_columns() - target_desc->num_hash_key_columns());
   size_t remain_attr = descr.nattrs;
@@ -1027,7 +1027,7 @@ Status PgApiImpl::ProcessYBTupleId(const YBCPgYBTupleIdDescriptor& descr,
         }
 
         if (attr->is_null) {
-          values->emplace_back(ValueType::kNullLow);
+          values->emplace_back(KeyEntryType::kNullLow);
         } else {
           if (attr->attr_num == to_underlying(PgSystemAttrNum::kYBRowId)) {
             expr_pb->mutable_value()->set_binary_value(pg_session_->GenerateNewRowid());
@@ -1044,8 +1044,8 @@ Status PgApiImpl::ProcessYBTupleId(const YBCPgYBTupleIdDescriptor& descr,
               temp_value->ToGoogleProtobuf(expr_pb->mutable_value());
             }
           }
-          values->push_back(PrimitiveValue::FromQLValuePB(expr_pb->value(),
-                                                          column.desc().sorting_type()));
+          values->push_back(docdb::KeyEntryValue::FromQLValuePB(
+              expr_pb->value(), column.desc().sorting_type()));
         }
 
         if (--remain_attr == 0) {

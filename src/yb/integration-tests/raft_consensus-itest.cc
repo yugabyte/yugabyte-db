@@ -3423,7 +3423,7 @@ TEST_F(RaftConsensusITest, SplitOpId) {
     const auto partition_key = PartitionSchema::EncodeMultiColumnHashValue(split_hash_code);
     docdb::KeyBytes encoded_doc_key;
     docdb::DocKeyEncoderAfterTableIdStep(&encoded_doc_key).Hash(
-        split_hash_code, std::vector<docdb::PrimitiveValue>());
+        split_hash_code, std::vector<docdb::KeyEntryValue>());
     req.set_split_encoded_key(encoded_doc_key.ToStringBuffer());
     req.set_split_partition_key(partition_key);
   }

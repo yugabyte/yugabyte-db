@@ -34,6 +34,7 @@ class DocWriteBatch;
 class HistoryRetentionPolicy;
 class IntentAwareIterator;
 class KeyBytes;
+class KeyEntryValue;
 class ManualHistoryRetentionPolicy;
 class PgsqlWriteOperation;
 class PrimitiveValue;
@@ -53,7 +54,8 @@ struct LockBatchEntry;
 using DocKeyHash = uint16_t;
 using LockBatchEntries = std::vector<LockBatchEntry>;
 
-enum class ValueType;
+enum class KeyEntryType;
+enum class ValueEntryType;
 
 YB_STRONGLY_TYPED_BOOL(PartialRangeKeyIntents);
 

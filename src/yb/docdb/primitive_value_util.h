@@ -28,13 +28,13 @@ namespace docdb {
 CHECKED_STATUS QLKeyColumnValuesToPrimitiveValues(
     const google::protobuf::RepeatedPtrField<QLExpressionPB> &column_values,
     const Schema &schema, size_t column_idx, const size_t column_count,
-    vector<PrimitiveValue> *components);
+    vector<KeyEntryValue> *components);
 
-Result<vector<PrimitiveValue>> InitKeyColumnPrimitiveValues(
+Result<vector<KeyEntryValue>> InitKeyColumnPrimitiveValues(
     const google::protobuf::RepeatedPtrField<PgsqlExpressionPB> &column_values,
     const Schema &schema, size_t start_idx);
 
-Result<vector<PrimitiveValue>> InitKeyColumnPrimitiveValues(
+Result<vector<KeyEntryValue>> InitKeyColumnPrimitiveValues(
     const ArenaList<LWPgsqlExpressionPB> &column_values, const Schema &schema, size_t start_idx);
 
 }  // namespace docdb

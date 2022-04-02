@@ -69,7 +69,7 @@ void RunningTransaction::AddReplicatedBatch(
   size_t batch_idx, boost::container::small_vector_base<uint8_t>* encoded_replicated_batches) {
   VLOG_WITH_PREFIX(4) << __func__ << "(" << batch_idx << ")";
   replicated_batches_.Set(batch_idx);
-  encoded_replicated_batches->push_back(docdb::ValueTypeAsChar::kBitSet);
+  encoded_replicated_batches->push_back(docdb::KeyEntryTypeAsChar::kBitSet);
   replicated_batches_.EncodeTo(encoded_replicated_batches);
 }
 

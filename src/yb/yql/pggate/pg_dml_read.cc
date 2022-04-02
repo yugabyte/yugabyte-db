@@ -45,7 +45,7 @@ auto Find(const boost::unordered_map<Key, Value>& map, const CompatibleKey& key)
 class DocKeyBuilder {
  public:
   CHECKED_STATUS Prepare(
-      const std::vector<docdb::PrimitiveValue>& hashed_components,
+      const std::vector<docdb::KeyEntryValue>& hashed_components,
       const LWQLValuePB*const* hashed_values,
       const PartitionSchema& partition_schema) {
     if (hashed_components.empty()) {
@@ -61,7 +61,7 @@ class DocKeyBuilder {
     return Status::OK();
   }
 
-  docdb::DocKey operator()(const vector<docdb::PrimitiveValue>& range_components) const {
+  docdb::DocKey operator()(const vector<docdb::KeyEntryValue>& range_components) const {
     if (!hashed_components_) {
       return docdb::DocKey(range_components);
     }
@@ -70,7 +70,7 @@ class DocKeyBuilder {
 
  private:
   uint16_t hash_;
-  const vector<docdb::PrimitiveValue>* hashed_components_ = nullptr;
+  const vector<docdb::KeyEntryValue>* hashed_components_ = nullptr;
 };
 
 } // namespace
@@ -466,7 +466,7 @@ Status PgDmlRead::BindColumnCondIn(int attr_num, int n_attr_values, PgExpr **att
 
 Result<docdb::DocKey> PgDmlRead::EncodeRowKeyForBound(
     YBCPgStatement handle, size_t n_col_values, PgExpr **col_values, bool for_lower_bound) {
-  std::vector<docdb::PrimitiveValue> hashed_components;
+  std::vector<docdb::KeyEntryValue> hashed_components;
   hashed_components.reserve(bind_->num_hash_key_columns());
   size_t i = 0;
   auto hashed_values = arena().AllocateArray<LWQLValuePB*>(bind_->num_hash_key_columns());
@@ -474,7 +474,7 @@ Result<docdb::DocKey> PgDmlRead::EncodeRowKeyForBound(
     auto &col = bind_.columns()[i];
 
     hashed_values[i] = VERIFY_RESULT(col_values[i]->Eval());
-    auto docdbval = docdb::PrimitiveValue::FromQLValuePB(
+    auto docdbval = docdb::KeyEntryValue::FromQLValuePB(
         *hashed_values[i], col.desc().sorting_type());
     hashed_components.push_back(std::move(docdbval));
   }
@@ -483,7 +483,7 @@ Result<docdb::DocKey> PgDmlRead::EncodeRowKeyForBound(
   RETURN_NOT_OK(dockey_builder.Prepare(
       hashed_components, hashed_values, bind_->partition_schema()));
 
-  std::vector<docdb::PrimitiveValue> range_components;
+  std::vector<docdb::KeyEntryValue> range_components;
   n_col_values = std::max(std::min(n_col_values, bind_->num_key_columns()),
                           bind_->num_hash_key_columns());
   range_components.reserve(n_col_values - bind_->num_hash_key_columns());
@@ -491,12 +491,12 @@ Result<docdb::DocKey> PgDmlRead::EncodeRowKeyForBound(
     auto& col = bind_.columns()[i];
 
     if (col_values[i] == nullptr) {
-      range_components.push_back(docdb::PrimitiveValue(
-          for_lower_bound ? docdb::ValueType::kLowest : docdb::ValueType::kHighest));
+      range_components.emplace_back(
+          for_lower_bound ? docdb::KeyEntryType::kLowest : docdb::KeyEntryType::kHighest);
     } else {
       auto value = VERIFY_RESULT(col_values[i]->Eval());
       range_components.push_back(
-          docdb::PrimitiveValue::FromQLValuePB(*value, col.desc().sorting_type()));
+          docdb::KeyEntryValue::FromQLValuePB(*value, col.desc().sorting_type()));
     }
   }
 
@@ -598,7 +598,7 @@ Status PgDmlRead::SubstitutePrimaryBindsWithYbctids(const PgExecParameters* exec
 // other key components are set must be checked by caller code.
 Result<std::vector<std::string>> PgDmlRead::BuildYbctidsFromPrimaryBinds() {
   auto hashed_values = arena().AllocateArray<LWQLValuePB*>(bind_->num_hash_key_columns());
-  vector<docdb::PrimitiveValue> hashed_components, range_components;
+  vector<docdb::KeyEntryValue> hashed_components, range_components;
   hashed_components.reserve(bind_->num_hash_key_columns());
   range_components.reserve(bind_->num_key_columns() - bind_->num_hash_key_columns());
   for (size_t i = 0; i < bind_->num_hash_key_columns(); ++i) {
@@ -701,16 +701,16 @@ Result<LWQLValuePB*> PgDmlRead::GetBoundValue(
   return it->second->Eval();
 }
 
-Result<docdb::PrimitiveValue> PgDmlRead::BuildKeyColumnValue(
+Result<docdb::KeyEntryValue> PgDmlRead::BuildKeyColumnValue(
     const PgColumn& col, const LWPgsqlExpressionPB& src, LWQLValuePB** dest) {
   *dest = VERIFY_RESULT(GetBoundValue(col, src));
   if (*dest) {
-    return docdb::PrimitiveValue::FromQLValuePB(**dest, col.desc().sorting_type());
+    return docdb::KeyEntryValue::FromQLValuePB(**dest, col.desc().sorting_type());
   }
-  return docdb::PrimitiveValue::kTombstone;
+  return docdb::KeyEntryValue();
 }
 
-Result<docdb::PrimitiveValue> PgDmlRead::BuildKeyColumnValue(
+Result<docdb::KeyEntryValue> PgDmlRead::BuildKeyColumnValue(
     const PgColumn& col, const LWPgsqlExpressionPB& src) {
   LWQLValuePB* temp_value;
   return BuildKeyColumnValue(col, src, &temp_value);

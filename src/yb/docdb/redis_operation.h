@@ -117,9 +117,7 @@ class RedisReadOperation {
   CHECKED_STATUS ExecuteGetTtl();
   // Used to implement HGETALL, HKEYS, HVALS, SMEMBERS, HLEN, SCARD
   CHECKED_STATUS ExecuteHGetAllLikeCommands(
-                                    ValueType value_type,
-                                    bool add_keys,
-                                    bool add_values);
+      ValueEntryType value_type, bool add_keys, bool add_values);
   CHECKED_STATUS ExecuteStrLen();
   CHECKED_STATUS ExecuteExists();
   CHECKED_STATUS ExecuteGetRange();

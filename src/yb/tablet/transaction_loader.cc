@@ -103,7 +103,7 @@ class TransactionLoader::Executor {
     intents_iterator_.Seek(current_key_.AsSlice());
     while (intents_iterator_.Valid()) {
       auto key = intents_iterator_.key();
-      if (!key.TryConsumeByte(docdb::ValueTypeAsChar::kTransactionId)) {
+      if (!key.TryConsumeByte(docdb::KeyEntryTypeAsChar::kTransactionId)) {
         break;
       }
       auto decode_id_result = DecodeTransactionId(&key);
@@ -123,7 +123,7 @@ class TransactionLoader::Executor {
         LoadTransaction(id);
         ++loaded_transactions;
       }
-      current_key_.AppendValueType(docdb::ValueType::kMaxByte);
+      current_key_.AppendKeyEntryType(docdb::KeyEntryType::kMaxByte);
       intents_iterator_.Seek(current_key_.AsSlice());
     }
 
@@ -155,23 +155,23 @@ class TransactionLoader::Executor {
 
   void LoadPendingApplies() {
     std::array<char, 1 + sizeof(TransactionId) + 1> seek_buffer;
-    seek_buffer[0] = docdb::ValueTypeAsChar::kTransactionApplyState;
-    seek_buffer[seek_buffer.size() - 1] = docdb::ValueTypeAsChar::kMaxByte;
+    seek_buffer[0] = docdb::KeyEntryTypeAsChar::kTransactionApplyState;
+    seek_buffer[seek_buffer.size() - 1] = docdb::KeyEntryTypeAsChar::kMaxByte;
     regular_iterator_.Seek(Slice(seek_buffer.data(), 1));
 
     while (regular_iterator_.Valid()) {
       auto key = regular_iterator_.key();
-      if (!key.TryConsumeByte(docdb::ValueTypeAsChar::kTransactionApplyState)) {
+      if (!key.TryConsumeByte(docdb::KeyEntryTypeAsChar::kTransactionApplyState)) {
         break;
       }
       auto txn_id = DecodeTransactionId(&key);
-      if (!txn_id.ok() || !key.TryConsumeByte(docdb::ValueTypeAsChar::kGroupEnd)) {
+      if (!txn_id.ok() || !key.TryConsumeByte(docdb::KeyEntryTypeAsChar::kGroupEnd)) {
         LOG_WITH_PREFIX(DFATAL) << "Wrong txn id: " << regular_iterator_.key().ToDebugString();
         regular_iterator_.Next();
         continue;
       }
       Slice value = regular_iterator_.value();
-      if (value.TryConsumeByte(docdb::ValueTypeAsChar::kString)) {
+      if (value.TryConsumeByte(docdb::ValueEntryTypeAsChar::kString)) {
         auto pb = pb_util::ParseFromSlice<docdb::ApplyTransactionStatePB>(value);
         if (!pb.ok()) {
           LOG_WITH_PREFIX(DFATAL) << "Failed to decode apply state pb from RocksDB"
@@ -195,7 +195,7 @@ class TransactionLoader::Executor {
 
         VLOG_WITH_PREFIX(4) << "Loaded pending apply for " << *txn_id << ": "
                             << it->second.ToString();
-      } else if (value.TryConsumeByte(docdb::ValueTypeAsChar::kTombstone)) {
+      } else if (value.TryConsumeByte(docdb::ValueEntryTypeAsChar::kTombstone)) {
         VLOG_WITH_PREFIX(4) << "Found deleted large apply for " << *txn_id;
       } else {
         LOG_WITH_PREFIX(DFATAL)
@@ -257,7 +257,7 @@ class TransactionLoader::Executor {
       const TransactionId& id,
       TransactionalBatchData* last_batch_data,
       OneWayBitmap* replicated_batches) {
-    current_key_.AppendValueType(docdb::ValueType::kMaxByte);
+    current_key_.AppendKeyEntryType(docdb::KeyEntryType::kMaxByte);
     intents_iterator_.Seek(current_key_.AsSlice());
     if (intents_iterator_.Valid()) {
       intents_iterator_.Prev();
@@ -275,7 +275,7 @@ class TransactionLoader::Executor {
         last_batch_data->hybrid_time = decoded_key->doc_ht.hybrid_time();
         Slice rev_key_slice(intents_iterator_.value());
         // Required by the transaction sealing protocol.
-        if (!rev_key_slice.empty() && rev_key_slice[0] == docdb::ValueTypeAsChar::kBitSet) {
+        if (!rev_key_slice.empty() && rev_key_slice[0] == docdb::KeyEntryTypeAsChar::kBitSet) {
           CHECK(!FLAGS_TEST_fail_on_replicated_batch_idx_set_in_txn_record);
           rev_key_slice.remove_prefix(1);
           auto result = OneWayBitmap::Decode(&rev_key_slice);

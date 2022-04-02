@@ -179,7 +179,7 @@ Result<boost::optional<TransactionId>> DocDBIntentsCompactionFilter::FilterTrans
 Result<rocksdb::FilterDecision>
 DocDBIntentsCompactionFilter::FilterExternalIntent(const Slice& key) {
   Slice key_slice = key;
-  RETURN_NOT_OK_PREPEND(key_slice.consume_byte(ValueTypeAsChar::kExternalTransactionId),
+  RETURN_NOT_OK_PREPEND(key_slice.consume_byte(KeyEntryTypeAsChar::kExternalTransactionId),
                         "Could not decode external transaction byte");
   // Ignoring transaction id result since function just returns kKeep or kDiscard.
   RETURN_NOT_OK_PREPEND(

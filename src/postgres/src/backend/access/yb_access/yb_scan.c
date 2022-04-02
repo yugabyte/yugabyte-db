@@ -927,8 +927,8 @@ ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 
 			/* 
 			 * We can only push down right now if the primary key columns
-			 * are specified in the correct order and the primary key 
-			 * has no hashed columns. We also need to ensure that 
+			 * are specified in the correct order and the primary key
+			 * has no hashed columns. We also need to ensure that
 			 * the same comparison operation is done to all subkeys.
 			 */
 			bool can_pushdown = true;
@@ -970,7 +970,7 @@ ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 			 * Make sure that the primary key has no hash columns in order
 			 * to push down.
 			 */
-			
+
 			for (int i = 0; i < index->rd_index->indnkeyatts; i++)
 			{
 				if (index->rd_indoption[i] & INDOPTION_HASH)
@@ -987,7 +987,7 @@ ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 											* index->rd_index->indnkeyatts);
 				/*
 				 * Prepare upper/lower bound tuples determined from this
-				 * clause for bind. Care must be taken in the case 
+				 * clause for bind. Care must be taken in the case
 				 * that primary key columns in the index are ordered
 				 * differently from each other. For example, consider
 				 * if the underlying index has primary key
@@ -995,7 +995,7 @@ ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 				 * a clause like (r1, r2, r3) <= (40, 35, 12).
 				 * We cannot simply bind (40, 35, 12) as an upper bound
 				 * as that will miss tuples such as (40, 32, 0).
-				 * Instead we must push down (40, Inf, 12) in this case 
+				 * Instead we must push down (40, Inf, 12) in this case
 				 * for correctness. (Note that +Inf in this context
 				 * is higher in STORAGE order than all other values not
 				 * necessarily logical order, similar to the role of

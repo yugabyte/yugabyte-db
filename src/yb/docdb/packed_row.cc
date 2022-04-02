@@ -92,7 +92,7 @@ RowPacker::RowPacker(uint32_t version, std::reference_wrapper<const SchemaPackin
   varlen_write_pos_ = result_.GrowByAtLeast(prefix_len) - result_.AsSlice().cdata();
 }
 
-Status RowPacker::AddValue(ColumnId column, const QLValuePB& value, SortingType sorting_type) {
+Status RowPacker::AddValue(ColumnId column, const QLValuePB& value) {
   if (idx_ >= packing_.columns()) {
     return STATUS_FORMAT(InvalidArgument, "Add value for unknown column: $0, idx: $1",
                          column, idx_);
@@ -106,7 +106,7 @@ Status RowPacker::AddValue(ColumnId column, const QLValuePB& value, SortingType 
   ++idx_;
   size_t prev_size = result_.size();
   if (!column_data.nullable || !IsNull(value)) {
-    AppendEncodedValue(value, sorting_type, &result_);
+    AppendEncodedValue(value, CheckIsCollate::kTrue, &result_);
   }
   if (column_data.varlen()) {
     LittleEndian::Store32(result_.mutable_data() + varlen_write_pos_,

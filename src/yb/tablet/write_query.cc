@@ -455,7 +455,7 @@ CHECKED_STATUS WriteQuery::DoExecute() {
         pair->set_key(key.data(), key.size());
         // Empty values are disallowed by docdb.
         // https://github.com/YugaByte/yugabyte-db/issues/736
-        pair->set_value(std::string(1, docdb::ValueTypeAsChar::kNullLow));
+        pair->set_value(std::string(1, docdb::KeyEntryTypeAsChar::kNullLow));
         write_batch.set_wait_policy(WAIT_ERROR);
       }
     }

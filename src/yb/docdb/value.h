@@ -88,7 +88,7 @@ class Value {
 
   bool has_user_timestamp() const { return control_fields_.has_user_timestamp(); }
 
-  ValueType value_type() const { return primitive_value_.value_type(); }
+  ValueEntryType value_type() const { return primitive_value_.value_type(); }
 
   PrimitiveValue* mutable_primitive_value() { return &primitive_value_; }
 
@@ -109,7 +109,7 @@ class Value {
 
   // Decodes the ValueType of the primitive value stored in the
   // given RocksDB value and any other values before it.
-  static Result<ValueType> DecodePrimitiveValueType(const Slice& rocksdb_value);
+  static Result<ValueEntryType> DecodePrimitiveValueType(const Slice& rocksdb_value);
 
   static const Value& Tombstone();
   static const std::string& EncodedTombstone();

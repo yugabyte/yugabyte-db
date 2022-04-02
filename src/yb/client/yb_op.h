@@ -597,14 +597,14 @@ CHECKED_STATUS InitPartitionKey(
 CHECKED_STATUS GetRangePartitionBounds(
     const Schema& schema,
     const PgsqlReadRequestPB& request,
-    std::vector<docdb::PrimitiveValue>* lower_bound,
-    std::vector<docdb::PrimitiveValue>* upper_bound);
+    std::vector<docdb::KeyEntryValue>* lower_bound,
+    std::vector<docdb::KeyEntryValue>* upper_bound);
 
 CHECKED_STATUS GetRangePartitionBounds(
     const Schema& schema,
     const LWPgsqlReadRequestPB& request,
-    std::vector<docdb::PrimitiveValue>* lower_bound,
-    std::vector<docdb::PrimitiveValue>* upper_bound);
+    std::vector<docdb::KeyEntryValue>* lower_bound,
+    std::vector<docdb::KeyEntryValue>* upper_bound);
 
 }  // namespace client
 }  // namespace yb

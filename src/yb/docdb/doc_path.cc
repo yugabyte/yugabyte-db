@@ -23,18 +23,18 @@ std::string DocPath::ToString() const {
       BestEffortDocDBKeyToStr(encoded_doc_key_), rocksdb::VectorToString(subkeys_));
 }
 
-void DocPath::AddSubKey(const PrimitiveValue& subkey) {
+void DocPath::AddSubKey(const KeyEntryValue& subkey) {
   subkeys_.emplace_back(subkey);
 }
 
-void DocPath::AddSubKey(PrimitiveValue&& subkey) {
+void DocPath::AddSubKey(KeyEntryValue&& subkey) {
   subkeys_.emplace_back(std::move(subkey));
 }
 
 DocPath DocPath::DocPathFromRedisKey(uint16_t hash, const string& key, const string& subkey) {
-  DocPath doc_path = DocPath(DocKey::FromRedisKey(hash, key).Encode());
+  DocPath doc_path(DocKey::FromRedisKey(hash, key).Encode());
   if (!subkey.empty()) {
-    doc_path.AddSubKey(PrimitiveValue(subkey));
+    doc_path.AddSubKey(KeyEntryValue(subkey));
   }
   return doc_path;
 }

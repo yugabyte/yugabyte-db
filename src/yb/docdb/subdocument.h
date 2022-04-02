@@ -41,7 +41,7 @@ namespace docdb {
 class SubDocument : public PrimitiveValue {
  public:
 
-  explicit SubDocument(ValueType value_type);
+  explicit SubDocument(ValueEntryType value_type);
   SubDocument();
 
   ~SubDocument();
@@ -69,12 +69,11 @@ class SubDocument : public PrimitiveValue {
     for (const auto& key_value : elements) {
       CHECK_EQ(2, key_value.size());
       auto iter = key_value.begin();
-      const auto& key = *iter;
+      KeyEntryValue key(KeyEntryValue::Create(*iter));
       ++iter;
       const auto& value = *iter;
-      CHECK_EQ(0, object_container().count(PrimitiveValue(key)))
-          << "Duplicate key: " << PrimitiveValue(key).ToString();
-      object_container().emplace(PrimitiveValue(key), SubDocument(PrimitiveValue(value)));
+      CHECK_EQ(0, object_container().count(key)) << "Duplicate key: " << key.ToString();
+      object_container().emplace(key, SubDocument(PrimitiveValue::Create(value)));
     }
   }
 
@@ -96,7 +95,7 @@ class SubDocument : public PrimitiveValue {
   bool operator!=(const SubDocument& other) const { return !(*this == other); }
 
   // "using" did not let us use the alias when instantiating these classes, so we're using typedef.
-  typedef std::map<PrimitiveValue, SubDocument> ObjectContainer;
+  typedef std::map<KeyEntryValue, SubDocument> ObjectContainer;
   typedef std::vector<SubDocument> ArrayContainer;
 
   ObjectContainer& object_container() const {
@@ -127,30 +126,30 @@ class SubDocument : public PrimitiveValue {
 
   // @return The child subdocument of an object at the given key, or nullptr if this subkey does not
   //         exist or this subdocument is not an object.
-  SubDocument* GetChild(const PrimitiveValue& key);
+  SubDocument* GetChild(const KeyEntryValue& key);
 
   // Returns the number of children for this subdocument.
   CHECKED_STATUS NumChildren(size_t *num_children);
 
-  const SubDocument* GetChild(const PrimitiveValue& key) const;
+  const SubDocument* GetChild(const KeyEntryValue& key) const;
 
   // Returns the child of this object at the given subkey, or default-constructs one if it does not
   // exist. Fatals if this is not an object. Never returns nullptr.
   // @return A pair of the child at the requested subkey, and a boolean flag indicating whether a
   //         new child subdocument has been added.
-  std::pair<SubDocument*, bool> GetOrAddChild(const PrimitiveValue& key);
+  std::pair<SubDocument*, bool> GetOrAddChild(const KeyEntryValue& key);
 
   // Add a list element child of the given value.
   void AddListElement(SubDocument&& value);
 
   // Set the child subdocument of an object to the given value.
-  void SetChild(const PrimitiveValue& key, SubDocument&& value);
+  void SetChild(const KeyEntryValue& key, SubDocument&& value);
 
-  void SetChildPrimitive(const PrimitiveValue& key, PrimitiveValue&& value) {
+  void SetChildPrimitive(const KeyEntryValue& key, PrimitiveValue&& value) {
     SetChild(key, SubDocument(value));
   }
 
-  void SetChildPrimitive(const PrimitiveValue& key, const PrimitiveValue& value) {
+  void SetChildPrimitive(const KeyEntryValue& key, const PrimitiveValue& value) {
     SetChild(key, SubDocument(value));
   }
 
@@ -160,7 +159,7 @@ class SubDocument : public PrimitiveValue {
   // Attempts to delete a child subdocument of an object with the given key. Fatals if this is not
   // an object.
   // @return true if a child object was deleted, false if it did not exist.
-  bool DeleteChild(const PrimitiveValue& key);
+  bool DeleteChild(const KeyEntryValue& key);
 
   int object_num_keys() const;
 
@@ -170,13 +169,11 @@ class SubDocument : public PrimitiveValue {
                                    bfql::TSOpcode write_instr = bfql::TSOpcode::kScalarInsert);
 
   // Construct a QLValuePB from a SubDocument.
-  static void ToQLValuePB(const SubDocument& doc,
-                          const std::shared_ptr<QLType>& ql_type,
-                          QLValuePB* v);
+  void ToQLValuePB(const std::shared_ptr<QLType>& ql_type, QLValuePB* v) const;
 
  private:
 
-  CHECKED_STATUS ConvertToCollection(ValueType value_type);
+  CHECKED_STATUS ConvertToCollection(ValueEntryType value_type);
 
   // Common code used by move constructor and move assignment.
   void MoveFrom(SubDocument* other);

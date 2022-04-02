@@ -75,14 +75,15 @@ class ValueRef {
                     SortingType sorting_type = SortingType::kNotSpecified,
                     bfql::TSOpcode write_instruction = bfql::TSOpcode::kScalarInsert)
       : value_pb_(&value_pb), sorting_type_(sorting_type), write_instruction_(write_instruction),
-        list_extend_order_(ListExtendOrder::APPEND), value_type_(ValueType::kLowest) {
+        list_extend_order_(ListExtendOrder::APPEND), value_type_(ValueEntryType::kInvalid) {
   }
 
   explicit ValueRef(const QLValuePB& value_pb,
                     const ValueRef& value_ref)
       : value_pb_(&value_pb), sorting_type_(value_ref.sorting_type_),
         write_instruction_(value_ref.write_instruction_),
-        list_extend_order_(value_ref.list_extend_order_), value_type_(ValueType::kLowest) {
+        list_extend_order_(value_ref.list_extend_order_),
+        value_type_(ValueEntryType::kInvalid) {
   }
 
   explicit ValueRef(const QLValuePB& value_pb,
@@ -90,10 +91,10 @@ class ValueRef {
       : value_pb_(&value_pb), sorting_type_(SortingType::kNotSpecified),
         write_instruction_(bfql::TSOpcode::kScalarInsert),
         list_extend_order_(list_extend_order),
-        value_type_(ValueType::kLowest) {
+        value_type_(ValueEntryType::kInvalid) {
   }
 
-  explicit ValueRef(ValueType value_type);
+  explicit ValueRef(ValueEntryType key_entry_type);
 
   const QLValuePB& value_pb() const {
     return *value_pb_;
@@ -115,11 +116,11 @@ class ValueRef {
     list_extend_order_ = value;
   }
 
-  void set_custom_value_type(ValueType value) {
+  void set_custom_value_type(ValueEntryType value) {
     value_type_ = value;
   }
 
-  ValueType custom_value_type() const {
+  ValueEntryType custom_value_type() const {
     return value_type_;
   }
 
@@ -137,7 +138,7 @@ class ValueRef {
 
   bool is_map() const;
 
-  ValueType ContainerValueType() const;
+  ValueEntryType ContainerValueType() const;
 
   bool IsTombstoneOrPrimitive() const;
 
@@ -148,7 +149,7 @@ class ValueRef {
   SortingType sorting_type_;
   bfql::TSOpcode write_instruction_;
   ListExtendOrder list_extend_order_;
-  ValueType value_type_;
+  ValueEntryType value_type_;
 };
 
 // This controls whether "init markers" are required at all intermediate levels.
