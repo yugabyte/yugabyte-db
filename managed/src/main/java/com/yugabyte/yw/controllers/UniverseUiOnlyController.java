@@ -29,6 +29,8 @@ import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import play.libs.Json;
 import play.mvc.Result;
 
 @Deprecated
@@ -51,6 +53,13 @@ public class UniverseUiOnlyController extends AuthenticatedController {
     UniverseDefinitionTaskParams taskParams =
         bindFormDataToTaskParams(request(), UniverseDefinitionTaskParams.class);
 
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Customer,
+            customerUUID.toString(),
+            Audit.ActionType.GetUniverseResources,
+            Json.toJson(taskParams));
     return PlatformResults.withData(universeInfoHandler.getUniverseResources(customer, taskParams));
   }
 

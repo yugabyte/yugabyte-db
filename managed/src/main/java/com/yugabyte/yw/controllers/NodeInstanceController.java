@@ -303,7 +303,7 @@ public class NodeInstanceController extends AuthenticatedController {
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.NodeInstance,
-            null,
+            nodeName,
             Audit.ActionType.Update,
             Json.toJson(nodeActionFormData),
             taskUUID);

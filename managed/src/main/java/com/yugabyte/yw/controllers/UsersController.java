@@ -277,14 +277,14 @@ public class UsersController extends AuthenticatedController {
         throw new PlatformServiceException(BAD_REQUEST, "Can't change super admin role.");
       }
       user.setRole(formData.getRole());
-      auditService()
-          .createAuditEntryWithReqBody(
-              ctx(),
-              Audit.TargetType.User,
-              userUUID.toString(),
-              Audit.ActionType.Update,
-              Json.toJson(formData));
     }
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.User,
+            userUUID.toString(),
+            Audit.ActionType.Update,
+            Json.toJson(formData));
     user.save();
     return ok(Json.toJson(user));
   }

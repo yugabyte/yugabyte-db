@@ -583,6 +583,15 @@ public class BackupsController extends AuthenticatedController {
         }
       }
     }
+    if (taskList.size() == 0) {
+      auditService()
+          .createAuditEntryWithReqBody(
+              ctx(),
+              Audit.TargetType.Backup,
+              null,
+              Audit.ActionType.Delete,
+              request().body().asJson());
+    }
     return new YBPTasks(taskList).asResult();
   }
 

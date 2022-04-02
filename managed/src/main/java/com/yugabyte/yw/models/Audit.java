@@ -189,6 +189,9 @@ public class Audit extends Model {
     @EnumValue("Validate")
     Validate,
 
+    @EnumValue("Acknowledge")
+    Acknowledge,
+
     @EnumValue("Sync XCluster Configuration")
     SyncXClusterConfig,
 
@@ -376,7 +379,10 @@ public class Audit extends Model {
     CreateInstanceType,
 
     @EnumValue("Delete Instance Type")
-    DeleteInstanceType
+    DeleteInstanceType,
+
+    @EnumValue("Get Universe Resources")
+    GetUniverseResources
   }
 
   // An auto incrementing, user-friendly ID for the audit entry.
