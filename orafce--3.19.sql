@@ -537,16 +537,20 @@ COMMENT ON FUNCTION dbms_output.get_lines(OUT text[], INOUT int4) IS 'Get lines 
 
 -- others functions
 
-CREATE FUNCTION nvl(anyelement, anyelement)
+CREATE FUNCTION public.nvl(anyelement, anyelement)
 RETURNS anyelement
 AS 'MODULE_PATHNAME','ora_nvl'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION nvl2(anyelement, anyelement, anyelement)
+CREATE FUNCTION public.nvl2("any", anyelement, anyelement)
 RETURNS anyelement
 AS 'MODULE_PATHNAME','ora_nvl2'
 LANGUAGE C IMMUTABLE;
-COMMENT ON FUNCTION nvl2(anyelement, anyelement, anyelement) IS '';
+
+CREATE FUNCTION public.nvl2("any", text, text)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_nvl2'
+LANGUAGE C IMMUTABLE;
 
 CREATE FUNCTION public.decode(anyelement, anyelement, text)
 RETURNS text
