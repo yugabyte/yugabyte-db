@@ -1991,7 +1991,7 @@ void PgMiniTest::TestBigInsert(bool restart) {
 
     for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
       Slice key = iter->key();
-      ASSERT_FALSE(key.TryConsumeByte(docdb::ValueTypeAsChar::kTransactionApplyState))
+      ASSERT_FALSE(key.TryConsumeByte(docdb::KeyEntryTypeAsChar::kTransactionApplyState))
           << "Key: " << iter->key().ToDebugString() << ", value: " << iter->value().ToDebugString();
     }
   }

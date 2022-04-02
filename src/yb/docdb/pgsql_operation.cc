@@ -112,7 +112,7 @@ CHECKED_STATUS CreateProjection(
 void AddIntent(const std::string& encoded_key, WaitPolicy wait_policy, KeyValueWriteBatchPB *out) {
   auto pair = out->mutable_read_pairs()->Add();
   pair->set_key(encoded_key);
-  pair->set_value(std::string(1, ValueTypeAsChar::kNullLow));
+  pair->set_value(std::string(1, ValueEntryTypeAsChar::kNullLow));
   // Since we don't batch read RPCs that lock rows, we can get away with using a singular
   // wait_policy field. Once we start batching read requests (issue #2495), we will need a repeated
   // wait policies field.
@@ -232,7 +232,7 @@ class DocKeyColumnPathBuilder {
 
   RefCntPrefix Build(ColumnIdRep column_id) {
     buffer_.Clear();
-    buffer_.AppendValueType(ValueType::kColumnId);
+    buffer_.AppendKeyEntryType(KeyEntryType::kColumnId);
     buffer_.AppendColumnId(ColumnId(column_id));
     RefCntBuffer path(doc_key_.size() + buffer_.size());
     doc_key_.CopyTo(path.data());
@@ -297,7 +297,7 @@ Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(
   const HybridTime oldest_past_min_ht_liveness =
       VERIFY_RESULT(FindOldestOverwrittenTimestamp(
           iter.get(),
-          SubDocKey(*doc_key_, PrimitiveValue::kLivenessColumn),
+          SubDocKey(*doc_key_, KeyEntryValue::kLivenessColumn),
           requested_read_time.read));
   oldest_past_min_ht.MakeAtMost(oldest_past_min_ht_liveness);
   if (!oldest_past_min_ht.is_valid()) {
@@ -439,8 +439,8 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
   }
 
   RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
-      DocPath(encoded_doc_key_.as_slice(), PrimitiveValue::kLivenessColumn),
-      ValueControlFields(), ValueRef(ValueType::kNullLow), data.read_time, data.deadline,
+      DocPath(encoded_doc_key_.as_slice(), KeyEntryValue::kLivenessColumn),
+      ValueControlFields(), ValueRef(ValueEntryType::kNullLow), data.read_time, data.deadline,
       request_.stmt_id()));
 
   for (const auto& column_value : request_.column_values()) {
@@ -460,7 +460,7 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
     RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, expr_result.Writer()));
 
     // Inserting into specified column.
-    DocPath sub_path(encoded_doc_key_.as_slice(), PrimitiveValue(column_id));
+    DocPath sub_path(encoded_doc_key_.as_slice(), KeyEntryValue::MakeColumnId(column_id));
     RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
         sub_path, ValueRef(expr_result.Value(), column.sorting_type()),
         data.read_time, data.deadline, request_.stmt_id()));
@@ -536,7 +536,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
       }
 
       // Inserting into specified column.
-      DocPath sub_path(encoded_doc_key_.as_slice(), PrimitiveValue(column_id));
+      DocPath sub_path(encoded_doc_key_.as_slice(), KeyEntryValue::MakeColumnId(column_id));
       RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
           sub_path, ValueRef(expr_result.Value(), column.sorting_type()), data.read_time,
           data.deadline, request_.stmt_id()));
@@ -573,7 +573,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
         RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, expr_result.Writer()));
 
         // Inserting into specified column.
-        DocPath sub_path(encoded_doc_key_.as_slice(), PrimitiveValue(column_id));
+        DocPath sub_path(encoded_doc_key_.as_slice(), KeyEntryValue::MakeColumnId(column_id));
         RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
             sub_path, ValueRef(expr_result.Value(), column.sorting_type()), data.read_time,
             data.deadline, request_.stmt_id()));
@@ -678,9 +678,9 @@ Status PgsqlWriteOperation::PopulateResultSet(const QLTableRow& table_row) {
         // Strip cotable ID / colocation ID from the serialized DocKey before returning it
         // as ybctid.
         Slice tuple_id = encoded_doc_key_.as_slice();
-        if (tuple_id.starts_with(ValueTypeAsChar::kTableId)) {
+        if (tuple_id.starts_with(KeyEntryTypeAsChar::kTableId)) {
           tuple_id.remove_prefix(1 + kUuidSize);
-        } else if (tuple_id.starts_with(ValueTypeAsChar::kColocationId)) {
+        } else if (tuple_id.starts_with(KeyEntryTypeAsChar::kColocationId)) {
           tuple_id.remove_prefix(1 + sizeof(ColocationId));
         }
         value.Writer().NewValue().set_binary_value(tuple_id.data(), tuple_id.size());

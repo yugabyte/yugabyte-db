@@ -128,9 +128,9 @@ class PgDmlRead : public PgDml {
   CHECKED_STATUS MoveBoundKeyInOperator(PgColumn* col, const LWPgsqlConditionPB& in_operator);
   Result<LWQLValuePB*> GetBoundValue(
       const PgColumn& col, const LWPgsqlExpressionPB& src) const;
-  Result<docdb::PrimitiveValue> BuildKeyColumnValue(
+  Result<docdb::KeyEntryValue> BuildKeyColumnValue(
       const PgColumn& col, const LWPgsqlExpressionPB& src, LWQLValuePB** dest);
-  Result<docdb::PrimitiveValue> BuildKeyColumnValue(
+  Result<docdb::KeyEntryValue> BuildKeyColumnValue(
       const PgColumn& col, const LWPgsqlExpressionPB& src);
 };
 
