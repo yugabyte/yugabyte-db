@@ -652,6 +652,10 @@ Status PgsqlWriteOperation::PopulateResultSet(const QLTableRow& table_row) {
 Status PgsqlWriteOperation::GetDocPaths(GetDocPathsMode mode,
                                         DocPathsToLock *paths,
                                         IsolationLevel *level) const {
+  if (!encoded_doc_key_) {
+    return Status::OK();
+  }
+
   // When this write operation requires a read, it requires a read snapshot so paths will be locked
   // in snapshot isolation for consistency. Otherwise, pure writes will happen in serializable
   // isolation so that they will serialize but do not conflict with one another.
@@ -663,15 +667,12 @@ Status PgsqlWriteOperation::GetDocPaths(GetDocPathsMode mode,
 
   switch (mode) {
     case GetDocPathsMode::kLock: {
-      // Weak intent is required to lock the row and prevent it from being removed.
-      // For this purpose path for row's SystemColumnIds::kLivenessColumn column is returned.
-      // The caller code will create strong intent for returned path (raw's column doc key)
-      // and weak intents for all its prefixes (including row's doc key).
-      if (!encoded_doc_key_) {
-        return Status::OK();
-      }
       if (request_.stmt_type() == PgsqlWriteRequestPB::PGSQL_UPDATE) {
-        // In case of UPDATE some columns may have expressions instead of exact value.
+        // In case of UPDATE row need to be protected from removing. Weak intent is enough for
+        // this purpose. To achieve this the path for row's SystemColumnIds::kLivenessColumn column
+        // is returned. The caller code will create strong intent for returned path
+        // (row's column doc key) and weak intents for all its prefixes (including row's doc key).
+        // Note: UPDATE operation may have expressions instead of exact value.
         // These expressions may read column value.
         // Potentially expression for updating column v1 may read value of column v2.
         //
@@ -681,15 +682,19 @@ Status PgsqlWriteOperation::GetDocPaths(GetDocPathsMode mode,
         // Strong intent for the whole row is required in this case as it may be too expensive to
         // determine what exact columns are read by the expression.
 
+        bool has_expression = false;
         for (const auto& column_value : request_.column_new_values()) {
           if (!column_value.expr().has_value()) {
-            paths->push_back(encoded_doc_key_);
-            return Status::OK();
+            has_expression = true;
+            break;
           }
         }
+        if (!has_expression) {
+          DocKeyColumnPathBuilder builder(encoded_doc_key_);
+          paths->push_back(builder.Build(to_underlying(SystemColumnIds::kLivenessColumn)));
+          return Status::OK();
+        }
       }
-      DocKeyColumnPathBuilder builder(encoded_doc_key_);
-      paths->push_back(builder.Build(to_underlying(SystemColumnIds::kLivenessColumn)));
       break;
     }
     case GetDocPathsMode::kIntents: {
@@ -706,12 +711,13 @@ Status PgsqlWriteOperation::GetDocPaths(GetDocPathsMode mode,
         for (const auto& column_value : *column_values) {
           paths->push_back(builder.Build(column_value.column_id()));
         }
-      } else if (encoded_doc_key_) {
-        paths->push_back(encoded_doc_key_);
+        return Status::OK();
       }
       break;
     }
   }
+  // Add row's doc key. Caller code will create strong intent for the whole row in this case.
+  paths->push_back(encoded_doc_key_);
   return Status::OK();
 }
 
