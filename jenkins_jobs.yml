@@ -12,7 +12,7 @@ jobs:
     release_artifact: false
 
   - os: centos7
-    compiler: clang11
+    compiler: clang12
     build_type: debug
     release_artifact: false
 
