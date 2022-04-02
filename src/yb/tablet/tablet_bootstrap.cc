@@ -463,7 +463,7 @@ bool WriteOpHasTransaction(const ReplicateMsg& replicate) {
     return true;
   }
   for (const auto& pair : write_batch.write_pairs()) {
-    if (!pair.key().empty() && pair.key()[0] == docdb::ValueTypeAsChar::kExternalTransactionId) {
+    if (!pair.key().empty() && pair.key()[0] == docdb::KeyEntryTypeAsChar::kExternalTransactionId) {
       return true;
     }
   }

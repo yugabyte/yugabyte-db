@@ -508,14 +508,13 @@ TEST_F(DocOperationTest, TestQLRangeDeleteWithStaticColumnAvoidsFullPartitionKey
 }
 
 TEST_F(DocOperationTest, TestQLReadWithoutLivenessColumn) {
-  const DocKey doc_key(kFixedHashCode, PrimitiveValues(PrimitiveValue::Int32(100)),
-                       PrimitiveValues());
+  const DocKey doc_key(kFixedHashCode, KeyEntryValues(100), KeyEntryValues());
   KeyBytes encoded_doc_key(doc_key.Encode());
-  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(1))),
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(1))),
                          QLValue::Primitive(2), HybridTime(1000)));
-  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(2))),
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(2))),
                          QLValue::Primitive(3), HybridTime(2000)));
-  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(3))),
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(3))),
                          QLValue::Primitive(4), HybridTime(3000)));
 
   AssertDocDbDebugDumpStrEq(R"#(
@@ -536,14 +535,14 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
 }
 
 TEST_F(DocOperationTest, TestQLReadWithTombstone) {
-  DocKey doc_key(0, PrimitiveValues(PrimitiveValue::Int32(100)), PrimitiveValues());
+  DocKey doc_key(0, KeyEntryValues(100), KeyEntryValues());
   KeyBytes encoded_doc_key(doc_key.Encode());
-  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(1))),
-                         ValueRef(ValueType::kTombstone), HybridTime(1000)));
-  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(2))),
-                         ValueRef(ValueType::kTombstone), HybridTime(2000)));
-  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(3))),
-                         ValueRef(ValueType::kTombstone), HybridTime(3000)));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(1))),
+                         ValueRef(ValueEntryType::kTombstone), HybridTime(1000)));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(2))),
+                         ValueRef(ValueEntryType::kTombstone), HybridTime(2000)));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(3))),
+                         ValueRef(ValueEntryType::kTombstone), HybridTime(3000)));
 
   AssertDocDbDebugDumpStrEq(R"#(
 SubDocKey(DocKey(0x0000, [100], []), [ColumnId(1); HT{ physical: 0 logical: 1000 }]) -> DEL
@@ -559,15 +558,15 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
   ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
 
   // Now verify row exists even with one valid column.
-  doc_key = DocKey(kFixedHashCode, PrimitiveValues(PrimitiveValue::Int32(100)), PrimitiveValues());
+  doc_key = DocKey(kFixedHashCode, KeyEntryValues(100), KeyEntryValues());
   encoded_doc_key = doc_key.Encode();
-  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(1))),
-                         ValueRef(ValueType::kTombstone), HybridTime(1001)));
-  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(2))),
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(1))),
+                         ValueRef(ValueEntryType::kTombstone), HybridTime(1001)));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(2))),
                          ValueControlFields{.ttl = MonoDelta::FromMilliseconds(1)},
                          ValueRef(QLValue::Primitive(2)),
                          HybridTime(2001)));
-  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(3))),
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(3))),
                          QLValue::Primitive(101), HybridTime(3001)));
 
   AssertDocDbDebugDumpStrEq(R"#(
@@ -580,7 +579,7 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3001
 SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000 }]) -> DEL
       )#");
 
-  vector<PrimitiveValue> hashed_components({PrimitiveValue::Int32(100)});
+  std::vector<KeyEntryValue> hashed_components({KeyEntryValue::Int32(100)});
   DocQLScanSpec ql_scan_spec(schema, kFixedHashCode, kFixedHashCode, hashed_components,
       /* req */ nullptr, /* if_req */ nullptr, rocksdb::kDefaultQueryId);
 
@@ -598,19 +597,19 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
   EXPECT_EQ(101, value_map.TestValue(3).value.int32_value());
 
   // Now verify row exists as long as liveness system column exists.
-  doc_key = DocKey(kFixedHashCode, PrimitiveValues(PrimitiveValue::Int32(101)), PrimitiveValues());
+  doc_key = DocKey(kFixedHashCode, KeyEntryValues(101), KeyEntryValues());
   encoded_doc_key = doc_key.Encode();
-  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue::kLivenessColumn),
-                         ValueRef(ValueType::kNullLow),
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::kLivenessColumn),
+                         ValueRef(ValueEntryType::kNullLow),
                          HybridTime(1000)));
-  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(1))),
-                         ValueRef(ValueType::kTombstone), HybridTime(1000)));
-  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(2))),
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(1))),
+                         ValueRef(ValueEntryType::kTombstone), HybridTime(1000)));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(2))),
                          ValueControlFields{.ttl = MonoDelta::FromMilliseconds(1)},
                          ValueRef(QLValue::Primitive(2)),
                          HybridTime(2000)));
-  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(3))),
-                         ValueRef(ValueType::kTombstone), HybridTime(3000)));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(3))),
+                         ValueRef(ValueEntryType::kTombstone), HybridTime(3000)));
 
   AssertDocDbDebugDumpStrEq(R"#(
 SubDocKey(DocKey(0x0000, [100], []), [ColumnId(1); HT{ physical: 0 logical: 1001 }]) -> DEL
@@ -627,7 +626,7 @@ SubDocKey(DocKey(0x0000, [101], []), [ColumnId(2); HT{ physical: 0 logical: 2000
 SubDocKey(DocKey(0x0000, [101], []), [ColumnId(3); HT{ physical: 0 logical: 3000 }]) -> DEL
       )#");
 
-  vector<PrimitiveValue> hashed_components_system({PrimitiveValue::Int32(101)});
+  vector<KeyEntryValue> hashed_components_system({KeyEntryValue::Int32(101)});
   DocQLScanSpec ql_scan_spec_system(schema, kFixedHashCode, kFixedHashCode,
       hashed_components_system, /* req */ nullptr,  /* if_req */ nullptr,
       rocksdb::kDefaultQueryId);
@@ -826,7 +825,7 @@ class DocOperationScanTest : public DocOperationTest {
   void PerformScans(const bool is_forward_scan,
       const TransactionOperationContext& txn_op_context,
       boost::function<void(const size_t keys_in_scan_range)> after_scan_callback) {
-    std::vector <PrimitiveValue> hashed_components = {PrimitiveValue::Int32(h_key_)};
+    std::vector <KeyEntryValue> hashed_components = {KeyEntryValue::Int32(h_key_)};
     std::vector <QLOperator> operators = {
         QL_OP_EQUAL,
         QL_OP_LESS_THAN_EQUAL,
