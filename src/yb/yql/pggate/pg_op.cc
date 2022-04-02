@@ -48,7 +48,7 @@ Status ReviewResponsePagingState(const PgTableDesc& table, PgsqlReadOp* op) {
   // of already scanned tablet. Partition start key of the preceding tablet must be used instead.
   // Also lower bound is checked here because DocDB can check upper bound only.
   const auto& current_next_partition_key = response->paging_state().next_partition_key();
-  std::vector<docdb::PrimitiveValue> lower_bound, upper_bound;
+  std::vector<docdb::KeyEntryValue> lower_bound, upper_bound;
   RETURN_NOT_OK(client::GetRangePartitionBounds(
       table.schema(), op->read_request(), &lower_bound, &upper_bound));
   if (!lower_bound.empty()) {

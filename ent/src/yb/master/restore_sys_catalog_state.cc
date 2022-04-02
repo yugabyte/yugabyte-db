@@ -572,7 +572,7 @@ class FetchState {
     // end of hashed and range components. It is reasonable to assume then that if the last byte
     // is kGroupEnd then it does not have any subkeys.
     bool no_subkey =
-        key()[key().size() - 1] == docdb::ValueTypeAsChar::kGroupEnd;
+        key()[key().size() - 1] == docdb::KeyEntryTypeAsChar::kGroupEnd;
 
     return no_subkey && is_tombstoned;
   }
@@ -638,7 +638,7 @@ struct PgCatalogTableData {
   CHECKED_STATUS SetTableId(const TableId& table_id) {
     Uuid cotable_id;
     RETURN_NOT_OK(cotable_id.FromHexString(table_id));
-    prefix[0] = docdb::ValueTypeAsChar::kTableId;
+    prefix[0] = docdb::KeyEntryTypeAsChar::kTableId;
     cotable_id.EncodeToComparable(&prefix[1]);
     return Status::OK();
   }
@@ -655,7 +655,7 @@ Status RestoreSysCatalogState::ProcessPgCatalogRestores(
 
   FetchState restoring_state(restoring_db, ReadHybridTime::SingleTime(restoration_.restore_at));
   FetchState existing_state(existing_db, ReadHybridTime::Max());
-  char tombstone_char = docdb::ValueTypeAsChar::kTombstone;
+  char tombstone_char = docdb::ValueEntryTypeAsChar::kTombstone;
   Slice tombstone(&tombstone_char, 1);
 
   std::vector<PgCatalogTableData> tables(restoration_.system_tables_to_restore.size() + 1);
@@ -697,7 +697,7 @@ Status RestoreSysCatalogState::ProcessPgCatalogRestores(
           RETURN_NOT_OK(sub_doc_key.FullyDecodeFrom(
               restoring_state.key(), docdb::HybridTimeRequired::kFalse));
           SCHECK_EQ(sub_doc_key.subkeys().size(), 1U, Corruption, "Wrong number of subdoc keys");
-          if (sub_doc_key.subkeys()[0].value_type() == docdb::ValueType::kColumnId) {
+          if (sub_doc_key.subkeys()[0].type() == docdb::KeyEntryType::kColumnId) {
             auto column_id = sub_doc_key.subkeys()[0].GetColumnId();
             const ColumnSchema& column = VERIFY_RESULT(pg_yb_catalog_version_schema.column_by_id(
                 column_id));

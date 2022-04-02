@@ -2682,7 +2682,7 @@ Status CatalogManager::DoSplitTablet(
     bool select_all_tablets_for_split) {
   docdb::KeyBytes split_encoded_key;
   docdb::DocKeyEncoderAfterTableIdStep(&split_encoded_key)
-      .Hash(split_hash_code, std::vector<docdb::PrimitiveValue>());
+      .Hash(split_hash_code, std::vector<docdb::KeyEntryValue>());
 
   const auto split_partition_key = PartitionSchema::EncodeMultiColumnHashValue(split_hash_code);
 
