@@ -249,9 +249,7 @@ IntentAwareIterator::IntentAwareIterator(
           << ", txn_op_context: " << txn_op_context_;
 
   if (txn_op_context) {
-    VTRACE(1, "Checking MinRunningTime");
-    const auto min_running_ht = txn_op_context->txn_status_manager.MinRunningHybridTime();
-    if (min_running_ht != HybridTime::kMax && min_running_ht < read_time.global_limit) {
+    if (txn_op_context->txn_status_manager.MinRunningHybridTime() != HybridTime::kMax) {
       intent_iter_ = docdb::CreateRocksDBIterator(doc_db.intents,
                                                   doc_db.key_bounds,
                                                   docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
@@ -260,10 +258,9 @@ IntentAwareIterator::IntentAwareIterator(
                                                   nullptr /* file_filter */,
                                                   &intent_upperbound_);
     } else {
-      VLOG(4) << "No releavant transactions running";
+      VLOG(4) << "No transactions running";
     }
   }
-  VTRACE(2, "Done Checking MinRunningTime");
   // WARNING: Is is important for regular DB iterator to be created after intents DB iterator,
   // otherwise consistency could break, for example in following scenario:
   // 1) Transaction is T1 committed with value v1 for k1, but not yet applied to regular DB.
