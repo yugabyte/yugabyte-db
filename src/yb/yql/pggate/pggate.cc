@@ -73,6 +73,20 @@ using docdb::ValueType;
 
 namespace {
 
+struct TableHolder {
+  explicit TableHolder(const PgTableDescPtr& descr) : table_holder_(descr) {}
+  PgTable table_holder_;
+};
+
+class PgDocReadOpWithPgTable : private TableHolder, public PgDocReadOp {
+ public:
+  PgDocReadOpWithPgTable(
+      const PgTableDescPtr& descr,
+      const PgSession::ScopedRefPtr& pg_session,
+      std::unique_ptr<client::YBPgsqlReadOp> read_op)
+    : TableHolder(descr), PgDocReadOp(pg_session, &table_holder_, std::move(read_op)) {}
+};
+
 CHECKED_STATUS AddColumn(PgCreateTable* pg_stmt, const char *attr_name, int attr_num,
                          const YBCPgTypeEntity *attr_type, bool is_hash, bool is_range,
                          bool is_desc, bool is_nulls_first) {
@@ -117,38 +131,66 @@ std::unique_ptr<tserver::TServerSharedObject> InitTServerSharedObject() {
       tserver::TServerSharedObject::OpenReadOnly(FLAGS_pggate_tserver_shm_fd)));
 }
 
-Result<std::vector<std::string>> FetchExistingYbctids(PgSession::ScopedRefPtr session,
-                                                      PgOid database_id,
-                                                      PgOid table_id,
-                                                      const std::vector<Slice>& ybctids) {
-  auto desc  = VERIFY_RESULT(session->LoadTable(PgObjectId(database_id, table_id)));
-  PgTable table(desc);
-  auto read_op = desc->NewPgsqlSelect();
-  auto read_req = read_op->mutable_request();
-  PgsqlExpressionPB* expr_pb = read_req->add_targets();
-  expr_pb->set_column_id(to_underlying(PgSystemAttrNum::kYBTupleId));
-  auto doc_op = std::make_shared<PgDocReadOp>(session, &table, std::move(read_op));
-  // Postgres uses SELECT FOR KEY SHARE query for FK check.
-  // Use same lock level.
-  PgExecParameters exec_params = doc_op->ExecParameters();
-  exec_params.rowmark = ROW_MARK_KEYSHARE;
-  RETURN_NOT_OK(doc_op->ExecuteInit(&exec_params));
-  RETURN_NOT_OK(static_cast<PgDocOp*>(doc_op.get())->PopulateDmlByYbctidOps(&ybctids));
-  RETURN_NOT_OK(doc_op->Execute());
-  std::vector<std::string> result;
-  result.reserve(ybctids.size());
-  std::list<PgDocResult> rowsets;
-  do {
-    rowsets.clear();
-    RETURN_NOT_OK(doc_op->GetResult(&rowsets));
-    for (auto& row : rowsets) {
-      RETURN_NOT_OK(row.ProcessSystemColumns());
-      for (const auto& ybctid : row.ybctids()) {
-        result.push_back(ybctid.ToBuffer());
-      }
+CHECKED_STATUS FetchExistingYbctids(PgSession::ScopedRefPtr session,
+                                    PgOid database_id,
+                                    std::vector<TableYbctid>* ybctids) {
+  // Group the items by the table ID.
+  std::sort(ybctids->begin(), ybctids->end(), [](const auto& a, const auto& b) {
+    if (a.table_id != b.table_id) {
+      return a.table_id < b.table_id;
     }
-  } while (!rowsets.empty());
-  return result;
+    return a.ybctid < b.ybctid;
+  });
+
+  // Start all the doc_ops to read from docdb in parallel, one doc_op per table ID.
+  std::vector<std::pair<PgOid, std::shared_ptr<PgDocReadOpWithPgTable>>> doc_ops;
+  std::vector<Slice> table_ybctids;
+  table_ybctids.reserve(ybctids->size());
+  for (auto it = ybctids->begin(); it != ybctids->end(); ) {
+    table_ybctids.clear();
+    const auto& table_id = it->table_id;
+    while (it != ybctids->end() && it->table_id == table_id) {
+      table_ybctids.emplace_back((it++)->ybctid);
+    }
+
+    auto desc = VERIFY_RESULT(session->LoadTable(PgObjectId(database_id, table_id)));
+
+    auto read_op = desc->NewPgsqlSelect();
+    auto read_req = read_op->mutable_request();
+    PgsqlExpressionPB* expr_pb = read_req->add_targets();
+
+    expr_pb->set_column_id(to_underlying(PgSystemAttrNum::kYBTupleId));
+    auto doc_op = std::make_shared<PgDocReadOpWithPgTable>(desc, session, std::move(read_op));
+
+    // Postgres uses SELECT FOR KEY SHARE query for FK check.
+    // Use same lock level.
+    PgExecParameters exec_params = doc_op->ExecParameters();
+    exec_params.rowmark = ROW_MARK_KEYSHARE;
+    RETURN_NOT_OK(doc_op->ExecuteInit(&exec_params));
+    RETURN_NOT_OK(static_cast<PgDocOp*>(doc_op.get())->PopulateDmlByYbctidOps(&table_ybctids));
+    RETURN_NOT_OK(doc_op->Execute());
+    doc_ops.emplace_back(table_id, std::move(doc_op));
+  }
+
+  // Collect the results from the docdb ops.
+  ybctids->clear();
+  for (auto& it : doc_ops) {
+    const auto& table_id = it.first;
+    auto& doc_op = it.second;
+    std::list<PgDocResult> rowsets;
+    do {
+      rowsets.clear();
+      RETURN_NOT_OK(doc_op->GetResult(&rowsets));
+      for (auto& row : rowsets) {
+        RETURN_NOT_OK(row.ProcessSystemColumns());
+        for (const auto& ybctid : row.ybctids()) {
+          ybctids->emplace_back(table_id, ybctid.ToBuffer());
+        }
+      }
+    } while (!rowsets.empty());
+  }
+
+  return Status::OK();
 }
 
 } // namespace
@@ -1491,11 +1533,10 @@ void PgApiImpl::ResetCatalogReadTime() {
 Result<bool> PgApiImpl::ForeignKeyReferenceExists(
     PgOid table_id, const Slice& ybctid, PgOid database_id) {
   return pg_session_->ForeignKeyReferenceExists(
-      table_id, ybctid, std::bind(FetchExistingYbctids,
-                                  pg_session_,
-                                  database_id,
-                                  std::placeholders::_1,
-                                  std::placeholders::_2));
+      table_id, ybctid,
+          [this, database_id](std::vector<TableYbctid>* ybctids) {
+            return FetchExistingYbctids(pg_session_, database_id, ybctids);
+          });
 }
 
 void PgApiImpl::AddForeignKeyReferenceIntent(PgOid table_id, const Slice& ybctid) {

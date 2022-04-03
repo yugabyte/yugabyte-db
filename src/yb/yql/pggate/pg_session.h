@@ -86,6 +86,14 @@ class PgSessionAsyncRunResult {
   client::YBSessionPtr session_;
 };
 
+struct TableYbctid {
+  TableYbctid(PgOid table_id_, std::string ybctid_)
+      : table_id(table_id_), ybctid(std::move(ybctid_)) {}
+
+  PgOid table_id;
+  std::string ybctid;
+};
+
 struct PgForeignKeyReference {
   PgForeignKeyReference(PgOid table_id, std::string ybctid);
   PgOid table_id;
@@ -310,8 +318,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // the shared memory has not been initialized (e.g. in initdb).
   Result<uint64_t> GetSharedAuthKey();
 
-  using YbctidReader =
-      std::function<Result<std::vector<std::string>>(PgOid, const std::vector<Slice>&)>;
+  using YbctidReader = std::function<Status(std::vector<TableYbctid>*)>;
   Result<bool> ForeignKeyReferenceExists(
       PgOid table_id, const Slice& ybctid, const YbctidReader& reader);
   void AddForeignKeyReferenceIntent(PgOid table_id, const Slice& ybctid);
