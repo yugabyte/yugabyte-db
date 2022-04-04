@@ -73,6 +73,10 @@ public class BackupRequestParams extends UniverseTaskParams {
   @ApiModelProperty(value = "Schedule UUID")
   public UUID scheduleUUID = null;
 
+  // The associated schedule name (if applicable)
+  @ApiModelProperty(value = "Schedule Name")
+  public String scheduleName = null;
+
   // Specifies number of backups to retain in case of recurring backups.
   @ApiModelProperty(value = "Minimum number of backups to retain for a particular backup schedule")
   public int minNumBackupsToRetain = Util.MIN_NUM_BACKUPS_TO_RETAIN;

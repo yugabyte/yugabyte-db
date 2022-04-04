@@ -211,8 +211,34 @@ public class BackupsControllerTest extends FakeDBApplication {
     bodyJson.put("universeUUID", defaultUniverse.universeUUID.toString());
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
     bodyJson.put("cronExpression", "0 */2 * * *");
+    bodyJson.put("scheduleName", "schedule-1");
     Result r = createBackupSchedule(bodyJson, null);
     assertEquals(OK, r.status());
+  }
+
+  @Test
+  public void testCreateScheduleBackupWithoutName() {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST22");
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("universeUUID", defaultUniverse.universeUUID.toString());
+    bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+    bodyJson.put("cronExpression", "0 */2 * * *");
+    Result result = assertPlatformException(() -> createBackupSchedule(bodyJson, null));
+    assertBadRequest(result, "Provide a name for the schedule");
+  }
+
+  @Test
+  public void testCreateScheduleBackupWithDuplicateName() {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST22");
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("universeUUID", defaultUniverse.universeUUID.toString());
+    bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+    bodyJson.put("cronExpression", "0 */2 * * *");
+    bodyJson.put("scheduleName", "schedule-1");
+    Result r = createBackupSchedule(bodyJson, null);
+    assertEquals(OK, r.status());
+    Result result = assertPlatformException(() -> createBackupSchedule(bodyJson, null));
+    assertBadRequest(result, "Schedule with name schedule-1 already exist");
   }
 
   @Test
@@ -223,6 +249,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("universeUUID", defaultUniverse.universeUUID.toString());
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+    bodyJson.put("scheduleName", "schedule-1");
     Result r = assertPlatformException(() -> createBackupSchedule(bodyJson, null));
     JsonNode resultJson = Json.parse(contentAsString(r));
     assertValue(resultJson, "error", "Provide Cron Expression or Scheduling frequency");

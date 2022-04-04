@@ -1375,6 +1375,10 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "scheduleName" : {
+          "description" : "Schedule Name",
+          "type" : "string"
+        },
         "scheduleUUID" : {
           "description" : "Schedule UUID",
           "format" : "uuid",
@@ -5074,6 +5078,11 @@
         "runningState" : {
           "description" : "Running state of the schedule",
           "type" : "boolean"
+        },
+        "scheduleName" : {
+          "description" : "Name of the schedule",
+          "readOnly" : true,
+          "type" : "string"
         },
         "scheduleUUID" : {
           "description" : "Schedule UUID",
