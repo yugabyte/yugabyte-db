@@ -11,6 +11,8 @@ import { YBLoading } from '../../common/indicators';
 import { YBResourceCount } from '../../common/descriptors';
 import { MetricsPanel } from '../../metrics';
 import { ReplicationAlertModalBtn } from './ReplicationAlertModalBtn';
+import { Dropdown, MenuItem } from 'react-bootstrap';
+import { CustomDatePicker } from '../../metrics/CustomDatePicker/CustomDatePicker';
 import './Replication.scss';
 
 const GRAPH_TYPE = 'replication';
@@ -18,12 +20,27 @@ const METRIC_NAME = 'tserver_async_replication_lag_micros';
 const MILLI_IN_MIN = 60000.0;
 const MILLI_IN_SEC = 1000.0;
 
+const filterTypes = [
+  { label: 'Last 1 hr', type: 'hours', value: '1' },
+  { label: 'Last 6 hrs', type: 'hours', value: '6' },
+  { label: 'Last 12 hrs', type: 'hours', value: '12' },
+  { label: 'Last 24 hrs', type: 'hours', value: '24' },
+  { label: 'Last 7 days', type: 'days', value: '7' },
+  { type: 'divider' },
+  { label: 'Custom', type: 'custom' }
+];
+
 export default class Replication extends Component {
   constructor(props) {
     super(props);
     this.state = {
       graphWidth: props.hideHeader ? window.innerWidth - 300 : 840,
-      intervalId: null
+      intervalId: null,
+      filterLabel: filterTypes[0].label,
+      filterType: filterTypes[0].type,
+      filterValue: filterTypes[0].value,
+      startMoment: moment().subtract(filterTypes[0].value, filterTypes[0].type),
+      endMoment: moment()
     };
   }
 
@@ -32,7 +49,7 @@ export default class Replication extends Component {
   };
 
   componentDidMount() {
-    const {  sourceUniverseUUID } = this.props;
+    const { sourceUniverseUUID } = this.props;
     if (sourceUniverseUUID) {
       this.props.fetchCurrentUniverse(sourceUniverseUUID).then(() => {
         this.queryMetrics();
@@ -57,19 +74,57 @@ export default class Replication extends Component {
       universe: { currentUniverse },
       replicationUUID
     } = this.props;
+    const { startMoment, endMoment, filterValue, filterType, filterLabel } = this.state;
     const universeDetails = getPromiseState(currentUniverse).isSuccess()
       ? currentUniverse.data.universeDetails
       : 'all';
+
     const params = {
       metrics: [METRIC_NAME],
-      start: moment().utc().subtract('1', 'hour').format('X'),
-      end: moment().utc().format('X'),
+      start: startMoment.format('X'),
+      end: endMoment.format('X'),
       nodePrefix: universeDetails.nodePrefix,
       xClusterConfigUuid: replicationUUID
     };
+
+    if (filterLabel !== 'Custom') {
+      params['start'] = moment().subtract(filterValue, filterType).format('X')
+      params['end'] = moment().format('X')
+    }
+
     this.props.queryMetrics(params, GRAPH_TYPE);
   };
 
+  handleFilterChange = (eventKey, event) => {
+
+    const filterInfo = filterTypes[eventKey]
+    const self = this;
+
+    let stateToUpdate = {
+      filterLabel: filterInfo.label,
+      filterType: filterInfo.type,
+      filterValue: filterInfo.value
+    }
+    if (event.target.getAttribute('data-filter-type') !== 'custom') {
+      stateToUpdate = {
+        ...stateToUpdate,
+        endMoment: moment(),
+        startMoment: moment().subtract(filterInfo.value, filterInfo.type)
+      }
+      this.setState(stateToUpdate, () => self.queryMetrics())
+    }
+    else {
+      this.setState(stateToUpdate)
+    }
+  }
+
+  handleStartDateChange = (dateStr) => {
+    this.setState({ startMoment: moment(dateStr) });
+  };
+
+  handleEndDateChange = (dateStr) => {
+    this.setState({ endMoment: moment(dateStr) });
+  };
   render() {
     const {
       universe: { currentUniverse },
@@ -98,7 +153,7 @@ export default class Replication extends Component {
       const replicationNodeMetrics = metrics[GRAPH_TYPE][METRIC_NAME].data.filter(
         (x) => x.name === committedLagName
       )
-      .sort((a, b) => b.x.length - a.x.length);
+        .sort((a, b) => b.x.length - a.x.length);
 
       if (replicationNodeMetrics.length) {
         // Get max-value and avg-value metric array
@@ -168,9 +223,43 @@ export default class Replication extends Component {
       );
     }
 
+    let datePicker = null;
+    if (this.state.filterLabel === 'Custom') {
+      datePicker = (
+        <CustomDatePicker
+          startMoment={this.state.startMoment}
+          endMoment={this.state.endMoment}
+          setStartMoment={this.handleStartDateChange}
+          setEndMoment={this.handleEndDateChange}
+          handleTimeframeChange={this.queryMetrics}
+        />
+      );
+    }
+
+    const self = this;
+
+    const menuItems = filterTypes.map((filter, idx) => {
+      const key = 'graph-filter-' + idx;
+      if (filter.type === 'divider') {
+        return <MenuItem divider key={key} />;
+      }
+
+      return (
+        <MenuItem
+          onSelect={self.handleFilterChange}
+          data-filter-type={filter.type}
+          key={key}
+          eventKey={idx}
+          active={filter.label === self.state.filterLabel}
+        >
+          {filter.label}
+        </MenuItem>
+      );
+    });
+
     // TODO: Make graph resizeable
     return (
-      <div>
+      <div id="replication-tab-panel">
         <YBPanelItem
           header={
             <div className="replication-header">
@@ -188,8 +277,21 @@ export default class Replication extends Component {
               {!hideHeader && infoBlock}
               {!hideHeader && <div className="replication-content-stats">{recentStatBlock}</div>}
               {!showMetrics && <div className="no-data">No data to display.</div>}
+              {
+                showMetrics && <div className={`time-range-option ${!hideHeader ? 'old-view' : ''}`}>
+                  {datePicker}
+                  <Dropdown id="graphFilterDropdown" className="graph-filter-dropdown" pullRight>
+                    <Dropdown.Toggle>
+                      <i className="fa fa-clock-o"></i>&nbsp;
+                      {this.state.filterLabel}
+                    </Dropdown.Toggle>
+                    <Dropdown.Menu>{menuItems}</Dropdown.Menu>
+                  </Dropdown>
+                </div>
+              }
+
               {showMetrics && metrics[GRAPH_TYPE] && (
-                <div className="graph-container">
+                <div className={`graph-container ${!hideHeader ? 'old-view' : ''}`}>
                   <MetricsPanel
                     currentUser={currentUser}
                     metricKey={METRIC_NAME}
