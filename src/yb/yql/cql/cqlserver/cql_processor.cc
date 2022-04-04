@@ -268,6 +268,7 @@ void CQLProcessor::PrepareAndSendResponse(const unique_ptr<CQLResponse>& respons
     const CQLConnectionContext& context =
         static_cast<const CQLConnectionContext&>(call_->connection()->context());
     response->set_registered_events(context.registered_events());
+    response->set_rpc_queue_position(call_->GetRpcQueuePosition());
     SendResponse(*response);
   }
 }
