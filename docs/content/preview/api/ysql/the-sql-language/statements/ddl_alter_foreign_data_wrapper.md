@@ -36,10 +36,10 @@ Use the `ALTER FOREIGN DATA WRAPPER` command to alter the definition of the fore
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_user_mapping.grammar.md" /%}}
+    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_foreign_data_wrapper.grammar.md" /%}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_user_mapping.diagram.md" /%}}
+    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_foreign_data_wrapper.diagram.md" /%}}
   </div>
 </div>
 
