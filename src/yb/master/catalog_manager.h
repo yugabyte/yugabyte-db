@@ -835,7 +835,7 @@ class CatalogManager :
                                    CompactSysCatalogResponsePB* resp,
                                    rpc::RpcContext* rpc);
 
-  CHECKED_STATUS SplitTablet(const TabletId& tablet_id, bool select_all_tablets_for_split) override;
+  CHECKED_STATUS SplitTablet(const TabletId& tablet_id, bool is_manual_split) override;
 
   // Splits tablet specified in the request using middle of the partition as a split point.
   CHECKED_STATUS SplitTablet(
@@ -1349,12 +1349,12 @@ class CatalogManager :
 
   CHECKED_STATUS DoSplitTablet(
       const scoped_refptr<TabletInfo>& source_tablet_info, std::string split_encoded_key,
-      std::string split_partition_key, bool select_all_tablets_for_split);
+      std::string split_partition_key, bool is_manual_split);
 
   // Splits tablet using specified split_hash_code as a split point.
   CHECKED_STATUS DoSplitTablet(
       const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code,
-      bool select_all_tablets_for_split);
+      bool is_manual_split);
 
   // Calculate the total number of replicas which are being handled by servers in state.
   int64_t GetNumRelevantReplicas(const BlacklistPB& state, bool leaders_only);
@@ -1629,7 +1629,7 @@ class CatalogManager :
 
   void SplitTabletWithKey(
       const scoped_refptr<TabletInfo>& tablet, const std::string& split_encoded_key,
-      const std::string& split_partition_key, bool select_all_tablets_for_split);
+      const std::string& split_partition_key, bool is_manual_split);
 
   // From the list of TServers in 'ts_descs', return the ones that match any placement policy
   // in 'placement_info'. Returns error if there are insufficient TServers to match the
