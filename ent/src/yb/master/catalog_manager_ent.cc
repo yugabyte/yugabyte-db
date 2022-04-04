@@ -1910,8 +1910,18 @@ Status CatalogManager::RestoreSysCatalog(
     const auto* meta = tablet->metadata();
     const auto& pg_yb_catalog_version_schema =
         *VERIFY_RESULT(meta->GetTableInfo(kPgYbCatalogVersionTableId))->schema;
-    RETURN_NOT_OK(state.ProcessPgCatalogRestores(
-        pg_yb_catalog_version_schema, doc_db, tablet->doc_db(), &write_batch));
+    auto status = state.ProcessPgCatalogRestores(
+        pg_yb_catalog_version_schema, doc_db, tablet->doc_db(), &write_batch);
+
+    // As RestoreSysCatalog is synchronous on Master it should be ok to set the completion
+    // status in case of validation failures so that it gets propagated back to the client before
+    // doing any write operations.
+    if (status.IsNotSupported()) {
+      *complete_status = status;
+      return Status::OK();
+    }
+
+    RETURN_NOT_OK(status);
   }
 
   // Restore the other tables.

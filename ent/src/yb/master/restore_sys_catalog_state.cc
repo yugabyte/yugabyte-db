@@ -634,12 +634,14 @@ void AddKeyValue(const Slice& key, const Slice& value, docdb::DocWriteBatch* wri
 struct PgCatalogTableData {
   std::array<uint8_t, kUuidSize + 1> prefix;
   const TableName* name;
+  uint32_t pg_table_oid;
 
   CHECKED_STATUS SetTableId(const TableId& table_id) {
     Uuid cotable_id;
     RETURN_NOT_OK(cotable_id.FromHexString(table_id));
     prefix[0] = docdb::KeyEntryTypeAsChar::kTableId;
     cotable_id.EncodeToComparable(&prefix[1]);
+    pg_table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id));
     return Status::OK();
   }
 };
@@ -737,7 +739,18 @@ Status RestoreSysCatalogState::ProcessPgCatalogRestores(
       RETURN_NOT_OK(existing_state.Next());
     }
 
-    if (num_updates + num_inserts + num_deletes != 0 || VLOG_IS_ON(3)) {
+    size_t total_changes = num_updates + num_inserts + num_deletes;
+    if (table.pg_table_oid == kPgSequencesTableOid && total_changes != 0) {
+      LOG(INFO) << "PITR: Pg sequences were updated since the Restore time"
+                << ", updates: " << num_updates
+                << ", inserts: " << num_inserts
+                << ", deletes: " << num_deletes;
+      return STATUS(
+          NotSupported,
+          "Unable to restore as Pg sequences were updated since the Restore time.");
+    }
+
+    if (total_changes != 0 || VLOG_IS_ON(3)) {
       LOG(INFO) << "PITR: Pg system table: " << AsString(table.name) << ", updates: " << num_updates
                 << ", inserts: " << num_inserts << ", deletes: " << num_deletes;
     }
