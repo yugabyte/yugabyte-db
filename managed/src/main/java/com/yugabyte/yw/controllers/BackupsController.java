@@ -255,6 +255,16 @@ public class BackupsController extends AuthenticatedController {
       throw new PlatformServiceException(
           BAD_REQUEST, "Missing StorageConfig UUID: " + taskParams.storageConfigUUID);
     }
+    if (taskParams.scheduleName == null) {
+      throw new PlatformServiceException(BAD_REQUEST, "Provide a name for the schedule");
+    } else {
+      if (Schedule.getScheduleByUniverseWithName(
+              taskParams.scheduleName, taskParams.universeUUID, customerUUID)
+          != null) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Schedule with name " + taskParams.scheduleName + " already exist");
+      }
+    }
     if (taskParams.schedulingFrequency == 0L && taskParams.cronExpression == null) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Provide Cron Expression or Scheduling frequency");
@@ -293,6 +303,8 @@ public class BackupsController extends AuthenticatedController {
     Schedule schedule =
         Schedule.create(
             customerUUID,
+            taskParams.universeUUID,
+            taskParams.scheduleName,
             taskParams,
             TaskType.CreateBackup,
             taskParams.schedulingFrequency,
