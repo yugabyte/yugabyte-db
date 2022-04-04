@@ -2682,7 +2682,7 @@ Status CatalogManager::DoSplitTablet(
     bool select_all_tablets_for_split) {
   docdb::KeyBytes split_encoded_key;
   docdb::DocKeyEncoderAfterTableIdStep(&split_encoded_key)
-      .Hash(split_hash_code, std::vector<docdb::PrimitiveValue>());
+      .Hash(split_hash_code, std::vector<docdb::KeyEntryValue>());
 
   const auto split_partition_key = PartitionSchema::EncodeMultiColumnHashValue(split_hash_code);
 
@@ -7569,6 +7569,19 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
   return status;
 }
 
+Result<SnapshotScheduleId> CatalogManager::FindCoveringScheduleForNamespace(
+    const NamespaceId& ns_id) {
+  auto map = VERIFY_RESULT(MakeSnapshotSchedulesToObjectIdsMap(SysRowEntryType::NAMESPACE));
+  for (const auto& schedule_and_objects : map) {
+    for (const auto& id : schedule_and_objects.second) {
+      if (id == ns_id) {
+        return schedule_and_objects.first;
+      }
+    }
+  }
+  return StronglyTypedUuid<SnapshotScheduleId_Tag>::Nil();
+}
+
 Status CatalogManager::DoDeleteNamespace(const DeleteNamespaceRequestPB* req,
                                          DeleteNamespaceResponsePB* resp,
                                          rpc::RpcContext* rpc) {
@@ -7642,16 +7655,12 @@ Status CatalogManager::DoDeleteNamespace(const DeleteNamespaceRequestPB* req,
   }
 
   // Disallow deleting namespaces with snapshot schedules.
-  auto map = VERIFY_RESULT(MakeSnapshotSchedulesToObjectIdsMap(SysRowEntryType::NAMESPACE));
-  for (const auto& schedule_and_objects : map) {
-    for (const auto& id : schedule_and_objects.second) {
-      if (id == ns->id()) {
-        return STATUS_EC_FORMAT(
-            InvalidArgument, MasterError(MasterErrorPB::NAMESPACE_IS_NOT_EMPTY),
-            "Cannot delete keyspace which has schedule: $0, request: $1",
-            schedule_and_objects.first, req->ShortDebugString());
-      }
-    }
+  auto covering_schedule_id = VERIFY_RESULT(FindCoveringScheduleForNamespace(ns->id()));
+  if (!covering_schedule_id.IsNil()) {
+    return STATUS_EC_FORMAT(
+        InvalidArgument, MasterError(MasterErrorPB::NAMESPACE_IS_NOT_EMPTY),
+        "Cannot delete keyspace which has schedule: $0, request: $1",
+        covering_schedule_id, req->ShortDebugString());
   }
 
   // [Delete]. Skip the DELETING->DELETED state, since no tables are present in this namespace.
@@ -7776,6 +7785,15 @@ Status CatalogManager::DeleteYsqlDatabase(const DeleteNamespaceRequestPB* req,
     // A non-YSQL namespace is found, but the rpc requests to drop a YSQL database.
     Status s = STATUS(NotFound, "YSQL database not found", database->name());
     return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
+  }
+
+  // Disallow deleting namespaces with snapshot schedules.
+  auto covering_schedule_id = VERIFY_RESULT(FindCoveringScheduleForNamespace(database->id()));
+  if (!covering_schedule_id.IsNil()) {
+    return STATUS_EC_FORMAT(
+        InvalidArgument, MasterError(MasterErrorPB::NAMESPACE_IS_NOT_EMPTY),
+        "Cannot delete database which has schedule: $0, request: $1",
+        covering_schedule_id, req->ShortDebugString());
   }
 
   // Set the Namespace to DELETING.

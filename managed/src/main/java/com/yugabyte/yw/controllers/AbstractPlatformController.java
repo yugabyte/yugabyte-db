@@ -27,6 +27,7 @@ import io.swagger.annotations.SwaggerDefinition;
 import play.libs.Json;
 import play.mvc.Controller;
 import play.mvc.Http;
+import play.mvc.With;
 
 /**
  * This class contains dependencies, which can be used by most of the Platform controllers. An
@@ -59,6 +60,7 @@ import play.mvc.Http;
                   in = ApiKeyAuthDefinition.ApiKeyLocation.HEADER,
                   description = "API token passed as header")
             }))
+@With(AuditAction.class)
 public abstract class AbstractPlatformController extends Controller {
 
   protected static final String LICENSE_1_0_0_NAME = "Polyform Free Trial License 1.0.0";

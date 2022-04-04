@@ -32,7 +32,7 @@ namespace docdb {
 Status QLKeyColumnValuesToPrimitiveValues(
     const google::protobuf::RepeatedPtrField<QLExpressionPB> &column_values,
     const Schema &schema, size_t column_idx, const size_t column_count,
-    vector<PrimitiveValue> *components) {
+    vector<KeyEntryValue> *components) {
   for (const auto& column_value : column_values) {
     if (!schema.is_key_column(column_idx)) {
       auto status = STATUS_FORMAT(
@@ -42,9 +42,9 @@ Status QLKeyColumnValuesToPrimitiveValues(
     }
 
     if (!column_value.has_value() || IsNull(column_value.value())) {
-      components->push_back(PrimitiveValue(ValueType::kNullLow));
+      components->emplace_back(KeyEntryType::kNullLow);
     } else {
-      components->push_back(PrimitiveValue::FromQLValuePB(
+      components->push_back(KeyEntryValue::FromQLValuePB(
           column_value.value(), schema.column(column_idx).sorting_type()));
     }
     column_idx++;
@@ -54,7 +54,7 @@ Status QLKeyColumnValuesToPrimitiveValues(
 
 namespace {
 
-Result<PrimitiveValue> EvalExpr(
+Result<KeyEntryValue> EvalExpr(
     const PgsqlExpressionPB& expr, const Schema& schema, SortingType sorting_type) {
   // TODO(neil) The current setup only works for CQL as it assumes primary key value must not
   // be dependent on any column values. This needs to be fixed as PostgreSQL expression might
@@ -65,19 +65,23 @@ Result<PrimitiveValue> EvalExpr(
   QLExprResult result;
   RETURN_NOT_OK(executor.EvalExpr(expr, nullptr, result.Writer(), &schema));
 
-  return PrimitiveValue::FromQLValuePB(result.Value(), sorting_type);
+  return KeyEntryValue::FromQLValuePB(result.Value(), sorting_type);
 }
 
-Result<PrimitiveValue> EvalExpr(
+Result<KeyEntryValue> EvalExpr(
     const LWPgsqlExpressionPB& expr, const Schema& schema, SortingType sorting_type) {
-  return EvalExpr(expr.ToGoogleProtobuf(), schema, sorting_type);
+  QLExprExecutor executor;
+  LWExprResult result(&expr.arena());
+  RETURN_NOT_OK(executor.EvalExpr(expr, nullptr, result.Writer(), &schema));
+
+  return KeyEntryValue::FromQLValuePB(result.Value(), sorting_type);
 }
 
 // ------------------------------------------------------------------------------------------------
 template <class Col>
-Result<vector<PrimitiveValue>> DoInitKeyColumnPrimitiveValues(
+Result<vector<KeyEntryValue>> DoInitKeyColumnPrimitiveValues(
     const Col &column_values, const Schema &schema, size_t start_idx) {
-  vector<PrimitiveValue> values;
+  vector<KeyEntryValue> values;
   values.reserve(column_values.size());
   size_t column_idx = start_idx;
   for (const auto& column_value : column_values) {
@@ -90,8 +94,8 @@ Result<vector<PrimitiveValue>> DoInitKeyColumnPrimitiveValues(
     const auto sorting_type = schema.column(column_idx).sorting_type();
     if (column_value.has_value()) {
       const auto& value = column_value.value();
-      values.push_back(IsNull(value) ? PrimitiveValue::NullValue(sorting_type)
-                                     : PrimitiveValue::FromQLValuePB(value, sorting_type));
+      values.push_back(IsNull(value) ? KeyEntryValue::NullValue(sorting_type)
+                                     : KeyEntryValue::FromQLValuePB(value, sorting_type));
     } else {
       values.push_back(VERIFY_RESULT(EvalExpr(column_value, schema, sorting_type)));
     }
@@ -102,13 +106,13 @@ Result<vector<PrimitiveValue>> DoInitKeyColumnPrimitiveValues(
 
 } // namespace
 
-Result<vector<PrimitiveValue>> InitKeyColumnPrimitiveValues(
+Result<vector<KeyEntryValue>> InitKeyColumnPrimitiveValues(
     const google::protobuf::RepeatedPtrField<PgsqlExpressionPB> &column_values,
     const Schema &schema, size_t start_idx) {
   return DoInitKeyColumnPrimitiveValues(column_values, schema, start_idx);
 }
 
-Result<vector<PrimitiveValue>> InitKeyColumnPrimitiveValues(
+Result<vector<KeyEntryValue>> InitKeyColumnPrimitiveValues(
     const ArenaList<LWPgsqlExpressionPB> &column_values, const Schema &schema, size_t start_idx) {
   return DoInitKeyColumnPrimitiveValues(column_values, schema, start_idx);
 }

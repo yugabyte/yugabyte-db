@@ -569,6 +569,21 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, Pgsql) {
   ASSERT_EQ(res, "before");
 }
 
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropDatabaseAndSchedule) {
+  bool colocated = GetParam();
+  auto schedule_id = ASSERT_RESULT(PreparePg(colocated));
+
+  auto conn = ASSERT_RESULT(PgConnect());
+
+  auto res = conn.Execute(Format("DROP DATABASE $0", client::kTableName.namespace_name()));
+  ASSERT_NOK(res);
+  ASSERT_STR_CONTAINS(res.message().ToBuffer(), "Cannot delete database which has schedule");
+
+  // Once the schedule is deleted, we should be able to drop the database.
+  ASSERT_OK(DeleteSnapshotSchedule(schedule_id));
+  ASSERT_OK(conn.Execute(Format("DROP DATABASE $0", client::kTableName.namespace_name())));
+}
+
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlCreateTable) {
   YB_SKIP_TEST_IN_TSAN();
   bool colocated = GetParam();
@@ -1893,6 +1908,59 @@ TEST_F(YbAdminSnapshotScheduleTest, CatalogLoadRace) {
   Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
   // Restore to trigger loading cluster config.
   ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+}
+
+class YbAdminSnapshotScheduleFlushTest : public YbAdminSnapshotScheduleTest {
+ public:
+  std::vector<std::string> ExtraMasterFlags() override {
+    // To speed up tests.
+    return { "--snapshot_coordinator_cleanup_delay_ms=1000",
+             "--snapshot_coordinator_poll_interval_ms=500",
+             "--enable_automatic_tablet_splitting=true",
+             "--enable_transactional_ddl_gc=false",
+             "--flush_rocksdb_on_shutdown=false",
+             "--vmodule=tablet_bootstrap=3" };
+  }
+};
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, TestSnapshotBootstrap, YbAdminSnapshotScheduleFlushTest) {
+  LOG(INFO) << "Create cluster";
+  CreateCluster(kClusterName, ExtraTSFlags(), ExtraMasterFlags());
+
+  // Disable modifying flushed frontier when snapshot is created.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_modify_flushed_frontier_snapshot_op", "false"));
+
+  // Create a database and a table.
+  auto conn = ASSERT_RESULT(CqlConnect());
+  ASSERT_OK(conn.ExecuteQuery(Format(
+      "CREATE KEYSPACE IF NOT EXISTS $0", client::kTableName.namespace_name())));
+
+  conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
+
+  ASSERT_OK(conn.ExecuteQueryFormat(
+      "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) WITH tablets = 1",
+      client::kTableName.table_name()));
+  LOG(INFO) << "Created Keyspace and table";
+
+  // Create a CREATE_ON_MASTER op in WALs without flushing frontier.
+  ASSERT_OK(CallAdmin("create_keyspace_snapshot",
+                      Format("ycql.$0", client::kTableName.namespace_name())));
+  SleepFor(MonoDelta::FromSeconds(5 * kTimeMultiplier));
+  LOG(INFO) << "Created snapshot on keyspace";
+
+  // Enable modifying flushed frontier when snapshot is replayed.
+  LOG(INFO) << "Resetting test flag to modify flushed frontier";
+
+  // Restart the masters so that this op gets replayed.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_modify_flushed_frontier_snapshot_op", "true"));
+  LOG(INFO) << "Restart#1";
+  cluster_->Shutdown();
+  ASSERT_OK(cluster_->Restart());
+
+  // Restart the masters again. Now this op shouldn't be replayed.
+  LOG(INFO) << "Restart#2";
+  cluster_->Shutdown();
+  ASSERT_OK(cluster_->Restart());
 }
 
 class YbAdminSnapshotScheduleTestWithoutConsecutiveRestore : public YbAdminSnapshotScheduleTest {
