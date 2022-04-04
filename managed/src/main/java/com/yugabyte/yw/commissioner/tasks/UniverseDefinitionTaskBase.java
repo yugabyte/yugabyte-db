@@ -426,7 +426,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     return nodeMap;
   }
 
-  public void selectMasters() {
+  public boolean selectMasters() {
+    boolean mastersUpdated = false;
     UniverseDefinitionTaskParams.Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster != null) {
       Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);
@@ -435,8 +436,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       long numMastersToChoose = primaryCluster.userIntent.replicationFactor - numActiveMasters;
       if (numMastersToChoose > 0) {
         PlacementInfoUtil.selectMasters(primaryNodes, numMastersToChoose);
+        mastersUpdated = true;
       }
     }
+    return mastersUpdated;
   }
 
   /**

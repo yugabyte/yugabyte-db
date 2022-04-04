@@ -131,14 +131,18 @@ class UniverseForm extends Component {
       } = this.props;
       const readOnlyCluster = universeDetails && getReadOnlyCluster(universeDetails.clusters);
       if (isNonEmptyObject(readOnlyCluster)) {
-        this.editReadReplica();
+        this.editReadReplica().then(() => {
+          this.transitionToDefaultRoute();
+        });
       } else {
-        this.addReadReplica();
+        this.addReadReplica().then(() => {
+          this.transitionToDefaultRoute();
+        });
       }
-      this.transitionToDefaultRoute();
     } else {
-      this.editUniverse();
-      this.transitionToDefaultRoute();
+      this.editUniverse().then(() => {
+        this.transitionToDefaultRoute();
+      });
     }
   };
 
@@ -237,7 +241,7 @@ class UniverseForm extends Component {
         }
       }
     } = this.props;
-    this.props.submitEditUniverse(this.getFormPayload(), universeUUID);
+    return this.props.submitEditUniverse(this.getFormPayload(), universeUUID);
   };
 
   addReadReplica = () => {
@@ -248,7 +252,7 @@ class UniverseForm extends Component {
         }
       }
     } = this.props;
-    this.props.submitAddUniverseReadReplica(this.getFormPayload(), universeUUID);
+    return this.props.submitAddUniverseReadReplica(this.getFormPayload(), universeUUID);
   };
 
   editReadReplica = () => {
@@ -259,7 +263,7 @@ class UniverseForm extends Component {
         }
       }
     } = this.props;
-    this.props.submitEditUniverseReadReplica(this.getFormPayload(), universeUUID);
+    return this.props.submitEditUniverseReadReplica(this.getFormPayload(), universeUUID);
   };
 
   UNSAFE_componentWillMount() {

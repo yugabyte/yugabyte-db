@@ -1253,8 +1253,7 @@ public class PlacementInfoUtil {
     } else {
       // In other operations we need to distinguish between expand and full-move.
       Map<UUID, Integer> requiredAZToNodeMap = getAzUuidToNumNodes(currentCluster.placementInfo);
-      Map<UUID, Integer> existingAZToNodeMap =
-          getAzUuidToNumNodes(universe.getUniverseDetails().getNodesInCluster(currentCluster.uuid));
+      Map<UUID, Integer> existingAZToNodeMap = getAzUuidToNumNodes(existingNodes);
 
       boolean isSimpleExpandShrink = true;
       for (UUID requiredAZUUID : requiredAZToNodeMap.keySet()) {
@@ -1283,8 +1282,9 @@ public class PlacementInfoUtil {
         // Break execution sequence because there are no nodes to be decomissioned
         return;
       } else {
-        // If not simply create a nodeDetailsSet from the provided placement info.
-        taskParams.nodeDetailsSet.clear();
+        // Remove nodes from the current cluster only.
+        taskParams.nodeDetailsSet.removeIf(nd -> nd.isInPlacement(currentCluster.uuid));
+
         int startIndex = getNextIndexToConfigure(existingNodes);
         int iter = 0;
         LinkedHashSet<PlacementIndexes> placements = new LinkedHashSet<>();
@@ -1299,7 +1299,6 @@ public class PlacementInfoUtil {
               int numChange = Math.abs(numDesired);
               // Add all new nodes in the tbe added state
               while (numChange > 0) {
-                iter++;
                 placements.add(new PlacementIndexes(azIdx, rIdx, cIdx, true));
                 NodeDetails nodeDetails =
                     createNodeDetailsWithPlacementIndex(
@@ -1307,6 +1306,7 @@ public class PlacementInfoUtil {
                         new PlacementIndexes(azIdx, rIdx, cIdx, true),
                         startIndex + iter);
                 taskParams.nodeDetailsSet.add(nodeDetails);
+                iter++;
                 numChange--;
               }
             }

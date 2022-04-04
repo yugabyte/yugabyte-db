@@ -15,6 +15,8 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
+
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -63,14 +65,14 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // Run preflight checks on onprem nodes to be added.
       if (reserveAndCheckOnpremNodesToBeAdded()) {
         // Select master nodes, if needed.
-        selectMasters();
+        boolean updateMasters = selectMasters();
 
         // Update the user intent.
         writeUserIntentToUniverse(false, false);
 
         for (Cluster cluster : taskParams().clusters) {
           addDefaultGFlags(cluster.userIntent);
-          editCluster(universe, cluster);
+          editCluster(universe, cluster, updateMasters);
         }
 
         // Update the DNS entry for this universe, based in primary provider info.
@@ -103,7 +105,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     LOG.info("Finished {} task.", getName());
   }
 
-  private void editCluster(Universe universe, Cluster cluster) {
+  private void editCluster(Universe universe, Cluster cluster, boolean updateMasters) {
     UserIntent userIntent = cluster.userIntent;
     Set<NodeDetails> nodes = taskParams().getNodesInCluster(cluster.uuid);
 
@@ -121,6 +123,8 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       createSetNodeStateTasks(nodesToBeRemoved, NodeDetails.NodeState.ToBeRemoved)
           .setSubTaskGroupType(SubTaskGroupType.Provisioning);
     }
+
+    Set<NodeDetails> liveNodes = PlacementInfoUtil.getLiveNodes(nodes);
 
     // Update any tags on nodes that are not going to be removed and not being added.
     Cluster existingCluster = universe.getCluster(cluster.uuid);
@@ -206,7 +210,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Remove them from blacklist, in case master is still tracking these.
-      createModifyBlackListTask(new ArrayList(newTservers), false /* isAdd */)
+      createModifyBlackListTask(new ArrayList<>(newTservers), false /* isAdd */)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
 
@@ -263,21 +267,40 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // Update these older ones to be not masters anymore so tserver info can be updated with the
       // final master list and other future cluster client operations.
       createUpdateNodeProcessTasks(removeMasters, ServerType.MASTER, false);
+    }
+
+    if (updateMasters) {
+      // Change the master addresses in the conf file for all tservers.
+      Set<NodeDetails> allTservers = new HashSet<>(newTservers);
+      allTservers.addAll(liveNodes);
 
       // Change the master addresses in the conf file for the new tservers.
-      createConfigureServerTasks(newTservers, false /* isShell */, true /* updateMasterAddrs */);
+      createConfigureServerTasks(allTservers, false /* isShell */, true /* updateMasterAddrs */);
       createSetFlagInMemoryTasks(
-          newTservers,
+          allTservers,
           ServerType.TSERVER,
           true /* force flag update */,
           null /* no gflag to update */,
           true /* updateMasterAddrs */);
 
+      Set<NodeDetails> allMasters = new HashSet<>(newMasters);
+      Set<String> takenMasters =
+          allMasters.stream().map(n -> n.nodeName).collect(Collectors.toSet());
+      allMasters.addAll(
+          liveNodes
+              .stream()
+              .filter(
+                  n ->
+                      n.isMaster
+                          && !takenMasters.contains(n.nodeName)
+                          && !removeMasters.contains(n))
+              .collect(Collectors.toSet()));
+
       // Change the master addresses in the conf file for the new masters.
       createConfigureServerTasks(
-          newMasters, false /* isShell */, true /* updateMasterAddrs */, true /* isMaster */);
+          allMasters, false /* isShell */, true /* updateMasterAddrs */, true /* isMaster */);
       createSetFlagInMemoryTasks(
-          newMasters,
+          allMasters,
           ServerType.MASTER,
           true /* force flag update */,
           null /* no gflag to update */,
