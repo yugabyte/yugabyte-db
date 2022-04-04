@@ -34,6 +34,7 @@ yugabyte=# CREATE FOREIGN DATA WRAPPER mywrapper HANDLER myhandler OPTIONS (dumm
 
 You can use _foreign servers_ to specify connection information for an external data source.
 Create foreign servers using the [`CREATE FOREIGN SERVER`](../../../api/ysql/the-sql-language/statements/ddl_create_server/) command.
+
 Example:
 
 ```plpgsql
@@ -45,7 +46,7 @@ yugabyte=# CREATE SERVER myserver FOREIGN DATA WRAPPER mywrapper OPTIONS (host '
 User mappings associate a user with authorization credentials in the foreign server.
 You can create a user mapping with the [`CREATE USER MAPPING`](../../../api/ysql/the-sql-language/statements/ddl_create_user_mapping) command.
 
-List all databases using the following statements.
+Example:
 
 ```plpgsql
 yugabyte=# CREATE USER MAPPING FOR myuser SERVER myserver OPTIONS (user 'john', password 'password');
