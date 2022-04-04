@@ -89,7 +89,11 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
       // Provision the nodes.
       // State checking is enabled because the subtasks are not idempotent.
       createProvisionNodeTasks(
-          universe, nodesToProvision, true /* isShell */, false /* ignore node status check */);
+          universe,
+          nodesToProvision,
+          true /* isShell */,
+          false /* ignore node status check */,
+          false /*ignoreUseCustomImageConfig*/);
 
       // Set of processes to be started, note that in this case it is same as nodes provisioned.
       Set<NodeDetails> newTservers = PlacementInfoUtil.getTserversToProvision(readOnlyNodes);
