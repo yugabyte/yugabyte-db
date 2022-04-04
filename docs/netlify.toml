@@ -79,11 +79,6 @@
   to = "https://docs-archive.yugabyte.com/"
   force = true
 
-[[redirects]]
-  from = "/v2.3/*"
-  to = "https://docs-archive.yugabyte.com/"
-  force = true
-
 # Redirect older versions of specific sections
 
 [[redirects]]
