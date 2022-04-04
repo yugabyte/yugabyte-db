@@ -943,9 +943,10 @@ public class NodeManager extends DevopsBase {
             subcommand.add("yb-prebuilt-ami");
           }
         } else if (universe
-            .getConfig()
-            .getOrDefault(Universe.USE_CUSTOM_IMAGE, "false")
-            .equals("true")) {
+                .getConfig()
+                .getOrDefault(Universe.USE_CUSTOM_IMAGE, "false")
+                .equals("true")
+            && !taskParam.ignoreUseCustomImageConfig) {
           subcommand.add("--skip_tags");
           subcommand.add("yb-prebuilt-ami");
         }
@@ -1574,17 +1575,18 @@ public class NodeManager extends DevopsBase {
 
           // Custom cluster creation flow with prebuilt AMI for cloud
           if (runtimeConfigFactory.forUniverse(universe).getBoolean("yb.cloud.enabled")) {
-            if ((userIntent.providerType.equals(Common.CloudType.aws)
-                || userIntent.providerType.equals(Common.CloudType.gcp))) {
+            if ((cloudType.equals(Common.CloudType.aws)
+                || cloudType.equals(Common.CloudType.gcp))) {
               if (taskParam.vmUpgradeTaskType != VmUpgradeTaskType.None) {
                 if (taskParam.vmUpgradeTaskType == VmUpgradeTaskType.VmUpgradeWithCustomImages) {
                   commandArgs.add("--skip_tags");
                   commandArgs.add("yb-prebuilt-ami");
                 }
               } else if (universe
-                  .getConfig()
-                  .getOrDefault(Universe.USE_CUSTOM_IMAGE, "false")
-                  .equals("true")) {
+                      .getConfig()
+                      .getOrDefault(Universe.USE_CUSTOM_IMAGE, "false")
+                      .equals("true")
+                  && !taskParam.ignoreUseCustomImageConfig) {
                 commandArgs.add("--skip_tags");
                 commandArgs.add("yb-prebuilt-ami");
               }

@@ -1548,7 +1548,7 @@ public class PlacementInfoUtil {
         }
         if (!added) {
           NodeDetails nodeDetails =
-              createNodeDetailsWithPlacementIndex(cluster, index, startIndex + iter);
+              createNodeDetailsWithPlacementIndex(cluster, nodes, index, startIndex + iter);
           deltaNodesSet.add(nodeDetails);
         }
       } else if (index.action == Action.REMOVE) {
@@ -1821,7 +1821,10 @@ public class PlacementInfoUtil {
    * @return a NodeDetails object.
    */
   private static NodeDetails createNodeDetailsWithPlacementIndex(
-      Cluster cluster, PlacementIndexes index, int nodeIdx) {
+      Cluster cluster,
+      Collection<NodeDetails> nodeDetailsSet,
+      PlacementIndexes index,
+      int nodeIdx) {
     NodeDetails nodeDetails = new NodeDetails();
     // Note: node name is set during customer task run time.
     // Set the cluster.
@@ -1833,6 +1836,15 @@ public class PlacementInfoUtil {
     // Set the region.
     PlacementRegion placementRegion = placementCloud.regionList.get(index.regionIdx);
     nodeDetails.cloudInfo.region = placementRegion.code;
+    // Set machineImage if it exists for region
+    for (NodeDetails existingNode : nodeDetailsSet) {
+      if (existingNode.getRegion().equals(placementRegion.code)
+          && existingNode.machineImage != null) {
+        nodeDetails.machineImage = existingNode.machineImage;
+        nodeDetails.ybPrebuiltAmi = existingNode.ybPrebuiltAmi;
+        break;
+      }
+    }
     // Set the AZ and the subnet.
     PlacementAZ placementAZ = placementRegion.azList.get(index.azIdx);
     nodeDetails.azUuid = placementAZ.uuid;
@@ -1879,7 +1891,8 @@ public class PlacementInfoUtil {
         iter = indexes.iterator();
         index = iter.next();
       }
-      NodeDetails nodeDetails = createNodeDetailsWithPlacementIndex(cluster, index, nodeIdx);
+      NodeDetails nodeDetails =
+          createNodeDetailsWithPlacementIndex(cluster, nodeDetailsSet, index, nodeIdx);
       deltaNodesSet.add(nodeDetails);
       deltaNodesMap.put(nodeDetails.nodeName, nodeDetails);
     }

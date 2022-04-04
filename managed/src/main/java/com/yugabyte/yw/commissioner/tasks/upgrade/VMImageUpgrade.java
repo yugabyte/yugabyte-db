@@ -107,7 +107,11 @@ public class VMImageUpgrade extends UpgradeTaskBase {
       createRootVolumeReplacementTask(node).setSubTaskGroupType(getTaskSubGroupType());
 
       List<NodeDetails> nodeList = Collections.singletonList(node);
-      createSetupServerTasks(nodeList, false /*isSystemdUpgrade*/, taskParams().vmUpgradeTaskType)
+      createSetupServerTasks(
+              nodeList,
+              false /*isSystemdUpgrade*/,
+              taskParams().vmUpgradeTaskType,
+              false /*ignoreUseCustomImageConfig*/)
           .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
 
       UniverseDefinitionTaskParams universeDetails = getUniverse().getUniverseDetails();
@@ -122,7 +126,8 @@ public class VMImageUpgrade extends UpgradeTaskBase {
               false,
               false,
               false /*isSystemdUpgrade*/,
-              taskParams().vmUpgradeTaskType)
+              taskParams().vmUpgradeTaskType,
+              false /*ignoreUseCustomImageConfig*/)
           .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
 
       processTypes.forEach(
@@ -131,7 +136,8 @@ public class VMImageUpgrade extends UpgradeTaskBase {
                 nodeList,
                 processType,
                 false /*isMasterInShellMode*/,
-                taskParams().vmUpgradeTaskType);
+                taskParams().vmUpgradeTaskType,
+                false /*ignoreUseCustomImageConfig*/);
             createServerControlTask(node, processType, "start")
                 .setSubTaskGroupType(getTaskSubGroupType());
             createWaitForServersTasks(new HashSet<>(nodeList), processType);

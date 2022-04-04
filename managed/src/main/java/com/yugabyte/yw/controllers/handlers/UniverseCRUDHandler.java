@@ -473,7 +473,7 @@ public class UniverseCRUDHandler {
     universe.updateConfig(
         ImmutableMap.of(
             Universe.USE_CUSTOM_IMAGE,
-            taskParams.nodeDetailsSet.stream().allMatch(n -> n.ybPrebuiltAmi) ? "true" : "false"));
+            Boolean.toString(taskParams.nodeDetailsSet.stream().allMatch(n -> n.ybPrebuiltAmi))));
 
     // Submit the task to create the universe.
     UUID taskUUID = commissioner.submit(taskType, taskParams);

@@ -111,7 +111,11 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
 
       // Set gflags for master.
       createGFlagsOverrideTasks(
-          nodeAsList, ServerType.MASTER, true /* isShell */, VmUpgradeTaskType.None);
+          nodeAsList,
+          ServerType.MASTER,
+          true /* isShell */,
+          VmUpgradeTaskType.None,
+          false /*ignoreUseCustomImageConfig*/);
 
       // Check that installed MASTER software version is consistent.
       createSoftwareInstallTasks(nodeAsList, ServerType.MASTER, null);

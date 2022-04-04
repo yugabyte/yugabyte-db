@@ -169,7 +169,8 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
           universe,
           taskParams().nodeDetailsSet,
           false /* isShell */,
-          false /* ignore node status check */);
+          false /* ignore node status check */,
+          false /*ignoreUseCustomImageConfig*/);
 
       Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);
 

@@ -148,7 +148,11 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
 
           // Set gflags for master.
           createGFlagsOverrideTasks(
-              node, ServerType.MASTER, true /* isShell */, VmUpgradeTaskType.None);
+              node,
+              ServerType.MASTER,
+              true /* isShell */,
+              VmUpgradeTaskType.None,
+              false /*ignoreUseCustomImageConfig*/);
 
           // Start a shell master process.
           createStartMasterTasks(node).setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);

@@ -55,13 +55,12 @@ public class UpdateNodeDetails extends NodeTaskBase {
             .updateConfig(
                 ImmutableMap.of(
                     Universe.USE_CUSTOM_IMAGE,
-                    getUniverse()
+                    Boolean.toString(
+                        getUniverse()
                             .getUniverseDetails()
                             .nodeDetailsSet
                             .stream()
-                            .allMatch(n -> n.ybPrebuiltAmi)
-                        ? "true"
-                        : "false"));
+                            .allMatch(n -> n.ybPrebuiltAmi))));
       }
     } catch (Exception e) {
       throw new RuntimeException(e);

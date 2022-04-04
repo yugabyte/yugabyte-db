@@ -103,7 +103,8 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
             ImmutableList.of(currentNode),
             ServerType.MASTER,
             true /*isShell */,
-            VmUpgradeTaskType.None);
+            VmUpgradeTaskType.None,
+            false /*ignoreUseCustomImageConfig*/);
 
         // Start a master process.
         createStartMasterTasks(new HashSet<NodeDetails>(Arrays.asList(currentNode)))

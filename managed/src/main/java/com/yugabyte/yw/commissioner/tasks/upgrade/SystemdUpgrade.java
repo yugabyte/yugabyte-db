@@ -66,7 +66,11 @@ public class SystemdUpgrade extends UpgradeTaskBase {
     taskParams().clusters = getUniverse().getUniverseDetails().clusters;
 
     // Conditional Provisioning
-    createSetupServerTasks(nodes, true /* isSystemdUpgrade */, VmUpgradeTaskType.None)
+    createSetupServerTasks(
+            nodes,
+            true /* isSystemdUpgrade */,
+            VmUpgradeTaskType.None,
+            false /*ignoreUseCustomImageConfig*/)
         .setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
     UniverseDefinitionTaskParams universeDetails = getUniverse().getUniverseDetails();
@@ -78,7 +82,13 @@ public class SystemdUpgrade extends UpgradeTaskBase {
 
     // Conditional Configuring
     createConfigureServerTasks(
-            nodes, false, false, false, true /* isSystemdUpgrade */, VmUpgradeTaskType.None)
+            nodes,
+            false,
+            false,
+            false,
+            true /* isSystemdUpgrade */,
+            VmUpgradeTaskType.None,
+            false /*ignoreUseCustomImageConfig*/)
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }
 }
