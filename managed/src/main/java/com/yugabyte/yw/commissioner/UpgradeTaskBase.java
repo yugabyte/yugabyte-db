@@ -446,6 +446,13 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         .collect(Collectors.toList());
   }
 
+  protected List<NodeDetails> filterForCluster(List<NodeDetails> nodes, UUID clusterUUID) {
+    return nodes
+        .stream()
+        .filter(n -> clusterUUID.equals(n.placementUuid))
+        .collect(Collectors.toList());
+  }
+
   public ImmutablePair<List<NodeDetails>, List<NodeDetails>> fetchNodesForCluster() {
     return new ImmutablePair<>(
         filterForClusters(fetchMasterNodes(taskParams().upgradeOption)),
