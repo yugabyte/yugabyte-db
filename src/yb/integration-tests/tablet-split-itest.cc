@@ -1595,7 +1595,7 @@ TEST_F(TabletSplitSingleServerITest, SplitKeyNotSupportedForTTLTablets) {
             yb::AppStatusPB::ErrorCode::AppStatusPB_ErrorCode_NOT_SUPPORTED);
 }
 
-TEST_F(TabletSplitSingleServerITest, MaxFileSizeTTLTabletNotValidForSplit) {
+TEST_F(TabletSplitSingleServerITest, MaxFileSizeTTLTabletOnlyValidForManualSplit) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_file_size_for_compaction) = 100_KB;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
@@ -1620,13 +1620,19 @@ TEST_F(TabletSplitSingleServerITest, MaxFileSizeTTLTabletNotValidForSplit) {
   // Candidate tablet should still be valid since default TTL not enabled.
   ASSERT_OK(split_manager->ValidateSplitCandidateTablet(*source_tablet_info));
 
-  // Alter the table with a table TTL, at which point tablet should no longer be valid.
+  // Alter the table with a table TTL, at which point tablet should no longer be valid
+  // for tablet splitting.
   // Amount of time for the TTL is irrelevant, so long as it's larger than 0.
   ASSERT_OK(AlterTableSetDefaultTTL(1));
   ASSERT_NOK(split_manager->ValidateSplitCandidateTablet(*source_tablet_info));
+
+  // Tablet should still be a valid candidate if ignore_ttl_validation is set to true
+  // (e.g. for manual tablet splitting).
+  ASSERT_OK(split_manager->ValidateSplitCandidateTablet(*source_tablet_info,
+      true /* ignore_ttl_validation */));
 }
 
-TEST_F(TabletSplitSingleServerITest, SplitNotValidOnceCheckedForTtl) {
+TEST_F(TabletSplitSingleServerITest, AutoSplitNotValidOnceCheckedForTtl) {
   const auto kSecondsBetweenChecks = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_validate_all_tablet_candidates) = false;
@@ -1653,6 +1659,13 @@ TEST_F(TabletSplitSingleServerITest, SplitNotValidOnceCheckedForTtl) {
   // After 2 seconds, table is a valid split candidate again.
   SleepFor(kSecondsBetweenChecks * 2s);
   ASSERT_OK(split_manager->ValidateSplitCandidateTable(table_info));
+
+  // State again that table should not be split for the next 1 second.
+  // Candidate table should still be a valid candidate if ignore_disabled_list
+  // is true (e.g. in the case of manual tablet splitting).
+  split_manager->MarkTtlTableForSplitIgnore(table_->id());
+  ASSERT_OK(split_manager->ValidateSplitCandidateTable(table_info,
+      true /* ignore_disabled_list */));
 }
 
 TEST_F(TabletSplitSingleServerITest, TabletServerOrphanedPostSplitData) {

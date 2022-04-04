@@ -124,7 +124,8 @@ Status TabletSplitManager::ValidateAgainstDisabledList(
   return Status::OK();
 }
 
-Status TabletSplitManager::ValidateSplitCandidateTable(const TableInfo& table) {
+Status TabletSplitManager::ValidateSplitCandidateTable(const TableInfo& table,
+    bool ignore_disabled_list) {
   if (PREDICT_FALSE(FLAGS_TEST_validate_all_tablet_candidates)) {
     return Status::OK();
   }
@@ -135,7 +136,9 @@ Status TabletSplitManager::ValidateSplitCandidateTable(const TableInfo& table) {
         "Table is deleted; ignoring for splitting. table_id: $0", table.id());
   }
 
-  RETURN_NOT_OK(ValidateAgainstDisabledList(table.id(), &ignore_table_for_splitting_until_));
+  if (!ignore_disabled_list) {
+    RETURN_NOT_OK(ValidateAgainstDisabledList(table.id(), &ignore_table_for_splitting_until_));
+  }
 
   // Check if this table is covered by a PITR schedule.
   if (!FLAGS_enable_tablet_split_of_pitr_tables &&
@@ -190,7 +193,8 @@ Status TabletSplitManager::ValidateSplitCandidateTable(const TableInfo& table) {
   return Status::OK();
 }
 
-Status TabletSplitManager::ValidateSplitCandidateTablet(const TabletInfo& tablet) {
+Status TabletSplitManager::ValidateSplitCandidateTablet(const TabletInfo& tablet,
+    bool ignore_ttl_validation) {
   if (PREDICT_FALSE(FLAGS_TEST_validate_all_tablet_candidates)) {
     return Status::OK();
   }
@@ -198,7 +202,8 @@ Status TabletSplitManager::ValidateSplitCandidateTablet(const TabletInfo& tablet
   Schema schema;
   RETURN_NOT_OK(tablet.table()->GetSchema(&schema));
   auto ts_desc = VERIFY_RESULT(tablet.GetLeader());
-  if (schema.table_properties().HasDefaultTimeToLive()
+  if (!ignore_ttl_validation
+      && schema.table_properties().HasDefaultTimeToLive()
       && ts_desc->get_disable_tablet_split_if_default_ttl()) {
     MarkTtlTableForSplitIgnore(tablet.table()->id());
     return STATUS_FORMAT(
@@ -255,7 +260,7 @@ bool AllReplicasHaveFinishedCompaction(const TabletInfo& tablet_info) {
 
 void TabletSplitManager::ScheduleSplits(const unordered_set<TabletId>& splits_to_schedule) {
   for (const auto& tablet_id : splits_to_schedule) {
-    auto s = driver_->SplitTablet(tablet_id, false /* select_all_tablets_for_split */);
+    auto s = driver_->SplitTablet(tablet_id, false /* is_manual_split */);
     if (!s.ok()) {
       WARN_NOT_OK(s, Format("Failed to start/restart split for tablet_id: $0.", tablet_id));
     } else {

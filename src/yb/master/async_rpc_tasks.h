@@ -695,7 +695,7 @@ class AsyncGetTabletSplitKey : public AsyncTabletLeaderTask {
 
   AsyncGetTabletSplitKey(
       Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
-      DataCallbackType result_cb);
+      bool is_manual_split, DataCallbackType result_cb);
 
   Type type() const override { return ASYNC_GET_TABLET_SPLIT_KEY; }
 
