@@ -2254,9 +2254,10 @@ void TabletServiceImpl::GetSplitKey(
     const GetSplitKeyRequestPB* req, GetSplitKeyResponsePB* resp, RpcContext context) {
   TEST_PAUSE_IF_FLAG(TEST_pause_tserver_get_split_key);
   PerformAtLeader(req, resp, &context,
-      [resp](const LeaderTabletPeer& leader_tablet_peer) -> Status {
+      [req, resp](const LeaderTabletPeer& leader_tablet_peer) -> Status {
         const auto& tablet = leader_tablet_peer.tablet;
-        if (FLAGS_rocksdb_max_file_size_for_compaction > 0 &&
+        if (!req->is_manual_split() &&
+            FLAGS_rocksdb_max_file_size_for_compaction > 0 &&
             tablet->schema()->table_properties().HasDefaultTimeToLive()) {
           auto s = STATUS(NotSupported, "Tablet splitting not supported for TTL tables.");
           return s.CloneAndAddErrorCode(
