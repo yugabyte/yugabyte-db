@@ -569,6 +569,21 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, Pgsql) {
   ASSERT_EQ(res, "before");
 }
 
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropDatabaseAndSchedule) {
+  bool colocated = GetParam();
+  auto schedule_id = ASSERT_RESULT(PreparePg(colocated));
+
+  auto conn = ASSERT_RESULT(PgConnect());
+
+  auto res = conn.Execute(Format("DROP DATABASE $0", client::kTableName.namespace_name()));
+  ASSERT_NOK(res);
+  ASSERT_STR_CONTAINS(res.message().ToBuffer(), "Cannot delete database which has schedule");
+
+  // Once the schedule is deleted, we should be able to drop the database.
+  ASSERT_OK(DeleteSnapshotSchedule(schedule_id));
+  ASSERT_OK(conn.Execute(Format("DROP DATABASE $0", client::kTableName.namespace_name())));
+}
+
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlCreateTable) {
   YB_SKIP_TEST_IN_TSAN();
   bool colocated = GetParam();
