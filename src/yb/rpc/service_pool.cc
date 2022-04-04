@@ -42,6 +42,7 @@
 #include <vector>
 
 #include <boost/asio/strand.hpp>
+#include <boost/optional/optional.hpp>
 #include <cds/container/basket_queue.h>
 #include <cds/gc/dhp.h>
 #include <glog/logging.h>
@@ -386,19 +387,20 @@ class ServicePoolImpl final : public InboundCallHandler {
     return log_prefix_;
   }
 
-  bool CallQueued() override {
+  boost::optional<int64_t> CallQueued(int64_t rpc_queue_limit) override {
     auto queued_calls = queued_calls_.fetch_add(1, std::memory_order_acq_rel);
     if (queued_calls < 0) {
       YB_LOG_EVERY_N_SECS(DFATAL, 5) << "Negative number of queued calls: " << queued_calls;
     }
 
-    if (queued_calls >= max_queued_calls_) {
+    size_t max_queued_calls = std::min(max_queued_calls_, implicit_cast<size_t>(rpc_queue_limit));
+    if (implicit_cast<size_t>(queued_calls) >= max_queued_calls) {
       queued_calls_.fetch_sub(1, std::memory_order_relaxed);
-      return false;
+      return boost::none;
     }
 
     rpcs_in_queue_->Increment();
-    return true;
+    return queued_calls;
   }
 
   void CallDequeued() override {

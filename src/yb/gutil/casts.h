@@ -28,6 +28,8 @@
 #include <string.h>         // for memcpy
 #include <limits.h>         // for enumeration casts and tests
 
+#include <limits>
+
 #include "yb/gutil/macros.h"
 #include "yb/gutil/template_util.h"
 #include "yb/gutil/type_traits.h"
@@ -379,10 +381,22 @@ inline bool tight_enum_test_cast(int e_val, Enum* e_var) {
   }
 }
 
+template <class Out, class In>
+Out trim_cast(const In& in) {
+  if (in > std::numeric_limits<Out>::max()) {
+    return std::numeric_limits<Out>::max();
+  }
+  if (in < std::numeric_limits<Out>::min()) {
+    return std::numeric_limits<Out>::min();
+  }
+  return static_cast<Out>(in);
+}
+
 } // namespace yb
 
 using yb::bit_cast;
 using yb::down_cast;
 using yb::implicit_cast;
+using yb::trim_cast;
 
 #endif // YB_GUTIL_CASTS_H

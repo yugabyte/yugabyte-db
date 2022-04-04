@@ -359,5 +359,10 @@ CoarseTimePoint CQLInboundCall::GetClientDeadline() const {
   return deadline_;
 }
 
+rpc::ThreadPoolTask* CQLInboundCall::BindTask(rpc::InboundCallHandler* handler) {
+  int64_t rpc_queue_limit = CQLRequest::ParseRpcQueueLimit(serialized_request_);
+  return rpc::InboundCall::BindTask(handler, rpc_queue_limit);
+}
+
 } // namespace cqlserver
 } // namespace yb
