@@ -149,11 +149,13 @@ MonoDelta InboundCall::GetTimeInQueue() const {
   return timing_.time_handled.GetDeltaSince(timing_.time_received);
 }
 
-ThreadPoolTask* InboundCall::BindTask(InboundCallHandler* handler) {
+ThreadPoolTask* InboundCall::BindTask(InboundCallHandler* handler, int64_t rpc_queue_limit) {
   auto shared_this = shared_from(this);
-  if (!handler->CallQueued()) {
+  boost::optional<int64_t> rpc_queue_position = handler->CallQueued(rpc_queue_limit);
+  if (!rpc_queue_position) {
     return nullptr;
   }
+  rpc_queue_position_ = *rpc_queue_position;
   tracker_ = handler;
   task_.Bind(handler, shared_this);
   return &task_;

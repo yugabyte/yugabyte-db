@@ -248,6 +248,19 @@ bool CQLRequest::ParseRequest(
   const uint8_t* body_data = body_size > 0 ? mesg.data() + kMessageHeaderLength : to_uchar_ptr("");
   unique_ptr<uint8_t[]> buffer;
 
+  if (header.flags & kMetadataFlag) {
+    if (body_size < kMetadataSize) {
+      error_response->reset(
+          new ErrorResponse(
+              header.stream_id, ErrorResponse::Code::PROTOCOL_ERROR,
+              "Metadata flag set, but request body too small"));
+      return false;
+    }
+    // Ignore the request metadata.
+    body_size -= kMetadataSize;
+    body_data += kMetadataSize;
+  }
+
   // If the message body is compressed, uncompress it.
   if (body_size > 0 && (header.flags & kCompressionFlag)) {
     if (header.opcode == Opcode::STARTUP) {
@@ -388,6 +401,16 @@ bool CQLRequest::ParseRequest(
   (*request)->body_.clear();
 
   return true;
+}
+
+int64_t CQLRequest::ParseRpcQueueLimit(const Slice& mesg) {
+  Flags flags = LoadByte<Flags>(mesg, kHeaderPosFlags);
+  if (!(flags & kMetadataFlag)) {
+    return std::numeric_limits<int64_t>::max();
+  }
+  uint16_t queue_limit = LoadShort<uint16_t>(
+      mesg, kMessageHeaderLength + kMetadataQueueLimitOffset);
+  return static_cast<int64_t>(queue_limit);
 }
 
 CQLRequest::CQLRequest(const Header& header, const Slice& body) : CQLMessage(header), body_(body) {
@@ -969,7 +992,10 @@ void SerializeValue(const CQLMessage::Value& value, faststring* mesg) {
 
 // ------------------------------------ CQL response -----------------------------------
 CQLResponse::CQLResponse(const CQLRequest& request, const Opcode opcode)
-    : CQLMessage(Header(request.version() | kResponseVersion, 0, request.stream_id(), opcode)) {
+    : CQLMessage(Header(request.version() | kResponseVersion,
+                        request.flags() & kMetadataFlag,
+                        request.stream_id(),
+                        opcode)) {
 }
 
 CQLResponse::CQLResponse(const StreamId stream_id, const Opcode opcode)
@@ -993,6 +1019,11 @@ void CQLResponse::Serialize(const CompressionScheme compression_scheme, faststri
   const size_t start_pos = mesg->size(); // save the start position
   const bool compress = (compression_scheme != CQLMessage::CompressionScheme::kNone);
   SerializeHeader(compress, mesg);
+  if (flags() & kMetadataFlag) {
+    uint8_t buffer[kMetadataSize] = {0};
+    SERIALIZE_SHORT(buffer, kMetadataQueuePosOffset, static_cast<uint16_t>(rpc_queue_position_));
+    mesg->append(buffer, sizeof(buffer));
+  }
   if (compress) {
     faststring body;
     SerializeBody(&body);
