@@ -690,6 +690,40 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAddColumn) {
   ASSERT_EQ(result_status.ok(), false);
 }
 
+// If sequences were created since the restore start time,
+// then restore isn't supported. The test validates that.
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSequenceCreateDropWithRestore),
+          YbAdminSnapshotScheduleTestWithYsql) {
+  auto schedule_id = ASSERT_RESULT(PreparePg());
+
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+  LOG(INFO) << "Create table 'test_table'";
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value INT)"));
+
+  Timestamp time_before_create(ASSERT_RESULT(WallClock()->Now()).time_point);
+  LOG(INFO) << "Time to restore back before sequence creation : " << time_before_create;
+
+  LOG(INFO) << "Create Sequence 'value_data'";
+  ASSERT_OK(conn.Execute("CREATE SEQUENCE value_data INCREMENT 5 OWNED BY test_table.value"));
+
+  auto restore_status = RestoreSnapshotSchedule(schedule_id, time_before_create);
+  ASSERT_NOK(restore_status);
+  ASSERT_STR_CONTAINS(restore_status.ToString(), "Unable to restore as Pg sequences were updated");
+  LOG(INFO) << "Restoring to a time before sequence creation failed : " << restore_status;
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, nextval('value_data'))"));
+
+  Timestamp time_before_drop(ASSERT_RESULT(WallClock()->Now()).time_point);
+  LOG(INFO) << "Time to restore back before sequence drop : " << time_before_drop;
+
+  ASSERT_OK(conn.Execute("DROP SEQUENCE value_data"));
+
+  restore_status = RestoreSnapshotSchedule(schedule_id, time_before_drop);
+  ASSERT_NOK(restore_status);
+  ASSERT_STR_CONTAINS(restore_status.ToString(), "Unable to restore as Pg sequences were updated");
+  LOG(INFO) << "Restoring to a time before sequence drop failed :" << restore_status;
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, 2)"));
+}
+
 TEST_F(YbAdminSnapshotScheduleTest, UndeleteIndex) {
   auto schedule_id = ASSERT_RESULT(PrepareCql());
 
