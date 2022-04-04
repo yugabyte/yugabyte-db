@@ -102,15 +102,12 @@ char* SubstituteToBuffer(GStringPiece format,
 } // namespace internal
 
 void SubstituteAndAppend(
-    string* output, GStringPiece format,
-    const SubstituteArg& arg0, const SubstituteArg& arg1,
-    const SubstituteArg& arg2, const SubstituteArg& arg3,
-    const SubstituteArg& arg4, const SubstituteArg& arg5,
-    const SubstituteArg& arg6, const SubstituteArg& arg7,
-    const SubstituteArg& arg8, const SubstituteArg& arg9) {
-  const SubstituteArg* const args_array[] = {
-    &arg0, &arg1, &arg2, &arg3, &arg4, &arg5, &arg6, &arg7, &arg8, &arg9, nullptr
-  };
+    string* output, GStringPiece format, const SubstituteArg& arg0, const SubstituteArg& arg1,
+    const SubstituteArg& arg2, const SubstituteArg& arg3, const SubstituteArg& arg4,
+    const SubstituteArg& arg5, const SubstituteArg& arg6, const SubstituteArg& arg7,
+    const SubstituteArg& arg8, const SubstituteArg& arg9, const SubstituteArg& arg10) {
+  const SubstituteArg* const args_array[] = {&arg0, &arg1, &arg2, &arg3, &arg4,  &arg5,
+                                             &arg6, &arg7, &arg8, &arg9, &arg10, nullptr};
 
   // Determine total size needed.
   int size = SubstitutedSize(format, args_array);

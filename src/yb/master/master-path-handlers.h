@@ -98,7 +98,7 @@ class MasterPathHandlers {
     kNumTypes,
   };
 
-  enum CatalogTableColumns{
+  enum CatalogTableColumns {
     kKeyspace,
     kTableName,
     kState,
@@ -108,6 +108,7 @@ class MasterPathHandlers {
     kParentOid,
     kColocationId,
     kOnDiskSize,
+    kHidden,
     kNumColumns
   };
 

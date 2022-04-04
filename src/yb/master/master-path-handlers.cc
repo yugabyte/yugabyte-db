@@ -954,6 +954,7 @@ void MasterPathHandlers::HandleCatalogManager(
     string href_table_id = table_uuid;
     string table_name = table_locked->name();
     table_row[kState] = SysTablesEntryPB_State_Name(table_locked->pb.state());
+    table_row[kHidden] = table_locked->is_hidden() ? "true" : "false";
     Capitalize(&table_row[kState]);
     table_row[kMessage] = EscapeForHtmlToString(table_locked->pb.state_msg());
 
@@ -1041,7 +1042,8 @@ void MasterPathHandlers::HandleCatalogManager(
                 << "  <th>State</th>\n"
                 << "  <th>Message</th>\n"
                 << "  <th>UUID</th>\n"
-                << "  <th>YSQL OID</th>\n";
+                << "  <th>YSQL OID</th>\n"
+                << "  <th>Hidden</th>\n";
 
       if (tpeIdx == kUserTable || tpeIdx == kUserIndex) {
         if (has_tablegroups[tpeIdx]) {
@@ -1065,13 +1067,15 @@ void MasterPathHandlers::HandleCatalogManager(
             "<td>$2</td>"
             "<td>$3</td>"
             "<td>$4</td>"
-            "<td>$5</td>",
+            "<td>$5</td>"
+            "<td>$6</td>",
             table.second[kKeyspace],
             table.second[kTableName],
             table.second[kState],
             table.second[kMessage],
             table.second[kUuid],
-            table.second[kYsqlOid]);
+            table.second[kYsqlOid],
+            table.second[kHidden]);
 
         if (tpeIdx == kUserTable || tpeIdx == kUserIndex) {
           if (has_tablegroups[tpeIdx]) {
@@ -1227,7 +1231,7 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
 
   *output << "<table class='table table-striped'>\n";
   *output << "  <tr><th>Tablet ID</th><th>Partition</th><th>SplitDepth</th><th>State</th>"
-      "<th>Message</th><th>RaftConfig</th></tr>\n";
+             "<th>Hidden</th><th>Message</th><th>RaftConfig</th></tr>\n";
   for (const scoped_refptr<TabletInfo>& tablet : tablets) {
     auto locations = tablet->GetReplicaLocations();
     vector<TabletReplica> sorted_locations;
@@ -1247,6 +1251,7 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
         EscapeForHtmlToString(partition_schema.PartitionDebugString(partition, schema)),
         l->pb.split_depth(),
         state,
+        l->is_hidden(),
         EscapeForHtmlToString(l->pb.state_msg()),
         RaftConfigToHtml(sorted_locations, tablet->tablet_id()));
   }
