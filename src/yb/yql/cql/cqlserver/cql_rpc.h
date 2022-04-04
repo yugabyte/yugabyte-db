@@ -160,6 +160,8 @@ class CQLInboundCall : public rpc::InboundCall {
     return DynamicMemoryUsageOf(response_msg_buf_);
   }
 
+  rpc::ThreadPoolTask* BindTask(rpc::InboundCallHandler* handler) override;
+
  private:
   RefCntBuffer response_msg_buf_;
   const ql::QLSession::SharedPtr ql_session_;
