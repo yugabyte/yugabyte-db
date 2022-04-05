@@ -210,7 +210,7 @@ Result<SubDocument*> LazySubDocumentHolder::Get() {
   Slice temp = key_;
   temp.remove_prefix(parent_->key_.size());
   for (;;) {
-    PrimitiveValue child_key_part;
+    KeyEntryValue child_key_part;
     RETURN_NOT_OK(child_key_part.DecodeFromKey(&temp));
     current = current->GetOrAddChild(child_key_part).first;
     if (temp.empty()) {
@@ -237,7 +237,7 @@ class DocDbRowData {
 
   const DocHybridTime& write_time() const { return write_time_; }
 
-  bool IsTombstone() const { return value_.value_type() == ValueType::kTombstone; }
+  bool IsTombstone() const { return value_.value_type() == ValueEntryType::kTombstone; }
 
   bool IsCollection() const { return IsCollectionType(value_.value_type()); }
 
@@ -317,7 +317,7 @@ Status DocDbRowAssembler::SetTombstone() {
     return Status::OK();
   }
   auto* subdoc = VERIFY_RESULT(root_.Get());
-  *subdoc = SubDocument(ValueType::kTombstone);
+  *subdoc = SubDocument(ValueEntryType::kTombstone);
   is_tombstoned_ = true;
   return Status::OK();
 }
@@ -347,8 +347,8 @@ Result<bool> DocDbRowAssembler::HasStoredValue() {
     return false;
   }
   auto* subdoc = VERIFY_RESULT(root_.Get());
-  return subdoc->value_type() != ValueType::kInvalid
-      && subdoc->value_type() != ValueType::kTombstone;
+  return subdoc->value_type() != ValueEntryType::kInvalid
+      && subdoc->value_type() != ValueEntryType::kTombstone;
 }
 
 class ScopedDocDbRowContext;
@@ -643,7 +643,7 @@ SubDocumentReader::SubDocumentReader(
 Status SubDocumentReader::Get(SubDocument* result) {
   IntentAwareIteratorPrefixScope target_scope(target_subdocument_key_, iter_);
   if (!iter_->valid()) {
-    *result = SubDocument(ValueType::kInvalid);
+    *result = SubDocument(ValueEntryType::kInvalid);
     return Status::OK();
   }
   auto first_row = VERIFY_RESULT(DocDbRowData::CurrentRow(iter_));
@@ -664,7 +664,7 @@ Status SubDocumentReader::Get(SubDocument* result) {
   RETURN_NOT_OK(collection.SetFirstChild(std::move(first_row)));
   auto num_children = VERIFY_RESULT(ProcessChildren(&collection));
   if (num_children == 0) {
-    *result = SubDocument(ValueType::kTombstone);
+    *result = SubDocument(ValueEntryType::kTombstone);
   }
   return Status::OK();
 }

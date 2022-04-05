@@ -308,8 +308,8 @@ Status QLWriteOperation::InitializeKeys(const bool hashed_key, const bool primar
   // Populate the hashed and range components in the same order as they are in the table schema.
   const auto& hashed_column_values = request_.hashed_column_values();
   const auto& range_column_values = request_.range_column_values();
-  std::vector<PrimitiveValue> hashed_components;
-  std::vector<PrimitiveValue> range_components;
+  std::vector<KeyEntryValue> hashed_components;
+  std::vector<KeyEntryValue> range_components;
   RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
       hashed_column_values, *schema_, 0,
       schema_->num_hash_key_columns(), &hashed_components));
@@ -364,7 +364,7 @@ Status QLWriteOperation::GetDocPaths(
       Slice doc_key = column.is_static() ? encoded_hashed_doc_key_.as_slice()
                                          : encoded_pk_doc_key_.as_slice();
       buffer.Clear();
-      buffer.AppendValueType(ValueType::kColumnId);
+      buffer.AppendKeyEntryType(KeyEntryType::kColumnId);
       buffer.AppendColumnId(column_id);
       RefCntBuffer path(doc_key.size() + buffer.size());
       memcpy(path.data(), doc_key.data(), doc_key.size());
@@ -548,7 +548,7 @@ Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValue(
   const HybridTime oldest_past_min_ht_liveness =
       VERIFY_RESULT(FindOldestOverwrittenTimestamp(
           iter.get(),
-          SubDocKey(*pk_doc_key_, PrimitiveValue::kLivenessColumn),
+          SubDocKey(*pk_doc_key_, KeyEntryValue::kLivenessColumn),
           requested_read_time.read));
   oldest_past_min_ht.MakeAtMost(oldest_past_min_ht_liveness);
   if (!oldest_past_min_ht.is_valid()) {
@@ -744,10 +744,8 @@ Status QLWriteOperation::ApplyForSubscriptArgs(const QLColumnValuePB& column_val
   DCHECK(column_value.subscript_args(0).has_value()) << "An index must be a constant";
   switch (column.type()->main()) {
     case MAP: {
-      const PrimitiveValue &pv = PrimitiveValue::FromQLValuePB(
-          column_value.subscript_args(0).value(),
-          SortingType::kNotSpecified);
-      sub_path->AddSubKey(pv);
+      sub_path->AddSubKey(KeyEntryValue::FromQLValuePB(
+          column_value.subscript_args(0).value(), SortingType::kNotSpecified));
       RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
           *sub_path, value, data.read_time, data.deadline,
           request_.query_id(), ttl, user_timestamp));
@@ -910,13 +908,13 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
       // ensure our write path is fast while complicating the read path a bit.
       auto is_insert = request_.type() == QLWriteRequestPB::QL_STMT_INSERT;
       if (is_insert && encoded_pk_doc_key_) {
-        const DocPath sub_path(encoded_pk_doc_key_.as_slice(), PrimitiveValue::kLivenessColumn);
+        const DocPath sub_path(encoded_pk_doc_key_.as_slice(), KeyEntryValue::kLivenessColumn);
         const auto control_fields = ValueControlFields {
           .ttl = ttl,
           .user_timestamp = user_timestamp,
         };
         RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
-            sub_path, control_fields, ValueRef(ValueType::kNullLow),
+            sub_path, control_fields, ValueRef(ValueEntryType::kNullLow),
             data.read_time, data.deadline, request_.query_id()));
       }
 
@@ -933,9 +931,9 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
         const ColumnSchema& column = *maybe_column;
 
         DocPath sub_path(
-            column.is_static() ?
-                encoded_hashed_doc_key_.as_slice() : encoded_pk_doc_key_.as_slice(),
-            PrimitiveValue(column_id));
+            column.is_static() ? encoded_hashed_doc_key_.as_slice()
+                               : encoded_pk_doc_key_.as_slice(),
+            KeyEntryValue::MakeColumnId(column_id));
 
         QLValue expr_result;
         if (!column_value.json_args().empty()) {
@@ -962,7 +960,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
         DocPath sub_path(
             column.is_static() ?
                 encoded_hashed_doc_key_.as_slice() : encoded_pk_doc_key_.as_slice(),
-            PrimitiveValue(column_id));
+            KeyEntryValue::MakeColumnId(column_id));
         RETURN_NOT_OK(ApplyForJsonOperators(
             column, entry.first, col_map, data, sub_path, ttl, user_timestamp, &new_row,
             is_insert));
@@ -990,7 +988,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
           const DocPath sub_path(
               column.is_static() ?
                 encoded_hashed_doc_key_.as_slice() : encoded_pk_doc_key_.as_slice(),
-              PrimitiveValue(column_id));
+              KeyEntryValue::MakeColumnId(column_id));
           RETURN_NOT_OK(data.doc_write_batch->DeleteSubDoc(sub_path,
               data.read_time, data.deadline, request_.query_id(), user_timestamp));
           if (update_indexes_) {
@@ -1012,7 +1010,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
             &static_projection, &projection));
 
         // Construct the scan spec basing on the WHERE condition.
-        vector<PrimitiveValue> hashed_components;
+        vector<KeyEntryValue> hashed_components;
         RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
             request_.hashed_column_values(), *schema_, 0,
             schema_->num_hash_key_columns(), &hashed_components));
@@ -1084,7 +1082,7 @@ Status QLWriteOperation::DeleteRow(const DocPath& row_path, DocWriteBatch* doc_w
     // column in the schema since we don't want to analyze this on the read path.
     for (auto i = schema_->num_key_columns(); i < schema_->num_columns(); i++) {
       const DocPath sub_path(row_path.encoded_doc_key(),
-                             PrimitiveValue(schema_->column_id(i)));
+                             KeyEntryValue::MakeColumnId(schema_->column_id(i)));
       RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(sub_path,
                                                   read_ht,
                                                   deadline,
@@ -1093,7 +1091,7 @@ Status QLWriteOperation::DeleteRow(const DocPath& row_path, DocWriteBatch* doc_w
     }
 
     // Delete the liveness column as well.
-    const DocPath liveness_column(row_path.encoded_doc_key(), PrimitiveValue::kLivenessColumn);
+    const DocPath liveness_column(row_path.encoded_doc_key(), KeyEntryValue::kLivenessColumn);
     RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(liveness_column,
                                                 read_ht,
                                                 deadline,
@@ -1647,7 +1645,7 @@ Status QLReadOperation::SetPagingStateIfNecessary(const YQLRowwiseIteratorIf* it
 }
 
 Status QLReadOperation::GetIntents(const Schema& schema, KeyValueWriteBatchPB* out) {
-  std::vector<PrimitiveValue> hashed_components;
+  std::vector<KeyEntryValue> hashed_components;
   RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
       request_.hashed_column_values(), schema, 0, schema.num_hash_key_columns(),
       &hashed_components));
@@ -1656,12 +1654,12 @@ Status QLReadOperation::GetIntents(const Schema& schema, KeyValueWriteBatchPB* o
     // Empty hashed components mean that we don't have primary key at all, but request
     // could still contain hash_code as part of tablet routing.
     // So we should ignore it.
-    pair->set_key(std::string(1, ValueTypeAsChar::kGroupEnd));
+    pair->set_key(std::string(1, KeyEntryTypeAsChar::kGroupEnd));
   } else {
     DocKey doc_key(request_.hash_code(), hashed_components);
     pair->set_key(doc_key.Encode().ToStringBuffer());
   }
-  pair->set_value(std::string(1, ValueTypeAsChar::kNullLow));
+  pair->set_value(std::string(1, ValueEntryTypeAsChar::kNullLow));
   // Wait policies make sense only for YSQL to support different modes like waiting, erroring out
   // or skipping on intent conflict. YCQL behaviour matches WAIT_ERROR (see proto for details).
   out->set_wait_policy(WAIT_ERROR);

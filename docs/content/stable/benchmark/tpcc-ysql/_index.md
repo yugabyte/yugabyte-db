@@ -45,7 +45,6 @@ All nodes in the cluster were in the same zone. The benchmark VM was the same ty
 To download the TPC-C binaries, run the following commands.
 
 ```sh
-$ cd $HOME
 $ wget https://github.com/yugabyte/tpcc/releases/download/2.0/tpcc.tar.gz
 $ tar -zxvf tpcc.tar.gz
 $ cd tpcc

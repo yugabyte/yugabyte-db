@@ -38,11 +38,11 @@ namespace yb {
 namespace docdb {
 
 void DocWriteBatchCache::Put(const KeyBytes& key_bytes, const DocWriteBatchCache::Entry& entry) {
-    DOCDB_DEBUG_LOG(
-      "Writing to DocWriteBatchCache: encoded_key_prefix=$0, gen_ht=$1, value_type=$2",
-      BestEffortDocDBKeyToStr(key_bytes),
-      entry.doc_hybrid_time.ToString(),
-      ToString(entry.value_type));
+  DOCDB_DEBUG_LOG(
+    "Writing to DocWriteBatchCache: encoded_key_prefix=$0, gen_ht=$1, value_type=$2",
+    BestEffortDocDBKeyToStr(key_bytes),
+    entry.doc_hybrid_time.ToString(),
+    ToString(entry.value_type));
   prefix_to_gen_ht_[key_bytes.data()] = entry;
 }
 

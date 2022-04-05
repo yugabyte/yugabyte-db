@@ -161,7 +161,7 @@ Result<bool> GetPgIndexStatus(
     cond.add_operands()->set_column_id(indexrelid_col_id);
     cond.set_op(QL_OP_EQUAL);
     cond.add_operands()->mutable_value()->set_uint32_value(idx_oid);
-    const std::vector<docdb::PrimitiveValue> empty_key_components;
+    const std::vector<docdb::KeyEntryValue> empty_key_components;
     docdb::DocPgsqlScanSpec spec(projection,
                                  rocksdb::kDefaultQueryId,
                                  empty_key_components,
