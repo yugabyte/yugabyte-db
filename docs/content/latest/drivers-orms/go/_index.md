@@ -39,7 +39,7 @@ Visual Studio Code for developing your Go project.
 
 ### Create a YugabyteDB cluster
 
-Set up a Free-tier cluster on [Yugabyte Cloud](https://cloud.yugabyte.com/signup). The free-tier
+Create a free cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/). Refer to [Create a free cluster](../../yugabyte-cloud/cloud-basics/create-clusters-free/). ```
 cluster provides a fully functioning YugabyteDB cluster deployed to the cloud region of your choice.
 
 The cluster is free forever and includes enough resources to explore the core features available for
