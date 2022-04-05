@@ -97,7 +97,8 @@ export const panelTypes = {
       'lsm_rocksdb_compaction',
       'lsm_rocksdb_compaction_time',
       'lsm_rocksdb_compaction_numfiles',
-      'docdb_transaction'
+      'docdb_transaction',
+      'docdb_transaction_pool_cache'
     ]
   },
   ysql_ops: {
@@ -189,7 +190,8 @@ export const panelTypes = {
       'lsm_rocksdb_compaction',
       'lsm_rocksdb_compaction_time',
       'lsm_rocksdb_compaction_numfiles',
-      'docdb_transaction'
+      'docdb_transaction',
+      'docdb_transaction_pool_cache'
     ]
   }
 };
