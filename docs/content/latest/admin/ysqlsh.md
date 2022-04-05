@@ -50,7 +50,7 @@ If you prefer, you can install a standalone version using any of the following m
 
 `ysqlsh` works best with servers of the same or an older major version. [Meta-commands](#meta-commands) are particularly likely to fail if the server is a newer version than `ysqlsh` itself. The general functionality of running SQL statements and displaying query results should also work with servers of a newer major version, but this cannot be guaranteed in all cases.
 
-If you want to use `ysqlsh` to connect to several servers of different major versions, use the newest version of `ysqlsh`. You can keep a copy of `ysqlsh` from each major version use the version that matches the respective server, but in practice, this shouldn't be necessary.
+If you are running multiple versions of YugabyteDB, use the newest version of `ysqlsh` to connect. You can keep and use the matching version of `ysqlsh` to use with each version of YugabyteDB, but in practice, this shouldn't be necessary.
 
 ### Starting ysqlsh
 
@@ -71,7 +71,12 @@ Run `ysqlsh --help` to display the online help.
 
 ### Exit status
 
-`ysqlsh` returns `0` to the shell if it finished normally, `1` if a fatal error of its own occurs (for example, `out of memory`, `file not found`), `2` if the connection to the server went bad and the session was not interactive, and `3` if an error occurred in a script and the variable [ON_ERROR_STOP](#on-error-stop) was set.
+`ysqlsh` returns the following to the shell on exit:
+
+- `0` if it finished normally
+- `1` if a fatal error of its own occurs (for example, `out of memory`, `file not found`)
+- `2` if the connection to the server went bad and the session was not interactive
+- `3` if an error occurred in a script and the variable [ON_ERROR_STOP](#on-error-stop) was set
 
 ## Syntax
 
@@ -89,9 +94,9 @@ When you open `ysqlsh`, the following default flags (aka flags) are set so that 
 
 {{< note title="Note" >}}
 
-Starting with v2.0.1, the default password for the default user `yugabyte` is `yugabyte`. If YSQL authentication is enabled, then the `yugabyte` user will be prompted for this password.
+Starting with v2.0.1, the default password for the default user `yugabyte` is `yugabyte`. If YSQL authentication is enabled, then the `yugabyte` user is prompted for this password.
 
-For v2.0.0 users, the default user `yugabyte` has no password. If you do not want any password to be prompted, then you should not enable YSQL authentication. If you want to enable YSQL authentication, then you must first set a password for the `yugabyte` user (in a cluster with YSQL authentication turned off).
+For v2.0.0 users, the default user `yugabyte` has no password. If you don't want any password to be prompted, don't enable YSQL authentication. If you want to enable YSQL authentication, then you must first set a password for the `yugabyte` user (in a cluster with YSQL authentication turned off).
 
 {{< /note >}}
 
@@ -158,7 +163,7 @@ Read statements from the file *filename*, rather than standard input. This optio
 
 If *filename* is `-` (hyphen), then standard input is read until an EOF indication or [\q](#q-quit) meta-command. This can be used to intersperse interactive input with input from files. Note however that Readline is not used in this case (much as if `-n` had been specified).
 
-Using this option is subtly different from writing `ysqlsh < <filename>`. In general, both will do what you expect, but using `-f` enables some nice features such as error messages with line numbers. There is also a slight chance that using this option will reduce the start-up overhead. On the other hand, the variant using the shell's input redirection is (in theory) guaranteed to yield exactly the same output you would have received had you entered everything by hand.
+Using this option is subtly different from writing `ysqlsh < <filename>`. In general, both do what you expect, but using `-f` enables some nice features such as error messages with line numbers. There is also a slight chance that using this option reduces the start-up overhead. On the other hand, the variant using the shell's input redirection is (in theory) guaranteed to yield exactly the same output you would have received had you entered everything by hand.
 
 ##### -F *separator*, --field-separator=*separator*
 
@@ -176,7 +181,7 @@ Turn on HTML tabular output. This is equivalent to [\pset format html](#format) 
 
 List all available databases, then exit. Other non-connection options are ignored. This is similar to the meta-command [`\list`](#l-list-pattern).
 
-When this option is used, `ysqlsh` will connect to the database `yugabyte`, unless a different database is named on the command line (option `-d` or non-option argument, possibly using a service entry, but not using an environment variable).
+When this option is used, `ysqlsh` connects to the database `yugabyte`, unless a different database is named on the command line (option `-d` or non-option argument, possibly using a service entry, but not using an environment variable).
 
 ##### -L *filename*, --log-file=*filename*
 
@@ -234,7 +239,7 @@ Connect to the database as the user *username* instead of the default. (You must
 
 ##### -v *assignment*, --set=*assignment*, --variable=*assignment*
 
-Perform a variable assignment, like the [\set](#set-name-value) meta-command. Note that you must separate name and value, if any, by an equal sign (`=`) on the command line. To unset a variable, leave off the equal sign. To set a variable with an empty value, use the equal sign but leave off the value. These assignments are done during command line processing, so variables that reflect connection state will get overwritten later.
+Perform a variable assignment, like the [\set](#set-name-value) meta-command. Note that you must separate name and value, if any, by an equal sign (`=`) on the command line. To unset a variable, leave off the equal sign. To set a variable with an empty value, use the equal sign but leave off the value. These assignments are done during command line processing, so variables that reflect connection state are overwritten later.
 
 ##### -V, --version
 
@@ -242,17 +247,17 @@ Print the `ysqlsh` version and exit.
 
 ##### -w, --no-password
 
-Never issue a password prompt. If the server requires password authentication and a password is not available by other means such as a `~/.pgpass` file, the connection attempt will fail. This option can be useful in batch jobs and scripts where no user is present to enter a password.
+Never issue a password prompt. If the server requires password authentication and a password is not available by other means such as a `~/.pgpass` file, the connection attempt fails. This option can be useful in batch jobs and scripts where no user is present to enter a password.
 
-Note that this option will remain set for the entire session, and so it affects uses of the meta-command [\connect](#c-connect-reuse-previous-on-off-dbname-username-host-port-conninfo) as well as the initial connection attempt.
+Note that this option remains set for the entire session, and so it affects uses of the meta-command [\connect](#c-connect-reuse-previous-on-off-dbname-username-host-port-conninfo) as well as the initial connection attempt.
 
 ##### -W, --password
 
 Force `ysqlsh` to prompt for a password before connecting to a database.
 
-This option is never essential, as `ysqlsh` will automatically prompt for a password if the server demands password authentication. However, `ysqlsh` will waste a connection attempt finding out that the server wants a password. In some cases it is worth typing `-W` to avoid the extra connection attempt.
+This option is never essential, as `ysqlsh` automatically prompts for a password if the server demands password authentication. However, `ysqlsh` wastes a connection attempt finding out that the server wants a password. In some cases it is worth typing `-W` to avoid the extra connection attempt.
 
-Note that this option will remain set for the entire session, and so it affects uses of the meta-command [\connect](#c-connect-reuse-previous-on-off-dbname-username-host-port-conninfo) as well as the initial connection attempt.
+Note that this option remains set for the entire session, and so it affects uses of the meta-command [\connect](#c-connect-reuse-previous-on-off-dbname-username-host-port-conninfo) as well as the initial connection attempt.
 
 ##### -x, --expanded
 
@@ -274,7 +279,7 @@ Set the record separator for unaligned output to a zero byte. This is useful for
 
 This option can only be used in combination with one or more `-c` and/or `-f` options. It causes `ysqlsh` to issue a [BEGIN](../../api/ysql/the-sql-language/statements/txn_begin/) statement before the first such option and a [COMMIT](../../api/ysql/the-sql-language/statements/txn_commit) statement after the last one, thereby wrapping all the commands into a single transaction. This ensures that either all the commands complete successfully, or no changes are applied.
 
-If the statements themselves contain `BEGIN`, `COMMIT`, or [ROLLBACK](../../api/ysql/the-sql-language/statements/txn_rollback), this option will not have the desired effects. Also, if an individual statement cannot be executed inside a transaction block, specifying this option will cause the whole transaction to fail.
+If the statements themselves contain `BEGIN`, `COMMIT`, or [ROLLBACK](../../api/ysql/the-sql-language/statements/txn_rollback), this option won't have the desired effects. Also, if an individual statement cannot be executed inside a transaction block, specifying this option causes the whole transaction to fail.
 
 ##### -?, --help[=*topic*]
 
@@ -298,7 +303,11 @@ To connect to a database, you need the following information:
 
 You provide these parameters using the `-d`, `-h`, `-p`, and `-U` flags.
 
-Not all of these options are required; there are useful defaults. If you omit the host name, `ysqlsh` will connect to the compiled-in default of `127.0.0.1` or a Unix-domain socket to a server on the local host, or using TCP/IP to localhost on machines that don't have Unix-domain sockets. The default port number is compiled-in as `5433`. Because the database server uses the same default, you will not have to specify the port in most cases. The default username is compiled-in as `yugabyte`, as is the default database name. If an argument is found that does not belong to any option, it is interpreted as the database name (or the user name, if the database name is already given).
+`ysqlsh` provides the following defaults for these values:
+
+- If you omit the host name, `ysqlsh` connects to the compiled-in default of `127.0.0.1` or a Unix-domain socket to a server on the local host, or using TCP/IP to localhost on machines that don't have Unix-domain sockets.
+- The default port number is compiled-in as `5433`. Because the database server uses the same default, you don't have to specify the port in most cases.
+- The default username is compiled-in as `yugabyte`, as is the default database name. If an argument is found that does not belong to any option, it is interpreted as the database name (or the user name, if the database name is already given).
 
 {{< note title="Note" >}}
 
@@ -306,7 +315,7 @@ You can't just connect to any database under any user name. Your database admini
 
 {{< /note >}}
 
-When the defaults aren't quite right, you can save yourself some typing by setting the environment variables `PGDATABASE`, `PGHOST`, `PGPORT`, and `PGUSER` to appropriate values. It is also convenient to have a `~/.pgpass` file to avoid regularly having to type in passwords.
+When the defaults aren't quite right, you can save yourself some typing by setting the [environment variables](#environment-variables) `PGDATABASE`, `PGHOST`, `PGPORT`, and `PGUSER` to appropriate values. It is also convenient to have a `~/.pgpass` file to avoid regularly having to type in passwords.
 
 An alternative way to specify connection parameters is in a *conninfo* string or a URI, which is used instead of a database name. This mechanism gives you wide control over the connection. For example:
 
@@ -315,9 +324,9 @@ $ ysqlsh "service=myservice sslmode=require"
 $ ysqlsh postgresql://dbmaster:5433/mydb?sslmode=require
 ```
 
-If the connection could not be made for any reason (for example, insufficient privileges, server is not running on the targeted host, etc.), `ysqlsh` will return an error and terminate.
+If the connection could not be made for any reason (for example, insufficient privileges, server is not running on the targeted host, etc.), `ysqlsh` returns an error and terminates.
 
-If both standard input and standard output are a terminal, then `ysql` sets the client encoding to `auto`, which will detect the appropriate client encoding from the locale settings (`LC_CTYPE` environment variable on Linux systems). If this doesn't work out as expected, the client encoding can be overridden using the environment variable `PGCLIENTENCODING`.
+If both standard input and standard output are a terminal, then `ysql` sets the client encoding to `auto`, which detects the appropriate client encoding from the locale settings (`LC_CTYPE` environment variable on Linux systems). If this doesn't work out as expected, the client encoding can be overridden using the environment variable `PGCLIENTENCODING`.
 
 ### Entering SQL statements
 
@@ -371,11 +380,11 @@ Some commands take an SQL identifier (such as a table name) as argument. These a
 
 Parsing for arguments stops at the end of the line, or when another unquoted backslash is found. An unquoted backslash is taken as the beginning of a new meta-command. The special sequence `\\` (two backslashes) marks the end of arguments and continues parsing SQL commands, if any. That way SQL statements and `ysqlsh` commands can be freely mixed on a line. But in any case, the arguments of a meta-command cannot continue beyond the end of the line.
 
-Many of the meta-commands act on the current query buffer. This buffer holds whatever SQL statement text has been typed but not yet sent to the server for execution. This will include previous input lines as well as any text appearing before the meta-command on the same line.
+Many of the meta-commands act on the current query buffer. This buffer holds whatever SQL statement text has been typed but not yet sent to the server for execution. This includes previous input lines as well as any text appearing before the meta-command on the same line.
 
 ### Reference
 
-The following meta-commands are defined:
+The following meta-commands are available.
 
 ##### \a
 
@@ -387,7 +396,7 @@ Establishes a new connection to a YugabyteDB server. The connection parameters t
 
 Where the command omits *dname*, *user*, *host*, or *port*, the new connection can reuse values from the previous connection. By default, values from the previous connection are reused except when processing a *conninfo* string. Passing a first argument of `-reuse-previous=on` or `-reuse-previous=off` overrides that default. When the command neither specifies nor reuses a particular parameter, the `libpq` default is used. Specifying any of *dbname*, *username*, *host*, or *port* as `-` is equivalent to omitting that parameter.
 
-If the new connection is successfully made, the previous connection is closed. If the connection attempt failed (wrong user name, access denied, etc.), the previous connection will only be kept if `ysqlsh` is in interactive mode. When executing a non-interactive script, processing will immediately stop with an error. This distinction was chosen as a user convenience against typos on the one hand, and a safety mechanism that scripts are not accidentally acting on the wrong database on the other hand.
+If the new connection is successfully made, the previous connection is closed. If the connection attempt failed (wrong user name, access denied, etc.), the previous connection is only kept if `ysqlsh` is in interactive mode. When executing a non-interactive script, processing immediately stops with an error. This distinction was chosen as a user convenience against typos on the one hand, and a safety mechanism that scripts are not accidentally acting on the wrong database on the other hand.
 
 Examples:
 
@@ -449,7 +458,7 @@ Each column specification can be a column number (starting at `1`) or a column n
 
 The vertical header, displayed as the leftmost column, contains the values found in column *colV*, in the same order as in the query results, but with duplicates removed.
 
-The horizontal header, displayed as the first row, contains the values found in column *colH*, with duplicates removed. By default, these appear in the same order as in the query results. But if the optional *sortcolH* argument is given, it identifies a column whose values must be integer numbers, and the values from *colH* will appear in the horizontal header sorted according to the corresponding *sortcolH* values.
+The horizontal header, displayed as the first row, contains the values found in column *colH*, with duplicates removed. By default, these appear in the same order as in the query results. But if the optional *sortcolH* argument is given, it identifies a column whose values must be integer numbers, and the values from *colH* appear in the horizontal header sorted according to the corresponding *sortcolH* values.
 
 Inside the crosstab grid, for each distinct value `x` of *colH* and each distinct value `y` of *colV*, the cell located at the intersection (`x,y`) contains the value of the *colD* column in the query result row for which the value of *colH* is `x` and the value of *colV* is `y`. If there is no such row, the cell is empty. If there are multiple such rows, an error is reported.
 
@@ -465,7 +474,7 @@ By default, only user-created objects are shown; supply a pattern or the `S` mod
 
 {{< note title="Note" >}}
 
-If `\d` is used without a *pattern* argument, it is equivalent to `\dtvmsE` which will show a list of all visible tables, views, materialized views, sequences, and foreign tables. This is purely a convenience measure.
+If `\d` is used without a *pattern* argument, it is equivalent to `\dtvmsE`, which shows a list of all visible tables, views, materialized views, sequences, and foreign tables. This is purely a convenience measure.
 
 {{< /note >}}
 
@@ -627,9 +636,9 @@ Lists event triggers. If *pattern* is specified, only those event triggers whose
 
 If *filename* is specified, the file is edited; after the editor exits, the file's content is copied into the current query buffer. If no *filename* is given, the current query buffer is copied to a temporary file which is then edited in the same fashion. Or, if the current query buffer is empty, the most recently executed query is copied to a temporary file and edited in the same fashion.
 
-The new contents of the query buffer are then re-parsed according to the normal rules of `ysqlsh`, treating the whole buffer as a single line. Any complete queries are immediately executed; that is, if the query buffer contains or ends with a semicolon, everything up to that point is executed. Whatever remains will wait in the query buffer; type semicolon (`;`) or [\g](#g-filename-g-command) to send it, or [\r](#r-reset) to cancel it by clearing the query buffer. Treating the buffer as a single line primarily affects meta-commands: whatever is in the buffer after a meta-command will be taken as arguments to the meta-command, even if it spans multiple lines. (Thus, you cannot make scripts using meta-commands this way. Use [\i](#i-filename-include-filename) for that.)
+The new contents of the query buffer are then re-parsed according to the normal rules of `ysqlsh`, treating the whole buffer as a single line. Any complete queries are immediately executed; that is, if the query buffer contains or ends with a semicolon, everything up to that point is executed. Whatever remains waits in the query buffer; type semicolon (`;`) or [\g](#g-filename-g-command) to send it, or [\r](#r-reset) to cancel it by clearing the query buffer. Treating the buffer as a single line primarily affects meta-commands: whatever is in the buffer after a meta-command is taken as arguments to the meta-command, even if it spans multiple lines. (Thus, you cannot make scripts using meta-commands this way. Use [\i](#i-filename-include-filename) for that.)
 
-If a line number is specified, `ysqlsh` will position the cursor on the specified line of the file or query buffer. Note that if a single all-digits argument is given, `ysqlsh` assumes it is a line number, not a file name.
+If a line number is specified, `ysqlsh` positions the cursor on the specified line of the file or query buffer. Note that if a single all-digits argument is given, `ysqlsh` assumes it is a line number, not a file name.
 
 {{< note title="Tip" >}}
 
@@ -662,7 +671,7 @@ The target function can be specified by name alone, or by name and arguments, fo
 
 If no function is specified, a blank `CREATE FUNCTION` template is presented for editing.
 
-If a line number is specified, `ysqlsh` will position the cursor on the specified line of the function body. (Note that the function body typically does not begin on the first line of the file.)
+If a line number is specified, `ysqlsh` positions the cursor on the specified line of the function body. (Note that the function body typically does not begin on the first line of the file.)
 
 Unlike most other meta-commands, the entire remainder of the line is always taken to be the arguments of `\ef`, and neither variable interpolation nor backquote expansion are performed in the arguments.
 
@@ -686,7 +695,7 @@ This command fetches and edits the definition of the named view, in the form of 
 
 If no view is specified, a blank `CREATE VIEW` template is presented for editing.
 
-If a line number is specified, `ysqlsh` will position the cursor on the specified line of the view definition.
+If a line number is specified, `ysqlsh` positions the cursor on the specified line of the view definition.
 
 Unlike most other meta-commands, the entire remainder of the line is always taken to be the arguments of `\ev`, and neither variable interpolation nor backquote expansion are performed in the arguments.
 
@@ -754,7 +763,7 @@ If the current query buffer is empty, the most recently sent query is re-execute
 
 ##### \h or \help [ command ]
 
-Gives syntax help on the specified SQL statement. If command is not specified, then `ysqlsh` will list all the commands for which syntax help is available. If command is an asterisk (`*`), then syntax help on all SQL statements is shown.
+Gives syntax help on the specified SQL statement. If command is not specified, then `ysqlsh` lists all the commands for which syntax help is available. If command is an asterisk (`*`), then syntax help on all SQL statements is shown.
 
 Unlike most other meta-commands, the entire remainder of the line is always taken to be the arguments of `\help`, and neither variable interpolation nor backquote expansion are performed in the arguments.
 
@@ -772,7 +781,7 @@ Turns on HTML query output format. If the HTML format is already on, it is switc
 
 Reads input from the file *filename* and executes it as though it had been typed on the keyboard.
 
-If filename is `-` (hyphen), then standard input is read until an `EOF` indication or `\q` meta-command. This can be used to intersperse interactive input with input from files. Note that Readline behavior will be used only if it is active at the outermost level.
+If filename is `-` (hyphen), then standard input is read until an `EOF` indication or `\q` meta-command. This can be used to intersperse interactive input with input from files. Note that Readline behavior is used only if it is active at the outermost level.
 
 {{< note title="Note" >}}
 
@@ -786,15 +795,15 @@ This group of commands implements nestable conditional blocks. A conditional blo
 
 The `\if` and `\elif` commands read their arguments and evaluate them as a Boolean expression. If the expression yields true then processing continues normally; otherwise, lines are skipped until a matching `\elif`, `\else`, or `\endif` is reached. Once an `\if` or `\elif` test has succeeded, the arguments of later `\elif` commands in the same block are not evaluated but are treated as false. Lines following an `\else` are processed only if no earlier matching `\if` or `\elif` succeeded.
 
-The expression argument of an `\if` or `\elif` command is subject to variable interpolation and backquote expansion, just like any other backslash command argument. After that it is evaluated like the value of an `on` or `off` option variable. So a valid value is any unambiguous case-insensitive match for one of: `true`, `false`, `1`, `0`, `on`, `off`, `yes`, `no`. For example, `t`, `T`, and `tR` will all be considered to be `true`.
+The expression argument of an `\if` or `\elif` command is subject to variable interpolation and backquote expansion, just like any other backslash command argument. After that it is evaluated like the value of an `on` or `off` option variable. So a valid value is any unambiguous case-insensitive match for one of: `true`, `false`, `1`, `0`, `on`, `off`, `yes`, `no`. For example, `t`, `T`, and `tR` are all considered to be `true`.
 
-Expressions that do not properly evaluate to `true` or `false` will generate a warning and be treated as `false`.
+Expressions that do not properly evaluate to `true` or `false` generate a warning and are treated as `false`.
 
 Lines being skipped are parsed normally to identify queries and backslash commands, but queries are not sent to the server, and backslash commands other than conditionals (`\if`, `\elif`, `\else`, `\endif`) are ignored. Conditional commands are checked only for valid nesting. Variable references in skipped lines are not expanded, and backquote expansion is not performed either.
 
-All the backslash commands of a given conditional block must appear in the same source file. If EOF is reached on the main input file or an `\include`-ed file before all local `\if`-blocks have been closed, then `ysqlsh` will raise an error.
+All the backslash commands of a given conditional block must appear in the same source file. If EOF is reached on the main input file or an `\include`-ed file before all local `\if`-blocks have been closed, then `ysqlsh` raises an error.
 
-Here is an example that checks for the existence of two separate records in the database and stores the results in separate "ysqlsh" variables:
+Here is an example that checks for the existence of two separate records in the database and stores the results in separate `ysqlsh` variables:
 
 ```sql
 SELECT
@@ -910,7 +919,7 @@ Quits the `ysqlsh` program. In a script file, only execution of that script is t
 
 ##### \qecho *text* [ ... ]
 
-This command is identical to `\echo` except that the output will be written to the query output channel, as set by `\o`.
+This command is identical to `\echo` except that the output is written to the query output channel, as set by `\o`.
 
 ##### \r, \reset
 
@@ -1015,7 +1024,7 @@ Shows help information. The optional *topic* parameter (defaulting to `commands`
 
 ### Patterns
 
-The various `\d` commands accept a *pattern* parameter to specify the object names to be displayed. In the simplest case, a pattern is just the exact name of the object. The characters in a pattern are normally folded to lower case, just as in SQL names; for example, `\dt FOO` will display the table named `foo`. As in SQL names, placing double quotes around a pattern stops folding to lower case. Should you need to include an actual double quote character in a pattern, write it as a pair of double quotes in a double-quote sequence; again this is in accord with the rules for SQL quoted identifiers. For example, `\dt "FOO""BAR"` will display the table named `FOO"BAR` (not `foo"bar`). Unlike the normal rules for SQL names, you can put double quotes around just part of a pattern, for instance `\dt FOO"FOO"BAR` will display the table named `fooFOObar`.
+The various `\d` commands accept a *pattern* parameter to specify the object names to be displayed. In the simplest case, a pattern is just the exact name of the object. The characters in a pattern are normally folded to lower case, just as in SQL names; for example, `\dt FOO` displays the table named `foo`. As in SQL names, placing double quotes around a pattern stops folding to lower case. Should you need to include an actual double quote character in a pattern, write it as a pair of double quotes in a double-quote sequence; again this is in accord with the rules for SQL quoted identifiers. For example, `\dt "FOO""BAR"` displays the table named `FOO"BAR` (not `foo"bar`). Unlike the normal rules for SQL names, you can put double quotes around just part of a pattern; for instance `\dt FOO"FOO"BAR` displays the table named `fooFOObar`.
 
 Whenever the *pattern* parameter is omitted completely, the `\d` commands display all objects that are visible in the current schema search path — this is equivalent to using `*` as the pattern. (An object is said to be visible if its containing schema is in the search path and no object of the same kind and name appears earlier in the search path. This is equivalent to the statement that the object can be referenced by name without explicit schema qualification.) To see all objects in the database regardless of visibility, use `*.*` as the pattern.
 
@@ -1027,19 +1036,19 @@ Advanced users can use regular-expression notations such as character classes, f
 
 ### pset options
 
-Adjustable printing options are as follows.
+Various adjustable printing options are supported.
 
 #### border
 
-The *value* must be a number. In general, the higher the number the more borders and lines the tables will have, but details depend on the particular format. In HTML format, this will translate directly into the `border=...` attribute. In most other formats only values `0` (no border), `1` (internal dividing lines), and `2` (table frame) make sense, and values above `2` will be treated the same as `border = 2`. The latex and latex-longtable formats additionally allow a value of `3` to add dividing lines between data rows.
+The *value* must be a number. In general, the higher the number, the more borders and lines the tables have, but details depend on the particular format. In HTML, this translates directly into the `border=...` attribute. In most other formats only values `0` (no border), `1` (internal dividing lines), and `2` (table frame) make sense, and values greater than `2` are treated as `border = 2`. The latex and latex-longtable formats additionally allow a value of `3` to add dividing lines between data rows.
 
 #### columns
 
-Sets the target width for the `wrapped` format, and also the width limit for determining whether output is wide enough to require the pager or switch to the vertical display in expanded auto mode. The default value `0` causes the target width to be controlled by the environment variable `COLUMNS`, or the detected screen width if `COLUMNS` is not set. In addition, if columns is `0`, then the `wrapped` format only affects screen output. If columns is nonzero, then file and pipe output is wrapped to that width as well.
+Sets the target width for the `wrapped` format, and also the width limit for determining whether output is wide enough to require the pager or switch to the vertical display in expanded auto mode. The default value `0` causes the target width to be controlled by the environment variable [COLUMNS](#columns-1), or the detected screen width if `COLUMNS` is not set. In addition, if columns is `0`, then the `wrapped` format only affects screen output. If columns is nonzero, then file and pipe output is wrapped to that width as well.
 
 #### expanded (or x)
 
-If *value* is specified it must be either `on` or `off`, which will enable or disable expanded mode, or `auto`. If *value* is omitted, the command toggles between the `on` and `off` settings. When expanded mode is enabled, query results are displayed in two columns, with the column name on the left and the data on the right. This mode is useful if the data wouldn't fit on the screen in the normal "horizontal" mode. In the `auto` setting, the expanded mode is used whenever the query output has more than one column and is wider than the screen; otherwise, the regular mode is used. The `auto` setting is only effective in the aligned and wrapped formats. In other formats, it always behaves as if the expanded mode is `off`.
+If *value* is specified it must be either `on` or `off`, which enables or disables expanded mode, or `auto`. If *value* is omitted, the command toggles between the `on` and `off` settings. When expanded mode is enabled, query results are displayed in two columns; the column name is on the left, and the data on the right. This is useful if the data won't fit on the screen in the normal horizontal mode. In the `auto` setting, the expanded mode is used whenever the query output has more than one column and is wider than the screen; otherwise, the regular mode is used. The `auto` setting is only effective in the aligned and wrapped formats. In other formats, it always behaves as if the expanded mode is `off`.
 
 #### fieldsep
 
@@ -1051,7 +1060,7 @@ Sets the field separator to use in unaligned output format to a zero byte.
 
 #### footer
 
-If a *value* is specified, it must be either `on` or `off`, which will enable or disable display of the table footer (the (n rows) count). If the value is omitted, the command toggles footer display `on` or `off`.
+If a *value* is specified, it must be either `on` or `off`, which enables or disables display of the table footer (the (n rows) count). If the value is omitted, the command toggles footer display `on` or `off`.
 
 #### format
 
@@ -1061,7 +1070,7 @@ Sets the output format to one of `unaligned`, `aligned`, `wrapped`, `html`, `asc
 
 `aligned` format is the standard, human-readable, nicely formatted text output; this is the default.
 
-`wrapped` format is like aligned but wraps wide data values across lines to make the output fit in the target column width. The target width is determined as described under the columns option. Note that `ysqlsh` will not attempt to wrap column header titles; therefore, `wrapped` format behaves the same as aligned if the total width needed for column headers exceeds the target.
+`wrapped` format is like aligned but wraps wide data values across lines to make the output fit in the target column width. The target width is determined as described under the columns option. Note that `ysqlsh` does not attempt to wrap column header titles; therefore, `wrapped` format behaves the same as aligned if the total width needed for column headers exceeds the target.
 
 The `html`, `asciidoc`, `latex`, `latex-longtable`, and `troff-ms` formats put out tables that are intended to be included in documents using the respective markup language. They are not complete documents! This might not be necessary in HTML, but in LaTeX you must have a complete document wrapper. `latex-longtable` also requires the LaTeX longtable and booktabs packages.
 
@@ -1077,21 +1086,21 @@ When the `border` setting is greater than `0` (zero), the `linestyle` option als
 
 #### null
 
-Sets the string to be printed in place of a null value. The default is to print nothing, which can easily be mistaken for an empty string. For example, one might prefer `\pset null '(null)'`.
+Sets the string to be printed in place of a null value. The default is to print nothing, which can be mistaken for an empty string. For example, one might prefer `\pset null '(null)'`.
 
 #### numericlocale
 
-If *value* is specified, it must be either `on` or `off`, which will enable or disable display of a locale-specific character to separate groups of digits to the left of the decimal marker. If *value* is omitted, the command toggles between regular and locale-specific numeric output.
+If *value* is specified, it must be either `on` or `off`, which enables or disables display of a locale-specific character to separate groups of digits to the left of the decimal marker. If *value* is omitted, the command toggles between regular and locale-specific numeric output.
 
 #### pager
 
 Controls use of a pager program for query and `ysqlsh` help output. If the environment variable [PAGER](#pager-1) is set, the output is piped to the specified program. Otherwise, a platform-dependent default (such as `more`) is used.
 
-When the `pager` option is `off`, the pager program is not used. When the `pager` option is `on`, the pager is used when appropriate, that is, when the output is to a terminal and will not fit on the screen. The `pager` option can also be set to `always`, which causes the pager to be used for all terminal output regardless of whether it fits on the screen. `\pset pager` without a *value* toggles pager use `on` and `off`.
+When the `pager` option is `off`, the pager program is not used. When the `pager` option is `on`, the pager is used when appropriate; that is, when the output is to a terminal and doesn't fit on the screen. The `pager` option can also be set to `always`, which causes the pager to be used for all terminal output regardless of whether it fits on the screen. `\pset pager` without a *value* toggles pager use `on` and `off`.
 
 #### pager_min_lines
 
-If `pager_min_lines` is set to a number greater than the page height, the pager program will not be called unless there are at least this many lines of output to show. The default setting is `0`.
+If `pager_min_lines` is set to a number greater than the page height, the pager program isn't called unless there are at least this many lines of output to show. The default setting is `0`.
 
 #### recordsep
 
@@ -1113,7 +1122,7 @@ Sets the table title for any subsequently printed tables. This can be used to gi
 
 #### tuples_only (or t)
 
-If *value* is specified, it must be either `on` or `off` which will enable or disable tuples-only mode. If *value* is omitted, the command toggles between regular and tuples-only output. Regular output includes extra information such as column headers, titles, and various footers. In tuples-only mode, only actual table data is shown.
+If *value* is specified, it must be either `on` or `off`, which enables or disables tuples-only mode. If *value* is omitted, the command toggles between regular and tuples-only output. Regular output includes extra information such as column headers, titles, and various footers. In tuples-only mode, only actual table data is shown.
 
 #### unicode_border_linestyle
 
@@ -1379,7 +1388,7 @@ The arguments of `\set` are subject to the same substitution rules as with other
 
 A number of these variables are treated specially by `ysqlsh`. They represent certain option settings that can be changed at run time by altering the value of the variable, or in some cases represent changeable state of `ysqlsh`. By convention, all specially treated variables' names consist of all upper-case ASCII letters (and possibly digits and underscores). To ensure maximum compatibility in the future, avoid using such variable names for your own purposes.
 
-Variables that control `ysqlsh`'s behavior generally can't be unset or set to invalid values. An `\unset` command is allowed but is interpreted as setting the variable to its default value. A `\set` command without a second argument is interpreted as setting the variable to `on`, for control variables that accept that value, and is rejected for others. Also, control variables that accept the values `on` and `off` will also accept other common spellings of Boolean values, such as `true` and `false`.
+Variables that control `ysqlsh`'s behavior generally can't be unset or set to invalid values. An `\unset` command is allowed but is interpreted as setting the variable to its default value. A `\set` command without a second argument is interpreted as setting the variable to `on`, for control variables that accept that value, and is rejected for others. Also, control variables that accept the values `on` and `off` also accept other common spellings of Boolean values, such as `true` and `false`.
 
 The specially treated variables are:
 
@@ -1387,13 +1396,13 @@ The specially treated variables are:
 
 When `on` (the default), each SQL statement is automatically committed upon successful completion. To postpone commit in this mode, you must enter a [BEGIN](../../api/ysql/the-sql-language/statements/txn_begin/) or [START TRANSACTION](../../api/ysql/the-sql-language/statements/) SQL statement. When `off` or unset, SQL statements are not committed until you explicitly issue `COMMIT` or `END` statements. The autocommit-off mode works by issuing an implicit `BEGIN` for you, just before any statement that is not already in a transaction block and is not itself a `BEGIN` or other transaction-control statement, nor a statement that cannot be executed inside a transaction block (such as `VACUUM`).
 
-In autocommit-off mode, you must explicitly abandon any failed transaction by entering `ABORT` or `ROLLBACK`. Also, keep in mind that if you exit the session without committing, your work will be lost.
+In autocommit-off mode, you must explicitly abandon any failed transaction by entering `ABORT` or `ROLLBACK`. Also, keep in mind that if you exit the session without committing, your work is lost.
 
 The autocommit-on mode is YugabyteDB's traditional behavior, but autocommit-off is closer to the SQL specification. If you prefer autocommit-off, you might wish to set it in the system-wide [psqlrc file or your ~/.psqlrc file](#files).
 
 ##### COMP_KEYWORD_CASE
 
-Determines which letter case to use when completing an SQL key word. If set to `lower` or `upper`, the completed word will be in lowercase or uppercase, respectively. If set to `preserve-lower` or `preserve-upper` (the default), the completed word will be in the case of the word already entered, but words being completed without anything entered will be in lowercase or uppercase, respectively.
+Determines which letter case to use when completing an SQL key word. If set to `lower` or `upper`, the completed word is in lowercase or uppercase, respectively. If set to `preserve-lower` or `preserve-upper` (the default), the completed word is in the case of the word already entered, but words being completed without anything entered are in lowercase or uppercase, respectively.
 
 ##### DBNAME
 
@@ -1417,7 +1426,7 @@ If this variable is set to an integer value greater than `0` (zero), the results
 
 {{< note title="Tip" >}}
 
-Although you can use any output format with this feature, the default `aligned` format tends to look bad because each group of `FETCH_COUNT` rows will be formatted separately, leading to varying column widths across the row groups. The other output formats work better.
+Although you can use any output format with this feature, the default `aligned` format tends to look bad because each group of `FETCH_COUNT` rows is formatted separately, leading to varying column widths across the row groups. The other output formats work better.
 
 {{< /note >}}
 
@@ -1433,13 +1442,13 @@ This feature was shamelessly plagiarized from Bash.
 
 ##### HISTFILE
 
-The file name that will be used to store the history list. If unset, the file name is taken from the PSQL_HISTORY environment variable. If that is not set either, the default is `~/.psql_history`. For example, putting:
+The file name used to store the history list. If unset, the file name is taken from the [PSQL_HISTORY](#psql-history) environment variable. If that is not set either, the default is [~/.psql_history](#psql-history-1). For example, putting:
 
 ```sql
 \set HISTFILE ~/.psql_history- :DBNAME
 ```
 
-in `~/.psqlrc` will cause `ysqlsh` to maintain a separate history for each database.
+in `~/.psqlrc` causes `ysqlsh` to maintain a separate history for each database.
 
 {{< note title="Note" >}}
 
@@ -1463,7 +1472,7 @@ The database server host you are currently connected to. This is set every time 
 
 ##### IGNOREEOF
 
-If set to `1` or less, sending an EOF character (usually **Control+D**) to an interactive session of `ysqlsh` will terminate the application. If set to a larger numeric value, that many consecutive EOF characters must be typed to make an interactive session terminate. If the variable is set to a non-numeric value, it is interpreted as `10`. The default is `0`.
+If set to `1` or less, sending an EOF character (usually **Control+D**) to an interactive session of `ysqlsh` terminates the application. If set to a larger numeric value, that many consecutive EOF characters must be typed to make an interactive session terminate. If the variable is set to a non-numeric value, it is interpreted as `10`. The default is `0`.
 
 {{< note title="Note" >}}
 
@@ -1481,7 +1490,7 @@ When set to `on`, if a statement in a transaction block generates an error, the 
 
 ##### ON_ERROR_STOP
 
-By default, command processing continues after an error. When this variable is set to on, processing will instead stop immediately. In interactive mode, `ysqlsh` will return to the command prompt; otherwise, `ysqlsh` will exit, returning error code `3` to distinguish this case from fatal error conditions, which are reported using error code `1`. In either case, any currently running scripts (the top-level script, if any, and any other scripts which it may have in invoked) will be terminated immediately. If the top-level command string contained multiple SQL statements, processing will stop with the current statement.
+By default, command processing continues after an error. When this variable is set to on, processing instead stops immediately. In interactive mode, `ysqlsh` returns to the command prompt; otherwise, `ysqlsh` exits, returning error code `3` to distinguish from fatal error conditions, which are reported using error code `1`. In either case, any currently running scripts (the top-level script, if any, and any other scripts which it may have in invoked) are terminated immediately. If the top-level command string contained multiple SQL statements, processing stops with the current statement.
 
 ##### PORT
 
@@ -1501,7 +1510,7 @@ The server's version number as a string, for example, `11.2-YB-2.0.7.0-b0`, and 
 
 ##### SHOW_CONTEXT
 
-This variable can be set to the values `never`, `errors`, or `always` to control whether `CONTEXT` fields are displayed in messages from the server. The default is `errors` (meaning that context will be shown in error messages, but not in notice or warning messages). This setting has no effect when [VERBOSITY](#verbosity) is set to `terse`. (See also [\errverbose](#errverbose), for use when you want a verbose version of the error you just got.)
+This variable can be set to the values `never`, `errors`, or `always` to control whether `CONTEXT` fields are displayed in messages from the server. The default is `errors` (meaning that context is shown in error messages, but not in notice or warning messages). This setting has no effect when [VERBOSITY](#verbosity) is set to `terse`. (See also [\errverbose](#errverbose), for use when you want a verbose version of the error you just got.)
 
 ##### SINGLELINE
 
@@ -1541,7 +1550,7 @@ testdb=> \set foo 'my_table'
 testdb=> SELECT * FROM :"foo";
 ```
 
-Variable interpolation will not be performed in quoted SQL literals and identifiers. Therefore, a construction such as `':foo'` doesn't work to produce a quoted literal from a variable's value (and it would be unsafe if it did work, as it wouldn't correctly handle quotes embedded in the value).
+Variable interpolation isn't performed in quoted SQL literals and identifiers. Therefore, a construction such as `':foo'` doesn't work to produce a quoted literal from a variable's value (and it would be unsafe if it did work, as it wouldn't correctly handle quotes embedded in the value).
 
 One example use of this mechanism is to copy the contents of a file into a table column. First, load the file into a variable, and then interpolate the variable's value as a quoted string:
 
@@ -1555,6 +1564,57 @@ testdb=> INSERT INTO my_table VALUES (:'content');
 Because colons can legally appear in SQL statements, an apparent attempt at interpolation (that is, `:name`, `:'name'`, or `:"name"`) is not replaced unless the named variable is currently set. In any case, you can escape a colon with a backslash to protect it from substitution.
 
 The colon syntax for variables is standard SQL for embedded query languages, such as ECPG. The colon syntaxes for array slices and type casts are YugabyteDB extensions, which can sometimes conflict with the standard usage. The colon-quote syntax for escaping a variable's value as an SQL literal or identifier is a `ysqlsh` extension.
+
+## Environment variables
+
+Use the following environment variables to configure and customize your editor. Use the [\setenv](#setenv-name-value) meta-command to set environment variables. `ysqlsh` also uses the environment variables supported by `libpq`.
+
+##### COLUMNS
+
+If [\pset columns](#columns) is zero (`0`), controls the width for the wrapped format and width for determining if wide output requires the pager or should be switched to the vertical format in expanded auto mode.
+
+##### PAGER
+
+If the query results do not fit on the screen, they are piped through this command. Typical values are `more` or `less`. The default is platform-dependent. Use of the pager can be disabled by setting `PAGER` to `empty`, or by using [pager-related options](#pager) of the `\pset` meta-command.
+
+##### PGDATABASE, PGHOST, PGPORT, PGUSER
+
+Default connection parameters.
+
+##### PSQL_EDITOR, EDITOR, VISUAL
+
+Editor used by the [\e](#e-edit-filename-line-number), [\ef](#ef-function-description-line-number), and [\ev](#ev-view-name-line-number) commands. These variables are examined in the order listed; the first that is set is used.
+
+On Linux systems, the built-in default editor is `vi`.
+
+##### PSQL_EDITOR_LINENUMBER_ARG
+
+When [\e](#e-edit-filename-line-number), [\ef](#ef-function-description-line-number), and [\ev](#ev-view-name-line-number) is used with a line number argument, this variable specifies the command-line argument used to pass the starting line number to the user's editor. For editors such as `emacs` or `vi`, this is a plus (`+`) sign. Include a trailing space in the value of the variable if there needs to be space between the option name and the line number.
+
+**Examples:**
+
+```sh
+PSQL_EDITOR_LINENUMBER_ARG='+'
+PSQL_EDITOR_LINENUMBER_ARG='--line '
+```
+
+The default is `+` on Linux systems (corresponding to the default editor `vi`, and useful for many other common editors).
+
+##### PSQL_HISTORY
+
+Alternative location for the command history file. Tilde (`~`) expansion is performed.
+
+##### PSQLRC
+
+Alternative location of the user's `.psqlrc` file. Tilde (`~`) expansion is performed.
+
+##### SHELL
+
+Command executed by the `\!` command.
+
+##### TMPDIR
+
+Directory for storing temporary files. The default is `/tmp`.
 
 ## Prompting
 
@@ -1646,58 +1706,7 @@ set disable-completion on
 $endif
 ```
 
-(This is not a `ysqlsh` but a Readline feature. For details, see the Redline documentation.)
-
-## Environment variables
-
-The ysqlsh provides environment variables to configure and customize your editor. This utility also uses the environment variables supported by `libpq`.
-
-##### COLUMNS
-
-If [\pset columns](#columns) is zero (`0`), controls the width for the wrapped format and width for determining if wide output requires the pager or should be switched to the vertical format in expanded auto mode.
-
-##### PAGER
-
-If the query results do not fit on the screen, they are piped through this command. Typical values are `more` or `less`. The default is platform-dependent. Use of the pager can be disabled by setting `PAGER` to `empty`, or by using [pager-related options](#pager) of the `\pset` meta-command.
-
-##### PGDATABASE, PGHOST, PGPORT, PGUSER
-
-Default connection parameters.
-
-##### PSQL_EDITOR, EDITOR, VISUAL
-
-Editor used by the [\e](#e-edit-filename-line-number), [\ef](#ef-function-description-line-number), and [\ev](#ev-view-name-line-number) commands. These variables are examined in the order listed; the first that is set is used.
-
-On Linux systems, the built-in default editor is `vi`.
-
-##### PSQL_EDITOR_LINENUMBER_ARG
-
-When [\e](#e-edit-filename-line-number), [\ef](#ef-function-description-line-number), and [\ev](#ev-view-name-line-number) is used with a line number argument, this variable specifies the command-line argument used to pass the starting line number to the user's editor. For editors such as `emacs` or `vi`, this is a plus (`+`) sign. Include a trailing space in the value of the variable if there needs to be space between the option name and the line number.
-
-**Examples:**
-
-```sh
-PSQL_EDITOR_LINENUMBER_ARG='+'
-PSQL_EDITOR_LINENUMBER_ARG='--line '
-```
-
-The default is `+` on Linux systems (corresponding to the default editor `vi`, and useful for many other common editors).
-
-##### PSQL_HISTORY
-
-Alternative location for the command history file. Tilde (`~`) expansion is performed.
-
-##### PSQLRC
-
-Alternative location of the user's `.psqlrc` file. Tilde (`~`) expansion is performed.
-
-##### SHELL
-
-Command executed by the `\!` command.
-
-##### TMPDIR
-
-Directory for storing temporary files. The default is `/tmp`.
+(This is not a `ysqlsh` but a Readline feature. For details, see the Readline documentation.)
 
 ## Files
 
@@ -1705,11 +1714,11 @@ Directory for storing temporary files. The default is `/tmp`.
 
 Unless it is passed an `-X` option, `ysqlsh` attempts to read and execute commands from the system-wide startup file (`psqlrc`) and then the user's personal startup file (`~/.psqlrc`), after connecting to the database but before accepting normal commands. These files can be used to set up the client and the server to taste, typically with [\set](#set-name-value) and `SET` statements.
 
-The system-wide startup file is named `psqlrc` and is sought in the installation's "system configuration" directory, which is most reliably identified by running `pg_config --sysconfdir`. By default this directory will be `../etc/` relative to the directory containing the PostgreSQL executables. The name of this directory can be set explicitly using the `PGSYSCONFDIR` environment variable.
+The system-wide startup file is named `psqlrc` and is sought in the installation's "system configuration" directory, which is most reliably identified by running `pg_config --sysconfdir`. By default this directory is `../etc/` relative to the directory containing the PostgreSQL executables. The name of this directory can be set explicitly using the `PGSYSCONFDIR` environment variable.
 
 The user's personal startup file is named `.psqlrc` and is sought in the invoking user's home directory. The location of the user's startup file can be set explicitly through the [PSQLRC](#psqlrc) environment variable.
 
-Both the system-wide startup file and the user's personal startup file can be made `ysqlsh`-version-specific by appending a dash and the YugabyteDB major or minor release number to the file name, for example `~/.psqlrc-10.2` or `~/.psqlrc-10.2.5`. The most specific version-matching file will be read in preference to a non-version-specific file.
+Both the system-wide startup file and the user's personal startup file can be made `ysqlsh`-version-specific by appending a dash and the YugabyteDB major or minor release number to the file name, for example `~/.psqlrc-10.2` or `~/.psqlrc-10.2.5`. The most specific version-matching file is read in preference to a non-version-specific file.
 
 ##### .psql_history
 
