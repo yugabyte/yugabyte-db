@@ -1409,7 +1409,8 @@ class CatalogManager :
     return SnapshotSchedulesToObjectIdsMap();
   }
 
-  Result<SnapshotScheduleId> FindCoveringScheduleForNamespace(const NamespaceId& id);
+  Result<SnapshotScheduleId> FindCoveringScheduleForObject(
+      SysRowEntryType type, const std::string& object_id);
 
   Status DoDeleteNamespace(const DeleteNamespaceRequestPB* req,
                            DeleteNamespaceResponsePB* resp,
