@@ -603,7 +603,10 @@ bool YBCExecuteUpdate(Relation rel,
 					  ModifyTableState *mtstate,
 					  Bitmapset *updatedCols)
 {
-	TupleDesc      tupleDesc      = slot->tts_tupleDescriptor;
+	// The input heap tuple's descriptor
+	TupleDesc		inputTupleDesc = slot->tts_tupleDescriptor;
+	// The target table tuple's descriptor
+	TupleDesc		outputTupleDesc = RelationGetDescr(rel);
 	Oid            dboid          = YBCGetDatabaseOid(rel);
 	Oid            relid          = RelationGetRelid(rel);
 	YBCPgStatement update_stmt    = NULL;
@@ -624,7 +627,7 @@ bool YBCExecuteUpdate(Relation rel,
 	 */
 	if (isSingleRow)
 	{
-		ybctid = YBCGetYBTupleIdFromTuple(rel, tuple, slot->tts_tupleDescriptor);
+		ybctid = YBCGetYBTupleIdFromTuple(rel, tuple, inputTupleDesc);
 	}
 	else
 	{
@@ -634,7 +637,7 @@ bool YBCExecuteUpdate(Relation rel,
 	if (ybctid == 0)
 	{
 		ereport(ERROR,
-		        (errcode(ERRCODE_UNDEFINED_COLUMN), errmsg(
+				(errcode(ERRCODE_UNDEFINED_COLUMN), errmsg(
 					"Missing column ybctid in UPDATE request to YugaByte database")));
 	}
 
@@ -643,16 +646,14 @@ bool YBCExecuteUpdate(Relation rel,
 										   false /* is_null */);
 	HandleYBStatus(YBCPgDmlBindColumn(update_stmt, YBTupleIdAttributeNumber, ybctid_expr));
 
-	/* Assign new values to the updated columns for the current row. */
-	tupleDesc = RelationGetDescr(rel);
 	bool whole_row = bms_is_member(InvalidAttrNumber, updatedCols);
 
 	ModifyTable *mt_plan = (ModifyTable *) mtstate->ps.plan;
 	ListCell* pushdown_lc = list_head(mt_plan->ybPushdownTlist);
 
-	for (int idx = 0; idx < tupleDesc->natts; idx++)
+	for (int idx = 0; idx < outputTupleDesc->natts; idx++)
 	{
-		FormData_pg_attribute *att_desc = TupleDescAttr(tupleDesc, idx);
+		FormData_pg_attribute *att_desc = TupleDescAttr(outputTupleDesc, idx);
 
 		AttrNumber attnum = att_desc->attnum;
 		int32_t type_id = att_desc->atttypid;
@@ -693,7 +694,7 @@ bool YBCExecuteUpdate(Relation rel,
 		else
 		{
 			bool is_null = false;
-			Datum d = heap_getattr(tuple, attnum, tupleDesc, &is_null);
+			Datum d = heap_getattr(tuple, attnum, inputTupleDesc, &is_null);
 			YBCPgExpr ybc_expr = YBCNewConstant(update_stmt, type_id,
 												d, is_null);
 
