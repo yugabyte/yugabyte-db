@@ -168,7 +168,7 @@ yb-admin \
 ```sh
 $ ./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
-    list_tablets ydb test_tb 0
+    list_tablets ysql.ydb test_tb 0
 ```
 
 ```output
