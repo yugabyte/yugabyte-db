@@ -19,7 +19,7 @@ Connect applications to YugabyteDB databases using Yugabyte-supported drivers, O
 YugabyteDB <b>smart language drivers</b> enable client applications to connect to YugabyteDB clusters without the need for external load balancers. YugabyteDB smart drivers have the following features:
 
 - <b>Cluster-aware</b>. Drivers know about all the data nodes in a YugabyteDB cluster, which eliminates the need for an external load balancer.
-- YugabyteDB Driver are [topology-aware](/latest/deploy/multi-dc/), which is essential for geographically-distributed applications. The driver is able to connect to YugabyteDB servers that are part of different geo-locations seamlessly without need of an external load balancer.
+- [Topology-aware](/latest/deploy/multi-dc/). For geographically-distributed applications, the driver can seamlessly connect to the geographically nearest regions and availability zones for lower latency.
 All YugabyteDB smart driver libraries are actively maintained, and receive bug fixes, performance enhancements, and security patches.
 
 Along with the Smart drivers, YugabyteDB also provides support for upstream [PostgreSQL drivers](https://www.postgresql.org/download/products/2-drivers-and-interfaces/) for the respective programming languages. The following libraries are officially supported by YugabyteDB.
