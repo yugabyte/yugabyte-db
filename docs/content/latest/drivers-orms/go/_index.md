@@ -12,7 +12,7 @@ menu:
 isTocNested: true
 showAsideToc: true
 ---
-Following are the recommended projects for implementing Golang applications using the YugabyteDB YSQL API.
+The following projects are recommended for implementing Golang applications using the YugabyteDB YSQL API.
 
 | Project | Type | Support Level |
 | :------ | :--- | :------------ |
@@ -28,10 +28,9 @@ using the steps in [Build an Application](../../quick-start/build-apps/go/ysql-p
 
 ### Install Go
 
-It is recommended to have the latest Go (1.16 or later) installed on your system.
+Install the latest Go (1.16 or later) on your system.
 
-Run `go --version` in a terminal to check your version of Go. To install the Go, see its
-[installation page](https://golang.org/dl/).
+Run `go --version` in a terminal to check your version of Go. To install Go, visit [Go Downloads](https://golang.org/dl/).
 
 ### Create a Go project
 
@@ -40,13 +39,9 @@ Visual Studio Code for developing your Go project.
 
 ### Create a YugabyteDB cluster
 
-Set up a Free-tier cluster on [Yugabyte Cloud](https://cloud.yugabyte.com/signup). The free-tier
-cluster provides a fully functioning YugabyteDB cluster deployed to the cloud region of your choice.
+Create a free cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/). Refer to [Create a free cluster](../../yugabyte-cloud/cloud-basics/create-clusters-free/). ```
 
-The cluster is free forever and includes enough resources to explore the core features available for
-developing the Go Applications with YugabyteDB database.
 
-Complete the steps for [creating a free tier cluster](../../yugabyte-cloud/cloud-quickstart/qs-add/).
 
 Alternatively, You can also set up a standalone YugabyteDB cluster by following the
 [YugabyteDB installation steps](../../quick-start/install/macos).
