@@ -172,5 +172,5 @@ To learn more about the driver, you can read the [architecture documentation of 
 
 ## Next Steps
 
-- Learn how to build Java Application using [Hibernate ORM](hibernate).
+- Learn how to build Java Application using [Hibernate ORM](../hibernate).
 - Learn how to [develop Spring Boot Applications using YugabyteDB JDBC Driver](/latest/integrations/spring-framework/sdyb/).

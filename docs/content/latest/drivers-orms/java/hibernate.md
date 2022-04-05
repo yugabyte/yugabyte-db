@@ -50,7 +50,7 @@ implementation 'org.hibernate:hibernate-core:5.4.19.Final'
 implementation 'org.hibernate:hibernate-annotations:3.5.6-Final'
 ```
 
-Note: Hibernate ORM can be used with both [YugabyteDB JDBC driver](./yugabyte-jdbc) and [Postgres JDBC Driver](./postgres-jdbc).
+Note: Hibernate ORM can be used with both [YugabyteDB JDBC driver](../yugabyte-jdbc) and [Postgres JDBC Driver](../postgres-jdbc).
 
 ### Step 2: Implementing ORM mapping for YugabyteDB
 

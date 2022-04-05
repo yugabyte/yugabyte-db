@@ -293,18 +293,3 @@ try {
 ```
 
 By default PostgreSQL JDBC driver will have `auto-commit` mode enabled which means each SQL statement is treated as a transaction and is automatically committed. If one or more SQL statements are encapsulated in a transaction, auto-commit mode must be disabled by using `setAutoCommit()` method of the `Connection` object.
-
-## Compatibility Matrix
-
-| Driver Version | YugabyteDB Version | Support |
-| :------------- | :----------------- | :------ |
-| 42.2.14 | 2.11 (latest) | full
-| 42.2.14 |  2.8 (stable) | full
-| 42.2.14 | 2.6 | full
-
-## Other Usage Examples
-
-- [JDBC SSL example](../../../../quick-start/build-apps/java/ysql-jdbc-ssl/)
-- [ORM Examples]()
-
-## FAQ

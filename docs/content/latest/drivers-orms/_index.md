@@ -28,15 +28,15 @@ Along with the smart drivers, YugabyteDB also supports upstream [PostgreSQL driv
 
 | Driver/ORM | Support Level | Example apps |
 | :--------- | :------------ | :----------- |
-| [YugabyteDB JDBC Smart Driver](java/yugabyte-jdbc)  [Recommended] | Full | [CRUD Example](/latest/quick-start/build-apps/java/ysql-yb-jdbc) |
-| [Postgres JDBC Driver](java/postgres-jdbc) | Full | [CRUD Example](/latest/quick-start/build-apps/java/ysql-jdbc)  |
+| [YugabyteDB JDBC Smart Driver](java/yugabyte-jdbc)  [Recommended] | Full | [CRUD Example](java/yugabyte-jdbc) |
+| [Postgres JDBC Driver](java/postgres-jdbc) | Full | [CRUD Example](java/postgres-jdbc)  |
 | [Hibernate](java/hibernate) | Full | [CRUD Example](java/hibernate/#step-1-add-the-hibernate-orm-dependency) |
 <!-- | MyBatis | Full |  | -->
 
 | App Framework | Support Level | Example apps |
 | :--------- | :------------ | :----------- |
-| [Spring Data YugabyteDB](/latest/integrations/spring-framework/sdyb/) | Full | [CRUD Example](/latest/quick-start/build-apps/java/ysql-spring-data/) |
-| Spring Data JPA | Full | [CRUD Example](/latest/integrations/spring-framework/sdyb/#examples)|
+| [Spring Data YugabyteDB](/latest/integrations/spring-framework/sdyb/) | Full | [CRUD Example](/latest/integrations/spring-framework/sdyb/#examples) |
+| Spring Data JPA | Full | [CRUD Example](/latest/quick-start/build-apps/java/ysql-spring-data/)|
 <!-- | Micronaut | Beta |  | -->
 <!-- | Quarkus | Beta |  | -->
 
@@ -44,17 +44,17 @@ Along with the smart drivers, YugabyteDB also supports upstream [PostgreSQL driv
 
 | Driver/ORM | Support Level | Example apps |
 | :--------- | :------------ | :----------- |
-| [PGX](/latest/reference/drivers/go/pgx-reference/) [Recommended] | Full | [CRUD Example](go/pgx) |
-| [PQ](/latest/reference/drivers/go/pq-reference/) | Full | [CRUD Example](go/pq)|
+| [PGX](go/pgx/) [Recommended] | Full | [CRUD Example](go/pgx) |
+| [PQ](go/pq) | Full | [CRUD Example](go/pq)|
 | [GORM](go/gorm/) | Full | [CRUD Example](go/gorm)|
 | [PG](go/pg) | Full | [CRUD Example](go/pg) |
 
-## [JavaScript](javascript/)
+## [Node.js](nodejs/)
 
 | Driver/ORM | Support Level | Example apps |
 | :--------- | :------------ | :----------- |
-| [PostgreSQL](nodejs/postgres-node-driver) | Full |  [CRUD Example](/latest/quick-start/build-apps/nodejs/ysql-pg/) |
-| [Sequelize](nodejs/sequelize) | Full |  [CRUD Example](/latest/quick-start/build-apps/nodejs/ysql-sequelize/)|
+| [PostgreSQL](nodejs/postgres-node-driver) | Full |  [CRUD Example](nodejs/postgres-node-driver) |
+| [Sequelize](nodejs/sequelize) | Full |  [CRUD Example](nodejs/sequelize)|
 <!-- | TypeORM | Full |   | -->
 
 <!-- ### App Framework Support
@@ -68,18 +68,18 @@ Along with the smart drivers, YugabyteDB also supports upstream [PostgreSQL driv
 
 | Driver/ORM | Support Level | Example apps |
 | :--------- | :------------ | :----------- |
-| Npgsql(csharp/postgres-npgsql) | Full | [CRUD Example](/latest/quick-start/build-apps/csharp/ysql) |
-| EntityFramework(csharp/entityframework) | Full | [CRUD Example](csharp/postgres-npgsql) |
+| [Npgsql](csharp/postgres-npgsql) | Full | [CRUD Example](csharp/postgres-npgsql) |
+| [EntityFramework](csharp/entityframework) | Full | [CRUD Example](csharp/entityframework) |
 
 ## [Python](python/)
 
 | Driver/ORM | Support Level | Example apps |
 | :--------- | :------------ | :----------- |
-| [Yugabyte Psycopg2](/latest/drivers-orms/python/yugabyte-psycopg2)  [Recommended] | Full | [CRUD Example](/latest/drivers-orms/python/yugabyte-psycopg2)|
-| [Postgres Psycopg2](/latest/drivers-orms/python/postgres-psycopg2) | Full | [CRUD Example](/latest/quick-start/build-apps/python/ysql-psycopg2) |
-| aiopg | Full | [CRUD Example](/latest/quick-start/build-apps/python/ysql-aiopg) |
-| [Django](/latest/drivers-orms/python/django) | Full | [CRUD Example](/latest/quick-start/build-apps/python/ysql-django) |
-| [SQLAlchemy](/latest/drivers-orms/python/sqlalchemy) | Full | [CRUD Example](/latest/quick-start/build-apps/python/ysql-sqlalchemy) |
+| [Yugabyte Psycopg2](python/yugabyte-psycopg2)  [Recommended] | Full | [CRUD Example](python/yugabyte-psycopg2)|
+| [Postgres Psycopg2](python/postgres-psycopg2/) | Full | [CRUD Example](python/postgres-psycopg2/) |
+| aiopg | Full | [Quick Start](/latest/quick-start/build-apps/python/ysql-aiopg) |
+| [Django](python/django) | Full | [CRUD Example](python/django) |
+| [SQLAlchemy](python/sqlalchemy) | Full | [CRUD Example](python/sqlalchemy) |
 
 <!--
 ## [Ruby](ruby/)
