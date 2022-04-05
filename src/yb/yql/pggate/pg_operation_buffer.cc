@@ -41,22 +41,23 @@
 
 namespace yb {
 namespace pggate {
+
 namespace {
 
-docdb::PrimitiveValue NullValue(SortingType sorting) {
+docdb::KeyEntryValue NullValue(SortingType sorting) {
   using SortingType = SortingType;
 
-  return docdb::PrimitiveValue(
+  return docdb::KeyEntryValue(
       sorting == SortingType::kAscendingNullsLast || sorting == SortingType::kDescendingNullsLast
-          ? docdb::ValueType::kNullHigh
-          : docdb::ValueType::kNullLow);
+          ? docdb::KeyEntryType::kNullHigh
+          : docdb::KeyEntryType::kNullLow);
 }
 
-std::vector<docdb::PrimitiveValue> InitKeyColumnPrimitiveValues(
+std::vector<docdb::KeyEntryValue> InitKeyColumnPrimitiveValues(
     const ArenaList<LWPgsqlExpressionPB> &column_values,
     const Schema &schema,
     size_t start_idx) {
-  std::vector<docdb::PrimitiveValue> result;
+  std::vector<docdb::KeyEntryValue> result;
   size_t column_idx = start_idx;
   for (const auto& column_value : column_values) {
     const auto sorting_type = schema.column(column_idx).sorting_type();
@@ -65,7 +66,7 @@ std::vector<docdb::PrimitiveValue> InitKeyColumnPrimitiveValues(
       result.push_back(
           IsNull(value)
           ? NullValue(sorting_type)
-          : docdb::PrimitiveValue::FromQLValuePB(value, sorting_type));
+          : docdb::KeyEntryValue::FromQLValuePB(value, sorting_type));
     } else {
       // TODO(neil) The current setup only works for CQL as it assumes primary key value must not
       // be dependent on any column values. This needs to be fixed as PostgreSQL expression might
@@ -76,7 +77,7 @@ std::vector<docdb::PrimitiveValue> InitKeyColumnPrimitiveValues(
       LWExprResult expr_result(&column_value.arena());
       auto s = executor.EvalExpr(column_value, nullptr, expr_result.Writer());
 
-      result.push_back(docdb::PrimitiveValue::FromQLValuePB(expr_result.Value(), sorting_type));
+      result.push_back(docdb::KeyEntryValue::FromQLValuePB(expr_result.Value(), sorting_type));
     }
     ++column_idx;
   }

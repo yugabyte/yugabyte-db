@@ -406,7 +406,7 @@ CHECKED_STATUS AddDeltaToSstFile(
         const auto rocksdb_value_type =
             static_cast<rocksdb::ValueType>(*(key.end() - kKeySuffixLen));
         if (storage_db_type == StorageDbType::kRegular ||
-            key[0] != docdb::ValueTypeAsChar::kTransactionId) {
+            key[0] != docdb::KeyEntryTypeAsChar::kTransactionId) {
           // Regular DB entry, or a normal intent entry (not txn metadata or reverse index).
           // Update the timestamp at the end of the key.
           const auto key_without_suffix = key.WithoutSuffix(kKeySuffixLen);

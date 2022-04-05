@@ -1033,7 +1033,7 @@ Status SysCatalogTable::ReadPgClassInfo(
     // catalog tables. They can be skipped, as tablespace information is relevant only for user
     // created tables.
     cond.add_operands()->mutable_value()->set_uint32_value(kPgFirstNormalObjectId);
-    const std::vector<docdb::PrimitiveValue> empty_key_components;
+    const std::vector<docdb::KeyEntryValue> empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
         &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
@@ -1149,7 +1149,7 @@ Result<uint32_t> SysCatalogTable::ReadPgClassRelnamespace(const uint32_t databas
     cond.add_operands()->set_column_id(oid_col_id);
     cond.set_op(QL_OP_EQUAL);
     cond.add_operands()->mutable_value()->set_uint32_value(table_oid);
-    const std::vector<docdb::PrimitiveValue> empty_key_components;
+    const std::vector<docdb::KeyEntryValue> empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
         &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
@@ -1206,7 +1206,7 @@ Result<string> SysCatalogTable::ReadPgNamespaceNspname(const uint32_t database_o
     cond.add_operands()->set_column_id(oid_col_id);
     cond.set_op(QL_OP_EQUAL);
     cond.add_operands()->mutable_value()->set_uint32_value(relnamespace_oid);
-    const std::vector<docdb::PrimitiveValue> empty_key_components;
+    const std::vector<docdb::KeyEntryValue> empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
         &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);

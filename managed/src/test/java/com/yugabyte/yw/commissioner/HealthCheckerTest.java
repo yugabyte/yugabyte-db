@@ -179,6 +179,7 @@ public class HealthCheckerTest extends FakeDBApplication {
             return new RuntimeConfig<>(mockRuntimeConfig);
           }
         };
+    healthChecker.initialize();
   }
 
   private Universe setupUniverse(String name) {

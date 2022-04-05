@@ -1409,6 +1409,8 @@ class CatalogManager :
     return SnapshotSchedulesToObjectIdsMap();
   }
 
+  Result<SnapshotScheduleId> FindCoveringScheduleForNamespace(const NamespaceId& id);
+
   Status DoDeleteNamespace(const DeleteNamespaceRequestPB* req,
                            DeleteNamespaceResponsePB* resp,
                            rpc::RpcContext* rpc);

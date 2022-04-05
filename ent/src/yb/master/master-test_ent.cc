@@ -27,6 +27,7 @@
 #include "yb/util/result.h"
 
 DECLARE_int32(cdc_state_table_num_tablets);
+DECLARE_bool(disable_truncate_table);
 
 namespace yb {
 namespace master {
@@ -165,6 +166,14 @@ Status MasterTestEnt::DeleteUniverseReplication(const std::string& producer_id) 
     RETURN_NOT_OK(StatusFromPB(resp.error().status()));
   }
   return Status::OK();
+}
+
+TEST_F(MasterTestEnt, TestDisableTruncation) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_truncate_table) = true;
+  TableId table_id;
+  ASSERT_OK(CreateTable(kTableName, kTableSchema, &table_id));
+  auto s = TruncateTableById(table_id);
+  EXPECT_TRUE(s.IsNotSupported());
 }
 
 TEST_F(MasterTestEnt, TestCreateCDCStreamInvalidTable) {

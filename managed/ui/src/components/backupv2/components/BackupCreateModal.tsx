@@ -243,6 +243,10 @@ function BackupConfigurationForm({
               setFieldValue('db_to_backup', val);
               if (values['api_type'].value === BACKUP_API_TYPES.YCQL) {
                 setFieldValue('selected_ycql_tables', []);
+                //All keyspace selected
+                if (val.value === null) {
+                  setFieldValue('backup_tables', Backup_Options_Type.ALL);
+                }
               }
             }}
           />
@@ -258,6 +262,7 @@ function BackupConfigurationForm({
                     name="backup_tables"
                     component="input"
                     defaultChecked={values['backup_tables'] === target.value}
+                    disabled={values['db_to_backup']?.value === null}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                       setFieldValue('backup_tables', e.target.value, false);
                       if (
