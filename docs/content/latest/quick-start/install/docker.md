@@ -16,37 +16,67 @@ isTocNested: true
 showAsideToc: true
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<style>
+ul.tabs-name {
+  display: flex;
+  list-style: none;
+  border-bottom: 2px solid #e6e6e6;
+  margin-bottom: 6px;
+}
 
-  <li >
-    <a href="../macos/" class="nav-link">
-      <i class="fab fa-apple" aria-hidden="true"></i>
-      macOS
-    </a>
-  </li>
+ul.tabs-name li:before {
+  display: none;
+  margin: 0;
+}
 
-  <li >
-    <a href="../linux/" class="nav-link">
-      <i class="fab fa-linux" aria-hidden="true"></i>
-      Linux
-    </a>
-  </li>
-
-  <li >
-    <a href="../docker/" class="nav-link active">
-      <i class="fab fa-docker" aria-hidden="true"></i>
-      Docker
-    </a>
-  </li>
-
-  <li >
-    <a href="../kubernetes/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
-      Kubernetes
-    </a>
-  </li>
-
-</ul>
+ul.tabs-name li {
+  padding: 10px 25px;
+  border: 2px solid #e6e6e6;
+  margin: 0 26px -2px 0;
+  font-size: 22px;
+  border-top-left-radius: 6px;
+  border-top-right-radius: 6px;
+  border-bottom: 2px solid #fff !important;
+}
+ul.tabs-name li a {
+  border-bottom: 0;
+}
+ul.tabs-name li.active {
+  border: 2px solid #f75821;
+  background: rgb(247 88 33 / 5%);
+  color: #f75821;
+}
+</style>
+<div class="row">
+  <div class="col-12 col-md-12 col-lg-12 col-xl-12">
+    <ul class="tabs-name">
+      <li class="tb-1">
+        <a href="../macos/" class="nav-link">
+          <i class="fab fa-apple" aria-hidden="true"></i>
+          macOS
+        </a>
+      </li>
+      <li class="tb-1">
+        <a href="../linux/" class="nav-link">
+          <i class="fab fa-linux" aria-hidden="true"></i>
+          Linux
+        </a>
+      </li>
+      <li class="tb-1 active">
+        <a href="../docker/" class="nav-link">
+          <i class="fab fa-docker" aria-hidden="true"></i>
+          Docker
+        </a>
+      </li>
+      <li class="tb-1">
+        <a href="../kubernetes/" class="nav-link">
+          <i class="fas fa-cubes" aria-hidden="true"></i>
+          Kubernetes
+        </a>
+      </li>
+    </ul>
+  </div>
+</div>
 
 {{< note title="Note" >}}
 
