@@ -274,26 +274,36 @@ public class InstanceType extends Model {
   }
 
   private static Predicate<InstanceType> supportedInstanceTypes(
-      List<String> supportedPrefixes, boolean ignoreSupported) {
-    if (ignoreSupported) {
-      return p -> true;
-    }
-    return p ->
-        supportedPrefixes.stream().anyMatch(prefix -> p.getInstanceTypeCode().startsWith(prefix));
+      List<String> supportedPrefixes, boolean allowUnsupported) {
+    return p -> {
+      final boolean ret =
+          supportedPrefixes.stream().anyMatch(prefix -> p.getInstanceTypeCode().startsWith(prefix));
+      if (!ret) {
+        LOG.trace("Unsupported prefix for instance type {}", p.getInstanceTypeCode());
+        if (allowUnsupported) {
+          LOG.warn(
+              "Allowing unsupported prefix {} supported prefixes: {}",
+              p.getInstanceTypeCode(),
+              supportedPrefixes);
+          return true;
+        }
+      }
+      return ret;
+    };
   }
 
   private static List<InstanceType> populateDefaultsIfEmpty(
       List<InstanceType> entries,
       Config config,
       ConfigHelper configHelper,
-      boolean ignoreSupported) {
+      boolean allowUnsupported) {
     // For AWS, we would filter and show only supported instance prefixes
     entries =
         entries
             .stream()
             .filter(
                 supportedInstanceTypes(
-                    configHelper.getAWSInstancePrefixesSupported(), ignoreSupported))
+                    configHelper.getAWSInstancePrefixesSupported(), allowUnsupported))
             .collect(Collectors.toList());
     for (InstanceType instanceType : entries) {
       JsonNode parsedJson = Json.parse(instanceType.instanceTypeDetailsJson);
@@ -320,7 +330,7 @@ public class InstanceType extends Model {
 
   /** Query Helper to find supported instance types for a given cloud provider. */
   public static List<InstanceType> findByProvider(
-      Provider provider, Config config, ConfigHelper configHelper, boolean ignoreSupported) {
+      Provider provider, Config config, ConfigHelper configHelper, boolean allowUnsupported) {
     List<InstanceType> entries =
         InstanceType.find
             .query()
@@ -329,7 +339,7 @@ public class InstanceType extends Model {
             .eq("active", true)
             .findList();
     if (provider.code.equals("aws")) {
-      return populateDefaultsIfEmpty(entries, config, configHelper, ignoreSupported);
+      return populateDefaultsIfEmpty(entries, config, configHelper, allowUnsupported);
     } else {
       return entries
           .stream()
