@@ -46,6 +46,12 @@ void SetValueFromQLBinaryWrapper(
   WARN_NOT_OK(yb::docdb::SetValueFromQLBinary(ql_value, pg_data_type, cdc_datum_message), "Failed");
 }
 
+DocDBRocksDBUtil::DocDBRocksDBUtil() : doc_read_context_(Schema(), 1) {}
+
+DocDBRocksDBUtil::DocDBRocksDBUtil(InitMarkerBehavior init_marker_behavior)
+    : doc_read_context_(Schema(), 1), init_marker_behavior_(init_marker_behavior) {
+}
+
 rocksdb::DB* DocDBRocksDBUtil::rocksdb() {
   return DCHECK_NOTNULL(regular_db_.get());
 }
@@ -271,7 +277,7 @@ void DocDBRocksDBUtil::SetHistoryCutoffHybridTime(HybridTime history_cutoff) {
 }
 
 void DocDBRocksDBUtil::SetTableTTL(uint64_t ttl_msec) {
-  schema_.SetDefaultTimeToLive(ttl_msec);
+  doc_read_context_.schema.SetDefaultTimeToLive(ttl_msec);
   retention_policy_->SetTableTTLForTests(MonoDelta::FromMilliseconds(ttl_msec));
 }
 

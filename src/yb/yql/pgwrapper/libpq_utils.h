@@ -71,6 +71,7 @@ Result<T> GetValue(PGresult* result, int row, int column) {
 }
 
 Result<std::string> ToString(PGresult* result, int row, int column);
+Result<std::string> RowToString(PGresult* result, int row);
 void LogResult(PGresult* result);
 
 std::string PqEscapeLiteral(const std::string& input);
@@ -132,6 +133,7 @@ class PGConn {
 
   // Fetches data matrix of specified size. I.e. exact number of rows and columns are expected.
   Result<PGResultPtr> FetchMatrix(const std::string& command, int rows, int columns);
+  Result<std::string> FetchRowAsString(const std::string& command);
 
   template <class T>
   Result<T> FetchValue(const std::string& command) {

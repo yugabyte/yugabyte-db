@@ -282,6 +282,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   const Schema& schema() override;
 
+  const docdb::DocReadContext& doc_read_context();
+
   void Submit(std::unique_ptr<tablet::Operation> operation, int64_t leader_term) override;
 
   AsyncTabletSnapshotOpPtr CreateAsyncTabletSnapshotOp(

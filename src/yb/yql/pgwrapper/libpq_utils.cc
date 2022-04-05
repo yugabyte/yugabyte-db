@@ -274,6 +274,18 @@ Result<PGResultPtr> PGConn::FetchMatrix(const std::string& command, int rows, in
   return res;
 }
 
+Result<std::string> PGConn::FetchRowAsString(const std::string& command) {
+  auto res = VERIFY_RESULT(Fetch(command));
+
+  auto fetched_rows = PQntuples(res.get());
+  if (fetched_rows != 1) {
+    return STATUS_FORMAT(
+        RuntimeError, "Fetched $0 rows, while 1 expected", fetched_rows);
+  }
+
+  return RowToString(res.get(), 0);
+}
+
 CHECKED_STATUS PGConn::StartTransaction(IsolationLevel isolation_level) {
   switch (isolation_level) {
     case IsolationLevel::NON_TRANSACTIONAL:
@@ -489,18 +501,22 @@ Result<std::string> ToString(PGresult* result, int row, int column) {
   }
 }
 
-void LogResult(PGresult* result) {
+Result<std::string> RowToString(PGresult* result, int row) {
   int cols = PQnfields(result);
+  std::string line;
+  for (int col = 0; col != cols; ++col) {
+    if (col) {
+      line += ", ";
+    }
+    line += CHECK_RESULT(ToString(result, row, col));
+  }
+  return line;
+}
+
+void LogResult(PGresult* result) {
   int rows = PQntuples(result);
   for (int row = 0; row != rows; ++row) {
-    std::string line;
-    for (int col = 0; col != cols; ++col) {
-      if (col) {
-        line += ", ";
-      }
-      line += CHECK_RESULT(ToString(result, row, col));
-    }
-    LOG(INFO) << line;
+    LOG(INFO) << RowToString(result, row);
   }
 }
 

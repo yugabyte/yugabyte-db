@@ -158,6 +158,15 @@ std::string ValueControlFields::ToString() const {
   return result;
 }
 
+Status Value::Decode(const Slice& rocksdb_value, const ValueControlFields& control_fields) {
+  Slice slice = rocksdb_value;
+  control_fields_ = control_fields;
+  RETURN_NOT_OK_PREPEND(
+      primitive_value_.DecodeFromValue(slice),
+      Format("Failed to decode value in $0", rocksdb_value.ToDebugHexString()));
+  return Status::OK();
+}
+
 Status Value::Decode(const Slice& rocksdb_value) {
   Slice slice = rocksdb_value;
   control_fields_ = VERIFY_RESULT(ValueControlFields::Decode(&slice));

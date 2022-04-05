@@ -21,6 +21,7 @@
 #include "yb/common/transaction-test-util.h"
 
 #include "yb/docdb/doc_key.h"
+#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
@@ -145,10 +146,11 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTest) {
   const Schema &projection = kProjectionForIteratorTests;
   QLTableRow row;
   QLValue value;
+  DocReadContext doc_read_context(schema, 1);
 
   {
     DocRowwiseIterator iter(
-        projection, schema, kNonTransactionalOperationContext, doc_db(),
+        projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
         CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2000));
     ASSERT_OK(iter.Init(YQL_TABLE_TYPE));
 
@@ -188,7 +190,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTest) {
 
   {
     DocRowwiseIterator iter(
-        projection, schema, kNonTransactionalOperationContext, doc_db(),
+        projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
         CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(5000));
     ASSERT_OK(iter.Init(YQL_TABLE_TYPE));
 
@@ -258,10 +260,11 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorDeletedDocumentTest) {
 
   const Schema &schema = kSchemaForIteratorTests;
   const Schema &projection = kProjectionForIteratorTests;
+  DocReadContext doc_read_context(schema, 1);
 
   {
     DocRowwiseIterator iter(
-        projection, schema, kNonTransactionalOperationContext, doc_db(),
+        projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
         CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2500));
     ASSERT_OK(iter.Init(YQL_TABLE_TYPE));
 
@@ -315,10 +318,11 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 2800 w: 1 }]
 
   const Schema &schema = kSchemaForIteratorTests;
   const Schema &projection = kProjectionForIteratorTests;
+  DocReadContext doc_read_context(schema, 1);
 
   {
     DocRowwiseIterator iter(
-        projection, schema, kNonTransactionalOperationContext, doc_db(),
+        projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
         CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2800));
     ASSERT_OK(iter.Init(YQL_TABLE_TYPE));
 
@@ -530,10 +534,11 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 2800 }]) -> 
 
   const Schema &schema = kSchemaForIteratorTests;
   const Schema &projection = kProjectionForIteratorTests;
+  DocReadContext doc_read_context(schema, 1);
 
   {
     DocRowwiseIterator iter(
-        projection, schema, kNonTransactionalOperationContext, doc_db(),
+        projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
         CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2800));
     ASSERT_OK(iter.Init(YQL_TABLE_TYPE));
 
@@ -578,12 +583,12 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorIncompleteProjection) {
 
   const Schema &schema = kSchemaForIteratorTests;
   Schema projection;
-  ASSERT_OK(kSchemaForIteratorTests.CreateProjectionByNames({"c", "d"},
-      &projection));
+  ASSERT_OK(kSchemaForIteratorTests.CreateProjectionByNames({"c", "d"}, &projection));
+  DocReadContext doc_read_context(schema, 1);
 
   {
     DocRowwiseIterator iter(
-        projection, schema, kNonTransactionalOperationContext, doc_db(),
+        projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
         CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2800));
     ASSERT_OK(iter.Init(YQL_TABLE_TYPE));
 
@@ -641,10 +646,12 @@ SubDocKey(DocKey(ColocationId=16385, [], ["row1", 11111]), [SystemColumnId(0); \
   Schema schema_copy = kSchemaForIteratorTests;
   schema_copy.set_colocation_id(colocation_id);
   Schema projection;
+  DocReadContext doc_read_context(schema_copy, 1);
+
   // Read should have results before delete...
   {
     DocRowwiseIterator iter(
-        projection, schema_copy, kNonTransactionalOperationContext, doc_db(),
+        projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
         CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(1500));
     ASSERT_OK(iter.Init(YQL_TABLE_TYPE));
     ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
@@ -652,7 +659,7 @@ SubDocKey(DocKey(ColocationId=16385, [], ["row1", 11111]), [SystemColumnId(0); \
   // ...but there should be no results after delete.
   {
     DocRowwiseIterator iter(
-        projection, schema_copy, kNonTransactionalOperationContext, doc_db(),
+        projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
         CoarseTimePoint::max() /* deadline */, ReadHybridTime::Max());
     ASSERT_OK(iter.Init(YQL_TABLE_TYPE));
     ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
@@ -711,10 +718,11 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 2800 w: 3 }]
   const Schema &schema = kSchemaForIteratorTests;
   Schema projection;
   ASSERT_OK(kSchemaForIteratorTests.CreateProjectionByNames({"c", "e"}, &projection));
+  DocReadContext doc_read_context(schema, 1);
 
   {
     DocRowwiseIterator iter(
-        projection, schema, kNonTransactionalOperationContext, doc_db(),
+        projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
         CoarseTimePoint::max() /* deadline */, read_time);
     ASSERT_OK(iter.Init(YQL_TABLE_TYPE));
 
@@ -777,10 +785,11 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorValidColumnNotInProjection) {
   const Schema &schema = kSchemaForIteratorTests;
   Schema projection;
   ASSERT_OK(kSchemaForIteratorTests.CreateProjectionByNames({"c", "d"}, &projection));
+  DocReadContext doc_read_context(schema, 1);
 
   {
     DocRowwiseIterator iter(
-        projection, schema, kNonTransactionalOperationContext, doc_db(),
+        projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
         CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2800));
     ASSERT_OK(iter.Init(YQL_TABLE_TYPE));
 
@@ -833,10 +842,11 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 1000 w: 1 }]
   Schema projection;
   ASSERT_OK(kSchemaForIteratorTests.CreateProjectionByNames({"a", "b"},
       &projection, 2));
+  DocReadContext doc_read_context(schema, 1);
 
   {
     DocRowwiseIterator iter(
-        projection, schema, kNonTransactionalOperationContext, doc_db(),
+        projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
         CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2800));
     ASSERT_OK(iter.Init(YQL_TABLE_TYPE));
 
@@ -992,10 +1002,11 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 3 } -> \
   const Schema &projection = kProjectionForIteratorTests;
   const auto txn_context = TransactionOperationContext(
       TransactionId::GenerateRandom(), &txn_status_manager);
+  DocReadContext doc_read_context(schema, 1);
 
   {
     DocRowwiseIterator iter(
-        projection, schema, txn_context, doc_db(),
+        projection, doc_read_context, txn_context, doc_db(),
         CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2000));
     ASSERT_OK(iter.Init(YQL_TABLE_TYPE));
 
@@ -1039,7 +1050,7 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 3 } -> \
   LOG(INFO) << "===============================================";
   {
     DocRowwiseIterator iter(
-        projection, schema, txn_context, doc_db(),
+        projection, doc_read_context, txn_context, doc_db(),
         CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(5000));
     ASSERT_OK(iter.Init(YQL_TABLE_TYPE));
     QLTableRow row;
@@ -1081,7 +1092,7 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 3 } -> \
 
   {
     DocRowwiseIterator iter(
-        projection, schema, txn_context, doc_db(),
+        projection, doc_read_context, txn_context, doc_db(),
         CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(6000));
     ASSERT_OK(iter.Init(YQL_TABLE_TYPE));
 
@@ -1241,9 +1252,10 @@ TEST_F(DocRowwiseIteratorTest, ScanWithinTheSameTxn) {
 
   const auto txn_context = TransactionOperationContext(*txn, &txn_status_manager);
   const Schema &projection = kProjectionForIteratorTests;
+  DocReadContext doc_read_context(kSchemaForIteratorTests, 1);
 
   DocRowwiseIterator iter(
-      projection, kSchemaForIteratorTests, txn_context, doc_db(),
+      projection, doc_read_context, txn_context, doc_db(),
       CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(1000));
   ASSERT_OK(iter.Init(YQL_TABLE_TYPE));
 

@@ -29,7 +29,7 @@ class SystemTablet : public tablet::AbstractTablet {
   SystemTablet(const Schema& schema, std::unique_ptr<YQLVirtualTable> yql_virtual_table,
                const TabletId& tablet_id);
 
-  yb::SchemaPtr GetSchema(const std::string& table_id = "") const override;
+  docdb::DocReadContextPtr GetDocReadContext(const std::string& table_id = "") const override;
 
   const docdb::YQLStorageIf& QLStorage() const override;
 
@@ -94,7 +94,7 @@ class SystemTablet : public tablet::AbstractTablet {
       tablet::RequireLease require_lease, HybridTime min_allowed,
       CoarseTimePoint deadline) const override;
 
-  yb::SchemaPtr schema_;
+  docdb::DocReadContextPtr doc_read_context_;
   std::unique_ptr<YQLVirtualTable> yql_virtual_table_;
   TabletId tablet_id_;
 };

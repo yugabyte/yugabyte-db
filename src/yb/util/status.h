@@ -258,12 +258,6 @@ inline std::ostream& operator<<(std::ostream& out, const Status& status) {
 #define STATUS(status_type, ...) \
     (Status(Status::BOOST_PP_CAT(k, status_type), __FILE__, __LINE__, __VA_ARGS__))
 
-// Utility macros to perform the appropriate check. If the check fails, returns the specified
-// (error) Status, with the given message.
-#define SCHECK(expr, status_type, msg) do { \
-      if (PREDICT_FALSE(!(expr))) return STATUS(status_type, (msg)); \
-    } while (0)
-
 #define SCHECK_NOTNULL(expr) do { \
       if ((expr) == nullptr) { \
         return STATUS(IllegalState, BOOST_PP_STRINGIZE(expr) " must not be null"); \

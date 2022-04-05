@@ -72,7 +72,9 @@ Result<boost::optional<SubDocument>> TEST_GetSubDocument(
 // modifying the provided IntentAwareIterator.
 class DocDBTableReader {
  public:
-  DocDBTableReader(IntentAwareIterator* iter, CoarseTimePoint deadline);
+  DocDBTableReader(
+      IntentAwareIterator* iter, CoarseTimePoint deadline,
+      std::reference_wrapper<const SchemaPackingStorage> schema_packing_storage);
 
   // Updates expiration/overwrite data based on table tombstone time. If the table is not a
   // colocated table as indicated by the provided root_doc_key, this method is a no-op.

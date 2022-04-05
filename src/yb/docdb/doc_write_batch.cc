@@ -202,8 +202,7 @@ CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
     const ValueControlFields& control_fields,
     const ValueRef& value,
     LazyIterator* iter,
-    const bool is_deletion,
-    const size_t num_subkeys) {
+    const bool is_deletion) {
   UpdateMaxValueTtl(control_fields.ttl);
 
   // The write_id is always incremented by one for each new element of the write batch.
@@ -225,6 +224,7 @@ CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
   const auto write_id = static_cast<IntraTxnWriteId>(put_batch_.size());
   const DocHybridTime hybrid_time = DocHybridTime(HybridTime::kMax, write_id);
 
+  auto num_subkeys = doc_path.num_subkeys();
   for (size_t subkey_index = 0; subkey_index < num_subkeys; ++subkey_index) {
     const auto& subkey = doc_path.subkey(subkey_index);
 
@@ -327,11 +327,15 @@ CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
     control_fields.AppendEncoded(&encoded_value);
     size_t prefix_len = encoded_value.size();
 
-    AppendEncodedValue(
+    if (value.encoded_value()) {
+      encoded_value.assign(value.encoded_value()->cdata(), value.encoded_value()->size());
+    } else {
+      AppendEncodedValue(
         value.value_pb(), CheckIsCollate(value.sorting_type() != SortingType::kNotSpecified),
         &encoded_value);
-    if (value.custom_value_type() != ValueEntryType::kInvalid) {
-      encoded_value[prefix_len] = static_cast<char>(value.custom_value_type());
+      if (value.custom_value_type() != ValueEntryType::kInvalid) {
+        encoded_value[prefix_len] = static_cast<char>(value.custom_value_type());
+      }
     }
 
     // The key we use in the DocWriteBatchCache does not have a final hybrid_time, because that's
@@ -351,7 +355,6 @@ Status DocWriteBatch::SetPrimitive(
   DOCDB_DEBUG_LOG("Called SetPrimitive with doc_path=$0, value=$1",
                   doc_path.ToString(), value.ToString());
   current_entry_.doc_hybrid_time = DocHybridTime::kMin;
-  const auto num_subkeys = doc_path.num_subkeys();
   const bool is_deletion = value.custom_value_type() == ValueEntryType::kTombstone;
 
   key_prefix_ = doc_path.encoded_doc_key();
@@ -362,7 +365,7 @@ Status DocWriteBatch::SetPrimitive(
   // Even if we are deleting a document, but we don't need to get any feedback on whether the
   // deletion was performed or the document was not there to begin with, we could also skip the
   // read as an optimization.
-  if (num_subkeys > 0 || is_deletion) {
+  if (doc_path.num_subkeys() > 0 || is_deletion) {
     if (required_init_markers()) {
       // Navigate to the root of the document. We don't yet know whether the document exists or when
       // it was last updated.
@@ -375,8 +378,7 @@ Status DocWriteBatch::SetPrimitive(
       }
     }
   }
-  return SetPrimitiveInternal(
-      doc_path, control_fields, value, iter, is_deletion, num_subkeys);
+  return SetPrimitiveInternal(doc_path, control_fields, value, iter, is_deletion);
 }
 
 Status DocWriteBatch::SetPrimitive(const DocPath& doc_path,

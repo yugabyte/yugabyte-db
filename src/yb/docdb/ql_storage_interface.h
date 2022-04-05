@@ -38,14 +38,15 @@ class YQLStorageIf {
 
   //------------------------------------------------------------------------------------------------
   // CQL Support.
-  virtual CHECKED_STATUS GetIterator(const QLReadRequestPB& request,
-                                     const Schema& projection,
-                                     const Schema& schema,
-                                     const TransactionOperationContext& txn_op_context,
-                                     CoarseTimePoint deadline,
-                                     const ReadHybridTime& read_time,
-                                     const QLScanSpec& spec,
-                                     std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
+  virtual CHECKED_STATUS GetIterator(
+      const QLReadRequestPB& request,
+      const Schema& projection,
+      std::reference_wrapper<const DocReadContext> doc_read_context,
+      const TransactionOperationContext& txn_op_context,
+      CoarseTimePoint deadline,
+      const ReadHybridTime& read_time,
+      const QLScanSpec& spec,
+      std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
 
   virtual CHECKED_STATUS BuildYQLScanSpec(
       const QLReadRequestPB& request,
@@ -68,37 +69,40 @@ class YQLStorageIf {
   // - Create and init can be used to create iterator once and initialize with different ybctid for
   //   different execution.
   // - Doc_key needs to be changed to allow reusing iterator.
-  virtual CHECKED_STATUS CreateIterator(const Schema& projection,
-                                        const Schema& schema,
-                                        const TransactionOperationContext& txn_op_context,
-                                        CoarseTimePoint deadline,
-                                        const ReadHybridTime& read_time,
-                                        std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
+  virtual CHECKED_STATUS CreateIterator(
+      const Schema& projection,
+      std::reference_wrapper<const DocReadContext> doc_read_context,
+      const TransactionOperationContext& txn_op_context,
+      CoarseTimePoint deadline,
+      const ReadHybridTime& read_time,
+      std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
 
-  virtual CHECKED_STATUS InitIterator(docdb::YQLRowwiseIteratorIf* doc_iter,
+  virtual CHECKED_STATUS InitIterator(YQLRowwiseIteratorIf* doc_iter,
                                       const PgsqlReadRequestPB& request,
                                       const Schema& schema,
                                       const QLValuePB& ybctid) const = 0;
 
   // Create iterator for querying by partition and range key.
-  virtual CHECKED_STATUS GetIterator(const PgsqlReadRequestPB& request,
-                                     const Schema& projection,
-                                     const Schema& schema,
-                                     const TransactionOperationContext& txn_op_context,
-                                     CoarseTimePoint deadline,
-                                     const ReadHybridTime& read_time,
-                                     const docdb::DocKey& start_doc_key,
-                                     std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
+  virtual CHECKED_STATUS GetIterator(
+      const PgsqlReadRequestPB& request,
+      const Schema& projection,
+      std::reference_wrapper<const DocReadContext> doc_read_context,
+      const TransactionOperationContext& txn_op_context,
+      CoarseTimePoint deadline,
+      const ReadHybridTime& read_time,
+      const DocKey& start_doc_key,
+      std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
 
   // Create iterator for querying by ybctid.
-  virtual CHECKED_STATUS GetIterator(uint64 stmt_id,
-                                     const Schema& projection,
-                                     const Schema& schema,
-                                     const TransactionOperationContext& txn_op_context,
-                                     CoarseTimePoint deadline,
-                                     const ReadHybridTime& read_time,
-                                     const QLValuePB& ybctid,
-                                     std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
+  virtual CHECKED_STATUS GetIterator(
+      uint64 stmt_id,
+      const Schema& projection,
+      std::reference_wrapper<const DocReadContext> doc_read_context,
+      const TransactionOperationContext& txn_op_context,
+      CoarseTimePoint deadline,
+      const ReadHybridTime& read_time,
+      const QLValuePB& ybctid,
+      std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
 };
 
 }  // namespace docdb

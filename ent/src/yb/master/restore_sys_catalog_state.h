@@ -38,10 +38,12 @@ class RestoreSysCatalogState {
   explicit RestoreSysCatalogState(SnapshotScheduleRestoration* restoration);
 
   // Load objects that should be restored from DB snapshot.
-  CHECKED_STATUS LoadRestoringObjects(const Schema& schema, const docdb::DocDB& doc_db);
+  CHECKED_STATUS LoadRestoringObjects(
+      const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db);
 
   // Load existing objects from DB snapshot.
-  CHECKED_STATUS LoadExistingObjects(const Schema& schema, const docdb::DocDB& doc_db);
+  CHECKED_STATUS LoadExistingObjects(
+      const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db);
 
   // Process loaded data and prepare entries to restore.
   CHECKED_STATUS Process();
@@ -78,8 +80,8 @@ class RestoreSysCatalogState {
 
   template <class PB>
   CHECKED_STATUS IterateSysCatalog(
-      const Schema& schema, const docdb::DocDB& doc_db, HybridTime read_time,
-      std::unordered_map<std::string, PB>* map);
+      const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db,
+      HybridTime read_time, std::unordered_map<std::string, PB>* map);
 
   template <class PB>
   CHECKED_STATUS AddRestoringEntry(
@@ -98,8 +100,9 @@ class RestoreSysCatalogState {
   CHECKED_STATUS CheckExistingEntry(
       const std::string& id, const SysTabletsEntryPB& pb);
 
-  CHECKED_STATUS LoadObjects(const Schema& schema, const docdb::DocDB& doc_db,
-                             HybridTime read_time, Objects* objects);
+  CHECKED_STATUS LoadObjects(
+      const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db,
+      HybridTime read_time, Objects* objects);
 
   // Prepare write batch to delete obsolete tablet.
   CHECKED_STATUS PrepareTabletCleanup(

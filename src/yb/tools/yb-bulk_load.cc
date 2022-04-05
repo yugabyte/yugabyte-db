@@ -18,6 +18,7 @@
 #include <glog/logging.h>
 
 #include "yb/client/client.h"
+#include "yb/client/schema.h"
 #include "yb/client/table.h"
 
 #include "yb/common/entity_ids.h"
@@ -31,6 +32,7 @@
 
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/doc_operation.h"
+#include "yb/docdb/doc_read_context.h"
 
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_util.h"
@@ -114,6 +116,7 @@ class BulkLoadTask : public Runnable {
                                      QLExpressionPB *column_value);
   CHECKED_STATUS InsertRow(const string &row,
                            const Schema &schema,
+                           uint32_t schema_version,
                            const IndexMap& index_map,
                            BulkLoadDocDBUtil *const db_fixture,
                            docdb::DocWriteBatch *const doc_write_batch,
@@ -188,8 +191,8 @@ void BulkLoadTask::Run() {
     const string &row = entry.second;
 
     // Populate the row.
-    CHECK_OK(InsertRow(row, table_->InternalSchema(), table_->index_map(), db_fixture_,
-                       &doc_write_batch, partition_generator_));
+    CHECK_OK(InsertRow(row, table_->InternalSchema(), table_->schema().version(),
+                       table_->index_map(), db_fixture_, &doc_write_batch, partition_generator_));
   }
 
   // Flush the batch.
@@ -251,6 +254,7 @@ Status BulkLoadTask::PopulateColumnValue(const string &column,
 
 Status BulkLoadTask::InsertRow(const string &row,
                                const Schema &schema,
+                               uint32_t schema_version,
                                const IndexMap& index_map,
                                BulkLoadDocDBUtil *const db_fixture,
                                docdb::DocWriteBatch *const doc_write_batch,
@@ -320,7 +324,7 @@ Status BulkLoadTask::InsertRow(const string &row,
   // once we have secondary indexes we probably might need to ensure bulk load builds the indexes
   // as well.
   docdb::QLWriteOperation op(
-      req, std::shared_ptr<const Schema>(&schema, [](const Schema*){}),
+      req, std::make_shared<docdb::DocReadContext>(schema, schema_version),
       index_map, nullptr /* unique_index_key_schema */, TransactionOperationContext());
   RETURN_NOT_OK(op.Init(&resp));
   RETURN_NOT_OK(op.Apply({

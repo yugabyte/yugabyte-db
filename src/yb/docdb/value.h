@@ -104,6 +104,7 @@ class Value {
 
   // Decode the entire value
   CHECKED_STATUS Decode(const Slice& rocksdb_value);
+  CHECKED_STATUS Decode(const Slice& rocksdb_value, const ValueControlFields& control_fields);
 
   std::string ToString() const;
 

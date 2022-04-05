@@ -73,6 +73,19 @@ class ObsolescenceTracker {
   boost::optional<Expiration> expiration_;
 };
 
+struct PackedRowData {
+  DocHybridTime doc_ht;
+  ValueControlFields control_fields;
+};
+
+struct PackedColumnData {
+  const PackedRowData* row = nullptr;
+  Slice slice;
+
+  explicit operator bool() const {
+    return row != nullptr;
+  }
+};
 
 // This class orchestrates the creation of a SubDocument stored in RocksDB with key
 // target_subdocument_key, respecting the expiration and high write time passed to it on
@@ -89,7 +102,7 @@ class SubDocumentReader {
   // method assumes the provided IntentAwareIterator is pointing to the beginning of the range which
   // represents target_subdocument_key. If no such data is found at the current position, no data
   // will be populated on the provided SubDocument*.
-  CHECKED_STATUS Get(SubDocument* result);
+  CHECKED_STATUS Get(SubDocument* result, const PackedColumnData& packed_column);
 
  private:
   const KeyBytes& target_subdocument_key_;
@@ -104,7 +117,9 @@ class SubDocumentReader {
 // then initializing and returning SubDocumentReader's which will produce SubDocument instances.
 class SubDocumentReaderBuilder {
  public:
-  SubDocumentReaderBuilder(IntentAwareIterator* iter, DeadlineInfo* deadline_info);
+  SubDocumentReaderBuilder(
+      IntentAwareIterator* iter, DeadlineInfo* deadline_info,
+      std::reference_wrapper<const SchemaPackingStorage> schema_packing_storage);
 
   // Updates expiration/overwrite data by scanning all parents of this Builder's
   // target_subdocument_key.
@@ -116,7 +131,9 @@ class SubDocumentReaderBuilder {
   // projection. It will return a SubDocumentReader which will read the key currently pointed to,
   // assuming the iterator is seeked to the key corresponding to sub_doc_key. Use of this method
   // without explicit seeking to sub_doc_key by the caller is not supported.
-  Result<std::unique_ptr<SubDocumentReader>> Build(const KeyBytes& sub_doc_key);
+  SubDocumentReader Build(const KeyBytes& sub_doc_key);
+
+  PackedColumnData GetPackedColumn(ColumnId column_id);
 
  private:
   CHECKED_STATUS UpdateWithParentWriteInfo(const Slice& parent_key_without_ht);
@@ -124,6 +141,10 @@ class SubDocumentReaderBuilder {
   IntentAwareIterator* iter_;
   DeadlineInfo* deadline_info_;
   ObsolescenceTracker parent_obsolescence_tracker_;
+  const SchemaPackingStorage& schema_packing_storage_;
+  ValueBuffer packed_row_;
+  PackedRowData packed_row_data_;
+  const SchemaPacking* schema_packing_ = nullptr;
 };
 
 }  // namespace docdb

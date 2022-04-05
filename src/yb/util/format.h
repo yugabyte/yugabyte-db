@@ -216,6 +216,14 @@ std::string Format(const char* format, const Args&... args) {
   return internal::FormatImpl(format, args...);
 }
 
+inline std::string Format(std::string format) {
+  return format;
+}
+
+inline std::string Format(const char* format) {
+  return format;
+}
+
 } // namespace yb
 
 #endif // YB_UTIL_FORMAT_H

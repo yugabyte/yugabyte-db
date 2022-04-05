@@ -55,34 +55,37 @@
 
 using namespace std::literals;
 
-DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(TEST_force_master_leader_resolution);
 DECLARE_bool(TEST_timeout_non_leader_master_rpcs);
+DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_bool(flush_rocksdb_on_shutdown);
+DECLARE_bool(rocksdb_use_logging_iterator);
+
 DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
-DECLARE_int32(history_cutoff_propagation_interval_ms);
-DECLARE_int32(timestamp_history_retention_interval_sec);
-DECLARE_int32(txn_max_apply_batch_records);
-DECLARE_int64(apply_intents_task_injected_delay_ms);
-DECLARE_uint64(max_clock_skew_usec);
-DECLARE_int64(db_write_buffer_size);
-DECLARE_bool(rocksdb_use_logging_iterator);
-DECLARE_bool(enable_automatic_tablet_splitting);
-DECLARE_int32(yb_num_shards_per_tserver);
-DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
-DECLARE_int64(tablet_split_high_phase_size_threshold_bytes);
-DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
-DECLARE_int64(tablet_split_high_phase_shard_count_per_node);
 
-DECLARE_int32(heartbeat_interval_ms);
-DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(TEST_txn_participant_inject_latency_on_apply_update_txn_ms);
+DECLARE_int32(heartbeat_interval_ms);
+DECLARE_int32(history_cutoff_propagation_interval_ms);
+DECLARE_int32(max_packed_row_columns);
+DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
+DECLARE_int32(txn_max_apply_batch_records);
+DECLARE_int32(yb_num_shards_per_tserver);
 
+DECLARE_int64(TEST_inject_random_delay_on_txn_status_response_ms);
+DECLARE_int64(apply_intents_task_injected_delay_ms);
 DECLARE_int64(db_block_size_bytes);
 DECLARE_int64(db_filter_block_size_bytes);
 DECLARE_int64(db_index_block_size_bytes);
+DECLARE_int64(db_write_buffer_size);
 DECLARE_int64(tablet_force_split_threshold_bytes);
-DECLARE_int64(TEST_inject_random_delay_on_txn_status_response_ms);
+DECLARE_int64(tablet_split_high_phase_shard_count_per_node);
+DECLARE_int64(tablet_split_high_phase_size_threshold_bytes);
+DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
+DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
+
+DECLARE_uint64(max_clock_skew_usec);
 
 namespace yb {
 namespace pgwrapper {
@@ -2568,6 +2571,29 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(NonRespondingMaster),
       pg_host_port(), cluster_->GetMasterAddresses(), cluster_->GetTserverHTTPAddresses(),
       *tmp_dir, {"--backup_location", tmp_dir / "backup", "--no_upload", "--keyspace", "ysql.test",
        "create"}));
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(PackedRow)) {
+  FLAGS_max_packed_row_columns = 10;
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, v1 TEXT, v2 TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t (key, v1, v2) VALUES (1, 'one', 'two')"));
+
+  auto value = ASSERT_RESULT(conn.FetchRowAsString("SELECT v1, v2 FROM t WHERE key = 1"));
+  ASSERT_EQ(value, "one, two");
+
+  ASSERT_OK(conn.Execute("UPDATE t SET v2 = 'three' where key = 1"));
+  value = ASSERT_RESULT(conn.FetchRowAsString("SELECT v1, v2 FROM t WHERE key = 1"));
+  ASSERT_EQ(value, "one, three");
+
+  ASSERT_OK(conn.Execute("DELETE FROM t WHERE key = 1"));
+  ASSERT_OK(conn.FetchMatrix("SELECT * FROM t", 0, 3));
+
+  ASSERT_OK(conn.Execute("INSERT INTO t (key, v1, v2) VALUES (1, 'four', 'five')"));
+  value = ASSERT_RESULT(conn.FetchRowAsString("SELECT v1, v2 FROM t WHERE key = 1"));
+  ASSERT_EQ(value, "four, five");
 }
 
 } // namespace pgwrapper

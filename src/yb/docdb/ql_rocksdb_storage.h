@@ -30,14 +30,15 @@ class QLRocksDBStorage : public YQLStorageIf {
 
   //------------------------------------------------------------------------------------------------
   // CQL Support.
-  CHECKED_STATUS GetIterator(const QLReadRequestPB& request,
-                             const Schema& projection,
-                             const Schema& schema,
-                             const TransactionOperationContext& txn_op_context,
-                             CoarseTimePoint deadline,
-                             const ReadHybridTime& read_time,
-                             const QLScanSpec& spec,
-                             std::unique_ptr<YQLRowwiseIteratorIf> *iter) const override;
+  CHECKED_STATUS GetIterator(
+      const QLReadRequestPB& request,
+      const Schema& projection,
+      std::reference_wrapper<const DocReadContext> doc_read_context,
+      const TransactionOperationContext& txn_op_context,
+      CoarseTimePoint deadline,
+      const ReadHybridTime& read_time,
+      const QLScanSpec& spec,
+      std::unique_ptr<YQLRowwiseIteratorIf> *iter) const override;
 
   CHECKED_STATUS BuildYQLScanSpec(
       const QLReadRequestPB& request,
@@ -50,35 +51,38 @@ class QLRocksDBStorage : public YQLStorageIf {
 
   //------------------------------------------------------------------------------------------------
   // PGSQL Support.
-  CHECKED_STATUS CreateIterator(const Schema& projection,
-                                const Schema& schema,
-                                const TransactionOperationContext& txn_op_context,
-                                CoarseTimePoint deadline,
-                                const ReadHybridTime& read_time,
-                                YQLRowwiseIteratorIf::UniPtr* iter) const override;
+  CHECKED_STATUS CreateIterator(
+      const Schema& projection,
+      std::reference_wrapper<const docdb::DocReadContext> doc_read_context,
+      const TransactionOperationContext& txn_op_context,
+      CoarseTimePoint deadline,
+      const ReadHybridTime& read_time,
+      YQLRowwiseIteratorIf::UniPtr* iter) const override;
 
   CHECKED_STATUS InitIterator(YQLRowwiseIteratorIf* doc_iter,
                               const PgsqlReadRequestPB& request,
                               const Schema& schema,
                               const QLValuePB& ybctid) const override;
 
-  CHECKED_STATUS GetIterator(const PgsqlReadRequestPB& request,
-                             const Schema& projection,
-                             const Schema& schema,
-                             const TransactionOperationContext& txn_op_context,
-                             CoarseTimePoint deadline,
-                             const ReadHybridTime& read_time,
-                             const DocKey& start_doc_key,
-                             YQLRowwiseIteratorIf::UniPtr* iter) const override;
+  CHECKED_STATUS GetIterator(
+      const PgsqlReadRequestPB& request,
+      const Schema& projection,
+      std::reference_wrapper<const DocReadContext> doc_read_context,
+      const TransactionOperationContext& txn_op_context,
+      CoarseTimePoint deadline,
+      const ReadHybridTime& read_time,
+      const DocKey& start_doc_key,
+      YQLRowwiseIteratorIf::UniPtr* iter) const override;
 
-  CHECKED_STATUS GetIterator(uint64 stmt_id,
-                             const Schema& projection,
-                             const Schema& schema,
-                             const TransactionOperationContext& txn_op_context,
-                             CoarseTimePoint deadline,
-                             const ReadHybridTime& read_time,
-                             const QLValuePB& ybctid,
-                             YQLRowwiseIteratorIf::UniPtr* iter) const override;
+  CHECKED_STATUS GetIterator(
+      uint64 stmt_id,
+      const Schema& projection,
+      std::reference_wrapper<const DocReadContext> doc_read_context,
+      const TransactionOperationContext& txn_op_context,
+      CoarseTimePoint deadline,
+      const ReadHybridTime& read_time,
+      const QLValuePB& ybctid,
+      YQLRowwiseIteratorIf::UniPtr* iter) const override;
 
  private:
   const DocDB doc_db_;

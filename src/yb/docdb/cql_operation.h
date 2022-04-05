@@ -36,7 +36,7 @@ class QLWriteOperation :
     public DocExprExecutor {
  public:
   QLWriteOperation(std::reference_wrapper<const QLWriteRequestPB> request,
-                   std::shared_ptr<const Schema> schema,
+                   DocReadContextPtr doc_read_context,
                    std::reference_wrapper<const IndexMap> index_map,
                    const Schema* unique_index_key_schema,
                    const TransactionOperationContext& txn_op_context);
@@ -134,7 +134,7 @@ class QLWriteOperation :
 
   CHECKED_STATUS UpdateIndexes(const QLTableRow& current_row, const QLTableRow& new_row);
 
-  std::shared_ptr<const Schema> schema_;
+  docdb::DocReadContextPtr doc_read_context_;
   const IndexMap& index_map_;
   const Schema* unique_index_key_schema_ = nullptr;
 
@@ -194,7 +194,7 @@ class QLReadOperation : public DocExprExecutor {
   CHECKED_STATUS Execute(const YQLStorageIf& ql_storage,
                          CoarseTimePoint deadline,
                          const ReadHybridTime& read_time,
-                         const Schema& schema,
+                         const DocReadContext& doc_read_context,
                          const Schema& projection,
                          QLResultSet* result_set,
                          HybridTime* restart_read_ht);
