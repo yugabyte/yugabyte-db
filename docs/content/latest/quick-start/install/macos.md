@@ -79,7 +79,7 @@ showAsideToc: true
     $ launchctl limit
     ```
 
-    We recommend the following soft and hard limits.
+    We recommend having at least the following soft and hard limits.
 
     ```output
     maxproc     2500        2500
@@ -95,7 +95,9 @@ showAsideToc: true
     kern.maxfilesperproc=1048576
     ```
 
-    If this file does not exist, then for setting maxfiles soft and hard limits, create the file `/Library/LaunchDaemons/limit.maxfiles.plist` and insert the following:
+    If this file does not exist, create the following two files:
+    \
+    Create `/Library/LaunchDaemons/limit.maxfiles.plist` and insert the following:
 
     ```xml
     <?xml version="1.0" encoding="UTF-8"?>
@@ -120,7 +122,8 @@ showAsideToc: true
       </plist>
     ```
 
-    For setting maxproc soft and hard limits, create the file `/Library/LaunchDaemons/limit.maxproc.plist` and insert the following:
+    \
+    Create `/Library/LaunchDaemons/limit.maxproc.plist` and insert the following:
 
     ```xml
     <?xml version="1.0" encoding="UTF-8"?>
@@ -145,6 +148,7 @@ showAsideToc: true
       </plist>
     ```
 
+    \
     Ensure that the `plist` files are owned by `root:wheel` and has permissions `-rw-r--r--`. To take effect, you need to reboot your computer or run these command:
 
     ```sh
