@@ -31,9 +31,11 @@ Learn how to establish a connection to YugabyteDB database and begin simple CRUD
 ### Install Python
 
 Make sure that your system has Python3 installed. To check the version of Python installed, use the following command.
-```
+
+```sh
 $ python -V
 ```
+
 If not already installed, download and install it from [Python's Website](https://www.python.org/downloads/).
 
 ### Create a Python Project
@@ -42,7 +44,7 @@ Create a python file by adding ```.py``` extension to your filename. It is also 
 
 ### Create a YugabyteDB Cluster
 
-Set up a Free tier Cluster on [Yugabyte Anywhere](https://www.yugabyte.com/cloud/). The free cluster provides a fully functioning YugabyteDB cluster deployed to the cloud region of your choice. The cluster is free forever and includes enough resources to explore the core features available for developing the Java Applications with YugabyteDB database. Complete the steps for [creating a free tier cluster](latest/yugabyte-cloud/cloud-quickstart/qs-add/).
+Set up a Free tier Cluster on [Yugabyte Anywhere](https://www.yugabyte.com/cloud/). The free cluster provides a fully functioning YugabyteDB cluster deployed to the cloud region of your choice. The cluster is free forever and includes enough resources to explore the core features available for developing the Java Applications with YugabyteDB database. Complete the steps for [creating a free tier cluster](/latest/yugabyte-cloud/cloud-quickstart/qs-add/).
 
 Alternatively, You can also setup a standalone YugabyteDB cluster by following the [install YugabyteDB Steps](/latest/quick-start/install/macos).
 
@@ -52,7 +54,7 @@ For fully runnable code snippets and exaplantion for common operations, see the 
 
 | Project | Type | Usage Examples |
 | :------ | :--- | :------------- |
-| [Yugabyte Psycopg2](/latest/reference/drivers/python/yugabyte-psycopg2-reference/) | Python Driver | [Hello World]() <br />[CRUD App](yugabyte-psycopg2)
-| [Postgres Psycopg2](/latest/reference/drivers/python/postgres-psycopg2-reference/) | Python Driver | [Hello World](/latest/quick-start/build-apps/python/ysql-psycopg2) <br />[CRUD App](postgres-psycopg2)|
-| [SQLAlchemy](sqlalchemy) | ORM |  [Hello World](sqlalchemy) <br />[CRUD App](/latest/quick-start/build-apps/python/ysql-sqlalchemy) |
-| [Django](django) | ORM | [Hello World](django) <br />[CRUD App](/latest/quick-start/build-apps/python/ysql-django) |
+| [Yugabyte Psycopg2](yugabyte-psycopg2) | Python Driver | [Hello World](/latest/quick-start/build-apps/python/ysql-psycopg2/) <br />[CRUD App](yugabyte-psycopg2)
+| [Postgres Psycopg2](postgres-psycopg2) | Python Driver | [Hello World](/latest/quick-start/build-apps/python/ysql-psycopg2) <br />[CRUD App](postgres-psycopg2)|
+| [SQLAlchemy](sqlalchemy) | ORM |  [Hello World](/latest/quick-start/build-apps/python/ysql-sqlalchemy) <br />[CRUD App](sqlalchemy) |
+| [Django](django) | ORM | [Hello World](/latest/quick-start/build-apps/python/ysql-django) <br />[CRUD App](django) |

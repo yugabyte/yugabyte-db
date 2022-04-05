@@ -17,14 +17,16 @@ showAsideToc: true
 
 | Driver Version | YugabyteDB Version | Support |
 | :------------- | :----------------- | :------ |
-| 2.9.3 | 2.11 (latest) | full |
-| 2.9.3 |  2.8 (stable) | full |
+| 2.9.3 | 2.13 (latest) | full |
+| 2.9.3 | 2.12 (stable) | full |
+| 2.9.3 | 2.8 | full |
 | 2.9.3 | 2.6 | full |
 
 ## Yugabyte Psycopg2 Compatibility Matrix
 
 | Driver Version | YugabyteDB Version | Support |
 | :------------- | :----------------- | :------ |
-| 2.9.3 | 2.11 (latest) | full |
-| 2.9.3 |  2.8 (stable) | full |
+| 2.9.3 | 2.13 (latest) | full |
+| 2.9.3 | 2.12 (stable) | full |
+| 2.9.3 | 2.8  | full |
 | 2.9.3 | 2.6 | Not supported |

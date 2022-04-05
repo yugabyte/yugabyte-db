@@ -9,7 +9,7 @@ menu:
     name: Python Drivers
     identifier: ref-yugabyte-psycopg2-driver
     parent: drivers
-    weight: 600
+    weight: 650
 isTocNested: true
 showAsideToc: true
 ---
@@ -29,7 +29,6 @@ showAsideToc: true
   </li>
 
 </ul>
-
 
 This page provides details for getting started with `YugabyteDB Psycopg2 Driver` for connecting to YugabyteDB YSQL API.
 
@@ -96,7 +95,9 @@ To use the driver, do the following:
     ```python
     conn = psycopg2.connect("dbname=database_name host=hostname port=port user=username  password=password load_balance=true")
     ```
+
     Connection Dictionary
+    
     ```python
     conn = psycopg2.connect(user = 'username', password='xxx', host = 'hostname', port = 'port', dbname = 'database_name', load_balance='True')
     ```
@@ -108,12 +109,15 @@ To use the driver, do the following:
     ```python
     conn = psycopg2.connect("dbname=database_name host=hostname port=port user=username  password=password load_balance=true topology_keys=cloud1.region1.zone1,cloud2.region2.zone2")
     ```
+
     Connection Dictionary
+
     ```python
     conn = psycopg2.connect(user = 'username', password='xxx', host = 'hostname', port = 'port', dbname = 'database_name', load_balance='True', topology_keys='cloud1.region1.zone1,cloud2.region2.zone2')
     ```
 
 - To configure a SimpleConnectionPool, specify load balance as follows:
+
     ```python
     yb_pool = psycopg2.pool.SimpleConnectionPool(1, 10, user="yugabyte",
                                                             password="yugabyte",
@@ -159,11 +163,13 @@ The application creates 30 connections. To verify the behavior, wait for the app
 This URL presents a list of connections where each element of the list has some information about the connection as shown in the following screenshot. You can count the number of connections from that list, or simply search for the occurrence count of the `host` keyword on that webpage. Each node should have 10 connections.
 
 You can also verify the number of connections by running the following script in the same terminal:
+
 ```python
 from psycopg2.policies import ClusterAwareLoadBalancer as lb
 obj = lb()
 obj.printHostToConnMap()
 ```
+
 This displays a key value pair map where the keys are the host and the values are the number of connections on them (This is the client side perspective of the number of connections).
 ![Load balancing with host connections](/images/develop/ecosystem-integrations/jdbc-load-balancing.png)
 

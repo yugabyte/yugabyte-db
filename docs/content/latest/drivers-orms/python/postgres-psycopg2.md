@@ -17,14 +17,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/drivers-orms/python/yugabyte-psycopg2" class="nav-link active">
+    <a href="/latest/drivers-orms/python/yugabyte-psycopg2" class="nav-link">
       <i class="icon-java-bold" aria-hidden="true"></i>
       YugabyteDB Psycopg2
     </a>
   </li>
 
   <li >
-    <a href="/latest/drivers-orms/python/postgres-psycopg2" class="nav-link">
+    <a href="/latest/drivers-orms/python/postgres-psycopg2" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       PostgreSQL Psycopg2
     </a>
@@ -34,38 +34,54 @@ showAsideToc: true
 
 Psycopg is the most popular PostgreSQL database adapter for the Python programming language. Its main features are the complete implementation of the Python DB API 2.0 specification and the thread safety (several threads can share the same connection). YugabyteDB has full support for [Psycopg2](https://www.psycopg.org/).
 
-## Step 1: Download the Driver Dependency
+## CRUD Operations with Postgres Psycopg2 Driver
+
+Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps in the [Build an application](/latest/quick-start/build-apps/python/ysql-psycopg2/) page under the Quick start section.
+
+Let us break down the quick start example and understand how to perform the common tasks required for Python App development using the Postgres Psycopg2 driver.
+
+### Step 1: Download the Driver Dependency
 
 Building Psycopg requires a few prerequisites (a C compiler, some development packages): please check the [install](https://www.psycopg.org/docs/install.html#install-from-source) and the [faq](https://www.psycopg.org/docs/faq.html#faq-compile) documents in the doc dir or online for the details.
 
 If prerequisites are met, you can install psycopg like any other Python package, using ``pip`` to download it from [PyPI](https://pypi.org/project/psycopg2/):
-```
+
+```sh
 $ pip install psycopg2
 ```
+
 or using ``setup.py`` if you have downloaded the source package locally:
-```
+
+```sh
 $ python setup.py build
 $ sudo python setup.py install
 ```
+
 You can also obtain a stand-alone package, not requiring a compiler or external libraries, by installing the [psycopg2-binary](https://pypi.org/project/psycopg2-binary/) package from PyPI:
-```
+
+```sh
 $ pip install psycopg2-binary
 ```
+
 The binary package is a practical choice for development and testing but in production it is advised to use the package built from sources.
 
-## Step 2: Connect to your Cluster
+### Step 2: Connect to your Cluster
 
-Python Apps can connect to and query the YugabyteDB database. To do that first import the psycopg2 package. 
+Python Apps can connect to and query the YugabyteDB database. To do that first import the psycopg2 package.
+
 ```python
 import psycopg2
 ```
+
 The Connection details can be provided as a string or a dictionary.
 Connection String
 
 ```python
 "dbname=database_name host=hostname port=port user=username  password=password"
 ```
+
 Connection Dictionary
+
 ```python
 user = 'username', password='xxx', host = 'hostname', port = 'port', dbname = 'database_name'
 ```
@@ -97,9 +113,10 @@ conn = psycopg2.connect("host=<hostname> port=5433 dbname=yugabyte user=<usernam
 
 If you have created Free tier cluster on [Yugabyte Anywhere](https://www.yugabyte.com/cloud/), [Follow the steps](/latest/yugabyte-cloud/cloud-connect/connect-applications/) to download the Credentials and SSL Root certificate.
 
-## Step 3: Query the YugabyteDB Cluster from Your Application
+### Step 3: Query the YugabyteDB Cluster from Your Application
 
 Next, Create a new Python file called `QuickStartApp.py` in the base package directory of your project. Copy the sample code below in order to setup a YugbyteDB Tables and query the Table contents from the java client. Ensure you replace the connection string `yburl` with credentials of your cluster and SSL certs if required.
+
 ```python
 import psycopg2
 
@@ -155,6 +172,7 @@ conn.commit()
 cur.close()
 conn.close()
 ```
+
 When you run the Project, `QuickStartApp.py` should output something like below:
 
 ```text
@@ -169,5 +187,6 @@ After completing these steps, you should have a working Python app that uses Psy
 
 ## Next Steps
 
-- [Django example](/latest/drivers-orms/python/django/)
-- [SQLAlchemy example](/latest/drivers-orms/python/sqlalchemy/)
+- Learn how to build Python Application using [Django](/latest/drivers-orms/python/django/)
+- Learn how to build Python Applications using [SQLAlchemy](/latest/drivers-orms/python/sqlalchemy/)
+- Learn more about [fundamentals](../../../reference/drivers/python/postgres-psycopg2-reference/) of the PostgreSQL psycopg2 Driver

@@ -39,23 +39,35 @@ This page provides details for getting started with `YugabyteDB Psycopg2 Driver`
 [Yugabyte Psycopg2 driver](https://github.com/yugabyte/psycopg2) is a distributed python driver for [YSQL](/latest/api/ysql/) built on the [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2).
 Although the upstream PostgreSQL psycopg2 driver works with YugabyteDB, the Yugabyte driver enhances YugabyteDB by eliminating the need for external load balancers.
 
-## Step 1: Add the YugabyteDB Driver Dependency
+## CRUD Operations with YugabyteDB Psycopg2 Driver
+
+Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using
+the steps in the [Build an application](/latest/quick-start/build-apps/python/ysql-psycopg2/) page under the Quick start section.
+
+Let us break down the quick start example and understand how to perform the common tasks required
+for Python App development using the YugabyteDB Psycopg2 driver.
+
+### Step 1: Add the YugabyteDB Driver Dependency
 
 <!-- TODO: After publishing the driver -->
 
-## Step 2: Connect to your Cluster
+### Step 2: Connect to your Cluster
 
-Python Apps can connect to and query the YugabyteDB database. To do that first import the psycopg2 package. 
+Python Apps can connect to and query the YugabyteDB database. To do that first import the psycopg2 package.
+
 ```python
 import psycopg2
 ```
+
 The Connection details can be provided as a string or a dictionary.
 Connection String
 
 ```python
 "dbname=database_name host=hostname port=port user=username  password=password load_balance=true"
 ```
+
 Connection Dictionary
+
 ```python
 user = 'username', password='xxx', host = 'hostname', port = 'port', dbname = 'database_name', load_balance='True'
 ```
@@ -88,9 +100,10 @@ conn = psycopg2.connect("host=<hostname> port=5433 dbname=yugabyte user=<usernam
 
 If you have created Free tier cluster on [Yugabyte Anywhere](https://www.yugabyte.com/cloud/), [Follow the steps](/latest/yugabyte-cloud/cloud-connect/connect-applications/) to download the Credentials and SSL Root certificate.
 
-## Step 3: Query the YugabyteDB Cluster from Your Application
+### Step 3: Query the YugabyteDB Cluster from Your Application
 
 Next, Create a new Python file called `QuickStartApp.py` in the base package directory of your project. Copy the sample code below in order to setup a YugbyteDB Tables and query the Table contents from the java client. Ensure you replace the connection string `yburl` with credentials of your cluster and SSL certs if required.
+
 ```python
 import psycopg2
 
@@ -146,6 +159,7 @@ conn.commit()
 cur.close()
 conn.close()
 ```
+
 When you run the Project, `QuickStartApp.py` should output something like below:
 
 ```text
@@ -160,5 +174,6 @@ After completing these steps, you should have a working Python app that uses Psy
 
 ## Next Steps
 
-- [Django example](/latest/drivers-orms/python/django/)
-- [SQLAlchemy example](/latest/drivers-orms/python/sqlalchemy/)
+- Learn how to build Python Application using [Django](/latest/drivers-orms/python/django/)
+- Learn how to build Python Applications using [SQLAlchemy](/latest/drivers-orms/python/sqlalchemy/)
+- Learn more about [fundamentals](../../../reference/drivers/python/yugabyte-psycopg2-reference/) of the YugabyteDB Psycopg2 Driver

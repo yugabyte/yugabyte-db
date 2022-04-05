@@ -32,51 +32,54 @@ showAsideToc: true
 
 Psycopg is the most popular PostgreSQL database adapter for the Python programming language. Its main features are the complete implementation of the Python DB API 2.0 specification and the thread safety (several threads can share the same connection). YugabyteDB has full support for [Psycopg2](https://www.psycopg.org/).
 
-## Quick Start
+## Fundamentals of PostgreSQL Psycopg driver
 
 Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps in [Build an Application](/latest/quick-start/build-apps/python/ysql-psycopg2) in the Quick Start section.
 
-## Download the Driver Dependency
+Let us break down the quick start example and understand how to perform the common tasks required for Python App development using the PostgreSQL Psycopg driver.
+
+### Download the Driver Dependency
 
 Building Psycopg requires a few prerequisites (a C compiler, some development packages): please check the [install](https://www.psycopg.org/docs/install.html#install-from-source) and the [faq](https://www.psycopg.org/docs/faq.html#faq-compile) documents in the doc dir or online for the details.
 
 If prerequisites are met, you can install psycopg like any other Python package, using ``pip`` to download it from [PyPI](https://pypi.org/project/psycopg2/):
-```
+
+```sh
 $ pip install psycopg2
 ```
+
 or using ``setup.py`` if you have downloaded the source package locally:
-```
+
+```sh
 $ python setup.py build
 $ sudo python setup.py install
 ```
+
 You can also obtain a stand-alone package, not requiring a compiler or external libraries, by installing the [psycopg2-binary](https://pypi.org/project/psycopg2-binary/) package from PyPI:
-```
+
+```sh
 $ pip install psycopg2-binary
 ```
+
 The binary package is a practical choice for development and testing but in production it is advised to use the package built from sources.
-
-## Fundamentals
-
-Learn how to perform the common tasks required for Java App development using the PostgreSQL JDBC driver
-
-<!-- * [Connect to YugabyteDB Database](postgres-jdbc-fundamentals/#connect-to-yugabytedb-database)
-* [Configure SSL/TLS](postgres-jdbc-fundamentals/#configure-ssl-tls)
-* [Create Table](/postgres-jdbc-fundamentals/#create-table)
-* [Read and Write Queries](/postgres-jdbc-fundamentals/#read-and-write-queries) -->
 
 ### Connect to YugabyteDB Database
 
-Python Apps can connect to and query the YugabyteDB database. To do that first import the psycopg2 package. 
+Python Apps can connect to and query the YugabyteDB database. To do that first import the psycopg2 package.
+
 ```python
 import psycopg2
 ```
+
 The Connection details can be provided as a string or a dictionary.
 Connection String
 
 ```python
 "dbname=database_name host=hostname port=port user=username  password=password"
 ```
+
 Connection Dictionary
+
 ```python
 user = 'username', password='xxx', host = 'hostname', port = 'port', dbname = 'database_name'
 ```
@@ -199,18 +202,3 @@ conn = psycopg2.connect("host=<hostname> port=5433 dbname=yugabyte user=<usernam
 ```
 
 The difference between `verify-ca` and `verify-full` depends on the policy of the root CA. If you're using a public CA, verify-ca allows connections to a server that somebody else may have registered with the CA. Because of this behavior, you should always use verify-full with a public CA. If you're using a local CA, or even a self-signed certificate, using verify-ca may provide enough protection, but the best security practice is to always use verify-full.
-
-## Compatibility Matrix
-
-| Driver Version | YugabyteDB Version | Support |
-| :------------- | :----------------- | :------ |
-| 2.9.3 | 2.11 (latest) | full
-| 2.9.3 |  2.8 (stable) | full
-| 2.9.3 | 2.6 | full
-
-## Other Usage Examples
-
-- [SSL Example](/latest/quick-start/build-apps/python/ysql-psycopg2/#create-a-sample-python-application-with-ssl)
-
-## FAQ
-
