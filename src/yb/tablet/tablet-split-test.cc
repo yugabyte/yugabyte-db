@@ -152,7 +152,7 @@ TEST_F(TabletSplitTest, SplitTablet) {
       const auto partition_key = PartitionSchema::EncodeMultiColumnHashValue(split_hash_code);
       docdb::KeyBytes encoded_doc_key;
       docdb::DocKeyEncoderAfterTableIdStep(&encoded_doc_key).Hash(
-          split_hash_code, std::vector<docdb::PrimitiveValue>());
+          split_hash_code, std::vector<docdb::KeyEntryValue>());
       partition->set_partition_key_end(partition_key);
       key_bounds.upper = encoded_doc_key;
     } else {

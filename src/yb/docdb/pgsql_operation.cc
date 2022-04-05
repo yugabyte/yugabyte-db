@@ -112,7 +112,7 @@ CHECKED_STATUS CreateProjection(
 void AddIntent(const std::string& encoded_key, WaitPolicy wait_policy, KeyValueWriteBatchPB *out) {
   auto pair = out->mutable_read_pairs()->Add();
   pair->set_key(encoded_key);
-  pair->set_value(std::string(1, ValueTypeAsChar::kNullLow));
+  pair->set_value(std::string(1, ValueEntryTypeAsChar::kNullLow));
   // Since we don't batch read RPCs that lock rows, we can get away with using a singular
   // wait_policy field. Once we start batching read requests (issue #2495), we will need a repeated
   // wait policies field.
@@ -232,7 +232,7 @@ class DocKeyColumnPathBuilder {
 
   RefCntPrefix Build(ColumnIdRep column_id) {
     buffer_.Clear();
-    buffer_.AppendValueType(ValueType::kColumnId);
+    buffer_.AppendKeyEntryType(KeyEntryType::kColumnId);
     buffer_.AppendColumnId(ColumnId(column_id));
     RefCntBuffer path(doc_key_.size() + buffer_.size());
     doc_key_.CopyTo(path.data());
@@ -297,7 +297,7 @@ Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(
   const HybridTime oldest_past_min_ht_liveness =
       VERIFY_RESULT(FindOldestOverwrittenTimestamp(
           iter.get(),
-          SubDocKey(*doc_key_, PrimitiveValue::kLivenessColumn),
+          SubDocKey(*doc_key_, KeyEntryValue::kLivenessColumn),
           requested_read_time.read));
   oldest_past_min_ht.MakeAtMost(oldest_past_min_ht_liveness);
   if (!oldest_past_min_ht.is_valid()) {
@@ -439,8 +439,8 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
   }
 
   RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
-      DocPath(encoded_doc_key_.as_slice(), PrimitiveValue::kLivenessColumn),
-      ValueControlFields(), ValueRef(ValueType::kNullLow), data.read_time, data.deadline,
+      DocPath(encoded_doc_key_.as_slice(), KeyEntryValue::kLivenessColumn),
+      ValueControlFields(), ValueRef(ValueEntryType::kNullLow), data.read_time, data.deadline,
       request_.stmt_id()));
 
   for (const auto& column_value : request_.column_values()) {
@@ -460,7 +460,7 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
     RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, expr_result.Writer()));
 
     // Inserting into specified column.
-    DocPath sub_path(encoded_doc_key_.as_slice(), PrimitiveValue(column_id));
+    DocPath sub_path(encoded_doc_key_.as_slice(), KeyEntryValue::MakeColumnId(column_id));
     RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
         sub_path, ValueRef(expr_result.Value(), column.sorting_type()),
         data.read_time, data.deadline, request_.stmt_id()));
@@ -536,7 +536,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
       }
 
       // Inserting into specified column.
-      DocPath sub_path(encoded_doc_key_.as_slice(), PrimitiveValue(column_id));
+      DocPath sub_path(encoded_doc_key_.as_slice(), KeyEntryValue::MakeColumnId(column_id));
       RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
           sub_path, ValueRef(expr_result.Value(), column.sorting_type()), data.read_time,
           data.deadline, request_.stmt_id()));
@@ -573,7 +573,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
         RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, expr_result.Writer()));
 
         // Inserting into specified column.
-        DocPath sub_path(encoded_doc_key_.as_slice(), PrimitiveValue(column_id));
+        DocPath sub_path(encoded_doc_key_.as_slice(), KeyEntryValue::MakeColumnId(column_id));
         RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
             sub_path, ValueRef(expr_result.Value(), column.sorting_type()), data.read_time,
             data.deadline, request_.stmt_id()));
@@ -678,9 +678,9 @@ Status PgsqlWriteOperation::PopulateResultSet(const QLTableRow& table_row) {
         // Strip cotable ID / colocation ID from the serialized DocKey before returning it
         // as ybctid.
         Slice tuple_id = encoded_doc_key_.as_slice();
-        if (tuple_id.starts_with(ValueTypeAsChar::kTableId)) {
+        if (tuple_id.starts_with(KeyEntryTypeAsChar::kTableId)) {
           tuple_id.remove_prefix(1 + kUuidSize);
-        } else if (tuple_id.starts_with(ValueTypeAsChar::kColocationId)) {
+        } else if (tuple_id.starts_with(KeyEntryTypeAsChar::kColocationId)) {
           tuple_id.remove_prefix(1 + sizeof(ColocationId));
         }
         value.Writer().NewValue().set_binary_value(tuple_id.data(), tuple_id.size());
@@ -697,6 +697,10 @@ Status PgsqlWriteOperation::PopulateResultSet(const QLTableRow& table_row) {
 Status PgsqlWriteOperation::GetDocPaths(GetDocPathsMode mode,
                                         DocPathsToLock *paths,
                                         IsolationLevel *level) const {
+  if (!encoded_doc_key_) {
+    return Status::OK();
+  }
+
   // When this write operation requires a read, it requires a read snapshot so paths will be locked
   // in snapshot isolation for consistency. Otherwise, pure writes will happen in serializable
   // isolation so that they will serialize but do not conflict with one another.
@@ -708,15 +712,12 @@ Status PgsqlWriteOperation::GetDocPaths(GetDocPathsMode mode,
 
   switch (mode) {
     case GetDocPathsMode::kLock: {
-      // Weak intent is required to lock the row and prevent it from being removed.
-      // For this purpose path for row's SystemColumnIds::kLivenessColumn column is returned.
-      // The caller code will create strong intent for returned path (raw's column doc key)
-      // and weak intents for all its prefixes (including row's doc key).
-      if (!encoded_doc_key_) {
-        return Status::OK();
-      }
       if (request_.stmt_type() == PgsqlWriteRequestPB::PGSQL_UPDATE) {
-        // In case of UPDATE some columns may have expressions instead of exact value.
+        // In case of UPDATE row need to be protected from removing. Weak intent is enough for
+        // this purpose. To achieve this the path for row's SystemColumnIds::kLivenessColumn column
+        // is returned. The caller code will create strong intent for returned path
+        // (row's column doc key) and weak intents for all its prefixes (including row's doc key).
+        // Note: UPDATE operation may have expressions instead of exact value.
         // These expressions may read column value.
         // Potentially expression for updating column v1 may read value of column v2.
         //
@@ -726,15 +727,19 @@ Status PgsqlWriteOperation::GetDocPaths(GetDocPathsMode mode,
         // Strong intent for the whole row is required in this case as it may be too expensive to
         // determine what exact columns are read by the expression.
 
+        bool has_expression = false;
         for (const auto& column_value : request_.column_new_values()) {
           if (!column_value.expr().has_value()) {
-            paths->push_back(encoded_doc_key_);
-            return Status::OK();
+            has_expression = true;
+            break;
           }
         }
+        if (!has_expression) {
+          DocKeyColumnPathBuilder builder(encoded_doc_key_);
+          paths->push_back(builder.Build(to_underlying(SystemColumnIds::kLivenessColumn)));
+          return Status::OK();
+        }
       }
-      DocKeyColumnPathBuilder builder(encoded_doc_key_);
-      paths->push_back(builder.Build(to_underlying(SystemColumnIds::kLivenessColumn)));
       break;
     }
     case GetDocPathsMode::kIntents: {
@@ -751,12 +756,13 @@ Status PgsqlWriteOperation::GetDocPaths(GetDocPathsMode mode,
         for (const auto& column_value : *column_values) {
           paths->push_back(builder.Build(column_value.column_id()));
         }
-      } else if (encoded_doc_key_) {
-        paths->push_back(encoded_doc_key_);
+        return Status::OK();
       }
       break;
     }
   }
+  // Add row's doc key. Caller code will create strong intent for the whole row in this case.
+  paths->push_back(encoded_doc_key_);
   return Status::OK();
 }
 
@@ -1007,7 +1013,11 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
       if (!VERIFY_RESULT(table_iter_->SeekTuple(tuple_id->binary_value()))) {
         DocKey doc_key;
         RETURN_NOT_OK(doc_key.DecodeFrom(tuple_id->binary_value()));
-        return STATUS_FORMAT(Corruption, "ybctid $0 not found in indexed table", doc_key);
+        return STATUS_FORMAT(
+            Corruption,
+            "ybctid $0 not found in indexed table. index table id is $1",
+            doc_key,
+            request_.index_request().table_id());
       }
       row.Clear();
       RETURN_NOT_OK(table_iter_->NextRow(projection, &row));

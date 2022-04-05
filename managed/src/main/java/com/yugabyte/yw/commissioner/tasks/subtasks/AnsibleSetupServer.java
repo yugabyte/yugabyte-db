@@ -51,6 +51,9 @@ public class AnsibleSetupServer extends NodeTaskBase {
     public boolean isSystemdUpgrade = false;
     // To use custom image flow if it is a VM upgrade with custom images.
     public VmUpgradeTaskType vmUpgradeTaskType = VmUpgradeTaskType.None;
+
+    // In case a node doesn't have custom AMI, ignore the value of USE_CUSTOM_IMAGE config.
+    public boolean ignoreUseCustomImageConfig;
   }
 
   @Override

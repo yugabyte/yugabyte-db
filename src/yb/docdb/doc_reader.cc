@@ -61,7 +61,7 @@ Result<boost::optional<SubDocument>> TEST_GetSubDocument(
     const TransactionOperationContext& txn_op_context,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
-    const std::vector<PrimitiveValue>* projection) {
+    const std::vector<KeyEntryValue>* projection) {
   auto iter = CreateIntentAwareIterator(
       doc_db, BloomFilterMode::USE_BLOOM_FILTER, sub_doc_key, query_id,
       txn_op_context, deadline, read_time);
@@ -90,7 +90,7 @@ void DocDBTableReader::SetTableTtl(const Schema& table_schema) {
 }
 
 Status DocDBTableReader::UpdateTableTombstoneTime(const Slice& root_doc_key) {
-  if (root_doc_key[0] == ValueTypeAsChar::kColocationId) {
+  if (root_doc_key[0] == KeyEntryTypeAsChar::kColocationId) {
     // Update table_tombstone_time based on what is written to RocksDB if its not already set.
     // Otherwise, just accept its value.
     // TODO -- this is a bit of a hack to allow DocRowwiseIterator to pass along the table tombstone
@@ -126,7 +126,7 @@ CHECKED_STATUS DocDBTableReader::InitForKey(const Slice& sub_doc_key) {
 }
 
 Result<bool> DocDBTableReader::Get(
-    const Slice& root_doc_key, const vector<PrimitiveValue>* projection, SubDocument* result) {
+    const Slice& root_doc_key, const vector<KeyEntryValue>* projection, SubDocument* result) {
   RETURN_NOT_OK(InitForKey(root_doc_key));
   // Seed key_bytes with the subdocument key. For each subkey in the projection, build subdocument
   // and reuse key_bytes while appending the subkey.
@@ -137,7 +137,7 @@ Result<bool> DocDBTableReader::Get(
   if (projection != nullptr) {
     bool doc_found = false;
     const size_t subdocument_key_size = key_bytes.size();
-    for (const PrimitiveValue& subkey : *projection) {
+    for (const auto& subkey : *projection) {
       // Append subkey to subdocument key. Reserve extra kMaxBytesPerEncodedHybridTime + 1 bytes in
       // key_bytes to avoid the internal buffer from getting reallocated and moved by SeekForward()
       // appending the hybrid time, thereby invalidating the buffer pointer saved by prefix_scope.
@@ -149,8 +149,8 @@ Result<bool> DocDBTableReader::Get(
       auto reader = VERIFY_RESULT(subdoc_reader_builder_.Build(key_bytes));
       RETURN_NOT_OK(reader->Get(&descendant));
       doc_found = doc_found || (
-          descendant.value_type() != ValueType::kInvalid
-          && descendant.value_type() != ValueType::kTombstone);
+          descendant.value_type() != ValueEntryType::kInvalid
+          && descendant.value_type() != ValueEntryType::kTombstone);
       result->SetChild(subkey, std::move(descendant));
 
       // Restore subdocument key by truncating the appended subkey.
@@ -174,8 +174,8 @@ Result<bool> DocDBTableReader::Get(
   iter_->Seek(key_bytes);
   auto reader = VERIFY_RESULT(subdoc_reader_builder_.Build(key_bytes));
   RETURN_NOT_OK(reader->Get(result));
-  return result->value_type() != ValueType::kInvalid
-      && result->value_type() != ValueType::kTombstone;
+  return result->value_type() != ValueEntryType::kInvalid
+      && result->value_type() != ValueEntryType::kTombstone;
 }
 
 }  // namespace docdb

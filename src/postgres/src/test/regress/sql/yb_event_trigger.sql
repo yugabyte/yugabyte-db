@@ -68,3 +68,15 @@ INSERT INTO test values (3,4);
 SELECT * FROM test;
 
 DROP TABLE test;
+
+-- Verify that yb_db_admin role can use event triggers.
+ALTER EVENT TRIGGER foo OWNER TO yb_db_admin;
+SET SESSION AUTHORIZATION yb_db_admin;
+CREATE EVENT TRIGGER admin_foo ON ddl_command_start EXECUTE PROCEDURE test_event_trigger_foo();
+CREATE EVENT TRIGGER admin_bar ON ddl_command_end EXECUTE PROCEDURE test_event_trigger_bar();
+ALTER EVENT TRIGGER admin_foo DISABLE;
+ALTER EVENT TRIGGER admin_foo ENABLE REPLICA;
+ALTER EVENT TRIGGER admin_foo ENABLE ALWAYS;
+ALTER EVENT TRIGGER admin_foo RENAME TO admin_foo_new;
+DROP EVENT TRIGGER admin_foo_new;
+

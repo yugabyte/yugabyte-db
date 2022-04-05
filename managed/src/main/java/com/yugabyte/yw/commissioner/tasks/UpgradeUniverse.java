@@ -681,11 +681,21 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
             .setSubTaskGroupType(subGroupType);
       }
       // Conditional Provisioning
-      createSetupServerTasks(nodeList, true /* isSystemdUpgrade */, VmUpgradeTaskType.None)
+      createSetupServerTasks(
+              nodeList,
+              true /* isSystemdUpgrade */,
+              VmUpgradeTaskType.None,
+              false /*ignoreUseCustomImageConfig*/)
           .setSubTaskGroupType(SubTaskGroupType.Provisioning);
       // Conditional Configuring
       createConfigureServerTasks(
-              nodeList, false, false, false, true /* isSystemdUpgrade */, VmUpgradeTaskType.None)
+              nodeList,
+              false,
+              false,
+              false,
+              true /* isSystemdUpgrade */,
+              VmUpgradeTaskType.None,
+              false /*ignoreUseCustomImageConfig*/)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       subGroupType = SubTaskGroupType.ConfigureUniverse;
 

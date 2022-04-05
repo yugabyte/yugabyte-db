@@ -201,7 +201,7 @@ TAG_FLAG(disable_alter_vs_write_mutual_exclusion, advanced);
 TAG_FLAG(disable_alter_vs_write_mutual_exclusion, runtime);
 
 DEFINE_bool(cleanup_intents_sst_files, true,
-            "Cleanup intents files that are no more relevant to any running transaction.");
+    "Cleanup intents files that are no more relevant to any running transaction.");
 
 DEFINE_int32(ysql_transaction_abort_timeout_ms, 15 * 60 * 1000,  // 15 minutes
              "Max amount of time we can wait for active transactions to abort on a tablet "
@@ -2888,8 +2888,9 @@ Status Tablet::Truncate(TruncateOperation* operation) {
   // We use the kUpdate mode here, because unlike the case of restoring a snapshot to a completely
   // different tablet in an arbitrary Raft group, here there is no possibility of the flushed
   // frontier needing to go backwards.
-  RETURN_NOT_OK(ModifyFlushedFrontier(frontier, rocksdb::FrontierModificationMode::kUpdate,
-                                      FlushFlags::kAllDbs | FlushFlags::kNoScopedOperation));
+  RETURN_NOT_OK(ModifyFlushedFrontier(
+      frontier, rocksdb::FrontierModificationMode::kUpdate,
+      FlushFlags::kAllDbs | FlushFlags::kNoScopedOperation));
 
   LOG_WITH_PREFIX(INFO) << "Created new db for truncated tablet";
   LOG_WITH_PREFIX(INFO) << "Sequence numbers: old=" << sequence_number
@@ -3484,7 +3485,7 @@ Result<std::string> Tablet::GetEncodedMiddleSplitKey() const {
   // to have two child tablets with alive user records after the splitting, but the split
   // by the internal record will lead to a case when one tablet will consist of internal records
   // only and these records will be compacted out at some point making an empty tablet.
-  if (PREDICT_FALSE(docdb::IsInternalRecordKeyType(docdb::DecodeValueType(middle_key[0])))) {
+  if (PREDICT_FALSE(docdb::IsInternalRecordKeyType(docdb::DecodeKeyEntryType(middle_key[0])))) {
     return STATUS_FORMAT(
         IllegalState, "$0: got internal record \"$1\"",
         error_prefix(), Slice(middle_key).ToDebugHexString());

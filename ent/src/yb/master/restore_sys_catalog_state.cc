@@ -572,7 +572,7 @@ class FetchState {
     // end of hashed and range components. It is reasonable to assume then that if the last byte
     // is kGroupEnd then it does not have any subkeys.
     bool no_subkey =
-        key()[key().size() - 1] == docdb::ValueTypeAsChar::kGroupEnd;
+        key()[key().size() - 1] == docdb::KeyEntryTypeAsChar::kGroupEnd;
 
     return no_subkey && is_tombstoned;
   }
@@ -634,12 +634,14 @@ void AddKeyValue(const Slice& key, const Slice& value, docdb::DocWriteBatch* wri
 struct PgCatalogTableData {
   std::array<uint8_t, kUuidSize + 1> prefix;
   const TableName* name;
+  uint32_t pg_table_oid;
 
   CHECKED_STATUS SetTableId(const TableId& table_id) {
     Uuid cotable_id;
     RETURN_NOT_OK(cotable_id.FromHexString(table_id));
-    prefix[0] = docdb::ValueTypeAsChar::kTableId;
+    prefix[0] = docdb::KeyEntryTypeAsChar::kTableId;
     cotable_id.EncodeToComparable(&prefix[1]);
+    pg_table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id));
     return Status::OK();
   }
 };
@@ -655,7 +657,7 @@ Status RestoreSysCatalogState::ProcessPgCatalogRestores(
 
   FetchState restoring_state(restoring_db, ReadHybridTime::SingleTime(restoration_.restore_at));
   FetchState existing_state(existing_db, ReadHybridTime::Max());
-  char tombstone_char = docdb::ValueTypeAsChar::kTombstone;
+  char tombstone_char = docdb::ValueEntryTypeAsChar::kTombstone;
   Slice tombstone(&tombstone_char, 1);
 
   std::vector<PgCatalogTableData> tables(restoration_.system_tables_to_restore.size() + 1);
@@ -697,7 +699,7 @@ Status RestoreSysCatalogState::ProcessPgCatalogRestores(
           RETURN_NOT_OK(sub_doc_key.FullyDecodeFrom(
               restoring_state.key(), docdb::HybridTimeRequired::kFalse));
           SCHECK_EQ(sub_doc_key.subkeys().size(), 1U, Corruption, "Wrong number of subdoc keys");
-          if (sub_doc_key.subkeys()[0].value_type() == docdb::ValueType::kColumnId) {
+          if (sub_doc_key.subkeys()[0].type() == docdb::KeyEntryType::kColumnId) {
             auto column_id = sub_doc_key.subkeys()[0].GetColumnId();
             const ColumnSchema& column = VERIFY_RESULT(pg_yb_catalog_version_schema.column_by_id(
                 column_id));
@@ -737,7 +739,18 @@ Status RestoreSysCatalogState::ProcessPgCatalogRestores(
       RETURN_NOT_OK(existing_state.Next());
     }
 
-    if (num_updates + num_inserts + num_deletes != 0 || VLOG_IS_ON(3)) {
+    size_t total_changes = num_updates + num_inserts + num_deletes;
+    if (table.pg_table_oid == kPgSequencesTableOid && total_changes != 0) {
+      LOG(INFO) << "PITR: Pg sequences were updated since the Restore time"
+                << ", updates: " << num_updates
+                << ", inserts: " << num_inserts
+                << ", deletes: " << num_deletes;
+      return STATUS(
+          NotSupported,
+          "Unable to restore as Pg sequences were updated since the Restore time.");
+    }
+
+    if (total_changes != 0 || VLOG_IS_ON(3)) {
       LOG(INFO) << "PITR: Pg system table: " << AsString(table.name) << ", updates: " << num_updates
                 << ", inserts: " << num_inserts << ", deletes: " << num_deletes;
     }

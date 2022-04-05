@@ -21,7 +21,7 @@ import org.apache.commons.lang3.StringUtils;
 public abstract class AlertChannelBase implements AlertChannelInterface {
 
   @VisibleForTesting
-  static final String DEFAULT_ALERT_NOTIFICATION_TITLE = "Yugabyte Platform Alert - <%s>";
+  static final String DEFAULT_ALERT_NOTIFICATION_TITLE = "YugabyteDB Anywhere Alert - <%s>";
 
   @VisibleForTesting
   static final String DEFAULT_ALERT_NOTIFICATION_TEXT_TEMPLATE =

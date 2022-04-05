@@ -116,7 +116,7 @@ class RowPacker {
  public:
   RowPacker(uint32_t version, std::reference_wrapper<const SchemaPacking> packing);
 
-  CHECKED_STATUS AddValue(ColumnId column, const QLValuePB& value, SortingType sorting_type);
+  CHECKED_STATUS AddValue(ColumnId column, const QLValuePB& value);
 
   Result<const ValueBuffer&> Complete();
 
