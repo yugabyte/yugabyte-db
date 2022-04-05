@@ -286,7 +286,7 @@ $ helm repo update
 Validate that you have the updated chart version.
 
 ```sh
-$ helm search repo yugabytedb/yugabyte
+$ helm search repo yugabytedb/yugabyte --version {{<yb-version version="preview" format="short">}}
 ```
 
 ```output

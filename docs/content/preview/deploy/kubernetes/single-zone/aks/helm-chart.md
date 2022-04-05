@@ -243,7 +243,7 @@ Hang tight while we grab the latest from your chart repositories...
 ```
 
 ```sh
-$ helm search repo yugabytedb/yugabyte
+$ helm search repo yugabytedb/yugabyte --version {{<yb-version version="preview" format="short">}}
 ```
 
 ```output

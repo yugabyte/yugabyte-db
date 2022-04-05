@@ -24,7 +24,7 @@ Your free cluster includes the following:
 - An [edge release](../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) of YugabyteDB, which provides early access to new features.
 - Available in all [regions](../../release-notes#cloud-provider-regions).
 
-Share your feedback, questions, and suggestions with other users on the [YugabyteDB Community Slack](https://www.yugabyte.com/slack).
+Share your feedback, questions, and suggestions with other users on the [YugabyteDB Community Slack]({{<slack-invite>}}).
 
 ## Creating a free cluster
 

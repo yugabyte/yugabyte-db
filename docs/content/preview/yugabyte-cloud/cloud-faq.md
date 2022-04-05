@@ -117,7 +117,7 @@ To test locally, [download](https://download.yugabyte.com) and install YugabyteD
 
 Enterprise Support is included in the base price for standard clusters. Refer to the [Yugabyte Cloud Support Services Terms and Conditions](https://www.yugabyte.com/yugabyte-cloud-support-services-terms-and-conditions/).
 
-Free and standard cluster customers can also use the [YugabyteDB Slack community](https://www.yugabyte.com/slack).
+Free and standard cluster customers can also use the [YugabyteDB Slack community]({{<slack-invite>}}).
 
 ### Where can I find the support policy and Service Level Agreement (SLA) for Yugabyte Cloud?
 

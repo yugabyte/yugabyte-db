@@ -104,7 +104,7 @@ You should pick YCQL over YSQL if your application:
 - Needs TTL-driven automatic data expiration.
 - Needs to integrate with stream processors, such as Apache Spark and KSQL.
 
-If you have a specific use case in mind, share it in our [Slack community](https://www.yugabyte.com/slack) and the community can help you decide the best approach.
+If you have a specific use case in mind, share it in our [Slack community]({{<slack-invite>}}) and the community can help you decide the best approach.
 
 ## How does YugabyteDB's common document store work?
 
@@ -263,7 +263,7 @@ Some features are marked Beta in every release. Following are the points to cons
 
 - Recommended only for non-production use.
 
-Please do try our beta features and give feedback on them on our [Slack community](https://www.yugabyte.com/slack) or by filing a [GitHub issue](https://github.com/yugabyte/yugabyte-db/issues).
+Please do try our beta features and give feedback on them on our [Slack community]({{<slack-invite>}}) or by filing a [GitHub issue](https://github.com/yugabyte/yugabyte-db/issues).
 
 ## Any performance benchmarks available?
 

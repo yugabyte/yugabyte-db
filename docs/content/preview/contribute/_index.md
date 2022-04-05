@@ -57,6 +57,6 @@ Issues are tagged with other useful labels as described below.
 
 {{< note title="Note" >}}
 
-If you want to work on a feature and are not sure which feature to pick, or how to proceed with the one you picked - do not hesitate to ask for help in our [Slack chat](https://www.yugabyte.com/slack) or our [community forum](https://forum.yugabyte.com/).
+If you want to work on a feature and are not sure which feature to pick, or how to proceed with the one you picked - do not hesitate to ask for help in our [Slack chat]({{<slack-invite>}}) or our [community forum](https://forum.yugabyte.com/).
 
 {{< /note >}}
