@@ -35,6 +35,10 @@
     }
   }
 
+  .backup-status-filter {
+    width: 250px;
+  }
+
   .backup-list-table {
     background: $YB_BG_WHITE_3;
     padding: 30px 22px;
@@ -49,25 +53,35 @@
       }
     }
 
+    .selected-row {
+      background: #f6f6f6;
+    }
+
     .backup-cancel {
-      height: 40px;
+      height: 30px;
+      padding: 6px 10px;
+      font-size: 12px;
+      line-height: 15px;
     }
   }
 
   #backup-actions-dropdown {
-    width: 50px !important;
+    width: 38px;
+    height: 32px;
+    overflow: none;
+    padding: 0;
     border: 0;
     margin-left: 10px !important;
     font-weight: 500;
     z-index: 0 !important;
   }
 
-  .action-danger>a {
+  .action-danger > a {
     color: $YB_ERROR_ICON_COLOR !important;
   }
 
   .backup-list-table {
-    .react-bs-table .table-bordered>tbody>tr>td {
+    .react-bs-table .table-bordered > tbody > tr > td {
       vertical-align: middle;
       height: 45px;
       padding: 0 !important;

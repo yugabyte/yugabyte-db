@@ -7,11 +7,12 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import moment from 'moment';
-import { useState } from 'react';
 import { useSelector } from 'react-redux';
-import { Backup_States } from '..';
+import { keyBy, mapValues } from 'lodash';
+import { IUniverse } from './IBackup';
+import { Backup_States } from '../common/IBackup';
 import './BackupUtils.scss';
 
 /**
@@ -126,3 +127,6 @@ export const CALDENDAR_ICON = () => ({
     marginRight: 8
   }
 });
+
+export const convertArrayToMap = (arr: IUniverse[], keyStr: string, valueStr: string) =>
+  mapValues(keyBy(arr, keyStr), valueStr);

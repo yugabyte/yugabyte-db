@@ -20,6 +20,8 @@
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 
+#include "yb/common/value.messages.h"
+
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/intent.h"
@@ -59,31 +61,56 @@ using yb::util::DecodeDoubleFromKey;
 // default clause so that we can ensure that we're handling all possible primitive value types
 // at compile time.
 #define IGNORE_NON_PRIMITIVE_VALUE_TYPES_IN_SWITCH \
-    case ValueType::kArray: FALLTHROUGH_INTENDED; \
-    case ValueType::kBitSet: FALLTHROUGH_INTENDED; \
-    case ValueType::kExternalIntents: FALLTHROUGH_INTENDED; \
-    case ValueType::kGreaterThanIntentType: FALLTHROUGH_INTENDED; \
-    case ValueType::kGroupEnd: FALLTHROUGH_INTENDED; \
-    case ValueType::kGroupEndDescending: FALLTHROUGH_INTENDED; \
-    case ValueType::kInvalid: FALLTHROUGH_INTENDED; \
-    case ValueType::kJsonb: FALLTHROUGH_INTENDED; \
-    case ValueType::kMergeFlags: FALLTHROUGH_INTENDED; \
-    case ValueType::kObject: FALLTHROUGH_INTENDED; \
-    case ValueType::kObsoleteIntentPrefix: FALLTHROUGH_INTENDED; \
-    case ValueType::kRedisList: FALLTHROUGH_INTENDED;            \
-    case ValueType::kRedisSet: FALLTHROUGH_INTENDED; \
-    case ValueType::kRedisSortedSet: FALLTHROUGH_INTENDED;  \
-    case ValueType::kRedisTS: FALLTHROUGH_INTENDED; \
-    case ValueType::kRowLock: FALLTHROUGH_INTENDED; \
-    case ValueType::kTombstone: FALLTHROUGH_INTENDED; \
-    case ValueType::kTtl: FALLTHROUGH_INTENDED; \
-    case ValueType::kUserTimestamp: \
+    case ValueEntryType::kArray: FALLTHROUGH_INTENDED; \
+    case ValueEntryType::kInvalid: FALLTHROUGH_INTENDED; \
+    case ValueEntryType::kJsonb: FALLTHROUGH_INTENDED; \
+    case ValueEntryType::kObject: FALLTHROUGH_INTENDED; \
+    case ValueEntryType::kRedisList: FALLTHROUGH_INTENDED; \
+    case ValueEntryType::kRedisSet: FALLTHROUGH_INTENDED; \
+    case ValueEntryType::kRedisSortedSet: FALLTHROUGH_INTENDED;  \
+    case ValueEntryType::kRedisTS: FALLTHROUGH_INTENDED; \
+    case ValueEntryType::kTombstone: \
   break
+
+#define SELECT_VALUE_TYPE(name, sort_order) SelectValueType( \
+    KeyEntryType::BOOST_PP_CAT(k, name), \
+    KeyEntryType::BOOST_PP_CAT(BOOST_PP_CAT(k, name), Descending), \
+    sort_order)
+
+#define POD_FACTORY_IMPL(cls, ucase, lcase) \
+  cls cls::ucase(lcase v, SortOrder sort_order) { \
+    cls result; \
+    result.type_ = SELECT_VALUE_TYPE(ucase, sort_order); \
+    result.BOOST_PP_CAT(lcase, _val_) = v; \
+    return result; \
+  }
+
+#define POD_FACTORY(ucase, lcase) \
+  PrimitiveValue PrimitiveValue::ucase(lcase v) { \
+    PrimitiveValue result; \
+    result.type_ = PrimitiveValue::Type::BOOST_PP_CAT(k, ucase); \
+    result.BOOST_PP_CAT(lcase, _val_) = v; \
+    return result; \
+  } \
+  POD_FACTORY_IMPL(KeyEntryValue, ucase, lcase) \
 
 namespace yb {
 namespace docdb {
 
 namespace {
+
+bool IsTrue(ValueEntryType type) {
+  return type == ValueEntryType::kTrue;
+}
+
+bool IsTrue(KeyEntryType type) {
+  return type == KeyEntryType::kTrue || type == KeyEntryType::kTrueDescending;
+}
+
+template <class ValueType>
+ValueType SelectValueType(ValueType ascending, ValueType descending, SortOrder sort_order) {
+  return sort_order == SortOrder::kAscending ? ascending : descending;
+}
 
 template <class T>
 string RealToString(T val) {
@@ -100,42 +127,95 @@ string RealToString(T val) {
   return s;
 }
 
-ValueType VirtualValueToValueType(QLVirtualValuePB value) {
+ValueEntryType VirtualValueToValueEntryType(QLVirtualValuePB value) {
   switch (value) {
-    case QLVirtualValuePB::LIMIT_MAX:
-      return ValueType::kHighest;
-    case QLVirtualValuePB::LIMIT_MIN:
-      return ValueType::kLowest;
-    case QLVirtualValuePB::COUNTER:
-      return ValueType::kCounter;
-    case QLVirtualValuePB::SS_FORWARD:
-      return ValueType::kSSForward;
+    case QLVirtualValuePB::LIMIT_MAX: FALLTHROUGH_INTENDED;
+    case QLVirtualValuePB::LIMIT_MIN: FALLTHROUGH_INTENDED;
+    case QLVirtualValuePB::COUNTER: FALLTHROUGH_INTENDED;
+    case QLVirtualValuePB::SS_FORWARD: FALLTHROUGH_INTENDED;
     case QLVirtualValuePB::SS_REVERSE:
-      return ValueType::kSSReverse;
+      break;
     case QLVirtualValuePB::TOMBSTONE:
-      return ValueType::kTombstone;
+      return ValueEntryType::kTombstone;
     case QLVirtualValuePB::NULL_LOW:
-      return ValueType::kNullLow;
+      return ValueEntryType::kNullLow;
     case QLVirtualValuePB::ARRAY:
-      return ValueType::kArray;
+      return ValueEntryType::kArray;
   }
   FATAL_INVALID_ENUM_VALUE(QLVirtualValuePB, value);
 }
 
+KeyEntryType VirtualValueToKeyEntryType(QLVirtualValuePB value) {
+  switch (value) {
+    case QLVirtualValuePB::LIMIT_MAX:
+      return KeyEntryType::kHighest;
+    case QLVirtualValuePB::LIMIT_MIN:
+      return KeyEntryType::kLowest;
+    case QLVirtualValuePB::COUNTER:
+      return KeyEntryType::kCounter;
+    case QLVirtualValuePB::SS_FORWARD:
+      return KeyEntryType::kSSForward;
+    case QLVirtualValuePB::SS_REVERSE:
+      return KeyEntryType::kSSReverse;
+    case QLVirtualValuePB::NULL_LOW:
+      return KeyEntryType::kNullLow;
+    case QLVirtualValuePB::ARRAY:
+    case QLVirtualValuePB::TOMBSTONE:
+      break;
+  }
+  FATAL_INVALID_ENUM_VALUE(QLVirtualValuePB, value);
+}
+
+std::string VarIntToString(const std::string& str_val) {
+  util::VarInt varint;
+  auto status = varint.DecodeFromComparable(str_val);
+  if (!status.ok()) {
+    LOG(ERROR) << "Unable to decode varint: " << status.message().ToString();
+    return "";
+  }
+  return varint.ToString();
+}
+
+std::string DecimalToString(const std::string& str_val) {
+  util::Decimal decimal;
+  auto status = decimal.DecodeFromComparable(str_val);
+  if (!status.ok()) {
+    LOG(ERROR) << "Unable to decode decimal";
+    return "";
+  }
+  return decimal.ToString();
+}
+
+std::string FrozenToString(const FrozenContainer& frozen) {
+  std::stringstream ss;
+  bool first = true;
+  ss << "<";
+  for (const auto& pv : frozen) {
+    if (first) {
+      first = false;
+    } else {
+      ss << ",";
+    }
+    ss << pv.ToString();
+  }
+  ss << ">";
+  return ss.str();
+}
+
 } // anonymous namespace
 
-const PrimitiveValue PrimitiveValue::kInvalid = PrimitiveValue(ValueType::kInvalid);
-const PrimitiveValue PrimitiveValue::kTombstone = PrimitiveValue(ValueType::kTombstone);
-const PrimitiveValue PrimitiveValue::kObject = PrimitiveValue(ValueType::kObject);
-const PrimitiveValue PrimitiveValue::kLivenessColumn = PrimitiveValue::SystemColumnId(
+const PrimitiveValue PrimitiveValue::kInvalid = PrimitiveValue(ValueEntryType::kInvalid);
+const PrimitiveValue PrimitiveValue::kTombstone = PrimitiveValue(ValueEntryType::kTombstone);
+const PrimitiveValue PrimitiveValue::kObject = PrimitiveValue(ValueEntryType::kObject);
+const KeyEntryValue KeyEntryValue::kLivenessColumn = KeyEntryValue::SystemColumnId(
     SystemColumnIds::kLivenessColumn);
 
-string PrimitiveValue::ToString(AutoDecodeKeys auto_decode_keys) const {
+std::string PrimitiveValue::ToString() const {
   switch (type_) {
-    case ValueType::kNullHigh: FALLTHROUGH_INTENDED;
-    case ValueType::kNullLow:
+    case ValueEntryType::kNullHigh: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kNullLow:
       return "null";
-    case ValueType::kGinNull:
+    case ValueEntryType::kGinNull:
       switch (gin_null_val_) {
         // case 0, gin:norm-key, should not exist since the actual data would be used instead.
         case 1:
@@ -148,343 +228,272 @@ string PrimitiveValue::ToString(AutoDecodeKeys auto_decode_keys) const {
         default:
           LOG(FATAL) << "Unexpected gin null category: " << gin_null_val_;
       }
-    case ValueType::kCounter:
-      return "counter";
-    case ValueType::kSSForward:
-      return "SSforward";
-    case ValueType::kSSReverse:
-      return "SSreverse";
-    case ValueType::kFalse: FALLTHROUGH_INTENDED;
-    case ValueType::kFalseDescending:
+    case ValueEntryType::kFalse:
       return "false";
-    case ValueType::kTrue: FALLTHROUGH_INTENDED;
-    case ValueType::kTrueDescending:
+    case ValueEntryType::kTrue:
       return "true";
-    case ValueType::kInvalid:
+    case ValueEntryType::kInvalid:
       return "invalid";
-    case ValueType::kCollStringDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kCollString: FALLTHROUGH_INTENDED;
-    case ValueType::kStringDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kString:
-      if (auto_decode_keys) {
-        // This is useful when logging write batches for secondary indexes.
-        SubDocKey sub_doc_key;
-        Status decode_status = sub_doc_key.FullyDecodeFrom(str_val_, HybridTimeRequired::kFalse);
-        if (decode_status.ok()) {
-          // This gives us "EncodedSubDocKey(...)".
-          return Format("Encoded$0", sub_doc_key);
-        }
-      }
+    case ValueEntryType::kCollString: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kString:
       return FormatBytesAsStr(str_val_);
-    case ValueType::kInt32Descending: FALLTHROUGH_INTENDED;
-    case ValueType::kInt32:
+    case ValueEntryType::kInt32:
       return std::to_string(int32_val_);
-    case ValueType::kUInt32:
-    case ValueType::kUInt32Descending:
+    case ValueEntryType::kUInt32:
       return std::to_string(uint32_val_);
-    case ValueType::kUInt64:  FALLTHROUGH_INTENDED;
-    case ValueType::kUInt64Descending:
+    case ValueEntryType::kUInt64:
       return std::to_string(uint64_val_);
-    case ValueType::kInt64Descending: FALLTHROUGH_INTENDED;
-    case ValueType::kInt64:
+    case ValueEntryType::kInt64:
       return std::to_string(int64_val_);
-    case ValueType::kFloatDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kFloat:
+    case ValueEntryType::kFloat:
       return RealToString(float_val_);
-    case ValueType::kFrozenDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kFrozen: {
-      std::stringstream ss;
-      bool first = true;
-      ss << "<";
-      for (const auto& pv : *frozen_val_) {
-        if (first) {
-          first = false;
-        } else {
-          ss << ",";
-        }
-        ss << pv.ToString();
-      }
-      ss << ">";
-      return ss.str();
-    }
-    case ValueType::kDoubleDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kDouble:
+    case ValueEntryType::kFrozen:
+      return FrozenToString(*frozen_val_);
+    case ValueEntryType::kDouble:
       return RealToString(double_val_);
-    case ValueType::kDecimalDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kDecimal: {
-      util::Decimal decimal;
-      auto status = decimal.DecodeFromComparable(decimal_val_);
-      if (!status.ok()) {
-        LOG(ERROR) << "Unable to decode decimal";
-        return "";
-      }
-      return decimal.ToString();
-    }
-    case ValueType::kVarIntDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kVarInt: {
-      util::VarInt varint;
-      auto status = varint.DecodeFromComparable(varint_val_);
-      if (!status.ok()) {
-        LOG(ERROR) << "Unable to decode varint: " << status.message().ToString();
-        return "";
-      }
-      return varint.ToString();
-    }
-    case ValueType::kTimestampDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kTimestamp:
+    case ValueEntryType::kDecimal:
+      return DecimalToString(str_val_);
+    case ValueEntryType::kVarInt:
+      return VarIntToString(str_val_);
+    case ValueEntryType::kTimestamp:
       return timestamp_val_.ToString();
-    case ValueType::kInetaddressDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kInetaddress:
+    case ValueEntryType::kInetaddress:
       return inetaddress_val_->ToString();
-    case ValueType::kJsonb:
-      return FormatBytesAsStr(json_val_);
-    case ValueType::kUuidDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kUuid:
+    case ValueEntryType::kJsonb:
+      return FormatBytesAsStr(str_val_);
+    case ValueEntryType::kUuid:
       return uuid_val_.ToString();
-    case ValueType::kArrayIndex:
+    case ValueEntryType::kArrayIndex:
       return Substitute("ArrayIndex($0)", int64_val_);
-    case ValueType::kHybridTime:
-      return hybrid_time_val_.ToString();
-    case ValueType::kUInt16Hash:
-      return Substitute("UInt16Hash($0)", uint16_val_);
-    case ValueType::kColumnId:
-      return Format("ColumnId($0)", column_id_val_);
-    case ValueType::kSystemColumnId:
-      return Format("SystemColumnId($0)", column_id_val_);
-    case ValueType::kObject:
+    case ValueEntryType::kObject:
       return "{}";
-    case ValueType::kRedisSet:
+    case ValueEntryType::kRedisSet:
       return "()";
-    case ValueType::kRedisTS:
+    case ValueEntryType::kRedisTS:
       return "<>";
-    case ValueType::kRedisSortedSet:
+    case ValueEntryType::kRedisSortedSet:
       return "(->)";
-    case ValueType::kTombstone:
+    case ValueEntryType::kTombstone:
       return "DEL";
-    case ValueType::kRedisList: FALLTHROUGH_INTENDED;
-    case ValueType::kArray:
+    case ValueEntryType::kRedisList: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kArray:
       return "[]";
-    case ValueType::kTableId:
+    case ValueEntryType::kTableId:
       return Format("TableId($0)", uuid_val_.ToString());
-    case ValueType::kColocationId:
+    case ValueEntryType::kColocationId:
       return Format("ColocationId($0)", uint32_val_);
-    case ValueType::kTransactionApplyState: FALLTHROUGH_INTENDED;
-    case ValueType::kExternalTransactionId: FALLTHROUGH_INTENDED;
-    case ValueType::kTransactionId:
+    case ValueEntryType::kTransactionId:
       return Substitute("TransactionId($0)", uuid_val_.ToString());
-    case ValueType::kSubTransactionId:
+    case ValueEntryType::kSubTransactionId:
       return Substitute("SubTransactionId($0)", uint32_val_);
-    case ValueType::kWriteId:
+    case ValueEntryType::kWriteId:
       return Format("WriteId($0)", int32_val_);
-    case ValueType::kIntentTypeSet:
-      return Format("Intents($0)", IntentTypeSet(uint16_val_));
-    case ValueType::kObsoleteIntentTypeSet:
-      return Format("ObsoleteIntents($0)", uint16_val_);
-    case ValueType::kObsoleteIntentType:
-      return Format("Intent($0)", uint16_val_);
-    case ValueType::kMergeFlags: FALLTHROUGH_INTENDED;
-    case ValueType::kRowLock: FALLTHROUGH_INTENDED;
-    case ValueType::kBitSet: FALLTHROUGH_INTENDED;
-    case ValueType::kGroupEnd: FALLTHROUGH_INTENDED;
-    case ValueType::kGroupEndDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kTtl: FALLTHROUGH_INTENDED;
-    case ValueType::kUserTimestamp: FALLTHROUGH_INTENDED;
-    case ValueType::kObsoleteIntentPrefix: FALLTHROUGH_INTENDED;
-    case ValueType::kExternalIntents: FALLTHROUGH_INTENDED;
-    case ValueType::kGreaterThanIntentType:
-      break;
-    case ValueType::kLowest:
-      return "-Inf";
-    case ValueType::kHighest:
-      return "+Inf";
-    case ValueType::kMaxByte:
+    case ValueEntryType::kMaxByte:
       return "0xff";
   }
-  FATAL_INVALID_ENUM_VALUE(ValueType, type_);
+  FATAL_INVALID_ENUM_VALUE(ValueEntryType, type_);
 }
 
-void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
-  key_bytes->AppendValueType(type_);
-  switch (type_) {
-    case ValueType::kLowest: return;
-    case ValueType::kHighest: return;
-    case ValueType::kMaxByte: return;
-    case ValueType::kNullHigh: return;
-    case ValueType::kNullLow: return;
-    case ValueType::kCounter: return;
-    case ValueType::kSSForward: return;
-    case ValueType::kSSReverse: return;
-    case ValueType::kFalse: return;
-    case ValueType::kTrue: return;
-    case ValueType::kFalseDescending: return;
-    case ValueType::kTrueDescending: return;
+// Values that contains only KeyEntryType, w/o any additional data.
+#define CASE_EMPTY_KEY_ENTRY_TYPES \
+    case KeyEntryType::kCounter: FALLTHROUGH_INTENDED; \
+    case KeyEntryType::kFalse: FALLTHROUGH_INTENDED; \
+    case KeyEntryType::kFalseDescending: FALLTHROUGH_INTENDED; \
+    case KeyEntryType::kHighest: FALLTHROUGH_INTENDED; \
+    case KeyEntryType::kLowest: FALLTHROUGH_INTENDED; \
+    case KeyEntryType::kNullHigh: FALLTHROUGH_INTENDED; \
+    case KeyEntryType::kNullLow: FALLTHROUGH_INTENDED; \
+    case KeyEntryType::kSSForward: FALLTHROUGH_INTENDED; \
+    case KeyEntryType::kSSReverse: FALLTHROUGH_INTENDED; \
+    case KeyEntryType::kTrue: FALLTHROUGH_INTENDED; \
+    case KeyEntryType::kTrueDescending:
 
-    case ValueType::kCollString: FALLTHROUGH_INTENDED;
-    case ValueType::kString:
+#define IGNORE_SPECIAL_KEY_ENTRY_TYPES \
+    case KeyEntryType::kBitSet: FALLTHROUGH_INTENDED; \
+    case KeyEntryType::kExternalIntents: FALLTHROUGH_INTENDED; \
+    case KeyEntryType::kGreaterThanIntentType: FALLTHROUGH_INTENDED; \
+    case KeyEntryType::kGroupEnd: FALLTHROUGH_INTENDED; \
+    case KeyEntryType::kGroupEndDescending: FALLTHROUGH_INTENDED; \
+    case KeyEntryType::kInvalid: FALLTHROUGH_INTENDED; \
+    case KeyEntryType::kMaxByte: FALLTHROUGH_INTENDED; \
+    case KeyEntryType::kMergeFlags: FALLTHROUGH_INTENDED; \
+    case KeyEntryType::kObsoleteIntentPrefix: FALLTHROUGH_INTENDED; \
+    case KeyEntryType::kRowLock: FALLTHROUGH_INTENDED; \
+    case KeyEntryType::kTtl: FALLTHROUGH_INTENDED; \
+    case KeyEntryType::kUserTimestamp: \
+      break
+
+void KeyEntryValue::AppendToKey(KeyBytes* key_bytes) const {
+  key_bytes->AppendKeyEntryType(type_);
+  switch (type_) {
+    CASE_EMPTY_KEY_ENTRY_TYPES
+      return;
+
+    case KeyEntryType::kCollString: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kString:
       key_bytes->AppendString(str_val_);
       return;
 
-    case ValueType::kCollStringDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kStringDescending:
+    case KeyEntryType::kCollStringDescending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kStringDescending:
       key_bytes->AppendDescendingString(str_val_);
       return;
 
-    case ValueType::kInt64:
+    case KeyEntryType::kInt64:
       key_bytes->AppendInt64(int64_val_);
       return;
 
-    case ValueType::kInt32: FALLTHROUGH_INTENDED;
-    case ValueType::kWriteId:
+    case KeyEntryType::kInt32:
       key_bytes->AppendInt32(int32_val_);
       return;
 
-    case ValueType::kColocationId: FALLTHROUGH_INTENDED;
-    case ValueType::kSubTransactionId: FALLTHROUGH_INTENDED;
-    case ValueType::kUInt32:
+    case KeyEntryType::kColocationId: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kSubTransactionId: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kUInt32:
       key_bytes->AppendUInt32(uint32_val_);
       return;
 
-    case ValueType::kUInt32Descending:
+    case KeyEntryType::kUInt32Descending:
       key_bytes->AppendDescendingUInt32(uint32_val_);
       return;
 
-    case ValueType::kInt32Descending:
+    case KeyEntryType::kInt32Descending:
       key_bytes->AppendDescendingInt32(int32_val_);
       return;
 
-    case ValueType::kInt64Descending:
+    case KeyEntryType::kInt64Descending:
       key_bytes->AppendDescendingInt64(int64_val_);
       return;
 
-    case ValueType::kUInt64:
+    case KeyEntryType::kUInt64:
       key_bytes->AppendUInt64(uint64_val_);
       return;
 
-    case ValueType::kUInt64Descending:
+    case KeyEntryType::kUInt64Descending:
       key_bytes->AppendDescendingUInt64(uint64_val_);
       return;
 
-    case ValueType::kDouble:
+    case KeyEntryType::kDouble:
       key_bytes->AppendDouble(double_val_);
       return;
 
-    case ValueType::kDoubleDescending:
+    case KeyEntryType::kDoubleDescending:
       key_bytes->AppendDescendingDouble(double_val_);
       return;
 
-    case ValueType::kFloat:
+    case KeyEntryType::kFloat:
       key_bytes->AppendFloat(float_val_);
       return;
 
-    case ValueType::kFloatDescending:
+    case KeyEntryType::kFloatDescending:
       key_bytes->AppendDescendingFloat(float_val_);
       return;
 
-    case ValueType::kFrozenDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kFrozen: {
+    case KeyEntryType::kFrozenDescending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kFrozen: {
       for (const auto& pv : *frozen_val_) {
         pv.AppendToKey(key_bytes);
       }
-      if (type_ == ValueType::kFrozenDescending) {
-        key_bytes->AppendValueType(ValueType::kGroupEndDescending);
-      } else {
-        key_bytes->AppendValueType(ValueType::kGroupEnd);
-      }
+      key_bytes->AppendKeyEntryType(type_ == KeyEntryType::kFrozenDescending
+          ? KeyEntryType::kGroupEndDescending : KeyEntryType::kGroupEnd);
       return;
     }
 
-    case ValueType::kDecimal:
-      key_bytes->AppendDecimal(decimal_val_);
+    case KeyEntryType::kDecimal:
+      key_bytes->AppendDecimal(str_val_);
       return;
 
-    case ValueType::kDecimalDescending:
-      key_bytes->AppendDecimalDescending(decimal_val_);
+    case KeyEntryType::kDecimalDescending:
+      key_bytes->AppendDecimalDescending(str_val_);
       return;
 
-    case ValueType::kVarInt:
-      key_bytes->AppendVarInt(varint_val_);
+    case KeyEntryType::kVarInt:
+      key_bytes->AppendVarInt(str_val_);
       return;
 
-    case ValueType::kVarIntDescending:
-      key_bytes->AppendVarIntDescending(varint_val_);
+    case KeyEntryType::kVarIntDescending:
+      key_bytes->AppendVarIntDescending(str_val_);
       return;
 
-    case ValueType::kTimestamp:
+    case KeyEntryType::kTimestamp:
       key_bytes->AppendInt64(timestamp_val_.ToInt64());
       return;
 
-    case ValueType::kTimestampDescending:
+    case KeyEntryType::kTimestampDescending:
       key_bytes->AppendDescendingInt64(timestamp_val_.ToInt64());
       return;
 
-    case ValueType::kInetaddress: {
+    case KeyEntryType::kInetaddress: {
       key_bytes->AppendString(inetaddress_val_->ToBytes());
       return;
     }
 
-    case ValueType::kInetaddressDescending: {
+    case KeyEntryType::kInetaddressDescending: {
       key_bytes->AppendDescendingString(inetaddress_val_->ToBytes());
       return;
     }
 
-    case ValueType::kTransactionApplyState: FALLTHROUGH_INTENDED;
-    case ValueType::kExternalTransactionId: FALLTHROUGH_INTENDED;
-    case ValueType::kTransactionId: FALLTHROUGH_INTENDED;
-    case ValueType::kTableId: FALLTHROUGH_INTENDED;
-    case ValueType::kUuid: {
+    case KeyEntryType::kTransactionApplyState: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kExternalTransactionId: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kTransactionId: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kTableId: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kUuid: {
       std::string bytes;
       uuid_val_.EncodeToComparable(&bytes);
       key_bytes->AppendString(bytes);
       return;
     }
 
-    case ValueType::kUuidDescending: {
+    case KeyEntryType::kUuidDescending: {
       std::string bytes;
       uuid_val_.EncodeToComparable(&bytes);
       key_bytes->AppendDescendingString(bytes);
       return;
     }
 
-    case ValueType::kArrayIndex:
+    case KeyEntryType::kArrayIndex:
       key_bytes->AppendInt64(int64_val_);
       return;
 
-    case ValueType::kHybridTime:
+    case KeyEntryType::kHybridTime:
       hybrid_time_val_.AppendEncodedInDocDbFormat(key_bytes->mutable_data());
       return;
 
-    case ValueType::kUInt16Hash:
+    case KeyEntryType::kUInt16Hash:
       key_bytes->AppendUInt16(uint16_val_);
       return;
 
-    case ValueType::kColumnId: FALLTHROUGH_INTENDED;
-    case ValueType::kSystemColumnId:
+    case KeyEntryType::kColumnId: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kSystemColumnId:
       key_bytes->AppendColumnId(column_id_val_);
       return;
 
-    case ValueType::kObsoleteIntentType:
+    case KeyEntryType::kObsoleteIntentType:
       key_bytes->AppendIntentTypeSet(ObsoleteIntentTypeToSet(uint16_val_));
       return;
 
-    case ValueType::kObsoleteIntentTypeSet:
+    case KeyEntryType::kObsoleteIntentTypeSet:
       key_bytes->AppendIntentTypeSet(ObsoleteIntentTypeSetToNew(uint16_val_));
       return;
 
-    case ValueType::kIntentTypeSet:
+    case KeyEntryType::kIntentTypeSet:
       key_bytes->AppendIntentTypeSet(IntentTypeSet(uint16_val_));
       return;
 
-    case ValueType::kGinNull:
+    case KeyEntryType::kGinNull:
       key_bytes->AppendUint8(gin_null_val_);
       return;
 
-    IGNORE_NON_PRIMITIVE_VALUE_TYPES_IN_SWITCH;
+    IGNORE_SPECIAL_KEY_ENTRY_TYPES;
   }
-  FATAL_INVALID_ENUM_VALUE(ValueType, type_);
+  FATAL_INVALID_ENUM_VALUE(KeyEntryType, type_);
 }
 
+namespace {
+
+template <class Buffer>
 void AddValueType(
-    ValueType ascending, ValueType descending, SortingType sorting_type, std::string* out) {
+    ValueEntryType ascending, ValueEntryType descending, SortingType sorting_type, Buffer* out) {
   if (sorting_type == SortingType::kDescending ||
       sorting_type == SortingType::kDescendingNullsLast) {
     out->push_back(static_cast<char>(descending));
@@ -497,47 +506,48 @@ void AddValueType(
 // Indicates that the stored jsonb is the complete jsonb value and not a partial update to jsonb.
 static constexpr int64_t kCompleteJsonb = 1;
 
-void AppendEncodedValue(const QLValuePB& value, SortingType sorting_type, std::string* out) {
+template <class Buffer>
+void DoAppendEncodedValue(const QLValuePB& value, CheckIsCollate check_is_collate, Buffer* out) {
   switch (value.value_case()) {
     case QLValuePB::kInt8Value:
-      AddValueType(ValueType::kInt32, ValueType::kInt32Descending, sorting_type, out);
+      out->push_back(ValueEntryTypeAsChar::kInt32);
       AppendBigEndianUInt32(value.int8_value(), out);
       return;
     case QLValuePB::kInt16Value:
-      AddValueType(ValueType::kInt32, ValueType::kInt32Descending, sorting_type, out);
+      out->push_back(ValueEntryTypeAsChar::kInt32);
       AppendBigEndianUInt32(value.int16_value(), out);
       return;
     case QLValuePB::kInt32Value:
-      AddValueType(ValueType::kInt32, ValueType::kInt32Descending, sorting_type, out);
+      out->push_back(ValueEntryTypeAsChar::kInt32);
       AppendBigEndianUInt32(value.int32_value(), out);
       return;
     case QLValuePB::kInt64Value:
-      AddValueType(ValueType::kInt64, ValueType::kInt64Descending, sorting_type, out);
+      out->push_back(ValueEntryTypeAsChar::kInt64);
       AppendBigEndianUInt64(value.int64_value(), out);
       return;
     case QLValuePB::kUint32Value:
-      AddValueType(ValueType::kUInt32, ValueType::kUInt32Descending, sorting_type, out);
+      out->push_back(ValueEntryTypeAsChar::kUInt32);
       AppendBigEndianUInt32(value.uint32_value(), out);
       return;
     case QLValuePB::kUint64Value:
-      AddValueType(ValueType::kUInt64, ValueType::kUInt64Descending, sorting_type, out);
+      out->push_back(ValueEntryTypeAsChar::kUInt64);
       AppendBigEndianUInt64(value.uint64_value(), out);
       return;
     case QLValuePB::kFloatValue:
-      AddValueType(ValueType::kFloat, ValueType::kFloatDescending, sorting_type, out);
+      out->push_back(ValueEntryTypeAsChar::kFloat);
       AppendBigEndianUInt32(bit_cast<uint32_t>(util::CanonicalizeFloat(value.float_value())), out);
       return;
     case QLValuePB::kDoubleValue:
-      AddValueType(ValueType::kDouble, ValueType::kDoubleDescending, sorting_type, out);
+      out->push_back(ValueEntryTypeAsChar::kDouble);
       AppendBigEndianUInt64(
           bit_cast<uint64_t>(util::CanonicalizeDouble(value.double_value())), out);
       return;
     case QLValuePB::kDecimalValue:
-      AddValueType(ValueType::kDecimal, ValueType::kDecimalDescending, sorting_type, out);
+      out->push_back(ValueEntryTypeAsChar::kDecimal);
       out->append(value.decimal_value());
       return;
     case QLValuePB::kVarintValue:
-      AddValueType(ValueType::kVarInt, ValueType::kVarIntDescending, sorting_type, out);
+      out->push_back(ValueEntryTypeAsChar::kVarInt);
       out->append(value.varint_value());
       return;
     case QLValuePB::kStringValue: {
@@ -546,77 +556,77 @@ void AppendEncodedValue(const QLValuePB& value, SortingType sorting_type, std::s
       // Redis allows embedded \0 byte but it does not use QLValuePB so will not
       // come here to pick up 'is_collate'. Therefore, if the value is not empty
       // and the first byte is \0, it indicates this is a collation encoded string.
-      if (!val.empty() && val[0] == '\0' && sorting_type != SortingType::kNotSpecified) {
+      if (!val.empty() && val[0] == '\0' && check_is_collate) {
         // An empty collation encoded string is at least 3 bytes.
         CHECK_GE(val.size(), 3);
-        AddValueType(ValueType::kCollString, ValueType::kCollStringDescending, sorting_type, out);
+        out->push_back(ValueEntryTypeAsChar::kCollString);
       } else {
-        AddValueType(ValueType::kString, ValueType::kStringDescending, sorting_type, out);
+        out->push_back(ValueEntryTypeAsChar::kString);
       }
       out->append(val);
       return;
     }
     case QLValuePB::kBinaryValue:
-      AddValueType(ValueType::kString, ValueType::kStringDescending, sorting_type, out);
+      out->push_back(ValueEntryTypeAsChar::kString);
       out->append(value.binary_value());
       return;
     case QLValuePB::kBoolValue:
       if (value.bool_value()) {
-        AddValueType(ValueType::kTrue, ValueType::kTrueDescending, sorting_type, out);
+        out->push_back(ValueEntryTypeAsChar::kTrue);
       } else {
-        AddValueType(ValueType::kFalse, ValueType::kFalseDescending, sorting_type, out);
+        out->push_back(ValueEntryTypeAsChar::kFalse);
       }
       return;
     case QLValuePB::kTimestampValue:
-      AddValueType(ValueType::kTimestamp, ValueType::kTimestampDescending, sorting_type, out);
+      out->push_back(ValueEntryTypeAsChar::kTimestamp);
       AppendBigEndianUInt64(QLValue::timestamp_value(value).ToInt64(), out);
       return;
     case QLValuePB::kDateValue:
-      AddValueType(ValueType::kUInt32, ValueType::kUInt32Descending, sorting_type, out);
+      out->push_back(ValueEntryTypeAsChar::kUInt32);
       AppendBigEndianUInt32(value.date_value(), out);
       return;
     case QLValuePB::kTimeValue:
-      AddValueType(ValueType::kInt64, ValueType::kInt64Descending, sorting_type, out);
+      out->push_back(ValueEntryTypeAsChar::kInt64);
       AppendBigEndianUInt64(value.time_value(), out);
       return;
     case QLValuePB::kInetaddressValue:
-      AddValueType(ValueType::kInetaddress, ValueType::kInetaddressDescending, sorting_type, out);
+      out->push_back(ValueEntryTypeAsChar::kInetaddress);
       QLValue::inetaddress_value(value).AppendToBytes(out);
       return;
     case QLValuePB::kJsonbValue:
-      out->push_back(ValueTypeAsChar::kJsonb);
+      out->push_back(ValueEntryTypeAsChar::kJsonb);
       // Append the jsonb flags.
       AppendBigEndianUInt64(kCompleteJsonb, out);
       // Append the jsonb serialized blob.
       out->append(QLValue::jsonb_value(value));
       return;
     case QLValuePB::kUuidValue:
-      AddValueType(ValueType::kUuid, ValueType::kUuidDescending, sorting_type, out);
+      out->push_back(ValueEntryTypeAsChar::kUuid);
       QLValue::uuid_value(value).AppendEncodedComparable(out);
       return;
     case QLValuePB::kTimeuuidValue:
-      AddValueType(ValueType::kUuid, ValueType::kUuidDescending, sorting_type, out);
+      out->push_back(ValueEntryTypeAsChar::kUuid);
       QLValue::timeuuid_value(value).AppendEncodedComparable(out);
       return;
     case QLValuePB::kFrozenValue: {
       const QLSeqValuePB& frozen = value.frozen_value();
-      AddValueType(ValueType::kFrozen, ValueType::kFrozenDescending, sorting_type, out);
-      auto ascending = SortOrderFromColumnSchemaSortingType(sorting_type) == SortOrder::kAscending;
-      auto null_value_type = ascending ? ValueType::kNullLow : ValueType::kNullHigh;
+      out->push_back(ValueEntryTypeAsChar::kFrozen);
+      auto null_value_type = KeyEntryType::kNullLow;
       KeyBytes key;
       for (int i = 0; i < frozen.elems_size(); i++) {
         if (IsNull(frozen.elems(i))) {
-          key.AppendValueType(null_value_type);
+          key.AppendKeyEntryType(null_value_type);
         } else {
-          PrimitiveValue::FromQLValuePB(frozen.elems(i), sorting_type).AppendToKey(&key);
+          KeyEntryValue::FromQLValuePB(frozen.elems(i), SortingType::kNotSpecified).AppendToKey(
+              &key);
         }
       }
-      key.AppendValueType(ascending ? ValueType::kGroupEnd : ValueType::kGroupEndDescending);
+      key.AppendKeyEntryType(KeyEntryType::kGroupEnd);
       out->append(key.data().AsSlice().cdata(), key.data().size());
       return;
     }
     case QLValuePB::VALUE_NOT_SET:
-      out->push_back(ValueTypeAsChar::kTombstone);
+      out->push_back(ValueEntryTypeAsChar::kTombstone);
       return;
 
     case QLValuePB::kMapValue: FALLTHROUGH_INTENDED;
@@ -625,10 +635,10 @@ void AppendEncodedValue(const QLValuePB& value, SortingType sorting_type, std::s
       break;
 
     case QLValuePB::kVirtualValue:
-      out->push_back(static_cast<char>(VirtualValueToValueType(value.virtual_value())));
+      out->push_back(static_cast<char>(VirtualValueToValueEntryType(value.virtual_value())));
       return;
     case QLValuePB::kGinNullValue:
-      out->push_back(ValueTypeAsChar::kGinNull);
+      out->push_back(ValueEntryTypeAsChar::kGinNull);
       out->push_back(static_cast<char>(value.gin_null_value()));
       return;
     // default: fall through
@@ -637,47 +647,47 @@ void AppendEncodedValue(const QLValuePB& value, SortingType sorting_type, std::s
   FATAL_INVALID_ENUM_VALUE(QLValuePB::ValueCase, value.value_case());
 }
 
-Status PrimitiveValue::DecodeFromKey(rocksdb::Slice* slice) {
+} // namespace
+
+void AppendEncodedValue(const QLValuePB& value, CheckIsCollate check_is_collate, ValueBuffer* out) {
+  DoAppendEncodedValue(value, check_is_collate, out);
+}
+
+void AppendEncodedValue(const QLValuePB& value, CheckIsCollate check_is_collate, std::string* out) {
+  DoAppendEncodedValue(value, check_is_collate, out);
+}
+
+Status KeyEntryValue::DecodeFromKey(Slice* slice) {
   return DecodeKey(slice, this);
 }
 
-Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
+Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
   // A copy for error reporting.
-  const rocksdb::Slice input_slice(*slice);
+  const auto input_slice = *slice;
 
   if (slice->empty()) {
     return STATUS_SUBSTITUTE(Corruption,
         "Cannot decode a primitive value in the key encoding format from an empty slice: $0",
         ToShortDebugStr(input_slice));
   }
-  ValueType value_type = ConsumeValueType(slice);
-  ValueType dummy_type;
-  ValueType& type_ref = out ? out->type_ : dummy_type;
+  auto type = ConsumeKeyEntryType(slice);
+  KeyEntryType dummy_type;
+  KeyEntryType& type_ref = out ? out->type_ : dummy_type;
 
   if (out) {
-    out->~PrimitiveValue();
+    out->~KeyEntryValue();
     // Ensure we are not leaving the object in an invalid state in case e.g. an exception is thrown
     // due to inability to allocate memory.
   }
-  type_ref = ValueType::kNullLow;
+  type_ref = KeyEntryType::kNullLow;
 
-  switch (value_type) {
-    case ValueType::kNullHigh: FALLTHROUGH_INTENDED;
-    case ValueType::kNullLow: FALLTHROUGH_INTENDED;
-    case ValueType::kCounter: FALLTHROUGH_INTENDED;
-    case ValueType::kSSForward: FALLTHROUGH_INTENDED;
-    case ValueType::kSSReverse: FALLTHROUGH_INTENDED;
-    case ValueType::kFalse: FALLTHROUGH_INTENDED;
-    case ValueType::kTrue: FALLTHROUGH_INTENDED;
-    case ValueType::kFalseDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kTrueDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kHighest: FALLTHROUGH_INTENDED;
-    case ValueType::kLowest:
-      type_ref = value_type;
+  switch (type) {
+    CASE_EMPTY_KEY_ENTRY_TYPES
+      type_ref = type;
       return Status::OK();
 
-    case ValueType::kCollStringDescending:  FALLTHROUGH_INTENDED;
-    case ValueType::kStringDescending: {
+    case KeyEntryType::kCollStringDescending:  FALLTHROUGH_INTENDED;
+    case KeyEntryType::kStringDescending: {
       if (out) {
         string result;
         RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, &result));
@@ -686,12 +696,12 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
         RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, nullptr));
       }
       // Only set type to string after string field initialization succeeds.
-      type_ref = value_type;
+      type_ref = type;
       return Status::OK();
     }
 
-    case ValueType::kCollString: FALLTHROUGH_INTENDED;
-    case ValueType::kString: {
+    case KeyEntryType::kCollString: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kString: {
       if (out) {
         string result;
         RETURN_NOT_OK(DecodeZeroEncodedStr(slice, &result));
@@ -700,37 +710,30 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
         RETURN_NOT_OK(DecodeZeroEncodedStr(slice, nullptr));
       }
       // Only set type to string after string field initialization succeeds.
-      type_ref = value_type;
+      type_ref = type;
       return Status::OK();
     }
 
-    case ValueType::kFrozenDescending:
-    case ValueType::kFrozen: {
-      ValueType end_marker_value_type = ValueType::kGroupEnd;
-      if (value_type == ValueType::kFrozenDescending) {
-        end_marker_value_type = ValueType::kGroupEndDescending;
+    case KeyEntryType::kFrozenDescending:
+    case KeyEntryType::kFrozen: {
+      auto end_marker_value_type = KeyEntryType::kGroupEnd;
+      if (type == KeyEntryType::kFrozenDescending) {
+        end_marker_value_type = KeyEntryType::kGroupEndDescending;
       }
 
       if (out) {
         out->frozen_val_ = new FrozenContainer();
-        while (!slice->empty()) {
-          ValueType current_value_type = static_cast<ValueType>(*slice->data());
-          if (current_value_type == end_marker_value_type) {
-            slice->consume_byte();
-            type_ref = value_type;
-            return Status::OK();
-          } else {
-            PrimitiveValue pv;
-            RETURN_NOT_OK(DecodeKey(slice, &pv));
-            out->frozen_val_->push_back(pv);
-          }
-        }
-      } else {
-        while (!slice->empty()) {
-          ValueType current_value_type = static_cast<ValueType>(*slice->data());
-          if (current_value_type == end_marker_value_type) {
-            slice->consume_byte();
-            return Status::OK();
+      }
+      while (!slice->empty()) {
+        auto current_value_type = DecodeKeyEntryType(*slice->data());
+        if (current_value_type == end_marker_value_type) {
+          slice->consume_byte();
+          type_ref = type;
+          return Status::OK();
+        } else {
+          if (out) {
+            out->frozen_val_->emplace_back();
+            RETURN_NOT_OK(DecodeKey(slice, &out->frozen_val_->back()));
           } else {
             RETURN_NOT_OK(DecodeKey(slice, nullptr));
           }
@@ -740,44 +743,44 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
       return STATUS(Corruption, "Reached end of slice looking for frozen group end marker");
     }
 
-    case ValueType::kDecimalDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kDecimal: {
+    case KeyEntryType::kDecimalDescending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kDecimal: {
       util::Decimal decimal;
       Slice slice_temp(slice->data(), slice->size());
       size_t num_decoded_bytes = 0;
       RETURN_NOT_OK(decimal.DecodeFromComparable(slice_temp, &num_decoded_bytes));
-      if (value_type == ValueType::kDecimalDescending) {
+      if (type == KeyEntryType::kDecimalDescending) {
         // When we encode a descending decimal, we do a bitwise negation of each byte, which changes
         // the sign of the number. This way we reverse the sorting order. decimal.Negate() restores
         // the original sign of the number.
         decimal.Negate();
       }
       if (out) { // TODO avoid using temp variable, when out is nullptr
-        new(&out->decimal_val_) string(decimal.EncodeToComparable());
+        new(&out->str_val_) string(decimal.EncodeToComparable());
       }
       slice->remove_prefix(num_decoded_bytes);
-      type_ref = value_type;
+      type_ref = type;
       return Status::OK();
     }
 
-    case ValueType::kVarIntDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kVarInt: {
+    case KeyEntryType::kVarIntDescending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kVarInt: {
       util::VarInt varint;
       Slice slice_temp(slice->data(), slice->size());
       size_t num_decoded_bytes = 0;
       RETURN_NOT_OK(varint.DecodeFromComparable(slice_temp, &num_decoded_bytes));
-      if (value_type == ValueType::kVarIntDescending) {
+      if (type == KeyEntryType::kVarIntDescending) {
         varint.Negate();
       }
       if (out) { // TODO avoid using temp variable, when out is nullptr
-        new(&out->varint_val_) string(varint.EncodeToComparable());
+        new(&out->str_val_) string(varint.EncodeToComparable());
       }
       slice->remove_prefix(num_decoded_bytes);
-      type_ref = value_type;
+      type_ref = type;
       return Status::OK();
     }
 
-    case ValueType::kGinNull: {
+    case KeyEntryType::kGinNull: {
       if (slice->size() < sizeof(uint8_t)) {
         return STATUS_SUBSTITUTE(Corruption,
                                  "Not enough bytes to decode an 8-bit integer: $0",
@@ -787,13 +790,12 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
         out->gin_null_val_ = slice->data()[0];
       }
       slice->remove_prefix(sizeof(uint8_t));
-      type_ref = value_type;
+      type_ref = type;
       return Status::OK();
     }
 
-    case ValueType::kInt32Descending: FALLTHROUGH_INTENDED;
-    case ValueType::kInt32: FALLTHROUGH_INTENDED;
-    case ValueType::kWriteId:
+    case KeyEntryType::kInt32Descending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kInt32:
       if (slice->size() < sizeof(int32_t)) {
         return STATUS_SUBSTITUTE(Corruption,
                                  "Not enough bytes to decode a 32-bit integer: $0",
@@ -801,18 +803,18 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
       }
       if (out) {
         out->int32_val_ = BigEndian::Load32(slice->data()) ^ kInt32SignBitFlipMask;
-        if (value_type == ValueType::kInt32Descending) {
+        if (type == KeyEntryType::kInt32Descending) {
           out->int32_val_ = ~out->int32_val_;
         }
       }
       slice->remove_prefix(sizeof(int32_t));
-      type_ref = value_type;
+      type_ref = type;
       return Status::OK();
 
-    case ValueType::kColocationId: FALLTHROUGH_INTENDED;
-    case ValueType::kUInt32Descending: FALLTHROUGH_INTENDED;
-    case ValueType::kSubTransactionId: FALLTHROUGH_INTENDED;
-    case ValueType::kUInt32:
+    case KeyEntryType::kColocationId: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kUInt32Descending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kSubTransactionId: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kUInt32:
       if (slice->size() < sizeof(uint32_t)) {
         return STATUS_SUBSTITUTE(Corruption,
                                  "Not enough bytes to decode a 32-bit integer: $0",
@@ -820,16 +822,16 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
       }
       if (out) {
         out->uint32_val_ = BigEndian::Load32(slice->data());
-        if (value_type == ValueType::kUInt32Descending) {
+        if (type == KeyEntryType::kUInt32Descending) {
           out->uint32_val_ = ~out->uint32_val_;
         }
       }
       slice->remove_prefix(sizeof(uint32_t));
-      type_ref = value_type;
+      type_ref = type;
       return Status::OK();
 
-    case ValueType::kUInt64Descending: FALLTHROUGH_INTENDED;
-    case ValueType::kUInt64:
+    case KeyEntryType::kUInt64Descending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kUInt64:
       if (slice->size() < sizeof(uint64_t)) {
         return STATUS_SUBSTITUTE(Corruption,
                                  "Not enough bytes to decode a 64-bit integer: $0",
@@ -837,17 +839,17 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
       }
       if (out) {
         out->uint64_val_ = BigEndian::Load64(slice->data());
-        if (value_type == ValueType::kUInt64Descending) {
+        if (type == KeyEntryType::kUInt64Descending) {
           out->uint64_val_ = ~out->uint64_val_;
         }
       }
       slice->remove_prefix(sizeof(uint64_t));
-      type_ref = value_type;
+      type_ref = type;
       return Status::OK();
 
-    case ValueType::kInt64Descending: FALLTHROUGH_INTENDED;
-    case ValueType::kInt64: FALLTHROUGH_INTENDED;
-    case ValueType::kArrayIndex:
+    case KeyEntryType::kInt64Descending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kInt64: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kArrayIndex:
       if (slice->size() < sizeof(int64_t)) {
         return STATUS_SUBSTITUTE(Corruption,
             "Not enough bytes to decode a 64-bit integer: $0",
@@ -855,15 +857,15 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
       }
       if (out) {
         out->int64_val_ = DecodeInt64FromKey(*slice);
-        if (value_type == ValueType::kInt64Descending) {
+        if (type == KeyEntryType::kInt64Descending) {
           out->int64_val_ = ~out->int64_val_;
         }
       }
       slice->remove_prefix(sizeof(int64_t));
-      type_ref = value_type;
+      type_ref = type;
       return Status::OK();
 
-    case ValueType::kUInt16Hash:
+    case KeyEntryType::kUInt16Hash:
       if (slice->size() < sizeof(uint16_t)) {
         return STATUS(Corruption, Substitute("Not enough bytes to decode a 16-bit hash: $0",
                                              slice->size()));
@@ -872,11 +874,11 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
         out->uint16_val_ = BigEndian::Load16(slice->data());
       }
       slice->remove_prefix(sizeof(uint16_t));
-      type_ref = value_type;
+      type_ref = type;
       return Status::OK();
 
-    case ValueType::kTimestampDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kTimestamp: {
+    case KeyEntryType::kTimestampDescending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kTimestamp: {
       if (slice->size() < sizeof(Timestamp)) {
         return STATUS(Corruption,
             Substitute("Not enough bytes to decode a Timestamp: $0, need $1",
@@ -884,7 +886,7 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
       }
       if (out) {
         const auto uint64_timestamp = DecodeInt64FromKey(*slice);
-        if (value_type == ValueType::kTimestampDescending) {
+        if (type == KeyEntryType::kTimestampDescending) {
           // Flip all the bits after loading the integer.
           out->timestamp_val_ = Timestamp(~uint64_timestamp);
         } else {
@@ -892,38 +894,38 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
         }
       }
       slice->remove_prefix(sizeof(Timestamp));
-      type_ref = value_type;
+      type_ref = type;
       return Status::OK();
     }
 
-    case ValueType::kInetaddress: {
+    case KeyEntryType::kInetaddress: {
       if (out) {
         string bytes;
         RETURN_NOT_OK(DecodeZeroEncodedStr(slice, &bytes));
         out->inetaddress_val_ = new InetAddress();
-        RETURN_NOT_OK(out->inetaddress_val_->FromBytes(bytes));
+        RETURN_NOT_OK(out->inetaddress_val_->FromSlice(bytes));
       } else {
         RETURN_NOT_OK(DecodeZeroEncodedStr(slice, nullptr));
       }
-      type_ref = value_type;
+      type_ref = type;
       return Status::OK();
     }
 
-    case ValueType::kInetaddressDescending: {
+    case KeyEntryType::kInetaddressDescending: {
       if (out) {
         string bytes;
         RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, &bytes));
         out->inetaddress_val_ = new InetAddress();
-        RETURN_NOT_OK(out->inetaddress_val_->FromBytes(bytes));
+        RETURN_NOT_OK(out->inetaddress_val_->FromSlice(bytes));
       } else {
         RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, nullptr));
       }
-      type_ref = value_type;
+      type_ref = type;
       return Status::OK();
     }
 
-    case ValueType::kTransactionApplyState: FALLTHROUGH_INTENDED;
-    case ValueType::kExternalTransactionId:
+    case KeyEntryType::kTransactionApplyState: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kExternalTransactionId:
       if (slice->size() < boost::uuids::uuid::static_size()) {
         return STATUS_FORMAT(Corruption, "Not enough bytes for UUID: $0", slice->size());
       }
@@ -932,12 +934,12 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
             *slice, boost::uuids::uuid::static_size()));
       }
       slice->remove_prefix(boost::uuids::uuid::static_size());
-      type_ref = value_type;
+      type_ref = type;
       return Status::OK();
 
-    case ValueType::kTransactionId: FALLTHROUGH_INTENDED;
-    case ValueType::kTableId: FALLTHROUGH_INTENDED;
-    case ValueType::kUuid: {
+    case KeyEntryType::kTransactionId: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kTableId: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kUuid: {
       if (out) {
         string bytes;
         RETURN_NOT_OK(DecodeZeroEncodedStr(slice, &bytes));
@@ -946,11 +948,11 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
       } else {
         RETURN_NOT_OK(DecodeZeroEncodedStr(slice, nullptr));
       }
-      type_ref = value_type;
+      type_ref = type;
       return Status::OK();
     }
 
-    case ValueType::kUuidDescending: {
+    case KeyEntryType::kUuidDescending: {
       if (out) {
         string bytes;
         RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, &bytes));
@@ -959,12 +961,12 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
       } else {
         RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, nullptr));
       }
-      type_ref = value_type;
+      type_ref = type;
       return Status::OK();
     }
 
-    case ValueType::kColumnId: FALLTHROUGH_INTENDED;
-    case ValueType::kSystemColumnId: {
+    case KeyEntryType::kColumnId: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kSystemColumnId: {
       // Decode varint
       {
         ColumnId dummy_column_id;
@@ -973,73 +975,71 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
         RETURN_NOT_OK(ColumnId::FromInt64(column_id_as_int64, &column_id_ref));
       }
 
-      type_ref = value_type;
+      type_ref = type;
       return Status::OK();
     }
 
-    case ValueType::kHybridTime: {
+    case KeyEntryType::kHybridTime: {
       if (out) {
         new (&out->hybrid_time_val_) DocHybridTime(VERIFY_RESULT(DocHybridTime::DecodeFrom(slice)));
       } else {
         RETURN_NOT_OK(DocHybridTime::DecodeFrom(slice));
       }
 
-      type_ref = ValueType::kHybridTime;
+      type_ref = KeyEntryType::kHybridTime;
       return Status::OK();
     }
 
-    case ValueType::kIntentTypeSet: FALLTHROUGH_INTENDED;
-    case ValueType::kObsoleteIntentTypeSet: FALLTHROUGH_INTENDED;
-    case ValueType::kObsoleteIntentType: {
+    case KeyEntryType::kIntentTypeSet: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kObsoleteIntentTypeSet: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kObsoleteIntentType: {
       if (out) {
         out->uint16_val_ = static_cast<uint16_t>(*slice->data());
       }
-      type_ref = value_type;
+      type_ref = type;
       slice->consume_byte();
       return Status::OK();
     }
 
-    case ValueType::kFloatDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kFloat: {
+    case KeyEntryType::kFloatDescending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kFloat: {
       if (slice->size() < sizeof(float_t)) {
         return STATUS_FORMAT(Corruption, "Not enough bytes to decode a float: $0", slice->size());
       }
       if (out) {
-        if (value_type == ValueType::kFloatDescending) {
+        if (type == KeyEntryType::kFloatDescending) {
           out->float_val_ = DecodeFloatFromKey(*slice, /* descending */ true);
         } else {
           out->float_val_ = DecodeFloatFromKey(*slice);
         }
       }
       slice->remove_prefix(sizeof(float_t));
-      type_ref = value_type;
+      type_ref = type;
       return Status::OK();
     }
-    case ValueType::kDoubleDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kDouble: {
+    case KeyEntryType::kDoubleDescending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kDouble: {
       if (slice->size() < sizeof(double_t)) {
         return STATUS_FORMAT(Corruption, "Not enough bytes to decode a float: $0", slice->size());
       }
       if (out) {
-        if (value_type == ValueType::kDoubleDescending) {
+        if (type == KeyEntryType::kDoubleDescending) {
           out->double_val_ = DecodeDoubleFromKey(*slice, /* descending */ true);
         } else {
           out->double_val_ = DecodeDoubleFromKey(*slice);
         }
       }
       slice->remove_prefix(sizeof(double_t));
-      type_ref = value_type;
+      type_ref = type;
       return Status::OK();
     }
-    case ValueType::kMaxByte:
-      break;
 
-    IGNORE_NON_PRIMITIVE_VALUE_TYPES_IN_SWITCH;
+    IGNORE_SPECIAL_KEY_ENTRY_TYPES;
   }
   return STATUS_FORMAT(
       Corruption,
       "Cannot decode value type $0 from the key encoding format: $1",
-      value_type,
+      type,
       ToShortDebugStr(input_slice));
 }
 
@@ -1051,64 +1051,54 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
   this->~PrimitiveValue();
   // Ensure we are not leaving the object in an invalid state in case e.g. an exception is thrown
   // due to inability to allocate memory.
-  type_ = ValueType::kNullLow;
+  type_ = ValueEntryType::kNullLow;
 
-  const auto value_type = ConsumeValueType(&slice);
+  const auto value_type = ConsumeValueEntryType(&slice);
 
   // TODO: ensure we consume all data from the given slice.
   switch (value_type) {
-    case ValueType::kNullHigh: FALLTHROUGH_INTENDED;
-    case ValueType::kNullLow: FALLTHROUGH_INTENDED;
-    case ValueType::kCounter: FALLTHROUGH_INTENDED;
-    case ValueType::kSSForward: FALLTHROUGH_INTENDED;
-    case ValueType::kSSReverse: FALLTHROUGH_INTENDED;
-    case ValueType::kFalse: FALLTHROUGH_INTENDED;
-    case ValueType::kTrue: FALLTHROUGH_INTENDED;
-    case ValueType::kFalseDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kTrueDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kObject: FALLTHROUGH_INTENDED;
-    case ValueType::kArray: FALLTHROUGH_INTENDED;
-    case ValueType::kRedisList: FALLTHROUGH_INTENDED;
-    case ValueType::kRedisSet: FALLTHROUGH_INTENDED;
-    case ValueType::kRedisTS: FALLTHROUGH_INTENDED;
-    case ValueType::kRedisSortedSet: FALLTHROUGH_INTENDED;
-    case ValueType::kTombstone:
+    case ValueEntryType::kNullHigh: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kNullLow: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kFalse: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kTrue: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kObject: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kArray: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kRedisList: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kRedisSet: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kRedisTS: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kRedisSortedSet: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kTombstone:
       type_ = value_type;
       complex_data_structure_ = nullptr;
       return Status::OK();
 
-    case ValueType::kFrozenDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kFrozen: {
-      ValueType end_marker_value_type = ValueType::kGroupEnd;
-      if (value_type == ValueType::kFrozenDescending) {
-        end_marker_value_type = ValueType::kGroupEndDescending;
-      }
+    case ValueEntryType::kFrozen: {
+      auto end_marker_value_type = KeyEntryType::kGroupEnd;
 
       frozen_val_ = new FrozenContainer();
       while (!slice.empty()) {
-        ValueType current_value_type = static_cast<ValueType>(*slice.data());
+        KeyEntryType current_value_type = static_cast<KeyEntryType>(*slice.data());
         if (current_value_type == end_marker_value_type) {
           slice.consume_byte();
           type_ = value_type;
           return Status::OK();
         } else {
-          PrimitiveValue pv;
           // Frozen elems are encoded as keys even in values.
-          RETURN_NOT_OK(pv.DecodeFromKey(&slice));
-          frozen_val_->push_back(pv);
+          frozen_val_->emplace_back();
+          RETURN_NOT_OK(frozen_val_->back().DecodeFromKey(&slice));
         }
       }
 
       return STATUS(Corruption, "Reached end of slice looking for frozen group end marker");
     }
-    case ValueType::kCollString: FALLTHROUGH_INTENDED;
-    case ValueType::kString:
+    case ValueEntryType::kCollString: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kString:
       new(&str_val_) string(slice.cdata(), slice.size());
       // Only set type to string after string field initialization succeeds.
       type_ = value_type;
       return Status::OK();
 
-    case ValueType::kGinNull:
+    case ValueEntryType::kGinNull:
       if (slice.size() != sizeof(uint8_t)) {
         return STATUS_FORMAT(Corruption, "Invalid number of bytes for a $0: $1",
             value_type, slice.size());
@@ -1117,11 +1107,9 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
       gin_null_val_ = slice.data()[0];
       return Status::OK();
 
-    case ValueType::kInt32: FALLTHROUGH_INTENDED;
-    case ValueType::kInt32Descending: FALLTHROUGH_INTENDED;
-    case ValueType::kFloatDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kWriteId: FALLTHROUGH_INTENDED;
-    case ValueType::kFloat:
+    case ValueEntryType::kInt32: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kWriteId: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kFloat:
       if (slice.size() != sizeof(int32_t)) {
         return STATUS_FORMAT(Corruption, "Invalid number of bytes for a $0: $1",
             value_type, slice.size());
@@ -1130,10 +1118,9 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
       int32_val_ = BigEndian::Load32(slice.data());
       return Status::OK();
 
-    case ValueType::kColocationId: FALLTHROUGH_INTENDED;
-    case ValueType::kUInt32: FALLTHROUGH_INTENDED;
-    case ValueType::kSubTransactionId: FALLTHROUGH_INTENDED;
-    case ValueType::kUInt32Descending:
+    case ValueEntryType::kColocationId: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kUInt32: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kSubTransactionId:
       if (slice.size() != sizeof(uint32_t)) {
         return STATUS_FORMAT(Corruption, "Invalid number of bytes for a $0: $1",
             value_type, slice.size());
@@ -1142,8 +1129,7 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
       uint32_val_ = BigEndian::Load32(slice.data());
       return Status::OK();
 
-    case ValueType::kUInt64: FALLTHROUGH_INTENDED;
-    case ValueType::kUInt64Descending:
+    case ValueEntryType::kUInt64:
       if (slice.size() != sizeof(uint64_t)) {
         return STATUS_FORMAT(Corruption, "Invalid number of bytes for a $0: $1",
             value_type, slice.size());
@@ -1152,11 +1138,9 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
       uint64_val_ = BigEndian::Load64(slice.data());
       return Status::OK();
 
-    case ValueType::kInt64: FALLTHROUGH_INTENDED;
-    case ValueType::kInt64Descending: FALLTHROUGH_INTENDED;
-    case ValueType::kArrayIndex: FALLTHROUGH_INTENDED;
-    case ValueType::kDoubleDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kDouble:
+    case ValueEntryType::kInt64: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kArrayIndex: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kDouble:
       if (slice.size() != sizeof(int64_t)) {
         return STATUS_FORMAT(Corruption, "Invalid number of bytes for a $0: $1",
             value_type, slice.size());
@@ -1165,25 +1149,25 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
       int64_val_ = BigEndian::Load64(slice.data());
       return Status::OK();
 
-    case ValueType::kDecimal: {
+    case ValueEntryType::kDecimal: {
       util::Decimal decimal;
       size_t num_decoded_bytes = 0;
       RETURN_NOT_OK(decimal.DecodeFromComparable(slice.ToString(), &num_decoded_bytes));
       type_ = value_type;
-      new(&decimal_val_) string(decimal.EncodeToComparable());
+      new(&str_val_) string(decimal.EncodeToComparable());
       return Status::OK();
     }
 
-    case ValueType::kVarInt: {
+    case ValueEntryType::kVarInt: {
       util::VarInt varint;
       size_t num_decoded_bytes = 0;
       RETURN_NOT_OK(varint.DecodeFromComparable(slice.ToString(), &num_decoded_bytes));
       type_ = value_type;
-      new(&varint_val_) string(varint.EncodeToComparable());
+      new(&str_val_) string(varint.EncodeToComparable());
       return Status::OK();
     }
 
-    case ValueType::kTimestamp:
+    case ValueEntryType::kTimestamp:
       if (slice.size() != sizeof(Timestamp)) {
         return STATUS_FORMAT(Corruption, "Invalid number of bytes for a $0: $1",
             value_type, slice.size());
@@ -1192,7 +1176,7 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
       timestamp_val_ = Timestamp(BigEndian::Load64(slice.data()));
       return Status::OK();
 
-    case ValueType::kJsonb: {
+    case ValueEntryType::kJsonb: {
       if (slice.size() < sizeof(int64_t)) {
         return STATUS_FORMAT(Corruption, "Invalid number of bytes for a $0: $1",
                              value_type, slice.size());
@@ -1202,12 +1186,12 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
       slice.remove_prefix(sizeof(jsonb_flags));
 
       // Read the serialized jsonb.
-      new(&json_val_) string(slice.ToBuffer());
+      new(&str_val_) string(slice.ToBuffer());
       type_ = value_type;
       return Status::OK();
     }
 
-    case ValueType::kInetaddress: {
+    case ValueEntryType::kInetaddress: {
       if (slice.size() != kInetAddressV4Size && slice.size() != kInetAddressV6Size) {
         return STATUS_FORMAT(Corruption,
                              "Invalid number of bytes to decode IPv4/IPv6: $0, need $1 or $2",
@@ -1221,11 +1205,9 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
       return Status::OK();
     }
 
-    case ValueType::kTransactionApplyState: FALLTHROUGH_INTENDED;
-    case ValueType::kExternalTransactionId: FALLTHROUGH_INTENDED;
-    case ValueType::kTransactionId: FALLTHROUGH_INTENDED;
-    case ValueType::kTableId: FALLTHROUGH_INTENDED;
-    case ValueType::kUuid: {
+    case ValueEntryType::kTransactionId: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kTableId: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kUuid: {
       if (slice.size() != kUuidSize) {
         return STATUS_FORMAT(Corruption, "Invalid number of bytes to decode Uuid: $0, need $1",
             slice.size(), kUuidSize);
@@ -1237,175 +1219,97 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
       return Status::OK();
     }
 
-    case ValueType::kIntentTypeSet: FALLTHROUGH_INTENDED;
-    case ValueType::kObsoleteIntentTypeSet: FALLTHROUGH_INTENDED;
-    case ValueType::kObsoleteIntentType: FALLTHROUGH_INTENDED;
-    case ValueType::kGroupEnd: FALLTHROUGH_INTENDED;
-    case ValueType::kGroupEndDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kObsoleteIntentPrefix: FALLTHROUGH_INTENDED;
-    case ValueType::kGreaterThanIntentType: FALLTHROUGH_INTENDED;
-    case ValueType::kUInt16Hash: FALLTHROUGH_INTENDED;
-    case ValueType::kInvalid: FALLTHROUGH_INTENDED;
-    case ValueType::kMergeFlags: FALLTHROUGH_INTENDED;
-    case ValueType::kRowLock: FALLTHROUGH_INTENDED;
-    case ValueType::kBitSet: FALLTHROUGH_INTENDED;
-    case ValueType::kTtl: FALLTHROUGH_INTENDED;
-    case ValueType::kUserTimestamp: FALLTHROUGH_INTENDED;
-    case ValueType::kColumnId: FALLTHROUGH_INTENDED;
-    case ValueType::kSystemColumnId: FALLTHROUGH_INTENDED;
-    case ValueType::kHybridTime: FALLTHROUGH_INTENDED;
-    case ValueType::kCollStringDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kStringDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kInetaddressDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kDecimalDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kVarIntDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kUuidDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kTimestampDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kExternalIntents: FALLTHROUGH_INTENDED;
-    case ValueType::kLowest: FALLTHROUGH_INTENDED;
-    case ValueType::kHighest: FALLTHROUGH_INTENDED;
-    case ValueType::kMaxByte:
+    case ValueEntryType::kInvalid: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kMaxByte:
       return STATUS_FORMAT(Corruption, "$0 is not allowed in a RocksDB PrimitiveValue", value_type);
   }
-  FATAL_INVALID_ENUM_VALUE(ValueType, value_type);
+  FATAL_INVALID_ENUM_VALUE(ValueEntryType, value_type);
   return Status::OK();
 }
 
-PrimitiveValue PrimitiveValue::Double(double d, SortOrder sort_order) {
+POD_FACTORY(Double, double);
+POD_FACTORY(Float, float);
+
+PrimitiveValue PrimitiveValue::Decimal(const Slice& decimal_str) {
   PrimitiveValue primitive_value;
-  if (sort_order == SortOrder::kAscending) {
-    primitive_value.type_ = ValueType::kDouble;
-  } else {
-    primitive_value.type_ = ValueType::kDoubleDescending;
-  }
-  primitive_value.double_val_ = d;
+  primitive_value.type_ = ValueEntryType::kDecimal;
+  new(&primitive_value.str_val_) string(decimal_str.cdata(), decimal_str.size());
   return primitive_value;
 }
 
-PrimitiveValue PrimitiveValue::Float(float f, SortOrder sort_order) {
-  PrimitiveValue primitive_value;
-  if (sort_order == SortOrder::kAscending) {
-    primitive_value.type_ = ValueType::kFloat;
-  } else {
-    primitive_value.type_ = ValueType::kFloatDescending;
-  }
-  primitive_value.float_val_ = f;
+KeyEntryValue KeyEntryValue::Decimal(const Slice& decimal_str, SortOrder sort_order) {
+  KeyEntryValue primitive_value;
+  primitive_value.type_ = SELECT_VALUE_TYPE(Decimal, sort_order);
+  new(&primitive_value.str_val_) string(decimal_str.cdata(), decimal_str.size());
   return primitive_value;
 }
 
-PrimitiveValue PrimitiveValue::Decimal(const string& encoded_decimal_str, SortOrder sort_order) {
+PrimitiveValue PrimitiveValue::VarInt(const Slice& varint_str) {
   PrimitiveValue primitive_value;
-  if (sort_order == SortOrder::kDescending) {
-    primitive_value.type_ = ValueType::kDecimalDescending;
-  } else {
-    primitive_value.type_ = ValueType::kDecimal;
-  }
-  new(&primitive_value.decimal_val_) string(encoded_decimal_str);
+  primitive_value.type_ = ValueEntryType::kVarInt;
+  new(&primitive_value.str_val_) string(varint_str.cdata(), varint_str.size());
   return primitive_value;
 }
 
-PrimitiveValue PrimitiveValue::VarInt(const string& encoded_varint_str, SortOrder sort_order) {
-  PrimitiveValue primitive_value;
-  if (sort_order == SortOrder::kDescending) {
-    primitive_value.type_ = ValueType::kVarIntDescending;
-  } else {
-    primitive_value.type_ = ValueType::kVarInt;
-  }
-  new(&primitive_value.varint_val_) string(encoded_varint_str);
+KeyEntryValue KeyEntryValue::VarInt(const Slice& varint_str, SortOrder sort_order) {
+  KeyEntryValue primitive_value;
+  primitive_value.type_ = SELECT_VALUE_TYPE(VarInt, sort_order);
+  new(&primitive_value.str_val_) string(varint_str.cdata(), varint_str.size());
   return primitive_value;
 }
 
-PrimitiveValue PrimitiveValue::ArrayIndex(int64_t index) {
-  PrimitiveValue primitive_value;
-  primitive_value.type_ = ValueType::kArrayIndex;
+KeyEntryValue KeyEntryValue::ArrayIndex(int64_t index) {
+  KeyEntryValue primitive_value;
+  primitive_value.type_ = KeyEntryType::kArrayIndex;
   primitive_value.int64_val_ = index;
   return primitive_value;
 }
 
-PrimitiveValue PrimitiveValue::UInt16Hash(uint16_t hash) {
-  PrimitiveValue primitive_value;
-  primitive_value.type_ = ValueType::kUInt16Hash;
+KeyEntryValue KeyEntryValue::UInt16Hash(uint16_t hash) {
+  KeyEntryValue primitive_value;
+  primitive_value.type_ = KeyEntryType::kUInt16Hash;
   primitive_value.uint16_val_ = hash;
   return primitive_value;
 }
 
-PrimitiveValue PrimitiveValue::SystemColumnId(SystemColumnIds system_column_id) {
-  return PrimitiveValue::SystemColumnId(ColumnId(static_cast<ColumnIdRep>(system_column_id)));
+KeyEntryValue KeyEntryValue::SystemColumnId(SystemColumnIds system_column_id) {
+  return KeyEntryValue::SystemColumnId(ColumnId(static_cast<ColumnIdRep>(system_column_id)));
 }
 
-PrimitiveValue PrimitiveValue::SystemColumnId(ColumnId column_id) {
-  PrimitiveValue primitive_value;
-  primitive_value.type_ = ValueType::kSystemColumnId;
+KeyEntryValue KeyEntryValue::SystemColumnId(ColumnId column_id) {
+  KeyEntryValue primitive_value;
+  primitive_value.type_ = KeyEntryType::kSystemColumnId;
   primitive_value.column_id_val_ = column_id;
   return primitive_value;
 }
 
-PrimitiveValue PrimitiveValue::Int32(int32_t v, SortOrder sort_order) {
+KeyEntryValue KeyEntryValue::MakeColumnId(ColumnId column_id) {
+  KeyEntryValue primitive_value;
+  primitive_value.type_ = KeyEntryType::kColumnId;
+  primitive_value.column_id_val_ = column_id;
+  return primitive_value;
+}
+
+POD_FACTORY(Int32, int32)
+POD_FACTORY(UInt32, uint32)
+POD_FACTORY(Int64, int64);
+POD_FACTORY(UInt64, uint64);
+
+PrimitiveValue PrimitiveValue::Jsonb(const Slice& json) {
   PrimitiveValue primitive_value;
-  if (sort_order == SortOrder::kDescending) {
-    primitive_value.type_ = ValueType::kInt32Descending;
-  } else {
-    primitive_value.type_ = ValueType::kInt32;
-  }
-  primitive_value.int32_val_ = v;
-  return primitive_value;
-}
-
-PrimitiveValue PrimitiveValue::UInt32(uint32_t v, SortOrder sort_order) {
-  PrimitiveValue primitive_value;
-  if (sort_order == SortOrder::kDescending) {
-    primitive_value.type_ = ValueType::kUInt32Descending;
-  } else {
-    primitive_value.type_ = ValueType::kUInt32;
-  }
-  primitive_value.uint32_val_ = v;
-  return primitive_value;
-}
-
-PrimitiveValue PrimitiveValue::UInt64(uint64_t v, SortOrder sort_order) {
-  PrimitiveValue primitive_value;
-  if (sort_order == SortOrder::kDescending) {
-    primitive_value.type_ = ValueType::kUInt64Descending;
-  } else {
-    primitive_value.type_ = ValueType::kUInt64;
-  }
-  primitive_value.uint64_val_ = v;
-  return primitive_value;
-}
-
-PrimitiveValue PrimitiveValue::TransactionId(Uuid transaction_id) {
-  PrimitiveValue primitive_value(transaction_id);
-  primitive_value.type_ = ValueType::kTransactionId;
-  return primitive_value;
-}
-
-PrimitiveValue PrimitiveValue::TableId(Uuid table_id) {
-  PrimitiveValue primitive_value(table_id);
-  primitive_value.type_ = ValueType::kTableId;
-  return primitive_value;
-}
-
-PrimitiveValue PrimitiveValue::ColocationId(const yb::ColocationId colocation_id) {
-  PrimitiveValue primitive_value(colocation_id);
-  primitive_value.type_ = ValueType::kColocationId;
-  return primitive_value;
-}
-
-PrimitiveValue PrimitiveValue::Jsonb(const std::string& json) {
-  PrimitiveValue primitive_value;
-  primitive_value.type_ = ValueType::kJsonb;
-  new(&primitive_value.json_val_) string(json);
+  primitive_value.type_ = ValueEntryType::kJsonb;
+  new(&primitive_value.str_val_) string(json.cdata(), json.size());
   return primitive_value;
 }
 
 PrimitiveValue PrimitiveValue::GinNull(uint8_t v) {
   PrimitiveValue primitive_value;
-  primitive_value.type_ = ValueType::kGinNull;
+  primitive_value.type_ = ValueEntryType::kGinNull;
   primitive_value.gin_null_val_ = v;
   return primitive_value;
 }
 
-KeyBytes PrimitiveValue::ToKeyBytes() const {
+KeyBytes KeyEntryValue::ToKeyBytes() const {
   KeyBytes kb;
   AppendToKey(&kb);
   return kb;
@@ -1416,84 +1320,55 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
     return false;
   }
   switch (type_) {
-    case ValueType::kNullHigh: FALLTHROUGH_INTENDED;
-    case ValueType::kNullLow: FALLTHROUGH_INTENDED;
-    case ValueType::kCounter: FALLTHROUGH_INTENDED;
-    case ValueType::kFalse: FALLTHROUGH_INTENDED;
-    case ValueType::kFalseDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kSSForward: FALLTHROUGH_INTENDED;
-    case ValueType::kSSReverse: FALLTHROUGH_INTENDED;
-    case ValueType::kTrue: FALLTHROUGH_INTENDED;
-    case ValueType::kTrueDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kLowest: FALLTHROUGH_INTENDED;
-    case ValueType::kHighest: FALLTHROUGH_INTENDED;
-    case ValueType::kMaxByte: return true;
+    case ValueEntryType::kNullHigh: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kNullLow: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kFalse: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kTrue: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kMaxByte: return true;
 
-    case ValueType::kCollStringDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kCollString: FALLTHROUGH_INTENDED;
-    case ValueType::kStringDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kString: return str_val_ == other.str_val_;
+    case ValueEntryType::kCollString: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kString: return str_val_ == other.str_val_;
 
-    case ValueType::kFrozenDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kFrozen: return *frozen_val_ == *other.frozen_val_;
+    case ValueEntryType::kFrozen: return *frozen_val_ == *other.frozen_val_;
 
-    case ValueType::kInt32Descending: FALLTHROUGH_INTENDED;
-    case ValueType::kWriteId: FALLTHROUGH_INTENDED;
-    case ValueType::kInt32: return int32_val_ == other.int32_val_;
+    case ValueEntryType::kWriteId: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kInt32: return int32_val_ == other.int32_val_;
 
-    case ValueType::kColocationId: FALLTHROUGH_INTENDED;
-    case ValueType::kUInt32Descending: FALLTHROUGH_INTENDED;
-    case ValueType::kSubTransactionId: FALLTHROUGH_INTENDED;
-    case ValueType::kUInt32: return uint32_val_ == other.uint32_val_;
+    case ValueEntryType::kColocationId: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kSubTransactionId: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kUInt32: return uint32_val_ == other.uint32_val_;
 
-    case ValueType::kUInt64Descending: FALLTHROUGH_INTENDED;
-    case ValueType::kUInt64: return uint64_val_ == other.uint64_val_;
+    case ValueEntryType::kUInt64: return uint64_val_ == other.uint64_val_;
 
-    case ValueType::kInt64Descending: FALLTHROUGH_INTENDED;
-    case ValueType::kInt64: FALLTHROUGH_INTENDED;
-    case ValueType::kArrayIndex: return int64_val_ == other.int64_val_;
+    case ValueEntryType::kInt64: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kArrayIndex: return int64_val_ == other.int64_val_;
 
-    case ValueType::kFloatDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kFloat: {
+    case ValueEntryType::kFloat: {
       if (util::IsNanFloat(float_val_) && util::IsNanFloat(other.float_val_)) {
         return true;
       }
       return float_val_ == other.float_val_;
     }
-    case ValueType::kDoubleDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kDouble: {
+    case ValueEntryType::kDouble: {
       if (util::IsNanDouble(double_val_) && util::IsNanDouble(other.double_val_)) {
         return true;
       }
       return double_val_ == other.double_val_;
     }
-    case ValueType::kDecimalDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kDecimal: return decimal_val_ == other.decimal_val_;
-    case ValueType::kVarIntDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kVarInt: return varint_val_ == other.varint_val_;
-    case ValueType::kIntentTypeSet: FALLTHROUGH_INTENDED;
-    case ValueType::kObsoleteIntentTypeSet: FALLTHROUGH_INTENDED;
-    case ValueType::kObsoleteIntentType: FALLTHROUGH_INTENDED;
-    case ValueType::kUInt16Hash: return uint16_val_ == other.uint16_val_;
+    case ValueEntryType::kDecimal: return str_val_ == other.str_val_;
+    case ValueEntryType::kVarInt: return str_val_ == other.str_val_;
 
-    case ValueType::kTimestampDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kTimestamp: return timestamp_val_ == other.timestamp_val_;
-    case ValueType::kInetaddressDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kInetaddress: return *inetaddress_val_ == *(other.inetaddress_val_);
-    case ValueType::kTransactionApplyState: FALLTHROUGH_INTENDED;
-    case ValueType::kExternalTransactionId: FALLTHROUGH_INTENDED;
-    case ValueType::kTransactionId: FALLTHROUGH_INTENDED;
-    case ValueType::kTableId: FALLTHROUGH_INTENDED;
-    case ValueType::kUuidDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kUuid: return uuid_val_ == other.uuid_val_;
+    case ValueEntryType::kTimestamp: return timestamp_val_ == other.timestamp_val_;
+    case ValueEntryType::kInetaddress: return *inetaddress_val_ == *(other.inetaddress_val_);
+    case ValueEntryType::kTransactionId: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kTableId: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kUuid: return uuid_val_ == other.uuid_val_;
 
-    case ValueType::kColumnId: FALLTHROUGH_INTENDED;
-    case ValueType::kSystemColumnId: return column_id_val_ == other.column_id_val_;
-    case ValueType::kHybridTime: return hybrid_time_val_.CompareTo(other.hybrid_time_val_) == 0;
-    case ValueType::kGinNull: return gin_null_val_ == other.gin_null_val_;
+    case ValueEntryType::kGinNull: return gin_null_val_ == other.gin_null_val_;
+
     IGNORE_NON_PRIMITIVE_VALUE_TYPES_IN_SWITCH;
   }
-  FATAL_INVALID_ENUM_VALUE(ValueType, type_);
+  FATAL_INVALID_ENUM_VALUE(ValueEntryType, type_);
 }
 
 int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
@@ -1502,76 +1377,38 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
     return result;
   }
   switch (type_) {
-    case ValueType::kNullHigh: FALLTHROUGH_INTENDED;
-    case ValueType::kNullLow: FALLTHROUGH_INTENDED;
-    case ValueType::kCounter: FALLTHROUGH_INTENDED;
-    case ValueType::kSSForward: FALLTHROUGH_INTENDED;
-    case ValueType::kSSReverse: FALLTHROUGH_INTENDED;
-    case ValueType::kFalse: FALLTHROUGH_INTENDED;
-    case ValueType::kTrue: FALLTHROUGH_INTENDED;
-    case ValueType::kFalseDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kTrueDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kLowest: FALLTHROUGH_INTENDED;
-    case ValueType::kHighest: FALLTHROUGH_INTENDED;
-    case ValueType::kMaxByte:
+    case ValueEntryType::kNullHigh: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kNullLow: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kFalse: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kTrue: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kMaxByte:
       return 0;
-    case ValueType::kCollStringDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kStringDescending:
-      return other.str_val_.compare(str_val_);
-    case ValueType::kCollString: FALLTHROUGH_INTENDED;
-    case ValueType::kString:
+    case ValueEntryType::kCollString: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kDecimal: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kVarInt: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kString:
       return str_val_.compare(other.str_val_);
-    case ValueType::kInt64Descending:
-      return CompareUsingLessThan(other.int64_val_, int64_val_);
-    case ValueType::kInt32Descending:
-      return CompareUsingLessThan(other.int32_val_, int32_val_);
-    case ValueType::kInt32: FALLTHROUGH_INTENDED;
-    case ValueType::kWriteId:
+    case ValueEntryType::kInt32: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kWriteId:
       return CompareUsingLessThan(int32_val_, other.int32_val_);
-    case ValueType::kUInt32Descending:
-      return CompareUsingLessThan(other.uint32_val_, uint32_val_);
-    case ValueType::kColocationId: FALLTHROUGH_INTENDED;
-    case ValueType::kSubTransactionId: FALLTHROUGH_INTENDED;
-    case ValueType::kUInt32:
+    case ValueEntryType::kColocationId: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kSubTransactionId: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kUInt32:
       return CompareUsingLessThan(uint32_val_, other.uint32_val_);
-    case ValueType::kUInt64Descending:
-      return CompareUsingLessThan(other.uint64_val_, uint64_val_);
-    case ValueType::kUInt64:
+    case ValueEntryType::kUInt64:
       return CompareUsingLessThan(uint64_val_, other.uint64_val_);
-    case ValueType::kInt64: FALLTHROUGH_INTENDED;
-    case ValueType::kArrayIndex:
+    case ValueEntryType::kInt64: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kArrayIndex:
       return CompareUsingLessThan(int64_val_, other.int64_val_);
-    case ValueType::kDoubleDescending:
-      return CompareUsingLessThan(other.double_val_, double_val_);
-    case ValueType::kDouble:
+    case ValueEntryType::kDouble:
       return CompareUsingLessThan(double_val_, other.double_val_);
-    case ValueType::kFloatDescending:
-      return CompareUsingLessThan(other.float_val_, float_val_);
-    case ValueType::kFloat:
+    case ValueEntryType::kFloat:
       return CompareUsingLessThan(float_val_, other.float_val_);
-    case ValueType::kDecimalDescending:
-      return other.decimal_val_.compare(decimal_val_);
-    case ValueType::kDecimal:
-      return decimal_val_.compare(other.decimal_val_);
-    case ValueType::kVarIntDescending:
-      return other.varint_val_.compare(varint_val_);
-    case ValueType::kVarInt:
-      return varint_val_.compare(other.varint_val_);
-    case ValueType::kIntentTypeSet: FALLTHROUGH_INTENDED;
-    case ValueType::kObsoleteIntentTypeSet: FALLTHROUGH_INTENDED;
-    case ValueType::kObsoleteIntentType: FALLTHROUGH_INTENDED;
-    case ValueType::kUInt16Hash:
-      return CompareUsingLessThan(uint16_val_, other.uint16_val_);
-    case ValueType::kTimestampDescending:
-      return CompareUsingLessThan(other.timestamp_val_, timestamp_val_);
-    case ValueType::kTimestamp:
+    case ValueEntryType::kTimestamp:
       return CompareUsingLessThan(timestamp_val_, other.timestamp_val_);
-    case ValueType::kInetaddress:
+    case ValueEntryType::kInetaddress:
       return CompareUsingLessThan(*inetaddress_val_, *(other.inetaddress_val_));
-    case ValueType::kInetaddressDescending:
-      return CompareUsingLessThan(*(other.inetaddress_val_), *inetaddress_val_);
-    case ValueType::kFrozenDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kFrozen: {
+    case ValueEntryType::kFrozen: {
       // Compare elements one by one.
       size_t min_size = std::min(frozen_val_->size(), other.frozen_val_->size());
       for (size_t i = 0; i < min_size; i++) {
@@ -1582,77 +1419,48 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
       }
 
       // If elements are equal, compare lengths.
-      if (type_ == ValueType::kFrozenDescending) {
-        return CompareUsingLessThan(other.frozen_val_->size(), frozen_val_->size());
-      } else {
-        return CompareUsingLessThan(frozen_val_->size(), other.frozen_val_->size());
-      }
+      return CompareUsingLessThan(frozen_val_->size(), other.frozen_val_->size());
     }
-    case ValueType::kTransactionApplyState: FALLTHROUGH_INTENDED;
-    case ValueType::kExternalTransactionId: FALLTHROUGH_INTENDED;
-    case ValueType::kTransactionId: FALLTHROUGH_INTENDED;
-    case ValueType::kTableId: FALLTHROUGH_INTENDED;
-    case ValueType::kUuidDescending:
-      return CompareUsingLessThan(other.uuid_val_, uuid_val_);
-    case ValueType::kUuid:
+    case ValueEntryType::kTransactionId: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kTableId: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kUuid:
       return CompareUsingLessThan(uuid_val_, other.uuid_val_);
-    case ValueType::kColumnId: FALLTHROUGH_INTENDED;
-    case ValueType::kSystemColumnId:
-      return CompareUsingLessThan(column_id_val_, other.column_id_val_);
-    case ValueType::kHybridTime:
-      // HybridTimes are sorted in reverse order when wrapped in a PrimitiveValue.
-      return -hybrid_time_val_.CompareTo(other.hybrid_time_val_);
-    case ValueType::kGinNull:
+    case ValueEntryType::kGinNull:
       return CompareUsingLessThan(gin_null_val_, other.gin_null_val_);
     IGNORE_NON_PRIMITIVE_VALUE_TYPES_IN_SWITCH;
   }
   LOG(FATAL) << "Comparing invalid PrimitiveValues: " << *this << " and " << other;
 }
 
-PrimitiveValue::PrimitiveValue() : type_(ValueType::kNullLow) {
+PrimitiveValue::PrimitiveValue() : type_(ValueEntryType::kNullLow) {
 }
 
 // This is used to initialize kNullLow, kNullHigh, kTrue, kFalse constants.
-PrimitiveValue::PrimitiveValue(ValueType value_type)
+PrimitiveValue::PrimitiveValue(ValueEntryType value_type)
     : type_(value_type) {
   complex_data_structure_ = nullptr;
-  if (value_type == ValueType::kString || value_type == ValueType::kStringDescending) {
+  if (IsStoredAsString()) {
     new(&str_val_) std::string();
-  } else if (value_type == ValueType::kInetaddress
-      || value_type == ValueType::kInetaddressDescending) {
+  } else if (value_type == ValueEntryType::kInetaddress) {
     inetaddress_val_ = new InetAddress();
-  } else if (value_type == ValueType::kDecimal || value_type == ValueType::kDecimalDescending) {
-    new(&decimal_val_) std::string();
-  } else if (value_type == ValueType::kUuid || value_type == ValueType::kUuidDescending) {
+  } else if (value_type == ValueEntryType::kUuid) {
     new(&uuid_val_) Uuid();
-  } else if (value_type == ValueType::kFrozen || value_type == ValueType::kFrozenDescending) {
+  } else if (value_type == ValueEntryType::kFrozen) {
     frozen_val_ = new FrozenContainer();
-  } else if (value_type == ValueType::kJsonb) {
-    new(&json_val_) std::string();
   }
 }
 
 PrimitiveValue::PrimitiveValue(const PrimitiveValue& other) {
-  if (other.IsString()) {
+  if (other.IsStoredAsString()) {
     type_ = other.type_;
     new(&str_val_) std::string(other.str_val_);
-  } else if (other.type_ == ValueType::kJsonb) {
-    type_ = other.type_;
-    new(&json_val_) std::string(other.json_val_);
-  } else if (other.type_ == ValueType::kInetaddress
-      || other.type_ == ValueType::kInetaddressDescending) {
+  } else if (other.type_ == ValueEntryType::kInetaddress) {
     type_ = other.type_;
     inetaddress_val_ = new InetAddress(*(other.inetaddress_val_));
-  } else if (other.type_ == ValueType::kDecimal || other.type_ == ValueType::kDecimalDescending) {
-    type_ = other.type_;
-    new(&decimal_val_) std::string(other.decimal_val_);
-  } else if (other.type_ == ValueType::kVarInt || other.type_ == ValueType::kVarIntDescending) {
-    type_ = other.type_;
-    new(&varint_val_) std::string(other.varint_val_);
-  } else if (other.type_ == ValueType::kUuid || other.type_ == ValueType::kUuidDescending) {
+  } else if (other.type_ == ValueEntryType::kUuid) {
     type_ = other.type_;
     new(&uuid_val_) Uuid(std::move((other.uuid_val_)));
-  } else if (other.type_ == ValueType::kFrozen || other.type_ == ValueType::kFrozenDescending ) {
+  } else if (other.type_ == ValueEntryType::kFrozen) {
     type_ = other.type_;
     frozen_val_ = new FrozenContainer(*(other.frozen_val_));
   } else {
@@ -1662,114 +1470,64 @@ PrimitiveValue::PrimitiveValue(const PrimitiveValue& other) {
   write_time_ = other.write_time_;
 }
 
-PrimitiveValue::PrimitiveValue(const Slice& s, SortOrder sort_order, bool is_collate) {
-  if (sort_order == SortOrder::kDescending) {
-    type_ = is_collate ? ValueType::kCollStringDescending : ValueType::kStringDescending;
-  } else {
-    type_ = is_collate ? ValueType::kCollString : ValueType::kString;
-  }
+ValueEntryType StringType(bool is_collate) {
+  return is_collate ? ValueEntryType::kCollString : ValueEntryType::kString;
+}
+
+PrimitiveValue::PrimitiveValue(const Slice& s, bool is_collate) : type_(StringType(is_collate)) {
   new(&str_val_) std::string(s.cdata(), s.cend());
 }
 
-PrimitiveValue::PrimitiveValue(const std::string& s, SortOrder sort_order, bool is_collate) {
-  if (sort_order == SortOrder::kDescending) {
-    type_ = is_collate ? ValueType::kCollStringDescending : ValueType::kStringDescending;
-  } else {
-    type_ = is_collate ? ValueType::kCollString : ValueType::kString;
-  }
+PrimitiveValue::PrimitiveValue(const std::string& s, bool is_collate)
+    : type_(StringType(is_collate)) {
   new(&str_val_) std::string(s);
 }
 
-PrimitiveValue::PrimitiveValue(const char* s, SortOrder sort_order, bool is_collate) {
-  if (sort_order == SortOrder::kDescending) {
-    type_ = is_collate ? ValueType::kCollStringDescending : ValueType::kStringDescending;
-  } else {
-    type_ = is_collate ? ValueType::kCollString : ValueType::kString;
-  }
+PrimitiveValue::PrimitiveValue(const char* s, bool is_collate)
+    : type_(StringType(is_collate)) {
   new(&str_val_) std::string(s);
 }
 
-PrimitiveValue::PrimitiveValue(int64_t v, SortOrder sort_order) {
-  if (sort_order == SortOrder::kDescending) {
-    type_ = ValueType::kInt64Descending;
-  } else {
-    type_ = ValueType::kInt64;
-  }
-  // Avoid using an initializer for a union field (got surprising and unexpected results with
-  // that approach). Use a direct assignment instead.
-  int64_val_ = v;
-}
-
-PrimitiveValue::PrimitiveValue(const Timestamp& timestamp, SortOrder sort_order) {
-  if (sort_order == SortOrder::kDescending) {
-    type_ = ValueType::kTimestampDescending;
-  } else {
-    type_ = ValueType::kTimestamp;
-  }
+PrimitiveValue::PrimitiveValue(const Timestamp& timestamp)
+    : type_(ValueEntryType::kTimestamp) {
   timestamp_val_ = timestamp;
 }
 
-PrimitiveValue::PrimitiveValue(const InetAddress& inetaddress, SortOrder sort_order) {
-  if (sort_order == SortOrder::kDescending) {
-    type_ = ValueType::kInetaddressDescending;
-  } else {
-    type_ = ValueType::kInetaddress;
-  }
+PrimitiveValue::PrimitiveValue(const InetAddress& inetaddress)
+    : type_(ValueEntryType::kInetaddress) {
   inetaddress_val_ = new InetAddress(inetaddress);
 }
 
-PrimitiveValue::PrimitiveValue(const Uuid& uuid, SortOrder sort_order) {
-  if (sort_order == SortOrder::kDescending) {
-    type_ = ValueType::kUuidDescending;
-  } else {
-    type_ = ValueType::kUuid;
-  }
+PrimitiveValue::PrimitiveValue(const Uuid& uuid)
+    : type_(ValueEntryType::kUuid) {
   uuid_val_ = uuid;
 }
 
-PrimitiveValue::PrimitiveValue(const HybridTime& hybrid_time) : type_(ValueType::kHybridTime) {
-  hybrid_time_val_ = DocHybridTime(hybrid_time);
+KeyEntryValue::KeyEntryValue(const DocHybridTime& hybrid_time)
+    : type_(KeyEntryType::kHybridTime), hybrid_time_val_(hybrid_time) {
 }
 
-PrimitiveValue::PrimitiveValue(const DocHybridTime& hybrid_time)
-    : type_(ValueType::kHybridTime),
-      hybrid_time_val_(hybrid_time) {
-}
-
-PrimitiveValue::PrimitiveValue(const ColumnId column_id) : type_(ValueType::kColumnId) {
-  column_id_val_ = column_id;
+KeyEntryValue::KeyEntryValue(const HybridTime& hybrid_time)
+    : KeyEntryValue(DocHybridTime(hybrid_time)) {
 }
 
 PrimitiveValue::~PrimitiveValue() {
-  if (IsString()) {
+  if (IsStoredAsString()) {
     str_val_.~basic_string();
-  } else if (type_ == ValueType::kJsonb) {
-    json_val_.~basic_string();
-  } else if (type_ == ValueType::kInetaddress || type_ == ValueType::kInetaddressDescending) {
+  } else if (type_ == ValueEntryType::kInetaddress) {
     delete inetaddress_val_;
-  } else if (type_ == ValueType::kDecimal || type_ == ValueType::kDecimalDescending) {
-    decimal_val_.~basic_string();
-  } else if (type_ == ValueType::kVarInt || type_ == ValueType::kVarIntDescending) {
-    varint_val_.~basic_string();
-  } else if (type_ == ValueType::kFrozen) {
+  } else if (type_ == ValueEntryType::kFrozen) {
     delete frozen_val_;
   }
   // HybridTime does not need its destructor to be called, because it is a simple wrapper over an
   // unsigned 64-bit integer.
 }
 
-PrimitiveValue PrimitiveValue::NullValue(SortingType sorting) {
-  using SortingType = SortingType;
-
-  return PrimitiveValue(
+KeyEntryValue KeyEntryValue::NullValue(SortingType sorting) {
+  return KeyEntryValue(
       sorting == SortingType::kAscendingNullsLast || sorting == SortingType::kDescendingNullsLast
-      ? ValueType::kNullHigh
-      : ValueType::kNullLow);
-}
-
-DocHybridTime PrimitiveValue::hybrid_time() const {
-  DCHECK(type_ == ValueType::kHybridTime);
-  return hybrid_time_val_;
+      ? KeyEntryType::kNullHigh
+      : KeyEntryType::kNullLow);
 }
 
 bool PrimitiveValue::IsPrimitive() const {
@@ -1777,97 +1535,98 @@ bool PrimitiveValue::IsPrimitive() const {
 }
 
 bool PrimitiveValue::IsTombstoneOrPrimitive() const {
-  return IsPrimitiveValueType(type_) || type_ == ValueType::kTombstone;
+  return IsPrimitiveValueType(type_) || type_ == ValueEntryType::kTombstone;
 }
 
-bool PrimitiveValue::IsInfinity() const {
-  return type_ == ValueType::kHighest || type_ == ValueType::kLowest;
+bool KeyEntryValue::IsInfinity() const {
+  return type_ == KeyEntryType::kHighest || type_ == KeyEntryType::kLowest;
 }
 
 bool PrimitiveValue::IsInt64() const {
-  return ValueType::kInt64 == type_ || ValueType::kInt64Descending == type_;
+  return ValueEntryType::kInt64 == type_;
 }
 
 bool PrimitiveValue::IsString() const {
-  return ValueType::kString == type_ || ValueType::kStringDescending == type_ ||
-         ValueType::kCollString == type_ || ValueType::kCollStringDescending == type_;
+  return ValueEntryType::kString == type_ || ValueEntryType::kCollString == type_;
+}
+
+bool PrimitiveValue::IsStoredAsString() const {
+  return IsString() || type_ == ValueEntryType::kJsonb || type_ == ValueEntryType::kDecimal ||
+         type_ == ValueEntryType::kVarInt;
 }
 
 bool PrimitiveValue::IsDouble() const {
-  return ValueType::kDouble == type_ || ValueType::kDoubleDescending == type_;
+  return ValueEntryType::kDouble == type_;
+}
+
+const std::string& PrimitiveValue::GetString() const {
+  DCHECK(IsStoredAsString()) << "Actual type: " << type_;
+  return str_val_;
 }
 
 int32_t PrimitiveValue::GetInt32() const {
-  DCHECK(ValueType::kInt32 == type_ || ValueType::kInt32Descending == type_);
+  DCHECK_EQ(ValueEntryType::kInt32, type_);
   return int32_val_;
 }
 
 uint32_t PrimitiveValue::GetUInt32() const {
-  DCHECK(ValueType::kUInt32 == type_ || ValueType::kUInt32Descending == type_);
+  DCHECK_EQ(ValueEntryType::kUInt32, type_);
   return uint32_val_;
 }
 
 int64_t PrimitiveValue::GetInt64() const {
-  DCHECK(ValueType::kInt64 == type_ || ValueType::kInt64Descending == type_);
+  DCHECK_EQ(ValueEntryType::kInt64, type_);
   return int64_val_;
 }
 
 uint64_t PrimitiveValue::GetUInt64() const {
-  DCHECK(ValueType::kUInt64 == type_ || ValueType::kUInt64Descending == type_);
+  DCHECK_EQ(ValueEntryType::kUInt64, type_);
   return uint64_val_;
 }
 
-uint16_t PrimitiveValue::GetUInt16() const {
-  DCHECK(ValueType::kUInt16Hash == type_ ||
-         ValueType::kObsoleteIntentTypeSet == type_ ||
-         ValueType::kObsoleteIntentType == type_ ||
-         ValueType::kIntentTypeSet == type_);
-  return uint16_val_;
-}
-
 float PrimitiveValue::GetFloat() const {
-  DCHECK(ValueType::kFloat == type_ || ValueType::kFloatDescending == type_);
+  DCHECK_EQ(ValueEntryType::kFloat, type_);
   return float_val_;
 }
 
 const std::string& PrimitiveValue::GetDecimal() const {
-  DCHECK(ValueType::kDecimal == type_ || ValueType::kDecimalDescending == type_);
-  return decimal_val_;
+  DCHECK_EQ(ValueEntryType::kDecimal, type_);
+  return str_val_;
 }
 
 const std::string& PrimitiveValue::GetVarInt() const {
-  DCHECK(ValueType::kVarInt == type_ || ValueType::kVarIntDescending == type_);
-  return varint_val_;
+  DCHECK_EQ(ValueEntryType::kVarInt, type_);
+  return str_val_;
 }
 
 Timestamp PrimitiveValue::GetTimestamp() const {
-  DCHECK(ValueType::kTimestamp == type_ || ValueType::kTimestampDescending == type_);
+  DCHECK_EQ(ValueEntryType::kTimestamp, type_);
   return timestamp_val_;
 }
 
-const InetAddress* PrimitiveValue::GetInetaddress() const {
-  DCHECK(type_ == ValueType::kInetaddress || type_ == ValueType::kInetaddressDescending);
-  return inetaddress_val_;
+const InetAddress& PrimitiveValue::GetInetAddress() const {
+  DCHECK_EQ(type_, ValueEntryType::kInetaddress);
+  return *inetaddress_val_;
 }
 
 const std::string& PrimitiveValue::GetJson() const {
-  DCHECK(type_ == ValueType::kJsonb);
-  return json_val_;
+  DCHECK_EQ(type_, ValueEntryType::kJsonb);
+  return str_val_;
+}
+
+const FrozenContainer& PrimitiveValue::GetFrozen() const {
+  DCHECK_EQ(type_, ValueEntryType::kFrozen);
+  return *frozen_val_;
 }
 
 const Uuid& PrimitiveValue::GetUuid() const {
-  DCHECK(type_ == ValueType::kUuid || type_ == ValueType::kUuidDescending ||
-         type_ == ValueType::kTransactionId || type_ == ValueType::kTableId);
+  DCHECK(type_ == ValueEntryType::kUuid ||
+         type_ == ValueEntryType::kTransactionId || type_ == ValueEntryType::kTableId);
   return uuid_val_;
 }
 
-ColumnId PrimitiveValue::GetColumnId() const {
-  DCHECK(type_ == ValueType::kColumnId || type_ == ValueType::kSystemColumnId);
-  return column_id_val_;
-}
-
 uint8_t PrimitiveValue::GetGinNull() const {
-  DCHECK(ValueType::kGinNull == type_);
+  DCHECK(ValueEntryType::kGinNull == type_);
   return gin_null_val_;
 }
 
@@ -1878,29 +1637,17 @@ void PrimitiveValue::MoveFrom(PrimitiveValue* other) {
 
   ttl_seconds_ = other->ttl_seconds_;
   write_time_ = other->write_time_;
-  if (other->IsString()) {
+  if (other->IsStoredAsString()) {
     type_ = other->type_;
     new(&str_val_) std::string(std::move(other->str_val_));
     // The moved-from object should now be in a "valid but unspecified" state as per the standard.
-  } else if (other->type_ == ValueType::kInetaddress
-      || other->type_ == ValueType::kInetaddressDescending) {
+  } else if (other->type_ == ValueEntryType::kInetaddress) {
     type_ = other->type_;
     inetaddress_val_ = new InetAddress(std::move(*(other->inetaddress_val_)));
-  } else if (other->type_ == ValueType::kJsonb) {
-    type_ = other->type_;
-    new(&json_val_) std::string(std::move(other->json_val_));
-  } else if (other->type_ == ValueType::kDecimal ||
-      other->type_ == ValueType::kDecimalDescending) {
-    type_ = other->type_;
-    new(&decimal_val_) std::string(std::move(other->decimal_val_));
-  } else if (other->type_ == ValueType::kVarInt ||
-      other->type_ == ValueType::kVarIntDescending) {
-    type_ = other->type_;
-    new(&varint_val_) std::string(std::move(other->varint_val_));
-  } else if (other->type_ == ValueType::kUuid || other->type_ == ValueType::kUuidDescending) {
+  } else if (other->type_ == ValueEntryType::kUuid) {
     type_ = other->type_;
     new(&uuid_val_) Uuid(std::move((other->uuid_val_)));
-  } else if (other->type_ == ValueType::kFrozen) {
+  } else if (other->type_ == ValueEntryType::kFrozen) {
     type_ = other->type_;
     frozen_val_ = new FrozenContainer(std::move(*(other->frozen_val_)));
   } else {
@@ -1913,7 +1660,7 @@ void PrimitiveValue::MoveFrom(PrimitiveValue* other) {
     // it.
     memset(static_cast<void*>(other), 0xab, sizeof(PrimitiveValue));
     // Restore the type. There should be no deallocation for non-string types anyway.
-    other->type_ = ValueType::kNullLow;
+    other->type_ = ValueEntryType::kNullLow;
 #endif
   }
 }
@@ -1926,87 +1673,82 @@ SortOrder SortOrderFromColumnSchemaSortingType(SortingType sorting_type) {
   return SortOrder::kAscending;
 }
 
-PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value,
-                                             SortingType sorting_type,
-                                             bool check_is_collate) {
-  const auto sort_order = SortOrderFromColumnSchemaSortingType(sorting_type);
+PrimitiveValue PrimitiveValue::FromQLValuePB(
+    const LWQLValuePB& value, CheckIsCollate check_is_collate) {
+  return DoFromQLValuePB(value, check_is_collate);
+}
 
+PrimitiveValue PrimitiveValue::FromQLValuePB(
+    const QLValuePB& value, CheckIsCollate check_is_collate) {
+  return DoFromQLValuePB(value, check_is_collate);
+}
+
+template <class PB>
+PrimitiveValue PrimitiveValue::DoFromQLValuePB(const PB& value, CheckIsCollate check_is_collate) {
   switch (value.value_case()) {
     case QLValuePB::kInt8Value:
-      return PrimitiveValue::Int32(value.int8_value(), sort_order);
+      return PrimitiveValue::Int32(value.int8_value());
     case QLValuePB::kInt16Value:
-      return PrimitiveValue::Int32(value.int16_value(), sort_order);
+      return PrimitiveValue::Int32(value.int16_value());
     case QLValuePB::kInt32Value:
-      return PrimitiveValue::Int32(value.int32_value(), sort_order);
+      return PrimitiveValue::Int32(value.int32_value());
     case QLValuePB::kInt64Value:
-      return PrimitiveValue(value.int64_value(), sort_order);
+      return PrimitiveValue::Int64(value.int64_value());
     case QLValuePB::kUint32Value:
-      return PrimitiveValue::UInt32(value.uint32_value(), sort_order);
+      return PrimitiveValue::UInt32(value.uint32_value());
     case QLValuePB::kUint64Value:
-      return PrimitiveValue::UInt64(value.uint64_value(), sort_order);
-    case QLValuePB::kFloatValue: {
-      float f = value.float_value();
-      return PrimitiveValue::Float(util::CanonicalizeFloat(f), sort_order);
-    }
-    case QLValuePB::kDoubleValue: {
-      double d = value.double_value();
-      return PrimitiveValue::Double(util::CanonicalizeDouble(d), sort_order);
-    }
+      return PrimitiveValue::UInt64(value.uint64_value());
+    case QLValuePB::kFloatValue:
+      return PrimitiveValue::Float(util::CanonicalizeFloat(value.float_value()));
+    case QLValuePB::kDoubleValue:
+      return PrimitiveValue::Double(util::CanonicalizeDouble(value.double_value()));
     case QLValuePB::kDecimalValue:
-      return PrimitiveValue::Decimal(value.decimal_value(), sort_order);
+      return PrimitiveValue::Decimal(value.decimal_value());
     case QLValuePB::kVarintValue:
-      return PrimitiveValue::VarInt(value.varint_value(), sort_order);
+      return PrimitiveValue::VarInt(value.varint_value());
     case QLValuePB::kStringValue: {
-      const string& val = value.string_value();
+      const auto& val = value.string_value();
       // In both Postgres and YCQL, character value cannot have embedded \0 byte.
       // Redis allows embedded \0 byte but it does not use QLValuePB so will not
       // come here to pick up 'is_collate'. Therefore, if the value is not empty
       // and the first byte is \0, it indicates this is a collation encoded string.
-      if (!val.empty() && val[0] == '\0' && sorting_type != SortingType::kNotSpecified) {
+      if (!val.empty() && val[0] == '\0' && check_is_collate) {
         // An empty collation encoded string is at least 3 bytes.
         CHECK_GE(val.size(), 3);
-        return PrimitiveValue(val, sort_order, true /* is_collate */);
+        return PrimitiveValue(val, true /* is_collate */);
       }
-      return PrimitiveValue(val, sort_order);
+      return PrimitiveValue(val);
     }
     case QLValuePB::kBinaryValue:
       // TODO consider using dedicated encoding for binary (not string) to avoid overhead of
       // zero-encoding for keys (since zero-bytes could be common for binary)
-      return PrimitiveValue(value.binary_value(), sort_order);
+      return PrimitiveValue(value.binary_value());
     case QLValuePB::kBoolValue:
-      return PrimitiveValue(sort_order == SortOrder::kDescending
-                            ? (value.bool_value() ? ValueType::kTrueDescending
-                                                  : ValueType::kFalseDescending)
-                            : (value.bool_value() ? ValueType::kTrue
-                                                  : ValueType::kFalse));
+      return PrimitiveValue(value.bool_value() ? ValueEntryType::kTrue : ValueEntryType::kFalse);
     case QLValuePB::kTimestampValue:
-      return PrimitiveValue(QLValue::timestamp_value(value), sort_order);
+      return PrimitiveValue(QLValue::timestamp_value(value));
     case QLValuePB::kDateValue:
-      return PrimitiveValue::UInt32(value.date_value(), sort_order);
+      return PrimitiveValue::UInt32(value.date_value());
     case QLValuePB::kTimeValue:
-      return PrimitiveValue(value.time_value(), sort_order);
+      return PrimitiveValue::Int64(value.time_value());
     case QLValuePB::kInetaddressValue:
-      return PrimitiveValue(QLValue::inetaddress_value(value), sort_order);
+      return PrimitiveValue(QLValue::inetaddress_value(value));
     case QLValuePB::kJsonbValue:
       return PrimitiveValue::Jsonb(QLValue::jsonb_value(value));
     case QLValuePB::kUuidValue:
-      return PrimitiveValue(QLValue::uuid_value(value), sort_order);
+      return PrimitiveValue(QLValue::uuid_value(value));
     case QLValuePB::kTimeuuidValue:
-      return PrimitiveValue(QLValue::timeuuid_value(value), sort_order);
+      return PrimitiveValue(QLValue::timeuuid_value(value));
     case QLValuePB::kFrozenValue: {
-      QLSeqValuePB frozen = value.frozen_value();
-      PrimitiveValue pv(ValueType::kFrozen);
-      auto null_value_type = ValueType::kNullLow;
-      if (sort_order == SortOrder::kDescending) {
-        null_value_type = ValueType::kNullHigh;
-        pv.type_ = ValueType::kFrozenDescending;
-      }
+      const auto& frozen = value.frozen_value();
+      PrimitiveValue pv(ValueEntryType::kFrozen);
+      auto null_value_type = KeyEntryType::kNullLow;
 
-      for (int i = 0; i < frozen.elems_size(); i++) {
-        if (IsNull(frozen.elems(i))) {
+      for (const auto& elem : frozen.elems()) {
+        if (IsNull(elem)) {
           pv.frozen_val_->emplace_back(null_value_type);
         } else {
-          pv.frozen_val_->push_back(PrimitiveValue::FromQLValuePB(frozen.elems(i), sorting_type));
+          pv.frozen_val_->push_back(KeyEntryValue::FromQLValuePB(elem, SortingType::kNotSpecified));
         }
       }
       return pv;
@@ -2020,7 +1762,7 @@ PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value,
       break;
 
     case QLValuePB::kVirtualValue:
-      return PrimitiveValue(VirtualValueToValueType(value.virtual_value()));
+      return PrimitiveValue(VirtualValueToValueEntryType(value.virtual_value()));
     case QLValuePB::kGinNullValue:
       return PrimitiveValue::GinNull(value.gin_null_value());
 
@@ -2030,136 +1772,119 @@ PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value,
   LOG(FATAL) << "Unsupported datatype in PrimitiveValue: " << value.value_case();
 }
 
-void PrimitiveValue::ToQLValuePB(const PrimitiveValue& primitive_value,
-                                 const std::shared_ptr<QLType>& ql_type,
-                                 QLValuePB* ql_value) {
+namespace {
+
+template <class Value>
+bool SharedToQLValuePB(
+    const Value& value, const std::shared_ptr<QLType>& ql_type, QLValuePB* ql_value) {
   // DocDB sets type to kInvalidValueType for SubDocuments that don't exist. That's why they need
   // to be set to Null in QLValue.
-  if (primitive_value.value_type() == ValueType::kNullLow ||
-      primitive_value.value_type() == ValueType::kNullHigh ||
-      primitive_value.value_type() == ValueType::kInvalid ||
-      primitive_value.value_type() == ValueType::kTombstone) {
+  auto type = value.type();
+  if (type == Value::Type::kNullLow || type == Value::Type::kNullHigh ||
+      type == Value::Type::kInvalid) {
     SetNull(ql_value);
-    return;
+    return true;
   }
 
   // For ybgin indexes, null category can be set on any index key column, regardless of the column's
   // actual type.  The column's actual type cannot be kGinNull, so it throws error in the below
   // switch.
-  if (primitive_value.value_type() == ValueType::kGinNull) {
-    ql_value->set_gin_null_value(primitive_value.GetGinNull());
-    return;
+  if (type == Value::Type::kGinNull) {
+    ql_value->set_gin_null_value(value.GetGinNull());
+    return true;
   }
 
   switch (ql_type->main()) {
     case INT8:
-      ql_value->set_int8_value(static_cast<int8_t>(primitive_value.GetInt32()));
-      return;
+      ql_value->set_int8_value(static_cast<int8_t>(value.GetInt32()));
+      return true;
     case INT16:
-      ql_value->set_int16_value(static_cast<int16_t>(primitive_value.GetInt32()));
-      return;
+      ql_value->set_int16_value(static_cast<int16_t>(value.GetInt32()));
+      return true;
     case INT32:
-      ql_value->set_int32_value(primitive_value.GetInt32());
-      return;
+      ql_value->set_int32_value(value.GetInt32());
+      return true;
     case INT64:
-      ql_value->set_int64_value(primitive_value.GetInt64());
-      return;
+      ql_value->set_int64_value(value.GetInt64());
+      return true;
     case UINT32:
-      ql_value->set_uint32_value(primitive_value.GetUInt32());
-      return;
+      ql_value->set_uint32_value(value.GetUInt32());
+      return true;
     case UINT64:
-      ql_value->set_uint64_value(primitive_value.GetUInt64());
-      return;
+      ql_value->set_uint64_value(value.GetUInt64());
+      return true;
     case FLOAT:
-      ql_value->set_float_value(primitive_value.GetFloat());
-      return;
+      ql_value->set_float_value(value.GetFloat());
+      return true;
     case DOUBLE:
-      ql_value->set_double_value(primitive_value.GetDouble());
-      return;
+      ql_value->set_double_value(value.GetDouble());
+      return true;
     case DECIMAL:
-      ql_value->set_decimal_value(primitive_value.GetDecimal());
-      return;
+      ql_value->set_decimal_value(value.GetDecimal());
+      return true;
     case VARINT:
-      ql_value->set_varint_value(primitive_value.GetVarInt());
-      return;
+      ql_value->set_varint_value(value.GetVarInt());
+      return true;
     case BOOL:
-      ql_value->set_bool_value(primitive_value.value_type() == ValueType::kTrue ||
-                               primitive_value.value_type() == ValueType::kTrueDescending);
-      return;
+      ql_value->set_bool_value(IsTrue(type));
+      return true;
     case TIMESTAMP:
-      ql_value->set_timestamp_value(primitive_value.GetTimestamp().ToInt64());
-      return;
+      ql_value->set_timestamp_value(value.GetTimestamp().ToInt64());
+      return true;
     case DATE:
-      ql_value->set_date_value(primitive_value.GetUInt32());
-      return;
+      ql_value->set_date_value(value.GetUInt32());
+      return true;
     case TIME:
-      ql_value->set_time_value(primitive_value.GetInt64());
-      return;
+      ql_value->set_time_value(value.GetInt64());
+      return true;
     case INET: {
-      QLValue temp_value;
-      temp_value.set_inetaddress_value(*primitive_value.GetInetaddress());
-      *ql_value = std::move(*temp_value.mutable_value());
-      return;
+      QLValue::set_inetaddress_value(value.GetInetAddress(), ql_value);
+      return true;
     }
-    case JSONB: {
-      QLValue temp_value;
-      temp_value.set_jsonb_value(primitive_value.GetJson());
-      *ql_value = std::move(*temp_value.mutable_value());
-      return;
-    }
-    case UUID: {
-      QLValue temp_value;
-      temp_value.set_uuid_value(primitive_value.GetUuid());
-      *ql_value = std::move(*temp_value.mutable_value());
-      return;
-    }
-    case TIMEUUID: {
-      QLValue temp_value;
-      temp_value.set_timeuuid_value(primitive_value.GetUuid());
-      *ql_value = std::move(*temp_value.mutable_value());
-      return;
-    }
+    case UUID:
+      QLValue::set_uuid_value(value.GetUuid(), ql_value);
+      return true;
+    case TIMEUUID:
+      QLValue::set_timeuuid_value(value.GetUuid(), ql_value);
+      return true;
     case STRING:
-      ql_value->set_string_value(primitive_value.GetString());
-      return;
+      ql_value->set_string_value(value.GetString());
+      return true;
     case BINARY:
-      ql_value->set_binary_value(primitive_value.GetString());
-      return;
+      ql_value->set_binary_value(value.GetString());
+      return true;
     case FROZEN: {
       const auto& type = ql_type->param_type(0);
       QLSeqValuePB *frozen_value = ql_value->mutable_frozen_value();
       frozen_value->clear_elems();
+      const auto& frozen = value.GetFrozen();
       switch (type->main()) {
         case MAP: {
           const std::shared_ptr<QLType>& keys_type = type->param_type(0);
           const std::shared_ptr<QLType>& values_type = type->param_type(1);
-          for (size_t i = 0; i < primitive_value.frozen_val_->size(); i++) {
+          for (size_t i = 0; i < frozen.size(); i++) {
             if (i % 2 == 0) {
-              QLValuePB *key = frozen_value->add_elems();
-              PrimitiveValue::ToQLValuePB((*primitive_value.frozen_val_)[i], keys_type, key);
+              frozen[i].ToQLValuePB(keys_type, frozen_value->add_elems());
             } else {
-              QLValuePB *value = frozen_value->add_elems();
-              PrimitiveValue::ToQLValuePB((*primitive_value.frozen_val_)[i], values_type, value);
+              frozen[i].ToQLValuePB(values_type, frozen_value->add_elems());
             }
           }
-          return;
+          return true;
         }
         case SET: FALLTHROUGH_INTENDED;
         case LIST: {
           const std::shared_ptr<QLType>& elems_type = type->param_type(0);
-          for (const auto &pv : *primitive_value.frozen_val_) {
+          for (const auto &pv : frozen) {
             QLValuePB *elem = frozen_value->add_elems();
-            PrimitiveValue::ToQLValuePB(pv, elems_type, elem);
+            pv.ToQLValuePB(elems_type, elem);
           }
-          return;
+          return true;
         }
         case USER_DEFINED_TYPE: {
-          for (size_t i = 0; i < primitive_value.frozen_val_->size(); i++) {
-            QLValuePB *value = frozen_value->add_elems();
-            PrimitiveValue::ToQLValuePB(
-                (*primitive_value.frozen_val_)[i], type->param_type(i), value);
+          for (size_t i = 0; i < frozen.size(); i++) {
+            frozen[i].ToQLValuePB(type->param_type(i), frozen_value->add_elems());
           }
-          return;
+          return true;
         }
 
         default:
@@ -2168,6 +1893,7 @@ void PrimitiveValue::ToQLValuePB(const PrimitiveValue& primitive_value,
       FATAL_INVALID_ENUM_VALUE(DataType, type->main());
     }
 
+    case JSONB: FALLTHROUGH_INTENDED;
     case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
     case MAP: FALLTHROUGH_INTENDED;
     case SET: FALLTHROUGH_INTENDED;
@@ -2185,7 +1911,778 @@ void PrimitiveValue::ToQLValuePB(const PrimitiveValue& primitive_value,
     // default: fall through
   }
 
+  return false;
+}
+
+} // namespace
+
+void PrimitiveValue::ToQLValuePB(const std::shared_ptr<QLType>& ql_type,
+                                 QLValuePB* ql_value) const {
+  if (type() == ValueEntryType::kTombstone) {
+    SetNull(ql_value);
+    return;
+  }
+
+  if (SharedToQLValuePB(*this, ql_type, ql_value)) {
+    return;
+  }
+
+  if (ql_type->main() == DataType::JSONB) {
+    QLValue temp_value;
+    temp_value.set_jsonb_value(GetJson());
+    *ql_value = std::move(*temp_value.mutable_value());
+    return;
+  }
+
   LOG(FATAL) << "Unsupported datatype " << ql_type->ToString();
+}
+
+KeyEntryValue::KeyEntryValue() : type_(KeyEntryType::kInvalid) {
+}
+
+KeyEntryValue::KeyEntryValue(KeyEntryType type) : type_(type) {
+  if (IsStoredAsString()) {
+    new(&str_val_) std::string();
+  } else if (IsInetAddress()) {
+    inetaddress_val_ = new InetAddress();
+  } else if (IsUuid()) {
+    new(&uuid_val_) Uuid();
+  } else if (IsFrozen()) {
+    frozen_val_ = new FrozenContainer();
+  }
+}
+
+KeyEntryValue::KeyEntryValue(KeyEntryValue&& rhs) : type_(rhs.type_) {
+  if (rhs.IsStoredAsString()) {
+    new(&str_val_) std::string(std::move(rhs.str_val_));
+  } else if (rhs.IsInetAddress()) {
+    inetaddress_val_ = rhs.inetaddress_val_;
+  } else if (rhs.IsUuid()) {
+    new(&uuid_val_) Uuid(std::move(rhs.uuid_val_));
+  } else if (rhs.IsFrozen()) {
+    frozen_val_ = rhs.frozen_val_;
+  } else {
+    memmove(static_cast<void*>(this), &rhs, sizeof(*this));
+  }
+  rhs.type_ = KeyEntryType::kInvalid;
+}
+
+KeyEntryValue::KeyEntryValue(const KeyEntryValue& rhs) : type_(rhs.type_) {
+  if (rhs.IsStoredAsString()) {
+    new(&str_val_) std::string(rhs.str_val_);
+  } else if (rhs.IsInetAddress()) {
+    inetaddress_val_ = new InetAddress(*rhs.inetaddress_val_);
+  } else if (rhs.IsUuid()) {
+    new(&uuid_val_) Uuid(rhs.uuid_val_);
+  } else if (rhs.IsFrozen()) {
+    frozen_val_ = new FrozenContainer(*rhs.frozen_val_);
+  } else {
+    memmove(static_cast<void*>(this), &rhs, sizeof(*this));
+  }
+}
+
+KeyEntryType StringType(SortOrder sort_order, bool is_collate) {
+  return is_collate ? SELECT_VALUE_TYPE(CollString, sort_order)
+                    : SELECT_VALUE_TYPE(String, sort_order);
+}
+
+KeyEntryValue::KeyEntryValue(
+    const Slice& str, SortOrder sort_order, bool is_collate)
+        : type_(StringType(sort_order, is_collate)) {
+  new(&str_val_) std::string(str.cdata(), str.size());
+}
+
+KeyEntryValue& KeyEntryValue::operator =(const KeyEntryValue& rhs) {
+  if (rhs.IsStoredAsString()) {
+    if (IsStoredAsString()) {
+      str_val_ = rhs.str_val_;
+    } else {
+      Destroy();
+      new(&str_val_) std::string(rhs.str_val_);
+    }
+  } else if (rhs.IsInetAddress()) {
+    if (IsInetAddress()) {
+      *inetaddress_val_ = *rhs.inetaddress_val_;
+    } else {
+      Destroy();
+      inetaddress_val_ = new InetAddress(*rhs.inetaddress_val_);
+    }
+  } else if (rhs.IsUuid()) {
+    if (IsUuid()) {
+      uuid_val_ = rhs.uuid_val_;
+    } else {
+      Destroy();
+      new(&uuid_val_) Uuid(rhs.uuid_val_);
+    }
+  } else if (rhs.IsFrozen()) {
+    if (IsFrozen()) {
+      *frozen_val_ = *rhs.frozen_val_;
+    } else {
+      Destroy();
+      frozen_val_ = new FrozenContainer(*rhs.frozen_val_);
+    }
+  } else {
+    memmove(static_cast<void*>(this), &rhs, sizeof(*this));
+    return *this;
+  }
+  type_ = rhs.type_;
+  return *this;
+}
+
+KeyEntryValue& KeyEntryValue::operator =(KeyEntryValue&& rhs) {
+  if (rhs.IsStoredAsString()) {
+    if (IsStoredAsString()) {
+      str_val_ = std::move(rhs.str_val_);
+    } else {
+      Destroy();
+      new(&str_val_) std::string(std::move(rhs.str_val_));
+    }
+    type_ = rhs.type_;
+  } else if (rhs.IsInetAddress()) {
+    if (IsInetAddress()) {
+      *inetaddress_val_ = *rhs.inetaddress_val_;
+      type_ = rhs.type_;
+    } else {
+      Destroy();
+      inetaddress_val_ = rhs.inetaddress_val_;
+      type_ = rhs.type_;
+      rhs.type_ = KeyEntryType::kInvalid;
+    }
+  } else if (rhs.IsUuid()) {
+    if (IsUuid()) {
+      uuid_val_ = rhs.uuid_val_;
+    } else {
+      Destroy();
+      new(&uuid_val_) Uuid(std::move(rhs.uuid_val_));
+    }
+    type_ = rhs.type_;
+  } else if (rhs.IsFrozen()) {
+    if (IsFrozen()) {
+      *frozen_val_ = *rhs.frozen_val_;
+      type_ = rhs.type_;
+    } else {
+      Destroy();
+      frozen_val_ = rhs.frozen_val_;
+      type_ = rhs.type_;
+      rhs.type_ = KeyEntryType::kInvalid;
+    }
+  } else {
+    Destroy();
+    memmove(static_cast<void*>(this), &rhs, sizeof(*this));
+  }
+  rhs.Destroy();
+  return *this;
+}
+
+KeyEntryValue KeyEntryValue::MakeTimestamp(const Timestamp& timestamp, SortOrder sort_order) {
+  KeyEntryValue result;
+  result.type_ = SELECT_VALUE_TYPE(Timestamp, sort_order);
+  result.timestamp_val_ = timestamp;
+  return result;
+}
+
+KeyEntryValue KeyEntryValue::MakeInetAddress(const InetAddress& value, SortOrder sort_order) {
+  KeyEntryValue result;
+  result.type_ = SELECT_VALUE_TYPE(Inetaddress, sort_order);
+  result.inetaddress_val_ = new InetAddress(value);
+  return result;
+}
+
+KeyEntryValue KeyEntryValue::MakeUuid(const Uuid& value, SortOrder sort_order) {
+  KeyEntryValue result;
+  result.type_ = SELECT_VALUE_TYPE(Uuid, sort_order);
+  result.uuid_val_ = value;
+  return result;
+}
+
+KeyEntryValue KeyEntryValue::GinNull(uint8_t v) {
+  KeyEntryValue result;
+  result.type_ = KeyEntryType::kGinNull;
+  result.gin_null_val_ = v;
+  return result;
+}
+
+KeyEntryValue::~KeyEntryValue() {
+  Destroy();
+}
+
+void KeyEntryValue::Destroy() {
+  if (IsStoredAsString()) {
+    str_val_.~string();
+  } else if (IsUuid()) {
+    uuid_val_.~Uuid();
+  } else if (IsInetAddress()) {
+    delete inetaddress_val_;
+  } else if (IsFrozen()) {
+    delete frozen_val_;
+  }
+  type_ = KeyEntryType::kInvalid;
+}
+
+bool KeyEntryValue::IsStoredAsString() const {
+  return IsString()
+         || type_ == KeyEntryType::kDecimal || type_ == KeyEntryType::kDecimalDescending
+         || type_ == KeyEntryType::kVarInt || type_ == KeyEntryType::kVarIntDescending;
+}
+
+bool KeyEntryValue::IsUuid() const {
+  return type_ == KeyEntryType::kUuid || type_ == KeyEntryType::kUuidDescending;
+}
+
+const Uuid& KeyEntryValue::GetUuid() const {
+  DCHECK(IsUuid());
+  return uuid_val_;
+}
+
+const FrozenContainer& KeyEntryValue::GetFrozen() const {
+  DCHECK(IsFrozen());
+  return *frozen_val_;
+}
+
+bool KeyEntryValue::IsInetAddress() const {
+  return type_ == KeyEntryType::kInetaddress || type_ == KeyEntryType::kInetaddressDescending;
+}
+
+const InetAddress& KeyEntryValue::GetInetAddress() const {
+  DCHECK(IsInetAddress());
+  return *inetaddress_val_;
+}
+
+bool KeyEntryValue::IsFrozen() const {
+  return type_ == KeyEntryType::kFrozen || type_ == KeyEntryType::kFrozenDescending;
+}
+
+template <class PB>
+KeyEntryValue KeyEntryValue::DoFromQLValuePB(const PB& value, SortingType sorting_type) {
+  const auto sort_order = SortOrderFromColumnSchemaSortingType(sorting_type);
+
+  switch (value.value_case()) {
+    case QLValuePB::kInt8Value:
+      return KeyEntryValue::Int32(value.int8_value(), sort_order);
+    case QLValuePB::kInt16Value:
+      return KeyEntryValue::Int32(value.int16_value(), sort_order);
+    case QLValuePB::kInt32Value:
+      return KeyEntryValue::Int32(value.int32_value(), sort_order);
+    case QLValuePB::kInt64Value:
+      return KeyEntryValue::Int64(value.int64_value(), sort_order);
+    case QLValuePB::kUint32Value:
+      return KeyEntryValue::UInt32(value.uint32_value(), sort_order);
+    case QLValuePB::kUint64Value:
+      return KeyEntryValue::UInt64(value.uint64_value(), sort_order);
+    case QLValuePB::kFloatValue: {
+      float f = value.float_value();
+      return KeyEntryValue::Float(util::CanonicalizeFloat(f), sort_order);
+    }
+    case QLValuePB::kDoubleValue: {
+      double d = value.double_value();
+      return KeyEntryValue::Double(util::CanonicalizeDouble(d), sort_order);
+    }
+    case QLValuePB::kDecimalValue:
+      return KeyEntryValue::Decimal(value.decimal_value(), sort_order);
+    case QLValuePB::kVarintValue:
+      return KeyEntryValue::VarInt(value.varint_value(), sort_order);
+    case QLValuePB::kStringValue: {
+      const auto& val = value.string_value();
+      // In both Postgres and YCQL, character value cannot have embedded \0 byte.
+      // Redis allows embedded \0 byte but it does not use QLValuePB so will not
+      // come here to pick up 'is_collate'. Therefore, if the value is not empty
+      // and the first byte is \0, it indicates this is a collation encoded string.
+      if (!val.empty() && val[0] == '\0' && sorting_type != SortingType::kNotSpecified) {
+        // An empty collation encoded string is at least 3 bytes.
+        CHECK_GE(val.size(), 3);
+        return KeyEntryValue(val, sort_order, true /* is_collate */);
+      }
+      return KeyEntryValue(val, sort_order);
+    }
+    case QLValuePB::kBinaryValue:
+      return KeyEntryValue(value.binary_value(), sort_order);
+    case QLValuePB::kBoolValue:
+      return KeyEntryValue(sort_order == SortOrder::kDescending
+                            ? (value.bool_value() ? KeyEntryType::kTrueDescending
+                                                  : KeyEntryType::kFalseDescending)
+                            : (value.bool_value() ? KeyEntryType::kTrue
+                                                  : KeyEntryType::kFalse));
+    case QLValuePB::kTimestampValue:
+      return KeyEntryValue::MakeTimestamp(QLValue::timestamp_value(value), sort_order);
+    case QLValuePB::kDateValue:
+      return KeyEntryValue::UInt32(value.date_value(), sort_order);
+    case QLValuePB::kTimeValue:
+      return KeyEntryValue::Int64(value.time_value(), sort_order);
+    case QLValuePB::kInetaddressValue:
+      return KeyEntryValue::MakeInetAddress(QLValue::inetaddress_value(value), sort_order);
+    case QLValuePB::kUuidValue:
+      return KeyEntryValue::MakeUuid(QLValue::uuid_value(value), sort_order);
+    case QLValuePB::kTimeuuidValue:
+      return KeyEntryValue::MakeUuid(QLValue::timeuuid_value(value), sort_order);
+    case QLValuePB::kFrozenValue: {
+      const auto& frozen = value.frozen_value();
+      KeyEntryValue pv(KeyEntryType::kFrozen);
+      auto null_value_type = KeyEntryType::kNullLow;
+      if (sort_order == SortOrder::kDescending) {
+        null_value_type = KeyEntryType::kNullHigh;
+        pv.type_ = KeyEntryType::kFrozenDescending;
+      }
+
+      for (const auto& elem : frozen.elems()) {
+        if (IsNull(elem)) {
+          pv.frozen_val_->emplace_back(null_value_type);
+        } else {
+          pv.frozen_val_->push_back(KeyEntryValue::FromQLValuePB(elem, sorting_type));
+        }
+      }
+      return pv;
+    }
+
+    case QLValuePB::kVirtualValue:
+      return KeyEntryValue(VirtualValueToKeyEntryType(value.virtual_value()));
+    case QLValuePB::kGinNullValue:
+      return KeyEntryValue::GinNull(value.gin_null_value());
+
+    case QLValuePB::kJsonbValue: FALLTHROUGH_INTENDED;
+    case QLValuePB::kMapValue: FALLTHROUGH_INTENDED;
+    case QLValuePB::kSetValue: FALLTHROUGH_INTENDED;
+    case QLValuePB::kListValue: FALLTHROUGH_INTENDED;
+    case QLValuePB::VALUE_NOT_SET:
+      break;
+    // default: fall through
+  }
+
+  LOG(FATAL) << "Unsupported datatype in PrimitiveValue: " << value.value_case();
+}
+
+KeyEntryValue KeyEntryValue::FromQLValuePB(const QLValuePB& value, SortingType sorting_type) {
+  return DoFromQLValuePB(value, sorting_type);
+}
+
+KeyEntryValue KeyEntryValue::FromQLValuePB(const LWQLValuePB& value, SortingType sorting_type) {
+  return DoFromQLValuePB(value, sorting_type);
+}
+
+std::string KeyEntryValue::ToString(AutoDecodeKeys auto_decode_keys) const {
+  switch (type_) {
+    case KeyEntryType::kNullHigh: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kNullLow:
+      return "null";
+    case KeyEntryType::kGinNull:
+      switch (gin_null_val_) {
+        // case 0, gin:norm-key, should not exist since the actual data would be used instead.
+        case 1:
+          return "GinNullKey";
+        case 2:
+          return "GinEmptyItem";
+        case 3:
+          return "GinNullItem";
+        // case -1, gin:empty-query, should not exist since that's internal to postgres.
+        default:
+          LOG(FATAL) << "Unexpected gin null category: " << gin_null_val_;
+      }
+    case KeyEntryType::kCounter:
+      return "counter";
+    case KeyEntryType::kSSForward:
+      return "SSforward";
+    case KeyEntryType::kSSReverse:
+      return "SSreverse";
+    case KeyEntryType::kFalse: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kFalseDescending:
+      return "false";
+    case KeyEntryType::kTrue: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kTrueDescending:
+      return "true";
+    case KeyEntryType::kInvalid:
+      return "invalid";
+    case KeyEntryType::kCollStringDescending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kCollString: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kStringDescending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kString:
+      if (auto_decode_keys) {
+        // This is useful when logging write batches for secondary indexes.
+        SubDocKey sub_doc_key;
+        Status decode_status = sub_doc_key.FullyDecodeFrom(str_val_, HybridTimeRequired::kFalse);
+        if (decode_status.ok()) {
+          // This gives us "EncodedSubDocKey(...)".
+          return Format("Encoded$0", sub_doc_key);
+        }
+      }
+      return FormatBytesAsStr(str_val_);
+    case KeyEntryType::kInt32Descending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kInt32:
+      return std::to_string(int32_val_);
+    case KeyEntryType::kUInt32:
+    case KeyEntryType::kUInt32Descending:
+      return std::to_string(uint32_val_);
+    case KeyEntryType::kUInt64:  FALLTHROUGH_INTENDED;
+    case KeyEntryType::kUInt64Descending:
+      return std::to_string(uint64_val_);
+    case KeyEntryType::kInt64Descending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kInt64:
+      return std::to_string(int64_val_);
+    case KeyEntryType::kFloatDescending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kFloat:
+      return RealToString(float_val_);
+    case KeyEntryType::kFrozenDescending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kFrozen:
+      return FrozenToString(*frozen_val_);
+    case KeyEntryType::kDoubleDescending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kDouble:
+      return RealToString(double_val_);
+    case KeyEntryType::kDecimalDescending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kDecimal:
+      return DecimalToString(str_val_);
+    case KeyEntryType::kVarIntDescending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kVarInt:
+      return VarIntToString(str_val_);
+    case KeyEntryType::kTimestampDescending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kTimestamp:
+      return timestamp_val_.ToString();
+    case KeyEntryType::kInetaddressDescending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kInetaddress:
+      return inetaddress_val_->ToString();
+    case KeyEntryType::kUuidDescending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kUuid:
+      return uuid_val_.ToString();
+    case KeyEntryType::kArrayIndex:
+      return Substitute("ArrayIndex($0)", int64_val_);
+    case KeyEntryType::kHybridTime:
+      return hybrid_time_val_.ToString();
+    case KeyEntryType::kUInt16Hash:
+      return Substitute("UInt16Hash($0)", uint16_val_);
+    case KeyEntryType::kColumnId:
+      return Format("ColumnId($0)", column_id_val_);
+    case KeyEntryType::kSystemColumnId:
+      return Format("SystemColumnId($0)", column_id_val_);
+    case KeyEntryType::kTableId:
+      return Format("TableId($0)", uuid_val_.ToString());
+    case KeyEntryType::kColocationId:
+      return Format("ColocationId($0)", uint32_val_);
+    case KeyEntryType::kTransactionApplyState: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kExternalTransactionId: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kTransactionId:
+      return Substitute("TransactionId($0)", uuid_val_.ToString());
+    case KeyEntryType::kSubTransactionId:
+      return Substitute("SubTransactionId($0)", uint32_val_);
+    case KeyEntryType::kIntentTypeSet:
+      return Format("Intents($0)", IntentTypeSet(uint16_val_));
+    case KeyEntryType::kObsoleteIntentTypeSet:
+      return Format("ObsoleteIntents($0)", uint16_val_);
+    case KeyEntryType::kObsoleteIntentType:
+      return Format("Intent($0)", uint16_val_);
+    case KeyEntryType::kMergeFlags: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kRowLock: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kBitSet: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kGroupEnd: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kGroupEndDescending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kTtl: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kUserTimestamp: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kObsoleteIntentPrefix: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kExternalIntents: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kGreaterThanIntentType:
+      break;
+    case KeyEntryType::kLowest:
+      return "-Inf";
+    case KeyEntryType::kHighest:
+      return "+Inf";
+    case KeyEntryType::kMaxByte:
+      return "0xff";
+  }
+  FATAL_INVALID_ENUM_VALUE(KeyEntryType, type_);
+}
+
+int KeyEntryValue::CompareTo(const KeyEntryValue& other) const {
+  int result = CompareUsingLessThan(type_, other.type_);
+  if (result != 0) {
+    return result;
+  }
+  switch (type_) {
+    CASE_EMPTY_KEY_ENTRY_TYPES
+      return 0;
+    case KeyEntryType::kCollStringDescending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kStringDescending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kDecimalDescending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kVarIntDescending:
+      return other.str_val_.compare(str_val_);
+    case KeyEntryType::kCollString: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kString: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kDecimal: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kVarInt:
+      return str_val_.compare(other.str_val_);
+    case KeyEntryType::kInt64Descending:
+      return CompareUsingLessThan(other.int64_val_, int64_val_);
+    case KeyEntryType::kInt32Descending:
+      return CompareUsingLessThan(other.int32_val_, int32_val_);
+    case KeyEntryType::kInt32:
+      return CompareUsingLessThan(int32_val_, other.int32_val_);
+    case KeyEntryType::kUInt32Descending:
+      return CompareUsingLessThan(other.uint32_val_, uint32_val_);
+    case KeyEntryType::kColocationId: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kSubTransactionId: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kUInt32:
+      return CompareUsingLessThan(uint32_val_, other.uint32_val_);
+    case KeyEntryType::kUInt64Descending:
+      return CompareUsingLessThan(other.uint64_val_, uint64_val_);
+    case KeyEntryType::kUInt64:
+      return CompareUsingLessThan(uint64_val_, other.uint64_val_);
+    case KeyEntryType::kInt64: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kArrayIndex:
+      return CompareUsingLessThan(int64_val_, other.int64_val_);
+    case KeyEntryType::kDoubleDescending:
+      return CompareUsingLessThan(other.double_val_, double_val_);
+    case KeyEntryType::kDouble:
+      return CompareUsingLessThan(double_val_, other.double_val_);
+    case KeyEntryType::kFloatDescending:
+      return CompareUsingLessThan(other.float_val_, float_val_);
+    case KeyEntryType::kFloat:
+      return CompareUsingLessThan(float_val_, other.float_val_);
+    case KeyEntryType::kIntentTypeSet: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kObsoleteIntentTypeSet: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kObsoleteIntentType: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kUInt16Hash:
+      return CompareUsingLessThan(uint16_val_, other.uint16_val_);
+    case KeyEntryType::kTimestampDescending:
+      return CompareUsingLessThan(other.timestamp_val_, timestamp_val_);
+    case KeyEntryType::kTimestamp:
+      return CompareUsingLessThan(timestamp_val_, other.timestamp_val_);
+    case KeyEntryType::kInetaddress:
+      return CompareUsingLessThan(*inetaddress_val_, *(other.inetaddress_val_));
+    case KeyEntryType::kInetaddressDescending:
+      return CompareUsingLessThan(*(other.inetaddress_val_), *inetaddress_val_);
+    case KeyEntryType::kFrozenDescending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kFrozen: {
+      // Compare elements one by one.
+      size_t min_size = std::min(frozen_val_->size(), other.frozen_val_->size());
+      for (size_t i = 0; i < min_size; i++) {
+        result = (*frozen_val_)[i].CompareTo((*other.frozen_val_)[i]);
+        if (result != 0) {
+          return result;
+        }
+      }
+
+      // If elements are equal, compare lengths.
+      if (type_ == KeyEntryType::kFrozenDescending) {
+        return CompareUsingLessThan(other.frozen_val_->size(), frozen_val_->size());
+      } else {
+        return CompareUsingLessThan(frozen_val_->size(), other.frozen_val_->size());
+      }
+    }
+    case KeyEntryType::kTransactionApplyState: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kExternalTransactionId: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kTransactionId: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kTableId: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kUuidDescending:
+      return CompareUsingLessThan(other.uuid_val_, uuid_val_);
+    case KeyEntryType::kUuid:
+      return CompareUsingLessThan(uuid_val_, other.uuid_val_);
+    case KeyEntryType::kColumnId: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kSystemColumnId:
+      return CompareUsingLessThan(column_id_val_, other.column_id_val_);
+    case KeyEntryType::kHybridTime:
+      // HybridTimes are sorted in reverse order when wrapped in a PrimitiveValue.
+      return -hybrid_time_val_.CompareTo(other.hybrid_time_val_);
+    case KeyEntryType::kGinNull:
+      return CompareUsingLessThan(gin_null_val_, other.gin_null_val_);
+    IGNORE_SPECIAL_KEY_ENTRY_TYPES;
+  }
+  LOG(FATAL) << "Comparing invalid PrimitiveValues: " << *this << " and " << other;
+}
+
+void KeyEntryValue::ToQLValuePB(const std::shared_ptr<QLType>& ql_type, QLValuePB* ql_value) const {
+  if (SharedToQLValuePB(*this, ql_type, ql_value)) {
+    return;
+  }
+
+  LOG(FATAL) << "Unsupported datatype " << ql_type->ToString();
+}
+
+const std::string& KeyEntryValue::GetString() const {
+  DCHECK(IsString());
+  return str_val_;
+}
+
+bool KeyEntryValue::IsString() const {
+  return KeyEntryType::kString == type_ || KeyEntryType::kStringDescending == type_ ||
+         KeyEntryType::kCollString == type_ || KeyEntryType::kCollStringDescending == type_;
+}
+
+bool KeyEntryValue::IsInt64() const {
+  return KeyEntryType::kInt64 == type_ || KeyEntryType::kInt64Descending == type_;
+}
+
+int64_t KeyEntryValue::GetInt64() const {
+  DCHECK(IsInt64());
+  return int64_val_;
+}
+
+bool KeyEntryValue::IsFloat() const {
+  return KeyEntryType::kFloat == type_ || KeyEntryType::kFloatDescending == type_;
+}
+
+float KeyEntryValue::GetFloat() const {
+  DCHECK(IsFloat());
+  return float_val_;
+}
+
+bool KeyEntryValue::IsDouble() const {
+  return KeyEntryType::kDouble == type_ || KeyEntryType::kDoubleDescending == type_;
+}
+
+double KeyEntryValue::GetDouble() const {
+  DCHECK(IsDouble());
+  return double_val_;
+}
+
+bool KeyEntryValue::IsColumnId() const {
+  return type_ == KeyEntryType::kColumnId || type_ == KeyEntryType::kSystemColumnId;
+}
+
+ColumnId KeyEntryValue::GetColumnId() const {
+  DCHECK(IsColumnId());
+  return column_id_val_;
+}
+
+uint8_t KeyEntryValue::GetGinNull() const {
+  DCHECK(type_ == KeyEntryType::kGinNull);
+  return gin_null_val_;
+}
+
+bool KeyEntryValue::IsInt32() const {
+  return KeyEntryType::kInt32 == type_ || KeyEntryType::kInt32Descending == type_;
+}
+
+int32_t KeyEntryValue::GetInt32() const {
+  DCHECK(IsInt32());
+  return int32_val_;
+}
+
+bool KeyEntryValue::IsUInt32() const {
+  return KeyEntryType::kUInt32 == type_ || KeyEntryType::kUInt32Descending == type_;
+}
+
+uint32_t KeyEntryValue::GetUInt32() const {
+  DCHECK(IsUInt32());
+  return uint32_val_;
+}
+
+bool KeyEntryValue::IsUInt64() const {
+  return KeyEntryType::kUInt64 == type_ || KeyEntryType::kUInt64Descending == type_;
+}
+
+uint64_t KeyEntryValue::GetUInt64() const {
+  DCHECK(IsUInt64());
+  return uint64_val_;
+}
+
+bool KeyEntryValue::IsDecimal() const {
+  return KeyEntryType::kDecimal == type_ || KeyEntryType::kDecimalDescending == type_;
+}
+
+const std::string& KeyEntryValue::GetDecimal() const {
+  DCHECK(IsDecimal());
+  return str_val_;
+}
+
+bool KeyEntryValue::IsVarInt() const {
+  return KeyEntryType::kVarInt == type_ || KeyEntryType::kVarIntDescending == type_;
+}
+
+const std::string& KeyEntryValue::GetVarInt() const {
+  DCHECK(IsVarInt());
+  return str_val_;
+}
+
+bool KeyEntryValue::IsTimestamp() const {
+  return KeyEntryType::kTimestamp == type_ || KeyEntryType::kTimestampDescending == type_;
+}
+
+Timestamp KeyEntryValue::GetTimestamp() const {
+  DCHECK(IsTimestamp());
+  return timestamp_val_;
+}
+
+bool operator==(const KeyEntryValue& lhs, const KeyEntryValue& rhs) {
+  if (lhs.type_ != rhs.type_) {
+    return false;
+  }
+  switch (lhs.type_) {
+    CASE_EMPTY_KEY_ENTRY_TYPES
+        return true;
+
+    case KeyEntryType::kCollStringDescending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kCollString: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kStringDescending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kString: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kDecimalDescending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kDecimal: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kVarIntDescending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kVarInt:
+        return lhs.str_val_ == rhs.str_val_;
+
+    case KeyEntryType::kFrozenDescending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kFrozen:
+        return *lhs.frozen_val_ == *rhs.frozen_val_;
+
+    case KeyEntryType::kInt32Descending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kInt32:
+        return lhs.int32_val_ == rhs.int32_val_;
+
+    case KeyEntryType::kColocationId: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kUInt32Descending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kSubTransactionId: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kUInt32:
+        return lhs.uint32_val_ == rhs.uint32_val_;
+
+    case KeyEntryType::kUInt64Descending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kUInt64:
+        return lhs.uint64_val_ == rhs.uint64_val_;
+
+    case KeyEntryType::kInt64Descending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kInt64: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kArrayIndex:
+        return lhs.int64_val_ == rhs.int64_val_;
+
+    case KeyEntryType::kFloatDescending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kFloat: {
+      if (util::IsNanFloat(lhs.float_val_) && util::IsNanFloat(rhs.float_val_)) {
+        return true;
+      }
+      return lhs.float_val_ == rhs.float_val_;
+    }
+    case KeyEntryType::kDoubleDescending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kDouble: {
+      if (util::IsNanDouble(lhs.double_val_) && util::IsNanDouble(rhs.double_val_)) {
+        return true;
+      }
+      return lhs.double_val_ == rhs.double_val_;
+    }
+    case KeyEntryType::kIntentTypeSet: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kObsoleteIntentTypeSet: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kObsoleteIntentType: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kUInt16Hash:
+        return lhs.uint16_val_ == rhs.uint16_val_;
+
+    case KeyEntryType::kTimestampDescending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kTimestamp:
+        return lhs.timestamp_val_ == rhs.timestamp_val_;
+    case KeyEntryType::kInetaddressDescending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kInetaddress:
+        return *lhs.inetaddress_val_ == *rhs.inetaddress_val_;
+    case KeyEntryType::kTransactionApplyState: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kExternalTransactionId: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kTransactionId: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kTableId: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kUuidDescending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kUuid:
+        return lhs.uuid_val_ == rhs.uuid_val_;
+
+    case KeyEntryType::kColumnId: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kSystemColumnId:
+        return lhs.column_id_val_ == rhs.column_id_val_;
+    case KeyEntryType::kHybridTime:
+        return lhs.hybrid_time_val_.CompareTo(rhs.hybrid_time_val_) == 0;
+    case KeyEntryType::kGinNull:
+        return lhs.gin_null_val_ == rhs.gin_null_val_;
+
+    IGNORE_SPECIAL_KEY_ENTRY_TYPES;
+  }
+  FATAL_INVALID_ENUM_VALUE(KeyEntryType, lhs.type_);
 }
 
 }  // namespace docdb

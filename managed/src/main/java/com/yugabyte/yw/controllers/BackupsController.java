@@ -29,9 +29,11 @@ import com.yugabyte.yw.forms.paging.BackupPagedApiQuery;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
+import com.yugabyte.yw.models.Backup.StorageConfigType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.CustomerConfig.ConfigState;
+import com.yugabyte.yw.models.CustomerConfig.ConfigType;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.TaskInfo;
@@ -39,9 +41,10 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.filters.BackupFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import com.yugabyte.yw.models.helpers.TaskType;
-import com.yugabyte.yw.models.paging.BackupPagedApiResponse;
 import com.yugabyte.yw.models.paging.BackupPagedQuery;
+import com.yugabyte.yw.models.paging.BackupPagedApiResponse;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -252,6 +255,16 @@ public class BackupsController extends AuthenticatedController {
       throw new PlatformServiceException(
           BAD_REQUEST, "Missing StorageConfig UUID: " + taskParams.storageConfigUUID);
     }
+    if (taskParams.scheduleName == null) {
+      throw new PlatformServiceException(BAD_REQUEST, "Provide a name for the schedule");
+    } else {
+      if (Schedule.getScheduleByUniverseWithName(
+              taskParams.scheduleName, taskParams.universeUUID, customerUUID)
+          != null) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Schedule with name " + taskParams.scheduleName + " already exist");
+      }
+    }
     if (taskParams.schedulingFrequency == 0L && taskParams.cronExpression == null) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Provide Cron Expression or Scheduling frequency");
@@ -290,6 +303,8 @@ public class BackupsController extends AuthenticatedController {
     Schedule schedule =
         Schedule.create(
             customerUUID,
+            taskParams.universeUUID,
+            taskParams.scheduleName,
             taskParams,
             TaskType.CreateBackup,
             taskParams.schedulingFrequency,
@@ -351,7 +366,7 @@ public class BackupsController extends AuthenticatedController {
         taskUUID,
         CustomerTask.TargetType.Universe,
         CustomerTask.TaskType.Restore,
-        taskParams.toString());
+        universe.name);
 
     auditService()
         .createAuditEntryWithReqBody(
@@ -580,6 +595,15 @@ public class BackupsController extends AuthenticatedController {
         }
       }
     }
+    if (taskList.size() == 0) {
+      auditService()
+          .createAuditEntryWithReqBody(
+              ctx(),
+              Audit.TargetType.Backup,
+              null,
+              Audit.ActionType.Delete,
+              request().body().asJson());
+    }
     return new YBPTasks(taskList).asResult();
   }
 
@@ -635,19 +659,29 @@ public class BackupsController extends AuthenticatedController {
   public Result editBackup(UUID customerUUID, UUID backupUUID) {
     Customer.getOrBadRequest(customerUUID);
     Backup backup = Backup.getOrBadRequest(customerUUID, backupUUID);
-    if (backup.state != Backup.BackupState.Completed) {
-      LOG.info("The backup {} you are trying to edit did not complete", backupUUID);
-      throw new PlatformServiceException(
-          BAD_REQUEST, "The backup you are trying to edit did not complete");
-    }
-
     EditBackupParams taskParams = parseJsonAndValidate(EditBackupParams.class);
-    if (taskParams.timeBeforeDeleteFromPresentInMillis <= 0L) {
+    if (taskParams.timeBeforeDeleteFromPresentInMillis <= 0L
+        && taskParams.storageConfigUUID == null) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "Cannot specify a non positive value to specify the expiry time");
+          BAD_REQUEST,
+          "Please provide either a positive expiry time or storage config to edit backup");
     }
-    backup.updateExpiryTime(taskParams.timeBeforeDeleteFromPresentInMillis);
-
+    if (Backup.IN_PROGRESS_STATES.contains(backup.state)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot edit a backup that is in progress state");
+    }
+    if (taskParams.storageConfigUUID != null) {
+      updateBackupStorageConfig(customerUUID, backupUUID, taskParams);
+      LOG.info(
+          "Updated Backup {} storage config UUID to {}", backupUUID, taskParams.storageConfigUUID);
+    }
+    if (taskParams.timeBeforeDeleteFromPresentInMillis > 0L) {
+      backup.updateExpiryTime(taskParams.timeBeforeDeleteFromPresentInMillis);
+      LOG.info(
+          "Updated Backup {} expiry time before delete to {} ms",
+          backupUUID,
+          taskParams.timeBeforeDeleteFromPresentInMillis);
+    }
     auditService()
         .createAuditEntryWithReqBody(
             ctx(),
@@ -687,5 +721,40 @@ public class BackupsController extends AuthenticatedController {
     }
 
     return isStorageLocMasked;
+  }
+
+  private void updateBackupStorageConfig(
+      UUID customerUUID, UUID backupUUID, EditBackupParams taskParams) {
+    Backup backup = Backup.getOrBadRequest(customerUUID, backupUUID);
+    CustomerConfig existingConfig = CustomerConfig.get(customerUUID, backup.storageConfigUUID);
+    if (existingConfig != null && existingConfig.getState().equals(ConfigState.Active)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Active storage config is already assigned to the backup");
+    }
+    CustomerConfig newConfig =
+        customerConfigService.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
+    if (!newConfig.type.equals(ConfigType.STORAGE)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Cannot assign " + newConfig.type + " type config in place of Storage Config");
+    }
+
+    if (!newConfig.getState().equals(ConfigState.Active)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot assign storage config which is not in Active state");
+    }
+    StorageConfigType backupConfigType = backup.getBackupInfo().storageConfigType;
+    if (backupConfigType != null
+        && !backupConfigType.equals(StorageConfigType.valueOf(newConfig.name))) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Cannot assign "
+              + newConfig.name
+              + " type config to the backup stored in "
+              + backupConfigType);
+    }
+    List<String> locations = backupUtil.getBackupLocations(backup);
+    backupUtil.validateStorageConfigOnLocations(newConfig, locations);
+    backup.updateStorageConfigUUID(taskParams.storageConfigUUID);
   }
 }

@@ -49,15 +49,16 @@ void SetOperation(RowMessage* row_message, OpType type, const Schema& schema) {
   row_message->set_pgschema_name(schema.SchemaName());
 }
 
+template <class Value>
 void AddColumnToMap(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
     const ColumnSchema& col_schema,
-    const docdb::PrimitiveValue& col,
+    const Value& col,
     DatumMessagePB* cdc_datum_message) {
   cdc_datum_message->set_column_name(col_schema.name());
   QLValuePB ql_value;
   if (tablet_peer->tablet()->table_type() == PGSQL_TABLE_TYPE) {
-    docdb::PrimitiveValue::ToQLValuePB(col, col_schema.type(), &ql_value);
+    col.ToQLValuePB(col_schema.type(), &ql_value);
     if (!IsNull(ql_value) && col_schema.pg_type_oid() != 0 /*kInvalidOid*/) {
       docdb::SetValueFromQLBinaryWrapper(ql_value, col_schema.pg_type_oid(), cdc_datum_message);
     } else {
@@ -182,12 +183,12 @@ CHECKED_STATUS PopulateCDCSDKIntentRecord(
     const auto key_size =
         VERIFY_RESULT(docdb::DocKey::EncodedSize(key, docdb::DocKeyPart::kWholeDocKey));
 
-    docdb::PrimitiveValue column_id;
-    boost::optional<docdb::PrimitiveValue> column_id_opt;
+    docdb::KeyEntryValue column_id;
+    boost::optional<docdb::KeyEntryValue> column_id_opt;
     Slice key_column = key.WithoutPrefix(key_size);
     if (!key_column.empty()) {
-      RETURN_NOT_OK(docdb::SubDocument::DecodeKey(&key_column, &column_id));
-      column_id_opt = boost::optional<docdb::PrimitiveValue>(column_id);
+      RETURN_NOT_OK(docdb::KeyEntryValue::DecodeKey(&key_column, &column_id));
+      column_id_opt = column_id;
     }
 
     Slice sub_doc_key = key;
@@ -197,7 +198,7 @@ CHECKED_STATUS PopulateCDCSDKIntentRecord(
     docdb::Value decoded_value;
     RETURN_NOT_OK(decoded_value.Decode(value));
 
-    if (column_id_opt && column_id_opt->value_type() == docdb::ValueType::kColumnId &&
+    if (column_id_opt && column_id_opt->type() == docdb::KeyEntryType::kColumnId &&
         schema.is_key_column(column_id_opt->GetColumnId())) {
       *write_id = intent.write_id;
       *reverse_index_key = intent.reverse_index_key;
@@ -216,14 +217,14 @@ CHECKED_STATUS PopulateCDCSDKIntentRecord(
       row_message->Clear();
 
       // Check whether operation is WRITE or DELETE.
-      if (decoded_value.value_type() == docdb::ValueType::kTombstone &&
+      if (decoded_value.value_type() == docdb::ValueEntryType::kTombstone &&
           decoded_key.num_subkeys() == 0) {
         SetOperation(row_message, OpType::DELETE, schema);
         *write_id = intent.write_id;
       } else {
         if (column_id_opt &&
-            column_id_opt->value_type() == docdb::ValueType::kSystemColumnId &&
-            decoded_value.value_type() == docdb::ValueType::kNullLow) {
+            column_id_opt->type() == docdb::KeyEntryType::kSystemColumnId &&
+            decoded_value.value_type() == docdb::ValueEntryType::kNullLow) {
           SetOperation(row_message, OpType::INSERT, schema);
           col_count = schema.num_key_columns() - 1;
         } else {
@@ -244,7 +245,7 @@ CHECKED_STATUS PopulateCDCSDKIntentRecord(
 
     prev_key = primary_key;
     if (IsInsertOrUpdate(*row_message)) {
-      if (column_id_opt && column_id_opt->value_type() == docdb::ValueType::kColumnId) {
+      if (column_id_opt && column_id_opt->type() == docdb::KeyEntryType::kColumnId) {
         const ColumnSchema& col = VERIFY_RESULT(schema.column_by_id(column_id_opt->GetColumnId()));
 
         AddColumnToMap(
@@ -252,8 +253,8 @@ CHECKED_STATUS PopulateCDCSDKIntentRecord(
         row_message->add_old_tuple();
 
       } else if (
-          column_id_opt && column_id_opt->value_type() != docdb::ValueType::kSystemColumnId) {
-        LOG(DFATAL) << "Unexpected value type in key: " << column_id_opt->value_type()
+          column_id_opt && column_id_opt->type() != docdb::KeyEntryType::kSystemColumnId) {
+        LOG(DFATAL) << "Unexpected value type in key: " << column_id_opt->type()
                     << " key: " << decoded_key.ToString()
                     << " value: " << decoded_value.primitive_value();
       }
@@ -310,16 +311,16 @@ CHECKED_STATUS PopulateCDCSDKWriteRecord(
       RETURN_NOT_OK(decoded_key.DecodeFrom(&sub_doc_key, docdb::HybridTimeRequired::kFalse));
 
       // Check whether operation is WRITE or DELETE.
-      if (decoded_value.value_type() == docdb::ValueType::kTombstone &&
+      if (decoded_value.value_type() == docdb::ValueEntryType::kTombstone &&
           decoded_key.num_subkeys() == 0) {
         SetOperation(row_message, OpType::DELETE, schema);
       } else {
-        docdb::PrimitiveValue column_id;
+        docdb::KeyEntryValue column_id;
         Slice key_column(key.WithoutPrefix(key_size));
-        RETURN_NOT_OK(docdb::SubDocument::DecodeKey(&key_column, &column_id));
+        RETURN_NOT_OK(docdb::KeyEntryValue::DecodeKey(&key_column, &column_id));
 
-        if (column_id.value_type() == docdb::ValueType::kSystemColumnId &&
-            decoded_value.value_type() == docdb::ValueType::kNullLow) {
+        if (column_id.type() == docdb::KeyEntryType::kSystemColumnId &&
+            decoded_value.value_type() == docdb::ValueEntryType::kNullLow) {
           SetOperation(row_message, OpType::INSERT, schema);
         } else {
           SetOperation(row_message, OpType::UPDATE, schema);
@@ -335,18 +336,18 @@ CHECKED_STATUS PopulateCDCSDKWriteRecord(
     DCHECK(proto_record);
 
     if (IsInsertOrUpdate(*row_message)) {
-      docdb::PrimitiveValue column_id;
-      Slice key_column((const char*)(key.data() + key_size));
-      RETURN_NOT_OK(docdb::SubDocument::DecodeKey(&key_column, &column_id));
-      if (column_id.value_type() == docdb::ValueType::kColumnId) {
+      docdb::KeyEntryValue column_id;
+      Slice key_column = key.WithoutPrefix(key_size);
+      RETURN_NOT_OK(docdb::KeyEntryValue::DecodeKey(&key_column, &column_id));
+      if (column_id.type() == docdb::KeyEntryType::kColumnId) {
         const ColumnSchema& col = VERIFY_RESULT(schema.column_by_id(column_id.GetColumnId()));
 
         AddColumnToMap(
             tablet_peer, col, decoded_value.primitive_value(), row_message->add_new_tuple());
         row_message->add_old_tuple();
 
-      } else if (column_id.value_type() != docdb::ValueType::kSystemColumnId) {
-        LOG(DFATAL) << "Unexpected value type in key: " << column_id.value_type();
+      } else if (column_id.type() != docdb::KeyEntryType::kSystemColumnId) {
+        LOG(DFATAL) << "Unexpected value type in key: " << column_id.type();
       }
     }
   }
@@ -668,7 +669,7 @@ Status GetChangesForCDCSDK(
     stream_state.key = from_op_id.key();
     stream_state.write_id = from_op_id.write_id();
 
-    RETURN_NOT_OK(reverse_index_key_slice.consume_byte(docdb::ValueTypeAsChar::kTransactionId));
+    RETURN_NOT_OK(reverse_index_key_slice.consume_byte(docdb::KeyEntryTypeAsChar::kTransactionId));
     auto transaction_id = VERIFY_RESULT(DecodeTransactionId(&reverse_index_key_slice));
 
     RETURN_NOT_OK(ProcessIntents(

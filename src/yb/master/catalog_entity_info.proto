@@ -178,6 +178,8 @@ message SysTablesEntryPB {
   // Tablespace ID for use with transaction tables only. Normal YSQL tables do not set this field,
   // and tablespace information for such tables are instead fetched by scanning the pg catalog.
   optional bytes transaction_table_tablespace_id = 34;
+  // Time when the table was hidden.
+  optional fixed64 hide_hybrid_time = 35;
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for

@@ -272,4 +272,7 @@ extern void YbAddTriggerFKReferenceIntent(Trigger *trigger, Relation fk_rel, Hea
 
 extern int	RI_FKey_trigger_type(Oid tgfoid);
 
+/* Return true if the trigger description has non FK trigger. */
+extern bool HasNonRITrigger(const TriggerDesc* trigDesc);
+
 #endif							/* TRIGGER_H */

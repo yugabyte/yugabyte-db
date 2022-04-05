@@ -3,6 +3,7 @@ title: Java console client for CDC
 headerTitle: Use the Java CDC console client
 linkTitle: Java CDC console
 description: Use the CDC console client to learn how CDC works.
+beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
     parent: change-data-capture
@@ -44,7 +45,7 @@ This can be done either locally using yugabyted or via Yugabyte Cloud. Refer to 
 1. Create a CDC stream.
 
     \
-    Use the `create_change_data_stream` command to create a stream. For a full list of CDC commands, see the [yb-admin](../../admin/yb-admin.md#change-data-capture-cdc-commands) page.
+    Use the `create_change_data_stream` command to create a stream. For a full list of CDC commands, see the [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands) page.
 
     ```sh
     ./bin/yb-admin create_change_data_stream ysql.yugabyte
@@ -61,7 +62,7 @@ This can be done either locally using yugabyted or via Yugabyte Cloud. Refer to 
     \
     Create a file called `config.properties`, with the following contents. Replace the `stream.id` value with the CDC stream ID from the previous step.
 
-    ```properties
+    ```conf
     admin.operation.timeout.ms=30000
     operation.timeout.ms=30000
     num.io.threads=1

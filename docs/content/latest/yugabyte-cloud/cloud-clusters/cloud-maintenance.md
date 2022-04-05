@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: cloud-maintenance
     parent: cloud-clusters
-    weight: 400
+    weight: 300
 isTocNested: true
 showAsideToc: true
 ---
@@ -49,3 +49,11 @@ To set the maintenance exclusion period for a cluster:
 1. On the **Maintenance** tab, click **Edit Maintenance Preferences** to display the **Maintenance Preferences** dialog.
 1. Set a start date and end date. The exclusion period includes the day of the start date, and every day up to, but not including, the end date.
 1. Click **Save**.
+
+## What to expect during maintenance
+
+Yugabyte performs rolling maintenance and upgrades on multi-node clusters with zero downtime. However, the cluster is still subject to the following:
+
+- Dropped connections - Connections to the stopped node are dropped. Verify your connection pool, driver, and application to ensure they handle dropped connections correctly. Any failures need to be retried.
+- No high availability - During maintenance, one node is always offline. In a cluster with a replication factor (RF) of 3, if one of the remaining nodes goes down, you can no longer access the database. For clusters with a higher RF, there is less risk.
+- Less bandwidth - During maintenance, traffic is diverted to the running nodes. To mitigate this, set your maintenance window to a low traffic period. You can also add nodes (scale out) prior to the upgrade.

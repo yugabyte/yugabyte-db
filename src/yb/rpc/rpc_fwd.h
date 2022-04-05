@@ -40,6 +40,7 @@ class Acceptor;
 class AcceptorPool;
 class AnyMessageConstPtr;
 class AnyMessagePtr;
+class CallResponse;
 class ConnectionContext;
 class DelayedTask;
 class DumpRunningRpcsRequestPB;
@@ -145,8 +146,8 @@ YB_DEFINE_ENUM(InvokeCallbackMode,
     (kThreadPoolNormal)
     (kThreadPoolHigh));
 
-using SidecarPtr = std::shared_ptr<const uint8_t*const>;
 using SidecarHolder = std::pair<RefCntBuffer, Slice>;
+using CallResponsePtr = std::shared_ptr<CallResponse>;
 
 } // namespace rpc
 } // namespace yb

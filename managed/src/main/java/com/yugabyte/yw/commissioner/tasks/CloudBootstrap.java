@@ -51,6 +51,9 @@ public class CloudBootstrap extends CloudTaskBase {
       taskParams.sshPrivateKeyContent = provider.sshPrivateKeyContent;
       taskParams.sshUser = provider.sshUser;
       taskParams.overrideKeyValidate = provider.overrideKeyValidate;
+      taskParams.setUpChrony = provider.setUpChrony;
+      taskParams.ntpServers = provider.ntpServers;
+      taskParams.showSetUpChrony = true; // For all new providers, we should show setUpChrony
       taskParams.perRegionMetadata =
           provider
               .regions
@@ -165,6 +168,13 @@ public class CloudBootstrap extends CloudTaskBase {
     public List<String> customHostCidrs = new ArrayList<>();
     // TODO(bogdan): only used/needed for GCP.
     public String destVpcId = null;
+
+    public boolean setUpChrony = false;
+    public List<String> ntpServers = new ArrayList<>();
+
+    // Dictates whether or not to show the set up NTP option in the provider UI
+    // False by default so the old providers can continue to show useTimeSync
+    public boolean showSetUpChrony = false;
   }
 
   // TODO: these fields should probably be persisted with provider but currently these are lost
@@ -245,6 +255,9 @@ public class CloudBootstrap extends CloudTaskBase {
     params.sshUser = taskParams().sshUser;
     params.sshPort = taskParams().sshPort;
     params.airGapInstall = taskParams().airGapInstall;
+    params.setUpChrony = taskParams().setUpChrony;
+    params.ntpServers = taskParams().ntpServers;
+    params.showSetUpChrony = taskParams().showSetUpChrony;
     CloudAccessKeySetup task = createTask(CloudAccessKeySetup.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);

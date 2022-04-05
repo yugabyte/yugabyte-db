@@ -2,19 +2,12 @@
 
 package com.yugabyte.yw.commissioner;
 
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
-import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
-import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -479,66 +472,6 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       return sortTServersInRestartOrder(getUniverse(), tServerNodes);
     }
     return tServerNodes;
-  }
-
-  public AnsibleConfigureServers.Params getAnsibleConfigureServerParams(
-      NodeDetails node,
-      ServerType processType,
-      UpgradeTaskType type,
-      UpgradeTaskSubType taskSubType) {
-    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-    UserIntent userIntent =
-        getUniverse().getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
-    Map<String, String> gflags =
-        processType.equals(ServerType.MASTER) ? userIntent.masterGFlags : userIntent.tserverGFlags;
-    // Set the device information (numVolumes, volumeSize, etc.)
-    params.deviceInfo = userIntent.deviceInfo;
-    // Add the node name.
-    params.nodeName = node.nodeName;
-    // Add the universe uuid.
-    params.universeUUID = taskParams().universeUUID;
-    // Add the az uuid.
-    params.azUuid = node.azUuid;
-    // Add in the node placement uuid.
-    params.placementUuid = node.placementUuid;
-    // Sets the isMaster field
-    params.isMaster = node.isMaster;
-    params.enableYSQL = userIntent.enableYSQL;
-    params.enableYCQL = userIntent.enableYCQL;
-    params.enableYCQLAuth = userIntent.enableYCQLAuth;
-    params.enableYSQLAuth = userIntent.enableYSQLAuth;
-
-    // The software package to install for this cluster.
-    params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
-    // Set the InstanceType
-    params.instanceType = node.cloudInfo.instance_type;
-    params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
-    params.enableClientToNodeEncrypt = userIntent.enableClientToNodeEncrypt;
-    params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
-
-    params.allowInsecure = taskParams().allowInsecure;
-    params.setTxnTableWaitCountFlag = taskParams().setTxnTableWaitCountFlag;
-    params.enableYEDIS = userIntent.enableYEDIS;
-
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
-    UUID custUUID = Customer.get(universe.customerId).uuid;
-    params.callhomeLevel = CustomerConfig.getCallhomeLevel(custUUID);
-    params.rootCA = universe.getUniverseDetails().rootCA;
-    params.clientRootCA = universe.getUniverseDetails().clientRootCA;
-    params.rootAndClientRootCASame = universe.getUniverseDetails().rootAndClientRootCASame;
-
-    // Add testing flag.
-    params.itestS3PackagePath = taskParams().itestS3PackagePath;
-    // Add task type
-    params.type = type;
-    params.setProperty("processType", processType.toString());
-    params.setProperty("taskSubType", taskSubType.toString());
-    params.gflags = gflags;
-    if (userIntent.providerType.equals(CloudType.onprem)) {
-      params.instanceType = node.cloudInfo.instance_type;
-    }
-
-    return params;
   }
 
   public int getSleepTimeForProcess(ServerType processType) {

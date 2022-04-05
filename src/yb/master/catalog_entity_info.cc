@@ -754,9 +754,10 @@ TabletInfos TableInfo::GetTablets(IncludeInactive include_inactive) const {
 
 TabletInfoPtr TableInfo::GetColocatedTablet() const {
   SharedLock<decltype(lock_)> l(lock_);
-  if (colocated() && !partitions_.empty()) {
-    return partitions_.begin()->second;
+  if (colocated() && !tablets_.empty()) {
+    return tablets_.begin()->second;
   }
+  LOG(INFO) << "Colocated Tablet not found for table " << name();
   return nullptr;
 }
 

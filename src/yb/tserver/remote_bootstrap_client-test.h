@@ -72,7 +72,7 @@ class RemoteBootstrapClientTest : public RemoteBootstrapTest {
 
     fs_manager_.reset(new FsManager(Env::Default(), GetTestPath("client_tablet"), "tserver_test"));
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
-    ASSERT_OK(fs_manager_->Open());
+    ASSERT_OK(fs_manager_->CheckAndOpenFileSystemRoots());
 
     ASSERT_OK(tablet_peer_->WaitUntilConsensusRunning(MonoDelta::FromSeconds(10.0)));
     SetUpRemoteBootstrapClient();

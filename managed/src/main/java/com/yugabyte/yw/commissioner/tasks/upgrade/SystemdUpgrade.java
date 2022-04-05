@@ -7,6 +7,7 @@ import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.forms.SystemdUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.List;
@@ -65,7 +66,11 @@ public class SystemdUpgrade extends UpgradeTaskBase {
     taskParams().clusters = getUniverse().getUniverseDetails().clusters;
 
     // Conditional Provisioning
-    createSetupServerTasks(nodes, true /* isSystemdUpgrade */)
+    createSetupServerTasks(
+            nodes,
+            true /* isSystemdUpgrade */,
+            VmUpgradeTaskType.None,
+            false /*ignoreUseCustomImageConfig*/)
         .setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
     UniverseDefinitionTaskParams universeDetails = getUniverse().getUniverseDetails();
@@ -76,7 +81,14 @@ public class SystemdUpgrade extends UpgradeTaskBase {
     taskParams().setTxnTableWaitCountFlag = universeDetails.setTxnTableWaitCountFlag;
 
     // Conditional Configuring
-    createConfigureServerTasks(nodes, false, false, false, true /* isSystemdUpgrade */)
+    createConfigureServerTasks(
+            nodes,
+            false,
+            false,
+            false,
+            true /* isSystemdUpgrade */,
+            VmUpgradeTaskType.None,
+            false /*ignoreUseCustomImageConfig*/)
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }
 }

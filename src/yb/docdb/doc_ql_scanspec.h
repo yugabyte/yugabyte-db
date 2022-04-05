@@ -47,7 +47,7 @@ class DocQLScanSpec : public QLScanSpec {
 
   DocQLScanSpec(const Schema& schema, boost::optional<int32_t> hash_code,
                 boost::optional<int32_t> max_hash_code,
-                std::reference_wrapper<const std::vector<PrimitiveValue>> hashed_components,
+                std::reference_wrapper<const std::vector<KeyEntryValue>> hashed_components,
                 const QLConditionPB* req, const QLConditionPB* if_req,
                 rocksdb::QueryId query_id, bool is_forward_scan = true,
                 bool include_static_columns = false,
@@ -65,7 +65,7 @@ class DocQLScanSpec : public QLScanSpec {
     return query_id_;
   }
 
-  const std::shared_ptr<std::vector<std::vector<PrimitiveValue>>>& range_options() const {
+  const std::shared_ptr<std::vector<std::vector<KeyEntryValue>>>& range_options() const {
     return range_options_;
   }
 
@@ -102,7 +102,7 @@ class DocQLScanSpec : public QLScanSpec {
   KeyBytes bound_key(const bool lower_bound) const;
 
   // Returns the lower/upper range components of the key.
-  std::vector<PrimitiveValue> range_components(const bool lower_bound) const;
+  std::vector<KeyEntryValue> range_components(const bool lower_bound) const;
 
   // The scan range within the hash key when a WHERE condition is specified.
   const std::unique_ptr<const QLScanRange> range_bounds_;
@@ -122,10 +122,10 @@ class DocQLScanSpec : public QLScanSpec {
   const boost::optional<int32_t> max_hash_code_;
 
   // The hashed_components are owned by the caller of QLScanSpec.
-  const std::vector<PrimitiveValue>* hashed_components_;
+  const std::vector<KeyEntryValue>* hashed_components_;
 
   // The range value options if set. (possibly more than one due to IN conditions).
-  std::shared_ptr<std::vector<std::vector<PrimitiveValue>>> range_options_;
+  std::shared_ptr<std::vector<std::vector<KeyEntryValue>>> range_options_;
 
   // Indexes of columns that have range option filters such as
   // c2 IN (1, 5, 6, 9)

@@ -1,9 +1,11 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.common.metrics;
 
+import static com.yugabyte.yw.common.metrics.MetricService.STATUS_NOT_OK;
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 import static com.yugabyte.yw.models.helpers.CommonUtils.datePlus;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
@@ -21,7 +23,6 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
-import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -39,8 +40,6 @@ import org.mockito.junit.MockitoJUnitRunner;
 @RunWith(MockitoJUnitRunner.class)
 @Slf4j
 public class MetricServiceTest extends FakeDBApplication {
-
-  private final Instant testStart = Instant.now();
 
   private Customer customer;
 
@@ -146,7 +145,7 @@ public class MetricServiceTest extends FakeDBApplication {
         executor.submit(
             () -> {
               customer.delete();
-              metricService.handleSourceRemoval(customer.getUuid(), null);
+              metricService.markSourceRemoved(customer.getUuid(), null);
             });
     try {
       customerRemovalFuture.get();
@@ -193,6 +192,71 @@ public class MetricServiceTest extends FakeDBApplication {
 
     assertThat(deletedMetric, empty());
     assertThat(remainingMetric, hasSize(1));
+  }
+
+  @Test
+  public void testMarkSourceInactive() {
+    MetricKey universeExistsMetricKey =
+        MetricKey.from(buildMetricTemplate(PlatformMetrics.UNIVERSE_EXISTS, universe));
+    metricService.setFailureStatusMetric(
+        buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_STATUS, universe));
+    metricService.setOkStatusMetric(buildMetricTemplate(PlatformMetrics.UNIVERSE_EXISTS, universe));
+
+    metricService.markSourceInactive(customer.getUuid(), universe.getUniverseUUID());
+
+    Metric universeExistsMetric = metricService.get(universeExistsMetricKey);
+
+    List<Metric> metricsLeft = metricService.list(MetricFilter.builder().build());
+
+    assertThat(metricsLeft, contains(universeExistsMetric));
+
+    metricService.setOkStatusMetric(
+        buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_STATUS, universe));
+    metricService.setFailureStatusMetric(
+        buildMetricTemplate(PlatformMetrics.UNIVERSE_EXISTS, universe));
+
+    universeExistsMetric = metricService.get(universeExistsMetricKey);
+
+    metricsLeft = metricService.list(MetricFilter.builder().build());
+
+    // Only metrics, valid for INACTIVE state are written.
+    assertThat(metricsLeft, contains(universeExistsMetric));
+    assertThat(universeExistsMetric.getValue(), equalTo(STATUS_NOT_OK));
+
+    metricService.markSourceActive(customer.getUuid(), universe.getUniverseUUID());
+
+    metricService.setOkStatusMetric(
+        buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_STATUS, universe));
+    metricService.setFailureStatusMetric(
+        buildMetricTemplate(PlatformMetrics.UNIVERSE_EXISTS, universe));
+
+    metricsLeft = metricService.list(MetricFilter.builder().build());
+
+    // Writing both metrics after universe unpause is successful.
+    assertThat(metricsLeft, hasSize(2));
+  }
+
+  @Test
+  public void testMarkSourceRemoved() {
+    metricService.setFailureStatusMetric(
+        buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_STATUS, universe));
+    metricService.setOkStatusMetric(buildMetricTemplate(PlatformMetrics.UNIVERSE_EXISTS, universe));
+
+    metricService.markSourceRemoved(customer.getUuid(), universe.getUniverseUUID());
+
+    List<Metric> metricsLeft = metricService.list(MetricFilter.builder().build());
+
+    assertThat(metricsLeft, empty());
+
+    metricService.setOkStatusMetric(
+        buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_STATUS, universe));
+    metricService.setFailureStatusMetric(
+        buildMetricTemplate(PlatformMetrics.UNIVERSE_EXISTS, universe));
+
+    metricsLeft = metricService.list(MetricFilter.builder().build());
+
+    // No metrics can be written after source is permanently deleted.
+    assertThat(metricsLeft, empty());
   }
 
   @Test

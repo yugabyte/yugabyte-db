@@ -49,6 +49,7 @@ import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
+import com.yugabyte.yw.models.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.CustomerTask;
@@ -210,8 +211,34 @@ public class BackupsControllerTest extends FakeDBApplication {
     bodyJson.put("universeUUID", defaultUniverse.universeUUID.toString());
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
     bodyJson.put("cronExpression", "0 */2 * * *");
+    bodyJson.put("scheduleName", "schedule-1");
     Result r = createBackupSchedule(bodyJson, null);
     assertEquals(OK, r.status());
+  }
+
+  @Test
+  public void testCreateScheduleBackupWithoutName() {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST22");
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("universeUUID", defaultUniverse.universeUUID.toString());
+    bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+    bodyJson.put("cronExpression", "0 */2 * * *");
+    Result result = assertPlatformException(() -> createBackupSchedule(bodyJson, null));
+    assertBadRequest(result, "Provide a name for the schedule");
+  }
+
+  @Test
+  public void testCreateScheduleBackupWithDuplicateName() {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST22");
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("universeUUID", defaultUniverse.universeUUID.toString());
+    bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+    bodyJson.put("cronExpression", "0 */2 * * *");
+    bodyJson.put("scheduleName", "schedule-1");
+    Result r = createBackupSchedule(bodyJson, null);
+    assertEquals(OK, r.status());
+    Result result = assertPlatformException(() -> createBackupSchedule(bodyJson, null));
+    assertBadRequest(result, "Schedule with name schedule-1 already exist");
   }
 
   @Test
@@ -222,6 +249,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("universeUUID", defaultUniverse.universeUUID.toString());
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+    bodyJson.put("scheduleName", "schedule-1");
     Result r = assertPlatformException(() -> createBackupSchedule(bodyJson, null));
     JsonNode resultJson = Json.parse(contentAsString(r));
     assertValue(resultJson, "error", "Provide Cron Expression or Scheduling frequency");
@@ -828,7 +856,7 @@ public class BackupsControllerTest extends FakeDBApplication {
 
     Result result =
         assertPlatformException(() -> editBackup(defaultUser, bodyJson, defaultBackup.backupUUID));
-    assertEquals(BAD_REQUEST, result.status());
+    assertBadRequest(result, "Cannot edit a backup that is in progress state");
   }
 
   @Test
@@ -839,11 +867,14 @@ public class BackupsControllerTest extends FakeDBApplication {
     Result result =
         assertPlatformException(() -> editBackup(defaultUser, bodyJson, defaultBackup.backupUUID));
     assertEquals(BAD_REQUEST, result.status());
+    assertBadRequest(
+        result, "Please provide either a positive expiry time or storage config to edit backup");
 
     bodyJson.put("timeBeforeDeleteFromPresentInMillis", 0L);
     result =
         assertPlatformException(() -> editBackup(defaultUser, bodyJson, defaultBackup.backupUUID));
-    assertEquals(BAD_REQUEST, result.status());
+    assertBadRequest(
+        result, "Please provide either a positive expiry time or storage config to edit backup");
   }
 
   @Test
@@ -865,5 +896,189 @@ public class BackupsControllerTest extends FakeDBApplication {
     long expiryTimeInMillis = backup.getExpiry().getTime();
     assertTrue(expiryTimeInMillis > beforeTimeInMillis);
     assertTrue(afterTimeInMillis > expiryTimeInMillis);
+  }
+
+  @Test
+  public void testEditStorageConfigSuccess() {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST7");
+    BackupTableParams bp = new BackupTableParams();
+    bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = UUID.randomUUID();
+    Backup backup = Backup.create(defaultCustomer.uuid, bp);
+    backup.transitionState(BackupState.Completed);
+    UUID invalidConfigUUID = UUID.randomUUID();
+    backup.updateStorageConfigUUID(invalidConfigUUID);
+    // when(mockBackupUtil.validateStorageConfigOnLocations(any(), any())).thenReturn(true);
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+    Result result = editBackup(defaultUser, bodyJson, backup.backupUUID);
+    assertOk(result);
+    assertAuditEntry(1, defaultCustomer.uuid);
+    backup.refresh();
+    assertEquals(customerConfig.configUUID, backup.storageConfigUUID);
+    assertEquals(customerConfig.configUUID, backup.getBackupInfo().storageConfigUUID);
+  }
+
+  @Test
+  public void testEditStorageConfigWithAlreadyActiveConfig() {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST8");
+    BackupTableParams bp = new BackupTableParams();
+    bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = UUID.randomUUID();
+    Backup backup = Backup.create(defaultCustomer.uuid, bp);
+    backup.transitionState(BackupState.Completed);
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+    Result result =
+        assertPlatformException(() -> editBackup(defaultUser, bodyJson, backup.backupUUID));
+    assertBadRequest(result, "Active storage config is already assigned to the backup");
+    assertAuditEntry(0, defaultCustomer.uuid);
+    backup.refresh();
+    assertEquals(customerConfig.configUUID, backup.storageConfigUUID);
+    assertEquals(customerConfig.configUUID, backup.getBackupInfo().storageConfigUUID);
+  }
+
+  @Test
+  @Parameters({"InProgress", "DeleteInProgress", "QueuedForDeletion"})
+  @TestCaseName("testEditStorageConfigWithBackupInState:{0} ")
+  public void testEditStorageConfigWithBackpInProgressState(BackupState state) {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST9");
+    BackupTableParams bp = new BackupTableParams();
+    bp.storageConfigUUID = customerConfig.configUUID;
+    UUID invalidConfigUUID = UUID.randomUUID();
+    bp.universeUUID = UUID.randomUUID();
+    Backup backup = Backup.create(defaultCustomer.uuid, bp);
+    backup.transitionState(state);
+    backup.updateStorageConfigUUID(invalidConfigUUID);
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+    Result result =
+        assertPlatformException(() -> editBackup(defaultUser, bodyJson, backup.backupUUID));
+    assertBadRequest(result, "Cannot edit a backup that is in progress state");
+    assertAuditEntry(0, defaultCustomer.uuid);
+    backup.refresh();
+    assertEquals(invalidConfigUUID, backup.storageConfigUUID);
+    assertEquals(invalidConfigUUID, backup.getBackupInfo().storageConfigUUID);
+  }
+
+  @Test
+  public void testEditStorageConfigWithQueuedForDeletionConfig() {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST10");
+    BackupTableParams bp = new BackupTableParams();
+    bp.storageConfigUUID = customerConfig.configUUID;
+    UUID invalidConfigUUID = UUID.randomUUID();
+    bp.universeUUID = UUID.randomUUID();
+    Backup backup = Backup.create(defaultCustomer.uuid, bp);
+    backup.transitionState(BackupState.Completed);
+    backup.updateStorageConfigUUID(invalidConfigUUID);
+    customerConfig.setState(ConfigState.QueuedForDeletion);
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+    Result result =
+        assertPlatformException(() -> editBackup(defaultUser, bodyJson, backup.backupUUID));
+    assertBadRequest(result, "");
+    assertAuditEntry(0, defaultCustomer.uuid);
+    backup.refresh();
+    assertEquals(invalidConfigUUID, backup.storageConfigUUID);
+    assertEquals(invalidConfigUUID, backup.getBackupInfo().storageConfigUUID);
+  }
+
+  @Test
+  public void testEditStorageConfigWithInvalidStorageConfigType() {
+    CustomerConfig customerConfig = ModelFactory.createGcsStorageConfig(defaultCustomer, "TEST11");
+    BackupTableParams bp = new BackupTableParams();
+    bp.storageConfigUUID = customerConfig.configUUID;
+    UUID invalidConfigUUID = UUID.randomUUID();
+    bp.universeUUID = UUID.randomUUID();
+    Backup backup = Backup.create(defaultCustomer.uuid, bp);
+    backup.transitionState(BackupState.Completed);
+    backup.updateStorageConfigUUID(invalidConfigUUID);
+    CustomerConfig newConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST12");
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("storageConfigUUID", newConfig.configUUID.toString());
+    Result result =
+        assertPlatformException(() -> editBackup(defaultUser, bodyJson, backup.backupUUID));
+    assertBadRequest(
+        result,
+        "Cannot assign "
+            + newConfig.name
+            + " type config to the backup stored in "
+            + customerConfig.name);
+    assertAuditEntry(0, defaultCustomer.uuid);
+    backup.refresh();
+    assertEquals(invalidConfigUUID, backup.storageConfigUUID);
+    assertEquals(invalidConfigUUID, backup.getBackupInfo().storageConfigUUID);
+  }
+
+  @Test
+  public void testEditStorageConfigWithInvalidConfigType() {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST13");
+    BackupTableParams bp = new BackupTableParams();
+    bp.storageConfigUUID = customerConfig.configUUID;
+    UUID invalidConfigUUID = UUID.randomUUID();
+    bp.universeUUID = UUID.randomUUID();
+    Backup backup = Backup.create(defaultCustomer.uuid, bp);
+    backup.transitionState(BackupState.Completed);
+    backup.updateStorageConfigUUID(invalidConfigUUID);
+    CustomerConfig newConfig = ModelFactory.setCallhomeLevel(defaultCustomer, "default");
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("storageConfigUUID", newConfig.configUUID.toString());
+    Result result =
+        assertPlatformException(() -> editBackup(defaultUser, bodyJson, backup.backupUUID));
+    assertBadRequest(
+        result, "Cannot assign " + newConfig.type + " type config in place of Storage Config");
+    assertAuditEntry(0, defaultCustomer.uuid);
+    backup.refresh();
+    assertEquals(invalidConfigUUID, backup.storageConfigUUID);
+    assertEquals(invalidConfigUUID, backup.getBackupInfo().storageConfigUUID);
+  }
+
+  @Test
+  public void testEditStorageConfigWithInvalidConfig() {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST14");
+    BackupTableParams bp = new BackupTableParams();
+    bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = UUID.randomUUID();
+    Backup backup = Backup.create(defaultCustomer.uuid, bp);
+    backup.transitionState(BackupState.Completed);
+    UUID invalidConfigUUID = UUID.randomUUID();
+    backup.updateStorageConfigUUID(invalidConfigUUID);
+    doThrow(
+            new PlatformServiceException(
+                BAD_REQUEST, "Storage config TEST14 cannot access backup locations"))
+        .when(mockBackupUtil)
+        .validateStorageConfigOnLocations(any(), any());
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+    Result result =
+        assertPlatformException(() -> editBackup(defaultUser, bodyJson, backup.backupUUID));
+    assertBadRequest(result, "Storage config TEST14 cannot access backup locations");
+    assertAuditEntry(0, defaultCustomer.uuid);
+    backup.refresh();
+    assertEquals(invalidConfigUUID, backup.storageConfigUUID);
+    assertEquals(invalidConfigUUID, backup.getBackupInfo().storageConfigUUID);
+  }
+
+  @Test
+  public void testInvalidEditBackupTaskParmas() {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST14");
+    BackupTableParams bp = new BackupTableParams();
+    bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = UUID.randomUUID();
+    Backup backup = Backup.create(defaultCustomer.uuid, bp);
+    backup.transitionState(BackupState.Completed);
+    UUID invalidConfigUUID = UUID.randomUUID();
+    backup.updateStorageConfigUUID(invalidConfigUUID);
+    // when(mockBackupUtil.validateStorageConfigOnLocations(any(), any())).thenReturn(false);
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("timeBeforeDeleteFromPresentInMillis", "0");
+    Result result =
+        assertPlatformException(() -> editBackup(defaultUser, bodyJson, backup.backupUUID));
+    assertBadRequest(
+        result, "Please provide either a positive expiry time or storage config to edit backup");
+    assertAuditEntry(0, defaultCustomer.uuid);
+    backup.refresh();
+    assertEquals(invalidConfigUUID, backup.storageConfigUUID);
+    assertEquals(invalidConfigUUID, backup.getBackupInfo().storageConfigUUID);
   }
 }

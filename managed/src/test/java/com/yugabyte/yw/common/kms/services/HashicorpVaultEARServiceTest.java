@@ -16,7 +16,7 @@ import static org.junit.Assert.assertEquals;
 
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
-import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig;
+import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.HashicorpEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultEARServiceUtilTest;

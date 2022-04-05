@@ -3,6 +3,7 @@ title: Debezium connector for YugabyteDB
 headerTitle: Debezium connector for YugabyteDB
 linkTitle: Debezium connector
 description: Debezium is an open source distributed platform used to capture the changes in a database.
+beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
   - /latest/explore/change-data-capture/debezium-connector-yugabytedb-ysql
   - /latest/explore/change-data-capture/debezium-connector
@@ -43,7 +44,7 @@ To use the YugabyteDB Debezium connector, do the following. For complete steps, 
 1. Create a DB stream ID.
 
     \
-    Before you use the YugabyteDB connector to monitor the changes committed on a YugabyteDB server, create a stream ID using the [yb-admin](../../admin/yb-admin.md#change-data-capture-cdc-commands) tool.
+    Before you use the YugabyteDB connector to monitor the changes committed on a YugabyteDB server, create a stream ID using the [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands) tool.
 
 1. Make sure the master ports are open.
 
@@ -56,7 +57,7 @@ To use the YugabyteDB Debezium connector, do the following. For complete steps, 
     The change records for CDC are read from the WAL. CDC module maintains checkpoint internally for each of the DB stream ID and garbage collects the WAL entries if those have been streamed to the CDC clients.
 
     \
-    In case CDC is lagging or away for some time, the disk usage may grow and may cause YugabyteDB cluster instability. To avoid a scenario like this if a stream is inactive for a configured amount of time we garbage collect the WAL. This is configurable by a [GFlag](../../reference/configuration/yb-tserver.md#change-data-capture-cdc-flags).
+    In case CDC is lagging or away for some time, the disk usage may grow and may cause YugabyteDB cluster instability. To avoid a scenario like this if a stream is inactive for a configured amount of time we garbage collect the WAL. This is configurable by a [GFlag](../../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags).
 
 Read on to learn how the connector works. Or, skip to [how to deploy the connector](#deployment).
 
@@ -644,7 +645,7 @@ When a row is deleted, the _delete_ event value still works with log compaction,
 
 {{< warning title="Warning" >}}
 
-YugabyteDB doesn't yet support DROP TABLE and TRUNCATE TABLE commands, and the behavior of these commands while streaming data from CDC undefined. If you need to drop or truncate a table, delete the stream ID using [yb-admin](../../admin/yb-admin.md#change-data-capture-cdc-commands). Also, see the [limitations](../../cdc/change-data-capture.md#limitations) section.
+YugabyteDB doesn't yet support DROP TABLE and TRUNCATE TABLE commands, and the behavior of these commands while streaming data from CDC is undefined. If you need to drop or truncate a table, delete the stream ID using [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands). Also, see the [limitations](../../change-data-capture/#limitations) section.
 
 {{< /warning >}}
 
@@ -881,7 +882,7 @@ You can choose to produce events for a subset of the schemas and tables in a dat
 1. The address of this YugabyteDB server.
 1. The port number of the YugabyteDB YSQL process.
 1. List of comma separated values of master nodes of the YugabyteDB server. Usually in the form `host`:`port`.
-1. The DB stream ID created using [yb-admin](../../admin/yb-admin.md#change-data-capture-cdc-commands).
+1. The DB stream ID created using [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands).
 1. The name of the YugabyteDB user having the privileges to connect to the database.
 1. The password for the above specified YugabyteDB user.
 1. The name of the YugabyteDB database to connect to.
@@ -909,7 +910,7 @@ The following properties are *required* unless a default value is available:
 | database.password | N/A | Password for the given user. |
 | database.dbname | N/A | The database from which to stream. |
 | database.server.name | N/A | Logical name that identifies and provides a namespace for the particular YugabyteDB database server or cluster for which Debezium is capturing changes. This name must be unique, since it's also used to form the Kafka topic. |
-| database.streamid | N/A | Stream ID created using yb-admin for Change data capture. |
+| database.streamid | N/A | Stream ID created using [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands) for Change data capture. |
 | table.include.list | N/A | Comma-separated list of table names and schema names, such as `public.test` or `test_schema.test_table_name`. |
 | table.max.num.tablets | 10 | Maximum number of tablets the connector can poll for. This should be greater than or equal to the number of tablets the table is split into. |
 | database.sslmode | disable | Whether to use an encrypted connection to the YugabyteDB cluster. Supported options are:<br/><br/> `disable` uses an unencrypted connection <br/><br/> `require` uses an encrypted connection and fails if it can't be established <br/><br/> `verify-ca` uses an encrypted connection, verifies the server TLS certificate against the configured Certificate Authority (CA) certificates, and fails if no valid matching CA certificates are found. |
@@ -961,18 +962,19 @@ The rest of this section describes how Debezium handles various kinds of faults 
 
 ### TServer becomes unavailable
 
-In case one of the tserver crashes, the replicas on other TServer nodes will become the leader for the tablets that were hosted on the crashed server. The YugabyteDB connector will figure out the new tablet leaders and start streaming from the checkpoint the debezium maintains.
+In case one of the tablet servers crashes, the replicas on other TServer nodes will become the leader for the tablets that were hosted on the crashed server. The YugabyteDB connector will figure out the new tablet leaders and start streaming from the checkpoint the Debezium maintains.
 
 ### YugabyteDB server failures
 
-In case of YugabyteDB server failures, the Debezium YugabyteDB connector will try for a configurable amount (configurable using a [GFLAG](../../reference/configuration/yb-tserver.md#change-data-capture-cdc-flags)) of time for the availability of the TServer and will stop if the cluster cannot start. When the cluster is restarted, the connector can be run again and it will start processing the changes with the committed checkpoint.
+In case of YugabyteDB server failures, the Debezium YugabyteDB connector will try for a configurable (using a [GFlag](../../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags)) amount of time for the availability of the TServer and will stop if the cluster cannot start. When the cluster is restarted, the connector can be run again and it will start processing the changes with the committed checkpoint.
 
 ### Configuration and startup errors
 
 In the following situations, the connector fails when trying to start, reports an error/exception in the log, and stops running:
-  * The connector's configuration is invalid.
-  * The connector cannot successfully connect to YugabyteDB by using the specified connection parameters.
-  * The connector is restarting from a previously-recorded checkpoint and YugabyteDB no longer has that history available.
+
+* The connector's configuration is invalid.
+* The connector cannot successfully connect to YugabyteDB by using the specified connection parameters.
+* The connector is restarting from a previously-recorded checkpoint and YugabyteDB no longer has that history available.
 
 In these cases, the error message has details about the problem and possibly a suggested workaround. After you correct the configuration or address the YugabyteDB problem, restart the connector.
 

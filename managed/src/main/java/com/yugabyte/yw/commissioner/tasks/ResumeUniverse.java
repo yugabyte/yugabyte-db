@@ -73,7 +73,9 @@ public class ResumeUniverse extends UniverseTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       createSwamperTargetUpdateTask(false);
-
+      // Create alert definition files.
+      createUnivManageAlertDefinitionsTask(true)
+          .setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
       // Mark universe task state to success.
       createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
       // Run all the tasks.
@@ -86,6 +88,7 @@ public class ResumeUniverse extends UniverseTaskBase {
             u.setUniverseDetails(universeDetails);
           });
 
+      metricService.markSourceActive(params().customerUUID, params().universeUUID);
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;

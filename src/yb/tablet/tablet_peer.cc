@@ -427,13 +427,13 @@ consensus::RaftConfigPB TabletPeer::RaftConfig() const {
   return consensus_->CommittedConfig();
 }
 
-bool TabletPeer::StartShutdown(IsDropTable is_drop_table) {
+bool TabletPeer::StartShutdown() {
   LOG_WITH_PREFIX(INFO) << "Initiating TabletPeer shutdown";
 
   {
     std::lock_guard<decltype(lock_)> lock(lock_);
     if (tablet_) {
-      tablet_->StartShutdown(is_drop_table);
+      tablet_->StartShutdown();
     }
   }
 
@@ -470,7 +470,7 @@ bool TabletPeer::StartShutdown(IsDropTable is_drop_table) {
   return true;
 }
 
-void TabletPeer::CompleteShutdown(IsDropTable is_drop_table) {
+void TabletPeer::CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown) {
   auto* strand = strand_.get();
   if (strand) {
     strand->Shutdown();
@@ -495,7 +495,7 @@ void TabletPeer::CompleteShutdown(IsDropTable is_drop_table) {
   VLOG_WITH_PREFIX(1) << "Shut down!";
 
   if (tablet_) {
-    tablet_->CompleteShutdown(is_drop_table);
+    tablet_->CompleteShutdown(disable_flush_on_shutdown);
   }
 
   // Only mark the peer as SHUTDOWN when all other components have shut down.
@@ -548,13 +548,17 @@ void TabletPeer::WaitUntilShutdown() {
   }
 }
 
-Status TabletPeer::Shutdown(IsDropTable is_drop_table) {
-  bool isShutdownInitiated = StartShutdown(is_drop_table);
+Status TabletPeer::Shutdown(
+    ShouldAbortActiveTransactions should_abort_active_txns,
+    DisableFlushOnShutdown disable_flush_on_shutdown) {
+  auto is_shutdown_initiated = StartShutdown();
 
-  RETURN_NOT_OK(AbortSQLTransactions());
+  if (should_abort_active_txns) {
+    RETURN_NOT_OK(AbortSQLTransactions());
+  }
 
-  if (isShutdownInitiated) {
-    CompleteShutdown(is_drop_table);
+  if (is_shutdown_initiated) {
+    CompleteShutdown(disable_flush_on_shutdown);
   } else {
     WaitUntilShutdown();
   }

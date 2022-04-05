@@ -43,6 +43,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
@@ -286,6 +287,9 @@ public class NodeManager extends DevopsBase {
         }
       }
 
+      if (keyInfo.setUpChrony) {
+        subCommand.add("--skip_ntp_check");
+      }
       if (keyInfo.airGapInstall) {
         subCommand.add("--air_gap");
       }
@@ -305,6 +309,16 @@ public class NodeManager extends DevopsBase {
         subCommand.add(Integer.toString(keyInfo.nodeExporterPort));
         subCommand.add("--node_exporter_user");
         subCommand.add(keyInfo.nodeExporterUser);
+      }
+
+      if (keyInfo.setUpChrony) {
+        subCommand.add("--use_chrony");
+        if (keyInfo.ntpServers != null && !keyInfo.ntpServers.isEmpty()) {
+          for (String server : keyInfo.ntpServers) {
+            subCommand.add("--ntp_server");
+            subCommand.add(server);
+          }
+        }
       }
     }
     return subCommand;
@@ -922,13 +936,20 @@ public class NodeManager extends DevopsBase {
     if (config.getBoolean("yb.cloud.enabled")
         && taskParam.type != UpgradeTaskParams.UpgradeTaskType.Software) {
       if ((userIntent.providerType.equals(Common.CloudType.aws)
-              || userIntent.providerType.equals(Common.CloudType.gcp))
-          && universe
-              .getConfig()
-              .getOrDefault(Universe.SKIP_ANSIBLE_TASKS, "false")
-              .equals("true")) {
-        subcommand.add("--skip_tags");
-        subcommand.add("yb-prebuilt-ami");
+          || userIntent.providerType.equals(Common.CloudType.gcp))) {
+        if (taskParam.vmUpgradeTaskType != VmUpgradeTaskType.None) {
+          if (taskParam.vmUpgradeTaskType == VmUpgradeTaskType.VmUpgradeWithCustomImages) {
+            subcommand.add("--skip_tags");
+            subcommand.add("yb-prebuilt-ami");
+          }
+        } else if (universe
+                .getConfig()
+                .getOrDefault(Universe.USE_CUSTOM_IMAGE, "false")
+                .equals("true")
+            && !taskParam.ignoreUseCustomImageConfig) {
+          subcommand.add("--skip_tags");
+          subcommand.add("yb-prebuilt-ami");
+        }
       }
     }
 
@@ -1554,13 +1575,21 @@ public class NodeManager extends DevopsBase {
 
           // Custom cluster creation flow with prebuilt AMI for cloud
           if (runtimeConfigFactory.forUniverse(universe).getBoolean("yb.cloud.enabled")) {
-            if ((cloudType.equals(Common.CloudType.aws) || cloudType.equals(Common.CloudType.gcp))
-                && universe
-                    .getConfig()
-                    .getOrDefault(Universe.SKIP_ANSIBLE_TASKS, "false")
-                    .equals("true")) {
-              commandArgs.add("--skip_tags");
-              commandArgs.add("yb-prebuilt-ami");
+            if ((cloudType.equals(Common.CloudType.aws)
+                || cloudType.equals(Common.CloudType.gcp))) {
+              if (taskParam.vmUpgradeTaskType != VmUpgradeTaskType.None) {
+                if (taskParam.vmUpgradeTaskType == VmUpgradeTaskType.VmUpgradeWithCustomImages) {
+                  commandArgs.add("--skip_tags");
+                  commandArgs.add("yb-prebuilt-ami");
+                }
+              } else if (universe
+                      .getConfig()
+                      .getOrDefault(Universe.USE_CUSTOM_IMAGE, "false")
+                      .equals("true")
+                  && !taskParam.ignoreUseCustomImageConfig) {
+                commandArgs.add("--skip_tags");
+                commandArgs.add("yb-prebuilt-ami");
+              }
             }
           }
 
@@ -1577,7 +1606,8 @@ public class NodeManager extends DevopsBase {
 
           if (taskParam.useTimeSync
               && (cloudType.equals(Common.CloudType.aws)
-                  || cloudType.equals(Common.CloudType.gcp))) {
+                  || cloudType.equals(Common.CloudType.gcp)
+                  || cloudType.equals(Common.CloudType.azu))) {
             commandArgs.add("--use_chrony");
           }
 

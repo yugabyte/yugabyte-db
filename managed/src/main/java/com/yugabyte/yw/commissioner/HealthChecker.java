@@ -189,11 +189,9 @@ public class HealthChecker {
     this.lifecycle = lifecycle;
     this.healthMetrics = healthMetrics;
     this.executor = executorService;
-
-    this.initialize();
   }
 
-  private void initialize() {
+  public void initialize() {
     log.info("Scheduling health checker every " + this.healthCheckIntervalMs() + " ms");
     this.actorSystem
         .scheduler()
@@ -241,7 +239,7 @@ public class HealthChecker {
    * @param sendMailAlways Force the email sending.
    * @param reportOnlyErrors Include only errors into the report.
    * @param onlyMetrics Don't send email, only metrics collection.
-   * @return
+   * @return true if success
    */
   private boolean processResults(
       Customer c,
@@ -316,7 +314,9 @@ public class HealthChecker {
             int toAppend = checkResult ? 1 : 0;
             platformMetrics.compute(countMetric, (k, v) -> v != null ? v + toAppend : toAppend);
           }
-          if (null == healthMetrics.getHealthMetric()) continue;
+          if (null == healthMetrics.getHealthMetric()) {
+            continue;
+          }
 
           Gauge.Child prometheusVal =
               healthMetrics
@@ -460,8 +460,26 @@ public class HealthChecker {
     checkAllUniverses(c, alertingData, shouldSendStatusUpdate, onlyMetrics);
   }
 
+  public CompletableFuture<Void> checkSingleUniverse(Customer c, Universe u) {
+    if (!runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.cloud.enabled")) {
+      throw new RuntimeException("Manual health check is disabled.");
+    }
+    // We hardcode the parameters here as this is currently a cloud-only feature
+    CheckSingleUniverseParams params =
+        new CheckSingleUniverseParams(
+            u,
+            c,
+            false /*shouldSendStatusUpdate*/,
+            false /*reportOnlyErrors*/,
+            false /*onlyMetrics*/,
+            null /*destinations*/);
+
+    return runHealthCheck(params, true /* ignoreLastCheck */);
+  }
+
   @AllArgsConstructor
   static class CheckSingleUniverseParams {
+
     final Universe universe;
     final Customer customer;
     final boolean shouldSendStatusUpdate;
@@ -494,7 +512,7 @@ public class HealthChecker {
               return new CheckSingleUniverseParams(
                   u, c, shouldSendStatusUpdate, reportOnlyErrors, onlyMetrics, destinations);
             })
-        .forEach(this::runHealthCheck);
+        .forEach(params -> runHealthCheck(params, false /*ignoreLastHealthCheck*/));
   }
 
   public void cancelHealthCheck(UUID universeUUID) {
@@ -531,11 +549,12 @@ public class HealthChecker {
     return newExecutor;
   }
 
-  public CompletableFuture<Void> runHealthCheck(CheckSingleUniverseParams params) {
+  public CompletableFuture<Void> runHealthCheck(
+      CheckSingleUniverseParams params, Boolean ignoreLastCheck) {
     String universeName = params.universe.name;
     CompletableFuture<Void> lastCheck = this.runningHealthChecks.get(params.universe.universeUUID);
     // Only schedule a task if the previous one for the given universe has completed.
-    if (lastCheck != null && !lastCheck.isDone()) {
+    if (!ignoreLastCheck && lastCheck != null && !lastCheck.isDone()) {
       log.info("Health check for universe {} is still running. Skipping...", universeName);
       return lastCheck;
     }

@@ -2,6 +2,7 @@
 title: Debezium and CDC in YugabyteDB
 linkTitle: Debezium
 description: Debezium is an open source distributed platform used to capture the changes in a database.
+beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
   - /latest/integrations/cdc/
 section: INTEGRATIONS
@@ -78,6 +79,8 @@ Follow the steps in this section to run CDC with Debezium on a local YugabyteDB 
 ```sh
 ./bin/yb-admin --master_addresses ${IP}:7100 create_change_data_stream ysql.yugabyte
 ```
+
+The above command will result an output similar to this:
 
 ```output
 CDC Stream ID: d540f5e4890c4d3b812933cbfd703ed3
