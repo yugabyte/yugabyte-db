@@ -41,7 +41,7 @@ The [PQ driver](https://github.com/lib/pq/) is a popular driver for PostgreSQL w
 This driver allows Go programmers to connect to YugabyteDB database to execute DMLs and DDLs using
 the standard `database/sql` package.
 
-## Quick start
+## CRUD Operations with PQ Driver
 
 Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using
 the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-pq) page under the
@@ -50,7 +50,7 @@ Quick start section.
 Let us break down the quick start example and understand how to perform the common tasks required
 for Go App development using the PQ driver.
 
-## Step 1: Import the driver package
+### Step 1: Import the driver package
 
 Import the PQ driver package by adding the following import statement in your Go code.
 
@@ -60,7 +60,7 @@ import (
 )
 ```
 
-## Step 2: Connect to YugabyteDB database
+### Step 2: Connect to YugabyteDB database
 
 Go Apps can connect to the YugabyteDB database using the `sql.Open()` function.
 All the functions or structs required for working with YugabyteDB database are part of `sql` package.
@@ -96,7 +96,7 @@ if err != nil {
 | password | password for connecting to the database | yugabyte
 | dbname | database name | yugabyte
 
-## Step 3: Create table
+### Step 3: Create table
 
 Execute an SQL statement like the DDL `CREATE TABLE ...` using the `Exec()` function on the `db`
 instance.
@@ -124,9 +124,9 @@ your code.
 
 Read more on designing [Database schemas and tables](../../../explore/ysql-language-features/databases-schemas-tables/).
 
-## Step 4: Read and write data
+### Step 4: Read and write data
 
-### Insert data
+#### Insert data
 
 To write data into YugabyteDB, execute the `INSERT` statement using the same `db.Exec()` function.
 
@@ -146,7 +146,7 @@ if _, err := db.Exec(insertStmt); err != nil {
 }
 ```
 
-### Query data
+#### Query data
 
 To query data from YugabyteDB tables, execute the `SELECT` statement using the function
 `Query()` on `db` instance.
@@ -185,4 +185,7 @@ if err != nil {
 }
 ```
 
-See the [PQ Driver](../../../reference/drivers/go/pq-reference/) page for more details.
+## Next Steps
+
+- Learn how to build Go Application using [GORM](../gorm).
+- Learn more about [fundamentals](../../../reference/drivers/go/pq-reference/) of the PQ Driver.

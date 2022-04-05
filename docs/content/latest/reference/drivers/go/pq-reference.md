@@ -32,13 +32,12 @@ showAsideToc: true
 
 </ul>
 
-
 The [PQ driver](https://github.com/lib/pq/) is a popular driver for PostgreSQL which can used for connecting to YugabyteDB YSQL as well.
 
 This driver allows Go programmers to connect to YugabyteDB database to execute DMLs and DDLs using
 the standard `database/sql` package.
 
-## Quick start
+## Fundamentals of PQ Driver
 
 Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using
 the steps in the [Build an application](../../../../quick-start/build-apps/go/ysql-pq) page under the
@@ -47,7 +46,7 @@ Quick start section.
 Let us break down the quick start example and understand how to perform the common tasks required
 for Go App development using the PQ driver.
 
-## Step 1: Import the driver package
+### Import the driver package
 
 Import the PQ driver package by adding the following import statement in your Go code.
 
@@ -57,7 +56,7 @@ import (
 )
 ```
 
-## Step 2: Connect to YugabyteDB database
+### Connect to YugabyteDB database
 
 Go Apps can connect to the YugabyteDB database using the `sql.Open()` function.
 All the functions or structs required for working with YugabyteDB database are part of `sql` package.
@@ -93,7 +92,7 @@ if err != nil {
 | password | password for connecting to the database | yugabyte
 | dbname | database name | yugabyte
 
-## Step 3: Create table
+### Create table
 
 Execute an SQL statement like the DDL `CREATE TABLE ...` using the `Exec()` function on the `db`
 instance.
@@ -121,9 +120,9 @@ your code.
 
 Read more on designing [Database schemas and tables](../../../../explore/ysql-language-features/databases-schemas-tables/).
 
-## Step 4: Read and write data
+### Read and write data
 
-### Insert data
+#### Insert data
 
 To write data into YugabyteDB, execute the `INSERT` statement using the same `db.Exec()` function.
 
@@ -143,7 +142,7 @@ if _, err := db.Exec(insertStmt); err != nil {
 }
 ```
 
-### Query data
+#### Query data
 
 To query data from YugabyteDB tables, execute the `SELECT` statement using the function `Query()` on `db` instance.
 
@@ -181,7 +180,7 @@ if err != nil {
 }
 ```
 
-## Configure SSL/TLS
+### Configure SSL/TLS
 
 To build a Go application that communicates securely over SSL with YugabyteDB database,
 you need the root certificate (`ca.crt`) of the YugabyteDB Cluster.
@@ -201,7 +200,7 @@ $ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded
 | PGSSLMODE |  SSL mode used for the connection |
 | PGSSLROOTCERT | Server CA Certificate |
 
-### SSL modes
+#### SSL modes
 
 | SSL Mode | Client Driver Behavior | YugabyteDB Support |
 | :------- | :--------------------- | ------------------ |
@@ -212,8 +211,7 @@ $ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded
 | verify-ca | SSL enabled for data encryption and Server CA is verified | Supported
 | verify-full | SSL enabled for data encryption. Both CA and hostname of the certificate are verified | Supported
 
-
-## Transaction and isolation levels
+### Transaction and isolation levels
 
 YugabyteDB supports transactions for inserting and querying data from the tables. YugabyteDB
 supports different [isolation levels](../../../../architecture/transactions/isolation-levels/) for
@@ -245,12 +243,3 @@ if err != nil {
 	log.Fatal(err)
 }
 ```
-
-## Compatibility matrix
-
-See the matrix [here](../../../../drivers-orms/go/compatibility/).
-
-## Other usage examples
-
-- [ORM Examples](../../../../drivers-orms/go/gorm/)
-

@@ -32,9 +32,9 @@ showAsideToc: true
 
 </ul>
 
-[go-pg](https://github.com/go-pg/pg) is a Golang ORM for PostgreSQL. 
+[go-pg](https://github.com/go-pg/pg) is a Golang ORM for PostgreSQL.
 
-## Quick start
+## CRUD Operations with PG ORM
 
 Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using
 the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-pg) page under the
@@ -43,7 +43,7 @@ Quick start section.
 Let us break down the quick start example and understand how to perform the common tasks required
 for Go App development using the GO-PG ORM tool.
 
-## Step 1: Import the driver package
+### Step 1: Import the driver package
 
 Import the PG packages by adding the following import statement in your Go code.
 
@@ -54,7 +54,7 @@ import (
 )
 ```
 
-## Step 2: Connect to YugabyteDB database
+### Step 2: Connect to YugabyteDB database
 
 Go Apps can connect to the YugabyteDB database using the `pg.Connect()` function.
 
@@ -83,7 +83,7 @@ db := pg.Connect(opt)
 | dbname | database name | yugabyte
 | sslMode | SSL mode | 
 
-## Step 3: Create table
+### Step 3: Create table
 
 Define a struct which maps to the table schema and use `AutoMigrate()` to create the table.
 
@@ -106,7 +106,7 @@ type Employee struct {
 
 Read more on designing [Database schemas and tables](../../../explore/ysql-language-features/databases-schemas-tables/).
 
-## Step 4: Read and write data
+### Step 4: Read and write data
 
 To write data into YugabyteDB, use the `Insert()` functions.
 
@@ -137,3 +137,8 @@ if err != nil {
 fmt.Printf("Query for id=1 returned: ");
 fmt.Println(emp)
 ```
+
+## Next Steps
+
+- Explore [Scaling Go Applications](/latest/explore/linear-scalability) with YugabyteDB.
+- Learn how to [develop Go Applications with YugabyteDB Cloud](/latest/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-go/).

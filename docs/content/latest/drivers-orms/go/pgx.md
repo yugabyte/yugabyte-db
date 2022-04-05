@@ -41,7 +41,7 @@ drivers for PostgreSQL.
 This driver allows Go programmers to connect to YugabyteDB database to execute DMLs and DDLs using
 the PGX APIs. It also supports the standard `database/sql` package.
 
-## Quick start
+## CRUD Operations with PGX Driver
 
 Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using
 the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-pgx) page under the
@@ -50,7 +50,7 @@ Quick start section.
 Let us break down the quick start example and understand how to perform the common tasks required
 for Go App development using the PGX driver.
 
-## Step 1: Import the driver package
+### Step 1: Import the driver package
 
 Import the PGX driver package by adding the following import statement in your Go code.
 
@@ -60,7 +60,7 @@ import (
 )
 ```
 
-## Step 2: Connect to YugabyteDB database
+### Step 2: Connect to YugabyteDB database
 
 Go Apps can connect to the YugabyteDB database using the `pgx.Connect()` function.
 All the common functions or structs required for working with YugabyteDB database is part of `pgx` package.
@@ -90,7 +90,7 @@ conn, err := pgx.Connect(context.Background(), url)
 | port |  Listen port for YSQL | 5433
 | dbname | database name | yugabyte
 
-## Step 3: Create table
+### Step 3: Create table
 
 Execute an SQL statement like the DDL `CREATE TABLE ...` using the `Exec()` function on the `conn`
 instance.
@@ -117,9 +117,9 @@ in your code.
 
 Read more on designing [Database schemas and tables](../../../explore/ysql-language-features/databases-schemas-tables/).
 
-## Step 4:  Read and write data
+### Step 4:  Read and write data
 
-### Insert data
+#### Insert data
 
 To write data into YugabyteDB, execute the `INSERT` statement using the same `conn.Exec()` function.
 
@@ -141,10 +141,9 @@ if err != nil {
 ```
 
 The pgx driver automatically prepares and caches statements by default, so that the developer does
-not have to. 
+not have to.
 
-
-### Query data
+#### Query data
 
 In order to query data from YugabyteDB tables, execute the `SELECT` statement using the function
 `conn.Query()`.
@@ -185,4 +184,7 @@ if err != nil {
 }
 ```
 
-See the [PGX Driver](../../../reference/drivers/go/pgx-reference/) page for more details.
+## Next Steps
+
+- Learn how to build Go Application using [GORM](../gorm).
+- Learn more about [fundamentals](../../../reference/drivers/go/pgx-reference/) of the PGX Driver.

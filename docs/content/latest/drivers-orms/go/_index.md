@@ -41,8 +41,6 @@ Visual Studio Code for developing your Go project.
 
 Create a free cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/). Refer to [Create a free cluster](../../yugabyte-cloud/cloud-basics/create-clusters-free/). ```
 
-
-
 Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/latest/quick-start/install/macos). 
 
 ## Usage examples
@@ -52,11 +50,7 @@ The following table provides quick links to driver-specific documentation and ex
 
 | Project | Type | Usage Examples |
 | :------ | :--- | :------------- |
-| [PGX Driver](../../reference/drivers/go/pgx-reference/) | Go Driver | [Hello World](../../quick-start/build-apps/go/ysql-pgx) <br />[CRUD App](pgx) |
-| [PQ Driver](../../reference/drivers/go/pq-reference/) | Go Driver | [Hello World](../../quick-start/build-apps/go/ysql-pq) <br />[CRUD App](pq) |
-| [GORM](../../integrations/gorm/) | ORM |  [Hello World](../../quick-start/build-apps/go/ysql-gorm) <br />[CRUD App](gorm) |
+| [PGX Driver](pgx) | Go Driver | [Hello World](../../quick-start/build-apps/go/ysql-pgx) <br />[CRUD App](pgx) |
+| [PQ Driver](pq) | Go Driver | [Hello World](../../quick-start/build-apps/go/ysql-pq) <br />[CRUD App](pq) |
+| [GORM](gorm/) | ORM |  [Hello World](../../quick-start/build-apps/go/ysql-gorm) <br />[CRUD App](gorm) |
 | [GO-PG](pg) | ORM |  [Hello World](../../quick-start/build-apps/go/ysql-pg) <br />[CRUD App](pg) |
-
-## Next steps
-
-- Start with the PGX Driver to learn how to read and modify data in YugabyteDB in our [CRUD Opertions guide](pgx).

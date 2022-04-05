@@ -38,7 +38,7 @@ drivers for PostgreSQL which can be used for connecting to YugabyteDB YSQL as we
 This driver allows Go programmers to connect to YugabyteDB database to execute DMLs and DDLs using
 the PGX APIs. It also supports the standard `database/sql` package.
 
-## Quick start
+## Fundamentals of PGX Driver
 
 Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using
 the steps in the [Build an application](../../../../quick-start/build-apps/go/ysql-pgx) page under the
@@ -47,7 +47,7 @@ Quick start section.
 Let us break down the quick start example and understand how to perform the common tasks required
 for Go App development using the PGX driver.
 
-## Step 1: Import the driver package
+### Import the driver package
 
 You can import the PGX driver package by adding the following import statement in your Go code.
 
@@ -57,7 +57,7 @@ import (
 )
 ```
 
-## Step 2: Connect to YugabyteDB database
+### Connect to YugabyteDB database
 
 Go Apps can connect to the YugabyteDB database using the `pgx.Connect()` function.
 All the common functions or structs required for working with YugabyteDB database is part of `pgx` package.
@@ -87,7 +87,7 @@ conn, err := pgx.Connect(context.Background(), url)
 | port |  Listen port for YSQL | 5433
 | dbname | database name | yugabyte
 
-## Step 3: Create table
+### Create table
 
 Execute an SQL statement like the DDL `CREATE TABLE ...` using the `Exec()` function on the `conn`
 instance.
@@ -114,9 +114,9 @@ in your code.
 
 Read more on designing [Database schemas and tables](../../../../explore/ysql-language-features/databases-schemas-tables/).
 
-## Step 4: Read and write data
+### Read and write data
 
-### Insert data
+#### Insert data
 
 To write data into YugabyteDB, execute the `INSERT` statement using the same `conn.Exec()`
 function.
@@ -141,8 +141,7 @@ if err != nil {
 The pgx driver automatically prepares and caches statements by default, so that the developer does
 not have to.
 
-
-### Query data
+#### Query data
 
 To query data from YugabyteDB tables, execute the `SELECT` statement using the function `conn.Query()`.
 Query results are returned in `pgx.Rows` which can be iterated using `pgx.Rows.next()` method.
@@ -182,7 +181,7 @@ if err != nil {
 }
 ```
 
-## Using pgxpool API
+### Using pgxpool API
 
 The PGX driver also provides pool APIs via its `pgxpool` package. One can import it as below.
 
@@ -192,7 +191,7 @@ import (
 )
 ```
 
-### Establishing a connection
+#### Establishing a connection
 
 The primary way of establishing a connection is with `pgxpool.Connect()`.
 
@@ -216,7 +215,7 @@ pool, err := pgxpool.ConnectConfig(context.Background(), config)
 
 For more details, see [pgxpool package doc](https://pkg.go.dev/github.com/jackc/pgx/v4/pgxpool)
 
-## Configure SSL/TLS
+### Configure SSL/TLS
 
 In order to build a Go application that communicates securely over SSL with YugabyteDB database,
 you need the root certificate (`ca.crt`) of the YugabyteDB Cluster.
@@ -236,7 +235,7 @@ $ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded
 | PGSSLMODE |  SSL mode used for the connection |
 | PGSSLROOTCERT | Server CA Certificate |
 
-### SSL modes
+#### SSL modes
 
 | SSL Mode | Client Driver Behavior | YugabyteDB Support |
 | :------- | :--------------------- | ------------------ |
@@ -247,8 +246,7 @@ $ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded
 | verify-ca | SSL enabled for data encryption and Server CA is verified | Supported
 | verify-full | SSL enabled for data encryption. Both CA and hostname of the certificate are verified | Supported
 
-
-## Transaction and isolation levels
+### Transaction and isolation levels
 
 YugabyteDB supports transactions for inserting and querying data from the tables. YugabyteDB
 supports different [isolation levels](../../../../architecture/transactions/isolation-levels/) for
@@ -274,12 +272,3 @@ if err != nil {
     return err
 }
 ```
-
-## Compatibility matrix
-
-See the matrix [here](../../../../drivers-orms/go/compatibility/).
-
-## Other usage examples
-
-- [ORM Examples](../../../../drivers-orms/go/gorm/)
-

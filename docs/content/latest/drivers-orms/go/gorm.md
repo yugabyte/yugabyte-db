@@ -34,14 +34,13 @@ showAsideToc: true
 
 [GORM](https://gorm.io/) is the ORM library for Golang.
 
-
-## Quick start
+## CRUD Operations with GORM
 
 Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using
 the steps on the [Build an application](../../../quick-start/build-apps/go/ysql-gorm) page under the
 Quick start section.
 
-To break down the quick start example and understand how to perform the common tasks required for Go application development, do the following steps.
+To break down the quick start example and understand how to perform the common CRUD operations required for Go application development, do the following steps.
 
 ### Step 1: Import the driver package
 
@@ -57,7 +56,6 @@ import (
 ### Step 2: Connect to the YugabyteDB database
 
 Go Apps can connect to the YugabyteDB database using the `gorm.Open()` function.
-
 
 Code snippet for connecting to YugabyteDB:
 
@@ -120,3 +118,8 @@ for _, employee := range employees {
   fmt.Printf("--------------------------------------------------------------\n")
 }
 ```
+
+## Next Steps
+
+- Explore [Scaling Go Applications](/latest/explore/linear-scalability) with YugabyteDB.
+- Learn how to [develop Go Applications with YugabyteDB Cloud](/latest/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-go/).
