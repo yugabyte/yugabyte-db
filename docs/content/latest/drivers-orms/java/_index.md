@@ -12,7 +12,7 @@ menu:
 isTocNested: true
 showAsideToc: true
 ---
-Following are the recommended projects for implementing Java Applications for  YugabyteDB YSQL API.
+The following projects are recommended for implementing Java applications using the YugabyteDB YSQL API.
 
 | Project | Type | Support Level |
 | :------ | :--- | :------------ |
@@ -38,13 +38,13 @@ If you are not using an IDE, see [Building Maven](https://maven.apache.org/guide
 
 ### Create a YugabyteDB Cluster
 
-Set up a Free tier Cluster on [Yugabyte Cloud](https://www.yugabyte.com/cloud/). The free cluster provides a fully functioning YugabyteDB cluster deployed to the cloud region of your choice. The cluster is free forever and includes enough resources to explore the core features available for developing the Java Applications with YugabyteDB database. Complete the steps for [creating a free tier cluster](latest/yugabyte-cloud/cloud-quickstart/qs-add/).
+Create a free cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/). Refer to [Create a free cluster](../../yugabyte-cloud/cloud-basics/create-clusters-free/). 
 
 Alternatively, You can also setup a standalone YugabyteDB cluster by following the [install YugabyteDB Steps](/latest/quick-start/install/macos).
 
 ## Usage Examples
 
-For fully runnable code snippets and exaplantion for common operations, see the specific Java driver and ORM section. Below table provides quick links for navigating to driver specific documentation and also the usage examples.
+For fully runnable code snippets and explanations for common operations, see the specific Java driver and ORM section. The following table provides links to driver-specific documentation and examples.
 
 | Project | Type | Usage Examples |
 | :------ | :--- | :------------- |
