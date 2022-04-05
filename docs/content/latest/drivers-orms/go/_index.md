@@ -40,7 +40,6 @@ Visual Studio Code for developing your Go project.
 ### Create a YugabyteDB cluster
 
 Create a free cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/). Refer to [Create a free cluster](../../yugabyte-cloud/cloud-basics/create-clusters-free/). ```
-cluster provides a fully functioning YugabyteDB cluster deployed to the cloud region of your choice.
 
 The cluster is free forever and includes enough resources to explore the core features available for
 developing the Go Applications with YugabyteDB database.
