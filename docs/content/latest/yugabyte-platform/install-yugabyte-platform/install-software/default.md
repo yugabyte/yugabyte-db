@@ -38,12 +38,7 @@ showAsideToc: true
 
 </ul>
 
-YugabyteDB universes and clusters are created and managed using Yugabyte Platform. The default option is to install Yugabyte Platform on a host machine that is connected to the Internet.
-
-## Pre-requisites
-
-If Docker is not installed, follow the instructions to install docker for your operating system. Here is one for [ubuntu](https://docs.docker.com/engine/install/ubuntu/)
-
+YugabyteDB universes and clusters are created and managed using Yugabyte Platform. The default option is to install Yugabyte Platform on a host machine that is connected to the Internet and has Docker installed.
 
 ## Install Replicated
 
@@ -92,7 +87,7 @@ When prompted, upload the Yugabyte license file that you received from Yugabyte,
 
 If you are prompted to choose an installation type, choose **Online**.
 
-Choose the appropriate sofrware version to install, if you have options to do so.
+If you are offered a choice of software versions, select the one that meets your requirements.
 
 ## Secure Replicated
 
