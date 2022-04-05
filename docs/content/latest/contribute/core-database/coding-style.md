@@ -563,6 +563,12 @@ While the two functions have similar syntax, with inline substitution parameters
 
 `consensus::OpId` is just an alias for `yb::OpIdPB`, a protobuf class. Use this _only_ where you really need to use protobuf, for example inside other protobuf messages. For the rest of the code, use `yb::OpId`, a normal C++ class.
 
+### CHECKED_STATUS
+
+Our existing codebase contains a lot of `CHECKED_STATUS` usages. It was a useful macro when our main compiler did not support [[nodiscard]] class attribute.
+After switching to a modern compiler we don't need this macro anymore.
+So all new code should avoid using `CHECKED_STATUS` and use `Status` for function return type.
+
 ### Thread safety analysis
 
 We use Clang's [Thread Safety Analysis](https://clang.llvm.org/docs/ThreadSafetyAnalysis.html) annotations in parts of our code.
