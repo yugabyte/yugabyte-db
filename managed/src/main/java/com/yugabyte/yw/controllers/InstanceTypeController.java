@@ -92,7 +92,7 @@ public class InstanceTypeController extends AuthenticatedController {
                 configHelper,
                 runtimeConfigFactory
                     .forProvider(provider)
-                    .getBoolean("yb.internal.allow_instances"))
+                    .getBoolean("yb.internal.allow_unsupported_instances"))
             .stream()
             .collect(toMap(InstanceType::getInstanceTypeCode, identity()));
 
