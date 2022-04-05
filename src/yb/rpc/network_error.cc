@@ -11,26 +11,15 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_TABLET_SPLIT_DRIVER_H
-#define YB_MASTER_TABLET_SPLIT_DRIVER_H
-
-#include <set>
-#include <utility>
-
-#include "yb/common/entity_ids_types.h"
-
-#include "yb/util/status_fwd.h"
+#include "yb/rpc/network_error.h"
 
 namespace yb {
-namespace master {
+namespace rpc {
 
-class TabletSplitDriverIf {
- public:
-  virtual ~TabletSplitDriverIf() {}
-  virtual CHECKED_STATUS SplitTablet(
-      const TabletId& tablet_id, bool is_manual_split) = 0;
-};
+static const std::string kNetworkErrorCategoryName = "network error";
 
-}  // namespace master
-}  // namespace yb
-#endif // YB_MASTER_TABLET_SPLIT_DRIVER_H
+static StatusCategoryRegisterer network_error_category_registerer(
+    StatusCategoryDescription::Make<NetworkErrorTag>(&kNetworkErrorCategoryName));
+
+} // namespace rpc
+} // namespace yb

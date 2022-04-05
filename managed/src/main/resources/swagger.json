@@ -1010,7 +1010,7 @@
         },
         "code" : {
           "description" : "AZ code",
-          "example" : "AWS",
+          "example" : "us-west1-a",
           "type" : "string"
         },
         "config" : {
@@ -1027,7 +1027,7 @@
         },
         "name" : {
           "description" : "AZ name",
-          "example" : "south-east-1",
+          "example" : "us-west1-a",
           "type" : "string"
         },
         "secondarySubnet" : {
@@ -1373,6 +1373,10 @@
         "previousTaskUUID" : {
           "description" : "Previous task UUID only if this task is a retry",
           "format" : "uuid",
+          "type" : "string"
+        },
+        "scheduleName" : {
+          "description" : "Schedule Name",
           "type" : "string"
         },
         "scheduleUUID" : {
@@ -2924,21 +2928,6 @@
           "type" : "string"
         }
       },
-      "type" : "object"
-    },
-    "EditProviderRequest" : {
-      "properties" : {
-        "config" : {
-          "additionalProperties" : {
-            "type" : "string"
-          },
-          "type" : "object"
-        },
-        "hostedZoneId" : {
-          "type" : "string"
-        }
-      },
-      "required" : [ "config", "hostedZoneId" ],
       "type" : "object"
     },
     "EncryptionAtRestConfig" : {
@@ -4528,7 +4517,6 @@
         "code" : {
           "description" : "Cloud provider region code",
           "example" : "us-west-2",
-          "readOnly" : true,
           "type" : "string"
         },
         "config" : {
@@ -4554,6 +4542,7 @@
         "name" : {
           "description" : "Cloud provider region name",
           "example" : "US West (Oregon)",
+          "readOnly" : true,
           "type" : "string"
         },
         "securityGroupId" : {
@@ -5074,6 +5063,11 @@
         "runningState" : {
           "description" : "Running state of the schedule",
           "type" : "boolean"
+        },
+        "scheduleName" : {
+          "description" : "Name of the schedule",
+          "readOnly" : true,
+          "type" : "string"
         },
         "scheduleUUID" : {
           "description" : "Schedule UUID",
@@ -9990,17 +9984,17 @@
         }, {
           "description" : "edit provider form data",
           "in" : "body",
-          "name" : "EditProviderFormData",
+          "name" : "EditProviderRequest",
           "required" : true,
           "schema" : {
-            "$ref" : "#/definitions/EditProviderRequest"
+            "$ref" : "#/definitions/Provider"
           }
         } ],
         "responses" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/Provider"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
