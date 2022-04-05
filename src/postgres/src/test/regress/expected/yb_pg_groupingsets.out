@@ -429,9 +429,15 @@ select x, not x as not_x, q2 from
   (select *, q1 = 1 as x from int8_tbl i1) as t
   group by grouping sets(x, q2)
   order by x, q2;
-ERROR:  relation "int8_tbl" does not exist
-LINE 2:   (select *, q1 = 1 as x from int8_tbl i1) as t
-                                      ^
+ x | not_x |        q2
+---+-------+-------------------
+ f | t     |
+   |       | -4567890123456789
+   |       |               123
+   |       |               456
+   |       |  4567890123456789
+(5 rows)
+
 -- simple rescan tests
 select a, b, sum(v.x)
   from (values (1),(2)) v(x), gstest_data(v.x)
