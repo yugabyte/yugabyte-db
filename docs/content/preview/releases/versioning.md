@@ -34,8 +34,8 @@ Patch releases in a stable release series (`MAJOR.EVEN.PATCH`) include bug fixes
 
 {{< note title="Important" >}}
 
-- Yugabyte supports *production deployments* on stable releases and upgrades to newer stable releases. For a list of supported stable releases, see [Current supported releases](../releases-overview/#current-supported-releases).
-- For recommendations on which version to use for development and testing, see [Recommended release series for projects](../releases-overview/#recommended-releases-series-for-projects).
+- Yugabyte supports *production deployments* on stable releases and upgrades to newer stable releases. For a list of supported stable releases, see [Current supported releases](../../releases/#current-supported-releases).
+- For recommendations on which version to use for development and testing, see [Recommended release series for projects](../../releases/#recommended-release-series-for-projects).
 
 {{< /note >}}
 
