@@ -22,7 +22,7 @@ YugabyteDB <b>smart language drivers</b> enable client applications to connect t
 - [Topology-aware](/latest/deploy/multi-dc/). For geographically-distributed applications, the driver can seamlessly connect to the geographically nearest regions and availability zones for lower latency.
 All YugabyteDB smart driver libraries are actively maintained, and receive bug fixes, performance enhancements, and security patches.
 
-Along with the Smart drivers, YugabyteDB also provides support for upstream [PostgreSQL drivers](https://www.postgresql.org/download/products/2-drivers-and-interfaces/) for the respective programming languages. The following libraries are officially supported by YugabyteDB.
+Along with the smart drivers, YugabyteDB also supports upstream [PostgreSQL drivers](https://www.postgresql.org/download/products/2-drivers-and-interfaces/) for the respective programming languages. The following libraries are officially supported by YugabyteDB.
 
 ## [Java](java/)
 
