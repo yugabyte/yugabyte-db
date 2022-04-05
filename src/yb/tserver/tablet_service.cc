@@ -104,6 +104,7 @@
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/status_format.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 #include "yb/util/trace.h"
@@ -1866,7 +1867,7 @@ void ConsensusServiceImpl::GetNodeInstance(const GetNodeInstanceRequestPB* req,
 
 namespace {
 
-class RpcScope {
+class NODISCARD_CLASS RpcScope {
  public:
   template<class Req, class Resp>
   RpcScope(TabletPeerLookupIf* tablet_manager,
