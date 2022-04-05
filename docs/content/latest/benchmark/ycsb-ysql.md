@@ -44,20 +44,21 @@ isTocNested: true
 
 For more information about YCSB, see:
 
-* YCSB Wiki: https://github.com/brianfrankcooper/YCSB/wiki
-* Workload info: https://github.com/brianfrankcooper/YCSB/wiki/Core-Workloads
+* [YCSB Wiki](https://github.com/brianfrankcooper/YCSB/wiki)
+* [Workload info](https://github.com/brianfrankcooper/YCSB/wiki/Core-Workloads)
 
 {{< /note >}}
+
 ## Overview
 
-This uses a new YSQL-specific binding to test the YSQL API using the YCSB benchmark.
+This uses a YSQL-specific binding to test the YSQL API using the YCSB benchmark.
 
 ## Running the benchmark
 
 ### 1. Prerequisites
 
 {{< note title="Note" >}}
-The binaries are compiled with JAVA 13 and it is recommended to run these binaries with that version.
+The binaries are compiled with Java 13 and it is recommended to run these binaries with that version.
 {{< /note >}}
 
 Download the YCSB binaries. You can do this by running the following commands.
@@ -68,14 +69,16 @@ $ wget https://github.com/yugabyte/YCSB/releases/download/1.0/ycsb.tar.gz
 $ tar -zxvf ycsb.tar.gz
 $ cd YCSB
 ```
+
 Make sure you have the YSQL shell `ysqlsh` exported to the `PATH` variable. You can download [`ysqlsh`](https://download.yugabyte.com/) if you do not have it.
+
 ```sh
 $ export PATH=$PATH:/path/to/ysqlsh
 ```
 
 ### 2. Start YugabyteDB
 
-Start your YugabyteDB cluster by following the steps [here](../../deploy/manual-deployment/).
+Start your YugabyteDB cluster by following the steps for [manual deployment](../../deploy/manual-deployment/).
 
 {{< tip title="Tip" >}}
 You will need the IP addresses of the nodes in the cluster for the next step.
@@ -99,6 +102,7 @@ The db.url field should be populated with the IPs of all the nodes that are part
 {{< /note >}}
 
 ### 4. Run the benchmark
+
 There is a handy script `run_ysql.sh` that loads and runs all the workloads.
 
 ```sh
@@ -106,6 +110,7 @@ $ ./run_ysql.sh --ip <ip>
 ```
 
 The above command workload will run the workload on a table with 1 million rows. If you want to run the benchmark on a table with a different row count:
+
 ```sh
 $ ./run_ysql.sh --ip <ip> --recordcount <number of rows>
 ```
@@ -117,27 +122,31 @@ To get the maximum performance out of the system, you would have to tune the thr
 ### 5. Verify results
 
 The script creates 2 result files per workload, one for the loading and one for the execution phase with the details of throughput and latency.
-For example for workloada it creates `workloada-ysql-load.dat` and `workloada-ysql-transaction.dat`
+For example for `workloada` it creates `workloada-ysql-load.dat` and `workloada-ysql-transaction.dat`
 
 ### 6. Run individual workloads (optional)
 
 Connect to the database using `ysqlsh`.
+
 ```sh
 $ ./bin/ysqlsh -h <ip>
 ```
 
 Create the `ycsb` database.
-```postgres
+
+```sql
 yugabyte=# CREATE DATABASE ycsb;
 ```
 
 Connect to the created database.
-```postgres
+
+```sql
 yugabyte=# \c ycsb
 ```
 
 Create the table.
-```postgres
+
+```sql
 ycsb=# CREATE TABLE usertable (
            YCSB_KEY VARCHAR(255) PRIMARY KEY,
            FIELD0 TEXT, FIELD1 TEXT, FIELD2 TEXT, FIELD3 TEXT,
@@ -189,11 +198,11 @@ When run on a 3-node cluster with each node on a c5.4xlarge AWS instance (16 cor
 
 ### 1 Million Rows
 
-| Workload | Throughput (ops/sec) | Read Latency | Write Latency
--------------|-----------|------------|------------|
-Workload A | 37,377 | 1.5ms | 12 ms update
-Workload B | 66,875 | 4ms | 7.6ms update
-Workload C | 77,068 | 3.5ms read | Not applicable
-Workload D | 63,676 | 4ms | 7ms insert
-Workload E | 63,686 | 3.8ms scan | Not applicable
-Workload F | 29,500 | 2ms | 15ms read-modify-write
+| Workload | Throughput (ops/sec) | Read Latency | Write Latency |
+| :------- | :------------------- | :------------| :------------ |
+| Workload A | 37,377 | 1.5ms | 12 ms update |
+| Workload B | 66,875 | 4ms | 7.6ms update |
+| Workload C | 77,068 | 3.5ms read | Not applicable |
+| Workload D | 63,676 | 4ms | 7ms insert |
+| Workload E | 63,686 | 3.8ms scan | Not applicable |
+| Workload F | 29,500 | 2ms | 15ms read-modify-write |

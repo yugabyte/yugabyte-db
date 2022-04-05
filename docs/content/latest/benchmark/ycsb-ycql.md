@@ -44,21 +44,21 @@ isTocNested: true
 
 For more information about YCSB, see:
 
-* YCSB Wiki: https://github.com/brianfrankcooper/YCSB/wiki
-* Workload info: https://github.com/brianfrankcooper/YCSB/wiki/Core-Workloads
+* [YCSB Wiki](https://github.com/brianfrankcooper/YCSB/wiki)
+* [Workload info](https://github.com/brianfrankcooper/YCSB/wiki/Core-Workloads)
 
 {{< /note >}}
 
 ## Overview
 
-This uses a new YCQL-specific binding to test the YCQL API using the YCSB benchmark.
+This uses a YCQL-specific binding to test the YCQL API using the YCSB benchmark.
 
 ## Running the benchmark
 
 ### 1. Prerequisites
 
 {{< note title="Note" >}}
-The binaries are compiled with JAVA 13 and it is recommended to run these binaries with that version.
+The binaries are compiled with Java 13 and it is recommended to run these binaries with that version.
 {{< /note >}}
 
 Download the YCSB binaries. You can do this by running the following commands.
@@ -78,7 +78,7 @@ $ export PATH=$PATH:/path/to/ycqlsh
 
 ### 2. Start YugabyteDB
 
-Start your YugabyteDB cluster by following the steps [here](../../deploy/manual-deployment/).
+Start your YugabyteDB cluster by following the steps for [manual deployment](../../deploy/manual-deployment/).
 
 {{< tip title="Tip" >}}
 
@@ -121,7 +121,7 @@ To get the maximum performance out of the system, you would have to tune the `th
 ### 5. Verify results
 
 The script creates 2 result files per workload, one for the loading and one for the execution phase with the details of throughput and latency.
-For example, for workloada, it creates `workloada-ycql-load.dat` and `workloada-ycql-transaction.dat`
+For example, for `workloada`, it creates `workloada-ycql-load.dat` and `workloada-ycql-transaction.dat`
 
 ## 6. Run individual workloads (optional)
 
