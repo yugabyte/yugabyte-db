@@ -617,7 +617,8 @@ void TabletServerPathHandlers::HandleTablesPage(const Webserver::WebRequest& req
     role_counts_html << "</ul>";
 
     *output << Substitute(
-        "<tr><td>$0</td><td>$1</td><td>$2</td><td>$3</td><td>$4</td><td>$5</td><td>$6</td></tr>\n",
+        "<tr><td>$0</td><td>$1</td><td>$2</td><td>$3</td><td>$4</td>"
+        "<td>$5</td><td>$6</td><td>$7</td></tr>\n",
         EscapeForHtmlToString(info.namespace_name),
         EscapeForHtmlToString(info.name),
         EscapeForHtmlToString(identifier.uuid),
