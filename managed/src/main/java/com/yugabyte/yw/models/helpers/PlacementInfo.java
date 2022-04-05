@@ -7,6 +7,7 @@ import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * The placement info is a tree. The first level contains a list of clouds. Every cloud contains a
@@ -30,9 +31,10 @@ public class PlacementInfo {
     @Override
     public String toString() {
       StringBuilder ret = new StringBuilder("Cloud=").append(code).append(" ");
-      for (PlacementRegion region : regionList) {
-        ret.append(region);
-      }
+      ret.append(
+          String.join(
+              ", ",
+              regionList.stream().map(PlacementRegion::toString).collect(Collectors.toList())));
       ret.append("; Default region=").append(defaultRegion);
       return ret.toString();
     }
@@ -51,9 +53,9 @@ public class PlacementInfo {
     @Override
     public String toString() {
       String ret = "Region=" + code + " : ";
-      for (PlacementAZ az : azList) {
-        ret += az;
-      }
+      ret +=
+          String.join(
+              ", ", azList.stream().map(PlacementAZ::toString).collect(Collectors.toList()));
       return ret;
     }
   }
