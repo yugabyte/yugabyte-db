@@ -129,7 +129,7 @@ Name  Age  Language
 John  35   CSharp
 ```
 
-if you receive no output or error, check whether you included the proper connection string in your Program.cs file with the right credentials.
+If you receive no output or error, verify that you included the proper connection string in your Program.cs file with the proper credentials.
 
 After completing these steps, you should have a working C# app that uses the YugabyteDB JDBC driver to connect to your cluster, set up tables, run a query, and print out results.
 
