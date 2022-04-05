@@ -24,11 +24,11 @@ Using the **Edit Universe** page, you can specify the new intent for the univers
 
 Yugabyte Platform applies changes via the YB-Masters powering the universe. The YB-Masters ensure that the new nodes start hosting the tablet leaders for a set of tablets in such a way that the tablet leader count remains evenly balanced across all the available nodes.
 
-Expansion of universes created with an on-premise cloud provider and secured with third-party certificates obtained from external CAs follows a different workflow. For details, see [How to Expand the Universe](../../security/enable-encryption-in-transit#how-to-expand-the-universe).
+Expansion of universes created with an on-premise cloud provider and secured with third-party certificates obtained from external certification authorities follows a different workflow. For details, see [How to Expand the Universe](../../security/enable-encryption-in-transit#how-to-expand-the-universe).
 
 
 
-For universes that use Google Cloud Provider (GCP) or Amazon Web Services (AWS), Yugabyte Platform allows you to change the instance type and disk volume without spawning new virtual machines. This is known as smart resize and it is subject to the following:
+For universes that use Google Cloud Provider (GCP) or Amazon Web Services (AWS), Yugabyte Platform allows you to change the size of the virtual machine and the volume size without moving the data from the old nodes to the new nodes. This is known as smart resize and it is subject to the following:
 
 - Smart resize cannot be applied to instances with ephemeral disks due to a potential loss of data, but smart resize to ephemeral disks is supported.
 
