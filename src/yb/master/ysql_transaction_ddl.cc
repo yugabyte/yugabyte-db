@@ -137,7 +137,7 @@ Result<bool> YsqlTransactionDdl::PgEntryExists(TableId pg_table_id, Result<uint3
   }
   const tablet::Tablet* catalog_tablet = tablet_peer->tablet();
   const Schema& pg_database_schema =
-      *VERIFY_RESULT(catalog_tablet->metadata()->GetTableInfo(pg_table_id))->schema;
+      VERIFY_RESULT(catalog_tablet->metadata()->GetTableInfo(pg_table_id))->schema();
 
   // Use Scan to query the 'pg_database' table, filtering by our 'oid'.
   Schema projection;

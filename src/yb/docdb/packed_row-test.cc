@@ -18,6 +18,7 @@
 
 #include "yb/docdb/packed_row.h"
 #include "yb/docdb/primitive_value.h"
+#include "yb/docdb/value_type.h"
 
 #include "yb/util/fast_varint.h"
 #include "yb/util/random_util.h"
@@ -47,22 +48,23 @@ void TestRowPacking(const Schema& schema, const std::vector<QLValuePB>& values) 
   size_t idx = schema.num_key_columns();
   for (const auto& value : values) {
     auto column_id = schema.column_id(idx);
-    ASSERT_OK(packer.AddValue(column_id, value, SortingType::kNotSpecified));
+    ASSERT_OK(packer.AddValue(column_id, value));
     ++idx;
   }
-  auto packed = ASSERT_RESULT(packer.Complete()).get().AsSlice();
+  auto packed = ASSERT_RESULT(packer.Complete());
   LOG(INFO) << "Packed: " << packed.ToDebugHexString();
+  ASSERT_EQ(static_cast<ValueEntryType>(packed.consume_byte()), ValueEntryType::kPackedRow);
   auto version = ASSERT_RESULT(util::FastDecodeUnsignedVarInt(&packed));
   ASSERT_EQ(version, kVersion);
   for (size_t i = schema.num_key_columns(); i != schema.num_columns(); ++i) {
-    auto value_slice = ASSERT_RESULT(schema_packing.GetValue(schema.column_id(i), packed));
+    auto value_slice = *schema_packing.GetValue(schema.column_id(i), packed);
     const auto& value = values[i - schema.num_key_columns()];
     PrimitiveValue decoded_value;
     if (IsNull(value)) {
       ASSERT_TRUE(value_slice.empty());
     } else {
       ASSERT_OK(decoded_value.DecodeFromValue(value_slice));
-      auto expected = PrimitiveValue::FromQLValuePB(value, SortingType::kNotSpecified);
+      auto expected = PrimitiveValue::FromQLValuePB(value);
       ASSERT_EQ(decoded_value, expected);
     }
     LOG(INFO) << i << ": " << value_slice.ToDebugHexString() << ", " << decoded_value;
