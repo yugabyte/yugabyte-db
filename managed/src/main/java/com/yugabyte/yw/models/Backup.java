@@ -16,9 +16,6 @@ import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.forms.BackupTableParams;
-import com.yugabyte.yw.models.Backup.BackupCategory;
-import com.yugabyte.yw.models.Backup.BackupState;
-import com.yugabyte.yw.models.Backup.BackupVersion;
 import com.yugabyte.yw.models.filters.BackupFilter;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.paging.BackupPagedApiResponse;
@@ -50,7 +47,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
@@ -111,6 +107,23 @@ public class Backup extends Model {
 
     @EnumValue("V2")
     V2
+  }
+
+  public enum StorageConfigType {
+    @EnumValue("S3")
+    S3,
+
+    @EnumValue("NFS")
+    NFS,
+
+    @EnumValue("AZ")
+    AZ,
+
+    @EnumValue("GCS")
+    GCS,
+
+    @EnumValue("FILE")
+    FILE;
   }
 
   public static final Set<BackupState> IN_PROGRESS_STATES =
@@ -197,6 +210,12 @@ public class Backup extends Model {
     save();
   }
 
+  public void updateStorageConfigUUID(UUID storageConfigUUID) {
+    this.storageConfigUUID = storageConfigUUID;
+    this.backupInfo.storageConfigUUID = storageConfigUUID;
+    save();
+  }
+
   public void setBackupInfo(BackupTableParams params) {
     this.backupInfo = params;
   }
@@ -239,56 +258,6 @@ public class Backup extends Model {
 
   public static final Finder<UUID, Backup> find = new Finder<UUID, Backup>(Backup.class) {};
 
-  // For creating new backup we would set the storage location based on
-  // universe UUID and backup UUID.
-  // univ-<univ_uuid>/backup-<timestamp>-<something_to_disambiguate_from_yugaware>/table-keyspace
-  // .table_name.table_uuid
-  private void updateStorageLocation(BackupTableParams params) {
-    CustomerConfig customerConfig = CustomerConfig.get(customerUUID, params.storageConfigUUID);
-    if (params.tableUUIDList != null) {
-      params.storageLocation =
-          String.format(
-              "univ-%s/backup-%s-%d/multi-table-%s",
-              params.universeUUID,
-              tsFormat.format(new Date()),
-              abs(backupUUID.hashCode()),
-              params.getKeyspace());
-    } else if (params.getTableName() == null && params.getKeyspace() != null) {
-      params.storageLocation =
-          String.format(
-              "univ-%s/backup-%s-%d/keyspace-%s",
-              params.universeUUID,
-              tsFormat.format(new Date()),
-              abs(backupUUID.hashCode()),
-              params.getKeyspace());
-    } else {
-      params.storageLocation =
-          String.format(
-              "univ-%s/backup-%s-%d/table-%s.%s",
-              params.universeUUID,
-              tsFormat.format(new Date()),
-              abs(backupUUID.hashCode()),
-              params.getKeyspace(),
-              params.getTableName());
-      if (params.tableUUID != null) {
-        params.storageLocation =
-            String.format(
-                "%s-%s", params.storageLocation, params.tableUUID.toString().replace("-", ""));
-      }
-    }
-
-    if (customerConfig != null) {
-      // TODO: These values, S3 vs NFS / S3_BUCKET vs NFS_PATH come from UI right now...
-      JsonNode storageNode = customerConfig.getData().get("BACKUP_LOCATION");
-      if (storageNode != null) {
-        String storagePath = storageNode.asText();
-        if (storagePath != null && !storagePath.isEmpty()) {
-          params.storageLocation = String.format("%s/%s", storagePath, params.storageLocation);
-        }
-      }
-    }
-  }
-
   public static Backup create(
       UUID customerUUID, BackupTableParams params, BackupCategory category, BackupVersion version) {
     Backup backup = new Backup();
@@ -310,15 +279,22 @@ public class Backup extends Model {
       backup.expiry = new Date(System.currentTimeMillis() + params.timeBeforeDelete);
     }
     if (params.backupList != null) {
+      params.backupUuid = backup.backupUUID;
       // In event of universe backup
       for (BackupTableParams childBackup : params.backupList) {
+        childBackup.backupUuid = backup.backupUUID;
         if (childBackup.storageLocation == null) {
-          backup.updateStorageLocation(childBackup);
+          BackupUtil.updateDefaultStorageLocation(childBackup, customerUUID);
         }
       }
     } else if (params.storageLocation == null) {
+      params.backupUuid = backup.backupUUID;
       // We would derive the storage location based on the parameters
-      backup.updateStorageLocation(params);
+      BackupUtil.updateDefaultStorageLocation(params, customerUUID);
+    }
+    CustomerConfig storageConfig = CustomerConfig.get(customerUUID, params.storageConfigUUID);
+    if (storageConfig != null) {
+      params.storageConfigType = StorageConfigType.valueOf(storageConfig.name);
     }
     backup.setBackupInfo(params);
     backup.save();
@@ -431,10 +407,10 @@ public class Backup extends Model {
   public synchronized void transitionState(BackupState newState) {
     // Need updated backup state as multiple threads can access backup object.
     this.refresh();
-
     if (this.state == newState) {
       LOG.error("Skipping state transition as no change in previous and new state");
-    } else if ((this.state == BackupState.InProgress || newState == BackupState.QueuedForDeletion)
+    } else if ((this.state == BackupState.InProgress)
+        || (this.state != BackupState.DeleteInProgress && newState == BackupState.QueuedForDeletion)
         || (this.state == BackupState.QueuedForDeletion && newState == BackupState.DeleteInProgress)
         || (this.state == BackupState.QueuedForDeletion && newState == BackupState.FailedToDelete)
         || (this.state == BackupState.DeleteInProgress && newState == BackupState.FailedToDelete)
@@ -463,6 +439,21 @@ public class Backup extends Model {
       return;
     }
     this.backupInfo.backupList.get(idx).backupSizeInBytes = backupSize;
+    this.save();
+  }
+
+  public void setPerRegionLocations(int idx, List<BackupUtil.RegionLocations> perRegionLocations) {
+    if (idx == -1) {
+      this.backupInfo.regionLocations = perRegionLocations;
+      this.save();
+      return;
+    }
+    int backupListLen = this.backupInfo.backupList.size();
+    if (idx >= backupListLen) {
+      LOG.error("Index {} not present in backup list of length {}", idx, backupListLen);
+      return;
+    }
+    this.backupInfo.backupList.get(idx).regionLocations = perRegionLocations;
     this.save();
   }
 

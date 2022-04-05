@@ -91,30 +91,30 @@ class PgDmlRead : public PgDml {
 
  protected:
   // Allocate column protobuf.
-  PgsqlExpressionPB *AllocColumnBindPB(PgColumn *col) override;
-  PgsqlExpressionPB *AllocColumnBindConditionExprPB(PgColumn *col);
-  PgsqlExpressionPB *AllocIndexColumnBindPB(PgColumn *col);
+  LWPgsqlExpressionPB *AllocColumnBindPB(PgColumn *col) override;
+  LWPgsqlExpressionPB *AllocColumnBindConditionExprPB(PgColumn *col);
+  LWPgsqlExpressionPB *AllocIndexColumnBindPB(PgColumn *col);
 
   // Allocate protobuf for target.
-  PgsqlExpressionPB *AllocTargetPB() override;
+  LWPgsqlExpressionPB *AllocTargetPB() override;
 
   // Allocate protobuf for a qual in the read request's where_clauses list.
-  PgsqlExpressionPB *AllocQualPB() override;
+  LWPgsqlExpressionPB *AllocQualPB() override;
 
   // Allocate protobuf for a column reference in the read request's col_refs list.
-  PgsqlColRefPB *AllocColRefPB() override;
+  LWPgsqlColRefPB *AllocColRefPB() override;
 
   // Clear the read request's col_refs list.
   void ClearColRefPBs() override;
 
   // Allocate column expression.
-  PgsqlExpressionPB *AllocColumnAssignPB(PgColumn *col) override;
+  LWPgsqlExpressionPB *AllocColumnAssignPB(PgColumn *col) override;
 
   // Add column refs to protobuf read request.
   void SetColumnRefs();
 
   // References mutable request from template operation of doc_op_.
-  std::shared_ptr<PgsqlReadRequestPB> read_req_;
+  std::shared_ptr<LWPgsqlReadRequestPB> read_req_;
 
  private:
   // Indicates that current operation reads concrete row by specifying row's DocKey.
@@ -123,15 +123,15 @@ class PgDmlRead : public PgDml {
   bool CanBuildYbctidsFromPrimaryBinds();
   Result<std::vector<std::string>> BuildYbctidsFromPrimaryBinds();
   CHECKED_STATUS SubstitutePrimaryBindsWithYbctids(const PgExecParameters* exec_params);
-  Result<docdb::DocKey> EncodeRowKeyForBound(YBCPgStatement handle,
-      int n_col_values, PgExpr **col_values, bool for_lower_bound);
-  CHECKED_STATUS MoveBoundKeyInOperator(PgColumn* col, const PgsqlConditionPB& in_operator);
-  CHECKED_STATUS CopyBoundValue(
-      const PgColumn& col, const PgsqlExpressionPB& src, QLValuePB* dest) const;
-  Result<docdb::PrimitiveValue> BuildKeyColumnValue(
-      const PgColumn& col, const PgsqlExpressionPB& src, PgsqlExpressionPB* dest);
-  Result<docdb::PrimitiveValue> BuildKeyColumnValue(
-      const PgColumn& col, const PgsqlExpressionPB& src);
+  Result<docdb::DocKey> EncodeRowKeyForBound(
+      YBCPgStatement handle, size_t n_col_values, PgExpr **col_values, bool for_lower_bound);
+  CHECKED_STATUS MoveBoundKeyInOperator(PgColumn* col, const LWPgsqlConditionPB& in_operator);
+  Result<LWQLValuePB*> GetBoundValue(
+      const PgColumn& col, const LWPgsqlExpressionPB& src) const;
+  Result<docdb::KeyEntryValue> BuildKeyColumnValue(
+      const PgColumn& col, const LWPgsqlExpressionPB& src, LWQLValuePB** dest);
+  Result<docdb::KeyEntryValue> BuildKeyColumnValue(
+      const PgColumn& col, const LWPgsqlExpressionPB& src);
 };
 
 }  // namespace pggate

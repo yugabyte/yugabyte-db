@@ -85,7 +85,7 @@ Result<FilterDecision> DocDBCompactionFilter::DoFilter(
   }
 
   if (!IsWithinBounds(key_bounds_, key) &&
-      DecodeValueType(key) != ValueType::kTransactionApplyState) {
+      DecodeKeyEntryType(key) != KeyEntryType::kTransactionApplyState) {
     // If we reach this point, then we're processing a record which should have been excluded by
     // proper use of GetLiveRanges(). We include this as a sanity check, but we should never get
     // here.
@@ -97,7 +97,7 @@ Result<FilterDecision> DocDBCompactionFilter::DoFilter(
 
   // Just remove intent records from regular DB, because it was beta feature.
   // Currently intents are stored in separate DB.
-  if (DecodeValueType(key) == ValueType::kObsoleteIntentPrefix) {
+  if (DecodeKeyEntryType(key) == KeyEntryType::kObsoleteIntentPrefix) {
     return FilterDecision::kDiscard;
   }
 
@@ -119,8 +119,7 @@ Result<FilterDecision> DocDBCompactionFilter::DoFilter(
   // Remove overwrite hybrid_times for components that are no longer relevant for the current
   // SubDocKey.
   overwrite_.resize(std::min(overwrite_.size(), num_shared_components));
-  DocHybridTime ht;
-  RETURN_NOT_OK(ht.DecodeFromEnd(key));
+  auto ht = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(key));
   // We're comparing the hybrid time in this key with the stack top of overwrite_ht_ after
   // truncating the stack to the number of components in the common prefix of previous and current
   // key.
@@ -162,8 +161,8 @@ Result<FilterDecision> DocDBCompactionFilter::DoFilter(
   // does not get cleaned up the same way as this one.
   //
   // TODO: When more merge records are supported, isTtlRow should be redefined appropriately.
-  bool isTtlRow = IsMergeRecord(existing_value);
-  if (ht < prev_overwrite_ht && !isTtlRow) {
+  bool is_ttl_row = IsMergeRecord(existing_value);
+  if (ht < prev_overwrite_ht && !is_ttl_row) {
     return FilterDecision::kDiscard;
   }
 
@@ -204,7 +203,7 @@ Result<FilterDecision> DocDBCompactionFilter::DoFilter(
   //       and we end up removing some data that the client expects to see?
   if (sub_key_ends_.size() > 1) {
     // Column ID is the first subkey in every CQL row.
-    if (key[sub_key_ends_[0]]  == ValueTypeAsChar::kColumnId) {
+    if (key[sub_key_ends_[0]]  == KeyEntryTypeAsChar::kColumnId) {
       Slice column_id_slice(key.data() + sub_key_ends_[0] + 1, key.data() + sub_key_ends_[1]);
       auto column_id_as_int64 = VERIFY_RESULT(util::FastDecodeSignedVarIntUnsafe(&column_id_slice));
       ColumnId column_id;
@@ -215,14 +214,13 @@ Result<FilterDecision> DocDBCompactionFilter::DoFilter(
     }
   }
 
-  auto overwrite_ht = isTtlRow ? prev_overwrite_ht : std::max(prev_overwrite_ht, ht);
+  auto overwrite_ht = is_ttl_row ? prev_overwrite_ht : std::max(prev_overwrite_ht, ht);
 
-  Value value;
   Slice value_slice = existing_value;
-  RETURN_NOT_OK(value.DecodeControlFields(&value_slice));
-  const auto value_type = static_cast<ValueType>(
-      value_slice.FirstByteOr(ValueTypeAsChar::kInvalid));
-  const Expiration curr_exp(ht.hybrid_time(), value.ttl());
+  ValueControlFields control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value_slice));
+  const auto value_type = static_cast<ValueEntryType>(
+      value_slice.FirstByteOr(ValueEntryTypeAsChar::kInvalid));
+  const Expiration curr_exp(ht.hybrid_time(), control_fields.ttl);
 
   // If within the merge block.
   //     If the row is a TTL row, delete it.
@@ -235,7 +233,7 @@ Result<FilterDecision> DocDBCompactionFilter::DoFilter(
   if (within_merge_block_) {
     expiration = popped_exp;
   } else if (ht.hybrid_time() >= prev_exp.write_ht &&
-             (curr_exp.ttl != Value::kMaxTtl || isTtlRow)) {
+             (curr_exp.ttl != ValueControlFields::kMaxTtl || is_ttl_row)) {
     expiration = curr_exp;
   } else {
     expiration = prev_exp;
@@ -250,7 +248,7 @@ Result<FilterDecision> DocDBCompactionFilter::DoFilter(
   AssignPrevSubDocKey(key.cdata(), same_bytes);
 
   // If the entry has the TTL flag, delete the entry.
-  if (isTtlRow) {
+  if (is_ttl_row) {
     within_merge_block_ = true;
     return FilterDecision::kDiscard;
   }
@@ -280,27 +278,29 @@ Result<FilterDecision> DocDBCompactionFilter::DoFilter(
   } else if (within_merge_block_) {
     *value_changed = true;
 
-    if (expiration.ttl != Value::kMaxTtl) {
+    if (expiration.ttl != ValueControlFields::kMaxTtl) {
       expiration.ttl += MonoDelta::FromMicroseconds(
           overwrite_.back().expiration.write_ht.PhysicalDiff(ht.hybrid_time()));
       overwrite_.back().expiration.ttl = expiration.ttl;
     }
 
-    *value.mutable_ttl() = expiration.ttl;
+    control_fields.ttl = expiration.ttl;
     new_value->clear();
 
     // We are reusing the existing encoded value without decoding/encoding it.
-    value.EncodeAndAppend(new_value, &value_slice);
+    control_fields.AppendEncoded(new_value);
+    new_value->append(value_slice.cdata(), value_slice.size());
     within_merge_block_ = false;
-  } else if (value.intent_doc_ht().is_valid() && ht.hybrid_time() < history_cutoff) {
+  } else if (control_fields.intent_doc_ht.is_valid() && ht.hybrid_time() < history_cutoff) {
     // Cleanup intent doc hybrid time when we don't need it anymore.
     // See https://github.com/yugabyte/yugabyte-db/issues/4535 for details.
-    value.ClearIntentDocHt();
+    control_fields.intent_doc_ht = DocHybridTime::kInvalid;
 
     new_value->clear();
 
     // We are reusing the existing encoded value without decoding/encoding it.
-    value.EncodeAndAppend(new_value, &value_slice);
+    control_fields.AppendEncoded(new_value);
+    new_value->append(value_slice.cdata(), value_slice.size());
   }
 
   // If we are backfilling an index table, we want to preserve the delete markers in the table
@@ -313,7 +313,7 @@ Result<FilterDecision> DocDBCompactionFilter::DoFilter(
   // compactions. However, we do need to update the overwrite hybrid time stack in this case (as we
   // just did), because this deletion (tombstone) entry might be the only reason for cleaning up
   // more entries appearing at earlier hybrid times.
-  return value_type == ValueType::kTombstone && is_major_compaction_ &&
+  return value_type == ValueEntryType::kTombstone && is_major_compaction_ &&
                  !retention_.retain_delete_markers_in_major_compaction
              ? FilterDecision::kDiscard
              : FilterDecision::kKeep;
@@ -338,7 +338,7 @@ const char* DocDBCompactionFilter::Name() const {
 }
 
 std::vector<std::pair<Slice, Slice>> DocDBCompactionFilter::GetLiveRanges() const {
-  static constexpr char kApplyStateEndChar = ValueTypeAsChar::kTransactionApplyState + 1;
+  static constexpr char kApplyStateEndChar = KeyEntryTypeAsChar::kTransactionApplyState + 1;
   if (!key_bounds_ || (key_bounds_->lower.empty() && key_bounds_->upper.empty())) {
     return {};
   }

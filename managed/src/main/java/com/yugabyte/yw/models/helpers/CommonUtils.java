@@ -5,8 +5,10 @@ package com.yugabyte.yw.models.helpers;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.TextNode;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.google.common.collect.Iterables;
 import com.jayway.jsonpath.Configuration;
 import com.jayway.jsonpath.JsonPath;
@@ -26,6 +28,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.time.temporal.TemporalUnit;
+import java.util.UUID;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -44,6 +47,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.crypto.encrypt.Encryptors;
+import org.springframework.security.crypto.encrypt.TextEncryptor;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
@@ -175,6 +180,53 @@ public class CommonUtils {
                   ? ((TextNode) jsonPath.read(originalData, JSONPATH_CONFIG)).asText()
                   : value;
             });
+  }
+
+  public static Map<String, String> encryptProviderConfig(
+      Map<String, String> config, UUID customerUUID, String providerCode) {
+    if (config.isEmpty()) return new HashMap<>();
+    try {
+      final ObjectMapper mapper = new ObjectMapper();
+      final String salt = generateSalt(customerUUID, providerCode);
+      final TextEncryptor encryptor = Encryptors.delux(customerUUID.toString(), salt);
+      final String encryptedConfig = encryptor.encrypt(mapper.writeValueAsString(config));
+      Map<String, String> encryptMap = new HashMap<>();
+      encryptMap.put("encrypted", encryptedConfig);
+      return encryptMap;
+    } catch (Exception e) {
+      final String errMsg =
+          String.format(
+              "Could not encrypt provider configuration for customer %s", customerUUID.toString());
+      log.error(errMsg, e);
+      return null;
+    }
+  }
+
+  public static Map<String, String> decryptProviderConfig(
+      Map<String, String> config, UUID customerUUID, String providerCode) {
+    if (config.isEmpty()) return config;
+    try {
+      final ObjectMapper mapper = new ObjectMapper();
+      final String encryptedConfig = config.get("encrypted");
+      final String salt = generateSalt(customerUUID, providerCode);
+      final TextEncryptor encryptor = Encryptors.delux(customerUUID.toString(), salt);
+      final String decryptedConfig = encryptor.decrypt(encryptedConfig);
+      return mapper.readValue(decryptedConfig, new TypeReference<Map<String, String>>() {});
+    } catch (Exception e) {
+      final String errMsg =
+          String.format(
+              "Could not decrypt provider configuration for customer %s", customerUUID.toString());
+      log.error(errMsg, e);
+      return null;
+    }
+  }
+
+  public static String generateSalt(UUID customerUUID, String providerCode) {
+    final String kpValue = String.valueOf(providerCode.hashCode());
+    final String saltBase = "%s%s";
+    final String salt =
+        String.format(saltBase, customerUUID.toString().replace("-", ""), kpValue.replace("-", ""));
+    return salt.length() % 2 == 0 ? salt : salt + "0";
   }
 
   private static ObjectNode processData(

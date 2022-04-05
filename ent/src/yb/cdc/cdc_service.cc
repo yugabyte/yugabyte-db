@@ -118,6 +118,10 @@ DEFINE_double(cdc_read_safe_deadline_ratio, .10,
               "When the heartbeat deadline has this percentage of time remaining, "
               "the master should halt tablet report processing so it can respond in time.");
 
+DEFINE_bool(enable_update_local_peer_min_index, true,
+            "Enable each local peer to update its own log checkpoint instead of the leader "
+            "updating all peers.");
+
 DECLARE_bool(enable_log_retention_by_op_idx);
 
 DECLARE_int32(cdc_checkpoint_opid_interval_ms);
@@ -257,11 +261,15 @@ class CDCServiceImpl::Impl {
     it->last_streamed_op_id = op_id;
   }
 
-  std::shared_ptr<Schema> GetOrAddSchema(const ProducerTabletInfo& producer_tablet) {
+  std::shared_ptr<Schema> GetOrAddSchema(const ProducerTabletInfo &producer_tablet,
+                                         const bool need_schema_info) {
     std::lock_guard<decltype(mutex_)> l(mutex_);
     auto it = cdc_state_metadata_.find(producer_tablet);
 
     if (it != cdc_state_metadata_.end()) {
+      if (need_schema_info) {
+        it->current_schema = std::make_shared<Schema>();
+      }
       return it->current_schema;
     }
     CDCStateMetadataInfo info = CDCStateMetadataInfo {
@@ -644,6 +652,20 @@ CHECKED_STATUS VerifyArg(const SetCDCCheckpointRequestPB& req) {
   }
 
   return Status::OK();
+}
+
+// This function is to handle the upgrade scenario where the DB is upgraded from a version
+// without CDCSDK changes to the one with it. So in case, some required options are missing,
+// the default values will be added for the same.
+void AddDefaultOptionsIfMissing(std::unordered_map<std::string, std::string>* options) {
+  if ((*options).find(cdc::kSourceType) == (*options).end()) {
+    (*options).emplace(cdc::kSourceType, CDCRequestSource_Name(cdc::CDCRequestSource::XCLUSTER));
+  }
+
+  if ((*options).find(cdc::kCheckpointType) == (*options).end()) {
+    (*options).emplace(cdc::kCheckpointType,
+                     CDCCheckpointType_Name(cdc::CDCCheckpointType::IMPLICIT));
+  }
 }
 
 } // namespace
@@ -1102,7 +1124,7 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
     std::string commit_timestamp;
     OpId last_streamed_op_id;
 
-    auto cached_schema = impl_->GetOrAddSchema(producer_tablet);
+    auto cached_schema = impl_->GetOrAddSchema(producer_tablet, req->need_schema_info());
     s = cdc::GetChangesForCDCSDK(
         req->stream_id(), req->tablet_id(), cdc_sdk_op_id, record, tablet_peer, mem_tracker,
         &msgs_holder, resp, &commit_timestamp, &cached_schema,
@@ -1273,12 +1295,15 @@ void CDCServiceImpl::UpdateLagMetrics() {
       if (s.IsNotFound()) {
         continue;
       }
-      auto tablet_metric = GetCDCTabletMetrics(checkpoint.producer_tablet_info, tablet_peer);
+      // Don't create new tablet metrics if they have already been deleted.
+      auto tablet_metric = GetCDCTabletMetrics(
+          checkpoint.producer_tablet_info, tablet_peer, CreateCDCMetricsEntity::kFalse);
       if (!tablet_metric) {
         continue;
       }
       tablet_metric->async_replication_sent_lag_micros->set_value(0);
       tablet_metric->async_replication_committed_lag_micros->set_value(0);
+      RemoveCDCTabletMetrics(checkpoint.producer_tablet_info, tablet_peer);
     }
   }
 }
@@ -1341,8 +1366,8 @@ Status CDCServiceImpl::RefreshCacheOnFail(const Status& s) {
 MicrosTime CDCServiceImpl::GetLastReplicatedTime(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer) {
   tablet::RemoveIntentsData data;
-  tablet_peer->GetLastReplicatedData(&data);
-  return data.log_ht.GetPhysicalValueMicros();
+  auto status = tablet_peer->GetLastReplicatedData(&data);
+  return status.ok() ? data.log_ht.GetPhysicalValueMicros() : 0;
 }
 
 void CDCServiceImpl::UpdatePeersAndMetrics() {
@@ -1381,6 +1406,9 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
 
     time_since_update_peers = MonoTime::Now();
     LOG(INFO) << "Started to read minimum replicated indices for all tablets";
+
+    auto enable_update_local_peer_min_index =
+        GetAtomicFlag(&FLAGS_enable_update_local_peer_min_index);
 
     auto cdc_state_table_result = GetCdcStateTable();
     if (!cdc_state_table_result.ok()) {
@@ -1450,7 +1478,7 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
       if (s.IsNotFound()) {
         VLOG(2) << "Did not found tablet peer for tablet " << tablet_id;
         continue;
-      } else if (!IsTabletPeerLeader(tablet_peer)) {
+      } else if (!enable_update_local_peer_min_index && !IsTabletPeerLeader(tablet_peer)) {
         VLOG(2) << "Tablet peer " << tablet_peer->permanent_uuid()
                 << " is not the leader for tablet " << tablet_id;
         continue;
@@ -1467,9 +1495,11 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
                      << " and tablet " << tablet_peer->tablet_id()
                      << ": " << s;
       }
-      VLOG(1) << "Updating followers for tablet " << tablet_id << " with index " << min_index;
-      WARN_NOT_OK(UpdatePeersCdcMinReplicatedIndex(tablet_id, min_index, current_term),
-                  "UpdatePeersCdcMinReplicatedIndex failed");
+      if (!enable_update_local_peer_min_index) {
+        VLOG(1) << "Updating followers for tablet " << tablet_id << " with index " << min_index;
+        WARN_NOT_OK(UpdatePeersCdcMinReplicatedIndex(tablet_id, min_index, current_term),
+                    "UpdatePeersCdcMinReplicatedIndex failed");
+      }
     }
     LOG(INFO) << "Done reading all the indices for all tablets and updating peers";
   } while (sleep_while_not_stopped());
@@ -1522,9 +1552,7 @@ Status CDCServiceImpl::GetTServers(const TabletId& tablet_id,
 }
 
 std::shared_ptr<CDCServiceProxy> CDCServiceImpl::GetCDCServiceProxy(RemoteTabletServer* ts) {
-  auto hostport = HostPortFromPB(DesiredHostPort(
-      ts->public_rpc_hostports(), ts->private_rpc_hostports(), ts->cloud_info(),
-      client()->cloud_info()));
+  auto hostport = HostPortFromPB(ts->DesiredHostPort(client()->cloud_info()));
   DCHECK(!hostport.host().empty());
 
   {
@@ -1903,6 +1931,8 @@ void CDCServiceImpl::BootstrapProducer(const BootstrapProducerRequestPB* req,
           return;
         }
         op_id = tablet_peer->log()->GetLatestEntryOpId();
+        // Even though we let each log independently take care of updating its own log checkpoint,
+        // we still call the Update RPC when we create the replication stream.
         RPC_STATUS_RETURN_ERROR(UpdatePeersCdcMinReplicatedIndex(tablet.tablet_id(), op_id.index),
                                 resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR,
                                 context);
@@ -2062,9 +2092,14 @@ Status CDCServiceImpl::UpdateCheckpoint(const ProducerTabletInfo& producer_table
   return Status::OK();
 }
 
+const std::string GetCDCMetricsKey(const std::string& stream_id) {
+  return "CDCMetrics::" + stream_id;
+}
+
 std::shared_ptr<CDCTabletMetrics> CDCServiceImpl::GetCDCTabletMetrics(
     const ProducerTabletInfo& producer,
-    std::shared_ptr<tablet::TabletPeer> tablet_peer) {
+    std::shared_ptr<tablet::TabletPeer> tablet_peer,
+    CreateCDCMetricsEntity create) {
   // 'nullptr' not recommended: using for tests.
   if (tablet_peer == nullptr) {
     auto status = tablet_manager_->GetTabletPeer(producer.tablet_id, &tablet_peer);
@@ -2074,9 +2109,9 @@ std::shared_ptr<CDCTabletMetrics> CDCServiceImpl::GetCDCTabletMetrics(
   auto tablet = tablet_peer->shared_tablet();
   if (tablet == nullptr) return nullptr;
 
-  std::string key = "CDCMetrics::" + producer.stream_id;
+  const std::string key = GetCDCMetricsKey(producer.stream_id);
   std::shared_ptr<void> metrics_raw = tablet->GetAdditionalMetadata(key);
-  if (metrics_raw == nullptr) {
+  if (metrics_raw == nullptr && create) {
     //  Create a new METRIC_ENTITY_cdc here.
     MetricEntity::AttributeMap attrs;
     {
@@ -2096,6 +2131,23 @@ std::shared_ptr<CDCTabletMetrics> CDCServiceImpl::GetCDCTabletMetrics(
   return std::static_pointer_cast<CDCTabletMetrics>(metrics_raw);
 }
 
+void CDCServiceImpl::RemoveCDCTabletMetrics(
+    const ProducerTabletInfo& producer,
+    std::shared_ptr<tablet::TabletPeer> tablet_peer) {
+  if (tablet_peer == nullptr) {
+    LOG(WARNING) << "Received null tablet peer pointer.";
+    return;
+  }
+  auto tablet = tablet_peer->shared_tablet();
+  if (tablet == nullptr) {
+    LOG(WARNING) << "Could not find tablet for tablet peer: " << tablet_peer->tablet_id();
+    return;
+  }
+
+  const std::string key = GetCDCMetricsKey(producer.stream_id);
+  tablet->RemoveAdditionalMetadata(key);
+}
+
 Result<std::shared_ptr<StreamMetadata>> CDCServiceImpl::GetStream(const std::string& stream_id) {
   auto stream = GetStreamMetadataFromCache(stream_id);
   if (stream != nullptr) {
@@ -2109,6 +2161,9 @@ Result<std::shared_ptr<StreamMetadata>> CDCServiceImpl::GetStream(const std::str
   RETURN_NOT_OK(client()->GetCDCStream(stream_id, &ns_id, &object_ids, &options));
 
   auto stream_metadata = std::make_shared<StreamMetadata>();
+
+  AddDefaultOptionsIfMissing(&options);
+
   for (const auto& option : options) {
     if (option.first == kRecordType) {
       SCHECK(CDCRecordType_Parse(option.second, &stream_metadata->record_type),

@@ -28,6 +28,12 @@ const extendTimeframes = {
   '6 hours': 360
 };
 
+const statusMap: Record<MaintenanceWindowState, string> = {
+  FINISHED: 'Completed',
+  ACTIVE: 'Active',
+  PENDING: 'Scheduled'
+};
+
 interface MaintenanceWindowsListProps {
   universeList: { universeUUID: string; name: string }[];
   showCreateView: () => void;
@@ -47,14 +53,14 @@ const calculateDuration = (startTime: string, endtime: string): string => {
   const totalDays = end.diff(start, 'days');
   const totalHours = end.diff(start, 'hours');
   const totalMinutes = end.diff(start, 'minutes');
-  let duration = totalDays !== 0 ? `${totalDays} d ` : '';
-  duration += totalHours % 24 !== 0 ? `${totalHours % 24} h ` : '';
-  duration += totalMinutes % 60 !== 0 ? `${totalMinutes % 60} m` : '';
+  let duration = totalDays !== 0 ? `${totalDays}d ` : '';
+  duration += totalHours % 24 !== 0 ? `${totalHours % 24}h ` : '';
+  duration += totalMinutes % 60 !== 0 ? `${totalMinutes % 60}m` : '';
   return duration;
 };
 
 const getStatusTag = (status: MaintenanceWindowSchema['state']) => {
-  return <span className={`state-tag ${status}`}>{status.toLowerCase()}</span>;
+  return <span className={`state-tag ${status}`}>{statusMap[status]}</span>;
 };
 
 /**
@@ -99,7 +105,7 @@ const GetMaintenanceWindowActions = ({
 
   const [visibleModal, setVisibleModal] = useState<string | null>(null);
   return (
-    <>
+    <div className="maintenance-window-action">
       {/* Extend Options */}
       {currentWindow.state !== MaintenanceWindowState.FINISHED && (
         <DropdownButton
@@ -166,7 +172,7 @@ const GetMaintenanceWindowActions = ({
       >
         Are you sure you want to delete "{currentWindow?.name}" maintenance window?
       </YBConfirmModal>
-    </>
+    </div>
   );
 };
 
@@ -261,6 +267,7 @@ export const MaintenanceWindowsList: FC<MaintenanceWindowsListProps> = ({
                 dataAlign="left"
                 width={'20%'}
                 dataFormat={(cell) => formatUTCStringToLocal(cell)}
+                dataSort
               >
                 Start Time
               </TableHeaderColumn>
@@ -271,6 +278,7 @@ export const MaintenanceWindowsList: FC<MaintenanceWindowsListProps> = ({
                 dataAlign="left"
                 width={'20%'}
                 dataFormat={(cell) => formatUTCStringToLocal(cell)}
+                dataSort
               >
                 End Time
               </TableHeaderColumn>
@@ -298,6 +306,20 @@ export const MaintenanceWindowsList: FC<MaintenanceWindowsListProps> = ({
                 dataAlign="left"
                 width={'10%'}
                 dataFormat={(_, row) => calculateDuration(row.startTime, row.endTime)}
+                dataSort
+                sortFunc={(
+                  a: MaintenanceWindowSchema,
+                  b: MaintenanceWindowSchema,
+                  order: string
+                ) => {
+                  const t1 = convertUTCStringToMoment(a.endTime).diff(
+                    convertUTCStringToMoment(a.startTime)
+                  );
+                  const t2 = convertUTCStringToMoment(b.endTime).diff(
+                    convertUTCStringToMoment(b.startTime)
+                  );
+                  return order === 'asc' ? t1 - t2 : t2 - t1;
+                }}
               >
                 Duration
               </TableHeaderColumn>
@@ -305,7 +327,7 @@ export const MaintenanceWindowsList: FC<MaintenanceWindowsListProps> = ({
                 dataField="state"
                 columnClassName="no-border"
                 className="no-border"
-                dataAlign="center"
+                dataAlign="left"
                 width={'10%'}
                 dataFormat={(cell) => getStatusTag(cell)}
                 dataSort
@@ -314,8 +336,8 @@ export const MaintenanceWindowsList: FC<MaintenanceWindowsListProps> = ({
               </TableHeaderColumn>
               <TableHeaderColumn
                 dataField="actions"
-                dataAlign="right"
-                width={'20%'}
+                dataAlign="left"
+                width={'12%'}
                 dataFormat={(_, row) => (
                   <GetMaintenanceWindowActions
                     currentWindow={row}

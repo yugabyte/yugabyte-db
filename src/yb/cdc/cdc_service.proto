@@ -195,6 +195,8 @@ message GetChangesRequestPB {
   optional bytes table_id = 7;
 
   optional CDCSDKCheckpointPB from_cdc_sdk_checkpoint = 8;
+
+  optional bool need_schema_info = 9 [default = false];
 }
 
 message KeyValuePairPB {
@@ -379,6 +381,9 @@ message GetChangesResponsePB {
   // In addition to the op id info, cdc_sdk_checkpoint also stores the info about write_id and
   // reverse_index_key so that it could be used  to resume partially streamed intents
   optional CDCSDKCheckpointPB cdc_sdk_checkpoint = 9;
+
+  // The safe time to be used on the target for this tablet.
+  optional int64 safe_hybrid_time = 10;
 }
 
 message GetCheckpointRequestPB {

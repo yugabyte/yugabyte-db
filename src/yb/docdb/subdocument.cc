@@ -16,6 +16,7 @@
 #include <map>
 #include <vector>
 
+#include "yb/common/constants.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 
@@ -38,21 +39,21 @@ using yb::bfql::TSOpcode;
 namespace yb {
 namespace docdb {
 
-SubDocument::SubDocument(ValueType value_type) : PrimitiveValue(value_type) {
+SubDocument::SubDocument(ValueEntryType value_type) : PrimitiveValue(value_type) {
   if (IsCollectionType(value_type)) {
     EnsureContainerAllocated();
   }
 }
 
-SubDocument::SubDocument() : SubDocument(ValueType::kObject) {}
+SubDocument::SubDocument() : SubDocument(ValueEntryType::kObject) {}
 
-SubDocument::SubDocument(ListExtendOrder extend_order) : SubDocument(ValueType::kArray) {
+SubDocument::SubDocument(ListExtendOrder extend_order) : SubDocument(ValueEntryType::kArray) {
   extend_order_ = extend_order;
 }
 
 SubDocument::SubDocument(
     const std::vector<PrimitiveValue> &elements, ListExtendOrder extend_order) {
-  type_ = ValueType::kArray;
+  type_ = ValueEntryType::kArray;
   extend_order_ = extend_order;
   complex_data_structure_ = new ArrayContainer();
   array_container().reserve(elements.size());
@@ -64,18 +65,16 @@ SubDocument::SubDocument(
 
 SubDocument::~SubDocument() {
   switch (type_) {
-    case ValueType::kObject: FALLTHROUGH_INTENDED;
-    case ValueType::kRedisList: FALLTHROUGH_INTENDED;
-    case ValueType::kRedisSortedSet: FALLTHROUGH_INTENDED;
-    case ValueType::kRedisSet: FALLTHROUGH_INTENDED;
-    case ValueType::kRedisTS: FALLTHROUGH_INTENDED;
-    case ValueType::kSSForward: FALLTHROUGH_INTENDED;
-    case ValueType::kSSReverse:
+    case ValueEntryType::kObject: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kRedisList: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kRedisSortedSet: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kRedisSet: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kRedisTS:
       if (has_valid_container()) {
         delete &object_container();
       }
       break;
-    case ValueType::kArray:
+    case ValueEntryType::kArray:
       if (has_valid_container()) {
         delete &array_container();
       }
@@ -87,8 +86,8 @@ SubDocument::~SubDocument() {
 
 SubDocument::SubDocument(const SubDocument& other) {
   if (IsPrimitiveValueType(other.type_) ||
-      other.type_ == ValueType::kInvalid ||
-      other.type_ == ValueType::kTombstone) {
+      other.type_ == ValueEntryType::kInvalid ||
+      other.type_ == ValueEntryType::kTombstone) {
     new(this) PrimitiveValue(other);
   } else {
     type_ = other.type_;
@@ -96,12 +95,12 @@ SubDocument::SubDocument(const SubDocument& other) {
     write_time_ = other.write_time_;
     complex_data_structure_ = nullptr;
     switch (type_) {
-      case ValueType::kObject:
+      case ValueEntryType::kObject:
         if (other.has_valid_object_container()) {
           complex_data_structure_ = new ObjectContainer(other.object_container());
         }
         break;
-      case ValueType::kArray:
+      case ValueEntryType::kArray:
         if (other.has_valid_array_container()) {
           complex_data_structure_ = new ArrayContainer(other.array_container());
         }
@@ -121,7 +120,7 @@ bool SubDocument::operator ==(const SubDocument& other) const {
     return this->PrimitiveValue::operator==(other);
   }
   switch (type_) {
-    case ValueType::kObject:
+    case ValueEntryType::kObject:
       if (has_valid_container() != other.has_valid_container()) {
         return has_valid_container() ? object_container().empty()
                                      : other.object_container().empty();
@@ -131,7 +130,7 @@ bool SubDocument::operator ==(const SubDocument& other) const {
       } else {
         return true;  // Both container pointers are nullptr.
       }
-    case ValueType::kArray:
+    case ValueEntryType::kArray:
       if (has_valid_container() != other.has_valid_container()) {
         return has_valid_container() ? array_container().empty()
                                      : other.array_container().empty();
@@ -148,7 +147,7 @@ bool SubDocument::operator ==(const SubDocument& other) const {
   return true;
 }
 
-Status SubDocument::ConvertToCollection(ValueType value_type) {
+Status SubDocument::ConvertToCollection(ValueEntryType value_type) {
   if (!has_valid_object_container()) {
     return STATUS(InvalidArgument, "Subdocument doesn't have valid object container");
   }
@@ -175,24 +174,24 @@ void SubDocument::MoveFrom(SubDocument* other) {
     // Another layer of protection against trying to use the old state in debug mode.
     memset(static_cast<void*>(other), 0xab, sizeof(SubDocument));  // Fill with a random value.
 #endif
-    other->type_ = ValueType::kNullLow;  // To avoid deallocation of the old object's memory.
+    other->type_ = ValueEntryType::kNullLow;  // To avoid deallocation of the old object's memory.
   }
 }
 
 Status SubDocument::ConvertToRedisTS() {
-  return ConvertToCollection(ValueType::kRedisTS);
+  return ConvertToCollection(ValueEntryType::kRedisTS);
 }
 
 Status SubDocument::ConvertToRedisSet() {
-  return ConvertToCollection(ValueType::kRedisSet);
+  return ConvertToCollection(ValueEntryType::kRedisSet);
 }
 
 Status SubDocument::ConvertToRedisSortedSet() {
-  return ConvertToCollection(ValueType::kRedisSortedSet);
+  return ConvertToCollection(ValueEntryType::kRedisSortedSet);
 }
 
 Status SubDocument::ConvertToRedisList() {
-  return ConvertToCollection(ValueType::kRedisList);
+  return ConvertToCollection(ValueEntryType::kRedisList);
 }
 
 Status SubDocument::NumChildren(size_t *num_children) {
@@ -203,7 +202,7 @@ Status SubDocument::NumChildren(size_t *num_children) {
   return Status::OK();
 }
 
-SubDocument* SubDocument::GetChild(const PrimitiveValue& key) {
+SubDocument* SubDocument::GetChild(const KeyEntryValue& key) {
   if (!has_valid_object_container()) {
     return nullptr;
   }
@@ -216,7 +215,7 @@ SubDocument* SubDocument::GetChild(const PrimitiveValue& key) {
   }
 }
 
-const SubDocument* SubDocument::GetChild(const PrimitiveValue& key) const {
+const SubDocument* SubDocument::GetChild(const KeyEntryValue& key) const {
   if (!has_valid_object_container()) {
     return nullptr;
   }
@@ -229,7 +228,7 @@ const SubDocument* SubDocument::GetChild(const PrimitiveValue& key) const {
   }
 }
 
-std::pair<SubDocument*, bool> SubDocument::GetOrAddChild(const PrimitiveValue& key) {
+std::pair<SubDocument*, bool> SubDocument::GetOrAddChild(const KeyEntryValue& key) {
   DCHECK(IsObjectType(type_));
   EnsureContainerAllocated();
   auto& obj_container = object_container();
@@ -244,12 +243,12 @@ std::pair<SubDocument*, bool> SubDocument::GetOrAddChild(const PrimitiveValue& k
 }
 
 void SubDocument::AddListElement(SubDocument&& value) {
-  DCHECK_EQ(ValueType::kArray, type_);
+  DCHECK_EQ(ValueEntryType::kArray, type_);
   EnsureContainerAllocated();
   array_container().emplace_back(std::move(value));
 }
 
-void SubDocument::SetChild(const PrimitiveValue& key, SubDocument&& value) {
+void SubDocument::SetChild(const KeyEntryValue& key, SubDocument&& value) {
   EnsureObjectAllocated();
   auto& obj_container = object_container();
   auto existing_element = obj_container.find(key);
@@ -261,8 +260,8 @@ void SubDocument::SetChild(const PrimitiveValue& key, SubDocument&& value) {
   }
 }
 
-bool SubDocument::DeleteChild(const PrimitiveValue& key) {
-  CHECK_EQ(ValueType::kObject, type_);
+bool SubDocument::DeleteChild(const KeyEntryValue& key) {
+  CHECK_EQ(ValueEntryType::kObject, type_);
   if (!has_valid_object_container())
     return false;
   return object_container().erase(key) > 0;
@@ -283,14 +282,14 @@ void SubDocumentToStreamInternal(ostream& out,
                                  const SubDocument& subdoc,
                                  const int indent) {
   if (subdoc.IsPrimitive() ||
-      subdoc.value_type() == ValueType::kInvalid ||
-      subdoc.value_type() == ValueType::kTombstone) {
+      subdoc.value_type() == ValueEntryType::kInvalid ||
+      subdoc.value_type() == ValueEntryType::kTombstone) {
     out << static_cast<const PrimitiveValue*>(&subdoc)->ToString();
     return;
   }
   switch (subdoc.value_type()) {
-    case ValueType::kRedisSortedSet: FALLTHROUGH_INTENDED;
-    case ValueType::kObject: {
+    case ValueEntryType::kRedisSortedSet: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kObject: {
       out << "{";
       if (subdoc.container_allocated()) {
         bool first_pair = true;
@@ -309,7 +308,7 @@ void SubDocumentToStreamInternal(ostream& out,
       out << "}";
       break;
     }
-    case ValueType::kArray: {
+    case ValueEntryType::kArray: {
       out << "[";
       if (subdoc.container_allocated()) {
         out << (subdoc.GetExtendOrder() == ListExtendOrder::APPEND ? "APPEND" : "PREPEND") << "\n";
@@ -329,15 +328,15 @@ void SubDocumentToStreamInternal(ostream& out,
       out << "]";
       break;
     }
-    case ValueType::kRedisSet: {
+    case ValueEntryType::kRedisSet: {
       SubDocCollectionToStreamInternal(out, subdoc, indent, "(", ")");
       break;
     }
-    case ValueType::kRedisList: {
+    case ValueEntryType::kRedisList: {
       SubDocCollectionToStreamInternal(out, subdoc, indent, "[", "]");
       break;
     }
-    case ValueType::kRedisTS: {
+    case ValueEntryType::kRedisTS: {
       SubDocCollectionToStreamInternal(out, subdoc, indent, "<", ">");
       break;
     }
@@ -368,7 +367,7 @@ void SubDocCollectionToStreamInternal(ostream& out,
 }
 
 void SubDocument::EnsureObjectAllocated() {
-  type_ = ValueType::kObject;
+  type_ = ValueEntryType::kObject;
   EnsureContainerAllocated();
 }
 
@@ -376,7 +375,7 @@ void SubDocument::EnsureContainerAllocated() {
   if (complex_data_structure_ == nullptr) {
     if (IsObjectType(type_)) {
       complex_data_structure_ = new ObjectContainer();
-    } else if (type_ == ValueType::kArray) {
+    } else if (type_ == ValueEntryType::kArray) {
       complex_data_structure_ = new ArrayContainer();
     }
   }
@@ -393,7 +392,7 @@ SubDocument SubDocument::FromQLValuePB(const QLValuePB& value,
 
       SubDocument map_doc;
       for (int i = 0; i < map.keys_size(); i++) {
-        PrimitiveValue pv_key = PrimitiveValue::FromQLValuePB(map.keys(i), sorting_type);
+        auto pv_key = KeyEntryValue::FromQLValuePB(map.keys(i), sorting_type);
         SubDocument pv_val = SubDocument::FromQLValuePB(map.values(i), sorting_type, write_instr);
         map_doc.SetChild(pv_key, std::move(pv_val));
       }
@@ -405,8 +404,8 @@ SubDocument SubDocument::FromQLValuePB(const QLValuePB& value,
       QLSeqValuePB set = value.set_value();
       SubDocument set_doc;
       for (auto& elem : set.elems()) {
-        PrimitiveValue pv_key = PrimitiveValue::FromQLValuePB(elem, sorting_type);
-        if (write_instr == TSOpcode::kSetRemove || write_instr == TSOpcode::kMapRemove ) {
+        auto pv_key = KeyEntryValue::FromQLValuePB(elem, sorting_type);
+        if (write_instr == TSOpcode::kSetRemove || write_instr == TSOpcode::kMapRemove) {
           // representing sets elems as keys pointing to tombstones to remove those entries
           set_doc.SetChildPrimitive(pv_key, PrimitiveValue::kTombstone);
         }  else {
@@ -420,7 +419,7 @@ SubDocument SubDocument::FromQLValuePB(const QLValuePB& value,
     }
     case QLValuePB::kListValue: {
       QLSeqValuePB list = value.list_value();
-      SubDocument list_doc(ValueType::kArray);
+      SubDocument list_doc(ValueEntryType::kArray);
       // ensure container allocated even if list is empty
       list_doc.EnsureContainerAllocated();
       for (int i = 0; i < list.elems_size(); i++) {
@@ -431,16 +430,14 @@ SubDocument SubDocument::FromQLValuePB(const QLValuePB& value,
     }
 
     default:
-      return SubDocument(PrimitiveValue::FromQLValuePB(value, sorting_type));
+      return SubDocument(PrimitiveValue::FromQLValuePB(
+          value, CheckIsCollate(sorting_type != SortingType::kNotSpecified)));
   }
 }
 
-void SubDocument::ToQLValuePB(const SubDocument& doc,
-                              const shared_ptr<QLType>& ql_type,
-                              QLValuePB* ql_value) {
+void SubDocument::ToQLValuePB(const shared_ptr<QLType>& ql_type, QLValuePB* ql_value) const {
   // interpreting empty collections as null values following Cassandra semantics
-  if (ql_type->HasComplexValues() && (!doc.has_valid_object_container() ||
-                                       doc.object_num_keys() == 0)) {
+  if (ql_type->HasComplexValues() && (!has_valid_object_container() || object_num_keys() == 0)) {
     SetNull(ql_value);
     return;
   }
@@ -452,11 +449,9 @@ void SubDocument::ToQLValuePB(const SubDocument& doc,
       QLMapValuePB *value_pb = ql_value->mutable_map_value();
       value_pb->clear_keys();
       value_pb->clear_values();
-      for (auto &pair : doc.object_container()) {
-        QLValuePB *key = value_pb->add_keys();
-        PrimitiveValue::ToQLValuePB(pair.first, keys_type, key);
-        QLValuePB *value = value_pb->add_values();
-        SubDocument::ToQLValuePB(pair.second, values_type, value);
+      for (auto &pair : object_container()) {
+        pair.first.ToQLValuePB(keys_type, value_pb->add_keys());
+        pair.second.ToQLValuePB(values_type, value_pb->add_values());
       }
       return;
     }
@@ -464,9 +459,8 @@ void SubDocument::ToQLValuePB(const SubDocument& doc,
       const shared_ptr<QLType>& elems_type = ql_type->params()[0];
       QLSeqValuePB *value_pb = ql_value->mutable_set_value();
       value_pb->clear_elems();
-      for (auto &pair : doc.object_container()) {
-        QLValuePB *elem = value_pb->add_elems();
-        PrimitiveValue::ToQLValuePB(pair.first, elems_type, elem);
+      for (auto &pair : object_container()) {
+        pair.first.ToQLValuePB(elems_type, value_pb->add_elems());
         // set elems are represented as subdocument keys so we ignore the (empty) values
       }
       return;
@@ -475,10 +469,9 @@ void SubDocument::ToQLValuePB(const SubDocument& doc,
       const shared_ptr<QLType>& elems_type = ql_type->params()[0];
       QLSeqValuePB *value_pb = ql_value->mutable_list_value();
       value_pb->clear_elems();
-      for (auto &pair : doc.object_container()) {
+      for (auto &pair : object_container()) {
         // list elems are represented as subdocument values with keys only used for ordering
-        QLValuePB *elem = value_pb->add_elems();
-        SubDocument::ToQLValuePB(pair.second, elems_type, elem);
+        pair.second.ToQLValuePB(elems_type, value_pb->add_elems());
       }
       return;
     }
@@ -487,11 +480,10 @@ void SubDocument::ToQLValuePB(const SubDocument& doc,
       QLMapValuePB *value_pb = ql_value->mutable_map_value();
       value_pb->clear_keys();
       value_pb->clear_values();
-      for (auto &pair : doc.object_container()) {
+      for (auto &pair : object_container()) {
         QLValuePB *key = value_pb->add_keys();
-        PrimitiveValue::ToQLValuePB(pair.first, keys_type, key);
-        QLValuePB *value = value_pb->add_values();
-        SubDocument::ToQLValuePB(pair.second, ql_type->param_type(key->int16_value()), value);
+        pair.first.ToQLValuePB(keys_type, key);
+        pair.second.ToQLValuePB(ql_type->param_type(key->int16_value()), value_pb->add_values());
       }
       return;
     }
@@ -499,7 +491,7 @@ void SubDocument::ToQLValuePB(const SubDocument& doc,
       break;
 
     default: {
-      return PrimitiveValue::ToQLValuePB(doc, ql_type, ql_value);
+      return static_cast<const PrimitiveValue*>(this)->ToQLValuePB(ql_type, ql_value);
     }
   }
   LOG(FATAL) << "Unsupported datatype in SubDocument: " << ql_type->ToString();
@@ -523,7 +515,7 @@ bool SubDocument::has_valid_object_container() const {
 }
 
 bool SubDocument::has_valid_array_container() const {
-  return type_ == ValueType::kArray && has_valid_container();
+  return type_ == ValueEntryType::kArray && has_valid_container();
 }
 
 }  // namespace docdb

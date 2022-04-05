@@ -216,7 +216,7 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
   // It is initialized to false, to make sure first HasNext constructs a new row.
   mutable bool row_ready_;
 
-  mutable std::vector<PrimitiveValue> projection_subkeys_;
+  mutable std::vector<KeyEntryValue> projection_subkeys_;
 
   // Used for keeping track of errors in HasNext.
   mutable Status has_next_status_;

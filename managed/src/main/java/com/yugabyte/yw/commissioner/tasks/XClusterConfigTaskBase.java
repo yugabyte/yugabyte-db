@@ -1,8 +1,9 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroup;
+import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigDelete;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigModifyTables;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigRename;
@@ -15,6 +16,7 @@ import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import io.ebean.Ebean;
+import java.time.Duration;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.client.IsSetupUniverseReplicationDoneResponse;
@@ -73,56 +75,62 @@ public abstract class XClusterConfigTaskBase extends UniverseTaskBase {
   }
 
   protected SubTaskGroup createXClusterConfigSetupTask() {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("XClusterConfigSetup", executor);
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("XClusterConfigSetup", executor);
     XClusterConfigSetup task = createTask(XClusterConfigSetup.class);
     task.initialize(taskParams());
-    subTaskGroup.addTask(task);
-    subTaskGroupQueue.add(subTaskGroup);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
   protected SubTaskGroup createXClusterConfigToggleStatusTask() {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("XClusterConfigToggleStatus", executor);
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("XClusterConfigToggleStatus", executor);
     XClusterConfigSetStatus task = createTask(XClusterConfigSetStatus.class);
     task.initialize(taskParams());
-    subTaskGroup.addTask(task);
-    subTaskGroupQueue.add(subTaskGroup);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
   protected SubTaskGroup createXClusterConfigModifyTablesTask() {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("XClusterConfigModifyTables", executor);
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("XClusterConfigModifyTables", executor);
     XClusterConfigModifyTables task = createTask(XClusterConfigModifyTables.class);
     task.initialize(taskParams());
-    subTaskGroup.addTask(task);
-    subTaskGroupQueue.add(subTaskGroup);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
   protected SubTaskGroup createXClusterConfigRenameTask() {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("XClusterConfigRename", executor);
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("XClusterConfigRename", executor);
     XClusterConfigRename task = createTask(XClusterConfigRename.class);
     task.initialize(taskParams());
-    subTaskGroup.addTask(task);
-    subTaskGroupQueue.add(subTaskGroup);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
   protected SubTaskGroup createXClusterConfigDeleteTask() {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("XClusterConfigDelete", executor);
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("XClusterConfigDelete", executor);
     XClusterConfigDelete task = createTask(XClusterConfigDelete.class);
     task.initialize(taskParams());
-    subTaskGroup.addTask(task);
-    subTaskGroupQueue.add(subTaskGroup);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
   protected SubTaskGroup createXClusterConfigSyncTask() {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("XClusterConfigSync", executor);
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("XClusterConfigSync", executor);
     XClusterConfigSync task = createTask(XClusterConfigSync.class);
     task.initialize(taskParams());
-    subTaskGroup.addTask(task);
-    subTaskGroupQueue.add(subTaskGroup);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
@@ -155,8 +163,7 @@ public abstract class XClusterConfigTaskBase extends UniverseTaskBase {
               xClusterConfig.uuid,
               doneResponse.getError().toString());
         }
-
-        Thread.sleep(1000);
+        waitFor(Duration.ofMillis(1000));
         numAttempts++;
       }
 
@@ -184,7 +191,7 @@ public abstract class XClusterConfigTaskBase extends UniverseTaskBase {
 
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
-      throw new RuntimeException(e);
+      Throwables.propagate(e);
     }
   }
 }

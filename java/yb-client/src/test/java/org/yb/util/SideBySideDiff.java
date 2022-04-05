@@ -12,8 +12,11 @@
 //
 package org.yb.util;
 
+import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import org.yb.client.TestUtils;
 
 import java.io.File;
 import java.io.IOException;
@@ -136,7 +139,14 @@ public class SideBySideDiff {
         StringUtil.getMaxLineLength(lines1),
         StringUtil.getMaxLineLength(lines2)) * 2 + 4;
 
-    String diffCmd = String.format("diff -W%d -y --expand-tabs '%s' '%s'", diffWidth, f1, f2);
+    // Diff has no way to strip trailing spaces, so we do preprocessing for it.
+    File f1copy = new File(TestUtils.getBaseTmpDir(), "f1_" + f1.getName());
+    File f2copy = new File(TestUtils.getBaseTmpDir(), "f2_" + f2.getName());
+    FileUtils.writeLines(f1copy, lines1);
+    FileUtils.writeLines(f2copy, lines2);
+
+    String diffCmd = String.format("diff --width=%d --side-by-side '%s' '%s'",
+        diffWidth, f1copy, f2copy);
     CommandResult commandResult = CommandUtil.runShellCommand(diffCmd);
     List<String> stdoutLines = commandResult.getStdoutLines();
 

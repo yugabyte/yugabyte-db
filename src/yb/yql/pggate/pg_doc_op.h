@@ -37,8 +37,8 @@ YB_STRONGLY_TYPED_BOOL(RequestSent);
 // PgDocResult represents a batch of rows in ONE reply from tablet servers.
 class PgDocResult {
  public:
-  explicit PgDocResult(rpc::SidecarPtr&& data);
-  PgDocResult(rpc::SidecarPtr&& data, std::list<int64_t>&& row_orders);
+  explicit PgDocResult(rpc::SidecarHolder&& data);
+  PgDocResult(rpc::SidecarHolder&& data, std::list<int64_t>&& row_orders);
   ~PgDocResult();
 
   PgDocResult(const PgDocResult&) = delete;
@@ -78,7 +78,7 @@ class PgDocResult {
 
  private:
   // Data selected from DocDB.
-  rpc::SidecarPtr data_;
+  rpc::SidecarHolder data_;
 
   // Iterator on "data_" from row to row.
   Slice row_iterator_;
@@ -214,9 +214,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   typedef std::unique_ptr<const PgDocOp> UniPtrConst;
 
   // Constructors & Destructors.
-  PgDocOp(const PgSession::ScopedRefPtr& pg_session,
-          PgTable* table,
-          const PgObjectId& relation_id = PgObjectId());
+  PgDocOp(const PgSession::ScopedRefPtr& pg_session, PgTable* table);
   virtual ~PgDocOp();
 
   // Initialize doc operator.
@@ -294,7 +292,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   virtual PgsqlOpPtr CloneFromTemplate() = 0;
 
   // Process the result set in server response.
-  Result<std::list<PgDocResult>> ProcessResponseResult();
+  Result<std::list<PgDocResult>> ProcessResponseResult(const rpc::CallResponsePtr& response);
 
   void SetReadTime();
 
@@ -303,9 +301,11 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
 
   virtual CHECKED_STATUS SendRequestImpl(bool force_non_bufferable);
 
-  Result<std::list<PgDocResult>> ProcessResponse(const Status& exec_status);
+  Result<std::list<PgDocResult>> ProcessResponse(
+      const Result<rpc::CallResponsePtr>& response);
 
-  virtual Result<std::list<PgDocResult>> ProcessResponseImpl() = 0;
+  virtual Result<std::list<PgDocResult>> ProcessResponseImpl(
+      const rpc::CallResponsePtr& response) = 0;
 
   CHECKED_STATUS CompleteRequests();
 
@@ -320,7 +320,6 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
 
   // Target table.
   PgTable& table_;
-  PgObjectId relation_id_;
 
   // Exec control parameters.
   PgExecParameters exec_params_;
@@ -467,7 +466,8 @@ class PgDocReadOp : public PgDocOp {
   CHECKED_STATUS SetScanPartitionBoundary();
 
   // Process response from DocDB.
-  Result<std::list<PgDocResult>> ProcessResponseImpl() override;
+  Result<std::list<PgDocResult>> ProcessResponseImpl(
+      const rpc::CallResponsePtr& response) override;
 
   // Process response read state from DocDB.
   CHECKED_STATUS ProcessResponseReadStates();
@@ -489,14 +489,14 @@ class PgDocReadOp : public PgDocOp {
 
   // Clone the template into actual requests to be sent to server.
   PgsqlOpPtr CloneFromTemplate() override {
-    return read_op_->DeepCopy();
+    return read_op_->DeepCopy(read_op_);
   }
 
   // Get the read_req for a specific operation index from pgsql_ops_.
-  PgsqlReadRequestPB& GetReadReq(size_t op_index);
+  LWPgsqlReadRequestPB& GetReadReq(size_t op_index);
 
   // Re-format the request when connecting to older server during rolling upgrade.
-  void FormulateRequestForRollingUpgrade(PgsqlReadRequestPB *read_req);
+  void FormulateRequestForRollingUpgrade(LWPgsqlReadRequestPB *read_req);
 
   //----------------------------------- Data Members -----------------------------------------------
 
@@ -527,7 +527,7 @@ class PgDocReadOp : public PgDocOp {
   // Example:
   // For a query clause "h1 = 1 AND h2 IN (2,3) AND h3 IN (4,5,6) AND h4 = 7",
   // this will be initialized to [[1], [2, 3], [4, 5, 6], [7]]
-  std::vector<std::vector<const PgsqlExpressionPB*>> partition_exprs_;
+  std::vector<std::vector<const LWPgsqlExpressionPB*>> partition_exprs_;
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -544,7 +544,6 @@ class PgDocWriteOp : public PgDocOp {
   // Constructors & Destructors.
   PgDocWriteOp(const PgSession::ScopedRefPtr& pg_session,
                PgTable* table,
-               const PgObjectId& relation_id,
                PgsqlWriteOpPtr write_op);
 
   // Set write time.
@@ -556,7 +555,8 @@ class PgDocWriteOp : public PgDocOp {
 
  private:
   // Process response implementation.
-  Result<std::list<PgDocResult>> ProcessResponseImpl() override;
+  Result<std::list<PgDocResult>> ProcessResponseImpl(
+      const rpc::CallResponsePtr& response) override;
 
   // Create protobuf requests using template_op (write_op).
   Result<bool> DoCreateRequests() override;
@@ -570,11 +570,11 @@ class PgDocWriteOp : public PgDocOp {
   }
 
   // Get WRITE operator for a specific operator index in pgsql_ops_.
-  PgsqlWriteRequestPB& GetWriteOp(int op_index);
+  LWPgsqlWriteRequestPB& GetWriteOp(int op_index);
 
   // Clone user data from template to actual protobuf requests.
   PgsqlOpPtr CloneFromTemplate() override {
-    return write_op_->DeepCopy();
+    return write_op_->DeepCopy(write_op_);
   }
 
   //----------------------------------- Data Members -----------------------------------------------

@@ -13,6 +13,7 @@
 
 #include "yb/master/async_rpc_tasks.h"
 
+#include "yb/common/common_types.pb.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.proxy.h"
@@ -353,7 +354,8 @@ bool RetryingTSRpcTask::RescheduleWithBackoffDelay() {
   // Exponential backoff with jitter.
   int64_t base_delay_ms;
   if (attempt_ <= 12) {
-    base_delay_ms = 1 << (attempt_ + 3);  // 1st retry delayed 2^4 ms, 2nd 2^5, etc.
+    // 1st retry delayed 2^4 ms, 2nd 2^5, etc.
+    base_delay_ms = std::min(1 << (attempt_ + 3), max_delay_ms());
   } else {
     base_delay_ms = max_delay_ms();
   }
@@ -733,6 +735,9 @@ bool AsyncDeleteReplica::SendRequest(int attempt) {
   if (cas_config_opid_index_less_or_equal_) {
     req.set_cas_config_opid_index_less_or_equal(*cas_config_opid_index_less_or_equal_);
   }
+  bool should_abort_active_txns = !table() ||
+                                  table()->LockForRead()->started_deleting();
+  req.set_should_abort_active_txns(should_abort_active_txns);
 
   ts_admin_proxy_->DeleteTabletAsync(req, &resp_, &rpc_, BindRpcCallback());
   VLOG_WITH_PREFIX(1) << "Send delete tablet request to " << permanent_uuid_
@@ -1448,6 +1453,48 @@ void AsyncSplitTablet::Finished(const Status& status) {
     tablet_split_complete_handler_->ProcessSplitTabletResult(
         status, table_->id(), split_tablet_ids);
   }
+}
+
+AsyncTestRetry::AsyncTestRetry(
+    Master* master,
+    ThreadPool* callback_pool,
+    const TabletServerId& ts_uuid,
+    const int32_t num_retries,
+    StdStatusCallback callback)
+    : RetrySpecificTSRpcTask(master, callback_pool, ts_uuid, /* table = */ nullptr),
+      num_retries_(num_retries),
+      callback_(std::move(callback)) {}
+
+string AsyncTestRetry::description() const {
+  return Format("$0 Test retry RPC", permanent_uuid());
+}
+
+TabletServerId AsyncTestRetry::permanent_uuid() const {
+  return permanent_uuid_;
+}
+
+void AsyncTestRetry::HandleResponse(int attempt) {
+  server::UpdateClock(resp_, master_->clock());
+
+  if (resp_.has_error()) {
+    Status status = StatusFromPB(resp_.error().status());
+
+    LOG(INFO) << "TEST: TS " << permanent_uuid() << ": test retry failed: " << status.ToString();
+    return;
+  }
+
+  callback_(Status::OK());
+  TransitionToCompleteState();
+}
+
+bool AsyncTestRetry::SendRequest(int attempt) {
+  tserver::TestRetryRequestPB req;
+  req.set_dest_uuid(permanent_uuid_);
+  req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
+  req.set_num_retries(num_retries_);
+
+  ts_admin_proxy_->TestRetryAsync(req, &resp_, &rpc_, BindRpcCallback());
+  return true;
 }
 
 }  // namespace master

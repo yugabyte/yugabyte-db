@@ -14,6 +14,7 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -22,8 +23,10 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -36,6 +39,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -54,6 +58,7 @@ import org.mockito.junit.MockitoRule;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.ChangeMasterClusterConfigResponse;
+import org.yb.client.ListMastersResponse;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
@@ -78,6 +83,9 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     try {
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(ccr);
       when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean())).thenReturn(true);
+      ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
+      when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
+      when(mockClient.listMasters()).thenReturn(listMastersResponse);
     } catch (Exception e) {
     }
 
@@ -266,7 +274,8 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
       // a bump on the cluster config version. The actual number depends on the
       // number of invocations of saveUniverseDetails so it can vary but the
       // important thing is that it is much more than the other case.
-      verify(mockClient, times(7)).changeMasterClusterConfig(any());
+      // 7 version increments + 1 modify blacklist.
+      verify(mockClient, times(8)).changeMasterClusterConfig(any());
     } else {
       verify(mockClient, times(1)).changeMasterClusterConfig(any());
     }
@@ -409,5 +418,13 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
 
     Universe universe = Universe.getOrBadRequest(defaultUniverse.universeUUID);
     assertEquals(NodeDetails.NodeState.ToJoinCluster, universe.getNode(DEFAULT_NODE_NAME).state);
+  }
+
+  @Test
+  public void testAddNodeAllowedState() {
+    Set<NodeState> allowedStates = NodeState.allowedStatesForAction(NodeActionType.ADD);
+    Set<NodeState> expectedStates =
+        ImmutableSet.of(NodeState.Removed, NodeState.BeingDecommissioned, NodeState.Decommissioned);
+    assertEquals(expectedStates, allowedStates);
   }
 }

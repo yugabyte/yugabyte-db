@@ -67,6 +67,8 @@ public enum TaskType {
 
   CertsRotate("upgrade.CertsRotate"),
 
+  CertsRotateKubernetesUpgrade("upgrade.CertsRotateKubernetesUpgrade"),
+
   TlsToggle("upgrade.TlsToggle"),
 
   VMImageUpgrade("upgrade.VMImageUpgrade"),
@@ -276,6 +278,8 @@ public enum TaskType {
 
   CreateAlertDefinitions("subtasks.CreateAlertDefinitions"),
 
+  ManageAlertDefinitions("subtasks.ManageAlertDefinitions"),
+
   UniverseSetTlsParams("subtasks.UniverseSetTlsParams"),
 
   UniverseUpdateRootCert("subtasks.UniverseUpdateRootCert"),
@@ -301,6 +305,8 @@ public enum TaskType {
   RunYsqlUpgrade("subtasks.RunYsqlUpgrade"),
 
   ResizeNode("upgrade.ResizeNode"),
+
+  CheckMemory("subtasks.check.CheckMemory"),
 
   UpdateMountedDisks("subtasks.UpdateMountedDisks");
 

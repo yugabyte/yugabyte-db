@@ -66,9 +66,16 @@ public class BackupRequestParams extends UniverseTaskParams {
   @ApiModelProperty(value = "Cron expression for a recurring backup")
   public String cronExpression = null;
 
+  @ApiModelProperty(value = "Is tablespaces information included")
+  public Boolean useTablespaces = false;
+
   // The associated schedule UUID (if applicable)
   @ApiModelProperty(value = "Schedule UUID")
   public UUID scheduleUUID = null;
+
+  // The associated schedule name (if applicable)
+  @ApiModelProperty(value = "Schedule Name")
+  public String scheduleName = null;
 
   // Specifies number of backups to retain in case of recurring backups.
   @ApiModelProperty(value = "Minimum number of backups to retain for a particular backup schedule")

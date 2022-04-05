@@ -190,7 +190,7 @@ void SysCatalogTable::StartShutdown() {
 void SysCatalogTable::CompleteShutdown() {
   auto peer = tablet_peer();
   if (peer) {
-    peer->CompleteShutdown();
+    peer->CompleteShutdown(tablet::DisableFlushOnShutdown::kFalse);
   }
   inform_removed_master_pool_->Shutdown();
   raft_pool_->Shutdown();
@@ -896,9 +896,8 @@ Result<shared_ptr<TablespaceIdToReplicationInfoMap>> SysCatalogTable::ReadPgTabl
     // the ReplicationInfoPB. The ql_value is just the raw value read from the pg_tablespace
     // catalog table. This was stored in postgres as a text array, but processed by DocDB as
     // a binary value. So first process this binary value and convert it to text array of options.
-    vector<QLValuePB> placement_options;
-    RETURN_NOT_OK(yb::docdb::ExtractTextArrayFromQLBinaryValue(
-          options.value(), &placement_options));
+    auto placement_options = VERIFY_RESULT(docdb::ExtractTextArrayFromQLBinaryValue(
+          options.value()));
 
     // Fetch the status and print the tablespace option along with the status.
     ReplicationInfoPB replication_info;
@@ -1034,7 +1033,7 @@ Status SysCatalogTable::ReadPgClassInfo(
     // catalog tables. They can be skipped, as tablespace information is relevant only for user
     // created tables.
     cond.add_operands()->mutable_value()->set_uint32_value(kPgFirstNormalObjectId);
-    const std::vector<docdb::PrimitiveValue> empty_key_components;
+    const std::vector<docdb::KeyEntryValue> empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
         &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
@@ -1086,11 +1085,10 @@ Status SysCatalogTable::ReadPgClassInfo(
             std::to_string(oid));
       }
       if (!reloptions_col->binary_value().empty()) {
-        vector<QLValuePB> reloptions;
-        RETURN_NOT_OK(yb::docdb::ExtractTextArrayFromQLBinaryValue(reloptions_col.value(),
-                                                                   &reloptions));
+        auto reloptions = VERIFY_RESULT(docdb::ExtractTextArrayFromQLBinaryValue(
+            reloptions_col.value()));
         for (const auto& reloption : reloptions) {
-          if (reloption.string_value().compare("colocated=false") == 0) {
+          if (reloption.compare("colocated=false") == 0) {
             is_colocated_table = false;
             break;
           }
@@ -1151,7 +1149,7 @@ Result<uint32_t> SysCatalogTable::ReadPgClassRelnamespace(const uint32_t databas
     cond.add_operands()->set_column_id(oid_col_id);
     cond.set_op(QL_OP_EQUAL);
     cond.add_operands()->mutable_value()->set_uint32_value(table_oid);
-    const std::vector<docdb::PrimitiveValue> empty_key_components;
+    const std::vector<docdb::KeyEntryValue> empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
         &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
@@ -1208,7 +1206,7 @@ Result<string> SysCatalogTable::ReadPgNamespaceNspname(const uint32_t database_o
     cond.add_operands()->set_column_id(oid_col_id);
     cond.set_op(QL_OP_EQUAL);
     cond.add_operands()->mutable_value()->set_uint32_value(relnamespace_oid);
-    const std::vector<docdb::PrimitiveValue> empty_key_components;
+    const std::vector<docdb::KeyEntryValue> empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
         &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);

@@ -201,11 +201,16 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     return schedule_id;
   }
 
-  Result<std::string> PreparePg() {
+  Result<std::string> PreparePg(bool colocated = false) {
     RETURN_NOT_OK(PrepareCommon());
 
     auto conn = VERIFY_RESULT(PgConnect());
-    RETURN_NOT_OK(conn.ExecuteFormat("CREATE DATABASE $0", client::kTableName.namespace_name()));
+    if (colocated) {
+      RETURN_NOT_OK(conn.ExecuteFormat(
+          "CREATE DATABASE $0 with colocated=true", client::kTableName.namespace_name()));
+    } else {
+      RETURN_NOT_OK(conn.ExecuteFormat("CREATE DATABASE $0", client::kTableName.namespace_name()));
+    }
 
     return CreateSnapshotScheduleAndWaitSnapshot(
         "ysql." + client::kTableName.namespace_name(), kInterval, kRetention);
@@ -535,9 +540,17 @@ TEST_F(YbAdminSnapshotScheduleTest, CleanupDeletedTablets) {
   }, deadline, "Deleted table cleanup"));
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(Pgsql),
-          YbAdminSnapshotScheduleTestWithYsql) {
-  auto schedule_id = ASSERT_RESULT(PreparePg());
+class YbAdminSnapshotScheduleTestWithYsqlParam : public YbAdminSnapshotScheduleTestWithYsql,
+                                                 public ::testing::WithParamInterface<bool> {
+};
+
+INSTANTIATE_TEST_CASE_P(PITRFlags, YbAdminSnapshotScheduleTestWithYsqlParam,
+                        ::testing::Values(false, true));
+
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, Pgsql) {
+  YB_SKIP_TEST_IN_TSAN();
+  bool colocated = GetParam();
+  auto schedule_id = ASSERT_RESULT(PreparePg(colocated));
 
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -556,9 +569,25 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(Pgsql),
   ASSERT_EQ(res, "before");
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlCreateTable),
-          YbAdminSnapshotScheduleTestWithYsql) {
-  auto schedule_id = ASSERT_RESULT(PreparePg());
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropDatabaseAndSchedule) {
+  bool colocated = GetParam();
+  auto schedule_id = ASSERT_RESULT(PreparePg(colocated));
+
+  auto conn = ASSERT_RESULT(PgConnect());
+
+  auto res = conn.Execute(Format("DROP DATABASE $0", client::kTableName.namespace_name()));
+  ASSERT_NOK(res);
+  ASSERT_STR_CONTAINS(res.message().ToBuffer(), "Cannot delete database which has schedule");
+
+  // Once the schedule is deleted, we should be able to drop the database.
+  ASSERT_OK(DeleteSnapshotSchedule(schedule_id));
+  ASSERT_OK(conn.Execute(Format("DROP DATABASE $0", client::kTableName.namespace_name())));
+}
+
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlCreateTable) {
+  YB_SKIP_TEST_IN_TSAN();
+  bool colocated = GetParam();
+  auto schedule_id = ASSERT_RESULT(PreparePg(colocated));
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
   Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
@@ -622,9 +651,10 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlCreateIndex)
   ASSERT_EQ(res, "after");
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropTable),
-          YbAdminSnapshotScheduleTestWithYsql) {
-  auto schedule_id = ASSERT_RESULT(PreparePg());
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropTable) {
+  YB_SKIP_TEST_IN_TSAN();
+  bool colocated = GetParam();
+  auto schedule_id = ASSERT_RESULT(PreparePg(colocated));
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
   ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
@@ -669,9 +699,10 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropIndex),
   ASSERT_EQ(res, "after");
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAddColumn),
-          YbAdminSnapshotScheduleTestWithYsql) {
-  auto schedule_id = ASSERT_RESULT(PreparePg());
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAddColumn) {
+  YB_SKIP_TEST_IN_TSAN();
+  bool colocated = GetParam();
+  auto schedule_id = ASSERT_RESULT(PreparePg(colocated));
 
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -1119,7 +1150,6 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropUniqueCo
   ASSERT_EQ(result_status.ok(), false);
 }
 
-
 TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAddCheckConstraint),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
@@ -1265,6 +1295,41 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSequenceInse
   res = ASSERT_RESULT(conn.FetchValue<int32_t>("SELECT value FROM test_table where key=4"));
   LOG(INFO) << "Select result " << res;
   ASSERT_EQ(res, 21);
+}
+
+// If sequences were created since the restore start time,
+// then restore isn't supported. The test validates that.
+TEST_F_EX(
+    YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSequenceCreateDropWithRestore),
+    YbAdminSnapshotScheduleTestWithYsql) {
+  auto schedule_id = ASSERT_RESULT(PreparePg());
+
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+  LOG(INFO) << "Create table 'test_table'";
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value INT)"));
+
+  Timestamp time_before_create(ASSERT_RESULT(WallClock()->Now()).time_point);
+  LOG(INFO) << "Time to restore back before sequence creation : " << time_before_create;
+
+  LOG(INFO) << "Create Sequence 'value_data'";
+  ASSERT_OK(conn.Execute("CREATE SEQUENCE value_data INCREMENT 5 OWNED BY test_table.value"));
+
+  auto restore_status = RestoreSnapshotSchedule(schedule_id, time_before_create);
+  ASSERT_NOK(restore_status);
+  ASSERT_STR_CONTAINS(restore_status.ToString(), "Unable to restore as Pg sequences were updated");
+  LOG(INFO) << "Restoring to a time before sequence creation failed : " << restore_status;
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, nextval('value_data'))"));
+
+  Timestamp time_before_drop(ASSERT_RESULT(WallClock()->Now()).time_point);
+  LOG(INFO) << "Time to restore back before sequence drop : " << time_before_drop;
+
+  ASSERT_OK(conn.Execute("DROP SEQUENCE value_data"));
+
+  restore_status = RestoreSnapshotSchedule(schedule_id, time_before_drop);
+  ASSERT_NOK(restore_status);
+  ASSERT_STR_CONTAINS(restore_status.ToString(), "Unable to restore as Pg sequences were updated");
+  LOG(INFO) << "Restoring to a time before sequence drop failed :" << restore_status;
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, 2)"));
 }
 
 TEST_F(YbAdminSnapshotScheduleTest, UndeleteIndex) {
@@ -1858,6 +1923,79 @@ TEST_F(YbAdminSnapshotScheduleTest, ConsecutiveRestore) {
   ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time1));
 
   ASSERT_OK(WaitTabletsCleaned(CoarseMonoClock::now() + retention + kInterval));
+}
+
+TEST_F(YbAdminSnapshotScheduleTest, CatalogLoadRace) {
+  auto schedule_id = ASSERT_RESULT(PrepareCql());
+
+  auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
+
+  // Change the snapshot throttling flags.
+  ASSERT_OK(cluster_->SetFlagOnMasters("max_concurrent_snapshot_rpcs", "-1"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("max_concurrent_snapshot_rpcs_per_tserver", "1"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("schedule_snapshot_rpcs_out_of_band", "true"));
+  // Delay loading of cluster config by 2 secs (i.e. 4 cycles of snapshot coordinator).
+  // This ensures that the snapshot coordinator accesses an empty cluster config at least once
+  // and thus triggers the codepath where the case is handled
+  // and a default value is used for throttling.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_slow_cluster_config_load_secs", "2"));
+
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+  // Restore to trigger loading cluster config.
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+}
+
+class YbAdminSnapshotScheduleFlushTest : public YbAdminSnapshotScheduleTest {
+ public:
+  std::vector<std::string> ExtraMasterFlags() override {
+    // To speed up tests.
+    return { "--snapshot_coordinator_cleanup_delay_ms=1000",
+             "--snapshot_coordinator_poll_interval_ms=500",
+             "--enable_automatic_tablet_splitting=true",
+             "--enable_transactional_ddl_gc=false",
+             "--flush_rocksdb_on_shutdown=false",
+             "--vmodule=tablet_bootstrap=3" };
+  }
+};
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, TestSnapshotBootstrap, YbAdminSnapshotScheduleFlushTest) {
+  LOG(INFO) << "Create cluster";
+  CreateCluster(kClusterName, ExtraTSFlags(), ExtraMasterFlags());
+
+  // Disable modifying flushed frontier when snapshot is created.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_modify_flushed_frontier_snapshot_op", "false"));
+
+  // Create a database and a table.
+  auto conn = ASSERT_RESULT(CqlConnect());
+  ASSERT_OK(conn.ExecuteQuery(Format(
+      "CREATE KEYSPACE IF NOT EXISTS $0", client::kTableName.namespace_name())));
+
+  conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
+
+  ASSERT_OK(conn.ExecuteQueryFormat(
+      "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) WITH tablets = 1",
+      client::kTableName.table_name()));
+  LOG(INFO) << "Created Keyspace and table";
+
+  // Create a CREATE_ON_MASTER op in WALs without flushing frontier.
+  ASSERT_OK(CallAdmin("create_keyspace_snapshot",
+                      Format("ycql.$0", client::kTableName.namespace_name())));
+  SleepFor(MonoDelta::FromSeconds(5 * kTimeMultiplier));
+  LOG(INFO) << "Created snapshot on keyspace";
+
+  // Enable modifying flushed frontier when snapshot is replayed.
+  LOG(INFO) << "Resetting test flag to modify flushed frontier";
+
+  // Restart the masters so that this op gets replayed.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_modify_flushed_frontier_snapshot_op", "true"));
+  LOG(INFO) << "Restart#1";
+  cluster_->Shutdown();
+  ASSERT_OK(cluster_->Restart());
+
+  // Restart the masters again. Now this op shouldn't be replayed.
+  LOG(INFO) << "Restart#2";
+  cluster_->Shutdown();
+  ASSERT_OK(cluster_->Restart());
 }
 
 class YbAdminSnapshotScheduleTestWithoutConsecutiveRestore : public YbAdminSnapshotScheduleTest {

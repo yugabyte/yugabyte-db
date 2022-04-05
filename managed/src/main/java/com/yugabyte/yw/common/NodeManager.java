@@ -43,6 +43,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
@@ -286,6 +287,9 @@ public class NodeManager extends DevopsBase {
         }
       }
 
+      if (keyInfo.setUpChrony) {
+        subCommand.add("--skip_ntp_check");
+      }
       if (keyInfo.airGapInstall) {
         subCommand.add("--air_gap");
       }
@@ -305,6 +309,16 @@ public class NodeManager extends DevopsBase {
         subCommand.add(Integer.toString(keyInfo.nodeExporterPort));
         subCommand.add("--node_exporter_user");
         subCommand.add(keyInfo.nodeExporterUser);
+      }
+
+      if (keyInfo.setUpChrony) {
+        subCommand.add("--use_chrony");
+        if (keyInfo.ntpServers != null && !keyInfo.ntpServers.isEmpty()) {
+          for (String server : keyInfo.ntpServers) {
+            subCommand.add("--ntp_server");
+            subCommand.add(server);
+          }
+        }
       }
     }
     return subCommand;
@@ -918,11 +932,25 @@ public class NodeManager extends DevopsBase {
     subcommand.add("--redis_proxy_rpc_port");
     subcommand.add(Integer.toString(node.redisServerRpcPort));
 
-    // Custom cluster creation flow with prebuilt AMI
-    if (userIntent.providerType.equals(Common.CloudType.aws)
-        && taskParam.getRegion().ybPrebuiltAmi) {
-      subcommand.add("--skip_tags");
-      subcommand.add("yb-prebuilt-ami");
+    // Custom cluster creation flow with prebuilt AMI for cloud
+    if (config.getBoolean("yb.cloud.enabled")
+        && taskParam.type != UpgradeTaskParams.UpgradeTaskType.Software) {
+      if ((userIntent.providerType.equals(Common.CloudType.aws)
+          || userIntent.providerType.equals(Common.CloudType.gcp))) {
+        if (taskParam.vmUpgradeTaskType != VmUpgradeTaskType.None) {
+          if (taskParam.vmUpgradeTaskType == VmUpgradeTaskType.VmUpgradeWithCustomImages) {
+            subcommand.add("--skip_tags");
+            subcommand.add("yb-prebuilt-ami");
+          }
+        } else if (universe
+                .getConfig()
+                .getOrDefault(Universe.USE_CUSTOM_IMAGE, "false")
+                .equals("true")
+            && !taskParam.ignoreUseCustomImageConfig) {
+          subcommand.add("--skip_tags");
+          subcommand.add("yb-prebuilt-ami");
+        }
+      }
     }
 
     boolean useHostname =
@@ -1533,12 +1561,6 @@ public class NodeManager extends DevopsBase {
             // aws uses instance_type to determine device names for mounting
             commandArgs.add("--instance_type");
             commandArgs.add(taskParam.instanceType);
-
-            // Custom cluster creation flow with prebuilt AMI
-            if (taskParam.getRegion().ybPrebuiltAmi) {
-              commandArgs.add("--skip_tags");
-              commandArgs.add("yb-prebuilt-ami");
-            }
           }
 
           // gcp uses machine_image for ansible preprovision.yml
@@ -1548,6 +1570,26 @@ public class NodeManager extends DevopsBase {
             if (ybImage != null && !ybImage.isEmpty()) {
               commandArgs.add("--machine_image");
               commandArgs.add(ybImage);
+            }
+          }
+
+          // Custom cluster creation flow with prebuilt AMI for cloud
+          if (runtimeConfigFactory.forUniverse(universe).getBoolean("yb.cloud.enabled")) {
+            if ((cloudType.equals(Common.CloudType.aws)
+                || cloudType.equals(Common.CloudType.gcp))) {
+              if (taskParam.vmUpgradeTaskType != VmUpgradeTaskType.None) {
+                if (taskParam.vmUpgradeTaskType == VmUpgradeTaskType.VmUpgradeWithCustomImages) {
+                  commandArgs.add("--skip_tags");
+                  commandArgs.add("yb-prebuilt-ami");
+                }
+              } else if (universe
+                      .getConfig()
+                      .getOrDefault(Universe.USE_CUSTOM_IMAGE, "false")
+                      .equals("true")
+                  && !taskParam.ignoreUseCustomImageConfig) {
+                commandArgs.add("--skip_tags");
+                commandArgs.add("yb-prebuilt-ami");
+              }
             }
           }
 
@@ -1564,7 +1606,8 @@ public class NodeManager extends DevopsBase {
 
           if (taskParam.useTimeSync
               && (cloudType.equals(Common.CloudType.aws)
-                  || cloudType.equals(Common.CloudType.gcp))) {
+                  || cloudType.equals(Common.CloudType.gcp)
+                  || cloudType.equals(Common.CloudType.azu))) {
             commandArgs.add("--use_chrony");
           }
 

@@ -41,6 +41,7 @@ import com.yugabyte.yw.forms.PasswordPolicyFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.SetSecurityFormData;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
@@ -323,6 +324,16 @@ public class SessionController extends AbstractPlatformController {
             Http.Cookie.builder("userId", user.uuid.toString())
                 .withSecure(ctx().request().secure())
                 .build());
+    ctx().args.put("isAudited", true);
+    Audit.create(
+        user,
+        request().path(),
+        request().method(),
+        Audit.TargetType.User,
+        user.uuid.toString(),
+        Audit.ActionType.Login,
+        null,
+        null);
     return withData(sessionInfo);
   }
 
@@ -368,11 +379,21 @@ public class SessionController extends AbstractPlatformController {
               Http.Cookie.builder("userId", user.uuid.toString())
                   .withSecure(ctx().request().secure())
                   .build());
+      ctx().args.put("isAudited", true);
+      Audit.create(
+          user,
+          request().path(),
+          request().method(),
+          Audit.TargetType.User,
+          user.uuid.toString(),
+          Audit.ActionType.Login,
+          null,
+          null);
     }
     if (environment.isDev()) {
       return redirect("http://localhost:3000/");
     } else {
-      return redirect(appConfig.getString("yb.url", "/"));
+      return redirect("/");
     }
   }
 
@@ -405,6 +426,16 @@ public class SessionController extends AbstractPlatformController {
               Http.Cookie.builder(API_TOKEN, apiToken)
                   .withSecure(ctx().request().secure())
                   .build());
+      ctx().args.put("isAudited", true);
+      Audit.create(
+          user,
+          request().path(),
+          request().method(),
+          Audit.TargetType.User,
+          user.uuid.toString(),
+          Audit.ActionType.Login,
+          null,
+          null);
       return withData(sessionInfo);
     }
     throw new PlatformServiceException(UNAUTHORIZED, "Insecure login unavailable.");
@@ -440,6 +471,12 @@ public class SessionController extends AbstractPlatformController {
         LOG.error("Failed to parse sample feature config file for OSS mode.");
       }
     }
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Customer,
+            customerUUID.toString(),
+            Audit.ActionType.SetSecurity);
     return YBPSuccess.empty();
   }
 
@@ -461,6 +498,13 @@ public class SessionController extends AbstractPlatformController {
                 .withSecure(ctx().request().secure())
                 .withMaxAge(FOREVER)
                 .build());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Customer,
+            customerUUID.toString(),
+            Audit.ActionType.GenerateApiToken,
+            request().body().asJson());
     return withData(sessionInfo);
   }
 
@@ -534,7 +578,13 @@ public class SessionController extends AbstractPlatformController {
     // When there is no authenticated user in context; we just pretend that the user
     // created himself for auditing purpose.
     ctx().args.putIfAbsent("user", userService.getUserWithFeatures(cust, user));
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Customer,
+            cust.getUuid().toString(),
+            Audit.ActionType.Register,
+            request().body().asJson());
     return sessionInfo;
   }
 

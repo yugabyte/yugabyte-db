@@ -61,7 +61,7 @@ Status QLRocksDBStorage::BuildYQLScanSpec(const QLReadRequestPB& request,
   auto max_hash_code = request.has_max_hash_code() ?
       boost::make_optional<int32_t>(request.max_hash_code()) : boost::none;
 
-  vector<PrimitiveValue> hashed_components;
+  vector<KeyEntryValue> hashed_components;
   RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
       request.hashed_column_values(), schema, 0, schema.num_hash_key_columns(),
       &hashed_components));
@@ -191,8 +191,7 @@ Status QLRocksDBStorage::GetIterator(const PgsqlReadRequestPB& request,
                             AllowSpecial::kTrue));
         if (request.lower_bound().has_is_inclusive()
             && !request.lower_bound().is_inclusive()) {
-            lower_doc_key.AddRangeComponent(
-                PrimitiveValue(docdb::ValueType::kHighest));
+            lower_doc_key.AddRangeComponent(KeyEntryValue(docdb::KeyEntryType::kHighest));
         }
     }
 
@@ -205,10 +204,8 @@ Status QLRocksDBStorage::GetIterator(const PgsqlReadRequestPB& request,
                             AllowSpecial::kTrue));
         if (request.upper_bound().has_is_inclusive()
             && request.upper_bound().is_inclusive()) {
-            upper_doc_key.AddRangeComponent(
-                PrimitiveValue(docdb::ValueType::kHighest));
+            upper_doc_key.AddRangeComponent(KeyEntryValue(docdb::KeyEntryType::kHighest));
         }
-        LOG(INFO) << "WE HAVE AN UPPER BOUND";
     }
 
 

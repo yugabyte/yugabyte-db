@@ -13,6 +13,7 @@ import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.forms.ReleaseFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -70,11 +71,18 @@ public class ReleaseController extends AuthenticatedController {
           ReleaseManager.formDataToReleaseMetadata(versionDataList);
       releases.forEach(
           (version, metadata) -> releaseManager.addReleaseWithMetadata(version, metadata));
+      releaseManager.updateCurrentReleases();
     } catch (RuntimeException re) {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, re.getMessage());
     }
 
-    auditService().createAuditEntry(ctx(), request(), request().body().asJson());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Release,
+            versionDataList.toString(),
+            Audit.ActionType.Create,
+            request().body().asJson());
     return YBPSuccess.empty();
   }
 
@@ -160,7 +168,13 @@ public class ReleaseController extends AuthenticatedController {
     } else {
       throw new PlatformServiceException(BAD_REQUEST, "Missing Required param: State");
     }
-    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData));
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Release,
+            version,
+            Audit.ActionType.Update,
+            Json.toJson(formData));
     return PlatformResults.withData(m);
   }
 
@@ -175,6 +189,9 @@ public class ReleaseController extends AuthenticatedController {
     } catch (RuntimeException re) {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, re.getMessage());
     }
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(), Audit.TargetType.Release, null, Audit.ActionType.Refresh);
     return YBPSuccess.empty();
   }
 
@@ -195,6 +212,9 @@ public class ReleaseController extends AuthenticatedController {
     } catch (RuntimeException re) {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, re.getMessage());
     }
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(), Audit.TargetType.Release, version, Audit.ActionType.Delete);
     return YBPSuccess.empty();
   }
 }

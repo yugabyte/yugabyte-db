@@ -415,6 +415,18 @@ scoped_refptr<Counter> MetricEntity::FindOrCreateCounter(
   return m;
 }
 
+scoped_refptr<Counter> MetricEntity::FindOrCreateCounter(
+    std::unique_ptr<CounterPrototype> proto) {
+  CheckInstantiation(proto.get());
+  std::lock_guard<simple_spinlock> l(lock_);
+  auto m = down_cast<Counter*>(FindPtrOrNull(metric_map_, proto.get()).get());
+  if (!m) {
+    m = new Counter(std::move(proto));
+    InsertOrDie(&metric_map_, m->prototype(), m);
+  }
+  return m;
+}
+
 scoped_refptr<MillisLag> MetricEntity::FindOrCreateMillisLag(
     const MillisLagPrototype* proto) {
   CheckInstantiation(proto);

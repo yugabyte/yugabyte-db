@@ -19,12 +19,14 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/common.pb.h"
+#include "yb/common/constants.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/pg_system_attr.h"
 
 #include "yb/util/flag_tags.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/tsan_util.h"
 
 #include "yb/yql/pggate/pg_client.h"
 
@@ -41,20 +43,18 @@ using std::shared_ptr;
 using std::string;
 using namespace std::literals;  // NOLINT
 
-using client::YBClient;
 using client::YBSession;
 using client::YBMetaDataCache;
 
 // TODO(neil) This should be derived from a GFLAGS.
-static MonoDelta kSessionTimeout = 60s;
+static MonoDelta kDdlTimeout = 60s * kTimeMultiplier;
 
 namespace {
 
 CoarseTimePoint DdlDeadline() {
   auto timeout = MonoDelta::FromSeconds(FLAGS_TEST_user_ddl_operation_timeout_sec);
   if (timeout == MonoDelta::kZero) {
-    // TODO(PG_CLIENT)
-    timeout = 120s;
+    timeout = kDdlTimeout;
   }
   return CoarseMonoClock::now() + timeout;
 }
@@ -170,6 +170,7 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
                              bool add_primary_key,
                              const bool colocated,
                              const PgObjectId& tablegroup_oid,
+                             const ColocationId colocation_id,
                              const PgObjectId& tablespace_oid,
                              const PgObjectId& matview_pg_table_oid)
     : PgDdl(pg_session) {
@@ -184,6 +185,9 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
   req_.set_colocated(colocated);
   req_.set_schema_name(schema_name);
   tablegroup_oid.ToPB(req_.mutable_tablegroup_oid());
+  if (colocation_id != kColocationIdNotSet) {
+    req_.set_colocation_id(colocation_id);
+  }
   tablespace_oid.ToPB(req_.mutable_tablespace_oid());
   matview_pg_table_oid.ToPB(req_.mutable_matview_pg_table_oid());
 
@@ -231,7 +235,11 @@ Status PgCreateTable::SetNumTablets(int32_t num_tablets) {
 Status PgCreateTable::AddSplitBoundary(PgExpr **exprs, int expr_count) {
   auto* values = req_.mutable_split_bounds()->Add()->mutable_values();
   for (int i = 0; i < expr_count; ++i) {
-    RETURN_NOT_OK(exprs[i]->Eval(values->Add()));
+    auto temp_value = VERIFY_RESULT(exprs[i]->Eval());
+    auto out = values->Add();
+    if (temp_value) {
+      temp_value->ToGoogleProtobuf(out);
+    }
   }
   return Status::OK();
 }

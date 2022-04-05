@@ -549,7 +549,7 @@ void RemoteBootstrapITest::DeleteTabletDuringRemoteBootstrap(YBTableType table_t
   opts.server_type = "tserver_test";
   std::unique_ptr<FsManager> fs_manager(new FsManager(env_.get(), opts));
   ASSERT_OK(fs_manager->CreateInitialFileSystemLayout());
-  ASSERT_OK(fs_manager->Open());
+  ASSERT_OK(fs_manager->CheckAndOpenFileSystemRoots());
 
   // Start up a RemoteBootstrapClient and open a remote bootstrap session.
   RemoteBootstrapClient rb_client(tablet_id, fs_manager.get());

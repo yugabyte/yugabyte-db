@@ -23,7 +23,7 @@
 
 #include "yb/rpc/rpc_controller.h"
 
-#include "yb/tserver/pg_client.pb.h"
+#include "yb/tserver/pg_client.messages.h"
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
@@ -132,20 +132,6 @@ const int kDefaultPgYbSessionTimeoutMs = 60 * 1000;
 
 DEFINE_int32(pg_yb_session_timeout_ms, kDefaultPgYbSessionTimeoutMs,
              "Timeout for operations between PostgreSQL server and YugaByte DocDB services");
-
-std::shared_ptr<yb::client::YBSession> BuildSession(
-    yb::client::YBClient* client,
-    const scoped_refptr<ClockBase>& clock) {
-  int statement_timeout = YBCStatementTimeoutPtr ? *YBCStatementTimeoutPtr : 0;
-  int session_timeout = FLAGS_pg_yb_session_timeout_ms;
-  if (statement_timeout > 0 && statement_timeout < session_timeout) {
-    session_timeout = statement_timeout;
-  }
-  auto session = std::make_shared<YBSession>(client, clock);
-  session->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
-  session->SetTimeout(MonoDelta::FromMilliseconds(session_timeout));
-  return session;
-}
 
 PgTxnManager::PgTxnManager(
     PgClient* client,

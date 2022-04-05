@@ -1,0 +1,49 @@
+@import '../../../_style/colors.scss';
+
+.backup-table-list {
+  margin-top: 24px !important;
+  background: $YB_BG_WHITE_3;
+  min-height: 300px;
+  border: 1px solid $YB_LIGHT_GRAY_BORDER;
+  border-radius: 8px;
+  padding: 16px;
+  .dropdown {
+    z-index: 10000;
+  }
+  .table-bordered {
+    thead th {
+      font-weight: 700;
+    }
+  }
+  .copy-location-button {
+    height: 30px;
+    padding: 5px 10px;
+    font-size: 12px;
+    margin-left: 10px;
+  }
+  #table-list-actions-dropdown {
+    width: 50px !important;
+    border: 0;
+    margin-left: 10px !important;
+    font-weight: 500;
+    height: 30px;
+    padding: 0;
+    font-size: 12px;
+  }
+  .inset-table {
+    margin-left: 75px;
+    margin-top: 15px;
+  }
+  &.ycql-table {
+    height: 350px;
+    overflow: auto;
+  }
+  .clickable {
+    cursor: pointer;
+  }
+  .restore-detail-button {
+    height: 30px;
+    padding: 5px 10px;
+    font-size: 12px;
+  }
+}

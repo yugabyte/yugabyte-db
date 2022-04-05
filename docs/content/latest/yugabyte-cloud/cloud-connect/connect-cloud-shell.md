@@ -15,6 +15,10 @@ showAsideToc: true
 
 Use any browser to connect to Yugabyte Cloud by using Cloud Shell. Cloud Shell doesn't require a CA certificate or any special network access configured.
 
+When you connect to your cluster using Cloud Shell with the YSQL API, the shell window also incorporates a [Quick Start Guide](../../cloud-quickstart/qs-explore/), with a series of pre-built queries for you to run.
+
+## Command line interface
+
 You have the option of using the following command line interfaces (CLIs) in Cloud Shell:
 
 - [ysqlsh](../../../admin/ysqlsh/) - YSQL shell for interacting with YugabyteDB using the [YSQL API](../../../api/ysql/).
@@ -24,7 +28,8 @@ You have the option of using the following command line interfaces (CLIs) in Clo
 
 Cloud Shell has the following security limitations:
 
-- Sessions are limited to 15 minutes. If your session disconnects, close the browser tab and start a new session.
+- Sessions are limited to one hour. If the session is inactive, it may disconnect after five minutes. If your session disconnects, close the browser tab and start a new session.
+- You can run up to five concurrent Cloud Shell sessions.
 - You can only use a subset of ysqlsh [meta-commands](#ysqlsh-meta-commands-in-cloud-shell).
 
 {{< tip title="Cloud Shell known issues" >}}
@@ -67,8 +72,6 @@ Connected to local cluster at 3.69.145.48:9042.
 Use HELP for help.
 admin@ycqlsh:yugabyte>
 ```
-
-If you enter an incorrect password, the shell session terminates immediately and you must start a new session.
 
 ## ysqlsh meta-commands in Cloud Shell
 

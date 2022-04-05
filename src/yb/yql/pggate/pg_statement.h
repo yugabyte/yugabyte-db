@@ -90,9 +90,13 @@ class PgStatement : public PgMemctx::Registrable {
     return (stmt != nullptr && stmt->stmt_op() == op);
   }
 
-  //------------------------------------------------------------------------------------------------
-  // Add expressions that are belong to this statement.
-  void AddExpr(PgExpr::SharedPtr expr);
+  const std::shared_ptr<Arena>& arena_ptr() const {
+    return arena_;
+  }
+
+  Arena& arena() const {
+    return *arena_;
+  }
 
  protected:
   // YBSession that this statement belongs to.
@@ -102,8 +106,7 @@ class PgStatement : public PgMemctx::Registrable {
   Status status_;
   string errmsg_;
 
-  // Expression list to be destroyed as soon as the statement is removed from the API.
-  std::list<PgExpr::SharedPtr> exprs_;
+  std::shared_ptr<Arena> arena_;
 };
 
 }  // namespace pggate

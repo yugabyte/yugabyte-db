@@ -4,13 +4,12 @@ headerTitle: Hasura
 linkTitle: Hasura
 description: Using Hasura with YugabyteDB
 headcontent: Using Hasura with YugabyteDB
-aliases:
 image: /images/develop/graphql/hasura/hasura.png
 section: INTEGRATIONS
 menu:
   latest:
     identifier: hasura
-    weight: 645
+    weight: 571
 ---
 
 

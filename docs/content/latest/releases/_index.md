@@ -23,7 +23,7 @@ As of v2.2, Yugabyte follows a new release versioning convention for YugabyteDB 
 ## On this page
 
 * Current [supported releases](#current-supported-releases)
-* Yugabyte's [release support policy](#release-support-policy) and [timelines](#release-support-timelines
+* Yugabyte's [release support policy](#release-support-policy) and [timelines](#release-support-timelines)
 * Releases that are [no longer supported](#eol-releases)
 * [Release series recommendations](#recommended-release-series-for-projects) for your project
 
@@ -47,7 +47,7 @@ Support for YugabyteDB stable release series includes:
   * Yugabyte may direct Customers to Upgrade to a current release if a workaround does not exist.
 * **End of Life (EOL):** Yugabyte will post publicly on its website a notice of End of Life (EOL) for the affected Software and the timeline for discontinuing Support Services.
 
-For details, see the [Yugabyte Support Policy](https://www.yugabyte.com/support-policy/).
+For details, see the [Yugabyte Support Services Agreement](https://www.yugabyte.com/yugabyte-software-support-services-agreement/).
 
 ### Release support timelines
 
@@ -74,6 +74,10 @@ The following releases are no longer supported:
 | [v2.0](release-notes/v2.0/) | September 17, 2019 | September 17, 2020 | March 03, 2021 |
 | [v1.3](release-notes/v1.3/) | July 15, 2019 | July 15, 2020 | January 15, 2021 |
 
+{{<note title="Archived docs available">}}
+Documentation for EOL stable releases is available at the [YugabyteDB docs archive](https://docs-archive.yugabyte.com/).
+{{</note>}}
+
 ## Upcoming release series
 
 The table below includes tentative release dates for upcoming release series, subject to change.
@@ -83,7 +87,7 @@ For information on key features planned for the upcoming releases, visit [Curren
 | Release series | Planned release |
 | :------------- | :-------------- |
 | v2.14 (stable) | Mid-2022 |
-| v2.13 | Early 2022 |
+| v2.15 | Mid-2022 |
 
 ## Recommended release series for projects
 

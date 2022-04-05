@@ -15,12 +15,26 @@ showAsideToc: true
 
 ## Releases
 
+### March 31, 2021
+
+#### New features
+
+- Self-guided quickstart incorporated in Cloud Shell. Launch Cloud Shell using the YSQL API to begin a [self-guided tutorial](../cloud-quickstart/qs-explore/) exploring distributed SQL.
+- Enhancements to Cloud Shell to allow longer sessions (up to one hour) and up to five concurrent sessions.
+
+### March 10, 2021
+
+#### New features
+
+- Ability to schedule the maintenance window and exclusion periods for upcoming maintenance and database upgrades. The maintenance window is a weekly four-hour time slot during which Yugabyte may maintain or upgrade clusters. Yugabyte does not maintain or upgrade clusters outside the scheduled maintenance window, or during exclusion periods. Manage maintenance windows on the cluster **Maintenance** tab.
+- Ability to manually pause and resume clusters. To pause a cluster, select the cluster, click **More Links**, and choose **Pause Cluster**. Yugabyte suspends instance vCPU capacity charges for paused clusters; disk and backup storage are charged at the standard rate.
+
 ### February 3, 2021
 
 #### New features
 
 - Ability to select the [version](../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) of YugabyteDB to install on a cluster when [creating standard clusters](../cloud-basics/create-clusters/).
-- Automated notifications of upcoming database upgrades. The notification email includes the date and time of the upgrade window. An Upcoming Upgrade badge is also displayed on the cluster. You can start the upgrade any time by signing in to Yugabyte Cloud, selecting the cluster, clicking the **Upcoming Upgrade** badge, and clicking **Upgrade Now**. To change the upgrade window, contact {{<support-cloud>}}.
+- Automated notifications of upcoming database maintenance. The notification email includes the date and time of the maintenance window. An Upcoming Maintenance badge is also displayed on the cluster. Start an upgrade any time by signing in to Yugabyte Cloud, selecting the cluster, clicking the **Upcoming Maintenance** badge, and clicking **Upgrade Now**.
 
 #### Infrastructure
 
@@ -49,7 +63,8 @@ showAsideToc: true
 #### New features
 
 - Self service [Virtual Private Cloud (VPC) networking](../cloud-basics/cloud-vpcs/). Use VPC networks to lower network latencies and make your application and database infrastructure more secure. Create VPCs in AWS or GCP and peer them with application VPCs in the same cloud provider. VPC networking is managed on the **VPC Network** tab of the **Network Access** page.
-- Ability to [enable pre-bundled extensions](../cloud-clusters/add-extensions/) using the `CREATE EXTENSION` command. YugabyteDB includes [pre-bundled PostgreSQL extensions](../../explore/ysql-language-features/advanced-features/extensions/) that are tested to work with YSQL. Admin users now have additional permissions to allow them to enable these extensions in databases. (If you need to install a database extension that is not pre-bundled, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).)
+- Ability to [enable pre-bundled extensions](../cloud-clusters/add-extensions/) using the `CREATE EXTENSION` command. YugabyteDB includes [pre-bundled PostgreSQL extensions](../../explore/ysql-language-features/pg-extensions/) that are tested to work with YSQL. Admin users now have additional permissions to allow them to enable these extensions in databases. (If you need to install a database extension that is not pre-bundled, contact {{<support-cloud>}}
+.)
 
 ### December 2, 2021
 
@@ -67,7 +82,14 @@ showAsideToc: true
 
 #### New features
 
-- Support for auditing cloud activity using the new **Activity** tab on the **Admin** page. The tab provides a running audit of activity on your cloud, including backups, cluster creation and modification, changes to cloud users and their roles, billing changes, and allow list changes.
+- Support for auditing cloud activity using the new **Activity** tab on the **Admin** page. The tab provides a running audit of cloud activity, including:
+
+  - backups
+  - cluster creation and modification
+  - changes to cloud users and their roles
+  - billing changes
+  - allow list changes
+
 - Support for multiple Admin users on your cloud account, and Admin users can now change the role of existing users. You can also invite multiple users to your cloud at once, and assign them a role (Developer or Admin) when you invite them. You manage cloud users using the **Users** tab on the **Admin** page.
 - Additional charts on the **Invoices** on the **Billing** tab, which break costs down by cluster and infrastructure (instance costs, storage, and data transfer) so that you can quickly evaluate your cloud costs.
 
@@ -147,11 +169,10 @@ The following **AWS regions** are available:
 - **Clusters** - No support for scaling vCPUs on single node clusters.
 - **Metrics** - The **View Full Screen** option in charts on the cluster **Overview** and **Performance Metrics** pages does not work in some versions of Safari 14.0 (Big Sur).
 - **Metrics** - Some clusters in European regions may show occasional spikes in the YSQL Operations/sec chart. This is due to cluster health checks and can be ignored.
-- **Invoices** - Redundant "Disk Storage (Paused)" entry on invoices for paused clusters. The entry has no effect on your invoice.
 
-### Known issues in Cloud Shell
+### Known issues in [Cloud Shell](../cloud-connect/connect-cloud-shell/)
 
-- At this time, we recommend running only a single Cloud Shell session. Running more than one session may produce unexpected results.
 - If Cloud Shell stops responding, close the browser tab and restart Cloud Shell.
 - Cloud Shell is unavailable for clusters in a VPC.
 - Cloud Shell is unavailable during any edit and backup/restore operations. Wait until the operations are complete before you launch the shell.
+- If a Cloud Shell session is inactive for more than five minutes, it may be disconnected.

@@ -50,8 +50,8 @@ class PgDml : public PgStatement {
   // Prepare column for both ends.
   // - Prepare protobuf to communicate with DocDB.
   // - Prepare PgExpr to send data back to Postgres layer.
-  Result<const PgColumn&> PrepareColumnForRead(int attr_num, PgsqlExpressionPB *target_pb);
-  CHECKED_STATUS PrepareColumnForWrite(PgColumn *pg_col, PgsqlExpressionPB *assign_pb);
+  Result<const PgColumn&> PrepareColumnForRead(int attr_num, LWPgsqlExpressionPB *target_pb);
+  CHECKED_STATUS PrepareColumnForWrite(PgColumn *pg_col, LWPgsqlExpressionPB *assign_pb);
 
   // Bind a column with an expression.
   // - For a secondary-index-scan, this bind specify the value of the secondary key which is used to
@@ -103,19 +103,19 @@ class PgDml : public PgStatement {
         const PgPrepareParameters *prepare_params);
 
   // Allocate protobuf for a SELECTed expression.
-  virtual PgsqlExpressionPB *AllocTargetPB() = 0;
+  virtual LWPgsqlExpressionPB *AllocTargetPB() = 0;
 
   // Allocate protobuf for a WHERE clause expression.
   // Subclasses use different protobuf message types for their requests, so they should
   // implement this method that knows how to add a PgsqlExpressionPB entry into their where_clauses
   // field.
-  virtual PgsqlExpressionPB *AllocQualPB() = 0;
+  virtual LWPgsqlExpressionPB *AllocQualPB() = 0;
 
   // Allocate protobuf for expression whose value is bounded to a column.
-  virtual PgsqlExpressionPB *AllocColumnBindPB(PgColumn *col) = 0;
+  virtual LWPgsqlExpressionPB *AllocColumnBindPB(PgColumn *col) = 0;
 
   // Allocate protobuf for expression whose value is assigned to a column (SET clause).
-  virtual PgsqlExpressionPB *AllocColumnAssignPB(PgColumn *col) = 0;
+  virtual LWPgsqlExpressionPB *AllocColumnAssignPB(PgColumn *col) = 0;
 
   // Specify target of the query in protobuf request.
   CHECKED_STATUS AppendTargetPB(PgExpr *target);
@@ -132,7 +132,7 @@ class PgDml : public PgStatement {
   // It is being replaced by list of PgsqlColRefPB entries, which is set by ColRefsToPB.
   // While there is are chance of cluster being upgraded from older version, we have to populate
   // both.
-  void ColumnRefsToPB(PgsqlColumnRefsPB *column_refs);
+  void ColumnRefsToPB(LWPgsqlColumnRefsPB *column_refs);
 
   // Transfer columns information from target_.columns() to the request's col_refs list field.
   // Subclasses use different protobuf message types to make requests, so they must implement
@@ -144,7 +144,7 @@ class PgDml : public PgStatement {
   virtual void ClearColRefPBs() = 0;
 
   // Allocate a PgsqlColRefPB entriy in the protobuf request
-  virtual PgsqlColRefPB *AllocColRefPB() = 0;
+  virtual LWPgsqlColRefPB *AllocColRefPB() = 0;
 
   // -----------------------------------------------------------------------------------------------
   // Data members that define the DML statement.
@@ -216,8 +216,8 @@ class PgDml : public PgStatement {
   // * Bind values are used to identify the selected rows to be operated on.
   // * Set values are used to hold columns' new values in the selected rows.
   bool ybctid_bind_ = false;
-  boost::unordered_map<PgsqlExpressionPB*, PgExpr*> expr_binds_;
-  std::unordered_map<PgsqlExpressionPB*, PgExpr*> expr_assigns_;
+  boost::unordered_map<LWPgsqlExpressionPB*, PgExpr*> expr_binds_;
+  std::unordered_map<LWPgsqlExpressionPB*, PgExpr*> expr_assigns_;
 
   // Used for colocated TRUNCATE that doesn't bind any columns.
   bool bind_table_ = false;

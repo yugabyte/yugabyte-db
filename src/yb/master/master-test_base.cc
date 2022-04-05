@@ -117,7 +117,7 @@ void MasterTestBase::TearDown() {
 Status MasterTestBase::CreateTable(const NamespaceName& namespace_name,
                                    const TableName& table_name,
                                    const Schema& schema,
-                                   TableId *table_id /* = nullptr */) {
+                                   TableId* table_id /* = nullptr */) {
   CreateTableRequestPB req;
   return DoCreateTable(namespace_name, table_name, schema, &req, table_id);
 }
@@ -151,7 +151,8 @@ Status MasterTestBase::CreatePgsqlTable(const NamespaceId& namespace_id,
 Status MasterTestBase::CreateTablegroupTable(const NamespaceId& namespace_id,
                                              const TableName& table_name,
                                              const TablegroupId& tablegroup_id,
-                                             const Schema& schema) {
+                                             const Schema& schema,
+                                             TableId* table_id /* = nullptr */) {
   CreateTableRequestPB req, *request;
   request = &req;
   CreateTableResponsePB resp;
@@ -169,6 +170,9 @@ Status MasterTestBase::CreateTablegroupTable(const NamespaceId& namespace_id,
   // Dereferencing as the RPCs require const ref for request. Keeping request param as pointer
   // though, as that helps with readability and standardization.
   RETURN_NOT_OK(proxy_ddl_->CreateTable(*request, &resp, ResetAndGetController()));
+  if (table_id) {
+    *table_id = resp.table_id();
+  }
   if (resp.has_error()) {
     RETURN_NOT_OK(StatusFromPB(resp.error().status()));
   }
@@ -179,7 +183,7 @@ Status MasterTestBase::DoCreateTable(const NamespaceName& namespace_name,
                                      const TableName& table_name,
                                      const Schema& schema,
                                      CreateTableRequestPB* request,
-                                     TableId *table_id /* = nullptr */) {
+                                     TableId* table_id /* = nullptr */) {
   CreateTableResponsePB resp;
 
   request->set_name(table_name);
@@ -221,16 +225,41 @@ void MasterTestBase::DoListAllTables(ListTablesResponsePB* resp,
   DoListTables(req, resp);
 }
 
+Status MasterTestBase::TruncateTableById(const TableId& table_id) {
+  TruncateTableRequestPB req;
+  TruncateTableResponsePB resp;
+  req.add_table_ids(table_id);
+
+  RETURN_NOT_OK(proxy_ddl_->TruncateTable(req, &resp, ResetAndGetController()));
+  SCOPED_TRACE(resp.DebugString());
+
+  if (resp.has_error()) {
+    RETURN_NOT_OK(StatusFromPB(resp.error().status()));
+  }
+  return Status::OK();
+}
+
+Status MasterTestBase::DeleteTableById(const TableId& table_id) {
+  DeleteTableRequestPB req;
+  DeleteTableResponsePB resp;
+  req.mutable_table()->set_table_id(table_id);
+  RETURN_NOT_OK(proxy_ddl_->DeleteTable(req, &resp, ResetAndGetController()));
+  SCOPED_TRACE(resp.DebugString());
+  if (resp.has_error()) {
+    RETURN_NOT_OK(StatusFromPB(resp.error().status()));
+  }
+  return Status::OK();
+}
+
 Status MasterTestBase::DeleteTable(const NamespaceName& namespace_name,
                                    const TableName& table_name,
                                    TableId* table_id /* = nullptr */) {
+  SCHECK(!namespace_name.empty(), InvalidArgument, "Namespace name was empty");
   DeleteTableRequestPB req;
   DeleteTableResponsePB resp;
   req.mutable_table()->set_table_name(table_name);
 
-  if (!namespace_name.empty()) {
-    req.mutable_table()->mutable_namespace_()->set_name(namespace_name);
-  }
+  req.mutable_table()->mutable_namespace_()->set_name(namespace_name);
 
   RETURN_NOT_OK(proxy_ddl_->DeleteTable(req, &resp, ResetAndGetController()));
   SCOPED_TRACE(resp.DebugString());

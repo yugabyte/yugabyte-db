@@ -25,20 +25,23 @@ void AddKVToPB(int32_t key_val,
   const ColumnId string_val_col_id(kFirstColumnId + 2);
 
   auto add_kv_pair =
-    [&](const SubDocKey &subdoc_key, const PrimitiveValue &primitive_value) {
+    [&](const SubDocKey &subdoc_key, const QLValuePB& value) {
         KeyValuePairPB *const kv = write_batch->add_write_pairs();
         kv->set_key(subdoc_key.Encode().ToStringBuffer());
-        kv->set_value(primitive_value.ToValue());
+        ValueBuffer buffer;
+        docdb::AppendEncodedValue(value, docdb::CheckIsCollate::kFalse, &buffer);
+        kv->set_value(buffer.ToStringBuffer());
     };
 
   std::string hash_key;
   YBPartition::AppendIntToKey<int32_t, uint32_t>(key_val, &hash_key);
   auto hash = YBPartition::HashColumnCompoundValue(hash_key);
-  const DocKey doc_key(hash, {PrimitiveValue::Int32(key_val)}, {});
-  add_kv_pair(SubDocKey(doc_key, PrimitiveValue(int_val_col_id)),
-              PrimitiveValue::Int32(int_val));
-  add_kv_pair(SubDocKey(doc_key, PrimitiveValue(string_val_col_id)),
-             PrimitiveValue(string_val));
+  const DocKey doc_key(hash, {docdb::KeyEntryValue::Int32(key_val)}, {});
+  QLValuePB value;
+  value.set_int32_value(int_val);
+  add_kv_pair(SubDocKey(doc_key, docdb::KeyEntryValue::MakeColumnId(int_val_col_id)), value);
+  value.set_string_value(string_val);
+  add_kv_pair(SubDocKey(doc_key, docdb::KeyEntryValue::MakeColumnId(string_val_col_id)), value);
 }
 
 }  // namespace yb

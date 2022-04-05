@@ -120,9 +120,13 @@ Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
 Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
     const std::string& id, SysTablesEntryPB* pb) {
   if (pb->schema().table_properties().is_ysql_catalog_table()) {
-    LOG(INFO) << "PITR: Adding " << pb->name() << " for restoring. ID: " << id;
-    restoration_.system_tables_to_restore.emplace(id, pb->name());
-
+    if (restoration_.system_tables_to_restore.count(id) == 0) {
+      return STATUS_FORMAT(
+          NotFound,
+          "PG Catalog table $0 not found in the present set of tables"
+          " but found in the objects to restore.",
+          pb->name());
+    }
     return false;
   }
 
@@ -141,6 +145,51 @@ Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
 
 Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
     const std::string& id, SysTabletsEntryPB* pb) {
+  if (!pb->colocated()) {
+    return true;
+  }
+  // If it is a colocated tablet, then set the schedules that prevent
+  // its colocated tables from getting deleted. Also, add to-be hidden table ids
+  // in its colocated list as they won't be present previously.
+  auto it = existing_objects_.tablets.find(id);
+  // Since we are not allowed to drop the database on which schedule was set,
+  // it implies that the colocated tablet for the colocated database must always be present.
+  // TODO(Sanket): Probably these semantics will change for tablegroups.
+  if (it == existing_objects_.tablets.end()) {
+    return STATUS(Corruption, "Colocated tablet should be present.");
+  }
+  bool colocated_table_deleted = false;
+  TableId found_table_id;
+  for (const auto& table_id : it->second.table_ids()) {
+    std::pair<TableId, SysTablesEntryPB> search_table;
+    search_table.first = table_id;
+    bool found = std::binary_search(
+        restoration_.non_system_obsolete_tables.begin(),
+        restoration_.non_system_obsolete_tables.end(),
+        search_table,
+        [](const auto& t1, const auto& t2) {
+          return t1.first < t2.first;
+        });
+    if (found) {
+      // Add this table to the tablet list of the restoring tablet.
+      LOG(INFO) << "PITR: Appending colocated table " << table_id
+                << " to the colocated list of tablet " << id;
+      pb->add_table_ids(table_id);
+      found_table_id = table_id;
+      colocated_table_deleted = true;
+    }
+  }
+  if (colocated_table_deleted) {
+    // Set schedules that retain.
+    auto it = retained_existing_tables_.find(found_table_id);
+    if (it != retained_existing_tables_.end()) {
+      auto& out_schedules = *pb->mutable_retained_by_snapshot_schedules();
+      for (const auto& schedule_id : it->second) {
+        LOG(INFO) << "PITR: " << schedule_id << " schedule retains colocated tablet " << id;
+        out_schedules.Add()->assign(schedule_id.AsSlice().cdata(), schedule_id.size());
+      }
+    }
+  }
   return true;
 }
 
@@ -169,12 +218,6 @@ Status RestoreSysCatalogState::Process() {
 
   VLOG_WITH_FUNC(2) << "Check restoring objects";
   VLOG_WITH_FUNC(4) << "Restoring namespaces: " << AsString(restoring_objects_.namespaces);
-  faststring buffer;
-  RETURN_NOT_OK_PREPEND(DetermineEntries(
-      &restoring_objects_, nullptr,
-      [this, &buffer](const auto& id, auto* pb) {
-        return AddRestoringEntry(id, pb, &buffer);
-  }), "Determine restoring entries failed");
 
   VLOG_WITH_FUNC(2) << "Check existing objects";
   RETURN_NOT_OK_PREPEND(DetermineEntries(
@@ -191,6 +234,13 @@ Status RestoreSysCatalogState::Process() {
   std::sort(restoration_.non_system_obsolete_tables.begin(),
             restoration_.non_system_obsolete_tables.end(),
             compare_by_first);
+
+  faststring buffer;
+  RETURN_NOT_OK_PREPEND(DetermineEntries(
+      &restoring_objects_, nullptr,
+      [this, &buffer](const auto& id, auto* pb) {
+        return AddRestoringEntry(id, pb, &buffer);
+  }), "Determine restoring entries failed");
 
   return Status::OK();
 }
@@ -352,16 +402,11 @@ Status RestoreSysCatalogState::CheckExistingEntry(
 Status RestoreSysCatalogState::CheckExistingEntry(
     const std::string& id, const SysTablesEntryPB& pb) {
   if (pb.schema().table_properties().is_ysql_catalog_table()) {
-    if (restoration_.system_tables_to_restore.count(id) == 0) {
-      return STATUS_FORMAT(
-          NotFound,
-          "PG Catalog table $0 not found in the present set of tables"
-          " but found in the objects to restore.",
-          pb.name());
-    }
+    LOG(INFO) << "PITR: Adding " << pb.name() << " for restoring. ID: " << id;
+    restoration_.system_tables_to_restore.emplace(id, pb.name());
+
     return Status::OK();
   }
-
   VLOG_WITH_FUNC(4) << "Table: " << id << ", " << pb.ShortDebugString();
   if (restoring_objects_.tables.count(id)) {
     return Status::OK();
@@ -379,7 +424,7 @@ Status RestoreSysCatalogState::CheckExistingEntry(
 }
 
 Status RestoreSysCatalogState::PrepareWriteBatch(
-    const Schema& schema, docdb::DocWriteBatch* write_batch) {
+    const Schema& schema, docdb::DocWriteBatch* write_batch, const HybridTime& now_ht) {
   for (const auto& entry : entries_.entries()) {
     QLWriteRequestPB write_request;
     RETURN_NOT_OK(FillSysCatalogWriteRequest(
@@ -394,7 +439,7 @@ Status RestoreSysCatalogState::PrepareWriteBatch(
   }
   for (const auto& table_id_and_pb : restoration_.non_system_obsolete_tables) {
     RETURN_NOT_OK(PrepareTableCleanup(
-        table_id_and_pb.first, table_id_and_pb.second, schema, write_batch));
+        table_id_and_pb.first, table_id_and_pb.second, schema, write_batch, now_ht));
   }
 
   return Status::OK();
@@ -423,11 +468,18 @@ Status RestoreSysCatalogState::PrepareTabletCleanup(
 
 Status RestoreSysCatalogState::PrepareTableCleanup(
     const TableId& id, SysTablesEntryPB pb, const Schema& schema,
-    docdb::DocWriteBatch* write_batch) {
+    docdb::DocWriteBatch* write_batch, const HybridTime& now_ht) {
   VLOG_WITH_FUNC(4) << id;
 
   QLWriteRequestPB write_request;
-  pb.set_hide_state(SysTablesEntryPB::HIDING);
+  // For a colocated table, mark it as HIDDEN.
+  if (pb.colocated()) {
+    pb.set_hide_state(SysTablesEntryPB::HIDDEN);
+    pb.set_hide_hybrid_time(now_ht.ToUint64());
+  } else {
+    pb.set_hide_state(SysTablesEntryPB::HIDING);
+  }
+
   pb.set_version(pb.version() + 1);
   RETURN_NOT_OK(FillSysCatalogWriteRequest(
       SysRowEntryType::TABLE, id, pb.SerializeAsString(),
@@ -520,7 +572,7 @@ class FetchState {
     // end of hashed and range components. It is reasonable to assume then that if the last byte
     // is kGroupEnd then it does not have any subkeys.
     bool no_subkey =
-        key()[key().size() - 1] == docdb::ValueTypeAsChar::kGroupEnd;
+        key()[key().size() - 1] == docdb::KeyEntryTypeAsChar::kGroupEnd;
 
     return no_subkey && is_tombstoned;
   }
@@ -582,12 +634,14 @@ void AddKeyValue(const Slice& key, const Slice& value, docdb::DocWriteBatch* wri
 struct PgCatalogTableData {
   std::array<uint8_t, kUuidSize + 1> prefix;
   const TableName* name;
+  uint32_t pg_table_oid;
 
   CHECKED_STATUS SetTableId(const TableId& table_id) {
     Uuid cotable_id;
     RETURN_NOT_OK(cotable_id.FromHexString(table_id));
-    prefix[0] = docdb::ValueTypeAsChar::kTableId;
+    prefix[0] = docdb::KeyEntryTypeAsChar::kTableId;
     cotable_id.EncodeToComparable(&prefix[1]);
+    pg_table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id));
     return Status::OK();
   }
 };
@@ -603,7 +657,7 @@ Status RestoreSysCatalogState::ProcessPgCatalogRestores(
 
   FetchState restoring_state(restoring_db, ReadHybridTime::SingleTime(restoration_.restore_at));
   FetchState existing_state(existing_db, ReadHybridTime::Max());
-  char tombstone_char = docdb::ValueTypeAsChar::kTombstone;
+  char tombstone_char = docdb::ValueEntryTypeAsChar::kTombstone;
   Slice tombstone(&tombstone_char, 1);
 
   std::vector<PgCatalogTableData> tables(restoration_.system_tables_to_restore.size() + 1);
@@ -645,7 +699,7 @@ Status RestoreSysCatalogState::ProcessPgCatalogRestores(
           RETURN_NOT_OK(sub_doc_key.FullyDecodeFrom(
               restoring_state.key(), docdb::HybridTimeRequired::kFalse));
           SCHECK_EQ(sub_doc_key.subkeys().size(), 1U, Corruption, "Wrong number of subdoc keys");
-          if (sub_doc_key.subkeys()[0].value_type() == docdb::ValueType::kColumnId) {
+          if (sub_doc_key.subkeys()[0].type() == docdb::KeyEntryType::kColumnId) {
             auto column_id = sub_doc_key.subkeys()[0].GetColumnId();
             const ColumnSchema& column = VERIFY_RESULT(pg_yb_catalog_version_schema.column_by_id(
                 column_id));
@@ -653,8 +707,10 @@ Status RestoreSysCatalogState::ProcessPgCatalogRestores(
               docdb::Value value;
               RETURN_NOT_OK(value.Decode(existing_state.value()));
               docdb::DocPath path(sub_doc_key.doc_key().Encode(), sub_doc_key.subkeys());
+              QLValuePB value_pb;
+              value_pb.set_int64_value(value.primitive_value().GetInt64() + 1);
               RETURN_NOT_OK(write_batch->SetPrimitive(
-                  path, docdb::PrimitiveValue(value.primitive_value().GetInt64() + 1)));
+                  path, docdb::ValueRef(value_pb, SortingType::kNotSpecified)));
             }
           }
         }
@@ -683,7 +739,18 @@ Status RestoreSysCatalogState::ProcessPgCatalogRestores(
       RETURN_NOT_OK(existing_state.Next());
     }
 
-    if (num_updates + num_inserts + num_deletes != 0 || VLOG_IS_ON(3)) {
+    size_t total_changes = num_updates + num_inserts + num_deletes;
+    if (table.pg_table_oid == kPgSequencesTableOid && total_changes != 0) {
+      LOG(INFO) << "PITR: Pg sequences were updated since the Restore time"
+                << ", updates: " << num_updates
+                << ", inserts: " << num_inserts
+                << ", deletes: " << num_deletes;
+      return STATUS(
+          NotSupported,
+          "Unable to restore as Pg sequences were updated since the Restore time.");
+    }
+
+    if (total_changes != 0 || VLOG_IS_ON(3)) {
       LOG(INFO) << "PITR: Pg system table: " << AsString(table.name) << ", updates: " << num_updates
                 << ", inserts: " << num_inserts << ", deletes: " << num_deletes;
     }

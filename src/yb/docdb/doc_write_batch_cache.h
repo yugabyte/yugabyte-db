@@ -36,8 +36,8 @@ class DocWriteBatchCache {
  public:
   struct Entry {
     DocHybridTime doc_hybrid_time;
-    ValueType value_type = ValueType::kInvalid;
-    UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp;
+    ValueEntryType value_type = ValueEntryType::kInvalid;
+    UserTimeMicros user_timestamp = ValueControlFields::kInvalidUserTimestamp;
     // We found a key which matched the exact key_prefix_ we were searching for (excluding the
     // hybrid time). Since we search for a key prefix, we could search for a.b.c, but end up
     // finding a key like a.b.c.d.e. This field indicates that we searched for something like a.b.c
@@ -56,10 +56,10 @@ class DocWriteBatchCache {
   // Same thing, but doesn't use an already created entry.
   void Put(const KeyBytes& key_bytes,
            DocHybridTime gen_ht,
-           ValueType value_type,
-           UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp,
+           ValueEntryType key_entry_type,
+           UserTimeMicros user_timestamp = ValueControlFields::kInvalidUserTimestamp,
            bool found_exact_key_prefix = true) {
-    Put(key_bytes, {gen_ht, value_type, user_timestamp, found_exact_key_prefix});
+    Put(key_bytes, {gen_ht, key_entry_type, user_timestamp, found_exact_key_prefix});
   }
 
   // Returns the latest generation hybrid_time for the document/subdocument identified by the given

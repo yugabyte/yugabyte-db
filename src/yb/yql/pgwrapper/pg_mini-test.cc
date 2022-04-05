@@ -160,8 +160,6 @@ class PgMiniTest : public PgMiniTestBase {
 
   void DestroyTable(std::string table_name);
 
-  void GetTableIDFromTableName(const std::string table_name, std::string* table_id);
-
   void StartReadWriteThreads(std::string table_name, TestThreadHolder *thread_holder);
 
   void TestConcurrentDeleteRowAndUpdateColumn(bool select_before_update);
@@ -1173,8 +1171,7 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
   }
 
   void TestInOperatorLock() {
-    auto conn = ASSERT_RESULT(Connect());
-    ASSERT_OK(conn.Execute("SET yb_transaction_priority_lower_bound = 0.9"));
+    auto conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
     ASSERT_OK(conn.Execute(
         "CREATE TABLE t (h INT, r1 INT, r2 INT, PRIMARY KEY(h, r1 ASC, r2 ASC))"));
     ASSERT_OK(conn.Execute(
@@ -1183,12 +1180,11 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     auto res = ASSERT_RESULT(conn.Fetch(
         "SELECT * FROM t WHERE h = 1 AND r1 IN (11, 12) AND r2 = 1 FOR KEY SHARE"));
 
-    auto extra_conn = ASSERT_RESULT(Connect());
-    ASSERT_OK(extra_conn.Execute("SET yb_transaction_priority_upper_bound = 0.1"));
-    ASSERT_OK(extra_conn.Execute("BEGIN"));
+    auto extra_conn = ASSERT_RESULT(SetLowPriTxn(Connect()));
+    ASSERT_OK(StartTxn(&extra_conn));
     ASSERT_NOK(extra_conn.Execute("DELETE FROM t WHERE h = 1 AND r1 = 11 AND r2 = 1"));
     ASSERT_OK(extra_conn.Execute("ROLLBACK"));
-    ASSERT_OK(extra_conn.Execute("BEGIN"));
+    ASSERT_OK(StartTxn(&extra_conn));
     ASSERT_OK(extra_conn.Execute("DELETE FROM t WHERE h = 1 AND r1 = 13 AND r2 = 1"));
     ASSERT_OK(extra_conn.Execute("COMMIT"));
 
@@ -1198,19 +1194,36 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     res = ASSERT_RESULT(conn.Fetch(
         "SELECT * FROM t WHERE h IN (1, 2) AND r1 = 11 FOR KEY SHARE"));
 
-    ASSERT_OK(extra_conn.Execute("BEGIN"));
+    ASSERT_OK(StartTxn(&extra_conn));
     ASSERT_NOK(extra_conn.Execute("DELETE FROM t WHERE h = 1 AND r1 = 11 AND r2 = 1"));
     ASSERT_OK(extra_conn.Execute("ROLLBACK"));
-    ASSERT_OK(extra_conn.Execute("BEGIN"));
+    ASSERT_OK(StartTxn(&extra_conn));
     ASSERT_NOK(extra_conn.Execute("DELETE FROM t WHERE h = 2 AND r1 = 11 AND r2 = 2"));
     ASSERT_OK(extra_conn.Execute("ROLLBACK"));
-    ASSERT_OK(extra_conn.Execute("BEGIN"));
+    ASSERT_OK(StartTxn(&extra_conn));
     ASSERT_OK(extra_conn.Execute("DELETE FROM t WHERE h = 2 AND r1 = 12 AND r2 = 2"));
     ASSERT_OK(extra_conn.Execute("COMMIT"));
 
     ASSERT_OK(conn.Execute("COMMIT;"));
     const auto count = ASSERT_RESULT(conn.template FetchValue<int64_t>("SELECT COUNT(*) FROM t"));
     ASSERT_EQ(4, count);
+  }
+
+  // Check that 2 rows with same PK can't be inserted from different txns.
+  void TestDuplicateInsert() {
+    DuplicateInsertImpl(IndexRequirement::NO, true /* low_pri_txn_insert_same_key */);
+  }
+
+  // Check that 2 rows with identical unique index can't be inserted from different txns.
+  void TestDuplicateUniqueIndexInsert() {
+    DuplicateInsertImpl(IndexRequirement::UNIQUE, false /* low_pri_txn_insert_same_key */);
+  }
+
+  // Check that 2 rows with identical non-unique index can be inserted from different txns.
+  void TestDuplicateNonUniqueIndexInsert() {
+    DuplicateInsertImpl(IndexRequirement::NON_UNIQUE,
+    false /* low_pri_txn_insert_same_key */,
+    true /* low_pri_txn_succeed */);
   }
 
   static Result<PGConn> SetHighPriTxn(Result<PGConn> connection) {
@@ -1238,6 +1251,39 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
 
   static Result<PGResultPtr> FetchInTxn(PGConn* connection, const std::string& query) {
     return TxnHelper<level>::FetchInTxn(connection, query);
+  }
+
+ private:
+  enum class IndexRequirement {
+    NO,
+    UNIQUE,
+    NON_UNIQUE
+  };
+
+  void DuplicateInsertImpl(
+    IndexRequirement index, bool low_pri_txn_insert_same_key, bool low_pri_txn_succeed = false) {
+    auto conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
+    ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
+    if (index != IndexRequirement::NO) {
+      ASSERT_OK(conn.Execute(Format("CREATE $0 INDEX ON t(v)",
+                                    index == IndexRequirement::UNIQUE ? "UNIQUE" : "")));
+    }
+    ASSERT_OK(StartTxn(&conn));
+    auto extra_conn = ASSERT_RESULT(SetLowPriTxn(Connect()));
+    ASSERT_OK(StartTxn(&extra_conn));
+    ASSERT_OK(extra_conn.Execute(Format("INSERT INTO t VALUES($0, 10)",
+                                        low_pri_txn_insert_same_key ? "1" : "2")));
+    ASSERT_OK(conn.Execute("INSERT INTO t VALUES(1, 10)"));
+    ASSERT_OK(conn.Execute("COMMIT"));
+    const auto low_pri_txn_commit_status = extra_conn.Execute("COMMIT");
+    if (low_pri_txn_succeed) {
+      ASSERT_OK(low_pri_txn_commit_status);
+    } else {
+      ASSERT_NOK(low_pri_txn_commit_status);
+    }
+    const auto count = ASSERT_RESULT(
+      extra_conn.template FetchValue<int64_t>("SELECT COUNT(*) FROM t WHERE v = 10"));
+    ASSERT_EQ(low_pri_txn_succeed ? 2 : 1, count);
   }
 };
 
@@ -1369,6 +1415,42 @@ TEST_F_EX(PgMiniTest,
           YB_DISABLE_TEST_IN_TSAN(SameColumnUpdateSnapshot),
           PgMiniTestTxnHelperSnapshot) {
   TestSameColumnUpdate();
+}
+
+TEST_F_EX(PgMiniTest,
+          YB_DISABLE_TEST_IN_TSAN(DuplicateInsertSerializable),
+          PgMiniTestTxnHelperSerializable) {
+  TestDuplicateInsert();
+}
+
+TEST_F_EX(PgMiniTest,
+          YB_DISABLE_TEST_IN_TSAN(DuplicateInsertSnapshot),
+          PgMiniTestTxnHelperSnapshot) {
+  TestDuplicateInsert();
+}
+
+TEST_F_EX(PgMiniTest,
+          YB_DISABLE_TEST_IN_TSAN(DuplicateUniqueIndexInsertSerializable),
+          PgMiniTestTxnHelperSerializable) {
+  TestDuplicateUniqueIndexInsert();
+}
+
+TEST_F_EX(PgMiniTest,
+          YB_DISABLE_TEST_IN_TSAN(DuplicateUniqueIndexInsertSnapshot),
+          PgMiniTestTxnHelperSnapshot) {
+  TestDuplicateUniqueIndexInsert();
+}
+
+TEST_F_EX(PgMiniTest,
+          YB_DISABLE_TEST_IN_TSAN(DuplicateNonUniqueIndexInsertSerializable),
+          PgMiniTestTxnHelperSerializable) {
+  TestDuplicateNonUniqueIndexInsert();
+}
+
+TEST_F_EX(PgMiniTest,
+          YB_DISABLE_TEST_IN_TSAN(DuplicateNonUniqueIndexInsertSnapshot),
+          PgMiniTestTxnHelperSnapshot) {
+  TestDuplicateNonUniqueIndexInsert();
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -1993,7 +2075,7 @@ void PgMiniTest::TestBigInsert(bool restart) {
 
     for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
       Slice key = iter->key();
-      ASSERT_FALSE(key.TryConsumeByte(docdb::ValueTypeAsChar::kTransactionApplyState))
+      ASSERT_FALSE(key.TryConsumeByte(docdb::KeyEntryTypeAsChar::kTransactionApplyState))
           << "Key: " << iter->key().ToDebugString() << ", value: " << iter->value().ToDebugString();
     }
   }
@@ -2175,19 +2257,6 @@ void PgMiniTest::DestroyTable(std::string table_name) {
   ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", table_name));
 }
 
-void PgMiniTest::GetTableIDFromTableName(const std::string table_name, std::string* table_id) {
-  // Get YBClient handler and tablet ID. Using this we can get the number of tablets before starting
-  // the test and before the test ends. With this we can ensure that tablet splitting has occurred.
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
-  const auto tables = ASSERT_RESULT(client->ListTables());
-  for (const auto& table : tables) {
-    if (table.has_table() && table.table_name() == "update_pk_complex_two_hash_one_range_keys") {
-      table_id->assign(table.table_id());
-      break;
-    }
-  }
-}
-
 void PgMiniTest::StartReadWriteThreads(const std::string table_name,
     TestThreadHolder *thread_holder) {
   // Writer thread that does parallel writes into table
@@ -2222,8 +2291,7 @@ TEST_F_EX(
   std::string table_name = "update_pk_complex_two_hash_one_range_keys";
   CreateTableAndInitialize(table_name, 1);
 
-  std::string table_id;
-  GetTableIDFromTableName(table_name, &table_id);
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName(table_name));
   auto start_num_tablets = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id).size();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
 
@@ -2258,7 +2326,7 @@ TEST_F_EX(
   // upper_bound for the tablet is empty to empty. Hence, to test both situations we run this test
   // with one tablet and three tablets respectively.
   CreateTableAndInitialize(table_name, 3);
-  GetTableIDFromTableName(table_name, &table_id);
+  table_id = ASSERT_RESULT(GetTableIDFromTableName(table_name));
   start_num_tablets = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id).size();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
 

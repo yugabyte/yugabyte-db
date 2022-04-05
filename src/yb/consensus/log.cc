@@ -73,6 +73,7 @@
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
+#include "yb/util/operation_counter.h"
 #include "yb/util/opid.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
@@ -339,6 +340,11 @@ class Log::Appender {
   Status Init();
 
   CHECKED_STATUS Submit(LogEntryBatch* item) {
+    ScopedRWOperation operation(&task_stream_counter_);
+    RETURN_NOT_OK(operation);
+    if (!task_stream_) {
+      return STATUS(IllegalState, "Appender stopped");
+    }
     return task_stream_->Submit(item);
   }
 
@@ -371,7 +377,7 @@ class Log::Appender {
   Log* const log_;
 
   // Lock to protect access to thread_ during shutdown.
-  mutable std::mutex lock_;
+  RWOperationCounter task_stream_counter_;
   unique_ptr<TaskStream<LogEntryBatch>> task_stream_;
 
   // vector of entry batches in group, to execute callbacks after call to Sync.
@@ -383,6 +389,7 @@ class Log::Appender {
 
 Log::Appender::Appender(Log *log, ThreadPool* append_thread_pool)
     : log_(log),
+      task_stream_counter_(Format("Appender for $0", log->tablet_id())),
       task_stream_(new TaskStream<LogEntryBatch>(
           std::bind(&Log::Appender::ProcessBatch, this, _1), append_thread_pool,
           FLAGS_taskstream_queue_max_size,
@@ -481,7 +488,11 @@ void Log::Appender::GroupWork() {
 }
 
 void Log::Appender::Shutdown() {
-  std::lock_guard<std::mutex> lock_guard(lock_);
+  ScopedRWOperationPause pause(&task_stream_counter_, CoarseMonoClock::now() + 15s, Stop::kTrue);
+  if (!pause.ok()) {
+    LOG(DFATAL) << "Failed to stop appender";
+    return;
+  }
   if (task_stream_) {
     VLOG_WITH_PREFIX(1) << "Shutting down log task stream";
     task_stream_->Stop();

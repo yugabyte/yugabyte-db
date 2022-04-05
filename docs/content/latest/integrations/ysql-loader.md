@@ -2,12 +2,11 @@
 title: YSQL Loader
 linkTitle: YSQL Loader
 description: YSQL Loader
-aliases:
 section: INTEGRATIONS
 menu:
   latest:
     identifier: ysql-loader
-    weight: 577
+    weight: 571
 isTocNested: true
 showAsideToc: true
 ---
@@ -90,7 +89,7 @@ Before starting the migration, ensure that you have the following:
   docker run --rm --name pgloader yugabytedb/pgloader:v1.0 pgloader --version
   ```
 
-  Expect the following output:
+  Expect output similar to the following:
 
   ```output
   pgloader version "3.6.3~devel"
