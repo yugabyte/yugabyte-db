@@ -38,6 +38,7 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/math_util.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/strongly_typed_uuid.h"
 #include "yb/util/uint_set.h"
 
@@ -179,7 +180,7 @@ class TransactionStatusManager {
 };
 
 // Utility class that invokes RegisterRequest on creation and UnregisterRequest on deletion.
-class RequestScope {
+class NODISCARD_CLASS RequestScope {
  public:
   RequestScope() noexcept : status_manager_(nullptr), request_id_(0) {}
 
