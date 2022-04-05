@@ -18,13 +18,13 @@ You can configure a variety of backup targets for your YugabyteDB universe data.
 
 If your YugabyteDB universe has one node, you can create a local directory on a T-Server to which to back up, as follows:
 
-1. Select **Universes >** ***UniverseName*** **> Nodes**. 
+1. Navigate to **Universes**, select your universe, and then select **Nodes**. 
 
 2. Click **Connect**.
 
-3. Take note of the services and endpoints information displayed in the **Connect** dialog, as shown in the following illustration:
+3. Take note of the services and endpoints information displayed in the **Connect** dialog, as shown in the following illustration:<br><br>
 
-    ![Connect dialog](/images/yp/cloud-provider-local-backup1.png)
+    ![Connect dialog](/images/yp/cloud-provider-local-backup1.png)<br><br>
 
 4. While connected using `ssh`, create a directory `/backup` and then change the owner to `yugabyte`, as follows:
 
@@ -40,13 +40,13 @@ You can configure Amazon S3 as a backup target as follows:
 
 1. Select **Configs > Backup > Amazon S3**, as per the following illustration:<br><br>
 
-   ![AWS Backup](/images/yp/cloud-provider-config-backup-aws1.png)
+   ![AWS Backup](/images/yp/cloud-provider-config-backup-aws1.png)<br><br>
 
 2. Click **Create S3 Backup**. 
 
 3. Complete the form shown in the following illustration:<br><br>
 
-   ![AWS Backup Configuration](/images/yp/cloud-provider-config-backup-aws2.png)
+   ![AWS Backup Configuration](/images/yp/cloud-provider-config-backup-aws2.png)<br><br>
 
 4. Click **Save**.
 
@@ -56,13 +56,13 @@ You can configure the network file system as a backup target as follows:
 
 1. Select **Configs > Backup > Network File System**, as per the following illustration:<br><br>
 
-   ![NFS Backup](/images/yp/cloud-provider-config-backup-nfs1.png)
+   ![NFS Backup](/images/yp/cloud-provider-config-backup-nfs1.png)<br><br>
 
 2. Click **Create NFS Backup**.
 
 3. Complete the form shown in the following illustration:<br><br>
 
-   ![NFS Backup Configuration](/images/yp/cloud-provider-config-backup-nfs2.png)
+   ![NFS Backup Configuration](/images/yp/cloud-provider-config-backup-nfs2.png)<br><br>
 
 4. Click **Save**.
 
@@ -72,13 +72,13 @@ You can configure Google Cloud Storage as a backup target as follows:
 
 1. Select **Configs > Backup > Google Cloud Storage**, as per the following illustration:<br><br>
 
-   ![GCS Backup](/images/yp/cloud-provider-config-backup-gcs1.png)
+   ![GCS Backup](/images/yp/cloud-provider-config-backup-gcs1.png)<br><br>
 
 2. Click **Create GCS Backup**.
 
 3. Complete the form shown in the following illustration:<br><br>
 
-   ![GCS Backup Configuration](/images/yp/cloud-provider-config-backup-gcs2.png)
+   ![GCS Backup Configuration](/images/yp/cloud-provider-config-backup-gcs2.png)<br><br>
 
 4. Click **Save**.
 
@@ -88,12 +88,12 @@ You can configure Azure Storage as a backup target as follows:
 
 1. Select **Configs > Backup > Azure Storage**, as per the following illustration:<br><br>
 
-   ![Azure Backup](/images/yp/cloud-provider-config-backup-az1.png)
+   ![Azure Backup](/images/yp/cloud-provider-config-backup-az1.png)<br><br>
 
 2. Click **Create AZ Backup**.
 
 3. Complete the form shown in the following illustration:<br><br>
 
-   ![Azure Backup Configuration](/images/yp/cloud-provider-config-backup-az2.png)
+   ![Azure Backup Configuration](/images/yp/cloud-provider-config-backup-az2.png)<br><br>
 
 4. Click **Save**.

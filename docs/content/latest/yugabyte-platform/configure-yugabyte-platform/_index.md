@@ -1,12 +1,12 @@
 ---
-title: Configure Yugabyte Platform
-headerTitle: Configure Yugabyte Platform
-linkTitle: Configure Yugabyte Platform
-description: Configure Yugabyte Platform.
+title: Configure YugabyteDB Anywhere
+headerTitle: Configure YugabyteDB Anywhere
+linkTitle: Configure YugabyteDB Anywhere
+description: Configure YugabyteDB Anywhere.
 image: /images/section_icons/deploy/manual-deployment.png
-headcontent: Configure Yugabyte Platform.
+headcontent: Configure YugabyteDB Anywhere.
 type: page
-section: YUGABYTE PLATFORM
+section: YUGABYTEDB ANYWHERE
 menu:
   latest:
     identifier: configure-yugabyte-platform
