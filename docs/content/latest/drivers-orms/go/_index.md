@@ -12,7 +12,7 @@ menu:
 isTocNested: true
 showAsideToc: true
 ---
-Following are the recommended projects for implementing Golang applications using the YugabyteDB YSQL API.
+The following projects are recommended for implementing Golang applications using the YugabyteDB YSQL API.
 
 | Project | Type | Support Level |
 | :------ | :--- | :------------ |
