@@ -37,10 +37,10 @@
 
 # Bypass the landing page
 
-[[redirects]]
-  from = "/"
-  to = "/preview/"
-  force = true
+# [[redirects]]
+#   from = "/"
+#   to = "/preview/"
+#   force = true
 
 # Redirect EOL docs to the archive site
 
@@ -161,6 +161,12 @@
   from = "/preview/api/ysql/extensions/"
   to = "/preview/explore/ysql-language-features/pg-extensions/"
   force = true
+
+# Catch-all for old links to /latest (now called /preview)
+
+[[redirects]]
+  from = "/latest/*"
+  to = "/preview/:splat"
 
 # Hugo resource caching plugin configuration
 # https://github.com/cdeleeuwe/netlify-plugin-hugo-cache-resources#readme
