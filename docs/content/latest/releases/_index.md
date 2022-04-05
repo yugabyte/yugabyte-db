@@ -74,6 +74,10 @@ The following releases are no longer supported:
 | [v2.0](release-notes/v2.0/) | September 17, 2019 | September 17, 2020 | March 03, 2021 |
 | [v1.3](release-notes/v1.3/) | July 15, 2019 | July 15, 2020 | January 15, 2021 |
 
+{{<note title="Archived docs available">}}
+Documentation for EOL stable releases is available at the [YugabyteDB docs archive](https://docs-archive.yugabyte.com/).
+{{</note>}}
+
 ## Upcoming release series
 
 The table below includes tentative release dates for upcoming release series, subject to change.

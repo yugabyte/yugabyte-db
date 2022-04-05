@@ -1,3 +1,0 @@
-```
-commit ::= COMMIT [ TRANSACTION | WORK ]
-```
