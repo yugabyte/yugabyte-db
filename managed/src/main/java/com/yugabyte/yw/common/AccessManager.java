@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.common;
 
-import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -147,7 +146,8 @@ public class AccessManager extends DevopsBase {
     keyCode = Util.getFileName(keyCode);
     AccessKey accessKey = AccessKey.get(region.provider.uuid, keyCode);
     if (accessKey != null) {
-      throw new PlatformServiceException(BAD_REQUEST, "Duplicate Access KeyCode: " + keyCode);
+      // This means the key must have been created before, so nothing to do.
+      return accessKey;
     }
     Path source = Paths.get(uploadedFile.getAbsolutePath());
     Path destination = Paths.get(keyFilePath, keyCode + keyType.getExtension());

@@ -1010,7 +1010,7 @@
         },
         "code" : {
           "description" : "AZ code",
-          "example" : "AWS",
+          "example" : "us-west1-a",
           "type" : "string"
         },
         "config" : {
@@ -1027,7 +1027,7 @@
         },
         "name" : {
           "description" : "AZ name",
-          "example" : "south-east-1",
+          "example" : "us-west1-a",
           "type" : "string"
         },
         "secondarySubnet" : {
@@ -2930,21 +2930,6 @@
       },
       "type" : "object"
     },
-    "EditProviderRequest" : {
-      "properties" : {
-        "config" : {
-          "additionalProperties" : {
-            "type" : "string"
-          },
-          "type" : "object"
-        },
-        "hostedZoneId" : {
-          "type" : "string"
-        }
-      },
-      "required" : [ "config", "hostedZoneId" ],
-      "type" : "object"
-    },
     "EncryptionAtRestConfig" : {
       "description" : "Encryption at rest configuration",
       "properties" : {
@@ -4532,7 +4517,6 @@
         "code" : {
           "description" : "Cloud provider region code",
           "example" : "us-west-2",
-          "readOnly" : true,
           "type" : "string"
         },
         "config" : {
@@ -4558,6 +4542,7 @@
         "name" : {
           "description" : "Cloud provider region name",
           "example" : "US West (Oregon)",
+          "readOnly" : true,
           "type" : "string"
         },
         "securityGroupId" : {
@@ -9999,17 +9984,17 @@
         }, {
           "description" : "edit provider form data",
           "in" : "body",
-          "name" : "EditProviderFormData",
+          "name" : "EditProviderRequest",
           "required" : true,
           "schema" : {
-            "$ref" : "#/definitions/EditProviderRequest"
+            "$ref" : "#/definitions/Provider"
           }
         } ],
         "responses" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/Provider"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
