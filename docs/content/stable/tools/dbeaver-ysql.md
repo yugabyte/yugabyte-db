@@ -80,4 +80,4 @@ You can expand the list to see all databases available to the Yugabyte User, as 
 
 ![img](/images/develop/tools/dbeaver/dbeaver-localhost.png)
 
-For sample databases to explore YugabyteDB using DBeaver, see [Sample data](/latest/sample-data/).
+For sample databases to explore YugabyteDB using DBeaver, see [Sample data](/preview/sample-data/).

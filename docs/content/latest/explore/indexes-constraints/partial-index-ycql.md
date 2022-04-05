@@ -52,9 +52,9 @@ CREATE INDEX index_name ON table_name(column_list) WHERE condition;
 
 ## Example
 
-- Follow the steps to create a cluster [locally](/latest/quick-start/) or in [Yugabyte Cloud](/latest/yugabyte-cloud/cloud-connect/).
+- Follow the steps to create a cluster [locally](/preview/quick-start/) or in [Yugabyte Cloud](/preview/yugabyte-cloud/cloud-connect/).
 
-- Use the [YCQL shell](/latest/admin/ycqlsh/) for local clusters, or [Connect using Cloud shell](/latest/yugabyte-cloud/cloud-connect/connect-cloud-shell/) for Yugabyte Cloud, to create a keyspace and a table.
+- Use the [YCQL shell](/preview/admin/ycqlsh/) for local clusters, or [Connect using Cloud shell](/preview/yugabyte-cloud/cloud-connect/connect-cloud-shell/) for Yugabyte Cloud, to create a keyspace and a table.
 
 ```cql
 ycqlsh> CREATE KEYSPACE example;
@@ -134,4 +134,4 @@ ycqlsh:example> EXPLAIN SELECT product FROM orders
 
 ## Learn more
 
-- For more details, refer [PARTIAL INDEX](/latest/api/ycql/ddl_create_index/#partial-index) in the YCQL API section.
+- For more details, refer [PARTIAL INDEX](/preview/api/ycql/ddl_create_index/#partial-index) in the YCQL API section.

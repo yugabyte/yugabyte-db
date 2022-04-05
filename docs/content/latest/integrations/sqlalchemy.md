@@ -18,9 +18,9 @@ This document describes how to use [SQLAlchemy](https://www.sqlalchemy.org/), a 
 
 Before you can start using SQLAlchemy, ensure that you have the following available:
 
-- YugabyteDB version 2.6 or later (see [YugabyteDB Quick Start Guide](/latest/quick-start/)).
+- YugabyteDB version 2.6 or later (see [YugabyteDB Quick Start Guide](/preview/quick-start/)).
 
-- Yugabyte cluster (see [Create a local cluster](/latest/quick-start/create-local-cluster/macos/)).
+- Yugabyte cluster (see [Create a local cluster](/preview/quick-start/create-local-cluster/macos/)).
 
 - Python version 2.7 or later.
 

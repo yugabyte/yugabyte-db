@@ -34,9 +34,9 @@ CREATE INDEX columnA_columnB_index_name ON table_name(columnA, columnB) INCLUDE 
 
 The following exercise demonstrates how to perform an index-only scan on an [expression (functional) index](../expression-index-ysql/), and further optimize the query performance using a covering index.
 
-- Create a cluster [locally](/latest/quick-start/) or in [Yugabyte Cloud](/latest/yugabyte-cloud/cloud-basics/create-clusters-free/).
+- Create a cluster [locally](/preview/quick-start/) or in [Yugabyte Cloud](/preview/yugabyte-cloud/cloud-basics/create-clusters-free/).
 
-- Connect to the cluster using the [YSQL shell](/latest/admin/ysqlsh/) for local clusters, or [using Cloud shell](/latest/yugabyte-cloud/cloud-connect/connect-cloud-shell/) for Yugabyte Cloud.
+- Connect to the cluster using the [YSQL shell](/preview/admin/ysqlsh/) for local clusters, or [using Cloud shell](/preview/yugabyte-cloud/cloud-connect/connect-cloud-shell/) for Yugabyte Cloud.
 
 - Create and insert some rows into a table `demo` with two columns `id` and `username`.
 

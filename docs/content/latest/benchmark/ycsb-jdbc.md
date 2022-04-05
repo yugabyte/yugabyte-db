@@ -41,7 +41,7 @@ isTocNested: true
 
 This document describes how to use the standard JDBC binding to run the YCSB benchmark.
 
-For additional information about YCSB, refer to the following: 
+For additional information about YCSB, refer to the following:
 
 * [YCSB Wiki](https://github.com/brianfrankcooper/YCSB/wiki)
 * [Workload info](https://github.com/brianfrankcooper/YCSB/wiki/Core-Workloads)
@@ -205,4 +205,4 @@ When run on a 3-node cluster of `c5.4xlarge` AWS instances (16 cores, 32GB of RA
 
 ### Additional Examples
 
-For additional examples, refer to [Example Using a YCSB Workload with Automatic Tablet Splitting](/latest/architecture/docdb-sharding/tablet-splitting/#example-using-a-ycsb-workload-with-automatic-tablet-splitting).
+For additional examples, refer to [Example Using a YCSB Workload with Automatic Tablet Splitting](/preview/architecture/docdb-sharding/tablet-splitting/#example-using-a-ycsb-workload-with-automatic-tablet-splitting).

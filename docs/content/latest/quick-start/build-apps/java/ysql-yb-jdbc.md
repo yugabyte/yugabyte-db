@@ -69,7 +69,7 @@ showAsideToc: true
 
 This tutorial assumes that:
 
-- YugabyteDB is up and running. Using the [yb-ctl](/latest/admin/yb-ctl/#root) utility, create a universe with a 3-node RF-3 cluster with some fictitious geo-locations assigned.
+- YugabyteDB is up and running. Using the [yb-ctl](/preview/admin/yb-ctl/#root) utility, create a universe with a 3-node RF-3 cluster with some fictitious geo-locations assigned.
 
   ```sh
   $ cd <path-to-yugabytedb-installation>

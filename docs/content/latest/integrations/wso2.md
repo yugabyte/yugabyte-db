@@ -98,7 +98,7 @@ You can initialize WSO2 Identity Server and YugabyteDB as follows:
     wget https://gist.githubusercontent.com/m-iancu/8e892e7257efcd0c37c8e459e2a4066d/raw/489ee3eeb06a05ab2f2896bdd6d2480eb864a8ff/wso2_is_5.11.0.sql
     ```
 
-  - Download and start YugabyteDB by following instructions provided in [Downloading YugabyteDB](https://download.yugabyte.com/) and [YugabyteDB Quick Start Guide](/latest/quick-start/).
+  - Download and start YugabyteDB by following instructions provided in [Downloading YugabyteDB](https://download.yugabyte.com/) and [YugabyteDB Quick Start Guide](/preview/quick-start/).
 
   - Load the SQL dump into YugabyteDB by executing the following command:
 

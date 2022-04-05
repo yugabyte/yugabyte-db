@@ -256,7 +256,7 @@ Database servers need incoming TCP/IP access enabled to the following ports, for
 | TCP | 12000 | YCQL HTTP (for DB statistics gathering) |
 | TCP | 13000 | YSQL HTTP (for DB statistics gathering) |
 
-This table is based on the information on the [default ports page](/latest/reference/configuration/default-ports/).
+This table is based on the information on the [default ports page](/preview/reference/configuration/default-ports/).
 
 ##### Pre-provision nodes manually
 

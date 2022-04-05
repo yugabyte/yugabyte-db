@@ -23,7 +23,7 @@ showAsideToc: true
 
 The ldap authentication method is similar to the password method, except that it uses LDAP to verify the password. Therefore, before LDAP can be used for authentication, the user must already exist in the database (and have appropriate permissions).
 
-LDAP Authentication can be enabled in the YugabyteDB cluster by setting the LDAP configuration with <code>[--ysql_hba_conf](/latest/reference/configuration/yb-tserver/#ysql-hba-conf)</code> flag. YugabyteDB supports two modes for LDAP authentication:
+LDAP Authentication can be enabled in the YugabyteDB cluster by setting the LDAP configuration with <code>[--ysql_hba_conf](/preview/reference/configuration/yb-tserver/#ysql-hba-conf)</code> flag. YugabyteDB supports two modes for LDAP authentication:
 
 * <strong>simple-bind</strong> mode
 *  <strong>search+bind</strong> mode

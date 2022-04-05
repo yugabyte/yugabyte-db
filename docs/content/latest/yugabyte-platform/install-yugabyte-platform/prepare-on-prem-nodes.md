@@ -43,8 +43,8 @@ For more information on ports used by YugabyteDB, refer to [Default ports](../..
 
 To prepare nodes for on premises deployment:
 
-1. Ensure that the YugabyteDB nodes conform to the requirements outlined in the [deployment checklist](/latest/deploy/checklist/). This checklist also gives an idea of [recommended instance types across public clouds](/latest/deploy/checklist/#running-on-public-clouds). 
-1. Install the prerequisites and verify the system resource limits, as described in [system configuration](/latest/deploy/manual-deployment/system-config).
+1. Ensure that the YugabyteDB nodes conform to the requirements outlined in the [deployment checklist](/preview/deploy/checklist/). This checklist also gives an idea of [recommended instance types across public clouds](/preview/deploy/checklist/#running-on-public-clouds).
+1. Install the prerequisites and verify the system resource limits, as described in [system configuration](/preview/deploy/manual-deployment/system-config).
 1. Ensure you have `ssh` access to the server and root access (or the ability to run `sudo`; the sudo user can require a password but having passwordless access is desirable for simplicity and ease of use).
 1. Execute the following command to verify that you can `ssh` into this node (from your local machine if the node has a public address):
 
@@ -59,19 +59,19 @@ The following actions are performed with sudo access:
 * Create the `prometheus:prometheus` user and group.
 
   {{< tip title="Tip" >}}
-If you are using the LDAP directory for managing system users, you can preprovision Yugabyte and Prometheus users, as follows: 
+If you are using the LDAP directory for managing system users, you can preprovision Yugabyte and Prometheus users, as follows:
 
 * Ensure that the `yugabyte` user belongs to the `yugabyte` group.
 
 * Set the home directory for the `yugabyte` user (default `/home/yugabyte`) and ensure that the directory is owned by `yugabyte:yugabyte`. The home directory is used during cloud provider configuration.
-  
+
 * The Prometheus username and the group can be user-defined. You enter the custom user during the cloud provider configuration.
   {{< /tip >}}
 
 * Ensure that you can schedule Cron jobs with Crontab. Cron jobs are used for health monitoring, log file rotation, and cleanup of system core files.
 
   {{< tip title="Tip" >}}
-For any third-party Cron scheduling tools, you can disable Crontab and add the following Cron entries: 
+For any third-party Cron scheduling tools, you can disable Crontab and add the following Cron entries:
 
 ```sh
 # Ansible: cleanup core files hourly

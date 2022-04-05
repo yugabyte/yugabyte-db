@@ -45,7 +45,7 @@ CREATE INDEX index_name ON table_name(column_list);
 
 ## Example
 
-This example uses the `categories` table from the [Northwind sample database](/latest/sample-data/northwind/). Follow the steps to create a local [cluster](/latest/quick-start/) or in [Yugabyte Cloud](/latest/yugabyte-cloud/cloud-connect/), and [install](/latest/sample-data/northwind/#install-the-northwind-sample-database) the sample Northwind database.
+This example uses the `categories` table from the [Northwind sample database](/preview/sample-data/northwind/). Follow the steps to create a local [cluster](/preview/quick-start/) or in [Yugabyte Cloud](/preview/yugabyte-cloud/cloud-connect/), and [install](/preview/sample-data/northwind/#install-the-northwind-sample-database) the sample Northwind database.
 
 - View the contents of the `categories` table.
 

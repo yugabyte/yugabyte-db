@@ -38,7 +38,7 @@ Strings, character data types, or text. What you want to call it is up to you. M
 
 ### Character data types
 
-For character data types, see [Data types](/latest/api/ysql/datatypes/). Note that YugabyteDB implements the data type aliases and that is what is used here.
+For character data types, see [Data types](/preview/api/ysql/datatypes/). Note that YugabyteDB implements the data type aliases and that is what is used here.
 
 With PostgreSQL, the use of different character data types has a historical aspect. YugabyteDB — being a more recent implementation — has no such history. Consider keeping your use of character data types simple, ideally just 'text', or 'varchar(n)' if you require a restricted length. Although it's your choice, using text and then verifying the length of a character string will allow you to develop your own approach to managing this scenario, rather than encountering errors by exceeding some arbitrary length.
 
@@ -125,7 +125,7 @@ In the last example above, the column 'hasindexes' is a `Boolean` data type and 
 
 There are a lot of functions that can be applied to text. Below the functions are classified into logical groupings - in many cases the capability of the functions overlap and personal choice will determine how you approach solving the problem.
 
-The focus here was to quickly show how each of the functions could be used, along with some examples. It is assumed that you have the [`yb_demo` database](/latest/quick-start/explore-ysql/#1-load-data) installed.
+The focus here was to quickly show how each of the functions could be used, along with some examples. It is assumed that you have the [`yb_demo` database](/preview/quick-start/explore-ysql/#1-load-data) installed.
 
 ### Altering the appearance of text
 

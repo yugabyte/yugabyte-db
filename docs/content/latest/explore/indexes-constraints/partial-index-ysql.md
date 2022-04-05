@@ -44,7 +44,7 @@ The `WHERE` clause in the syntax specifies which rows need to be added to the in
 
 ## Example
 
-This example uses the `customers` table from the [Northwind sample database](/latest/sample-data/northwind/). Follow the steps to create a local [cluster](/latest/quick-start/) or in [Yugabyte Cloud](/latest/yugabyte-cloud/cloud-connect/), and [install](/latest/sample-data/northwind/#install-the-northwind-sample-database) the sample Northwind database.
+This example uses the `customers` table from the [Northwind sample database](/preview/sample-data/northwind/). Follow the steps to create a local [cluster](/preview/quick-start/) or in [Yugabyte Cloud](/preview/yugabyte-cloud/cloud-connect/), and [install](/preview/sample-data/northwind/#install-the-northwind-sample-database) the sample Northwind database.
 
 - View the contents of the `customers` table.
 
@@ -104,4 +104,4 @@ northwind=# EXPLAIN SELECT * FROM customers where (country = 'USA' and contact_t
 
 - [The Benefit of Partial Indexes in Distributed SQL Databases](https://blog.yugabyte.com/the-benefit-of-partial-indexes-in-distributed-sql-databases/)
 
-- [Indexes on JSON attributes](/latest/explore/json-support/jsonb-ysql/#6-indexes-on-json-attributes)
+- [Indexes on JSON attributes](/preview/explore/json-support/jsonb-ysql/#6-indexes-on-json-attributes)
