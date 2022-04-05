@@ -173,4 +173,4 @@ To learn more about the driver, you can read the [architecture documentation of 
 ## Next Steps
 
 - Learn how to build Java Application using [Hibernate ORM](../hibernate).
-- Learn how to [develop Spring Boot Applications using YugabyteDB JDBC Driver](/latest/integrations/spring-framework/sdyb/).
+- Learn more about configuring load balancing options present in YugabyteDB JDBC Driver in [YugabyteDB JDBC reference section](/latest/reference/drivers/java/yugabyte-jdbc-reference/#load-balancing).

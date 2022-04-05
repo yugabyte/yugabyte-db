@@ -263,7 +263,7 @@ Connection conn = DriverManager.getConnection(jdbc:postgresql://localhost:5433/y
 | sslcert | Client SSL Certificate | yugabytedb.crt
 | sslkey | Client SSL Certificate Key | yugabytedb.key
 
-## Transaction and Isolation Levels
+### Transaction and Isolation Levels
 
 YugabyteDB supports transactions for inserting and querying data from the tables. YugabyteDB supports different [isolation levels](../../../../architecture/transactions/isolation-levels/) for maintaing strong consistency for concurrent data access.
 

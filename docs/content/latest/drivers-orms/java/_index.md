@@ -52,7 +52,7 @@ For fully runnable code snippets and explanations for common operations, see the
 | [Postgres JDBC Driver](/latest/reference/drivers/java/postgres-jdbc-reference/) | JDBC Driver | [Hello World](/latest/quick-start/build-apps/java/ysql-jdbc) <br />[CRUD App](postgres-jdbc)
 | [Hibernate](hibernate) | ORM |  [Hello World](/latest/quick-start/build-apps/java/ysql-jdbc) <br />[CRUD App](/latest/integrations/spring-framework/sdyb/#examples) |
 
-## Learn More
+<!-- ## Learn More
 
 - Learn about configuring load balancing options present in YugabyteDB JDBC Driver in [YugabyteDB JDBC reference section](/latest/reference/drivers/java/yugabyte-jdbc-reference/#load-balancing).
-- Learn how to [develop Spring Boot Applications using Spring Data YugabyteDB project](/latest/integrations/spring-framework/sdyb/).
+- Learn how to [develop Spring Boot Applications using Spring Data YugabyteDB project](/latest/integrations/spring-framework/sdyb/). -->
