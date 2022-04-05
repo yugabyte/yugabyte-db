@@ -7,7 +7,7 @@ image: /images/section_icons/index/quick_start.png
 headcontent: Build the source code.
 type: page
 menu:
-  latest:
+  preview:
     identifier: build-from-src-3-ubuntu
     parent: core-database
     weight: 2912
@@ -55,7 +55,7 @@ sudo apt-get update
 sudo apt-get install uuid-dev libbz2-dev libreadline-dev maven ninja-build \
                      cmake curl rsync python3-pip python3-venv zip autoconf libtool \
                      pkg-config libssl1.0-dev libicu-dev bison flex \
-                     libncurses5-dev 
+                     libncurses5-dev
 ```
 
 Assuming this repository is checked out in `~/code/yugabyte-db`, do the following:
@@ -83,8 +83,8 @@ src/postgres/src/backend/libpq/be-secure-openssl.c:665: undefined reference to `
 build/release-gcc-dynamic-ninja/postgres_build/src/backend/libpq/be-secure-openssl.o: In function `my_sock_write':
 src/postgres/src/backend/libpq/be-secure-openssl.c:685: undefined reference to `BIO_get_data'
 ```
-The code is probably not finding the right path for libssl1.0. Try a clean build `./yb_build.sh --clean release`.  
-If that doesn't work, look into your $PATH if some other openssl version path is being used.  
+The code is probably not finding the right path for libssl1.0. Try a clean build `./yb_build.sh --clean release`.
+If that doesn't work, look into your $PATH if some other openssl version path is being used.
 {{< /note >}}
 
 

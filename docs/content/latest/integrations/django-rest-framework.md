@@ -4,7 +4,7 @@ linkTitle: Django REST framework
 description: Django REST framework
 section: INTEGRATIONS
 menu:
-  latest:
+  preview:
     identifier: django-rest-framework
     weight: 571
 isTocNested: true

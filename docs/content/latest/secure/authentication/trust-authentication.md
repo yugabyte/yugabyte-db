@@ -6,7 +6,7 @@ description: Allow client to connect using a database user name.
 headcontent: Configure trust authentication YSQL clients
 image: /images/section_icons/secure/authentication.png
 menu:
-  latest:
+  preview:
     identifier: trust-authentication
     parent: authentication
     weight: 734

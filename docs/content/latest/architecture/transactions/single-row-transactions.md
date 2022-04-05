@@ -6,7 +6,7 @@ description: Learn how YugabyteDB offers ACID semantics for mutations involving 
 aliases:
   - /architecture/transactions/single-row-transactions/
 menu:
-  latest:
+  preview:
     identifier: architecture-single-row-transactions
     parent: architecture-acid-transactions
     weight: 1154

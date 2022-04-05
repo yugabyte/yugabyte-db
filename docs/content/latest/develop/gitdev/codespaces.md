@@ -3,7 +3,7 @@ title: Codespaces
 linkTitle: Codespaces
 description: GitHub Codespaces integrated development environment
 menu:
-  latest:
+  preview:
     identifier: codespaces
     parent: gitdev
     weight: 591
@@ -25,7 +25,7 @@ Codespaces doesn't require anything on your local computer other than a code edi
 
 You can find the source at [Spring Boot todo on GitHub](https://github.com/yugabyte/yb-todo-app.git).
 
-**The easy way to get started** with Codespaces is to simply fork the [source repository](https://github.com/yugabyte/yb-todo-app.git) and follow the instructions in [Set up the Codespaces environment](#set-up-the-codespaces-environment) to launch the Codespaces environment for your forked repository. 
+**The easy way to get started** with Codespaces is to simply fork the [source repository](https://github.com/yugabyte/yb-todo-app.git) and follow the instructions in [Set up the Codespaces environment](#set-up-the-codespaces-environment) to launch the Codespaces environment for your forked repository.
 
 If you want **to set up the Spring Boot app from scratch**, use the following instructions to bootstrap the base project template and copy the appropriate files and content from the [source repository](https://github.com/yugabyte/yb-todo-app.git).
 
@@ -66,7 +66,7 @@ In the command palette, type `Remote-containers: Add` and select `Add Developmen
 
 ![Initialize the remote containers](/images/develop/gitdev/codespace/find-container.png)
 
-This creates a `.devcontainer` folder and a JSON metadata file at the root of the source repository. The `devcontainer.json` file contains provisioning information for the development environment, with the necessary tools and runtime stack. 
+This creates a `.devcontainer` folder and a JSON metadata file at the root of the source repository. The `devcontainer.json` file contains provisioning information for the development environment, with the necessary tools and runtime stack.
 
 ### Customize the Codespace environment
 

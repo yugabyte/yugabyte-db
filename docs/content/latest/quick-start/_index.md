@@ -10,7 +10,7 @@ aliases:
   - /quick-start/
 section: YUGABYTEDB CORE
 menu:
-  latest:
+  preview:
     identifier: quick-start
     weight: 5
 ---

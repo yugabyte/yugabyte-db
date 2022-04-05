@@ -4,7 +4,7 @@ linkTitle: dp-results
 headerTitle: Output from running do_ntile(), do_percent_rank(), and do_cume_dist() on t4.dp_score
 description: Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation (reports of results).
 menu:
-  latest:
+  preview:
     identifier: dp-results
     parent: normal-distribution-analysis-reports
     weight: 20
@@ -15,7 +15,7 @@ showAsideToc: true
 ```
 Using ntile().
 
- bucket |  n   |   min_s    |   max_s    
+ bucket |  n   |   min_s    |   max_s
 --------+------+------------+------------
       1 | 5000 |    0.00000 |   33.41577
       2 | 5000 |   33.41745 |   37.61929

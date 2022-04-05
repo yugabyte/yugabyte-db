@@ -3,7 +3,7 @@ title: HLEN
 linkTitle: HLEN
 description: HLEN
 menu:
-  latest:
+  preview:
     parent: api-yedis
     weight: 2150
 aliases:

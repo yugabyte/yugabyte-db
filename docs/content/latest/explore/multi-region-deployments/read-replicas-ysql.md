@@ -4,7 +4,7 @@ headerTitle: Read replicas
 linkTitle: Read replicas
 description: Read replicas
 menu:
-  latest:
+  preview:
     name: Read replicas
     identifier: explore-multi-region-deployments-read-replicas-ysql
     parent: explore-multi-region-deployments
@@ -31,6 +31,6 @@ showAsideToc: true
 
 </ul>
 
-YSQL read replicas support is currently in Beta. 
+YSQL read replicas support is currently in Beta.
 
 No documentation is available at this time.

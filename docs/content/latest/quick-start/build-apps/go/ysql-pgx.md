@@ -4,7 +4,7 @@ headerTitle: Build a Go application
 linkTitle: Go
 description: Build a sample Go application with the Go PostgreSQL driver and perform basic database operations.
 menu:
-  latest:
+  preview:
     parent: build-apps
     name: Go
     identifier: go-2

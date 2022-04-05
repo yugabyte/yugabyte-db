@@ -3,7 +3,7 @@ title: Inspect the COVIDcast .csv files
 linkTitle: Inspect the COVIDcast data
 headerTitle: Inspect the COVIDcast .csv files
 menu:
-  latest:
+  preview:
     identifier: inspect-the-csv-files
     parent: ingest-the-covidcast-data
     weight: 10
@@ -116,7 +116,7 @@ The values in each of these two columns are the same for every row in the three 
 
 The descriptions above, and the successful outcome of the checks that the procedure [_"assert_assumptions_ok()"_](../ingest-scripts/cr-assert-assumptions-ok-sql) implements, inform the design of a single table to hold all of the data for the linear regression analysis.
 
-The information in the following four columns is redundant and needn't be included in the projection: 
+The information in the following four columns is redundant and needn't be included in the projection:
 
 ```
 GEO_TYPE      # always 'state'

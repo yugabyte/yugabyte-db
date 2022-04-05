@@ -4,7 +4,7 @@ linkTitle: Liquibase
 description: Using Liquibase with YugabyteDB
 section: INTEGRATIONS
 menu:
-  latest:
+  preview:
     identifier: liquibase
     weight: 571
 isTocNested: true

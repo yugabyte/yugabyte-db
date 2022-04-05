@@ -6,7 +6,7 @@ description: Compare FoundationDB with YugabyteDB.
 aliases:
   - /comparisons/foundationdb/
 menu:
-  latest:
+  preview:
     parent: comparisons
     weight: 1100
 isTocNested: false
@@ -91,7 +91,7 @@ As a multi-model database providing decentralized data services to power many mi
 
 ## Ease of use
 
-Last but not least, we evaluate the ease of use of a distributed system such as FoundationDB.  
+Last but not least, we evaluate the ease of use of a distributed system such as FoundationDB.
 
 ### Architectural simplicity
 

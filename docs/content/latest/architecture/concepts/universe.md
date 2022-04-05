@@ -7,7 +7,7 @@ aliases:
   - /preview/architecture/concepts/universe/
   - /preview/architecture/concepts/single-node/
 menu:
-  latest:
+  preview:
     identifier: architecture-concepts-universe
     parent: key-concepts
     weight: 1122

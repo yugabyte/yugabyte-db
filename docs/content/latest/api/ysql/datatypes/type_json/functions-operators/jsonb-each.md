@@ -4,7 +4,7 @@ headerTitle: jsonb_each() and json_each()
 linkTitle: jsonb_each()
 description: Create a row set with columns "key" (as a SQL text) and "value" (as a SQL jsonb) from a JSON object.
 menu:
-  latest:
+  preview:
     identifier: jsonb-each
     parent: json-functions-operators
     weight: 110
@@ -32,7 +32,7 @@ declare
     '{"a": 17, "b": "dog", "c": true, "d": {"a": 17, "b": "cat"}}';
 
   k_v_pairs t[] := null;
-  expected_k_v_pairs constant t[] := 
+  expected_k_v_pairs constant t[] :=
     array[
       ('a', '17'::jsonb),
       ('b', '"dog"'::jsonb),

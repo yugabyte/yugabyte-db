@@ -3,7 +3,7 @@ title: FLUSHALL
 linkTitle: FLUSHALL
 description: FLUSHALL
 menu:
-  latest:
+  preview:
     parent: api-yedis
     weight: 2064
 aliases:

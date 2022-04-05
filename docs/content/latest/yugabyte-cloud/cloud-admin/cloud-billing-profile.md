@@ -5,7 +5,7 @@ description: Manage your Yugabyte Cloud billing profile and payment methods and 
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  latest:
+  preview:
     identifier: cloud-billing-profile
     parent: cloud-admin
     weight: 200

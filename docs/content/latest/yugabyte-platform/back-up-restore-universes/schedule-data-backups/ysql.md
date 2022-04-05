@@ -8,7 +8,7 @@ aliases:
   - /preview/manage/enterprise-edition/schedule-data-backup/
   - /preview/yugabyte-platform/back-up-restore-universes/schedule-data-backups/
 menu:
-  latest:
+  preview:
     identifier: schedule-data-backups-1-ysql
     parent: back-up-restore-universes
     weight: 40

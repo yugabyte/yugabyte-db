@@ -10,7 +10,7 @@ section: YUGABYTE PLATFORM
 aliases:
   - /preview/yugabyte-platform/administer-yp
 menu:
-  latest:
+  preview:
     identifier: administer-yugabyte-platform
     weight: 649
 ---

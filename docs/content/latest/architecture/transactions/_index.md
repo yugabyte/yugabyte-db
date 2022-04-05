@@ -8,7 +8,7 @@ headcontent: DocDB is YugabyteDB's distributed document store responsible for tr
 aliases:
   - /architecture/transactions/
 menu:
-  latest:
+  preview:
     identifier: architecture-acid-transactions
     parent: architecture
     weight: 1120

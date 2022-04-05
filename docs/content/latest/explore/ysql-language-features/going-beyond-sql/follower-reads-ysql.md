@@ -7,7 +7,7 @@ aliases:
   - /preview/explore/multi-region-deployments/read-replicas
   - /preview/explore/multi-region-deployments/follower-reads-ysql/
 menu:
-  latest:
+  preview:
     identifier: follower-reads-ysql
     parent: going-beyond-sql
     weight: 280

@@ -8,7 +8,7 @@ aliases:
   - /preview/explore/two-data-centers/linux/
   - /preview/explore/two-data-centers/macos/
 menu:
-  latest:
+  preview:
     name: Async Replication (2+ regions)
     identifier: explore-multi-region-deployments-async-replication-2-ycql
     parent: explore-multi-region-deployments

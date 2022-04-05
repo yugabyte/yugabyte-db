@@ -5,7 +5,7 @@ description: Using GORM with YugabyteDB
 aliases:
 section: INTEGRATIONS
 menu:
-  latest:
+  preview:
     identifier: gorm
     weight: 571
 isTocNested: true

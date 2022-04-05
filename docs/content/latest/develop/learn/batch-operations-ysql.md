@@ -6,7 +6,7 @@ description: Learn how batch operations in YSQL send a set of operations as a si
 aliases:
   - /preview/develop/learn/batch-operations/
 menu:
-  latest:
+  preview:
     identifier: batch-operations-2-ysql
     parent: learn
     weight: 568

@@ -7,7 +7,7 @@ aliases:
   - /quick-start/install/
   - /preview/quick-start/install/
 menu:
-  latest:
+  preview:
     parent: quick-start
     name: 1. Install YugabyteDB
     identifier: install-1-macos

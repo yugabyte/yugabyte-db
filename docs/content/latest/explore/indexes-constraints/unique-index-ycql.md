@@ -4,7 +4,7 @@ linkTitle: Unique indexes
 description: Using Unique indexes in YCQL
 image: /images/section_icons/secure/create-roles.png
 menu:
-  latest:
+  preview:
     identifier: unique-index-ycql
     parent: explore-indexes-constraints
     weight: 231

@@ -3,7 +3,7 @@ title: CONFIG
 linkTitle: CONFIG
 description: CONFIG
 menu:
-  latest:
+  preview:
     parent: api-yedis
     weight: 2030
 aliases:

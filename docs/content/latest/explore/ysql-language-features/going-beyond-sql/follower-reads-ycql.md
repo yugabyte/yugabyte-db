@@ -10,7 +10,7 @@ aliases:
   - /preview/explore/high-performance/tunable-reads/
   - /preview/explore/multi-region-deployments/follower-reads-ycql/
 menu:
-  latest:
+  preview:
     identifier: follower-reads-ycql
     parent: going-beyond-sql
     weight: 285

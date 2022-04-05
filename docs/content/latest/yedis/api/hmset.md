@@ -3,7 +3,7 @@ title: HMSET
 linkTitle: HMSET
 description: HMSET
 menu:
-  latest:
+  preview:
     parent: api-yedis
     weight: 2170
 aliases:

@@ -5,7 +5,7 @@ description: Add users to Yugabyte Cloud clusters
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  latest:
+  preview:
     identifier: add-users
     parent: cloud-secure-clusters
     weight: 350

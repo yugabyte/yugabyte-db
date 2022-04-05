@@ -4,7 +4,7 @@ headerTitle: Authorization platform
 linkTitle: Authorization platform
 description: Use the role-based access control (RBAC) model in the platform to manage users and roles.
 menu:
-  latest:
+  preview:
     parent: security
     identifier: authorization-platform
     weight: 27

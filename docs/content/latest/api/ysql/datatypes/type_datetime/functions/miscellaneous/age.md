@@ -4,7 +4,7 @@ headerTitle: Function age() returns integer
 linkTitle: Function age()
 description: The semantics of "function age() returns integer". [YSQL]
 menu:
-  latest:
+  preview:
     identifier: age
     parent: miscellaneous
     weight: 10
@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-## The semantics of the two-parameter overload of function age(timestamp[tz], timestamp[tz])  
+## The semantics of the two-parameter overload of function age(timestamp[tz], timestamp[tz])
 
 This section defines the semantics of the overload of the function _age()_ with two parameters of data type plain _timestamp_ by implementing the defining rules in PL/pgSQL in the function _modeled_age()_. The rules by which the returned _interval_ value is calculated are the same for the _(timestamptz, timestamptz)_ overload as for the plain _(timestamp, timestamp)_ overload except that, for the _with time zone_ overload, the actual timezone component (whether this is specified implicitly or taken from the session environment) and the sensitivity to the reigning timezone have their usual effect.
 
@@ -63,7 +63,7 @@ select
 This is the result:
 
 ```output
- Feb-2011 | Feb-2012 | Apr-2013 | Dec-2016 
+ Feb-2011 | Feb-2012 | Apr-2013 | Dec-2016
 ----------+----------+----------+----------
        28 |       29 |       30 |       31
 ```
@@ -134,7 +134,7 @@ declare
   dd_dob         constant int              not null := extract(day   from t_dob);
   ss_dob         constant double precision not null := extract(epoch from t_dob::time);
 
-  years                   int              not null := 
+  years                   int              not null :=
     case
       -- Special treatment is needed when yy_today and yy_dob span AC/BC
       -- 'cos there's no year zero.
@@ -164,7 +164,7 @@ begin
   declare
     age constant interval not null := make_interval(years=>years, months=>months, days=>days, secs=>secs);
   begin
-    return case negative_age 
+    return case negative_age
       when true then -age
       else            age
     end;
@@ -391,7 +391,7 @@ This should give you a very high confidence indeed that the function _modeled_ag
 
 The effect of _age(t)_ is identical to the effect of _age(\<midnight today\>, t)_. Here's a demonstration of the semantics. The expression _date_trunc('day', clock_timestamp())_ is copied from the definition of _today()_ in the subsection [Consider user-defined functions rather than 'today', 'tomorrow', and 'yesterday'](../../current-date-time-moment/#consider-user-defined-functions-rather-than-today-tomorrow-and-yesterday).
 
-Do this to test this assertion for the _timestamptz_ overloads: 
+Do this to test this assertion for the _timestamptz_ overloads:
 
 ```plpgsql
 drop procedure if exists assert_one_parameter_overload_of_age_semantics(timestamptz) cascade;
@@ -421,7 +421,7 @@ call assert_one_parameter_overload_of_age_semantics(clock_timestamp());
 
 Each _call_ statement finishes without error, showing that the assertion holds for every test
 
-Do this to test this assertion for the plain _timestamp_ overloads: 
+Do this to test this assertion for the plain _timestamp_ overloads:
 
 ```plpgsql
 drop procedure if exists assert_one_parameter_overload_of_age_semantics(timestamp) cascade;

@@ -4,7 +4,7 @@ headerTitle: Build a Java application
 linkTitle: Java
 description: Build a sample Java application with the Yugabyte Java Driver for YCQL.
 menu:
-  latest:
+  preview:
     parent: build-apps
     name: Java
     identifier: java-4

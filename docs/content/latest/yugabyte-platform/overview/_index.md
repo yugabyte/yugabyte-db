@@ -10,7 +10,7 @@ section: YUGABYTE PLATFORM
 aliases:
   - /preview/yugabyte-platform/
 menu:
-  latest:
+  preview:
     identifier: overview-yp
     weight: 10
 ---

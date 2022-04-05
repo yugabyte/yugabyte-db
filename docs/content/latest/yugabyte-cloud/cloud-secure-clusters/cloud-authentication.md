@@ -5,7 +5,7 @@ description: Yugabyte Cloud cluster authentication and encryption.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  latest:
+  preview:
     identifier: cloud-authentication
     parent: cloud-secure-clusters
     weight: 450

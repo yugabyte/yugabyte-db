@@ -5,7 +5,7 @@ description: Cluster Tables tab
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  latest:
+  preview:
     identifier: cluster-tables
     parent: cloud-monitor
     weight: 400

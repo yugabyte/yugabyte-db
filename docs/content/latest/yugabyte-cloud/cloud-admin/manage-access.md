@@ -5,7 +5,7 @@ description: Manage access to Yugabyte Cloud and your clusters.
 headcontent:
 image: /images/section_icons/secure/create-roles.png
 menu:
-  latest:
+  preview:
     identifier: manage-cloud-access
     parent: cloud-admin
     weight: 100

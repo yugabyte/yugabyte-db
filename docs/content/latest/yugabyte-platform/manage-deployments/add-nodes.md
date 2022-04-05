@@ -6,7 +6,7 @@ description: Use Yugabyte Platform to recover a decommissioned node.
 aliases:
   - /preview/manage/enterprise-edition/create-universe-multi-region
 menu:
-  latest:
+  preview:
     identifier: add-nodes
     parent: manage-deployments
     weight: 30

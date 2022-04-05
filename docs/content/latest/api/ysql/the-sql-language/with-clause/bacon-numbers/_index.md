@@ -5,7 +5,7 @@ linkTitle: case study—Bacon Numbers from IMDb
 description: Case study showing how to use a recursive CTE to solve the "Six Degrees of Kevin Bacon" problem using IMDb data.
 image: /images/section_icons/api/ysql.png
 menu:
-  latest:
+  preview:
     identifier: bacon-numbers
     parent: with-clause
     weight: 60
@@ -17,7 +17,7 @@ The Bacon Numbers problem, sometimes referred to as "The Six_Degrees of Kevin Ba
 
 ## Representing actors and movies data
 
-The Bacon Numbers problem is conventionally formulated in the context of the data represented in the IMDb—an acronym for Internet Movie Database. See [this Wikipedia article](https://en.wikipedia.org/wiki/IMDb). The data are freely available from IMDb but it's better, for the purposes of this section's pedagogy, to use sufficient subsets of the total IMDb content. These subsets restrict the population to the movies in which Kevin Bacon has acted and project the facts about the actors and movies to just their names. This entity relationship diagram (a.k.a. ERD) depicts the sufficient subset of the IMDb: 
+The Bacon Numbers problem is conventionally formulated in the context of the data represented in the IMDb—an acronym for Internet Movie Database. See [this Wikipedia article](https://en.wikipedia.org/wiki/IMDb). The data are freely available from IMDb but it's better, for the purposes of this section's pedagogy, to use sufficient subsets of the total IMDb content. These subsets restrict the population to the movies in which Kevin Bacon has acted and project the facts about the actors and movies to just their names. This entity relationship diagram (a.k.a. ERD) depicts the sufficient subset of the IMDb:
 
 ![imdb-erd](/images/api/ysql/the-sql-language/with-clause/bacon-numbers/imdb-erd.jpg)
 

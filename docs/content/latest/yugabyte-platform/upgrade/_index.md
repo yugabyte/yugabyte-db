@@ -8,7 +8,7 @@ type: page
 section: YUGABYTE PLATFORM
 aliases:
 menu:
-  latest:
+  preview:
     identifier: upgrade
     weight: 649
 ---
@@ -24,7 +24,7 @@ You can upgrade Yugabyte Platform to a newer version.
         <div class="title">Upgrade Yugabyte Platform using Replicated</div>
       </div>
       <div class="body">
-        Use Replicated to upgrade Yugabyte Platform 
+        Use Replicated to upgrade Yugabyte Platform
       </div>
     </a>
   </div>

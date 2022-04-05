@@ -9,7 +9,7 @@ aliases:
   - /preview/develop/build-apps/go/
   - /preview/quick-start/build-apps/go/
 menu:
-  latest:
+  preview:
     parent: build-apps
     name: Go
     identifier: go-3

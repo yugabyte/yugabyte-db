@@ -9,7 +9,7 @@ aliases:
   - /benchmark/tpcc
   - /benchmark/tpcc-ysql
 menu:
-  latest:
+  preview:
     identifier: tpcc-ysql
     parent: benchmark
     weight: 4

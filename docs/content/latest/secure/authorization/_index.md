@@ -8,7 +8,7 @@ image: /images/section_icons/secure/authorization.png
 aliases:
   - /secure/authorization/
 menu:
-  latest:
+  preview:
     identifier: authorization
     parent: secure
     weight: 722

@@ -6,7 +6,7 @@ description: Use Yugabyte Platform to delete a universe.
 aliases:
   - /preview/manage/enterprise-edition/delete-universe/
 menu:
-  latest:
+  preview:
     identifier: delete-universe
     parent: manage-deployments
     weight: 70

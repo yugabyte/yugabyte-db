@@ -4,7 +4,7 @@ linkTitle: Scatter-plot for 21-Oct-2020
 headerTitle: Average COVID-like symptoms vs average mask-wearing by state scatter plot for 21-Oct-2020
 description: Average COVID-like symptoms vs average mask-wearing by state scatter plot for 21-Oct-2020
 menu:
-  latest:
+  preview:
     identifier: scatter-plot-for-21-Oct-2020
     parent: analyze-the-covidcast-data
     weight: 30
@@ -14,7 +14,7 @@ showAsideToc: true
 
 ## Scatter-plot for 21-Oct-2020
 
-The dots on this plot represent _"mask_wearing_pct"_ on the x-axis with _"symptoms_pct"_ on the y-axis from this query: 
+The dots on this plot represent _"mask_wearing_pct"_ on the x-axis with _"symptoms_pct"_ on the y-axis from this query:
 
 ```plpgsql
 select
@@ -58,7 +58,7 @@ from a;
 This is the result:
 
 ```
- survey_date |   s   |   i    
+ survey_date |   s   |   i
 -------------+-------+--------
  10/21       |  -1.2 |  131.4
 ```
@@ -138,7 +138,7 @@ from a;
 This is the result:
 
 ```
-  r2   |   s   |   i    
+  r2   |   s   |   i
 -------+-------+--------
   0.98 |  -1.2 |  130.8
 ```

@@ -7,7 +7,7 @@ image: /images/section_icons/secure/tls-encryption/connect-to-cluster.png
 aliases:
   - /secure/tls-encryption/connect-to-cluster
 menu:
-  latest:
+  preview:
     identifier: connect-to-cluster
     parent: tls-encryption
     weight: 40

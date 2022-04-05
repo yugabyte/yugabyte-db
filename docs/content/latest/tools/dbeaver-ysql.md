@@ -6,7 +6,7 @@ description: Use the DBeaver multi-platform database tool to explore and query Y
 aliases:
   - /preview/tools/dbeaver
 menu:
-  latest:
+  preview:
     identifier: dbeaver-ysql
     parent: tools
     weight: 2710

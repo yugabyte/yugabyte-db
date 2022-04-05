@@ -5,7 +5,7 @@ linkTitle: Asynchronous replication
 description: Enable deployment using asynchronous replication between two data centers
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
-  latest:
+  preview:
     parent: create-deployments
     identifier: async-replication-platform
     weight: 633

@@ -4,7 +4,7 @@ linkTitle: Shared responsibility model
 description: Yugabyte Cloud security shared responsibility model.
 image: /images/section_icons/index/secure.png
 menu:
-  latest:
+  preview:
     parent: cloud-security
     identifier: shared-responsibility
 weight: 20

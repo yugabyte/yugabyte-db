@@ -4,7 +4,7 @@ headerTitle: READ COMMITTED isolation level
 linkTitle: Read Committed
 description: Details about READ COMMITTED isolation level
 menu:
-  latest:
+  preview:
     identifier: architecture-read-committed
     parent: architecture-acid-transactions
     weight: 1153
@@ -38,7 +38,7 @@ To support READ COMMITTED isolation level in YSQL with the same semantics as Pos
 
         **Recheck steps:**
         1. If a row is deleted, ignore it
-        2. Apply update/ acquire lock on updated version of row if where clause evaluates to true on the updated version of row. (Note that the updated version of a row could have a different pk as well - this implies PostgreSQL follows the chain of updates for a row even across pk changes). 
+        2. Apply update/ acquire lock on updated version of row if where clause evaluates to true on the updated version of row. (Note that the updated version of a row could have a different pk as well - this implies PostgreSQL follows the chain of updates for a row even across pk changes).
 3. **INSERT**
     1. ON CONFLICT DO UPDATE: if a conflict occurs, wait for the conflicting transaction to commit/ rollback.
         1. On rollback, proceed as usual
@@ -353,7 +353,7 @@ select * from test where v=5;
 ---+---
  1 | 5
  2 | 5
- 3 | 5  
+ 3 | 5
 (3 rows)
 ```
 
@@ -549,7 +549,7 @@ select * from test;
   <tr>
    <td>
 
-```sql   
+```sql
 commit;
 ```
 
@@ -592,7 +592,7 @@ begin transaction isolation level read committed;
    <td>
    </td>
    <td>
-   
+
 ```sql
 begin transaction isolation level read committed;
 ```
@@ -710,7 +710,7 @@ commit;
   </tr>
   <tr>
    <td>
-   
+
 ```
  k  | v
 ----+----

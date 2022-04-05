@@ -1,10 +1,10 @@
 ---
-title: Case study—using a recursive CTE to traverse an employee hierarchy 
+title: Case study—using a recursive CTE to traverse an employee hierarchy
 linkTitle: case study—traversing an employee hierarchy
 headerTitle: Case study—using a recursive CTE to traverse an employee hierarchy
 description: Case study to show how to traverse a hierarchy, breadth or depth first, using a recursive CTE.
 menu:
-  latest:
+  preview:
     identifier: emps-hierarchy
     parent: with-clause
     weight: 40
@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-A hierarchy is a specialization of the general notion of a graph—and, as such, it's the simplest kind of graph that still deserves that name. The taxonomy of successive specializations starts with the most general (the _undirected cyclic graph_) and successively descends to the most restricted, a hierarchy. The taxonomy refers to a hierarchy as a _rooted tree_. All this is explained in the section [Using a recursive CTE to traverse graphs of all kinds](../traversing-general-graphs/). 
+A hierarchy is a specialization of the general notion of a graph—and, as such, it's the simplest kind of graph that still deserves that name. The taxonomy of successive specializations starts with the most general (the _undirected cyclic graph_) and successively descends to the most restricted, a hierarchy. The taxonomy refers to a hierarchy as a _rooted tree_. All this is explained in the section [Using a recursive CTE to traverse graphs of all kinds](../traversing-general-graphs/).
 
 The representation of a general graph requires an explicit, distinct, representation of the nodes and the edges. Of course, a hierarchy can be represented in this way. But because of how it's restricted, it allows a simpler representation in a SQL database where only the nodes are explicitly represented, in a single table, and where the edges are inferred using a self-referential foreign key:
 
@@ -79,9 +79,9 @@ select name, mgr_name from emps order by 2 nulls first, 1;
 This is the result:
 
 ```
-  name  | mgr_name 
+  name  | mgr_name
 --------+----------
- mary   | 
+ mary   |
 
  joan   | bill
 
@@ -159,7 +159,7 @@ with
         1,
         '-',
         name
-      from emps             
+      from emps
       where mgr_name is null
     )
 
@@ -179,7 +179,7 @@ with
       from
       emps as e
       inner join
-      hierarchy_of_emps as h on e.mgr_name = h.name 
+      hierarchy_of_emps as h on e.mgr_name = h.name
     )
   )
 select
@@ -189,7 +189,7 @@ select
 from hierarchy_of_emps;
 ```
 
-Each successive iteration of the _recursive term_ accumulates the set of direct reports, where such a report exists, of the employees produced first by the _non-recursive term_ (i.e. the ultimate manager) and then by the employees produced by the previous iteration of the _recursive term_. The iteration stops when none of the employees produced by  the previous  iteration of the _recursive term_ has a report. 
+Each successive iteration of the _recursive term_ accumulates the set of direct reports, where such a report exists, of the employees produced first by the _non-recursive term_ (i.e. the ultimate manager) and then by the employees produced by the previous iteration of the _recursive term_. The iteration stops when none of the employees produced by  the previous  iteration of the _recursive term_ has a report.
 
 Notice that the choice to define the ultimate manager to be at depth _1_ is just that: a design choice. You might prefer to define the ultimate manager to be at depth _0_, arguing that it's better to interpret this measure as the number of managers up the chain that the present employee has.
 
@@ -212,7 +212,7 @@ order by
 This produces a so-called "breadth first" order. This is the result:
 
 ```
- depth | mgr_name |  name  
+ depth | mgr_name |  name
 -------+----------+--------
      1 | -        | mary
 
@@ -253,7 +253,7 @@ with
 
     select p.path||e.name
     from emps as e
-    inner join paths as p on e.mgr_name = p.path[cardinality(path)] 
+    inner join paths as p on e.mgr_name = p.path[cardinality(path)]
   )
 select path from paths;
 ```
@@ -280,7 +280,7 @@ The design of the `ORDER BY` clause relies on the following fact—documented in
 This is the result:
 
 ```
- depth |         path          
+ depth |         path
 -------+-----------------------
      1 | {mary}
 
@@ -372,7 +372,7 @@ This query is almost identical to the query shown at [`do-breadth-first-path-que
 This is the result:
 
 ```
- depth |         path          
+ depth |         path
 -------+-----------------------
      1 | {mary}
      2 | {mary,fred}
@@ -417,7 +417,7 @@ order by
 This is the result:
 
 ```
- emps hierarchy 
+ emps hierarchy
 ----------------
  mary
    fred
@@ -614,7 +614,7 @@ with
         0,
         name,
         mgr_name
-      from emps             
+      from emps
       where name = $1
     )
 
@@ -650,7 +650,7 @@ execute bottom_up_simple('joan');
 This is the result:
 
 ```
- depth | name | mgr_name 
+ depth | name | mgr_name
 -------+------+----------
      0 | joan | bill
      1 | bill | john
@@ -673,7 +673,7 @@ as $body$
     recursive hierarchy_of_emps(mgr_name, path) as (
       (
         select mgr_name, array[name]
-        from emps             
+        from emps
         where name = start_name
       )
       union all
@@ -697,7 +697,7 @@ select bottom_up_path('joan');
 This is the result:
 
 ```
-    bottom_up_path     
+    bottom_up_path
 -----------------------
  {joan,bill,john,mary}
 ```
@@ -729,7 +729,7 @@ select bottom_up_path_display('joan');
 This is the result:
 
 ```
-  bottom_up_path_display   
+  bottom_up_path_display
 ---------------------------
  joan > bill > john > mary
 ```

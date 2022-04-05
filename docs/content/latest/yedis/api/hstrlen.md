@@ -3,7 +3,7 @@ title: HSTRLEN
 linkTitle: HSTRLEN
 description: HSTRLEN
 menu:
-  latest:
+  preview:
     parent: api-yedis
     weight: 2190
 aliases:

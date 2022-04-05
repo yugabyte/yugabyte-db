@@ -6,7 +6,7 @@ description: Compare Amazon DynamoDB with YugabyteDB.
 aliases:
   - /comparisons/amazon-dynamodb/
 menu:
-  latest:
+  preview:
     parent: comparisons
     weight: 1105
 isTocNested: false

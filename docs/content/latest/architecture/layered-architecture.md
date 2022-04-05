@@ -6,7 +6,7 @@ description: Learn about the layered architecture of YugabyteDB in the query lay
 aliases:
   - /preview/architecture/layered-architecture/
 menu:
-  latest:
+  preview:
     identifier: architecture-layered-architecture
     parent: architecture
     weight: 1109

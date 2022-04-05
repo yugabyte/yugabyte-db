@@ -6,7 +6,7 @@ aliases:
   - /preview/integrations
 section: INTEGRATIONS
 menu:
-  latest:
+  preview:
     identifier: apache-kafka
     weight: 571
 isTocNested: true

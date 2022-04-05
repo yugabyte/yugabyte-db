@@ -10,7 +10,7 @@ aliases:
   - /preview/yugabyte-cloud/connect-to-clusters/
   - /preview/yugabyte-cloud/cloud-basics/connect-to-clusters/
 menu:
-  latest:
+  preview:
     identifier: cloud-connect
     weight: 40
 isTocNested: true

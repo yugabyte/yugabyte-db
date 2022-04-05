@@ -6,7 +6,7 @@ description: Use Python to build a YugabyteDB application that interacts with YE
 aliases:
   - /preview/yedis/develop/client-drivers/python
 menu:
-  latest:
+  preview:
     identifier: client-drivers-yedis-python
     parent: develop-yedis
 isTocNested: true

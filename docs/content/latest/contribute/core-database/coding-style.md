@@ -7,7 +7,7 @@ image: /images/section_icons/index/quick_start.png
 headcontent: YugabyteDB coding style
 type: page
 menu:
-  latest:
+  preview:
     identifier: coding-style
     parent: core-database
     weight: 2914

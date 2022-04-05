@@ -7,7 +7,7 @@ headcontent: Benchmark YCQL performance using YCSB.
 aliases:
   - /preview/benchmark/ycsb
 menu:
-  latest:
+  preview:
     identifier: ycsb-3-ycql
     parent: benchmark
     weight: 5

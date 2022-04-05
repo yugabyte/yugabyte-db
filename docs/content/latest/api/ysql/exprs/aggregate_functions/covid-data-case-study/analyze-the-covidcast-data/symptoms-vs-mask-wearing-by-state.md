@@ -4,7 +4,7 @@ linkTitle: Data for scatter-plot for 21-Oct-2020
 headerTitle: Select the data for COVID-like symptoms vs mask-wearing by state scatter plot for 21-Oct-2020
 description: Select the data for COVID-like symptoms vs mask-wearing by state scatter plot for 21-Oct-2020
 menu:
-  latest:
+  preview:
     identifier: symptoms-vs-mask-wearing-by-state
     parent: analyze-the-covidcast-data
     weight: 20
@@ -27,7 +27,7 @@ order by 1;
 selects out the data for 21-Oct-2020 so that they can be used to draw a scatter-plot. This is the result:
 
 ```
- % wearing mask | % with symptoms | state 
+ % wearing mask | % with symptoms | state
 ----------------+-----------------+-------
              66 |              34 | wy
              71 |              49 | sd

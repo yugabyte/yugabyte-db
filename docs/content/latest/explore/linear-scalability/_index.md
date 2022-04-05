@@ -20,7 +20,7 @@ aliases:
   - /preview/explore/auto-sharding/kubernetes/
 image: /images/section_icons/explore/linear_scalability.png
 menu:
-  latest:
+  preview:
     identifier: explore-scalability
     parent: explore
     weight: 220

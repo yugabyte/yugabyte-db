@@ -4,7 +4,7 @@ linkTitle: Histogram report
 headerTitle: Output from running histogram() on t4.dp_score
 description: Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation (reports of results).
 menu:
-  latest:
+  preview:
     identifier: histogram-report
     parent: normal-distribution-analysis-reports
     weight: 10
@@ -13,14 +13,14 @@ showAsideToc: true
 ---
 
 ```
-     1 | 
-     1 | 
-     1 | 
-     1 | 
-     5 | 
-    12 | 
-    25 | 
-    25 | 
+     1 |
+     1 |
+     1 |
+     1 |
+     5 |
+    12 |
+    25 |
+    25 |
     72 | =
    109 | =
    162 | ==
@@ -58,9 +58,9 @@ showAsideToc: true
    125 | =
     82 | =
     65 | =
-    25 | 
-     9 | 
-     8 | 
-     2 | 
-     1 | 
+    25 |
+     9 |
+     8 |
+     2 |
+     1 |
 ```

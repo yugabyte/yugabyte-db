@@ -6,7 +6,7 @@ description: CDC or Change data capture is a process to capture changes made to 
 image: /images/section_icons/index/develop.png
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
-  latest:
+  preview:
     parent: explore
     identifier: change-data-capture
     weight: 299

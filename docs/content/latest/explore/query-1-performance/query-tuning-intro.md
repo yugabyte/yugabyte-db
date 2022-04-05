@@ -6,7 +6,7 @@ aliases:
 headerTitle: Tuning queries in YugabyteDB
 image: /images/section_icons/index/develop.png
 menu:
-  latest:
+  preview:
     identifier: query-tuning-intro
     parent: query-tuning
     weight: 100

@@ -13,7 +13,7 @@ aliases:
   - /preview/explore/cloud-native/orchestration-readiness/
 section: YUGABYTEDB CORE
 menu:
-  latest:
+  preview:
     identifier: explore
     weight: 540
 ---

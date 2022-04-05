@@ -3,7 +3,7 @@ title: HINCRBY
 linkTitle: HINCRBY
 description: HINCRBY
 menu:
-  latest:
+  preview:
     parent: api-yedis
     weight: 2135
 aliases:

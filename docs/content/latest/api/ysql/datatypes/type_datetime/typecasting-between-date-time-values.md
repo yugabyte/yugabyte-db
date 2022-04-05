@@ -4,7 +4,7 @@ headerTitle: Typecasting between values of different date-time datatypes
 linkTitle: Typecasting between date-time datatypes
 description: Describes how to typecast date-time values of different date-time datatypes. [YSQL]
 menu:
-  latest:
+  preview:
     identifier: typecasting-between-date-time-values
     parent: api-ysql-datatypes-datetime
     weight: 70
@@ -194,7 +194,7 @@ The rule here is trivial. The to-be-typecast _time_ value is taken as a real num
 
 ```plpgsql
 select (
-    (select time_value()::interval) = 
+    (select time_value()::interval) =
     (
       select make_interval(secs=>
         (
@@ -261,7 +261,7 @@ You might prefer to understand it like this:
 
 ```plpgsql
 select (
-    (select plain_timestamp_value()::date) = 
+    (select plain_timestamp_value()::date) =
     (
       select (
         extract(year  from plain_timestamp_value())::text||'-'||
@@ -296,7 +296,7 @@ You might prefer to understand it like this:
 
 ```plpgsql
 select (
-    (select plain_timestamp_value()::time) = 
+    (select plain_timestamp_value()::time) =
     (
     select (
       extract(hours   from plain_timestamp_value())::text||':'||
@@ -331,7 +331,7 @@ This best defines the semantics:
 ```plpgsql
 set time zone interval '-7 hours';
 select (
-    (select plain_timestamp_value()::timestamptz) = 
+    (select plain_timestamp_value()::timestamptz) =
     (select plain_timestamp_value() at time zone interval '-7 hours')
   )::text;
 ```
@@ -742,7 +742,7 @@ execute qry;
 This is the first result:
 
 ```output
-          winter           |          summer           
+          winter           |          summer
 ---------------------------+---------------------------
  2021-01-01 12:00:00+03:30 | 2021-07-01 12:00:00+04:30
 ```
@@ -757,7 +757,7 @@ execute qry;
 This is the second result:
 
 ```output
-         winter         |         summer         
+         winter         |         summer
 ------------------------+------------------------
  2021-01-01 12:00:00+02 | 2021-07-01 12:00:00+03
 ```

@@ -4,7 +4,7 @@ linkTitle: table t3
 headerTitle: Create and populate table t3
 description: Creates and populate table t3 with data that allows the demonstration of the YSQL window functions.
 menu:
-  latest:
+  preview:
     identifier: table-t3
     parent: data-sets
     weight: 40
@@ -91,7 +91,7 @@ order by day;
 ```
 This is the result of the second `SELECT`. To make them easier to read, a blank line has been manually inserted here between the rows for each successive week.
 ```
-       Day       | price  
+       Day       | price
 -----------------+--------
  Mon 15-Sep-2008 | $19.01
  Tue 16-Sep-2008 | $18.96

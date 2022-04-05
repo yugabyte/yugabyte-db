@@ -3,7 +3,7 @@ title: DEL
 linkTitle: DEL
 description: DEL
 menu:
-  latest:
+  preview:
     parent: api-yedis
     weight: 2040
 aliases:

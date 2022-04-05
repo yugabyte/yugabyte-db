@@ -5,7 +5,7 @@ linkTitle: traversing general graphs
 description: This section shows how to use a recursive CTE to traverse graphs of all kinds.
 image: /images/section_icons/api/ysql.png
 menu:
-  latest:
+  preview:
     identifier: traversing-general-graphs
     parent: with-clause
     weight: 50
@@ -93,7 +93,7 @@ This section describes the minimal table structure for representing graphs.
 
 ### Common code for traversing all kinds of graph — [here](./common-code/)
 
-The described traversal schemes all depend upon some common artifacts, like tables into which to insert the results to support subsequent _ad hoc_ queries and various helper functions and procedures. This section describes them. 
+The described traversal schemes all depend upon some common artifacts, like tables into which to insert the results to support subsequent _ad hoc_ queries and various helper functions and procedures. This section describes them.
 
 ### Path finding approaches
 

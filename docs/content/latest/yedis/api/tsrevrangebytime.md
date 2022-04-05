@@ -3,7 +3,7 @@ title: TSREVRANGEBYTIME
 linkTitle: TSREVRANGEBYTIME
 description: TSREVRANGEBYTIME
 menu:
-  latest:
+  preview:
     parent: api-yedis
     weight: 2460
 aliases:

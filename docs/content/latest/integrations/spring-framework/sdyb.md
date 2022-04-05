@@ -4,7 +4,7 @@ linkTitle: Spring Data YugabyteDB
 description: Spring Data YugabyteDB
 aliases:
 menu:
-  latest:
+  preview:
     identifier: sdyb
     parent: spring-framework
     weight: 578
@@ -28,7 +28,7 @@ The following are some of the features included in SDYB YSQL:
 - Topology awareness necessary for developing geographically-distributed applications
 - Partition awareness for achieving row-level geo-partitioning
 
-For more information, demonstrations, and contribution guidelines, see [Spring Data YugabyteDB GitHub project.](https://github.com/yugabyte/spring-data-yugabytedb/) 
+For more information, demonstrations, and contribution guidelines, see [Spring Data YugabyteDB GitHub project.](https://github.com/yugabyte/spring-data-yugabytedb/)
 
 ## Project Dependencies
 
@@ -54,24 +54,24 @@ The following example demonstrates how to create a basic shopping cart using SDY
 
 ```java
 public interface ShoppingCartRepository extends YsqlRepository<ShoppingCart, String> {
-  
+
   ShoppingCart findById(String id);
   List<ShoppingCart> findByUserId(String userId);
-  
+
 }
 
 @Service
 public class CartService {
 
   private final ShoppingCartRepository repository;
-  
+
   public CartService(CartService repository) {
     this.repository = repository;
   }
 
   public void doWork() {
     repository.deleteAll();
-    
+
     ShoppingCart myShoppingCart = new ShoppingCart();
     myShoppingCart.set("cart1")
     myShoppingCart.setUserId("u1001");
@@ -121,12 +121,12 @@ public class YsqlConfig extends AbstractYugabyteJdbcConfiguration {
   }
 
   @Bean
-  NamedParameterJdbcOperations namedParameterJdbcOperations(DataSource dataSource) { 
+  NamedParameterJdbcOperations namedParameterJdbcOperations(DataSource dataSource) {
     return new NamedParameterJdbcTemplate(dataSource);
   }
 
   @Bean
-  TransactionManager transactionManager(DataSource dataSource) {           
+  TransactionManager transactionManager(DataSource dataSource) {
     return new YugabyteTransactionManager(dataSource);
   }
 

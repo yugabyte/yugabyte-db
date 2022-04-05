@@ -4,7 +4,7 @@ headerTitle: Ad hoc examples of defining interval values
 linkTitle: Ad hoc examples
 description: Provides six ad-hoc-examples of defining interval values. [YSQL]
 menu:
-  latest:
+  preview:
     identifier: ad-hoc-examples
     parent: interval-representation
     weight: 10
@@ -153,7 +153,7 @@ select
 This is the result:
 
 ```output
-       i1       |       i2        
+       i1       |       i2
 ----------------+-----------------
  1 day 04:48:00 | 1 day -02:24:00
 ```
@@ -169,7 +169,7 @@ select
 This is the result:
 
 ```output
- 17.4 - 0.54*30 | 17.4 - 0.55*30 
+ 17.4 - 0.54*30 | 17.4 - 0.55*30
 ----------------+----------------
            1.20 |           0.90
 ```
@@ -185,7 +185,7 @@ select
 This is the result:
 
 ```output
-       i1       |    i2    
+       i1       |    i2
 ----------------+----------
  1 day 04:48:00 | 21:36:00
 ```
@@ -203,7 +203,7 @@ select (
 This is the result:
 
 ```output
- are they equal? 
+ are they equal?
 -----------------
  true
 ```

@@ -6,7 +6,7 @@ description: Enable diagnostics reporting and set collection levels on YB-Master
 aliases:
   - /preview/manage/diagnostics-reporting/
 menu:
-  latest:
+  preview:
     identifier: diagnostics-reporting
     parent: manage
     weight: 706

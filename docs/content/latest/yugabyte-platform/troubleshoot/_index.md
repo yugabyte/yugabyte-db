@@ -11,7 +11,7 @@ aliases:
   - /preview/troubleshoot/enterprise-edition/
   - /preview/troubleshoot/yugabyte-platform/
 menu:
-  latest:
+  preview:
     identifier: troubleshoot-yp
     weight: 648
 ---

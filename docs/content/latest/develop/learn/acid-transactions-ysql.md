@@ -7,7 +7,7 @@ aliases:
   - /preview/explore/transactional/acid-transactions/
   - /preview/develop/learn/acid-transactions/
 menu:
-  latest:
+  preview:
     identifier: acid-transactions-2-ysql
     parent: learn
     weight: 566

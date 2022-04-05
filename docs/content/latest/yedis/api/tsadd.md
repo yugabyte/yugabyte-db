@@ -3,7 +3,7 @@ title: TSADD
 linkTitle: TSADD
 description: TSADD
 menu:
-  latest:
+  preview:
     parent: api-yedis
     weight: 2400
 aliases:

@@ -8,7 +8,7 @@ aliases:
   - /preview/architecture/concepts/replication/
   - /preview/architecture/concepts/docdb/replication/
 menu:
-  latest:
+  preview:
     identifier: architecture-docdb-replication-default
     parent: architecture-docdb-replication
     weight: 1144

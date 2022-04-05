@@ -4,7 +4,7 @@ linkTitle: Table Partitioning
 description: Table Partitioning in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
-  latest:
+  preview:
     identifier: advanced-features-partitions
     parent: advanced-features
     weight: 225

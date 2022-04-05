@@ -6,7 +6,7 @@ description: Explicit Locking in YugabyteDB.
 headcontent: Explicit Locking in YugabyteDB.
 image: <div class="icon"><i class="fas fa-file-invoice-dollar"></i></div>
 menu:
-  latest:
+  preview:
     name: Explicit Locking
     identifier: explore-transactions-explicit-locking-1-ysql
     parent: explore-transactions

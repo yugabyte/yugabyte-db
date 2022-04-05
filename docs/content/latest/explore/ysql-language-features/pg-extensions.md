@@ -6,7 +6,7 @@ description: Summary of supported PostgreSQL extensions
 image: /images/section_icons/secure/create-roles.png
 summary: Reference for YSQL extensions
 menu:
-  latest:
+  preview:
     identifier: explore-ysql-postgresql-extensions
     parent: explore-ysql-language-features
     weight: 4400

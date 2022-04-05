@@ -1,10 +1,10 @@
 ---
 title: VPC network overview
-headerTitle: 
+headerTitle:
 linkTitle: Overview
 description: Requirements and considerations for setting up a VPC network.
 menu:
-  latest:
+  preview:
     identifier: cloud-vpc-intro
     parent: cloud-vpcs
     weight: 10

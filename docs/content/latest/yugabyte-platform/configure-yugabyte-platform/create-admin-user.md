@@ -4,7 +4,7 @@ headerTitle: Create an admin user
 linkTitle: Create admin user
 description: Create an admin user.
 menu:
-  latest:
+  preview:
     identifier: create-admin-user
     parent: configure-yugabyte-platform
     weight: 10
@@ -24,12 +24,12 @@ The following illustration shows the admin console:
 
 Note that by default, Yugabyte Platform runs as a single-tenant application.
 
-You proceed with the account creation as follows: 
+You proceed with the account creation as follows:
 
 - Select the environment.
 - Enter your new user credentials.
 - Confirm the user agreement.
-- Click **Register**. 
+- Click **Register**.
 
 You are now redirected to the login page located at `http://<yugabyteplatform-host-ip>/login`. This page allows you to login to Yugabyte Platform using your new credentials.
 

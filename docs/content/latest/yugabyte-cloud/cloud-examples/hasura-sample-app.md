@@ -6,7 +6,7 @@ description: Deploy the Realtime Poll GraphQL application for Hasura Cloud and Y
 aliases:
   - /preview/yugabyte-cloud/hasura-sample-app/
 menu:
-  latest:
+  preview:
     identifier: hasura-application
     parent: cloud-examples
     weight: 450

@@ -3,7 +3,7 @@ title: HGETALL
 linkTitle: HGETALL
 description: HGETALL
 menu:
-  latest:
+  preview:
     parent: api-yedis
     weight: 2130
 aliases:

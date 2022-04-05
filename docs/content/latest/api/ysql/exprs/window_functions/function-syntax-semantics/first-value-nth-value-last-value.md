@@ -4,7 +4,7 @@ linkTitle: first_value(), nth_value(), last_value()
 headerTitle: first_value(), nth_value(), last_value()
 description: Describes the functionality of the YSQL window functions first_value(), nth_value(), and last_value().
 menu:
-  latest:
+  preview:
     identifier: first-value-nth-value-last-value
     parent: window-function-syntax-semantics
     weight: 30
@@ -81,7 +81,7 @@ window w as (
 Here is the result. To make it easier to see the pattern, a break has been manually inserted here between each successive set of rows with the same value for _"class"_.
 
 ```
- class | k  |    fv     |    nv     |   lv    
+ class | k  |    fv     |    nv     |   lv
 -------+----+-----------+-----------+---------
      1 |  1 | (1,1,1)   | (1,3,3)   | (1,5,)
      1 |  2 | (1,1,1)   | (1,3,3)   | (1,5,)
@@ -155,7 +155,7 @@ order by 1;
 This is the result:
 
 ```
- fv_class | fv_k | fv_v | nv_k | nv_v | lv_k | lv_v 
+ fv_class | fv_k | fv_v | nv_k | nv_v | lv_k | lv_v
 ----------+------+------+------+------+------+------
         1 |    1 |    1 |    3 |    3 |    5 |   ??
         2 |    6 |    6 |    8 |    8 |   10 |   ??

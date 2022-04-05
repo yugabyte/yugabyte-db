@@ -1,10 +1,10 @@
 ---
 title: jsonb_object()  and json_object() [JSON]
 headerTitle: jsonb_object() and json_object()
-linkTitle: jsonb_object() 
+linkTitle: jsonb_object()
 description: Create a JSON object from SQL arrays that specify keys with their values of SQL data type text.
 menu:
-  latest:
+  preview:
     identifier: jsonb-object
     parent: json-functions-operators
     weight: 150
@@ -34,7 +34,7 @@ declare
     array['a', '17', 'b', $$'Hello', you$$, 'c', 'true'];
 
   j constant jsonb :=  jsonb_object(array_values);
-  expected_j constant jsonb := 
+  expected_j constant jsonb :=
     $${"a": "17", "b": "'Hello', you", "c": "true"}$$;
 begin
   assert
@@ -61,7 +61,7 @@ declare
     ];
 
   j constant jsonb :=  jsonb_object(array_values);
-  expected_j constant jsonb := 
+  expected_j constant jsonb :=
     $${"a": "17", "b": "'Hello', you", "c": "true"}$$;
 begin
   assert
@@ -84,7 +84,7 @@ declare
     array['17', $$'Hello', you$$, 'true'];
 
   j constant jsonb :=  jsonb_object(array_keys, array_values);
-  expected_j constant jsonb := 
+  expected_j constant jsonb :=
     $${"a": "17", "b": "'Hello', you", "c": "true"}$$;
 begin
   assert

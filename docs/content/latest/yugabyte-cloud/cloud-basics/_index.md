@@ -6,7 +6,7 @@ headcontent: Deploy production-ready clusters.
 image: /images/section_icons/index/quick_start.png
 section: YUGABYTE CLOUD
 menu:
-  latest:
+  preview:
     identifier: cloud-basics
     weight: 25
 isTocNested: true

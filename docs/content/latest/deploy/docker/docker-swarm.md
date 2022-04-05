@@ -8,7 +8,7 @@ aliases:
   - /preview/deploy/docker-swarm/
   - /preview/deploy/docker/
 menu:
-  latest:
+  preview:
     parent: deploy
     name: Docker
     identifier: docker-2-swarm

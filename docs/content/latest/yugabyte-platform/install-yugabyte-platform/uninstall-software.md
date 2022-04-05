@@ -4,7 +4,7 @@ headerTitle: Uninstall the Yugabyte Platform software
 linkTitle: Uninstall software
 description: Uninstall the Yugabyte Platform software.
 menu:
-  latest:
+  preview:
     identifier: uninstall-software
     parent: install-yugabyte-platform
     weight: 80
@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-<!-- 
+<!--
 
 You can uninstall Yugabyte Platform in the Kubernetes environments.
 

@@ -6,7 +6,7 @@ description: Compare CockroachDB with YugabyteDB in terms of performance, Postgr
 aliases:
   - /comparisons/cockroachdb/
 menu:
-  latest:
+  preview:
     parent: comparisons
     weight: 1075
 isTocNested: false

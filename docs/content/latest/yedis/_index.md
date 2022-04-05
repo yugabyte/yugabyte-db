@@ -11,7 +11,7 @@ aliases:
 type: page
 section: MISC
 menu:
-  latest:
+  preview:
     identifier: yedis
     weight: 2900
 ---

@@ -9,7 +9,7 @@ aliases:
   - /preview/architecture/concepts/docdb/
 headcontent: DocDB is YugabyteDB's distributed document store responsible for transactions, sharding, replication, and persistence.
 menu:
-  latest:
+  preview:
     identifier: docdb
     parent: architecture
     weight: 1140

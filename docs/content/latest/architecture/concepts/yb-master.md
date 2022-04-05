@@ -6,7 +6,7 @@ description: Learn how the YB-Master service manages tablet (aka shard) metadata
 aliases:
   - /preview/architecture/concepts/yb-master/
 menu:
-  latest:
+  preview:
     identifier: architecture-concepts-yb-master
     parent: key-concepts
     weight: 1126

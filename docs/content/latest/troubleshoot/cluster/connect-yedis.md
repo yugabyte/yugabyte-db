@@ -6,7 +6,7 @@ aliases:
   - /troubleshoot/cluster/connect-redis/
   - /preview/troubleshoot/cluster/connect-yedis/
 menu:
-  latest:
+  preview:
     parent: troubleshoot-cluster
     weight: 824
 isTocNested: true

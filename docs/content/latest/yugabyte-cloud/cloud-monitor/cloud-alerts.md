@@ -5,7 +5,7 @@ description: Set alerts for activity in your cloud.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  latest:
+  preview:
     identifier: cloud-alerts
     parent: cloud-monitor
     weight: 50

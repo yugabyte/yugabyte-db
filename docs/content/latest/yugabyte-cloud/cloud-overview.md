@@ -9,7 +9,7 @@ aliases:
   - /preview/yugabyte-cloud/
   - /preview/deploy/yugabyte-cloud/
 menu:
-  latest:
+  preview:
     identifier: cloud-overview
     weight: 14
 isTocNested: true

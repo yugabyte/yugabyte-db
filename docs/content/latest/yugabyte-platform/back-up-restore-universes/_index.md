@@ -8,7 +8,7 @@ headcontent: Use Yugabyte Platform to back up and restore YugabyteDB universes a
 type: page
 section: YUGABYTE PLATFORM
 menu:
-  latest:
+  preview:
     identifier: back-up-restore-universes
 weight: 645
 ---

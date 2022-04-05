@@ -4,7 +4,7 @@ headerTitle: GRANT
 linkTitle: GRANT
 description: Use the GRANT statement to grant access privileges on database objects as well as to assign membership in roles.
 menu:
-  latest:
+  preview:
     identifier: dcl_grant
     parent: statements
 aliases:

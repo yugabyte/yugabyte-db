@@ -8,7 +8,7 @@ headcontent: Secure Yugabyte Platform and your YugabyteDB universes.
 type: page
 section: YUGABYTE PLATFORM
 menu:
-  latest:
+  preview:
     identifier: security
 weight: 645
 ---

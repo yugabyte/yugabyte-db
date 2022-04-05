@@ -6,7 +6,7 @@ description: Deploy a YugabyteDB cluster on Amazon Web Services using AWS CloudF
 aliases:
   - /preview/deploy/public-clouds/aws/
 menu:
-  latest:
+  preview:
     identifier: deploy-in-aws-1-cloudformation
     parent: public-clouds
     weight: 630

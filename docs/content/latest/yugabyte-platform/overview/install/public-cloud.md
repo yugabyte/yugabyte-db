@@ -8,7 +8,7 @@ headcontent: Installing Yugabyte Platform on Public Cloud
 aliases:
   - /preview/yugabyte-platform/overview/install/
 menu:
-  latest:
+  preview:
     identifier: install-1-public-cloud
     parent: overview-yp
     weight: 20

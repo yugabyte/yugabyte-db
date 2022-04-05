@@ -8,7 +8,7 @@ headcontent: Use Yugabyte Platform for alerts and monitoring of YugabyteDB unive
 type: page
 section: YUGABYTE PLATFORM
 menu:
-  latest:
+  preview:
     identifier: alerts-monitoring
 weight: 647
 ---

@@ -4,7 +4,7 @@ headerTitle: ABORT
 linkTitle: ABORT
 description: Use the ABORT statement to roll back the current transaction and discards all updates by the transaction.
 menu:
-  latest:
+  preview:
     identifier: txn_abort
     parent: statements
 aliases:

@@ -5,7 +5,7 @@ linkTitle: Extended_timezone_names
 description: The extended_timezone_names extends the pg_timezone_names view with extra columns from the tz database. [YSQL]
 image: /images/section_icons/api/subsection.png
 menu:
-  latest:
+  preview:
     identifier: extended-timezone-names
     parent: timezones
     weight: 20
@@ -95,7 +95,7 @@ dst_offset      |  08:00
 is_dst          | false
 country_code    | PH
 lat_long        | +1435+12100
-region_coverage | 
+region_coverage |
 status          | Canonical
 ----------------+--------------------
 name            | Europe/London
@@ -108,7 +108,7 @@ dst_offset      |  01:00
 is_dst          | true
 country_code    | GB
 lat_long        | +513030-0000731
-region_coverage | 
+region_coverage |
 status          | Canonical
 ```
 

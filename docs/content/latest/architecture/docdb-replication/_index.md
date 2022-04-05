@@ -8,7 +8,7 @@ aliases:
   - /preview/architecture/docdb/replication/
 headcontent: Learn how synchronous and asynchronous replication work in DocDB.
 menu:
-  latest:
+  preview:
     identifier: architecture-docdb-replication
     parent: architecture
     weight: 1135

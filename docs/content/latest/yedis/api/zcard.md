@@ -3,7 +3,7 @@ title: ZCARD
 linkTitle: ZCARD
 description: ZCARD
 menu:
-  latest:
+  preview:
     parent: api-yedis
     weight: 2510
 aliases:

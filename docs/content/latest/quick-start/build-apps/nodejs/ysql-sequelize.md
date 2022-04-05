@@ -3,7 +3,7 @@ title: Build a Node.js application that uses Sequelize ORM and YSQL
 headerTitle: Build a Node.js application
 description: Build a Node.js application that uses Sequelize ORM and YSQL.
 menu:
-  latest:
+  preview:
     parent: build-apps
     name: Node.js
     identifier: nodejs-2

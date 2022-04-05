@@ -3,7 +3,7 @@ title: EXPIRE
 linkTitle: EXPIRE
 description: EXPIRE
 menu:
-  latest:
+  preview:
     parent: api-yedis
     weight: 2061
 aliases:

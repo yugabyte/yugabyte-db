@@ -5,7 +5,7 @@ linkTitle: Configure
 description: Configuring Yugabyte Platform on On-Premises
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  latest:
+  preview:
     identifier: configure-5-onprem
     parent: overview-yp
     weight: 40

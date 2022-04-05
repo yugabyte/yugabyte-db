@@ -4,7 +4,7 @@ linkTitle: mode(), percentile_disc(), percentile_cont()
 headerTitle: Within-group ordered-set aggregate functions
 description: Describes the Within-group ordered-set functionality of the mode(), percentile_disc(), percentile_cont() YSQL aggregate functions
 menu:
-  latest:
+  preview:
     identifier: mode-percentile-disc-percentile-cont
     parent: aggregate-function-syntax-semantics
     weight: 90
@@ -35,7 +35,7 @@ You might wonder why this particular syntax is required rather than the usual sy
 
 ```
 input value:       <none>
-                   togther with "WITHIN GROUP" and "ORDER BY anyelement" invocation syntax 
+                   togther with "WITHIN GROUP" and "ORDER BY anyelement" invocation syntax
 return value:      anyelement
 ```
 
@@ -78,7 +78,7 @@ order by n desc, lower(v1||v2) asc nulls last;
 This is the result:
 
 ```
- ordering expr | n 
+ ordering expr | n
 ---------------+---
  zebrastripe   | 2
  catflap       | 1
@@ -99,7 +99,7 @@ from t;
 This is the result:
 
 ```
- ordering expr 
+ ordering expr
 ---------------
  zebrastripe
 ```
@@ -155,7 +155,7 @@ order by class, r;
 This is the result:
 
 ```
- class | n | v  | r 
+ class | n | v  | r
 -------+---+----+---
      1 | 2 | 37 | 1
      1 | 1 |  2 | 2
@@ -166,7 +166,7 @@ This is the result:
      1 | 1 |  8 | 2
      1 | 1 |  4 | 2
      1 | 1 |  3 | 2
-     
+
      2 | 3 | 42 | 1
      2 | 1 | 20 | 2
      2 | 1 | 13 | 2
@@ -205,7 +205,7 @@ order by class;
 This is the result:
 
 ```
- class | n | v  
+ class | n | v
 -------+---+----
      1 | 2 | 37
      2 | 3 | 42
@@ -225,7 +225,7 @@ order by class;
 This is the result:
 
 ```
- class | mode 
+ class | mode
 -------+------
      1 |   37
      2 |   42
@@ -242,12 +242,12 @@ These two aggregate functions are closely related. Briefly, they implement the i
 ```
 -- First overload.
 input value:       double precision
-                   togther with "WITHIN GROUP" and "ORDER BY anyelement" invocation syntax 
+                   togther with "WITHIN GROUP" and "ORDER BY anyelement" invocation syntax
 return value:      anyelement
 
 -- Second overload.
 input value:       double precision[]
-                   togther with "WITHIN GROUP" and "ORDER BY anyelement" invocation syntax 
+                   togther with "WITHIN GROUP" and "ORDER BY anyelement" invocation syntax
 return value:      anyarray
 ```
 
@@ -277,7 +277,7 @@ with a as (
   select
     v,
     percent_rank() over (order by v) as pr
-  from t) 
+  from t)
 select
   to_char(v,  '90.99')              as v,
   to_char(pr, '90.999999999999999') as pr
@@ -287,7 +287,7 @@ from a;
 This is the result:
 
 ```
-   v    |         pr         
+   v    |         pr
 --------+--------------------
   47.00 |   0.00000000000000
   53.00 |   0.11111111111111
@@ -318,7 +318,7 @@ from a;
 This is the result:
 
 ```
-   pd   |   pc   
+   pd   |   pc
 --------+--------
   73.00 |  73.00
 ```
@@ -343,7 +343,7 @@ from a;
 This is the result:
 
 ```
-   pd   |   pc   
+   pd   |   pc
 --------+--------
   73.00 |  72.00
 ```
@@ -382,7 +382,7 @@ order by class, v;
 This is the result:
 
 ```
-   class |   v    |   pr   
+   class |   v    |   pr
 -------+--------+--------
      1 |  47.00 |   0.00
      1 |  53.00 |   0.25
@@ -420,7 +420,7 @@ from a;
 This is the result:
 
 ```
-   pd   |   pc   
+   pd   |   pc
 --------+--------
   59.00 |  59.00
   59.00 |  60.00
@@ -442,7 +442,7 @@ Here are some examples and counter-examples.
 
 ```plpgsql
 drop function  if exists  median_test()  cascade;
-drop type      if exists  rt             cascade; 
+drop type      if exists  rt             cascade;
 drop table     if exists  t              cascade;
 
 create table t(v double precision primary key);
@@ -480,7 +480,7 @@ select * from median_test_result();
 This is the result:
 
 ```
- count |  avg   | median | count l.e. median | count g.e. median 
+ count |  avg   | median | count l.e. median | count g.e. median
 -------+--------+--------+-------------------+-------------------
      9 |  15.00 |  15.00 |                 5 |                 5
 ```
@@ -495,7 +495,7 @@ select * from median_test_result();
 This is the new result:
 
 ```
- count |  avg   | median | count l.e. median | count g.e. median 
+ count |  avg   | median | count l.e. median | count g.e. median
 -------+--------+--------+-------------------+-------------------
     10 |  15.50 |  15.50 |                 5 |                 5
 ```
@@ -524,7 +524,7 @@ select to_char(v, '9990.00') as v from t order by v;
 Here is the result:
 
 ```
- count |  avg   | median | count l.e. median | count g.e. median 
+ count |  avg   | median | count l.e. median | count g.e. median
 -------+--------+--------+-------------------+-------------------
     19 |  54.63 |   2.00 |                13 |                16
 ```
@@ -532,7 +532,7 @@ Here is the result:
 This shows that the naïve rule statement is insufficiently precise and that the design of `median_test_result()` function is too crude. Here are the contents of the table, where white space has been introduced manually:
 
 ```
-    v     
+    v
 ----------
      1.00
      1.00
@@ -543,9 +543,9 @@ This shows that the naïve rule statement is insufficiently precise and that the
      2.00
      2.00
      2.00
-     
+
      2.00
-     
+
      2.00
      2.00
      2.00
@@ -583,7 +583,7 @@ as $body$
 declare
   a constant double precision[] := (
     with a as (
-      select percent_rank() over (order by v) as v from t) 
+      select percent_rank() over (order by v) as v from t)
     select array_agg(v order by v) from a);
 begin
   return a;
@@ -647,7 +647,7 @@ from
 This is the result:
 
 ```
-         pr         | pd(pr) | pc(pr) 
+         pr         | pd(pr) | pc(pr)
 --------------------+--------+--------
    0.00000000000000 |  47.00 |  47.00
    0.11111111111111 |  53.00 |  53.00

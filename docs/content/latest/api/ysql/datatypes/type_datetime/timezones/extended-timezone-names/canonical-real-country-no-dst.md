@@ -4,7 +4,7 @@ headerTitle: Real timezones that don't observe Daylight Savings Time
 linkTitle: Real timezones no DST
 description: Table. [YSQL]
 menu:
-  latest:
+  preview:
     identifier: canonical-real-country-no-dst
     parent: extended-timezone-names
     weight: 30

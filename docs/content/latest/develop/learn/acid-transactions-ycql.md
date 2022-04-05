@@ -4,7 +4,7 @@ headerTitle: ACID transactions
 linkTitle: 4. ACID transactions
 description: Learn how ACID transactions work in YCQL on YugabyteDB.
 menu:
-  latest:
+  preview:
     identifier: acid-transactions-1-ycql
     parent: learn
     weight: 566

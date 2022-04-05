@@ -4,7 +4,7 @@ headerTitle: Restore universe YCQL data
 linkTitle: Restore universe data
 description: Use Yugabyte Platform to restore data in YCQL tables.
 menu:
-  latest:
+  preview:
     parent: back-up-restore-universes
     identifier: restore-universe-data-2-ycql
     weight: 30
@@ -51,6 +51,6 @@ To restore YugabyteDB universe YCQL data from a backup:
 4. Click **OK**. The restore begins immediately. When the restore is completed, a completed **Restore Backup** task will appear in the **Tasks** tab.
 5. To confirm the restore succeeded, go to the **Tables** tab to compare the original table with the table you
 restored to.
-  
+
    <br/><br/>
    ![Tables View](/images/yp/tables-view-ycql.png)

@@ -4,7 +4,7 @@ headerTitle: Create a multi-zone universe
 linkTitle: Multi-zone universe
 description: Use Yugabyte Platform to create a YugabyteDB universe that spans multiple availability zones.
 menu:
-  latest:
+  preview:
     identifier: create-multi-zone-universe
     parent: create-deployments
     weight: 20

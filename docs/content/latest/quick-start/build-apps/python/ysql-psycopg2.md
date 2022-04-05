@@ -9,7 +9,7 @@ aliases:
   - /preview/develop/build-apps/python/
   - /preview/quick-start/build-apps/python/
 menu:
-  latest:
+  preview:
     parent: build-apps
     name: Python
     identifier: python-1

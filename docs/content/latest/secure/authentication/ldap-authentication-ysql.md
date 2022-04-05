@@ -6,7 +6,7 @@ description: Configuring YugabyteDB to use an external LDAP authentication servi
 aliases:
   - /preview/secure/authentication/ldap-authentication
 menu:
-  latest:
+  preview:
     identifier: ldap-authentication-1-ysql
     parent: authentication
     weight: 732

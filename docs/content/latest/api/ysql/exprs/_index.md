@@ -5,7 +5,7 @@ linkTitle: Functions and operators
 description: YSQL supports all PostgreSQL-compatible built-in functions and operators.
 image: /images/section_icons/api/ysql.png
 menu:
-  latest:
+  preview:
     identifier: api-ysql-exprs
     parent: api-ysql
     weight: 4300

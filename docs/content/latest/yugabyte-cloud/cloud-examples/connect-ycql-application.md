@@ -6,7 +6,7 @@ description: Build a sample Java application for Yugabyte Cloud with the Yugabyt
 aliases:
   - /preview/yugabyte-cloud/cloud-develop/connect-ycql-application/
 menu:
-  latest:
+  preview:
     parent: cloud-examples
     identifier: connect-ycql-application
     weight: 200

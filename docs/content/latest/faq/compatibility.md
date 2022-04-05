@@ -8,7 +8,7 @@ aliases:
   - /faq/cassandra/
   - /preview/faq/cassandra/
 menu:
-  latest:
+  preview:
     identifier: faq-api-compatibility
     weight: 2730
 isTocNested: true

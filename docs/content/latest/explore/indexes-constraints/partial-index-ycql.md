@@ -4,7 +4,7 @@ linkTitle: Partial indexes
 description: Using Partial indexes in YCQL
 image: /images/section_icons/secure/create-roles.png
 menu:
-  latest:
+  preview:
     identifier: partial-index-ycql
     parent: explore-indexes-constraints
     weight: 241

@@ -4,7 +4,7 @@ linkTitle: Covering indexes
 description: Using covering indexes in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
-  latest:
+  preview:
     identifier: covering-index-ysql
     parent: explore-indexes-constraints
     weight: 255

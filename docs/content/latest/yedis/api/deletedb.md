@@ -3,7 +3,7 @@ title: DELETEDB
 linkTitle: DELETEDB
 description: DELETEDB
 menu:
-  latest:
+  preview:
     parent: api-yedis
     weight: 2034
 aliases:

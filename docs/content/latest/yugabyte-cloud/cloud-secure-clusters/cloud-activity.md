@@ -5,7 +5,7 @@ description: Monitor activity on your Yugabyte Cloud.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  latest:
+  preview:
     identifier: cloud-activity
     parent: cloud-secure-clusters
     weight: 500

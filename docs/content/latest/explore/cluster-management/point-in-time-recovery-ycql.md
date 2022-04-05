@@ -8,7 +8,7 @@ aliases:
   - /preview/explore/backup-restore/point-in-time-recovery
   - /preview/explore/backup-restore
 menu:
-  latest:
+  preview:
     identifier: cluster-management-point-in-time-recovery-ycql
     parent: explore-cluster-management
     weight: 704

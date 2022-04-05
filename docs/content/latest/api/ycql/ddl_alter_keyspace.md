@@ -4,7 +4,7 @@ headerTitle: ALTER KEYSPACE
 linkTitle: ALTER KEYSPACE
 description: Use the ALTER KEYSPACE statement to change the properties of an existing keyspace.
 menu:
-  latest:
+  preview:
     parent: api-cassandra
     weight: 1200
 aliases:

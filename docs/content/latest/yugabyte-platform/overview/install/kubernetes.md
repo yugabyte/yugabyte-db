@@ -6,7 +6,7 @@ description: Installing Yugabyte Platform on Kubernetes
 image: /images/section_icons/deploy/enterprise.png
 headcontent: Installing Yugabyte Platform on Kubernetes
 menu:
-  latest:
+  preview:
     identifier: install-2-k8s
     parent: overview-yp
     weight: 20

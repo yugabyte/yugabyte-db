@@ -3,7 +3,7 @@ title: SELECT
 linkTitle: "SELECT "
 description: SELECT
 menu:
-  latest:
+  preview:
     parent: api-yedis
     weight: 2038
 aliases:

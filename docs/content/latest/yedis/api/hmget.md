@@ -3,7 +3,7 @@ title: HMGET
 linkTitle: HMGET
 description: HMGET
 menu:
-  latest:
+  preview:
     parent: api-yedis
     weight: 2160
 aliases:

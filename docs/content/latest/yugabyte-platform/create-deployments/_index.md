@@ -7,7 +7,7 @@ image: /images/section_icons/index/deploy.png
 type: page
 section: YUGABYTE PLATFORM
 menu:
-  latest:
+  preview:
     identifier: create-deployments
     weight: 643
 isTocNested: true

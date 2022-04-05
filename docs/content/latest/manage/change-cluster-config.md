@@ -6,7 +6,7 @@ description: Migrate a YugabyteDB cluster to a new set of nodes.
 aliases:
   - manage/change-cluster-config
 menu:
-  latest:
+  preview:
     identifier: manage-change-cluster-config
     parent: manage
     weight: 704
@@ -81,7 +81,7 @@ Refer to [starting master servers](../../deploy/manual-deployment/start-masters/
 
 ## 3. Start YB-TServer servers
 
-Run the following command to bring up the `tserver` servers on all the new nodes `node7`, `node8`, `node9`, `node10`, `node11` and `node12`. 
+Run the following command to bring up the `tserver` servers on all the new nodes `node7`, `node8`, `node9`, `node10`, `node11` and `node12`.
 
 ```sh
 export MASTERS=node1:7100,node2:7100,node3:7100,node7:7100,node8:7100,node9:7100

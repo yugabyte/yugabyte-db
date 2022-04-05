@@ -4,7 +4,7 @@ headerTitle: Distributed ACID transactions
 linkTitle: Distributed transactions
 description: Distributed ACID transactions modify multiple rows spread across multiple shards.
 menu:
-  latest:
+  preview:
     identifier: architecture-distributed-acid-transactions
     parent: architecture-acid-transactions
     weight: 1155
@@ -107,8 +107,8 @@ TxnId, HybridTime -> primary provisional record key
   This mapping allows us to find all provisional RocksDB records belonging to a particular
   transaction. This is used when cleaning up committed or aborted transactions. Note that
   because multiple RocksDB key-value pairs belonging to primary provisional records can be written
-  for the same transaction with the same hybrid timestamp, we need to use an increasing counter 
-  (which we call a *write ID*) at the end of the encoded representation of hybrid time in order to 
+  for the same transaction with the same hybrid timestamp, we need to use an increasing counter
+  (which we call a *write ID*) at the end of the encoded representation of hybrid time in order to
   obtain unique RocksDB keys for this reverse index. This write ID is shown as `.0`, `.1`, etc. in
   `T130.0`, `T130.1` in the figure above.
 
@@ -121,8 +121,8 @@ storage engine. The same approach could be reused to make *transaction status* c
 The status of transactions is tracked in a "transaction status" table. This table, under the covers,
 is just another sharded table in the system, although it does not use RocksDB and instead stores all
 its data in memory, backed by the Raft WAL. The transaction ID (a globally unique ID) serves as the
-key in the table, and updates to a transaction's status are simple single-shard ACID operations. 
-By setting the status to `committed` in that transaction's status record in the table, all values 
+key in the table, and updates to a transaction's status are simple single-shard ACID operations.
+By setting the status to `committed` in that transaction's status record in the table, all values
 written as part of that transaction become atomically visible.
 
 A transaction status record contains the following fields for a particular transaction ID:

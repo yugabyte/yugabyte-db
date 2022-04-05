@@ -8,7 +8,7 @@ aliases:
   - /preview/architecture/concepts/persistence/
   - /preview/architecture/concepts/docdb/persistence/
 menu:
-  latest:
+  preview:
     identifier: docdb-persistence
     parent: docdb
     weight: 1146

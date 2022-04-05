@@ -9,7 +9,7 @@ type: page
 aliases:
   - /preview/contribute/core-database/build-from-src
 menu:
-  latest:
+  preview:
     identifier: build-from-src-1-macos
     parent: core-database
     weight: 2912

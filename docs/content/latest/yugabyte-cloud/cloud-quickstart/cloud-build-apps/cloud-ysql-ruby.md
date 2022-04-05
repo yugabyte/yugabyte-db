@@ -3,7 +3,7 @@ title: Build a Ruby application that uses YSQL
 headerTitle: Build a Ruby application
 description: Build a small Ruby application using the Ruby Pg driver and using the YSQL API to connect to and interact with a Yugabyte Cloud cluster.
 menu:
-  latest:
+  preview:
     parent: cloud-build-apps
     name: Ruby
     identifier: cloud-ruby

@@ -7,7 +7,7 @@ image: /images/section_icons/index/quick_start.png
 headcontent: CLion project setup.
 type: page
 menu:
-  latest:
+  preview:
     identifier: configure-clion
     parent: core-database
     weight: 2912

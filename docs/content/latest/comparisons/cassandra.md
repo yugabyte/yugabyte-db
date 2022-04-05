@@ -6,7 +6,7 @@ description: Compare Apache Cassandra with YugabyteDB.
 aliases:
   - /comparisons/cassandra/
 menu:
-  latest:
+  preview:
     parent: comparisons
     weight: 1120
 isTocNested: false
@@ -73,7 +73,7 @@ With YugabyteDB’s native JSON support, developers can now benefit from the str
 
 4. Apache Cassandra needs constant tuning of compactions (because of Java implementation, non-scalable, non-partitioned bloom filters and index-metadata, lack of scan-resistant caches, and so on.).
 
-5. Adding a node when the cluster is at risk of running out of disk space can give relief in steps over time. The new server will 
+5. Adding a node when the cluster is at risk of running out of disk space can give relief in steps over time. The new server will
 start serving requests as soon as 1 tablet has been transferred. While in Cassandra the old nodes get no benefit until after adding node and then doing `nodetool cleanup` which could take many hours each.
 
 

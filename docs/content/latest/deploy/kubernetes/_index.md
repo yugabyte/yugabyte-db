@@ -8,7 +8,7 @@ image: /images/section_icons/deploy/kubernetes.png
 aliases:
   - /deploy/kubernetes/
 menu:
-  latest:
+  preview:
     identifier: deploy-kubernetes
     parent: deploy
     weight: 620

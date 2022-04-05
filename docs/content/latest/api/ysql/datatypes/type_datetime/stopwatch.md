@@ -4,7 +4,7 @@ headerTitle: Case study—implementing a stopwatch with SQL
 linkTitle: Case study—SQL stopwatch
 description: Case study—using YSQL to implement a stopwatch
 menu:
-  latest:
+  preview:
     identifier: stopwatch
     parent: api-ysql-datatypes-datetime
     weight: 130
@@ -29,14 +29,14 @@ select
 Here's a typical result:
 
 ```output
-    t0    | slept |    t1    
+    t0    | slept |    t1
 ----------+-------+----------
  20:13:54 | true  | 20:13:59
 ```
 
 (The _pg_sleep()_ built-in function returns _void_, and the _::text_ typecast of _void_ is the empty string.) You can see that _t1_ is five seconds later than _t0_, just as the invocation of _pg_sleep()_ requests.
 
-The return data type of _clock_timestamp()_ is _timestamptz_. (You can confirm this with the \\_df_ metacommand.) Try this. 
+The return data type of _clock_timestamp()_ is _timestamptz_. (You can confirm this with the \\_df_ metacommand.) Try this.
 
 ```plpgsql
 select
@@ -47,7 +47,7 @@ select
 Notice the use of the _[at time zone](../timezones/syntax-contexts-to-spec-offset/#specify-the-utc-offset-using-the-at-time-zone-operator)_ operator to interpret a _timestamptz_ value as a plain _timestamp_ value local to the specified timezone. In this use of the operator (converting from _timestamptz_ to plain _timestamp_), its effect is insensitive to the session's _TimeZone_ setting. Here's a typical result:
 
 ```output
-         LAX         |         HEL         
+         LAX         |         HEL
 ---------------------+---------------------
  2021-07-30 10:26:39 | 2021-07-30 20:26:39
 ```
@@ -95,7 +95,7 @@ select current_setting('my_namespace.my_value') as "current value of 'my_namespa
 This is the result:
 
 ```output
- current value of 'my_namespace.my_value' 
+ current value of 'my_namespace.my_value'
 ------------------------------------------
  Some text.
 ```
@@ -115,7 +115,7 @@ select current_setting('my_namespace.my_value') as "current value of 'my_namespa
 This is the result:
 
 ```output
- current value of 'my_namespace.my_value' 
+ current value of 'my_namespace.my_value'
 ------------------------------------------
  First value.
 ```
@@ -124,7 +124,7 @@ This is the result:
 
 The implementation and testing of this function are utterly straightforward—but a fair amount of typing is needed. The code presented here can save you that effort. You may prefer to use it as a model for implementing your own formatting rules.
 
-### Create function duration_as_text() 
+### Create function duration_as_text()
 
 The return data type of the _extract()_ operator is _double precision_. But it’s better to implement _duration_as_text()_ with a _numeric_ input formal parameter because of this datatype’s greater precision and accuracy. This makes behavior with input values that are very close to the units boundaries that the inequality tests define more accurate than if _double precision_ is used. Of course, this doesn’t matter when the function is used for its ultimate purpose because ordinary stochastic timing variability will drown any concerns about the accuracy of the formatting. But testing is helped when results with synthetic data agree reliably with what you expect.
 
@@ -306,25 +306,25 @@ This is the result:
   s (in seconds)   duration_as_text(s)
   --------------   -------------------
         0.019999 :: less than ~20 ms
- 
+
         0.020000 :: 20 ms
         4.999999 :: 5000 ms
- 
+
         5.000000 :: 5.00 ss
         9.999999 :: 10.00 ss
- 
+
        10.000000 :: 10.0 ss
        59.900000 :: 59.9 ss
        59.999999 :: 60.0 ss
- 
+
        60.000000 :: 01:00 mi:ss
      3599.000000 :: 59:59 mi:ss
      3599.999999 :: 60:00 mi:ss
- 
+
      3600.000000 :: 01:00 hh:mi
     86340.000000 :: 23:59 hh:mi
     86399.999999 :: 24:00 hh:mi
- 
+
     86400.000000 :: 1 days 00:00 hh:mi
    202608.000000 :: 2 days 08:17 hh:mi
 ```
@@ -436,7 +436,7 @@ select stopwatch_reading();
 Here is a typical result, as reported in the file _stopwatch.txt_:
 
 ```output
- stopwatch_reading 
+ stopwatch_reading
 -------------------
  6.79 ss
 ```
@@ -533,7 +533,7 @@ Now try this:
 This is the result:
 
 ```output
-      v       
+      v
 --------------
  Hello \world
 ```
@@ -549,7 +549,7 @@ When you want to define a command as the variable _x_ and within that expand ano
 This is the result:
 
 ```output
-    v     
+    v
 ----------
  Hello 42
 ```
@@ -564,7 +564,7 @@ If you subsequently redefine the variable _y_ without redefining the variable _x
 then you'll get this new result:
 
 ```output
-    v     
+    v
 ----------
  Hello 17
 ```
@@ -606,7 +606,7 @@ $body$;
 The _test-cross-session-stopwatch.txt_ spool file will contain a result like this:
 
 ```output
- stopwatch_reading 
+ stopwatch_reading
 -------------------
  6.86 ss
 ```

@@ -4,7 +4,7 @@ headerTitle: jsonb_object_agg()
 linkTitle: jsonb_object_agg()
 description: Aggregate a SETOF values into a JSON object.
 menu:
-  latest:
+  preview:
     identifier: jsonb-object-agg
     parent: json-functions-operators
     weight: 155
@@ -51,7 +51,7 @@ select ('{"f2": 42, "f7": 7, "f2": null}'::jsonb)::text;
 ```
 It shows this:
 ```
-         text          
+         text
 -----------------------
  {"f2": null, "f7": 7}
 ```

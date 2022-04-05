@@ -4,7 +4,7 @@ headerTitle: Restricting a set of paths to just the unique longest paths that co
 linkTitle: Unique containing paths
 description: This section shows how restricting a set of paths to the smaller set that contains them all provides a compact way to visualize find_paths() results.
 menu:
-  latest:
+  preview:
     identifier: unq-containing-paths
     parent: traversing-general-graphs
     weight: 70
@@ -90,5 +90,5 @@ These are longest paths from the unique containing paths of the raw paths. Here 
 
 ![unq-containing-paths-2](/images/api/ysql/the-sql-language/with-clause/traversing-general-graphs/unq-containing-paths-2.jpg)
 
-These two pictures together provide a very compact way to understand the meaning of the set of twenty-six distinct raw paths produced by `call find_paths(start_node=>'n01')`. 
+These two pictures together provide a very compact way to understand the meaning of the set of twenty-six distinct raw paths produced by `call find_paths(start_node=>'n01')`.
 

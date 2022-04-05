@@ -4,7 +4,7 @@ linkTitle: array_position(), array_positions()
 headerTitle: array_position() and array_positions()
 description: array_position() and array_positions()
 menu:
-  latest:
+  preview:
     identifier: array-position
     parent: array-functions-operators
 isTocNested: true
@@ -52,7 +52,7 @@ select array_position(
 This is the result:
 
 ```
- position 
+ position
 ----------
         8
 ```
@@ -65,7 +65,7 @@ This is the result:
 
 ```
 input value:       anyarray, anyelement
-return value:      integer[] 
+return value:      integer[]
 ```
 **Example:**
 ```plpgsql
@@ -78,7 +78,7 @@ select array_positions(
 This is the result:
 
 ```
- positions 
+ positions
 -----------
  {2,8}
 ```

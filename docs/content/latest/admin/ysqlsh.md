@@ -7,7 +7,7 @@ aliases:
   - /develop/tools/ysqlsh/
   - /preview/develop/tools/ysqlsh/
 menu:
-  latest:
+  preview:
     identifier: ysqlsh
     parent: admin
     weight: 2459

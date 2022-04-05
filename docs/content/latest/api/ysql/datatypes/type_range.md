@@ -4,7 +4,7 @@ headerTitle: Range data types
 linkTitle: Range
 description: YSQL supports the following built-in range data types.int4range for integer; int8range for bigint; numrange for numeric; tsrange for timestamp without time zone; tstzrange for timestamp with time zone; daterange for date.
 menu:
-  latest:
+  preview:
     identifier: api-ysql-datatypes-range
     parent: api-ysql-datatypes
 isTocNested: true
@@ -58,7 +58,7 @@ The same approach is used to specify range values of all range data types using 
 
 - It finishes with a closing parenthesis or a closing square bracket.
 
-This example uses `tsrange`. 
+This example uses `tsrange`.
 
 ```plpgsql
 insert into t(k, r1, r2)
@@ -74,7 +74,7 @@ select lower(r1), upper(r1) from t where k = 1;
 ```
 The reported values are insensitive to whether the bound is inclusive or exclusive. This is the result:
 ```
-        lower        |        upper        
+        lower        |        upper
 ---------------------+---------------------
  2010-01-01 14:30:00 | 2010-01-01 15:30:00
 ```
@@ -139,7 +139,7 @@ select (
 This is the result:
 
 ```
- result is as expected? 
+ result is as expected?
 ------------------------
  true
 ```
@@ -156,7 +156,7 @@ select ('(, 5]'::int4range)::text as "canonicalized literal";
 This is the result:
 
 ```
- canonicalized literal 
+ canonicalized literal
 -----------------------
  (,6)
 ```
@@ -176,7 +176,7 @@ select (
 This is the result:
 
 ```
- literal and constructor produce the same result? 
+ literal and constructor produce the same result?
 --------------------------------------------------
  true
 ```
@@ -191,7 +191,7 @@ select lower_inf(v)::text, upper_inf(v)::text from a;
 This is the result:
 
 ```
- lower_inf | upper_inf 
+ lower_inf | upper_inf
 -----------+-----------
  true      | true
 ```
@@ -211,7 +211,7 @@ select
 This is the result:
 
 ```
- infinity timestamp |   infinity upper bound tsrange   
+ infinity timestamp |   infinity upper bound tsrange
 --------------------+----------------------------------
  infinity           | ["2020-01-01 00:00:00",infinity]
 ```
@@ -225,7 +225,7 @@ select (upper_inf('[2020-01-01, infinity]'::tsrange))::text as "upper bound set 
 This is the result:
 
 ```
- upper bound set to infinity tests as infinity? 
+ upper bound set to infinity tests as infinity?
 ------------------------------------------------
  false
 ```
@@ -243,7 +243,7 @@ select (
 This is the result:
 
 ```
- infinity bound same as unbounded bound? 
+ infinity bound same as unbounded bound?
 -----------------------------------------
  false
 ```

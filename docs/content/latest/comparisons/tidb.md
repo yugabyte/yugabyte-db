@@ -6,7 +6,7 @@ description: Compare TiDB with YugabyteDB.
 aliases:
   - /comparisons/tidb/
 menu:
-  latest:
+  preview:
     parent: comparisons
     weight: 1076
 ---

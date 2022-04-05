@@ -7,7 +7,7 @@ aliases:
   - /preview/manage/enterprise-edition/edit-flags/
   - /preview/manage/enterprise-edition/edit-config-flags/
 menu:
-  latest:
+  preview:
     identifier: edit-config-flags
     parent: manage-deployments
     weight: 50

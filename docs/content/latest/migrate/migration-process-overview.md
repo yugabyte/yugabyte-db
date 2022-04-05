@@ -4,7 +4,7 @@ headerTitle: Migration process overview
 linkTitle: Migration process overview
 description: Overview of the process for migrating data and applications from other databases to YugabyteDB.
 menu:
-  latest:
+  preview:
     identifier: migration-overview
     parent: migrate
     weight: 720

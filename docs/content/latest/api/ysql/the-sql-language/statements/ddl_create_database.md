@@ -4,7 +4,7 @@ headerTitle: CREATE DATABASE
 linkTitle: CREATE DATABASE
 description: Use the CREATE DATABASE statement to create a database that functions as a grouping mechanism for database objects, such as tables.
 menu:
-  latest:
+  preview:
     identifier: ddl_create_database
     parent: statements
 aliases:

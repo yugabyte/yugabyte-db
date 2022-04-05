@@ -6,7 +6,7 @@ description: Use Yugabyte Platform to create a KMS configuration for HashiCorp V
 aliases:
   - /preview/yugabyte-platform/security/create-kms-config
 menu:
-  latest:
+  preview:
     parent: security
     identifier: create-kms-config-3-hashicorp-kms
     weight: 27

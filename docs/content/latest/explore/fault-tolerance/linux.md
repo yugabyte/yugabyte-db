@@ -6,7 +6,7 @@ description: Simulate fault tolerance and resilience in a local three-node Yugab
 aliases:
   - /preview/explore/fault-tolerance-linux/
 menu:
-  latest:
+  preview:
     identifier: fault-tolerance-2-linux
     parent: explore
     weight: 215

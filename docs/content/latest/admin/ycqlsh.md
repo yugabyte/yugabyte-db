@@ -8,7 +8,7 @@ aliases:
   - /preview/develop/tools/cqlsh/
   - /preview/admin/cqlsh/
 menu:
-  latest:
+  preview:
     identifier: ycqlsh
     parent: admin
     weight: 2460

@@ -7,7 +7,7 @@ image: /images/section_icons/index/quick_start.png
 headcontent: Checklist for contributing to the core database.
 type: page
 menu:
-  latest:
+  preview:
     identifier: contribute-checklist
     parent: core-database
     weight: 2911

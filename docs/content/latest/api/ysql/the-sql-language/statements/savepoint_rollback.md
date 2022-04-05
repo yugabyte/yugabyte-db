@@ -4,7 +4,7 @@ headerTitle: ROLLBACK TO
 linkTitle: ROLLBACK TO SAVEPOINT
 description: Use the `ROLLBACK TO` statement to start a subtransaction within the current transaction.
 menu:
-  latest:
+  preview:
     identifier: savepoint_rollback
     parent: statements
 aliases:

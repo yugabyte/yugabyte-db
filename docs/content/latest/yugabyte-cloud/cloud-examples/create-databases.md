@@ -8,7 +8,7 @@ aliases:
   - /preview/deploy/yugabyte-cloud/create-databases/
   - /preview/yugabyte-cloud/create-databases/
 menu:
-  latest:
+  preview:
     parent: cloud-develop
     name: Create a database
     identifier: create-databases-1-ysql

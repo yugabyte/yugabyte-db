@@ -1,10 +1,10 @@
 ---
 title: Three syntax contexts that use the specification of a UTC offset [YSQL]
-headerTitle: Three syntax contexts that use the specification of a UTC offset  
+headerTitle: Three syntax contexts that use the specification of a UTC offset
 linkTitle: Syntax contexts for offset
 description: Explains the three syntax contexts that use the specification of a UTC offset. [YSQL]
 menu:
-  latest:
+  preview:
     identifier: syntax-contexts-to-spec-offset
     parent: timezones
     weight: 50

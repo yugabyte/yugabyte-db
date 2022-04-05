@@ -6,7 +6,7 @@ description: Simulate fault tolerance and resilience in a local three-node Yugab
 aliases:
   - /preview/explore/fault-tolerance-docker/
 menu:
-  latest:
+  preview:
     identifier: fault-tolerance-3-docker
     parent: explore
     weight: 215

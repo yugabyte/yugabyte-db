@@ -6,7 +6,7 @@ description: Learn the design goals that drive the building of YugabyteDB.
 aliases:
   - /preview/architecture/design-goals/
 menu:
-  latest:
+  preview:
     identifier: architecture-design-goals
     parent: architecture
     weight: 1105

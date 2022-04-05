@@ -4,7 +4,7 @@ headerTitle: High availability
 linkTitle: High availability
 description: Learn how YugabyteDB maintains continuous availability using multiple replicas.
 menu:
-  latest:
+  preview:
     identifier: high-availability
     parent: core-functions
     weight: 1190

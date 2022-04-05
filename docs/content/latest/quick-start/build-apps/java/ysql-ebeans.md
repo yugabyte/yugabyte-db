@@ -4,7 +4,7 @@ headerTitle: Build a Java application
 linkTitle: Java
 description: Build a sample Java application that uses Ebeans and YSQL API to connect to and interact with YugabyteDB.
 menu:
-  latest:
+  preview:
     parent: build-apps
     name: Java
     identifier: java-7

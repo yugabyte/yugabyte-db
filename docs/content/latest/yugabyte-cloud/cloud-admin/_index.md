@@ -7,7 +7,7 @@ image: /images/section_icons/explore/administer.png
 headcontent: Manage your cloud users and billing and payment methods.
 section: YUGABYTE CLOUD
 menu:
-  latest:
+  preview:
     identifier: cloud-admin
     weight: 600
 ---

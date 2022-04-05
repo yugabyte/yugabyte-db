@@ -8,7 +8,7 @@ headcontent: Install Yugabyte Platform to begin creating and managing deployment
 type: page
 section: YUGABYTE PLATFORM
 menu:
-  latest:
+  preview:
     identifier: install-yugabyte-platform
 weight: 641
 isTocNested: true

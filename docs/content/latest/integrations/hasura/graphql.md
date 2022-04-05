@@ -4,7 +4,7 @@ linkTitle: Benchmarking
 description: Using the benchmark tool with Hasura
 aliases:
 menu:
-  latest:
+  preview:
     identifier: graphql
     parent: hasura
     weight: 580

@@ -8,7 +8,7 @@ aliases:
   - /preview/develop/build-apps/nodejs/
   - /preview/quick-start/build-apps/nodejs/
 menu:
-  latest:
+  preview:
     parent: build-apps
     name: Node.js
     identifier: nodejs-1

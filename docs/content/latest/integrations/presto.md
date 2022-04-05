@@ -4,7 +4,7 @@ linkTitle: Presto
 description: Presto
 section: INTEGRATIONS
 menu:
-  latest:
+  preview:
     identifier: presto
     weight: 571
 isTocNested: true

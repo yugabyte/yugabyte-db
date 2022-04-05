@@ -4,7 +4,7 @@ linkTitle: Application Development
 description: Building Applications with Hasura
 aliases:
 menu:
-  latest:
+  preview:
     identifier: hasura-1
     parent: hasura
     weight: 580

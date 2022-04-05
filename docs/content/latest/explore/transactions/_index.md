@@ -6,7 +6,7 @@ description: Transactions in YugabyteDB.
 headcontent: Transactions in YugabyteDB.
 image: /images/section_icons/explore/transactional.png
 menu:
-  latest:
+  preview:
     identifier: explore-transactions
     parent: explore
     weight: 240
@@ -68,7 +68,7 @@ The various features are explained in the sections below.
       </div>
     </a>
   </div>
-<!-- ADD THIS ONCE READY: 
+<!-- ADD THIS ONCE READY:
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="ddl-operations/">
       <div class="head">

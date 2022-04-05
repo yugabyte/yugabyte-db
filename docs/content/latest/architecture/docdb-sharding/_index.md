@@ -8,7 +8,7 @@ aliases:
   - /preview/architecture/docdb/sharding
 headcontent: Learn about sharding strategies, hash and range sharding, colocated tables, and table splitting.
 menu:
-  latest:
+  preview:
     identifier: architecture-docdb-sharding
     parent: architecture
     weight: 1130

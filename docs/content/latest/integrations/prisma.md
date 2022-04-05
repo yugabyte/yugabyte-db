@@ -4,7 +4,7 @@ linkTitle: Prisma
 description: Prisma
 section: INTEGRATIONS
 menu:
-  latest:
+  preview:
     identifier: prisma
     weight: 571
 isTocNested: true

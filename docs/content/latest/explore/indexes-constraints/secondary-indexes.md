@@ -4,7 +4,7 @@ linkTitle: Secondary indexes
 description: Overview of Secondary indexes in YSQL and YCQL
 image: /images/section_icons/secure/create-roles.png
 menu:
-  latest:
+  preview:
     identifier: secondary-indexes
     parent: explore-indexes-constraints
     weight: 220

@@ -5,7 +5,7 @@ description: Using Flyway with YugabyteDB
 aliases:
 section: INTEGRATIONS
 menu:
-  latest:
+  preview:
     identifier: flyway
     weight: 571
 isTocNested: true

@@ -8,7 +8,7 @@ aliases:
   - /preview/explore/transactional/secondary-indexes/
   - /preview/develop/learn/data-modeling/
 menu:
-  latest:
+  preview:
     identifier: data-modeling-1-ycql
     parent: learn
     weight: 562

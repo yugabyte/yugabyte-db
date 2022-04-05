@@ -6,7 +6,7 @@ description: Configure the Google Cloud Platform (GCP) cloud provider.
 aliases:
   - /preview/deploy/enterprise-edition/configure-cloud-providers/gcp
 menu:
-  latest:
+  preview:
     identifier: set-up-cloud-provider-2-gcp
     parent: configure-yugabyte-platform
     weight: 20

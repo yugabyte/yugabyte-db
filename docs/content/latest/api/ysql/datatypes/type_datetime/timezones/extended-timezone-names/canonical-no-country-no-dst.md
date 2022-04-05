@@ -4,7 +4,7 @@ headerTitle: Synthetic timezones (do not observe Daylight Savings Time)
 linkTitle: Synthetic timezones no DST
 description: Table. [YSQL]
 menu:
-  latest:
+  preview:
     identifier: canonical-no-country-no-dst
     parent: extended-timezone-names
     weight: 40
@@ -29,7 +29,7 @@ order by name, std_offset;
 This is the result:
 
 ```output
-         name          | STD offset | DST offset 
+         name          | STD offset | DST offset
 -----------------------+------------+------------
  America/St_Johns      | -03:30:00  | -02:30:00
  Asia/Calcutta         |  05:30:00  |  05:30:00

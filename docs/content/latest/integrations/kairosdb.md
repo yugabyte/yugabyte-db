@@ -5,7 +5,7 @@ description: Use KairosDB with YCQL API
 aliases:
 section: INTEGRATIONS
 menu:
-  latest:
+  preview:
     identifier: kairosdb
     weight: 571
 isTocNested: true

@@ -3,7 +3,7 @@ title: HDEL
 linkTitle: HDEL
 description: HDEL
 menu:
-  latest:
+  preview:
     parent: api-yedis
     weight: 2100
 aliases:

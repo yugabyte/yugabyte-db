@@ -4,7 +4,7 @@ linkTitle: Entity Framework
 description: Entity Framework
 section: INTEGRATIONS
 menu:
-  latest:
+  preview:
     identifier: entity-framework
     weight: 571
 isTocNested: true

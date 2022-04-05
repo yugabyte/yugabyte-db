@@ -4,7 +4,7 @@ headerTitle: Back Up and Restore Yugabyte Platform on Kubernetes
 description: Use a script file to back up and restore Yugabyte Platform on Kubernetes.
 linkTitle: Back Up Yugabyte Platform
 menu:
-  latest:
+  preview:
     identifier: back-up-restore-k8s
     parent: administer-yugabyte-platform
     weight: 20

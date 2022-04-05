@@ -8,7 +8,7 @@ headcontent: Configure Yugabyte Platform.
 type: page
 section: YUGABYTE PLATFORM
 menu:
-  latest:
+  preview:
     identifier: configure-yugabyte-platform
     weight: 642
 ---

@@ -9,7 +9,7 @@ aliases:
   - /preview/develop/build-apps/java/
   - /preview/quick-start/build-apps/java/
 menu:
-  latest:
+  preview:
     parent: build-apps
     name: Java
     identifier: java-1

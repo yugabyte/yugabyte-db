@@ -7,7 +7,7 @@ aliases:
   - /quick-start/create-local-cluster/
   - /preview/quick-start/create-local-cluster/
 menu:
-  latest:
+  preview:
     parent: quick-start
     name: 2. Create a local cluster
     identifier: create-local-cluster-1-macos

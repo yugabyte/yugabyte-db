@@ -8,7 +8,7 @@ aliases:
   - /preview/quick-start/run-sample-apps/
   - /quick-start/run-sample-apps/
 menu:
-  latest:
+  preview:
     identifier: explore-sample-apps
     parent: develop
     weight: 581

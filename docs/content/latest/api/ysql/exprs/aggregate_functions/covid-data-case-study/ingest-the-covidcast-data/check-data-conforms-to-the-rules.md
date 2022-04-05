@@ -3,7 +3,7 @@ title: Check the ingested COVIDcast data conforms to the rules
 linkTitle: Check staged data conforms to the rules
 headerTitle: Check that the values from the .csv files do indeed conform to the stated rules
 menu:
-  latest:
+  preview:
     identifier: check-data-conforms-to-the-rules
     parent: ingest-the-covidcast-data
     weight: 30
@@ -212,7 +212,7 @@ declare
 
   select count(*) from r$$;
 begin
-  execute replace(replace(replace(chk_code_and_geo_values, 
+  execute replace(replace(replace(chk_code_and_geo_values,
   '?1', names[1].staging_table),
   '?2', names[2].staging_table),
   '?3', names[3].staging_table

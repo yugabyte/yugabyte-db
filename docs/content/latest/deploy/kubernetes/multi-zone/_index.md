@@ -8,7 +8,7 @@ image: /images/section_icons/deploy/kubernetes.png
 aliases:
   - /preview/deploy/kubernetes/multi-zone
 menu:
-  latest:
+  preview:
     identifier: deploy-kubernetes-mz
     parent: deploy-kubernetes
     weight: 622

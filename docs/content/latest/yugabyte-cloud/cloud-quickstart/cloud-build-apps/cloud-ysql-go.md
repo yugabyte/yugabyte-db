@@ -4,7 +4,7 @@ headerTitle: Build a Go application
 linkTitle: Go
 description: Build a simple Go application using the Go PostgreSQL driver and using the YSQL API to connect to and interact with a Yugabyte Cloud cluster.
 menu:
-  latest:
+  preview:
     parent: cloud-build-apps
     name: Go
     identifier: cloud-go

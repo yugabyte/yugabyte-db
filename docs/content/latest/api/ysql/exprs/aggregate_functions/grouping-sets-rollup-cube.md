@@ -4,7 +4,7 @@ linkTitle: grouping sets, rollup, cube
 headerTitle: Using the GROUPING SETS, ROLLUP, and CUBE syntax for aggregate function invocation
 description: Explains the GROUPING SETS, ROLLUP, and CUBE syntax and semantics for aggregate function invocation.
 menu:
-  latest:
+  preview:
     identifier: grouping-sets-rollup-cube
     parent: aggregate-functions
     weight: 60
@@ -16,7 +16,7 @@ This section shows how to use the `GROUPING SETS`, `ROLLUP`, and `CUBE` syntax, 
 
 ## Semantics
 
-`GROUPING SETS (...)`,  is a shorthand notation to let you achieve, in a single terse subquery, what you could achieve by the union of several subqueries that each uses the plain `GROUP BY <expression list>` syntax. 
+`GROUPING SETS (...)`,  is a shorthand notation to let you achieve, in a single terse subquery, what you could achieve by the union of several subqueries that each uses the plain `GROUP BY <expression list>` syntax.
 
 `ROLLUP (...)` and `CUBE` are each shorthand notations for specifying two common uses of the `GROUPING SET` syntax.
 
@@ -241,17 +241,17 @@ from t;
 Here are typical results:
 
 ```
- g1 |   avg   | stddev  
+ g1 |   avg   | stddev
 ----+---------+---------
   1 |   53.65 |   26.94
   2 |   52.16 |   30.64
-  
- g2 |   avg   | stddev  
+
+ g2 |   avg   | stddev
 ----+---------+---------
   1 |   54.55 |   30.04
   2 |   51.81 |   26.72
-  
-   avg   | stddev  
+
+   avg   | stddev
 ---------+---------
    53.10 |   28.22
 ```
@@ -288,7 +288,7 @@ order by g1 nulls last, g2 nulls last;
 This is the result for the table population that produced the typical results shown above:
 
 ```
- g1 | g2 |   avg   | stddev  
+ g1 | g2 |   avg   | stddev
 ----+----+---------+---------
   1 |    |   53.65 |   26.94
   2 |    |   52.16 |   30.64
@@ -326,7 +326,7 @@ order by g1 nulls last, g2 nulls last;
 This is the result with the table population that produced the results above:
 
 ```
- g1 | g2 |   avg   | stddev  
+ g1 | g2 |   avg   | stddev
 ----+----+---------+---------
   1 |    |   53.65 |   26.94
     |  1 |   54.55 |   30.04
@@ -358,7 +358,7 @@ order by g1 nulls last, g2 nulls last;
 This is the result with the table population that produced the results above:
 
 ```
- g1 | g2 |   avg   | stddev  
+ g1 | g2 |   avg   | stddev
 ----+----+---------+---------
   1 |    |   59.93 |   22.60
     |  1 |   63.79 |   23.85
@@ -408,7 +408,7 @@ order by g1 nulls last, g2 nulls last;
 Each produces this result with the table population that produced the results above:
 
 ```
- g1 | g2 |   avg   | stddev  
+ g1 | g2 |   avg   | stddev
 ----+----+---------+---------
   1 |  1 |   54.00 |   29.37
   1 |  2 |   53.35 |   25.12
@@ -462,7 +462,7 @@ order by g1 nulls last, g2 nulls last;
 Each produces this result with the table population that produced the results above:
 
 ```
- g1 | g2 |   avg   | stddev  
+ g1 | g2 |   avg   | stddev
 ----+----+---------+---------
   1 |  1 |   54.00 |   29.37
   1 |  2 |   53.35 |   25.12
@@ -508,7 +508,7 @@ order by g1 nulls last, g2 nulls last;
 Each produces this result with the table population that produced the results above:
 
 ```
- grouping | g1 | g2 |   avg   | stddev  
+ grouping | g1 | g2 |   avg   | stddev
 ----------+----+----+---------+---------
         0 |  1 |  1 |   54.00 |   29.37
         0 |  1 |  2 |   53.35 |   25.12
@@ -537,7 +537,7 @@ order by grouping(g1, g2), g1 nulls last, g2 nulls last;
 It produces this result with the table population that produced the results above:
 
 ```
- g1 | g2 |   avg   | stddev  
+ g1 | g2 |   avg   | stddev
 ----+----+---------+---------
   1 |  1 |   54.00 |   29.37
   1 |  2 |   53.35 |   25.12

@@ -7,7 +7,7 @@ aliases:
   - /develop/tools/tableplus/
   - /preview/develop/tools/tableplus/
 menu:
-  latest:
+  preview:
     identifier: tableplus
     parent: tools
     weight: 2750

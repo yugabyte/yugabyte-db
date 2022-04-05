@@ -6,7 +6,7 @@ description: Common steps to take when investigating performance issues in Yugab
 image: /images/section_icons/architecture/concepts.png
 headcontent: Performance Troubleshooting
 menu:
-  latest:
+  preview:
     identifier: performance-troubleshooting
     parent: benchmark
     weight: 22

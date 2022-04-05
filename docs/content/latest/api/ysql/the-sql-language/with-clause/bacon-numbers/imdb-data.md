@@ -4,7 +4,7 @@ headerTitle: Computing Bacon Numbers for real IMDb data
 linkTitle: Bacon numbers for IMDb data
 description: This section shows how to compute Bacon Numbers for real IMDb data.
 menu:
-  latest:
+  preview:
     identifier: imdb-data
     parent: bacon-numbers
     weight: 20
@@ -146,7 +146,7 @@ limit 10;
 Here are the results of all the queries:
 
 ```
-      actor       
+      actor
 ------------------
  Adam Sandler (I)
  Al Pacino
@@ -159,7 +159,7 @@ Here are the results of all the queries:
  Andy Dick
  Ann Pala
 
-                       movie                        
+                       movie
 ----------------------------------------------------
  180: Christopher Nolan Interviews Al Pacino (2002)
  Actor's Notebook: Christopher Lee (2002)
@@ -172,7 +172,7 @@ Here are the results of all the queries:
  Being John Malkovich (1999)
  Big Parade of Comedy, The (1964)
 
-      node_1      |       node_2       |                                        movies                                         
+      node_1      |       node_2       |                                        movies
 ------------------+--------------------+---------------------------------------------------------------------------------------
  Adam Sandler (I) | Allen Covert       | Adam Sandler Goes to Hell (2001)
  Adam Sandler (I) | Ann Pala           | Adam Sandler Goes to Hell (2001)
@@ -185,7 +185,7 @@ Here are the results of all the queries:
  Adam Sandler (I) | Dana Carvey        | Adam Sandler Goes to Hell (2001)
  Adam Sandler (I) | David Sosalla      | Adam Sandler Goes to Hell (2001)
 
-       node_1       |      node_2      |                                        movies                                         
+       node_1       |      node_2      |                                        movies
 --------------------+------------------+---------------------------------------------------------------------------------------
  Allen Covert       | Adam Sandler (I) | Adam Sandler Goes to Hell (2001)
  Ann Pala           | Adam Sandler (I) | Adam Sandler Goes to Hell (2001)

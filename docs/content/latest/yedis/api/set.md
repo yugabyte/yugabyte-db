@@ -3,7 +3,7 @@ title: SET
 linkTitle: SET
 description: SET
 menu:
-  latest:
+  preview:
     parent: api-yedis
     weight: 2270
 aliases:

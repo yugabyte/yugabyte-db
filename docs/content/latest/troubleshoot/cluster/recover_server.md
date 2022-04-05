@@ -6,7 +6,7 @@ aliases:
   - /troubleshoot/cluster/recover-server/
   - /preview/troubleshoot/cluster/recover-server/
 menu:
-  latest:
+  preview:
     parent: troubleshoot-cluster
     weight: 828
 isTocNested: true

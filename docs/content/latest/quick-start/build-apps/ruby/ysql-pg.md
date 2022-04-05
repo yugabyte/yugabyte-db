@@ -9,7 +9,7 @@ aliases:
   - /preview/develop/build-apps/ruby/
   - /preview/quick-start/build-apps/ruby/
 menu:
-  latest:
+  preview:
     parent: build-apps
     name: Ruby
     identifier: ruby-1

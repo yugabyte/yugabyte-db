@@ -6,7 +6,7 @@ description: Configure Audit Logging in YSQL.
 headcontent: Configure Audit Logging in YSQL.
 image: /images/section_icons/secure/authentication.png
 menu:
-  latest:
+  preview:
     name: Configure Audit Logging
     identifier: enable-audit-logging-1-ysql
     parent: audit-logging

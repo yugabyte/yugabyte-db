@@ -3,7 +3,7 @@ title: SREM
 linkTitle: SREM
 description: SREM
 menu:
-  latest:
+  preview:
     parent: api-yedis
     weight: 2310
 aliases:

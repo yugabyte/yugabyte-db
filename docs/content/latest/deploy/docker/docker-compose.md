@@ -7,7 +7,7 @@ aliases:
   - /admin/docker-compose/
   - /preview/admin/docker-compose/
 menu:
-  latest:
+  preview:
     parent: deploy
     name: Docker
     identifier: docker-1-compose

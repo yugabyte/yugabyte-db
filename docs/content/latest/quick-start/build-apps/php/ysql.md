@@ -8,7 +8,7 @@ aliases:
   - /preview/develop/client-drivers/php/
   - /preview/quick-start/build-apps/php/
 menu:
-  latest:
+  preview:
     identifier: build-apps-php-1-ysql
     parent: build-apps
     weight: 555

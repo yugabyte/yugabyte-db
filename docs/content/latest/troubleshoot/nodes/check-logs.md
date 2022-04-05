@@ -4,7 +4,7 @@ linkTitle: Inspect logs
 headerTitle: Inspect YugabyteDB logs
 description: Inspect YugabyteDB logs
 menu:
-  latest:
+  preview:
     parent: troubleshoot-nodes
     weight: 20
 isTocNested: true

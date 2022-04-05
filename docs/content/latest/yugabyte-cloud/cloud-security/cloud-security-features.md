@@ -4,7 +4,7 @@ linkTitle: Security architecture
 description: Security architecture of Yugabyte Cloud.
 image: /images/section_icons/index/secure.png
 menu:
-  latest:
+  preview:
     parent: cloud-security
     identifier: cloud-security-features
 weight: 10

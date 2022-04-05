@@ -8,7 +8,7 @@ aliases:
   - /preview/architecture/cdc-architecture/
   - /preview/architecture/change-data-capture/
 menu:
-  latest:
+  preview:
     parent: architecture-docdb-replication
     identifier: architecture-docdb-replication-cdc
     weight: 1160

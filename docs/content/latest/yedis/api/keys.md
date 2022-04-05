@@ -3,7 +3,7 @@ title: KEYS
 linkTitle: KEYS
 description: KEYS
 menu:
-  latest:
+  preview:
     parent: api-yedis
     weight: 2217
 aliases:

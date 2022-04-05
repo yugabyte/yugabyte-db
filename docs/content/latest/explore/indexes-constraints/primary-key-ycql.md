@@ -4,7 +4,7 @@ linkTitle: Primary keys
 description: Defining Primary key constraint in YCQL
 image: /images/section_icons/secure/create-roles.png
 menu:
-  latest:
+  preview:
     identifier: primary-key-ycql
     parent: explore-indexes-constraints
     weight: 201

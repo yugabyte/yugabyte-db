@@ -10,7 +10,7 @@ aliases:
   - /preview/deploy/
 section: YUGABYTEDB CORE
 menu:
-  latest:
+  preview:
     identifier: deploy
     weight: 634
 ---

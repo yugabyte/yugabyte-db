@@ -6,7 +6,7 @@ description: Use Go to build a YugabyteDB application that interacts with YEDIS
 aliases:
   - /preview/yedis/develop/client-drivers/go
 menu:
-  latest:
+  preview:
     identifier: client-drivers-yedis-go
     parent: develop-yedis
 isTocNested: true

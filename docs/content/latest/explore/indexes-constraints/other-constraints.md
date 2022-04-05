@@ -4,7 +4,7 @@ linkTitle: Other constraints
 description: Other constraints in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
-  latest:
+  preview:
     identifier: other-constraints
     parent: explore-indexes-constraints
     weight: 270

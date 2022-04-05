@@ -3,7 +3,7 @@ title: ZREVRANGE
 linkTitle: ZREVRANGE
 description: ZREVRANGE
 menu:
-  latest:
+  preview:
     parent: api-yedis
     weight: 2540
 aliases:

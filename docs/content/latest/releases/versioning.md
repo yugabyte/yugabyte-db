@@ -5,7 +5,7 @@ linkTitle: Release versioning
 description: Explains the new release versioning convention for preview and stable releases.
 section: RELEASES
 menu:
-  latest:
+  preview:
     identifier: versioning
     weight: 4000
 isTocNested: true

@@ -6,7 +6,7 @@ description: Explore this retail analytics sample database on YugabyteDB using Y
 aliases:
   - /develop/realworld-apps/retail-analytics/
 menu:
-  latest:
+  preview:
     identifier: retail-analytics
     parent: sample-data
     weight: 500
@@ -97,17 +97,17 @@ yb_demo=# \d products
 
 ```output
                                         Table "public.products"
-   Column   |            Type             | Collation | Nullable |               Default                
+   Column   |            Type             | Collation | Nullable |               Default
 ------------+-----------------------------+-----------+----------+--------------------------------------
  id         | bigint                      |           | not null | nextval('products_id_seq'::regclass)
- created_at | timestamp without time zone |           |          | 
- category   | text                        |           |          | 
- ean        | text                        |           |          | 
- price      | double precision            |           |          | 
+ created_at | timestamp without time zone |           |          |
+ category   | text                        |           |          |
+ ean        | text                        |           |          |
+ price      | double precision            |           |          |
  quantity   | integer                     |           |          | 5000
- rating     | double precision            |           |          | 
- title      | text                        |           |          | 
- vendor     | text                        |           |          | 
+ rating     | double precision            |           |          |
+ title      | text                        |           |          |
+ vendor     | text                        |           |          |
 Indexes:
     "products_pkey" PRIMARY KEY, lsm (id HASH)
 ```
@@ -136,7 +136,7 @@ yb_demo=# SELECT id, title, category, price, rating
 ```
 
 ```output
- id  |           title            | category |      price       | rating 
+ id  |           title            | category |      price       | rating
 -----+----------------------------+----------+------------------+--------
   22 | Enormous Marble Shoes      | Gizmo    | 21.4245199604423 |    4.2
   38 | Lightweight Leather Gloves | Gadget   | 44.0462485589292 |    3.8
@@ -155,7 +155,7 @@ yb_demo=# SELECT id, title, category, price, rating
 ```
 
 ```output
- id  |           title           | category  |      price       | rating 
+ id  |           title           | category  |      price       | rating
 -----+---------------------------+-----------+------------------+--------
  152 | Enormous Aluminum Clock   | Widget    | 32.5971248660044 |    3.6
    3 | Synergistic Granite Chair | Doohickey | 35.3887448815391 |      4
@@ -223,7 +223,7 @@ VALUES (
   (SELECT max(id)+1 FROM orders)                 /* id */,
   now()                                          /* created_at */,
   1                                              /* user_id */,
-  2                                              /* product_id */, 
+  2                                              /* product_id */,
   0                                              /* discount */,
   10                                             /* quantity */,
   (10 * (SELECT price FROM products WHERE id=2)) /* subtotal */,
@@ -244,7 +244,7 @@ yb_demo=# select * from orders where id = (select max(id) from orders);
 ```
 
 ```output
-  id   |         created_at         | user_id | product_id | discount | quantity |     subtotal     | tax |      total       
+  id   |         created_at         | user_id | product_id | discount | quantity |     subtotal     | tax |      total
 -------+----------------------------+---------+------------+----------+----------+------------------+-----+------------------
  18761 | 2020-01-30 09:24:29.784078 |       1 |          2 |        0 |       10 | 700.798961307176 |   0 | 700.798961307176
 (1 row)
@@ -376,7 +376,7 @@ yb_demo=# \d
 ```
 
 ```sql
-yb_demo=# SELECT source, 
+yb_demo=# SELECT source,
             total_sales * 100.0 / (SELECT SUM(total_sales) FROM channel) AS percent_sales
           FROM channel
           WHERE source='Facebook';

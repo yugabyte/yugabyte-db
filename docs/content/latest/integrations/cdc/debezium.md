@@ -7,7 +7,7 @@ aliases:
   - /preview/integrations/cdc/
 section: INTEGRATIONS
 menu:
-  latest:
+  preview:
     identifier: cdc-debezium
     weight: 571
 isTocNested: true

@@ -10,7 +10,7 @@ aliases:
   - /preview/quick-start/test-ycql/
   - /preview/api/ycql/quick-start/
 menu:
-  latest:
+  preview:
     parent: quick-start
     name: 3. Explore distributed SQL
     identifier: explore-dsql-2-ycql

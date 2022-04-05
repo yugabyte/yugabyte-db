@@ -8,7 +8,7 @@ image: /images/section_icons/deploy/kubernetes.png
 aliases:
   - /preview/deploy/kubernetes/multi-cluster
 menu:
-  latest:
+  preview:
     identifier: deploy-kubernetes-mc
     parent: deploy-kubernetes
     weight: 623

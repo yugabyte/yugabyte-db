@@ -4,7 +4,7 @@ linkTitle: YSQL Loader
 description: YSQL Loader
 section: INTEGRATIONS
 menu:
-  latest:
+  preview:
     identifier: ysql-loader
     weight: 571
 isTocNested: true

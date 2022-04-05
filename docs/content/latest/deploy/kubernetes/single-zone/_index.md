@@ -8,7 +8,7 @@ image: /images/section_icons/deploy/kubernetes.png
 aliases:
   - /preview/deploy/kubernetes/single-zone
 menu:
-  latest:
+  preview:
     identifier: deploy-kubernetes-sz
     parent: deploy-kubernetes
     weight: 621

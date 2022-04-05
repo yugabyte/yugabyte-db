@@ -6,7 +6,7 @@ description: Learn how YugabyteDB creates tables and manages schema changes.
 aliases:
   - /architecture/core-functions/table-creation/
 menu:
-  latest:
+  preview:
     identifier: table-creation
     parent: core-functions
     weight: 1184

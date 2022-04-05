@@ -8,7 +8,7 @@ image: /images/section_icons/index/develop.png
 aliases:
 section: Explore
 menu:
-  latest:
+  preview:
     identifier: query-tuning
     parent: explore
     weight: 280
@@ -41,7 +41,7 @@ menu:
       </div>
     </a>
   </div>
-  
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="pg-stat-activity/">
       <div class="head">

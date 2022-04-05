@@ -9,7 +9,7 @@ aliases:
   - /preview/explore/change-data-capture/debezium-connector
   - /preview/explore/change-data-capture/debezium
 menu:
-  latest:
+  preview:
     parent: change-data-capture
     identifier: debezium-connector-yugabytedb
     weight: 580

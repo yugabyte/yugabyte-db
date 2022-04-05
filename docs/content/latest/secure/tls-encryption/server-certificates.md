@@ -9,7 +9,7 @@ aliases:
   - /secure/tls-encryption/prepare-nodes
   - /preview/secure/tls-encryption/prepare-nodes
 menu:
-  latest:
+  preview:
     identifier: prepare-nodes
     parent: tls-encryption
     weight: 10

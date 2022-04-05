@@ -9,7 +9,7 @@ aliases:
   - /architecture/query-layer/
   - /preview/architecture/concepts/yql/
 menu:
-  latest:
+  preview:
     identifier: architecture-query-layer
     parent: architecture
     weight: 1110

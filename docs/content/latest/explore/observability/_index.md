@@ -11,7 +11,7 @@ aliases:
   - /preview/explore/observability-docker/linux
   - /preview/explore/observability-docker/docker
 menu:
-  latest:
+  preview:
     identifier: explore-observability
     parent: explore
     weight: 310

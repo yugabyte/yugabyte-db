@@ -7,7 +7,7 @@ aliases:
   - /develop/realworld-apps/iot-spark-kafka/
   - /preview/develop/realworld-apps/iot-spark-kafka/
 menu:
-  latest:
+  preview:
     identifier: iot-spark-kafka
     parent: realworld-apps
     weight: 583

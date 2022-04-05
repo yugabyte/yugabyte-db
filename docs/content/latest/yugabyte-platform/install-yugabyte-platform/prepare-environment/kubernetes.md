@@ -6,7 +6,7 @@ description: Prepare the Kubernetes environment for Yugabyte Platform.
 aliases:
   - /preview/deploy/enterprise-edition/prepare-environment/
 menu:
-  latest:
+  preview:
     parent: install-yugabyte-platform
     identifier: prepare-environment-4-kubernetes
     weight: 55

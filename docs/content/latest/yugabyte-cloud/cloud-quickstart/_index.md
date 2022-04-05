@@ -8,7 +8,7 @@ headcontent: Test YugabyteDB's APIs and core features by creating a free cluster
 type: page
 section: YUGABYTE CLOUD
 menu:
-  latest:
+  preview:
     identifier: cloud-quickstart
     weight: 15
 ---

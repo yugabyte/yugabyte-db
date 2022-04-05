@@ -7,7 +7,7 @@ section: FAQ
 aliases:
   - /preview/faq/enterprise-edition/
 menu:
-  latest:
+  preview:
     identifier: faq-yugabyte-platform
     weight: 2750
 isTocNested: false

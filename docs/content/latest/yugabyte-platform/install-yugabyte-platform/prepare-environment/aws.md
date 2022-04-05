@@ -4,7 +4,7 @@ headerTitle: Prepare the Amazon Web Services (AWS) cloud environment
 linkTitle: Prepare the environment
 description: Prepare the Amazon Web Services (AWS) environment for the Yugabyte Platform.
 menu:
-  latest:
+  preview:
     identifier: prepare-environment-1-aws
     parent: install-yugabyte-platform
     weight: 55

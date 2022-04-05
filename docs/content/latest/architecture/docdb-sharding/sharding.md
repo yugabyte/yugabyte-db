@@ -8,7 +8,7 @@ aliases:
   - /preview/architecture/concepts/sharding/
   - /preview/architecture/concepts/docdb/sharding/
 menu:
-  latest:
+  preview:
     identifier: docdb-sharding
     parent: architecture-docdb-sharding
     weight: 1142

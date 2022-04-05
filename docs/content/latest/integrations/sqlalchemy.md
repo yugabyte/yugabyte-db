@@ -5,7 +5,7 @@ description: Using SQLAlchemy with YugabyteDB
 aliases:
 section: INTEGRATIONS
 menu:
-  latest:
+  preview:
     identifier: sqlalchemy
     weight: 571
 isTocNested: true

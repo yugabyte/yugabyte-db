@@ -9,7 +9,7 @@ aliases:
   - /preview/manage/
 section: YUGABYTEDB CORE
 menu:
-  latest:
+  preview:
     identifier: manage
     weight: 900
 ---

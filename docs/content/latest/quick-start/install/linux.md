@@ -6,7 +6,7 @@ description: Download and install YugabyteDB on Linux (CentOS or Ubuntu) in less
 aliases:
   - /quick-start/install/
 menu:
-  latest:
+  preview:
     parent: quick-start
     name: 1. Install YugabyteDB
     identifier: install-2-linux

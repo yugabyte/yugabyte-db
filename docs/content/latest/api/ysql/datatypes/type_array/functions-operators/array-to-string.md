@@ -4,7 +4,7 @@ linkTitle: array_to_string()
 headerTitle: array_to_string()
 description: array_to_string()
 menu:
-  latest:
+  preview:
     identifier: array-to-string
     parent: array-functions-operators
 isTocNested: true
@@ -35,7 +35,7 @@ select arr::text from t where k = 1;
 ```
 It shows this:
 ```
-                arr                
+                arr
 -----------------------------------
  {{{"(1,a)","(2,)",NULL,"(3,c)"}}}
 ```
@@ -52,7 +52,7 @@ where k = 1;
 ```
 It shows this:
 ```
-   array_to_string    
+   array_to_string
 ----------------------
  (1,a) | (2,) | (3,c)
 ```
@@ -70,7 +70,7 @@ where k = 1;
 ```
 It shows this:
 ```
-     array_to_string      
+     array_to_string
 --------------------------
  (1,a) | (2,) | ? | (3,c)
 ```

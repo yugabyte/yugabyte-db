@@ -8,7 +8,7 @@ aliases:
   - /preview/manage/backup-restore/point-in-time-restore-ysql
   - /preview/manage/backup-restore/point-in-time-restore-ycql
 menu:
-  latest:
+  preview:
     identifier: point-in-time-recovery
     parent: backup-restore
     weight: 704

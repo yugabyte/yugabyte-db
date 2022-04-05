@@ -7,7 +7,7 @@ image: /images/section_icons/architecture/core_functions/universe.png
 headcontent: Scale clusters, configure backups and maintenance windows, and pause or delete clusters.
 section: YUGABYTE CLOUD
 menu:
-  latest:
+  preview:
     identifier: cloud-clusters
     weight: 150
 ---

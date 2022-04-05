@@ -3,7 +3,7 @@ title: Build a Node.js application that uses YSQL
 headerTitle: Build a Node.js application
 description: Build a simple Node.js application using the driver and using the YSQL API to connect to and interact with a Yugabyte Cloud cluster.
 menu:
-  latest:
+  preview:
     parent: cloud-build-apps
     name: Node.js
     identifier: cloud-node

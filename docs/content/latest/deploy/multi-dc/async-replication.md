@@ -6,7 +6,7 @@ description: Enable deployment using unidirectional (master-follower) or bidirec
 aliases:
   - /preview/deploy/multi-dc/2dc-deployment
 menu:
-  latest:
+  preview:
     parent: multi-dc
     identifier: async-replication
     weight: 633

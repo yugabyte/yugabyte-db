@@ -6,7 +6,7 @@ description: Install the Yugabyte Platform software.
 aliases:
   - /preview/yugabyte-platform/install-yugabyte-platform/install-software/
 menu:
-  latest:
+  preview:
     parent: install-yugabyte-platform
     identifier: install-software-1-default
     weight: 77

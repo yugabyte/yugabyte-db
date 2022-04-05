@@ -6,7 +6,7 @@ description: Run an e-commerce sample application built on YugabyteDB.
 aliases:
   - /develop/realworld-apps/ecommerce-app/
 menu:
-  latest:
+  preview:
     identifier: ecommerce-app
     parent: realworld-apps
     weight: 582
@@ -177,7 +177,7 @@ This is rendered by the `Products` react component. Here is the react route:
   render={(props) => (
     <Products
       name={"Business Books"}
-      query={"category/business"} /> 
+      query={"category/business"} />
   )} />
 ```
 
@@ -208,7 +208,7 @@ These product lists are also rendered by the `Products` React component.
   render={(props) => (
     <Products
       name={"Books with the Highest Rating"}
-      query={"sort/num_stars"} /> 
+      query={"sort/num_stars"} />
   )} />
 ```
 

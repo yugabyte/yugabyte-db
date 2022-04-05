@@ -6,7 +6,7 @@ section: INTEGRATIONS
 aliases:
   - /preview/integrations/smart-driver/
 menu:
-  latest:
+  preview:
     identifier: jdbc-driver
     weight: 571
 isTocNested: true

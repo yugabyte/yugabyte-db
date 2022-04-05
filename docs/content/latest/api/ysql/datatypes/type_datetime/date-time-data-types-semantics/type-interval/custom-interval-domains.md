@@ -4,7 +4,7 @@ headerTitle: Custom domain types for specializing the native interval functional
 linkTitle: Custom interval domains
 description: Explains how to define and use custom interval domain types to specialize the native interval functionality. [YSQL]
 menu:
-  latest:
+  preview:
     identifier: custom-interval-domains
     parent: type-interval
     weight: 90
@@ -26,7 +26,7 @@ The basic idea is to create a user-defined domain for each of the three kinds of
 
 ## Create the three domains
 
-The design of the code is the same for each of the three domains. The code for the second and third domains is trivially derived, using copy and massage, from the code for the first domain. Each of the functions _interval_X_ok()_ (where X is one of _months_, _days_, or _seconds_) can raise the _23514_ pre-defined error (mapped to _check_violation_ in PL/pgSQL) with one of these error texts: 
+The design of the code is the same for each of the three domains. The code for the second and third domains is trivially derived, using copy and massage, from the code for the first domain. Each of the functions _interval_X_ok()_ (where X is one of _months_, _days_, or _seconds_) can raise the _23514_ pre-defined error (mapped to _check_violation_ in PL/pgSQL) with one of these error texts:
 
 ```output
 value for domain interval_months_t violates check constraint "interval_months_ok".
@@ -869,7 +869,7 @@ from c;
 This is the result:
 
 ```output
-  interval_mm_dd_ss  |            i            
+  interval_mm_dd_ss  |            i
 ---------------------+-------------------------
  (0,0,7730941132799) | 2147483647:59:58.999552
 ```
@@ -1181,7 +1181,7 @@ The table function _seconds_days_months_comparison()_ creates a report thus:
 - It reports the values that it has calculated.
 
 {{< note title="365.2425 or 365.25 for the average number of days per year?" >}}
-The Wikipedia article <a href="https://en.wikipedia.org/wiki/Year" target="_blank">Year <i class="fas fa-external-link-alt"></i></a> gives both _365.2425_ days and _365.25_ days as the average number of days per year. The first figure (used in the code below) is the average according to the Gregorian scheme. And the second figure is the average according to the Julian scheme. The [_extract(epoch from interval_value)_ built-in function](../justfy-and-extract-epoch/#the-extract-epoch-from-interval-value-built-in-function) section presents a PL/pgSQL model for this function. This uses _365.25_ days as the average number of days per year in order to produce the same result as does the native implementation that it models. (The designers of PostgreSQL might well have chosen to use _365.2425_ days—but they happened not to. The choice is arbitrary.) However, the nominal durations of the three kinds of _interval_ in the test below are closer to each other when _365.2425_ days is used. 
+The Wikipedia article <a href="https://en.wikipedia.org/wiki/Year" target="_blank">Year <i class="fas fa-external-link-alt"></i></a> gives both _365.2425_ days and _365.25_ days as the average number of days per year. The first figure (used in the code below) is the average according to the Gregorian scheme. And the second figure is the average according to the Julian scheme. The [_extract(epoch from interval_value)_ built-in function](../justfy-and-extract-epoch/#the-extract-epoch-from-interval-value-built-in-function) section presents a PL/pgSQL model for this function. This uses _365.25_ days as the average number of days per year in order to produce the same result as does the native implementation that it models. (The designers of PostgreSQL might well have chosen to use _365.2425_ days—but they happened not to. The choice is arbitrary.) However, the nominal durations of the three kinds of _interval_ in the test below are closer to each other when _365.2425_ days is used.
 {{< /note >}}
 
 Create the table function thus:
@@ -1261,11 +1261,11 @@ This is the result:
  secs input:  7730941132799
  t0:             4713-01-01 00:00:00 BC
  t1:           240271-10-10 07:59:58 AD
- 
+
  i_secs:      2147483647:59:58.999552
  i_days:      89478485 days
  i_months:    244983 years 9 mons
- 
+
  yrs_from_ss  244983.772
  yrs_from_dd: 244983.771
  yrs_from_mm: 244983.750
@@ -1291,11 +1291,11 @@ This is the result:
  secs input:  200000000000
  t0:             4713-01-01 00:00:00 BC
  t1:             1625-09-30 19:33:20 AD
- 
+
  i_secs:      55555555:33:20
  i_days:      2314814 days
  i_months:    6337 years 8 mons
- 
+
  yrs_from_ss  6337.748
  yrs_from_dd: 6337.745
  yrs_from_mm: 6337.667
@@ -1314,11 +1314,11 @@ This is the result:
  secs input:  8854000
  t0:             4713-01-01 00:00:00 BC
  t1:             4713-04-12 11:26:40 BC
- 
+
  i_secs:      2459:26:40
  i_days:      102 days
  i_months:    3 mons
- 
+
  yrs_from_ss  0.281
  yrs_from_dd: 0.279
  yrs_from_mm: 0.250
@@ -1336,7 +1336,7 @@ This is the result, as expected:
 
 ```output
  secs input:  7730941132800
- 
+
  ERROR: 23514
  value for domain interval_seconds_t violates check constraint "interval_seconds_ok".
  Bad ss: 7730941132800. Must be in [-7730941132799, 7730941132799].

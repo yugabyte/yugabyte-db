@@ -5,7 +5,7 @@ description: Cannot connect to YCQL API
 aliases:
   - /troubleshoot/cluster/connect-cassandra/
 menu:
-  latest:
+  preview:
     parent: troubleshoot-cluster
     weight: 822
 isTocNested: true

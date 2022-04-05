@@ -9,7 +9,7 @@ aliases:
   - /preview/yugabyte-cloud/cloud-network/
   - /preview/yugabyte-cloud/cloud-network/ip-whitelists/
 menu:
-  latest:
+  preview:
     identifier: add-connections
     parent: cloud-secure-clusters
     weight: 100

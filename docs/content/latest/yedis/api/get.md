@@ -3,7 +3,7 @@ title: GET
 linkTitle: GET
 description: GET
 menu:
-  latest:
+  preview:
     parent: api-yedis
     weight: 2070
 aliases:

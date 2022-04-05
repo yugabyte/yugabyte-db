@@ -5,7 +5,7 @@ linkTitle: Kafka Connect YugabyteDB
 description: Use Kafka Connect YugabyteDB to stream YugabyteDB table updates to Kafka topics.
 section: REFERENCE
 menu:
-  latest:
+  preview:
     identifier: kafka-connect-yugabytedb
     parent: connectors
     weight: 2930
@@ -97,7 +97,7 @@ For building and using this project, the following tools must be installed on yo
     ```sh
     $ cd ~/yb-kafka/yb-kafka-connector/
     $ mvn clean install -DskipTests
-    $ cp  
+    $ cp
     $ cd ~/yb-kafka/kafka_2.12-2.5.0/libs/
     $ wget https://repo1.maven.org/maven2/io/netty/netty-all/4.1.51.Final/netty-all-4.1.51.Final.jar
     $ wget https://repo1.maven.org/maven2/com/yugabyte/cassandra-driver-core/3.8.0-yb-5/cassandra-driver-core-3.8.0-yb-5.jar

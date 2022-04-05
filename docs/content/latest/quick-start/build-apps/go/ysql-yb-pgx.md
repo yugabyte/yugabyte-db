@@ -4,7 +4,7 @@ headerTitle: Build a Go application
 linkTitle: Go
 description: Build a sample Go application with the Go YugabyteDB driver and perform basic database operations.
 menu:
-  latest:
+  preview:
     parent: build-apps
     name: Go
     identifier: go-1
@@ -306,29 +306,29 @@ For a local cluster with three servers, all of them with the placement info `clo
 ```output
 Connection url: postgres://yugabyte:yugabyte@localhost:5433/yugabyte?load_balance=true
 Created table employee
-Placement info details of cluster (127.0.0.1): 
-    AZ [cloud1.datacenter1.rack1]: 127.0.0.3, 127.0.0.2, 127.0.0.1, 
+Placement info details of cluster (127.0.0.1):
+    AZ [cloud1.datacenter1.rack1]: 127.0.0.3, 127.0.0.2, 127.0.0.1,
 
-Press Enter/return to proceed: 
+Press Enter/return to proceed:
 ---- Demonstrating uniform (cluster-aware) load balancing ----
 Creating 12 connections ...
-Current load on cluster (127.0.0.1): 
+Current load on cluster (127.0.0.1):
 127.0.0.3                     :    4
 127.0.0.2                     :    4
 127.0.0.1                     :    4
 You can verify the connection counts on http://127.0.0.1:13000/rpcz and similar urls for other servers.
 
-Press Enter/return to proceed: 
+Press Enter/return to proceed:
 Closing 12 connections ...
 ---- Demonstrating topology-aware load balancing ----
 Connection url: postgres://yugabyte:yugabyte@localhost:5433/yugabyte?load_balance=true&topology_keys=cloud1.datacenter1.rack1
 Creating 12 connections ...
-Current load on cluster (127.0.0.1): 
+Current load on cluster (127.0.0.1):
 127.0.0.1                     :    4
 127.0.0.3                     :    4
 127.0.0.2                     :    4
 
-Press Enter/return to proceed: 
+Press Enter/return to proceed:
 Closing 12 connections ...
 Closing the application ...
 ```
@@ -551,27 +551,27 @@ For a local cluster with three servers, all of them with the placement info `clo
 Initializing pool with url postgres://yugabyte:yugabyte@localhost:5433/yugabyte?load_balance=true
 Creating table using pool.Acquire() ...
 Created table employee
-Placement info details of cluster (127.0.0.1): 
-    AZ [cloud1.datacenter1.rack1]: 127.0.0.3, 127.0.0.2, 127.0.0.1, 
+Placement info details of cluster (127.0.0.1):
+    AZ [cloud1.datacenter1.rack1]: 127.0.0.3, 127.0.0.2, 127.0.0.1,
 
-Press Enter/return to proceed: 
+Press Enter/return to proceed:
 ---- Demonstrating uniform (cluster-aware) load balancing ----
 Acquiring 12 connections from pool ...
-Current load on cluster (127.0.0.1): 
+Current load on cluster (127.0.0.1):
 127.0.0.3                     :    4
 127.0.0.2                     :    4
 127.0.0.1                     :    4
 You can verify the connection counts on http://127.0.0.1:13000/rpcz and similar urls for other servers.
 
-Press Enter/return to proceed: 
+Press Enter/return to proceed:
 ---- Demonstrating topology-aware load balancing ----
 Initializing pool with url postgres://yugabyte:yugabyte@localhost:5433/yugabyte?load_balance=true&topology_keys=cloud1.datacenter1.rack1
 Acquiring 12 connections from pool ...
-Current load on cluster (127.0.0.1): 
+Current load on cluster (127.0.0.1):
 127.0.0.3                     :    4
 127.0.0.2                     :    4
 127.0.0.1                     :    4
 
-Press Enter/return to proceed: 
+Press Enter/return to proceed:
 Closing the application ...
 ```

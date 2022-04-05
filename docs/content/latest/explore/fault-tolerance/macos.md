@@ -10,7 +10,7 @@ aliases:
   - /preview/explore/postgresql/fault-tolerance/
   - /preview/explore/fault-tolerance-macos/
 menu:
-  latest:
+  preview:
     identifier: fault-tolerance-1-macos
     parent: explore
     weight: 215

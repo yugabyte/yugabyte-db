@@ -3,7 +3,7 @@ title: AUTH
 linkTitle: AUTH
 description: AUTH
 menu:
-  latest:
+  preview:
     parent: api-yedis
     weight: 2020
 aliases:

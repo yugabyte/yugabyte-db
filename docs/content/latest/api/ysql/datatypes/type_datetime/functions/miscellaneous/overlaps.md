@@ -4,7 +4,7 @@ headerTitle: Implementations that model the overlaps operator
 linkTitle: Implementations that model the overlaps operator
 description: Implementations that model the overlaps operator. [YSQL]
 menu:
-  latest:
+  preview:
     identifier: overlaps
     parent: miscellaneous
     weight: 30
@@ -43,7 +43,7 @@ overlaps_result ◄— (earlier-duration-start-moment, earlier-duration-finish-m
 The implementation therefore starts by deriving these values:
 
 ```output
-earlier_start, earlier_finish, later_start, later_finish 
+earlier_start, earlier_finish, later_start, later_finish
 ```
 
 from these input values:
@@ -385,7 +385,7 @@ This is the result:
 ```output
  TWO FINITE DURATIONS
  --------------------
- 
+
   1. Durations do not overlap               2000-01-15 00:00:00,         2000-05-15 00:00:00         |   2000-08-15 00:00:00,         2000-12-15 00:00:00           false
   2. Right start = left end                 2000-01-15 00:00:00,         2000-05-15 00:00:00         |   2000-05-15 00:00:00,         2000-12-15 00:00:00           false
   3. Durations overlap                      2000-01-15 00:00:00,         2000-08-15 00:00:00         |   2000-05-15 00:00:00,         2000-12-15 00:00:00           true
@@ -395,19 +395,19 @@ This is the result:
   4. Contained, co-inciding at left         2000-01-15 00:00:00,         2000-06-15 00:00:00         |   2000-01-15 00:00:00,         2000-08-15 00:00:00           true
   4. Contained, co-inciding at right        2000-01-15 00:00:00,         2000-06-15 00:00:00         |   2000-02-15 00:00:00,         2000-06-15 00:00:00           true
   4. Durations coincide                     2000-01-15 00:00:00,         2000-06-15 00:00:00         |   2000-01-15 00:00:00,         2000-06-15 00:00:00           true
- 
+
  ONE INSTANT, ONE FINITE DURATION
  --------------------------------
- 
+
   5. Instant before duration                2000-02-15 00:00:00,         2000-02-15 00:00:00         |   2000-03-15 00:00:00,         2000-04-15 00:00:00           false
   6. Instant coincides with duration start  2000-02-15 00:00:00,         2000-02-15 00:00:00         |   2000-02-15 00:00:00,         2000-03-15 00:00:00           true
   7. Instant within duration                2000-02-15 00:00:00,         2000-02-15 00:00:00         |   2000-01-15 00:00:00,         2000-03-15 00:00:00           true
   8. Instant coincides with duration end    2000-02-15 00:00:00,         2000-02-15 00:00:00         |   2000-01-15 00:00:00,         2000-02-15 00:00:00           false
   9. Instant after duration                 2000-05-15 00:00:00,         2000-05-15 00:00:00         |   2000-03-15 00:00:00,         2000-04-15 00:00:00           false
- 
+
  TWO INSTANTS
  ------------
- 
+
  10. Instants differ                        2000-01-15 00:00:00,         2000-01-15 00:00:00         |   2000-06-15 00:00:00,         2000-06-15 00:00:00           false
  11. Instants coincide                      2000-01-15 00:00:00,         2000-01-15 00:00:00         |   2000-01-15 00:00:00,         2000-01-15 00:00:00           true
 ```

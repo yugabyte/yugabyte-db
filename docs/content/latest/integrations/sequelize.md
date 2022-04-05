@@ -4,7 +4,7 @@ linkTitle: Sequelize
 description: Using Sequelize with YugabyteDB
 section: INTEGRATIONS
 menu:
-  latest:
+  preview:
     identifier: sequelize
     weight: 571
 isTocNested: true

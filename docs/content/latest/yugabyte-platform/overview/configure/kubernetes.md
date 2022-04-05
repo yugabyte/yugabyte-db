@@ -6,7 +6,7 @@ description: Configuring Yugabyte Platform on Kubernetes
 image: /images/section_icons/deploy/enterprise.png
 headcontent: Configuring Yugabyte Platform on Kubernetes
 menu:
-  latest:
+  preview:
     identifier: configure-4-k8s
     parent: overview-yp
     weight: 40

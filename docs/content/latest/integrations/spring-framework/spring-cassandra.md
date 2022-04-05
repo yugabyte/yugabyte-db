@@ -4,7 +4,7 @@ linkTitle: Spring Data Cassandra
 description: Spring Data Cassandra
 aliases:
 menu:
-  latest:
+  preview:
     identifier: spring-cassandra
     parent: spring-framework
     weight: 579

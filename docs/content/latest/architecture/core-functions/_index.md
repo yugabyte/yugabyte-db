@@ -8,7 +8,7 @@ headcontent: Learn about the internals of YugabyteDB in the context of the core 
 aliases:
   - /architecture/core-functions/
 menu:
-  latest:
+  preview:
     identifier: core-functions
     parent: architecture
     weight: 1107

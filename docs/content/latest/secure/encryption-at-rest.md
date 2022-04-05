@@ -8,7 +8,7 @@ image: /images/section_icons/secure/prepare-nodes.png
 aliases:
   - /secure/encryption-at-rest
 menu:
-  latest:
+  preview:
     identifier: encryption-at-rest
     parent: secure
     weight: 735

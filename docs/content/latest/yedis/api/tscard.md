@@ -3,7 +3,7 @@ title: TSCARD
 linkTitle: TSCARD
 description: TSCARD
 menu:
-  latest:
+  preview:
     parent: api-yedis
     weight: 2420
 aliases:

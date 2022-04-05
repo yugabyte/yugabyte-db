@@ -7,7 +7,7 @@ aliases:
   - /preview/explore/transactional/json-documents/
   - /preview/develop/learn/data-types/
 menu:
-  latest:
+  preview:
     identifier: data-types-2-ysql
     parent: learn
     weight: 565

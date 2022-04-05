@@ -4,7 +4,7 @@ headerTitle: Functions for manipulating date-time values
 linkTitle: Manipulating date-time values
 description: The semantics of the functions manipulating date-time values. [YSQL]
 menu:
-  latest:
+  preview:
     identifier: manipulating-date-time-values
     parent: date-time-functions
     weight: 20
@@ -54,7 +54,7 @@ select pg_typeof(v)::text as "type", v::text from c;
 This is the result:
 
 ```output
-           type           |           v            
+           type           |           v
 --------------------------+------------------------
  timestamp with time zone | 2021-01-01 00:00:00+00
 ```
@@ -70,7 +70,7 @@ select pg_typeof(v)::text as "type", v::text from c;
 This is the result:
 
 ```output
-            type             |          v          
+            type             |          v
 -----------------------------+---------------------
  timestamp without time zone | 2021-01-01 00:00:00
 ```
@@ -86,7 +86,7 @@ select pg_typeof(v)::text as "type", v::text from c;
 This is the result:
 
 ```output
-   type   |    v     
+   type   |    v
 ----------+----------
  interval | 13:00:00
 ```
@@ -103,7 +103,7 @@ select i, date_trunc('years', i)  as "result" from c;
 This is the result:
 
 ```output
-       i       |  result  
+       i       |  result
 ---------------+----------
  5000000:00:00 | 00:00:00
 ```

@@ -4,7 +4,7 @@ headerTitle: Transactions overview
 linkTitle: Transactions overview
 description: An overview of how transactions work in YugabyteDB.
 menu:
-  latest:
+  preview:
     identifier: architecture-transactions-overview
     parent: architecture-acid-transactions
     weight: 1151
@@ -51,7 +51,7 @@ This same HLC is used to determine the read point in order to determine which up
 
 ## MVCC
 
-YugabyteDB maintains data consistency internally using *multi-version concurrency control* (MVCC) without having to lock rows. Each transaction works on a version of the data in the database as of some hybrid timestamp. This prevents transactions from reading the intermediate updates made by concurrently running transactions, some of which may be updating the same rows. Each transaction, however, can see it's own updates, thereby providing transaction isolation for each database session. This technique of using MVCC minimizes lock contention when there are multiple concurrent transactions executing. 
+YugabyteDB maintains data consistency internally using *multi-version concurrency control* (MVCC) without having to lock rows. Each transaction works on a version of the data in the database as of some hybrid timestamp. This prevents transactions from reading the intermediate updates made by concurrently running transactions, some of which may be updating the same rows. Each transaction, however, can see it's own updates, thereby providing transaction isolation for each database session. This technique of using MVCC minimizes lock contention when there are multiple concurrent transactions executing.
 
 ### MVCC using hybrid time
 
@@ -87,7 +87,7 @@ Just as with PostgreSQL, YugabyteDB provides various lock modes to control concu
 
 {{< note title="Note" >}}
 
-The architecture section covers the set of explicit locking modes currently supported by YugabyteDB. The plan is to cover most of the locking modes supported by PostgreSQL over time. 
+The architecture section covers the set of explicit locking modes currently supported by YugabyteDB. The plan is to cover most of the locking modes supported by PostgreSQL over time.
 
 {{</note >}}
 
@@ -104,7 +104,7 @@ The transaction manager of YugabyteDB automatically detects transactions that up
 
 {{< note title="Note" >}}
 
-Because single row transactions do not have to update the transaction status table, they are much higher in performance than distributed transactions discussed in the next section. 
+Because single row transactions do not have to update the transaction status table, they are much higher in performance than distributed transactions discussed in the next section.
 
 {{</note >}}
 
@@ -129,7 +129,7 @@ UPDATE table SET column = <new value> WHERE <all primary key values are specifie
 Single-row upsert statements using `UPDATE` .. `ON CONFLICT`. Note that the updates performed in case the row exists should match the set of values that were specified in the insert clause.
 
 ```
-INSERT INTO table (columns) VALUES (values) 
+INSERT INTO table (columns) VALUES (values)
     ON CONFLICT DO UPDATE
     SET <values>;
 ```

@@ -6,7 +6,7 @@ description: Build a Scala application using Apache Spark and YugabyteDB
 aliases:
 section: INTEGRATIONS
 menu:
-  latest:
+  preview:
     identifier: apache-spark-1-scala
     weight: 572
 showAsideToc: true

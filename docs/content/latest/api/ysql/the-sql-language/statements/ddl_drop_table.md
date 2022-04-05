@@ -4,7 +4,7 @@ headerTitle: DROP TABLE
 linkTitle: DROP TABLE
 description: Use the DROP TABLE statement to remove one or more tables (with all of their data) from the database.
 menu:
-  latest:
+  preview:
     identifier: ddl_drop_table
     parent: statements
 aliases:

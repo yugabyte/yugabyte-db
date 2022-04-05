@@ -13,7 +13,7 @@ aliases:
   - /preview/faq/architecture/
   - /preview/faq
 menu:
-  latest:
+  preview:
     identifier: faq-general
     weight: 2720
 isTocNested: false

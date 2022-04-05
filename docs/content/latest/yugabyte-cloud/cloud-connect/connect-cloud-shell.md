@@ -5,7 +5,7 @@ description: Connect to Yugabyte Cloud clusters from any browser using Cloud She
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  latest:
+  preview:
     identifier: connect-cloud-shell
     parent: cloud-connect
     weight: 10

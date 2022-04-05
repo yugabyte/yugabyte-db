@@ -9,7 +9,7 @@ aliases:
 image: /images/section_icons/develop/ecosystem/spring.png
 section: INTEGRATIONS
 menu:
-  latest:
+  preview:
     identifier: spring-framework
     weight: 571
 ---

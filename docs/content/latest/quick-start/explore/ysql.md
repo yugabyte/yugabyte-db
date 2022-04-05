@@ -15,7 +15,7 @@ aliases:
   - /preview/explore/postgresql/expressions/
   - /preview/explore/postgresql/views/
 menu:
-  latest:
+  preview:
     parent: quick-start
     name: 3. Explore distributed SQL
     identifier: explore-dsql-1-ysql

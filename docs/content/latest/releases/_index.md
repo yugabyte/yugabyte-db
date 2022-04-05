@@ -9,7 +9,7 @@ aliases:
   - /preview/releases/whats-new/
 section: RELEASES
 menu:
-  latest:
+  preview:
     identifier: releases
     weight: 1060
 isTocNested: true

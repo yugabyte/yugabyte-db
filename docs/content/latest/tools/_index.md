@@ -10,7 +10,7 @@ aliases:
   - /preview/develop/tools/
 section: REFERENCE
 menu:
-  latest:
+  preview:
     identifier: tools
     weight: 2900
 ---

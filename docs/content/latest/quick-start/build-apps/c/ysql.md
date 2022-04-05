@@ -8,7 +8,7 @@ aliases:
   - /preview/develop/client-drivers/c/
   - /preview/quick-start/build-apps/c/
 menu:
-  latest:
+  preview:
     identifier: build-apps-c-1-ysql
     parent: build-apps
     weight: 557

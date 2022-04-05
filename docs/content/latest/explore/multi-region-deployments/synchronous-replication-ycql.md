@@ -8,7 +8,7 @@ aliases:
   - /preview/explore/global-distribution/macos
   - /preview/explore/global-distribution/linux
 menu:
-  latest:
+  preview:
     name: Sync replication (3+ regions)
     identifier: explore-multi-region-deployments-sync-replication-2-ycql
     parent: explore-multi-region-deployments

@@ -8,7 +8,7 @@ image: /images/section_icons/index/secure.png
 aliases:
   - /preview/explore/security/
 menu:
-  latest:
+  preview:
     identifier: explore-security
     parent: explore
     weight: 300

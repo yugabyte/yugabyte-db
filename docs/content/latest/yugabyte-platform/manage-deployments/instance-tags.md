@@ -6,7 +6,7 @@ description: Use Yugabyte Platform to create and edit instance tags.
 aliases:
   - /preview/manage/enterprise-edition/instance-tags/
 menu:
-  latest:
+  preview:
     identifier: instance-tags
     parent: manage-deployments
     weight: 80

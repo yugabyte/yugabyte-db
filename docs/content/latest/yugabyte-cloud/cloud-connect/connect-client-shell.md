@@ -5,7 +5,7 @@ description: Connect to Yugabyte Cloud clusters from your desktop using a client
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  latest:
+  preview:
     identifier: connect-client-shell
     parent: cloud-connect
     weight: 20

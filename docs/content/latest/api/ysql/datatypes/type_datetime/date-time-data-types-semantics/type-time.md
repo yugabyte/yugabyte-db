@@ -4,7 +4,7 @@ headerTitle: The time data type
 linkTitle: Time data type
 description: The semantics of the time data type. [YSQL]
 menu:
-  latest:
+  preview:
     identifier: type-time
     parent: date-time-data-types-semantics
     weight: 20
@@ -24,7 +24,7 @@ select
 This is the result:
 
 ```output
- starting midnight | just before ending midnight | ending midnight 
+ starting midnight | just before ending midnight | ending midnight
 -------------------+-----------------------------+-----------------
  00:00:00          | 23:59:59.999999             | 24:00:00
 ```
@@ -33,7 +33,7 @@ The fact that this is allowed is a minor annoyance. The two times test as _unequ
 
 ```plpgsql
 select (
-  '00:00:00.000000'::time = 
+  '00:00:00.000000'::time =
   '24:00:00.000000'::time
   )::text;
 ```
@@ -52,7 +52,7 @@ select
 This is the result:
 
 ```output
- interval 1 | interval 2 | interval 3 
+ interval 1 | interval 2 | interval 3
 ------------+------------+------------
  01:00:00   | 24:00:00   | 1 day
 ```

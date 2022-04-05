@@ -4,7 +4,7 @@ headerTitle: Best practices
 linkTitle: Best practices
 description: Learn best practices for developing YCQL applications.
 menu:
-  latest:
+  preview:
     identifier: best-practices-ycql
     parent: develop
     weight: 582

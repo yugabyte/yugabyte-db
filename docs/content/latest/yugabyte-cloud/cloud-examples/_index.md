@@ -6,7 +6,7 @@ headcontent: Example applications for Yugabyte Cloud.
 image: /images/section_icons/index/develop.png
 section: YUGABYTE CLOUD
 menu:
-  latest:
+  preview:
     identifier: cloud-examples
     weight: 800
 isTocNested: true

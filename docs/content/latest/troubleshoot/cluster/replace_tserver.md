@@ -4,7 +4,7 @@ headerTitle: Replace a failed YB-TServer
 linkTitle: Replace a failed YB-TServer
 description: Procedure to replace a failed YB-TServer
 menu:
-  latest:
+  preview:
     identifier: replace-failed-tserver
     parent: troubleshoot-cluster
     weight: 829

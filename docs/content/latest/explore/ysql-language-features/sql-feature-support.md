@@ -4,7 +4,7 @@ linkTitle: SQL Feature Support
 description: Summary of YugabyteDB's conformance to the SQL standard
 image: /images/section_icons/secure/create-roles.png
 menu:
-  latest:
+  preview:
     identifier: explore-ysql-language-feature-support
     parent: explore-ysql-language-features
     weight: 50

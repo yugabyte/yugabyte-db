@@ -4,7 +4,7 @@ linkTitle: WSO2 Identity Server
 description: WSO2 Identity Server
 section: INTEGRATIONS
 menu:
-  latest:
+  preview:
     identifier: wso2
     weight: 571
 isTocNested: true

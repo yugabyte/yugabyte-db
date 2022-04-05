@@ -6,7 +6,7 @@ description: Learn about the third party software contained in YugabyteDB.
 aliases:
   - /preview/
 menu:
-  latest:
+  preview:
     parent: legal
     identifier: third-party-software
     weight:   30

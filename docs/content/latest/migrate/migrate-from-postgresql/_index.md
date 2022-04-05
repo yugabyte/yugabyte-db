@@ -5,7 +5,7 @@ linkTitle: Migrate from PostgreSQL
 description: Steps for migrating PostgreSQL data and applications to YugabyteDB.
 image: /images/section_icons/develop/learn.png
 menu:
-  latest:
+  preview:
     identifier: migrate-from-postgresql
     parent: migrate
     weight: 730

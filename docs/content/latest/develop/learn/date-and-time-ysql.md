@@ -7,7 +7,7 @@ aliases:
   - /preview/explore/date-and-time/
   - /preview/develop/learn/date-and-time/
 menu:
-  latest:
+  preview:
     parent: learn
     name: 7. Date and time
     identifier: date-and-time-1-ysql

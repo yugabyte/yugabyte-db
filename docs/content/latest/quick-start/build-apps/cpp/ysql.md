@@ -8,7 +8,7 @@ aliases:
   - /preview/develop/client-drivers/cpp/
   - /preview/quick-start/build-apps/cpp/
 menu:
-  latest:
+  preview:
     identifier: build-apps-cpp-1-ysql
     parent: build-apps
     weight: 556

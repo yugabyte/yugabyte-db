@@ -3,7 +3,7 @@ title: ECHO
 linkTitle: ECHO
 description: ECHO
 menu:
-  latest:
+  preview:
     parent: api-yedis
     weight: 2050
 aliases:

@@ -5,7 +5,7 @@ description: Going beyond SQL
 headcontent: Explore YSQL exclusive features.
 image: /images/section_icons/api/ysql.png
 menu:
-  latest:
+  preview:
     identifier: going-beyond-sql
     parent: explore-ysql-language-features
     weight: 330

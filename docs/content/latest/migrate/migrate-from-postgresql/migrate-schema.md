@@ -4,7 +4,7 @@ headerTitle: Convert a PostgreSQL schema
 linkTitle: Convert a PostgreSQL schema
 description: Steps for migrating a PostgreSQL schema for YugabyteDB.
 menu:
-  latest:
+  preview:
     identifier: migrate-postgresql-schema
     parent: migrate-from-postgresql
     weight: 730

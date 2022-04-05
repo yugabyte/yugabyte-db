@@ -3,7 +3,7 @@ title: ZRANGE
 linkTitle: ZRANGE
 description: ZRANGE
 menu:
-  latest:
+  preview:
     parent: api-yedis
     weight: 2385
 aliases:
