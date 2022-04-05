@@ -5,7 +5,7 @@ linkTitle: ysqlsh
 description: Use the YSQL shell (ysqlsh) to interact with YugabyteDB.
 aliases:
   - /develop/tools/ysqlsh/
-  - /latest/develop/tools/ysqlsh/
+  - /preview/develop/tools/ysqlsh/
 menu:
   latest:
     identifier: ysqlsh

@@ -8,7 +8,7 @@ menu:
     identifier: api-ysql-exprs-yb_hash_code
     parent: api-ysql-exprs
 aliases:
-  - /latest/api/ysql/exprs/func_yb_hash_code
+  - /preview/api/ysql/exprs/func_yb_hash_code
 isTocNested: true
 showAsideToc: true
 ---

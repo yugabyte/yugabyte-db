@@ -9,7 +9,7 @@ menu:
     identifier: window-functions
     parent: api-ysql-exprs
 aliases:
-  - /latest/api/ysql/exprs/window_functions
+  - /preview/api/ysql/exprs/window_functions
 isTocNested: true
 showAsideToc: true
 ---

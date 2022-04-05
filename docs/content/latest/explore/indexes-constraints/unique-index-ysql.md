@@ -9,8 +9,8 @@ menu:
     parent: explore-indexes-constraints
     weight: 230
 aliases:
-   - /latest/explore/ysql-language-features/indexes-1/
-   - /latest/explore/indexes-constraints/indexes-1/
+   - /preview/explore/ysql-language-features/indexes-1/
+   - /preview/explore/indexes-constraints/indexes-1/
 isTocNested: true
 showAsideToc: true
 ---

@@ -8,8 +8,8 @@ menu:
     parent: api-cassandra
     weight: 1230
 aliases:
-  - /latest/api/cassandra/ddl_create_keyspace
-  - /latest/api/ycql/ddl_create_keyspace
+  - /preview/api/cassandra/ddl_create_keyspace
+  - /preview/api/ycql/ddl_create_keyspace
 isTocNested: true
 showAsideToc: true
 ---

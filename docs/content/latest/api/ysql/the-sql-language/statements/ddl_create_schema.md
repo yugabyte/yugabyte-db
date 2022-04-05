@@ -8,7 +8,7 @@ menu:
     identifier: ddl_create_schema
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/ddl_create_schema/
+  - /preview/api/ysql/commands/ddl_create_schema/
 isTocNested: true
 showAsideToc: true
 ---

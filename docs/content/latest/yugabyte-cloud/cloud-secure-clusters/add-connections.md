@@ -5,9 +5,9 @@ description: Authorize access to a cluster using IP allow lists.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 aliases:
-  - /latest/yugabyte-cloud/manage-access/
-  - /latest/yugabyte-cloud/cloud-network/
-  - /latest/yugabyte-cloud/cloud-network/ip-whitelists/
+  - /preview/yugabyte-cloud/manage-access/
+  - /preview/yugabyte-cloud/cloud-network/
+  - /preview/yugabyte-cloud/cloud-network/ip-whitelists/
 menu:
   latest:
     identifier: add-connections

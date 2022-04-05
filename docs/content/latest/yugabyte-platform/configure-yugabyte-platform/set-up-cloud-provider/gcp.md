@@ -4,7 +4,7 @@ headerTitle: Configure the Google Cloud Platform (GCP) cloud provider
 linkTitle: Configure the cloud provider
 description: Configure the Google Cloud Platform (GCP) cloud provider.
 aliases:
-  - /latest/deploy/enterprise-edition/configure-cloud-providers/gcp
+  - /preview/deploy/enterprise-edition/configure-cloud-providers/gcp
 menu:
   latest:
     identifier: set-up-cloud-provider-2-gcp
@@ -84,21 +84,21 @@ You can configure GCP as follows:
 - Complete the fields, keeping in mind the following guidelines:
   - Supply a descriptive name that preferably contains Google or GCP, which is especially important if you are planning to configure other providers.
 
-  - If your Yugabyte Platform instance is not running inside GCP, you need to supply Yugabyte Platform with credentials to the desired GCP project by uploading a configuration file. To do this, select **Upload Service Account config** in the **Credential Type** field and proceed to upload the JSON file that you obtained when you created your service account, as described in [Prepare the Google Cloud Platform (GCP) environment](../../../install-yugabyte-platform/prepare-environment/gcp).<br> 
+  - If your Yugabyte Platform instance is not running inside GCP, you need to supply Yugabyte Platform with credentials to the desired GCP project by uploading a configuration file. To do this, select **Upload Service Account config** in the **Credential Type** field and proceed to upload the JSON file that you obtained when you created your service account, as described in [Prepare the Google Cloud Platform (GCP) environment](../../../install-yugabyte-platform/prepare-environment/gcp).<br>
 
-    If your Yugabyte Platform instance is running inside GCP, the preferred method for authentication to the GCP APIs is to add a service account role to the GCP instance running Yugabyte Platform and then configure Yugabyte Platform to use the the instance’s service account. To do this, select **Use Service Account on instance** in the **Credential Type** field. 
+    If your Yugabyte Platform instance is running inside GCP, the preferred method for authentication to the GCP APIs is to add a service account role to the GCP instance running Yugabyte Platform and then configure Yugabyte Platform to use the the instance’s service account. To do this, select **Use Service Account on instance** in the **Credential Type** field.
 
   - If this is a new deployment, it is recommended that you use the **VPC Setup** field to create a new VPC specifically for YugabyteDB nodes. You have to ensure that the Yugabyte Platform host machine can connect to your Google Cloud account where this new VPC will be created.
 
-    <br>Alternatively, you may choose to specify an existing VPC for YugabyteDB nodes, in which case you would need to map regions by providing the following: 
+    <br>Alternatively, you may choose to specify an existing VPC for YugabyteDB nodes, in which case you would need to map regions by providing the following:
 
     - A region name.
     - A subnet ID.
     - Optionally, a custom machine image. Yugabyte Platform allows you to bring up universes on Ubuntu 18.04 host nodes, assuming you have Python 2 or later installed on the host, as well as the provider created with a custom AMI and custom SSH user.
 
     The third option that is available only when your Yugabyte Platform host machine is also running on Google Cloud, is to use the same VPC on which the Yugabyte Platform host machine runs. Note that choosing to use the same VPC as Yugabyte Platform is an advanced option, which assumes that you are in complete control over this VPC and will be responsible for setting up the networking, SSH access, and firewall rules for it.
-  
-- Click **Save** and wait for the configuration to complete. 
+
+- Click **Save** and wait for the configuration to complete.
 
   This process includes generating a new VPC, a network, subnetworks in all available regions, as well as a new firewall rule, VPC peering for network connectivity, and a custom SSH key pair for Yugabyte Platform-to-YugabyteDB connectivity.
 

@@ -10,7 +10,7 @@ menu:
     parent: aggregate-functions
     weight: 90
 aliases:
-  - /latest/api/ysql/exprs/aggregate_functions
+  - /preview/api/ysql/exprs/aggregate_functions
 isTocNested: true
 showAsideToc: true
 ---

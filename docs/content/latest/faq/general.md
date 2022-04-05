@@ -5,13 +5,13 @@ linkTitle: General FAQ
 description: Answers to common questions about YugabyteDB.
 section: FAQ
 aliases:
-  - /latest/faq/product/
-  - /latest/introduction/overview/
-  - /latest/introduction/benefits/
-  - /latest/introduction/core-features/
-  - /latest/introduction/
-  - /latest/faq/architecture/
-  - /latest/faq
+  - /preview/faq/product/
+  - /preview/introduction/overview/
+  - /preview/introduction/benefits/
+  - /preview/introduction/core-features/
+  - /preview/introduction/
+  - /preview/faq/architecture/
+  - /preview/faq
 menu:
   latest:
     identifier: faq-general

@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2551
 aliases:
-  - /latest/api/redis/publish
-  - /latest/api/yedis/publish
+  - /preview/api/redis/publish
+  - /preview/api/yedis/publish
 isTocNested: true
 showAsideToc: true
 ---
@@ -35,8 +35,8 @@ $ PUBLISH channel message
 
 ## See also
 
-[`pubsub`](../pubsub/), 
-[`subscribe`](../subscribe/), 
-[`unsubscribe`](../unsubscribe/), 
-[`psubscribe`](../psubscribe/), 
+[`pubsub`](../pubsub/),
+[`subscribe`](../subscribe/),
+[`unsubscribe`](../unsubscribe/),
+[`psubscribe`](../psubscribe/),
 [`punsubscribe`](../punsubscribe/)

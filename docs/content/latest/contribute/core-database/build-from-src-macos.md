@@ -7,7 +7,7 @@ image: /images/section_icons/index/quick_start.png
 headcontent: Build the source code on macOS, CentOS, and Ubuntu.
 type: page
 aliases:
-  - /latest/contribute/core-database/build-from-src
+  - /preview/contribute/core-database/build-from-src
 menu:
   latest:
     identifier: build-from-src-1-macos

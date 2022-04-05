@@ -8,7 +8,7 @@ menu:
     identifier: ddl_create_rule
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/ddl_create_rule/
+  - /preview/api/ysql/commands/ddl_create_rule/
 isTocNested: true
 showAsideToc: true
 ---

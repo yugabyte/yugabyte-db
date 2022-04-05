@@ -10,9 +10,9 @@ menu:
     identifier: k8s-aks-1
     weight: 624
 aliases:
-  - /latest/deploy/kubernetes/aks/
-  - /latest/deploy/kubernetes/aks/helm-chart/
-  - /latest/deploy/kubernetes/single-zone/aks/
+  - /preview/deploy/kubernetes/aks/
+  - /preview/deploy/kubernetes/aks/helm-chart/
+  - /preview/deploy/kubernetes/single-zone/aks/
 type: page
 isTocNested: true
 showAsideToc: true

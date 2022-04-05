@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2460
 aliases:
-  - /latest/api/redis/tsrevrangebytime
-  - /latest/api/yedis/tsrevrangebytime
+  - /preview/api/redis/tsrevrangebytime
+  - /preview/api/yedis/tsrevrangebytime
 isTocNested: true
 showAsideToc: true
 ---

@@ -8,7 +8,7 @@ menu:
     identifier: cmd_reset
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/cmd_reset/
+  - /preview/api/ysql/commands/cmd_reset/
 isTocNested: true
 showAsideToc: true
 ---

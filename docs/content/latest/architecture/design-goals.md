@@ -4,7 +4,7 @@ headerTitle: Design goals
 linkTitle: Design goals
 description: Learn the design goals that drive the building of YugabyteDB.
 aliases:
-  - /latest/architecture/design-goals/
+  - /preview/architecture/design-goals/
 menu:
   latest:
     identifier: architecture-design-goals
@@ -28,7 +28,7 @@ Split-brain is a computing scenario in which data and availability inconsistenci
 
 ### Single-row linearizability
 
-YugabyteDB supports single-row linearizable writes. Linearizability is one of the strongest single-row consistency models, and implies that every operation appears to take place atomically and in some total linear order that is consistent with the real-time ordering of those operations. In other words, the following should be true of operations on a single row: 
+YugabyteDB supports single-row linearizable writes. Linearizability is one of the strongest single-row consistency models, and implies that every operation appears to take place atomically and in some total linear order that is consistent with the real-time ordering of those operations. In other words, the following should be true of operations on a single row:
 
 - Operations can execute concurrently, but the state of the database at any point in time must appear to be the result of some totally ordered, sequential execution of operations.
 - If operation A completes before operation B begins, then B should logically take effect after A.
@@ -82,7 +82,7 @@ YugabyteDB does not reinvent data client APIs. It is wire-compatible with existi
 
 ### YCQL
 
-[YCQL](../../api/ycql/) is a semi-relational SQL API that is best fit for internet-scale OLTP and HTAP apps needing massive write scalability as well as blazing-fast queries. It supports distributed transactions, strongly consistent secondary indexes and a native JSON column type. YCQL has its roots in the Cassandra Query Language. 
+[YCQL](../../api/ycql/) is a semi-relational SQL API that is best fit for internet-scale OLTP and HTAP apps needing massive write scalability as well as blazing-fast queries. It supports distributed transactions, strongly consistent secondary indexes and a native JSON column type. YCQL has its roots in the Cassandra Query Language.
 
 {{< tip title="Read more" >}}
 

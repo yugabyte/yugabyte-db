@@ -8,7 +8,7 @@ menu:
     identifier: ddl_refresh_matview
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/ddl_refresh_matview/
+  - /preview/api/ysql/commands/ddl_refresh_matview/
 isTocNested: true
 showAsideToc: true
 ---
@@ -45,7 +45,7 @@ Use the `REFRESH MATERIALIZED VIEW` statement to replace the contents of a mater
 
 ## Semantics
 
-Replace the contents of a materialized view named *matview_name*. 
+Replace the contents of a materialized view named *matview_name*.
 
 ### WITH DATA
 If `WITH DATA` (default) is specified, the view's query is executed to obtain the new data and the materialized view's contents are updated.
@@ -54,7 +54,7 @@ If `WITH DATA` (default) is specified, the view's query is executed to obtain th
 If `WITH NO DATA` is specified, the old contents of the materialized view are discarded and the materialized view is left in an unscannable state.
 
 ### CONCURRENTLY
-This option may be faster in the cases where a small number of rows require updates. Without this option, a refresh that updates a large number of rows will tend to use fewer resources and complete quicker. 
+This option may be faster in the cases where a small number of rows require updates. Without this option, a refresh that updates a large number of rows will tend to use fewer resources and complete quicker.
 This option is only permitted when there is at least one UNIQUE index on the materialized view, and when the materialized view is populated.
 `CONCURRENTLY` AND `WITH NO DATA` cannot be used together. Moreover, the `CONCURRENTLY` option can also not be used when there are rows where _all_ the columns are null. In both scenarios, refreshing the materialized view will raise an error.
 

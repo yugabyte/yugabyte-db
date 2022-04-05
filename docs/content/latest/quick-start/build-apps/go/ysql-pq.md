@@ -5,9 +5,9 @@ linkTitle: Go
 description: Build a sample Go application with the Go PostgreSQL driver and perform basic database operations.
 aliases:
   - /develop/client-drivers/go/
-  - /latest/develop/client-drivers/go/
-  - /latest/develop/build-apps/go/
-  - /latest/quick-start/build-apps/go/
+  - /preview/develop/client-drivers/go/
+  - /preview/develop/build-apps/go/
+  - /preview/quick-start/build-apps/go/
 menu:
   latest:
     parent: build-apps

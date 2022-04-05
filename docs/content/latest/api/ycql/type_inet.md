@@ -8,8 +8,8 @@ menu:
     parent: api-cassandra
     weight: 1410
 aliases:
-  - /latest/api/cassandra/type_inet
-  - /latest/api/ycql/type_inet
+  - /preview/api/cassandra/type_inet
+  - /preview/api/ycql/type_inet
 isTocNested: true
 showAsideToc: true
 ---
@@ -42,13 +42,13 @@ example> INSERT INTO dns_table(site_name, ip_address) VALUES ('localhost', '127.
 ```
 
 ```sql
-example> INSERT INTO dns_table(site_name, ip_address) VALUES ('example.com', '93.184.216.34'); 
+example> INSERT INTO dns_table(site_name, ip_address) VALUES ('example.com', '93.184.216.34');
 ```
 
 `INET` type supports both ipv4 and ipv6 addresses.
 
 ```sql
-example> UPDATE dns_table SET ip_address = '2606:2800:220:1:248:1893:25c8:1946' WHERE site_name = 'example.com'; 
+example> UPDATE dns_table SET ip_address = '2606:2800:220:1:248:1893:25c8:1946' WHERE site_name = 'example.com';
 ```
 
 ```sql

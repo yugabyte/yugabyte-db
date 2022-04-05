@@ -8,7 +8,7 @@ menu:
     identifier: dcl_alter_group
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/dcl_alter_group/
+  - /preview/api/ysql/commands/dcl_alter_group/
 isTocNested: true
 showAsideToc: true
 ---

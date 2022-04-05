@@ -5,8 +5,8 @@ linkTitle: Docker
 description: Deploy a YugabyteDB cluster on Docker Swarm.
 aliases:
   - /deploy/docker-swarm/
-  - /latest/deploy/docker-swarm/
-  - /latest/deploy/docker/
+  - /preview/deploy/docker-swarm/
+  - /preview/deploy/docker/
 menu:
   latest:
     parent: deploy

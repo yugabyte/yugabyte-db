@@ -8,7 +8,7 @@ menu:
     identifier: dcl_drop_owned
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/dcl_drop_owned/
+  - /preview/api/ysql/commands/dcl_drop_owned/
 isTocNested: true
 showAsideToc: true
 ---

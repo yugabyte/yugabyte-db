@@ -4,10 +4,10 @@ headerTitle: Configure the Amazon Web Services (AWS) cloud provider
 linkTitle: Configure the cloud provider
 description: Configure the Amazon Web Services (AWS) cloud provider.
 aliases:
-  - /latest/deploy/enterprise-edition/configure-cloud-providers/aws
-  - /latest/deploy/enterprise-edition/configure-cloud-providers/aws
-  - /latest/yugabyte-platform/deploy/configure-cloud-providers/aws
-  - /latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/
+  - /preview/deploy/enterprise-edition/configure-cloud-providers/aws
+  - /preview/deploy/enterprise-edition/configure-cloud-providers/aws
+  - /preview/yugabyte-platform/deploy/configure-cloud-providers/aws
+  - /preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/
 menu:
   latest:
     identifier: set-up-cloud-provider-1-aws

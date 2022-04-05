@@ -9,7 +9,7 @@ menu:
     parent: explore-indexes-constraints
     weight: 260
 aliases:
-   - /latest/explore/ysql-language-features/gin/
+   - /preview/explore/ysql-language-features/gin/
 isTocNested: true
 showAsideToc: true
 ---

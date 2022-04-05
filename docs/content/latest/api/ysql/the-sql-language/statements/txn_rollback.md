@@ -8,7 +8,7 @@ menu:
     identifier: txn_rollback
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/txn_rollback/
+  - /preview/api/ysql/commands/txn_rollback/
 isTocNested: true
 showAsideToc: true
 ---

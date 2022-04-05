@@ -8,7 +8,7 @@ menu:
     identifier: dcl_create_user
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/dcl_create_user/
+  - /preview/api/ysql/commands/dcl_create_user/
 isTocNested: true
 showAsideToc: true
 ---

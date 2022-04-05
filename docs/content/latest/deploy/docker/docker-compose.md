@@ -5,7 +5,7 @@ linkTitle: Docker
 description: Use Docker Compose to create and manage local YugabyteDB clusters.
 aliases:
   - /admin/docker-compose/
-  - /latest/admin/docker-compose/
+  - /preview/admin/docker-compose/
 menu:
   latest:
     parent: deploy
@@ -36,7 +36,7 @@ Use [docker-compose](https://docs.docker.com/compose/overview/) utility to creat
 
 ## Prerequisites
 
-Make sure to have [Docker](https://docs.docker.com/get-docker/) installed on your machine. 
+Make sure to have [Docker](https://docs.docker.com/get-docker/) installed on your machine.
 
 ## 1. Create a single node cluster
 

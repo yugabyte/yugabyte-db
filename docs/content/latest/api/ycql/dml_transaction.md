@@ -8,8 +8,8 @@ menu:
     parent: api-cassandra
     weight: 1330
 aliases:
-  - /latest/api/cassandra/dml_transaction
-  - /latest/api/ycql/dml_transaction
+  - /preview/api/cassandra/dml_transaction
+  - /preview/api/ycql/dml_transaction
 isTocNested: true
 showAsideToc: true
 ---

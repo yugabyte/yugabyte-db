@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2062
 aliases:
-  - /latest/api/redis/expireat
-  - /latest/api/yedis/expireat
+  - /preview/api/redis/expireat
+  - /preview/api/yedis/expireat
 isTocNested: true
 showAsideToc: true
 ---
@@ -50,4 +50,4 @@ $ EXISTS yugakey
 
 ## See also
 
-[`expire`](../expire/), [`ttl`](../ttl/), [`pttl`](../pttl/), [`set`](../set/) 
+[`expire`](../expire/), [`ttl`](../ttl/), [`pttl`](../pttl/), [`set`](../set/)

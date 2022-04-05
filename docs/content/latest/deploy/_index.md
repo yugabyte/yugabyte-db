@@ -7,7 +7,7 @@ headcontent: Deploy to any public cloud or private data center of your choice.
 image: /images/section_icons/index/deploy.png
 aliases:
   - /deploy/
-  - /latest/deploy/
+  - /preview/deploy/
 section: YUGABYTEDB CORE
 menu:
   latest:

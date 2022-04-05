@@ -8,8 +8,8 @@ menu:
     parent: api-cassandra
     weight: 1401
 aliases:
-  - /latest/api/cassandra/type_frozen
-  - /latest/api/ycql/type_frozen
+  - /preview/api/cassandra/type_frozen
+  - /preview/api/ycql/type_frozen
 isTocNested: true
 showAsideToc: true
 ---

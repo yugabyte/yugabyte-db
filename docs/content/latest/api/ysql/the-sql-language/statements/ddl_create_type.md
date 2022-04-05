@@ -8,7 +8,7 @@ menu:
     identifier: ddl_create_type
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/ddl_create_type/
+  - /preview/api/ysql/commands/ddl_create_type/
 isTocNested: true
 showAsideToc: true
 ---

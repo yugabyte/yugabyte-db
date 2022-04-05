@@ -10,7 +10,7 @@ menu:
     identifier: k8s-mz-eks-1
     weight: 627
 aliases:
-  - /latest/deploy/kubernetes/multi-zone/eks
+  - /preview/deploy/kubernetes/multi-zone/eks
 type: page
 isTocNested: true
 showAsideToc: true

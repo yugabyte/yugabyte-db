@@ -8,7 +8,7 @@ menu:
     identifier: api-ysql-datatypes-serial
     parent: api-ysql-datatypes
 aliases:
-  - /latest/api/ysql/datatypes/type_serial
+  - /preview/api/ysql/datatypes/type_serial
 isTocNested: true
 showAsideToc: true
 ---

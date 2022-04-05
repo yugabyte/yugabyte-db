@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2545
 aliases:
-  - /latest/api/redis/zscore
-  - /latest/api/yedis/zscore
+  - /preview/api/redis/zscore
+  - /preview/api/yedis/zscore
 isTocNested: true
 showAsideToc: true
 ---
@@ -16,8 +16,8 @@ showAsideToc: true
 ## Synopsis
 
 <b>`ZSCORE key member`</b><br>
-Returns the score of the member in the sorted set at key. If member does not exist in the sorted set, 
-or key does not exist, null is returned. If `key` is associated with non sorted set data, 
+Returns the score of the member in the sorted set at key. If member does not exist in the sorted set,
+or key does not exist, null is returned. If `key` is associated with non sorted set data,
 an error is returned.
 
 ## Return value

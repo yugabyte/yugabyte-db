@@ -8,8 +8,8 @@ menu:
     parent: api-cassandra
     weight: 1240
 aliases:
-  - /latest/api/cassandra/ddl_create_table
-  - /latest/api/ycql/ddl_create_table
+  - /preview/api/cassandra/ddl_create_table
+  - /preview/api/ycql/ddl_create_table
 isTocNested: true
 showAsideToc: true
 ---

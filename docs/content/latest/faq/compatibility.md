@@ -6,7 +6,7 @@ description: Answers to common questions about YugabyteDB API compatibility.
 section: FAQ
 aliases:
   - /faq/cassandra/
-  - /latest/faq/cassandra/
+  - /preview/faq/cassandra/
 menu:
   latest:
     identifier: faq-api-compatibility

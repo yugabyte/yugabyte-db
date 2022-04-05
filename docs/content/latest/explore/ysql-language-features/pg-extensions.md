@@ -11,7 +11,7 @@ menu:
     parent: explore-ysql-language-features
     weight: 4400
 aliases:
-  - /latest/explore/ysql-language-features/advanced-features/extensions/
+  - /preview/explore/ysql-language-features/advanced-features/extensions/
 isTocNested: true
 showAsideToc: true
 ---
@@ -307,7 +307,7 @@ ORDER BY k;
 You'll see results similar to the following:
 
 ```output
- k  |    v     
+ k  |    v
 ----+----------
   1 |   988.53
   2 |  1005.18
@@ -375,8 +375,8 @@ yugabyte=# SELECT hll_cardinality(set) FROM helloworld WHERE id = 1;
 The easiest way to install the extension is to copy the files from an existing PostgreSQL installation into Yugabyte, and then create the extension.
 
 ```sh
-$ cp -v "$(pg_config --pkglibdir)"/*uuid-ossp*.so "$(yb_pg_config --pkglibdir)" && 
-  cp -v "$(pg_config --sharedir)"/extension/*uuid-ossp*.sql "$(yb_pg_config --sharedir)"/extension && 
+$ cp -v "$(pg_config --pkglibdir)"/*uuid-ossp*.so "$(yb_pg_config --pkglibdir)" &&
+  cp -v "$(pg_config --sharedir)"/extension/*uuid-ossp*.sql "$(yb_pg_config --sharedir)"/extension &&
   cp -v "$(pg_config --sharedir)"/extension/*uuid-ossp*.control "$(yb_pg_config --sharedir)"/extension &&
   ./bin/ysqlsh -c "CREATE EXTENSION \"uuid-ossp\";"
 ```

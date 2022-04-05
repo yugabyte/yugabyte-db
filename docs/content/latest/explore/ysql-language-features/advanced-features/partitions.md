@@ -9,7 +9,7 @@ menu:
     parent: advanced-features
     weight: 225
 aliases:
-  - /latest/explore/ysql-language-features/partitions/
+  - /preview/explore/ysql-language-features/partitions/
 isTocNested: true
 showAsideToc: true
 ---

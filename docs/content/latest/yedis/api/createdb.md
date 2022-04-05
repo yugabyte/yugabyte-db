@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2032
 aliases:
-  - /latest/api/redis/createdb
-  - /latest/api/yedis/createdb
+  - /preview/api/redis/createdb
+  - /preview/api/yedis/createdb
 isTocNested: true
 showAsideToc: true
 ---

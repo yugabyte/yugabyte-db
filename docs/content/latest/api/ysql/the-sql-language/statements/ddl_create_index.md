@@ -8,7 +8,7 @@ menu:
     identifier: ddl_create_index
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/ddl_create_index/
+  - /preview/api/ysql/commands/ddl_create_index/
 isTocNested: true
 showAsideToc: true
 ---

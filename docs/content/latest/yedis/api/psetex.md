@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2272
 aliases:
-  - /latest/api/redis/psetex
-  - /latest/api/yedis/psetex
+  - /preview/api/redis/psetex
+  - /preview/api/yedis/psetex
 isTocNested: true
 showAsideToc: true
 ---
@@ -45,7 +45,7 @@ $ PTTL yugakey
 ```
 
 ```
-(integer) 900 
+(integer) 900
 ```
 
 ## See also

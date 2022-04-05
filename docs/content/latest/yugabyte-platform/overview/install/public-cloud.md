@@ -6,7 +6,7 @@ description: Installing Yugabyte Platform on Public Cloud
 image: /images/section_icons/deploy/enterprise.png
 headcontent: Installing Yugabyte Platform on Public Cloud
 aliases:
-  - /latest/yugabyte-platform/overview/install/
+  - /preview/yugabyte-platform/overview/install/
 menu:
   latest:
     identifier: install-1-public-cloud

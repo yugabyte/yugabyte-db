@@ -9,7 +9,7 @@ menu:
     parent: advanced-features
     weight: 230
 aliases:
-  - /latest/explore/ysql-language-features/views/
+  - /preview/explore/ysql-language-features/views/
 isTocNested: true
 showAsideToc: true
 ---

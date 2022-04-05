@@ -8,7 +8,7 @@ menu:
     identifier: dcl_reassign_owned
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/dcl_reassign_owned/
+  - /preview/api/ysql/commands/dcl_reassign_owned/
 isTocNested: true
 showAsideToc: true
 ---

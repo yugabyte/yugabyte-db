@@ -8,7 +8,7 @@ menu:
     identifier: ddl_drop_operator_class
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/ddl_drop_operator_class/
+  - /preview/api/ysql/commands/ddl_drop_operator_class/
 isTocNested: true
 showAsideToc: true
 ---

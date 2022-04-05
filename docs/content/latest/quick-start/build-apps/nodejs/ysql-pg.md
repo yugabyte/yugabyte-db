@@ -4,9 +4,9 @@ headerTitle: Build a Node.js application
 description: Build a Node.js application with the PostgreSQL driver that uses YSQL.
 aliases:
   - /develop/client-drivers/nodejs/
-  - /latest/develop/client-drivers/nodejs/
-  - /latest/develop/build-apps/nodejs/
-  - /latest/quick-start/build-apps/nodejs/
+  - /preview/develop/client-drivers/nodejs/
+  - /preview/develop/build-apps/nodejs/
+  - /preview/quick-start/build-apps/nodejs/
 menu:
   latest:
     parent: build-apps

@@ -10,8 +10,8 @@ menu:
     identifier: k8s-oss-3
     weight: 621
 aliases:
-  - /latest/deploy/kubernetes/operator-hub/
-  - /latest/deploy/kubernetes/oss/operator-hub/
+  - /preview/deploy/kubernetes/operator-hub/
+  - /preview/deploy/kubernetes/oss/operator-hub/
 type: page
 isTocNested: true
 showAsideToc: true

@@ -11,7 +11,7 @@ menu:
     parent: api-ysql
     weight: 4600
 aliases:
-  - /latest/api/ysql/reserved_names
+  - /preview/api/ysql/reserved_names
 isTocNested: true
 showAsideToc: true
 ---

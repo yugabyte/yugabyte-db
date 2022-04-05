@@ -8,8 +8,8 @@ menu:
     parent: api-cassandra
     weight: 1340
 aliases:
-  - /latest/api/cassandra/expr_subscript
-  - /latest/api/ycql/expr_subscript
+  - /preview/api/cassandra/expr_subscript
+  - /preview/api/ycql/expr_subscript
 isTocNested: true
 showAsideToc: true
 ---

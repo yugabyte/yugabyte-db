@@ -8,7 +8,7 @@ menu:
     identifier: dcl_create_role
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/dcl_create_role/
+  - /preview/api/ysql/commands/dcl_create_role/
 isTocNested: true
 showAsideToc: true
 ---

@@ -6,9 +6,9 @@ description: Explore Yugabyte Cloud QL (YCQL), a semi-relational distributed SQL
 image: /images/section_icons/quick_start/explore_ycql.png
 aliases:
   - /quick-start/test-cassandra/
-  - /latest/quick-start/test-cassandra/
-  - /latest/quick-start/test-ycql/
-  - /latest/api/ycql/quick-start/
+  - /preview/quick-start/test-cassandra/
+  - /preview/quick-start/test-ycql/
+  - /preview/api/ycql/quick-start/
 menu:
   latest:
     parent: quick-start
@@ -35,7 +35,7 @@ showAsideToc: true
       YCQL
     </a>
   </li>
-  
+
 </ul>
 
 After [creating a local cluster](../../create-local-cluster/macos/), follow the instructions below to explore YugabyteDB's semi-relational [Yugabyte Cloud QL](../../../api/ycql/) API.
@@ -77,7 +77,7 @@ After [creating a local cluster](../../create-local-cluster/macos/), follow the 
   </div>
   <div id="linux" class="tab-pane fade" role="tabpanel" aria-labelledby="linux-tab">
     {{% includeMarkdown "binary/explore-ycql.md" /%}}
-  </div> 
+  </div>
   <div id="docker" class="tab-pane fade" role="tabpanel" aria-labelledby="docker-tab">
     {{% includeMarkdown "docker/explore-ycql.md" /%}}
   </div>

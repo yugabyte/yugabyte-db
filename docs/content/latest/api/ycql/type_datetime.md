@@ -8,10 +8,10 @@ menu:
     parent: api-cassandra
     weight: 1450
 aliases:
-  - /latest/api/cassandra/type_datetime
-  - /latest/api/cassandra/type_timestamp
-  - /latest/api/ycql/type_datetime
-  - /latest/api/ycql/type_timestamp
+  - /preview/api/cassandra/type_datetime
+  - /preview/api/cassandra/type_timestamp
+  - /preview/api/ycql/type_datetime
+  - /preview/api/ycql/type_timestamp
 isTocNested: true
 showAsideToc: true
 ---

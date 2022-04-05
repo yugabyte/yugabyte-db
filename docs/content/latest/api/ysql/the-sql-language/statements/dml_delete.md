@@ -8,7 +8,7 @@ menu:
     identifier: dml_delete
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/dml_delete/
+  - /preview/api/ysql/commands/dml_delete/
 isTocNested: true
 showAsideToc: true
 ---

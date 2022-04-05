@@ -4,7 +4,7 @@ headerTitle: Create a KMS configuration using AWS KMS
 linkTitle: Create a KMS configuration
 description: Use Yugabyte Platform to create a KMS configuration for Amazon Web Services (AWS) KMS.
 aliases:
-  - /latest/yugabyte-platform/security/create-kms-config
+  - /preview/yugabyte-platform/security/create-kms-config
 menu:
   latest:
     parent: security
@@ -90,7 +90,7 @@ You can create a KMS configuration that uses AWS KMS as follows:
         }
     ```
 
-5. Click **Save**.<br> 
+5. Click **Save**.<br>
 
     Your new configuration should appear in the list of configurations. A saved KMS configuration can only be deleted if it is not in use by any existing universes.
 

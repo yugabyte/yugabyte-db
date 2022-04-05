@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2420
 aliases:
-  - /latest/api/redis/tscard
-  - /latest/api/yedis/tscard
+  - /preview/api/redis/tscard
+  - /preview/api/yedis/tscard
 isTocNested: true
 showAsideToc: true
 ---

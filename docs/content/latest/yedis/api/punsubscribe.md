@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2555
 aliases:
-  - /latest/api/redis/punsubscribe
-  - /latest/api/yedis/punsubscribe
+  - /preview/api/redis/punsubscribe
+  - /preview/api/yedis/punsubscribe
 isTocNested: true
 showAsideToc: true
 ---
@@ -20,10 +20,10 @@ This command unsubscribes the client from the specified pattern(s). If no patter
 
 ## See also
 
-[`keys`](../keys/), 
-[`pubsub`](../pubsub/), 
-[`publish`](../publish/), 
-[`subscribe`](../subscribe/), 
-[`unsubscribe`](../unsubscribe/), 
-[`psubscribe`](../psubscribe/), 
+[`keys`](../keys/),
+[`pubsub`](../pubsub/),
+[`publish`](../publish/),
+[`subscribe`](../subscribe/),
+[`unsubscribe`](../unsubscribe/),
+[`psubscribe`](../psubscribe/),
 [`punsubscribe`](../punsubscribe/)

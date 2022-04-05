@@ -8,7 +8,7 @@ menu:
     identifier: ddl_drop_table
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/ddl_drop_table/
+  - /preview/api/ysql/commands/ddl_drop_table/
 isTocNested: true
 showAsideToc: true
 ---

@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2430
 aliases:
-  - /latest/api/redis/tslastn
-  - /latest/api/yedis/tslastn
+  - /preview/api/redis/tslastn
+  - /preview/api/yedis/tslastn
 isTocNested: true
 showAsideToc: true
 ---

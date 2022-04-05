@@ -10,7 +10,7 @@ menu:
     parent: api-ysql
     weight: 4300
 aliases:
-  - /latest/api/ysql/exprs/
+  - /preview/api/ysql/exprs/
 isTocNested: true
 showAsideToc: true
 ---

@@ -4,8 +4,8 @@ headerTitle: Date and time
 linkTitle: 7. Date and time
 description: Learn how to work with date and time in YSQL.
 aliases:
-  - /latest/explore/date-and-time/
-  - /latest/develop/learn/date-and-time/
+  - /preview/explore/date-and-time/
+  - /preview/develop/learn/date-and-time/
 menu:
   latest:
     parent: learn

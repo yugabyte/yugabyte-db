@@ -8,7 +8,7 @@ menu:
     identifier: dcl_drop_user
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/dcl_drop_user/
+  - /preview/api/ysql/commands/dcl_drop_user/
 isTocNested: true
 showAsideToc: true
 ---

@@ -10,8 +10,8 @@ menu:
     identifier: k8s-oss-2
     weight: 621
 aliases:
-  - /latest/deploy/kubernetes/yugabyte-operator/
-  - /latest/deploy/kubernetes/oss/yugabyte-operator/
+  - /preview/deploy/kubernetes/yugabyte-operator/
+  - /preview/deploy/kubernetes/oss/yugabyte-operator/
 type: page
 isTocNested: true
 showAsideToc: true

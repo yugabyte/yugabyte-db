@@ -8,7 +8,7 @@ menu:
     identifier: ddl_create_sequence
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/ddl_create_sequence/
+  - /preview/api/ysql/commands/ddl_create_sequence/
 isTocNested: true
 showAsideToc: true
 ---
@@ -57,7 +57,7 @@ The sequence name must be distinct from any other sequences, tables, indexes, vi
 
 #### INCREMENT BY *increment*
 
-Specify the *increment* value to add to the current sequence value to create a new value. The default value is `1`. A positive number 
+Specify the *increment* value to add to the current sequence value to create a new value. The default value is `1`. A positive number
 
 #### MINVALUE *minvalue* | NO MINVALUE
 

@@ -10,8 +10,8 @@ menu:
     identifier: k8s-oss-4
     weight: 621
 aliases:
-  - /latest/deploy/kubernetes/rook-operator/
-  - /latest/deploy/kubernetes/oss/rook-operator/
+  - /preview/deploy/kubernetes/rook-operator/
+  - /preview/deploy/kubernetes/oss/rook-operator/
 type: page
 isTocNested: true
 showAsideToc: true

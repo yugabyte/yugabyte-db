@@ -9,7 +9,7 @@ menu:
     identifier: api-ysql-datatypes-binary
     parent: api-ysql-datatypes
 aliases:
-  - /latest/api/ysql/datatypes/type_binary
+  - /preview/api/ysql/datatypes/type_binary
 isTocNested: true
 showAsideToc: true
 ---

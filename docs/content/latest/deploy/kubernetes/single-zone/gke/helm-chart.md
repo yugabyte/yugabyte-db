@@ -10,9 +10,9 @@ menu:
     identifier: k8s-gke-1
     weight: 623
 aliases:
-  - /latest/deploy/kubernetes/gke/
-  - /latest/deploy/kubernetes/gke/helm-chart/
-  - /latest/deploy/kubernetes/single-zone/gke/
+  - /preview/deploy/kubernetes/gke/
+  - /preview/deploy/kubernetes/gke/helm-chart/
+  - /preview/deploy/kubernetes/single-zone/gke/
 type: page
 isTocNested: true
 showAsideToc: true

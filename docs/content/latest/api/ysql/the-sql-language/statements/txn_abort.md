@@ -8,7 +8,7 @@ menu:
     identifier: txn_abort
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/txn_abort/
+  - /preview/api/ysql/commands/txn_abort/
 isTocNested: true
 showAsideToc: true
 ---

@@ -9,7 +9,7 @@ menu:
     identifier: ddl_create_extension
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/ddl_create_extension/
+  - /preview/api/ysql/commands/ddl_create_extension/
 isTocNested: true
 showAsideToc: true
 ---

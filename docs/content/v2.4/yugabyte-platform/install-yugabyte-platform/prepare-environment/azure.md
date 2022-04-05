@@ -52,23 +52,20 @@ showAsideToc: true
 
 </ul>
 
-
 ## Pre-requisites
 
 You are going to need these details from your Azure Cloud tenant:
 
 * Active subscription and subscription ID for cost management
 * [Tenant ID](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#get-tenant-and-app-id-values-for-signing-in)
-* You must have sufficient permissions 
-    * To [register an application](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#permissions-required-for-registering-an-app) with your Azure AD tenant, and 
-    * To [assign the application](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#check-azure-subscription-permissions)  roles in your Azure subscription
+* You must have sufficient permissions
+  * To [register an application](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#permissions-required-for-registering-an-app) with your Azure AD tenant, and
+  * To [assign the application](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#check-azure-subscription-permissions)  roles in your Azure subscription
 
-
-## Create resource group (optional) 
+## Create resource group (optional)
 
 You can skip creating a new resource group and [use an existing one to manage Yugabyte Platform resources](
 https://docs.microsoft.com/en-us/azure/azure-resource-manager/management/manage-resource-groups-portal#create-resource-groups)
-
 
 ## Create network security group (optional)
 
@@ -80,19 +77,21 @@ To access the Yugabyte Platform from outside the Azure environment, you would ne
 * Check, manage, and upgrade Yugabyte Platform (port tcp:8800)
 * View the Yugabyte Platform console (port tcp:80)
 
-Yugabyte platform will provision and access database nodes in a later step; you will need to provide a virtual network where the platform needs to create the database nodes. So you would need to ensure connectivity between the platform VM  virtual network and database VMs virtual network. You may need virtual network peering based on your network configuration. Please make sure the platform can access these nodes on the database VM’s virtual network - /latest/reference/configuration/default-ports/
-To create a security group that enables these, go to Network Security Groups > Add> Choose subscription > Select resource group used in the previous step > Add name and region, click Create Security Group, and then add the following values:
+If you are using your own custom VPCs (self-managed configuration), the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 11000, 12000, 9300, 9042, 5433, and 6379. For more information on ports used by YugabyteDB, refer to [Default ports](../../../../reference/configuration/default-ports).
+
+Yugabyte platform will provision and access database nodes in a later step; you will need to provide a virtual network where the platform needs to create the database nodes. So you would need to ensure connectivity between the platform VM  virtual network and database VMs virtual network. You may need virtual network peering based on your network configuration. Please make sure the platform can access these nodes on the database VM's virtual network.
 
 * For the name, enter yugaware-sg (you can change the name if you want).
 * Edit inbound security rules:
-    *  Add the appropriate IP addresses to the Source IP ranges field. To allow access from any machine, add 0.0.0.0/0 but note that this is not very secure.
-    * Add the ports 22, 8800, and 80 to the Port Range field. The protocol selected must be TCP
+  * Add the appropriate IP addresses to the Source IP ranges field. To allow access from any machine, add 0.0.0.0/0 but note that this is not very secure.
+  * Add the ports 22, 8800, and 80 to the Port Range field. The protocol selected must be TCP
 
-## Create a service principal   
+## Create a service principal
 
 For the Yugabyte Platform to manage YugabyteDB nodes, it requires limited access to your Azure infrastructure. This can be accomplished by [registering an app](https://docs.microsoft.com/en-us/azure/active-directory/develop/quickstart-register-app) in the Azure portal so the Microsoft identity platform can provide authentication and authorization services for your application. Registering your application establishes a trust relationship between your app and the Microsoft identity platform.
 
 Follow these steps to create the app registration:
+
 * Sign in to the Azure portal.
 * If you have access to multiple tenants, use the Directory + subscription filter in the top menu to select the tenant used in previous steps to register an application.
 * Search for and select the Azure Active Directory.
@@ -101,9 +100,7 @@ Follow these steps to create the app registration:
 * Specify who can use the application. You can use either .single or multiple tenant options.
 * Don't enter anything for Redirect URI (optional) and Select Register to complete the initial app registration.
 
-
 ![Prepare Azure cloud to install Yugabyte Platform](/images/yb-platform/install/azure/platform-azure-prepare-cloud-env-1.png)
-
 
 * When registration completes, the Azure portal displays the app registration's Overview pane, which includes its Application (client) ID. Also referred to as just client ID, this value uniquely identifies your Microsoft identity platform application.
 * App authentication: Select Certificates & secrets > New client secret.
@@ -140,11 +137,11 @@ Create an instance to run the Yugabyte Platform server. To do so, go to Virtual 
 * Choose a region where you want to deploy the platform.
 * Ignore the availability options.
 * Change the disk image to Ubuntu 16.04.
-* Choose “Standard_D4s_v3” - 4 CPU/16GB memory instance.
-* Select the authentication type as “ssh public key.”. Pick an existing key pair (or create a new one) to access the machine. Make sure you have the ssh access key. This is important for enabling ssh access to this machine.
+* Choose "Standard_D4s_v3" - 4 CPU/16GB memory instance.
+* Select the authentication type as "ssh public key.". Pick an existing key pair (or create a new one) to access the machine. Make sure you have the ssh access key. This is important for enabling ssh access to this machine.
 * Select public inbound ports based on network configuration. You can disable public access if you wish to access the instance from within a private network.
 * On the disks page, you can select any OS disk type.
-* Increase the data disk size to at least 100GiB by creating an “attached new disk.” 
+* Increase the data disk size to at least 100GiB by creating an "attached new disk."
 * Continue to the next networking section and fill out the details for the virtual network and security group created in the previous steps.
 
 Finally, click Review+create to launch the Yugabyte Platform VM.

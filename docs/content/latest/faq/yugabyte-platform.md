@@ -5,7 +5,7 @@ linkTitle: Yugabyte Platform FAQ
 description: Answers to common questions about Yugabyte Platform.
 section: FAQ
 aliases:
-  - /latest/faq/enterprise-edition/
+  - /preview/faq/enterprise-edition/
 menu:
   latest:
     identifier: faq-yugabyte-platform

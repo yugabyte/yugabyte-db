@@ -10,7 +10,7 @@ menu:
     parent: going-beyond-sql
     weight: 320
 aliases:
-  - /latest/explore/ysql-language-features/tablespaces/
+  - /preview/explore/ysql-language-features/tablespaces/
 isTocNested: true
 showAsideToc: true
 ---

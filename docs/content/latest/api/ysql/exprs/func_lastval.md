@@ -8,7 +8,7 @@ menu:
     identifier: api-ysql-exprs-lastval
     parent: api-ysql-exprs
 aliases:
-  - /latest/api/ysql/exprs/func_lastval
+  - /preview/api/ysql/exprs/func_lastval
 isTocNested: true
 showAsideToc: true
 ---

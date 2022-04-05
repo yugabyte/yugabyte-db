@@ -8,7 +8,7 @@ menu:
     identifier: dcl_alter_user
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/dcl_alter_user/
+  - /preview/api/ysql/commands/dcl_alter_user/
 isTocNested: true
 showAsideToc: true
 ---

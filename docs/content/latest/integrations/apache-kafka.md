@@ -3,7 +3,7 @@ title: Apache Kafka
 linkTitle: Apache Kafka
 description: Apache Kafka
 aliases:
-  - /latest/integrations
+  - /preview/integrations
 section: INTEGRATIONS
 menu:
   latest:

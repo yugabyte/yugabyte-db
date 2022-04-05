@@ -8,7 +8,7 @@ menu:
     identifier: ddl_create_cast
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/ddl_create_cast/
+  - /preview/api/ysql/commands/ddl_create_cast/
 isTocNested: true
 showAsideToc: true
 ---

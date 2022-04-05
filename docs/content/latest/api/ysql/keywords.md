@@ -11,7 +11,7 @@ menu:
     parent: api-ysql
     weight: 4500
 aliases:
-  - /latest/api/ysql/keywords
+  - /preview/api/ysql/keywords
 isTocNested: true
 showAsideToc: true
 ---

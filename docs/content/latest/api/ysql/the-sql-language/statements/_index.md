@@ -10,7 +10,7 @@ menu:
     parent: the-sql-language
     weight: 100
 aliases:
-  - /latest/api/ysql/commands/
+  - /preview/api/ysql/commands/
 isTocNested: true
 showAsideToc: true
 ---

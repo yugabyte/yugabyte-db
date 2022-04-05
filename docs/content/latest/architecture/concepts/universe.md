@@ -4,8 +4,8 @@ headerTitle: Universe
 linkTitle: Universe
 description: Learn about the YugabyteDB universe (or cluster).
 aliases:
-  - /latest/architecture/concepts/universe/
-  - /latest/architecture/concepts/single-node/
+  - /preview/architecture/concepts/universe/
+  - /preview/architecture/concepts/single-node/
 menu:
   latest:
     identifier: architecture-concepts-universe

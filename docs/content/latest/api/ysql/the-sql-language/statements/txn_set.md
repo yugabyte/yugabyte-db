@@ -9,7 +9,7 @@ menu:
     identifier: txn_set
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/txn_set/
+  - /preview/api/ysql/commands/txn_set/
 isTocNested: true
 showAsideToc: true
 ---
@@ -35,7 +35,7 @@ Use the `SET TRANSACTION` statement to set the current transaction isolation lev
   </li>
 </ul>
 
-<div class="tab-content"> 
+<div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
     {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/set_transaction,transaction_mode,isolation_level,read_write_mode,deferrable_mode.grammar.md" /%}}
   </div>

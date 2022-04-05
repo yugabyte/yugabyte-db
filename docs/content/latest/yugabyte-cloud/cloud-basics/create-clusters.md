@@ -5,8 +5,8 @@ description: Deploy production clusters in Yugabyte Cloud.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 aliases:
-  - /latest/deploy/yugabyte-cloud/create-clusters/
-  - /latest/yugabyte-cloud/create-clusters/
+  - /preview/deploy/yugabyte-cloud/create-clusters/
+  - /preview/yugabyte-cloud/create-clusters/
 menu:
   latest:
     identifier: create-clusters

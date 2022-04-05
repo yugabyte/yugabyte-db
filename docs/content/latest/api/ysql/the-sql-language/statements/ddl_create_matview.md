@@ -8,7 +8,7 @@ menu:
     identifier: ddl_create_matview
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/ddl_create_matview/
+  - /preview/api/ysql/commands/ddl_create_matview/
 isTocNested: true
 showAsideToc: true
 ---

@@ -8,7 +8,7 @@ menu:
     identifier: dml_insert
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/dml_insert/
+  - /preview/api/ysql/commands/dml_insert/
 isTocNested: true
 showAsideToc: true
 ---

@@ -10,7 +10,7 @@ menu:
     identifier: scala-1
     weight: 558
 aliases:
-  - /latest/quick-start/build-apps/scala/
+  - /preview/quick-start/build-apps/scala/
 type: page
 isTocNested: true
 showAsideToc: true

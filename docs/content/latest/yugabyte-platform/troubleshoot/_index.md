@@ -1,5 +1,5 @@
 ---
-title: Troubleshoot 
+title: Troubleshoot
 linkTitle: Troubleshoot
 description: Troubleshoot
 image: /images/section_icons/troubleshoot/troubleshoot.png
@@ -8,8 +8,8 @@ type: page
 section: YUGABYTE PLATFORM
 aliases:
   - /troubleshoot/enterprise-edition/
-  - /latest/troubleshoot/enterprise-edition/
-  - /latest/troubleshoot/yugabyte-platform/
+  - /preview/troubleshoot/enterprise-edition/
+  - /preview/troubleshoot/yugabyte-platform/
 menu:
   latest:
     identifier: troubleshoot-yp

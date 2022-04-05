@@ -12,8 +12,8 @@ menu:
     parent: api
     weight: 3000
 aliases:
-  - /latest/api/ycql/
-  - /latest/api/cassandra/
+  - /preview/api/ycql/
+  - /preview/api/cassandra/
 isTocNested: false
 showAsideToc: true
 ---

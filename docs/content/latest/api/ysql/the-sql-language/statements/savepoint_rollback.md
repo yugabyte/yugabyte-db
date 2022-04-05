@@ -8,7 +8,7 @@ menu:
     identifier: savepoint_rollback
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/savepoint_rollback/
+  - /preview/api/ysql/commands/savepoint_rollback/
 isTocNested: true
 showAsideToc: true
 ---
@@ -109,7 +109,7 @@ SELECT * FROM sample;
 ```
 
 ```output
- k  | v  
+ k  | v
 ----+----
   1 |  2
   3 |  4

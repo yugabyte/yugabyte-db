@@ -8,8 +8,8 @@ menu:
     parent: api-cassandra
     weight: 1350
 aliases:
-  - /latest/api/cassandra/expr_fcall
-  - /latest/api/ycql/expr_fcall
+  - /preview/api/cassandra/expr_fcall
+  - /preview/api/ycql/expr_fcall
 isTocNested: true
 showAsideToc: true
 ---

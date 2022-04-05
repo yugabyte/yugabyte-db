@@ -8,7 +8,7 @@ menu:
     identifier: ddl_create_trigger
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/ddl_create_trigger/
+  - /preview/api/ysql/commands/ddl_create_trigger/
 isTocNested: true
 showAsideToc: true
 ---

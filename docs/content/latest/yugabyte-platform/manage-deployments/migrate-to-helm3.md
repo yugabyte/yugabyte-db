@@ -4,7 +4,7 @@ headerTitle: Migrate from Helm 2 to Helm 3
 linkTitle: Migrate to Helm 3
 description: Migrate your YugabyteDB universes and Yugabyte Platform from Helm 2 to Helm 3.
 aliases:
-  - /latest/manage/enterprise-edition/migrate-to-helm3/
+  - /preview/manage/enterprise-edition/migrate-to-helm3/
 menu:
   latest:
     identifier: migrate-to-helm3
@@ -31,7 +31,7 @@ $ helm2 ls
 
 ```
 NAME   	REVISION	UPDATED                 STATUS  	CHART         	APP VERSION	NAMESPACE
-yw-test	1       	Tue May 12 22:21:16 2020	DEPLOYED	yugaware-2.2.0 2.2.0.0-76 	yw-test  
+yw-test	1       	Tue May 12 22:21:16 2020	DEPLOYED	yugaware-2.2.0 2.2.0.0-76 	yw-test
 ```
 
 2. Migrate the chart to Helm 3 using the `2to3` plugin by running the following command.
@@ -61,7 +61,7 @@ $ helm ls -n yw-test
 
 ```
 NAME   	NAMESPACE	REVISION	UPDATED                               	STATUS  	CHART         	APP VERSION
-yw-test	yw-test  	1       	2020-06-16 16:51:16.44463488 +0000 UTC	deployed	yugaware-2.2.0	2.2.0.0-b80 
+yw-test	yw-test  	1       	2020-06-16 16:51:16.44463488 +0000 UTC	deployed	yugaware-2.2.0	2.2.0.0-b80
 ```
 
 ## Upgrade Yugabyte Platform and YugabyteDB using Helm 3
@@ -168,7 +168,7 @@ All YugabyteDB clusters deployed on Kubernetes with the Yugabyte Platform before
 
 ```sh
 $ helm2 ls
-NAME              REVISION  UPDATED                 	       STATUS  	CHART                  APP VERSION	NAMESPACE      
+NAME              REVISION  UPDATED                 	       STATUS  	CHART                  APP VERSION	NAMESPACE
 yb-admin-test-a	1       Tue May 12 23:08:30 2020    DEPLOYED	yugabyte-2.1.2       2.1.2.0-b10	yb-admin-test-a
 yb-admin-test-b	1       Tue May 12 23:08:30 2020    DEPLOYED	yugabyte-2.1.2       2.1.2.0-b10	yb-admin-test-b
 yb-admin-test-c	1       Tue May 12 23:08:30 2020    DEPLOYED	yugabyte-2.1.2       2.1.2.0-b10	yb-admin-test-c

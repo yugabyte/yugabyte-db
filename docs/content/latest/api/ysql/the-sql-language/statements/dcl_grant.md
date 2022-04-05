@@ -8,7 +8,7 @@ menu:
     identifier: dcl_grant
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/dcl_grant/
+  - /preview/api/ysql/commands/dcl_grant/
 isTocNested: true
 showAsideToc: true
 ---

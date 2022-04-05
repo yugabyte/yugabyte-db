@@ -6,8 +6,8 @@ headcontent: Fully managed YugabyteDB-as-a-Service
 image: /images/section_icons/index/quick_start.png
 section: YUGABYTE CLOUD
 aliases:
-  - /latest/yugabyte-cloud/
-  - /latest/deploy/yugabyte-cloud/
+  - /preview/yugabyte-cloud/
+  - /preview/deploy/yugabyte-cloud/
 menu:
   latest:
     identifier: cloud-overview

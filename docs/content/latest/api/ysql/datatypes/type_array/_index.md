@@ -9,7 +9,7 @@ menu:
     identifier: api-ysql-datatypes-array
     parent: api-ysql-datatypes
 aliases:
-  - /latest/api/ysql/datatypes/type_array
+  - /preview/api/ysql/datatypes/type_array
 isTocNested: true
 showAsideToc: true
 ---

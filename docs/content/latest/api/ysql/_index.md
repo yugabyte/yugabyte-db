@@ -11,8 +11,8 @@ menu:
     parent: api
     weight: 2900
 aliases:
-  - /latest/api/ysql/
-  - /latest/api/postgresql/
+  - /preview/api/ysql/
+  - /preview/api/postgresql/
 isTocNested: true
 showAsideToc: true
 ---

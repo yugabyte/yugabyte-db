@@ -8,8 +8,8 @@ menu:
     parent: api-cassandra
     weight: 1420
 aliases:
-  - /latest/api/cassandra/type_int
-  - /latest/api/ycql/type_int
+  - /preview/api/cassandra/type_int
+  - /preview/api/ycql/type_int
 isTocNested: true
 showAsideToc: true
 ---

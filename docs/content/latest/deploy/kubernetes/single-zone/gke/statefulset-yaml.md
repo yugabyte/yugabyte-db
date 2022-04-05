@@ -10,7 +10,7 @@ menu:
     identifier: k8s-gke-2
     weight: 623
 aliases:
-  - /latest/deploy/kubernetes/gke/statefulset-yaml
+  - /preview/deploy/kubernetes/gke/statefulset-yaml
 type: page
 isTocNested: true
 showAsideToc: true

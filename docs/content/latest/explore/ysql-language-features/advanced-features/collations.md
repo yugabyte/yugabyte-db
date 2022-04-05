@@ -9,7 +9,7 @@ menu:
     parent: advanced-features
     weight: 240
 aliases:
-  - /latest/explore/ysql-language-features/collations/
+  - /preview/explore/ysql-language-features/collations/
 isTocNested: true
 showAsideToc: true
 ---

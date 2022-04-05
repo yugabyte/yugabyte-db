@@ -8,7 +8,7 @@ menu:
     identifier: dcl_drop_role
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/dcl_drop_role/
+  - /preview/api/ysql/commands/dcl_drop_role/
 isTocNested: true
 showAsideToc: true
 ---

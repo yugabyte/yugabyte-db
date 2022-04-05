@@ -8,7 +8,7 @@ menu:
     identifier: perf_explain
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/perf_explain/
+  - /preview/api/ysql/commands/perf_explain/
 isTocNested: true
 showAsideToc: true
 ---

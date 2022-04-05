@@ -4,7 +4,7 @@ linkTitle: Debezium
 description: Debezium is an open source distributed platform used to capture the changes in a database.
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
-  - /latest/integrations/cdc/
+  - /preview/integrations/cdc/
 section: INTEGRATIONS
 menu:
   latest:

@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2210
 aliases:
-  - /latest/api/redis/incr
-  - /latest/api/yedis/incr
+  - /preview/api/redis/incr
+  - /preview/api/yedis/incr
 isTocNested: true
 showAsideToc: true
 ---

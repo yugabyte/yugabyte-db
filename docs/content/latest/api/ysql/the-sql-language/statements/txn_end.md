@@ -8,7 +8,7 @@ menu:
     identifier: txn_end
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/txn_end/
+  - /preview/api/ysql/commands/txn_end/
 isTocNested: true
 showAsideToc: true
 ---

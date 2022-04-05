@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2217
 aliases:
-  - /latest/api/redis/keys
-  - /latest/api/yedis/keys
+  - /preview/api/redis/keys
+  - /preview/api/yedis/keys
 isTocNested: true
 showAsideToc: true
 ---
@@ -28,7 +28,7 @@ Supported patterns:
 Use \\ to escape special characters if you want to match them verbatim.
 
 ## Return Value
-String array with the list of matching keys, error if there are over 10,000 keys. There is no 
+String array with the list of matching keys, error if there are over 10,000 keys. There is no
 ordering invariant on the returned keys.
 
 ## Examples
@@ -46,7 +46,7 @@ $ SADD key val
 ```
 
 ```
-(integer) 1 
+(integer) 1
 ```
 
 Get all keys in the db.

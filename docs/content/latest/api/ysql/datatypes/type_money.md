@@ -8,7 +8,7 @@ menu:
     identifier: api-ysql-datatypes-money
     parent: api-ysql-datatypes
 aliases:
-  - /latest/api/ysql/datatypes/type_money
+  - /preview/api/ysql/datatypes/type_money
 isTocNested: true
 showAsideToc: true
 ---

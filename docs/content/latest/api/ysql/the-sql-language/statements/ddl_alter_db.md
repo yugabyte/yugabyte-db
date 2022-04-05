@@ -8,7 +8,7 @@ menu:
     identifier: ddl_alter_db
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/ddl_alter_db/
+  - /preview/api/ysql/commands/ddl_alter_db/
 isTocNested: true
 showAsideToc: true
 ---

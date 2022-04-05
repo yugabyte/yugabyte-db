@@ -8,7 +8,7 @@ menu:
     identifier: api-ysql-datatypes-uuid
     parent: api-ysql-datatypes
 aliases:
-  - /latest/api/ysql/datatypes/type_uuid
+  - /preview/api/ysql/datatypes/type_uuid
 isTocNested: true
 showAsideToc: true
 ---

@@ -10,7 +10,7 @@ menu:
     identifier: k8s-aks-2
     weight: 624
 aliases:
-  - /latest/deploy/kubernetes/aks/statefulset-yaml/
+  - /preview/deploy/kubernetes/aks/statefulset-yaml/
 type: page
 isTocNested: true
 showAsideToc: true

@@ -8,7 +8,7 @@ menu:
     identifier: api-ysql-datatypes-bool
     parent: api-ysql-datatypes
 aliases:
-  - /latest/api/ysql/datatypes/type_bool
+  - /preview/api/ysql/datatypes/type_bool
 isTocNested: true
 showAsideToc: true
 ---

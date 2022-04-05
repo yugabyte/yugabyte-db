@@ -11,8 +11,8 @@ menu:
 isTocNested: true
 showAsideToc: true
 aliases:
-   - /latest/explore/ysql-language-features/constraints/
-   - /latest/explore/indexes-constraints/constraints/
+   - /preview/explore/ysql-language-features/constraints/
+   - /preview/explore/indexes-constraints/constraints/
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

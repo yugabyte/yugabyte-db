@@ -5,8 +5,8 @@ linkTitle: 2. Data modeling
 description: Learn data modeling in YCQL and how to identify the patterns used to access data and the types of queries to be performed.
 aliases:
   - /develop/learn/data-modeling/
-  - /latest/explore/transactional/secondary-indexes/
-  - /latest/develop/learn/data-modeling/
+  - /preview/explore/transactional/secondary-indexes/
+  - /preview/develop/learn/data-modeling/
 menu:
   latest:
     identifier: data-modeling-1-ycql

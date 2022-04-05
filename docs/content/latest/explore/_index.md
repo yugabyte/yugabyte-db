@@ -6,11 +6,11 @@ description: Explore the features of YugabyteDB on macOS, Linux, Docker, and Kub
 headcontent:
 image: /images/section_icons/index/explore.png
 aliases:
-  - /latest/explore/cloud-native/
-  - /latest/explore/transactional/
-  - /latest/explore/high-performance/
-  - /latest/explore/planet-scale/
-  - /latest/explore/cloud-native/orchestration-readiness/
+  - /preview/explore/cloud-native/
+  - /preview/explore/transactional/
+  - /preview/explore/high-performance/
+  - /preview/explore/planet-scale/
+  - /preview/explore/cloud-native/orchestration-readiness/
 section: YUGABYTEDB CORE
 menu:
   latest:

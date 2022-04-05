@@ -4,8 +4,8 @@ headerTitle: Restore universe YSQL data
 linkTitle: Restore universe data
 description: Use Yugabyte Platform to restore data in YSQL tables.
 aliases:
-  - /latest/yugabyte-platform/back-up-restore-databases/
-  - /latest/yugabyte-platform/back-up-restore-universes/restore-universe-data/
+  - /preview/yugabyte-platform/back-up-restore-databases/
+  - /preview/yugabyte-platform/back-up-restore-universes/restore-universe-data/
 menu:
   latest:
     parent: back-up-restore-universes
@@ -54,6 +54,6 @@ To restore YugabyteDB universe YSQL data from a backup:
 4. Click **OK**. The restore begins immediately. When the restore is completed, a completed **Restore Backup** task will appear in the **Tasks** tab.
 5. To confirm the restore succeeded, go to the **Tables** tab to compare the original table with the table you
 restored to.
-  
+
    <br/><br/>
    ![Tables View](/images/yp/tables-view-ysql.png)

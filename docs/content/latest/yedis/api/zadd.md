@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2500
 aliases:
-  - /latest/api/redis/zadd
-  - /latest/api/yedis/zadd
+  - /preview/api/redis/zadd
+  - /preview/api/yedis/zadd
 isTocNested: true
 showAsideToc: true
 ---

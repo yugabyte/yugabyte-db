@@ -8,7 +8,7 @@ menu:
     identifier: dml_update
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/dml_update/
+  - /preview/api/ysql/commands/dml_update/
 isTocNested: true
 showAsideToc: true
 ---

@@ -5,8 +5,8 @@ linkTitle: ycqlsh
 description: Use the YCQL shell (ycqlsh) to interact with YugabyteDB.
 aliases:
   - /develop/tools/cqlsh/
-  - /latest/develop/tools/cqlsh/
-  - /latest/admin/cqlsh/
+  - /preview/develop/tools/cqlsh/
+  - /preview/admin/cqlsh/
 menu:
   latest:
     identifier: ycqlsh

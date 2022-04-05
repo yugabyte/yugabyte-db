@@ -8,7 +8,7 @@ menu:
     identifier: txn_commit
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/txn_commit/
+  - /preview/api/ysql/commands/txn_commit/
 isTocNested: true
 showAsideToc: true
 ---

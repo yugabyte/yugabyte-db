@@ -8,7 +8,7 @@ menu:
     identifier: txn_lock
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/txn_lock/
+  - /preview/api/ysql/commands/txn_lock/
 isTocNested: true
 showAsideToc: true
 ---

@@ -8,8 +8,8 @@ menu:
     identifier: api-ysql-datatypes-numeric
     parent: api-ysql-datatypes
 aliases:
-  - /latest/api/ysql/type_number/
-  - /latest/api/ysql/type_int/
+  - /preview/api/ysql/type_number/
+  - /preview/api/ysql/type_int/
 isTocNested: true
 showAsideToc: true
 ---

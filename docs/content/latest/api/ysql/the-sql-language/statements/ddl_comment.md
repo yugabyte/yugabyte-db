@@ -8,7 +8,7 @@ menu:
     identifier: ddl_comment
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/ddl_comment/
+  - /preview/api/ysql/commands/ddl_comment/
 isTocNested: true
 showAsideToc: true
 ---

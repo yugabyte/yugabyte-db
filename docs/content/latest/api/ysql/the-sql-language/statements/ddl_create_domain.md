@@ -8,7 +8,7 @@ menu:
     identifier: ddl_create_domain
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/ddl_create_domain/
+  - /preview/api/ysql/commands/ddl_create_domain/
 isTocNested: true
 showAsideToc: true
 ---

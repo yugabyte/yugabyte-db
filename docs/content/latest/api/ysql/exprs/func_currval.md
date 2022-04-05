@@ -8,7 +8,7 @@ menu:
     identifier: api-ysql-exprs-currval
     parent: api-ysql-exprs
 aliases:
-  - /latest/api/ysql/exprs/func_currval
+  - /preview/api/ysql/exprs/func_currval
 isTocNested: true
 showAsideToc: true
 ---

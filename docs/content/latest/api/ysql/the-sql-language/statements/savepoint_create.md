@@ -8,7 +8,7 @@ menu:
     identifier: savepoint_create
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/savepoint_create/
+  - /preview/api/ysql/commands/savepoint_create/
 isTocNested: true
 showAsideToc: true
 ---
@@ -79,7 +79,7 @@ SELECT * FROM sample;
 ```
 
 ```output
- k  | v  
+ k  | v
 ----+----
   1 |  2
   3 |  4
@@ -94,7 +94,7 @@ SELECT * FROM sample;
 ```
 
 ```output
- k  | v  
+ k  | v
 ----+----
   1 |  2
 (1 row)
@@ -109,7 +109,7 @@ SELECT * FROM SAMPLE;
 ```
 
 ```output
- k  | v  
+ k  | v
 ----+----
   1 |  2
   5 |  6

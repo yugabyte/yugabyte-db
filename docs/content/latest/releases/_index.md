@@ -5,8 +5,8 @@ linkTitle: Releases overview
 description: An overview of the latest and current stable releases, and upcoming releases.
 image: /images/section_icons/index/quick_start.png
 aliases:
-  - /latest/releases/releases-overview/
-  - /latest/releases/whats-new/
+  - /preview/releases/releases-overview/
+  - /preview/releases/whats-new/
 section: RELEASES
 menu:
   latest:

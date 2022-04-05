@@ -8,7 +8,7 @@ menu:
     identifier: ddl_drop_aggregate
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/ddl_drop_aggregate/
+  - /preview/api/ysql/commands/ddl_drop_aggregate/
 isTocNested: true
 showAsideToc: true
 ---

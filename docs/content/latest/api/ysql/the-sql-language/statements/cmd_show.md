@@ -8,7 +8,7 @@ menu:
     identifier: cmd_show
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/cmd_show/
+  - /preview/api/ysql/commands/cmd_show/
 isTocNested: true
 showAsideToc: true
 ---

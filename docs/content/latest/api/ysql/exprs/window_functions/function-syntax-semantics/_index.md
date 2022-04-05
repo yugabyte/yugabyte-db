@@ -10,7 +10,7 @@ menu:
     parent: window-functions
     weight: 30
 aliases:
-  - /latest/api/ysql/exprs/window_functions
+  - /preview/api/ysql/exprs/window_functions
 isTocNested: true
 showAsideToc: true
 ---

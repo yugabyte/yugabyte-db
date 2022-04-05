@@ -6,7 +6,7 @@ description: Manage YugabyteDB clusters.
 image: /images/section_icons/quick_start/sample_apps.png
 headcontent:
 aliases:
-  - /latest/manage/
+  - /preview/manage/
 section: YUGABYTEDB CORE
 menu:
   latest:

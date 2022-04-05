@@ -8,7 +8,7 @@ menu:
     identifier: ddl_create_aggregate
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/ddl_create_aggregate/
+  - /preview/api/ysql/commands/ddl_create_aggregate/
 isTocNested: true
 showAsideToc: true
 ---

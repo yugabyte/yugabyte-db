@@ -5,10 +5,10 @@ linkTitle: Fault tolerance
 description: Simulate fault tolerance and resilience in a local three-node YugabyteDB cluster on macOS.
 aliases:
   - /explore/fault-tolerance/
-  - /latest/explore/fault-tolerance/
-  - /latest/explore/cloud-native/fault-tolerance/
-  - /latest/explore/postgresql/fault-tolerance/
-  - /latest/explore/fault-tolerance-macos/
+  - /preview/explore/fault-tolerance/
+  - /preview/explore/cloud-native/fault-tolerance/
+  - /preview/explore/postgresql/fault-tolerance/
+  - /preview/explore/fault-tolerance-macos/
 menu:
   latest:
     identifier: fault-tolerance-1-macos

@@ -4,8 +4,8 @@ headerTitle: ACID transactions
 linkTitle: 4. ACID transactions
 description: Learn how ACID transactions work in YSQL on YugabyteDB.
 aliases:
-  - /latest/explore/transactional/acid-transactions/
-  - /latest/develop/learn/acid-transactions/
+  - /preview/explore/transactional/acid-transactions/
+  - /preview/develop/learn/acid-transactions/
 menu:
   latest:
     identifier: acid-transactions-2-ysql

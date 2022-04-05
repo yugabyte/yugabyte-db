@@ -8,7 +8,7 @@ menu:
     identifier: dcl_alter_role
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/dcl_alter_role/
+  - /preview/api/ysql/commands/dcl_alter_role/
 isTocNested: true
 showAsideToc: true
 ---

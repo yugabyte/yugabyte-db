@@ -8,7 +8,7 @@ menu:
     identifier: ddl_drop_matview
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/ddl_drop_matview/
+  - /preview/api/ysql/commands/ddl_drop_matview/
 isTocNested: true
 showAsideToc: true
 ---

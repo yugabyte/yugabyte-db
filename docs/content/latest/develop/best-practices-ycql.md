@@ -9,7 +9,7 @@ menu:
     parent: develop
     weight: 582
 aliases:
-  - /latest/develop/best-practices/
+  - /preview/develop/best-practices/
 isTocNested: true
 showAsideToc: true
 ---

@@ -8,7 +8,7 @@ menu:
     identifier: ddl_drop_trigger
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/ddl_drop_trigger/
+  - /preview/api/ysql/commands/ddl_drop_trigger/
 isTocNested: true
 showAsideToc: true
 ---

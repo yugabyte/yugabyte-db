@@ -4,7 +4,7 @@ linkTitle: Recover tserver/master
 description: Recover tserver/master
 aliases:
   - /troubleshoot/cluster/recover-server/
-  - /latest/troubleshoot/cluster/recover-server/
+  - /preview/troubleshoot/cluster/recover-server/
 menu:
   latest:
     parent: troubleshoot-cluster

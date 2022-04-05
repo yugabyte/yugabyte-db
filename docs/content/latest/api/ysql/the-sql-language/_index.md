@@ -10,7 +10,7 @@ menu:
     parent: api-ysql
     weight: 10
 aliases:
-  - /latest/api/ysql/with-clause/
+  - /preview/api/ysql/with-clause/
 isTocNested: true
 showAsideToc: true
 ---

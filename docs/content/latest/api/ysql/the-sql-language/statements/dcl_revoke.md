@@ -8,7 +8,7 @@ menu:
     identifier: dcl_revoke
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/dcl_revoke/
+  - /preview/api/ysql/commands/dcl_revoke/
 isTocNested: true
 showAsideToc: true
 ---

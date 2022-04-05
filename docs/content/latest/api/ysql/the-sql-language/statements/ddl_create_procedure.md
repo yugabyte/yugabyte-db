@@ -8,7 +8,7 @@ menu:
     identifier: ddl_create_procedure
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/ddl_create_procedure/
+  - /preview/api/ysql/commands/ddl_create_procedure/
 isTocNested: true
 showAsideToc: true
 ---

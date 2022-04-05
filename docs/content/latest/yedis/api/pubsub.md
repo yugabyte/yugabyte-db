@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2550
 aliases:
-  - /latest/api/redis/pubsub
-  - /latest/api/yedis/pubsub
+  - /preview/api/redis/pubsub
+  - /preview/api/yedis/pubsub
 isTocNested: true
 showAsideToc: true
 ---
@@ -30,9 +30,9 @@ Returns the number of patterns that are subscribed to on the YEDIS server that i
 
 ## See also
 
-[`pubsub`](../pubsub/), 
-[`publish`](../publish/), 
-[`subscribe`](../subscribe/), 
-[`unsubscribe`](../unsubscribe/), 
-[`psubscribe`](../psubscribe/), 
+[`pubsub`](../pubsub/),
+[`publish`](../publish/),
+[`subscribe`](../subscribe/),
+[`unsubscribe`](../unsubscribe/),
+[`psubscribe`](../psubscribe/),
 [`punsubscribe`](../punsubscribe/)

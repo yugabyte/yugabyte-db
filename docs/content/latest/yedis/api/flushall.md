@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2064
 aliases:
-  - /latest/api/redis/flushall
-  - /latest/api/yedis/flushall
+  - /preview/api/redis/flushall
+  - /preview/api/yedis/flushall
 isTocNested: true
 showAsideToc: true
 ---

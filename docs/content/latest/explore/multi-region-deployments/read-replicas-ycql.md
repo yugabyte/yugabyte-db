@@ -4,7 +4,7 @@ headerTitle: Read replicas
 linkTitle: Read replicas
 description: Read replicas
 aliases:
-  - /latest/explore/multi-region-deployments/read-replicas
+  - /preview/explore/multi-region-deployments/read-replicas
 menu:
   latest:
     name: Read replicas

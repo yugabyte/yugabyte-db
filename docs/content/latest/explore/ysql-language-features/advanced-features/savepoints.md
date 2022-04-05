@@ -9,7 +9,7 @@ menu:
     parent: advanced-features
     weight: 235
 aliases:
-  - /latest/explore/ysql-language-features/savepoints/
+  - /preview/explore/ysql-language-features/savepoints/
 isTocNested: true
 showAsideToc: true
 ---

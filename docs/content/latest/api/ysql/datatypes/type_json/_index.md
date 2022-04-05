@@ -10,7 +10,7 @@ menu:
     identifier: api-ysql-datatypes-json
     parent: api-ysql-datatypes
 aliases:
-  - /latest/api/ysql/datatypes/type_json
+  - /preview/api/ysql/datatypes/type_json
 isTocNested: true
 showAsideToc: true
 ---

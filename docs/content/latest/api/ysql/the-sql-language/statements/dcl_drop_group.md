@@ -7,7 +7,7 @@ menu:
     identifier: dcl_drop_group
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/dcl_drop_group/
+  - /preview/api/ysql/commands/dcl_drop_group/
 isTocNested: true
 showAsideToc: true
 ---

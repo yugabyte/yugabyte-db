@@ -9,8 +9,8 @@ menu:
     parent: configuration
     weight: 2450
 aliases:
-  - /latest/admin/yb-master
-  - /latest/deploy/reference/configuration/yb-master
+  - /preview/admin/yb-master
+  - /preview/deploy/reference/configuration/yb-master
 isTocNested: true
 showAsideToc: true
 ---

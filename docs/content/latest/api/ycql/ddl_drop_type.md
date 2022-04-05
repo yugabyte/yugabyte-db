@@ -8,8 +8,8 @@ menu:
     parent: api-cassandra
     weight: 1280
 aliases:
-  - /latest/api/cassandra/ddl_drop_type
-  - /latest/api/ycql/ddl_drop_type
+  - /preview/api/cassandra/ddl_drop_type
+  - /preview/api/ycql/ddl_drop_type
 isTocNested: true
 showAsideToc: true
 ---

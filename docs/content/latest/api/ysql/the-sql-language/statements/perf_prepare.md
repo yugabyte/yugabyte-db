@@ -8,7 +8,7 @@ menu:
     identifier: perf_prepare
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/perf_prepare/
+  - /preview/api/ysql/commands/perf_prepare/
 isTocNested: true
 showAsideToc: true
 ---
@@ -59,7 +59,7 @@ yugabyte=# CREATE TABLE sample(k1 int, k2 int, v1 int, v2 text, PRIMARY KEY (k1,
 Prepare a simple insert.
 
 ```plpgsql
-yugabyte=# PREPARE ins (bigint, double precision, int, text) AS 
+yugabyte=# PREPARE ins (bigint, double precision, int, text) AS
                INSERT INTO sample(k1, k2, v1, v2) VALUES ($1, $2, $3, $4);
 ```
 

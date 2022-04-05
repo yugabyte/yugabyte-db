@@ -8,8 +8,8 @@ menu:
     parent: api-cassandra
     weight: 1331
 aliases:
-  - /latest/api/cassandra/expr_simple
-  - /latest/api/ycql/expr_simple
+  - /preview/api/cassandra/expr_simple
+  - /preview/api/ycql/expr_simple
 isTocNested: true
 showAsideToc: true
 ---
@@ -18,7 +18,7 @@ A simple expression can be a column, a constant, or NULL.
 
 ## Column expression
 
-A column expression refers to a column in a table by using its name, which can be either a fully qualified name or a simple name.  
+A column expression refers to a column in a table by using its name, which can be either a fully qualified name or a simple name.
 
 ```
 column_expression ::= [keyspace_name.][table_name.][column_name]

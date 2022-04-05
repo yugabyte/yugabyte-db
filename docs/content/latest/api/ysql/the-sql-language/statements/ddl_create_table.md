@@ -8,7 +8,7 @@ menu:
     identifier: ddl_create_table
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/ddl_create_table/
+  - /preview/api/ysql/commands/ddl_create_table/
 isTocNested: true
 showAsideToc: true
 ---

@@ -5,7 +5,7 @@ linkTitle: 8. Strings and text
 description: Learn how to work with string and text data types in YSQL.
 aliases:
   - /develop/learn/strings-and-text/
-  - /latest/develop/learn/strings-and-text/
+  - /preview/develop/learn/strings-and-text/
 menu:
   latest:
     identifier: strings-and-text-1-ysql

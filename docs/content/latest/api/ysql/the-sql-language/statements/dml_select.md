@@ -8,7 +8,7 @@ menu:
     identifier: dml_select
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/dml_select/
+  - /preview/api/ysql/commands/dml_select/
 isTocNested: true
 showAsideToc: true
 ---

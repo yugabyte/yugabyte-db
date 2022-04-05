@@ -8,7 +8,7 @@ menu:
     identifier: ddl_create_view
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/ddl_create_view/
+  - /preview/api/ysql/commands/ddl_create_view/
 isTocNested: true
 showAsideToc: true
 ---

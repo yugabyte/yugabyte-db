@@ -11,7 +11,7 @@ menu:
     parent: api-ysql
     weight: 4200
 aliases:
-  - /latest/api/ysql/datatypes/
+  - /preview/api/ysql/datatypes/
 isTocNested: true
 showAsideToc: true
 ---

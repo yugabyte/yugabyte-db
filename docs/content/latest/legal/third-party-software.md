@@ -4,7 +4,7 @@ headerTitle: Third party software
 linkTitle: Third party software
 description: Learn about the third party software contained in YugabyteDB.
 aliases:
-  - /latest/
+  - /preview/
 menu:
   latest:
     parent: legal

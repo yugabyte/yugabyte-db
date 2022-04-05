@@ -8,7 +8,7 @@ menu:
     identifier: savepoint_release
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/savepoint_release/
+  - /preview/api/ysql/commands/savepoint_release/
 isTocNested: true
 showAsideToc: true
 ---

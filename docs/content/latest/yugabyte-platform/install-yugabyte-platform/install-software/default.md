@@ -4,7 +4,7 @@ headerTitle: Install Yugabyte Platform
 linkTitle: Install software
 description: Install the Yugabyte Platform software.
 aliases:
-  - /latest/yugabyte-platform/install-yugabyte-platform/install-software/
+  - /preview/yugabyte-platform/install-yugabyte-platform/install-software/
 menu:
   latest:
     parent: install-yugabyte-platform
@@ -102,9 +102,9 @@ Click **Continue** to configure Yugabyte Platform.
 
 If the preflight check fails, review the [Troubleshoot Yugabyte Platform](../../../troubleshoot/) to resolve the issue.
 
-## Set the TLS version for Nginx frontend 
+## Set the TLS version for Nginx frontend
 
-Specify TLS versions via **Application config**, as shown in the following illustration: 
+Specify TLS versions via **Application config**, as shown in the following illustration:
 
 ![Application Config](/images/replicated/application-config.png)
 

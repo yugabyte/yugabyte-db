@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2130
 aliases:
-  - /latest/api/redis/hgetall
-  - /latest/api/yedis/hgetall
+  - /preview/api/redis/hgetall
+  - /preview/api/yedis/hgetall
 isTocNested: true
 showAsideToc: true
 ---
