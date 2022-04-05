@@ -12,7 +12,7 @@ menu:
 isTocNested: true
 showAsideToc: true
 ---
-Following are the recommended projects for implementing C# Applications for  YugabyteDB YSQL API.
+The following projects are recommended for implementing C# applications using the YugabyteDB YSQL API.
 
 | Project | Type | Support Level |
 | :------ | :--- | :------------ |
