@@ -7465,7 +7465,7 @@
       "type" : "object"
     },
     "YBPError" : {
-      "description" : "Generic error response from the Yugabyte Platform API",
+      "description" : "Generic error response from the YugabyteDB Anywhere API",
       "properties" : {
         "error" : {
           "description" : "User-visible unstructured error message",
@@ -7522,7 +7522,7 @@
     }
   },
   "externalDocs" : {
-    "description" : "About Yugabyte Platform",
+    "description" : "About YugabyteDB Anywhere",
     "url" : "https://docs.yugabyte.com/latest/yugabyte-platform/"
   },
   "info" : {
@@ -7535,7 +7535,7 @@
       "url" : "https://github.com/yugabyte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt"
     },
     "termsOfService" : "TODO(chirag)",
-    "title" : "Yugabyte Platform APIs",
+    "title" : "YugabyteDB Anywhere APIs",
     "version" : "v1"
   },
   "paths" : {
