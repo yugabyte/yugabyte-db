@@ -55,7 +55,7 @@ import (
 )
 ```
 
-## Step 2: Connect to YugabyteDB database
+### Step 2: Connect to the YugabyteDB database
 
 Go Apps can connect to the YugabyteDB database using the `gorm.Open()` function.
 
