@@ -32,7 +32,7 @@ showAsideToc: true
 
 </ul>
 
-The [go-pg](https://github.com/go-pg/pg) lib is "Golang ORM with focus on PostgreSQL features and performance". 
+[go-pg](https://github.com/go-pg/pg) is a Golang ORM for PostgreSQL. 
 
 ## Quick start
 

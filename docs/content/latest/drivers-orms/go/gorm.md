@@ -41,10 +41,9 @@ Learn how to establish a connection to YugabyteDB database and begin simple CRUD
 the steps on the [Build an application](../../../quick-start/build-apps/go/ysql-gorm) page under the
 Quick start section.
 
-Let us break down the quick start example and understand how to perform the common tasks required
-for Go App development using GORM.
+To break down the quick start example and understand how to perform the common tasks required for Go application development, do the following steps.
 
-## Step 1: Import the driver package
+### Step 1: Import the driver package
 
 Import the GORM packages by adding the following import statement in your Go code.
 
@@ -59,8 +58,6 @@ import (
 
 Go Apps can connect to the YugabyteDB database using the `gorm.Open()` function.
 
-Use the `gorm.Open()` function for getting a connection to the YugabyteDB database which then can be
-used for reading the data and writing the data into the database.
 
 Code snippet for connecting to YugabyteDB:
 
@@ -82,7 +79,7 @@ if err != nil {
 | password | password for connecting to the database | yugabyte
 | dbname | database name | yugabyte
 
-## Step 3: Create table
+### Step 3: Create a table
 
 Define a struct which maps to the table schema and use `AutoMigrate()` to create the table.
 
@@ -101,7 +98,7 @@ db.Debug().AutoMigrate(&Employee{})
 
 Read more on designing [Database schemas and tables](../../../explore/ysql-language-features/databases-schemas-tables/).
 
-## Step 4: Read and write data
+### Step 4: Read and write data
 
 To write data into YugabyteDB, use the `db.Create()` function.
 

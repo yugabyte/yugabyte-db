@@ -43,13 +43,12 @@ Create a free cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/). 
 
 
 
-Alternatively, You can also set up a standalone YugabyteDB cluster by following the
-[YugabyteDB installation steps](../../quick-start/install/macos).
+Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/latest/quick-start/install/macos). 
 
 ## Usage examples
 
 For fully runnable code snippets and explanation for common operations, see the specific Go driver and ORM section.
-The table below provides quick links for navigating to the specific documentation and also the usage examples.
+The following table provides quick links to driver-specific documentation and examples.
 
 | Project | Type | Usage Examples |
 | :------ | :--- | :------------- |

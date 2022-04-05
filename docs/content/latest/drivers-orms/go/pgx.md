@@ -36,7 +36,7 @@ YugabyteDB supports the [PGX Driver](https://github.com/jackc/pgx) and the [PQ D
 </ul>
 
 The [PGX driver](https://github.com/jackc/pgx/) is one of the most popular and actively maintained
-drivers for PostgreSQL which can be used for connecting to YugabyteDB YSQL as well.
+drivers for PostgreSQL.
 
 This driver allows Go programmers to connect to YugabyteDB database to execute DMLs and DDLs using
 the PGX APIs. It also supports the standard `database/sql` package.
