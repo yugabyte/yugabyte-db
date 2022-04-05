@@ -28,7 +28,7 @@ using the steps in [Build an Application](../../quick-start/build-apps/go/ysql-p
 
 ### Install Go
 
-It is recommended to have the latest Go (1.16 or later) installed on your system.
+Install the latest Go (1.16 or later) on your system.
 
 Run `go --version` in a terminal to check your version of Go. To install the Go, see its
 [installation page](https://golang.org/dl/).
