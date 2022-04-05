@@ -21,9 +21,9 @@ The following projects are recommended for implementing C# applications using th
 
 ## Build a Hello World App
 
-Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps in [Build an Application](/latest/quick-start/build-apps/csharp/ysql) in the Quick Start section.
+Learn how to establish a connection to a YugabyteDB database and begin simple CRUD operations using the steps in [Build an Application](/latest/quick-start/build-apps/csharp/ysql) in the Quick Start section.
 
-## Pre-requisites for Building a C# Application
+## Pre-requisites for building a C# application
 
 ### Install .NET SDK
 
@@ -43,13 +43,13 @@ dotnet new console -o new_project_name
 
 ### Create a YugabyteDB Cluster
 
-Set up a Free tier Cluster on [Yugabyte Anywhere](https://www.yugabyte.com/cloud/). The free cluster provides a fully functioning YugabyteDB cluster deployed to the cloud region of your choice. The cluster is free forever and includes enough resources to explore the core features available for developing the Java Applications with YugabyteDB database. Complete the steps for [creating a free tier cluster](latest/yugabyte-cloud/cloud-quickstart/qs-add/).
+Create a free cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/). Refer to [Create a free cluster](../../yugabyte-cloud/cloud-basics/create-clusters-free/).
 
-Alternatively, You can also setup a standalone YugabyteDB cluster by following the [install YugabyteDB Steps](/latest/quick-start/install/macos).
+Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/latest/quick-start/install/macos).
 
 ## Usage Examples
 
-For fully runnable code snippets and exaplantion for common operations, see the specific C# driver and ORM section. Below table provides quick links for navigating to driver specific documentation and also the usage examples.
+For fully runnable code snippets and explanations for common operations, see the specific C# driver and ORM section. The following table provides links to driver-specific documentation and examples.
 
 | Project | Type | Usage Examples |
 | :------ | :--- | :------------- |
