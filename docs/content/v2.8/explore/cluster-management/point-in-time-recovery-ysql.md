@@ -15,13 +15,13 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/explore/cluster-management/point-in-time-recovery-ysql" class="nav-link active">
+    <a href="/preview/explore/cluster-management/point-in-time-recovery-ysql" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
   <li >
-    <a href="/latest/explore/cluster-management/point-in-time-recovery-ycql" class="nav-link">
+    <a href="/preview/explore/cluster-management/point-in-time-recovery-ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -62,18 +62,18 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
       salary integer
     );
 
-    INSERT INTO employees (employee_no, name, department, salary) 
-      VALUES 
+    INSERT INTO employees (employee_no, name, department, salary)
+      VALUES
       (1221, 'John Smith', 'Marketing', 50000),
       (1222, 'Bette Davis', 'Sales', 55000),
       (1223, 'Lucille Ball', 'Operations', 70000),
       (1224, 'John Zimmerman', 'Sales', 60000);
-    
+
     SELECT * from employees;
     ```
 
     ```output
-     employee_no |      name      | department | salary 
+     employee_no |      name      | department | salary
     -------------+----------------+------------+--------
             1223 | Lucille Ball   | Operations |  70000
             1224 | John Zimmerman | Sales      |  60000
@@ -135,15 +135,15 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
 1. Add a row for employee 9999 to the table:
 
     ```sql
-    INSERT INTO employees (employee_no, name, department, salary) 
-      VALUES 
+    INSERT INTO employees (employee_no, name, department, salary)
+      VALUES
       (9999, 'Wrong Name', 'Marketing', 10000);
 
     SELECT * FROM employees;
     ```
 
     ```output
-     employee_no |      name      | department | salary 
+     employee_no |      name      | department | salary
     -------------+----------------+------------+--------
             1223 | Lucille Ball   | Operations |  70000
             9999 | Wrong Name     | Marketing  |  10000
@@ -192,7 +192,7 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
     ```
 
     ```output
-     employee_no |      name      | department | salary 
+     employee_no |      name      | department | salary
     -------------+----------------+------------+--------
             1223 | Lucille Ball   | Operations |  70000
             1224 | John Zimmerman | Sales      |  60000
@@ -294,18 +294,18 @@ In addition to data changes, you can also use PITR to recover from metadata chan
       salary integer
     );
 
-    INSERT INTO employees (employee_no, name, department, salary) 
-      VALUES 
+    INSERT INTO employees (employee_no, name, department, salary)
+      VALUES
       (1221, 'John Smith', 'Marketing', 50000),
       (1222, 'Bette Davis', 'Sales', 55000),
       (1223, 'Lucille Ball', 'Operations', 70000),
       (1224, 'John Zimmerman', 'Sales', 60000);
-    
+
     SELECT * from employees;
     ```
 
     ```output
-     employee_no |      name      | department | salary 
+     employee_no |      name      | department | salary
     -------------+----------------+------------+--------
             1223 | Lucille Ball   | Operations |  70000
             1224 | John Zimmerman | Sales      |  60000
@@ -388,18 +388,18 @@ In addition to data changes, you can also use PITR to recover from metadata chan
       salary integer
     );
 
-    INSERT INTO employees (employee_no, name, department, salary) 
-      VALUES 
+    INSERT INTO employees (employee_no, name, department, salary)
+      VALUES
       (1221, 'John Smith', 'Marketing', 50000),
       (1222, 'Bette Davis', 'Sales', 55000),
       (1223, 'Lucille Ball', 'Operations', 70000),
       (1224, 'John Zimmerman', 'Sales', 60000);
-    
+
     SELECT * from employees;
     ```
 
     ```output
-     employee_no |      name      | department | salary 
+     employee_no |      name      | department | salary
     -------------+----------------+------------+--------
             1223 | Lucille Ball   | Operations |  70000
             1224 | John Zimmerman | Sales      |  60000
@@ -504,7 +504,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     ```
 
     ```output
-     employee_no |      name      | department | salary 
+     employee_no |      name      | department | salary
     -------------+----------------+------------+--------
             1223 | Lucille Ball   | Operations |  70000
             1224 | John Zimmerman | Sales      |  60000
@@ -545,18 +545,18 @@ In addition to data changes, you can also use PITR to recover from metadata chan
       salary integer
     );
 
-    INSERT INTO employees (employee_no, name, department, salary) 
-      VALUES 
+    INSERT INTO employees (employee_no, name, department, salary)
+      VALUES
       (1221, 'John Smith', 'Marketing', 50000),
       (1222, 'Bette Davis', 'Sales', 55000),
       (1223, 'Lucille Ball', 'Operations', 70000),
       (1224, 'John Zimmerman', 'Sales', 60000);
-    
+
     SELECT * from employees;
     ```
 
     ```output
-     employee_no |      name      | department | salary 
+     employee_no |      name      | department | salary
     -------------+----------------+------------+--------
             1223 | Lucille Ball   | Operations |  70000
             1224 | John Zimmerman | Sales      |  60000
@@ -625,12 +625,12 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     ```
 
     ```output
-     employee_no |      name      | department | salary | v2 
+     employee_no |      name      | department | salary | v2
     -------------+----------------+------------+--------+----
-            1223 | Lucille Ball   | Operations |  70000 |   
-            1224 | John Zimmerman | Sales      |  60000 |   
-            1221 | John Smith     | Marketing  |  50000 |   
-            1222 | Bette Davis    | Sales      |  55000 |   
+            1223 | Lucille Ball   | Operations |  70000 |
+            1224 | John Zimmerman | Sales      |  60000 |
+            1221 | John Smith     | Marketing  |  50000 |
+            1222 | Bette Davis    | Sales      |  55000 |
     (4 rows)
     ```
 
@@ -715,18 +715,18 @@ In addition to data changes, you can also use PITR to recover from metadata chan
       salary integer
     );
 
-    INSERT INTO employees (employee_no, name, department, salary) 
-      VALUES 
+    INSERT INTO employees (employee_no, name, department, salary)
+      VALUES
       (1221, 'John Smith', 'Marketing', 50000),
       (1222, 'Bette Davis', 'Sales', 55000),
       (1223, 'Lucille Ball', 'Operations', 70000),
       (1224, 'John Zimmerman', 'Sales', 60000);
-    
+
     SELECT * from employees;
     ```
 
     ```output
-     employee_no |      name      | department | salary 
+     employee_no |      name      | department | salary
     -------------+----------------+------------+--------
             1223 | Lucille Ball   | Operations |  70000
             1224 | John Zimmerman | Sales      |  60000
@@ -878,18 +878,18 @@ In addition to data changes, you can also use PITR to recover from metadata chan
       salary integer
     );
 
-    INSERT INTO employees (employee_no, name, department, salary) 
-      VALUES 
+    INSERT INTO employees (employee_no, name, department, salary)
+      VALUES
       (1221, 'John Smith', 'Marketing', 50000),
       (1222, 'Bette Davis', 'Sales', 55000),
       (1223, 'Lucille Ball', 'Operations', 70000),
       (1224, 'John Zimmerman', 'Sales', 60000);
-    
+
     SELECT * from employees;
     ```
 
     ```output
-     employee_no |      name      | department | salary 
+     employee_no |      name      | department | salary
     -------------+----------------+------------+--------
             1223 | Lucille Ball   | Operations |  70000
             1224 | John Zimmerman | Sales      |  60000
@@ -954,12 +954,12 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 
     ```output
                   Table "public.employees"
-       Column    |  Type   | Collation | Nullable | Default 
+       Column    |  Type   | Collation | Nullable | Default
     -------------+---------+-----------+----------+---------
-     employee_no | integer |           | not null | 
-     name        | text    |           |          | 
-     department  | text    |           |          | 
-     salary      | integer |           |          | 
+     employee_no | integer |           | not null |
+     name        | text    |           |          |
+     department  | text    |           |          |
+     salary      | integer |           |          |
      Indexes:
          "employees_pkey" PRIMARY KEY, lsm (employee_no HASH)
          "t1_index" lsm (employee_no HASH)
@@ -1006,12 +1006,12 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 
     ```output
                 Table "public.employees"
-       Column    |  Type   | Collation | Nullable | Default 
+       Column    |  Type   | Collation | Nullable | Default
     -------------+---------+-----------+----------+---------
-     employee_no | integer |           | not null | 
-     name        | text    |           |          | 
-     department  | text    |           |          | 
-     salary      | integer |           |          | 
+     employee_no | integer |           | not null |
+     name        | text    |           |          |
+     department  | text    |           |          |
+     salary      | integer |           |          |
      Indexes:
          "employees_pkey" PRIMARY KEY, lsm (employee_no HASH)
     ```

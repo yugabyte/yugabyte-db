@@ -15,47 +15,47 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws" class="nav-link">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws" class="nav-link">
       <i class="fab fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp" class="nav-link">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp" class="nav-link">
       <i class="fab fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure" class="nav-link">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
       &nbsp;&nbsp; Azure
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes" class="nav-link">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/vmware-tanzu" class="nav-link active">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/vmware-tanzu" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       VMware Tanzu
     </a>
   </li>
 
 <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/openshift" class="nav-link">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/openshift" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>OpenShift</a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises" class="nav-link">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises" class="nav-link">
       <i class="fas fa-building"></i>
       On-premises
     </a>
@@ -63,7 +63,7 @@ showAsideToc: true
 
 </ul>
 
-This document explains how to configure VMware Tanzu Kubernetes Grid (TKG) for a YugabyteDB universe using Yugabyte Platform. 
+This document explains how to configure VMware Tanzu Kubernetes Grid (TKG) for a YugabyteDB universe using Yugabyte Platform.
 
 ## Configuring the VMware Tanzu Provider
 
@@ -153,7 +153,7 @@ networkAnnotation:
 
 - Click **Add Region**.
 
-- Click **Save**. If your configuration is successful, you are redirected to **VMware Tanzu configs**, as shown in the following illustration. 
+- Click **Save**. If your configuration is successful, you are redirected to **VMware Tanzu configs**, as shown in the following illustration.
 
 
 ![Finish Tanzu Configuration](/images/deploy/pivotal-cloud-foundry/tanzu-config-finish.png)
@@ -162,10 +162,10 @@ networkAnnotation:
 
 VMware Tanzu Application Service is no longer actively supported and the following information is considered legacy.
 
-If you choose to use VMware Tanzu Application Service, before creating the service instance, ensure that the following is available: 
+If you choose to use VMware Tanzu Application Service, before creating the service instance, ensure that the following is available:
 
 - The YugabyteDB tile is installed in your PCF marketplace.
-- The cloud provider is configured in the Yugabyte Platform instance in your PCF environment . 
+- The cloud provider is configured in the Yugabyte Platform instance in your PCF environment .
 
 ### Creating a YugabyteDB Service Instance
 
@@ -173,12 +173,12 @@ You can create a YugabyteDB service instance via the App Manager UI or Cloud Fou
 
 #### How to Use the PCF App Manager
 
-- In your PCF App manager, navigate to the marketplace and select **YugabyteDB**. 
+- In your PCF App manager, navigate to the marketplace and select **YugabyteDB**.
 - Read descriptions of the available service plans to identify the resource requirements and intended environment, as shown in the following illustration.
 
 ![Yugabyte Service Plans](/images/deploy/pivotal-cloud-foundry/service-plan-choices.png)
 
-- Select the service plan. 
+- Select the service plan.
 - Complete the service instance configuration, as shown in the following illustration:
 
 ![App Manager Config](/images/deploy/pivotal-cloud-foundry/apps-manager-config.png)

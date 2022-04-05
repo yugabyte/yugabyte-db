@@ -16,14 +16,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/change-data-capture/macos" class="nav-link active">
+    <a href="/preview/explore/change-data-capture/macos" class="nav-link active">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/change-data-capture/linux" class="nav-link">
+    <a href="/preview/explore/change-data-capture/linux" class="nav-link">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
     </a>
@@ -46,7 +46,7 @@ $ ./bin/yb-ctl create
 Start your local YugabyteDB cluster and run `ysqlsh` to connect to the service.
 
 ```sh
-$ ./bin/ysqlsh 
+$ ./bin/ysqlsh
 ```
 
 Add a table, named `products`, to the default `yugabyte` database.
@@ -78,7 +78,7 @@ $ wget https://downloads.yugabyte.com/yb-cdc-connector.jar
 Run the command below to to start logging an output stream of data changes from the YugabyteDB `cdc` table to `stdout`.
 
 ```sh
-java -jar yb-cdc-connector.jar --table_name yugabyte.products 
+java -jar yb-cdc-connector.jar --table_name yugabyte.products
 ```
 
 The example above uses the following parameters:
@@ -92,23 +92,23 @@ In another terminal shell, write some values to the table and observe the values
 
 ```plpgsql
 INSERT INTO products (
-  id, 
-  category, 
-  created_at, 
-  ean, 
-  price, 
-  rating, 
-  title, 
-  vendor) 
+  id,
+  category,
+  created_at,
+  ean,
+  price,
+  rating,
+  title,
+  vendor)
 VALUES (
-  14, 
-  'Widget', 
-  '2017-12-31T14:41:56.870Z', 
-  8833419218504, 
-  25.09876359271891, 
-  4.0, 
-  'Awesome Concrete Shoes', 
-  'McClure-Lockman'); 
+  14,
+  'Widget',
+  '2017-12-31T14:41:56.870Z',
+  8833419218504,
+  25.09876359271891,
+  4.0,
+  'Awesome Concrete Shoes',
+  'McClure-Lockman');
 ```
 
 ```

@@ -57,11 +57,11 @@ Select your cloud provider to see the steps for configuration of database nodes.
 <img src="/images/ee/flowchart/yb-configure-onprem.png" usemap="#image-map">
 
 <map name="image-map">
-    <area target="_blank" alt="Configure yugabyte platform" title="Configure yugabyte platform" href="/latest/yugabyte-platform/configure-yugabyte-platform/" coords="378,60,520,198" shape="rect">
-    <area target="_blank" alt="Create admin user" title="Create admin user" href="/latest/yugabyte-platform/configure-yugabyte-platform/create-admin-user/" coords="296,260,607,320" shape="rect">
-    <area target="_blank" alt="On prem cloud provider" title="On prem cloud provider" href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/" coords="247,369,653,424" shape="rect">
-    <area target="_blank" alt="configure on prem provider-1" title="configure on prem provider-1" href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/#step-1-configure-the-on-premises-provider" coords="204,1230,425,1331" shape="rect">
-    <area target="_blank" alt="configure on prem provider-2" title="configure on prem provider-2" href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/#step-1-configure-the-on-premises-provider" coords="474,1230,695,1328" shape="rect">
+    <area target="_blank" alt="Configure yugabyte platform" title="Configure yugabyte platform" href="/preview/yugabyte-platform/configure-yugabyte-platform/" coords="378,60,520,198" shape="rect">
+    <area target="_blank" alt="Create admin user" title="Create admin user" href="/preview/yugabyte-platform/configure-yugabyte-platform/create-admin-user/" coords="296,260,607,320" shape="rect">
+    <area target="_blank" alt="On prem cloud provider" title="On prem cloud provider" href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/" coords="247,369,653,424" shape="rect">
+    <area target="_blank" alt="configure on prem provider-1" title="configure on prem provider-1" href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/#step-1-configure-the-on-premises-provider" coords="204,1230,425,1331" shape="rect">
+    <area target="_blank" alt="configure on prem provider-2" title="configure on prem provider-2" href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/#step-1-configure-the-on-premises-provider" coords="474,1230,695,1328" shape="rect">
 </map>
 
 

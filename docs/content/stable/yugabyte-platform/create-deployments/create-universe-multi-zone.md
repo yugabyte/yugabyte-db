@@ -15,13 +15,13 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/latest/yugabyte-platform/create-deployments/create-universe-multi-zone" class="nav-link active">
+    <a href="/preview/yugabyte-platform/create-deployments/create-universe-multi-zone" class="nav-link active">
       <i class="fas fa-building" aria-hidden="true"></i>
 Generic</a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/create-deployments/create-universe-multi-zone-kubernetes" class="nav-link">
+    <a href="/preview/yugabyte-platform/create-deployments/create-universe-multi-zone-kubernetes" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
@@ -33,7 +33,7 @@ This document describes how to create a YugabyteDB universe using any cloud prov
 
 ## Prerequisites
 
-Before you start creating a universe, ensure that you performed steps applicable to the cloud provider of your choice, as described in [Configure a cloud provider](/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/). 
+Before you start creating a universe, ensure that you performed steps applicable to the cloud provider of your choice, as described in [Configure a cloud provider](/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/).
 
 ## Create a universe
 
@@ -79,7 +79,7 @@ Once the universe is ready, its **Overview** tab should appear similar to the fo
 
 ![Multi-zone universe ready](/images/yp/multi-zone-universe-ready-1.png)
 
-You connect to a database node as follows: 
+You connect to a database node as follows:
 
 - Open the **Nodes** tab to find a list of the IP addresses of the available nodes that have been created and configured, as shown in the following illustration:<br>
 
@@ -97,20 +97,20 @@ You connect to a database node as follows:
 
   ```sh
   centos@yugaware-1:~$ sudo ssh -i /opt/yugabyte/yugaware/data/keys/109e95b5-bf08-4a8f-a7fb-2d2866865e15/yb-gcp-config-key.pem -ostricthostkeychecking=no -p 54422 yugabyte@10.150.1.56
-  
+
   Are you sure you want to continue connecting (yes/no)? yes
   [centos@yb-dev-helloworld1-n1 ~]$
   ```
 
 ## Run workloads
 
-Yugabyte Platform includes a number of sample applications enclosed in Docker containers. 
+Yugabyte Platform includes a number of sample applications enclosed in Docker containers.
 
 To access instructions on how to run sample applications, select your universe's **Overview** and then click **Actions > Run Sample Apps** to open the **Run Sample Apps** dialog shown in the following illustration:
 
 ![Multi-zone universe sample apps](/images/yp/multi-zone-universe-sample-apps-1.png)
 
-<!-- 
+<!--
 
 You can run one of the key-value workloads against the YCQL API and the YEDIS API as follows:
 
@@ -126,7 +126,7 @@ $ sudo yum install java-1.8.0-openjdk.x86_64 -y
 $ sudo su - yugabyte
 ```
 
-- Export the `YCQL_ENDPOINTS` environment variable, supplying the IP addresses for nodes in the cluster, as follows: 
+- Export the `YCQL_ENDPOINTS` environment variable, supplying the IP addresses for nodes in the cluster, as follows:
 
   - Navigate to the **Universes > Overview** tab and click **YCQL Endpoints** to open a new tab with a list of IP addresses, as shown in the following illustration:
 
@@ -220,15 +220,15 @@ You can stop the load tester as follows:
   ```output
   <container_id>
   ```
-  
+
   <br>For example, for a container with ID ac144a49d57d, you would need to execute the following command:
-  
+
   ```shell
   user@yugaware-1:~$ sudo docker container stop ac144a49d57d
   ```
-  
+
   <br>You would see the following output:
-  
+
   ```output
   ac144a49d57d
   ```

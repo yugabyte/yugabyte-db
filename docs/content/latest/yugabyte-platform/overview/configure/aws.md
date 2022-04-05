@@ -57,10 +57,10 @@ Select your cloud provider to see the steps for configuration of database nodes.
 <img src="/images/ee/flowchart/yb-configure-aws.png" usemap="#image-map">
 
 <map name="image-map">
-    <area target="_blank" alt="Configure platform" title="Configure platform" href="/latest/yugabyte-platform/configure-yugabyte-platform/" coords="387,68,517,200" shape="rect">
-    <area target="_blank" alt="Admin user" title="Admin user" href="/latest/yugabyte-platform/configure-yugabyte-platform/create-admin-user/" coords="290,262,609,317" shape="rect">
-    <area target="_blank" alt="AWS provider" title="AWS provider" href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws/" coords="275,370,635,424" shape="rect">
-    <area target="_blank" alt="AWS provider - pre reqs" title="AWS provider - pre reqs" href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws/#prerequisites" coords="224,474,674,649" shape="rect">
-    <area target="_blank" alt="AWS provider - configure cloud provider" title="AWS provider - configure cloud provider" href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws/#configure-aws" coords="302,703,602,793" shape="rect">
+    <area target="_blank" alt="Configure platform" title="Configure platform" href="/preview/yugabyte-platform/configure-yugabyte-platform/" coords="387,68,517,200" shape="rect">
+    <area target="_blank" alt="Admin user" title="Admin user" href="/preview/yugabyte-platform/configure-yugabyte-platform/create-admin-user/" coords="290,262,609,317" shape="rect">
+    <area target="_blank" alt="AWS provider" title="AWS provider" href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws/" coords="275,370,635,424" shape="rect">
+    <area target="_blank" alt="AWS provider - pre reqs" title="AWS provider - pre reqs" href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws/#prerequisites" coords="224,474,674,649" shape="rect">
+    <area target="_blank" alt="AWS provider - configure cloud provider" title="AWS provider - configure cloud provider" href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws/#configure-aws" coords="302,703,602,793" shape="rect">
 </map>
 
