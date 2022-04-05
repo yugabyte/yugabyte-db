@@ -38,7 +38,7 @@ showAsideToc: true
 
 </ul>
 
-YugabyteDB universes and clusters are created and managed using Yugabyte Platform. The default option is to install Yugabyte Platform on a host machine that is connected to the Internet.
+YugabyteDB universes and clusters are created and managed using Yugabyte Platform. The default option is to install Yugabyte Platform on a host machine that is connected to the Internet and has Docker installed.
 
 ## Install Replicated
 
@@ -57,7 +57,8 @@ curl -x http://<proxy_address>:<proxy_port> https://get.replicated.com/docker | 
 After the Replicated installation completes, verify that it is running by executing the following command:
 
 ```sh
-sudo docker ps
+sudo docker ps --format "{{.ID}}: {{.Image}}: {{.Command}}: {{.Ports}}"
+
 ```
 
 You should see an output similar to the following:
@@ -85,6 +86,8 @@ When prompted, upload the Yugabyte license file that you received from Yugabyte,
 ![Replicated License Upload](/images/replicated/replicated-license-upload.png)
 
 If you are prompted to choose an installation type, choose **Online**.
+
+If you are offered a choice of software versions, select the one that meets your requirements.
 
 ## Secure Replicated
 
