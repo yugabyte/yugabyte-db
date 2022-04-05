@@ -441,6 +441,27 @@ SELECT REGEXP_INSTR('1234567890 1234567890 1234567890', '(123)(4(56)(78))', 1, 3
 ERROR:  argument 'return_opt' must be 0 or 1
 SELECT REGEXP_INSTR('1234567890 1234567890 1234567890', '(123)(4(56)(78))', 1, 3, 1, 'i', -4);
 ERROR:  argument 'group' must be a positive number
+-- ORACLE> SELECT REGEXP_INSTR('123 123456 1234567, 1234567 1234567 12', '[^ ]+', 1, 6) FROM DUAL; -> 37
+SELECT REGEXP_INSTR('123 123456 1234567, 1234567 1234567 12', '[^ ]+', 1, 6) ;
+ regexp_instr 
+--------------
+           37
+(1 row)
+
+-- ORACLE> SELECT REGEXP_INSTR('123 123456 1234567, 1234567 1234567 12', '[^ ]+', 1, 6, 1) FROM DUAL; -> 39
+SELECT REGEXP_INSTR('123 123456 1234567, 1234567 1234567 12', '[^ ]+', 1, 6, 1) ;
+ regexp_instr 
+--------------
+           39
+(1 row)
+
+-- ORACLE> SELECT REGEXP_INSTR('123 123456 1234567, 1234567 1234567 12', '[^ ]+', 1, 6, 1, 'i') FROM DUAL; -> 39
+SELECT REGEXP_INSTR('123 123456 1234567, 1234567 1234567 12', '[^ ]+', 1, 6, 1, 'i') ;
+ regexp_instr 
+--------------
+           39
+(1 row)
+
 ----
 -- Tests for REGEXP_SUBSTR()
 ----
@@ -753,6 +774,12 @@ SELECT oracle.REGEXP_INSTR('1234', '4', 1, 1, NULL);
 (1 row)
 
 SELECT oracle.REGEXP_INSTR('1234', '4', 1, 1, 1, NULL);
+ regexp_instr 
+--------------
+            5
+(1 row)
+
+SELECT oracle.REGEXP_INSTR('1234', '4', 1, 1, 1, NULL, 0);
  regexp_instr 
 --------------
             5
