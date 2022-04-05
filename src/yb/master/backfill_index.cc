@@ -138,7 +138,7 @@ Result<bool> GetPgIndexStatus(
   const tablet::Tablet* catalog_tablet =
       catalog_manager->tablet_peer()->tablet();
   const Schema& pg_index_schema =
-      *VERIFY_RESULT(catalog_tablet->metadata()->GetTableInfo(pg_index_id))->schema;
+      VERIFY_RESULT(catalog_tablet->metadata()->GetTableInfo(pg_index_id))->schema();
 
   Schema projection;
   RETURN_NOT_OK(pg_index_schema.CreateProjectionByNames({"indexrelid", status_col_name},

@@ -96,6 +96,9 @@ class ValueRef {
 
   explicit ValueRef(ValueEntryType key_entry_type);
 
+  explicit ValueRef(std::reference_wrapper<const Slice> encoded_value)
+      : encoded_value_(&encoded_value.get()) {}
+
   const QLValuePB& value_pb() const {
     return *value_pb_;
   }
@@ -132,6 +135,10 @@ class ValueRef {
     write_instruction_ = value;
   }
 
+  const Slice* encoded_value() const {
+    return encoded_value_;
+  }
+
   bool is_array() const;
 
   bool is_set() const;
@@ -150,6 +157,7 @@ class ValueRef {
   bfql::TSOpcode write_instruction_;
   ListExtendOrder list_extend_order_;
   ValueEntryType value_type_;
+  const Slice* encoded_value_ = nullptr;
 };
 
 // This controls whether "init markers" are required at all intermediate levels.
@@ -327,8 +335,7 @@ class DocWriteBatch {
       const ValueControlFields& control_fields,
       const ValueRef& value,
       LazyIterator* doc_iter,
-      bool is_deletion,
-      size_t num_subkeys);
+      bool is_deletion);
 
   // Handle the user provided timestamp during writes.
   Result<bool> SetPrimitiveInternalHandleUserTimestamp(const ValueControlFields& control_fields,
