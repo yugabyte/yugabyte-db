@@ -65,7 +65,7 @@ The .NET Npgsql driver validates certificates differently from other PostgreSQL 
 
 ## Step 3: Query the YugabyteDB Cluster from Your Application
 
-Next, copy the sample code below in the Program.cs file in order to setup a YugbyteDB Tables and query the Table contents from the java client. Ensure you replace the connection string `yburl` with credentials of your cluster and SSL certs if required.
+Next, copy the sample code below in the Program.cs file to set up YugbyteDB tables and query the table contents from the C# client. Ensure you replace the connection string `yburl` with the credentials of your cluster and SSL certificates if required.
 
 ```csharp
 using System;
