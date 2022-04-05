@@ -131,6 +131,6 @@ John  35   CSharp
 
 if you receive no output or error, check whether you included the proper connection string in your Program.cs file with the right credentials.
 
-After completing this steps, you should have a working C# app that uses YugabyteDB JDBC driver for connecting to your cluster, setup tables, run query and print out results.
+After completing these steps, you should have a working C# app that uses the YugabyteDB JDBC driver to connect to your cluster, set up tables, run a query, and print out results.
 
 ## Next Steps
