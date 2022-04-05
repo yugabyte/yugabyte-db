@@ -1271,7 +1271,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param nodes the given nodes.
    * @return
    */
-  public static Set<NodeDetails> getNodesInCluster(UUID uuid, Set<NodeDetails> nodes) {
+  public static Set<NodeDetails> getNodesInCluster(UUID uuid, Collection<NodeDetails> nodes) {
     return nodes.stream().filter(n -> n.isInPlacement(uuid)).collect(Collectors.toSet());
   }
 
