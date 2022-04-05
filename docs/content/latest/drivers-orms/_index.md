@@ -14,7 +14,7 @@ menu:
     weight: 570
 ---
 
-Connect your application to your YugabyteDB with one of our supported Drivers, ORMs and AppDev Frameworks.
+Connect applications to YugabyteDB databases using Yugabyte-supported drivers, ORMs, and application development frameworks.
 
 YugabyteDB supports <b>Smart Language Drivers</b> which enables the clients applications to connect to all nodes of the YugabyteDB cluster by eliminating the need for external load balancers. All of the YugabyteDB Smart Driver libraries are actively maintained, and receive bug fixes, performance enhancements, and security patches. The YugabyteDB Smart Drivers have the following features:
 
