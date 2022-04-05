@@ -1,8 +1,8 @@
 ---
-title: Back up data universe YCQL data
+title: Back up universe YCQL data
 headerTitle: Back up universe YCQL data
 linkTitle: Back up universe data
-description: Use Yugabyte Platform to back up data in YCQL tables.
+description: Use YugabyteDB Anywhere to back up data in YCQL tables.
 menu:
   latest:
     parent: back-up-restore-universes
@@ -30,15 +30,15 @@ showAsideToc: true
 
 </ul>
 
-Use Yugabyte Platform to back up your YugabyteDB universe YCQL data. 
+You can use YugabyteDB Anywhere to back up your YugabyteDB universe YCQL data. 
 
-To schedule backups for a later time, or as a recurring task, see [Schedule universe YCQL data backups](../../schedule-data-backups/ycql).
+To schedule backups for a later time or as a recurring task, see [Schedule universe YCQL data backups](../../schedule-data-backups/ycql).
 
 To immediately back up your YugabyteDB universe YCQL data, perform the following:
 
-1. Open your universe and select the **Backups** tab.
+1. Navigate to your universe and select **Backups**.
 
-1. Click **Create Backup** to open the **Create Backup** dialog.
+1. Click **Create Backup** to open the **Create Backup** dialog shown in the following illustration:
 
     <br/><br/>
 
@@ -50,4 +50,4 @@ To immediately back up your YugabyteDB universe YCQL data, perform the following
 
 1. Click **OK** to start the requested backup immediately.
 
-If the universe has [encryption at rest enabled](../../../security/enable-encryption-at-rest), data files are backed up as-is (encrypted) to reduce the computation cost of a backup and to keep the files encrypted. A universe key metadata file, containing key references, is also backed up.
+If the universe has [encryption at rest enabled](../../../security/enable-encryption-at-rest), data files are backed up as-is (encrypted) to reduce the computation cost of a backup and to keep the files encrypted. A universe key metadata file containing key references is also backed up.
