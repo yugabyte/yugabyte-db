@@ -65,6 +65,7 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     UniverseDefinitionTaskParams.UserIntent userIntent;
     // create default universe
     userIntent = new UniverseDefinitionTaskParams.UserIntent();
+    userIntent.provider = defaultProvider.uuid.toString();
     userIntent.numNodes = 3;
     userIntent.ybSoftwareVersion = "yb-version";
     userIntent.accessKeyCode = "demo-access";

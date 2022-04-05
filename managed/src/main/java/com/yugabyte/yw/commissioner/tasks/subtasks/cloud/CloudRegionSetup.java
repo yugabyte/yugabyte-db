@@ -62,7 +62,7 @@ public class CloudRegionSetup extends CloudTaskBase {
     String customImageId = taskParams().metadata.customImageId;
     if (customImageId != null && !customImageId.isEmpty()) {
       region.ybImage = customImageId;
-      region.save();
+      region.update();
     } else {
       switch (Common.CloudType.valueOf(provider.code)) {
           // Intentional fallthrough as both AWS and GCP should be covered the same way.
@@ -75,14 +75,14 @@ public class CloudRegionSetup extends CloudTaskBase {
             throw new RuntimeException("Could not get default image for region: " + regionCode);
           }
           region.ybImage = defaultImage;
-          region.save();
+          region.update();
           break;
       }
     }
     String customSecurityGroupId = taskParams().metadata.customSecurityGroupId;
     if (customSecurityGroupId != null && !customSecurityGroupId.isEmpty()) {
       region.setSecurityGroupId(customSecurityGroupId);
-      region.save();
+      region.update();
     }
 
     // need architecture for AWS providers
@@ -92,7 +92,7 @@ public class CloudRegionSetup extends CloudTaskBase {
         throw new RuntimeException("Could not get architecture for image: " + region.ybImage);
       }
       region.setArchitecture(arch);
-      region.save();
+      region.update();
     }
 
     JsonNode zoneInfo;
@@ -102,8 +102,8 @@ public class CloudRegionSetup extends CloudTaskBase {
         Map<String, String> zoneSubnets = taskParams().metadata.azToSubnetIds;
         // If no custom mapping, then query from devops.
         if (zoneSubnets == null || zoneSubnets.size() == 0) {
-          // TODO(bogdan): move from destVpcId to metadata.vpcId ?
-          zoneInfo = queryHelper.getZones(region.uuid, taskParams().destVpcId);
+          // Since it is AWS, we will only have a VPC per region, and not a global destVpcId.
+          zoneInfo = queryHelper.getZones(region.uuid, taskParams().metadata.vpcId);
           if (zoneInfo.has("error") || !zoneInfo.has(regionCode)) {
             region.delete();
             String errMsg = "Region Bootstrap failed. Unable to fetch zones for " + regionCode;
@@ -142,7 +142,7 @@ public class CloudRegionSetup extends CloudTaskBase {
           vnet = queryHelper.getVnetOrFail(region);
         }
         region.setVnetName(vnet);
-        region.save();
+        region.update();
         if (zoneNets == null || zoneNets.size() == 0) {
           zoneInfo = queryHelper.getZones(region.uuid, vnet);
           if (zoneInfo.has("error") || !zoneInfo.has(regionCode)) {
@@ -160,8 +160,8 @@ public class CloudRegionSetup extends CloudTaskBase {
       case gcp:
         ObjectNode customPayload = Json.newObject();
         ObjectNode perRegionMetadata = Json.newObject();
-        perRegionMetadata.put(regionCode, Json.toJson(taskParams().metadata));
-        customPayload.put("perRegionMetadata", perRegionMetadata);
+        perRegionMetadata.set(regionCode, Json.toJson(taskParams().metadata));
+        customPayload.set("perRegionMetadata", perRegionMetadata);
         zoneInfo =
             queryHelper.getZones(
                 region.uuid, taskParams().destVpcId, Json.stringify(customPayload));

@@ -69,5 +69,13 @@ public class Common {
     public boolean isRequiresBootstrap() {
       return requiresBootstrap;
     }
+
+    public boolean canAddRegions() {
+      return this == aws || this == gcp;
+    }
+
+    public boolean isHostedZoneEnabled() {
+      return this == aws || this == azu;
+    }
   }
 }

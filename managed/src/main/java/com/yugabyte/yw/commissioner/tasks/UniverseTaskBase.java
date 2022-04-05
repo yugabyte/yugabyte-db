@@ -1555,10 +1555,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       boolean isForceDelete,
       UniverseDefinitionTaskParams.UserIntent intent) {
     SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("UpdateDnsEntry", executor);
-    if (!Provider.HostedZoneEnabledProviders.contains(intent.providerType.toString())) {
+    Provider p = Provider.getOrBadRequest(UUID.fromString(intent.provider));
+    if (!p.getCloudCode().isHostedZoneEnabled()) {
       return subTaskGroup;
     }
-    Provider p = Provider.getOrBadRequest(UUID.fromString(intent.provider));
     // TODO: shared constant with javascript land?
     String hostedZoneId = p.getHostedZoneId();
     if (hostedZoneId == null || hostedZoneId.isEmpty()) {

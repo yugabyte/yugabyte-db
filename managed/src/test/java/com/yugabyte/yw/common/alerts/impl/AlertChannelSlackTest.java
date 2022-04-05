@@ -65,7 +65,7 @@ public class AlertChannelSlackTest extends FakeDBApplication {
           request.getBody().readString(Charset.defaultCharset()),
           equalTo(
               "{\"username\":\"Slack Bot\","
-                  + "\"text\":\"*Yugabyte Platform Alert - <[test@customer.com][tc]>*\\n"
+                  + "\"text\":\"*YugabyteDB Anywhere Alert - <[test@customer.com][tc]>*\\n"
                   + "alertConfiguration Alert for test@customer.com is firing.\\n"
                   + "\\nUniverse on fire!\",\"icon_url\":null}"));
     }

@@ -58,7 +58,7 @@ public class CloudBootstrap extends CloudTaskBase {
           provider
               .regions
               .stream()
-              .collect(Collectors.toMap(region -> region.name, PerRegionMetadata::fromRegion));
+              .collect(Collectors.toMap(region -> region.code, PerRegionMetadata::fromRegion));
       return taskParams;
     }
 
@@ -132,6 +132,7 @@ public class CloudBootstrap extends CloudTaskBase {
           // In case of GCP, we want to use the secondary subnet, which will be the same across
           // zones. Will be ignored in all other cases.
           perRegionMetadata.secondarySubnetId = region.zones.get(0).secondarySubnet;
+          perRegionMetadata.subnetId = region.zones.get(0).subnet;
         }
         return perRegionMetadata;
       }
@@ -175,6 +176,10 @@ public class CloudBootstrap extends CloudTaskBase {
     // Dictates whether or not to show the set up NTP option in the provider UI
     // False by default so the old providers can continue to show useTimeSync
     public boolean showSetUpChrony = false;
+
+    // Whether or not task is a pure region add.
+    // This dictates whether the task skips the initialization and bootstrapping of the cloud.
+    public boolean regionAddOnly = false;
   }
 
   // TODO: these fields should probably be persisted with provider but currently these are lost
@@ -188,12 +193,15 @@ public class CloudBootstrap extends CloudTaskBase {
   @Override
   public void run() {
     Provider p = Provider.get(taskParams().providerUUID);
-    if (p.code.equals(Common.CloudType.gcp.toString())
-        || p.code.equals(Common.CloudType.aws.toString())
-        || p.code.equals(Common.CloudType.azu.toString())) {
-      createCloudSetupTask()
-          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingCloud);
+    if (!taskParams().regionAddOnly) {
+      if (p.code.equals(Common.CloudType.gcp.toString())
+          || p.code.equals(Common.CloudType.aws.toString())
+          || p.code.equals(Common.CloudType.azu.toString())) {
+        createCloudSetupTask()
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingCloud);
+      }
     }
+
     taskParams()
         .perRegionMetadata
         .forEach(

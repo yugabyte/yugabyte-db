@@ -52,6 +52,13 @@ public class AccessKey extends Model {
     @ApiModelProperty public boolean showSetUpChrony = false;
   }
 
+  public static String getDefaultKeyCode(Provider provider) {
+    String sanitizedProviderName = provider.name.replaceAll("\\s+", "-").toLowerCase();
+    return String.format(
+        "yb-%s-%s_%s-key",
+        Customer.get(provider.customerUUID).code, sanitizedProviderName, provider.uuid);
+  }
+
   @ApiModelProperty(required = true)
   @EmbeddedId
   @Constraints.Required

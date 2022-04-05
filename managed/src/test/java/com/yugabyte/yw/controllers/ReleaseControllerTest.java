@@ -432,6 +432,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
   public void testGetReleasesByRegionx86() {
     mockNewReleaseData(true);
     region.setArchitecture("x86_64");
+    region.update();
     Result result = getReleasesRegion(customer.uuid, provider.uuid, region.uuid);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
@@ -447,6 +448,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
   public void testGetReleasesByRegionArm() {
     mockNewReleaseData(true);
     region.setArchitecture("arm64");
+    region.update();
     Result result = getReleasesRegion(customer.uuid, provider.uuid, region.uuid);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
@@ -462,6 +464,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
   public void testGetReleasesByRegionEmpty() {
     mockNewReleaseData(false);
     region.setArchitecture("arm64");
+    region.update();
     Result result = getReleasesRegion(customer.uuid, provider.uuid, region.uuid);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());

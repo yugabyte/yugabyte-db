@@ -64,14 +64,14 @@ public class Region extends Model {
   @ApiModelProperty(
       value = "Cloud provider region code",
       example = "us-west-2",
-      accessMode = READ_ONLY)
+      accessMode = READ_WRITE)
   public String code;
 
   @Column(length = 100, nullable = false)
   @ApiModelProperty(
       value = "Cloud provider region name",
       example = "US West (Oregon)",
-      accessMode = READ_WRITE)
+      accessMode = READ_ONLY)
   public String name;
 
   @ApiModelProperty(
@@ -131,7 +131,6 @@ public class Region extends Model {
       details = new RegionDetails();
     }
     details.sg_id = securityGroupId;
-    save();
   }
 
   @ApiModelProperty(required = false)
@@ -148,7 +147,6 @@ public class Region extends Model {
       details = new RegionDetails();
     }
     details.vnet = vnetName;
-    save();
   }
 
   @ApiModelProperty(required = false)
@@ -165,7 +163,6 @@ public class Region extends Model {
       details = new RegionDetails();
     }
     details.arch = Architecture.valueOf(arch);
-    save();
   }
 
   @ApiModelProperty(required = false)

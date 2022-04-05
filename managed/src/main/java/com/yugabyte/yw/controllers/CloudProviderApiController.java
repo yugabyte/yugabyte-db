@@ -16,7 +16,6 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
-import com.yugabyte.yw.forms.EditProviderRequest;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
@@ -88,20 +87,20 @@ public class CloudProviderApiController extends AuthenticatedController {
     return YBPSuccess.withMessage(provider.code.toUpperCase() + " Initialized");
   }
 
-  @ApiOperation(value = "Update a provider", response = Provider.class, nickname = "editProvider")
+  @ApiOperation(value = "Update a provider", response = YBPTask.class, nickname = "editProvider")
   @ApiImplicitParams(
       @ApiImplicitParam(
           value = "edit provider form data",
-          name = "EditProviderFormData",
-          dataType = "com.yugabyte.yw.forms.EditProviderRequest",
+          name = "EditProviderRequest",
+          dataType = "com.yugabyte.yw.models.Provider",
           required = true,
           paramType = "body"))
   public Result edit(UUID customerUUID, UUID providerUUID) throws IOException {
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
-    EditProviderRequest editProviderReq =
-        formFactory.getFormDataOrBadRequest(request().body().asJson(), EditProviderRequest.class);
-    cloudProviderHandler.editProvider(provider, editProviderReq);
+    Provider editProviderReq =
+        formFactory.getFormDataOrBadRequest(request().body().asJson(), Provider.class);
+    UUID taskUUID = cloudProviderHandler.editProvider(customer, provider, editProviderReq);
     auditService()
         .createAuditEntryWithReqBody(
             ctx(),
@@ -109,7 +108,7 @@ public class CloudProviderApiController extends AuthenticatedController {
             providerUUID.toString(),
             Audit.ActionType.Update,
             Json.toJson(editProviderReq));
-    return PlatformResults.withData(provider);
+    return new YBPTask(taskUUID, providerUUID).asResult();
   }
 
   @ApiOperation(value = "Create a provider", response = YBPTask.class, nickname = "createProviders")
