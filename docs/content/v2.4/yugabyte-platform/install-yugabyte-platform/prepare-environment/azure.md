@@ -3,7 +3,7 @@ title: Prepare the Azure cloud environment
 headerTitle: Prepare the Azure cloud environment
 linkTitle: Prepare the environment
 description: Prepare the Azure environment for the Yugabyte Platform.
-beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   v2.4:
     identifier: prepare-environment-3-azure

@@ -3,7 +3,7 @@ title: Explore change data capture (CDC) on Linux
 headerTitle: Change data capture (CDC)
 linkTitle: Change data capture (CDC)
 description: Use a local YugabyteDB cluster (on Linux) to stream data changes to stdout using the CDC API.
-beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   v2.4:
     identifier: change-data-capture-2-linux
