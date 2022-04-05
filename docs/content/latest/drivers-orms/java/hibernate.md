@@ -142,7 +142,7 @@ The above Hibernate configuration file provides the generic set of properties th
 | hibernate.connection.password | Password | yugabyte
 | hibernate.hbm2ddl.auto | Controls the behavior for Automatic schema generation | none
 
-Hibernate provides [exhaustive list of properties](https://docs.jboss.org/hibernate/orm/5.6/userguide/html_single/Hibernate_User_Guide.html#configurations-general) to configure the different features supported by the ORM. Additional details can be obtained by referening to the [Hibernate documentation](https://hibernate.org/orm/documentation/5.6/).
+Hibernate provides an [exhaustive list of properties](https://docs.jboss.org/hibernate/orm/5.6/userguide/html_single/Hibernate_User_Guide.html#configurations-general) to configure the different features supported by the ORM. Additional details can be obtained by referring to the [Hibernate documentation](https://hibernate.org/orm/documentation/5.6/).
 
 ### Step 5: Adding the Object relational mapping
 
