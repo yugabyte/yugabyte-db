@@ -35,10 +35,10 @@ class PgsqlWriteOperation :
     public DocExprExecutor {
  public:
   PgsqlWriteOperation(std::reference_wrapper<const PgsqlWriteRequestPB> request,
-                      const Schema& schema,
+                      const DocReadContext& doc_read_context,
                       const TransactionOperationContext& txn_op_context)
       : DocOperationBase(request),
-        schema_(schema),
+        doc_read_context_(doc_read_context),
         txn_op_context_(txn_op_context) {
   }
 
@@ -104,7 +104,7 @@ class PgsqlWriteOperation :
 
   //------------------------------------------------------------------------------------------------
   // Context.
-  const Schema& schema_;
+  const DocReadContext& doc_read_context_;
   const TransactionOperationContext txn_op_context_;
 
   // Input arguments.
@@ -148,8 +148,8 @@ class PgsqlReadOperation : public DocExprExecutor {
                          CoarseTimePoint deadline,
                          const ReadHybridTime& read_time,
                          bool is_explicit_request_read_time,
-                         const Schema& schema,
-                         const Schema *index_schema,
+                         const DocReadContext& doc_read_context,
+                         const DocReadContext* index_doc_read_context,
                          faststring *result_buffer,
                          HybridTime *restart_read_ht);
 
@@ -163,8 +163,8 @@ class PgsqlReadOperation : public DocExprExecutor {
                                CoarseTimePoint deadline,
                                const ReadHybridTime& read_time,
                                bool is_explicit_request_read_time,
-                               const Schema& schema,
-                               const Schema *index_schema,
+                               const DocReadContext& doc_read_context,
+                               const DocReadContext *index_doc_read_context,
                                faststring *result_buffer,
                                HybridTime *restart_read_ht,
                                bool *has_paging_state);
@@ -173,7 +173,7 @@ class PgsqlReadOperation : public DocExprExecutor {
   Result<size_t> ExecuteBatchYbctid(const YQLStorageIf& ql_storage,
                                     CoarseTimePoint deadline,
                                     const ReadHybridTime& read_time,
-                                    const Schema& schema,
+                                    const DocReadContext& doc_read_context,
                                     faststring *result_buffer,
                                     HybridTime *restart_read_ht);
 
@@ -181,7 +181,7 @@ class PgsqlReadOperation : public DocExprExecutor {
                                CoarseTimePoint deadline,
                                const ReadHybridTime& read_time,
                                bool is_explicit_request_read_time,
-                               const Schema& schema,
+                               const DocReadContext& doc_read_context,
                                faststring *result_buffer,
                                HybridTime *restart_read_ht,
                                bool *has_paging_state);
@@ -200,7 +200,7 @@ class PgsqlReadOperation : public DocExprExecutor {
                                            size_t fetched_rows,
                                            const size_t row_count_limit,
                                            const bool scan_time_exceeded,
-                                           const Schema* schema,
+                                           const Schema& schema,
                                            const ReadHybridTime& read_time,
                                            bool *has_paging_state);
 

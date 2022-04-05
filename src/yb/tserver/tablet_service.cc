@@ -812,7 +812,7 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
   } else {
     table_info = tablet.peer->tablet_metadata()->primary_table_info();
   }
-  const Schema& tablet_schema = *table_info->schema;
+  const Schema& tablet_schema = table_info->schema();
   uint32_t schema_version = table_info->schema_version;
   // Sanity check, to verify that the tablet should have the same schema
   // specified in the request.
