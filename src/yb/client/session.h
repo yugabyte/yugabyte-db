@@ -116,6 +116,7 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
 
   // Changes transaction used by this session.
   void SetTransaction(YBTransactionPtr transaction);
+  bool HasTransaction() const;
 
   // Set the timeout for writes made in this session.
   void SetTimeout(MonoDelta delta);

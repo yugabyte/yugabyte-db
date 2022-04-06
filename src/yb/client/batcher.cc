@@ -485,6 +485,16 @@ void Batcher::ExecuteOperations(Initial initial) {
         std::bind(&Batcher::TransactionReady, shared_from_this(), _1))) {
       return;
     }
+  } else if (force_consistent_read_ &&
+             ops_info_.groups.size() > 1 &&
+             read_point_ &&
+             !read_point_->GetReadTime()) {
+    // Read time is not set but consistent read from multiple tablets without
+    // transaction is required. Use current time as a read time.
+    // Note: read_point_ is null in case of initdb. Nothing to do in this case.
+    read_point_->SetCurrentReadTime();
+    VLOG_WITH_PREFIX_AND_FUNC(3) << "Set current read time as a read time: "
+                                 << read_point_->GetReadTime();
   }
 
   if (state_ != BatcherState::kTransactionPrepare) {

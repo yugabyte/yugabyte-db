@@ -76,6 +76,8 @@ class PgSessionAsyncRunResult {
                           client::YBSessionPtr session);
   CHECKED_STATUS GetStatus(PgSession* session);
   bool InProgress() const;
+  CHECKED_STATUS HandleResponse(
+      PgSession* session, client::YBPgsqlOp* op, const PgObjectId& relation_id) const;
 
  private:
   // buffered_operations_ holds buffered operations (if any) which were applied to
@@ -327,8 +329,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Deletes the row referenced by ybctid from FK reference cache.
   void DeleteForeignKeyReference(PgOid table_id, const Slice& ybctid);
 
-  CHECKED_STATUS HandleResponse(const client::YBPgsqlOp& op, const PgObjectId& relation_id);
-
   Result<int> TabletServerCount(bool primary_only = false);
 
   // Sets the specified timeout in the rpc service.
@@ -343,6 +343,10 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   bool ShouldUseFollowerReads() const;
 
  private:
+  friend PgSessionAsyncRunResult;
+  CHECKED_STATUS HandleResponse(
+      client::YBPgsqlOp* op, const PgObjectId& relation_id, client::YBSession* session);
+
   using Flusher = std::function<Status(PgsqlOpBuffer, IsTransactionalSession)>;
 
   CHECKED_STATUS FlushBufferedOperationsImpl(const Flusher& flusher);

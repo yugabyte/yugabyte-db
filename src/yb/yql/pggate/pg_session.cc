@@ -68,6 +68,7 @@ TAG_FLAG(ysql_wait_until_index_permissions_timeout_ms, advanced);
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
 
 DEFINE_bool(ysql_log_failed_docdb_requests, false, "Log failed docdb requests.");
+DECLARE_bool(force_preset_read_time_on_client);
 
 namespace yb {
 namespace pggate {
@@ -323,13 +324,18 @@ Status PgSessionAsyncRunResult::GetStatus(PgSession* pg_session) {
   future_status_ = std::future<client::FlushStatus>();
   RETURN_NOT_OK(CombineErrorsToStatus(flush_status.errors, flush_status.status));
   for (const auto& bop : buffered_operations_) {
-    RETURN_NOT_OK(pg_session->HandleResponse(*bop.operation, bop.relation_id));
+    RETURN_NOT_OK(HandleResponse(pg_session, bop.operation.get(), bop.relation_id));
   }
   return Status::OK();
 }
 
 bool PgSessionAsyncRunResult::InProgress() const {
   return future_status_.valid();
+}
+
+Status PgSessionAsyncRunResult::HandleResponse(
+    PgSession* pg_session, client::YBPgsqlOp* op, const PgObjectId& relation_id) const {
+  return pg_session->HandleResponse(op, relation_id, session_.get());
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -975,7 +981,7 @@ Status PgSession::FlushOperations(PgsqlOpBuffer ops, IsTransactionalSession tran
   const auto flush_status = session->FlushFuture().get();
   RETURN_NOT_OK(CombineErrorsToStatus(flush_status.errors, flush_status.status));
   for (const auto& buffered_op : ops) {
-    RETURN_NOT_OK(HandleResponse(*buffered_op.operation, buffered_op.relation_id));
+    RETURN_NOT_OK(HandleResponse(buffered_op.operation.get(), buffered_op.relation_id, session));
   }
   return Status::OK();
 }
@@ -1053,15 +1059,23 @@ void PgSession::DeleteForeignKeyReference(PgOid table_id, const Slice& ybctid) {
   Erase(&fk_reference_cache_, table_id, ybctid);
 }
 
-Status PgSession::HandleResponse(const client::YBPgsqlOp& op, const PgObjectId& relation_id) {
-  if (op.succeeded()) {
-    if (op.type() == YBOperation::PGSQL_READ && op.IsYsqlCatalogOp()) {
-      const auto& pgsql_op = down_cast<const client::YBPgsqlReadOp&>(op);
-      if (pgsql_op.used_read_time()) {
+Status PgSession::HandleResponse(
+    client::YBPgsqlOp* op, const PgObjectId& relation_id, YBSession* session) {
+  if (op->succeeded()) {
+    ReadHybridTime used_read_time;
+    if (op->type() == YBOperation::PGSQL_READ) {
+      auto& read_op = down_cast<client::YBPgsqlReadOp&>(*op);
+      used_read_time = read_op.used_read_time();
+      // It is necessary to reset used read time as op might be re-sent
+      // in future (for fetching next portion of data)
+      read_op.SetUsedReadTime(ReadHybridTime());
+    }
+    if (!session->HasTransaction() && session->read_point() && used_read_time) {
+      if (op->IsYsqlCatalogOp() && session == catalog_session_.get()) {
         // Non empty used_read_time field in catalog read operation means this is the very first
         // catalog read operation after catalog read time resetting. read_time for the operation
         // has been chosen by master. All further reads from catalog must use same read point.
-        auto catalog_read_point = pgsql_op.used_read_time();
+        auto catalog_read_point = used_read_time;
 
         // We set global limit to local limit to avoid read restart errors because they are
         // disruptive to system catalog reads and it is not always possible to handle them there.
@@ -1071,11 +1085,20 @@ Status PgSession::HandleResponse(const client::YBPgsqlOp& op, const PgObjectId& 
         // TODO(dmitry) This situation will be handled in context of #7964.
         catalog_read_point.global_limit = catalog_read_point.local_limit;
         SetCatalogReadPoint(catalog_read_point);
+      } else if (PREDICT_TRUE(!FLAGS_force_preset_read_time_on_client)) {
+        const auto current_read_time = session->read_point()->GetReadTime();
+        SCHECK(!current_read_time,
+               IllegalState,
+               Format("Session already has a read time $0 used read time is $1",
+                      current_read_time,
+                      used_read_time));
+        session->SetReadPoint(used_read_time);
+        VLOG(3) << "Update read time from used read time: " << session->read_point()->GetReadTime();
       }
     }
     return Status::OK();
   }
-  const auto& response = op.response();
+  const auto& response = op->response();
   YBPgErrorCode pg_error_code = YBPgErrorCode::YB_PG_INTERNAL_ERROR;
   if (response.has_pg_error_code()) {
     pg_error_code = static_cast<YBPgErrorCode>(response.pg_error_code());
@@ -1100,9 +1123,9 @@ Status PgSession::HandleResponse(const client::YBPgsqlOp& op, const PgObjectId& 
         PgsqlError(YBPgErrorCode::YB_PG_UNIQUE_VIOLATION));
   } else {
     if (PREDICT_FALSE(yb_debug_log_docdb_requests || FLAGS_ysql_log_failed_docdb_requests)) {
-      LOG(INFO) << "Operation failed: " << op.ToString();
+      LOG(INFO) << "Operation failed: " << op->ToString();
     }
-    s = STATUS(QLError, op.response().error_message(), Slice(),
+    s = STATUS(QLError, op->response().error_message(), Slice(),
                PgsqlError(pg_error_code));
   }
   return s.CloneAndAddErrorCode(TransactionError(txn_error_code));

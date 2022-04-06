@@ -591,7 +591,8 @@ void PgMiniTest::TestInsertSelectRowLock(IsolationLevel isolation, RowMarkType r
   }
 
   ASSERT_OK(read_conn.ExecuteFormat("BEGIN TRANSACTION ISOLATION LEVEL $0", isolation_str));
-  ASSERT_OK(read_conn.Fetch("SELECT '(setting read point)'"));
+  // Send read request to a server for read time selection.
+  ASSERT_OK(read_conn.Fetch("SELECT * FROM t WHERE i = -1"));
   // Sleep to ensure that read done in txn doesn't face kReadRestart after INSERT (a sleep will
   // ensure sufficient gap between write time and read point - more than clock skew).
   std::this_thread::sleep_for(kSleepTime);
@@ -626,7 +627,8 @@ void PgMiniTest::TestDeleteSelectRowLock(IsolationLevel isolation, RowMarkType r
   }
 
   ASSERT_OK(read_conn.ExecuteFormat("BEGIN TRANSACTION ISOLATION LEVEL $0", isolation_str));
-  ASSERT_OK(read_conn.Fetch("SELECT '(setting read point)'"));
+  // Send read request to a server for read time selection.
+  ASSERT_OK(read_conn.Fetch("SELECT * FROM t WHERE i = -1"));
   // Sleep to ensure that read done in txn doesn't face kReadRestart after DELETE (a sleep will
   // ensure sufficient gap between write time and read point - more than clock skew).
   std::this_thread::sleep_for(kSleepTime);
