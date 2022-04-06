@@ -14,10 +14,9 @@ showAsideToc: true
 
 This page explains errors and warnings that you may experience while running a YugabyteDB cluster using yugabyted CLI and ways to resolve them.
 
-| CLI Message | Command/Task | Error/Warning |
+| CLI Message | CLI Command (Task) | Error/Warning |
 | --- | --- | --- |
 | [open files ulimits value set low](#open-files-ulimits-value-set-low) | installation | Warning |
-| --- | --- | --- |
 | [max user processes value set low](#max-user-processes-value-set-low) | installation | Warning |
 | [Transparent hugepages disabled](#transparent-hugepages-disabled) | installation | Warning |
 | [Six loopback IPs are required](#six-loopback-ips-are-required) | installation | Warning |
