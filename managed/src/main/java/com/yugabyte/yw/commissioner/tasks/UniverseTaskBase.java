@@ -1911,19 +1911,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     final YBClientService ybService = Play.current().injector().instanceOf(YBClientService.class);
     final String hostPorts = universe.getMasterAddresses();
     final String certificate = universe.getCertificateNodetoNode();
-    YBClient client = null;
     int version;
+    YBClient client = ybService.getClient(hostPorts, certificate);
     try {
-      client = ybService.getClient(hostPorts, certificate);
       version = client.getMasterClusterConfig().getConfig().getVersion();
-      ybService.closeClient(client, hostPorts);
     } catch (Exception e) {
       log.error("Error occurred retrieving cluster config version", e);
       throw new RuntimeException("Error incrementing cluster config version", e);
     } finally {
       ybService.closeClient(client, hostPorts);
     }
-
     return version;
   }
 
@@ -1981,14 +1978,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     YBClientService ybService = Play.current().injector().instanceOf(YBClientService.class);
     final String hostPorts = universe.getMasterAddresses();
     String certificate = universe.getCertificateNodetoNode();
-    YBClient client = null;
+    YBClient client = ybService.getClient(hostPorts, certificate);
     try {
-      client = ybService.getClient(hostPorts, certificate);
       int version = universe.version;
       ModifyClusterConfigIncrementVersion modifyConfig =
           new ModifyClusterConfigIncrementVersion(client, version);
       int newVersion = modifyConfig.incrementVersion();
-      ybService.closeClient(client, hostPorts);
       log.info(
           "Updated cluster config version for universe {} from {} to {}",
           universeUUID,

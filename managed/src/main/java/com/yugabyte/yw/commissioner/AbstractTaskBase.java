@@ -25,6 +25,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeStatus;
+import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutorService;
@@ -201,16 +202,20 @@ public abstract class AbstractTaskBase implements ITask {
   }
 
   // Returns the RunnableTask instance to which SubTaskGroup instances can be added and run.
-  // TODO Use this helper method instead of instantiating SubTaskGroupQueue in the task.
   protected RunnableTask getRunnableTask() {
     return getTaskExecutor().getRunnableTask(userTaskUUID);
   }
 
   // Returns a SubTaskGroup to which subtasks can be added.
-  // TODO Use this helper method instead of instantiating SubTaskGroup in the task.
   protected SubTaskGroup createSubTaskGroup(String name) {
     SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(name);
     subTaskGroup.setSubTaskExecutor(executor);
     return subTaskGroup;
+  }
+
+  // Abort-aware wait function makes the current thread to wait until the timeout or the abort
+  // signal is received. It can be a replacement for Thread.sleep in subtasks.
+  protected void waitFor(Duration duration) {
+    getRunnableTask().waitFor(duration);
   }
 }

@@ -19,9 +19,9 @@ import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.models.Provider;
+import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
 public class KubernetesCheckNumPod extends AbstractTaskBase {
   public enum CommandType {
@@ -80,11 +80,7 @@ public class KubernetesCheckNumPod extends AbstractTaskBase {
           if (status) {
             break;
           }
-          try {
-            TimeUnit.SECONDS.sleep(getSleepMultiplier() * SLEEP_TIME);
-          } catch (InterruptedException ex) {
-            // Do nothing
-          }
+          waitFor(Duration.ofSeconds(getSleepMultiplier() * SLEEP_TIME));
         } while (!status && iters < MAX_ITERS);
         if (iters >= MAX_ITERS) {
           throw new RuntimeException("Pods' start taking too long.");

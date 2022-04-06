@@ -43,6 +43,7 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -259,6 +260,7 @@ public class TaskExecutor {
         runnableTasks.forEach(
             (uuid, runnable) -> {
               runnable.setAbortTime(abortTime);
+              runnable.cancelWaiterIfAborted();
             });
       }
     }
@@ -388,6 +390,7 @@ public class TaskExecutor {
     if (runnableTask.getAbortTime() == null) {
       // This is not atomic but it is ok.
       runnableTask.setAbortTime(Instant.now());
+      runnableTask.cancelWaiterIfAborted();
     }
     // Update the task state in the memory and DB.
     runnableTask.compareAndSetTaskState(
@@ -876,6 +879,8 @@ public class TaskExecutor {
   public class RunnableTask extends AbstractRunnableTask {
     // Subtask groups to hold subtasks.
     private final Queue<SubTaskGroup> subTaskGroups = new ConcurrentLinkedQueue<>();
+    // Latch for timed wait for this task.
+    private final CountDownLatch waiterLatch = new CountDownLatch(1);
     // Current execution position of subtasks.
     private int subTaskPosition = 0;
     private TaskExecutionListener taskExecutionListener;
@@ -1018,6 +1023,32 @@ public class TaskExecutor {
         throw new RuntimeException("One or more SubTaskGroups failed while running.");
       }
     }
+
+    /**
+     * Abort-aware wait function makes the current thread to wait until the timeout or the abort
+     * signal is received. It can be a replacement for Thread.sleep in subtasks.
+     *
+     * @param waitTime the maximum time to wait.
+     */
+    public void waitFor(Duration waitTime) {
+      checkNotNull(waitTime);
+      try {
+        if (waiterLatch.await(waitTime.toMillis(), TimeUnit.MILLISECONDS)) {
+          // Count reached zero first, another thread must have decreased it.
+          throw new CancellationException(toString() + " is aborted while waiting.");
+        }
+      } catch (InterruptedException e) {
+        throw new CancellationException(e.getMessage());
+      }
+    }
+
+    /** Cancel the waiter latch if the task is aborted. */
+    @VisibleForTesting
+    void cancelWaiterIfAborted() {
+      if (getAbortTime() != null) {
+        waiterLatch.countDown();
+      }
+    }
   }
 
   /** Runnable task for subtasks in a task. */
@@ -1042,6 +1073,8 @@ public class TaskExecutor {
 
     @Override
     public void run() {
+      // Sets the top-level user task UUID.
+      task.setUserTaskUUID(parentRunnableTask.getTaskUUID());
       super.run();
     }
 

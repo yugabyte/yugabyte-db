@@ -23,8 +23,8 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 import play.libs.Json;
+import java.time.Duration;
 
 public class KubernetesWaitForPod extends AbstractTaskBase {
   public enum CommandType {
@@ -87,11 +87,7 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
           if (status.equals("Running")) {
             break;
           }
-          try {
-            TimeUnit.SECONDS.sleep(getSleepMultiplier() * SLEEP_TIME);
-          } catch (InterruptedException ex) {
-            // Do nothing
-          }
+          waitFor(Duration.ofSeconds(getSleepMultiplier() * SLEEP_TIME));
         } while (!status.equals("Running") && iters < MAX_ITERS);
         if (iters > MAX_ITERS) {
           throw new RuntimeException("Pod " + taskParams().podName + " creation taking too long.");
