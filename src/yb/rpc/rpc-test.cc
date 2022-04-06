@@ -52,6 +52,7 @@
 #include "yb/gutil/strings/human_readable.h"
 
 #include "yb/rpc/compressed_stream.h"
+#include "yb/rpc/network_error.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/secure_stream.h"
@@ -270,6 +271,13 @@ TEST_F(TestRpc, TestCallToBadServer) {
     LOG(INFO) << "Status: " << s.ToString();
     ASSERT_TRUE(s.IsRemoteError()) << "unexpected status: " << s.ToString();
   }
+}
+
+TEST_F(TestRpc, StatusNetworkError) {
+  auto status = STATUS_EC_FORMAT(NetworkError, NetworkError(NetworkErrorCode::kConnectFailed),
+                   "Connect error $0", "for test");
+  // Ensuring that we don't fail with unknown category during status.ToString().
+  LOG(INFO) << status.ToString();
 }
 
 // Test that RPC calls can be failed with an error status on the server.
