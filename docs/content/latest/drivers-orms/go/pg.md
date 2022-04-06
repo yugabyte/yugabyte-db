@@ -79,7 +79,7 @@ db := pg.Connect(opt)
 | host  | hostname of the YugabyteDB instance | localhost
 | port |  Listen port for YSQL | 5433
 | dbname | database name | yugabyte
-| sslMode | SSL mode | 
+| sslMode | SSL mode | require
 
 ### Step 3: Create table
 

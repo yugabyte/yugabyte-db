@@ -29,9 +29,9 @@ Npgsql is an open source ADO.NET Data Provider for PostgreSQL. It allows program
 
 ## CRUD operations with PostgreSQL Npgsql driver
 
-Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/csharp/ysql) page under the Quick start section.
+Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/csharp/ysql) page under the Quick start section. The following section break down the quick start example to demonstrate how to perform common tasks required for C# application development using the Npgsql driver.
 
-The following sections break down the quick start example to demonstrate how to perform common tasks required for C# application development using the Npgsql driver.
+After completing the below steps, you should have a working C# app that uses the YugabyteDB JDBC driver to connect to your cluster, set up tables, run a query, and print out results.
 
 ### Step 1: Add the Npgsql Driver Dependency
 
@@ -71,6 +71,25 @@ NpgsqlConnection conn = new NpgsqlConnection(yburl)
 | password | Password for connecting to the database | yugabyte
 
 The .NET Npgsql driver validates certificates differently from other PostgreSQL drivers. When you specify SSL mode `require`, the driver verifies the certificate by default (like the `verify-ca` or `verify-full` modes), and fails for self-signed certificates (like YugabyteDB's). You can override this by specifying "Trust Server Certificate=true", in which case it bypasses walking the certificate chain to validate trust and hence works like other drivers' `require` mode. In this case, the Root-CA certificate is not required to be configured.
+
+Example `connection string` builder for connecting to YugabyteDB Cluster enabled with on the wire SSL encryption.
+
+```csharp
+var connStringBuilder = new NpgsqlConnectionStringBuilder();
+connStringBuilder.Host = "22420e3a-768b-43da-8dcb-xxxxxx.aws.ybdb.io";
+connStringBuilder.Port = 5433;
+connStringBuilder.SslMode = SslMode.Require;
+connStringBuilder.Username = "admin";
+connStringBuilder.Password = "xxxxxx";
+connStringBuilder.Database = "yugabyte";
+connStringBuilder.TrustServerCertificate = true;
+CRUD(connStringBuilder.ConnectionString);
+```
+
+| Parameter | Description | Default |
+| :---------- | :---------- | :------ |
+| sslmode  | SSL Mode | require
+| TrustServerCertificate |  Trust the server certificate configured on the YugabyteDB cluster | true
 
 ### Step 3: Query the YugabyteDB Cluster from Your Application
 
@@ -139,8 +158,6 @@ John  35   CSharp
 ```
 
 If you don't get any output or an error, verify that the connection string in the Program.cs has the correct parameters.
-
-After completing these steps, you should have a working C# app that uses the YugabyteDB JDBC driver to connect to your cluster, set up tables, run a query, and print out results.
 
 ## Next Steps
 

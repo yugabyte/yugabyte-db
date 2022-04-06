@@ -95,6 +95,18 @@ if err != nil {
 | password | password for connecting to the database | yugabyte
 | dbname | database name | yugabyte
 
+For a Yugabyte Cloud cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as below at the client side.
+
+```sh
+$ export PGSSLMODE=verify-ca
+$ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded as `root.crt` under home directory. Modify your path accordingly.
+```
+
+| Environment Variable | Description |
+| :---------- | :---------- |
+| PGSSLMODE |  SSL mode used for the connection |
+| PGSSLROOTCERT | Server CA Certificate |
+
 ### Step 3: Create table
 
 Execute an SQL statement such as DDL `CREATE TABLE ...` using the `Exec()` function on the `db`

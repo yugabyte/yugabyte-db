@@ -61,7 +61,7 @@ If you are using [Gradle](https://docs.gradle.org/current/samples/sample_buildin
 implementation 'org.postgresql:postgresql:42.2.14'
 ```
 
-## Step 2: Connect to your Cluster
+## Step 2: Connect to your cluster
 
 After setting up the dependencies, implement a Java client application that uses the PostgreSQL JDBC driver to connect to your YugabyteDB cluster and run a query on the sample data.
 
@@ -104,7 +104,7 @@ Connection conn = DriverManager.getConnection(yburl);
 
 If you created a cluster on [Yugabyte Cloud](https://www.yugabyte.com/cloud/), [follow the steps](/latest/yugabyte-cloud/cloud-connect/connect-applications/) to download the database credentials and SSL Root certificate.
 
-## Step 3 -  Query the YugabyteDB Cluster from Your
+## Step 3 -  Query the YugabyteDB cluster from your application
 
 Create a new Java class called `QuickStartApp.java` in the base package directory of your project. Copy the following sample code to set up a YugabyteDB table and query the table contents from the Java client. Replace the connection string `yburl` with your cluster credentials and SSL certificate if required.
 

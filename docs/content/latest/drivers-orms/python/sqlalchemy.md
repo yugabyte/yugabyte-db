@@ -14,8 +14,6 @@ isTocNested: true
 showAsideToc: true
 ---
 
-An Object Relational Mapping (ORM) tool is used by the developers to handle database access, it allows developers to map their object-oriented domain classes into the database tables. It simplifies the CRUD operations on your domain objects and easily allow the evolution of Domain objects to be applied to the Database tables.
-
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
@@ -39,11 +37,12 @@ An Object Relational Mapping (ORM) tool is used by the developers to handle data
 ### Add the SQLAlchemy ORM Dependency
 
 To download and install SQLAlchemy to your project, use the following command.
+
 ```shell
   pip3 install sqlalchemy
   ```
 
-  You can verify the installation as follows: 
+  You can verify the installation as follows:
 
   - Open the Python prompt by executing the following command:
 
@@ -74,6 +73,7 @@ To start with SQLAlchemy, in your project directory, create 4 Python files - `co
   db_host = 'localhost'
   db_port = 5433
 ```
+
 Next, declare a mapping. When using the ORM, the configuration process begins with describing the database tables you'll use, and then defining the classes which map to those tables. In modern SQLAlchemy, these two tasks are usually performed together, using a system known as "Declarative Extensions". Classes mapped using the Declarative system are defined in terms of a base class which maintains a catalog of classes and tables relative to that base - this is known as the declarative base class.
 
 You create the Base class using the `declarative_base()` function. Add the following code to the `base.py` file.
@@ -139,6 +139,7 @@ for instance in session.query(Employee):
 session.commit()
 
 ```
+
 When you run the `main.py` file, you should get the output similar to the following.
 
 ```text
@@ -147,3 +148,8 @@ Name: Bob Age: 21 Language: Python
 Name: John Age: 35 Language: Java
 Name: Ivy Age: 27 Language: C++
 ```
+
+## Next Steps
+
+- Explore [Scaling Python Applications](/latest/explore/linear-scalability) with YugabyteDB.
+- Learn how to [develop Python applications with Yugabyte Cloud](/latest/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-python/).

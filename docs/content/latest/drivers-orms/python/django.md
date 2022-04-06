@@ -159,10 +159,12 @@ urlpatterns = [
 ```
 
 This completes the configuration of your test application. The next steps are to create the migration files and apply the migrations to the database. To do this, run the following command:
+
 ```shell
 python3 manage.py makemigrations
 python3 manage.py migrate
 ```
+
 A users table should be created in your database. Use the ysqlsh client shell to verify that the users table has been created in your database.
 
 ### Run the application
@@ -170,21 +172,33 @@ A users table should be created in your database. Use the ysqlsh client shell to
 To run the application and insert a new row, execute the following steps.
 
 Run the django project using the following command:
+
 ```shell
 python3 manage.py runserver 8080
 ```
+
 Insert a row using the following command:
+
 ```shell
 $ curl --data '{ "firstName" : "John", "lastName" : "Smith", "email" : "jsmith@yb.com" }' \
        -v -X POST -H 'Content-Type:application/json' http://localhost:8080/users
 ```
+
 Verify that the new row is inserted by executing the following command:
+
 ```shell
 $ curl http://localhost:8080/users
 ```
 
 You should see the following output:
+
 ```shell
 [{"userId":1,"firstName":"John","lastName":"Smith","email":"jsmith@yb.com"}]
 ```
+
 You can also verify this using the ysqlsh client shell.
+
+## Next Steps
+
+- Explore [Scaling Python Applications](/latest/explore/linear-scalability) with YugabyteDB.
+- Learn how to [develop Python applications with Yugabyte Cloud](/latest/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-python/).
