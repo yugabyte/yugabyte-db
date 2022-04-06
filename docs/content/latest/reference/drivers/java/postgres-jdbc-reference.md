@@ -40,7 +40,7 @@ Learn how to establish a connection to YugabyteDB database and begin simple CRUD
 
 ## Download the Driver Dependency
 
-Postgres JDBC Drivers are available as maven dependency, you can download the driver by adding the following dependency into the java project.
+Postgres JDBC Drivers are available as a Maven dependency, and you can download the driver by adding the following dependency into the Java project.
 
 ### Maven Depedency
 
@@ -62,7 +62,7 @@ implementation 'org.postgresql:postgresql:42.2.14'
 
 ## Fundamentals
 
-Learn how to perform the common tasks required for Java App development using the PostgreSQL JDBC driver
+Learn how to perform common tasks required for Java application development using the PostgreSQL JDBC driver.
 
 <!-- * [Connect to YugabyteDB Database](postgres-jdbc-fundamentals/#connect-to-yugabytedb-database)
 * [Configure SSL/TLS](postgres-jdbc-fundamentals/#configure-ssl-tls)
@@ -71,9 +71,9 @@ Learn how to perform the common tasks required for Java App development using th
 
 ### Connect to YugabyteDB Database
 
-Java Apps can connect to and query the YugabyteDB database using the `java.sql.DriverManager` class. All the JDBC interfaces required for working with YugabyteDB database will be part of `java.sql.*` package.
+Java applications can connect to and query the YugabyteDB database using the `java.sql.DriverManager` class. The `java.sql.*` package includes all the JDBC interfaces required for working with YugabyteDB.
 
-Use the `DriverManager.getConnection` method for getting connection object for the YugabyteDB Database which can be used for performing DDLs and DMLs against the database.
+Use the `DriverManager.getConnection` method to create a connection object to perform DDLs and DMLs against the database.
 
 JDBC Connection String
 
@@ -97,7 +97,7 @@ Connection conn = DriverManager.getConnection("jdbc:postgresql://localhost:5433/
 
 ### Create Table
 
-Tables on YugabyteDB database can be created using the `java.sql.Statement` interface which is used for executing the `CREATE TABLE` DDL statement.
+Create database tables using the `java.sql.Statement` interface, which is used to execute the `CREATE TABLE` DDL statement.
 
 For example
 
@@ -117,13 +117,13 @@ try {
 }
 ```
 
-`java.sql.Statement` throws `java.sql.SQLException` exception which needs to handled in the java code. Read more on designing [Database schemas and tables](../../../../explore/ysql-language-features/databases-schemas-tables/).
+`java.sql.Statement` throws the `java.sql.SQLException` exception, which needs to handled in the Java code. Read more on designing [Database schemas and tables](../../../../explore/ysql-language-features/databases-schemas-tables/).
 
 ### Read and Write Data
 
 #### Insert Data
 
-In order to write data into YugabyteDB, execute the `INSERT` statement using `java.sql.Statement` interface.
+To write data to YugabyteDB, execute the `INSERT` statement using the `java.sql.Statement` interface.
 
 For example
 
@@ -143,7 +143,7 @@ try {
 }
 ```
 
-For inserting data using JDBC clients, it is always a good pratice to use `java.sql.PreparedStatemet` for executing `INSERT` statements.
+When inserting data using JDBC clients, it is good practice to use `java.sql.PreparedStatemet` for executing `INSERT` statements.
 
 ```java
 Connection conn = DriverManager.getConnection("jdbc:postgresql://localhost:5433/yugabyte","yugabyte", "yugabyte");
@@ -164,7 +164,7 @@ try {
 
 #### Query Data
 
-In order to query data from YugabyteDB tables, execute the `SELECT` statement using `java.sql.statement` interface. Query results are returned using `java.sql.ResultSet` interface which can be iterated using `resultSet.next()` method for reading the data. Read more on [ResultSet](https://docs.oracle.com/javase/7/docs/api/java/sql/ResultSet.html).
+To query data in YugabyteDB tables, execute the `SELECT` statement using the `java.sql.statement` interface. Query results are returned using the `java.sql.ResultSet` interface, which can be iterated using the `resultSet.next()` method for reading the data. Refer to [ResultSet](https://docs.oracle.com/javase/7/docs/api/java/sql/ResultSet.html) in the Java documentation.
 
 For example
 
@@ -189,9 +189,9 @@ try {
 
 ### Configure SSL/TLS
 
-In order to build a Java application that communicate securily over SSL with YugabyteDB database, get the root certificate (`ca.crt`) of the YugabyteDB Cluster. If certificates are not generated yet, follow the instructions in [Create server certificates](../../../../secure/tls-encryption/server-certificates/).
+To build a Java application that communicates securely over SSL, get the root certificate (`ca.crt`) of the YugabyteDB Cluster. If certificates are not generated yet, follow the instructions in [Create server certificates](../../../../secure/tls-encryption/server-certificates/).
 
-Generally when configuring the Java Client to use SSL, all the certs required for connecting to the database will be available on the Classpath of the Java application or default Postgres working directory `(~/.postgresql/)` of the VM or container where the app is hosted.
+Generally, when configuring the Java client to use SSL, all the certificates required for connecting to the database are available on the Classpath of the Java application, or in the default PostgreSQL working directory `(~/.postgresql/)` of the VM or container where the application is hosted.
 
 Example JDBC URL for connecting to a secure YugabyteDB cluster can be seen below.
 
