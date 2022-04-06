@@ -15,7 +15,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Yugabyte Platform allows you to use its UI or API to manage asynchronous replication between independent YugabyteDB clusters. You can perform deployment via unidirectional (master-follower) or [bidirectional](#setting-up-bidirectional-replication) (multi-master) asynchronous replication between two data centers.
+YugabyteDB Anywhere allows you to use its UI or API to manage asynchronous replication between independent YugabyteDB clusters. You can perform deployment via unidirectional (master-follower) or [bidirectional](#setting-up-bidirectional-replication) (multi-master) asynchronous replication between two data centers.
 
 Within the concept of replication, universes are divided into the following categories:
 
@@ -30,15 +30,15 @@ For additional information on asynchronous replication in YugabyteDB, see the fo
 - [Asynchronous Replication: Overview and Architecture](https://docs.yugabyte.com/latest/architecture/docdb-replication/async-replication/)
 - [Asynchronous Replication Between Universes in YugabyteDB](https://docs.yugabyte.com/latest/deploy/multi-dc/async-replication/)
 
-## Using the Yugabyte Platform UI
+## Using the YugabyteDB Anywhere UI
 
-You can use the Yugabyte Platform UI to set up and configure asynchronous replication for universes whose tables do not contain data. In addition, you can perform monitoring by accessing the information about the replication lag and enabling alerts on excessive lag.
+You can use the YugabyteDB Anywhere UI to set up and configure asynchronous replication for universes whose tables do not contain data. In addition, you can perform monitoring by accessing the information about the replication lag and enabling alerts on excessive lag.
 
 ### How to set up replication
 
 You can set up asynchronous replication as follows:
 
-1. Open the Yugabyte Platform UI and navigate to **Universes**.
+1. Open the YugabyteDB Anywhere UI and navigate to **Universes**.
 
 2. Select the universe you want to replicate and navigate to **Replication**.
 
@@ -60,7 +60,7 @@ You can set up asynchronous replication as follows:
 
 You can configure an existing replication as follows:
 
-1. Open the Yugabyte Platform UI and navigate to **Universes**.
+1. Open the YugabyteDB Anywhere UI and navigate to **Universes**.
 
 2. Select the universe whose existing replication you want to modify and then navigate to **Replication**, as per the following illustration:<br><br>
 
@@ -118,19 +118,19 @@ This page allows you to do the following:
 
 ## Setting up bidirectional replication
 
-You can set up bidirectional replication using either the Yugabyte Platform UI or API by creating two separate replication configurations. Under this scenario, a source universe of the first replication becomes the target universe of the second replication, and vice versa.
+You can set up bidirectional replication using either the YugabyteDB Anywhere UI or API by creating two separate replication configurations. Under this scenario, a source universe of the first replication becomes the target universe of the second replication, and vice versa.
 
 <!--
 
 ## Using the REST API
 
-You may choose to use the API to manage universes. You can call the following REST API endpoint on your Yugabyte Platform instance for the source universe and the target universe involved in the asynchronous replication between two data sources:
+You may choose to use the API to manage universes. You can call the following REST API endpoint on your YugabyteDB Anywhere instance for the source universe and the target universe involved in the asynchronous replication between two data sources:
 
 ```http
 PUT /api/customers/<customerUUID>/universes/<universeUUID>/setup_universe_2dc
 ```
 
-*customerUUID* represents your customer UUID, and *universeUUID* represents the UUID of the universe (producer or consumer). The request should include an `X-AUTH-YW-API-TOKEN` header with your Yugabyte Platform API key, as shown in the following example `curl` command:
+*customerUUID* represents your customer UUID, and *universeUUID* represents the UUID of the universe (producer or consumer). The request should include an `X-AUTH-YW-API-TOKEN` header with your YugabyteDB Anywhere API key, as shown in the following example `curl` command:
 
 ```sh
 curl -X PUT \
@@ -138,9 +138,9 @@ curl -X PUT \
 https://myPlatformServer/api/customers/customerUUID/universes/universeUUID/setup_universe_2dc
 ```
 
-You can find your user UUID in Yugabyte Platform as follows:
+You can find your user UUID in YugabyteDB Anywhere as follows:
 
-- Click the person icon at the top right of any Yugabyte Platform page and open **Profile > General**.
+- Click the person icon at the top right of any YugabyteDB Anywhere page and open **Profile > General**.
 
 - Copy your API token. If the **API Token** field is blank, click **Generate Key**, and then copy the resulting API token. Generating a new API token invalidates your existing token. Only the most-recently generated API token is valid.
 
@@ -165,6 +165,6 @@ You can find your user UUID in Yugabyte Platform as follows:
   ["6553ea6d-485c-4ae8-861a-736c2c29ec46"]
   ```
 
-  <br>To find a universe's UUID in Yugabyte Platform, click **Universes** in the left column, then click the name of the universe. The URL of the universe's **Overview** page ends with the universe's UUID. For example, `http://myPlatformServer/universes/d73833fc-0812-4a01-98f8-f4f24db76dbe`
+  <br>To find a universe's UUID in YugabyteDB Anywhere, click **Universes** in the left column, then click the name of the universe. The URL of the universe's **Overview** page ends with the universe's UUID. For example, `http://myPlatformServer/universes/d73833fc-0812-4a01-98f8-f4f24db76dbe`
 
 -->

@@ -2,7 +2,7 @@
 title: Create a multi-region universe
 headerTitle: Create a multi-region universe
 linkTitle: Multi-region universe
-description: Create a YugabyteDB universe that spans multiple geographic regions using Yugabyte Platform.
+description: Create a YugabyteDB universe that spans multiple geographic regions.
 menu:
   latest:
     identifier: create-universe-multi-region
@@ -12,13 +12,13 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Yugabyte Platform allows you to create a universe spanning multiple geographic regions. 
+YugabyteDB Anywhere allows you to create a universe spanning multiple geographic regions. 
 
 For example, you can deploy a universe across Oregon (US-West) and South Carolina (US-East). Once deployed, you can connect to each node and perform a variety of tasks.
 
 ## Create the universe
 
-Before creating a universe, you need to configure a cloud provider, such as [Google Cloud Provider](../../configure-yugabyte-platform/set-up-cloud-provider/gcp/) (GPC). When done, use the Yugabyte Platform UI to navigate to **Universes**, click **Create Universe**, and enter the following sample values:
+Before creating a universe, you need to configure a cloud provider, such as [Google Cloud Provider](../../configure-yugabyte-platform/set-up-cloud-provider/gcp/) (GPC). When done, use the YugabyteDB Anywhere UI to navigate to **Universes**, click **Create Universe**, and enter the following sample values:
 
 - In the **Name** field, enter **helloworld2**.
 
