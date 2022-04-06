@@ -25,16 +25,16 @@ showAsideToc: true
 
 </ul>
 
-Npgsql is an open source ADO.NET Data Provider for PostgreSQL, it allows programs written in C#, Visual Basic, F# to access YugabyteDB server. It is implemented in 100% C# code, is free and is open source.
+Npgsql is an open source ADO.NET Data Provider for PostgreSQL. It allows programs written in C#, Visual Basic, and F# to access YugabyteDB. It is implemented in 100% C# code, and is free and open source.
 
 ## Step 1: Add the Npgsql Driver Dependency
 
 If you are using Visual Studio IDE, follow the below steps:
-1. Open your Project Solution View
-1. Right-click on **Packages** and click **Add Packages**
-1. Search for `Npgsql` and click **Add Package**
+1. Open your Project Solution View.
+1. Right-click on **Packages** and click **Add Packages**.
+1. Search for `Npgsql` and click **Add Package**.
 
-To add Npgsql package to your project, when not using an IDE, use the `dotnet` command:
+To add the Npgsql package to your project when not using an IDE, use the following `dotnet` command:
 ```csharp
 dotnet add package Npgsql 
 ``` 
@@ -42,9 +42,9 @@ or any of the other methods mentioned on the [nuget page](https://www.nuget.org/
 
 ## Step 2: Connect to your Cluster
 
-After setting up the dependenices, we implement the C# client application that uses the Npgsql driver to connect to your YugabyteDB cluster and run query on the sample data.
+After setting up the dependencies, you implement a C# client application that uses the Npgsql driver to connect to your YugabyteDB cluster and run a query on the sample data.
 
-We will import Npgsql and use the `NpgsqlConnection` class for getting connection object for the YugabyteDB Database which can be used for performing DDLs and DMLs against the database.
+Import Npgsql and use the `NpgsqlConnection` class for getting connection objects for the YugabyteDB Database that can be used for performing DDLs and DMLs against the database.
 
 Example URL for connecting to YugabyteDB can be seen below.
 
@@ -55,13 +55,13 @@ NpgsqlConnection conn = new NpgsqlConnection(yburl)
 
 | Params | Description | Default |
 | :---------- | :---------- | :------ |
-| host  | hostname of the YugabyteDB instance | localhost
+| host  | Hostname of the YugabyteDB instance | localhost
 | port |  Listen port for YSQL | 5433
-| database | database name | yugabyte
-| user | user for connecting to the database | yugabyte
-| password | password for connecting to the database | yugabyte
+| database | Database name | yugabyte
+| user | User for connecting to the database | yugabyte
+| password | Password for connecting to the database | yugabyte
 
-The .NET Npgsql driver validates certificates differently from other PostgreSQL drivers. When you specify SSL mode `require`, the driver verifies the certificate by default (like the `verify-ca` or `verify-full` modes), and fails for self-signed certificates(like YugabyteDB's). You can override this by specifying "Trust Server Certificate=true", in which case it bypasses walking the certificate chain to validate trust and hence works like other drivers' `require` mode. In this case, the Root-CA certificate is not required to be configured.
+The .NET Npgsql driver validates certificates differently from other PostgreSQL drivers. When you specify SSL mode `require`, the driver verifies the certificate by default (like the `verify-ca` or `verify-full` modes), and fails for self-signed certificates (like YugabyteDB's). You can override this by specifying "Trust Server Certificate=true", in which case it bypasses walking the certificate chain to validate trust and hence works like other drivers' `require` mode. In this case, the Root-CA certificate is not required to be configured.
 
 ## Step 3: Query the YugabyteDB Cluster from Your Application
 

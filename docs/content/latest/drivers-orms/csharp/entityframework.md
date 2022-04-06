@@ -1,6 +1,6 @@
 ---
-title: EntityFramework ORM
-linkTitle: EntityFramework ORM
+title: C# ORMs
+linkTitle: C# ORMs
 description: EntityFramework ORM support for YugabyteDB
 headcontent: EntityFramework ORM support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
@@ -25,26 +25,26 @@ showAsideToc: true
 </ul>
 
 
-An Object Relational Mapping (ORM) tool is used by the developers to handle database access, it allows developers to map their object-oriented domain classes into the database tables. It simplifies the CRUD operations on your domain objects and easily allow the evolution of Domain objects to be applied to the Database tables.
+Object Relational Mapping (ORM) tools are used by developers to handle database access. They allow developers to map object-oriented domain classes into the database tables. ORMs simplify CRUD operations on your domain objects and easily allow the evolution of domain objects to be applied to the Database tables.
 
-[EntityFramework](https://docs.microsoft.com/en-us/ef/) is a popular ORM provider for C# applications which is widely used by C# Developers for Database access. YugabyteDB provides full support for EntityFramework ORM.
+[EntityFramework](https://docs.microsoft.com/en-us/ef/) is a popular ORM provider for C# applications, and is widely used by C# Developers for database access. YugabyteDB provides full support for EntityFramework ORM.
 
-### Add the ORM Dependency
+## Add the ORM Dependency
 
 If you are using Visual Studio IDE, follow the below steps:
-1. Open your Project Solution View
-1. Right-click on **Packages** and click **Add Packages**
-1. Search for `Npgsql.EntityFrameworkCore.PostgreSQL` and click **Add Package**
+1. Open your Project Solution View.
+1. Right-click on **Packages** and click **Add Packages**.
+1. Search for `Npgsql.EntityFrameworkCore.PostgreSQL` and click **Add Package**.
 
-To add Npgsql package to your project, when not using an IDE, use the `dotnet` command:
+To add the Npgsql package to your project when not using an IDE, use the following `dotnet` command:
 ```csharp
 dotnet add package Npgsql.EntityFrameworkCore.PostgreSQL 
 ``` 
 or any of the other methods mentioned on the [nuget page](https://www.nuget.org/packages/Npgsql.EntityFrameworkCore.PostgreSQL) for EntityFramework.
 
-## Step 4: Implementing ORM mapping for YugabyteDB
+## Implement ORM mapping for YugabyteDB
 
-Create a file called `Model.cs` in the base package directory of your project and add the following code for a class that includes the following fields, setters and getters,
+Create a file called `Model.cs` in the base package directory of your project and add the following code for a class that includes the following fields, setters, and getters.
 
 ```csharp
 using System.Collections.Generic;
@@ -80,16 +80,16 @@ namespace ConsoleApp.PostgreSQL
 }
 ```
 
-After creating the model, we will use EF migrations to create and setup the database. Run the following commands:
+After creating the model, use EF migrations to create and set up the database. Run the following commands:
 ```csharp
 dotnet tool install --global dotnet-ef
 dotnet add package Microsoft.EntityFrameworkCore.Design
 dotnet ef migrations add InitialCreate
 dotnet ef database update
 ```
-This installs dotnet ef and the design package which is required to run the command on a project. The migrations command scaffolds a migration to create the initial set of tables for the model. The database update command creates the database and applies the new migration to it.
+This installs dotnet EF and the design package, which is required to run the command on a project. The migrations command scaffolds a migration to create the initial set of tables for the model. The database update command creates the database and applies the new migration to it.
 
-Next, we will finally connect to the database, insert a row, query it and delete it as well. Copy the following sample code to your `Program.cs` file.
+Finally, connect to the database, insert a row, query it, and delete it. Copy the following sample code to your `Program.cs` file.
 
 ```cs
 using System;
