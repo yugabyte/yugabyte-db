@@ -48,7 +48,7 @@ public class NodeUniverseManager extends DevopsBase {
     // yb_home_dir denotes a custom starting directory for the remote file. (Eg: ~/, /mnt/d0, etc.)
     actionArgs.add("--yb_home_dir");
     actionArgs.add(ybHomeDir);
-    actionArgs.add("--source_node_file");
+    actionArgs.add("--source_node_files");
     actionArgs.add(sourceNodeFile);
     actionArgs.add("--target_local_file");
     actionArgs.add(targetLocalFile);
