@@ -13,21 +13,21 @@ isTocNested: true
 showAsideToc: true
 ---
 
-[Hibernate ORM](https://hibernate.org/orm/) is an Object/Relational Mapping (ORM) framework for Java applications. Hibernate ORM enables developers to easily write applications whose data outlives the appilication lifetime, Hibernate is concerned with data persistence of Relational databases.
+[Hibernate ORM](https://hibernate.org/orm/) is an Object/Relational Mapping (ORM) framework for Java applications. Hibernate ORM is concerned with data persistence of relational databases, and enables developers to easily write applications whose data outlives the application lifetime.
 
 YugabyteDB YSQL API has full compatibility with Hibernate ORM for Data persistence in Java applications. This page provides details for getting started with Hibernate ORM for connecting to YugabyteDB.
 
-## Working with Domain Objects
+## Working with domain objects
 
-In this section, we'll learn to use the Java Objects (Domain Objects) to store and retrive data from YugabyteDB Cluster.
+This section describes how to use the Java objects (domain objects) to store and retrieve data from YugabyteDB databases.
 
-Java developers are often required to store the Domain objects of a Java Application into the Database Tables. An Object Relational Mapping (ORM) tool is used by the developers to handle database access, it allows developers to map their object-oriented domain classes into the database tables. It simplies the CRUD operations on your domain objects and easily allow the evoluation of Domain objects to be applied to the Database tables.
+Java developers are often required to store the domain objects of a Java application into the database tables. An Object Relational Mapping (ORM) tool is used by developers to handle database access, and to map their object-oriented domain classes into the database tables. It simplifies the CRUD operations on your domain objects and allows the evolution of domain objects to be applied to the database tables.
 
-[Hibernate](https://hibernate.org/orm/) is a popular ORM provider for Java applications which is widely used by Java Developers for Database access. YugabyteDB provides full support for Hiberante ORM and also can be easily used in any environment supporting Java Persistence API (JPA) including Java SE applications, and Java EE application servers connecting to YugabyteDB cluster.
+[Hibernate](https://hibernate.org/orm/) is a popular ORM provider for Java applications, and is widely used by Java developers for database access. YugabyteDB provides full support for Hibernate ORM and also can be easily used in any environment supporting Java Persistence API (JPA), including Java SE applications, and Java EE application servers connecting to YugabyteDB clusters.
 
-### Step 1: Add the Hibernate ORM Dependency
+### Step 1: Add the Hibernate ORM dependency
 
-If you are using [Maven](https://maven.apache.org/guides/development/guide-building-maven.html), add the following to your `pom.xml` of your project.
+If you're using [Maven](https://maven.apache.org/guides/development/guide-building-maven.html), add the following to your project's `pom.xml` file.
 
 ```xml
 <dependency>
@@ -43,18 +43,18 @@ If you are using [Maven](https://maven.apache.org/guides/development/guide-build
 </dependency>
 ```
 
-If you are using [Gradle](https://docs.gradle.org/current/samples/sample_building_java_applications.html), add the following dependencies to your `build.gradle` file:
+If you're using [Gradle](https://docs.gradle.org/current/samples/sample_building_java_applications.html), add the following dependencies to your `build.gradle` file:
 
 ```java
 implementation 'org.hibernate:hibernate-core:5.4.19.Final'
 implementation 'org.hibernate:hibernate-annotations:3.5.6-Final'
 ```
 
-Note: Hibernate ORM can be used with both [YugabyteDB JDBC driver](../yugabyte-jdbc) and [Postgres JDBC Driver](../postgres-jdbc).
+Note: Hibernate ORM can be used with the [YugabyteDB JDBC driver](../yugabyte-jdbc) and the [PostgreSQL JDBC Driver](../postgres-jdbc).
 
 ### Step 2: Implementing ORM mapping for YugabyteDB
 
-Create a file called `Employee.java` in the base package directory of your project and add the following code for a class that includes the following fields, setters and getters,
+Create a file called `Employee.java` in the base package directory of your project and add the following code for a class that includes the following fields, setters, and getters.
 
 ```java
 @Entity
@@ -74,7 +74,7 @@ public class Employee {
 
 ### Step 3: Create a DAO object for Employee object
 
-Create a Data Access Object (DAO) `EmployeeDAO.java` in the base package directory. DAO object is used for implementing the basic CRUD operations for the Domain object `Employee.java`. Copy the sample below sample code into your project,
+Create a Data Access Object (DAO) `EmployeeDAO.java` in the base package directory. The DAO is used for implementing the basic CRUD operations for the domain object `Employee.java`. Copy the following sample code into your project.
 
 ```java
 import org.hibernate.Session;
@@ -106,7 +106,7 @@ public class EmployeeDAO {
 
 ### Step 4: Configure Hibernate properites
 
-Add the hibernate configurations file `hibernate.cfg.xml` in the resources directory. Copy the following contents into `src/main/resources/hibernate.cfg.xml`
+Add the hibernate configurations file `hibernate.cfg.xml` to the resources directory, and copy the following contents into the file.
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
@@ -131,7 +131,7 @@ Add the hibernate configurations file `hibernate.cfg.xml` in the resources direc
 </hibernate-configuration>
 ```
 
-The above Hibernate configuration file provides the generic set of properties that are required for configuring the Hibernate ORM for YugabyteDB.
+The Hibernate configuration file provides the generic set of properties that are required for configuring the Hibernate ORM for YugabyteDB.
 
 | Hibernate Params | Description | Default |
 | :---------- | :---------- | :------ |
@@ -165,7 +165,7 @@ Add a mapping for `Employee` object in `hibernate.cfg.xml`
 
 ### Step 6: Query the YugabyteDB Cluster using Hibernate ORM
 
-Next, Create a new Java class called `QuickStartOrmApp.java` in the base package directory of your project. Copy the sample code below in order to query the Table contents from the java client using Hibernate ORM. Ensure you replace the connection string `yburl` with credentials of your cluster and SSL certs if required.
+Create a new Java class called `QuickStartOrmApp.java` in the base package directory of your project. Copy the sample code below in order to query the table contents from the java client using Hibernate ORM. Ensure you replace the connection string `yburl` with the credentials of your cluster and SSL certificates if required.
 
 ```java
 import com.zaxxer.hikari.HikariConfig;
@@ -206,7 +206,7 @@ public class QuickStartOrmApp {
 }
 ```
 
-When you run the Project, QuickStartApp.java should output something like below:
+When you run the Project, QuickStartApp.java should output something like the following:
 
 ```text
 Connected to the YugabyteDB Cluster successfully.
@@ -218,4 +218,4 @@ Query returned: name=John, age=35, language: Java
 ## Next Steps
 
 - Explore [Scaling Java Applications](/latest/explore/linear-scalability) with YugabyteDB.
-- Learn how to [develop Java Applications with YugabyteDB Cloud](/latest/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-yb-jdbc/).
+- Learn how to [develop Java applications with Yugabyte Cloud](/latest/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-yb-jdbc/).

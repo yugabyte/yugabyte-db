@@ -14,7 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-For Go Applications, most drivers provide database connectivity through the standard `database/sql` API.
+For Go applications, most drivers provide database connectivity through the standard `database/sql` API.
 YugabyteDB supports the [PGX Driver](https://github.com/jackc/pgx) and the [PQ Driver](https://github.com/lib/pq).
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -41,14 +41,13 @@ drivers for PostgreSQL.
 This driver allows Go programmers to connect to YugabyteDB database to execute DMLs and DDLs using
 the PGX APIs. It also supports the standard `database/sql` package.
 
-## CRUD Operations with PGX Driver
+## CRUD operations with PGX driver
 
 Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using
 the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-pgx) page under the
 Quick start section.
 
-Let us break down the quick start example and understand how to perform the common tasks required
-for Go App development using the PGX driver.
+The following sections break down the quick start example to demonstrate how to perform common tasks required for Go application development using the PGX driver.
 
 ### Step 1: Import the driver package
 
@@ -62,10 +61,10 @@ import (
 
 ### Step 2: Connect to YugabyteDB database
 
-Go Apps can connect to the YugabyteDB database using the `pgx.Connect()` function.
-All the common functions or structs required for working with YugabyteDB database is part of `pgx` package.
+Go applications can connect to the YugabyteDB database using the `pgx.Connect()` function.
+The `pgx` package includes all the common functions or structs required for working with YugabyteDB.
 
-Use the `pgx.Connect()` method for getting connection object for the YugabyteDB database which can
+Use the `pgx.Connect()` method to create a connection object for the YugabyteDB database. This can
 be used for performing DDLs and DMLs against the database.
 
 The PGX connection URL is in the following format:
@@ -140,8 +139,7 @@ if err != nil {
 }
 ```
 
-The pgx driver automatically prepares and caches statements by default, so that the developer does
-not have to.
+The pgx driver automatically prepares and caches statements by default, so you don't have to.
 
 #### Query data
 

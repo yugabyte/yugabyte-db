@@ -33,23 +33,21 @@ showAsideToc: true
 
 [Sequelize ORM](https://sequelize.org/v6/) is an Object/Relational Mapping (ORM) framework for Node.js applications. It is a promise-based ORM for Node.js that enables JavaScript developers to work with relational databases more easily and supports features like solid transaction support, relations, read replication and more.
 
-Sequelize ORM supports PostgreSQL as a backend database. As YugabyteDB YSQL is a postgres-compatible API, Sequelize can be used for querying YugabyteDB via postgres dialect. Currently, YugabyteDB doesn't have support for Sequelize ORM's `findorCreate()` API, along with other issues, which may prevent users from successfully implementing Node.js applications.
+Sequelize ORM supports PostgreSQL as a backend database. As YugabyteDB YSQL is a PostgreSQL-compatible API, Sequelize can be used for querying YugabyteDB. Currently, YugabyteDB doesn't support Sequelize ORM's `findorCreate()` API, and some other features, which may prevent you from successfully implementing Node.js applications.
 
-There is [on going work](https://github.com/yugabyte/yugabyte-db/issues/11683) to support the Sequelize ORM core package to work with YugabyteDB by having a separate dialect. Untill YugabyteDB dialect becomes available in core Sequelize package, We recommend users to make use of [sequelize-yugabytedb](https://github.com/yugabyte/sequelize-yugabytedb) for building Node.js applications. This page provides details for getting started with Sequelize ORM for connecting to YugabyteDB using `sequelize-yugabytedb` package.
+There is [ongoing work](https://github.com/yugabyte/yugabyte-db/issues/11683) to add support for YugabyteDB to the Sequelize ORM core package. In the meantime, use [sequelize-yugabytedb](https://github.com/yugabyte/sequelize-yugabytedb) to build Node.js applications. This page describes how to get started with Sequelize ORM for connecting to YugabyteDB using the `sequelize-yugabytedb` package.
 
 ## Working with Domain Objects
 
-In this section, we'll learn to use the Node.js Models (Domain Objects) to store and retrive data from YugabyteDB Cluster.
+This section describes how to use Node.js models (domain objects) to store and retrieve data from a YugabyteDB cluster.
 
-Node.js developers are often required to store the Domain objects of a Node.js Application into the Database Tables. An Object Relational Mapping (ORM) tool is used by the developers to handle database access, it allows developers to map their models into the database tables. It simplies the CRUD operations on your domain objects and easily allow the evoluation of Domain objects to applied to the Database tables.
 
-[Sequelize ORM](https://sequelize.org/v6/)  is a popular ORM provider for Node.js applications which is widely used by Node Developers for Database access.
 
 ## Creating a Node.js project and installing Sequelize ORM core package
 
-Before proceeding with the next steps, you need to have Node.js installed on your machine. To install it, please refer to this [link](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm#using-a-node-installer-to-install-node-js-and-npm).
+Before proceeding with the next steps, you need to have Node.js installed on your machine. To install it, refer to [Downloading and installing Node.js and npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm#using-a-node-installer-to-install-node-js-and-npm).
 
-Now, let's create a simple Node.js project and install a `sequelize-yugabytedb` package.
+To create a simple Node.js project and install the `sequelize-yugabytedb` package, do the following:
 
 1. Create a new directory: 
 `mkdir nodejs-quickstart-example && cd nodejs-quickstart-example`
@@ -65,7 +63,7 @@ Now, let's create a simple Node.js project and install a `sequelize-yugabytedb` 
 
 ## Creating a Node.js example using Sequelize ORM
 
-Add the following code in the `example.js`, this allows you to create a model for Employees to store and retrieve information of employees from the YugabyteDB. Here, first of all we have created the sequelize connection by passing the basic connection information and dialect as `postgres` then we have defined the model as Employee using `define()` API which allows us to mention what all type of information we want to store for an employee but the actual table is created when we have called the `Employee.sync()` API in `createTableAndInsert()` function which also inserts the data of three employees into the table employees using `Employee.create()` API. At last, we can retrieve the information of all employees using `Employee.findAll()`.
+Add the following code in the `example.js` file. This code creates an Employees model to store and retrieve employee information. First it creates a connection by passing the basic connection parameters. Next, it defines the Employee model using the `define()` API, which specifies the type of information to store for an employee. The actual table is created by calling the `Employee.sync()` API in the `createTableAndInsert()` function. This also inserts the data for three employees into the table using the `Employee.create()` API. Finally, you can retrieve the information of all employees using `Employee.findAll()`.
 
 ```js
 
@@ -122,7 +120,8 @@ createTableAndInsert()
 })
 
 ```
-When you run the example.js using `node example.js`, you will get this as output-
+
+When you run example.js using `node example.js`, you should get output similar to the following:
 
 ```text
 Creating the connection with YugabyteDB using postgres dialect.
@@ -168,4 +167,4 @@ Employees Details:
 ## Next Steps
 
 - Explore [Scaling Node Applications](/latest/explore/linear-scalability) with YugabyteDB.
-- Learn how to [develop Node Applications with YugabyteDB Cloud](/latest/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-node/).
+- Learn how to [develop Node applications with Yugabyte Cloud](/latest/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-node/).

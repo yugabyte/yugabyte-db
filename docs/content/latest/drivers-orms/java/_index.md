@@ -49,7 +49,7 @@ For fully runnable code snippets and explanations for common operations, see the
 | Project | Type | Usage Examples |
 | :------ | :--- | :------------- |
 | [YugabyteDB JDBC Driver](/latest/reference/drivers/java/yugabyte-jdbc-reference/) | JDBC Driver | [Hello World](/latest/quick-start/build-apps/java/ysql-yb-jdbc) <br />[CRUD App](yugabyte-jdbc)
-| [Postgres JDBC Driver](/latest/reference/drivers/java/postgres-jdbc-reference/) | JDBC Driver | [Hello World](/latest/quick-start/build-apps/java/ysql-jdbc) <br />[CRUD App](postgres-jdbc)
+| [PostgreSQL JDBC Driver](/latest/reference/drivers/java/postgres-jdbc-reference/) | JDBC Driver | [Hello World](/latest/quick-start/build-apps/java/ysql-jdbc) <br />[CRUD App](postgres-jdbc)
 | [Hibernate](hibernate) | ORM |  [Hello World](/latest/quick-start/build-apps/java/ysql-jdbc) <br />[CRUD App](/latest/integrations/spring-framework/sdyb/#examples) |
 
 <!-- ## Learn More

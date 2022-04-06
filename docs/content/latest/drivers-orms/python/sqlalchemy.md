@@ -34,7 +34,7 @@ An Object Relational Mapping (ORM) tool is used by the developers to handle data
 
 </ul>
 
-[SQLAlchemy](https://www.sqlalchemy.org/) is a popular ORM provider for Python applications which is widely used by Python Developers for Database access. YugabyteDB provides full support for SQLAlchemy ORM.
+[SQLAlchemy](https://www.sqlalchemy.org/) is a popular ORM provider for Python applications, and is widely used by Python developers for database access. YugabyteDB provides full support for SQLAlchemy ORM.
 
 ### Add the SQLAlchemy ORM Dependency
 
@@ -74,14 +74,18 @@ The `config.py` will contain the credentials to connect to your database. Copy t
   db_host = 'localhost'
   db_port = 5433
 ```
-Next step is to declare a mapping.When using the ORM, the configurational process starts by describing the database tables we’ll be dealing with, and then by defining our own classes which will be mapped to those tables. In modern SQLAlchemy, these two tasks are usually performed together, using a system known as `Declarative Extensions`. Classes mapped using the Declarative system are defined in terms of a base class which maintains a catalog of classes and tables relative to that base - this is known as the declarative base class. Create the Base class using the `declarative_base()` function. For this in the `base.py` add the following code.
+Next, declare a mapping. When using the ORM, the configuration process begins with describing the database tables you'll be using, and then defining the classes which will be mapped to those tables. In modern SQLAlchemy, these two tasks are usually performed together, using a system known as "Declarative Extensions". Classes mapped using the Declarative system are defined in terms of a base class which maintains a catalog of classes and tables relative to that base - this is known as the declarative base class.
+
+You create the Base class using the `declarative_base()` function. Add the following code to the `base.py` file.
 
 ```python
 from sqlalchemy.ext.declarative import declarative_base
 Base = declarative_base()
 ```
 
-Now that we have a “base”, we can define any number of mapped classes in terms of it. We will start with just a single table called `employees`, which will store records for the end-users using your application. A new class called `Employee` will be the class to which we map this table. Within the class, we define details about the table to which we’ll be mapping, primarily the table name, and names and datatypes of columns. In the `model.py` add:
+Now that you have a “base”, you can define any number of mapped classes in terms of it. Start with a single table called `employees`, which will store records for the end-users using your application. A new class called `Employee` will be the class to which we map this table. Within the class, you define details about the table to which you'll be mapping, primarily the table name, and names and datatypes of the columns.
+
+Add the following to the `model.py` file:
 
 ```python
 from sqlalchemy.ext.declarative import declarative_base
@@ -98,7 +102,7 @@ class Employee(Base):
    language = Column(String(255))
 ```
 
-Once all of the setup is done. We will connect to our database and create a new session. In the `main.py` add the following saple code.
+Once the setup is done, you can connect to the database and create a new session. In the `main.py` file, add the following.
 
 ```python
 import config as cfg
@@ -135,7 +139,7 @@ for instance in session.query(Employee):
 session.commit()
 
 ```
-When you run the `main.py` file, you will get the fllowing output.
+When you run the `main.py` file, you should get the output similar to the following.
 
 ```text
 Query returned:

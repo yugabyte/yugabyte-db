@@ -27,7 +27,7 @@ Learn how to establish a connection to YugabyteDB database and begin simple CRUD
 
 ### Install Node.JS
 
-Make sure that your system has Node.JS installed. To download and install, please refer [nodejs offical website](https://nodejs.org/en/download/).
+Make sure that your system has Node.JS installed. To download and install, refer to the [nodejs official website](https://nodejs.org/en/download/).
 
 To check the version of installed node, use the following command:
 
@@ -37,7 +37,7 @@ node -v
 
 ### Create a Node.JS Project
 
-Create a file with `.js` extension in filename, for example `app.js` which can be run using command:
+Create a file with the `.js` extension, for example `app.js`, which can be run using the following command:
 
 ```sh
 node app.js
@@ -45,15 +45,15 @@ node app.js
 
 ### Create a YugabyteDB Cluster
 
-Set up a Free tier Cluster on [Yugabyte Anywhere](https://www.yugabyte.com/cloud/). The free cluster provides a fully functioning YugabyteDB cluster deployed to the cloud region of your choice. The cluster is free forever and includes enough resources to explore the core features available for developing the Java Applications with YugabyteDB database. Complete the steps for [creating a free tier cluster](/latest/yugabyte-cloud/cloud-quickstart/qs-add/).
+Create a free cluster on Yugabyte Cloud. Refer to [Create a free cluster](../../yugabyte-cloud/cloud-basics/create-clusters-free/).
 
-Alternatively, You can also setup a standalone YugabyteDB cluster by following the [install YugabyteDB Steps](/latest/quick-start/install/macos).
+You can also set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/latest/quick-start/install/macos).
 
 ## Usage Examples
 
-For fully runnable code snippets and exaplantion for common operations, see the specific Java driver and ORM section. Below table provides quick links for navigating to driver specific documentation and also the usage examples.
+For fully runnable code snippets and explanations of common operations, see the specific Java driver and ORM section. The following table provides links to driver-specific documentation and examples.
 
 | Project | Type | Usage Examples |
 | :------ | :--- | :------------- |
-| [Node Postgres Driver](postgres-node-driver/) | Node.JS Driver | [Hello World](/latest/quick-start/build-apps/nodejs/ysql-pg/) <br />[CRUD App](postgres-node-driver)
-| [Sequelize](sequelize/) | JDBC Driver | [Hello World](/latest/quick-start/build-apps/nodejs/ysql-sequelize/) <br />[CRUD App](sequelize)
+| [Node PostgreSQL Driver](postgres-node-driver/) | Node.JS Driver | [Hello World](/latest/quick-start/build-apps/nodejs/ysql-pg/) <br />[CRUD App](postgres-node-driver)
+| [Sequelize](sequelize/) | ORM | [Hello World](/latest/quick-start/build-apps/nodejs/ysql-sequelize/) <br />[CRUD App](sequelize)

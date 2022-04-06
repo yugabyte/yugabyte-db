@@ -36,7 +36,7 @@ For an easier development of your project, we recommend using an integrated deve
 ### Create a C# Project
 
 C# projects can be created in the Visual Studio IDE. To do this, select the Console Application as template when creating a new project.
-If you are not on an IDE, use the dotnet command:
+If you are not using an IDE, use the dotnet command:
 
 ```csharp
 dotnet new console -o new_project_name

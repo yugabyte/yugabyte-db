@@ -27,15 +27,15 @@ showAsideToc: true
 
 Npgsql is an open source ADO.NET Data Provider for PostgreSQL. It allows programs written in C#, Visual Basic, and F# to access YugabyteDB. It is implemented in 100% C# code, and is free and open source.
 
-## CRUD Operations with Postgres Npgsql Driver
+## CRUD operations with PostgreSQL Npgsql driver
 
 Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/csharp/ysql) page under the Quick start section.
 
-Let us break down the quick start example and understand how to perform the common tasks required for C# App development using the Npgsql driver.
+The following sections break down the quick start example to demonstrate how to perform common tasks required for C# application development using the Npgsql driver.
 
 ### Step 1: Add the Npgsql Driver Dependency
 
-If you are using Visual Studio IDE, follow the below steps:
+If you are using Visual Studio IDE, follow these steps:
 
 1. Open your Project Solution View.
 1. Right-click on **Packages** and click **Add Packages**.
@@ -55,14 +55,14 @@ After setting up the dependencies, you implement a C# client application that us
 
 Import Npgsql and use the `NpgsqlConnection` class for getting connection objects for the YugabyteDB Database that can be used for performing DDLs and DMLs against the database.
 
-Example URL for connecting to YugabyteDB can be seen below.
+The following is an example URL for connecting to YugabyteDB.
 
 ```csharp
 var yburl = "host=localhost;port=5433;database=yb_demo;user id=yugabyte;password="
 NpgsqlConnection conn = new NpgsqlConnection(yburl)
 ```
 
-| Params | Description | Default |
+| Parameter | Description | Default |
 | :---------- | :---------- | :------ |
 | host  | Hostname of the YugabyteDB instance | localhost
 | port |  Listen port for YSQL | 5433
@@ -74,7 +74,7 @@ The .NET Npgsql driver validates certificates differently from other PostgreSQL 
 
 ### Step 3: Query the YugabyteDB Cluster from Your Application
 
-Next, copy the sample code below in the Program.cs file to set up YugbyteDB tables and query the table contents from the C# client. Ensure you replace the connection string `yburl` with the credentials of your cluster and SSL certificates if required.
+Next, copy the following sample code to the Program.cs file to set up YugbyteDB tables and query the table contents from the C# client. Ensure you replace the connection string `yburl` with the credentials of your cluster and SSL certificates if required.
 
 ```csharp
 using System;
@@ -128,7 +128,7 @@ namespace Yugabyte_CSharp_Demo
 }
 ```
 
-When you run the Project, it should output something like below:
+When you run the project, it should output something like the following:
 
 ```output
 Created table Employee
@@ -138,11 +138,11 @@ Name  Age  Language
 John  35   CSharp
 ```
 
-If you receive no output or error, verify that you included the proper connection string in your Program.cs file with the proper credentials.
+If you don't get any output or an error, verify that the connection string in the Program.cs has the correct parameters.
 
 After completing these steps, you should have a working C# app that uses the YugabyteDB JDBC driver to connect to your cluster, set up tables, run a query, and print out results.
 
 ## Next Steps
 
-- Learn how to build C# Application using [EntityFramework ORM](../entityframework).
-- Learn more about [fundamentals](../../../reference/drivers/csharp/postgres-npgsql-reference/) of the Npgsql Driver.
+- Learn how to build C# applications using [EntityFramework ORM](../entityframework).
+- Learn more about the [fundamentals](../../../reference/drivers/csharp/postgres-npgsql-reference/) of the Npgsql driver.

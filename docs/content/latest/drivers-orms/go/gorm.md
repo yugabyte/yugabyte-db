@@ -34,13 +34,13 @@ showAsideToc: true
 
 [GORM](https://gorm.io/) is the ORM library for Golang.
 
-## CRUD Operations with GORM
+## CRUD operations with GORM
 
 Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using
 the steps on the [Build an application](../../../quick-start/build-apps/go/ysql-gorm) page under the
 Quick start section.
 
-To break down the quick start example and understand how to perform the common CRUD operations required for Go application development, do the following steps.
+The following sections break down the quick start example to demonstrate how to perform common tasks required for Go application development using GORM.
 
 ### Step 1: Import the driver package
 
@@ -55,7 +55,7 @@ import (
 
 ### Step 2: Connect to the YugabyteDB database
 
-Go Apps can connect to the YugabyteDB database using the `gorm.Open()` function.
+Go applications can connect to the YugabyteDB database using the `gorm.Open()` function.
 
 Code snippet for connecting to YugabyteDB:
 
@@ -71,11 +71,11 @@ if err != nil {
 
 | Parameter | Description | Default |
 | :---------- | :---------- | :------ |
-| host  | hostname of the YugabyteDB instance | localhost
+| host  | Hostname of the YugabyteDB instance | localhost
 | port |  Listen port for YSQL | 5433
-| user | user for connecting to the database | yugabyte
-| password | password for connecting to the database | yugabyte
-| dbname | database name | yugabyte
+| user | User connecting to the database | yugabyte
+| password | Password for connecting to the database | yugabyte
+| dbname | Database name | yugabyte
 
 ### Step 3: Create a table
 
@@ -98,7 +98,7 @@ Read more on designing [Database schemas and tables](../../../explore/ysql-langu
 
 ### Step 4: Read and write data
 
-To write data into YugabyteDB, use the `db.Create()` function.
+To write data to YugabyteDB, use the `db.Create()` function.
 
 ```go
 // Insert value
@@ -122,4 +122,4 @@ for _, employee := range employees {
 ## Next Steps
 
 - Explore [Scaling Go Applications](/latest/explore/linear-scalability) with YugabyteDB.
-- Learn how to [develop Go Applications with YugabyteDB Cloud](/latest/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-go/).
+- Learn how to [develop Go applications with YugabyteDB Cloud](/latest/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-go/).

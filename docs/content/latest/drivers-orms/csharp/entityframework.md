@@ -26,17 +26,17 @@ showAsideToc: true
 
 Object Relational Mapping (ORM) tools are used by developers to handle database access. They allow developers to map object-oriented domain classes into the database tables. ORMs simplify CRUD operations on your domain objects and easily allow the evolution of domain objects to be applied to the Database tables.
 
-[EntityFramework](https://docs.microsoft.com/en-us/ef/) is a popular ORM provider for C# applications, and is widely used by C# Developers for database access. YugabyteDB provides full support for EntityFramework ORM.
+[EntityFramework](https://docs.microsoft.com/en-us/ef/) is a popular ORM provider for C# applications, and is widely used by C# Developers for database access. YugabyteDB provides full support for the EntityFramework ORM.
 
-## CRUD Operations with EntityFramework
+## CRUD operations with EntityFramework
 
 Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/csharp/ysql-entity-framework/) page under the Quick start section.
 
-Let us break down the quick start example and understand how to perform the common tasks required for C# App development using EntityFramework.
+The following sections break down the quick start example to demonstrate how to perform common tasks required for C# application development using EntityFramework.
 
 ### Step 1: Add the ORM Dependency
 
-If you are using Visual Studio IDE, follow the below steps:
+If you are using Visual Studio IDE, follow these steps:
 
 1. Open your Project Solution View.
 1. Right-click on **Packages** and click **Add Packages**.

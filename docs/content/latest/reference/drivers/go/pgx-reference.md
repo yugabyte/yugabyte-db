@@ -33,19 +33,18 @@ showAsideToc: true
 </ul>
 
 The [PGX driver](https://github.com/jackc/pgx/) is one of the most popular and actively maintained
-drivers for PostgreSQL which can be used for connecting to YugabyteDB YSQL as well.
+drivers for PostgreSQL.
 
-This driver allows Go programmers to connect to YugabyteDB database to execute DMLs and DDLs using
+This driver allows Go programmers to connect to YugabyteDB to execute DMLs and DDLs using
 the PGX APIs. It also supports the standard `database/sql` package.
 
-## Fundamentals of PGX Driver
+## CRUD Operations with PGX driver
 
 Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using
 the steps in the [Build an application](../../../../quick-start/build-apps/go/ysql-pgx) page under the
 Quick start section.
 
-Let us break down the quick start example and understand how to perform the common tasks required
-for Go App development using the PGX driver.
+The following sections break down the quick start example to demonstrate how to perform common tasks required for Go application development using the PGX driver.
 
 ### Import the driver package
 
@@ -59,11 +58,11 @@ import (
 
 ### Connect to YugabyteDB database
 
-Go Apps can connect to the YugabyteDB database using the `pgx.Connect()` function.
-All the common functions or structs required for working with YugabyteDB database is part of `pgx` package.
+Go applications can connect to YugabyteDB using the `pgx.Connect()` function.
+The `pgx` package includes all the common functions or structs required for working with YugabyteDB.
 
-Use the `pgx.Connect()` method for getting connection object for the YugabyteDB database which can
-be used for performing DDLs and DMLs against the database.
+Use the `pgx.Connect()` method to create the connection object, for
+performing DDLs and DMLs against the database.
 
 PGX Connection url is in the format given below:
 

@@ -40,8 +40,7 @@ Learn how to establish a connection to YugabyteDB database and begin simple CRUD
 the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-pg) page under the
 Quick start section.
 
-Let us break down the quick start example and understand how to perform the common tasks required
-for Go App development using the GO-PG ORM tool.
+The following sections break down the quick start example to demonstrate how to perform common tasks required for Go application development using go-pg.```
 
 ### Step 1: Import the driver package
 
@@ -56,10 +55,9 @@ import (
 
 ### Step 2: Connect to YugabyteDB database
 
-Go Apps can connect to the YugabyteDB database using the `pg.Connect()` function.
+Go applications can connect to the YugabyteDB database using the `pg.Connect()` function.
 
-Use the `pg.Connect()` function for getting a connection to the YugabyteDB database which then can be
-used for reading the data and writing the data into the database.
+Use the `pg.Connect()` function to establish a connection to the YugabyteDB database. This can then can be used to read and write data to the database.
 
 Code snippet for connecting to YugabyteDB:
 
@@ -141,4 +139,4 @@ fmt.Println(emp)
 ## Next Steps
 
 - Explore [Scaling Go Applications](/latest/explore/linear-scalability) with YugabyteDB.
-- Learn how to [develop Go Applications with YugabyteDB Cloud](/latest/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-go/).
+- Learn how to [develop Go applications with Yugabyte Cloud](/latest/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-go/).
