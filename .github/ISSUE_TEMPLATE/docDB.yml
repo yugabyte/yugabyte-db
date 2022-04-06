@@ -1,7 +1,7 @@
 name: Core-DocDB
 description: Create a DocDB issue.
 title: "[DocDB] Title"
-labels: ["area/docdb"]
+labels: ["area/docdb", "status/awaiting-triage"]
 body:
 - type: textarea
   id: docDB
