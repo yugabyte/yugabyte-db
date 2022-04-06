@@ -980,7 +980,8 @@ select = [ 'WITH' [ 'RECURSIVE' ] ( common_table_expression { ',' common_table_e
                [ 'ORDER' 'BY' ( order_expr { ',' order_expr } ) ] \
                [ 'LIMIT' ( integer | 'ALL' ) ] \
                [ 'OFFSET' integer [ 'ROW' | 'ROWS' ] ] \
-               [ 'FETCH' ( FIRST | NEXT ) integer ( ROW | ROWS ) ONLY ] ;
+               [ 'FETCH' ( FIRST | NEXT ) integer ( ROW | ROWS ) ONLY ] \
+               { 'FOR' ( 'UPDATE' | 'NO KEY UPDATE' | 'SHARE' | 'KEY SHARE' ) [ 'OF' table_name { ',' table_name} ] [ 'SKIP LOCKED' ] };
 
 with_clause = [ 'WITH' [ 'RECURSIVE' ] ( common_table_expression { ',' common_table_expression } ) ] ;
 
