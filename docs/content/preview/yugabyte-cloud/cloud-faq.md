@@ -99,7 +99,7 @@ Database upgrades of high-availability (multi-node) clusters are done on a rolli
 
 ### What version of YugabyteDB does my cluster run on?
 
-Free clusters are provisioned with an **edge** release, most often from the YugabyteDB [latest release](../../releases/release-notes/latest-release/) series; it may also be a recent stable release.
+Free clusters are provisioned with an **edge** release, most often from the YugabyteDB [preview release](../../releases/release-notes/preview-release/) series; it may also be a recent stable release.
 
 By default, new standard clusters are provisioned with a **stable** release, from the YugabyteDB [stable release](../../releases/release-notes/stable-release/) series. <!--You can choose the edge track when you create the cluster.-->
 

@@ -704,7 +704,7 @@ To upgrade from an older version that doesn't support RPC compression (such as 2
 1. Rolling restart to enable compression, on both master and tserver, by setting `enable_stream_compression=true`.
 
     \
-    **Note** You can omit this step if the version you're upgrading to already has compression enabled by default. For the stable release series, versions from 2.6.3.0 and above (including all 2.8 releases) have `enable_stream_compression` set to true by default. For the latest release series, this is all releases beyond 2.9.0.
+    **Note** You can omit this step if the version you're upgrading to already has compression enabled by default. For the stable release series, versions from 2.6.3.0 and above (including all 2.8 releases) have `enable_stream_compression` set to true by default. For the preview release series, this is all releases beyond 2.9.0.
 
 1. Rolling restart to set the compression algorithm to use, on both master and tserver, such as by setting `stream_compression_algo=3`.
 
