@@ -32,9 +32,9 @@ The Primary Key constraint is a means to identify a specific row in a table uniq
 
 ## Syntax and examples
 
-- To run the examples below, follow these steps to create a local [cluster](/latest/quick-start/) or in [Yugabyte Cloud](/latest/yugabyte-cloud/cloud-connect/).
+- To run the examples below, follow these steps to create a local [cluster](/preview/quick-start/) or in [Yugabyte Cloud](/preview/yugabyte-cloud/cloud-connect/).
 
-- Use the [YSQL shell](/latest/admin/ysqlsh/) for local clusters, or [Connect using Cloud shell](/latest/yugabyte-cloud/cloud-connect/connect-cloud-shell/) for Yugabyte Cloud, and create the yb_demo [database](latest/yugabyte-cloud/cloud-quickstart/qs-data/#create-a-database).
+- Use the [YSQL shell](/preview/admin/ysqlsh/) for local clusters, or [Connect using Cloud shell](/preview/yugabyte-cloud/cloud-connect/connect-cloud-shell/) for Yugabyte Cloud, and create the yb_demo [database](/preview/yugabyte-cloud/cloud-quickstart/qs-data/#create-a-database).
 
 ### Primary key for a single column
 

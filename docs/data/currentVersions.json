@@ -3,11 +3,11 @@
   [
     {
       "series": "v2.13",
-      "display": "v2.13 (Latest)",
+      "display": "v2.13 (Preview)",
       "version": "2.13.0.1",
       "versionShort": "2.13.0",
       "appVersion": "2.13.0.1-b2",
-      "alias": "latest"
+      "alias": "preview"
     },
     {
       "series": "v2.12",

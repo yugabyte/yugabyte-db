@@ -18,14 +18,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/transactions/isolation-levels/" class="nav-link active">
+    <a href="/preview/explore/transactions/isolation-levels/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 <!--
   <li >
-    <a href="/latest/explore/multi-region-deployments/synchronous-replication-ycql/" class="nav-link">
+    <a href="/preview/explore/multi-region-deployments/synchronous-replication-ycql/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -150,7 +150,7 @@ update account
   set balance = balance - 900::money
   where name = 'kevin' and type = 'checking';
 
-ERROR:  40001: Operation failed. 
+ERROR:  40001: Operation failed.
   Try again.: Transaction aborted: XXXX
     </code></pre>
     </td>
@@ -182,9 +182,9 @@ select type, balance from account
 
 The Snapshot isolation level only sees data committed before the transaction began (or in other words, it works on a "snapshot" of the table). Transactions running under Snapshot isolation do not see either uncommitted data or changes committed during transaction execution by other concurrently running transactions. Note that the query does see the effects of previous updates executed within its own transaction, even though they are not yet committed. This is a stronger guarantee than is required by the SQL standard for this isolation level
 
-Snapshot isolation detects only write-write conflicts, it does not detect read-write conflicts. In other words: 
+Snapshot isolation detects only write-write conflicts, it does not detect read-write conflicts. In other words:
 
-* `INSERT`, `UPDATE`, and `DELETE` commands behave the same as SELECT in terms of searching for target rows. They will only find target rows that were committed as of the transaction start time. 
+* `INSERT`, `UPDATE`, and `DELETE` commands behave the same as SELECT in terms of searching for target rows. They will only find target rows that were committed as of the transaction start time.
 * If such a target row might have already been updated (or deleted or locked) by another concurrent transaction by the time it is found. This scenario is called a *transaction conflict*, where the current transaction conflicts with the transaction that made (or is attempting to make) an update. In such cases, one of the two transactions get aborted, depending on priority.
 
 {{< note title="Note" >}}
@@ -200,7 +200,7 @@ CREATE TABLE IF NOT EXISTS example (k INT PRIMARY KEY);
 TRUNCATE TABLE example;
 ```
 
-Next, connect to the cluster using two independent `ysqlsh` instances called *session #1* and *session #2* below. 
+Next, connect to the cluster using two independent `ysqlsh` instances called *session #1* and *session #2* below.
 
 {{< note title="Note" >}}
 You can connect the session #1 and session #2 `ysqlsh` instances to the same server, or to different servers.
@@ -243,7 +243,7 @@ SELECT * FROM example;
     <td style="width:50%;">
     </td>
     <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5);">
-    Insert a different row here. Verify that the row inserted in the transaction in session #1 is not visible in this session. 
+    Insert a different row here. Verify that the row inserted in the transaction in session #1 is not visible in this session.
     <pre><code style="padding: 0 10px;">
 INSERT INTO example VALUES (2);<br/>
 SELECT * FROM example;

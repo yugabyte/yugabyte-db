@@ -16,14 +16,14 @@ isTocNested: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/benchmark/scalability/scaling-queries-ysql" class="nav-link active">
+    <a href="/preview/benchmark/scalability/scaling-queries-ysql" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/benchmark/scalability/scaling-queries-ycql" class="nav-link">
+    <a href="/preview/benchmark/scalability/scaling-queries-ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -177,5 +177,5 @@ To those new to the Raft consensus protocol, the simplest explanation is that it
 
 ## Next steps
 
-You can visit the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) GitHub repository to try out more experiments on your own local setups. After you set up a cluster and test your favorite application, share your feedback and suggestions with other users on the [YugabyteDB Community Slack](https://www.yugabyte.com/slack).
+You can visit the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) GitHub repository to try out more experiments on your own local setups. After you set up a cluster and test your favorite application, share your feedback and suggestions with other users on the [YugabyteDB Community Slack]({{<slack-invite>}}).
 
