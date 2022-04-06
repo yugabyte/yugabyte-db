@@ -4,7 +4,7 @@ linkTitle: Manage database access
 description: Manage database access
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
-beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   v2.4:
     identifier: manage-access
@@ -39,7 +39,7 @@ To delete a user, click **Delete** next to the username in the list. The user is
 
 ## View user details
 
-The user details include a note that the credentials give admin access to the Yugabyte database, the username, and the password. 
+The user details include a note that the credentials give admin access to the Yugabyte database, the username, and the password.
 Click **INFO** under **Actions** for the user whose details you want to see.
 To see the password, click **Show password**. Click **Close** when finished.
 

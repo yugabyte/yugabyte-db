@@ -18,28 +18,28 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/quick-start/create-local-cluster/macos" class="nav-link active">
+    <a href="/preview/quick-start/create-local-cluster/macos" class="nav-link active">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/latest/quick-start/create-local-cluster/linux" class="nav-link">
+    <a href="/preview/quick-start/create-local-cluster/linux" class="nav-link">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
     </a>
   </li>
 
   <li >
-    <a href="/latest/quick-start/create-local-cluster/docker" class="nav-link">
+    <a href="/preview/quick-start/create-local-cluster/docker" class="nav-link">
       <i class="fab fa-docker" aria-hidden="true"></i>
       Docker
     </a>
   </li>
 
   <li >
-    <a href="/latest/quick-start/create-local-cluster/kubernetes" class="nav-link">
+    <a href="/preview/quick-start/create-local-cluster/kubernetes" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
@@ -51,7 +51,7 @@ showAsideToc: true
 
 This macOS Quick Start is based on the new [`yugabyted`](../../../reference/configuration/yugabyted/) server. You can refer to the older [`yb-ctl`](../../../admin/yb-ctl/) based instructions in the [v2.1 docs](/v2.1/quick-start/install/linux/).
 
-Note that yugabyted currently supports creating a single-node cluster only. Ability to create multi-node clusters is under [active development](https://github.com/yugabyte/yugabyte-db/issues/2057). 
+Note that yugabyted currently supports creating a single-node cluster only. Ability to create multi-node clusters is under [active development](https://github.com/yugabyte/yugabyte-db/issues/2057).
 
 {{< /note >}}
 
@@ -87,7 +87,7 @@ $ ./bin/yugabyted status
 
 ## 3. Check cluster status with Admin UI
 
-The [YB-Master Admin UI](../../../reference/configuration/yb-master/#admin-ui) is available at [http://127.0.0.1:7000](http://127.0.0.1:7000) and the [YB-TServer Admin UI](../../../reference/configuration/yb-tserver/#admin-ui) is available at [http://127.0.0.1:9000](http://127.0.0.1:9000). 
+The [YB-Master Admin UI](../../../reference/configuration/yb-master/#admin-ui) is available at [http://127.0.0.1:7000](http://127.0.0.1:7000) and the [YB-TServer Admin UI](../../../reference/configuration/yb-tserver/#admin-ui) is available at [http://127.0.0.1:9000](http://127.0.0.1:9000).
 
 ### Overview and YB-Master status
 

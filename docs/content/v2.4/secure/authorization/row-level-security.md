@@ -16,7 +16,7 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/secure/authorization/ysql-grant-permissions" class="nav-link active">
+    <a href="/preview/secure/authorization/ysql-grant-permissions" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
@@ -160,7 +160,7 @@ Syntax of the `CREATE POLICY` command,
 *   `employees` is the name of the table.
 *   `ALL` here represents all DDL commands. Alternatively one can specify select, insert, update, delete or other operations that need to be restricted.
 *   `PUBLIC` here represents all roles. Alternatively one can provide specific role names to which the policy will apply.
-*   `USING (ename=current_user)`is called the expression. It is a filter condition that returns a boolean value. This command compares the `ename` column of the `employees` tables to the **logged in** user, if they match then the user will be able to access the row for DDL operations. 
+*   `USING (ename=current_user)`is called the expression. It is a filter condition that returns a boolean value. This command compares the `ename` column of the `employees` tables to the **logged in** user, if they match then the user will be able to access the row for DDL operations.
 
 
 ## Step 4. Enable RLS on table
@@ -272,7 +272,7 @@ yugabyte=> select * from employees;
 
 
 
-## Step 7. Remove row-level policy 
+## Step 7. Remove row-level policy
 
 `DROP POLICY` command is used to drop a policy
 

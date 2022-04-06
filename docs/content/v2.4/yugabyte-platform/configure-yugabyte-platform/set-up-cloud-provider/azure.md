@@ -15,42 +15,42 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws" class="nav-link">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws" class="nav-link">
       <i class="fab fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp" class="nav-link">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp" class="nav-link">
       <i class="fab fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure" class="nav-link active">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure" class="nav-link active">
       <i class="icon-azure" aria-hidden="true"></i>
       &nbsp;&nbsp; Azure
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes" class="nav-link">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/vmware-tanzu" class="nav-link">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/vmware-tanzu" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       VMware Tanzu
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises" class="nav-link">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises" class="nav-link">
       <i class="fas fa-building"></i>
       On-premises
     </a>
@@ -65,7 +65,7 @@ This page details how to configure an Azure cloud provider for YugabyteDB cluste
 ## Prerequisites
 
 You need to provide your cloud provider credentials - Subscription ID, Tenant ID, Application - ClientID/ClientSecret, Resource Group, Virtual Private Network on the Yugabyte Platform console. Yugabyte Platform uses the credentials to automatically provision and deprovision YugabyteDB instances.
-You will be able to see all the resources managed by Yugabyte Platform in your resource group, which will include - Virtual Machines, Network Interface, Network Security Groups, Public IP addresses, and Disks  
+You will be able to see all the resources managed by Yugabyte Platform in your resource group, which will include - Virtual Machines, Network Interface, Network Security Groups, Public IP addresses, and Disks
 
 ## Configure Azure
 

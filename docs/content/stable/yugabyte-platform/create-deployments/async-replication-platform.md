@@ -3,7 +3,7 @@ title: Deploy to two data centers with asynchronous replication
 headerTitle: Asynchronous Replication
 linkTitle: Asynchronous replication
 description: Enable deployment using asynchronous replication between two data centers
-beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   stable:
     parent: create-deployments
@@ -26,8 +26,8 @@ Within the concept of replication, universes are divided into the following cate
 
 For additional information on asynchronous replication in YugabyteDB, see the following:
 
-- [Asynchronous Replication: Overview and Architecture](/latest/architecture/docdb-replication/async-replication/)
-- [Asynchronous Replication Between Universes in YugabyteDB](/latest/deploy/multi-dc/async-replication/)
+- [Asynchronous Replication: Overview and Architecture](/preview/architecture/docdb-replication/async-replication/)
+- [Asynchronous Replication Between Universes in YugabyteDB](/preview/deploy/multi-dc/async-replication/)
 
 ## Using the Yugabyte Platform UI
 

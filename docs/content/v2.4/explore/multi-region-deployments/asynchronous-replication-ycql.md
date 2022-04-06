@@ -16,14 +16,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/multi-region-deployments/asynchronous-replication-ysql/" class="nav-link">
+    <a href="/preview/explore/multi-region-deployments/asynchronous-replication-ysql/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/multi-region-deployments/asynchronous-replication-ycql/" class="nav-link active">
+    <a href="/preview/explore/multi-region-deployments/asynchronous-replication-ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -130,7 +130,7 @@ You now have the identical database table on each of your clusters and can now s
 To configure "Data Center - West" to be the consumer of data changes from the "Data Center - East" cluster, you need to use the `yb-admin` `setup_universe_replication` command. Review the syntax and then you can run the command.
 
 ```sh
-yb-admin -master_addresses <consumer-master-addresses> \ 
+yb-admin -master_addresses <consumer-master-addresses> \
 setup_universe_replication <producer-universe_uuid> <producer_master_addresses> <producer-table-ids>
 ```
 
@@ -254,7 +254,7 @@ At this point, you've finished the tutorial. You can either stop and save your e
 
 To stop the simulated "data centers", use the `yb-ctl stop` commands using the `--data_dir` option to specify the cluster.
 
-**Example - stopping "Data Center - East"** 
+**Example - stopping "Data Center - East"**
 
 ```sh
 $ ./bin/yb-ctl stop --data_dir /Users/yugabyte_user/yugabyte/yb-datacenter-east

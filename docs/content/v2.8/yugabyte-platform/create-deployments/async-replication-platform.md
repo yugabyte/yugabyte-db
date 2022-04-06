@@ -23,10 +23,10 @@ Within the concept of replication, universes are divided into the following cate
 
 - A target universe is the recepient of the replicated data. One source universe can replicate to one or more target universes.
 
-For additional information on asynchronous replication in YugabyteDB, see the following: 
+For additional information on asynchronous replication in YugabyteDB, see the following:
 
-- [Asynchronous Replication: Overview and Architecture](https://docs.yugabyte.com/latest/architecture/docdb-replication/async-replication/)
-- [Asynchronous Replication Between Universes in YugabyteDB](https://docs.yugabyte.com/latest/deploy/multi-dc/async-replication/)
+- [Asynchronous Replication: Overview and Architecture]/preview/architecture/docdb-replication/async-replication/)
+- [Asynchronous Replication Between Universes in YugabyteDB]/preview/deploy/multi-dc/async-replication/)
 
 ## Using the Yugabyte Platform UI
 
@@ -84,7 +84,7 @@ This page allows you to do the following:
 
     ![Tables](/images/yp/asynch-replication-7.png)<br><br>
 
-  - Click **Modify Tables**. 
+  - Click **Modify Tables**.
 
   - Use the **Add tables to the replication** dialog to change the table selection, as per the following illustration:<br><br>
 

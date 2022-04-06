@@ -4,7 +4,7 @@ title: Change data capture to Kafka
 headerTitle: Change data capture to Kafka
 linkTitle: Change Data Capture
 description: Use change data capture API to send data changes to Apache Kafka.
-beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   v2.6:
     identifier: change-data-capture-2-cdc-kafka
@@ -39,7 +39,7 @@ You can create a YugabyteDB cluster using the steps outlined in [Manual Deployme
 
 ### Java
 
-You must have a JRE (or JDK), for Java 8 or 11 installed. 
+You must have a JRE (or JDK), for Java 8 or 11 installed.
 
 {{< note title="Note" >}}
 

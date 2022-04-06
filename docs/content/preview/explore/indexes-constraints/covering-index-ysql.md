@@ -1,0 +1,133 @@
+---
+title: Covering indexes
+linkTitle: Covering indexes
+description: Using covering indexes in YSQL
+image: /images/section_icons/secure/create-roles.png
+menu:
+  preview:
+    identifier: covering-index-ysql
+    parent: explore-indexes-constraints
+    weight: 255
+isTocNested: true
+showAsideToc: true
+---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="../covering-index-ysql/" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+</ul>
+
+A covering index is an index that includes all the columns required by a query, including columns that would typically not be a part of an index. This is done by using the INCLUDE keyword to list the columns you want to include.
+A covering index is an efficient way to perform [index-only](https://wiki.postgresql.org/wiki/Index-only_scans) scans, where you don't need to scan the table, just the index, to satisfy the query.
+
+## Syntax
+
+```ysql
+CREATE INDEX columnA_columnB_index_name ON table_name(columnA, columnB) INCLUDE (columnC);
+```
+
+## Example
+
+The following exercise demonstrates how to perform an index-only scan on an [expression (functional) index](../expression-index-ysql/), and further optimize the query performance using a covering index.
+
+- Create a cluster [locally](/preview/quick-start/) or in [Yugabyte Cloud](/preview/yugabyte-cloud/cloud-basics/create-clusters-free/).
+
+- Connect to the cluster using the [YSQL shell](/preview/admin/ysqlsh/) for local clusters, or [using Cloud shell](/preview/yugabyte-cloud/cloud-connect/connect-cloud-shell/) for Yugabyte Cloud.
+
+- Create and insert some rows into a table `demo` with two columns `id` and `username`.
+
+```sql
+CREATE TABLE IF NOT EXISTS demo (id bigint, username text);
+```
+
+```sql
+INSERT INTO demo SELECT n,'Number'||to_hex(n) from generate_series(1,1000) n;
+```
+
+- Run a select query to fetch a row with a particular username.
+
+```sql
+SELECT * FROM demo WHERE username='Number42';
+```
+
+```output
+ id | username
+----+----------
+ 66 | Number42
+(1 row)
+```
+
+- Run another select query to show how a sequential scan runs before creating an index.
+
+```sql
+EXPLAIN ANALYZE SELECT * FROM demo WHERE upper(username)='NUMBER42';
+```
+
+```output
+                                                 QUERY PLAN
+------------------------------------------------------------------------------------------------------
+ Seq Scan on demo  (cost=0.00..105.00 rows=1000 width=40) (actual time=15.694..16.086 rows=1 loops=1)
+   Filter: (upper(username) = 'NUMBER42'::text)
+   Rows Removed by Filter: 999
+ Planning Time: 0.238 ms
+ Execution Time: 16.255 ms
+(5 rows)
+```
+
+- Optimize the SELECT query by creating an expression index as follows:
+
+```sql
+CREATE INDEX demo_upper ON demo( (upper(username)) );
+```
+
+```sql
+EXPLAIN ANALYZE SELECT upper(username) FROM demo WHERE upper(username)='NUMBER42';
+```
+
+```output
+                                                    QUERY PLAN
+-------------------------------------------------------------------------------------------------------------------
+ Index Scan using demo_upper on demo  (cost=0.00..5.28 rows=10 width=32) (actual time=2.899..2.903 rows=1 loops=1)
+   Index Cond: (upper(username) = 'NUMBER42'::text)
+ Planning Time: 13.392 ms
+ Execution Time: 3.429 ms
+(4 rows)
+```
+
+Using an expression index enables faster access to the rows requested in the query. The problem is that the query planner just takes the expression, sees that there's an index on it, and knows that you'll select the `username` column and apply a function to it. It then thinks it needs the `username` column without realizing it already has the value with the function applied. In this case, an index-only scan covering the column to the index can optimize the query performance.
+
+{{< note title="Note" >}}
+
+For simplicity, the `username` column is used with the INCLUDE keyword to create the covering index. Generally, a covering index allows you to perform an index-only scan if the query select list matches the columns that are included in the index and the additional columns added using the INCLUDE keyword.
+Ideally, specify columns that are updated frequently in the INCLUDE clause. For other cases, it is probably faster to index all the key columns.
+
+{{< /note >}}
+
+- Create a covering index by specifying the username column in the INCLUDE clause.
+
+```sql
+CREATE INDEX demo_upper_covering ON demo( (upper(username))) INCLUDE (username);
+```
+
+```sql
+EXPLAIN ANALYZE SELECT upper(username) FROM demo WHERE upper(username)='NUMBER42';
+```
+
+```output
+                                                           QUERY PLAN
+---------------------------------------------------------------------------------------------------------------------------------
+ Index Only Scan using demo_upper_covering on demo  (cost=0.00..5.18 rows=10 width=32) (actual time=1.265..1.267 rows=1 loops=1)
+   Index Cond: ((upper(username)) = 'NUMBER42'::text)
+   Heap Fetches: 0
+ Planning Time: 6.574 ms
+ Execution Time: 1.342 ms
+(5 rows)
+```
+
+## Learn more
+
+Explore the [Benefits of an Index-only scan](https://blog.yugabyte.com/how-a-distributed-sql-database-boosts-secondary-index-queries-with-index-only-scan/) in depth with a real world example.

@@ -16,7 +16,7 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/deploy/kubernetes/multi-zone/gke/helm-chart" class="nav-link active">
+    <a href="/preview/deploy/kubernetes/multi-zone/gke/helm-chart" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Helm chart
     </a>
@@ -48,7 +48,7 @@ $ gcloud config set project yugabyte
 
 - Install `kubectl`
 
-After installing the Google Cloud SDK, install the `kubectl` command line tool by running the following command. 
+After installing the Google Cloud SDK, install the `kubectl` command line tool by running the following command.
 
 ```sh
 $ gcloud components install kubectl
@@ -160,7 +160,7 @@ $ helm search repo yugabytedb/yugabyte
 ```
 
 ```sh
-NAME                CHART VERSION APP VERSION   DESCRIPTION                                       
+NAME                CHART VERSION APP VERSION   DESCRIPTION
 yugabytedb/yugabyte 2.1.0        2.1.0.0-b18    YugabyteDB is the high-performance distr...
 ```
 
@@ -337,7 +337,7 @@ yb-demo-us-central1-c   yb-tservers            ClusterIP      None            <n
 
 Access the yb-master Admin UI for the cluster at `http://<external-ip>:7000` where `external-ip` refers to one of the `yb-master-ui` services. Note that you can use any of the above three services for this purpose since all of them will show the same cluster metadata.
 
-![mz-ybmaster](/images/deploy/kubernetes/gke-multizone-ybmaster.png)  
+![mz-ybmaster](/images/deploy/kubernetes/gke-multizone-ybmaster.png)
 
 ## 4. Configure zone-aware replica placement
 

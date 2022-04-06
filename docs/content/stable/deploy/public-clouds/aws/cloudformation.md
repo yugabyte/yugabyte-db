@@ -14,19 +14,19 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/deploy/public-clouds/aws/cloudformation" class="nav-link active">
+    <a href="/preview/deploy/public-clouds/aws/cloudformation" class="nav-link active">
       <i class="icon-shell"></i>
       CloudFormation
     </a>
   </li>
   <li >
-    <a href="/latest/deploy/public-clouds/aws/terraform" class="nav-link">
+    <a href="/preview/deploy/public-clouds/aws/terraform" class="nav-link">
       <i class="icon-shell"></i>
       Terraform
     </a>
   </li>
   <li>
-    <a href="/latest/deploy/public-clouds/aws/manual-deployment" class="nav-link">
+    <a href="/preview/deploy/public-clouds/aws/manual-deployment" class="nav-link">
       <i class="icon-shell"></i>
       Manual deployment
     </a>
@@ -38,7 +38,7 @@ showAsideToc: true
 1. You need to have an IAM user who has `AWSCloudFormationFullAccess`, `AmazonEC2FullAccess` and `ssm:GetParameters` privilege.
 2. If you are going to create the stack via AWS Console then make sure the user also has `s3:CreateBucket`, `s3:PutObject` and `s3:GetObject` policies.
 3. Create an SSH key pair that you want to attach to the nodes.
-4. In the region you want to bring up the stack, make sure you can launch new VPCs.  
+4. In the region you want to bring up the stack, make sure you can launch new VPCs.
 5. Download the template file.
 
 ```sh

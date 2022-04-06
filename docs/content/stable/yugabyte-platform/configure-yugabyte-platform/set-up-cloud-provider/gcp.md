@@ -15,47 +15,47 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws" class="nav-link">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws" class="nav-link">
       <i class="fab fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp" class="nav-link active">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp" class="nav-link active">
       <i class="fab fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure" class="nav-link">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
       &nbsp;&nbsp; Azure
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes" class="nav-link">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/vmware-tanzu" class="nav-link">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/vmware-tanzu" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       VMware Tanzu
     </a>
   </li>
 
 <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/openshift" class="nav-link">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/openshift" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>OpenShift</a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises" class="nav-link">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises" class="nav-link">
       <i class="fas fa-building"></i>
       On-premises
     </a>
@@ -71,7 +71,7 @@ To run YugabyteDB nodes on GCP, all you need to provide on the Yugabyte Platform
 
 ## Configure GCP
 
-You can configure GCP as follows: 
+You can configure GCP as follows:
 
 - Navigate to **Configs > Google Cloud Platform**.
 
@@ -84,9 +84,9 @@ You can configure GCP as follows:
 
   - Upload the JSON file that you obtained when you created your service account, as described in [Prepare the Google Cloud Platform (GCP) environment](../../../install-yugabyte-platform/prepare-environment/gcp).
 
-  - If this is a new deployment, it is recommended that you use the **VPC Setup** field to create a new VPC specifically for YugabyteDB nodes. You have to ensure that the Yugabyte Platform host machine can connect to your Google Cloud account where this new VPC will be created. 
+  - If this is a new deployment, it is recommended that you use the **VPC Setup** field to create a new VPC specifically for YugabyteDB nodes. You have to ensure that the Yugabyte Platform host machine can connect to your Google Cloud account where this new VPC will be created.
 
-    <br>Alternatively, you may choose to specify an existing VPC for YugabyteDB nodes, in which case you would need to map regions by providing the following: 
+    <br>Alternatively, you may choose to specify an existing VPC for YugabyteDB nodes, in which case you would need to map regions by providing the following:
 
     - A region name.
     - A subnet ID.
@@ -94,7 +94,7 @@ You can configure GCP as follows:
 
     The third option that is available only when your Yugabyte Platform host machine is also running on Google Cloud, is to use the same VPC on which the Yugabyte Platform host machine runs. Note that choosing to use the same VPC as Yugabyte Platform is an advanced option, which assumes that you are in complete control over this VPC and will be responsible for setting up the networking, SSH access, and firewall rules for it.
 
-- Click **Save** and wait for the configuration to complete. 
+- Click **Save** and wait for the configuration to complete.
 
   This process includes generating a new VPC, a network, subnetworks in all available regions, as well as a new firewall rule, VPC peering for network connectivity, and a custom SSH key pair for Yugabyte Platform-to-YugabyteDB connectivity.
 

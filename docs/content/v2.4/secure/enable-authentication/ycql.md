@@ -18,19 +18,19 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/secure/enable-authentication/ysql" class="nav-link">
+    <a href="/preview/secure/enable-authentication/ysql" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
   <li >
-    <a href="/latest/secure/enable-authentication/ycql" class="nav-link active">
+    <a href="/preview/secure/enable-authentication/ycql" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
   </li>
   <li>
-    <a href="/latest/secure/enable-authentication/yedis" class="nav-link">
+    <a href="/preview/secure/enable-authentication/yedis" class="nav-link">
       <i class="icon-redis" aria-hidden="true"></i>
       YEDIS
     </a>

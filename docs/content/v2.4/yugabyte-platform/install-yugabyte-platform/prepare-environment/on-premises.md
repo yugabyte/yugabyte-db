@@ -15,35 +15,35 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/aws" class="nav-link">
+    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/aws" class="nav-link">
       <i class="fab fa-aws" aria-hidden="true"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/gcp" class="nav-link">
+    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/gcp" class="nav-link">
        <i class="fab fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/azure" class="nav-link">
+    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/azure" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
       &nbsp;&nbsp; Azure
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/kubernetes" class="nav-link">
+    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/kubernetes" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/on-premises" class="nav-link active">
+    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/on-premises" class="nav-link active">
       <i class="fas fa-building" aria-hidden="true"></i>
       On-premises
     </a>
@@ -55,7 +55,7 @@ showAsideToc: true
 ## Platform Node Preparation
 
 *   Hardware requirements
-    *   Nodes: 1 Virtual Machine 
+    *   Nodes: 1 Virtual Machine
     *   Cores: 8 Cores
     *   RAM: 16 GB
 *   Storage Disk:  100GB (minimum) (confirm SSD)
@@ -65,4 +65,4 @@ showAsideToc: true
     *   80 – HTTP access to the Yugabyte Platform console
     *   443 - HTTPs access to the Yugabyte Platform console
     *   22 – SSH
-*   Ability to connect from the Yugabyte Platform host to all YugabyteDB data nodes. 
+*   Ability to connect from the Yugabyte Platform host to all YugabyteDB data nodes.

@@ -30,7 +30,7 @@ To use Hasura with YugabyteDB, the configuration should be similar to PostgreSQL
 
 ## Setting Up the Benchmark
 
-You can use a [benchmark tool](https://github.com/yugabyte/yugabyte-graphql-apps/tree/master/graphql-subscription-with-yugabytedb/graphql-subscription-perf-tool) to deploy the benchmark setup on a Kubernetes cluster. The entire setup runs inside Kubernetes and includes the following components: 
+You can use a [benchmark tool](https://github.com/yugabyte/yugabyte-graphql-apps/tree/master/graphql-subscription-with-yugabytedb/graphql-subscription-perf-tool) to deploy the benchmark setup on a Kubernetes cluster. The entire setup runs inside Kubernetes and includes the following components:
 
 - A YugabyteDB cluster running natively inside Kubernetes.
 - A Hasura Kubernetes service.
@@ -130,7 +130,7 @@ Deploying the benchmark setup is a multi-step process that involves deployment o
 
 ### How to Deploy a YugabyteYB Cluster
 
-- Follow instructions provided in [Deploy on Kubernetes](/latest/deploy/kubernetes/) to deploy a YugabyteYB cluster using Helm charts on Kubernetes.
+- Follow instructions provided in [Deploy on Kubernetes](/preview/deploy/kubernetes/) to deploy a YugabyteYB cluster using Helm charts on Kubernetes.
 
 - Ensure that your YugabyteDB cluster resources are 3 pods * 16 vcpu, 32GB RAM, 2 * 100 GB SSD.
 
@@ -158,7 +158,7 @@ Deploying the benchmark setup is a multi-step process that involves deployment o
   ```
   ysqlsh (11.2-YB-2.3.3.0-b0)
   Type "help" for help.
-  
+
   yugabyte=#
   ```
 
@@ -237,7 +237,7 @@ There is a procedure that simulates acquiring 100,000 subscribers using the Grap
           range:
               start: 1
               end: 25000
-          headers: 
+          headers:
               content-type: 'application/json'
           variables:
               - id

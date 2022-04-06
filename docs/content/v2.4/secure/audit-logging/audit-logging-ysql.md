@@ -18,13 +18,13 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/secure/audit-logging/audit-logging-ysql" class="nav-link active">
+    <a href="/preview/secure/audit-logging/audit-logging-ysql" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
   <li >
-    <a href="/latest/secure/audit-logging/audit-logging-ycql" class="nav-link">
+    <a href="/preview/secure/audit-logging/audit-logging-ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -54,7 +54,7 @@ This can be done in one of the following ways.
 
 1. An alternative suggestion is to use the YB `SET` command, which essentially changes the run-time configuration parameters.
 2. Eg. `SET pgaudit.log='DDL'`
-3. `SET` only affects the value used by the current session. A detailed description of the set command is illustrated in this [webpage](https://www.postgresql.org/docs/8.3/sql-set.html). 
+3. `SET` only affects the value used by the current session. A detailed description of the set command is illustrated in this [webpage](https://www.postgresql.org/docs/8.3/sql-set.html).
 
 
 ### Step 2. Load the `pgAudit` extension
@@ -127,7 +127,7 @@ The default is <strong><code>OFF</code></strong>.
   <tr>
    <td><code>pgaudit.log_leve</code>l
    </td>
-   <td>Values: <strong><code>DEBUG1 .. DEBUG5, INFO, NOTICE, WARNING, LOG</code></strong>. 
+   <td>Values: <strong><code>DEBUG1 .. DEBUG5, INFO, NOTICE, WARNING, LOG</code></strong>.
 Log level that will be used for log entries (<code>ERROR</code>, <code>FATAL</code>, and <code>PANIC</code> are not allowed). This setting is used for testing.
 <p>
 Note that <code>pgaudit.log_leve</code>l is only enabled when pgaudit.log_client is <strong><code>ON</code></strong>; otherwise the default will be used.
@@ -188,7 +188,7 @@ Start the YugabyteDB Cluster with the following Audit logging Configuration.
 
 
     ```
-    SET pgaudit.log='DDL'; 
+    SET pgaudit.log='DDL';
     SET pgaudit.log_client=ON;
     SET pgaudit.log_level=notice;
     ```
@@ -217,7 +217,7 @@ Open the YSQL shell (ysqlsh), specifying the `yugabyte` user and prompting for t
 
 Enable `pgaudit` extension on the YugabyteDB cluster.
 
-  
+
 
     Connect to the database using the following: `yugabyte=> \c yugabyte yugabyte;`
 
@@ -232,16 +232,16 @@ Enable `pgaudit` extension on the YugabyteDB cluster.
 
 
 
-### 3. Create a table, verify log 
+### 3. Create a table, verify log
 
-Since `pgaudit.log='DDL'` is configured, `CREATE TABLE` YSQL statements will be logged and the corresponding log will be shown in the ysql client. 
+Since `pgaudit.log='DDL'` is configured, `CREATE TABLE` YSQL statements will be logged and the corresponding log will be shown in the ysql client.
 
 
 ```
-yugabyte=# create table employees ( empno int, ename text, address text, 
+yugabyte=# create table employees ( empno int, ename text, address text,
   salary int, account_number text );
 NOTICE:  AUDIT: SESSION,2,1,DDL,CREATE TABLE,TABLE,public.employees,
-"create table employees ( empno int, ename text, address text, salary int, 
+"create table employees ( empno int, ename text, address text, salary int,
 account_number text );",<not logged>
 CREATE TABLE
 

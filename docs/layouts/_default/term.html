@@ -27,7 +27,7 @@
 
     <article class="article">
       <div class="wrapper">
-				{{ partial "breadcrumbs" (dict "context" . "menu" (.Site.Menus.latest)) }}	
+				{{ partial "breadcrumbs" (dict "context" . "menu" (.Site.Menus.preview)) }}
 
 
         {{ range $key, $value := ($.Scratch.Get "terms") }}

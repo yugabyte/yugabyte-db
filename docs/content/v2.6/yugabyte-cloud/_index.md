@@ -4,7 +4,7 @@ linkTitle: Yugabyte Cloud
 description: Yugabyte Cloud
 headcontent: Fully-managed YugabyteDB-as-a-Service running on public clouds.
 image: /images/section_icons/deploy/public-clouds.png
-beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 section: YUGABYTE CLOUD
 menu:
   v2.6:
@@ -13,7 +13,7 @@ menu:
 ---
 
 Yugabyte Cloud is a fully-managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on
-<a href="https://cloud.google.com/">Google Cloud Platform (GCP)</a>, 
+<a href="https://cloud.google.com/">Google Cloud Platform (GCP)</a>,
 <a href="https://aws.amazon.com/">Amazon Web Services (AWS)</a>, and
 <a href="https://azure.microsoft.com/">Microsoft Azure</a> (coming soon). You can use the Free Tier level to get started with YugabyteDB. Although
 not suitable for production workloads, the Free Tier includes enough resources to start exploring the core features available for developing applications with YugabyteDB.
@@ -55,7 +55,7 @@ not suitable for production workloads, the Free Tier includes enough resources t
           </div>
       </a>
   </div>
-  
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
       <a class="section-link icon-offset" href="create-databases/">
           <div class="head">
@@ -67,7 +67,7 @@ not suitable for production workloads, the Free Tier includes enough resources t
           </div>
       </a>
   </div>
-  
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
       <a class="section-link icon-offset" href="manage-access/">
           <div class="head">
@@ -79,7 +79,7 @@ not suitable for production workloads, the Free Tier includes enough resources t
           </div>
       </a>
   </div>
-  
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
       <a class="section-link icon-offset" href="connect-to-clusters/">
           <div class="head">

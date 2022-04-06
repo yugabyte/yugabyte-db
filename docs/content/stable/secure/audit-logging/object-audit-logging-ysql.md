@@ -18,20 +18,20 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/secure/audit-logging/audit-logging-ysql" class="nav-link active">
+    <a href="/preview/secure/audit-logging/audit-logging-ysql" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 </ul>
 
-Object audit logging logs statements that affect a particular relation. Only SELECT, INSERT, UPDATE and DELETE commands are supported. TRUNCATE is not included in object audit logging. 
+Object audit logging logs statements that affect a particular relation. Only SELECT, INSERT, UPDATE and DELETE commands are supported. TRUNCATE is not included in object audit logging.
 
 Object audit logging is intended to be a finger-grained replacement for `pgaudit.log = 'read, write'.` As such, it may not make sense to use them in conjunction but one possible scenario would be to use session logging to capture each statement and then supplement that with object logging to get more detail about specific relations.
 
 In YugabyteDB, object-level audit logging is implemented by reusing the PG role system. The `pgaudit.role` setting defines the role that will be used for audit logging. A relation ( TABLE, VIEW, etc.) will be audit logged when the audit role has permissions for the command executed or inherits the permissions from another role. This allows you to effectively have multiple audit roles even though there is a single master role in any context.
 
-In this example object audit logging is used to illustrate how a granular approach may be taken towards logging of SELECT and DML statements. 
+In this example object audit logging is used to illustrate how a granular approach may be taken towards logging of SELECT and DML statements.
 
 
 ## Step 1. Connect using `ysql`
@@ -72,7 +72,7 @@ CREATE EXTENSION
 
 ## Step 3. Enable object auditing
 
-  
+
 
 Set <code>[pgaudit.role](https://github.com/pgaudit/pgaudit/blob/master/README.md#pgauditrole)</code> to <code>auditor</code> and grant <code>SELECT</code> and <code>UPDATE</code> privileges on the <code>account</code> table. Any <code>SELECT</code> or <code>UPDATE</code> statements on the <code>account</code> table will now be logged. Note that logging on the <code>account</code> table is controlled by column-level permissions, while logging on the <code>account_role_map</code> table is table-level.
 

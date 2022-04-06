@@ -16,7 +16,7 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/deploy/kubernetes/multi-cluster/gke/helm-chart" class="nav-link active">
+    <a href="/preview/deploy/kubernetes/multi-cluster/gke/helm-chart" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Helm chart
     </a>
@@ -25,7 +25,7 @@ showAsideToc: true
 
 Following instructions highlight how to deploy a single multi-region YugabyteDB cluster that spans three [GKE](https://cloud.google.com/kubernetes-engine/docs/) clusters, each running in a different region. Each region also has an internal DNS load balancer set to [global access](https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balancing#global_access). This configuration allows pods in one GKE cluster to discover pods in another GKE cluster without exposing any of the DNS information to the world outside your GKE project.
 
-We will use the standard single-zone YugabyteDB Helm Chart to deploy one third of the nodes in the database cluster in each of the 3 GKE clusters. 
+We will use the standard single-zone YugabyteDB Helm Chart to deploy one third of the nodes in the database cluster in each of the 3 GKE clusters.
 
 ## Prerequisites
 
@@ -52,7 +52,7 @@ $ gcloud config set project yugabyte
 
 - Install `kubectl`
 
-After installing Cloud SDK, install the `kubectl` command line tool by running the following command. 
+After installing Cloud SDK, install the `kubectl` command line tool by running the following command.
 
 ```sh
 $ gcloud components install kubectl
@@ -115,10 +115,10 @@ kubectl config get-contexts
 ```
 
 ```
-CURRENT   NAME                                          CLUSTER                                 ...                                  
-          gke_yugabyte_us-central1-b_yugabytedb2        gke_yugabyte_us-central1-b_yugabytedb2                
-*         gke_yugabyte_us-east1-b_yugabytedb3           gke_yugabyte_us-east1-b_yugabytedb3                            
-          gke_yugabyte_us-west1-b_yugabytedb1           gke_yugabyte_us-west1-b_yugabytedb1                       
+CURRENT   NAME                                          CLUSTER                                 ...
+          gke_yugabyte_us-central1-b_yugabytedb2        gke_yugabyte_us-central1-b_yugabytedb2
+*         gke_yugabyte_us-east1-b_yugabytedb3           gke_yugabyte_us-east1-b_yugabytedb3
+          gke_yugabyte_us-west1-b_yugabytedb1           gke_yugabyte_us-west1-b_yugabytedb1
 ```
 
 ### Create a storage class per zone
@@ -289,7 +289,7 @@ $ helm search repo yugabytedb/yugabyte
 ```
 
 ```sh
-NAME                CHART VERSION APP VERSION   DESCRIPTION                                       
+NAME                CHART VERSION APP VERSION   DESCRIPTION
 yugabytedb/yugabyte 2.1.0        2.1.0.0-b18    YugabyteDB is the high-performance distr...
 ```
 
@@ -461,7 +461,7 @@ kubectl get services -n yb-demo-us-east1-b --context gke_yugabyte_us-east1-b_yug
 
 Access the yb-master Admin UI for the cluster at `http://<external-ip>:7000` where `external-ip` refers to one of the `yb-master-ui` services. Note that you can use any of the above 3 services for this purpose since all of them will show the same cluster metadata.
 
-![mz-ybmaster](/images/deploy/kubernetes/gke-multicluster-ybmaster.png)  
+![mz-ybmaster](/images/deploy/kubernetes/gke-multicluster-ybmaster.png)
 
 ## 5. Configure region-aware replica placement
 
@@ -498,7 +498,7 @@ $ kubectl exec -n yb-demo-us-west1-b --context gke_yugabyte_us-west1-b_yugabyted
 
 You can follow the [Explore YSQL](../../../../../quick-start/explore/ysql) tutorial and then go to the `http://<external-ip>:7000/tablet-servers` page of the yb-master Admin UI to confirm that tablet peers and their leaders are placed evenly across all three zones for both user data and system data.
 
-![mz-ybtserver](/images/deploy/kubernetes/gke-multicluster-ybtserver.png) 
+![mz-ybtserver](/images/deploy/kubernetes/gke-multicluster-ybtserver.png)
 
 ## 7. Connect using external clients
 

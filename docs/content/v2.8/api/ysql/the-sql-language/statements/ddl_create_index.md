@@ -74,9 +74,9 @@ Specify a list of columns which will be included in the index as non-key columns
 
 ### WHERE clause
 
-A [partial index](#partial-indexes) is an index that is built on a subset of a table and includes only rows that satisfy the condition specified in the `WHERE` clause. 
+A [partial index](#partial-indexes) is an index that is built on a subset of a table and includes only rows that satisfy the condition specified in the `WHERE` clause.
 It can be used to exclude NULL or common values from the index, or include just the rows of interest.
-This will speed up any writes to the table since rows containing the common column values don't need to be indexed. 
+This will speed up any writes to the table since rows containing the common column values don't need to be indexed.
 It will also reduce the size of the index, thereby improving the speed for read queries that use the index.
 
 #### *name*
@@ -186,7 +186,7 @@ yugabyte=# create index shipment_delivery on shipments(delivery_status, address,
 
 ## Troubleshooting
 
-If the following troubleshooting tips don't resolve your issue, please ask for help in our [community Slack](https://www.yugabyte.com/slack) or [file a GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/new?title=Index+backfill+failure).
+If the following troubleshooting tips don't resolve your issue, please ask for help in our [community Slack]({{<slack-invite>}}) or [file a GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/new?title=Index+backfill+failure).
 
 **If online `CREATE INDEX` fails**, it likely failed in the backfill step.
 In that case, the index exists but is not usable.

@@ -16,25 +16,25 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/quick-start/build-apps/java/ysql-jdbc" class="nav-link">
+    <a href="/preview/quick-start/build-apps/java/ysql-jdbc" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - JDBC
     </a>
   </li>
   <li >
-    <a href="/latest/quick-start/build-apps/java/ysql-spring-data" class="nav-link active">
+    <a href="/preview/quick-start/build-apps/java/ysql-spring-data" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - Spring Data JPA
     </a>
   </li>
   <li>
-    <a href="/latest/quick-start/build-apps/java/ycql" class="nav-link">
+    <a href="/preview/quick-start/build-apps/java/ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
   </li>
   <li>
-    <a href="/latest/quick-start/build-apps/java/ycql-4.6" class="nav-link">
+    <a href="/preview/quick-start/build-apps/java/ycql-4.6" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL (4.6)
     </a>
@@ -200,7 +200,7 @@ yugabyte=# SELECT * FROM orderline;
 ```
 
 ```
- order_id                             | product_id | units 
+ order_id                             | product_id | units
 --------------------------------------+------------+-------
  45659918-bbfd-4a75-a202-6feff13e186b |          1 |     2
  f19b64ec-359a-47c2-9014-3c324510c52c |          1 |     2
@@ -233,7 +233,7 @@ $ curl http://localhost:8080/users
     }
   ],
   ...
-}  
+}
 ```
 
 ```sh
@@ -257,7 +257,7 @@ $ curl http://localhost:8080/products
     }
   ],
   ...
-}  
+}
 ```
 
 ```sh
@@ -295,7 +295,7 @@ $ curl http://localhost:8080/orders
     }
   ],
   ...
-}  
+}
 ```
 
 ## Explore the source

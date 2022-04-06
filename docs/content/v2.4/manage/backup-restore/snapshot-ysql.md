@@ -16,14 +16,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/manage/backup-restore/snapshot-ysql" class="nav-link active">
+    <a href="/preview/manage/backup-restore/snapshot-ysql" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/manage/backup-restore/snapshots-ycql" class="nav-link">
+    <a href="/preview/manage/backup-restore/snapshots-ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -183,7 +183,7 @@ Table type: table
 Target imported table name: test.t2
 Table being imported: test.t2
 Successfully applied snapshot.
-Object           	Old ID                           	New ID                          
+Object           	Old ID                           	New ID
 Keyspace         	00004000000030008000000000000000 	00004000000030008000000000000000
 Table            	00004000000030008000000000004003 	00004000000030008000000000004001
 Tablet 0         	b0de9bc6a4cb46d4aaacf4a03bcaf6be 	50046f422aa6450ca82538e919581048
@@ -210,7 +210,7 @@ cp -r snapshot/tablet-27ce76cade8e4894a4f7ffa154b33c3b.snapshots/0d4b4935-2c95-4
 ```
 {{< note title="Note" >}}
 
-For each tablet, you need to copy the snapshots folder on all tablet peers and in any configured read replica cluster. 
+For each tablet, you need to copy the snapshots folder on all tablet peers and in any configured read replica cluster.
 
 {{< /note >}}
 
@@ -263,7 +263,7 @@ test=# \d
 
 ```
             List of relations
- Schema |   Name   |   Type   |  Owner   
+ Schema |   Name   |   Type   |  Owner
 --------+----------+----------+----------
  public | t        | table    | yugabyte
  public | t_a_seq  | sequence | yugabyte
@@ -276,7 +276,7 @@ test=# \d t
 
 ```
                             Table "public.t"
- Column |  Type   | Collation | Nullable |            Default            
+ Column |  Type   | Collation | Nullable |            Default
 --------+---------+-----------+----------+-------------------------------
  a      | integer |           | not null | nextval('t_a_seq'::regclass)
  b      | integer |           |          |
@@ -289,7 +289,7 @@ test=# SELECT * from t;
 ```
 
 ```
- a  |  b  
+ a  |  b
 ----+-----
   5 | 105
   1 | 101

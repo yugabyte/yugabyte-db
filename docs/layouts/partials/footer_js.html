@@ -157,15 +157,15 @@
           $('.tab-pane#'+url.split('#')[1]).addClass('active').addClass('show');
 
            // $('.nav-tabs a[href="#' + url.split('#')[1] + '"]').tab('show');
-        } 
+        }
 
-        $('.nav-tabs li a, .nav-tabs-alt li a').click(function (e) {     
+        $('.nav-tabs li a, .nav-tabs-alt li a').click(function (e) {
           //get selected href
-          let href = $(this).attr('href');    
-          
+          let href = $(this).attr('href');
+
           //set all nav tabs to inactive
           $('.nav-tabs li a, .nav-tabs-alt li a').removeClass('active');
-          
+
           //get all nav tabs matching the href and set to active
           $('.nav-tabs li a[href="'+href+'"], .nav-tabs-alt li a[href="'+href+'"]').addClass('active');
 
@@ -182,7 +182,7 @@
         })
       });
     </script>
-    
+
   <script>
     document.addEventListener("DOMContentLoaded", function() {
       "use strict";
@@ -192,7 +192,7 @@
       const feedback_widget_wrapper = $('.widget-wrapper');
 
       $(document).on('feedback:reset', function(e) {
-        const headers = document.querySelector('.article:not(#feedback)').querySelectorAll("h1, h2, h3, h4, h5, h6");  
+        const headers = document.querySelector('.article:not(#feedback)').querySelectorAll("h1, h2, h3, h4, h5, h6");
         $(headers).removeClass('expanded');
         feedback_widget.removeClass('active active_section').css('top', '');
         feedback_widget_payload.val('footer');
@@ -200,7 +200,7 @@
         $("[class^=gr-top-]").remove();
       });
     });
-  
+
   </script>
 
   {{ with .Site.GoogleAnalytics }}
@@ -250,7 +250,7 @@
         }
 
       }
-      
+
       window.onbeforeunload = function(event) {
         if (window.location.hash) {
           sessionStorage.setItem('previousPageHash', window.location.hash);
@@ -276,11 +276,11 @@
         if (urlParams.has('q')) {
           // Get previous page version
           let prevUrl = document.referrer;
-          const versionRegex = /https:\/\/docs\.yugabyte\.com\/(v\d+\.\d+|latest)\//i;
+          const versionRegex = /https:\/\/docs\.yugabyte\.com\/(v\d+\.\d+|preview)\//i;
           const m = versionRegex.exec(prevUrl);
           // If no match or version not found or no previous page,
-          // use 'latest' to filter version
-          let searchVersion = 'latest';
+          // use 'preview' to filter version
+          let searchVersion = 'preview';
           if (m && m[1] && prevUrl) {
             searchVersion = m[1];
           }

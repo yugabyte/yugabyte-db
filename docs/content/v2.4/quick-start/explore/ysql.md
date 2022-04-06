@@ -1,6 +1,6 @@
 ---
 title: Explore YSQL, the Yugabyte SQL API
-headerTitle: 3. Explore Yugabyte SQL 
+headerTitle: 3. Explore Yugabyte SQL
 linkTitle: 3. Explore distributed SQL APIs
 description: Explore Yugabyte SQL (YSQL), a PostgreSQL-compatible fully-relational distributed SQL API
 image: /images/section_icons/quick_start/explore_ysql.png
@@ -18,19 +18,19 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/quick-start/explore/ysql" class="nav-link active">
+    <a href="/preview/quick-start/explore/ysql" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
  <li >
-    <a href="/latest/quick-start/explore/ycql" class="nav-link">
+    <a href="/preview/quick-start/explore/ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
   </li>
-  
+
 </ul>
 
 After [creating a local cluster](../../create-local-cluster/), you can start exploring YugabyteDB's PostgreSQL-compatible, fully-relational [Yugabyte SQL API](../../../api/ysql/).
@@ -145,17 +145,17 @@ You should see an output like the following:
 
 ```
                                         Table "public.products"
-   Column   |            Type             | Collation | Nullable |               Default                
+   Column   |            Type             | Collation | Nullable |               Default
 ------------+-----------------------------+-----------+----------+--------------------------------------
  id         | bigint                      |           | not null | nextval('products_id_seq'::regclass)
- created_at | timestamp without time zone |           |          | 
- category   | text                        |           |          | 
- ean        | text                        |           |          | 
- price      | double precision            |           |          | 
+ created_at | timestamp without time zone |           |          |
+ category   | text                        |           |          |
+ ean        | text                        |           |          |
+ price      | double precision            |           |          |
  quantity   | integer                     |           |          | 5000
- rating     | double precision            |           |          | 
- title      | text                        |           |          | 
- vendor     | text                        |           |          | 
+ rating     | double precision            |           |          |
+ title      | text                        |           |          |
+ vendor     | text                        |           |          |
 Indexes:
     "products_pkey" PRIMARY KEY, lsm (id HASH)
 ```
@@ -186,7 +186,7 @@ yb_demo=# SELECT id, title, category, price, rating
 You should see an output like the following:
 
 ```
- id  |           title            | category |      price       | rating 
+ id  |           title            | category |      price       | rating
 -----+----------------------------+----------+------------------+--------
   22 | Enormous Marble Shoes      | Gizmo    | 21.4245199604423 |    4.2
   38 | Lightweight Leather Gloves | Gadget   | 44.0462485589292 |    3.8
@@ -207,7 +207,7 @@ yb_demo=# SELECT id, title, category, price, rating
 You should see an output which looks like the following:
 
 ```
- id  |           title           | category  |      price       | rating 
+ id  |           title           | category  |      price       | rating
 -----+---------------------------+-----------+------------------+--------
  152 | Enormous Aluminum Clock   | Widget    | 32.5971248660044 |    3.6
    3 | Synergistic Granite Chair | Doohickey | 35.3887448815391 |      4
@@ -277,7 +277,7 @@ VALUES (
   (SELECT max(id)+1 FROM orders)                 /* id */,
   now()                                          /* created_at */,
   1                                              /* user_id */,
-  2                                              /* product_id */, 
+  2                                              /* product_id */,
   0                                              /* discount */,
   10                                             /* quantity */,
   (10 * (SELECT price FROM products WHERE id=2)) /* subtotal */,
@@ -298,7 +298,7 @@ yb_demo=# select * from orders where id = (select max(id) from orders);
 ```
 
 ```
-  id   |         created_at         | user_id | product_id | discount | quantity |     subtotal     | tax |      total       
+  id   |         created_at         | user_id | product_id | discount | quantity |     subtotal     | tax |      total
 -------+----------------------------+---------+------------+----------+----------+------------------+-----+------------------
  18761 | 2020-01-30 09:24:29.784078 |       1 |          2 |        0 |       10 | 700.798961307176 |   0 | 700.798961307176
 (1 row)
@@ -434,7 +434,7 @@ yb_demo=# \d
 ```
 
 ```plpgsql
-yb_demo=# SELECT source, 
+yb_demo=# SELECT source,
             total_sales * 100.0 / (SELECT SUM(total_sales) FROM channel) AS percent_sales
           FROM channel
           WHERE source='Facebook';

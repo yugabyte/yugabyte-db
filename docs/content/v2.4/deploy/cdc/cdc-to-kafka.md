@@ -3,7 +3,7 @@ title: Use change data capture (CDC) to Kafka
 headerTitle: Change data capture (CDC) to Kafka
 linkTitle: CDC to Kafka
 description: Learn how to use change data capture (CDC) API to send data changes to Apache Kafka.
-beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   v2.4:
     parent: cdc
@@ -24,7 +24,7 @@ Create a YugabyteDB cluster using the steps outlined in [Manual Deployment](../.
 
 ### Java
 
-A JRE (or JDK), for Java 8 or 11, is installed. 
+A JRE (or JDK), for Java 8 or 11, is installed.
 
 {{< note title="Note" >}}
 
