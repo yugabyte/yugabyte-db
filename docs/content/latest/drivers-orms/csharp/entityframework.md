@@ -18,31 +18,39 @@ showAsideToc: true
   <li >
     <a href="/latest/drivers-orms/csharp/entityframework/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      EntityFramweork ORM
+      EntityFramework ORM
     </a>
   </li>
 
 </ul>
 
-
 Object Relational Mapping (ORM) tools are used by developers to handle database access. They allow developers to map object-oriented domain classes into the database tables. ORMs simplify CRUD operations on your domain objects and easily allow the evolution of domain objects to be applied to the Database tables.
 
 [EntityFramework](https://docs.microsoft.com/en-us/ef/) is a popular ORM provider for C# applications, and is widely used by C# Developers for database access. YugabyteDB provides full support for EntityFramework ORM.
 
-## Add the ORM Dependency
+## CRUD Operations with EntityFramework
+
+Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/csharp/ysql-entity-framework/) page under the Quick start section.
+
+Let us break down the quick start example and understand how to perform the common tasks required for C# App development using EntityFramework.
+
+### Step 1: Add the ORM Dependency
 
 If you are using Visual Studio IDE, follow the below steps:
+
 1. Open your Project Solution View.
 1. Right-click on **Packages** and click **Add Packages**.
 1. Search for `Npgsql.EntityFrameworkCore.PostgreSQL` and click **Add Package**.
 
 To add the Npgsql package to your project when not using an IDE, use the following `dotnet` command:
+
 ```csharp
 dotnet add package Npgsql.EntityFrameworkCore.PostgreSQL 
-``` 
+```
+
 or any of the other methods mentioned on the [nuget page](https://www.nuget.org/packages/Npgsql.EntityFrameworkCore.PostgreSQL) for EntityFramework.
 
-## Implement ORM mapping for YugabyteDB
+### Step 2: Implement ORM mapping for YugabyteDB
 
 Create a file called `Model.cs` in the base package directory of your project and add the following code for a class that includes the following fields, setters, and getters.
 
@@ -81,12 +89,14 @@ namespace ConsoleApp.PostgreSQL
 ```
 
 After creating the model, use EF migrations to create and set up the database. Run the following commands:
+
 ```csharp
 dotnet tool install --global dotnet-ef
 dotnet add package Microsoft.EntityFrameworkCore.Design
 dotnet ef migrations add InitialCreate
 dotnet ef database update
 ```
+
 This installs dotnet EF and the design package, which is required to run the command on a project. The migrations command scaffolds a migration to create the initial set of tables for the model. The database update command creates the database and applies the new migration to it.
 
 Finally, connect to the database, insert a row, query it, and delete it. Copy the following sample code to your `Program.cs` file.
@@ -127,7 +137,8 @@ namespace ConsoleApp.PostgreSQL
     }
 }
 ```
-Run the application and verify the results.
+
+### Step 3: Run the application and verify the results
 
 ```csharp
 dotnet run
@@ -140,3 +151,8 @@ ID :1
 URL:http://blogs.abc.com/adonet
 Deleting the blog
 ```
+
+## Next Steps
+
+- Explore [scaling C# applications](/latest/explore/linear-scalability) with YugabyteDB.
+- Learn how to [develop C# Applications with YugabyteDB Cloud](/latest/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-csharp/).

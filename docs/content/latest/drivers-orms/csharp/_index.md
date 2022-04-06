@@ -37,6 +37,7 @@ For an easier development of your project, we recommend using an integrated deve
 
 C# projects can be created in the Visual Studio IDE. To do this, select the Console Application as template when creating a new project.
 If you are not on an IDE, use the dotnet command:
+
 ```csharp
 dotnet new console -o new_project_name
 ```
@@ -53,10 +54,5 @@ For fully runnable code snippets and explanations for common operations, see the
 
 | Project | Type | Usage Examples |
 | :------ | :--- | :------------- |
-| [Postgres Npgsql Driver](/latest/reference/drivers/csharp/postgres-npgsql-reference/) | C# Driver | [Hello World](/latest/quick-start/build-apps/csharp/ysql) <br />[CRUD App](postgres-npgsql)
-| [EntityFramework](entityframework) | ORM |  [Hello World](/latest/integrations/entity-framework) <br />[CRUD App](entityframework) |
-
-## Next Steps
-
-- Learn how to read and modify data using the Npgsql driver in our [CRUD Opertions guide](postgres-npgsql).
-
+| [Postgres Npgsql Driver](postgres-npgsql) | C# Driver | [Hello World](/latest/quick-start/build-apps/csharp/ysql) <br />[CRUD App](postgres-npgsql)
+| [EntityFramework](entityframework) | ORM |  [Hello World](/latest/quick-start/build-apps/csharp/ysql-entity-framework/) <br />[CRUD App](entityframework) |

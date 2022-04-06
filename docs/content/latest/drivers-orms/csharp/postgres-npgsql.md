@@ -27,20 +27,29 @@ showAsideToc: true
 
 Npgsql is an open source ADO.NET Data Provider for PostgreSQL. It allows programs written in C#, Visual Basic, and F# to access YugabyteDB. It is implemented in 100% C# code, and is free and open source.
 
-## Step 1: Add the Npgsql Driver Dependency
+## CRUD Operations with Postgres Npgsql Driver
+
+Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/csharp/ysql) page under the Quick start section.
+
+Let us break down the quick start example and understand how to perform the common tasks required for C# App development using the Npgsql driver.
+
+### Step 1: Add the Npgsql Driver Dependency
 
 If you are using Visual Studio IDE, follow the below steps:
+
 1. Open your Project Solution View.
 1. Right-click on **Packages** and click **Add Packages**.
 1. Search for `Npgsql` and click **Add Package**.
 
 To add the Npgsql package to your project when not using an IDE, use the following `dotnet` command:
+
 ```csharp
 dotnet add package Npgsql 
-``` 
+```
+
 or any of the other methods mentioned on the [nuget page](https://www.nuget.org/packages/Npgsql/) for Npgsql.
 
-## Step 2: Connect to your Cluster
+### Step 2: Connect to your Cluster
 
 After setting up the dependencies, you implement a C# client application that uses the Npgsql driver to connect to your YugabyteDB cluster and run a query on the sample data.
 
@@ -63,7 +72,7 @@ NpgsqlConnection conn = new NpgsqlConnection(yburl)
 
 The .NET Npgsql driver validates certificates differently from other PostgreSQL drivers. When you specify SSL mode `require`, the driver verifies the certificate by default (like the `verify-ca` or `verify-full` modes), and fails for self-signed certificates (like YugabyteDB's). You can override this by specifying "Trust Server Certificate=true", in which case it bypasses walking the certificate chain to validate trust and hence works like other drivers' `require` mode. In this case, the Root-CA certificate is not required to be configured.
 
-## Step 3: Query the YugabyteDB Cluster from Your Application
+### Step 3: Query the YugabyteDB Cluster from Your Application
 
 Next, copy the sample code below in the Program.cs file to set up YugbyteDB tables and query the table contents from the C# client. Ensure you replace the connection string `yburl` with the credentials of your cluster and SSL certificates if required.
 
@@ -134,3 +143,6 @@ If you receive no output or error, verify that you included the proper connectio
 After completing these steps, you should have a working C# app that uses the YugabyteDB JDBC driver to connect to your cluster, set up tables, run a query, and print out results.
 
 ## Next Steps
+
+- Learn how to build C# Application using [EntityFramework ORM](../entityframework).
+- Learn more about [fundamentals](../../../reference/drivers/csharp/postgres-npgsql-reference/) of the Npgsql Driver.
