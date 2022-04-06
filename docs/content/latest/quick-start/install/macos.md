@@ -149,7 +149,7 @@ showAsideToc: true
     ```
 
     \
-    Ensure that the `plist` files are owned by `root:wheel` and has permissions `-rw-r--r--`. To take effect, you need to reboot your computer or run these command:
+    Ensure that the `plist` files are owned by `root:wheel` and have permissions `-rw-r--r--`. To take effect, you need to reboot your computer or run these command:
 
     ```sh
     $ sudo launchctl load -w /Library/LaunchDaemons/limit.maxfiles.plist
