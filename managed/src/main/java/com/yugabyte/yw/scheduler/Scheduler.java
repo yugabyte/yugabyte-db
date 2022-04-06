@@ -59,8 +59,8 @@ import scala.concurrent.duration.Duration;
 @Slf4j
 public class Scheduler {
 
-  private final int YB_SCHEDULER_INTERVAL = 2;
-  private final int MIN_TO_SEC = 60;
+  private static final int YB_SCHEDULER_INTERVAL = 2;
+  private static final int MIN_TO_SEC = 60;
 
   private final ActorSystem actorSystem;
   private final ExecutionContext executionContext;
@@ -113,8 +113,7 @@ public class Scheduler {
         }
         TaskType taskType = schedule.getTaskType();
         // TODO: Come back and maybe address if using relations between schedule and
-        //  schedule_task is
-        // a better approach.
+        //  schedule_task is a better approach.
         ScheduleTask lastTask = ScheduleTask.getLastTask(schedule.getScheduleUUID());
         Date lastScheduledTime = null;
         Date lastCompletedTime = null;
@@ -124,7 +123,7 @@ public class Scheduler {
         }
         boolean shouldRunTask = false;
         boolean alreadyRunning = false;
-        long diff = 0;
+        long diff;
 
         // Check if task needs to be scheduled again.
         if (lastScheduledTime != null) {

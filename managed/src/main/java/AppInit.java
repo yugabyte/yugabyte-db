@@ -2,9 +2,9 @@
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.commissioner.CallHome;
+import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.TaskGarbageCollector;
 import com.yugabyte.yw.common.CertificateHelper;
@@ -18,7 +18,6 @@ import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.AlertsGarbageCollector;
 import com.yugabyte.yw.common.alerts.QueryAlerts;
-import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.models.Customer;
@@ -61,10 +60,10 @@ public class AppInit {
       PlatformMetricsProcessor platformMetricsProcessor,
       Scheduler scheduler,
       CallHome callHome,
-      SettableRuntimeConfigFactory sConfigFactory,
-      Config config)
+      HealthChecker healthChecker)
       throws ReflectiveOperationException {
     Logger.info("Yugaware Application has started");
+
     Configuration appConfig = application.configuration();
     String mode = appConfig.getString("yb.mode", "PLATFORM");
 
@@ -152,6 +151,7 @@ public class AppInit {
       scheduler.start();
       callHome.start();
       queryAlerts.start();
+      healthChecker.initialize();
 
       // Add checksums for all certificates that don't have a checksum.
       CertificateHelper.createChecksums();
