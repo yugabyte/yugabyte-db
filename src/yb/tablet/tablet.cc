@@ -139,6 +139,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/slice.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
 #include "yb/util/url-coding.h"
 
@@ -3509,6 +3510,8 @@ class DocWriteOperation : public std::enable_shared_from_this<DocWriteOperation>
         operation_->doc_ops(), write_batch->read_pairs(), tablet_.metrics()->write_lock_latency,
         isolation_level_, operation_->kind(), row_mark_type, transactional_table,
         operation_->deadline(), partial_range_key_intents, tablet_.shared_lock_manager()));
+
+    TEST_SYNC_POINT("DocWriteOperation::DoStart::PreparedDocWriteOps");
 
     auto* transaction_participant = tablet_.transaction_participant();
     if (transaction_participant) {
