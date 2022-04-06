@@ -42,6 +42,7 @@
 
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
 
 using namespace std::placeholders;
@@ -413,6 +414,8 @@ CHECKED_STATUS WriteQuery::DoExecute() {
       doc_ops_, write_batch.read_pairs(), tablet().metrics()->write_lock_latency,
       isolation_level_, kind(), row_mark_type, transactional_table,
       deadline(), partial_range_key_intents, tablet().shared_lock_manager()));
+
+  TEST_SYNC_POINT("WriteQuery::DoExecute::PreparedDocWriteOps");
 
   auto* transaction_participant = tablet().transaction_participant();
   if (transaction_participant) {
