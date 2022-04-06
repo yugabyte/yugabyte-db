@@ -66,11 +66,11 @@ showAsideToc: true
 
 </ul>
 
-This document explains how to configure VMware Tanzu Kubernetes Grid (TKG) for a YugabyteDB universe using Yugabyte Platform.
+This document explains how to configure VMware Tanzu Kubernetes Grid (TKG) for a YugabyteDB universe using YugabyteDB Anywhere.
 
 ## Configuring the VMware Tanzu Provider
 
-Before you start, ensure that you have the `kubeconfig` file generated during [Platform Installation](/latest/yugabyte-platform/install-yugabyte-platform/install-software/kubernetes/#create-a-kubeconfig-file-for-a-kubernetes-cluster) so Yugabyte Platform can use the provided credentials to automatically provision and deprovision Kubernetes pods that run the YugabyteDB universe.
+Before you start, ensure that you have the `kubeconfig` file generated during [YugabyteDB Anywhere Installation](/latest/yugabyte-platform/install-yugabyte-platform/install-software/kubernetes/#create-a-kubeconfig-file-for-a-kubernetes-cluster) so YugabyteDB Anywhere can use the provided credentials to automatically provision and deprovision Kubernetes pods that run the YugabyteDB universe.
 
 To start configuring any TKG edition (that is, either TKG-Integrated, TKG-Service, or TKG-Multicloud), open the **Yugabyte Admin Console** and click **Configure a Provider**, as shown in the following illustration:
 
@@ -102,7 +102,7 @@ To start configuring any TKG edition (that is, either TKG-Integrated, TKG-Servic
 - In the **Storage Class** field, provide the storage class that (1) exists in your Kubernetes cluster and (2) matches the one installed on TKG. The valid input is a comma delimited value. The default is standard. That is, the default storage class is TKG - Multi Cloud: standard-sc, TKG - Service: tkg-vsan-storage-policy.
 - Use the **Kube Config** field to upload the kubeconfig file.
 
-- Optionally, complete the **Overrides** field. If not completed, Yugabyte Platform uses the default values specified inside the Helm chart.
+- Optionally, complete the **Overrides** field. If not completed, YugabyteDB Anywhere uses the default values specified inside the Helm chart.
 
   To add Service-level annotations, use the following overrides:
 
@@ -164,7 +164,7 @@ VMware Tanzu Application Service is no longer actively supported and the followi
 If you choose to use VMware Tanzu Application Service, before creating the service instance, ensure that the following is available:
 
 - The YugabyteDB tile is installed in your PCF marketplace.
-- The cloud provider is configured in the Yugabyte Platform instance in your PCF environment .
+- The cloud provider is configured in the YugabyteDB Anywhere instance in your PCF environment .
 
 ### Creating a YugabyteDB Service Instance
 
@@ -213,7 +213,7 @@ You can specify override options when you create a service instance using the Yu
 
 #### How to Override Cloud Providers
 
-Depending on the cloud providers configured for your Yugabyte Platform, you can create Yugabyte service instances by providing overrides.
+Depending on the cloud providers configured for your YugabyteDB Anywhere, you can create Yugabyte service instances by providing overrides.
 
 To provision in AWS or GCP cloud, your overrides should include the appropriate `provider_type` and `region_codes` as an array, as follows:
 
@@ -274,7 +274,7 @@ To override the volume settings, include `num_volumes` with the desired value, a
 
 #### How to Override  the YugabyteDB Software Version
 
-To override the YugabyteDB software version to be used, include `yb_version` with the desired value, ensuring that this version exists in Yugabyte Platform, as follows:
+To override the YugabyteDB software version to be used, include `yb_version` with the desired value, ensuring that this version exists in YugabyteDB Anywhere, as follows:
 
 ```configuration
 {
