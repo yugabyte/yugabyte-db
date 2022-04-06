@@ -5,15 +5,6 @@ package com.yugabyte.yw.common;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.CancellationException;
-
-import javax.inject.Singleton;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.NodeList;
 import io.fabric8.kubernetes.api.model.Pod;
@@ -22,6 +13,13 @@ import io.fabric8.kubernetes.api.model.PodStatus;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.Service;
 import io.fabric8.kubernetes.api.model.ServiceList;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CancellationException;
+import javax.inject.Singleton;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Singleton
 public class ShellKubernetesManager extends KubernetesManager {
@@ -57,8 +55,8 @@ public class ShellKubernetesManager extends KubernetesManager {
   }
 
   @Override
-  public void createNamespace(Map<String, String> config, String universePrefix) {
-    List<String> commandList = ImmutableList.of("kubectl", "create", "namespace", universePrefix);
+  public void createNamespace(Map<String, String> config, String namespace) {
+    List<String> commandList = ImmutableList.of("kubectl", "create", "namespace", namespace);
     processShellResponse(execCommand(config, commandList));
   }
 
@@ -78,6 +76,8 @@ public class ShellKubernetesManager extends KubernetesManager {
   @Override
   public List<Pod> getPodInfos(
       Map<String, String> config, String universePrefix, String namespace) {
+    // Implementation specific helm release name.
+    String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
     List<String> commandList =
         ImmutableList.of(
             "kubectl",
@@ -88,7 +88,7 @@ public class ShellKubernetesManager extends KubernetesManager {
             "-o",
             "json",
             "-l",
-            "release=" + universePrefix);
+            "release=" + helmReleaseName);
     String response = execCommand(config, commandList).message;
     return deserialize(response, PodList.class).getItems();
   }
@@ -96,6 +96,8 @@ public class ShellKubernetesManager extends KubernetesManager {
   @Override
   public List<Service> getServices(
       Map<String, String> config, String universePrefix, String namespace) {
+    // Implementation specific helm release name.
+    String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
     List<String> commandList =
         ImmutableList.of(
             "kubectl",
@@ -106,7 +108,7 @@ public class ShellKubernetesManager extends KubernetesManager {
             "-o",
             "json",
             "-l",
-            "release=" + universePrefix);
+            "release=" + helmReleaseName);
     String response = execCommand(config, commandList).message;
     return deserialize(response, ServiceList.class).getItems();
   }
@@ -182,6 +184,8 @@ public class ShellKubernetesManager extends KubernetesManager {
 
   @Override
   public void deleteStorage(Map<String, String> config, String universePrefix, String namespace) {
+    // Implementation specific helm release name.
+    String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
     // Delete Master Volumes
     List<String> masterCommandList =
         ImmutableList.of(
@@ -191,7 +195,7 @@ public class ShellKubernetesManager extends KubernetesManager {
             "--namespace",
             namespace,
             "-l",
-            "app=yb-master,release=" + universePrefix);
+            "app=yb-master,release=" + helmReleaseName);
     execCommand(config, masterCommandList);
     // Delete TServer Volumes
     List<String> tserverCommandList =
@@ -202,7 +206,7 @@ public class ShellKubernetesManager extends KubernetesManager {
             "--namespace",
             namespace,
             "-l",
-            "app=yb-tserver,release=" + universePrefix);
+            "app=yb-tserver,release=" + helmReleaseName);
     execCommand(config, tserverCommandList);
     // TODO: check the execCommand outputs.
   }
