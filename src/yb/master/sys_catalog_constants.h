@@ -45,6 +45,8 @@ static const char* const kSysCatalogTableColMetadata = "metadata";
 static const char* const kDefaultCassandraUsername = "cassandra";
 static const char* const kDefaultCassandraPassword = "cassandra";
 
+constexpr uint32_t kSysCatalogSchemaVersion = 1;
+
 }  // namespace master
 }  // namespace yb
 
