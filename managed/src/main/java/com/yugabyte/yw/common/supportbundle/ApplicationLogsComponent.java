@@ -61,10 +61,12 @@ public class ApplicationLogsComponent implements SupportBundleComponent {
     // Get application configured locations
     String appHomeDir =
         config.hasPath("application.home") ? config.getString("application.home") : ".";
+    log.info("[ApplicationLogsComponent] appHomeDir = '{}'", appHomeDir);
     String logDir =
         config.hasPath("log.override.path")
             ? config.getString("log.override.path")
             : String.format("%s/logs", appHomeDir);
+    log.info("[ApplicationLogsComponent] logDir = '{}'", logDir);
 
     // Create "application_logs" folder inside the support bundle folder
     String destDir = bundlePath.toString() + "/" + "application_logs";
@@ -75,6 +77,13 @@ public class ApplicationLogsComponent implements SupportBundleComponent {
     // Get all the log file names present in source directory
     List<String> logFiles = new ArrayList<String>();
     File[] sourceFiles = source.listFiles();
+    if (sourceFiles == null) {
+      log.info("[ApplicationLogsComponent] sourceFiles = null");
+    } else {
+      log.info(
+          "[ApplicationLogsComponent] sourceFiles.length = '{}'",
+          String.valueOf(sourceFiles.length));
+    }
     for (File sourceFile : sourceFiles) {
       if (sourceFile.isFile()) {
         logFiles.add(sourceFile.getName());
