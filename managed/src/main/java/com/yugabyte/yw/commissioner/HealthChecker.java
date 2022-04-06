@@ -16,6 +16,7 @@ import static com.yugabyte.yw.commissioner.HealthCheckMetrics.UPTIME_CHECK;
 import static com.yugabyte.yw.commissioner.HealthCheckMetrics.getCountMetricByCheckName;
 import static com.yugabyte.yw.commissioner.HealthCheckMetrics.getNodeMetrics;
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 import akka.Done;
 import akka.actor.ActorSystem;
@@ -29,6 +30,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.EmailHelper;
 import com.yugabyte.yw.common.HealthManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.alerts.SmtpData;
@@ -462,7 +464,7 @@ public class HealthChecker {
 
   public CompletableFuture<Void> checkSingleUniverse(Customer c, Universe u) {
     if (!runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.cloud.enabled")) {
-      throw new RuntimeException("Manual health check is disabled.");
+      throw new PlatformServiceException(BAD_REQUEST, "Manual health check is disabled.");
     }
     // We hardcode the parameters here as this is currently a cloud-only feature
     CheckSingleUniverseParams params =
