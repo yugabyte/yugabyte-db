@@ -1110,8 +1110,9 @@ class TestRpcSecure : public RpcTestBase {
  public:
   void SetUp() override {
     RpcTestBase::SetUp();
-    secure_context_ = std::make_unique<SecureContext>();
-    EXPECT_OK(secure_context_->TEST_GenerateKeys(1024, "127.0.0.1"));
+    secure_context_ = std::make_unique<SecureContext>(
+        RequireClientCertificate::kFalse, UseClientCertificate::kFalse);
+    EXPECT_OK(secure_context_->TEST_GenerateKeys(1024, "127.0.0.1", MatchingCertKeyPair::kTrue));
   }
 
  protected:
@@ -1137,6 +1138,10 @@ class TestRpcSecure : public RpcTestBase {
     }, f);
   }
 };
+
+TEST_F(TestRpcSecure, TestKeyCertificateMismatch) {
+  ASSERT_NOK(secure_context_->TEST_GenerateKeys(1024, "127.0.0.1", MatchingCertKeyPair::kFalse));
+}
 
 void TestSimple(CalculatorServiceProxy* proxy) {
   RpcController controller;

@@ -1,63 +1,63 @@
 Certificate:
     Data:
         Version: 3 (0x2)
-        Serial Number: 580 (0x244)
-    Signature Algorithm: sha256WithRSAEncryption
-        Issuer: CN=YugaByte CA
+        Serial Number: 19 (0x13)
+        Signature Algorithm: sha256WithRSAEncryption
+        Issuer: CN=Yugabyte CA
         Validity
-            Not Before: Jan 27 08:52:40 2019 GMT
-            Not After : Jan 31 08:52:40 2024 GMT
+            Not Before: Jan  1 00:00:00 0 GMT
+            Not After : Dec 31 23:59:59 9999 GMT
         Subject: CN=node.34
         Subject Public Key Info:
             Public Key Algorithm: rsaEncryption
-                Public-Key: (1024 bit)
+                RSA Public-Key: (1024 bit)
                 Modulus:
-                    00:fb:8b:01:65:41:26:2b:51:13:86:00:34:d0:7d:
-                    78:b0:c7:68:b4:31:bb:49:82:ac:01:1f:23:b1:3d:
-                    40:8a:3a:01:6d:07:d9:87:75:48:d8:d3:bc:08:57:
-                    d8:65:68:fe:08:a9:57:72:a7:72:5a:03:17:8b:ae:
-                    c0:7b:98:2b:2e:f4:08:e8:b4:9a:9d:6c:d2:61:24:
-                    9d:f8:71:cd:d3:58:4b:b4:4b:09:41:7a:bd:01:79:
-                    49:ec:b8:73:94:e9:23:df:06:79:c1:1f:15:2e:42:
-                    26:e0:97:b9:e2:db:07:23:a0:0b:8b:56:5d:ce:88:
-                    c1:5b:57:7c:b1:73:13:51:3d
+                    00:99:68:3b:d0:63:7d:ce:a3:4b:1c:61:4e:f7:5c:
+                    1b:aa:db:b4:b4:6f:32:d5:92:69:52:dd:54:8d:4b:
+                    fa:a0:bf:ec:3d:76:16:f4:7c:91:e5:99:e8:38:b4:
+                    49:83:6f:8b:f3:92:a4:f4:07:8d:2b:4d:bf:39:95:
+                    79:84:f6:a3:c2:1c:da:4c:ab:f9:a5:f8:e8:1b:5f:
+                    e4:2f:80:81:a9:9c:6a:b4:f7:4f:63:35:bb:a6:6f:
+                    e5:9e:f8:b5:01:be:c9:1b:cb:8f:93:1e:77:03:0d:
+                    5b:48:72:d1:b2:00:20:d4:35:d8:df:1d:6d:f5:87:
+                    a2:a0:fe:d3:df:24:a9:49:61
                 Exponent: 65537 (0x10001)
         X509v3 extensions:
-            X509v3 Basic Constraints: 
+            X509v3 Basic Constraints:
                 CA:FALSE
-            X509v3 Extended Key Usage: 
+            X509v3 Extended Key Usage:
                 TLS Web Client Authentication, TLS Web Server Authentication
-            X509v3 Subject Alternative Name: 
+            X509v3 Subject Alternative Name:
                 IP Address:127.0.0.34, DNS:127.*.*.35.ip.yugabyte
     Signature Algorithm: sha256WithRSAEncryption
-         37:e0:ae:11:e5:af:bb:21:42:68:6e:ff:77:ac:ba:c0:c7:ad:
-         76:51:e6:c1:57:ff:b6:ee:b4:ae:15:b8:a2:ac:d5:eb:b1:9f:
-         09:aa:82:44:c8:6a:50:d8:68:ea:64:bb:a5:d2:9f:c4:3d:25:
-         64:5f:f7:4b:3d:c3:f4:01:0d:f5:06:0f:18:6f:e0:36:13:bb:
-         97:f1:40:fb:2c:c5:d6:e9:a0:ba:24:f4:6d:12:22:61:e8:83:
-         19:78:82:52:d3:e0:6a:de:ff:65:db:64:36:71:00:c6:81:3e:
-         8e:28:42:50:5f:5e:57:52:40:4e:c7:13:ac:52:9d:c5:9c:db:
-         51:23:c2:c3:b6:4f:94:68:4a:87:69:d2:eb:d0:13:a7:f5:60:
-         c1:2d:69:0a:96:5d:de:68:c1:c9:a0:c3:49:83:3d:33:4a:d9:
-         21:cd:5b:0a:89:d9:2f:8d:72:dc:28:b7:95:15:ac:df:18:3a:
-         5b:f8:82:7b:55:7a:70:76:33:fe:ce:15:11:6f:1d:e8:12:66:
-         55:a4:23:b7:27:9f:97:94:32:9f:01:22:6d:81:2b:8c:ff:e1:
-         ad:3a:0e:77:51:04:0e:cd:32:a1:9e:b2:78:9a:da:2f:92:9d:
-         77:7a:36:3d:8d:1c:2f:b7:5e:dc:bc:cf:74:cf:fb:b5:9a:0d:
-         76:77:8c:bd
+         83:a1:ca:27:86:44:b5:4c:ce:9d:7a:d4:d0:e3:65:26:f6:38:
+         c4:54:d4:75:58:49:26:36:ff:72:70:21:f6:ae:a6:ba:30:e3:
+         79:5b:ff:94:25:52:e5:dd:54:bb:bd:23:59:76:3b:26:f8:89:
+         14:b2:49:79:37:6e:6f:74:ca:2a:49:fe:43:83:44:f2:4e:32:
+         42:be:2b:26:76:ff:3d:f3:ff:6f:2e:dc:98:ed:54:f7:2a:13:
+         80:48:1b:d5:d0:63:df:12:3a:50:d2:21:44:f7:b4:67:99:eb:
+         da:a9:0c:2b:5c:6f:16:d2:09:f4:60:78:1c:69:f3:79:a0:3b:
+         6c:64:47:74:d0:81:cb:80:8d:a1:8f:68:4a:c6:d3:ff:db:61:
+         35:05:44:05:41:9e:03:09:4e:54:92:38:73:a0:58:71:ac:34:
+         d0:0e:62:41:c0:0b:31:d3:0f:b2:b3:a6:54:b4:45:b7:08:f7:
+         f7:4e:0c:a3:d6:4b:d9:3a:9d:f0:18:d5:13:bf:ee:06:10:21:
+         65:a3:f4:b9:c3:0a:92:4b:f7:65:eb:5c:fd:02:9b:f9:a9:bf:
+         e2:e8:a7:4c:52:9d:a0:9a:36:70:48:6a:09:3e:59:bb:4f:93:
+         fa:ac:cb:1f:6a:6f:99:43:93:bf:1d:08:2f:55:86:95:22:71:
+         20:31:b3:7d
 -----BEGIN CERTIFICATE-----
-MIICdTCCAV2gAwIBAgICAkQwDQYJKoZIhvcNAQELBQAwFjEUMBIGA1UEAwwLWXVn
-YUJ5dGUgQ0EwHhcNMTkwMTI3MDg1MjQwWhcNMjQwMTMxMDg1MjQwWjASMRAwDgYD
-VQQDDAdub2RlLjM0MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQD7iwFlQSYr
-UROGADTQfXiwx2i0MbtJgqwBHyOxPUCKOgFtB9mHdUjY07wIV9hlaP4IqVdyp3Ja
-AxeLrsB7mCsu9AjotJqdbNJhJJ34cc3TWEu0SwlBer0BeUnsuHOU6SPfBnnBHxUu
-Qibgl7ni2wcjoAuLVl3OiMFbV3yxcxNRPQIDAQABo1UwUzAJBgNVHRMEAjAAMB0G
-A1UdJQQWMBQGCCsGAQUFBwMCBggrBgEFBQcDATAnBgNVHREEIDAehwR/AAAighYx
-MjcuKi4qLjM1LmlwLnl1Z2FieXRlMA0GCSqGSIb3DQEBCwUAA4IBAQA34K4R5a+7
-IUJobv93rLrAx612UebBV/+27rSuFbiirNXrsZ8JqoJEyGpQ2GjqZLul0p/EPSVk
-X/dLPcP0AQ31Bg8Yb+A2E7uX8UD7LMXW6aC6JPRtEiJh6IMZeIJS0+Bq3v9l22Q2
-cQDGgT6OKEJQX15XUkBOxxOsUp3FnNtRI8LDtk+UaEqHadLr0BOn9WDBLWkKll3e
-aMHJoMNJgz0zStkhzVsKidkvjXLcKLeVFazfGDpb+IJ7VXpwdjP+zhURbx3oEmZV
-pCO3J5+XlDKfASJtgSuM/+GtOg53UQQOzTKhnrJ4mtovkp13ejY9jRwvt17cvM90
-z/u1mg12d4y9
+MIICeDCCAWCgAwIBAgIBEzANBgkqhkiG9w0BAQsFADAWMRQwEgYDVQQDDAtZdWdh
+Ynl0ZSBDQTAiGA8wMDAwMDEwMTAwMDAwMFoYDzk5OTkxMjMxMjM1OTU5WjASMRAw
+DgYDVQQDDAdub2RlLjM0MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCZaDvQ
+Y33Oo0scYU73XBuq27S0bzLVkmlS3VSNS/qgv+w9dhb0fJHlmeg4tEmDb4vzkqT0
+B40rTb85lXmE9qPCHNpMq/ml+OgbX+QvgIGpnGq0909jNbumb+We+LUBvskby4+T
+HncDDVtIctGyACDUNdjfHW31h6Kg/tPfJKlJYQIDAQABo1UwUzAJBgNVHRMEAjAA
+MB0GA1UdJQQWMBQGCCsGAQUFBwMCBggrBgEFBQcDATAnBgNVHREEIDAehwR/AAAi
+ghYxMjcuKi4qLjM1LmlwLnl1Z2FieXRlMA0GCSqGSIb3DQEBCwUAA4IBAQCDocon
+hkS1TM6detTQ42Um9jjEVNR1WEkmNv9ycCH2rqa6MON5W/+UJVLl3VS7vSNZdjsm
++IkUskl5N25vdMoqSf5Dg0TyTjJCvismdv898/9vLtyY7VT3KhOASBvV0GPfEjpQ
+0iFE97RnmevaqQwrXG8W0gn0YHgcafN5oDtsZEd00IHLgI2hj2hKxtP/22E1BUQF
+QZ4DCU5UkjhzoFhxrDTQDmJBwAsx0w+ys6ZUtEW3CPf3Tgyj1kvZOp3wGNUTv+4G
+ECFlo/S5wwqSS/dl61z9Apv5qb/i6KdMUp2gmjZwSGoJPlm7T5P6rMsfam+ZQ5O/
+HQgvVYaVInEgMbN9
 -----END CERTIFICATE-----

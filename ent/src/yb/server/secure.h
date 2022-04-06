@@ -60,6 +60,17 @@ Result<std::unique_ptr<rpc::SecureContext>> CreateSecureContext(
     const std::string& node_name = std::string(),
     const std::string& required_uid = std::string());
 
+Status ReloadSecureContextKeysAndCertificates(
+    rpc::SecureContext* context, const std::string& root_dir, SecureContextType type,
+    const std::string& hosts);
+
+Status ReloadSecureContextKeysAndCertificates(
+    rpc::SecureContext* context, const std::string& node_name, const std::string& root_dir,
+    SecureContextType type);
+
+Status ReloadSecureContextKeysAndCertificates(
+    rpc::SecureContext* context, const std::string& certs_dir, const std::string& node_name);
+
 void ApplySecureContext(const rpc::SecureContext* context, rpc::MessengerBuilder* builder);
 
 } // namespace server
