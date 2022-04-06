@@ -180,14 +180,18 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
   }
 
   if (!read_pairs.empty()) {
+    const auto strong_read_intent_types = GetStrongIntentTypeSet(
+        isolation_level, OperationKind::kRead, row_mark_type);
     RETURN_NOT_OK(EnumerateIntents(
         read_pairs,
-        [&result](IntentStrength strength, FullDocKey, Slice value, KeyBytes* key, LastKey) {
+        [&result, &strong_read_intent_types](
+            IntentStrength strength, FullDocKey, Slice value, KeyBytes* key, LastKey) {
           RefCntPrefix prefix(key->AsSlice());
-          auto intent_types = strength == IntentStrength::kStrong
-              ? IntentTypeSet({IntentType::kStrongRead})
-              : IntentTypeSet({IntentType::kWeakRead});
-          return ApplyIntent(prefix, intent_types, &result.lock_batch);
+          return ApplyIntent(prefix,
+                             strength == IntentStrength::kStrong
+                                ? strong_read_intent_types
+                                : StrongToWeak(strong_read_intent_types),
+                             &result.lock_batch);
         }, partial_range_key_intents));
   }
 
