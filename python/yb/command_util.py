@@ -22,9 +22,6 @@ import platform
 import shutil
 import subprocess
 import logging
-import shlex
-
-from collections import namedtuple
 
 from typing import Union, List, Optional
 
@@ -51,6 +48,20 @@ class ProgramResult:
         self.stderr = stderr
         self.error_msg = error_msg
         self.program_path = program_path
+
+    # Can't use autorepr here because this file is used indirectly from run_tests_on_spark.py, where
+    # the dependencies from requirements.txt are unavailable.
+    def __str__(self) -> str:
+        return ('ProgramResult('
+                'cmd_line=%s, '
+                'returncode=%d, '
+                'stdout=%s, '
+                'stderr=%s, '
+                'error_msg=%s, '
+                'program_path=%s') % (
+            self.cmd_line, self.returncode, self.stdout, self.stderr, self.error_msg,
+            self.program_path
+        )
 
 
 def trim_output(output: Union[str, bytes], max_lines: int) -> str:

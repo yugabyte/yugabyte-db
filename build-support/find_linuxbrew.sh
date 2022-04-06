@@ -16,6 +16,36 @@
 # shellcheck source=build-support/common-build-env.sh
 . "${BASH_SOURCE[0]%/*}/../build-support/common-build-env.sh"
 
+show_help() {
+  cat >&2 <<-EOT
+find_linuxbrew.sh: find the Linuxbrew path
+Usage: ${0##*} [<options>]
+Options:
+  --help, -h
+    SHow help
+  --build-root <build_root>
+    Specify build root. Otherwise, the BUILD_ROOT environment variable is used.
+Outputs the Linuxbrew path on standard output, or prints nothing if Linuxbrew is not being used.
+EOT
+}
+
+while [[ $# -gt 0 ]]; do
+  case ${1//_/-} in
+    --build-root)
+      export BUILD_ROOT=$2
+      shift
+    ;;
+    --help|-h)
+      show_help
+      exit 1
+    ;;
+    *)
+      echo "Invalid option to find_linuxbrew.sh: $1" >&2
+      exit 1
+  esac
+  shift
+done
+
 if [[ -n ${BUILD_ROOT:-} ]]; then
   handle_predefined_build_root_quietly=true
   predefined_build_root=$BUILD_ROOT
