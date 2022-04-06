@@ -276,7 +276,6 @@ List *get_all_edge_labels_per_graph(EState *estate, Oid graph_oid)
     HeapScanDesc scan_desc;
     HeapTuple tuple;
     TupleTableSlot *slot;
-    ResultRelInfo *resultRelInfo;
 
     // setup scan keys to get all edges for the given graph oid
     ScanKeyInit(&scan_keys[1], Anum_ag_label_graph, BTEqualStrategyNumber,
@@ -288,10 +287,8 @@ List *get_all_edge_labels_per_graph(EState *estate, Oid graph_oid)
     ag_label = heap_open(ag_label_relation_id(), RowExclusiveLock);
     scan_desc = heap_beginscan(ag_label, estate->es_snapshot, 2, scan_keys);
 
-    resultRelInfo = create_entity_result_rel_info(estate, "ag_catalog", "ag_label");
-
     slot = ExecInitExtraTupleSlot(estate,
-                RelationGetDescr(resultRelInfo->ri_RelationDesc));
+                RelationGetDescr(ag_label));
 
     // scan through the results and get all the label names.
     while(true)
@@ -316,7 +313,6 @@ List *get_all_edge_labels_per_graph(EState *estate, Oid graph_oid)
 
     heap_endscan(scan_desc);
     heap_close(ag_label, RowExclusiveLock);
-    heap_close(resultRelInfo->ri_RelationDesc, RowExclusiveLock);
 
     return labels;
 }

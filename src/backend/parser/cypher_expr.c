@@ -1186,7 +1186,6 @@ static Node *transform_SubLink(cypher_parsestate *cpstate, SubLink *sublink)
                  parser_errposition(pstate, sublink->location)));
 
     pstate->p_hasSubLinks = true;
-
     /*
      * OK, let's transform the sub-SELECT.
      */

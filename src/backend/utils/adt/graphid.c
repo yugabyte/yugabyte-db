@@ -215,3 +215,14 @@ Datum _graphid(PG_FUNCTION_ARGS)
 
     AG_RETURN_GRAPHID(gid);
 }
+
+//Hashing Function for Hash Indexes
+PG_FUNCTION_INFO_V1(graphid_hash_cmp);
+
+Datum graphid_hash_cmp(PG_FUNCTION_ARGS)
+{
+    graphid l = AG_GETARG_GRAPHID(0);
+    int hash = (int) ((l >> 32) ^ l);// ^ seed;
+
+    PG_RETURN_INT32(hash);
+}

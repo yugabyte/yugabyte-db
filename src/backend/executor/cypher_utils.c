@@ -46,7 +46,12 @@
 #include "utils/ag_cache.h"
 #include "utils/graphid.h"
 
-ResultRelInfo *create_entity_result_rel_info(EState *estate, char *graph_name, char *label_name)
+/*
+ * Given the graph name and the label name, create a ResultRelInfo for the table
+ * those to variables represent. Open the Indices too.
+ */
+ResultRelInfo *create_entity_result_rel_info(EState *estate, char *graph_name,
+                                             char *label_name)
 {
     RangeVar *rv;
     Relation label_relation;
@@ -67,13 +72,27 @@ ResultRelInfo *create_entity_result_rel_info(EState *estate, char *graph_name, c
 
     label_relation = parserOpenTable(pstate, rv, RowExclusiveLock);
 
+    // initialize the resultRelInfo
     InitResultRelInfo(resultRelInfo, label_relation,
                       list_length(estate->es_range_table), NULL,
                       estate->es_instrument);
 
+    // open the parse state
+    ExecOpenIndices(resultRelInfo, false);
+
     free_parsestate(pstate);
 
     return resultRelInfo;
+}
+
+// close the result_rel_info and close all the indices
+void destroy_entity_result_rel_info(ResultRelInfo *result_rel_info)
+{
+    // close the indices
+    ExecCloseIndices(result_rel_info);
+
+    // close the rel
+    heap_close(result_rel_info->ri_RelationDesc, RowExclusiveLock);
 }
 
 TupleTableSlot *populate_vertex_tts(

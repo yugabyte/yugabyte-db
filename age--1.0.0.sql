@@ -193,7 +193,9 @@ CREATE OPERATOR = (
   COMMUTATOR = =,
   NEGATOR = <>,
   RESTRICT = eqsel,
-  JOIN = eqjoinsel
+  JOIN = eqjoinsel,
+  HASHES,
+  MERGES
 );
 
 CREATE FUNCTION ag_catalog.graphid_ne(graphid, graphid)
@@ -1374,6 +1376,21 @@ CREATE OPERATOR ^ (
   LEFTARG = agtype,
   RIGHTARG = agtype
 );
+
+
+CREATE FUNCTION ag_catalog.graphid_hash_cmp(graphid)
+RETURNS INTEGER
+LANGUAGE c
+STABLE
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR CLASS graphid_ops_hash
+  DEFAULT
+  FOR TYPE graphid
+  USING hash AS
+  OPERATOR 1 =,
+  FUNCTION 1 ag_catalog.graphid_hash_cmp(graphid);
 
 --
 -- agtype - comparison operators (=, <>, <, >, <=, >=)
@@ -3828,7 +3845,7 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 -- function to match a terminal vle edge
-CREATE FUNCTION ag_catalog.age_match_vle_terminal_edge(agtype, agtype, agtype)
+CREATE FUNCTION ag_catalog.age_match_vle_terminal_edge(variadic "any")
 RETURNS boolean
 LANGUAGE C
 STABLE
@@ -3855,7 +3872,7 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION ag_catalog.age_match_vle_edge_to_id_qual(agtype, agtype, agtype)
+CREATE FUNCTION ag_catalog.age_match_vle_edge_to_id_qual(variadic "any")
 RETURNS boolean
 LANGUAGE C
 STABLE

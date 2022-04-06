@@ -89,12 +89,15 @@ typedef struct cypher_merge_custom_scan_state
     bool found_a_path;
 } cypher_merge_custom_scan_state;
 
-TupleTableSlot *populate_vertex_tts(TupleTableSlot *elemTupleSlot, agtype_value *id, agtype_value *properties);
+TupleTableSlot *populate_vertex_tts(TupleTableSlot *elemTupleSlot,
+                                    agtype_value *id, agtype_value *properties);
 TupleTableSlot *populate_edge_tts(
     TupleTableSlot *elemTupleSlot, agtype_value *id, agtype_value *startid,
     agtype_value *endid, agtype_value *properties);
 
-ResultRelInfo *create_entity_result_rel_info(EState *estate, char *graph_name, char *label_name);
+ResultRelInfo *create_entity_result_rel_info(EState *estate, char *graph_name,
+                                             char *label_name);
+void destroy_entity_result_rel_info(ResultRelInfo *result_rel_info);
 
 bool entity_exists(EState *estate, Oid graph_oid, graphid id);
 HeapTuple insert_entity_tuple(ResultRelInfo *resultRelInfo,

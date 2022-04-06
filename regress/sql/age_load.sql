@@ -29,7 +29,6 @@ SELECT COUNT(*) FROM cypher('agload_test_graph', $$MATCH(n) RETURN n$$) as (n ag
 
 SELECT COUNT(*) FROM cypher('agload_test_graph', $$MATCH (a)-[e]->(b) RETURN e$$) as (n agtype);
 
-
 SELECT create_vlabel('agload_test_graph','Country2');
 SELECT load_labels_from_file('agload_test_graph', 'Country2',
                              'age_load/countries.csv', false);

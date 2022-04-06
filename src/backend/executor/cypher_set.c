@@ -482,6 +482,7 @@ static void process_update_list(CustomScanState *node)
         }
 
         /* close relation */
+        ExecCloseIndices(resultRelInfo);
         heap_close(resultRelInfo->ri_RelationDesc, RowExclusiveLock);
 
         /* increment loop index */

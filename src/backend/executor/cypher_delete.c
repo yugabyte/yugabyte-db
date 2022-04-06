@@ -438,7 +438,7 @@ static void process_delete_list(CustomScanState *node)
         if (!HeapTupleIsValid(heap_tuple))
         {
             heap_endscan(scan_desc);
-            heap_close(resultRelInfo->ri_RelationDesc, RowExclusiveLock);
+            destroy_entity_result_rel_info(resultRelInfo);
 
             continue;
         }
@@ -460,7 +460,7 @@ static void process_delete_list(CustomScanState *node)
 
         /* Close the scan and the relation. */
         heap_endscan(scan_desc);
-        heap_close(resultRelInfo->ri_RelationDesc, RowExclusiveLock);
+        destroy_entity_result_rel_info(resultRelInfo);
     }
 }
 
@@ -541,7 +541,7 @@ static void find_connected_edges(CustomScanState *node, char *graph_name,
         }
 
         heap_endscan(scan_desc);
-        heap_close(resultRelInfo->ri_RelationDesc, RowExclusiveLock);
+        destroy_entity_result_rel_info(resultRelInfo);
     }
 
     Decrement_Estate_CommandId(estate);

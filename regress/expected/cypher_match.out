@@ -88,8 +88,8 @@ SELECT * FROM cypher('cypher_match', $$
 $$) AS (a agtype);
                                         a                                         
 ----------------------------------------------------------------------------------
- {"id": 1125899906842627, "label": "v1", "properties": {"id": "end"}}::vertex
  {"id": 1125899906842625, "label": "v1", "properties": {"id": "initial"}}::vertex
+ {"id": 1125899906842627, "label": "v1", "properties": {"id": "end"}}::vertex
 (2 rows)
 
 SELECT * FROM cypher('cypher_match', $$
@@ -132,10 +132,10 @@ SELECT * FROM cypher('cypher_match', $$
 $$) AS (a agtype);
                                                              a                                                             
 ---------------------------------------------------------------------------------------------------------------------------
- {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge
- {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge
  {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
  {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
+ {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge
+ {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge
 (4 rows)
 
 -- Right Path Test

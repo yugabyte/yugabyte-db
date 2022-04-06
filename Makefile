@@ -88,6 +88,7 @@ REGRESS = scan \
           cypher_union \
           cypher_merge \
           age_load \
+          index \
           drop
 
 srcdir=`pwd`
