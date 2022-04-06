@@ -437,5 +437,5 @@ CREATE TYPE textrange
 SELECT '( " a " " a ", " z " " z " )'::textrange;
 ```
 
-For more information on range types, see [Range Data Types](/latest/api/ysql/datatypes/type_range/).
+For more information on range types, see [Range Data Types](/preview/api/ysql/datatypes/type_range/).
 

@@ -26,6 +26,8 @@
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/options.h"
 
+#include "yb/util/status_fwd.h"
+
 namespace yb {
 namespace docdb {
 
@@ -323,7 +325,7 @@ class IntentAwareIterator {
   Slice seek_key_prefix_;
 };
 
-class IntentAwareIteratorPrefixScope {
+class NODISCARD_CLASS IntentAwareIteratorPrefixScope {
  public:
   IntentAwareIteratorPrefixScope(const Slice& prefix, IntentAwareIterator* iterator)
       : iterator_(iterator) {

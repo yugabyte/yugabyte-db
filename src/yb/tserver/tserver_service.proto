@@ -228,6 +228,7 @@ message TakeTransactionResponsePB {
 message GetSplitKeyRequestPB {
   required bytes tablet_id = 1;
   optional fixed64 propagated_hybrid_time = 2;
+  optional bool is_manual_split = 3;
 }
 
 message GetSplitKeyResponsePB {

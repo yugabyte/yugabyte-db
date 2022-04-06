@@ -32,6 +32,7 @@
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_path.h"
 #include "yb/docdb/doc_ql_scanspec.h"
+#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_reader.h"
 #include "yb/docdb/doc_scanspec_util.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
@@ -1002,14 +1003,14 @@ Status RangeBasedScanChoices::SeekToCurrentTarget(IntentAwareIterator* db_iter) 
 
 DocRowwiseIterator::DocRowwiseIterator(
     const Schema &projection,
-    const Schema &schema,
+    std::reference_wrapper<const DocReadContext> doc_read_context,
     const TransactionOperationContext& txn_op_context,
     const DocDB& doc_db,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     RWOperationCounter* pending_op_counter)
     : projection_(projection),
-      schema_(schema),
+      doc_read_context_(doc_read_context),
       txn_op_context_(txn_op_context),
       deadline_(deadline),
       read_time_(read_time),
@@ -1040,7 +1041,7 @@ Status DocRowwiseIterator::Init(TableType table_type, const Slice& sub_doc_key) 
   if (!sub_doc_key.empty()) {
     row_key_ = sub_doc_key;
   } else {
-    DocKeyEncoder(&iter_key_).Schema(schema_);
+    DocKeyEncoder(&iter_key_).Schema(doc_read_context_.schema);
     row_key_ = iter_key_;
   }
   row_hash_key_ = row_key_;
@@ -1060,8 +1061,8 @@ Result<bool> DocRowwiseIterator::InitScanChoices(
 
   if (!FLAGS_disable_hybrid_scan) {
     if (doc_spec.range_options() || doc_spec.range_bounds()) {
-        scan_choices_.reset(new HybridScanChoices(schema_, doc_spec,
-                                    lower_doc_key, upper_doc_key));
+      scan_choices_.reset(new HybridScanChoices(
+          doc_read_context_.schema, doc_spec, lower_doc_key, upper_doc_key));
     }
 
     return false;
@@ -1075,7 +1076,7 @@ Result<bool> DocRowwiseIterator::InitScanChoices(
   }
 
   if (doc_spec.range_bounds()) {
-    scan_choices_.reset(new RangeBasedScanChoices(schema_, doc_spec));
+    scan_choices_.reset(new RangeBasedScanChoices(doc_read_context_.schema, doc_spec));
   }
 
   return false;
@@ -1087,8 +1088,8 @@ Result<bool> DocRowwiseIterator::InitScanChoices(
 
   if (!FLAGS_disable_hybrid_scan) {
     if (doc_spec.range_options() || doc_spec.range_bounds()) {
-        scan_choices_.reset(new HybridScanChoices(schema_, doc_spec,
-                                    lower_doc_key, upper_doc_key));
+      scan_choices_.reset(new HybridScanChoices(
+          doc_read_context_.schema, doc_spec, lower_doc_key, upper_doc_key));
     }
 
     return false;
@@ -1102,7 +1103,7 @@ Result<bool> DocRowwiseIterator::InitScanChoices(
   }
 
   if (doc_spec.range_bounds()) {
-    scan_choices_.reset(new RangeBasedScanChoices(schema_, doc_spec));
+    scan_choices_.reset(new RangeBasedScanChoices(doc_read_context_.schema, doc_spec));
   }
 
   return false;
@@ -1248,7 +1249,8 @@ Result<bool> DocRowwiseIterator::HasNext() const {
     row_hash_key_ = iter_key_.AsSlice().Prefix(dockey_sizes->first);
     row_key_ = iter_key_.AsSlice().Prefix(dockey_sizes->second);
 
-    if (!DocKeyBelongsTo(row_key_, schema_) || // e.g in cotable, row may point outside table bounds
+    // e.g in cotable, row may point outside table bounds
+    if (!DocKeyBelongsTo(row_key_, doc_read_context_.schema) ||
         (has_bound_key_ && is_forward_scan_ == (row_key_.compare(bound_key_) >= 0))) {
       done_ = true;
       return false;
@@ -1277,10 +1279,11 @@ Result<bool> DocRowwiseIterator::HasNext() const {
       // SubDocument.
     }
     if (doc_reader_ == nullptr) {
-      doc_reader_ = std::make_unique<DocDBTableReader>(db_iter_.get(), deadline_);
+      doc_reader_ = std::make_unique<DocDBTableReader>(
+          db_iter_.get(), deadline_, doc_read_context_.schema_packing_storage);
       RETURN_NOT_OK(doc_reader_->UpdateTableTombstoneTime(sub_doc_key));
       if (!ignore_ttl_) {
-        doc_reader_->SetTableTtl(schema_);
+        doc_reader_->SetTableTtl(doc_read_context_.schema);
       }
     }
 
@@ -1348,7 +1351,7 @@ HybridTime DocRowwiseIterator::RestartReadHt() {
 }
 
 bool DocRowwiseIterator::IsNextStaticColumn() const {
-  return schema_.has_statics() && row_hash_key_.end() + 1 == row_key_.end();
+  return doc_read_context_.schema.has_statics() && row_hash_key_.end() + 1 == row_key_.end();
 }
 
 Status DocRowwiseIterator::DoNextRow(const Schema& projection, QLTableRow* table_row) {
@@ -1374,13 +1377,13 @@ Status DocRowwiseIterator::DoNextRow(const Schema& projection, QLTableRow* table
   // are present, read them also.
   if (has_hash_components) {
     RETURN_NOT_OK(SetQLPrimaryKeyColumnValues(
-        schema_, 0, schema_.num_hash_key_columns(),
+        doc_read_context_.schema, 0, doc_read_context_.schema.num_hash_key_columns(),
         "hash", &decoder, table_row));
   }
   if (!decoder.GroupEnded()) {
     RETURN_NOT_OK(SetQLPrimaryKeyColumnValues(
-        schema_, schema_.num_hash_key_columns(), schema_.num_range_key_columns(),
-        "range", &decoder, table_row));
+        doc_read_context_.schema, doc_read_context_.schema.num_hash_key_columns(),
+        doc_read_context_.schema.num_range_key_columns(), "range", &decoder, table_row));
   }
 
   for (size_t i = projection.num_key_columns(); i < projection.num_columns(); i++) {
@@ -1438,20 +1441,20 @@ Result<Slice> DocRowwiseIterator::GetTupleId() const {
 Result<bool> DocRowwiseIterator::SeekTuple(const Slice& tuple_id) {
   // If cotable id / colocation id is present in the table schema, then
   // we need to prepend it in the tuple key to seek.
-  if (schema_.has_cotable_id() || schema_.has_colocation_id()) {
-    uint32_t size = schema_.has_colocation_id() ? sizeof(ColocationId) : kUuidSize;
+  if (doc_read_context_.schema.has_cotable_id() || doc_read_context_.schema.has_colocation_id()) {
+    uint32_t size = doc_read_context_.schema.has_colocation_id() ? sizeof(ColocationId) : kUuidSize;
     if (!tuple_key_) {
       tuple_key_.emplace();
       tuple_key_->Reserve(1 + size + tuple_id.size());
 
-      if (schema_.has_cotable_id()) {
+      if (doc_read_context_.schema.has_cotable_id()) {
         std::string bytes;
-        schema_.cotable_id().EncodeToComparable(&bytes);
+        doc_read_context_.schema.cotable_id().EncodeToComparable(&bytes);
         tuple_key_->AppendKeyEntryType(KeyEntryType::kTableId);
         tuple_key_->AppendRawBytes(bytes);
       } else {
         tuple_key_->AppendKeyEntryType(KeyEntryType::kColocationId);
-        tuple_key_->AppendUInt32(schema_.colocation_id());
+        tuple_key_->AppendUInt32(doc_read_context_.schema.colocation_id());
       }
     } else {
       tuple_key_->Truncate(1 + size);

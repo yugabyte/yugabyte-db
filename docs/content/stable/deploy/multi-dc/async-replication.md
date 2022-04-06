@@ -124,7 +124,7 @@ When both universes use different certificates, you need to store the certificat
 
 1. For each master and tserver on the target universe, set the gflag `certs_for_cdc_dir` to the parent directory where you will store all the source universe's certs for replication.
 
-1. Find the certificate authority file used by the source universe (`ca.crt`). This should be stored within the [`--certs_dir`](/latest/reference/configuration/yb-master/#certs-dir).
+1. Find the certificate authority file used by the source universe (`ca.crt`). This should be stored within the [`--certs_dir`](/preview/reference/configuration/yb-master/#certs-dir).
 
 1. Copy this file to each node on the target. It needs to be copied to a directory named: `<certs_for_cdc_dir>/<source_universe_uuid>`.
 
