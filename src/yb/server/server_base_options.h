@@ -103,6 +103,8 @@ class ServerBaseOptions {
 
   WebserverOptions& CompleteWebserverOptions();
 
+  std::string HostsString();
+
  protected:
   explicit ServerBaseOptions(int default_port);
 

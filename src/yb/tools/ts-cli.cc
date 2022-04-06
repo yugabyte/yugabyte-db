@@ -76,6 +76,8 @@ using yb::rpc::Messenger;
 using yb::rpc::MessengerBuilder;
 using yb::rpc::RpcController;
 using yb::server::ServerStatusPB;
+using yb::server::ReloadCertificatesRequestPB;
+using yb::server::ReloadCertificatesResponsePB;
 using yb::tablet::TabletStatusPB;
 using yb::tserver::CountIntentsRequestPB;
 using yb::tserver::CountIntentsResponsePB;
@@ -107,6 +109,7 @@ const char* const kFlushTabletOp = "flush_tablet";
 const char* const kFlushAllTabletsOp = "flush_all_tablets";
 const char* const kCompactTabletOp = "compact_tablet";
 const char* const kCompactAllTabletsOp = "compact_all_tablets";
+const char* const kReloadCertificatesOp = "reload_certificates";
 
 DEFINE_string(server_address, "localhost",
               "Address of server to run against");
@@ -225,6 +228,8 @@ class TsAdminClient {
       const string& start_key,
       const int num_rows);
 
+  // Trigger a reload of TLS certificates.
+  Status ReloadCertificates();
  private:
   std::string addr_;
   MonoDelta timeout_;
@@ -565,6 +570,19 @@ Status TsAdminClient::FlushTablets(const std::string& tablet_id, bool is_compact
   return Status::OK();
 }
 
+Status TsAdminClient::ReloadCertificates() {
+  CHECK(initted_);
+
+  ReloadCertificatesRequestPB req;
+  ReloadCertificatesResponsePB resp;
+  RpcController rpc;
+
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(generic_proxy_->ReloadCertificates(req, &resp, &rpc));
+
+  return Status::OK();
+}
+
 namespace {
 
 void SetUsage(const char* argv0) {
@@ -589,7 +607,8 @@ void SetUsage(const char* argv0) {
       << "  " << kCompactTabletOp << " <tablet_id>\n"
       << "  " << kCompactAllTabletsOp << "\n"
       << "  " << kVerifyTabletOp
-      << " <tablet_id> <number of indexes> <index list> <start_key> <number of rows>\n";
+      << " <tablet_id> <number of indexes> <index list> <start_key> <number of rows>\n"
+      << "  " << kReloadCertificatesOp << "\n";
   google::SetUsageMessage(str.str());
 }
 
@@ -787,6 +806,11 @@ static int TsCliMain(int argc, char** argv) {
 
     RETURN_NOT_OK_PREPEND_FROM_MAIN(client.FlushTablets(std::string(), true /* is_compaction */),
                                     "Unable to compact all tablets");
+  } else if (op == kReloadCertificatesOp) {
+    CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 2);
+
+    RETURN_NOT_OK_PREPEND_FROM_MAIN(client.ReloadCertificates(),
+                                    "Unable to reload TLS certificates");
   } else {
     std::cerr << "Invalid operation: " << op << std::endl;
     google::ShowUsageWithFlagsRestrict(argv[0], __FILE__);
