@@ -14,6 +14,7 @@
 #ifndef YB_RPC_NETWORK_ERROR_H
 #define YB_RPC_NETWORK_ERROR_H
 
+#include "yb/util/enums.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/status_ec.h"
 
