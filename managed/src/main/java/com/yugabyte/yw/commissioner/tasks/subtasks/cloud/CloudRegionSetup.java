@@ -98,8 +98,7 @@ public class CloudRegionSetup extends CloudTaskBase {
 
       } else {
         try {
-          Architecture archEnum = Architecture.valueOf(arch);
-          region.setArchitecture(archEnum);
+          region.setArchitecture(Architecture.valueOf(arch));
         } catch (IllegalArgumentException e) {
           log.warn("{} not a valid architecture. Skipping for region {}.", arch, region.code);
         }
