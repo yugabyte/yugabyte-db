@@ -37,6 +37,7 @@ namespace yb {
 
 YB_STRONGLY_TYPED_BOOL(CreateIfMissing);
 YB_STRONGLY_TYPED_BOOL(UseHardLinks);
+YB_STRONGLY_TYPED_BOOL(RecursiveCopy);
 
 // TODO(unify_env): Temporary workaround until Env/Files from rocksdb and yb are unified
 // (https://github.com/yugabyte/yugabyte-db/issues/1661).
@@ -64,11 +65,12 @@ using yb::env_util::CopyFile;
 // Copies directory from `src_dir` to `dest_dir` using `env`.
 // use_hard_links specifies whether to create hard links instead of actual file copying.
 // create_if_missing specifies whether to create dest dir if doesn't exist or return an error.
+// recursive_copy specifies whether the copy should be recursive.
 // Returns error status in case of I/O errors.
 template <class TEnv>
 CHECKED_STATUS CopyDirectory(
     TEnv* env, const string& src_dir, const string& dest_dir, UseHardLinks use_hard_links,
-    CreateIfMissing create_if_missing) {
+    CreateIfMissing create_if_missing, RecursiveCopy recursive_copy = RecursiveCopy::kTrue) {
   RETURN_NOT_OK_PREPEND(
       FileExists(env, src_dir), Format("Source directory does not exist: $0", src_dir));
 
@@ -102,9 +104,12 @@ CHECKED_STATUS CopyDirectory(
       }
 
       if (env->DirExists(src_path)) {
-        RETURN_NOT_OK_PREPEND(
-            CopyDirectory(env, src_path, dest_path, use_hard_links, CreateIfMissing::kTrue),
-            Format("Cannot copy directory: $0", src_path));
+        if (recursive_copy) {
+          RETURN_NOT_OK_PREPEND(
+              CopyDirectory(env, src_path, dest_path, use_hard_links, CreateIfMissing::kTrue,
+                            RecursiveCopy::kTrue),
+              Format("Cannot copy directory: $0", src_path));
+        }
       } else {
         RETURN_NOT_OK_PREPEND(
             CopyFile(env, src_path, dest_path), Format("Cannot copy file: $0", src_path));

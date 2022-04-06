@@ -101,11 +101,8 @@ Status TabletServer::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
         server::SecureContextType::kInternal,
         builder));
   } else {
-    const string &hosts = !options_.server_broadcast_addresses.empty()
-                        ? options_.server_broadcast_addresses
-                        : options_.rpc_opts.rpc_bind_addresses;
     secure_context_ = VERIFY_RESULT(server::SetupSecureContext(
-        hosts, *fs_manager_, server::SecureContextType::kInternal, builder));
+        options_.HostsString(), *fs_manager_, server::SecureContextType::kInternal, builder));
   }
   return Status::OK();
 }
@@ -161,6 +158,25 @@ int32_t TabletServer::cluster_config_version() const {
     return -1;
   }
   return cdc_consumer_->cluster_config_version();
+}
+
+Status TabletServer::ReloadKeysAndCertificates() {
+  if (!secure_context_) {
+    return Status::OK();
+  }
+
+  RETURN_NOT_OK(server::ReloadSecureContextKeysAndCertificates(
+        secure_context_.get(),
+        server::DefaultRootDir(*fs_manager_),
+        server::SecureContextType::kInternal,
+        options_.HostsString()));
+
+  std::lock_guard<decltype(cdc_consumer_mutex_)> l(cdc_consumer_mutex_);
+  if (cdc_consumer_) {
+    RETURN_NOT_OK(cdc_consumer_->ReloadCertificates());
+  }
+
+  return Status::OK();
 }
 
 } // namespace enterprise

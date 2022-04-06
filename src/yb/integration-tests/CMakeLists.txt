@@ -78,7 +78,9 @@ target_link_libraries(integration-tests
 
 add_dependencies(integration-tests
   yb-tserver
-  yb-master)
+  yb-master
+  yb-admin
+  yb-ts-cli)
 
 ADD_YB_TEST_LIBRARY(
     cql_test_util
