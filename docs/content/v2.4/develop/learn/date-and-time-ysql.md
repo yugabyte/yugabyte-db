@@ -17,14 +17,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/develop/learn/date-and-time-ysql" class="nav-link active">
+    <a href="/preview/develop/learn/date-and-time-ysql" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/develop/learn/date-and-time-ycql" class="nav-link">
+    <a href="/preview/develop/learn/date-and-time-ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -36,7 +36,7 @@ showAsideToc: true
 
 YugabyteDB has extensive date and time capability that may be daunting for the new user. Once understood, the rich functionality will allow you to perform very sophisticated calculations and granular time capture.
 
-For date and time data types, see [Data types](/latest/api/ysql/datatypes/).
+For date and time data types, see [Data types](/preview/api/ysql/datatypes/).
 
 ## Special values
 
@@ -278,7 +278,7 @@ You are now connected to database "yb_demo" as user "yugabyte".
 
 yb_demo=# select to_char(max(orders.created_at), 'DD-MON-YYYY HH24:MI') AS "Last Order Date" from orders;
 
-  Last Order Date  
+  Last Order Date
 -------------------
  19-APR-2020 14:07
 
@@ -725,7 +725,7 @@ yugabyte=# \x on
 
 Expanded display is on.
 
-yugabyte=# select name, short_desc, coalesce(setting, reset_val) AS "setting_value", sourcefile  
+yugabyte=# select name, short_desc, coalesce(setting, reset_val) AS "setting_value", sourcefile
           from pg_catalog.pg_settings
           where name in('log_timezone', 'log_directory', 'log_filename', 'lc_time')
           order by name asc;

@@ -15,13 +15,13 @@ showAsideToc: true
   <ul class="nav nav-tabs-alt nav-tabs-yb">
 
 <li>
-    <a href="/latest/yugabyte-platform/create-deployments/create-universe-multi-zone" class="nav-link active">
+    <a href="/preview/yugabyte-platform/create-deployments/create-universe-multi-zone" class="nav-link active">
       <i class="fas fa-building" aria-hidden="true"></i>
 Generic</a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/create-deployments/create-universe-multi-zone-kubernetes" class="nav-link">
+    <a href="/preview/yugabyte-platform/create-deployments/create-universe-multi-zone-kubernetes" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
@@ -33,7 +33,7 @@ This section describes how to create a YugabyteDB universe using any cloud provi
 
 ## Prerequisites
 
-Before you start creating a universe, ensure that you performed steps applicable to the cloud provider of your choice, as described in [Configure a cloud provider](/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/). 
+Before you start creating a universe, ensure that you performed steps applicable to the cloud provider of your choice, as described in [Configure a cloud provider](/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/).
 
 ## Create a universe
 
@@ -69,7 +69,7 @@ The following illustration shows the **Overview** tab:
 
 ![Detail for a Pending Universe](/images/ee/pending-univ-detail.png)
 
-### The Tasks tab 
+### The Tasks tab
 
 The following illustration shows the **Tasks** tab that provides information about the state of tasks currently running on the universe, as well as the tasks that have run in the past against this universe:
 
@@ -93,7 +93,7 @@ Once the universe is ready, the **Overview** tab should appear similar to the fo
 
 ![Multi-zone universe ready](/images/ee/multi-zone-universe-ready.png)
 
-You connect to a database node as follows: 
+You connect to a database node as follows:
 
 - Open the **Nodes** tab to find a list of the IP addresses of the available nodes that have been created and configured.
 
@@ -130,7 +130,7 @@ $ sudo yum install java-1.8.0-openjdk.x86_64 -y
 $ sudo su - yugabyte
 ```
 
-- Export the `YCQL_ENDPOINTS` environment variable, supplying the IP addresses for nodes in the cluster, as follows: 
+- Export the `YCQL_ENDPOINTS` environment variable, supplying the IP addresses for nodes in the cluster, as follows:
 
   - Navigate to the **Universes > Overview** tab and click **YCQL Endpoints** to open a new tab with a list of IP addresses, as shown in the following illustration:
 
