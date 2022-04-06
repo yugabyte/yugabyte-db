@@ -40,7 +40,7 @@ Learn how to establish a connection to YugabyteDB database and begin simple CRUD
 the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-pg) page under the
 Quick start section.
 
-The following sections break down the quick start example to demonstrate how to perform common tasks required for Go application development using go-pg.```
+The following sections break down the quick start example to demonstrate how to perform common tasks required for Go application development using go-pg.
 
 ### Step 1: Import the driver package
 

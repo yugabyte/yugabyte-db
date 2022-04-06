@@ -44,17 +44,17 @@ Create a python file by adding ```.py``` extension to your filename. It is also 
 
 ### Create a YugabyteDB Cluster
 
-Set up a Free tier Cluster on [Yugabyte Anywhere](https://www.yugabyte.com/cloud/). The free cluster provides a fully functioning YugabyteDB cluster deployed to the cloud region of your choice. The cluster is free forever and includes enough resources to explore the core features available for developing the Java Applications with YugabyteDB database. Complete the steps for [creating a free tier cluster](/latest/yugabyte-cloud/cloud-quickstart/qs-add/).
+Create a free cluster on Yugabyte Cloud. Refer to [Create a free cluster](/latest/yugabyte-cloud/cloud-quickstart/qs-add/).
 
-Alternatively, You can also setup a standalone YugabyteDB cluster by following the [install YugabyteDB Steps](/latest/quick-start/install/macos).
+You can also set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/latest/quick-start/install/macos).
 
 ## Usage Examples
 
-For fully runnable code snippets and exaplantion for common operations, see the specific Java driver and ORM section. Below table provides quick links for navigating to driver specific documentation and also the usage examples.
+For fully runnable code snippets and explanations of common operations, see the specific Java driver and ORM section. The following table provides links to driver-specific documentation and examples.
 
 | Project | Type | Usage Examples |
 | :------ | :--- | :------------- |
 | [Yugabyte Psycopg2](yugabyte-psycopg2) | Python Driver | [Hello World](/latest/quick-start/build-apps/python/ysql-psycopg2/) <br />[CRUD App](yugabyte-psycopg2)
-| [Postgres Psycopg2](postgres-psycopg2) | Python Driver | [Hello World](/latest/quick-start/build-apps/python/ysql-psycopg2) <br />[CRUD App](postgres-psycopg2)|
+| [PostgreSQL Psycopg2](postgres-psycopg2) | Python Driver | [Hello World](/latest/quick-start/build-apps/python/ysql-psycopg2) <br />[CRUD App](postgres-psycopg2)|
 | [SQLAlchemy](sqlalchemy) | ORM |  [Hello World](/latest/quick-start/build-apps/python/ysql-sqlalchemy) <br />[CRUD App](sqlalchemy) |
 | [Django](django) | ORM | [Hello World](/latest/quick-start/build-apps/python/ysql-django) <br />[CRUD App](django) |

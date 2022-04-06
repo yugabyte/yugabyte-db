@@ -135,12 +135,12 @@ The Hibernate configuration file provides the generic set of properties that are
 
 | Hibernate Params | Description | Default |
 | :---------- | :---------- | :------ |
-| hibernate.dialect  | Dialect is used by hibernate to generate SQL optimized for a particular relational database | org.hibernate.dialect.PostgreSQLDialect
-| hibernate.connection.driver_class | provides the JDBC Driver name  | com.yugabytedb.Driver
+| hibernate.dialect  | Dialect to use to generate SQL optimized for a particular database | org.hibernate.dialect.PostgreSQLDialect
+| hibernate.connection.driver_class | JDBC Driver name  | com.yugabytedb.Driver
 | hibernate.connection.url | JDBC Connection URL | jdbc:yugabytedb://localhost:5433/yugabyte
 | hibernate.connection.username | Username | yugabyte
 | hibernate.connection.password | Password | yugabyte
-| hibernate.hbm2ddl.auto | Controls the behavior for Automatic schema generation | none
+| hibernate.hbm2ddl.auto | Behaviour for automatic schema generation | none
 
 Hibernate provides an [exhaustive list of properties](https://docs.jboss.org/hibernate/orm/5.6/userguide/html_single/Hibernate_User_Guide.html#configurations-general) to configure the different features supported by the ORM. Additional details can be obtained by referring to the [Hibernate documentation](https://hibernate.org/orm/documentation/5.6/).
 
@@ -165,7 +165,7 @@ Add a mapping for `Employee` object in `hibernate.cfg.xml`
 
 ### Step 6: Query the YugabyteDB Cluster using Hibernate ORM
 
-Create a new Java class called `QuickStartOrmApp.java` in the base package directory of your project. Copy the sample code below in order to query the table contents from the java client using Hibernate ORM. Ensure you replace the connection string `yburl` with the credentials of your cluster and SSL certificates if required.
+Create a new Java class called `QuickStartOrmApp.java` in the base package directory of your project. Copy the following sample code to query the table contents from the Java client using Hibernate ORM. Ensure you replace the parameters in the connection string `yburl` with the cluster credentials and SSL certificate, if required.
 
 ```java
 import com.zaxxer.hikari.HikariConfig;

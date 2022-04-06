@@ -40,7 +40,7 @@ To download the Django Rest Framework to your project, run the following command
 pip3 install djangorestframework
 ```
 
-In addition to this, also install the [YB backend for django](https://github.com/yugabyte/yb-django). Follow the steps on the README to install it. This backend has specific changes with respect to features either not supported by YugabyteDB or supported differently than Postgres. For more information on these features, visit this [GH issue](https://github.com/yugabyte/yugabyte-db/issues/7764).
+In addition to this, also install the [YB backend for django](https://github.com/yugabyte/yb-django). Follow the steps on the README to install it. This backend has specific changes with respect to features either not supported by YugabyteDB or supported differently than PostgreSQL. For more information on these features, visit this [GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/7764).
 
 Install the psycopg2 dependency, by running the following command:
 ```
@@ -58,7 +58,7 @@ Set up a new Django application using the following command:
 python manage.py startapp testdb
 ```
 
-After creating the application, we need to configure the application to connect to the database. For this, we make changes to the application settings to contain the credentials of our database. In the file `yugabyteTest/settings.py ` add the following code:
+After creating the application, configure the application to connect to the database. To do this, change the application settings to provide the database credentials. In the file `yugabyteTest/settings.py ` add the following code:
 ```python
 DATABASES = {
     'default': {
@@ -72,7 +72,7 @@ DATABASES = {
     }
 }
 ```
-We recommend using persistent connections (setting `CONN_MAX_AGE`), for a much better performance with YugabyteDB.
+For better performance with YugabyteDB, use persistent connections (set `CONN_MAX_AGE`).
 
 You also need the application and rest framework in the INSTALLED_APPS field. Replace the existing code with the following:
 ```python
@@ -90,7 +90,7 @@ REST_FRAMEWORK = {
 }
 ```
 
-The next step is to create our model for our table. The table name is `users` and will contain 4 columns-`user_id`,`firstName`,`lastName` and `email`. To do this, in `testdb/models.py` add the following code:
+The next step is to create a model for the table. The table name is `users` and contains four columns -`user_id`,`firstName`,`lastName`, and `email`. Add the following code to `testdb/models.py`:
 ```python
 rom django.db import models
 
@@ -107,7 +107,7 @@ class Users(models.Model):
         return '%d %s %s %s' % (self.userId, self.firstName, self.lastName, self.email)
 ```
 
-After creating the model, we need to create a Serializer. Serializers allow complex data such as querysets and model instances to be converted to native Python datatypes that can then be easily rendered into JSON, XML or other content types. Serializers also provide deserialization, allowing parsed data to be converted back into complex types, after first validating the incoming data. Copy the following code in `testdb\serializers.py`:
+After creating the model, you need to create a Serializer. Serializers allow complex data such as querysets and model instances to be converted to native Python datatypes that can then be rendered into JSON, XML or other content types. Serializers also provide deserialization, allowing parsed data to be converted back into complex types, after first validating the incoming data. Copy the following code into `testdb\serializers.py`:
 ```python
 from rest_framework import serializers, status
 from testdb.models import Users
@@ -119,7 +119,7 @@ class UserSerializer(serializers.ModelSerializer):
         fields = ('userId', 'firstName', 'lastName', 'email')
 ```
 
-Create a ViewSet, to finish all the elements of the application. In `testdb/views.py` add:
+To finish all the elements of the application, create a ViewSet. In `testdb/views.py`, add the following:
 ```python
 from django.shortcuts import render
 from testdb.models import Users
@@ -143,7 +143,7 @@ urlpatterns = [
     re_path(r'^', include(router.urls))
 ]
 ```
-For Django versions earlier than 4.0, add the following code in urls.py instead, since you can import the urls using django.conf.urls:
+For Django versions earlier than 4.0, use the following code instead, since you can import the URLs using django.conf.urls:
 ```python
 from django.urls import path, include
 from django.conf.urls import url, include
@@ -158,7 +158,7 @@ urlpatterns = [
 ]
 ```
 
-This completes the configuration of your test application. The next steps are to create the migration files and apply the migrations to our database. To do this, run the following command:
+This completes the configuration of your test application. The next steps are to create the migration files and apply the migrations to the database. To do this, run the following command:
 ```shell
 python3 manage.py makemigrations
 python3 manage.py migrate
@@ -167,7 +167,7 @@ A users table should be created in your database. Use the ysqlsh client shell to
 
 ### Run the application
 
-To run the application and insert a new row, execute the following steps:
+To run the application and insert a new row, execute the following steps.
 
 Run the django project using the following command:
 ```shell
@@ -187,4 +187,4 @@ You should see the following output:
 ```shell
 [{"userId":1,"firstName":"John","lastName":"Smith","email":"jsmith@yb.com"}]
 ```
-You can also verify this on the ysqlsh client shell.
+You can also verify this using the ysqlsh client shell.

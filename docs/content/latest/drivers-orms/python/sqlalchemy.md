@@ -63,9 +63,9 @@ To download and install SQLAlchemy to your project, use the following command.
 
 ### Implementing ORM mapping for YugabyteDB
 
-To start with SQLAlchemy, in your project directory, create 4 Python files - `config.py`,`base.py`,`model.py` and `main.py`
+To start with SQLAlchemy, in your project directory, create 4 Python files - `config.py`,`base.py`,`model.py`, and `main.py`
 
-The `config.py` will contain the credentials to connect to your database. Copy the following sample code to your `config.py` file.
+`config.py` contains the credentials to connect to your database. Copy the following sample code to the `config.py` file.
 
 ```python
   db_user = 'yugabyte'
@@ -74,7 +74,7 @@ The `config.py` will contain the credentials to connect to your database. Copy t
   db_host = 'localhost'
   db_port = 5433
 ```
-Next, declare a mapping. When using the ORM, the configuration process begins with describing the database tables you'll be using, and then defining the classes which will be mapped to those tables. In modern SQLAlchemy, these two tasks are usually performed together, using a system known as "Declarative Extensions". Classes mapped using the Declarative system are defined in terms of a base class which maintains a catalog of classes and tables relative to that base - this is known as the declarative base class.
+Next, declare a mapping. When using the ORM, the configuration process begins with describing the database tables you'll use, and then defining the classes which map to those tables. In modern SQLAlchemy, these two tasks are usually performed together, using a system known as "Declarative Extensions". Classes mapped using the Declarative system are defined in terms of a base class which maintains a catalog of classes and tables relative to that base - this is known as the declarative base class.
 
 You create the Base class using the `declarative_base()` function. Add the following code to the `base.py` file.
 
@@ -83,7 +83,7 @@ from sqlalchemy.ext.declarative import declarative_base
 Base = declarative_base()
 ```
 
-Now that you have a “base”, you can define any number of mapped classes in terms of it. Start with a single table called `employees`, which will store records for the end-users using your application. A new class called `Employee` will be the class to which we map this table. Within the class, you define details about the table to which you'll be mapping, primarily the table name, and names and datatypes of the columns.
+Now that you have a “base”, you can define any number of mapped classes in terms of it. Start with a single table called `employees`, to store records for the end-users using your application. A new class called `Employee` maps to this table. In the class, you define details about the table to which you're mapping, primarily the table name, and names and datatypes of the columns.
 
 Add the following to the `model.py` file:
 

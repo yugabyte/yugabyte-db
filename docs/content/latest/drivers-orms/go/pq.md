@@ -67,7 +67,7 @@ The `sql` package includes all the functions or structs required for working wit
 Use the `sql.Open()` function to create a connection object for the YugabyteDB database. This can be
 used for performing DDLs and DMLs against the database.
 
-The connection details can be specified either as string params or via an url in the format given below:
+The connection details can be specified either as string parameters or via a URL in the following format:
 
 ```go
 postgresql://username:password@hostname:port/database
@@ -97,7 +97,7 @@ if err != nil {
 
 ### Step 3: Create table
 
-Execute an SQL statement like the DDL `CREATE TABLE ...` using the `Exec()` function on the `db`
+Execute an SQL statement such as DDL `CREATE TABLE ...` using the `Exec()` function on the `db`
 instance.
 
 The CREATE DDL statement:
@@ -118,7 +118,7 @@ if _, err := db.Exec(createStmt); err != nil {
 }
 ```
 
-The `db.Exec()` function also returns an `error` object which, if not `nil`, needs to handled in
+The `db.Exec()` function also returns an `error` object which, if not `nil`, needs to be handled in
 your code.
 
 Read more on designing [Database schemas and tables](../../../explore/ysql-language-features/databases-schemas-tables/).

@@ -38,11 +38,11 @@ Psycopg is the most popular PostgreSQL database adapter for the Python programmi
 
 Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps in the [Build an application](/latest/quick-start/build-apps/python/ysql-psycopg2/) page under the Quick start section.
 
-Let us break down the quick start example and understand how to perform the common tasks required for Python App development using the Postgres Psycopg2 driver.
+The following sections break down the quick start example to demonstrate how to perform common tasks required for Python application development using the PostgreSQL Psycopg2 driver.
 
 ### Step 1: Download the Driver Dependency
 
-Building Psycopg requires a few prerequisites (a C compiler, some development packages): please check the [install](https://www.psycopg.org/docs/install.html#install-from-source) and the [faq](https://www.psycopg.org/docs/faq.html#faq-compile) documents in the doc dir or online for the details.
+Building Psycopg requires a few prerequisites (a C compiler, some development packages). Refer to [Installation](https://www.psycopg.org/docs/install.html#install-from-source) and the [FAQ](https://www.psycopg.org/docs/faq.html#faq-compile) in the Psycopg documentation.
 
 If prerequisites are met, you can install psycopg like any other Python package, using ``pip`` to download it from [PyPI](https://pypi.org/project/psycopg2/):
 
@@ -67,7 +67,7 @@ The binary package is a practical choice for development and testing but in prod
 
 ### Step 2: Connect to your Cluster
 
-Python Apps can connect to and query the YugabyteDB database. To do that first import the psycopg2 package.
+Python applications can connect to and query the YugabyteDB database. To do that first import the psycopg2 package.
 
 ```python
 import psycopg2
@@ -92,7 +92,7 @@ Example URL for connecting to YugabyteDB can be seen below.
 conn = psycopg2.connect(dbname='yugabyte',host='localhost',port='5433',user='yugabyte',password='yugabyte')
 ```
 
-| Params | Description | Default |
+| Parameter | Description | Default |
 | :---------- | :---------- | :------ |
 | host  | hostname of the YugabyteDB instance | localhost
 | port |  Listen port for YSQL | 5433
@@ -106,16 +106,16 @@ Example URL for connecting to YugabyteDB cluster enabled with on the wire SSL en
 conn = psycopg2.connect("host=<hostname> port=5433 dbname=yugabyte user=<username> password=<password> sslmode=verify-full sslrootcert=/Users/my-user/Downloads/root.crt")
 ```
 
-| Params | Description | Default |
+| Parameter | Description | Default |
 | :---------- | :---------- | :------ |
 | sslmode | SSL mode  | prefer
 | sslrootcert | path to the root certificate on your computer | ~/.postgresql/
 
-If you have created Free tier cluster on [Yugabyte Anywhere](https://www.yugabyte.com/cloud/), [Follow the steps](/latest/yugabyte-cloud/cloud-connect/connect-applications/) to download the Credentials and SSL Root certificate.
+If you have created a cluster on [Yugabyte Cloud](https://www.yugabyte.com/cloud/), [follow the steps](/latest/yugabyte-cloud/cloud-connect/connect-applications/) to obtain the cluster connection parameters and SSL Root certificate.
 
 ### Step 3: Query the YugabyteDB Cluster from Your Application
 
-Next, Create a new Python file called `QuickStartApp.py` in the base package directory of your project. Copy the sample code below in order to setup a YugbyteDB Tables and query the Table contents from the java client. Ensure you replace the connection string `yburl` with credentials of your cluster and SSL certs if required.
+Create a new Python file called `QuickStartApp.py` in the base package directory of your project. Copy the sample code below to set up tables and query the table contents. Replace the connection string `yburl` with the cluster credentials and SSL certificate, if required.
 
 ```python
 import psycopg2
@@ -173,7 +173,7 @@ cur.close()
 conn.close()
 ```
 
-When you run the Project, `QuickStartApp.py` should output something like below:
+When you run the `QuickStartApp.py` project, you should see output similar to the following:
 
 ```text
 Created table employee
@@ -181,12 +181,12 @@ Inserted (id, name, age, language) = (1, 'John', 35, 'Python')
 Query returned: John, 35, Python
 ```
 
-if you receive no output or error, check whether you included the proper connection string with the right credentials.
+If there is no output or you get an error, verify the parameters included in the connection string.
 
-After completing these steps, you should have a working Python app that uses Psycopg2 for connecting to your cluster, setup tables, run query and print out results.
+After completing these steps, you should have a working Python app that uses Psycopg2 to connect to your cluster, set up tables, run queries, and print out results.
 
 ## Next Steps
 
-- Learn how to build Python Application using [Django](/latest/drivers-orms/python/django/)
-- Learn how to build Python Applications using [SQLAlchemy](/latest/drivers-orms/python/sqlalchemy/)
+- Learn how to build Python applications using [Django](/latest/drivers-orms/python/django/)
+- Learn how to build Python applications using [SQLAlchemy](/latest/drivers-orms/python/sqlalchemy/)
 - Learn more about [fundamentals](../../../reference/drivers/python/postgres-psycopg2-reference/) of the PostgreSQL psycopg2 Driver
