@@ -17,26 +17,27 @@ showAsideToc: true
 
 | Driver Version | YugabyteDB Version | Support |
 | :------------- | :----------------- | :------ |
-| [8.7.3](https://www.npmjs.com/package/pg) | 2.11 (latest) | full
-| 8.7.3 | 2.8 (stable) | full
+| [8.7.3](https://www.npmjs.com/package/pg) | 2.13 (latest) | full
+| 8.7.3 | 2.12 (stable) | full
+| 8.7.3 | 2.8  | full
 | 8.7.3 | 2.6 | full
-
-
 
 ## Sequelize ORM Compatibility Matrix
 
-1. `sequelize` core package
+- `sequelize` core package
 
 | ORM Version | YugabyteDB Version | Support |
 | :------------- | :----------------- | :------ |
-| [6.17.0](https://www.npmjs.com/package/sequelize) (latest) | 2.11 (latest) | full
-| 6.17.0 |  2.8 (stable) | full
+| [6.17.0](https://www.npmjs.com/package/sequelize) (latest) | 2.13 (latest) | full
+| 6.17.0 |  2.12 (stable) | full
+| 6.17.0 |  2.8 | full
 | 6.17.0 | 2.6 | full
 
-2. `sequelize-yugabytedb` package
+- `sequelize-yugabytedb` package
 
 | ORM Version | YugabyteDB Version | Support |
 | :------------- | :----------------- | :------ |
-| [1.0.6](https://www.npmjs.com/package/sequelize-yugabytedb) | 2.11 (latest) | full
-| 1.0.6 |  2.8 (stable) | full
+| [1.0.6](https://www.npmjs.com/package/sequelize-yugabytedb) | 2.13 (latest) | full
+| 1.0.6 |  2.12 (stable) | full
+| 1.0.6 |  2.8  | full
 | 1.0.6 | 2.6 | full

@@ -44,7 +44,13 @@ Node.js developers are often required to store the Domain objects of a Node.js A
 
 [Sequelize ORM](https://sequelize.org/v6/)  is a popular ORM provider for Node.js applications which is widely used by Node Developers for Database access.
 
-## Creating a Node.js project and installing Sequelize ORM core package
+## CRUD Operations with GORM
+
+Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps on the [Build an application](../../../quick-start/build-apps/nodejs/ysql-sequelize/) page under the Quick start section.
+
+To break down the quick start example and understand how to perform the common CRUD operations required for Go application development, do the following steps.
+
+### Step 1: Creating a Node.js project and installing Sequelize ORM core package
 
 Before proceeding with the next steps, you need to have Node.js installed on your machine. To install it, please refer to this [link](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm#using-a-node-installer-to-install-node-js-and-npm).
 
@@ -65,7 +71,7 @@ Now, let's create a simple Node.js project and install a `sequelize` orm core pa
 5. Create a empty demo.js file: 
 `touch example.js`
 
-## Creating a Node.js example using Sequelize ORM
+### Step 2: Creating a Node.js example using Sequelize ORM
 
 Add the following code in the `example.js`, this allows you to create an object for Employees to store and retrieve information of employees from the YugabyteDB. Here, first of all we have created the sequelize connection by passing the basic connection information and dialect as `postgres` then we have defined the object of type Employee using `define()` API which allows us to mention what all type of information we want to store for an employee but the actual table is created when we have called the `Employee.sync()` API in `createTableAndInsert()` function which also inserts the data of three employees into the table employees using `Employee.create()` API. At last, we can retrieve the information of all employees using `Employee.findAll()`.
 
@@ -124,6 +130,7 @@ createTableAndInsert()
 })
 
 ```
+
 When you run the example.js using `node example.js`, you will get this as output-
 
 ```text
@@ -167,7 +174,11 @@ Employees Details:
 ]
 ```
 
+## Limtations
+
+YugabyteDB YSQL is compatible with Sequelize ORM's PostgreSQL dialect. Currently, YugabyteDB doesn't have support for Sequelize ORM's `findorCreate()` API, along with other issues, which may prevent users from successfully implementing Node.js applications. There is [on going work](https://github.com/yugabyte/yugabyte-db/issues/11683) to support the Sequelize ORM core package with YugabyteDB natively. In the interim, We recommend users to make use of [sequelize-yugabytedb](../sequelize-yugabytedb) for building Node.js applications.
+
 ## Next Steps
 
-- Explore [Scaling Node Applications](/latest/explore/linear-scalability) with YugabyteDB.
+- Explore [Scaling Node.js Applications](/latest/explore/linear-scalability) with YugabyteDB.
 - Learn how to [develop Node Applications with YugabyteDB Cloud](/latest/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-node/).

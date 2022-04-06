@@ -27,33 +27,32 @@ showAsideToc: true
 
 node-postgres is a collection of node.js modules for interfacing with your PostgreSQL database. It has support for callbacks, promises, async/await, connection pooling, prepared statements, cursors, streaming results, C/C++ bindings, rich type parsing etc. YugabyteDB has full support for [node-postgres](https://node-postgres.com/)
 
-## Quick Start
+## CRUD Operations with node-postgres Driver
 
 Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps in [Build an Application](/latest/quick-start/build-apps/nodejs/ysql-pg/) in the Quick Start section.
 
-## Download the Driver Dependency
+Let us break down the quick start example and understand how to perform the common CRUD operations required for Node.js App development using the PostgreSQL node-postgres driver.
+
+### Step 1: Download the Driver Dependency
 
 node-postgres driver can be easily downloaded and installed using the following command(only prerequisite is to have Node.JS installed on your system):
-```
+
+```sh
 npm install pg
 ```
 
 After this, you can start using driver in your code.
 
-### Create a YugabyteDB Cluster
-
-You can also setup a standalone YugabyteDB cluster by following the [install YugabyteDB Steps](/latest/quick-start/install/macos).
-
-Alternatively, Set up a Free tier Cluster on [Yugabyte Anywhere](https://www.yugabyte.com/cloud/). The free cluster provides a fully functioning YugabyteDB cluster deployed to the cloud region of your choice. The cluster is free forever and includes enough resources to explore the core features available for developing the Java Applications with YugabyteDB database. Complete the steps for [creating a free tier cluster](latest/yugabyte-cloud/cloud-quickstart/qs-add/).
-
-### Connect to your Cluster
+### Step 2: Connect to your Cluster
 
 Before connecting to YugabyteDB cluster, first import the `pg` package
+
 ``` js
   const pg = require('pg');
 ```
 
-Now, we can create a client to connect to the cluster using a connection string 
+Now, we can create a client to connect to the cluster using a connection string
+
 ```javascript
 const connectionString = "postgresql://user:password@localhost:port/database"
 const client = new Client(connectionString);
@@ -75,6 +74,7 @@ const connectionString = "postgresql://user:password@localhost:port/database?ssl
 const client = new Client(connectionString);
 client.connect()
 ```
+
 There are other ways also to provide connection and ssl related details, for that please refer official documentation of [node-postgres](https://node-postgres.com/) package.
 
 | JDBC Params | Description | Default |
@@ -84,7 +84,7 @@ There are other ways also to provide connection and ssl related details, for tha
 
 If you have created Free tier cluster on [Yugabyte Anywhere](https://www.yugabyte.com/cloud/), [Follow the steps](/latest/yugabyte-cloud/cloud-connect/connect-applications/) to download the Credentials and SSL Root certificate.
 
-### Query the YugabyteDB Cluster from Your Application
+### Step 3: Query the YugabyteDB Cluster from Your Application
 
 Next, Create a new Javascript file called `QuickStartApp.js` in your project directory. Copy the sample code below in order to setup a YugbyteDB Tables and query the Table contents from the java client. Ensure you replace the connection string `yburl` with credentials of your cluster and SSL certs if required.
 
@@ -162,10 +162,6 @@ if you receive no output or error, check whether you included the proper connect
 
 After completing this steps, you should have a working Node.JS app that uses Postgres node.js driver `pg` for connecting to your cluster, setup tables, run query and print out results.
 
-## Compatibility Matrix 
+## Next Steps
 
-| Driver Version | YugabyteDB Version | Support |
-| :------------- | :----------------- | :------ |
-| [8.7.3](https://www.npmjs.com/package/pg) | 2.11 (latest) | full
-| 8.7.3 | 2.8 (stable) | full
-| 8.7.3 | 2.6 | full
+- Learn how to build Node.js Application using [Sequelize ORM](../sequelize).
