@@ -43,7 +43,7 @@ For more advanced applications, including Spring and GraphQL examples, refer to 
   <a class="section-link icon-offset" href="cloud-ysql-yb-jdbc/">
     <div class="head">
       <div class="icon">
-        <i class="icon-java"></i>
+        <i class="fa-brands fa-java"></i>
       </div>
       <div class="title">Java</div>
     </div>
@@ -57,7 +57,7 @@ For more advanced applications, including Spring and GraphQL examples, refer to 
   <a class="section-link icon-offset" href="cloud-ysql-go/">
     <div class="head">
       <div class="icon">
-        <i class="icon-go"></i>
+        <i class="fa-brands fa-golang"></i>
       </div>
       <div class="title">Go</div>
     </div>
@@ -71,7 +71,7 @@ For more advanced applications, including Spring and GraphQL examples, refer to 
   <a class="section-link icon-offset" href="cloud-ysql-python/">
     <div class="head">
       <div class="icon">
-        <i class="icon-python"></i>
+        <i class="fa-brands fa-python"></i>
       </div>
       <div class="title">Python</div>
     </div>
@@ -85,7 +85,7 @@ For more advanced applications, including Spring and GraphQL examples, refer to 
   <a class="section-link icon-offset" href="cloud-ysql-node/">
     <div class="head">
       <div class="icon">
-        <i class="icon-nodejs"></i>
+        <i class="fa-brands fa-node-js"></i>
       </div>
       <div class="title">NodeJS</div>
     </div>
@@ -99,7 +99,7 @@ For more advanced applications, including Spring and GraphQL examples, refer to 
   <a class="section-link icon-offset" href="cloud-ysql-c/">
     <div class="head">
       <div class="icon">
-        <i class="icon-c"></i>
+        <i class="fa-brands fa-c"></i>
       </div>
       <div class="title">C</div>
     </div>
@@ -155,7 +155,7 @@ For more advanced applications, including Spring and GraphQL examples, refer to 
   <a class="section-link icon-offset" href="cloud-ysql-rust/">
     <div class="head">
       <div class="icon">
-        <i class="icon-rust"></i>
+        <i class="fa-brands fa-rust"></i>
       </div>
       <div class="title">Rust</div>
     </div>
@@ -169,7 +169,7 @@ For more advanced applications, including Spring and GraphQL examples, refer to 
   <a class="section-link icon-offset" href="cloud-ysql-php/">
     <div class="head">
       <div class="icon">
-        <i class="icon-php"></i>
+        <i class="fa-brands fa-php"></i>
       </div>
       <div class="title">PHP</div>
     </div>
