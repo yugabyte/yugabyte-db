@@ -14,13 +14,13 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/manage/backup-restore/restore-data" class="nav-link">
+    <a href="/preview/manage/backup-restore/restore-data" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
   <li >
-    <a href="/latest/manage/backup-restore/restore-data-ycql" class="nav-link active">
+    <a href="/preview/manage/backup-restore/restore-data-ycql" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -76,8 +76,8 @@ There are a number of useful options in the `COPY FROM` command used to perform 
 
 ## Example
 
-Let us restore the backup you had performed in the [example section of backing up data](/manage/backup-restore/backing-up-data/#example), 
-where you had walked through how to create the `myapp_schema.cql` schema backup and the `myapp_data.csv` data backup files. 
+Let us restore the backup you had performed in the [example section of backing up data](/manage/backup-restore/backing-up-data/#example),
+where you had walked through how to create the `myapp_schema.cql` schema backup and the `myapp_data.csv` data backup files.
 
 If you have created the keyspace and the table with the data, remember to drop them using cqlsh. You can drop the table by running the following query:
 
@@ -157,7 +157,7 @@ GOOG,2017-10-26 09:00:00,972.56
 GOOG,2017-10-26 10:00:00,971.90997
 ```
 
-Note that the procedure to import data from a partial backup is identical. You can verify that the data has been restored by connecting 
+Note that the procedure to import data from a partial backup is identical. You can verify that the data has been restored by connecting
 to the cluster using `ycqlsh` and running the following query:
 
 ```sql

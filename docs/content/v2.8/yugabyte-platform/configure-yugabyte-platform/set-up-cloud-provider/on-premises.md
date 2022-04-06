@@ -15,47 +15,47 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws" class="nav-link">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws" class="nav-link">
       <i class="fab fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp" class="nav-link">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp" class="nav-link">
       <i class="fab fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure" class="nav-link">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
       Azure
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes" class="nav-link">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/vmware-tanzu" class="nav-link">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/vmware-tanzu" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       VMware Tanzu
     </a>
   </li>
 
 <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/openshift" class="nav-link">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/openshift" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>OpenShift</a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises" class="nav-link active">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises" class="nav-link active">
       <i class="fas fa-building"></i>
       On-premises
     </a>
@@ -85,7 +85,7 @@ If the SSH user requires a password for sudo access **or** the SSH user does not
 
 #### SSH Port
 
-Port number of ssh client connections. 
+Port number of ssh client connections.
 
 #### Manually Provision Nodes
 
@@ -103,7 +103,7 @@ If any of the items from this checklist are true, you need to [provision the nod
 
 Ensure that the SSH key is pasted correctly (Supported format is RSA).
 
-#### Air Gap install 
+#### Air Gap install
 
 If enabled, the installation will run in an air-gapped mode without expecting any internet access.
 
@@ -121,11 +121,11 @@ This is the port number (default value 9300) for the Node Exporter. You can over
 
 #### Install Node Exporter
 
-Whether to install or skip installing Node Exporter. You can skip this step if you have Node Exporter already installed on the nodes. Ensure you have provided the correct port number for skipping the installation. 
+Whether to install or skip installing Node Exporter. You can skip this step if you have Node Exporter already installed on the nodes. Ensure you have provided the correct port number for skipping the installation.
 
 #### Node Exporter User
 
-You can override the default prometheus user. This is useful when a user is pre-provisioned (in case user creation is disabled) on nodes. If overridden, the installer will check if the user exists and will create the user if it doesn't. 
+You can override the default prometheus user. This is useful when a user is pre-provisioned (in case user creation is disabled) on nodes. If overridden, the installer will check if the user exists and will create the user if it doesn't.
 
 ### Provision the YugabyteDB nodes
 
@@ -185,7 +185,7 @@ To provision your nodes manually, you have two options:
 This step is only required if you set Manually Provision Nodes to true **and** the SSH user has sudo privileges which require a password; otherwise, skip this step.
 {{< /note >}}
 
-Follow these steps to manually provision each node using the pre-provisioning Python script. 
+Follow these steps to manually provision each node using the pre-provisioning Python script.
 
 ![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-6.png)
 
@@ -197,7 +197,7 @@ Follow these steps to manually provision each node using the pre-provisioning Py
     $ sudo docker exec -it yugaware bash
     ```
 
-1. Copy and paste the Python script prompted in the UI and substitute for a node IP address and mount points. 
+1. Copy and paste the Python script prompted in the UI and substitute for a node IP address and mount points.
 
     \
     (Optional) Use the `--ask_password` flag if the sudo user requires password authentication.
@@ -256,7 +256,7 @@ Database servers need incoming TCP/IP access enabled to the following ports, for
 | TCP | 12000 | YCQL HTTP (for DB statistics gathering) |
 | TCP | 13000 | YSQL HTTP (for DB statistics gathering) |
 
-This table is based on the information on the [default ports page](/latest/reference/configuration/default-ports/).
+This table is based on the information on the [default ports page](/preview/reference/configuration/default-ports/).
 
 ##### Pre-provision nodes manually
 
@@ -288,7 +288,7 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
     ```
 
 1. Copy the SSH public key to each DB node.
-    
+
     \
     This public key should correspond to the private key entered into the Platform Provider elsewhere in this document.
 
@@ -354,7 +354,7 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
       $ lsblk
       ```
 
-    * Perform the following steps **for each available volume** (all listed volumes other than the root volume): 
+    * Perform the following steps **for each available volume** (all listed volumes other than the root volume):
 
       ```sh
       $ sudo mkdir /data   # (or /data1, /data2 etc)
@@ -437,21 +437,21 @@ Note that the instructions here are for the 0.13.0 version. The same instruction
       Description=node_exporter - Exporter for machine metrics.
       Documentation=https://github.com/William-Yeh/ansible-prometheus
       After=network.target
-      
+
       [Install]
       WantedBy=multi-user.target
-      
+
       [Service]
       Type=simple
-      
+
       #ExecStartPre=/bin/sh -c  " mkdir -p '/var/run/prometheus' '/var/log/prometheus' "
       #ExecStartPre=/bin/sh -c  " chown -R prometheus '/var/run/prometheus' '/var/log/prometheus' "
       #PIDFile=/var/run/prometheus/node_exporter.pid
-      
-      
+
+
       User=prometheus
       Group=prometheus
-      
+
       ExecStart=/opt/prometheus/node_exporter-0.13.0.linux-amd64/node_exporter  --web.listen-address=:9300 --collector.textfile.directory=/tmp/yugabyte/metrics
       ```
 
@@ -488,7 +488,7 @@ Platform supports backing up YugabyteDB to AWS S3, Azure Storage, Google Cloud S
     ```sh
     $ cd /usr/local
     $ sudo tar xvfz path-to-s3cmd-2.0.1.tar.gz
-    $ sudo ln -s /usr/local/s3cmd-2.0.1/s3cmd /usr/local/bin/s3cmd 
+    $ sudo ln -s /usr/local/s3cmd-2.0.1/s3cmd /usr/local/bin/s3cmd
     ```
 
 **Azure Storage**: Install azcopy. You have two options:
@@ -519,7 +519,7 @@ Platform supports backing up YugabyteDB to AWS S3, Azure Storage, Google Cloud S
     ```sh
     $ cd /usr/local
     $ sudo tar xvfz gsutil_4.60.tar.gz
-    $ sudo ln -s /usr/local/gsutil/gsutil /usr/local/bin/gsutil 
+    $ sudo ln -s /usr/local/gsutil/gsutil /usr/local/bin/gsutil
     ```
 
 ##### Set crontab permissions
@@ -538,7 +538,7 @@ If Platform will be using **cron jobs**, make sure the yugabyte user is allowed 
 <!--
 ##### Manage liveness checks, logs, and cores
 
-Yugabyte Platform supports performing YugabyteDB liveness checks, log file management, and core file management using cron jobs or systemd services. 
+Yugabyte Platform supports performing YugabyteDB liveness checks, log file management, and core file management using cron jobs or systemd services.
 
 **Sudo is required to set up these services!**
 

@@ -21,8 +21,8 @@ from ybops.cloud.aws.method import AwsProvisionInstancesMethod, AwsCreateInstanc
 from ybops.cloud.common.command import InstanceCommand, NetworkCommand, AccessCommand, \
     QueryCommand, DnsCommand
 from ybops.cloud.common.method import ConfigureInstancesMethod, AccessCreateVaultMethod, \
-    InitYSQLMethod, UpdateDiskMethod, CronCheckMethod, \
-    AccessEditVaultMethod
+    InitYSQLMethod, UpdateDiskMethod, CronCheckMethod, AccessEditVaultMethod, \
+    TransferXClusterCerts
 
 
 class AwsInstanceCommand(InstanceCommand):
@@ -48,6 +48,7 @@ class AwsInstanceCommand(InstanceCommand):
         self.add_method(AwsCreateRootVolumesMethod(self))
         self.add_method(AwsDeleteRootVolumesMethod(self))
         self.add_method(AwsChangeInstanceTypeMethod(self))
+        self.add_method(TransferXClusterCerts(self))
 
 
 class AwsNetworkCommand(NetworkCommand):

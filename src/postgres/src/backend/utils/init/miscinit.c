@@ -12,6 +12,8 @@
  *
  *-------------------------------------------------------------------------
  */
+
+#include <pg_yb_utils.h>
 #include "postgres.h"
 
 #include <sys/param.h>
@@ -717,7 +719,7 @@ SetSessionAuthorization(Oid userid, bool is_superuser)
 	AssertState(OidIsValid(AuthenticatedUserId));
 
 	if (userid != AuthenticatedUserId &&
-		!AuthenticatedUserIsSuperuser)
+		!AuthenticatedUserIsSuperuser && !IsYbDbAdminUser(userid))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied to set session authorization")));
