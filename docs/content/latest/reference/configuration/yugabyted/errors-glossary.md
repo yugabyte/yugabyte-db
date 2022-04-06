@@ -6,6 +6,7 @@ section: REFERENCE
 menu:
   latest:
     identifier: yugabyted-errors-warnings
+    parent: configuration
     weight: 2455
 isTocNested: true
 showAsideToc: true
