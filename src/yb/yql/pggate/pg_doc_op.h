@@ -289,7 +289,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
 
   virtual CHECKED_STATUS SendRequestImpl(bool force_non_bufferable);
 
-  Result<std::list<PgDocResult>> ProcessResponse(const Status& exec_status);
+  Result<std::list<PgDocResult>> ProcessResponse();
 
   virtual Result<std::list<PgDocResult>> ProcessResponseImpl() = 0;
 

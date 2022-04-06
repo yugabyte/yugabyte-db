@@ -2390,5 +2390,48 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(PagingReadRestart)) {
   ASSERT_FALSE(runner.HasError());
 }
 
+// This test checks the absence of read restarts in the context of snapshot isolation operations
+// that only read a single tablet. Read restarts are not expected because of 2 facts:
+// - initial read uses read time from tserver
+// - concurrent modifications are done by single row update (i.e. no status tablet is used)
+// As a result all operations use time from the same tserver and tserver is able to determine
+// operation order without ambiguity caused by clock's skew.
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NoReadRestartOnSingleTablet)) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  constexpr size_t kNumReads = 30;
+  constexpr size_t kUpdateThreads = 30;
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t SELECT s, 0 FROM generate_series(0, $0) AS s", kUpdateThreads));
+  std::atomic<size_t> update_count{0};
+  TestThreadHolder thread_holder;
+  for (size_t i = 0; i < kUpdateThreads; ++i) {
+    thread_holder.AddThreadFunctor(
+        [this, &stop = thread_holder.stop_flag(), idx = i + 1, &update_count] {
+          auto update_conn = ASSERT_RESULT(Connect());
+          while (!stop.load(std::memory_order_acquire)) {
+            ASSERT_OK(update_conn.ExecuteFormat(
+              "UPDATE t SET v = $0 WHERE k = $1", RandomUniformInt(0, 10000), idx));
+            update_count.fetch_add(1, std::memory_order_acq_rel);
+          }
+        });
+  }
+  for (size_t i = 0; i < kNumReads; ++i) {
+    ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+    // Read item which is never modified to avoid possible transpared read restart
+    // and new read time selection.
+    ASSERT_OK(conn.Fetch("SELECT * FROM t WHERE k = 0"));
+    const auto current_update_count = update_count.load(std::memory_order_acquire);
+    // Wait for some updates before next read to increase probability of potential read restarts.
+    while (update_count.load(std::memory_order_acquire) < current_update_count + kUpdateThreads) {
+      std::this_thread::sleep_for(5ms);
+    }
+    auto res = ASSERT_RESULT(conn.Fetch("SELECT * FROM t"));
+    auto rows = PQntuples(res.get());
+    ASSERT_EQ(rows, kUpdateThreads + 1);
+    ASSERT_OK(conn.Execute("COMMIT"));
+  }
+}
+
 } // namespace pgwrapper
 } // namespace yb

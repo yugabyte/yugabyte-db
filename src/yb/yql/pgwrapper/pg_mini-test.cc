@@ -580,7 +580,8 @@ void PgMiniTest::TestInsertSelectRowLock(IsolationLevel isolation, RowMarkType r
   }
 
   ASSERT_OK(read_conn.ExecuteFormat("BEGIN TRANSACTION ISOLATION LEVEL $0", isolation_str));
-  ASSERT_OK(read_conn.Fetch("SELECT '(setting read point)'"));
+  // Send read request to a server for read time selection.
+  ASSERT_OK(read_conn.Fetch("SELECT * FROM t WHERE i = -1"));
   ASSERT_OK(write_conn.ExecuteFormat("INSERT INTO t (i, j) VALUES ($0, $0)", kKeys));
   auto result = read_conn.FetchFormat("SELECT * FROM t FOR $0", row_mark_str);
   if (isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
@@ -618,7 +619,8 @@ void PgMiniTest::TestDeleteSelectRowLock(IsolationLevel isolation, RowMarkType r
   }
 
   ASSERT_OK(read_conn.ExecuteFormat("BEGIN TRANSACTION ISOLATION LEVEL $0", isolation_str));
-  ASSERT_OK(read_conn.Fetch("SELECT '(setting read point)'"));
+  // Send read request to a server for read time selection.
+  ASSERT_OK(read_conn.Fetch("SELECT * FROM t WHERE i = -1"));
   ASSERT_OK(write_conn.ExecuteFormat("DELETE FROM t WHERE i = $0", RandomUniformInt(0, kKeys - 1)));
   auto result = read_conn.FetchFormat("SELECT * FROM t FOR $0", row_mark_str);
   if (isolation == IsolationLevel::SNAPSHOT_ISOLATION) {

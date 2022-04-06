@@ -193,7 +193,7 @@ Status PgDocOp::GetResult(list<PgDocResult> *rowsets) {
     }
 
     DCHECK(response_.InProgress());
-    auto rows = VERIFY_RESULT(ProcessResponse(response_.GetStatus(pg_session_.get())));
+    auto rows = VERIFY_RESULT(ProcessResponse());
     // In case ProcessResponse doesn't fail with an error
     // it should return non empty rows and/or set end_of_data_.
     DCHECK(!rows.empty() || end_of_data_);
@@ -287,10 +287,10 @@ Status PgDocOp::SendRequestImpl(bool force_non_bufferable) {
   return Status::OK();
 }
 
-Result<std::list<PgDocResult>> PgDocOp::ProcessResponse(const Status& status) {
+Result<std::list<PgDocResult>> PgDocOp::ProcessResponse() {
   // Check operation status.
   DCHECK(exec_status_.ok());
-  exec_status_ = status;
+  exec_status_ = response_.GetStatus(pg_session_.get());
   if (exec_status_.ok()) {
     auto result = ProcessResponseImpl();
     if (result.ok()) {
@@ -311,7 +311,8 @@ Result<std::list<PgDocResult>> PgDocOp::ProcessResponseResult() {
   rows_affected_count_ = 0;
   // Check for errors reported by tablet server.
   for (int op_index = 0; op_index < active_op_count_; op_index++) {
-    RETURN_NOT_OK(pg_session_->HandleResponse(*pgsql_ops_[op_index], PgObjectId()));
+    RETURN_NOT_OK(response_.HandleResponse(
+        pg_session_.get(), pgsql_ops_[op_index].get(), PgObjectId()));
 
     YBPgsqlOp *pgsql_op = pgsql_ops_[op_index].get();
     // Get total number of rows that are operated on.
