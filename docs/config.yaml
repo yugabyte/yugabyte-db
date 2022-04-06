@@ -34,8 +34,7 @@ params:
     code: Inconsolata
   algolia:
     index: yugabyte
-    appID: BH4D9OD16A
-    apiKey: 12bc78d612b87db0163597f245889f18
+    appID: UMBCUJCBE8
   bigpicture:
     projectId: 1064
   ui:
