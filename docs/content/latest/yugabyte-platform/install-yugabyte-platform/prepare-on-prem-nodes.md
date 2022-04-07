@@ -12,11 +12,11 @@ isTocNested: false
 showAsideToc: true
 ---
 
-For on-premises deployments of Yugabyte universes, you need to import nodes that can be managed by Yugabyte Platform.
+For on-premises deployments of Yugabyte universes, you need to import nodes that can be managed by YugabyteDB Anywhere.
 
 ## Ports
 
-The following ports must be opened for intra-cluster communication (they do not need to be exposed to your application, only to other nodes in the cluster and the Yugabyte Platform node):
+The following ports must be opened for intra-cluster communication (they do not need to be exposed to your application, only to other nodes in the cluster and the YugabyteDB Anywhere node):
 
 * 7100 - Master RPC
 * 9100 - TServer RPC
@@ -41,15 +41,15 @@ For more information on ports used by YugabyteDB, refer to [Default ports](../..
 
 ## Prepare nodes
 
-To prepare nodes for on premises deployment:
+You can prepare nodes for on premises deployment, as follows:
 
 1. Ensure that the YugabyteDB nodes conform to the requirements outlined in the [deployment checklist](/latest/deploy/checklist/). This checklist also gives an idea of [recommended instance types across public clouds](/latest/deploy/checklist/#running-on-public-clouds). 
 1. Install the prerequisites and verify the system resource limits, as described in [system configuration](/latest/deploy/manual-deployment/system-config).
-1. Ensure you have `ssh` access to the server and root access (or the ability to run `sudo`; the sudo user can require a password but having passwordless access is desirable for simplicity and ease of use).
+1. Ensure you have SSH access to the server and root access (or the ability to run `sudo`; the sudo user can require a password but having passwordless access is desirable for simplicity and ease of use).
 1. Execute the following command to verify that you can `ssh` into this node (from your local machine if the node has a public address):
 
     ```sh
-    $ ssh -i your_private_key.pem ssh_user@node_ip
+    ssh -i your_private_key.pem ssh_user@node_ip
     ```
 
 The following actions are performed with sudo access:
@@ -84,7 +84,7 @@ For any third-party Cron scheduling tools, you can disable Crontab and add the f
 */1 * * * * /home/yugabyte/bin/yb-server-ctl.sh tserver cron-check || /home/yugabyte/bin/yb-server-ctl.sh tserver start
 ```
 
-<br>Disabling Crontab creates alerts after the universe is created, but they can be ignored. You need to ensure Cron jobs are set appropriately for Yugabyte Platform to function as expected.
+<br>Disabling Crontab creates alerts after the universe is created, but they can be ignored. You need to ensure Cron jobs are set appropriately for YugabyteDB Anywhere to function as expected.
   {{< /tip >}}
 
 * Verify that Python 2.7 is installed.

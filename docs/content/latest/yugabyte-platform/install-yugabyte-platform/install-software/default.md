@@ -1,8 +1,8 @@
 ---
-title: Install Yugabyte Platform
-headerTitle: Install Yugabyte Platform
+title: Install YugabyteDB Anywhere
+headerTitle: Install YugabyteDB Anywhere
 linkTitle: Install software
-description: Install the Yugabyte Platform software.
+description: Install the YugabyteDB Anywhere software.
 aliases:
   - /latest/yugabyte-platform/install-yugabyte-platform/install-software/
 menu:
@@ -38,7 +38,7 @@ showAsideToc: true
 
 </ul>
 
-YugabyteDB universes and clusters are created and managed using Yugabyte Platform. The default option is to install Yugabyte Platform on a host machine that is connected to the Internet.
+YugabyteDB universes and clusters are created and managed using YugabyteDB Anywhere. The default option is to install YugabyteDB Anywhere on a host machine that is connected to the Internet.
 
 ## Install Replicated
 
@@ -88,19 +88,19 @@ If you are prompted to choose an installation type, choose **Online**.
 
 ## Secure Replicated
 
-Add a password to protect the Replicated Admin Console, which is different from the Admin Console for YugabyteDB used by Yugabyte Platform, as per the following illustration:
+Add a password to protect the Replicated Admin Console, which is different from the Admin Console for YugabyteDB used by YugabyteDB Anywhere, as per the following illustration:
 
 ![Replicated Password](/images/replicated/replicated-password.png)
 
 ## Perform preflight checks
 
-Replicated performs a set of preflight checks to ensure that the host is set up correctly for Yugabyte Platform, as shown in the following illustration:
+Replicated performs a set of preflight checks to ensure that the host is set up correctly for YugabyteDB Anywhere, as shown in the following illustration:
 
 ![Replicated Checks](/images/replicated/replicated-checks.png)
 
-Click **Continue** to configure Yugabyte Platform.
+Click **Continue** to configure YugabyteDB Anywhere.
 
-If the preflight check fails, review the [Troubleshoot Yugabyte Platform](../../../troubleshoot/) to resolve the issue.
+If the preflight check fails, review the [Troubleshoot YugabyteDB Anywhere](../../../troubleshoot/) to resolve the issue.
 
 ## Set the TLS version for Nginx frontend 
 

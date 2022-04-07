@@ -2,7 +2,7 @@
 title: Prepare the OpenShift environment
 headerTitle: Prepare the OpenShift environment
 linkTitle: Prepare the environment
-description: Prepare the OpenShift environment for Yugabyte Platform
+description: Prepare the OpenShift environment for YugabyteDB Anywhere
 menu:
   latest:
     identifier: prepare-environment-4-OpenShift
@@ -62,7 +62,7 @@ To prepare the environment for OpenShift, you start by provisioning the OpenShif
 
 The recommended OpenShift Container Platform (OCP) version is 4.6, with backward compatibility assumed but not guaranteed.
 
-You should have 18 vCPU and 32 GB of memory available for testing Yugabyte Platform. This can be three or more nodes equivalent to Google Platform's n1-standard-8 (8 vCPU, 30 GB memory).
+You should have 18 vCPU and 32 GB of memory available for testing YugabyteDB Anywhere. This can be three or more nodes equivalent to Google Platform's n1-standard-8 (8 vCPU, 30 GB memory).
 
 For more information and examples on provisioning OpenShift clusters on GCP, see the following:
 

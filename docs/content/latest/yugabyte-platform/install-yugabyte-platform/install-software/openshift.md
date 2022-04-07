@@ -1,8 +1,8 @@
 ---
-title: Install Yugabyte Platform Software - OpenShift
-headerTitle: Install Yugabyte Platform Software - OpenShift
+title: Install YugabyteDB Anywhere software - OpenShift
+headerTitle: Install YugabyteDB Anywhere software - OpenShift
 linkTitle: Install software
-description: Install Yugabyte Platform software in your OpenShift environment
+description: Install YugabyteDB Anywhere software in your OpenShift environment
 menu:
   latest:
     parent: install-yugabyte-platform
@@ -36,35 +36,41 @@ showAsideToc: true
 
 </ul>
 
-To install Yugabyte Platform on an OpenShift cluster, you can use Yugabyte Platform Operator or the Helm tool.
+To install YugabyteDB Anywhere on an OpenShift cluster, you can use YugabyteDB Anywhere Operator or the Helm tool.
+
+{{< note title="Note" >}}
+
+Since YugabyteDB Anywhere was called Yugabyte Platform, you might see the latter still used in the OpenShift environment.
+
+{{< /note >}}
 
 ## Prerequisites
 
-Before you install Yugabyte Platform on an OpenShift cluster, you need to prepare the environment, as described in [Prepare the OpenShift Environment](../../../install-yugabyte-platform/prepare-environment/openshift/).
+Before you install YugabyteDB Anywhere on an OpenShift cluster, you need to prepare the environment, as described in [Prepare the OpenShift Environment](../../../install-yugabyte-platform/prepare-environment/openshift/).
 
 Unless otherwise specified, you can use a user account for executing the steps described in this document. Using admin account for all the steps should work as well.
 
-## Operator-Based Installation
+## Operator-based installation
 
-Installing Yugabyte Platform on an OpenShift cluster using the Yugabyte Platform Operator involves the following:
+Installing YugabyteDB Anywhere on an OpenShift cluster using the YugabyteDB Anywhere Operator involves the following:
 
 - [Installing the Operator itself](#installing-the-operator)
-- [Creating an instance of Yugabyte Platform](#creating-an-instance-of-yugabyte-platform-via-operator)
+- [Creating an instance of YugabyteDB Anywhere](#creating-an-instance-of-yugabyte-platform-via-operator)
 - [Finding the availability zone labels](#finding-the-availability-zone-labels)
 - [Configuring the CLI with the OCP cluster](#configuring-the-cli-with-the-ocp-cluster)
-- [Accessing and configuring Yugabyte Platform](#accessing-and-configuring-yugabyte-platform)
-- Optionally, [upgrading the Yugabyte Platform instance](#upgrading-the-yugabyte-platform-instance)
+- [Accessing and configuring YugabyteDB Anywhere](#accessing-and-configuring-yugabyte-platform)
+- Optionally, [upgrading the YugabyteDB Anywhere instance](#upgrading-the-yugabyte-platform-instance)
 
 ### Installing the Operator
 
-You can install the Yugabyte Platform Operator via the OpenShift web console or command line.
+You can install the YugabyteDB Anywhere Operator via the OpenShift web console or command line.
 
-#### How to Use the OpenShift Web Console
+#### How to use the OpenShift Web Console
 
-You can install the Yugabyte Platform Operator as follows:
+You can install the YugabyteDB Anywhere Operator as follows:
 
 - Login to the OpenShift Container Platform (OCP) cluster’s web console using admin credentials (for example, kube:admin).
-- Navigate to the **Operators > OperatorHub**, search for Yugabyte Platform Operator, and then open it to display details about the operator, as shown in the following illustration:
+- Navigate to the **Operators > OperatorHub**, search for YugabyteDB Anywhere Operator, and then open it to display details about the operator, as shown in the following illustration:
 
   ![Operator](/images/ee/openshift-operator.png)
 
@@ -77,11 +83,11 @@ Once the installation is complete, the message shown in the following illustrati
 
 ![Operator Installed](/images/ee/openshift-operator-installed.png)
 
-#### How to Use the Command Line
+#### How to use the command line
 
 Alternatively, you can install the operator via the command line. You start by configuring oc with an admin account (kube:admin) and following the procedure described in [Configuring oc with the OCP Cluster](#configuring-the-cli-with-the-ocp-cluster).
 
-To install the Yugabyte Platform Operator, execute the following command:
+To install the YugabyteDB Anywhere Operator, execute the following command:
 
 ```shell
 oc apply -f - <<EOF
@@ -117,19 +123,19 @@ yugabyte-platform-operator-controller-manager-7485db7486-6nzxr 2/2  Running  0  
 
 For additional information, see [Adding Operators to a Cluster](https://docs.openshift.com/container-platform/4.6/operators/admin/olm-adding-operators-to-cluster.html).
 
-### Creating an Instance of Yugabyte Platform via Operator
+### Creating an instance of YugabyteDB Anywhere via Operator
 
-You start by creating an instance of Yugabyte Platform in a new project (namespace) called yb-platform. To do this, you can use the OpenShift web console or command line.
+You start by creating an instance of YugabyteDB Anywhere in a new project (namespace) called yb-platform. To do this, you can use the OpenShift web console or command line.
 
-#### How to Use the OpenShift Web Console
+#### How to use the OpenShift Web Console
 
-You can create an instance of Yugabyte Platform via the OpenShift web console as follows:
+You can create an instance of YugabyteDB Anywhere via the OpenShift web console as follows:
 
 - Open the OCP web console and navigate to **Home > Projects > Create Project**.
 - Enter the name yb-platform and click **Create**.
-- Navigate to **Operators > Installed Operators** and select **Yugabyte Platform Operator**, as shown in the following illustration:
+- Navigate to **Operators > Installed Operators** and select **YugabyteDB Anywhere Operator**, as shown in the following illustration:
 
-  ![Yugabyte Platform Install Operator](/images/ee/openshift-install-yp-operator.png)
+  ![YugabyteDB Anywhere Install Operator](/images/ee/openshift-install-yp-operator.png)
 
 - Click **Create Instance** to open the **Create YBPlatform** page.
 
@@ -141,13 +147,13 @@ You can create an instance of Yugabyte Platform via the OpenShift web console as
 
 - Click **Create**.
 
-Shortly, you should expect the **Status** column in the **Yugabyte Platform** tab to display **Deployed**, as shown in the following illustration:
+Shortly, you should expect the **Status** column in the **YugabyteDB Anywhere** tab to display **Deployed**, as shown in the following illustration:
 
-![Yugabyte Platform Installed Operator](/images/ee/openshift-yp-operator-platforms.png)
+![YugabyteDB Anywhere Installed Operator](/images/ee/openshift-yp-operator-platforms.png)
 
-#### How to Use the Command Line
+#### How to use the command line
 
-Alternatively, you can create an instance of Yugabyte Platform via the command line, as follows:
+Alternatively, you can create an instance of YugabyteDB Anywhere via the command line, as follows:
 
 - To create a new project, execute the following command:
 
@@ -166,9 +172,9 @@ Alternatively, you can create an instance of Yugabyte Platform via the command l
   ```
 
   \
-  If your cluster's StorageClass is not `standard`, change the value of   `spec.yugaware.storageClass` to the correct StorageClass name when you create an instance of Yugabyte Platform.
+  If your cluster's StorageClass is not `standard`, change the value of   `spec.yugaware.storageClass` to the correct StorageClass name when you create an instance of YugabyteDB Anywhere.
 
-- To create an instance of Yugabyte Platform in the yb-platform project, execute the following command:
+- To create an instance of YugabyteDB Anywhere in the yb-platform project, execute the following command:
 
   ```shell
   oc apply \
@@ -193,7 +199,7 @@ Alternatively, you can create an instance of Yugabyte Platform via the command l
   ybplatform.yugabyte.com/ybplatform-sample created
   ```
 
-- To verify that the pods of the Yugabyte Platform instance are in Running state, execute the following:
+- To verify that the pods of the YugabyteDB Anywhere instance are in Running state, execute the following:
 
   ```shell
   oc get pods -n yb-platform -l app=ybplatform-sample-yugaware
@@ -204,9 +210,9 @@ Alternatively, you can create an instance of Yugabyte Platform via the command l
   Ybplatform-sample-yugaware-0  5/5   Running  0        22s
   ```
 
-### Upgrading the Yugabyte Platform Instance
+### Upgrading the YugabyteDB Anywhere instance
 
-You may choose to upgrade the Yugabyte Platform instance installed using the Operator to a new tag that you receive from Yugabyte. In the current release, you can do this by using the command line.
+You may choose to upgrade the YugabyteDB Anywhere instance installed using the Operator to a new tag that you receive from Yugabyte. In the current release, you can do this by using the command line.
 
 The following example shows the command you would execute to update the container image tag to 2.5.2.0-b89:
 
@@ -236,9 +242,9 @@ ybplatform-sample-yugaware-0  0/5   ContainerCreating  0     35s
 ybplatform-sample-yugaware-0  5/5   Running            0     93s
 ```
 
-## Helm-Based Installation
+## Helm-based installation
 
-In addition to meeting the requirements described in  [Prepare the OpenShift Environment](../../../install-yugabyte-platform/prepare-environment/openshift/), you need to perform the following steps before attempting to install Yugabyte Platform using Helm:
+In addition to meeting the requirements described in  [Prepare the OpenShift Environment](../../../install-yugabyte-platform/prepare-environment/openshift/), you need to perform the following steps before attempting to install YugabyteDB Anywhere using Helm:
 
 - Verify that the OpenShift cluster is configured with Helm 3.4 or later by executing the following command:
 
@@ -254,16 +260,16 @@ In addition to meeting the requirements described in  [Prepare the OpenShift Env
 
 - Ensure that an OpenShift secret license file has been obtained from Yugabyte Support.
 
-Installing Yugabyte Platform on an OpenShift cluster using Helm involves the following:
+Installing YugabyteDB Anywhere on an OpenShift cluster using Helm involves the following:
 
-- [Creating an instance of Yugabyte Platform](#creating-an-instance-of-yugabyte-platform-via-helm)
+- [Creating an instance of YugabyteDB Anywhere](#creating-an-instance-of-yugabyte-platform-via-helm)
 - [Finding the availability zone labels](#finding-the-availability-zone-labels)
 - [Configuring the CLI with the OCP cluster](#configuring-the-cli-with-the-ocp-cluster)
-- [Accessing and configuring Yugabyte Platform](#accessing-and-configuring-yugabyte-platform)
+- [Accessing and configuring YugabyteDB Anywhere](#accessing-and-configuring-yugabyte-platform)
 
-### Creating an Instance of Yugabyte Platform via Helm
+### Creating an instance of YugabyteDB Anywhere via Helm
 
-To create a Yugabyte Platform instance, perform the following:
+To create a YugabyteDB Anywhere instance, perform the following:
 
 - Create a new project (namespace) called yb-platform by executing the following command:
 
@@ -275,7 +281,7 @@ To create a Yugabyte Platform instance, perform the following:
   Now using project "yb-platform" on server "web-console-address"
   ```
 
-- Apply the Yugabyte Platform secret that you obtained from Yugabyte Support by executing the following command:
+- Apply the YugabyteDB Anywhere secret that you obtained from Yugabyte Support by executing the following command:
 
   ```shell
   oc create -f yugabyte-k8s-secret.yml -n yb-platform
@@ -312,9 +318,9 @@ To create a Yugabyte Platform instance, perform the following:
   oc get storageClass
   ```
 
-  If your cluster's StorageClass is not `standard`, add `--set yugaware.storageClass=<storage-class-name>` when installing the Yugabyte Platform Helm chart in the next step.
+  If your cluster's StorageClass is not `standard`, add `--set yugaware.storageClass=<storage-class-name>` when installing the YugabyteDB Anywhere Helm chart in the next step.
 
-- Execute the following command to install the Yugabyte Platform Helm chart:
+- Execute the following command to install the YugabyteDB Anywhere Helm chart:
 
   ```shell
   helm install yw-test yugabytedb/yugaware -n yb-platform \
@@ -347,7 +353,7 @@ To create a Yugabyte Platform instance, perform the following:
   EOF
   ```
 
-### Deleting the Helm Installation of Yugabyte Platform
+### Deleting the Helm installation of YugabyteDB Anywhere
 
 You can delete the Helm installation by executing the following command:
 
@@ -355,13 +361,13 @@ You can delete the Helm installation by executing the following command:
 helm delete yw-test -n yb-platform
 ```
 
-## Finding the Availability Zone Labels
+## Finding the availability zone labels
 
-You need to find the region name and availability zone codes where the cluster is running. This information is required by Yugabyte Platform (see [Creating a Provider in Yugabyte Platform](../../../configure-yugabyte-platform/set-up-cloud-provider/openshift#creating-a-provider-in-yugabyte-platform)). For example, if your OCP cluster is in the US East, then the cloud provider's zone labels can be us-east4-a, us-east4-b, and so on.
+You need to find the region name and availability zone codes where the cluster is running. This information is required by YugabyteDB Anywhere (see [Creating a Provider in YugabyteDB Anywhere](../../../configure-yugabyte-platform/set-up-cloud-provider/openshift#creating-a-provider-in-yugabyte-platform)). For example, if your OCP cluster is in the US East, then the cloud provider's zone labels can be us-east4-a, us-east4-b, and so on.
 
 You can use the OpenShift web console or the command line to search for the availability zone codes.
 
-### How to Use the OpenShift Web Console
+### How to use the OpenShift Web Console
 
 You start by logging in the OCP's web console as admin user, and then performing the following:
 
@@ -371,7 +377,7 @@ You start by logging in the OCP's web console as admin user, and then performing
 
   ![Create Machines](/images/ee/openshift-yp-create-machine.png)
 
-### How to Use the Command Line
+### How to use the command line
 
 Alternatively, you can find the availability zone codes via the command line.
 
@@ -393,15 +399,15 @@ oc get machinesets \
 
 After the execution, the region is displayed as US East and the zones as us-east4-a, us-east4-b, and so on.
 
-## Configuring the CLI with the OCP Cluster
+## Configuring the CLI with the OCP cluster
 
 To configure the OpenShift command-line interface (CLI) tool oc, you start by logging in to the OCP web console with your user account. For more information and specific instructions, see [Getting Started with the CLI](https://docs.openshift.com/container-platform/4.2/cli_reference/openshift_cli/getting-started-cli.html).
 
-## Accessing and Configuring Yugabyte Platform
+## Accessing and configuring YugabyteDB Anywhere
 
-Once you have created and deployed Yugabyte Platform, you can access its web UI and create an account.
+Once you have created and deployed YugabyteDB Anywhere, you can access its web UI and create an account.
 
-### How to Find the Location to Access the Web UI
+### How to find the location to access the web UI
 
 To find the location (IP address or hostname), you can use the OpenShift web console or the command line.
 
@@ -416,11 +422,11 @@ You can obtain the location using the OpenShift web console as follows:
 
 - Open the copied location in a new instance of your web browser.
 
-#### Using the Command Line
+#### Using the command line
 
 Alternatively, you can obtain the information about the location via the command line.
 
-In case of the Operator-based installation of Yugabyte Platform, execute the following command:
+In case of the Operator-based installation of YugabyteDB Anywhere, execute the following command:
 
 ```shell
 oc get services \

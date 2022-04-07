@@ -68,7 +68,7 @@ You should include `yugabyte` as part of the project name (for example, `yugabyt
 
 ## Create a service account
 
-Yugabyte Platform requires a service account with the appropriate permissions to provision and manage compute instances.
+YugabyteDB Anywhere requires a service account with the appropriate permissions to provision and manage compute instances.
 
 To create a service account, perform the following:
 
@@ -86,7 +86,7 @@ To create a service account, perform the following:
 
 - Click **ADD KEY** and select **Create new key**.
 
-- In the **Create private key** dialog, select **JSON** as the key type, and then click **Create** to download a service account key file. Note that after you download the key, you need to store this file, as you cannot download it again and this key is required for configuring the Yugabyte Platform UI.
+- In the **Create private key** dialog, select **JSON** as the key type, and then click **Create** to download a service account key file. Note that after you download the key, you need to store this file, as you cannot download it again and this key is required for configuring the YugabyteDB Anywhere UI.
 
   For additional information, see [Creating and managing service account keys](https://cloud.google.com/iam/docs/creating-managing-service-account-keys) in the GCP documentation. 
 
@@ -96,11 +96,11 @@ For more information, see [Creating and managing service accounts](https://cloud
 
 ## Create a firewall rule
 
-In order to access Yugabyte Platform from outside the GCP environment, you have to enable firewall rules. At a minimum, you need to be able to do the following:
+In order to access YugabyteDB Anywhere from outside the GCP environment, you have to enable firewall rules. At a minimum, you need to be able to do the following:
 
-- Access the Yugabyte Platform instance over SSH (port `tcp:22`).
-- Check, manage, and upgrade Yugabyte Platform (port `tcp:8800`).
-- View the Yugabyte Platform UI (port `tcp:80`).
+- Access the YugabyteDB Anywhere instance over SSH (port `tcp:22`).
+- Check, manage, and upgrade YugabyteDB Anywhere (port `tcp:8800`).
+- View the YugabyteDB Anywhere UI (port `tcp:80`).
 
 If you are using your own Virtual Private Cloud (VPC) as a self-managed configuration, the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 11000, 12000, 13000, 9300, 9042, 5433, 6379, 54422. For more information, see [Default ports](../../../../reference/configuration/default-ports).
 
@@ -112,9 +112,9 @@ Next, you need to create a firewall entry, as follows:
   - Add the appropriate IP addresses to the **Source IP ranges** field.
   - Enter a comma-delimited list of TCP ports 22, 8800, 80 to the **Protocol and ports** field. If required, also add TCP ports for a self-managed configuration.
 
-## Provision instance for Yugabyte Platform
+## Provision instance for YugabyteDB Anywhere
 
-You need to create an instance to run Yugabyte Platform. To do this, from your project's main page, navigate to **Compute Engine > VM instances**, click **Create**, and then follow instructions provided in [Virtual machine instances](https://cloud.google.com/compute/docs/instances) in the GCP documentation. When creating instances:
+You need to create an instance to run YugabyteDB Anywhere. To do this, from your project's main page, navigate to **Compute Engine > VM instances**, click **Create**, and then follow instructions provided in [Virtual machine instances](https://cloud.google.com/compute/docs/instances) in the GCP documentation. When creating instances:
 
 - Select a region as, for example, us-west1. 
 - Select a zone as, for example, us-west1-b.
@@ -144,7 +144,7 @@ For more information, see the following GCP documentation:
 
 -  [Choosing an access method](https://cloud.google.com/compute/docs/instances/access-overview#metadatavalues) provides details on how to create a new SSH key pair, as well as the expected format for this field: `ssh-rsa [KEY_VALUE] [USERNAME]`.
 
-## Connect to the Yugabyte Platform server
+## Connect to the YugabyteDB Anywhere server
 
 Use the GCP Cloud Console to find the public IP address of the instance you launched.
 
