@@ -257,6 +257,11 @@ struct RequestTraits {
 
 consensus::ReplicateMsgPtr CreateReplicateMsg(OperationType op_type);
 
+// Request here actually means serializable part of operation state.
+// When creating new XxxOperation class inherited from OperationBase, it is better to declare
+// separate protobuf XxxOperationDataPB wrapping original RPC request and use XxxOperationDataPB as
+// a Request. This way it will be easier to add into XxxOperationDataPB more fields that are not
+// part of RPC request, but should be stored in Raft log.
 template <OperationType op_type, class Request, class Base = Operation>
 class OperationBase : public Base {
  public:
