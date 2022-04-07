@@ -10,6 +10,8 @@
 
 package com.yugabyte.yw.controllers.handlers;
 
+import static com.yugabyte.yw.commissioner.Common.CloudType.aws;
+import static com.yugabyte.yw.commissioner.Common.CloudType.gcp;
 import static com.yugabyte.yw.commissioner.Common.CloudType.kubernetes;
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerInstanceTypeMetadata;
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerRegionMetadata;
@@ -17,6 +19,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.base.Strings;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Multimap;
@@ -37,7 +40,6 @@ import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.forms.EditProviderRequest;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -52,9 +54,12 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.persistence.PersistenceException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -606,24 +611,141 @@ public class CloudProviderHandler {
     return taskUUID;
   }
 
-  public void editProvider(Provider provider, EditProviderRequest editProviderReq)
-      throws IOException {
-    if (Provider.HostedZoneEnabledProviders.contains(provider.code)) {
-      String hostedZoneId = editProviderReq.hostedZoneId;
-      if (hostedZoneId == null || hostedZoneId.length() == 0) {
-        throw new PlatformServiceException(BAD_REQUEST, "Required field hosted zone id");
+  private Set<Region> checkIfRegionsToAdd(Provider editProviderReq, Provider provider) {
+    Set<Region> regionsToAdd = new HashSet<>();
+    if (provider.getCloudCode().canAddRegions()) {
+      if (editProviderReq.regions != null && !editProviderReq.regions.isEmpty()) {
+        Set<String> newRegionCodes =
+            editProviderReq.regions.stream().map(region -> region.code).collect(Collectors.toSet());
+        Set<String> existingRegionCodes =
+            provider.regions.stream().map(region -> region.code).collect(Collectors.toSet());
+        newRegionCodes.removeAll(existingRegionCodes);
+        if (!newRegionCodes.isEmpty()) {
+          regionsToAdd =
+              editProviderReq
+                  .regions
+                  .stream()
+                  .filter(region -> newRegionCodes.contains(region.code))
+                  .collect(Collectors.toSet());
+        }
       }
-      validateAndUpdateHostedZone(provider, hostedZoneId);
-    } else if (provider.code.equals(kubernetes.toString())) {
-      if (editProviderReq.config != null) {
-        updateKubeConfig(provider, editProviderReq.config, true);
+      // Perform validation for necessary fields
+      if (provider.getCloudCode() == gcp) {
+        if (editProviderReq.destVpcId == null) {
+          throw new PlatformServiceException(BAD_REQUEST, "Required field dest vpc id for GCP");
+        }
+      }
+      if (!regionsToAdd.isEmpty()) {
+        // Verify access key exists. If no value provided, we use the default keycode.
+        String accessKeyCode;
+        if (Strings.isNullOrEmpty(editProviderReq.keyPairName)) {
+          LOG.debug("Access key not specified, using default key code...");
+          accessKeyCode = AccessKey.getDefaultKeyCode(provider);
+        } else {
+          accessKeyCode = editProviderReq.keyPairName;
+        }
+        AccessKey.getOrBadRequest(provider.uuid, accessKeyCode);
+
+        regionsToAdd.forEach(
+            region -> {
+              if (region.getVnetName() == null && provider.getCloudCode() == aws) {
+                throw new PlatformServiceException(
+                    BAD_REQUEST, "Required field vnet name (VPC ID) for region: " + region.code);
+              }
+              if (region.zones == null || region.zones.isEmpty()) {
+                throw new PlatformServiceException(
+                    BAD_REQUEST, "Zone info needs to be specified for region: " + region.code);
+              }
+              region.zones.forEach(
+                  zone -> {
+                    if (zone.subnet == null) {
+                      throw new PlatformServiceException(
+                          BAD_REQUEST, "Required field subnet for zone: " + zone.code);
+                    }
+                  });
+            });
+      }
+    }
+    return regionsToAdd;
+  }
+
+  public UUID editProvider(Customer customer, Provider provider, Provider editProviderReq)
+      throws IOException {
+    // Check if region edit mode.
+    Set<Region> regionsToAdd = checkIfRegionsToAdd(editProviderReq, provider);
+    boolean updatedHostedZone = maybeUpdateHostedZone(editProviderReq, provider, regionsToAdd);
+    boolean updatedKubeConfig = maybeUpdateKubeConfig(editProviderReq, provider);
+    UUID taskUUID = maybeAddRegions(customer, editProviderReq, provider, regionsToAdd);
+    if (!updatedHostedZone && !updatedKubeConfig && taskUUID == null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "No changes to be made for provider type: " + provider.code);
+    }
+    return taskUUID;
+  }
+
+  private UUID maybeAddRegions(
+      Customer customer, Provider editProviderReq, Provider provider, Set<Region> regionsToAdd) {
+    if (!regionsToAdd.isEmpty()) {
+      // Validate regions to add. We only support providing custom VPCs for now.
+      // So the user must have entered the VPC Info for the regions, as well as
+      // the zone info.
+      CloudBootstrap.Params taskParams = new CloudBootstrap.Params();
+      taskParams.keyPairName =
+          Strings.isNullOrEmpty(editProviderReq.keyPairName)
+              ? AccessKey.getDefaultKeyCode(provider)
+              : editProviderReq.keyPairName;
+      taskParams.overrideKeyValidate = editProviderReq.overrideKeyValidate;
+      taskParams.providerUUID = provider.uuid;
+      taskParams.destVpcId = editProviderReq.destVpcId;
+      taskParams.perRegionMetadata =
+          regionsToAdd
+              .stream()
+              .collect(
+                  Collectors.toMap(
+                      region -> region.name, CloudBootstrap.Params.PerRegionMetadata::fromRegion));
+      // Only adding new regions in the bootstrap task.
+      taskParams.regionAddOnly = true;
+      UUID taskUUID = commissioner.submit(TaskType.CloudBootstrap, taskParams);
+      CustomerTask.create(
+          customer,
+          provider.uuid,
+          taskUUID,
+          CustomerTask.TargetType.Provider,
+          CustomerTask.TaskType.Update,
+          provider.name);
+      return taskUUID;
+    }
+    return null;
+  }
+
+  private boolean maybeUpdateKubeConfig(Provider editProviderReq, Provider provider)
+      throws IOException {
+    if (provider.getCloudCode() == CloudType.kubernetes) {
+      if (editProviderReq.getUnmaskedConfig() != null) {
+        updateKubeConfig(provider, editProviderReq.getUnmaskedConfig(), true);
+        return true;
       } else {
         throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Could not parse config");
       }
-    } else {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Expected aws/k8s, but found providers with code: " + provider.code);
     }
+    return false;
+  }
+
+  private boolean maybeUpdateHostedZone(
+      Provider editProviderReq, Provider provider, Set<Region> regionsToAdd) {
+    if (provider.getCloudCode().isHostedZoneEnabled()) {
+      String hostedZoneId = editProviderReq.hostedZoneId;
+      if (Strings.isNullOrEmpty(hostedZoneId)) {
+        // TODO: Remove this exception
+        if (regionsToAdd.isEmpty()) {
+          throw new PlatformServiceException(BAD_REQUEST, "Required field hosted zone id");
+        }
+        return false;
+      }
+      validateAndUpdateHostedZone(provider, hostedZoneId);
+      return true;
+    }
+    return false;
   }
 
   private void validateAndUpdateHostedZone(Provider provider, String hostedZoneId) {

@@ -200,7 +200,7 @@ yugabyte=# create index shipment_delivery on shipments(delivery_status, address,
 
 ## Troubleshooting
 
-If the following troubleshooting tips don't resolve your issue, please ask for help in our [community Slack](https://www.yugabyte.com/slack) or [file a GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/new?title=Index+backfill+failure).
+If the following troubleshooting tips don't resolve your issue, please ask for help in our [community Slack]({{<slack-invite>}}) or [file a GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/new?title=Index+backfill+failure).
 
 **If online `CREATE INDEX` fails**, it likely failed in the backfill step.
 In that case, the index exists but is not usable.

@@ -49,14 +49,15 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
   virtual Result<std::shared_ptr<QLRowBlock>> RetrieveData(
       const QLReadRequestPB& request) const = 0;
 
-  CHECKED_STATUS GetIterator(const QLReadRequestPB& request,
-                             const Schema& projection,
-                             const Schema& schema,
-                             const TransactionOperationContext& txn_op_context,
-                             CoarseTimePoint deadline,
-                             const ReadHybridTime& read_time,
-                             const QLScanSpec& spec,
-                             std::unique_ptr<docdb::YQLRowwiseIteratorIf>* iter) const override;
+  CHECKED_STATUS GetIterator(
+      const QLReadRequestPB& request,
+      const Schema& projection,
+      std::reference_wrapper<const docdb::DocReadContext> doc_read_context,
+      const TransactionOperationContext& txn_op_context,
+      CoarseTimePoint deadline,
+      const ReadHybridTime& read_time,
+      const QLScanSpec& spec,
+      std::unique_ptr<docdb::YQLRowwiseIteratorIf>* iter) const override;
 
   CHECKED_STATUS BuildYQLScanSpec(
       const QLReadRequestPB& request,
@@ -71,12 +72,13 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
   // PGSQL Support.
   //------------------------------------------------------------------------------------------------
 
-  CHECKED_STATUS CreateIterator(const Schema& projection,
-                                const Schema& schema,
-                                const TransactionOperationContext& txn_op_context,
-                                CoarseTimePoint deadline,
-                                const ReadHybridTime& read_time,
-                                std::unique_ptr<docdb::YQLRowwiseIteratorIf>* iter) const override {
+  CHECKED_STATUS CreateIterator(
+      const Schema& projection,
+      std::reference_wrapper<const docdb::DocReadContext> doc_read_context,
+      const TransactionOperationContext& txn_op_context,
+      CoarseTimePoint deadline,
+      const ReadHybridTime& read_time,
+      std::unique_ptr<docdb::YQLRowwiseIteratorIf>* iter) const override {
     LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
     return Status::OK();
   }
@@ -89,26 +91,28 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
     return Status::OK();
   }
 
-  CHECKED_STATUS GetIterator(const PgsqlReadRequestPB& request,
-                             const Schema& projection,
-                             const Schema& schema,
-                             const TransactionOperationContext& txn_op_context,
-                             CoarseTimePoint deadline,
-                             const ReadHybridTime& read_time,
-                             const docdb::DocKey& start_doc_key,
-                             docdb::YQLRowwiseIteratorIf::UniPtr* iter) const override {
+  CHECKED_STATUS GetIterator(
+      const PgsqlReadRequestPB& request,
+      const Schema& projection,
+      std::reference_wrapper<const docdb::DocReadContext> doc_read_context,
+      const TransactionOperationContext& txn_op_context,
+      CoarseTimePoint deadline,
+      const ReadHybridTime& read_time,
+      const docdb::DocKey& start_doc_key,
+      docdb::YQLRowwiseIteratorIf::UniPtr* iter) const override {
     LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
     return Status::OK();
   }
 
-  CHECKED_STATUS GetIterator(uint64 stmt_id,
-                             const Schema& projection,
-                             const Schema& schema,
-                             const TransactionOperationContext& txn_op_context,
-                             CoarseTimePoint deadline,
-                             const ReadHybridTime& read_time,
-                             const QLValuePB& ybctid,
-                             docdb::YQLRowwiseIteratorIf::UniPtr* iter) const override {
+  CHECKED_STATUS GetIterator(
+      uint64 stmt_id,
+      const Schema& projection,
+      std::reference_wrapper<const docdb::DocReadContext> doc_read_context,
+      const TransactionOperationContext& txn_op_context,
+      CoarseTimePoint deadline,
+      const ReadHybridTime& read_time,
+      const QLValuePB& ybctid,
+      docdb::YQLRowwiseIteratorIf::UniPtr* iter) const override {
     LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
     return Status::OK();
   }

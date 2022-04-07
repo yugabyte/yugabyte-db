@@ -22,9 +22,11 @@
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb.h"
+#include "yb/docdb/packed_row.h"
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/rocksdb_writer.h"
 
@@ -52,11 +54,11 @@ namespace {
 CHECKED_STATUS ApplyWriteRequest(
     const Schema& schema, const QLWriteRequestPB& write_request,
     docdb::DocWriteBatch* write_batch) {
-  std::shared_ptr<const Schema> schema_ptr(&schema, [](const Schema* schema){});
+  auto doc_read_context = std::make_shared<docdb::DocReadContext>(schema, kSysCatalogSchemaVersion);
   docdb::DocOperationApplyData apply_data{.doc_write_batch = write_batch};
   IndexMap index_map;
   docdb::QLWriteOperation operation(
-      write_request, schema_ptr, index_map, nullptr, TransactionOperationContext());
+      write_request, doc_read_context, index_map, nullptr, TransactionOperationContext());
   QLResponsePB response;
   RETURN_NOT_OK(operation.Init(&response));
   return operation.Apply(apply_data);
@@ -351,12 +353,12 @@ std::string RestoreSysCatalogState::Objects::SizesToString() const {
 
 template <class PB>
 Status RestoreSysCatalogState::IterateSysCatalog(
-    const Schema& schema, const docdb::DocDB& doc_db, HybridTime read_time,
+    const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db, HybridTime read_time,
     std::unordered_map<std::string, PB>* map) {
   auto iter = std::make_unique<docdb::DocRowwiseIterator>(
-      schema, schema, TransactionOperationContext(), doc_db, CoarseTimePoint::max(),
-      ReadHybridTime::SingleTime(read_time), nullptr);
-  return EnumerateSysCatalog(iter.get(), schema, GetEntryType<PB>::value, [map](
+      doc_read_context.schema, doc_read_context, TransactionOperationContext(), doc_db,
+      CoarseTimePoint::max(), ReadHybridTime::SingleTime(read_time), nullptr);
+  return EnumerateSysCatalog(iter.get(), doc_read_context.schema, GetEntryType<PB>::value, [map](
           const Slice& id, const Slice& data) -> Status {
     auto pb = VERIFY_RESULT(pb_util::ParseFromSlice<PB>(data));
     if (!ShouldLoadObject(pb)) {
@@ -371,21 +373,22 @@ Status RestoreSysCatalogState::IterateSysCatalog(
 }
 
 Status RestoreSysCatalogState::LoadObjects(
-    const Schema& schema, const docdb::DocDB& doc_db, HybridTime read_time, Objects* objects) {
-  RETURN_NOT_OK(IterateSysCatalog(schema, doc_db, read_time, &objects->namespaces));
-  RETURN_NOT_OK(IterateSysCatalog(schema, doc_db, read_time, &objects->tables));
-  RETURN_NOT_OK(IterateSysCatalog(schema, doc_db, read_time, &objects->tablets));
+    const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db, HybridTime read_time,
+    Objects* objects) {
+  RETURN_NOT_OK(IterateSysCatalog(doc_read_context, doc_db, read_time, &objects->namespaces));
+  RETURN_NOT_OK(IterateSysCatalog(doc_read_context, doc_db, read_time, &objects->tables));
+  RETURN_NOT_OK(IterateSysCatalog(doc_read_context, doc_db, read_time, &objects->tablets));
   return Status::OK();
 }
 
 Status RestoreSysCatalogState::LoadRestoringObjects(
-    const Schema& schema, const docdb::DocDB& doc_db) {
-  return LoadObjects(schema, doc_db, restoration_.restore_at, &restoring_objects_);
+    const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db) {
+  return LoadObjects(doc_read_context, doc_db, restoration_.restore_at, &restoring_objects_);
 }
 
 Status RestoreSysCatalogState::LoadExistingObjects(
-    const Schema& schema, const docdb::DocDB& doc_db) {
-  return LoadObjects(schema, doc_db, HybridTime::kMax, &existing_objects_);
+    const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db) {
+  return LoadObjects(doc_read_context, doc_db, HybridTime::kMax, &existing_objects_);
 }
 
 Status RestoreSysCatalogState::CheckExistingEntry(
@@ -634,12 +637,14 @@ void AddKeyValue(const Slice& key, const Slice& value, docdb::DocWriteBatch* wri
 struct PgCatalogTableData {
   std::array<uint8_t, kUuidSize + 1> prefix;
   const TableName* name;
+  uint32_t pg_table_oid;
 
   CHECKED_STATUS SetTableId(const TableId& table_id) {
     Uuid cotable_id;
     RETURN_NOT_OK(cotable_id.FromHexString(table_id));
     prefix[0] = docdb::KeyEntryTypeAsChar::kTableId;
     cotable_id.EncodeToComparable(&prefix[1]);
+    pg_table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id));
     return Status::OK();
   }
 };
@@ -737,7 +742,18 @@ Status RestoreSysCatalogState::ProcessPgCatalogRestores(
       RETURN_NOT_OK(existing_state.Next());
     }
 
-    if (num_updates + num_inserts + num_deletes != 0 || VLOG_IS_ON(3)) {
+    size_t total_changes = num_updates + num_inserts + num_deletes;
+    if (table.pg_table_oid == kPgSequencesTableOid && total_changes != 0) {
+      LOG(INFO) << "PITR: Pg sequences were updated since the Restore time"
+                << ", updates: " << num_updates
+                << ", inserts: " << num_inserts
+                << ", deletes: " << num_deletes;
+      return STATUS(
+          NotSupported,
+          "Unable to restore as Pg sequences were updated since the Restore time.");
+    }
+
+    if (total_changes != 0 || VLOG_IS_ON(3)) {
       LOG(INFO) << "PITR: Pg system table: " << AsString(table.name) << ", updates: " << num_updates
                 << ", inserts: " << num_inserts << ", deletes: " << num_deletes;
     }

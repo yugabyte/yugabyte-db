@@ -12,7 +12,6 @@ package com.yugabyte.yw.controllers.handlers;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
-import static play.mvc.Http.Status.NOT_FOUND;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.net.HostAndPort;
@@ -35,12 +34,10 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.queries.QueryHelper;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.YBClient;
@@ -133,13 +130,9 @@ public class UniverseInfoHandler {
   }
 
   public void triggerHealthCheck(Customer customer, Universe universe) {
-    try {
-      // We do not OBSERVE the result of the checkSingleUniverse, we are just interested that
-      // the health check result is queued.
-      healthChecker.checkSingleUniverse(customer, universe);
-    } catch (RuntimeException e) {
-      throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
-    }
+    // We do not OBSERVE the result of the checkSingleUniverse, we are just interested that
+    // the health check result is queued.
+    healthChecker.checkSingleUniverse(customer, universe);
   }
 
   public HostAndPort getMasterLeaderIP(Universe universe) {

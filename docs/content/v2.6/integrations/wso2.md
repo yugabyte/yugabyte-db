@@ -18,11 +18,11 @@ This document describes how to use [WSO2 Identity Server](https://wso2.com/ident
 Before you can start using WSO2 Identity Server, ensure that you have WSO2 Identity Server installed in one of the following locations, depending on your operating system:
 
 - Mac OS: `/Library/WSO2/IdentityServer/`*`<IS_VERSION>`*`/`*`<IS_HOME>`*
-- Windows: `C:\Program Files\WSO2\IdentityServer`\\*`<IS_HOME>`*  
+- Windows: `C:\Program Files\WSO2\IdentityServer`\\*`<IS_HOME>`*
 - Ubuntu: `/usr/lib/wso2/wso2is/`*`<IS_HOME>`*
 - CentOS: `/usr/lib64/IdentityServer/`*`<IS_HOME>`*
 
-In addition, perform the following: 
+In addition, perform the following:
 
 - If it's not already installed, download and install [curl](https://curl.haxx.se/download.html).
 
@@ -50,7 +50,7 @@ You update the database configuration as follows:
   username = "yugabyte"
   password = "yugabyte"
   port = "5433"
-  
+
   [database.shared_db]
   type = "postgre"
   hostname = "localhost"
@@ -86,7 +86,7 @@ WSO2 default carbon kernel code violates REPEATABLE READ semantics. Since Yugaby
 
 ## Initialize WSO2 Identity Server and YugabyteDB
 
-You can initialize WSO2 Identity Server and YugabyteDB as follows: 
+You can initialize WSO2 Identity Server and YugabyteDB as follows:
 
 - Set up the initial database schema and load data as follows:
 
@@ -98,7 +98,7 @@ You can initialize WSO2 Identity Server and YugabyteDB as follows:
     wget https://gist.githubusercontent.com/m-iancu/8e892e7257efcd0c37c8e459e2a4066d/raw/489ee3eeb06a05ab2f2896bdd6d2480eb864a8ff/wso2_is_5.11.0.sql
     ```
 
-  - Download and start YugabyteDB by following instructions provided in [Downloading YugabyteDB](https://download.yugabyte.com/) and [YugabyteDB Quick Start Guide](/latest/quick-start/).
+  - Download and start YugabyteDB by following instructions provided in [Downloading YugabyteDB](https://download.yugabyte.com/) and [YugabyteDB Quick Start Guide](/preview/quick-start/).
 
   - Load the SQL dump into YugabyteDB by executing the following command:
 
@@ -114,7 +114,7 @@ You can initialize WSO2 Identity Server and YugabyteDB as follows:
 
 ## Sample Applications
 
-You can run WSO2 Identity Server sample applications as follows: 
+You can run WSO2 Identity Server sample applications as follows:
 
 - Download sample applications from [GitHub](https://github.com/wso2/samples-is/releases/download/v4.3.0/is-samples-distribution.zip) by executing the following command:
 
@@ -143,18 +143,18 @@ To test one of the samples, start the first version of the application called Si
 This creates the following two users that you can use to test login:
 
 ```output
-Junior Manager 
-Username: alex 
-Password: alex123  
+Junior Manager
+Username: alex
+Password: alex123
 
-Senior Manager 
-Username: cameron 
+Senior Manager
+Username: cameron
 Password: cameron123
 ```
 
 ### Run the sample applications
 
-You can test the pickup dispatch functionality as follows: 
+You can test the pickup dispatch functionality as follows:
 
 - Navigate to [http://localhost.com:8080/saml2-web-app-pickup-dispatch.com/](http://localhost.com:8080/saml2-web-app-pickup-dispatch.com/) and click **Login**.
 

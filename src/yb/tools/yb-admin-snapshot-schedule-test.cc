@@ -354,6 +354,21 @@ TEST_F(YbAdminSnapshotScheduleTest, Basic) {
   ASSERT_OK(RestoreSnapshotSchedule(schedule_id, last_snapshot_time));
 }
 
+TEST_F(YbAdminSnapshotScheduleTest, TestTruncateDisallowedWithPitr) {
+  auto schedule_id = ASSERT_RESULT(PrepareCql());
+  auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
+  ASSERT_OK(
+      conn.ExecuteQuery("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT) "
+                        "WITH transactions = { 'enabled' : true }"));
+  auto s = conn.ExecuteQuery("TRUNCATE TABLE test_table");
+  ASSERT_NOK(s);
+  ASSERT_STR_CONTAINS(s.ToString(), "Cannot truncate table test_table which has schedule");
+
+  LOG(INFO) << "Enable flag to allow truncate and validate that truncate succeeds";
+  ASSERT_OK(cluster_->SetFlagOnMasters("enable_truncate_on_pitr_table", "true"));
+  ASSERT_OK(conn.ExecuteQuery("TRUNCATE TABLE test_table"));
+}
+
 TEST_F(YbAdminSnapshotScheduleTest, Delete) {
   auto schedule_id = ASSERT_RESULT(PrepareQl(kRetention, kRetention));
 
@@ -567,6 +582,21 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, Pgsql) {
   auto res = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM test_table"));
 
   ASSERT_EQ(res, "before");
+}
+
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropDatabaseAndSchedule) {
+  bool colocated = GetParam();
+  auto schedule_id = ASSERT_RESULT(PreparePg(colocated));
+
+  auto conn = ASSERT_RESULT(PgConnect());
+
+  auto res = conn.Execute(Format("DROP DATABASE $0", client::kTableName.namespace_name()));
+  ASSERT_NOK(res);
+  ASSERT_STR_CONTAINS(res.message().ToBuffer(), "Cannot delete database which has schedule");
+
+  // Once the schedule is deleted, we should be able to drop the database.
+  ASSERT_OK(DeleteSnapshotSchedule(schedule_id));
+  ASSERT_OK(conn.Execute(Format("DROP DATABASE $0", client::kTableName.namespace_name())));
 }
 
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlCreateTable) {
@@ -1280,6 +1310,58 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSequenceInse
   res = ASSERT_RESULT(conn.FetchValue<int32_t>("SELECT value FROM test_table where key=4"));
   LOG(INFO) << "Select result " << res;
   ASSERT_EQ(res, 21);
+}
+
+// If sequences were created since the restore start time,
+// then restore isn't supported. The test validates that.
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSequenceCreateDropWithRestore),
+          YbAdminSnapshotScheduleTestWithYsql) {
+  auto schedule_id = ASSERT_RESULT(PreparePg());
+
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+  LOG(INFO) << "Create table 'test_table'";
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value INT)"));
+
+  Timestamp time_before_create(ASSERT_RESULT(WallClock()->Now()).time_point);
+  LOG(INFO) << "Time to restore back before sequence creation : " << time_before_create;
+
+  LOG(INFO) << "Create Sequence 'value_data'";
+  ASSERT_OK(conn.Execute("CREATE SEQUENCE value_data INCREMENT 5 OWNED BY test_table.value"));
+
+  auto restore_status = RestoreSnapshotSchedule(schedule_id, time_before_create);
+  ASSERT_NOK(restore_status);
+  ASSERT_STR_CONTAINS(restore_status.ToString(), "Unable to restore as Pg sequences were updated");
+  LOG(INFO) << "Restoring to a time before sequence creation failed : " << restore_status;
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, nextval('value_data'))"));
+
+  Timestamp time_before_drop(ASSERT_RESULT(WallClock()->Now()).time_point);
+  LOG(INFO) << "Time to restore back before sequence drop : " << time_before_drop;
+
+  ASSERT_OK(conn.Execute("DROP SEQUENCE value_data"));
+
+  restore_status = RestoreSnapshotSchedule(schedule_id, time_before_drop);
+  ASSERT_NOK(restore_status);
+  ASSERT_STR_CONTAINS(restore_status.ToString(), "Unable to restore as Pg sequences were updated");
+  LOG(INFO) << "Restoring to a time before sequence drop failed :" << restore_status;
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, 2)"));
+}
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlTestTruncateDisallowedWithPitr),
+          YbAdminSnapshotScheduleTestWithYsql) {
+  auto schedule_id = ASSERT_RESULT(PreparePg());
+
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+  LOG(INFO) << "Create table 'test_table'";
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 1)"));
+
+  auto s = conn.Execute("TRUNCATE TABLE test_table");
+  ASSERT_NOK(s);
+  ASSERT_STR_CONTAINS(s.ToString(), "Cannot truncate table test_table which has schedule");
+
+  LOG(INFO) << "Enable flag to allow truncate and validate that truncate succeeds";
+  ASSERT_OK(cluster_->SetFlagOnMasters("enable_truncate_on_pitr_table", "true"));
+  ASSERT_OK(conn.Execute("TRUNCATE TABLE test_table"));
 }
 
 TEST_F(YbAdminSnapshotScheduleTest, UndeleteIndex) {

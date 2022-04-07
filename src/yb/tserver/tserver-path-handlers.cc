@@ -77,6 +77,7 @@ namespace {
 struct TabletPeerInfo {
   string namespace_name;
   string name;
+  bool is_hidden;
   uint64_t num_sst_files;
   yb::tablet::TabletOnDiskSizeInfo disk_size_info;
   bool has_on_disk_size;
@@ -93,6 +94,7 @@ struct TableIdentifier {
 struct TableInfo {
   string namespace_name;
   string name;
+  bool is_hidden;
   uint64_t num_sst_files;
   yb::tablet::TabletOnDiskSizeInfo disk_size_info;
   bool has_complete_on_disk_size;
@@ -101,6 +103,7 @@ struct TableInfo {
   explicit TableInfo(TabletPeerInfo info)
       : namespace_name(info.namespace_name),
         name(info.name),
+        is_hidden(info.is_hidden),
         num_sst_files(info.num_sst_files),
         disk_size_info(info.disk_size_info),
         has_complete_on_disk_size(info.has_on_disk_size) {
@@ -555,14 +558,16 @@ std::map<TableIdentifier, TableInfo> GetTablesInfo(
 
     auto tablet = peer->shared_tablet();
     uint64_t num_sst_files = (tablet) ? tablet->GetCurrentVersionNumSSTFiles() : 0;
+    bool is_hidden = status.is_hidden();
 
     auto info = TabletPeerInfo {
-      .namespace_name = std::move(status.namespace_name()),
-      .name = std::move(status.table_name()),
-      .num_sst_files = num_sst_files,
-      .disk_size_info = yb::tablet::TabletOnDiskSizeInfo::FromPB(status),
-      .has_on_disk_size = status.has_estimated_on_disk_size(),
-      .raft_role = raft_role
+        .namespace_name = std::move(status.namespace_name()),
+        .name = std::move(status.table_name()),
+        .is_hidden = is_hidden,
+        .num_sst_files = num_sst_files,
+        .disk_size_info = yb::tablet::TabletOnDiskSizeInfo::FromPB(status),
+        .has_on_disk_size = status.has_estimated_on_disk_size(),
+        .raft_role = raft_role
     };
 
     auto table_iter = table_map.find(identifer);
@@ -589,7 +594,8 @@ void TabletServerPathHandlers::HandleTablesPage(const Webserver::WebRequest& req
           << "<table class='table table-striped'>\n"
           << "  <tr>\n"
           << "    <th>Namespace</th><th>Table name</th><th>Table UUID</th>\n"
-          << "    <th>State</th><th>Num SST Files</th><th>On-disk size</th><th>Raft roles</th>\n"
+          << "    <th>State</th><th>Hidden</th><th>Num SST Files</th>\n"
+          << "    <th>On-disk size</th><th>Raft roles</th>\n"
           << "  </tr>\n";
 
   for (const auto& table_iter : table_map) {
@@ -611,11 +617,13 @@ void TabletServerPathHandlers::HandleTablesPage(const Webserver::WebRequest& req
     role_counts_html << "</ul>";
 
     *output << Substitute(
-        "<tr><td>$0</td><td>$1</td><td>$2</td><td>$3</td><td>$4</td><td>$5</td><td>$6</td></tr>\n",
+        "<tr><td>$0</td><td>$1</td><td>$2</td><td>$3</td><td>$4</td>"
+        "<td>$5</td><td>$6</td><td>$7</td></tr>\n",
         EscapeForHtmlToString(info.namespace_name),
         EscapeForHtmlToString(info.name),
         EscapeForHtmlToString(identifier.uuid),
         EscapeForHtmlToString(identifier.state),
+        info.is_hidden,
         info.num_sst_files,
         tables_disk_size_html,
         role_counts_html.str());
@@ -638,9 +646,10 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
   *output << "<h1>Tablets</h1>\n";
   *output << "<table class='table table-striped'>\n";
   *output << "  <tr><th>Namespace</th><th>Table name</th><th>Table UUID</th><th>Tablet ID</th>"
-      "<th>Partition</th>"
-      "<th>State</th><th>Num SST Files</th><th>On-disk size</th><th>RaftConfig</th>"
-      "<th>Last status</th></tr>\n";
+             "<th>Partition</th>"
+             "<th>State</th><th>Hidden</th><th>Num SST Files</th><th>On-disk "
+             "size</th><th>RaftConfig</th>"
+             "<th>Last status</th></tr>\n";
   for (const std::shared_ptr<TabletPeer>& peer : peers) {
     TabletStatusPB status;
     peer->GetTabletStatusPB(&status);
@@ -670,19 +679,20 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
     (*output) << Substitute(
         // Namespace, Table name, UUID of table, tablet id, partition
         "<tr><td>$0</td><td>$1</td><td>$2</td><td>$3</td><td>$4</td>"
-        // State, num SST files, on-disk size, consensus configuration, last status
-        "<td>$5</td><td>$6</td><td>$7</td><td>$8</td><td>$9</td></tr>\n",
-        EscapeForHtmlToString(namespace_name),  // $0
-        EscapeForHtmlToString(table_name),  // $1
-        EscapeForHtmlToString(table_id),  // $2
-        tablet_id_or_link,  // $3
-        EscapeForHtmlToString(partition),  // $4
+        // State, Hidden, num SST files, on-disk size, consensus configuration, last status
+        "<td>$5</td><td>$6</td><td>$7</td><td>$8</td><td>$9</td><td>$10</td></tr>\n",
+        EscapeForHtmlToString(namespace_name),              // $0
+        EscapeForHtmlToString(table_name),                  // $1
+        EscapeForHtmlToString(table_id),                    // $2
+        tablet_id_or_link,                                  // $3
+        EscapeForHtmlToString(partition),                   // $4
         EscapeForHtmlToString(peer->HumanReadableState()),  // $5
-        num_sst_files,  // $6
-        tablets_disk_size_html,  // $7
+        status.is_hidden(),                                 // $6
+        num_sst_files,                                      // $7
+        tablets_disk_size_html,                             // $8
         consensus ? ConsensusStatePBToHtml(consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED))
-                  : "",  // $8
-        EscapeForHtmlToString(status.last_status()));  // $9
+                  : "",                                // $9
+        EscapeForHtmlToString(status.last_status()));  // $10
   }
   *output << "</table>\n";
 }

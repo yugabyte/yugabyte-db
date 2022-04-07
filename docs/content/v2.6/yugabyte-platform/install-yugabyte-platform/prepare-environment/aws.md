@@ -15,42 +15,42 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/aws" class="nav-link active">
+    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/aws" class="nav-link active">
       <i class="fab fa-aws" aria-hidden="true"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/gcp" class="nav-link">
+    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/gcp" class="nav-link">
        <i class="fab fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/azure" class="nav-link">
+    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/azure" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
       &nbsp;&nbsp; Azure
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/kubernetes" class="nav-link">
+    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/kubernetes" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
 <li>
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/openshift" class="nav-link">
+    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/openshift" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       OpenShift
     </a>
  </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/on-premises" class="nav-link">
+    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/on-premises" class="nav-link">
       <i class="fas fa-building" aria-hidden="true"></i>
       On-premises
     </a>
@@ -142,11 +142,11 @@ Create an instance to run the Yugabyte Platform server. To do this, navigate to 
 - Change the boot disk image to Ubuntu Server 16.04, as shown in the following illustration: <br><br>
 ![Image](/images/ee/aws-setup/yugaware-create-instance-os.png)
 
-- Select c5.xlarge as the instance type (4 vCPUs are recommended for production). 
+- Select c5.xlarge as the instance type (4 vCPUs are recommended for production).
 
-- Define the VPC, subnet, and other settings as required. 
+- Define the VPC, subnet, and other settings as required.
 
-  Ensure that **Auto-assign Public IP** is enabled (if it is disabled, the instance would not be accessible from outside AWS). 
+  Ensure that **Auto-assign Public IP** is enabled (if it is disabled, the instance would not be accessible from outside AWS).
 
   If you created an IAM role, as described in [Create an IAM role](#create-an-iam-role-(optional)), or already had the IAM role that you would like to use, include this information under **IAM role**. See [Deploy the YugabyteDB universe using an IAM role](#deploy-the-yugabytedb-universe-using-an-iam-role) for more information.
 
@@ -156,11 +156,11 @@ Create an instance to run the Yugabyte Platform server. To do this, navigate to 
 
 - Select the `yugaware-sg` security group created in the previous step (or the custom name you chose when setting up the security groups), and then launch the instance.
 
-- Pick an existing key pair or create a new one in order to access the instance. 
+- Pick an existing key pair or create a new one in order to access the instance.
 
   Ensure that you have the SSH access key because it is required for enabling `ssh` access to the computer. In this example, assume that the key pair is `~/.ssh/yugaware.pem`.
 
-- Click **Launch** to launch the Yugabyte Platform server. 
+- Click **Launch** to launch the Yugabyte Platform server.
 
   You should see an instance being created, as shown in the following illustration:<br><br>
 
@@ -192,9 +192,9 @@ Then execute the following command to change metadata options (replace `NNNNNNN`
 aws ec2 modify-instance-metadata-options --instance-id i-NNNNNNN --http-put-response-hop-limit 3 --http-endpoint enabled --region us-west-2
 ```
 
-For more information, see [Configure the instance metadata service](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-service.html). 
+For more information, see [Configure the instance metadata service](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-service.html).
 
-When you create an AWS cloud provider, as described in [Configure the AWS cloud provider](../../../configure-yugabyte-platform/set-up-cloud-provider/aws), you need to  complete the following fields in the **Cloud Provider Configuration > AWS** screen: 
+When you create an AWS cloud provider, as described in [Configure the AWS cloud provider](../../../configure-yugabyte-platform/set-up-cloud-provider/aws), you need to  complete the following fields in the **Cloud Provider Configuration > AWS** screen:
 
 - Set the **Credential Type** field to Use IAM Role on instance.
 - Set the **VPC Setup** field to Create a new VPC.

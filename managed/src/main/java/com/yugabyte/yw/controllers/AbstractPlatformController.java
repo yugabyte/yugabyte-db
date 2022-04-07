@@ -36,8 +36,8 @@ import play.mvc.With;
 @SwaggerDefinition(
     info =
         @Info(
-            title = "Yugabyte Platform API",
-            description = "Yugabyte Platform API",
+            title = "YugabyteDB Anywhere API",
+            description = "YugabyteDB Anywhere API",
             version = "v1",
             contact = @Contact(name = "Yugabyte", url = "http://docs.yugabyte.com"),
             license =
@@ -49,7 +49,7 @@ import play.mvc.With;
     schemes = {SwaggerDefinition.Scheme.HTTP, SwaggerDefinition.Scheme.HTTPS},
     externalDocs =
         @ExternalDocs(
-            value = "About Yugabyte Platform",
+            value = "About YugabyteDB Anywhere",
             url = "https://docs.yugabyte.com/latest/yugabyte-platform/"),
     securityDefinition =
         @SecurityDefinition(

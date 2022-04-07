@@ -15,42 +15,42 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws" class="nav-link">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws" class="nav-link">
       <i class="fab fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp" class="nav-link">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp" class="nav-link">
       <i class="fab fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure" class="nav-link">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
       &nbsp;&nbsp; Azure
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes" class="nav-link">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/vmware-tanzu" class="nav-link active">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/vmware-tanzu" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       VMware Tanzu
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises" class="nav-link">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises" class="nav-link">
       <i class="fas fa-building"></i>
       On-premises
     </a>
@@ -58,11 +58,11 @@ showAsideToc: true
 
 </ul>
 
-This tutorial walks through the steps to a create service instance of YugabyteDB in VMware Tanzu, previously the Pivotal Cloud Foundry ().  
+This tutorial walks through the steps to a create service instance of YugabyteDB in VMware Tanzu, previously the Pivotal Cloud Foundry ().
 
 ## Prerequisites
 
-Before creating the Service Instance, you need to have YugabyteDB tile installed in your PCF marketplace. Follow the instructions[here](https://docs.pivotal.io/partners/yugabyte-db/). Also in your Yugabyte Platform instance that you brought up in your PCF environment you have configured cloud provider. 
+Before creating the Service Instance, you need to have YugabyteDB tile installed in your PCF marketplace. Follow the instructions[here](https://docs.pivotal.io/partners/yugabyte-db/). Also in your Yugabyte Platform instance that you brought up in your PCF environment you have configured cloud provider.
 
 After installing the tile, you have two ways to create a YugabyteDB instance, one is through the App Manager UI, and other is through Cloud Foundry CLI (cf).
 
