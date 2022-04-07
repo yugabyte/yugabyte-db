@@ -686,7 +686,7 @@ The valid compression types are `Snappy`, `Zlib`, `LZ4`, and `NoCompression`.
 
 Default: `Snappy`
 
-{{< note title="Note" >}}
+{{< note title="Notes" >}}
 
 - If an invalid option is selected, the cluster will not come up.
 - If this flag is changed, it will take effect after the cluster nodes are restarted.
