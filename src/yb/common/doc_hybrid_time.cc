@@ -17,6 +17,7 @@
 
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/cast.h"
+#include "yb/util/checked_narrow_cast.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/fast_varint.h"
 #include "yb/util/result.h"
@@ -95,8 +96,8 @@ Result<DocHybridTime> DocHybridTime::DecodeFrom(Slice *slice) {
     int64_t decoded_micros =
         kYugaByteMicrosecondEpoch + VERIFY_RESULT(FastDecodeDescendingSignedVarIntUnsafe(slice));
 
-    auto decoded_logical = narrow_cast<LogicalTimeComponent>(
-        VERIFY_RESULT(FastDecodeDescendingSignedVarIntUnsafe(slice)));
+    auto decoded_logical = VERIFY_RESULT(checked_narrow_cast<LogicalTimeComponent>(
+        VERIFY_RESULT(FastDecodeDescendingSignedVarIntUnsafe(slice))));
 
     result.hybrid_time_ = HybridTime::FromMicrosecondsAndLogicalValue(
         decoded_micros, decoded_logical);
@@ -113,8 +114,8 @@ Result<DocHybridTime> DocHybridTime::DecodeFrom(Slice *slice) {
         Slice(ptr_before_decoding_write_id,
               slice->data() + slice->size() - ptr_before_decoding_write_id).ToDebugHexString());
   }
-  result.write_id_ = narrow_cast<IntraTxnWriteId>(
-      (decoded_shifted_write_id >> kNumBitsForHybridTimeSize) - 1);
+  result.write_id_ = VERIFY_RESULT(checked_narrow_cast<IntraTxnWriteId>(
+      (decoded_shifted_write_id >> kNumBitsForHybridTimeSize) - 1));
 
   const size_t bytes_decoded = previous_size - slice->size();
   const size_t size_at_the_end = (*(slice->data() - 1)) & kHybridTimeSizeMask;
