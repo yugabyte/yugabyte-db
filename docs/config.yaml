@@ -35,7 +35,7 @@ params:
   algolia:
     index: yugabyte
     appID: UMBCUJCBE8
-    apiKey: 1e8f71f988a4165eca695c63aeed7bee
+    apiKey: a879f0ab89b677264d0c6e087b714fd8
   bigpicture:
     projectId: 1064
   ui:
