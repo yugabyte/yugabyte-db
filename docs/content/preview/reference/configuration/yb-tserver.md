@@ -678,6 +678,23 @@ Default: `256MB`
 
 ### Network compression
 
+Use the following flag to select the compression type.
+
+##### --compression_type
+
+The valid compression types are `Snappy`, `Zlib`, `LZ4`, and `NoCompression`.
+
+Default: `Snappy`
+
+{{< note title="Notes" >}}
+
+- If you select an invalid option, the cluster will not come up.
+- If you change this flag, the change takes effect after you restart the cluster nodes.
+
+{{< /note >}}
+
+Changing this flag on an existing database is supported; a tablet can validly have SSTs with different compression types. Eventually, compaction will remove the old compression type files.
+
 Use the following two gflags to configure RPC compression:
 
 ##### --enable_stream_compression
