@@ -2,7 +2,7 @@
 title: Edit configuration flags
 headerTitle: Edit configuration flags
 linkTitle: Edit configuration flags
-description: Use Yugabyte Platform to edit configuration flags.
+description: Use YugabyteDB Anywhere to edit configuration flags.
 aliases:
   - /latest/manage/enterprise-edition/edit-flags/
   - /latest/manage/enterprise-edition/edit-config-flags/
@@ -24,7 +24,7 @@ For more information about the available configuration flags, see the following:
 
 ## Modify configuration flags
 
-You can modify configuration flags by opening the universe in the Yugabyte Platform console and clicking **Actions > Edit Flags** to open the **G-Flags** dialog shown in the following illustration:<br><br>
+You can modify configuration flags by opening the universe in the YugabyteDB Anywhere UI and clicking **Actions > Edit Flags** to open the **G-Flags** dialog shown in the following illustration:<br><br>
 ![Edit Config Confirmation](/images/ee/edit-config-2.png)<br><br>
 
 Use the **Flags** dialog to do all or some of the following, as per your requirements:
