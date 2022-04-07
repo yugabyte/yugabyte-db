@@ -51,7 +51,7 @@ Begin the tutorial by selecting the steps in the left navigation panel, then cli
 \
     Data is added to the tables using multi-value inserts to reduce client-server round trips.
 
-After you create the tables and insert the data, click **Let's get started with the tutorials** to begin the tutorial scenarios. 
+After you create the tables and insert the data, click **Let's get started with the tutorials** to begin the tutorial scenarios.
 
 ### Quick start scenarios
 
