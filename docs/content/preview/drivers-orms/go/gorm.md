@@ -7,7 +7,7 @@ image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
     name: Go ORMs
-    identifier: gorm
+    identifier: gorm-orm
     parent: go-drivers
     weight: 400
 isTocNested: true
@@ -17,14 +17,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/drivers-orms/go/gorm/" class="nav-link active">
+    <a href="/preview/drivers-orms/go/gorm/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       GORM ORM
     </a>
   </li>
 
   <li >
-    <a href="/latest/drivers-orms/go/pg/" class="nav-link">
+    <a href="/preview/drivers-orms/go/pg/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       PG ORM
     </a>
@@ -36,9 +36,7 @@ showAsideToc: true
 
 ## CRUD operations with GORM
 
-Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using
-the steps on the [Build an application](../../../quick-start/build-apps/go/ysql-gorm) page under the
-Quick start section.
+Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps on the [Build an application](../../../quick-start/build-apps/go/ysql-gorm) page under the Quick start section.
 
 The following sections break down the quick start example to demonstrate how to perform common tasks required for Go application development using GORM.
 

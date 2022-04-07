@@ -14,9 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-For Go Applications, most drivers provide database connectivity through the standard `database/sql`
-API. YugabyteDB supports [PGX Driver](https://github.com/jackc/pgx) and the
-[PQ Driver](https://github.com/lib/pq).
+For Go Applications, most drivers provide database connectivity through the standard `database/sql` API. YugabyteDB supports [PGX Driver](https://github.com/jackc/pgx) and the [PQ Driver](https://github.com/lib/pq).
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 

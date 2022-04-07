@@ -7,7 +7,7 @@ image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
     name: Go ORMs
-    identifier: go-pg
+    identifier: pg-orm
     parent: go-drivers
     weight: 400
 isTocNested: true
