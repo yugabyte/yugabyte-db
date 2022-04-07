@@ -45,6 +45,7 @@ int main() {
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
 
+#include "yb/util/random_util.h"
 #include "yb/util/string_util.h"
 #include "yb/util/test_util.h"
 
@@ -484,7 +485,7 @@ TEST_F(PrefixTest, DynamicPrefixIterator) {
     }
 
     if (FLAGS_random_prefix) {
-      std::random_shuffle(prefixes.begin(), prefixes.end());
+      std::shuffle(prefixes.begin(), prefixes.end(), yb::ThreadLocalRandom());
     }
 
     HistogramImpl hist_put_time;

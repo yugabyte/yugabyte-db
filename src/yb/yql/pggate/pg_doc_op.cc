@@ -27,6 +27,7 @@
 
 #include "yb/rpc/outbound_call.h"
 
+#include "yb/util/random_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
@@ -799,7 +800,7 @@ Result<bool> PgDocReadOp::PopulateSamplingOps() {
   VLOG(1) << "Number of partitions to sample: " << active_op_count_;
   // If we have big enough sample after processing some partitions we skip the rest.
   // By shuffling partitions we randomly select the partition(s) to sample.
-  std::random_shuffle(pgsql_ops_.begin(), pgsql_ops_.end());
+  std::shuffle(pgsql_ops_.begin(), pgsql_ops_.end(), ThreadLocalRandom());
 
   return true;
 }
