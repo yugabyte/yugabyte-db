@@ -74,3 +74,18 @@ SELECT r FROM reverse_scan_test WHERE h = 1 AND r > 1 AND r < 14 ORDER BY r DESC
 SELECT r FROM reverse_scan_test WHERE h = 1 AND r >= 3 and r <= 13 ORDER BY r DESC;
 
 SELECT r FROM reverse_scan_test WHERE h = 1 AND r >= 3 and r <= 13 ORDER BY r DESC LIMIT 8;
+
+PREPARE myplan AS SELECT * FROM reverse_scan_test LIMIT $1;
+
+-- Execute myplan > 5 times. After 5 times the plan should default to the
+-- generic plan
+EXECUTE myplan(0);
+EXPLAIN EXECUTE myplan(null);
+EXECUTE myplan(1);
+EXECUTE myplan(2);
+EXECUTE myplan(3);
+-- generic plan with limit node should be used
+EXPLAIN EXECUTE myplan(null);
+EXECUTE myplan(null);
+EXECUTE myplan(0);
+EXECUTE myplan(1);
