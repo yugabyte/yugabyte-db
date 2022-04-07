@@ -32,19 +32,13 @@ showAsideToc: true
 
 </ul>
 
-The [PQ driver](https://github.com/lib/pq/) is a popular driver for PostgreSQL which can used for connecting to YugabyteDB YSQL as well.
-
-This driver allows Go programmers to connect to YugabyteDB database to execute DMLs and DDLs using
-the standard `database/sql` package.
+The [PQ driver](https://github.com/lib/pq/) is a popular driver for PostgreSQL that can used for connecting to YugabyteDB YSQL. The driver allows Go programmers to connect to YugabyteDB to execute DMLs and DDLs using the standard `database/sql` package.
 
 ## Fundamentals of PQ Driver
 
-Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using
-the steps in the [Build an application](../../../../quick-start/build-apps/go/ysql-pq) page under the
-Quick start section.
+Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps in the [Build an application](../../../../quick-start/build-apps/go/ysql-pq) page under the Quick start section.
 
-Let us break down the quick start example and understand how to perform the common tasks required
-for Go App development using the PQ driver.
+The following sections break down the quick start example to demonstrate how to perform common tasks required for Go application development using the PQ driver.
 
 ### Import the driver package
 
@@ -58,13 +52,11 @@ import (
 
 ### Connect to YugabyteDB database
 
-Go Apps can connect to the YugabyteDB database using the `sql.Open()` function.
-All the functions or structs required for working with YugabyteDB database are part of `sql` package.
+The `sql` package includes all the functions or structs required for working with YugabyteDB.
 
-Use the `sql.Open()` function for getting connection object for the YugabyteDB database which can be
-used for performing DDLs and DMLs against the database.
+Use the `sql.Open()` function to create the connection object to perform DDLs and DMLs against the database.
 
-The connection details can be specified either as string params or via an url in the format given below:
+The connection details can be specified either as string parameters or via a URL in the following format:
 
 ```go
 postgresql://username:password@hostname:port/database
@@ -86,16 +78,15 @@ if err != nil {
 
 | Parameters | Description | Default |
 | :---------- | :---------- | :------ |
-| host  | hostname of the YugabyteDB instance | localhost
+| host  | Hostname of the YugabyteDB instance | localhost
 | port |  Listen port for YSQL | 5433
-| user | user for connecting to the database | yugabyte
-| password | password for connecting to the database | yugabyte
-| dbname | database name | yugabyte
+| user | User connecting to the database | yugabyte
+| password | Password for the user | yugabyte
+| dbname | Database name | yugabyte
 
 ### Create table
 
-Execute an SQL statement like the DDL `CREATE TABLE ...` using the `Exec()` function on the `db`
-instance.
+Execute an SQL statement like the DDL `CREATE TABLE ...` statement using the `Exec()` function on the `db` instance.
 
 The CREATE DDL statement:
 
@@ -115,8 +106,7 @@ if _, err := db.Exec(createStmt); err != nil {
 }
 ```
 
-The `db.Exec()` function also returns an `error` object which, if not `nil`, needs to handled in
-your code.
+The `db.Exec()` function also returns an `error` object which, if not `nil`, needs to handled in your code.
 
 Read more on designing [Database schemas and tables](../../../../explore/ysql-language-features/databases-schemas-tables/).
 
@@ -124,7 +114,7 @@ Read more on designing [Database schemas and tables](../../../../explore/ysql-la
 
 #### Insert data
 
-To write data into YugabyteDB, execute the `INSERT` statement using the same `db.Exec()` function.
+To write data to YugabyteDB, execute the `INSERT` statement using the same `db.Exec()` function.
 
 The INSERT DML statement:
 
@@ -144,10 +134,9 @@ if _, err := db.Exec(insertStmt); err != nil {
 
 #### Query data
 
-To query data from YugabyteDB tables, execute the `SELECT` statement using the function `Query()` on `db` instance.
+To query data from YugabyteDB tables, execute the `SELECT` statement using the function `Query()` on the `db` instance.
 
-Query results are returned as `rows` which can be iterated using `rows.next()` method.
-Use `rows.Scan()` for reading the data.
+Query results are returned as `rows` which can be iterated using `rows.next()` method. Use `rows.Scan()` for reading the data.
 
 The SELECT DML statement:
 
@@ -182,13 +171,9 @@ if err != nil {
 
 ### Configure SSL/TLS
 
-To build a Go application that communicates securely over SSL with YugabyteDB database,
-you need the root certificate (`ca.crt`) of the YugabyteDB Cluster.
-To generate these certificates and install them while launching the cluster, follow the instructions in
-[Create server certificates](../../../../secure/tls-encryption/server-certificates/).
+To build a Go application that communicates securely over SSL with YugabyteDB database, you need the root certificate (`ca.crt`) of the YugabyteDB Cluster. To generate these certificates and install them while launching the cluster, follow the instructions in [Create server certificates](../../../../secure/tls-encryption/server-certificates/).
 
-For a Yugabyte Cloud cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related
-environment variables as below at the client side.
+For a Yugabyte Cloud cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables on the client side as follows:
 
 ```sh
 $ export PGSSLMODE=verify-ca
@@ -213,33 +198,30 @@ $ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded
 
 ### Transaction and isolation levels
 
-YugabyteDB supports transactions for inserting and querying data from the tables. YugabyteDB
-supports different [isolation levels](../../../../architecture/transactions/isolation-levels/) for
-maintaining strong consistency for concurrent data access.
+YugabyteDB supports transactions for inserting and querying data from the tables. YugabyteDB supports different [isolation levels](../../../../architecture/transactions/isolation-levels/) for maintaining strong consistency for concurrent data access.
 
-The PQ driver provides `db.Begin()` function to start a transaction.
-Another function `conn.BeginEx()` can create a transaction with a specified isolation level.`
+The PQ driver provides the `db.Begin()` function to start a transaction. Another function, `conn.BeginEx()`, can create a transaction with a specified isolation level.
 
 ```go
 tx, err := db.Begin()
 if err != nil {
-	log.Fatal(err)
+  log.Fatal(err)
 }
 
 ...
 
 _, err = stmt.Exec()
 if err != nil {
-	log.Fatal(err)
+  log.Fatal(err)
 }
 
 err = stmt.Close()
 if err != nil {
-	log.Fatal(err)
+  log.Fatal(err)
 }
 
 err = txn.Commit()
 if err != nil {
-	log.Fatal(err)
+  log.Fatal(err)
 }
 ```

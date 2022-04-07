@@ -34,8 +34,8 @@ showAsideToc: true
 
 This page provides details for getting started with `YugabyteDB JDBC Driver` for connecting to YugabyteDB YSQL API.
 
-[Yugabyte JDBC driver](https://github.com/yugabyte/pgjdbc) is a distributed JDBC driver for [YSQL](/latest/api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc).
-Although the upstream PostgreSQL JDBC driver works with YugabyteDB, the Yugabyte driver enhances YugabyteDB by eliminating the need for external load balancers.
+The [Yugabyte JDBC driver](https://github.com/yugabyte/pgjdbc) is a distributed JDBC driver for [YSQL](/latest/api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc). Although the upstream PostgreSQL JDBC driver works with YugabyteDB, the Yugabyte driver enhances YugabyteDB by eliminating the need for external load balancers.
+
 The driver has the following features:
 
 - It is **cluster-aware**, which eliminates the need for an external load balancer.
@@ -68,11 +68,11 @@ The Yugabyte JDBC driver can be configured with popular pooling solutions such a
 
 Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps in [Build an Application](/latest/quick-start/build-apps/java/ysql-yb-jdbc) in the Quick Start section.
 
-## Download the Driver Dependency
+## Download the driver dependency
 
-YugabyteDB JDBC Driver is available as maven dependency. Download the driver by adding the following dependency entries in the java project.
+The YugabyteDB JDBC Driver is available as a Maven dependency. Download the driver by adding the following dependency entries in the Java project.
 
-### Maven Dependency
+### Maven dependency
 
 To get the driver and HikariPool from Maven, add the following dependencies to the Maven project:
 
@@ -103,7 +103,7 @@ implementation 'com.zaxxer:HikariCP:4.0.3'
 
 ## Fundamentals
 
-Learn how to perform the common tasks required for Java App Development using the PostgreSQL JDBC driver
+Learn how to perform the common tasks required for Java application development using the PostgreSQL JDBC driver.
 
 {{< note title="Note">}}
 
@@ -120,7 +120,7 @@ The following connection properties need to be added to enable load balancing:
 
 ## Use the driver
 
-The YugabyteDB JDBC driver’s driver class is `com.yugabyte.Driver`.
+The YugabyteDB JDBC driver's driver class is `com.yugabyte.Driver`.
 
 To use the driver, do the following:
 
@@ -185,14 +185,15 @@ To use the driver, do the following:
 
 ## Try it out
 
-This tutorial shows how to use the Yugabyte JDBC Driver with YugabyteDB. You’ll start by creating a three-node cluster with a replication factor of 3. This tutorial uses the [yb-ctl](/latest/admin/yb-ctl/#root) utility.
-Next, you’ll use [yb-sample-apps](https://github.com/yugabyte/yb-sample-apps/tree/master) to demonstrate the driver's load balancing features and create a Maven project to learn how to use the driver in an application.
+This tutorial shows how to use the Yugabyte JDBC Driver with YugabyteDB. You start by creating a three-node cluster with a replication factor of 3. This tutorial uses the [yb-ctl](/latest/admin/yb-ctl/#root) utility.
+
+Next, you use [yb-sample-apps](https://github.com/yugabyte/yb-sample-apps/tree/master) to demonstrate the driver's load balancing features and create a Maven project to learn how to use the driver in an application.
 
 {{< note title="Note">}}
 The driver requires YugabyteDB version 2.7.2.0 or higher, and Java 8 or above.
 {{< /note>}}
 
-### Install YugabyteDB and create a local Cluster
+### Install YugabyteDB and create a local cluster
 
 Create a universe with a 3-node RF-3 cluster with some fictitious geo-locations assigned. The placement values used are just tokens and have nothing to do with actual AWS cloud regions and zones.
 
@@ -202,7 +203,7 @@ $ cd <path-to-yugabytedb-installation>
 ./bin/yb-ctl create --rf 3 --placement_info "aws.us-west.us-west-2a,aws.us-west.us-west-2a,aws.us-west.us-west-2b"
 ```
 
-### Check Uniform load balancing using yb-sample-apps
+### Check uniform load balancing using yb-sample-apps
 
 - Download the yb-sample-apps JAR file.
 
@@ -219,12 +220,13 @@ $ cd <path-to-yugabytedb-installation>
        --nodes 127.0.0.1:5433,127.0.0.2:5433,127.0.0.3:5433
   ```
 
-The application creates 30 connections, 1 for each reader and writer threads. To verify the behavior, wait for the app to create connections and then visit `http://<host>:13000/rpcz` from your browser for each node to see that the connections are equally distributed among the nodes.
-This URL presents a list of connections where each element of the list has some information about the connection as shown in the following screenshot. You can count the number of connections from that list, or simply search for the occurrence count of the `host` keyword on that webpage. Each node should have 10 connections.
+The application creates 30 connections, 1 for each reader and writer threads. To verify the behavior, wait for the application to create connections and then visit `http://<host>:13000/rpcz` from your browser for each node to see that the connections are equally distributed among the nodes.
+
+This URL presents a list of connections where each element of the list has some information about the connection as shown in the following screenshot. You can count the number of connections from that list, or search for the occurrence count of the `host` keyword on that webpage. Each node should have 10 connections.
 
 ![Load balancing with host connections](/images/develop/ecosystem-integrations/jdbc-load-balancing.png)
 
-### Check Topology-aware load balancing using yb-sample-apps
+### Check topology-aware load balancing using yb-sample-apps
 
 For topology-aware load balancing, run the SqlInserts workload application with the `topology-keys1` property set to `aws.us-west.us-west-2a`; only two nodes will be used in this case.
 
@@ -286,6 +288,6 @@ The driver requires YugabyteDB version 2.7.2.0 or higher.
 
   When started, the script displays a menu with two options: `UniformLoadBalance` and `TopologyAwareLoadBalance`. Choose one of these options to run the corresponding script with its Java application in the background.
 
-## Further Reading
+## Further reading
 
 To learn more about the driver, you can read the [architecture documentation](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md).

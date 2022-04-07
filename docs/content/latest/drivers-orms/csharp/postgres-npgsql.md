@@ -19,7 +19,7 @@ showAsideToc: true
   <li >
     <a href="/latest/drivers-orms/csharp/postgres-npgsql/" class="nav-link active">
       <i class="icon-java-bold" aria-hidden="true"></i>
-      Postgres Npgsql Driver
+      PostgreSQL Npgsql Driver
     </a>
   </li>
 

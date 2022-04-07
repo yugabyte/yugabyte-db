@@ -30,7 +30,7 @@ showAsideToc: true
 
 </ul>
 
-Psycopg is the most popular PostgreSQL database adapter for the Python programming language. Its main features are the complete implementation of the Python DB API 2.0 specification and the thread safety (several threads can share the same connection). YugabyteDB has full support for [Psycopg2](https://www.psycopg.org/).
+Psycopg is the most popular PostgreSQL database adapter for the Python programming language. Its main features are the complete implementation of the Python DB API 2.0 specification and its thread safety (several threads can share the same connection). YugabyteDB has full support for [Psycopg2](https://www.psycopg.org/).
 
 ## Fundamentals of PostgreSQL Psycopg driver
 
@@ -38,9 +38,9 @@ Learn how to establish a connection to YugabyteDB database and begin simple CRUD
 
 Let us break down the quick start example and understand how to perform the common tasks required for Python App development using the PostgreSQL Psycopg driver.
 
-### Download the Driver Dependency
+### Download the driver dependency
 
-Building Psycopg requires a few prerequisites (a C compiler, some development packages): please check the [install](https://www.psycopg.org/docs/install.html#install-from-source) and the [faq](https://www.psycopg.org/docs/faq.html#faq-compile) documents in the doc dir or online for the details.
+Building Psycopg requires a few prerequisites (a C compiler, some development packages). Check the [Installation](https://www.psycopg.org/docs/install.html#install-from-source) and [FAQ](https://www.psycopg.org/docs/faq.html#faq-compile) Psycopg documentation.
 
 If prerequisites are met, you can install psycopg like any other Python package, using ``pip`` to download it from [PyPI](https://pypi.org/project/psycopg2/):
 
@@ -63,15 +63,16 @@ $ pip install psycopg2-binary
 
 The binary package is a practical choice for development and testing but in production it is advised to use the package built from sources.
 
-### Connect to YugabyteDB Database
+### Connect to the YugabyteDB database
 
-Python Apps can connect to and query the YugabyteDB database. To do that first import the psycopg2 package.
+Python applications can connect to and query the YugabyteDB database. To do this, first import the psycopg2 package.
 
 ```python
 import psycopg2
 ```
 
 The Connection details can be provided as a string or a dictionary.
+
 Connection String
 
 ```python
@@ -90,27 +91,27 @@ Example URL for connecting to YugabyteDB can be seen below.
 conn = psycopg2.connect(dbname='yugabyte',host='localhost',port='5433',user='yugabyte',password='yugabyte')
 ```
 
-| Params | Description | Default |
+| Parameters | Description | Default |
 | :---------- | :---------- | :------ |
-| host  | hostname of the YugabyteDB instance | localhost
+| host  | Hostname of the YugabyteDB instance | localhost
 | port |  Listen port for YSQL | 5433
-| database/dbname | database name | yugabyte
-| user | user for connecting to the database | yugabyte
-| password | password for connecting to the database | yugabyte
+| database/dbname | Database name | yugabyte
+| user | User connecting to the database | yugabyte
+| password | User password | yugabyte
 
-### Create a Cursor
+### Create a cursor
 
-To execute any sql commands, a cursor needs to be created after connection is made. It allows Python code to execute PostgreSQL command in a database session. Cursors are created by the ``connection.cursor()`` method: they are bound to the connection for the entire lifetime and all the commands are executed in the context of the database session wrapped by the connection.
+To execute any SQL commands, a cursor needs to be created after connection is made. It allows Python code to execute PostgreSQL commands in a database session. Cursors are created by the ``connection.cursor()`` method: they are bound to the connection for the entire lifetime and all the commands are executed in the context of the database session wrapped by the connection.
 
 ```python
 cur = conn.cursor()
 ```
 
-### Create Table
+### Create tables
 
 Tables can be created in YugabyteDB by passing the `CREATE TABLE` DDL statement to the `cursor.execute(statement)` method.
 
-For example
+For example:
 
 ```sql
 CREATE TABLE IF NOT EXISTS employee (id int PRIMARY KEY, name varchar, age int, language text)
@@ -124,13 +125,13 @@ cur.execute('CREATE TABLE IF NOT EXISTS employee (id int PRIMARY KEY, name varch
 
 ```
 
-### Read and Write Data
+### Read and write data
 
-#### Insert Data
+#### Insert data
 
-In order to write data into YugabyteDB, execute the `INSERT` statement using the `cursor.execute(statement)` method.
+To write data to YugabyteDB, execute the `INSERT` statement using the `cursor.execute(statement)` method.
 
-For example
+For example:
 
 ```sql
 INSERT INTO employee VALUES (1, 'John', 35, 'Java')
@@ -161,11 +162,11 @@ try {
 }
 ``` -->
 
-#### Query Data
+#### Query data
 
-In order to query data from YugabyteDB tables, execute the `SELECT` statement using `cursor.execute(statement)` method followed by `cursor.fetchall()` method. `fetchall()` fetches all the rows of a query result, returning them as a list of tuples. An empty list is returned if there is no more record to fetch.
+To query data from YugabyteDB tables, execute the `SELECT` statement using the `cursor.execute(statement)` method followed by the `cursor.fetchall()` method. `fetchall()` fetches all the rows of a query result, returning them as a list of tuples. An empty list is returned if there is no more record to fetch.
 
-For example
+For example:
 
 ```sql
 SELECT * from employee;
@@ -193,7 +194,7 @@ Psycopg2 supports several SSL modes, as follows:
 | verify-ca | Supported |
 | verify-full | Supported |
 
-By default, the driver supports the `prefer` SSL mode. And in the `require` mode, a root CA certificate isn't required to be configured.
+By default, the driver supports the `prefer` SSL mode. In `require` mode, a root CA certificate isn't required to be configured.
 
 To enable `verify-ca` or `verify-full`, you need to provide the path to the root CA certificate in the connection string using the `sslrootcert` parameter. The default location is `~/.postgresql/root.crt`. If the root certificate is in a different file, specify it in the `sslrootcert` parameter:
 

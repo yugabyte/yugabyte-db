@@ -30,16 +30,11 @@ showAsideToc: true
 
 </ul>
 
-This page provides details for getting started with `YugabyteDB Psycopg2 Driver` for connecting to YugabyteDB YSQL API.
+The [Yugabyte Psycopg2 driver](https://github.com/yugabyte/psycopg2) is a distributed Python driver for [YSQL](/latest/api/ysql/), built on the [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2). Although the upstream PostgreSQL psycopg2 driver works with YugabyteDB, the Yugabyte driver enhances YugabyteDB as follows:
 
-[Yugabyte Psycopg2 driver](https://github.com/yugabyte/psycopg2) is a distributed python driver for [YSQL](/latest/api/ysql/) built on the [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2).
-Although the upstream PostgreSQL psycopg2 driver works with YugabyteDB, the Yugabyte driver enhances YugabyteDB by eliminating the need for external load balancers.
+- It is **cluster-aware**, eliminating the need for external load balancers.
 
-- It is **cluster-aware**, which eliminates the need for an external load balancer.
-
-- It is **topology-aware**, which is essential for geographically-distributed applications.
-
-  The driver uses servers that are part of a set of geo-locations specified by topology keys.
+- It is **topology-aware**, which is essential for geographically-distributed applications. The driver uses servers that are part of a set of geo-locations specified by topology keys.
 
 ## Load balancing
 
@@ -53,21 +48,21 @@ The Yugabyte Psycopg2 driver has the following load balancing features:
 - Topology-aware load balancing
 
    <br></br>
-   Because YugabyteDB clusters can have servers in different regions and availability zones, the YugabyteDB JDBC driver is topology-aware, and can be configured to create connections only on servers that are in specific regions and zones. This is useful for client applications that need to connect to the geographically nearest regions and availability zone for lower latency; the driver tries to uniformly load only those servers that belong to the specified regions and zone.
+   Because YugabyteDB clusters can have servers in different regions and availability zones, the driver is topology-aware, and can be configured to create connections only on servers that are in specific regions and zones. This is useful for client applications that need to connect to the geographically nearest regions and availability zone for lower latency; the driver tries to uniformly load only those servers that belong to the specified regions and zone.
 
 The Yugabyte Psycopg2 driver can be configured with pooling as well.
 
-## Quick Start
+## Quick start
 
 Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps in [Build an Application](/latest/quick-start/build-apps/java/ysql-yb-jdbc) in the Quick Start section.
 
-## Download the Driver Dependency
+## Download the driver dependency
 
 <!-- TODO: Add this after package publish -->
 
 ## Fundamentals
 
-Learn how to perform the common tasks required for Java App Development using the PostgreSQL psycopg2 driver
+Learn how to perform the common tasks required for Java application development using the Yugabyte Psycopg2 driver.
 
 {{< note title="Note">}}
 
@@ -88,8 +83,8 @@ To use the driver, do the following:
 
 - Pass new connection properties for load balancing in the connection URL or in the dictionary.
 
-  To enable uniform load balancing across all servers, you set the `load-balance` property to `True` in the URL, as per the following example:
-
+  To enable uniform load balancing across all servers, you set the `load-balance` property to `True` in the URL, as per the following example:\
+\
   Connection String
 
     ```python
@@ -97,13 +92,13 @@ To use the driver, do the following:
     ```
 
     Connection Dictionary
-    
+
     ```python
     conn = psycopg2.connect(user = 'username', password='xxx', host = 'hostname', port = 'port', dbname = 'database_name', load_balance='True')
     ```
 
-- To specify topology keys, you set the `topology_keys` property to comma separated values, as per the following example:
-
+- To specify topology keys, you set the `topology_keys` property to comma separated values, as per the following example:\
+\
   Connection String
 
     ```python
@@ -116,7 +111,7 @@ To use the driver, do the following:
     conn = psycopg2.connect(user = 'username', password='xxx', host = 'hostname', port = 'port', dbname = 'database_name', load_balance='True', topology_keys='cloud1.region1.zone1,cloud2.region2.zone2')
     ```
 
-- To configure a SimpleConnectionPool, specify load balance as follows:
+- To configure a SimpleConnectionPool, specify load balancing as follows:
 
     ```python
     yb_pool = psycopg2.pool.SimpleConnectionPool(1, 10, user="yugabyte",
@@ -130,14 +125,11 @@ To use the driver, do the following:
 
 ## Try it out
 
-This tutorial shows how to use the Yugabyte Psycopg2 Driver with YugabyteDB. You’ll start by creating a three-node cluster with a replication factor of 3. This tutorial uses the [yb-ctl](/latest/admin/yb-ctl/#root) utility.
-Next, you’ll use Python shell terminal, to demonstrate the driver's load balancing features by running few python scripts.
+This tutorial shows how to use the Yugabyte Psycopg2 Driver with YugabyteDB. You'll start by creating a three-node cluster with a replication factor of 3. This tutorial uses the [yb-ctl](/latest/admin/yb-ctl/#root) utility.
 
-{{< note title="Note">}}
-The driver requires YugabyteDB version 2.7.2.0 or higher
-{{< /note>}}
+Next, you'll use Python shell terminal, to demonstrate the driver's load balancing features by running a few Python scripts.
 
-### Install YugabyteDB and create a local Cluster
+### Install YugabyteDB and create a local cluster
 
 Create a universe with a 3-node RF-3 cluster with some fictitious geo-locations assigned. The placement values used are just tokens and have nothing to do with actual AWS cloud regions and zones.
 
@@ -147,7 +139,7 @@ $ cd <path-to-yugabytedb-installation>
 ./bin/yb-ctl create --rf 3 --placement_info "aws.us-west.us-west-2a,aws.us-west.us-west-2a,aws.us-west.us-west-2b"
 ```
 
-### Check Uniform load balancing 
+### Check uniform load balancing
 
 Log into your Python terminal and run the following script:
 
@@ -159,8 +151,9 @@ for i in range(30):
     conns.append(conn)
 ```
 
-The application creates 30 connections. To verify the behavior, wait for the app to create connections and then visit `http://<host>:13000/rpcz` from your browser for each node to see that the connections are equally distributed among the nodes.
-This URL presents a list of connections where each element of the list has some information about the connection as shown in the following screenshot. You can count the number of connections from that list, or simply search for the occurrence count of the `host` keyword on that webpage. Each node should have 10 connections.
+The application creates 30 connections. To verify the behavior, wait for the application to create connections and then visit `http://<host>:13000/rpcz` from your browser for each node to see that the connections are equally distributed among the nodes.
+
+This URL presents a list of connections where each element of the list has some information about the connection as shown in the following screenshot. You can count the number of connections from that list, or search for the occurrence count of the `host` keyword on that webpage. Each node should have 10 connections.
 
 You can also verify the number of connections by running the following script in the same terminal:
 
@@ -170,12 +163,13 @@ obj = lb()
 obj.printHostToConnMap()
 ```
 
-This displays a key value pair map where the keys are the host and the values are the number of connections on them (This is the client side perspective of the number of connections).
+This displays a key value pair map where the keys are the host and the values are the number of connections on them (this is the client side perspective of the number of connections).
+
 ![Load balancing with host connections](/images/develop/ecosystem-integrations/jdbc-load-balancing.png)
 
-### Check Topology-aware load balancing using yb-sample-apps
+### Check topology-aware load balancing using yb-sample-apps
 
-For topology-aware load balancing, run the following script in your new Python terminal with the `topology_keys` property set to `aws.us-west.us-west-2a`; only two nodes will be used in this case.
+For topology-aware load balancing, run the following script in a new Python terminal with the `topology_keys` property set to `aws.us-west.us-west-2a`; only two nodes will be used in this case.
 
 ```python
 import psycopg2
@@ -186,6 +180,7 @@ for i in range(30):
 ```
 
 To verify the behavior, wait for the app to create connections and then navigate to `http://<host>:13000/rpcz`. The first two nodes should have 15 connections each, and the third node should have zero connections.
+
 You can verify this as well by running the previous verify script in the same terminal.
 
 ## Clean up
@@ -196,6 +191,6 @@ When you're done experimenting, run the following command to destroy the local c
 ./bin/yb-ctl destroy
 ```
 
-## Further Reading
+## Further reading
 
-To learn more about the driver, you can read the [architecture documentation](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md).
+To learn more about the driver, read the [architecture documentation](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md).

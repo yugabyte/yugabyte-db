@@ -39,26 +39,26 @@ showAsideToc: true
 To download and install SQLAlchemy to your project, use the following command.
 
 ```shell
-  pip3 install sqlalchemy
+pip3 install sqlalchemy
+```
+
+You can verify the installation as follows:
+
+- Open the Python prompt by executing the following command:
+
+  ```shell
+  python3
   ```
 
-  You can verify the installation as follows:
+- From the Python prompt, execute the following commands to check the SQLAlchemy version:
 
-  - Open the Python prompt by executing the following command:
+  ```python prompt
+  import sqlalchemy
+  ```
 
-    ```shell
-    python3
-    ```
-
-  - From the Python prompt, execute the following commands to check the SQLAlchemy version:
-
-    ```python prompt
-    import sqlalchemy
-    ```
-
-    ```python prompt
-    sqlalchemy.__version__
-    ```
+  ```python prompt
+  sqlalchemy.__version__
+  ```
 
 ### Implementing ORM mapping for YugabyteDB
 
@@ -83,7 +83,7 @@ from sqlalchemy.ext.declarative import declarative_base
 Base = declarative_base()
 ```
 
-Now that you have a “base”, you can define any number of mapped classes in terms of it. Start with a single table called `employees`, to store records for the end-users using your application. A new class called `Employee` maps to this table. In the class, you define details about the table to which you're mapping, primarily the table name, and names and datatypes of the columns.
+Now that you have a "base", you can define any number of mapped classes in terms of it. Start with a single table called `employees`, to store records for the end-users using your application. A new class called `Employee` maps to this table. In the class, you define details about the table to which you're mapping; primarily the table name, and names and data types of the columns.
 
 Add the following to the `model.py` file:
 
@@ -102,7 +102,7 @@ class Employee(Base):
    language = Column(String(255))
 ```
 
-Once the setup is done, you can connect to the database and create a new session. In the `main.py` file, add the following.
+After the setup is done, you can connect to the database and create a new session. In the `main.py` file, add the following.
 
 ```python
 import config as cfg

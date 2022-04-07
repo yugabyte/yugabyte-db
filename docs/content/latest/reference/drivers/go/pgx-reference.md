@@ -32,17 +32,12 @@ showAsideToc: true
 
 </ul>
 
-The [PGX driver](https://github.com/jackc/pgx/) is one of the most popular and actively maintained
-drivers for PostgreSQL.
-
-This driver allows Go programmers to connect to YugabyteDB to execute DMLs and DDLs using
+The [PGX driver](https://github.com/jackc/pgx/) is one of the most popular and actively maintained drivers for PostgreSQL. The driver allows Go programmers to connect to YugabyteDB to execute DMLs and DDLs using
 the PGX APIs. It also supports the standard `database/sql` package.
 
-## CRUD Operations with PGX driver
+## CRUD operations with PGX driver
 
-Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using
-the steps in the [Build an application](../../../../quick-start/build-apps/go/ysql-pgx) page under the
-Quick start section.
+Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps in the [Build an application](../../../../quick-start/build-apps/go/ysql-pgx) page in the Quick start section.
 
 The following sections break down the quick start example to demonstrate how to perform common tasks required for Go application development using the PGX driver.
 
@@ -58,13 +53,11 @@ import (
 
 ### Connect to YugabyteDB database
 
-Go applications can connect to YugabyteDB using the `pgx.Connect()` function.
-The `pgx` package includes all the common functions or structs required for working with YugabyteDB.
+Go applications can connect to YugabyteDB using the `pgx.Connect()` function. The `pgx` package includes all the common functions or structs required for working with YugabyteDB.
 
-Use the `pgx.Connect()` method to create the connection object, for
-performing DDLs and DMLs against the database.
+Use the `pgx.Connect()` method to create the connection object, for performing DDLs and DMLs against the database.
 
-PGX Connection url is in the format given below:
+The PGX connection URL is in the following format:
 
 ```go
 postgresql://username:password@hostname:port/database
@@ -78,18 +71,17 @@ url := fmt.Sprintf("postgres://%s:%s@%s:%d/%s",
 conn, err := pgx.Connect(context.Background(), url)
 ```
 
-| Parameters | Description | Default |
+| Parameter | Description | Default |
 | :---------- | :---------- | :------ |
-| user | user for connecting to the database | yugabyte
-| password | password for connecting to the database | yugabyte
-| host  | hostname of the YugabyteDB instance | localhost
+| user | User connecting to the database | yugabyte
+| password | Password for the user | yugabyte
+| host  | Hostname of the YugabyteDB instance | localhost
 | port |  Listen port for YSQL | 5433
-| dbname | database name | yugabyte
+| dbname | Database name | yugabyte
 
 ### Create table
 
-Execute an SQL statement like the DDL `CREATE TABLE ...` using the `Exec()` function on the `conn`
-instance.
+Execute an SQL statement such as the DDL `CREATE TABLE ...` statement using the `Exec()` function on the `conn` instance.
 
 The CREATE DDL statement:
 
@@ -108,17 +100,15 @@ if err != nil {
 }
 ```
 
-The `conn.Exec()` function also returns an `error` object which, if not `nil`, needs to be handled
-in your code.
+The `conn.Exec()` function also returns an `error` object which, if not `nil`, needs to be handled in your code.
 
-Read more on designing [Database schemas and tables](../../../../explore/ysql-language-features/databases-schemas-tables/).
+Read more about designing [Database schemas and tables](../../../../explore/ysql-language-features/databases-schemas-tables/).
 
 ### Read and write data
 
 #### Insert data
 
-To write data into YugabyteDB, execute the `INSERT` statement using the same `conn.Exec()`
-function.
+To write data to YugabyteDB, execute the `INSERT` statement using the same `conn.Exec()` function.
 
 The INSERT DML statement:
 
@@ -137,14 +127,11 @@ if err != nil {
 }
 ```
 
-The pgx driver automatically prepares and caches statements by default, so that the developer does
-not have to.
+The pgx driver automatically prepares and caches statements by default so that you don't have to.
 
 #### Query data
 
-To query data from YugabyteDB tables, execute the `SELECT` statement using the function `conn.Query()`.
-Query results are returned in `pgx.Rows` which can be iterated using `pgx.Rows.next()` method.
-Then read the data using `pgx.rows.Scan()`.
+To query data from YugabyteDB tables, execute the `SELECT` statement using the function `conn.Query()`. Query results are returned in `pgx.Rows` which can be iterated using `pgx.Rows.next()` method. Then read the data using `pgx.rows.Scan()`.
 
 The SELECT DML statement:
 
@@ -182,23 +169,23 @@ if err != nil {
 
 ### Using pgxpool API
 
-The PGX driver also provides pool APIs via its `pgxpool` package. One can import it as below.
+The PGX driver also provides pool APIs via its `pgxpool` package. Import it as follows:
 
 ```go
 import (
-	"github.com/jackc/pgx/v4/pgxpool"
+  "github.com/jackc/pgx/v4/pgxpool"
 )
 ```
 
 #### Establishing a connection
 
-The primary way of establishing a connection is with `pgxpool.Connect()`.
+The primary way to establish a connection is with `pgxpool.Connect()`.
 
 ```go
 pool, err := pgxpool.Connect(context.Background(), os.Getenv("DATABASE_URL"))
 ```
 
-One can also provide configuration for the pool as
+You can also provide configuration for the pool as follows:
 
 ```go
 config, err := pgxpool.ParseConfig(os.Getenv("DATABASE_URL"))
@@ -212,17 +199,13 @@ config.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
 pool, err := pgxpool.ConnectConfig(context.Background(), config)
 ```
 
-For more details, see [pgxpool package doc](https://pkg.go.dev/github.com/jackc/pgx/v4/pgxpool)
+For more details, see the [pgxpool package](https://pkg.go.dev/github.com/jackc/pgx/v4/pgxpool) documentation.
 
 ### Configure SSL/TLS
 
-In order to build a Go application that communicates securely over SSL with YugabyteDB database,
-you need the root certificate (`ca.crt`) of the YugabyteDB Cluster.
-To generate these certificates and install them while launching the cluster, follow the instructions in
-[Create server certificates](../../../../secure/tls-encryption/server-certificates/).
+To build a Go application that communicates securely over SSL with YugabyteDB, you need the root certificate (`ca.crt`) of the YugabyteDB Cluster. To generate these certificates and install them while launching the cluster, follow the instructions in [Create server certificates](../../../../secure/tls-encryption/server-certificates/).
 
-For a Yugabyte Cloud cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related
-environment variables as below at the client side.
+For a Yugabyte Cloud cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables at the client side, as follows:
 
 ```sh
 $ export PGSSLMODE=verify-ca
@@ -247,12 +230,9 @@ $ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded
 
 ### Transaction and isolation levels
 
-YugabyteDB supports transactions for inserting and querying data from the tables. YugabyteDB
-supports different [isolation levels](../../../../architecture/transactions/isolation-levels/) for
-maintaining strong consistency for concurrent data access.
+YugabyteDB supports transactions for inserting and querying data from the tables. YugabyteDB supports different [isolation levels](../../../../architecture/transactions/isolation-levels/) for maintaining strong consistency for concurrent data access.
 
-The PGX driver provides `conn.Begin()` function to start a transaction.
-Another function `conn.BeginEx()` can create a transaction with a specified isolation level.`
+The PGX driver provides the `conn.Begin()` function to start a transaction. Another function, `conn.BeginEx()`, can create a transaction with a specified isolation level.
 
 ```go
 tx, err := conn.Begin()

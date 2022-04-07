@@ -96,7 +96,7 @@ string yburl = "jdbc://postgresql://hostname:port/database?user=yugabyte&passwor
 Connection conn = DriverManager.getConnection(yburl);
 ```
 
-| JDBC Params | Description | Default |
+| JDBC Parameters | Description | Default |
 | :---------- | :---------- | :------ |
 | ssl  | Enable SSL client connection   | false
 | sslmode | SSL mode  | require

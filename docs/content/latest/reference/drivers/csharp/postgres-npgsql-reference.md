@@ -25,7 +25,7 @@ showAsideToc: true
 
 </ul>
 
-Npgsql is an open source ADO.NET Data Provider for PostgreSQL, it allows programs written in C#, Visual Basic, F# to access the YugabyteDB server. It is implemented in 100% C# code, is free and is open source.
+Npgsql is an open source ADO.NET Data Provider for PostgreSQL, and it allows programs written in C#, Visual Basic, and F# to access YugabyteDB. It is implemented in 100% C# code, is free, and is open source.
 
 ## Quick Start
 
@@ -33,20 +33,23 @@ Learn how to establish a connection to YugabyteDB database and begin simple CRUD
 
 ## Download the Driver Dependency
 
-If you are using Visual Studio IDE, follow the below steps:
-1. Open your Project Solution View
-1. Right-click on **Packages** and click **Add Packages**
-1. Search for `Npgsql` and click **Add Package**
+If you are using Visual Studio IDE, do the following:
 
-To add Npgsql package to your project, when not using an IDE, use the `dotnet` command:
+1. Open your Project Solution View.
+1. Right-click on **Packages** and click **Add Packages**.
+1. Search for `Npgsql` and click **Add Package**.
+
+To add the Npgsql package to your project when not using an IDE, use the `dotnet` command:
+
 ```csharp
-dotnet add package Npgsql 
-``` 
+dotnet add package Npgsql
+```
+
 or any of the other methods mentioned on the [nuget page](https://www.nuget.org/packages/Npgsql/) for Npgsql.
 
 ## Fundamentals
 
-Learn how to perform the common tasks required for Java App development using the PostgreSQL JDBC driver
+Learn how to perform common tasks required for Java application development using the PostgreSQL JDBC driver.
 
 <!-- * [Connect to YugabyteDB Database](postgres-jdbc-fundamentals/#connect-to-yugabytedb-database)
 * [Configure SSL/TLS](postgres-jdbc-fundamentals/#configure-ssl-tls)
@@ -55,9 +58,9 @@ Learn how to perform the common tasks required for Java App development using th
 
 ### Connect to YugabyteDB Database
 
-After setting up the dependenices, we implement the C# client application that uses the Npgsql driver to connect to your YugabyteDB cluster and run query on the sample data.
+After setting up the dependencies, implement the C# client application that uses the Npgsql driver to connect to your YugabyteDB cluster and run queries on the sample data.
 
-We will import Npgsql and use the `NpgsqlConnection` class for getting connection object for the YugabyteDB Database which can be used for performing DDLs and DMLs against the database.
+Import Npgsql and use the `NpgsqlConnection` class to create the connection object to perform DDLs and DMLs against the database.
 
 Example URL for connecting to YugabyteDB can be seen below.
 
@@ -66,19 +69,19 @@ var yburl = "host=localhost;port=5433;database=yb_demo;user id=yugabyte;password
 NpgsqlConnection conn = new NpgsqlConnection(yburl);
 ```
 
-| Params | Description | Default |
+| Parameters | Description | Default |
 | :---------- | :---------- | :------ |
-| host  | hostname of the YugabyteDB instance | localhost
+| host  | Hostname of the YugabyteDB instance | localhost
 | port |  Listen port for YSQL | 5433
-| database | database name | yugabyte
-| user | user for connecting to the database | yugabyte
-| password | password for connecting to the database | yugabyte
+| database | Database name | yugabyte
+| user | User connecting to the database | yugabyte
+| password | Password for the user | yugabyte
 
 ### Create Table
 
 Tables can be created in YugabyteDB by passing the `CREATE TABLE` DDL statement to the `NpgsqlCommand` class and getting a command object, then calling the `ExecuteNonQuery()` method using this command object.
 
-For example
+For example:
 
 ```sql
 CREATE TABLE employee (id int PRIMARY KEY, name varchar, age int, language varchar)
@@ -94,9 +97,9 @@ empCreateCmd.ExecuteNonQuery();
 
 #### Insert Data
 
-In order to write data into YugabyteDB, execute the `INSERT` statement using the `NpgsqlCommand` class and get a command object, then call the `ExecuteNonQuery()` method using this command object.
+To write data to YugabyteDB, execute the `INSERT` statement using the `NpgsqlCommand` class and get a command object, then call the `ExecuteNonQuery()` method using this command object.
 
-For example
+For example:
 
 ```sql
 INSERT INTO employee (id, name, age, language) VALUES (1, 'John', 35, 'CSharp');
@@ -109,9 +112,9 @@ int numRows = empInsertCmd.ExecuteNonQuery();
 
 #### Query Data
 
-In order to query data from YugabyteDB tables, execute the `SELECT` statement using `NpgsqlCommand` class, get the command object and then call the `ExecuteReader()` function using the object. Loop through the reader to get the list of returned rows.
+To query data from YugabyteDB tables, execute the `SELECT` statement using the `NpgsqlCommand` class, get the command object, and then call the `ExecuteReader()` function using the object. Loop through the reader to get the list of returned rows.
 
-For example
+For example:
 
 ```sql
 SELECT * from employee where id=1;
@@ -133,7 +136,7 @@ while (reader.Read())
 
 ### Configure SSL/TLS
 
-For Npgsql versions < 6.0, The client driver supports several SSL modes, as follows:
+For Npgsql versions before 6.0, the client driver supports several SSL modes, as follows:
 
 | SSL mode | Client driver behavior |
 | :------- | :--------------------- |
@@ -148,7 +151,7 @@ The Npgsql driver does not support the strings `verify-ca` and `verify-full` whe
 
 The .NET Npgsql driver validates certificates differently from other PostgreSQL drivers. When you specify SSL mode `require`, the driver verifies the certificate by default (like the `verify-ca` or `verify-full` modes), and fails for self-signed certificates. You can override this by specifying "Trust Server Certificate=true", in which case it bypasses walking the certificate chain to validate trust and hence works like other drivers' `require` mode. In this case, the Root-CA certificate is not required to be configured.
 
-For versions 6.0 and older,
+For versions 6.0 and later, the client driver supports the following SSL modes:
 
 | SSL mode | Client driver behavior |
 | :------- | :--------------------- |
@@ -159,7 +162,7 @@ For versions 6.0 and older,
 | verify-ca | Supported  |
 | verify-full | Supported |
 
-SSL Mode=Require currently requires explicitly setting Trust Server Certificate=true as well. This combination should be used with e.g. self-signed certificates.
+SSL Mode=Require currently requires explicitly setting Trust Server Certificate=true as well. This combination should be used with self-signed certificates.
 
 The default mode in 6.0+ is Prefer, which allows SSL but does not require it, and does not validate certificates.
 
@@ -174,5 +177,3 @@ The default mode in 6.0+ is Prefer, which allows SSL but does not require it, an
 ## Other Usage Examples
 
 - [SSL Example](latest/quick-start/build-apps/csharp/ysql/#create-a-sample-c-application-with-ssl)
-
-## FAQ

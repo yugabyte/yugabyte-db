@@ -36,9 +36,7 @@ showAsideToc: true
 
 ## CRUD Operations with PG ORM
 
-Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using
-the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-pg) page under the
-Quick start section.
+Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-pg) page in the Quick start section.
 
 The following sections break down the quick start example to demonstrate how to perform common tasks required for Go application development using go-pg.
 
@@ -54,8 +52,6 @@ import (
 ```
 
 ### Step 2: Connect to YugabyteDB database
-
-Go applications can connect to the YugabyteDB database using the `pg.Connect()` function.
 
 Use the `pg.Connect()` function to establish a connection to the YugabyteDB database. This can then can be used to read and write data to the database.
 

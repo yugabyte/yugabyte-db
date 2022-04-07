@@ -14,8 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-For Go applications, most drivers provide database connectivity through the standard `database/sql` API.
-YugabyteDB supports the [PGX Driver](https://github.com/jackc/pgx) and the [PQ Driver](https://github.com/lib/pq).
+For Go applications, most drivers provide database connectivity through the standard `database/sql` API.YugabyteDB supports the [PGX Driver](https://github.com/jackc/pgx) and the [PQ Driver](https://github.com/lib/pq).
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
@@ -35,17 +34,11 @@ YugabyteDB supports the [PGX Driver](https://github.com/jackc/pgx) and the [PQ D
 
 </ul>
 
-The [PGX driver](https://github.com/jackc/pgx/) is one of the most popular and actively maintained
-drivers for PostgreSQL.
-
-This driver allows Go programmers to connect to YugabyteDB database to execute DMLs and DDLs using
-the PGX APIs. It also supports the standard `database/sql` package.
+The [PGX driver](https://github.com/jackc/pgx/) is one of the most popular and actively maintained drivers for PostgreSQL. This driver allows Go programmers to connect to YugabyteDB database to execute DMLs and DDLs using the PGX APIs. It also supports the standard `database/sql` package.
 
 ## CRUD operations with PGX driver
 
-Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using
-the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-pgx) page under the
-Quick start section.
+Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-pgx) page under the Quick start section.
 
 The following sections break down the quick start example to demonstrate how to perform common tasks required for Go application development using the PGX driver.
 
@@ -61,11 +54,9 @@ import (
 
 ### Step 2: Connect to YugabyteDB database
 
-Go applications can connect to the YugabyteDB database using the `pgx.Connect()` function.
-The `pgx` package includes all the common functions or structs required for working with YugabyteDB.
+Go applications can connect to the YugabyteDB database using the `pgx.Connect()` function. The `pgx` package includes all the common functions or structs required for working with YugabyteDB.
 
-Use the `pgx.Connect()` method to create a connection object for the YugabyteDB database. This can
-be used for performing DDLs and DMLs against the database.
+Use the `pgx.Connect()` method to create a connection object for the YugabyteDB database. This can be used for performing DDLs and DMLs against the database.
 
 The PGX connection URL is in the following format:
 
@@ -103,8 +94,7 @@ $ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded
 
 ### Step 3: Create table
 
-Execute an SQL statement like the DDL `CREATE TABLE ...` using the `Exec()` function on the `conn`
-instance.
+Execute an SQL statement like the DDL `CREATE TABLE ...` using the `Exec()` function on the `conn` instance.
 
 The CREATE DDL statement:
 
@@ -123,8 +113,7 @@ if err != nil {
 }
 ```
 
-The `conn.Exec()` function also returns an `error` object which, if not `nil`, needs to be handled
-in your code.
+The `conn.Exec()` function also returns an `error` object which, if not `nil`, needs to be handled in your code.
 
 Read more on designing [Database schemas and tables](../../../explore/ysql-language-features/databases-schemas-tables/).
 
@@ -155,10 +144,7 @@ The pgx driver automatically prepares and caches statements by default, so you d
 
 #### Query data
 
-In order to query data from YugabyteDB tables, execute the `SELECT` statement using the function
-`conn.Query()`.
-Query results are returned in `pgx.Rows` which can be iterated using `pgx.Rows.next()` method.
-Then read the data using `pgx.rows.Scan()`.
+To query data from YugabyteDB tables, execute the `SELECT` statement using the function `conn.Query()`. Query results are returned in `pgx.Rows` which can be iterated using `pgx.Rows.next()` method. Then read the data using `pgx.rows.Scan()`.
 
 The SELECT DML statement:
 

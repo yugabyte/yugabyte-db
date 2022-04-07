@@ -32,17 +32,17 @@ showAsideToc: true
 
 </ul>
 
-The [PostgreSQL JDBC driver](https://jdbc.postgresql.org/) is the official JDBC driver for PostgreSQL which can used for connecting to YugabyteDB YSQL. YugabyteDB YSQL has full compatiblity with PostgreSQL JDBC Driver, allows Java programmers to connect to YugabyteDB database to execute DMLs and DDLs using the JDBC APIs.
+The [PostgreSQL JDBC driver](https://jdbc.postgresql.org/) is the official JDBC driver for PostgreSQL. YugabyteDB YSQL has full compatibility with the PostgreSQL JDBC Driver. The driver allows Java programmers to connect to YugabyteDB to execute DMLs and DDLs using the JDBC APIs.
 
 ## Quick Start
 
 Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps in [Build an Application](/latest/quick-start/build-apps/java/ysql-jdbc) in the Quick Start section.
 
-## Download the Driver Dependency
+## Download the driver dependency
 
-Postgres JDBC Drivers are available as a Maven dependency, and you can download the driver by adding the following dependency into the Java project.
+PostgreSQL JDBC Drivers are available as a Maven dependency, and you can download the driver by adding the following dependency into the Java project.
 
-### Maven Depedency
+### Maven dependency
 
 ```xml
 <!-- https://mvnrepository.com/artifact/org.postgresql/postgresql -->
@@ -53,7 +53,7 @@ Postgres JDBC Drivers are available as a Maven dependency, and you can download 
 </dependency>
 ```
 
-### Gradle Dependency
+### Gradle dependency
 
 ```java
 // https://mvnrepository.com/artifact/org.postgresql/postgresql
@@ -69,7 +69,7 @@ Learn how to perform common tasks required for Java application development usin
 * [Create Table](/postgres-jdbc-fundamentals/#create-table)
 * [Read and Write Queries](/postgres-jdbc-fundamentals/#read-and-write-queries) -->
 
-### Connect to YugabyteDB Database
+### Connect to YugabyteDB database
 
 Java applications can connect to and query the YugabyteDB database using the `java.sql.DriverManager` class. The `java.sql.*` package includes all the JDBC interfaces required for working with YugabyteDB.
 
@@ -87,15 +87,15 @@ Example JDBC URL for connecting to YugabyteDB can be seen below.
 Connection conn = DriverManager.getConnection("jdbc:postgresql://localhost:5433/yugabyte","yugabyte", "yugabyte");
 ```
 
-| JDBC Params | Description | Default |
+| JDBC Parameters | Description | Default |
 | :---------- | :---------- | :------ |
-| hostname  | hostname of the YugabyteDB instance | localhost
+| hostname  | Hostname of the YugabyteDB instance | localhost
 | port |  Listen port for YSQL | 5433
-| database | database name | yugabyte
-| user | user for connecting to the database | yugabyte
-| password | password for connecting to the database | yugabyte
+| database | Database name | yugabyte
+| user | User connecting to the database | yugabyte
+| password | User password | yugabyte
 
-### Create Table
+### Create table
 
 Create database tables using the `java.sql.Statement` interface, which is used to execute the `CREATE TABLE` DDL statement.
 
@@ -119,9 +119,9 @@ try {
 
 `java.sql.Statement` throws the `java.sql.SQLException` exception, which needs to handled in the Java code. Read more on designing [Database schemas and tables](../../../../explore/ysql-language-features/databases-schemas-tables/).
 
-### Read and Write Data
+### Read and write data
 
-#### Insert Data
+#### Insert data
 
 To write data to YugabyteDB, execute the `INSERT` statement using the `java.sql.Statement` interface.
 
@@ -162,11 +162,11 @@ try {
 }
 ```
 
-#### Query Data
+#### Query data
 
 To query data in YugabyteDB tables, execute the `SELECT` statement using the `java.sql.statement` interface. Query results are returned using the `java.sql.ResultSet` interface, which can be iterated using the `resultSet.next()` method for reading the data. Refer to [ResultSet](https://docs.oracle.com/javase/7/docs/api/java/sql/ResultSet.html) in the Java documentation.
 
-For example
+For example:
 
 ```sql
 SELECT * from employee;
@@ -199,13 +199,13 @@ Example JDBC URL for connecting to a secure YugabyteDB cluster can be seen below
 Connection conn = DriverManager.getConnection(jdbc:postgresql://localhost:5433/yugabyte?ssl=true&sslmode=verify-full&sslrootcert=~/.postgresql/root.crt", "yugabyte", "yugabyte");
 ```
 
-| JDBC Params | Description | Default |
+| JDBC Parameters | Description | Default |
 | :---------- | :---------- | :------ |
 | ssl  | Enable SSL JDBC Connection | false
 | ssl-mode |  SSL mode used for JDBC Connection | require
 | sslrootcert | Server CA Certificate | root.crt
 
-#### SSL Modes
+#### SSL modes
 
 | SSL Mode | Client Driver Behavior | YugabyteDB Support |
 | :------- | :--------------------- | ------------------ |
@@ -216,39 +216,39 @@ Connection conn = DriverManager.getConnection(jdbc:postgresql://localhost:5433/y
 | verify-ca | SSL enabled for data encryption and Server CA is verified | Supported
 | verifiy-full | SSL enabled for data encryption. Both CA and hostname of the certificate are verified | Supported
 
-#### JDBC Client Identity Authentication
+#### JDBC client identity authentication
 
-YugabyteDB cluster can be configured to authenticate the identity of the JDBC clients connecting to the cluster. In such cases, server certificate (`yugabytedb.crt`) and server key (`yugabytedb.key`) are required along with root certificate (`ca.crt`).
+A YugabyteDB cluster can be configured to authenticate the identity of the JDBC clients connecting to the cluster. In such cases, the server certificate (`yugabytedb.crt`) and server key (`yugabytedb.key`) are required along with the root certificate (`ca.crt`).
 
-Steps for Configuring the JDBC Client for Server authentication,
+To configure the JDBC client for server authentication, do the following:
 
 1. Download the certificate (`yugabytedb.crt`, `yugabytedb.key`, and `ca.crt`) files (see [Copy configuration files to the nodes](../../../../secure/tls-encryption/server-certificates/#copy-configuration-files-to-the-nodes)).
 
-2. If you do not have access to the system `cacerts` Java truststore you can create your own truststore.
+1. If you do not have access to the system `cacerts` Java truststore, you can create your own truststore.
 
     ```sh
     $ keytool -keystore ybtruststore -alias ybtruststore -import -file ca.crt
     ```
 
-3. Verify the `yugabytedb.crt` client certificate with `ybtruststore`.
+1. Verify the `yugabytedb.crt` client certificate with `ybtruststore`.
 
     ```sh
     $ openssl verify -CAfile ca.crt -purpose sslclient tlstest.crt
     ```
 
-4. Convert the client certificate to DER format.
+1. Convert the client certificate to DER format.
 
     ```sh
     $ openssl x509 –in yugabytedb.crt -out yugabytedb.crt.der -outform der
     ```
 
-5. Convert the client key to pk8 format.
+1. Convert the client key to pk8 format.
 
     ```sh
     $ openssl pkcs8 -topk8 -inform PEM -in yugabytedb.key -outform DER -nocrypt -out yugabytedb.key.pk8
     ```
 
-Create an `ssl` resource directory in your java application and copy over all the certificates. Update the connection string used by `DriverManager.getConnection` to include the ssl ceritifcates.
+Create an `ssl` resource directory in your Java application and copy over all the certificates. Update the connection string used by `DriverManager.getConnection` to include the SSL certificates.
 
 Example JDBC URL for connecting to Secure YugabyteDB cluster can be seen below.
 
@@ -256,20 +256,20 @@ Example JDBC URL for connecting to Secure YugabyteDB cluster can be seen below.
 Connection conn = DriverManager.getConnection(jdbc:postgresql://localhost:5433/yugabyte?ssl=true&sslmode=verify-full&sslcert=src/main/resources/ssl/yugabytedb.crt.der&sslkey=src/main/resources/ssl/yugabytedb.key.pk8", "yugabyte", "yugabyte");
 ```
 
-| JDBC Params | Description | Default |
+| JDBC Parameters | Description | Default |
 | :---------- | :---------- | :------ |
 | ssl  | Enable SSL JDBC Connection | false
 | ssl-mode |  SSL mode used for JDBC Connection | require
 | sslcert | Client SSL Certificate | yugabytedb.crt
 | sslkey | Client SSL Certificate Key | yugabytedb.key
 
-### Transaction and Isolation Levels
+### Transaction and isolation levels
 
-YugabyteDB supports transactions for inserting and querying data from the tables. YugabyteDB supports different [isolation levels](../../../../architecture/transactions/isolation-levels/) for maintaing strong consistency for concurrent data access.
+YugabyteDB supports transactions for inserting and querying data from the tables. YugabyteDB supports different [isolation levels](../../../../architecture/transactions/isolation-levels/) for maintaining strong consistency for concurrent data access.
 
-JDBC Driver `java.sql.Connection` interface provides `connection.setAutoCommit()`, `connection.commit()` and `connection.rollback()` methods for enabling transactional access to YugabyteDB Database.
+The JDBC Driver `java.sql.Connection` interface provides `connection.setAutoCommit()`, `connection.commit()`, and `connection.rollback()` methods for enabling transactional access to the YugabyteDB database.
 
-For example
+For example:
 
 ```Java
 Connection conn = DriverManager.getConnection("jdbc:postgresql://localhost:5433/yugabyte","yugabyte", "yugabyte");
@@ -289,7 +289,6 @@ try {
 } catch (SQLException e) {
   System.err.println(e.getMessage());
 }
-
 ```
 
-By default PostgreSQL JDBC driver will have `auto-commit` mode enabled which means each SQL statement is treated as a transaction and is automatically committed. If one or more SQL statements are encapsulated in a transaction, auto-commit mode must be disabled by using `setAutoCommit()` method of the `Connection` object.
+By default the PostgreSQL JDBC driver will have `auto-commit` mode enabled, which means each SQL statement is treated as a transaction and is automatically committed. If one or more SQL statements are encapsulated in a transaction, auto-commit mode must be disabled using the `setAutoCommit()` method of the `Connection` object.
