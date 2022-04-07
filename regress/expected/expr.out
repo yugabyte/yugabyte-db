@@ -457,6 +457,106 @@ $$) AS r(result boolean);
 (1 row)
 
 --
+-- Test chained comparisons
+--
+SELECT * FROM create_graph('chained');
+NOTICE:  graph "chained" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * FROM cypher('chained', $$ CREATE (:people {name: "Jason", age:50}) $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('chained', $$ CREATE (:people {name: "Amy", age:25}) $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('chained', $$ CREATE (:people {name: "Samantha", age:35}) $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('chained', $$ CREATE (:people {name: "Mark", age:40}) $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('chained', $$ CREATE (:people {name: "David", age:15}) $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+-- should return 1
+SELECT * FROM cypher('chained', $$ MATCH (u:people) WHERE 35 < u.age <= 49  RETURN u $$) AS (result agtype);
+                                            result                                             
+-----------------------------------------------------------------------------------------------
+ {"id": 844424930131972, "label": "people", "properties": {"age": 40, "name": "Mark"}}::vertex
+(1 row)
+
+SELECT * FROM cypher('chained', $$ MATCH (u:people) WHERE 25 <= u.age <= 25  RETURN u $$) AS (result agtype);
+                                            result                                            
+----------------------------------------------------------------------------------------------
+ {"id": 844424930131970, "label": "people", "properties": {"age": 25, "name": "Amy"}}::vertex
+(1 row)
+
+SELECT * FROM cypher('chained', $$ MATCH (u:people) WHERE 35 = u.age = 35  RETURN u $$) AS (result agtype);
+                                              result                                               
+---------------------------------------------------------------------------------------------------
+ {"id": 844424930131971, "label": "people", "properties": {"age": 35, "name": "Samantha"}}::vertex
+(1 row)
+
+SELECT * FROM cypher('chained', $$ MATCH (u:people) WHERE 50 > u.age > 35  RETURN u $$) AS (result agtype);
+                                            result                                             
+-----------------------------------------------------------------------------------------------
+ {"id": 844424930131972, "label": "people", "properties": {"age": 40, "name": "Mark"}}::vertex
+(1 row)
+
+-- should return 3
+SELECT * FROM cypher('chained', $$ MATCH (u:people) WHERE 40 <> u.age <> 35 RETURN u $$) AS (result agtype);
+                                             result                                             
+------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "people", "properties": {"age": 50, "name": "Jason"}}::vertex
+ {"id": 844424930131970, "label": "people", "properties": {"age": 25, "name": "Amy"}}::vertex
+ {"id": 844424930131973, "label": "people", "properties": {"age": 15, "name": "David"}}::vertex
+(3 rows)
+
+-- should return 2
+SELECT * FROM cypher('chained', $$ MATCH (u:people) WHERE 30 <= u.age <= 49 > u.age RETURN u $$) AS (result agtype);
+                                              result                                               
+---------------------------------------------------------------------------------------------------
+ {"id": 844424930131971, "label": "people", "properties": {"age": 35, "name": "Samantha"}}::vertex
+ {"id": 844424930131972, "label": "people", "properties": {"age": 40, "name": "Mark"}}::vertex
+(2 rows)
+
+-- should return 0
+SELECT * FROM cypher('chained', $$ MATCH (u:people) WHERE 30 <= u.age <= 49 = u.age RETURN u $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+-- should return 2
+SELECT * FROM cypher('chained', $$ MATCH (u:people) WHERE 35 < u.age + 1 <= 50 RETURN u $$) AS (result agtype);
+                                              result                                               
+---------------------------------------------------------------------------------------------------
+ {"id": 844424930131971, "label": "people", "properties": {"age": 35, "name": "Samantha"}}::vertex
+ {"id": 844424930131972, "label": "people", "properties": {"age": 40, "name": "Mark"}}::vertex
+(2 rows)
+
+-- should return 3
+SELECT * FROM cypher('chained', $$ MATCH (u:people) WHERE NOT 35 < u.age + 1 <= 50 RETURN u $$) AS (result agtype);
+                                             result                                             
+------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "people", "properties": {"age": 50, "name": "Jason"}}::vertex
+ {"id": 844424930131970, "label": "people", "properties": {"age": 25, "name": "Amy"}}::vertex
+ {"id": 844424930131973, "label": "people", "properties": {"age": 15, "name": "David"}}::vertex
+(3 rows)
+
+--
 -- Test transform logic for IS NULL & IS NOT NULL
 --
 SELECT * FROM cypher('expr', $$
@@ -5912,6 +6012,17 @@ ERROR:  labels() argument must be a vertex
 --
 -- Cleanup
 --
+SELECT * FROM drop_graph('chained', true);
+NOTICE:  drop cascades to 3 other objects
+DETAIL:  drop cascades to table chained._ag_label_vertex
+drop cascades to table chained._ag_label_edge
+drop cascades to table chained.people
+NOTICE:  graph "chained" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
 SELECT * FROM drop_graph('VLE', true);
 NOTICE:  drop cascades to 9 other objects
 DETAIL:  drop cascades to table "VLE"._ag_label_vertex

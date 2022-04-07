@@ -162,7 +162,7 @@
 %left AND
 %left XOR
 %right NOT
-%nonassoc '=' NOT_EQ '<' LT_EQ '>' GT_EQ
+%left '=' NOT_EQ '<' LT_EQ '>' GT_EQ
 %left '+' '-'
 %left '*' '/' '%'
 %left '^'
@@ -210,7 +210,14 @@ static Node *make_typecast_expr(Node *expr, char *typecast, int location);
 static Node *make_function_expr(List *func_name, List *exprs, int location);
 
 // setops
-static Node *make_set_op(SetOperation op, bool all_or_distinct, List *larg, List *rarg);
+static Node *make_set_op(SetOperation op, bool all_or_distinct, List *larg,
+                         List *rarg);
+
+// comparison
+static bool is_A_Expr_a_comparison_operation(A_Expr *a);
+static Node *build_comparison_expression(Node *left_grammar_node,
+                                         Node *right_grammar_node,
+                                         char *opr_name, int location);
 %}
 %%
 
@@ -1280,27 +1287,27 @@ expr:
         }
     | expr '=' expr
         {
-            $$ = (Node *)makeSimpleA_Expr(AEXPR_OP, "=", $1, $3, @2);
+            $$ = build_comparison_expression($1, $3, "=", @2);
         }
     | expr NOT_EQ expr
         {
-            $$ = (Node *)makeSimpleA_Expr(AEXPR_OP, "<>", $1, $3, @2);
+            $$ = build_comparison_expression($1, $3, "<>", @2);
         }
     | expr '<' expr
         {
-            $$ = (Node *)makeSimpleA_Expr(AEXPR_OP, "<", $1, $3, @2);
+            $$ = build_comparison_expression($1, $3, "<", @2);
         }
     | expr LT_EQ expr
         {
-            $$ = (Node *)makeSimpleA_Expr(AEXPR_OP, "<=", $1, $3, @2);
+            $$ = build_comparison_expression($1, $3, "<=", @2);
         }
     | expr '>' expr
         {
-            $$ = (Node *)makeSimpleA_Expr(AEXPR_OP, ">", $1, $3, @2);
+            $$ = build_comparison_expression($1, $3, ">", @2);
         }
     | expr GT_EQ expr
         {
-            $$ = (Node *)makeSimpleA_Expr(AEXPR_OP, ">=", $1, $3, @2);
+            $$ = build_comparison_expression($1, $3, ">=", @2);
         }
     | expr '+' expr
         {
@@ -2197,9 +2204,8 @@ static unsigned long get_a_unique_number(void)
 }
 
 /*set operation function node to make a set op node*/
-
-static Node *
-make_set_op(SetOperation op, bool all_or_distinct, List *larg, List *rarg)
+static Node *make_set_op(SetOperation op, bool all_or_distinct, List *larg,
+                         List *rarg)
 {
     cypher_return *n = make_ag_node(cypher_return);
 
@@ -2208,4 +2214,147 @@ make_set_op(SetOperation op, bool all_or_distinct, List *larg, List *rarg)
     n->larg = (List *) larg;
     n->rarg = (List *) rarg;
     return (Node *) n;
+}
+
+/* check if A_Expr is a comparison expression */
+static bool is_A_Expr_a_comparison_operation(A_Expr *a)
+{
+    Value *v = NULL;
+    char *opr_name = NULL;
+
+    /* we don't support qualified comparison operators */
+    if (list_length(a->name) != 1)
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_SYNTAX_ERROR),
+                 errmsg("qualified comparison operator names are not permitted")));
+    }
+
+    /* get the value and verify that it is a string */
+    v = linitial(a->name);
+    Assert(v->type == T_String);
+
+    /* get the string value */
+    opr_name = v->val.str;
+
+    /* verify it is a comparison operation */
+    if (strcmp(opr_name, "<") == 0)
+    {
+        return true;
+    }
+    if (strcmp(opr_name, ">") == 0)
+    {
+        return true;
+    }
+    if (strcmp(opr_name, "<=") == 0)
+    {
+        return true;
+    }
+    if (strcmp(opr_name, "=>") == 0)
+    {
+        return true;
+    }
+    if (strcmp(opr_name, "=") == 0)
+    {
+        return true;
+    }
+    if (strcmp(opr_name, "<>") == 0)
+    {
+        return true;
+    }
+
+    return false;
+}
+
+/*
+ * Helper function to build the comparison operator expression. It will also
+ * build a chained comparison operator expression if it detects a chained
+ * comparison.
+ */
+static Node *build_comparison_expression(Node *left_grammar_node,
+                                         Node *right_grammar_node,
+                                         char *opr_name, int location)
+{
+    Node *result_expr = NULL;
+
+    Assert(left_grammar_node != NULL);
+    Assert(right_grammar_node != NULL);
+    Assert(opr_name != NULL);
+
+    /*
+     * Case 1:
+     *    If the previous expression is an A_Expr and it is also a
+     *    comparison, then this is part of a chained comparison. In this
+     *    specific case, the second chained element.
+     */
+    if (IsA(left_grammar_node, A_Expr) &&
+        is_A_Expr_a_comparison_operation((A_Expr *)left_grammar_node))
+    {
+        A_Expr *aexpr = NULL;
+        Node *lexpr = NULL;
+        Node *n = NULL;
+
+        /* get the A_Expr on the left side */
+        aexpr = (A_Expr *) left_grammar_node;
+        /* get its rexpr which will be our lexpr */
+        lexpr = aexpr->rexpr;
+        /* build our comparison operator */
+        n = (Node *)makeSimpleA_Expr(AEXPR_OP, opr_name, lexpr,
+                                     right_grammar_node, location);
+
+        /* now add it (AND) to the other comparison */
+        result_expr = make_and_expr(left_grammar_node, n, location);
+    }
+
+    /*
+     * Case 2:
+     *    If the previous expression is a boolean AND and its right most
+     *    expression is an A_Expr and a comparison, then this is part of
+     *    a chained comparison. In this specific case, the third and
+     *    beyond chained element.
+     */
+    if (IsA(left_grammar_node, BoolExpr) &&
+        ((BoolExpr*)left_grammar_node)->boolop == AND_EXPR)
+    {
+        BoolExpr *bexpr = NULL;
+        Node *last = NULL;
+
+        /* cast the left to a boolean */
+        bexpr = (BoolExpr *)left_grammar_node;
+        /* extract the last node - ANDs are chained in a flat list */
+        last = llast(bexpr->args);
+
+        /* is the last node an A_Expr and a comparison operator */
+        if (IsA(last, A_Expr) &&
+            is_A_Expr_a_comparison_operation((A_Expr *)last))
+        {
+            A_Expr *aexpr = NULL;
+            Node *lexpr = NULL;
+            Node *n = NULL;
+
+            /* get the last expressions right expression */
+            aexpr = (A_Expr *) last;
+            lexpr = aexpr->rexpr;
+            /* make our comparison operator */
+            n = (Node *)makeSimpleA_Expr(AEXPR_OP, opr_name, lexpr,
+                                         right_grammar_node, location);
+
+            /* now add it (AND) to the other comparisons */
+            result_expr = make_and_expr(left_grammar_node, n, location);
+        }
+    }
+
+    /*
+     * Case 3:
+     *    The previous expression isn't a chained comparison. So, treat
+     *    it as a regular comparison expression.
+     */
+    if (result_expr == NULL)
+    {
+        result_expr = (Node *)makeSimpleA_Expr(AEXPR_OP, opr_name,
+                                               left_grammar_node,
+                                               right_grammar_node, location);
+    }
+
+    return result_expr;
 }

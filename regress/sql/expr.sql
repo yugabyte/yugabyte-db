@@ -236,6 +236,32 @@ RETURN (1 + 1.0) = (7 % 5)
 $$) AS r(result boolean);
 
 --
+-- Test chained comparisons
+--
+
+SELECT * FROM create_graph('chained');
+SELECT * FROM cypher('chained', $$ CREATE (:people {name: "Jason", age:50}) $$) AS (result agtype);
+SELECT * FROM cypher('chained', $$ CREATE (:people {name: "Amy", age:25}) $$) AS (result agtype);
+SELECT * FROM cypher('chained', $$ CREATE (:people {name: "Samantha", age:35}) $$) AS (result agtype);
+SELECT * FROM cypher('chained', $$ CREATE (:people {name: "Mark", age:40}) $$) AS (result agtype);
+SELECT * FROM cypher('chained', $$ CREATE (:people {name: "David", age:15}) $$) AS (result agtype);
+-- should return 1
+SELECT * FROM cypher('chained', $$ MATCH (u:people) WHERE 35 < u.age <= 49  RETURN u $$) AS (result agtype);
+SELECT * FROM cypher('chained', $$ MATCH (u:people) WHERE 25 <= u.age <= 25  RETURN u $$) AS (result agtype);
+SELECT * FROM cypher('chained', $$ MATCH (u:people) WHERE 35 = u.age = 35  RETURN u $$) AS (result agtype);
+SELECT * FROM cypher('chained', $$ MATCH (u:people) WHERE 50 > u.age > 35  RETURN u $$) AS (result agtype);
+-- should return 3
+SELECT * FROM cypher('chained', $$ MATCH (u:people) WHERE 40 <> u.age <> 35 RETURN u $$) AS (result agtype);
+-- should return 2
+SELECT * FROM cypher('chained', $$ MATCH (u:people) WHERE 30 <= u.age <= 49 > u.age RETURN u $$) AS (result agtype);
+-- should return 0
+SELECT * FROM cypher('chained', $$ MATCH (u:people) WHERE 30 <= u.age <= 49 = u.age RETURN u $$) AS (result agtype);
+-- should return 2
+SELECT * FROM cypher('chained', $$ MATCH (u:people) WHERE 35 < u.age + 1 <= 50 RETURN u $$) AS (result agtype);
+-- should return 3
+SELECT * FROM cypher('chained', $$ MATCH (u:people) WHERE NOT 35 < u.age + 1 <= 50 RETURN u $$) AS (result agtype);
+
+--
 -- Test transform logic for IS NULL & IS NOT NULL
 --
 
@@ -2374,6 +2400,7 @@ SELECT * from cypher('list', $$RETURN labels("string")$$) as (Labels agtype);
 --
 -- Cleanup
 --
+SELECT * FROM drop_graph('chained', true);
 SELECT * FROM drop_graph('VLE', true);
 SELECT * FROM drop_graph('case_statement', true);
 SELECT * FROM drop_graph('opt_forms', true);
