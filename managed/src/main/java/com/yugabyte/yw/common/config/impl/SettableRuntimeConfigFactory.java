@@ -16,6 +16,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.ybflyway.YBFlywayInit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
@@ -38,7 +39,7 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
 
   @Inject
   public SettableRuntimeConfigFactory(
-      Config appConfig, EbeanDynamicEvolutions ebeanDynamicEvolutions) {
+      Config appConfig, EbeanDynamicEvolutions ebeanDynamicEvolutions, YBFlywayInit ybFlywayInit) {
     this.appConfig = appConfig;
   }
 
