@@ -472,6 +472,10 @@ DEFINE_test_flag(bool, sequential_colocation_ids, false,
 DEFINE_bool(disable_truncate_table, false, "When enabled, truncate table will be disallowed");
 TAG_FLAG(disable_truncate_table, runtime);
 
+DEFINE_bool(enable_truncate_on_pitr_table, false,
+    "When enabled, truncate table will be allowed on PITR tables");
+TAG_FLAG(enable_truncate_on_pitr_table, runtime);
+
 namespace yb {
 namespace master {
 
@@ -4740,6 +4744,21 @@ Status CatalogManager::TruncateTable(const TableId& table_id,
         MasterError(MasterErrorPB::INVALID_REQUEST));
   }
 
+  if (!FLAGS_enable_truncate_on_pitr_table) {
+      // Disallow deleting tables with snapshot schedules.
+      auto covering_schedule_id = VERIFY_RESULT(
+          FindCoveringScheduleForObject(
+              SysRowEntryType::TABLE, table_id));
+      if (!covering_schedule_id.IsNil()) {
+        return STATUS_EC_FORMAT(
+            NotSupported,
+            MasterError(MasterErrorPB::INVALID_REQUEST),
+            "Cannot truncate table $0 which has schedule: $1",
+            table->name(),
+            covering_schedule_id);
+      }
+  }
+
   if (!FLAGS_enable_delete_truncate_xcluster_replicated_table && IsCdcEnabled(*table)) {
     return STATUS(NotSupported,
                   "Cannot truncate a table in replication.",
@@ -7573,12 +7592,12 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
   return status;
 }
 
-Result<SnapshotScheduleId> CatalogManager::FindCoveringScheduleForNamespace(
-    const NamespaceId& ns_id) {
-  auto map = VERIFY_RESULT(MakeSnapshotSchedulesToObjectIdsMap(SysRowEntryType::NAMESPACE));
+Result<SnapshotScheduleId> CatalogManager::FindCoveringScheduleForObject(
+    SysRowEntryType type, const std::string& object_id) {
+  auto map = VERIFY_RESULT(MakeSnapshotSchedulesToObjectIdsMap(type));
   for (const auto& schedule_and_objects : map) {
     for (const auto& id : schedule_and_objects.second) {
-      if (id == ns_id) {
+      if (id == object_id) {
         return schedule_and_objects.first;
       }
     }
@@ -7659,7 +7678,9 @@ Status CatalogManager::DoDeleteNamespace(const DeleteNamespaceRequestPB* req,
   }
 
   // Disallow deleting namespaces with snapshot schedules.
-  auto covering_schedule_id = VERIFY_RESULT(FindCoveringScheduleForNamespace(ns->id()));
+  auto covering_schedule_id = VERIFY_RESULT(
+      FindCoveringScheduleForObject(
+          SysRowEntryType::NAMESPACE, ns->id()));
   if (!covering_schedule_id.IsNil()) {
     return STATUS_EC_FORMAT(
         InvalidArgument, MasterError(MasterErrorPB::NAMESPACE_IS_NOT_EMPTY),
@@ -7792,7 +7813,9 @@ Status CatalogManager::DeleteYsqlDatabase(const DeleteNamespaceRequestPB* req,
   }
 
   // Disallow deleting namespaces with snapshot schedules.
-  auto covering_schedule_id = VERIFY_RESULT(FindCoveringScheduleForNamespace(database->id()));
+  auto covering_schedule_id = VERIFY_RESULT(
+      FindCoveringScheduleForObject(
+          SysRowEntryType::NAMESPACE, database->id()));
   if (!covering_schedule_id.IsNil()) {
     return STATUS_EC_FORMAT(
         InvalidArgument, MasterError(MasterErrorPB::NAMESPACE_IS_NOT_EMPTY),
