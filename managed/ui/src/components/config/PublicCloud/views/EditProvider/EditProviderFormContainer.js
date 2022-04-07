@@ -17,7 +17,7 @@ const mapDispatchToProps = (dispatch) => {
   return {
     submitEditProvider: (payload) => {
       dispatch(editProvider(payload)).then((response) => {
-        if (response.payload.isAxiosError || (response.payload?.response?.status !== 200)) {
+        if (response.payload?.isAxiosError || response.payload?.status !== 200) {
           const errorMessage = response.payload?.response?.data?.error || response.payload.message;
           toast.error(errorMessage);
           dispatch(editProviderFailure(response.payload));
@@ -43,7 +43,9 @@ function mapStateToProps(state, ownProps) {
       accountName: ownProps.accountName,
       accountUUID: ownProps.uuid,
       secretKey: ownProps.sshKey,
-      hostedZoneId: ownProps.hostedZoneId
+      hostedZoneId: ownProps.hostedZoneId,
+      code: ownProps.code,
+      name: ownProps.accountName
     },
     editProvider: state.cloud.editProvider,
     universeList: state.universe.universeList

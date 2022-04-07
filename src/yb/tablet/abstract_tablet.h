@@ -33,7 +33,7 @@ class AbstractTablet {
  public:
   virtual ~AbstractTablet() {}
 
-  virtual yb::SchemaPtr GetSchema(const std::string& table_id = "") const = 0;
+  virtual docdb::DocReadContextPtr GetDocReadContext(const std::string& table_id = "") const = 0;
 
   virtual const docdb::YQLStorageIf& QLStorage() const = 0;
 
@@ -113,13 +113,14 @@ class AbstractTablet {
                                                   const size_t row_count,
                                                   PgsqlResponsePB* response) const = 0;
 
-  CHECKED_STATUS HandlePgsqlReadRequest(CoarseTimePoint deadline,
-                                        const ReadHybridTime& read_time,
-                                        bool is_explicit_request_read_time,
-                                        const PgsqlReadRequestPB& pgsql_read_request,
-                                        const TransactionOperationContext& txn_op_context,
-                                        PgsqlReadRequestResult* result,
-                                        size_t* num_rows_read);
+  CHECKED_STATUS ProcessPgsqlReadRequest(CoarseTimePoint deadline,
+                                         const ReadHybridTime& read_time,
+                                         bool is_explicit_request_read_time,
+                                         const PgsqlReadRequestPB& pgsql_read_request,
+                                         const std::shared_ptr<TableInfo>& table_info,
+                                         const TransactionOperationContext& txn_op_context,
+                                         PgsqlReadRequestResult* result,
+                                         size_t* num_rows_read);
 
   virtual bool IsTransactionalRequest(bool is_ysql_request) const = 0;
 
