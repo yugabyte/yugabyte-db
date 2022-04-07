@@ -16,62 +16,33 @@ type: page
 isTocNested: true
 showAsideToc: true
 ---
-
-<style>
-ul.tabs-name {
-  display: flex;
-  list-style: none;
-  border-bottom: 2px solid #e6e6e6;
-  margin-bottom :6px;
-}
-
-ul.tabs-name li:before {
-  display: none;
-  margin: 0;
-}
-
-ul.tabs-name li {
-  padding: 5px 15px;
-  border-bottom: 2px solid #e6e6e6;
-  margin: 0  0 -2px 0;
-  font-size: 22px;
-}
-ul.tabs-name li a {
-  border-bottom: 0;
-}
-ul.tabs-name li.active {
-  border-color: #f75821;
-}
-</style>
-<div class="row">
-  <div class="col-12 col-md-12 col-lg-12 col-xl-12">
+<div class="custom-tabs tabs-style-1">
     <ul class="tabs-name">
-      <li class="tb-1 active">
-        <a href="../macos/" class="nav-link">
+      <li class="active">
+        <a href="../macos/" class="nav-link" >
           <i class="fab fa-apple" aria-hidden="true"></i>
           macOS
         </a>
       </li>
-      <li class="tb-1">
+      <li>
         <a href="../linux/" class="nav-link">
           <i class="fab fa-linux" aria-hidden="true"></i>
           Linux
         </a>
       </li>
-      <li class="tb-1">
+      <li>
         <a href="../docker/" class="nav-link">
           <i class="fab fa-docker" aria-hidden="true"></i>
           Docker
         </a>
       </li>
-      <li class="tb-1">
+      <li>
         <a href="../kubernetes/" class="nav-link">
           <i class="fas fa-cubes" aria-hidden="true"></i>
           Kubernetes
         </a>
       </li>
     </ul>
-  </div>
 </div>
 
 ## Prerequisites

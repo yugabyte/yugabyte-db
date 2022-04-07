@@ -15,6 +15,21 @@ menu:
     weight: 5
 ---
 
+<div class="custom-tabs tabs-style-2">
+    <ul class="tabs-name">
+      <li class="active">
+        <a href="../quick-start/" class="nav-link">
+          Yugabyte Core
+        </a>
+      </li>
+      <li>
+        <a href="../yugabyte-cloud/cloud-quickstart/" class="nav-link">
+          Yugabyte Cloud 
+        </a>
+      </li>
+    </ul>
+</div>
+
 {{< note title="Note" >}}
 
 The local cluster setup on a single host is intended for development and learning. For production deployment, performance benchmarking, or deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](../../../deploy/).

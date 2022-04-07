@@ -16,37 +16,36 @@ isTocNested: true
 showAsideToc: true
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<div class="custom-tabs tabs-style-1">
+    <ul class="tabs-name">
+      <li >
+        <a href="../macos/" class="nav-link" >
+          <i class="fab fa-apple" aria-hidden="true"></i>
+          macOS
+        </a>
+      </li>
+      <li >
+          <a href="../linux/" class="nav-link">
+          <i class="fab fa-linux" aria-hidden="true"></i>
+          Linux
+        </a>
+      </li>
+      <li>
+        <a href="../docker/" class="nav-link">
+          <i class="fab fa-docker" aria-hidden="true"></i>
+          Docker
+        </a>
+      </li>
+      <li class="active">
+          <a href="../kubernetes/" class="nav-link">
+          <i class="fas fa-cubes" aria-hidden="true"></i>
+          Kubernetes
+        </a>
+      </li>
+    </ul>
+</div>
 
-  <li >
-    <a href="../macos/" class="nav-link">
-      <i class="fab fa-apple" aria-hidden="true"></i>
-      macOS
-    </a>
-  </li>
 
-  <li >
-    <a href="../linux/" class="nav-link">
-      <i class="fab fa-linux" aria-hidden="true"></i>
-      Linux
-    </a>
-  </li>
-
-  <li >
-    <a href="../docker/" class="nav-link">
-      <i class="fab fa-docker" aria-hidden="true"></i>
-      Docker
-    </a>
-  </li>
-
-  <li >
-    <a href="../kubernetes/" class="nav-link active">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
-      Kubernetes
-    </a>
-  </li>
-
-</ul>
 
 ## Prerequisites
 
