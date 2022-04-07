@@ -164,7 +164,8 @@ ProcessQuery(PlannedStmt *plan,
 	/* Set whether this is a single-row, single-stmt modify, used in YB mode. */
 	queryDesc->estate->es_yb_is_single_row_modify_txn =
 		isSingleRowModifyTxn && queryDesc->estate->es_num_result_relations == 1 &&
-		YBCIsSingleRowTxnCapableRel(&queryDesc->estate->es_result_relations[0]);
+		(plan->commandType == CMD_UPDATE ||
+		 YBCIsSingleRowTxnCapableRel(&queryDesc->estate->es_result_relations[0]));
 
 	/*
 	 * Run the plan to completion.
