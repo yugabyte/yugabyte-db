@@ -19,7 +19,7 @@ Connect applications to YugabyteDB databases using Yugabyte-supported drivers, O
 YugabyteDB <b>smart language drivers</b> enable client applications to connect to YugabyteDB clusters without the need for external load balancers. YugabyteDB smart drivers have the following features:
 
 - <b>Cluster-aware</b>. Drivers know about all the data nodes in a YugabyteDB cluster, which eliminates the need for an external load balancer.
-- [Topology-aware](/preview/deploy/multi-dc/). For geographically-distributed applications, the driver can seamlessly connect to the geographically nearest regions and availability zones for lower latency.
+- [Topology](/preview/deploy/multi-dc/)-aware. For geographically-distributed applications, the driver can seamlessly connect to the geographically nearest regions and availability zones for lower latency.
 
 All YugabyteDB smart driver libraries are actively maintained, and receive bug fixes, performance enhancements, and security patches.
 

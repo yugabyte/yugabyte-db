@@ -223,23 +223,23 @@ Another function `conn.BeginEx()` can create a transaction with a specified isol
 ```go
 tx, err := db.Begin()
 if err != nil {
-	log.Fatal(err)
+  log.Fatal(err)
 }
 
 ...
 
 _, err = stmt.Exec()
 if err != nil {
-	log.Fatal(err)
+  log.Fatal(err)
 }
 
 err = stmt.Close()
 if err != nil {
-	log.Fatal(err)
+  log.Fatal(err)
 }
 
 err = txn.Commit()
 if err != nil {
-	log.Fatal(err)
+  log.Fatal(err)
 }
 ```

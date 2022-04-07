@@ -186,7 +186,7 @@ The PGX driver also provides pool APIs via its `pgxpool` package. One can import
 
 ```go
 import (
-	"github.com/jackc/pgx/v4/pgxpool"
+  "github.com/jackc/pgx/v4/pgxpool"
 )
 ```
 

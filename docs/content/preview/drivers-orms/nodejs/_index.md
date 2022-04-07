@@ -12,18 +12,18 @@ menu:
 isTocNested: true
 showAsideToc: true
 ---
-Following are the recommended projects for implementing Node Applications for YugabyteDB YSQL API.
+The following projects are recommended for implementing Node applications using the YugabyteDB YSQL API.
 
 | Project | Type | Support Level |
 | :------ | :--- | :------------ |
 | [Node Postgres](postgres-node-driver) | Node.JS Driver | Full |
 | [Sequelize](sequelize) | ORM | Full |
 
-## Build a Hello World App
+## Build a Hello World application
 
 Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps in [Build an Application](/preview/quick-start/build-apps/nodejs/) in the Quick Start section.
 
-## Pre-requisites for Building a Node.JS Application
+## Pre-requisites for building a Node.JS application
 
 ### Install Node.JS
 
@@ -35,7 +35,7 @@ To check the version of installed node, use the following command:
 node -v
 ```
 
-### Create a Node.JS Project
+### Create a Node.JS project
 
 Create a file with the `.js` extension, for example `app.js`, which can be run using the following command:
 
@@ -43,13 +43,13 @@ Create a file with the `.js` extension, for example `app.js`, which can be run u
 node app.js
 ```
 
-### Create a YugabyteDB Cluster
+### Create a YugabyteDB cluster
 
 Create a free cluster on Yugabyte Cloud. Refer to [Create a free cluster](../../yugabyte-cloud/cloud-basics/create-clusters-free/).
 
 You can also set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/preview/quick-start/install/macos).
 
-## Usage Examples
+## Examples
 
 For fully runnable code snippets and explanations of common operations, see the specific Java driver and ORM section. The following table provides links to driver-specific documentation and examples.
 

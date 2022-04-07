@@ -104,7 +104,6 @@ db.Create(&Employee{Id: 1, Name: "John", Age: 35, Language: "Golang-GORM"})
 db.Create(&Employee{Id: 2, Name: "Smith", Age: 24, Language: "Golang-GORM"})
 ```
 
-
 To query data from YugabyteDB tables, use the `db.Find()` function.
 
 ```go
@@ -117,7 +116,7 @@ for _, employee := range employees {
 }
 ```
 
-## Next Steps
+## Next steps
 
 - Explore [Scaling Go Applications](/latest/explore/linear-scalability) with YugabyteDB.
 - Learn how to [develop Go applications with Yugabyte Cloud](/latest/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-go/).

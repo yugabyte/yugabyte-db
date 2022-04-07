@@ -19,7 +19,7 @@ The following projects are recommended for implementing Golang applications usin
 | [PGX Driver](pgx) | Driver | Full |
 | [GORM](gorm) | ORM |  Full |
 
-## Build a hello world app
+## Build a Hello World application
 
 Learn how to establish a connection to your YugabyteDB database and begin simple CRUD operations
 using the steps in [Build an Application](../../quick-start/build-apps/go/ysql-pgx) in the Quick Start section.
@@ -43,10 +43,9 @@ Create a free cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/). 
 
 Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/preview/quick-start/install/macos). 
 
-## Usage examples
+## Examples
 
-For fully runnable code snippets and explanation for common operations, see the specific Go driver and ORM section.
-The following table provides quick links to driver-specific documentation and examples.
+For fully runnable code snippets and explanation for common operations, see the specific Go driver and ORM section. The following table provides links to driver-specific documentation and examples.
 
 | Project | Type | Usage Examples |
 | :------ | :--- | :------------- |

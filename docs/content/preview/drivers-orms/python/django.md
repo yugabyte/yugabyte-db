@@ -36,29 +36,35 @@ showAsideToc: true
 ### Add the Dependencies
 
 To download the Django Rest Framework to your project, run the following command:
+
 ```shell
 pip3 install djangorestframework
 ```
 
-In addition to this, also install the [YB backend for django](https://github.com/yugabyte/yb-django). Follow the steps on the README to install it. This backend has specific changes with respect to features either not supported by YugabyteDB or supported differently than PostgreSQL. For more information on these features, visit this [GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/7764).
+In addition, install the [YB backend for django](https://github.com/yugabyte/yb-django). Follow the steps on the README to install it. This backend has specific changes with respect to features either not supported by YugabyteDB or supported differently than PostgreSQL. For more information on these features, visit this [GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/7764).
 
-Install the psycopg2 dependency, by running the following command:
-```
+Install the psycopg2 dependency by running the following command:
+
+```sh
 pip3 install psycopg2
 ```
 
-### Implementing ORM mapping for YugabyteDB
+### Implement ORM mapping for YugabyteDB
 
 Once all the dependencies are installed, start a Django project and create a new application. To start the project, run the following command:
-```shell
+
+```sh
 django-admin startproject yugabyteTest && cd yugabyteTest/
 ```
+
 Set up a new Django application using the following command:
-```shell
+
+```sh
 python manage.py startapp testdb
 ```
 
 After creating the application, configure the application to connect to the database. To do this, change the application settings to provide the database credentials. In the file `yugabyteTest/settings.py ` add the following code:
+
 ```python
 DATABASES = {
     'default': {
@@ -72,9 +78,11 @@ DATABASES = {
     }
 }
 ```
+
 For better performance with YugabyteDB, use persistent connections (set `CONN_MAX_AGE`).
 
 You also need the application and rest framework in the INSTALLED_APPS field. Replace the existing code with the following:
+
 ```python
 INSTALLED_APPS = [
     'rest_framework',
@@ -91,6 +99,7 @@ REST_FRAMEWORK = {
 ```
 
 The next step is to create a model for the table. The table name is `users` and contains four columns -`user_id`,`firstName`,`lastName`, and `email`. Add the following code to `testdb/models.py`:
+
 ```python
 rom django.db import models
 
@@ -108,6 +117,7 @@ class Users(models.Model):
 ```
 
 After creating the model, you need to create a Serializer. Serializers allow complex data such as querysets and model instances to be converted to native Python datatypes that can then be rendered into JSON, XML or other content types. Serializers also provide deserialization, allowing parsed data to be converted back into complex types, after first validating the incoming data. Copy the following code into `testdb\serializers.py`:
+
 ```python
 from rest_framework import serializers, status
 from testdb.models import Users
@@ -120,6 +130,7 @@ class UserSerializer(serializers.ModelSerializer):
 ```
 
 To finish all the elements of the application, create a ViewSet. In `testdb/views.py`, add the following:
+
 ```python
 from django.shortcuts import render
 from testdb.models import Users
@@ -132,6 +143,7 @@ class UserViewSet(viewsets.ModelViewSet):
 ```
 
 Finally map the URLs in `yugabyteTest/urls.py` by adding the following code:
+
 ```python
 from django.urls import include, re_path
 from rest_framework import routers
@@ -143,7 +155,9 @@ urlpatterns = [
     re_path(r'^', include(router.urls))
 ]
 ```
+
 For Django versions earlier than 4.0, use the following code instead, since you can import the URLs using django.conf.urls:
+
 ```python
 from django.urls import path, include
 from django.conf.urls import url, include
@@ -198,7 +212,7 @@ You should see the following output:
 
 You can also verify this using the ysqlsh client shell.
 
-## Next Steps
+## Next steps
 
 - Explore [Scaling Python Applications](/preview/explore/linear-scalability) with YugabyteDB.
 - Learn how to [develop Python applications with Yugabyte Cloud](/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-python/).

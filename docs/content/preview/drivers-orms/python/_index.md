@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Following are the recommended projects for implementing Python Applications for YugabyteDB YSQL API.
+The following projects are recommended for implementing Python applications using the YugabyteDB YSQL API.
 
 | Project | Type | Support Level |
 | :------ | :--- | :------------ |
@@ -22,13 +22,13 @@ Following are the recommended projects for implementing Python Applications for 
 | [SQLAlchemy](sqlalchemy) | ORM |  Full |
 | [Django](django) | ORM |  Full |
 
-## Build a Hello World App
+## Build a Hello World application
 
 Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps in [Build an Application](/preview/quick-start/build-apps/python/ysql-psycopg2) in the Quick Start section.
 
-## Pre-requisites for Building a Python Application
+## Pre-requisites for building a Python application
 
-### Install Python
+### Install python
 
 Make sure that your system has Python3 installed. To check the version of Python installed, use the following command.
 
@@ -38,17 +38,17 @@ $ python -V
 
 If not already installed, download and install it from [Python's Website](https://www.python.org/downloads/).
 
-### Create a Python Project
+### Create a Python project
 
 Create a python file by adding ```.py``` extension to your filename. It is also advised to start a virtual environment to keep dependencies required by different projects separate. Make sure pip is also installed in the environment.
 
-### Create a YugabyteDB Cluster
+### Create a YugabyteDB cluster
 
 Create a free cluster on Yugabyte Cloud. Refer to [Create a free cluster](/preview/yugabyte-cloud/cloud-quickstart/qs-add/).
 
 You can also set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/preview/quick-start/install/macos).
 
-## Usage Examples
+## Examples
 
 For fully runnable code snippets and explanations of common operations, see the specific Java driver and ORM section. The following table provides links to driver-specific documentation and examples.
 
