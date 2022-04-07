@@ -90,6 +90,7 @@ public class CreateBackup extends UniverseTaskBase {
     tableBackupParams.parallelism = params().parallelism;
     tableBackupParams.timeBeforeDelete = params().timeBeforeDelete;
     tableBackupParams.backupType = params().backupType;
+    tableBackupParams.isFullBackup = CollectionUtils.isEmpty(params().keyspaceTableList);
     Set<String> tablesToBackup = new HashSet<>();
     Universe universe = Universe.getOrBadRequest(params().universeUUID);
     MetricLabelsBuilder metricLabelsBuilder = MetricLabelsBuilder.create().appendSource(universe);

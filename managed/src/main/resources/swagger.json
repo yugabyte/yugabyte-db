@@ -1464,6 +1464,9 @@
           "format" : "date-time",
           "type" : "string"
         },
+        "isFullBackup" : {
+          "type" : "boolean"
+        },
         "isStorageConfigPresent" : {
           "type" : "boolean"
         },
@@ -1519,7 +1522,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "backupType", "backupUUID", "completionTime", "createTime", "customerUUID", "expiryTime", "isStorageConfigPresent", "isUniversePresent", "onDemand", "responseList", "scheduleUUID", "sse", "state", "storageConfigType", "storageConfigUUID", "taskUUID", "totalBackupSizeInBytes", "universeName", "universeUUID", "updateTime" ],
+      "required" : [ "backupType", "backupUUID", "completionTime", "createTime", "customerUUID", "expiryTime", "isFullBackup", "isStorageConfigPresent", "isUniversePresent", "onDemand", "responseList", "scheduleUUID", "sse", "state", "storageConfigType", "storageConfigUUID", "taskUUID", "totalBackupSizeInBytes", "universeName", "universeUUID", "updateTime" ],
       "type" : "object"
     },
     "BackupStorageInfo" : {
@@ -1634,6 +1637,10 @@
         },
         "ignoreErrors" : {
           "description" : "Should table backup errors be ignored",
+          "type" : "boolean"
+        },
+        "isFullBackup" : {
+          "description" : "Full Table type backup",
           "type" : "boolean"
         },
         "keyspace" : {
@@ -3725,6 +3732,10 @@
         },
         "ignoreErrors" : {
           "description" : "Should table backup errors be ignored",
+          "type" : "boolean"
+        },
+        "isFullBackup" : {
+          "description" : "Full Table type backup",
           "type" : "boolean"
         },
         "keyspace" : {

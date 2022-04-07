@@ -39,6 +39,9 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "Action type")
   public ActionType actionType;
 
+  @ApiModelProperty(value = "Full Table type backup")
+  public boolean isFullBackup = false;
+
   @ApiModelProperty(value = "Backup type")
   public TableType backupType;
 

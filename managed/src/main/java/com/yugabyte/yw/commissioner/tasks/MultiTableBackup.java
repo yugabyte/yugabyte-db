@@ -258,6 +258,7 @@ public class MultiTableBackup extends UniverseTaskBase {
           tableBackupParams.timeBeforeDelete = params().timeBeforeDelete;
           tableBackupParams.transactionalBackup = params().transactionalBackup;
           tableBackupParams.backupType = params().backupType;
+          tableBackupParams.isFullBackup = true;
 
           Backup backup = Backup.create(params().customerUUID, tableBackupParams);
           backup.setTaskUUID(userTaskUUID);

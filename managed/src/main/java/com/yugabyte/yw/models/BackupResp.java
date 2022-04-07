@@ -27,6 +27,7 @@ public class BackupResp {
   Boolean isUniversePresent;
   Boolean onDemand;
   Boolean sse;
+  Boolean isFullBackup;
   Date createTime;
   Date updateTime;
   Date expiryTime;
