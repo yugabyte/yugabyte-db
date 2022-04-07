@@ -719,7 +719,7 @@ SetSessionAuthorization(Oid userid, bool is_superuser)
 	AssertState(OidIsValid(AuthenticatedUserId));
 
 	if (userid != AuthenticatedUserId &&
-		!AuthenticatedUserIsSuperuser && !IsYbDbAdminUser(userid))
+		!AuthenticatedUserIsSuperuser)
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied to set session authorization")));
