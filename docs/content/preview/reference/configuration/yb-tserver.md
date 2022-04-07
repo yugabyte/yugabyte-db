@@ -688,8 +688,8 @@ Default: `Snappy`
 
 {{< note title="Notes" >}}
 
-- If an invalid option is selected, the cluster will not come up.
-- If this flag is changed, it will take effect after the cluster nodes are restarted.
+- If you select an invalid option, the cluster will not come up.
+- If you change this flag, the change takes effect after you restart the cluster nodes.
 
 {{< /note >}}
 
