@@ -7,7 +7,7 @@ image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
     name: Go Drivers
-    identifier: ref-postgres-jdbc-driver
+    identifier: ref-pgx-go-driver
     parent: drivers
     weight: 600
 isTocNested: true
