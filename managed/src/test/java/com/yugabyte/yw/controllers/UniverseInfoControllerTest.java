@@ -24,6 +24,9 @@ import static com.yugabyte.yw.common.PlacementInfoUtil.UNIVERSE_ALIVE_METRIC;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyMap;
@@ -52,17 +55,22 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
 import junitparams.JUnitParamsRunner;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import play.libs.Json;
 import play.mvc.Result;
 
+@Slf4j
 @RunWith(JUnitParamsRunner.class)
 public class UniverseInfoControllerTest extends UniverseControllerTestBase {
 
@@ -193,5 +201,39 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
 
     result =
         assertPlatformException(() -> doRequestWithCustomHeaders("GET", url, fakeRequestHeaders));
+  }
+
+  @Test
+  public void testTriggerHealthCheck() {
+    when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
+    Universe u = createUniverse(customer.getCustomerId());
+    String url =
+        "/api/customers/"
+            + customer.uuid
+            + "/universes/"
+            + u.universeUUID
+            + "/trigger_health_check";
+
+    OffsetDateTime before = OffsetDateTime.now(ZoneOffset.UTC);
+    log.info("Before: {}", before);
+
+    Result result = doRequestWithAuthToken("GET", url, authToken);
+    assertOk(result);
+
+    String json = contentAsString(result);
+    log.info("Returned JSON response: {}", json);
+
+    assertTrue(json.contains("timestamp"));
+    ObjectNode node = (ObjectNode) Json.parse(json);
+
+    String ts = node.get("timestamp").asText();
+    assertNotNull(ts);
+    log.info("Parsed TS string: {}", ts);
+
+    OffsetDateTime tsFromResponse = OffsetDateTime.parse(ts);
+    Duration d = Duration.between(before, tsFromResponse);
+    log.info("Parsed duration: {}", d);
+
+    assertTrue(d.toMinutes() < 60);
   }
 }
