@@ -43,6 +43,9 @@
 #include "yb/util/opid.h"
 
 namespace yb {
+
+class Env;
+
 namespace log {
 
 // An entry in the index.
@@ -90,6 +93,13 @@ class LogIndex : public RefCountedThreadSafe<LogIndex> {
 
   // Flushes log index to disk.
   CHECKED_STATUS Flush();
+
+  // Copies log index into dest_wal_dir up to specified op index.
+  CHECKED_STATUS CopyTo(Env* env, const std::string& dest_wal_dir, int64_t up_to_index = -1);
+
+  // TODO: shouldn't be necessary after https://github.com/yugabyte/yugabyte-db/issues/10960 is
+  // fixed.
+  Status TEST_OpenChunkForIndex(int64_t op_index);
 
  private:
   friend class RefCountedThreadSafe<LogIndex>;

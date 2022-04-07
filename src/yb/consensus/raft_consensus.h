@@ -203,6 +203,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
       LeaderLeaseStatus* leader_lease_status) const override;
 
   RaftConfigPB CommittedConfig() const override;
+  RaftConfigPB CommittedConfigUnlocked() const;
 
   void DumpStatusHtml(std::ostream& out) const override;
 

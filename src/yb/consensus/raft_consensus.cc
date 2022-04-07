@@ -3137,6 +3137,10 @@ RaftConfigPB RaftConsensus::CommittedConfig() const {
   return state_->GetCommittedConfigUnlocked();
 }
 
+RaftConfigPB RaftConsensus::CommittedConfigUnlocked() const {
+  return state_->GetCommittedConfigUnlocked();
+}
+
 void RaftConsensus::DumpStatusHtml(std::ostream& out) const {
   out << "<h1>Raft Consensus State</h1>" << std::endl;
 

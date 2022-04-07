@@ -136,6 +136,8 @@ class LogReader {
     return log_prefix_;
   }
 
+  LogIndex* TEST_GetLogIndex() const { return log_index_.get(); }
+
  private:
   FRIEND_TEST(cdc::CDCServiceTestMaxRentionTime, TestLogRetentionByOpId_MaxRentionTime);
   FRIEND_TEST(cdc::CDCServiceTestMinSpace, TestLogRetentionByOpId_MinSpace);

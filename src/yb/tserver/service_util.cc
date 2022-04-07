@@ -249,7 +249,8 @@ Result<TabletPeerTablet> LookupTabletPeer(
   // Check RUNNING state.
   tablet::RaftGroupStatePB state = result.tablet_peer->state();
   if (PREDICT_FALSE(state != tablet::RUNNING)) {
-    Status s = STATUS(IllegalState, "Tablet not RUNNING", tablet::RaftGroupStateError(state))
+    Status s = STATUS(IllegalState,  Format("Tablet $0 not RUNNING", tablet_id),
+                      tablet::RaftGroupStateError(state))
         .CloneAndAddErrorCode(TabletServerError(TabletServerErrorPB::TABLET_NOT_RUNNING));
     return s;
   }

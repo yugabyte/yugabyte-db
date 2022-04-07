@@ -774,7 +774,7 @@ Result<std::set<TabletId>> TabletSplitExternalMiniClusterITest::GetTestTableTabl
 Result<std::set<TabletId>> TabletSplitExternalMiniClusterITest::GetTestTableTabletIds() {
   std::set<TabletId> tablet_ids;
   for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
-    if (cluster_->tablet_server(i)->IsShutdown()) {
+    if (cluster_->tablet_server(i)->IsShutdown() || cluster_->tablet_server(i)->IsProcessPaused()) {
       continue;
     }
     auto res = VERIFY_RESULT(GetTestTableTabletIds(i));
@@ -821,7 +821,7 @@ Result<vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB>>
 Status TabletSplitExternalMiniClusterITest::WaitForTabletsExcept(
     size_t num_tablets, size_t tserver_idx, const TabletId& exclude_tablet) {
   std::set<TabletId> tablets;
-  auto status = WaitFor(
+  auto status = LoggedWaitFor(
       [&]() -> Result<bool> {
         tablets = VERIFY_RESULT(GetTestTableTabletIds(tserver_idx));
         size_t count = 0;

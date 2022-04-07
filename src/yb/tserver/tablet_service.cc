@@ -1506,13 +1506,25 @@ void TabletServiceAdminImpl::SplitTablet(
     }
   }
 
-  auto state = std::make_unique<tablet::SplitOperation>(
-      leader_tablet_peer.peer->tablet(), server_->tablet_manager(), req);
+  const auto consensus = leader_tablet_peer.peer->shared_consensus();
+  if (consensus == nullptr) {
+    SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS_FORMAT(InvalidArgument, "Tablet $0 has no consensus", req->tablet_id()),
+        TabletServerErrorPB::TABLET_NOT_RUNNING, &context);
+    return;
+  }
 
-  state->set_completion_callback(
+  auto operation = std::make_unique<tablet::SplitOperation>(
+      leader_tablet_peer.peer->tablet(), server_->tablet_manager(), req);
+  *operation->AllocateRequest() = *req;
+  operation->mutable_request()->set_split_parent_leader_uuid(
+      leader_tablet_peer.peer->permanent_uuid());
+
+  operation->set_completion_callback(
       MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
 
-  leader_tablet_peer.peer->Submit(std::move(state), leader_tablet_peer.leader_term);
+  leader_tablet_peer.peer->Submit(std::move(operation), leader_tablet_peer.leader_term);
 }
 
 void TabletServiceAdminImpl::UpgradeYsql(

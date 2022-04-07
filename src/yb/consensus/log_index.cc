@@ -52,6 +52,8 @@
 
 #include "yb/gutil/map-util.h"
 
+#include "yb/util/env.h"
+#include "yb/util/file_util.h"
 #include "yb/util/locks.h"
 
 using std::string;
@@ -192,8 +194,16 @@ LogIndex::LogIndex(std::string base_dir) : base_dir_(std::move(base_dir)) {}
 LogIndex::~LogIndex() {
 }
 
-string LogIndex::GetChunkPath(int64_t chunk_idx) {
-  return StringPrintf("%s/index.%09" PRId64, base_dir_.c_str(), chunk_idx);
+namespace {
+
+std::string GetChunkPath(const std::string& base_dir, const int64_t chunk_idx) {
+  return StringPrintf("%s/index.%09" PRId64, base_dir.c_str(), chunk_idx);
+}
+
+} // namespace
+
+std::string LogIndex::GetChunkPath(const int64_t chunk_idx) {
+  return log::GetChunkPath(base_dir_, chunk_idx);
 }
 
 Status LogIndex::OpenChunk(int64_t chunk_idx, scoped_refptr<IndexChunk>* chunk) {
@@ -236,6 +246,11 @@ Status LogIndex::GetChunkForIndex(int64_t log_index, bool create,
   }
 
   return Status::OK();
+}
+
+Status LogIndex::TEST_OpenChunkForIndex(const int64_t op_index) {
+  scoped_refptr<IndexChunk> chunk;
+  return GetChunkForIndex(op_index, /* create = */ true, &chunk);
 }
 
 Status LogIndex::AddEntry(const LogIndexEntry& entry) {
@@ -319,6 +334,34 @@ Status LogIndex::Flush() {
 
   for (auto& chunk : chunks_to_flush) {
     RETURN_NOT_OK(chunk->Flush());
+  }
+
+  return Status::OK();
+}
+
+Status LogIndex::CopyTo(Env* env, const std::string& dest_wal_dir, const int64_t up_to_index) {
+  const auto up_to_chunk_idx = up_to_index < 0 ? -1 : (up_to_index / kEntriesPerIndexChunk);
+
+  ChunkMap chunks_to_copy;
+
+  {
+    std::lock_guard<simple_spinlock> l(open_chunks_lock_);
+    for (auto& it : open_chunks_) {
+      if (up_to_chunk_idx < 0 || it.first <= up_to_chunk_idx) {
+        chunks_to_copy.emplace(it);
+      }
+    }
+  }
+
+  for (auto& chunk : chunks_to_copy) {
+    const auto chunk_idx = chunk.first;
+    RETURN_NOT_OK(chunk.second->Flush());
+    const auto src_path = GetChunkPath(chunk_idx);
+    const auto dest_path = log::GetChunkPath(dest_wal_dir, chunk_idx);
+    RETURN_NOT_OK_PREPEND(
+        CopyFile(env, src_path, dest_path),
+        Format("Failed to copy file $0 to $1", src_path, dest_path));
+    VLOG(1) << Format("Copied $0 to $1", src_path, dest_path);
   }
 
   return Status::OK();

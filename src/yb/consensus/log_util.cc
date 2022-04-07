@@ -42,6 +42,7 @@
 #include "yb/common/hybrid_time.h"
 
 #include "yb/consensus/opid_util.h"
+#include "yb/consensus/log_index.h"
 
 #include "yb/fs/fs_manager.h"
 
@@ -255,16 +256,7 @@ Status ReadableLogSegment::RebuildFooterByScanning() {
   // Rebuild the min/max replicate index (by scanning)
   for (const auto& entry : read_entries.entries) {
     if (entry->has_replicate()) {
-      int64_t index = entry->replicate().id().index();
-      // TODO: common code with Log::UpdateFooterForBatch
-      if (!footer_.has_min_replicate_index() ||
-          index < footer_.min_replicate_index()) {
-        footer_.set_min_replicate_index(index);
-      }
-      if (!footer_.has_max_replicate_index() ||
-          index > footer_.max_replicate_index()) {
-        footer_.set_max_replicate_index(index);
-      }
+      UpdateSegmentFooterIndexes(entry->replicate(), &footer_);
       latest_ht = std::max(latest_ht, entry->replicate().hybrid_time());
     }
   }
@@ -282,6 +274,87 @@ Status ReadableLogSegment::RebuildFooterByScanning() {
   LOG(INFO) << "Successfully rebuilt footer for segment: " << path_
             << " (valid entries through byte offset " << read_entries.end_offset << ")";
   return Status::OK();
+}
+
+int64_t ReadableLogSegment::GetOffsetReadUpTo() {
+  const auto readable_to_offset = readable_to_offset_.Load();
+  VLOG(1) << "Reading segment entries from "
+          << path_ << ": offset=" << first_entry_offset() << " file_size="
+          << file_size() << " readable_to_offset=" << readable_to_offset;
+
+  // If we have a footer we only read up to it. If we don't we likely crashed
+  // and always read to the end.
+  return (footer_.IsInitialized() && !footer_was_rebuilt_)
+             ? file_size() - footer_.ByteSize() - kLogSegmentFooterMagicAndFooterLength
+             : readable_to_offset;
+}
+
+Status ReadableLogSegment::CopyTo(
+    const OpId& up_to_op_id, const std::string& dest_path,
+    const std::shared_ptr<WritableFile>& dest_file, LogIndex* log_index_to_rebuild) {
+  auto dest_segment = std::make_unique<WritableLogSegment>(dest_path, dest_file);
+  RETURN_NOT_OK(dest_segment->WriteHeaderAndOpen(header()));
+  LogSegmentFooterPB footer;
+
+  const auto read_up_to = GetOffsetReadUpTo();
+  auto offset = first_entry_offset();
+
+  faststring read_buf;
+  faststring write_buf;
+  size_t num_entries = 0;
+  uint64_t latest_ht = 0;
+
+  const auto has_op_id_limit = up_to_op_id.valid() && !up_to_op_id.empty();
+  bool hit_limit = false;
+
+  LogIndexEntry index_entry;
+  index_entry.segment_sequence_number = header().sequence_number();
+  while (offset < read_up_to && !hit_limit) {
+    index_entry.offset_in_segment = offset;
+    LogEntryBatchPB current_batch;
+
+    if (offset + implicit_cast<ssize_t>(kEntryHeaderSize) < read_up_to) {
+      RETURN_NOT_OK(ReadEntryHeaderAndBatch(&offset, &read_buf, &current_batch));
+    } else {
+      return STATUS(Corruption, Format("Truncated log entry at offset $0", offset));
+    }
+
+    for (auto it = current_batch.entry().cbegin(); it != current_batch.entry().end(); ++it) {
+      if (!it->has_replicate()) {
+        continue;
+      }
+
+      index_entry.op_id = yb::OpId::FromPB(it->replicate().id());
+
+      if (has_op_id_limit) {
+        if (OpId::FromPB(current_batch.committed_op_id()) > up_to_op_id) {
+          up_to_op_id.ToPB(current_batch.mutable_committed_op_id());
+        }
+
+        const auto op_id = OpId::FromPB(it->replicate().id());
+        if (op_id > up_to_op_id) {
+          hit_limit = true;
+          current_batch.mutable_entry()->erase(it, current_batch.entry().cend());
+          break;
+        }
+      }
+      UpdateSegmentFooterIndexes(it->replicate(), &footer);
+      latest_ht = std::max(latest_ht, it->replicate().hybrid_time());
+      RETURN_NOT_OK(log_index_to_rebuild->AddEntry(index_entry));
+    }
+
+    write_buf.clear();
+    write_buf.reserve(current_batch.ByteSize());
+    pb_util::AppendToString(current_batch, &write_buf);
+    RETURN_NOT_OK(dest_segment->WriteEntryBatch(write_buf));
+
+    num_entries += current_batch.entry().size();
+  }
+  footer.set_num_entries(num_entries);
+  if (latest_ht > 0) {
+    footer_.set_close_timestamp_micros(HybridTime(latest_ht).GetPhysicalValueMicros());
+  }
+  return dest_segment->WriteFooterAndClose(footer);
 }
 
 Status ReadableLogSegment::ReadFileSize() {
@@ -479,20 +552,12 @@ ReadEntriesResult ReadableLogSegment::ReadEntries(int64_t max_entries_to_read) {
   std::vector<int64_t> recent_offsets(4, -1);
   int64_t batches_read = 0;
 
+  const auto read_up_to = GetOffsetReadUpTo();
+
   int64_t offset = first_entry_offset();
-  int64_t readable_to_offset = readable_to_offset_.Load();
-  VLOG(1) << "Reading segment entries from "
-          << path_ << ": offset=" << offset << " file_size="
-          << file_size() << " readable_to_offset=" << readable_to_offset;
-  faststring tmp_buf;
-
-  // If we have a footer we only read up to it. If we don't we likely crashed
-  // and always read to the end.
-  int64_t read_up_to = (footer_.IsInitialized() && !footer_was_rebuilt_) ?
-      file_size() - footer_.ByteSize() - kLogSegmentFooterMagicAndFooterLength :
-      readable_to_offset;
-
   result.end_offset = offset;
+
+  faststring tmp_buf;
 
   int64_t num_entries_read = 0;
   while (offset < read_up_to) {
@@ -979,6 +1044,18 @@ Status ModifyDurableWriteFlagIfNotODirect() {
   }
   return Status::OK();
 }
+
+void UpdateSegmentFooterIndexes(
+    const consensus::ReplicateMsg& replicate, LogSegmentFooterPB* footer) {
+  const auto index = replicate.id().index();
+  if (!footer->has_min_replicate_index() || index < footer->min_replicate_index()) {
+    footer->set_min_replicate_index(index);
+  }
+  if (!footer->has_max_replicate_index() || index > footer->max_replicate_index()) {
+    footer->set_max_replicate_index(index);
+  }
+}
+
 
 }  // namespace log
 }  // namespace yb
