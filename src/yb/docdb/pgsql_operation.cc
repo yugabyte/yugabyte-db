@@ -759,6 +759,8 @@ Result<size_t> PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storag
   }
 
   VTRACE(1, "Fetched $0 rows. $1 paging state", fetched_rows, (has_paging_state ? "No" : "Has"));
+  SCHECK(table_iter_ != nullptr, InternalError, "table iterator is invalid");
+
   *restart_read_ht = table_iter_->RestartReadHt();
   return fetched_rows;
 }
