@@ -1114,7 +1114,7 @@ public class PlacementInfoUtil {
     return map.entrySet()
         .stream()
         .sorted(
-            Comparator.<Map.Entry<UUID, Integer>>comparingInt(e -> e.getValue())
+            Comparator.<Map.Entry<UUID, Integer>>comparingInt(Entry::getValue)
                 .thenComparingInt(e -> order.indexOf(e.getKey())))
         .map(Entry::getKey)
         .collect(Collectors.toCollection(LinkedHashSet::new));
@@ -1240,12 +1240,10 @@ public class PlacementInfoUtil {
       Integer currentAvailable =
           availableNodesPerZone.computeIfAbsent(
               zoneUUID,
-              zUUID -> {
-                // For onprem checking available nodes, unlimited otherwise.
-                return cloudType.equals(CloudType.onprem)
-                    ? NodeInstance.listByZone(zUUID, instanceType).size()
-                    : Integer.MAX_VALUE;
-              });
+              zUUID ->
+                  (cloudType.equals(CloudType.onprem)
+                      ? NodeInstance.listByZone(zUUID, instanceType).size()
+                      : Integer.MAX_VALUE));
       if (currentAvailable > 0) {
         availableNodesPerZone.put(zoneUUID, --currentAvailable);
         PlacementIndexes pi = zoneToPlacementIndexes.get(zoneUUID).copy();
@@ -1422,13 +1420,17 @@ public class PlacementInfoUtil {
    * Remove a tserver-only node that belongs to the given AZ from the collection of nodes.
    *
    * @param nodes the list of nodes from which to choose the victim.
+   * @param clusterUUID filter nodes by cluster UUID.
    * @param targetAZUuid AZ in which the node should be present.
    */
-  private static void removeNodeInAZ(Collection<NodeDetails> nodes, UUID targetAZUuid) {
+  private static void removeNodeInAZ(
+      Collection<NodeDetails> nodes, UUID clusterUUID, UUID targetAZUuid) {
     Iterator<NodeDetails> nodeIter = nodes.iterator();
     while (nodeIter.hasNext()) {
       NodeDetails currentNode = nodeIter.next();
-      if (currentNode.azUuid.equals(targetAZUuid) && !currentNode.isMaster) {
+      if (currentNode.isInPlacement(clusterUUID)
+          && currentNode.azUuid.equals(targetAZUuid)
+          && !currentNode.isMaster) {
         nodeIter.remove();
 
         return;
@@ -1536,15 +1538,17 @@ public class PlacementInfoUtil {
    */
   private static void configureNodesUsingPlacementInfo(
       Cluster cluster, Collection<NodeDetails> nodes, Universe universe) {
+    Collection<NodeDetails> nodesInCluster =
+        nodes.stream().filter(n -> n.isInPlacement(cluster.uuid)).collect(Collectors.toSet());
     LinkedHashSet<PlacementIndexes> indexes =
         getDeltaPlacementIndices(
             cluster.placementInfo,
-            nodes
+            nodesInCluster
                 .stream()
                 .filter(n -> n.placementUuid.equals(cluster.uuid))
                 .collect(Collectors.toSet()));
     Set<NodeDetails> deltaNodesSet = new HashSet<>();
-    int startIndex = getNextIndexToConfigure(nodes);
+    int startIndex = getNextIndexToConfigure(nodesInCluster);
     int iter = 0;
     for (PlacementIndexes index : indexes) {
       PlacementCloud placementCloud = cluster.placementInfo.cloudList.get(index.cloudIdx);
@@ -1558,7 +1562,10 @@ public class PlacementInfoUtil {
         if (universe != null) {
           NodeDetails nodeDetails =
               findNodeInAz(
-                  node -> node.state == NodeState.ToBeRemoved, nodes, placementAZ.uuid, true);
+                  node -> node.state == NodeState.ToBeRemoved,
+                  nodesInCluster,
+                  placementAZ.uuid,
+                  true);
           if (nodeDetails != null) {
             NodeState prevState = getNodeState(universe, nodeDetails.getNodeName());
             if ((prevState != null) && (prevState != NodeState.ToBeRemoved)) {
@@ -1570,21 +1577,22 @@ public class PlacementInfoUtil {
         }
         if (!added) {
           NodeDetails nodeDetails =
-              createNodeDetailsWithPlacementIndex(cluster, nodes, index, startIndex + iter);
+              createNodeDetailsWithPlacementIndex(
+                  cluster, nodesInCluster, index, startIndex + iter);
           deltaNodesSet.add(nodeDetails);
         }
       } else if (index.action == Action.REMOVE) {
         boolean removed = false;
         if (universe != null) {
           NodeDetails nodeDetails =
-              findNodeInAz(NodeDetails::isActive, nodes, placementAZ.uuid, false);
+              findNodeInAz(NodeDetails::isActive, nodesInCluster, placementAZ.uuid, false);
           if (nodeDetails == null || !nodeDetails.state.equals(NodeState.ToBeAdded)) {
-            decommissionNodeInAZ(nodes, placementAZ.uuid);
+            decommissionNodeInAZ(nodesInCluster, placementAZ.uuid);
             removed = true;
           }
         }
         if (!removed) {
-          removeNodeInAZ(nodes, placementAZ.uuid);
+          removeNodeInAZ(nodes, cluster.uuid, placementAZ.uuid);
         }
       }
       iter++;
@@ -1601,7 +1609,7 @@ public class PlacementInfoUtil {
     if (universe != null) {
       List<UUID> existingAZs =
           getPlacementAZStream(cluster.placementInfo).map(p -> p.uuid).collect(Collectors.toList());
-      for (NodeDetails node : nodes) {
+      for (NodeDetails node : nodesInCluster) {
         if (!existingAZs.contains(node.azUuid)) {
           if (node.isActive() && !node.isInTransit()) {
             node.state = NodeState.ToBeRemoved;
@@ -1611,16 +1619,18 @@ public class PlacementInfoUtil {
           }
         }
       }
-      removeUnusedNodes(nodes);
+      removeUnusedNodes(cluster.uuid, nodes);
     }
   }
 
   // Remove nodes which are new (don't have name) and marked as ToBeRemoved.
-  private static void removeUnusedNodes(Collection<NodeDetails> nodes) {
+  private static void removeUnusedNodes(UUID clusterUuid, Collection<NodeDetails> nodes) {
     Iterator<NodeDetails> nodeIter = nodes.iterator();
     while (nodeIter.hasNext()) {
       NodeDetails currentNode = nodeIter.next();
-      if ((currentNode.nodeName == null) && (currentNode.state == NodeState.ToBeRemoved)) {
+      if ((currentNode.placementUuid.equals(clusterUuid))
+          && (currentNode.nodeName == null)
+          && (currentNode.state == NodeState.ToBeRemoved)) {
         nodeIter.remove();
       }
     }
