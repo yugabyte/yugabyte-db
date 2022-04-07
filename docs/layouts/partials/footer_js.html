@@ -289,7 +289,7 @@
           let index = client.initIndex('{{ .algolia.index }}');
           index.search({
             query: urlParams.get('q'),
-            filters: `version:${searchVersion}`,
+            // filters: `version:${searchVersion}`,
           }, function(err, content) {
             let formattedHits = docsearch.formatHits(content.hits);
             let previousResult = null;

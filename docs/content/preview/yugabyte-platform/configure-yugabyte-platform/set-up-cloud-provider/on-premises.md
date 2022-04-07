@@ -545,7 +545,7 @@ You have finished configuring your on-premises cloud provider. Proceed to [Confi
 
 ## Remove YugabyteDB components from the server
 
-As described in [Eliminate an unresponsive node](../../../create-deployments/remove-nodes/), when a node enters an undesirable state, you can delete such node, with Yugabyte Platform clearing up all the remaining artifacts except the `prometheus` and `yugabyte` user.
+As described in [Eliminate an unresponsive node](../../../manage-deployments/remove-nodes/), when a node enters an undesirable state, you can delete such node, with Yugabyte Platform clearing up all the remaining artifacts except the `prometheus` and `yugabyte` user.
 
 You can manually remove Yugabyte components from existing server images. Before attempting this, you have to determine whether or not Yugaware Platform is operational. If it is, you either need to delete the universe or delete the nodes from the universe.
 
