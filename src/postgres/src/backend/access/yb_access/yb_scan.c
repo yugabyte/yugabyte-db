@@ -203,12 +203,14 @@ static void ybcBindColumnCondBetween(YbScanDesc ybScan, TupleDesc bind_desc,
 	if (is_hashed)
 	{
 		HandleYBStatus(YBCPgDmlBindHashCodes(ybScan->handle, start_valid,
-											start_inclusive, value, end_valid,
-											end_inclusive, value_end));
+											 start_inclusive, value, end_valid,
+											 end_inclusive, value_end));
 		return;
 	}
 
-  HandleYBStatus(YBCPgDmlBindColumnCondBetween(ybScan->handle, attnum, ybc_expr, ybc_expr_end));
+	HandleYBStatus(YBCPgDmlBindColumnCondBetween(ybScan->handle, attnum,
+												 ybc_expr, start_inclusive,
+												 ybc_expr_end, end_inclusive));
 }
 
 /*
