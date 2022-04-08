@@ -34,6 +34,18 @@ showAsideToc: true
     </a>
   </li>
   <li >
+    <a href="../ysql-hibernate/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - Hibernate
+    </a>
+  </li>
+  <li >
+    <a href="../ysql-sdyb/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - Spring Data YugabyteDB
+    </a>
+  </li>
+  <li >
     <a href="../ysql-spring-data/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - Spring Data JPA

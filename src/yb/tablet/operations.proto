@@ -18,6 +18,7 @@ option java_package = "org.yb.tablet";
 
 import "yb/common/common.proto";
 import "yb/common/transaction.proto";
+import "yb/consensus/metadata.proto";
 import "yb/docdb/docdb.proto";
 import "yb/tablet/metadata.proto";
 
@@ -123,4 +124,11 @@ message SplitTabletRequestPB {
   required bytes split_partition_key = 6;
 
   required bytes split_encoded_key = 7;
+
+  // TODO(tsplit): after we support backward-compatibility conversion for protobufs, switch
+  // SplitOperation class to use a new SplitOperationDataPB that contains both SplitTabletRequestPB
+  // and the following fields that are not part of SplitTablet RPC.
+
+  // Parent tablet leader UUID from SPLIT_OP term.
+  optional string split_parent_leader_uuid = 8;
 }
