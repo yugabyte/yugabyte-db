@@ -1,13 +1,13 @@
 ---
-title: Build a Java application that uses Spring Boot and YSQL
+title: Build a Java application that uses YSQL
 headerTitle: Build a Java application
 linkTitle: Java
-description: Build a simple Java e-commerce application that uses Spring Boot and YSQL.
+description: Build a sample Java application with Hibernate ORM and use the YSQL API to connect to and interact with YugabyteDB.
 menu:
   preview:
     parent: build-apps
     name: Java
-    identifier: java-3
+    identifier: java-8
     weight: 550
 type: page
 isTocNested: true
@@ -15,6 +15,7 @@ showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+
   <li >
     <a href="../ysql-yb-jdbc/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
@@ -34,7 +35,7 @@ showAsideToc: true
     </a>
   </li>
   <li >
-    <a href="../ysql-hibernate/" class="nav-link">
+    <a href="../ysql-hibernate/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - Hibernate
     </a>
@@ -46,7 +47,7 @@ showAsideToc: true
     </a>
   </li>
   <li >
-    <a href="../ysql-spring-data/" class="nav-link active">
+    <a href="../ysql-spring-data/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - Spring Data JPA
     </a>
@@ -73,7 +74,7 @@ showAsideToc: true
 
 ## Prerequisites
 
-This tutorial assumes that you have:
+This tutorial assumes that:
 
 - YugabyteDB up and running. If you are new to YugabyteDB, you can download, install, and have YugabyteDB up and running within five minutes by following the steps in [Quick start](../../../../quick-start/).
 - Java Development Kit (JDK) 1.8, or later, is installed. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/).
@@ -85,20 +86,20 @@ This tutorial assumes that you have:
 $ git clone https://github.com/yugabyte/orm-examples.git
 ```
 
-The [Using ORMs with YugabyteDB `orm-examples` repository](https://github.com/yugabyte/orm-examples) has a [Spring Boot](https://spring.io/projects/spring-boot) example that implements a simple REST API server. The scenario is that of an e-commerce application. Database access in this application is managed through [Spring Data JPA](https://spring.io/projects/spring-data-jpa), which internally uses Hibernate as the JPA provider. It consists of the following:
+The [Using ORMs with YugabyteDB `orm-examples` repository](https://github.com/yugabyte/orm-examples) has a [Hibernate ORM](https://hibernate.org/orm/) example that implements a simple REST API server. The scenario is that of an e-commerce application. Database access in this application is managed through Hibernate ORM. It consists of the following:
 
 - The users of the e-commerce site are stored in the `users` table.
 - The `products` table contains a list of products the e-commerce site sells.
 - The orders placed by the users are populated in the `orders` table. An order can consist of multiple line items, each of these are inserted in the `orderline` table.
 
-The source for this example application can be found in the [repository](https://github.com/yugabyte/orm-examples/tree/master/java/spring/src/main/java/com/yugabyte/springdemo).
+The source for this example application can be found in the [repository](https://github.com/yugabyte/orm-examples/tree/master/java/hibernate).
 
-There are a number of options that can be customized in the properties file located at `src/main/resources/application.properties`. Given YSQL's compatibility with the PostgreSQL language, the `spring.jpa.database` property is set to `POSTGRESQL` and the `spring.datasource.url` is set to the YSQL JDBC URL: `jdbc:postgresql://localhost:5433/yugabyte`.
+There are a number of options that can be customized in the properties file located at `src/main/resources/hibernate.cfg.xml`. Given YSQL's compatibility with the PostgreSQL language, the `hibernate.dialect` property is set to `org.hibernate.dialect.PostgreSQLDialect` and the `hibernate.connection.url` is set to the YSQL JDBC URL: `jdbc:postgresql://localhost:5433/yugabyte`.
 
 ## Build the application
 
 ```sh
-$ cd orm-examples/java/spring
+$ cd orm-examples/java/hibernate
 ```
 
 ```sh
@@ -107,10 +108,10 @@ $ mvn -DskipTests package
 
 ## Run the application
 
-Start the Sprint Boot REST API server at `http://localhost:8080`.
+Start the Hibernate application's REST API server at `http://localhost:8080`.
 
 ```sh
-$ mvn spring-boot:run
+$ mvn exec:java -Dexec.mainClass=com.yugabyte.hibernatedemo.server.BasicHttpServer
 ```
 
 ## Send requests to the application
@@ -330,4 +331,4 @@ $ curl http://localhost:8080/orders
 
 ## Explore the source
 
-As highlighted earlier, the source for the above application is available in the [orm-examples repository](https://github.com/yugabyte/orm-examples/tree/master/java/spring/src/main/java/com/yugabyte/springdemo).
+As highlighted earlier, the source for the above application is available in the [orm-examples repository](https://github.com/yugabyte/orm-examples/tree/master/java/hibernate).

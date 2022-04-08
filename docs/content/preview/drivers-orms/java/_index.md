@@ -50,7 +50,7 @@ For fully runnable code snippets and explanations for common operations, see the
 | :------ | :--- | :------------- |
 | [YugabyteDB JDBC Driver](/preview/reference/drivers/java/yugabyte-jdbc-reference/) | JDBC Driver | [Hello World](/preview/quick-start/build-apps/java/ysql-yb-jdbc) <br />[CRUD App](yugabyte-jdbc)
 | [PostgreSQL JDBC Driver](/preview/reference/drivers/java/postgres-jdbc-reference/) | JDBC Driver | [Hello World](/preview/quick-start/build-apps/java/ysql-jdbc) <br />[CRUD App](postgres-jdbc)
-| [Hibernate](hibernate) | ORM |  [Hello World](/preview/quick-start/build-apps/java/ysql-jdbc) <br />[CRUD App](hibernate/#working-with-domain-objects) |
+| [Hibernate](hibernate) | ORM |  [Hello World](/preview/quick-start/build-apps/java/ysql-hibernate) <br />[CRUD App](hibernate/#working-with-domain-objects) |
 
 <!-- ## Learn More
 
