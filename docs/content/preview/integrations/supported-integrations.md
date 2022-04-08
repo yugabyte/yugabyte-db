@@ -20,11 +20,8 @@ We are continuously improving these tools and adding support for more tools, how
 | Language | Framework | Documentation and Guides | Plugins and Apps | Github Issues |
 | --- | --- | --- | --- | --- |
 | Java | Spring Data JPA | Documentation[Quickstart](https://docs.yugabyte.com/latest/quick-start/build-apps/java/ysql-spring-data/)[Blog](https://blog.yugabyte.com/run-the-rest-version-of-spring-petclinic-with-angular-and-distributed-sql-on-gke/) | [Spring App](https://github.com/yugabyte/orm-examples/tree/master/java/spring) |
- |
 | Java | Spring Data YugabyteDB | [Documentation](https://docs.yugabyte.com/latest/integrations/spring-framework/sdyb/)[Quickstart](https://docs.yugabyte.com/preview/quick-start/build-apps/java/ysql-sdyb/)[Blog](https://blog.yugabyte.com/spring-data-yugabytedb-getting-started/) | [Spring Data YugabyteDB Sample App](https://github.com/yugabyte/spring-data-yugabytedb-example) |
- |
 | Java | Hibernate | [Documentation](https://docs.yugabyte.com/preview/drivers-orms/java/hibernate/)[Quickstart](https://docs.yugabyte.com/preview/quick-start/build-apps/java/ysql-hibernate/)[Blog](https://blog.yugabyte.com/run-the-rest-version-of-spring-petclinic-with-angular-and-distributed-sql-on-gke/) | [Hibernate App](https://github.com/yugabyte/orm-examples/tree/master/java/hibernate) |
- |
 | Scala | Play (Ebean ORM) | Documentation[Quickstart](https://docs.yugabyte.com/latest/quick-start/build-apps/java/ysql-ebeans/) | [ORM App](https://github.com/yugabyte/orm-examples/tree/master/java/ebeans) | [Ebean ORM Integration](https://github.com/yugabyte/yugabyte-db/issues/11186) |
 | Go | GORM | [Documentation](https://docs.yugabyte.com/latest/integrations/gorm/)[Quickstart](https://docs.yugabyte.com/latest/integrations/gorm/) | [GORM App](https://github.com/yugabyte/orm-examples/tree/master/golang/gorm) | [GORM Integration](https://github.com/yugabyte/yugabyte-db/issues/9515) |
 | Python | Django | [Documentation](https://docs.yugabyte.com/latest/integrations/django-rest-framework/)[Quickstart](https://docs.yugabyte.com/latest/quick-start/build-apps/python/ysql-django/) | [Django App](https://github.com/yugabyte/orm-examples/tree/master/python/django) | [Django Integration](https://github.com/yugabyte/yugabyte-db/issues/10636) |
@@ -43,7 +40,6 @@ All YugabyteDB smart driver libraries are actively maintained, and receive bug f
 | Language | Driver | Documentation and Guides | Github Issues |
 | --- | --- | --- | --- |
 | Java | JDBC | [Documentation](https://docs.yugabyte.com/preview/integrations/jdbc-driver/) |
- |
 | Go | pgx | [Documentation](https://docs.yugabyte.com/preview/quick-start/build-apps/go/ysql-yb-pgx/) | [Go YSQL Smart Driver](https://github.com/yugabyte/yugabyte-db/issues/10760) |
 | Python | Psycopg2 |
  | [Python YSQL Smart Driver](https://github.com/yugabyte/yugabyte-db/issues/10917) |
@@ -55,7 +51,6 @@ YugabyteDB is a Postgres compatible RDBMS and supports upstream PostgreSQL drive
 | Language | Driver | Documentation and Guides | Github Issues |
 | --- | --- | --- | --- |
 | Java | PostgreSQL JDBC | [Documentation](https://docs.yugabyte.com/latest/quick-start/build-apps/java/ysql-jdbc/) |
- |
 | Python | psycopg2 | [Documentation](https://docs.yugabyte.com/latest/quick-start/build-apps/python/ysql-psycopg2/) | [YSQL Python driver](https://github.com/yugabyte/yugabyte-db/issues/9833) |
 | Javascript/Node.js | pg | [Documentation](https://docs.yugabyte.com/latest/quick-start/build-apps/nodejs/ysql-pg/) | [YSQL Node.js driver](https://github.com/yugabyte/yugabyte-db/issues/9834) |
 | Go | pq | [Documentation](https://docs.yugabyte.com/latest/quick-start/build-apps/go/ysql-pq/) | [Go(lib/pq) YSQL driver](https://github.com/yugabyte/yugabyte-db/issues/9835) |
@@ -71,10 +66,7 @@ YugabyteDB YCQL is compatible with v3.4 of Apache Cassandra QL (CQL) APIs. The f
 | Language | Driver | Documentation and Guides | Github Issues |
 | --- | --- | --- | --- |
 | Java | Cassandra-driver-core-yb | [Documentation](https://docs.yugabyte.com/latest/quick-start/build-apps/java/ycql/) |
- |
 | Python | yb-cassandra-driver | [Documentation](https://docs.yugabyte.com/latest/quick-start/build-apps/python/ycql/) |
- |
 | Go | gocql | [Documentation](https://docs.yugabyte.com/latest/quick-start/build-apps/go/ycql/) | [Go Cassandra (YCQL) driver](https://github.com/yugabyte/yugabyte-db/issues/9818) |
 | C++ | cassandra-cpp-driver | [Documentation](https://docs.yugabyte.com/latest/quick-start/build-apps/cpp/ycql/) |
- |
 | Ruby | yugabyte-ycql-driver | [Documentation](https://docs.yugabyte.com/latest/quick-start/build-apps/ruby/ycql/) | [Ruby YCQL driver](https://github.com/yugabyte/yugabyte-db/issues/9821) |
