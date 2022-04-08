@@ -7,6 +7,7 @@ import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -682,5 +683,14 @@ public class Util {
       LOG.warn("Name {} is longer than {}, truncated to {}.", name, firstPartLength, sanitizedName);
     }
     return String.format("%s-%s", sanitizedName, hashString(name));
+  }
+
+  public static boolean canConvertJsonNode(JsonNode jsonNode, Class<?> toValueType) {
+    try {
+      new ObjectMapper().treeToValue(jsonNode, toValueType);
+    } catch (JsonProcessingException e) {
+      return false;
+    }
+    return true;
   }
 }
