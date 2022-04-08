@@ -1464,6 +1464,9 @@
           "format" : "date-time",
           "type" : "string"
         },
+        "isFullBackup" : {
+          "type" : "boolean"
+        },
         "isStorageConfigPresent" : {
           "type" : "boolean"
         },
@@ -1519,7 +1522,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "backupType", "backupUUID", "completionTime", "createTime", "customerUUID", "expiryTime", "isStorageConfigPresent", "isUniversePresent", "onDemand", "responseList", "scheduleUUID", "sse", "state", "storageConfigType", "storageConfigUUID", "taskUUID", "totalBackupSizeInBytes", "universeName", "universeUUID", "updateTime" ],
+      "required" : [ "backupType", "backupUUID", "completionTime", "createTime", "customerUUID", "expiryTime", "isFullBackup", "isStorageConfigPresent", "isUniversePresent", "onDemand", "responseList", "scheduleUUID", "sse", "state", "storageConfigType", "storageConfigUUID", "taskUUID", "totalBackupSizeInBytes", "universeName", "universeUUID", "updateTime" ],
       "type" : "object"
     },
     "BackupStorageInfo" : {
@@ -1634,6 +1637,10 @@
         },
         "ignoreErrors" : {
           "description" : "Should table backup errors be ignored",
+          "type" : "boolean"
+        },
+        "isFullBackup" : {
+          "description" : "Full Table type backup",
           "type" : "boolean"
         },
         "keyspace" : {
@@ -3725,6 +3732,10 @@
         },
         "ignoreErrors" : {
           "description" : "Should table backup errors be ignored",
+          "type" : "boolean"
+        },
+        "isFullBackup" : {
+          "description" : "Full Table type backup",
           "type" : "boolean"
         },
         "keyspace" : {
@@ -5981,6 +5992,17 @@
         }
       },
       "required" : [ "allowInsecure", "clientRootCA", "clusters", "enableClientToNodeEncrypt", "enableNodeToNodeEncrypt", "kubernetesUpgradeSupported", "rootAndClientRootCASame", "rootCA", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "type" : "object"
+    },
+    "TriggerHealthCheckResult" : {
+      "description" : "The response type for triggering a health check. Contains the timestamp of when the health check was triggered.",
+      "properties" : {
+        "timestamp" : {
+          "description" : "The ISO-8601 timestamp when the health check was triggered.",
+          "format" : "date-time",
+          "type" : "string"
+        }
+      },
       "type" : "object"
     },
     "UniverseConfigureTaskParams" : {
@@ -13195,7 +13217,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "type" : "object"
+              "$ref" : "#/definitions/TriggerHealthCheckResult"
             }
           }
         },

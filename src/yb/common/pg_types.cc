@@ -14,6 +14,7 @@
 #include "yb/common/pg_types.h"
 
 #include "yb/util/result.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 
@@ -29,6 +30,11 @@ PgObjectId::PgObjectId(const TableId& table_id) {
     // Reset the previously set database_oid.
     database_oid = kPgInvalidOid;
   }
+}
+
+// TODO (dmitry) : Reimplement by using std::string_view (#11904) to avoid string creation
+PgObjectId::PgObjectId(const Slice& table_id)
+    : PgObjectId(table_id.ToBuffer()) {
 }
 
 std::string PgObjectId::ToString() const {
