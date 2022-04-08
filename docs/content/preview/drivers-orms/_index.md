@@ -3,7 +3,7 @@ title: Drivers and ORMs for YugabyteDB
 headerTitle: Drivers and ORMs
 linkTitle: Drivers and ORMs
 description: Connect your applications from one of Supported Drivers and ORMs
-headcontent: Connect your application to your database using your favorite language.
+headcontent: Connect applications to YugabyteDB using your favorite language.
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 aliases:
   - /drivers-orms/

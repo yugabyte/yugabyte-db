@@ -47,7 +47,7 @@ To download the Django Rest Framework to your project, run the following command
 pip3 install djangorestframework
 ```
 
-In addition, install the [YB backend for django](https://github.com/yugabyte/yb-django) by following the steps in the README. This backend has specific changes with respect to features either not supported by YugabyteDB or supported differently than PostgreSQL. For more information on these features, visit this [GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/7764).
+In addition, install the [YB backend for Django](https://github.com/yugabyte/yb-django) by following the steps in the README. This backend has specific changes with respect to features either not supported by YugabyteDB or supported differently than PostgreSQL. For more information on these features, visit this [GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/7764).
 
 Install the psycopg2 dependency by running the following command:
 
@@ -195,7 +195,7 @@ A users table should be created in your database. Use the ysqlsh client shell to
 
 To run the application and insert a new row, execute the following steps.
 
-1. Run the django project using the following command:
+1. Run the Django project using the following command:
 
     ```shell
     python3 manage.py runserver 8080
@@ -204,14 +204,14 @@ To run the application and insert a new row, execute the following steps.
 1. Insert a row using the following command:
 
     ```shell
-    $ curl --data '{ "firstName" : "John", "lastName" : "Smith", "email" : "jsmith@yb.com" }' \
+    curl --data '{ "firstName" : "John", "lastName" : "Smith", "email" : "jsmith@yb.com" }' \
           -v -X POST -H 'Content-Type:application/json' http://localhost:8080/users
     ```
 
 1. Verify that the new row is inserted by executing the following command:
 
     ```shell
-    $ curl http://localhost:8080/users
+    curl http://localhost:8080/users
     ```
 
 You should see the following output:

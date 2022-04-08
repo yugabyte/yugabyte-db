@@ -45,7 +45,7 @@ This section describes how to use Node.js models (domain objects) to store and r
 
 Before proceeding with the next steps, you need to have Node.js installed on your machine. Refer to [Downloading and installing Node.js and npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm#using-a-node-installer-to-install-node-js-and-npm).
 
-To create a simple Node.js project and install the `sequelize-yugabytedb` package, do the following:
+To create a basic Node.js project and install the `sequelize-yugabytedb` package, do the following:
 
 1. Create a new directory.
 
@@ -73,7 +73,7 @@ To create a simple Node.js project and install the `sequelize-yugabytedb` packag
 
 ### Create a Node.js example using Sequelize ORM
 
-The following code creates an Employees model to store and retrieve employee information, as follows:
+The following code creates an Employees model to store and retrieve employee information:
 
 - First it creates a connection by passing the basic connection parameters.
 - Next, it defines the Employee model using the `define()` API, which specifies the type of information to store for an employee.

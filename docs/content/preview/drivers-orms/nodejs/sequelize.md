@@ -84,7 +84,7 @@ To create a basic Node.js project and install the `sequelize` core package, do t
 
 ### Step 2: Create a Node.js example using Sequelize ORM
 
-The following code creates an Employees model to store and retrieve employee information, as follows:
+The following code creates an Employees model to store and retrieve employee information:
 
 - First it creates a connection by passing the basic connection parameters.
 - Next, it defines the Employee model using the `define()` API, which specifies the type of information to store for an employee.
