@@ -4,11 +4,9 @@ headerTitle: DROP FOREIGN DATA WRAPPER
 linkTitle: DROP FOREIGN DATA WRAPPER
 description: Use the DROP FOREIGN DATA WRAPPER statement to drop a foreign-data wrapper.
 menu:
-  latest:
+  preview:
     identifier: ddl_drop_foreign_data_wrapper
     parent: statements
-aliases:
-  - /latest/api/ysql/commands/ddl_drop_foreign_data_wrapper/
 isTocNested: true
 showAsideToc: true
 ---
@@ -60,5 +58,5 @@ yugabyte=# DROP FOREIGN DATA WRAPPER my_wrapper CASCADE;
 ```
 ## See also
 
-- [`CREATE FOREIGN DATA WRAPPER`](../ddl_create_foreign_data_wrapper)
-- [`ALTER FOREIGN DATA WRAPPER`](../ddl_alter_foreign_data_wrapper)
+- [`CREATE FOREIGN DATA WRAPPER`](../ddl_create_foreign_data_wrapper/)
+- [`ALTER FOREIGN DATA WRAPPER`](../ddl_alter_foreign_data_wrapper/)

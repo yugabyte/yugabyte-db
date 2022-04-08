@@ -4,11 +4,9 @@ headerTitle: CREATE FOREIGN DATA WRAPPER
 linkTitle: CREATE FOREIGN DATA WRAPPER
 description: Use the CREATE FOREIGN DATA WRAPPER statement to create a foreign-data wrapper.
 menu:
-  latest:
+  preview:
     identifier: ddl_create_foreign_data_wrapper
     parent: statements
-aliases:
-  - /latest/api/ysql/commands/ddl_create_foreign_data_wrapper/
 isTocNested: true
 showAsideToc: true
 ---
@@ -73,9 +71,9 @@ yugabyte=# CREATE FOREIGN DATA WRAPPER my_wrapper HANDLER myhandler OPTIONS (dum
 
 ## See also
 
-- [`CREATE FOREIGN TABLE`](../ddl_create_foreign_table)
-- [`CREATE SERVER`](../ddl_create_server)
-- [`CREATE USER MAPPING`](../ddl_create_user_mapping)
-- [`IMPORT FOREIGN SCHEMA`](../ddl_import_foreign_schema)
-- [`ALTER FOREIGN DATA WRAPPER`](../ddl_alter_foreign_data_wrapper)
-- [`DROP FOREIGN DATA WRAPPER`](../ddl_drop_foreign_data_wrapper)
+- [`CREATE FOREIGN TABLE`](../ddl_create_foreign_table/)
+- [`CREATE SERVER`](../ddl_create_server/)
+- [`CREATE USER MAPPING`](../ddl_create_user_mapping/)
+- [`IMPORT FOREIGN SCHEMA`](../ddl_import_foreign_schema/)
+- [`ALTER FOREIGN DATA WRAPPER`](../ddl_alter_foreign_data_wrapper/)
+- [`DROP FOREIGN DATA WRAPPER`](../ddl_drop_foreign_data_wrapper/)

@@ -4,11 +4,9 @@ headerTitle: CREATE USER MAPPING
 linkTitle: CREATE USER MAPPING
 description: Use the CREATE USER MAPPING statement to create a user mapping.
 menu:
-  latest:
+  preview:
     identifier: ddl_create_user_mapping
     parent: statements
-aliases:
-  - /latest/api/ysql/commands/ddl_create_user_mapping/
 isTocNested: true
 showAsideToc: true
 ---
@@ -63,7 +61,7 @@ yugabyte=#  CREATE USER MAPPING FOR myuser SERVER my_server OPTIONS (user 'john'
 
 ## See also
 
-- [`CREATE FOREIGN DATA WRAPPER`](../ddl_create_foreign_data_wrapper)
-- [`CREATE FOREIGN TABLE`](../ddl_create_foreign_table)
-- [`CREATE SERVER`](../ddl_create_server)
-- [`IMPORT FOREIGN SCHEMA`](../ddl_import_foreign_schema)
+- [`CREATE FOREIGN DATA WRAPPER`](../ddl_create_foreign_data_wrapper/)
+- [`CREATE FOREIGN TABLE`](../ddl_create_foreign_table/)
+- [`CREATE SERVER`](../ddl_create_server/)
+- [`IMPORT FOREIGN SCHEMA`](../ddl_import_foreign_schema/)

@@ -4,7 +4,7 @@ linkTitle: Foreign Data Wrappers
 description: Foreign Data Wrappers in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
-  latest:
+  preview:
     identifier: explore-ysql-language-features-foreign-data-wrappers
     parent: explore-ysql-language-features
     weight: 100
@@ -12,15 +12,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This document describes how to use foreign data wrappers.
-
-## Overview
-
 A foreign data wrapper is a library that you can use to access and interact with an external data (foreign data) source. They allow you to query foreign objects from remote servers as if they were local objects.
 
-In order to access foreign data, we first need to create the foreign data wrapper. Then, we need to create a foreign server, which specifies how to connect to the external data source. We may also need to create a user mapping which defines the mapping of a specific user to authorization credentials in the foreign server. Lastly, we need to create foreign tables, which represent the structure of the data on the external source. 
+To access foreign data, you first create a foreign data _wrapper_. Then, you create a foreign _server_, which specifies how to connect to the external data source. You may also need to create a user mapping to map a specific user to authorization credentials in the foreign server. Finally, you create foreign _tables_, which represent the structure of the data on the external source. 
 
-### CREATING FOREIGN DATA WRAPPERS
+## Create a foreign data wrapper
 
 Use the [`CREATE FOREIGN DATA WRAPPER`](../../../api/ysql/the-sql-language/statements/ddl_create_foreign_data_wrapper/) command to create foreign data wrappers.
 
@@ -30,9 +26,9 @@ Example:
 yugabyte=# CREATE FOREIGN DATA WRAPPER mywrapper HANDLER myhandler OPTIONS (dummy 'true');
 ```
 
-### CREATING A FOREIGN SERVER
+## Create a foreign server
 
-You can use _foreign servers_ to specify connection information for an external data source.
+You use _foreign servers_ to specify connection information for an external data source.
 Create foreign servers using the [`CREATE FOREIGN SERVER`](../../../api/ysql/the-sql-language/statements/ddl_create_server/) command.
 
 Example:
@@ -41,7 +37,7 @@ Example:
 yugabyte=# CREATE SERVER myserver FOREIGN DATA WRAPPER mywrapper OPTIONS (host '197.0.2.1');
 ```
 
-### CREATE USER MAPPINGS
+## Create user mappings
 
 User mappings associate a user with authorization credentials in the foreign server.
 You can create a user mapping with the [`CREATE USER MAPPING`](../../../api/ysql/the-sql-language/statements/ddl_create_user_mapping) command.
@@ -52,7 +48,7 @@ Example:
 yugabyte=# CREATE USER MAPPING FOR myuser SERVER myserver OPTIONS (user 'john', password 'password');
 ```
 
-### CREATE FOREIGN TABLES
+## Create foreign tables
 
 Use the [`CREATE FOREIGN TABLE`](../../../api/ysql/the-sql-language/statements/ddl_create_foreign_table) command to create foreign tables.
 

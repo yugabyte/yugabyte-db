@@ -4,11 +4,9 @@ headerTitle: ALTER SERVER
 linkTitle: ALTER SERVER
 description: Use the ALTER SERVER statement to create alter a foreign server.
 menu:
-  latest:
+  preview:
     identifier: ddl_alter_server
     parent: statements
-aliases:
-  - /latest/api/ysql/commands/ddl_alter_server/
 isTocNested: true
 showAsideToc: true
 ---
@@ -61,5 +59,5 @@ yugabyte=# ALTER SERVER my_server SERVER VERSION '2.0' OPTIONS (SET opt1 'true',
 ```
 ## See also
 
-- [`CREATE SERVER`](../ddl_create_server)
-- [`DROP SERVER`](../ddl_drop_server)
+- [`CREATE SERVER`](../ddl_create_server/)
+- [`DROP SERVER`](../ddl_drop_server/)

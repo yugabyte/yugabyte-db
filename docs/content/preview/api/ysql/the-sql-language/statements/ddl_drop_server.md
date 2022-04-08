@@ -4,11 +4,9 @@ headerTitle: DROP SERVER
 linkTitle: DROP SERVER
 description: Use the DROP SERVER statement to drop a foreign server.
 menu:
-  latest:
+  preview:
     identifier: ddl_drop_foreign_server
     parent: statements
-aliases:
-  - /latest/api/ysql/commands/ddl_drop_foreign_server/
 isTocNested: true
 showAsideToc: true
 ---
@@ -60,5 +58,5 @@ yugabyte=# DROP SERVER my_server CASCADE;
 ```
 ## See also
 
-- [`CREATE SERVER`](../ddl_create_server)
-- [`ALTER SERVER`](../ddl_alter_server)
+- [`CREATE SERVER`](../ddl_create_server/)
+- [`ALTER SERVER`](../ddl_alter_server/)

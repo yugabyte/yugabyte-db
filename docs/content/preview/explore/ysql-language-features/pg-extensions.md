@@ -174,7 +174,7 @@ Now, you can create foreign tables that access data from files. For example:
 CREATE FOREIGN TABLE employees (id int, employee_name varchar) SERVER myserver OPTIONS (filename 'employees.csv', format 'csv');
 ```
 
-You can execute `SELECT` statements on the foreign tables to access the data in the corresponding files.
+You can execute SELECT statements on the foreign tables to access the data in the corresponding files.
 
 ### fuzzystrmatch example
 
@@ -381,7 +381,7 @@ CREATE FOREIGN TABLE table_name (colname1 int, colname2 int) SERVER myserver OPT
 IMPORT FOREIGN SCHEMA foreign_schema_name FROM SERVER my_server INTO local_schema_name;
 ```
 
-You can execute `SELECT` statements on the foreign tables to access the data in the corresponding remote tables.
+You can execute SELECT statements on the foreign tables to access the data in the corresponding remote tables.
 
 ### postgresql-hll example
 

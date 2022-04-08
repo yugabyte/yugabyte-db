@@ -4,11 +4,9 @@ headerTitle: ALTER FOREIGN TABLE
 linkTitle: ALTER FOREIGN TABLE
 description: Use the ALTER FOREIGN TABLE statement to alter a foreign table.
 menu:
-  latest:
+  preview:
     identifier: ddl_alter_foreign_table
     parent: statements
-aliases:
-  - /latest/api/ysql/commands/ddl_alter_foreign_table/
 isTocNested: true
 showAsideToc: true
 ---
@@ -79,5 +77,5 @@ yugabyte=# ALTER FOREIGN TABLE my_table OPTIONS (ADD newopt1 'value1', DROP oldo
 
 ## See also
 
-- [`CREATE FOREIGN TABLE`](../ddl_create_foreign_table)
-- [`DROP FOREIGN TABLE`](../ddl_drop_foreign_table)
+- [`CREATE FOREIGN TABLE`](../ddl_create_foreign_table/)
+- [`DROP FOREIGN TABLE`](../ddl_drop_foreign_table/)
