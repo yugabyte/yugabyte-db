@@ -17,17 +17,7 @@ We are continuously improving these tools and adding support for more tools, how
 
 ## Object-relational Mapping (ORM) Tools
 
-|
-#### Language
- |
-#### Framework
- |
-#### Documentation and Guides
- |
-#### Plugins and Apps
- |
-#### Github Issues
- |
+| Language | Framework | Documentation and Guides | Plugins and Apps | Github Issues |
 | --- | --- | --- | --- | --- |
 | Java | Spring Data JPA | Documentation[Quickstart](https://docs.yugabyte.com/latest/quick-start/build-apps/java/ysql-spring-data/)[Blog](https://blog.yugabyte.com/run-the-rest-version-of-spring-petclinic-with-angular-and-distributed-sql-on-gke/) | [Spring App](https://github.com/yugabyte/orm-examples/tree/master/java/spring) |
  |
@@ -50,15 +40,7 @@ YugabyteDB smart drivers are custom built by Yugabyte and take advantage of Yuga
 
 All YugabyteDB smart driver libraries are actively maintained, and receive bug fixes, performance enhancements, and security patches.
 
-|
-#### Language
- |
-#### Driver
- |
-#### Documentation and Guides
- |
-#### Github Issues
- |
+| Language | Driver | Documentation and Guides | Github Issues |
 | --- | --- | --- | --- |
 | Java | JDBC | [Documentation](https://docs.yugabyte.com/preview/integrations/jdbc-driver/) |
  |
@@ -70,15 +52,7 @@ All YugabyteDB smart driver libraries are actively maintained, and receive bug f
 
 YugabyteDB is a Postgres compatible RDBMS and supports upstream PostgreSQL drivers for the respective programming languages. YugabyteDB reuses PostgreSQL&#39;s query layer and supports all advanced features. The following libraries are officially supported by YugabyteDB.
 
-|
-#### Language
- |
-#### Driver
- |
-#### Documentation and Guides
- |
-#### Github Issues
- |
+| Language | Driver | Documentation and Guides | Github Issues |
 | --- | --- | --- | --- |
 | Java | PostgreSQL JDBC | [Documentation](https://docs.yugabyte.com/latest/quick-start/build-apps/java/ysql-jdbc/) |
  |
@@ -94,15 +68,7 @@ YugabyteDB is a Postgres compatible RDBMS and supports upstream PostgreSQL drive
 
 YugabyteDB YCQL is compatible with v3.4 of Apache Cassandra QL (CQL) APIs. The following YCQL drivers are officially supported by YugabyteDB.
 
-|
-#### Language
- |
-#### Driver
- |
-#### Documentation and Guides
- |
-#### Github Issues
- |
+| Language | Driver | Documentation and Guides | Github Issues |
 | --- | --- | --- | --- |
 | Java | Cassandra-driver-core-yb | [Documentation](https://docs.yugabyte.com/latest/quick-start/build-apps/java/ycql/) |
  |
