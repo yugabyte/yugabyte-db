@@ -77,7 +77,9 @@ class DocPgsqlScanSpec : public PgsqlScanSpec {
   Result<KeyBytes> UpperBound() const;
 
   // Returns the lower/upper range components of the key.
-  std::vector<KeyEntryValue> range_components(const bool lower_bound) const;
+  std::vector<KeyEntryValue> range_components(const bool lower_bound,
+                                              std::vector<bool> *inclusivities = nullptr,
+                                              bool use_strictness = true) const;
 
   const QLScanRange* range_bounds() const {
     return range_bounds_.get();

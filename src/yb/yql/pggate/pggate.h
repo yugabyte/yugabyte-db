@@ -380,25 +380,31 @@ class PgApiImpl {
   //     contain bind-variables (placeholders) and constants whose values can be updated for each
   //     execution of the same allocated statement.
   Status DmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
-  Status DmlBindColumnCondBetween(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value,
-      YBCPgExpr attr_value_end);
-  Status DmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_attr_values,
-      YBCPgExpr *attr_value);
+  Status DmlBindColumnCondBetween(YBCPgStatement handle,
+                                  int attr_num,
+                                  PgExpr *attr_value,
+                                  bool start_inclusive,
+                                  PgExpr *attr_value_end,
+                                  bool end_inclusive);
+  Status DmlBindColumnCondIn(YBCPgStatement handle,
+                             int attr_num,
+                             int n_attr_values,
+                             YBCPgExpr *attr_value);
 
   Status DmlBindHashCode(PgStatement *handle, bool start_valid,
-                                bool start_inclusive, uint64_t start_hash_val,
-                                bool end_valid, bool end_inclusive,
-                                uint64_t end_hash_val);
+                         bool start_inclusive, uint64_t start_hash_val,
+                         bool end_valid, bool end_inclusive,
+                         uint64_t end_hash_val);
 
   Status DmlAddRowUpperBound(YBCPgStatement handle,
-                                    int n_col_values,
-                                    YBCPgExpr *col_values,
-                                    bool is_inclusive);
+                             int n_col_values,
+                             YBCPgExpr *col_values,
+                             bool is_inclusive);
 
   Status DmlAddRowLowerBound(YBCPgStatement handle,
-                                    int n_col_values,
-                                    YBCPgExpr *col_values,
-                                    bool is_inclusive);
+                             int n_col_values,
+                             YBCPgExpr *col_values,
+                             bool is_inclusive);
 
   // Binding Tables: Bind the whole table in a statement.  Do not use with BindColumn.
   Status DmlBindTable(YBCPgStatement handle);
