@@ -389,7 +389,7 @@ class OutboundCall : public RpcCall {
 
   Result<uint32_t> TimeoutMs() const;
 
-  int32_t call_id_;
+  const int32_t call_id_;
 
   // The remote method being called.
   const RemoteMethod* remote_method_;
