@@ -323,7 +323,7 @@ void Reactor::CheckReadyToStop() {
   DCHECK(IsCurrentThread());
 
   VLOG_WITH_PREFIX(4) << "Check ready to stop: " << thread_->ToString() << ", "
-          << "waiting connections: " << yb::ToString(waiting_conns_);
+                      << "waiting connections: " << waiting_conns_.size();
 
   if (VLOG_IS_ON(4)) {
     for (const auto& conn : waiting_conns_) {

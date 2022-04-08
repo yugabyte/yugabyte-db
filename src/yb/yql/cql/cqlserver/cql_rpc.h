@@ -108,7 +108,7 @@ class CQLConnectionContext : public rpc::ConnectionContextWithCallId,
 class CQLInboundCall : public rpc::InboundCall {
  public:
   explicit CQLInboundCall(rpc::ConnectionPtr conn,
-                          CallProcessedListener call_processed_listener,
+                          CallProcessedListener* call_processed_listener,
                           ql::QLSession::SharedPtr ql_session);
 
   // Takes ownership of call_data content.

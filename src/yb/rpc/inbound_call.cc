@@ -76,11 +76,11 @@ namespace yb {
 namespace rpc {
 
 InboundCall::InboundCall(ConnectionPtr conn, RpcMetrics* rpc_metrics,
-                         CallProcessedListener call_processed_listener)
+                         CallProcessedListener* call_processed_listener)
     : trace_(new Trace),
       conn_(std::move(conn)),
       rpc_metrics_(rpc_metrics ? rpc_metrics : &conn_->rpc_metrics()),
-      call_processed_listener_(std::move(call_processed_listener)) {
+      call_processed_listener_(call_processed_listener) {
   TRACE_TO(trace_, "Created InboundCall");
   IncrementCounter(rpc_metrics_->inbound_calls_created);
   IncrementGauge(rpc_metrics_->inbound_calls_alive);
@@ -101,7 +101,7 @@ void InboundCall::NotifyTransferred(const Status& status, Connection* conn) {
                                      << " could send its response: " << status.ToString();
   }
   if (call_processed_listener_) {
-    call_processed_listener_(this);
+    call_processed_listener_->CallProcessed(this);
   }
 }
 

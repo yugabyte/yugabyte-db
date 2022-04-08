@@ -61,7 +61,7 @@ class RefinedStream : public Stream, public StreamContext {
   CHECKED_STATUS Start(bool connect, ev::loop_ref* loop, StreamContext* context) override;
   void Shutdown(const Status& status) override;
   Result<size_t> Send(OutboundDataPtr data) override;
-  void Cancelled(size_t handle) override;
+  bool Cancelled(size_t handle) override;
   bool IsConnected() override;
   const Protocol* GetProtocol() override;
   StreamReadBuffer& ReadBuffer() override;

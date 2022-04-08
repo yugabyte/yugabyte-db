@@ -97,10 +97,14 @@ class InboundCallHandler {
 // Inbound call on server
 class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
  public:
-  typedef std::function<void(InboundCall*)> CallProcessedListener;
+  class CallProcessedListener {
+   public:
+    virtual void CallProcessed(InboundCall* call) = 0;
+    virtual ~CallProcessedListener() = default;
+  };
 
   InboundCall(ConnectionPtr conn, RpcMetrics* rpc_metrics,
-              CallProcessedListener call_processed_listener);
+              CallProcessedListener* call_processed_listener);
   virtual ~InboundCall();
 
   void SetRpcMethodMetrics(std::reference_wrapper<const RpcMethodMetrics> value);
@@ -164,7 +168,7 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   }
 
   void ResetCallProcessedListener() {
-    call_processed_listener_ = decltype(call_processed_listener_)();
+    call_processed_listener_ = nullptr;
   }
 
   virtual Slice serialized_remote_method() const = 0;
@@ -248,7 +252,7 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   // The connection on which this inbound call arrived. Can be null for LocalYBInboundCall.
   ConnectionPtr conn_ = nullptr;
   RpcMetrics* rpc_metrics_;
-  std::function<void(InboundCall*)> call_processed_listener_;
+  CallProcessedListener* call_processed_listener_;
 
   class InboundCallTask : public ThreadPoolTask {
    public:

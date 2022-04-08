@@ -105,8 +105,7 @@ Status CQLConnectionContext::HandleCall(
   auto reactor = connection->reactor();
   DCHECK(reactor->IsCurrentThread());
 
-  auto call = rpc::InboundCall::Create<CQLInboundCall>(
-      connection, call_processed_listener(), ql_session_);
+  auto call = rpc::InboundCall::Create<CQLInboundCall>(connection, this, ql_session_);
 
   Status s = call->ParseFrom(call_tracker_, call_data);
   if (!s.ok()) {
@@ -150,9 +149,9 @@ void CQLConnectionContext::DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
 }
 
 CQLInboundCall::CQLInboundCall(rpc::ConnectionPtr conn,
-                               CallProcessedListener call_processed_listener,
+                               CallProcessedListener* call_processed_listener,
                                ql::QLSession::SharedPtr ql_session)
-    : InboundCall(std::move(conn), nullptr /* rpc_metrics */, std::move(call_processed_listener)),
+    : InboundCall(std::move(conn), nullptr /* rpc_metrics */, call_processed_listener),
       ql_session_(std::move(ql_session)),
       deadline_(CoarseMonoClock::now() + FLAGS_client_read_write_timeout_ms * 1ms) {
 }

@@ -47,7 +47,12 @@
 #include <vector>
 
 #include <boost/container/small_vector.hpp>
+#include <boost/multi_index_container.hpp>
+#include <boost/multi_index/hashed_index.hpp>
+#include <boost/multi_index/member.hpp>
+#include <boost/multi_index/ordered_index.hpp>
 #include <boost/version.hpp>
+
 #include <ev++.h>
 #include <gflags/gflags_declare.h>
 #include <glog/logging.h>
@@ -175,8 +180,6 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
 
   ConnectionContext& context() { return *context_; }
 
-  void CallSent(OutboundCallPtr call);
-
   CHECKED_STATUS Start(ev::loop_ref* loop);
 
   // Try to parse already received data.
@@ -207,6 +210,8 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   void Connected() override;
   StreamReadBuffer& ReadBuffer() override;
 
+  void CleanupExpirationQueue(CoarseTimePoint now);
+
   std::string LogPrefix() const;
 
   // The reactor thread that created this connection.
@@ -220,9 +225,6 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   // The last time we read or wrote from the socket.
   CoarseTimePoint last_activity_time_;
 
-  // Calls which have been sent and are now waiting for a response.
-  std::unordered_map<int32_t, OutboundCallPtr> awaiting_response_;
-
   // Starts as Status::OK, gets set to a shutdown status upon Shutdown(). Guarded by
   // outbound_data_queue_lock_.
   Status shutdown_status_;
@@ -235,22 +237,27 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   // at connection level.
   scoped_refptr<Histogram> handler_latency_outbound_transfer_;
 
-  struct ExpirationEntry {
-    CoarseTimePoint time;
-    std::weak_ptr<OutboundCall> call;
-    // See Stream::Send for details.
-    size_t handle;
+  // Information about active call.
+  struct ActiveCall {
+    int32_t id; // Call id.
+    OutboundCallPtr call; // Call object, null if call has expired.
+    CoarseTimePoint expires_at; // Expiration time, kMax when call has expired.
+    size_t handle; // Call handle in outbound stream.
   };
 
-  struct CompareExpiration {
-    bool operator()(const ExpirationEntry& lhs, const ExpirationEntry& rhs) const {
-      return rhs.time < lhs.time;
-    }
-  };
-
-  std::priority_queue<ExpirationEntry,
-                      std::vector<ExpirationEntry>,
-                      CompareExpiration> expiration_queue_;
+  class ExpirationTag;
+  // Calls which have been sent and are now waiting for a response.
+  using ActiveCalls = boost::multi_index_container<
+      ActiveCall,
+      boost::multi_index::indexed_by<
+        boost::multi_index::hashed_unique<
+          boost::multi_index::member<ActiveCall, int32_t, &ActiveCall::id>
+        >,
+        boost::multi_index::ordered_non_unique<
+          boost::multi_index::tag<ExpirationTag>,
+          boost::multi_index::member<ActiveCall, CoarseTimePoint, &ActiveCall::expires_at>
+        >>>;
+  ActiveCalls active_calls_;
 
   EvTimerHolder timer_;
 

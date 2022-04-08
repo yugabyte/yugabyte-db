@@ -154,6 +154,71 @@ ThreadPool* Proxy::GetCallbackThreadPool(
   FATAL_INVALID_ENUM_VALUE(InvokeCallbackMode, invoke_callback_mode);
 }
 
+bool Proxy::PrepareCall(AnyMessageConstPtr req, RpcController* controller) {
+  auto call = controller->call_.get();
+  Status s = call->SetRequestParam(req, mem_tracker_);
+  if (PREDICT_FALSE(!s.ok())) {
+    // Failed to serialize request: likely the request is missing a required
+    // field.
+    NotifyFailed(controller, s);
+    return false;
+  }
+
+  if (controller->timeout().Initialized() && controller->timeout() > 3600s) {
+    LOG(DFATAL) << "Too big timeout specified: " << controller->timeout();
+  }
+
+  return true;
+}
+
+void Proxy::AsyncLocalCall(
+    const RemoteMethod* method, AnyMessageConstPtr req, AnyMessagePtr resp,
+    RpcController* controller, ResponseCallback callback) {
+  controller->call_ = std::make_shared<LocalOutboundCall>(
+      method, outbound_call_metrics_, resp, controller, context_->rpc_metrics(),
+      std::move(callback));
+  if (!PrepareCall(req, controller)) {
+    return;
+  }
+  // For local call, the response message buffer is reused when an RPC call is retried. So clear
+  // the buffer before calling the RPC method.
+  if (resp.is_lightweight()) {
+    resp.lightweight()->Clear();
+  } else {
+    resp.protobuf()->Clear();
+  }
+  auto call = controller->call_.get();
+  call->SetQueued();
+  call->SetSent();
+  // If currrent thread is RPC worker thread, it is ok to call the handler in the current thread.
+  // Otherwise, enqueue the call to be handled by the service's handler thread.
+  const shared_ptr<LocalYBInboundCall>& local_call =
+      static_cast<LocalOutboundCall*>(call)->CreateLocalInboundCall();
+  Queue queue(!controller->allow_local_calls_in_curr_thread() ||
+              !ThreadPool::IsCurrentThreadRpcWorker());
+  context_->Handle(local_call, queue);
+}
+
+void Proxy::AsyncRemoteCall(
+    const RemoteMethod* method, std::shared_ptr<const OutboundMethodMetrics> method_metrics,
+    AnyMessageConstPtr req, AnyMessagePtr resp, RpcController* controller,
+    ResponseCallback callback, bool force_run_callback_on_reactor) {
+  controller->call_ = std::make_shared<OutboundCall>(
+      method, outbound_call_metrics_, std::move(method_metrics), resp, controller,
+      context_->rpc_metrics(), std::move(callback),
+      GetCallbackThreadPool(force_run_callback_on_reactor, controller->invoke_callback_mode()));
+  if (!PrepareCall(req, controller)) {
+    return;
+  }
+  auto ep = resolved_ep_.Load();
+  if (ep.address().is_unspecified()) {
+    CHECK(resolve_waiters_.push(controller));
+    Resolve();
+  } else {
+    QueueCall(controller, ep);
+  }
+}
+
 void Proxy::DoAsyncRequest(const RemoteMethod* method,
                            std::shared_ptr<const OutboundMethodMetrics> method_metrics,
                            AnyMessageConstPtr req,
@@ -163,62 +228,12 @@ void Proxy::DoAsyncRequest(const RemoteMethod* method,
                            bool force_run_callback_on_reactor) {
   CHECK(controller->call_.get() == nullptr) << "Controller should be reset";
 
-  controller->call_ =
-      call_local_service_ ?
-      std::make_shared<LocalOutboundCall>(method,
-                                          outbound_call_metrics_,
-                                          resp,
-                                          controller,
-                                          context_->rpc_metrics(),
-                                          std::move(callback)) :
-      std::make_shared<OutboundCall>(method,
-                                     outbound_call_metrics_,
-                                     std::move(method_metrics),
-                                     resp,
-                                     controller,
-                                     context_->rpc_metrics(),
-                                     std::move(callback),
-                                     GetCallbackThreadPool(
-                                         force_run_callback_on_reactor,
-                                         controller->invoke_callback_mode()));
-  auto call = controller->call_.get();
-  Status s = call->SetRequestParam(req, mem_tracker_);
-  if (PREDICT_FALSE(!s.ok())) {
-    // Failed to serialize request: likely the request is missing a required
-    // field.
-    NotifyFailed(controller, s);
-    return;
-  }
-
-  if (controller->timeout().Initialized() && controller->timeout() > 3600s) {
-    LOG(DFATAL) << "Too big timeout specified: " << controller->timeout();
-  }
-
   if (call_local_service_) {
-    // For local call, the response message buffer is reused when an RPC call is retried. So clear
-    // the buffer before calling the RPC method.
-    if (resp.is_lightweight()) {
-      resp.lightweight()->Clear();
-    } else {
-      resp.protobuf()->Clear();
-    }
-    call->SetQueued();
-    call->SetSent();
-    // If currrent thread is RPC worker thread, it is ok to call the handler in the current thread.
-    // Otherwise, enqueue the call to be handled by the service's handler thread.
-    const shared_ptr<LocalYBInboundCall>& local_call =
-        static_cast<LocalOutboundCall*>(call)->CreateLocalInboundCall();
-    Queue queue(!controller->allow_local_calls_in_curr_thread() ||
-                !ThreadPool::IsCurrentThreadRpcWorker());
-    context_->Handle(local_call, queue);
+    AsyncLocalCall(method, req, resp, controller, std::move(callback));
   } else {
-    auto ep = resolved_ep_.Load();
-    if (ep.address().is_unspecified()) {
-      CHECK(resolve_waiters_.push(controller));
-      Resolve();
-    } else {
-      QueueCall(controller, ep);
-    }
+    AsyncRemoteCall(
+        method, std::move(method_metrics), req, resp, controller, std::move(callback),
+        force_run_callback_on_reactor);
   }
 }
 
