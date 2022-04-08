@@ -97,6 +97,26 @@ alter_domain_default = 'ALTER' 'DOMAIN' name
 alter_domain_rename = 'ALTER' 'DOMAIN' name
     'RENAME' 'TO' name ;
 
+(* 'ALTER' 'FOREIGN' 'DATA' 'WRAPPER' *)
+alter_foreign_data_wrapper = 'ALTER' 'FOREIGN' 'DATA' 'WRAPPER' fdw_name 
+                             [ 'HANDLER' handler_name | 'NO' 'HANDLER' ]
+                             [ 'VALIDATOR' validator_name | 'NO' 'VALIDATOR' ]
+                             [ 'OPTIONS' '(' alter_fdw_options ')']
+                             [ 'OWNER' 'TO' new_owner ]
+                             [ 'RENAME' 'TO' new_name ] ;
+
+(* 'ALTER' 'FOREIGN' 'TABLE' *)
+alter_foreign_table = 'ALTER' 'FOREIGN' 'TABLE' [ 'IF' 'EXISTS' ] table_name
+                      alter_foreign_table_action { ',' alter_foreign_table_action } ;
+
+alter_foreign_table_action =
+  ( 'ADD' [ 'COLUMN' ] column_name data_type [ 'COLLATE' collation] [ alter_column_constraint { alter_column_constraint } ]
+    | 'RENAME' 'TO' table_name
+    | 'DROP' [ 'COLUMN' ] column_name [ 'RESTRICT' | 'CASCADE' ]
+    | 'OWNER' 'TO' new_owner
+    | 'OPTIONS' '(' alter_fdw_options ')' ) ;
+
+
 (* 'ALTER' 'GROUP' *)
 alter_group = 'ALTER' 'GROUP' role_specification ( 'ADD' | 'DROP' ) 'USER' role_name { ',' role_name } ;
 
@@ -161,6 +181,12 @@ alter_sequence_options = [ 'AS' seq_data_type ]
 
 seq_data_type = ( 'smallint' | 'integer' | 'bigint' ) ;
 restart = '<Integer Literal>';
+
+(* 'ALTER' 'SERVER' *) 
+alter_server = 'ALTER' 'SERVER' server_name 
+               [ 'VERSION' server_version ]
+               [ 'OPTIONS' '(' alter_fdw_options ')' ]
+               [ 'OWNER' 'TO' new_owner ] ;
 
 (* 'ALTER' 'TABLE' *)
 alter_table = 'ALTER' 'TABLE' table_expr
@@ -439,6 +465,23 @@ implementation_definition := "'" sql_stmt_list "'" |"'" plpgsql_block_stmt "'" |
 
 sql_stmt_list = sql_stmt ';' { sql_stmt ';' } ;
 
+(* 'CREATE' 'FOREIGN' 'DATA' 'WRAPPER' *)
+create_foreign_data_wrapper = 'CREATE' 'FOREIGN' 'DATA' 'WRAPPER' fdw_name 
+                              [ 'HANDLER' handler_name | 'NO' 'HANDLER' ]
+                              [ 'VALIDATOR' validator_name | 'NO' 'VALIDATOR' ]
+                              [ 'OPTIONS' '(' fdw_options ')' ] ;
+
+(* 'CREATE' 'FOREIGN' 'TABLE' *)
+create_foreign_table = 'CREATE' 'FOREIGN' 'TABLE' ['IF' 'NOT' 'EXISTS'] table_name
+                       '(' [ foreign_table_elem { ',' foreign_table_elem } ] ')'
+                       'SERVER' server_name
+                       [ 'OPTIONS' '(' fdw_options ')' ] ;
+
+foreign_table_elem = ( column_name data_type 
+              [ 'OPTIONS' '(' fdw_options ')' ]
+              [ 'COLLATE' collation ]
+              [ column_constraint { column_constraint } ] ) | table_constraint ;
+
 (* 'CREATE' 'GROUP' *)
 create_group = 'CREATE' 'GROUP' role_name [ [ 'WITH' ] role_option { ',' role_option } ] ;
 
@@ -577,6 +620,11 @@ maxvalue = '<Integer Literal>' ;
 start = '<Integer Literal>' ;
 cache = '<Integer Literal>' ;
 
+(* 'CREATE' 'SERVER' *)
+create_server = 'CREATE' 'SERVER' [ 'IF' 'NOT' 'EXISTS' ] server_name [ 'TYPE' server_type ]
+                [ 'VERSION' server_version ] 'FOREIGN' 'DATA' 'WRAPPER' fdw_name
+                [ 'OPTIONS' '(' fdw_options ')' ] ;
+
 (* 'CREATE' 'TABLE' *)
 create_table = 'CREATE' [ 'TEMPORARY' | 'TEMP' ] 'TABLE' [ 'IF' 'NOT' 'EXISTS' ] table_name
                  '(' [ table_elem { ',' table_elem } ] ')'
@@ -687,6 +735,16 @@ base_type_option = 'RECEIVE' '=' receive_function
 (* 'CREATE' 'USER' *)
 create_user = 'CREATE' 'USER' role_name [ [ 'WITH' ] role_option { ',' role_option } ] ;
 
+(* 'CREATE' 'USER' 'MAPPING' *)
+create_user_mapping = 'CREATE' 'USER' 'MAPPING' [ 'IF' 'NOT' 'EXISTS' ] 'FOR' user
+                      'SERVER' server_name
+                      [ 'OPTIONS' '(' fdw_options ')' ] ;
+
+user = ( user_name
+       | 'USER'
+       | 'CURRENT_USER'
+       | 'PUBLIC' ) ;
+
 (* 'CREATE' 'VIEW' *)
 create_view = 'CREATE' [ 'OR' 'REPLACE' ] 'VIEW' qualified_name [ '(' name { ',' name } ')' ] 'AS' select ;
 
@@ -731,6 +789,14 @@ drop_domain = 'DROP' 'DOMAIN' [ 'IF' 'EXISTS' ] name { ',' name }  [ 'CASCADE' |
 drop_extension = 'DROP' 'EXTENSION' [ 'IF' 'EXISTS' ]
                  extension_name { ',' extension_name }
                  [ 'CASCADE' | 'RESTRICT' ] ;
+
+(* 'DROP' 'FOREIGN' 'DATA' 'WRAPPER' *)
+drop_foreign_data_wrapper = 'DROP' 'FOREIGN' 'DATA' 'WRAPPER' [ 'IF' 'EXISTS' ] fdw_name
+                            [ 'CASCADE' | 'RESTRICT' ] ;
+
+(* 'DROP' 'FOREIGN' 'TABLE' *)
+drop_foreign_table = 'DROP' 'FOREIGN' 'TABLE' [ 'IF' 'EXISTS' ] table_name
+                     [ 'CASCADE' | 'RESTRICT' ] ;
 
 (* DROP FUNCTION *)
 drop_function = 'DROP' ( 'FUNCTION' | 'PROCEDURE' ) [ 'IF' 'EXISTS' ] \
@@ -780,6 +846,9 @@ drop_sequence = 'DROP' 'SEQUENCE' [ 'IF' 'EXISTS' ] sequence_name [ 'CASCADE' | 
 (* 'DROP' 'OWNED' *)
 drop_owned = 'DROP' 'OWNED' 'BY' role_specification { ',' role_specification }
             [ 'CASCADE' | 'RESTRICT' ] ;
+
+(* 'DROP' 'SERVER' *)
+drop_server = 'DROP' 'SERVER' [ 'IF' 'EXISTS' ] server_name [ 'CASCADE' | 'RESTRICT' ] ;
 
 (* 'DROP' 'TABLE' *)
 drop_table = 'DROP' 'TABLE' [ 'IF' 'EXISTS' ] table_name { ',' table_name}
@@ -856,6 +925,17 @@ grant_role_spec = [ 'GROUP' ] role_name
   | 'PUBLIC'
   | 'CURRENT_USER'
   | 'SESSION_USER' ;
+
+(* 'IMPORT' 'FOREIGN' 'SCHEMA' *)
+import_foreign_schema = 'IMPORT' 'FOREIGN' 'SCHEMA' remote_schema
+                        [ ( 'LIMIT' 'TO' | 'EXCEPT' ) '(' table_name {, table_name} ')' ]
+                        'FROM' 'SERVER' server_name
+                        'INTO' local_schema
+                        [ 'OPTIONS' '(' fdw_options ')' ] ;
+                        
+remote_schema = '<Text Literal>' ;
+
+local_schema = '<Text Literal>' ;
 
 (* 'INSERT' *)
 
@@ -1284,6 +1364,15 @@ version = '<text literal>' ;
 extension_name = name ;
 
 matview_name = qualified_name ;
+
+new_owner = qualified_name ;
+alter_fdw_options = ('ADD' | 'SET' | 'DROP' ) option_name [ option_value ] { ',' alter_option } ;
+fdw_name = '<Text Literal>' ;
+handler_name = '<Text Literal>' ;
+validator_name = '<DateTime Literal>' ;
+fdw_options = option_name option_value { ',' fdw_options } ;
+option_name = '<Integer Literal>';
+option_value = '<Text Literal>';
 
 (*
   Notice that the "demo-2" rule uses ( ... ) redundantly.
