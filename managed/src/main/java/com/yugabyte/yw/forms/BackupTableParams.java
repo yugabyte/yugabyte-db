@@ -41,7 +41,7 @@ public class BackupTableParams extends TableManagerParams {
   public ActionType actionType;
 
   @ApiModelProperty(value = "Full Table type backup")
-  public boolean isFullBackup = false;
+  public Boolean isFullBackup = false;
 
   @ApiModelProperty(value = "Backup type")
   public TableType backupType;
@@ -130,11 +130,21 @@ public class BackupTableParams extends TableManagerParams {
   public Set<String> getTableNames() {
     Set<String> tableNames = new HashSet<>();
     if (tableUUIDList != null && !tableUUIDList.isEmpty()) {
-      tableNames.addAll(tableNameList);
+      if (tableNameList != null) {
+        tableNames.addAll(tableNameList);
+      }
     } else if (getTableName() != null) {
       tableNames.add(getTableName());
     }
 
     return tableNames;
+  }
+
+  public boolean isFullBackup() {
+    return isFullBackup;
+  }
+
+  public void setFullBackup(boolean isFullBackup) {
+    this.isFullBackup = isFullBackup;
   }
 }

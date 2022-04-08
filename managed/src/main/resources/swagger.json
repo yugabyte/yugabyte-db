@@ -3462,6 +3462,14 @@
           },
           "type" : "array"
         },
+        "tableUUIDList" : {
+          "items" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
         "tablesList" : {
           "items" : {
             "type" : "string"
@@ -3470,7 +3478,7 @@
           "uniqueItems" : true
         }
       },
-      "required" : [ "backupSizeInBytes", "defaultLocation", "keyspace", "perRegionLocations", "tablesList" ],
+      "required" : [ "backupSizeInBytes", "defaultLocation", "keyspace", "perRegionLocations", "tableUUIDList", "tablesList" ],
       "type" : "object"
     },
     "LogData" : {
