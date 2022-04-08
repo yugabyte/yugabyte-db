@@ -1,6 +1,7 @@
 ---
-title: NodeJS
+title: NodeJS drivers and ORMs
 headerTitle: NodeJS
+headcontent: Prerequisites and CRUD examples for building applications in NodeJS.
 linkTitle: NodeJS
 description: NodeJS Drivers and ORMs support for YugabyteDB.
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
@@ -12,18 +13,18 @@ menu:
 isTocNested: true
 showAsideToc: true
 ---
-The following projects are recommended for implementing Node applications using the YugabyteDB YSQL API.
+The following projects are recommended for implementing Node applications using the YugabyteDB YSQL API. For fully runnable code snippets and explanations of common operations, see the specific Java driver and ORM section. The following table provides links to driver-specific documentation and examples.
 
-| Project | Type | Support Level |
-| :------ | :--- | :------------ |
-| [node-postgres](postgres-node-driver) | Node.JS Driver | Full |
-| [Sequelize](sequelize) | ORM | Full |
+| Project | Type | Support | Examples |
+| :------ | :--- | :------ | :------- |
+| [node-postgres](postgres-node-driver) | Node.JS Driver | Full | [Hello World](/preview/quick-start/build-apps/nodejs/ysql-pg/) <br />[CRUD App](postgres-node-driver) |
+| [Sequelize](sequelize) | ORM | Full | [Hello World](/preview/quick-start/build-apps/nodejs/ysql-sequelize/) <br />[CRUD App](sequelize) |
 
 ## Build a Hello World application
 
 Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps in [Build an Application](/preview/quick-start/build-apps/nodejs/) in the Quick Start section.
 
-## Pre-requisites for building a Node.JS application
+## Prerequisites for building a Node.JS application
 
 ### Install Node.JS
 
@@ -48,12 +49,3 @@ node app.js
 Create a free cluster on Yugabyte Cloud. Refer to [Create a free cluster](../../yugabyte-cloud/cloud-basics/create-clusters-free/).
 
 You can also set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/preview/quick-start/install/macos).
-
-## Examples
-
-For fully runnable code snippets and explanations of common operations, see the specific Java driver and ORM section. The following table provides links to driver-specific documentation and examples.
-
-| Project | Type | Usage Examples |
-| :------ | :--- | :------------- |
-| [Node PostgreSQL Driver](postgres-node-driver/) | Node.JS Driver | [Hello World](/preview/quick-start/build-apps/nodejs/ysql-pg/) <br />[CRUD App](postgres-node-driver)
-| [Sequelize](sequelize/) | ORM | [Hello World](/preview/quick-start/build-apps/nodejs/ysql-sequelize/) <br />[CRUD App](sequelize)

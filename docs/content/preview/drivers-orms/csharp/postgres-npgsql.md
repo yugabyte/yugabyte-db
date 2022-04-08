@@ -1,12 +1,12 @@
 ---
-title: C# Drivers
-linkTitle: C# Drivers
-description: C# Drivers for YSQL
-headcontent: C# Drivers for YSQL
+title: C# drivers
+linkTitle: C# drivers
+description: C# drivers for YSQL
+headcontent: C# drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
-    name: C# Drivers
+    name: C# drivers
     identifier: postgres-npgsql-driver
     parent: csharp-drivers
     weight: 400

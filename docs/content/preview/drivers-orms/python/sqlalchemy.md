@@ -1,6 +1,6 @@
 ---
-title: SQLAlchemy ORM
-linkTitle: SQLAlchemy ORM
+title: Python ORMs
+linkTitle: Python ORM
 description: SQLAlchemy ORM support for YugabyteDB
 headcontent: SQLAlchemy ORM support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png

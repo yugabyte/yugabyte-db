@@ -1,12 +1,12 @@
 ---
-title: Python Drivers
-linkTitle: Python Drivers
-description: Python Drivers for YSQL
-headcontent: Python Drivers for YSQL
+title: Python drivers
+linkTitle: Python drivers
+description: Python drivers for YSQL
+headcontent: Python drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
-    name: Python Drivers
+    name: Python drivers
     identifier: postgres-psycopg2-driver
     parent: python-drivers
     weight: 500

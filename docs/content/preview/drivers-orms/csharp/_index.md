@@ -1,6 +1,7 @@
 ---
-title: C#
-headerTitle: C#
+title: C# drivers and ORMs
+headerTitle: C# drivers and ORMs
+headcontent: Prerequisites and CRUD examples for building applications in C#.
 linkTitle: C#
 description: C# Drivers and ORMs support for YugabyteDB.
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
@@ -12,18 +13,18 @@ menu:
 isTocNested: true
 showAsideToc: true
 ---
-The following projects are recommended for implementing C# applications using the YugabyteDB YSQL API.
+The following projects are recommended for implementing C# applications using the YugabyteDB YSQL API. For fully runnable code snippets and explanations for common operations, see the specific C# driver and ORM section. The following table provides links to driver-specific documentation and examples.
 
-| Project | Type | Support Level |
-| :------ | :--- | :------------ |
-| [Postgres Npgsql](postgres-npgsql) | C# Driver | Full |
-| [EntityFramework](entityframework) | ORM |  Full |
+| Project | Type | Support | Examples |
+| :------ | :--- | :-------| :------- |
+| [Postgres Npgsql](postgres-npgsql) | C# Driver | Full | [Hello World](/preview/quick-start/build-apps/csharp/ysql) <br />[CRUD App](postgres-npgsql) |
+| [EntityFramework](entityframework) | ORM |  Full | [Hello World](/preview/quick-start/build-apps/csharp/ysql-entity-framework/) <br />[CRUD App](entityframework) |
 
 ## Build a Hello World application
 
 Learn how to establish a connection to a YugabyteDB database and begin simple CRUD operations using the steps in [Build an Application](/preview/quick-start/build-apps/csharp/ysql) in the Quick Start section.
 
-## Pre-requisites for building a C# application
+## Prerequisites for building a C# application
 
 ### Install .NET SDK
 
@@ -48,12 +49,3 @@ dotnet new console -o new_project_name
 Create a free cluster on [Yugabyte Cloud](https://www.yugabyte.com/cloud/). Refer to [Create a free cluster](../../yugabyte-cloud/cloud-basics/create-clusters-free/).
 
 Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/preview/quick-start/install/macos).
-
-## Examples
-
-For fully runnable code snippets and explanations for common operations, see the specific C# driver and ORM section. The following table provides links to driver-specific documentation and examples.
-
-| Project | Type | Usage Examples |
-| :------ | :--- | :------------- |
-| [Postgres Npgsql Driver](postgres-npgsql) | C# Driver | [Hello World](/preview/quick-start/build-apps/csharp/ysql) <br />[CRUD App](postgres-npgsql)
-| [EntityFramework](entityframework) | ORM |  [Hello World](/preview/quick-start/build-apps/csharp/ysql-entity-framework/) <br />[CRUD App](entityframework) |

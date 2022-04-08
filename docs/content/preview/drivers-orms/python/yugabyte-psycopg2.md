@@ -1,12 +1,12 @@
 ---
-title: Python Drivers
-linkTitle: Python Drivers
-description: Python Drivers for YSQL
-headcontent: Python Drivers for YSQL
+title: Python drivers
+linkTitle: Python drivers
+description: Python drivers for YSQL
+headcontent: Python drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
-    name: Python Drivers
+    name: Python drivers
     identifier: yugabyte-psycopg2-driver
     parent: python-drivers
     weight: 400
@@ -32,7 +32,7 @@ showAsideToc: true
 
 </ul>
 
-The [Yugabyte Psycopg2 smart driver](https://github.com/yugabyte/psycopg2) is a distributed python driver for [YSQL](/preview/api/ysql/), built on the [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2). Although the upstream PostgreSQL psycopg2 driver works with YugabyteDB, the Yugabyte driver is cluster- and topology-aware, and eliminates the need for external load balancers.
+The [Yugabyte Psycopg2 smart driver](https://github.com/yugabyte/psycopg2) is a distributed Python driver for [YSQL](/preview/api/ysql/), built on the [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2). Although the upstream PostgreSQL psycopg2 driver works with YugabyteDB, the Yugabyte driver is cluster- and topology-aware, and eliminates the need for external load balancers.
 
 ## CRUD operations with YugabyteDB Psycopg2 driver
 

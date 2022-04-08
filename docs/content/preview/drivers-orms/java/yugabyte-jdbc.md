@@ -1,12 +1,12 @@
 ---
-title: JDBC Drivers
-linkTitle: JDBC Drivers
-description: JDBC Drivers for YSQL
-headcontent: JDBC Drivers for YSQL
+title: JDBC drivers
+linkTitle: JDBC drivers
+description: JDBC drivers for YSQL
+headcontent: JDBC drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
-    name: JDBC Drivers
+    name: JDBC drivers
     identifier: yugabyte-jdbc-driver
     parent: java-drivers
     weight: 400

@@ -1,12 +1,12 @@
 ---
-title: NodeJS Drivers
-linkTitle: NodeJS Drivers
-description: JDBC Drivers for YSQL
-headcontent: JDBC Drivers for YSQL
+title: NodeJS drivers
+linkTitle: NodeJS drivers
+description: NodeJS drivers for YSQL
+headcontent: NodeJS drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
-    name: NodeJS Drivers
+    name: NodeJS drivers
     identifier: postgres-node-driver
     parent: nodejs-drivers
     weight: 500

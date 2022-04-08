@@ -1,6 +1,6 @@
 ---
-title: Django ORM
-linkTitle: Django ORM
+title: Python ORMs
+linkTitle: Python ORMs
 description: Django ORM support for YugabyteDB
 headcontent: Django ORM support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png

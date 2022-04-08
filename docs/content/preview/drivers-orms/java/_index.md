@@ -1,8 +1,9 @@
 ---
-title: Java
-headerTitle: Java
+title: Java drivers, ORMs, and frameworks
+headerTitle: Java drivers, ORMs, and frameworks
+headcontent: Prerequisites and CRUD examples for building applications in Java.
 linkTitle: Java
-description: Java Drivers and ORMs support for YugabyteDB.
+description: Java drivers and ORMs support for YugabyteDB.
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
@@ -12,19 +13,20 @@ menu:
 isTocNested: true
 showAsideToc: true
 ---
-The following projects are recommended for implementing Java applications using the YugabyteDB YSQL API.
+The following projects can be used to implement Java applications using the YugabyteDB YSQL API. For fully runnable code snippets and explanations for common operations, see the specific Java driver and ORM section. The following table provides links to driver-specific documentation and examples.
 
-| Project | Type | Support Level |
-| :------ | :--- | :------------ |
-| [YugabyteDB JDBC Driver](yugabyte-jdbc) | JDBC Driver | Full |
-| [Hibernate](hibernate) | ORM |  Full |
-| [Spring Data YugabyteDB](/preview/integrations/spring-framework/sdyb/) | Framework |  Full |
+| Project (* Recommended) | Type | Support | Examples |
+| :------ | :--- | :------ | :------- |
+| [YugabyteDB JDBC Driver*](yugabyte-jdbc) | JDBC Driver | Full | [Hello World](/preview/quick-start/build-apps/java/ysql-yb-jdbc) <br />[CRUD App](yugabyte-jdbc) |
+| [PostgreSQL JDBC Driver](/preview/reference/drivers/java/postgres-jdbc-reference/) | JDBC Driver | Full | [Hello World](/preview/quick-start/build-apps/java/ysql-jdbc) <br />[CRUD App](postgres-jdbc)|
+| [Hibernate*](hibernate) | ORM |  Full | [Hello World](/preview/quick-start/build-apps/java/ysql-jdbc) <br />[CRUD App](hibernate/#working-with-domain-objects) |
+| [Spring Data YugabyteDB*](/preview/integrations/spring-framework/sdyb/) | Framework |  Full |
 
 ## Build a Hello World application
 
 Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps in [Build an Application](/preview/quick-start/build-apps/java/ysql-yb-jdbc) in the Quick Start section.
 
-## Pre-requisites for building a Java application
+## Prerequisites for building a Java application
 
 ### Install the Java Development Kit (JDK)
 
@@ -41,16 +43,6 @@ If you are not using an IDE, see [Building Maven](https://maven.apache.org/guide
 Create a free cluster on Yugabyte Cloud. Refer to [Create a free cluster](../../yugabyte-cloud/cloud-basics/create-clusters-free/).
 
 You can also set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/preview/quick-start/install/macos).
-
-## Examples
-
-For fully runnable code snippets and explanations for common operations, see the specific Java driver and ORM section. The following table provides links to driver-specific documentation and examples.
-
-| Project | Type | Usage Examples |
-| :------ | :--- | :------------- |
-| [YugabyteDB JDBC Driver](/preview/reference/drivers/java/yugabyte-jdbc-reference/) | JDBC Driver | [Hello World](/preview/quick-start/build-apps/java/ysql-yb-jdbc) <br />[CRUD App](yugabyte-jdbc)
-| [PostgreSQL JDBC Driver](/preview/reference/drivers/java/postgres-jdbc-reference/) | JDBC Driver | [Hello World](/preview/quick-start/build-apps/java/ysql-jdbc) <br />[CRUD App](postgres-jdbc)
-| [Hibernate](hibernate) | ORM |  [Hello World](/preview/quick-start/build-apps/java/ysql-jdbc) <br />[CRUD App](hibernate/#working-with-domain-objects) |
 
 <!-- ## Learn More
 

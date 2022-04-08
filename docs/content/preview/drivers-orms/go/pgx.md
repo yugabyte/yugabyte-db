@@ -1,12 +1,12 @@
 ---
-title: Go Drivers
-linkTitle: Go Drivers
-description: Go Drivers for YSQL
-headcontent: Go Drivers for YSQL
+title: Go drivers
+linkTitle: Go drivers
+description: Go drivers for YSQL
+headcontent: Go drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
-    name: Go Drivers
+    name: Go drivers
     identifier: pgx-driver
     parent: go-drivers
     weight: 400
