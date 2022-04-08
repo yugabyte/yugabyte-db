@@ -193,15 +193,10 @@ OutboundCall::~OutboundCall() {
 }
 
 void OutboundCall::NotifyTransferred(const Status& status, Connection* conn) {
-  if (status.ok()) {
-    // Even when call is already finished (timed out) we should notify connection that it was sent
-    // because it should expect response with appropriate id.
-    conn->CallSent(shared_from(this));
-  }
-
   if (IsFinished()) {
     LOG_IF_WITH_PREFIX(DFATAL, !IsTimedOut())
-        << "Transferred call is in wrong state: " << state_.load(std::memory_order_acquire);
+        << "Transferred call is in wrong state: " << state_.load(std::memory_order_acquire)
+        << ", status: " << this->status();
   } else if (status.ok()) {
     SetSent();
   } else {
