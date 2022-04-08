@@ -160,15 +160,18 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // Mark the update of the universe as done. This will allow future edits/updates to the
       // universe to happen.
       Universe universe = unlockUniverseForUpdate(errorString);
-      universe.updateConfig(
-          ImmutableMap.of(
-              Universe.USE_CUSTOM_IMAGE,
-              Boolean.toString(
-                  universe
-                      .getUniverseDetails()
-                      .nodeDetailsSet
-                      .stream()
-                      .allMatch(n -> n.ybPrebuiltAmi))));
+
+      if (universe.getConfig().getOrDefault(Universe.USE_CUSTOM_IMAGE, "false").equals("true")) {
+        universe.updateConfig(
+            ImmutableMap.of(
+                Universe.USE_CUSTOM_IMAGE,
+                Boolean.toString(
+                    universe
+                        .getUniverseDetails()
+                        .nodeDetailsSet
+                        .stream()
+                        .allMatch(n -> n.ybPrebuiltAmi))));
+      }
     }
     log.info("Finished {} task.", getName());
   }
