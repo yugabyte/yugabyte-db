@@ -76,7 +76,13 @@ For information on using other SSL modes, refer to [SSL modes in YSQL](../../clo
 
 ## Connect using third party clients
 
-Because YugabyteDB is PostgreSQL-compatible, you can use third party PostgreSQL clients to connect to your YugabyteDB clusters in Yugabyte Cloud. To create connections to your cluster in Yugabyte Cloud, follow the client's configuration steps for PostgreSQL, but use the value for host as shown on the **Settings** tab for your cluster, port 5433, and the username and password of a user with permissions for the cluster.
+Because YugabyteDB is PostgreSQL-compatible, you can use third-party PostgreSQL clients to connect to your YugabyteDB clusters in Yugabyte Cloud.
+
+To connect, follow the client's configuration steps for PostgreSQL, and use the following values:
+
+- **host** as shown on the **Settings** tab for your cluster
+- **port** 5433
+- **username** and **password** of a user with permissions for the cluster
 
 For detailed steps for configuring popular third party tools, see [Third party tools](../../../tools/). In that section, configuration steps are included for the following tools:
 

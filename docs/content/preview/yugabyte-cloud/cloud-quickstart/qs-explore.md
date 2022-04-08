@@ -18,9 +18,15 @@ After [creating a free cluster](../qs-add/) and [connecting to the cluster](../q
 
 When you connect to your cluster using Cloud Shell with the YSQL API, the shell window incorporates a quick start guide, with a series of pre-built queries for you to run.
 
-## Create a database
+## Run the tutorial
 
-While optional, it's good practise to create separate databases for different applications.
+After entering your password, do the following to start the tutorial (creating a database is optional):
+
+![Run the quick start tutorial](/images/yb-cloud/cloud-shell-tutorial.gif)
+
+### Create a database
+
+While optional, it's good practice to create separate databases for different applications.
 
 To create a database, enter the following command:
 
@@ -34,7 +40,7 @@ Next, connect to the new database using the ysqlsh `\c` meta-command:
 yugabyte=> \c yb_demo;
 ```
 
-## Run the tutorial
+### Create tables and insert data
 
 Begin the tutorial by selecting the steps in the left navigation panel, then clicking the **Run** button for the corresponding SQL statements. The tutorial starts with the following tasks:
 
@@ -45,7 +51,11 @@ Begin the tutorial by selecting the steps in the left navigation panel, then cli
 \
     Data is added to the tables using multi-value inserts to reduce client-server round trips.
 
-After you create the tables and insert the data, click **Let's get started with the tutorials** to begin the tutorial scenarios. The quick start includes the following:
+After you create the tables and insert the data, click **Let's get started with the tutorials** to begin the tutorial scenarios.
+
+### Quick start scenarios
+
+The quick start includes the following scenarios:
 
 | Scenario | Description |
 | :--- | :--- |

@@ -54,7 +54,7 @@ A Yugabyte Cloud account is limited to a single free cluster; you can add as man
 | Feature | Free | Standard |
 | :----------- | :---------- | :---------- |
 | Cluster | Single Node | Any |
-| vCPU/Storage | Up to 2 vCPU / 2 GB RAM / 10 GB storage | Any |
+| vCPU/Storage | Up to 2 vCPU / 4 GB RAM / 10 GB storage | Any |
 | [Regions](../release-notes/#cloud-provider-regions) | All | All |
 | Upgrades | Automatic | Automatic with customizable [maintenance windows](../cloud-clusters/cloud-maintenance/) |
 | VPC Peering | No | Yes |
@@ -149,13 +149,13 @@ Using Yugabyte Cloud, you can create single region clusters that can be deployed
 
 The Fault Tolerance of a cluster determines how resilient the cluster is to node and cloud zone failures and, by extension, the cluster configuration. You can configure clusters with the following fault tolerances in Yugabyte Cloud:
 
-- **None** - single node, with no replication or resiliency. Recommended for development and testing only.
-- **Node Level** - a minimum of 3 nodes deployed in a single availability zone with a [replication factor](../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to cloud availability zone outages. For horizontal scaling, you can scale nodes in increments of 1.
 - **Availability Zone Level** - a minimum of 3 nodes spread across multiple availability zones with a RF of 3. YugabyteDB can continue to do reads and writes even in case of a cloud availability zone failure. This configuration provides the maximum protection for a data center failure. Recommended for production deployments. For horizontal scaling, nodes are scaled in increments of 3.
-
-Free clusters are limited to a single node in a single region.
+- **Node Level** - a minimum of 3 nodes deployed in a single availability zone with a [replication factor](../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to cloud availability zone outages. For horizontal scaling, you can scale nodes in increments of 1.
+- **None** - single node, with no replication or resiliency. Recommended for development and testing only.
 
 For multi-region deployments, including [synchronous replication](../../explore/multi-region-deployments/synchronous-replication-ysql/), [asynchronous replication](../../explore/multi-region-deployments/asynchronous-replication-ysql/), and [geo-level partitioning](../../explore/multi-region-deployments/row-level-geo-partitioning/), contact {{<support-cloud>}}.
+
+Free clusters are limited to a single node in a single region.
 
 ### How do I connect to my cluster?
 
