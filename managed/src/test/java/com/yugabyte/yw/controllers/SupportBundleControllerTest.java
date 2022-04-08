@@ -60,6 +60,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.UUID;
 import java.util.EnumSet;
+import java.text.SimpleDateFormat;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -145,21 +146,24 @@ public class SupportBundleControllerTest extends FakeDBApplication {
   @Test
   public void testListSupportBundles() {
     // Create fake bundle entries in db table
+    String datePrefix = new SimpleDateFormat("yyyyMMddHHmmss.SSS").format(new Date());
+    String bundlePath1 = "yb-support-bundle-" + "universe_name" + "-" + datePrefix + "-logs";
     SupportBundle sb1 =
         new SupportBundle(
             UUID.randomUUID(),
             universe.universeUUID,
-            "/opt/yugaware/sb_1.tar.gz",
+            bundlePath1,
             new Date(),
             new Date(),
             new BundleDetails(EnumSet.allOf(BundleDetails.ComponentType.class)),
             SupportBundle.SupportBundleStatusType.Success);
     sb1.save();
+    String bundlePath2 = "yb-support-bundle-" + "universe_name" + "-" + datePrefix + "-logs1";
     SupportBundle sb2 =
         new SupportBundle(
             UUID.randomUUID(),
             universe.universeUUID,
-            "/opt/yugaware/sb_2.tar.gz",
+            bundlePath2,
             new Date(),
             new Date(),
             new BundleDetails(EnumSet.noneOf(BundleDetails.ComponentType.class)),
@@ -170,8 +174,8 @@ public class SupportBundleControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
 
-    List<SupportBundle> supportBundles = Json.fromJson(json, List.class);
-    assertEquals(supportBundles.size(), 2);
+    List<ObjectNode> supportBundlesResponse = Json.fromJson(json, List.class);
+    assertEquals(supportBundlesResponse.size(), 2);
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -181,8 +185,8 @@ public class SupportBundleControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
 
-    List<SupportBundle> supportBundles = Json.fromJson(json, List.class);
-    assertEquals(supportBundles.size(), 0);
+    List<ObjectNode> supportBundlesResponse = Json.fromJson(json, List.class);
+    assertEquals(supportBundlesResponse.size(), 0);
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -191,11 +195,13 @@ public class SupportBundleControllerTest extends FakeDBApplication {
   @Test
   public void testGetValidSupportBundle() {
     // Create fake bundle entry in db table with status = success
+    String datePrefix = new SimpleDateFormat("yyyyMMddHHmmss.SSS").format(new Date());
+    String bundlePath1 = "yb-support-bundle-" + "universe_name" + "-" + datePrefix + "-logs";
     SupportBundle sb1 =
         new SupportBundle(
             UUID.randomUUID(),
             universe.universeUUID,
-            "/opt/yugaware/sb_1.tar.gz",
+            bundlePath1,
             new Date(),
             new Date(),
             new BundleDetails(EnumSet.allOf(BundleDetails.ComponentType.class)),
@@ -206,7 +212,13 @@ public class SupportBundleControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
 
-    SupportBundle supportBundle = Json.fromJson(json, SupportBundle.class);
+    ObjectNode supportBundleResponse = Json.fromJson(json, ObjectNode.class);
+    assertTrue(supportBundleResponse.has("creationDate"));
+    assertTrue(supportBundleResponse.has("expirationDate"));
+    supportBundleResponse.remove("creationDate");
+    supportBundleResponse.remove("expirationDate");
+
+    SupportBundle supportBundle = Json.fromJson(supportBundleResponse, SupportBundle.class);
     assertEquals(supportBundle, sb1);
     assertAuditEntry(0, customer.uuid);
   }

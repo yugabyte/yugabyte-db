@@ -12694,7 +12694,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "$ref" : "#/definitions/SupportBundle"
+                "type" : "object"
               },
               "type" : "array"
             }
@@ -12800,7 +12800,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/SupportBundle"
+              "type" : "object"
             }
           }
         },

@@ -32,6 +32,11 @@ public class SupportBundleUtil {
     return dateNDaysAgo;
   }
 
+  public Date getDateNDaysAfter(Date currDate, int days) {
+    Date dateNDaysAgo = new DateTime(currDate).plusDays(days).toDate();
+    return dateNDaysAgo;
+  }
+
   public Date getTodaysDate() throws ParseException {
     SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
     Date dateToday = sdf.parse(sdf.format(new Date()));
