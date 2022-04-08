@@ -33,6 +33,12 @@ showAsideToc: true
 
 [Django](https://www.djangoproject.com/) is a high-level Python web framework that encourages rapid development and clean, pragmatic design.
 
+## CRUD operations with Django ORM
+
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](/preview/quick-start/build-apps/python/ysql-django/) page under the Quick start section.
+
+The following sections demonstrate how to perform common tasks required for Python application development using the Django ORM.
+
 ### Add the Dependencies
 
 To download the Django Rest Framework to your project, run the following command:
