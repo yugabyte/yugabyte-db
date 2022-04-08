@@ -1,8 +1,8 @@
 ---
-title: Use Yugabyte Platform to eliminate an unresponsive node
+title: Use YugabyteDB Anywhere to eliminate an unresponsive node
 headerTitle: Eliminate an unresponsive node
 linkTitle: Eliminate an unresponsive node
-description: Use Yugabyte Platform to eliminate an unresponsive node.
+description: Use YugabyteDB Anywhere to eliminate an unresponsive node.
 aliases:
   - /latest/manage/enterprise-edition/create-universe-multi-region
 menu:
@@ -14,7 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-If a virtual machine or a physical server in a universe reaches its end of life and has unrecoverable hardware or other system issues, such as problems with its operating system, disk, and so on, it is detected and displayed in the Yugabyte Platform UI as an unreachable node, as per the following illustration:
+If a virtual machine or a physical server in a universe reaches its end of life and has unrecoverable hardware or other system issues, such as problems with its operating system, disk, and so on, it is detected and displayed in the YugabyteDB Anywhere UI as an unreachable node, as per the following illustration:
 
 ![Unreachable Node Actions](/images/ee/node-actions-unreachable.png)
 
