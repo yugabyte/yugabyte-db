@@ -67,8 +67,8 @@ def main():
                         help='Do not re-create the initial sys catalog snapshot. Useful when '
                              'debugging the release process.')
     parser.add_argument('--package_name',
-                        default='all',
-                        help='Name of package to release (e.g. cli).')
+                        default='yugabyte',
+                        help='Name of package to release ("yugabyte" or "yugabyte-client").')
     add_common_arguments(parser)
     args = parser.parse_args()
 
