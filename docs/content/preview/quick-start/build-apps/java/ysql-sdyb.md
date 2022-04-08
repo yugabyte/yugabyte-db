@@ -122,54 +122,54 @@ import org.springframework.data.relational.core.mapping.Table;
 @Table(value = "employee")
 public class Employee implements Persistable<String> {
 
-	@Id
-	private String id;
-	private String name;
-	private String email;
-	
-	@Transient
-	private Boolean isInsert = true;
-	
-	// Add Empty Constructor, Constructor, and Getters/Setters
-	
-	public Employee() {}
-	
-	public Employee(String id, String name, String email) {
-		super();
-		this.id = id;
-		this.name = name;
-		this.email = email;
-	}
+ @Id
+ private String id;
+ private String name;
+ private String email;
+ 
+ @Transient
+ private Boolean isInsert = true;
+ 
+ // Add Empty Constructor, Constructor, and Getters/Setters
+ 
+ public Employee() {}
+ 
+ public Employee(String id, String name, String email) {
+  super();
+  this.id = id;
+  this.name = name;
+  this.email = email;
+ }
 
-	@Override
-	public String getId() {
-		return id;
-	}
+ @Override
+ public String getId() {
+  return id;
+ }
 
-	public void setId(String id) {
-		this.id = id;
-	}
+ public void setId(String id) {
+  this.id = id;
+ }
 
-	public String getName() {
-		return name;
-	}
+ public String getName() {
+  return name;
+ }
 
-	public void setName(String name) {
-		this.name = name;
-	}
+ public void setName(String name) {
+  this.name = name;
+ }
 
-	public String getEmail() {
-		return email;
-	}
+ public String getEmail() {
+  return email;
+ }
 
-	public void setEmail(String email) {
-		this.email = email;
-	}
+ public void setEmail(String email) {
+  this.email = email;
+ }
 
-	@Override
-	public boolean isNew() {
-		return isInsert;
-	}
+ @Override
+ public boolean isNew() {
+  return isInsert;
+ }
 
 }
 ```
@@ -184,7 +184,7 @@ import com.yugabyte.data.jdbc.repository.YsqlRepository;
 @Repository
 public interface EmployeeRepository extends YsqlRepository<Employee, Integer> {
 
-	Employee findByEmail(final String email);
+ Employee findByEmail(final String email);
 
 }
 ```
@@ -207,7 +207,7 @@ import com.yugabyte.data.jdbc.repository.config.EnableYsqlRepositories;
 @Configuration
 @EnableYsqlRepositories(basePackageClasses = EmployeeRepository.class)
 public class YsqlConfig extends AbstractYugabyteJdbcConfiguration {
-	
+ 
     @Bean
     NamedParameterJdbcOperations namedParameterJdbcOperations(DataSource dataSource) { 
         return new NamedParameterJdbcTemplate(dataSource);
@@ -263,39 +263,39 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 @SpringBootApplication
 public class DemoApplication implements CommandLineRunner {
-	
-	@Autowired
-	JdbcTemplate jdbcTemplate;
-	
-	@Autowired
-	EmployeeRepository customerRepository;
+ 
+ @Autowired
+ JdbcTemplate jdbcTemplate;
+ 
+ @Autowired
+ EmployeeRepository customerRepository;
 
-	public static void main(String[] args) {
-		SpringApplication.run(DemoApplication.class, args);
-	}
+ public static void main(String[] args) {
+  SpringApplication.run(DemoApplication.class, args);
+ }
 
-	@Override
-	public void run(String... args) throws Exception {
-		
-		System.out.println("Connected to the YugabyteDB server successfully.");
-		jdbcTemplate.execute("DROP TABLE IF EXISTS employee");
-		jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS employee" +
+ @Override
+ public void run(String... args) throws Exception {
+  
+  System.out.println("Connected to the YugabyteDB server successfully.");
+  jdbcTemplate.execute("DROP TABLE IF EXISTS employee");
+  jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS employee" +
               "  (id text primary key, name varchar, email varchar)");
-		System.out.println("Created table employee");
-		
-		
-		Employee customer = new Employee("sl1",
+  System.out.println("Created table employee");
+  
+  
+  Employee customer = new Employee("sl1",
                 "User One",
                 "user@one.com");
-		
-		customerRepository.save(customer);
-		
-		Employee customerFromDB = null;
-		customerFromDB = customerRepository.findByEmail("user@one.com");
-		
-		System.out.println(String.format("Query returned: name = %s, email = %s",
-				customerFromDB.getName(), customerFromDB.getEmail()));
-		
+  
+  customerRepository.save(customer);
+  
+  Employee customerFromDB = null;
+  customerFromDB = customerRepository.findByEmail("user@one.com");
+  
+  System.out.println(String.format("Query returned: name = %s, email = %s",
+    customerFromDB.getName(), customerFromDB.getEmail()));
+  
 
         }
 
