@@ -3,7 +3,7 @@ title: Benchmarking
 linkTitle: Benchmarking
 description: Using the benchmark tool with Hasura
 aliases:
-  - /latest/develop/graphql
+  - /preview/develop/graphql
 menu:
   preview:
     identifier: graphql
