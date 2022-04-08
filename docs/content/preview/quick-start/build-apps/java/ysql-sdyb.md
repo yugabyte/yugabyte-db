@@ -86,7 +86,7 @@ Spring Boot project provides [Spring Initializr](https://start.spring.io/) utili
 
 1. Navigate to [Spring Initializr](https://start.spring.io/). This service pulls in all the dependencies you need for an application and does most of the setup for you.
 
-1. Choose either Maven and Java programming language.
+1. Choose Maven and Java programming language.
 
 1. Click Dependencies and select `Spring Web` and `PostgreSQL Driver`. Click Generate.
 
@@ -109,7 +109,7 @@ Spring Boot project provides [Spring Initializr](https://start.spring.io/) utili
 
 ## Create the sample Spring Data YugabyteDB application
 
-1. Create a new files `Employee.java`, `EmployeeRepository.java`, and `YsqlConfig.java` domain object in the base directory.
+1. Create a new files `Employee.java`, `EmployeeRepository.java`, and `YsqlConfig.java` in the base package.
 
 ```java
 package com.yugabyte.sdyb.sample;
@@ -224,7 +224,6 @@ public class YsqlConfig extends AbstractYugabyteJdbcConfiguration {
 2. There are a number of options that can be customized in the properties file located at src/main/resources/application.properties. Given YSQL's compatibility with the PostgreSQL language, the spring.jpa.database property is set to POSTGRESQL and the spring.datasource.url is set to the YSQL JDBC URL: jdbc:postgresql://localhost:5433/yugabyte.
 
 ```java
-
 # ---------------------
 # JPA/Hibernate config.
 spring.jpa.database=POSTGRESQL
@@ -296,9 +295,7 @@ public class DemoApplication implements CommandLineRunner {
   System.out.println(String.format("Query returned: name = %s, email = %s",
     customerFromDB.getName(), customerFromDB.getEmail()));
   
-
-        }
-
+   }
 }
 ```
 
