@@ -6,7 +6,7 @@ description: Review the steps to start contributing documentation
 image: /images/section_icons/index/quick_start.png
 type: page
 menu:
-  latest:
+  preview:
     identifier: docs-checklist
     parent: docs
     weight: 2911

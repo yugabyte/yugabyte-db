@@ -6,7 +6,7 @@ description: Docs page structure
 image: /images/section_icons/index/quick_start.png
 type: page
 menu:
-  latest:
+  preview:
     identifier: docs-page-structure
     parent: docs-edit
     weight: 2914

@@ -6,7 +6,7 @@ description: Build the YugabyteDB docs locally
 image: /images/section_icons/index/quick_start.png
 type: page
 menu:
-  latest:
+  preview:
     identifier: docs-build
     parent: docs
     weight: 2913

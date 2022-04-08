@@ -6,7 +6,7 @@ description: Get set up and edit the YugabyteDB docs locally
 image: /images/section_icons/index/quick_start.png
 type: page
 menu:
-  latest:
+  preview:
     identifier: docs-edit
     parent: docs
     weight: 2914
@@ -66,7 +66,7 @@ All PR previews on the main repository are of the form `https://deploy-preview-A
 
 Add a line in your PR's description to tag the Netlify bot and tell it where to launch the preview:
 
-`@netlify /latest/quick-start/`
+`@netlify /preview/quick-start/`
 
 ### Ask for a review
 

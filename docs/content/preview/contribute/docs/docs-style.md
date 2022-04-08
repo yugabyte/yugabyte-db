@@ -6,7 +6,7 @@ description: YugabyteDB documentation style guide
 image: /images/section_icons/index/quick_start.png
 type: page
 menu:
-  latest:
+  preview:
     identifier: docs-style
     parent: docs
     weight: 2950

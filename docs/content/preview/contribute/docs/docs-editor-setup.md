@@ -6,7 +6,7 @@ description: Optional setup steps for selected text editors
 image: /images/section_icons/index/quick_start.png
 type: page
 menu:
-  latest:
+  preview:
     identifier: docs-editor-setup
     parent: docs-build
     weight: 2913
