@@ -60,7 +60,7 @@ class ReleaseUtil(object):
         :param commit: the Git commit SHA1 to use. If not specified, it is autodetected.
         :param build_root: the build root directory corresponding to the build type.
         :param package_name: the name of the top-level section of yb_release_manifest.json, such as
-                             "all" or "cli", specifying the set of files to include.
+                             "yugabyte" or "yugabyte-client", specifying the set of files to include.
         """
         self.repo = repository
         self.build_type = build_type
@@ -68,6 +68,7 @@ class ReleaseUtil(object):
         self.distribution_path = distribution_path
         self.force = force
         self.commit = commit or ReleaseUtil.get_head_commit_hash()
+        self.package_name = package_name
 
         base_version = None
         with open(os.path.join(self.repo, RELEASE_VERSION_FILE)) as version_file:
@@ -224,15 +225,15 @@ class ReleaseUtil(object):
             else:
                 system = distro.id() + distro.major_version()
 
-        release_file_name = "yugabyte-{}-{}-{}.tar.gz".format(
-            release_name, system, platform.machine().lower())
+        release_file_name = "{}-{}-{}-{}.tar.gz".format(
+            self.package_name, release_name, system, platform.machine().lower())
         return os.path.join(self.build_path, release_file_name)
 
     def generate_release(self) -> str:
         """
         Generates a release package and returns the path to the release file.
         """
-        yugabyte_folder_prefix = "yugabyte-{}".format(self.base_version)
+        yugabyte_folder_prefix = "{}-{}".format(self.package_name, self.base_version)
         tmp_parent_dir = self.distribution_path + '.tmp_for_tar_gz'
         os.mkdir(tmp_parent_dir)
 
