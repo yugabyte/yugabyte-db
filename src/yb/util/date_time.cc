@@ -90,7 +90,7 @@ Result<GregorianCalendar> CreateCalendar() {
   if (U_FAILURE(status)) {
     return STATUS(InvalidArgument, "Failed to set Gregorian change", u_errorName(status));
   }
-  cal.setLenient(FALSE);
+  cal.setLenient(false);
   cal.clear();
   return cal;
 }

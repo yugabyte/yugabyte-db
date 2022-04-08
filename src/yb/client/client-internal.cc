@@ -1028,68 +1028,10 @@ Status YBClient::Data::WaitForFlushTableToFinish(YBClient* client,
       std::bind(&YBClient::Data::IsFlushTableInProgress, this, client, flush_id, _1, _2));
 }
 
-Status YBClient::Data::InitLocalHostNames() {
-  std::vector<IpAddress> addresses;
-  auto status = GetLocalAddresses(&addresses, AddressFilter::EXTERNAL);
-  if (!status.ok()) {
-    LOG(WARNING) << "Failed to enumerate network interfaces" << status.ToString();
-  }
-
-  string hostname;
-  status = GetFQDN(&hostname);
-
-  if (status.ok()) {
-    // We don't want to consider 'localhost' to be local - otherwise if a misconfigured
-    // server reports its own name as localhost, all clients will hammer it.
-    if (hostname != "localhost" && hostname != "localhost.localdomain") {
-      local_host_names_.insert(hostname);
-      VLOG(1) << "Considering host " << hostname << " local";
-    }
-
-    std::vector<Endpoint> endpoints;
-    status = HostPort(hostname, 0).ResolveAddresses(&endpoints);
-    if (!status.ok()) {
-      const auto message = Substitute("Could not resolve local host name '$0'", hostname);
-      LOG(WARNING) << message;
-      if (addresses.empty()) {
-        return status.CloneAndPrepend(message);
-      }
-    } else {
-      addresses.reserve(addresses.size() + endpoints.size());
-      for (const auto& endpoint : endpoints) {
-        addresses.push_back(endpoint.address());
-      }
-    }
-  } else {
-    LOG(WARNING) << "Failed to get hostname: " << status.ToString();
-    if (addresses.empty()) {
-      return status;
-    }
-  }
-
-  for (const auto& addr : addresses) {
-    // Similar to above, ignore local or wildcard addresses.
-    if (addr.is_unspecified() || addr.is_loopback()) continue;
-
-    VLOG(1) << "Considering host " << addr << " local";
-    local_host_names_.insert(addr.to_string());
-  }
-
-  return Status::OK();
-}
-
-bool YBClient::Data::IsLocalHostPort(const HostPort& hp) const {
-  return ContainsKey(local_host_names_, hp.host());
-}
-
 bool YBClient::Data::IsTabletServerLocal(const RemoteTabletServer& rts) const {
   // If the uuid's are same, we are sure the tablet server is local, since if this client is used
   // via the CQL proxy, the tablet server's uuid is set in the client.
-  if (uuid_ == rts.permanent_uuid()) {
-    return true;
-  }
-
-  return rts.HasHostFrom(local_host_names_);
+  return uuid_ == rts.permanent_uuid();
 }
 
 template <class T, class... Args>
