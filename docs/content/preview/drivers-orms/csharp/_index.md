@@ -1,6 +1,6 @@
 ---
 title: C# drivers and ORMs
-headerTitle: C# drivers and ORMs
+headerTitle: C#
 headcontent: Prerequisites and CRUD examples for building applications in C#.
 linkTitle: C#
 description: C# Drivers and ORMs support for YugabyteDB.

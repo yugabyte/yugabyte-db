@@ -1,6 +1,6 @@
 ---
 title: Java drivers, ORMs, and frameworks
-headerTitle: Java drivers, ORMs, and frameworks
+headerTitle: Java
 headcontent: Prerequisites and CRUD examples for building applications in Java.
 linkTitle: Java
 description: Java drivers and ORMs support for YugabyteDB.

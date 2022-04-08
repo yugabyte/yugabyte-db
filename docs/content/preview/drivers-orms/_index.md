@@ -27,11 +27,11 @@ Along with the smart drivers, YugabyteDB also supports upstream [PostgreSQL driv
 
 ## Supported libraries
 
-The following libraries are officially supported by YugabyteDB. Recommended libraries are indicated using an asterisk.
+The following libraries are officially supported by YugabyteDB.
 
 ### [Java](java/)
 
-| Name | Type | Support | Example |
+| Name (* Recommended) | Type | Support | Example |
 | :--------- | :--- |:------------- | :----------- |
 | [YugabyteDB JDBC Smart Driver*](java/yugabyte-jdbc) | Smart Driver | Full | [CRUD](java/yugabyte-jdbc) |
 | [PostgreSQL JDBC Driver](java/postgres-jdbc) | Driver | Full | [CRUD](java/postgres-jdbc)  |
@@ -44,7 +44,7 @@ The following libraries are officially supported by YugabyteDB. Recommended libr
 
 ### [Go](go/)
 
-| Name | Type | Support | Example |
+| Name (* Recommended) | Type | Support | Example |
 | :--- | :--- | :------------ | :----------- |
 | [PGX*](go/pgx/) | Driver | Full | [CRUD](go/pgx) |
 | [PQ](go/pq) | Driver | Full | [CRUD](go/pq)|
@@ -75,7 +75,7 @@ The following libraries are officially supported by YugabyteDB. Recommended libr
 
 ### [Python](python/)
 
-| Name | Type | Support | Example |
+| Name (* Recommended) | Type | Support | Example |
 | :--- | :--- | :------------ | :----------- |
 | [Yugabyte Psycopg2*](python/yugabyte-psycopg2) | Smart Driver | Full | [CRUD](python/yugabyte-psycopg2)|
 | [PostgreSQL Psycopg2](python/postgres-psycopg2/) | Driver | Full | [CRUD](python/postgres-psycopg2/) |
