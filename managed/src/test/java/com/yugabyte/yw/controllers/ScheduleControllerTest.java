@@ -7,11 +7,14 @@ import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static play.mvc.Http.Status.FORBIDDEN;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -37,6 +40,7 @@ public class ScheduleControllerTest extends FakeDBApplication {
 
   private Universe defaultUniverse;
   private Customer defaultCustomer;
+  private CustomerConfig customerConfig;
   private Users defaultUser;
   private Schedule defaultSchedule;
   private BackupTableParams backupTableParams;
@@ -49,7 +53,7 @@ public class ScheduleControllerTest extends FakeDBApplication {
 
     backupTableParams = new BackupTableParams();
     backupTableParams.universeUUID = defaultUniverse.universeUUID;
-    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST16");
+    customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST16");
     backupTableParams.storageConfigUUID = customerConfig.configUUID;
     defaultSchedule =
         Schedule.create(
@@ -85,6 +89,20 @@ public class ScheduleControllerTest extends FakeDBApplication {
     String url = "/api/customers/" + customerUUID + "/schedules/" + scheduleUUID;
 
     return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, body);
+  }
+
+  private Result getPagedSchedulesList(UUID customerUUID, JsonNode body) {
+    String authToken = defaultUser.createAuthToken();
+    String method = "POST";
+    String url = "/api/customers/" + customerUUID + "/schedules/page";
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, body);
+  }
+
+  private Result createBackupSchedule(ObjectNode bodyJson, Users user) {
+    String authToken = user == null ? defaultUser.createAuthToken() : user.createAuthToken();
+    String method = "POST";
+    String url = "/api/customers/" + defaultCustomer.uuid + "/create_backup_schedule";
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
   }
 
   @Test
@@ -325,5 +343,55 @@ public class ScheduleControllerTest extends FakeDBApplication {
             () -> deleteScheduleYb(schedule.scheduleUUID, defaultCustomer.uuid));
     assertBadRequest(result, "Cannot delete schedule as it is running.");
     assertAuditEntry(0, defaultCustomer.uuid);
+  }
+
+  @Test
+  public void testGetPagedSchedulesList() {
+    // Schedule using V1 Api
+    UUID tableUUID = UUID.randomUUID();
+    String url =
+        "/api/customers/"
+            + defaultCustomer.uuid
+            + "/universes/"
+            + defaultUniverse.universeUUID
+            + "/tables/"
+            + tableUUID
+            + "/create_backup";
+    ObjectNode bodyJson = Json.newObject();
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST20");
+    bodyJson.put("keyspace", "foo");
+    bodyJson.put("tableName", "bar");
+    bodyJson.put("actionType", "CREATE");
+    bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+    bodyJson.put("cronExpression", "5 * * * *");
+    bodyJson.put("isFullBackup", true);
+    Result result =
+        FakeApiHelper.doRequestWithAuthTokenAndBody(
+            "PUT", url, defaultUser.createAuthToken(), bodyJson);
+    assertOk(result);
+    JsonNode resultJson = Json.parse(contentAsString(result));
+    UUID scheduleUUID = UUID.fromString(resultJson.path("scheduleUUID").asText());
+    Schedule schedule = Schedule.getOrBadRequest(scheduleUUID);
+    assertNotNull(schedule);
+    assertEquals(schedule.getCronExpression(), "5 * * * *");
+    assertAuditEntry(1, defaultCustomer.uuid);
+    // Schedule using V2 Api
+    ObjectNode bodyJson2 = Json.newObject();
+    bodyJson2.put("universeUUID", defaultUniverse.universeUUID.toString());
+    bodyJson2.put("storageConfigUUID", customerConfig.configUUID.toString());
+    bodyJson2.put("cronExpression", "0 */2 * * *");
+    bodyJson2.put("scheduleName", "schedule-1");
+    Result r = createBackupSchedule(bodyJson2, null);
+    assertOk(r);
+    ObjectNode bodyJson3 = Json.newObject();
+    bodyJson3.put("direction", "ASC");
+    bodyJson3.put("sortBy", "scheduleUUID");
+    bodyJson3.put("offset", 0);
+    bodyJson3.set("filter", Json.newObject().set("status", Json.newArray().add("Active")));
+    result = getPagedSchedulesList(defaultCustomer.uuid, bodyJson3);
+    assertOk(result);
+    JsonNode schedulesJson = Json.parse(contentAsString(result));
+    ArrayNode response = (ArrayNode) schedulesJson.get("entities");
+    assertEquals(response.size(), 3);
   }
 }
