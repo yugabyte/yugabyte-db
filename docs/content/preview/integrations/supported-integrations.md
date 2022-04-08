@@ -41,8 +41,7 @@ All YugabyteDB smart driver libraries are actively maintained, and receive bug f
 | --- | --- | --- | --- |
 | Java | JDBC | [Documentation](https://docs.yugabyte.com/preview/integrations/jdbc-driver/) |
 | Go | pgx | [Documentation](https://docs.yugabyte.com/preview/quick-start/build-apps/go/ysql-yb-pgx/) | [Go YSQL Smart Driver](https://github.com/yugabyte/yugabyte-db/issues/10760) |
-| Python | Psycopg2 |
- | [Python YSQL Smart Driver](https://github.com/yugabyte/yugabyte-db/issues/10917) |
+| Python | Psycopg2 | [Python YSQL Smart Driver](https://github.com/yugabyte/yugabyte-db/issues/10917) |
 
 ## YSQL Drivers
 
