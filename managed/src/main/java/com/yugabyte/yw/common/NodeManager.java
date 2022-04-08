@@ -1706,7 +1706,7 @@ public class NodeManager extends DevopsBase {
             commandArgs.addAll(getDeviceArgs(taskParam));
           }
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
-          if (appConfig.getBoolean("yb.cloud.enabled") && userIntent.assignStaticPublicIP) {
+          if (userIntent.assignStaticPublicIP) {
             commandArgs.add("--delete_static_public_ip");
           }
           break;
