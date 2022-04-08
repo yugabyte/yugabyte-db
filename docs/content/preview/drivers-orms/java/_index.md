@@ -24,7 +24,7 @@ The following projects can be used to implement Java applications using the Yuga
 
 ## Build a Hello World application
 
-Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps in [Build an Application](/preview/quick-start/build-apps/java/ysql-yb-jdbc) in the Quick Start section.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in [Build an Application](/preview/quick-start/build-apps/java/ysql-yb-jdbc) in the Quick Start section.
 
 ## Prerequisites for building a Java application
 
@@ -34,7 +34,7 @@ Make sure that your system has JDK 8 or later installed. For more information on
 
 ### Create a Java project
 
-Java projects can be created using Maven or Gradle Software project management tools. We recommend using an integrated development environment (IDE) such as Intellij IDEA or Eclipse IDE for conveniently configuring Maven or Gradle to build and run your project.
+Java projects can be created using Maven or Gradle Software project management tools. We recommend using an integrated development environment (IDE) such as IntelliJ IDEA or Eclipse IDE for conveniently configuring Maven or Gradle to build and run your project.
 
 If you are not using an IDE, see [Building Maven](https://maven.apache.org/guides/development/guide-building-maven.html) or [Creating New Gradle Project](https://docs.gradle.org/current/samples/sample_building_java_applications.html) for more information on how to setup a Java project.
 

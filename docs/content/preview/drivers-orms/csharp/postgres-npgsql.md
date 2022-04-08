@@ -19,17 +19,17 @@ showAsideToc: true
   <li >
     <a href="/preview/drivers-orms/csharp/postgres-npgsql/" class="nav-link active">
       <i class="icon-java-bold" aria-hidden="true"></i>
-      Postgres Npgsql Driver
+      PostgreSQL Npgsql Driver
     </a>
   </li>
 
 </ul>
 
-Npgsql is an open source ADO.NET Data Provider for PostgreSQL. It allows programs written in C#, Visual Basic, and F# to access YugabyteDB. It is implemented in 100% C# code, and is free and open source.
+[Npgsql](https://www.npgsql.org) is an open source ADO.NET Data Provider for PostgreSQL. It allows programs written in C#, Visual Basic, and F# to access YugabyteDB. It is implemented in 100% C# code, and is free and open source.
 
 ## CRUD operations with PostgreSQL Npgsql driver
 
-Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/csharp/ysql) page under the Quick start section.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/csharp/ysql) page under the Quick start section.
 
 The following section breaks down the quick start example to demonstrate how to perform common tasks required for C# application development using the Npgsql driver.
 

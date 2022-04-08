@@ -34,7 +34,7 @@ The following libraries are officially supported by YugabyteDB. Recommended libr
 | Name | Type | Support | Example |
 | :--------- | :--- |:------------- | :----------- |
 | [YugabyteDB JDBC Smart Driver*](java/yugabyte-jdbc) | Smart Driver | Full | [CRUD](java/yugabyte-jdbc) |
-| [Postgres JDBC Driver](java/postgres-jdbc) | Driver | Full | [CRUD](java/postgres-jdbc)  |
+| [PostgreSQL JDBC Driver](java/postgres-jdbc) | Driver | Full | [CRUD](java/postgres-jdbc)  |
 | [Hibernate](java/hibernate) | ORM | Full | [CRUD](java/hibernate/#step-1-add-the-hibernate-orm-dependency) |
 | [Spring Data YugabyteDB](/preview/integrations/spring-framework/sdyb/) | Framework | Full | [CRUD](/preview/integrations/spring-framework/sdyb/#examples) |
 | Spring Data JPA | Framework | Full | [CRUD](/preview/quick-start/build-apps/java/ysql-spring-data/)|
@@ -55,7 +55,7 @@ The following libraries are officially supported by YugabyteDB. Recommended libr
 
 | Name | Type | Support | Example |
 | :--- | :--- | :------------ | :----------- |
-| [PostgreSQL](nodejs/postgres-node-driver) | Driver | Full |  [CRUD](nodejs/postgres-node-driver) |
+| [node-postgres](nodejs/postgres-node-driver) | Driver | Full |  [CRUD](nodejs/postgres-node-driver) |
 | [Sequelize](nodejs/sequelize) | ORM | Full |  [CRUD](nodejs/sequelize)|
 <!-- | TypeORM | Full |   | -->
 
@@ -78,7 +78,7 @@ The following libraries are officially supported by YugabyteDB. Recommended libr
 | Name | Type | Support | Example |
 | :--- | :--- | :------------ | :----------- |
 | [Yugabyte Psycopg2*](python/yugabyte-psycopg2) | Smart Driver | Full | [CRUD](python/yugabyte-psycopg2)|
-| [Postgres Psycopg2](python/postgres-psycopg2/) | Driver | Full | [CRUD](python/postgres-psycopg2/) |
+| [PostgreSQL Psycopg2](python/postgres-psycopg2/) | Driver | Full | [CRUD](python/postgres-psycopg2/) |
 | aiopg | Driver | Full | [Quick Start](/preview/quick-start/build-apps/python/ysql-aiopg) |
 | [Django](python/django) | ORM | Full | [CRUD](python/django) |
 | [SQLAlchemy](python/sqlalchemy) | ORM | Full | [CRUD](python/sqlalchemy) |

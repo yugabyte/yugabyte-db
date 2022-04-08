@@ -22,7 +22,7 @@ The following projects are recommended for implementing Node applications using 
 
 ## Build a Hello World application
 
-Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps in [Build an Application](/preview/quick-start/build-apps/nodejs/) in the Quick Start section.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in [Build an Application](/preview/quick-start/build-apps/nodejs/) in the Quick Start section.
 
 ## Prerequisites for building a Node.JS application
 

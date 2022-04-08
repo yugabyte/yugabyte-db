@@ -14,7 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The following projects can be used to implement Python applications using the YugabyteDB YSQL API. For fully runnable code snippets and explanations for common operations, see the specific Java driver and ORM section. The following table provides links to driver-specific documentation and examples. 
+The following projects can be used to implement Python applications using the YugabyteDB YSQL API. For fully runnable code snippets and explanations for common operations, see the specific Java driver and ORM section. The following table provides links to driver-specific documentation and examples.
 
 | Project (* Recommended) | Type | Support | Examples |
 | :------ | :--- | :------ | :------- |
@@ -25,7 +25,7 @@ The following projects can be used to implement Python applications using the Yu
 
 ## Build a Hello World application
 
-Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps in [Build an Application](/preview/quick-start/build-apps/python/ysql-psycopg2) in the Quick Start section.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in [Build an Application](/preview/quick-start/build-apps/python/ysql-psycopg2) in the Quick Start section.
 
 ## Prerequisites for building Python applications
 

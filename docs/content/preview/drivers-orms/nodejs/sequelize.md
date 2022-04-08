@@ -42,7 +42,7 @@ This section describes how to use Node.js models (domain objects) to store and r
 
 ## CRUD operations with Sequelize
 
-Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps on the [Build an application](../../../quick-start/build-apps/nodejs/ysql-sequelize/) page under the Quick start section.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps on the [Build an application](../../../quick-start/build-apps/nodejs/ysql-sequelize/) page under the Quick start section.
 
 The following sections break down the quick start example to demonstrate how to perform common tasks required for Node.js application development using Sequelize.
 
@@ -50,7 +50,7 @@ The following sections break down the quick start example to demonstrate how to 
 
 Before proceeding with the next steps, you need to have Node.js installed on your machine. Refer to [Downloading and installing Node.js and npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm#using-a-node-installer-to-install-node-js-and-npm).
 
-To create a simple Node.js project and install the `sequelize` core package, do the following:
+To create a basic Node.js project and install the `sequelize` core package, do the following:
 
 1. Create a new directory.
 

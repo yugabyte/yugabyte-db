@@ -17,12 +17,12 @@ The following projects are recommended for implementing C# applications using th
 
 | Project | Type | Support | Examples |
 | :------ | :--- | :-------| :------- |
-| [Postgres Npgsql](postgres-npgsql) | C# Driver | Full | [Hello World](/preview/quick-start/build-apps/csharp/ysql) <br />[CRUD App](postgres-npgsql) |
+| [PostgreSQL Npgsql](postgres-npgsql) | C# Driver | Full | [Hello World](/preview/quick-start/build-apps/csharp/ysql) <br />[CRUD App](postgres-npgsql) |
 | [EntityFramework](entityframework) | ORM |  Full | [Hello World](/preview/quick-start/build-apps/csharp/ysql-entity-framework/) <br />[CRUD App](entityframework) |
 
 ## Build a Hello World application
 
-Learn how to establish a connection to a YugabyteDB database and begin simple CRUD operations using the steps in [Build an Application](/preview/quick-start/build-apps/csharp/ysql) in the Quick Start section.
+Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the steps in [Build an Application](/preview/quick-start/build-apps/csharp/ysql) in the Quick Start section.
 
 ## Prerequisites for building a C# application
 

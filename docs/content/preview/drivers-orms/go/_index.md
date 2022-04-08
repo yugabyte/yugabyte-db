@@ -22,10 +22,9 @@ The following projects can be used to implement Golang applications using the Yu
 | [GORM*](gorm) | ORM |  Full | [Hello World](../../quick-start/build-apps/go/ysql-gorm) <br />[CRUD App](gorm) |
 | [GO-PG](pg) | ORM | Full | [Hello World](../../quick-start/build-apps/go/ysql-pg) <br />[CRUD App](pg) |
 
-
 ## Build a Hello World application
 
-Learn how to establish a connection to your YugabyteDB database and begin simple CRUD operations
+Learn how to establish a connection to your YugabyteDB database and begin basic CRUD operations
 using the steps in [Build an Application](../../quick-start/build-apps/go/ysql-pgx) in the Quick Start section.
 
 ## Prerequisites
@@ -45,4 +44,4 @@ Visual Studio Code for developing your Go project.
 
 Create a free cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/). Refer to [Create a free cluster](../../yugabyte-cloud/cloud-basics/create-clusters-free/).
 
-Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/preview/quick-start/install/macos). 
+Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/preview/quick-start/install/macos).

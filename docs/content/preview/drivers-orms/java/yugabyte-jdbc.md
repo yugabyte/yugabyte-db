@@ -34,10 +34,7 @@ For Java Applications, JDBC driver provides database connectivity through the st
 
 </ul>
 
-This page provides details for getting started with `YugabyteDB JDBC Driver` for connecting to YugabyteDB YSQL API.
-
-[Yugabyte JDBC driver](https://github.com/yugabyte/pgjdbc) is a distributed JDBC driver for [YSQL](/preview/api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc).
-Although the upstream PostgreSQL JDBC driver works with YugabyteDB, the Yugabyte driver enhances YugabyteDB by eliminating the need for external load balancers.
+[Yugabyte JDBC driver](https://github.com/yugabyte/pgjdbc) is a distributed JDBC driver for [YSQL](/preview/api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc). Although the upstream PostgreSQL JDBC driver works with YugabyteDB, the Yugabyte driver enhances YugabyteDB by eliminating the need for external load balancers. This page provides details for getting started with `YugabyteDB JDBC Driver` for connecting to YugabyteDB YSQL API.
 
 ## Step 1: Add the YugabyteDB JDBC Driver Dependency
 
@@ -71,7 +68,7 @@ implementation 'com.zaxxer:HikariCP:4.0.3'
 
 ## Step 2: Connect to your Cluster
 
-After setting up the dependenices, we implement the Java client application that uses the YugabyteDB JDBC driver to connect to your YugabyteDB cluster and run query on the sample data.
+After setting up the dependencies, we implement the Java client application that uses the YugabyteDB JDBC driver to connect to your YugabyteDB cluster and run query on the sample data.
 
 We will setup the driver properties to configure the credentials and SSL Certificates for connecting to your cluster. Java Apps can connect to and query the YugabyteDB database using the `java.sql.DriverManager` class. All the JDBC interfaces required for working with YugabyteDB database will be part of `java.sql.*` package.
 
@@ -84,7 +81,7 @@ string yburl = "jdbc://yugabytedb://hostname:port/database?user=yugabyte&passwor
 DriverManager.getConnection(yburl);
 ```
 
-| JDBC Params | Description | Default |
+| JDBC Parameter | Description | Default |
 | :---------- | :---------- | :------ |
 | hostname  | hostname of the YugabyteDB instance | localhost
 | port |  Listen port for YSQL | 5433
@@ -100,7 +97,7 @@ string yburl = "jdbc://yugabytedb://hostname:port/database?user=yugabyte&passwor
 Connection conn = DriverManager.getConnection(yburl);
 ```
 
-| JDBC Params | Description | Default |
+| JDBC Parameter | Description | Default |
 | :---------- | :---------- | :------ |
 | ssl  | Enable SSL client connection   | false
 | sslmode | SSL mode  | require
@@ -162,13 +159,11 @@ Inserted data: INSERT INTO employee (id, name, age, language) VALUES (1, 'John',
 Query returned: name=John, age=35, language: Java
 ```
 
-if you receive no output or error, check whether you included the proper connection string in your java class with the right credentials.
+If you receive no output or an error, check the parameters in the connection string.
 
-After completing this steps, you should have a working Java app that uses YugabyteDB JDBC driver for connecting to your cluster, setup tables, run query and print out results.
+## Further reading
 
-## Further Reading
-
-To learn more about the driver, you can read the [architecture documentation of Smart Drivers](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md).
+To learn more about the driver, refer to the [architecture documentation of Smart Drivers](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md).
 
 ## Next Steps
 

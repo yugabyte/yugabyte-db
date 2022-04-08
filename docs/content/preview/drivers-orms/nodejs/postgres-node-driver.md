@@ -29,7 +29,7 @@ node-postgres is a collection of node.js modules for interfacing with your Postg
 
 ## CRUD operations with node-postgres driver
 
-Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps in [Build an Application](/preview/quick-start/build-apps/nodejs/ysql-pg/) in the Quick Start section.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in [Build an Application](/preview/quick-start/build-apps/nodejs/ysql-pg/) in the Quick Start section.
 
 The following sections break down the quick start example to demonstrate how to perform common tasks required for Node.js application development using the PostgreSQL node-postgres driver.
 
