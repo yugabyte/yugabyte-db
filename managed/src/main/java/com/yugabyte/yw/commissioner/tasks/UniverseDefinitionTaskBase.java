@@ -536,14 +536,20 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   public void createGFlagsOverrideTasks(Collection<NodeDetails> nodes, ServerType taskType) {
-    createGFlagsOverrideTasks(nodes, taskType, false /* isShell */, VmUpgradeTaskType.None);
+    createGFlagsOverrideTasks(
+        nodes,
+        taskType,
+        false /* isShell */,
+        VmUpgradeTaskType.None,
+        false /*ignoreUseCustomImageConfig*/);
   }
 
   public void createGFlagsOverrideTasks(
       Collection<NodeDetails> nodes,
       ServerType taskType,
       boolean isMasterInShellMode,
-      VmUpgradeTaskType vmUpgradeTaskType) {
+      VmUpgradeTaskType vmUpgradeTaskType,
+      boolean ignoreUseCustomImageConfig) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("AnsibleConfigureServersGFlags", executor);
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
@@ -570,6 +576,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Update gflags conf file for shell mode.
       params.isMasterInShellMode = isMasterInShellMode;
       params.vmUpgradeTaskType = vmUpgradeTaskType;
+      params.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
 
       // The software package to install for this cluster.
       params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
@@ -832,7 +839,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   public SubTaskGroup createSetupServerTasks(
       Collection<NodeDetails> nodes,
       boolean isSystemdUpgrade,
-      VmUpgradeTaskType vmUpgradeTaskType) {
+      VmUpgradeTaskType vmUpgradeTaskType,
+      boolean ignoreUseCustomImageConfig) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("AnsibleSetupServer", executor);
     for (NodeDetails node : nodes) {
@@ -842,6 +850,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.useSystemd = userIntent.useSystemd;
       params.isSystemdUpgrade = isSystemdUpgrade;
       params.vmUpgradeTaskType = vmUpgradeTaskType;
+      params.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
 
       // Create the Ansible task to setup the server.
       AnsibleSetupServer ansibleSetupServer = createTask(AnsibleSetupServer.class);
@@ -854,7 +863,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   public SubTaskGroup createSetupServerTasks(Collection<NodeDetails> nodes) {
-    return createSetupServerTasks(nodes, false /* isSystemdUpgrade */, VmUpgradeTaskType.None);
+    return createSetupServerTasks(
+        nodes,
+        false /* isSystemdUpgrade */,
+        VmUpgradeTaskType.None,
+        false /*ignoreUseCustomImageConfig*/);
   }
 
   /**
@@ -914,7 +927,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         updateMasterAddrsOnly,
         isMaster,
         false /* isSystemdUpgrade */,
-        VmUpgradeTaskType.None);
+        VmUpgradeTaskType.None,
+        false /*ignoreUseCustomImageConfig*/);
   }
 
   public SubTaskGroup createConfigureServerTasks(
@@ -923,7 +937,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       boolean updateMasterAddrsOnly,
       boolean isMaster,
       boolean isSystemdUpgrade,
-      VmUpgradeTaskType vmUpgradeTaskType) {
+      VmUpgradeTaskType vmUpgradeTaskType,
+      boolean ignoreUseCustomImageConfig) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("AnsibleConfigureServers", executor);
     for (NodeDetails node : nodes) {
@@ -963,6 +978,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.useSystemd = userIntent.useSystemd;
       params.isSystemdUpgrade = isSystemdUpgrade;
       params.vmUpgradeTaskType = vmUpgradeTaskType;
+      params.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
 
       // Development testing variable.
       params.itestS3PackagePath = taskParams().itestS3PackagePath;
@@ -1255,7 +1271,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param nodes the given nodes.
    * @return
    */
-  public static Set<NodeDetails> getNodesInCluster(UUID uuid, Set<NodeDetails> nodes) {
+  public static Set<NodeDetails> getNodesInCluster(UUID uuid, Collection<NodeDetails> nodes) {
     return nodes.stream().filter(n -> n.isInPlacement(uuid)).collect(Collectors.toSet());
   }
 
@@ -1325,7 +1341,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @return true if any of the subtasks are executed or ignoreNodeStatus is true.
    */
   public boolean createCreateNodeTasks(
-      Universe universe, Set<NodeDetails> nodesToBeCreated, boolean ignoreNodeStatus) {
+      Universe universe,
+      Set<NodeDetails> nodesToBeCreated,
+      boolean ignoreNodeStatus,
+      boolean ignoreUseCustomImageConfig) {
 
     // Determine the starting state of the nodes and invoke the callback if
     // ignoreNodeStatus is not set.
@@ -1369,7 +1388,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             isNextFallThrough,
             NodeStatus.builder().nodeState(NodeState.Provisioned).build(),
             filteredNodes -> {
-              createSetupServerTasks(filteredNodes)
+              createSetupServerTasks(
+                      filteredNodes,
+                      false /*isSystemdUpgrade*/,
+                      VmUpgradeTaskType.None,
+                      ignoreUseCustomImageConfig)
                   .setSubTaskGroupType(SubTaskGroupType.Provisioning);
             });
     return isNextFallThrough;
@@ -1390,7 +1413,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       Universe universe,
       Set<NodeDetails> nodesToBeConfigured,
       boolean isShellMode,
-      boolean ignoreNodeStatus) {
+      boolean ignoreNodeStatus,
+      boolean ignoreUseCustomImageConfig) {
 
     // Determine the starting state of the nodes and invoke the callback if
     // ignoreNodeStatus is not set.
@@ -1401,7 +1425,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             ignoreNodeStatus,
             NodeStatus.builder().nodeState(NodeState.ServerSetup).build(),
             filteredNodes -> {
-              createConfigureServerTasks(filteredNodes, isShellMode /* isShell */)
+              createConfigureServerTasks(
+                      filteredNodes,
+                      isShellMode /* isShell */,
+                      false /*updateMasterAddr*/,
+                      false /*isMaster*/,
+                      false /*isSystemdUpgrade*/,
+                      VmUpgradeTaskType.None,
+                      ignoreUseCustomImageConfig)
                   .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
             });
 
@@ -1420,10 +1451,19 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                   // Override master (on primary cluster only) and tserver flags as necessary.
                   // These are idempotent operations.
                   createGFlagsOverrideTasks(
-                      primaryClusterNodes, ServerType.MASTER, isShellMode, VmUpgradeTaskType.None);
+                      primaryClusterNodes,
+                      ServerType.MASTER,
+                      isShellMode,
+                      VmUpgradeTaskType.None,
+                      ignoreUseCustomImageConfig);
                 }
               }
-              createGFlagsOverrideTasks(nodesToBeConfigured, ServerType.TSERVER);
+              createGFlagsOverrideTasks(
+                  nodesToBeConfigured,
+                  ServerType.TSERVER,
+                  false /* isShell */,
+                  VmUpgradeTaskType.None,
+                  ignoreUseCustomImageConfig);
               // All necessary nodes are created. Data moving will coming soon.
               createSetNodeStatusTasks(
                       filteredNodes,
@@ -1447,9 +1487,13 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       Universe universe,
       Set<NodeDetails> nodesToBeProvisioned,
       boolean isShellMode,
-      boolean ignoreNodeStatus) {
-    boolean isFallThrough = createCreateNodeTasks(universe, nodesToBeProvisioned, ignoreNodeStatus);
-    return createConfigureNodeTasks(universe, nodesToBeProvisioned, isShellMode, isFallThrough);
+      boolean ignoreNodeStatus,
+      boolean ignoreUseCustomImageConfig) {
+    boolean isFallThrough =
+        createCreateNodeTasks(
+            universe, nodesToBeProvisioned, ignoreNodeStatus, ignoreUseCustomImageConfig);
+    return createConfigureNodeTasks(
+        universe, nodesToBeProvisioned, isShellMode, isFallThrough, ignoreUseCustomImageConfig);
   }
 
   /**
@@ -1498,7 +1542,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       Universe universe,
       Set<NodeDetails> nodesToBeConfigured,
       boolean isShellMode,
-      boolean ignoreNodeStatus) {
+      boolean ignoreNodeStatus,
+      boolean ignoreUseCustomImageConfig) {
     return applyOnNodesWithStatus(
         universe,
         nodesToBeConfigured,
@@ -1509,7 +1554,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                   nodeDetails,
                   isShellMode /* isShell */,
                   true /* updateMasterAddrs */,
-                  true /* isMaster */)
+                  true /* isMaster */,
+                  false /* isSystemdUpgrade */,
+                  VmUpgradeTaskType.None,
+                  ignoreUseCustomImageConfig)
               .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
         });
   }
@@ -1541,11 +1589,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
     subTaskGroup.setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
-  }
-
-  protected AnsibleConfigureServers getAnsibleConfigureServerTask(
-      NodeDetails node, ServerType processType, UpgradeTaskSubType taskSubType) {
-    return getAnsibleConfigureServerTask(node, processType, taskSubType, null);
   }
 
   protected AnsibleConfigureServers getAnsibleConfigureServerTask(

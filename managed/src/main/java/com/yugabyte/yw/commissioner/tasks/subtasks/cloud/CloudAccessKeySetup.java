@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudTaskBase;
 import com.yugabyte.yw.common.AccessManager;
+import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Region;
 import javax.inject.Inject;
@@ -45,16 +46,10 @@ public class CloudAccessKeySetup extends CloudTaskBase {
     AccessManager accessManager = Play.current().injector().instanceOf(AccessManager.class);
 
     // TODO(bogdan): validation at higher level?
-    String accessKeyCode = taskParams().keyPairName;
-    if (Strings.isNullOrEmpty(accessKeyCode)) {
-      String sanitizedProviderName = getProvider().name.replaceAll("\\s+", "-").toLowerCase();
-      accessKeyCode =
-          String.format(
-              "yb-%s-%s_%s-key",
-              Customer.get(getProvider().customerUUID).code,
-              sanitizedProviderName,
-              taskParams().providerUUID);
-    }
+    String accessKeyCode =
+        Strings.isNullOrEmpty(taskParams().keyPairName)
+            ? AccessKey.getDefaultKeyCode(getProvider())
+            : taskParams().keyPairName;
 
     if (!Strings.isNullOrEmpty(taskParams().sshPrivateKeyContent)) {
       accessManager.saveAndAddKey(
@@ -70,16 +65,21 @@ public class CloudAccessKeySetup extends CloudTaskBase {
           taskParams().ntpServers,
           taskParams().overrideKeyValidate);
     } else {
-      accessManager.addKey(
-          region.uuid,
-          accessKeyCode,
-          null,
-          taskParams().sshUser,
-          taskParams().sshPort,
-          taskParams().airGapInstall,
-          false,
-          taskParams().setUpChrony,
-          taskParams().ntpServers);
+      // For add region, we should verify if the overrideKeyValidate is set, so that we don't
+      // try to add the key unnecessarily. It is false by default, so unless someone explicitly
+      // sets it, the key will be added.
+      if (!taskParams().overrideKeyValidate) {
+        accessManager.addKey(
+            region.uuid,
+            accessKeyCode,
+            null,
+            taskParams().sshUser,
+            taskParams().sshPort,
+            taskParams().airGapInstall,
+            false,
+            taskParams().setUpChrony,
+            taskParams().ntpServers);
+      }
     }
   }
 }

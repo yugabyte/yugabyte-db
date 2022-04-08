@@ -16,19 +16,19 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/deploy/kubernetes/single-zone/gke/helm-chart" class="nav-link active">
+    <a href="/preview/deploy/kubernetes/single-zone/gke/helm-chart" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Helm chart
     </a>
   </li>
   <li >
-    <a href="/latest/deploy/kubernetes/single-zone/gke/statefulset-yaml" class="nav-link">
+    <a href="/preview/deploy/kubernetes/single-zone/gke/statefulset-yaml" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       YAML (remote disk)
     </a>
   </li>
    <li >
-    <a href="/latest/deploy/kubernetes/single-zone/gke/statefulset-yaml-local-ssd" class="nav-link">
+    <a href="/preview/deploy/kubernetes/single-zone/gke/statefulset-yaml-local-ssd" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       YAML (local disk)
     </a>
@@ -125,7 +125,7 @@ $ helm search repo yugabytedb/yugabyte
 **Output:**
 
 ```sh
-NAME                CHART VERSION APP VERSION DESCRIPTION                                       
+NAME                CHART VERSION APP VERSION DESCRIPTION
 yugabytedb/yugabyte 2.1.4         2.1.4.0-b5  YugabyteDB is the high-performance distributed ...
 ```
 
@@ -217,7 +217,7 @@ $ helm history yb-demo -n yb-demo
 **Output:**
 
 ```sh
-REVISION  UPDATED                   STATUS    CHART           APP VERSION DESCRIPTION     
+REVISION  UPDATED                   STATUS    CHART           APP VERSION DESCRIPTION
 1         Tue Apr 21 17:29:01 2020  deployed  yugabyte-2.1.4  2.1.4.0-b5  Install complete
 ```
 

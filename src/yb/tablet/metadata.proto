@@ -37,6 +37,7 @@ option java_package = "org.yb.tablet";
 
 import "yb/common/common.proto";
 import "yb/common/common_types.proto";
+import "yb/docdb/docdb.proto";
 import "yb/tablet/tablet_types.proto";
 import "yb/util/opid.proto";
 
@@ -67,6 +68,8 @@ message TableInfoPB {
 
   // Deleted column IDs with timestamps so that memory can be cleaned up.
   repeated DeletedColumnPB deleted_cols = 9;
+
+  repeated docdb.SchemaPackingPB old_schema_packings = 11;
 }
 
 // KV-store meta data. Single KV-store is backed by one or two RocksDB instances, depending on
