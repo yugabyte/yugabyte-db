@@ -23,6 +23,8 @@ The shell has a one hour connection limit. If your session is idle for more than
 
 To connect to your cluster, do the following:
 
+![Connect using cloud shell](/images/yb-cloud/cloud-connect-shell.gif)
+
 1. On the **Clusters** page, ensure your cluster is selected.
 
 1. Click **Connect** to display the **Connect to Cluster** dialog.

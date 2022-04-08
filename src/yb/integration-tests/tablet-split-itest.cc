@@ -50,6 +50,7 @@
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_client.pb.h"
+#include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_heartbeat.pb.h"
@@ -2461,6 +2462,134 @@ TEST_P(TabletSplitSystemRecordsITest, GetSplitKey) {
       "Wait for tablet manual compaction to be completed for peer: " + peer->tablet_id()));
 
   ASSERT_OK(VerifySplitKeyError(tablet));
+}
+
+TEST_F_EX(TabletSplitITest, SplitOpApplyAfterLeaderChange, TabletSplitExternalMiniClusterITest) {
+  constexpr auto kNumRows = kDefaultNumRows;
+
+  ASSERT_OK(cluster_->SetFlagOnMasters("enable_load_balancing", "false"));
+
+  auto ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(
+      cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>(), &cluster_->proxy_cache()));
+
+  CreateSingleTablet();
+  ASSERT_OK(WriteRowsAndFlush(kNumRows));
+  const auto source_tablet_id = ASSERT_RESULT(GetOnlyTestTabletId());
+  LOG(INFO) << "Source tablet ID: " << source_tablet_id;
+
+  // Select tserver to pause making sure it is not leader for source tablet (just for master to not
+  // wait for re-election and GetSplitKey timeout before proceeding with the split).
+  const auto paused_ts_idx =
+      (ASSERT_RESULT(cluster_->GetTabletLeaderIndex(source_tablet_id)) + 1) %
+      cluster_->num_tablet_servers();
+  auto* paused_ts = cluster_->tablet_server(paused_ts_idx);
+
+  // We want to avoid leader changes in child tablets for this test.
+  // Disabling leader failure detection for paused_ts now before pausing it.
+  // And will disable it for other tservers after child tablets are created and their leaders are
+  // elected.
+  ASSERT_OK(cluster_->SetFlag(paused_ts, "enable_leader_failure_detection", "false"));
+
+  const auto paused_ts_id = paused_ts->uuid();
+  LOG(INFO) << Format("Pausing ts-$0: $1", paused_ts_idx + 1, paused_ts_id);
+  ASSERT_OK(paused_ts->Pause());
+
+  ASSERT_OK(SplitTablet(source_tablet_id));
+  // Wait for split to compete on all non-paused replicas.
+  for (size_t ts_idx = 0; ts_idx < cluster_->num_tablet_servers(); ++ts_idx) {
+    if (ts_idx != paused_ts_idx) {
+      ASSERT_OK(WaitForTablets(3, ts_idx));
+    }
+  }
+
+  // Make sure all test tablets have leaders.
+  const auto tablet_ids = ASSERT_RESULT(GetTestTableTabletIds());
+  for (auto& tablet_id : tablet_ids) {
+    itest::TServerDetails* leader;
+    ASSERT_OK(FindTabletLeader(ts_map, tablet_id, kRpcTimeout, &leader));
+  }
+
+  // We want to avoid leader changes in child tablets for this test.
+  for (size_t ts_idx = 0; ts_idx < cluster_->num_tablet_servers(); ++ts_idx) {
+    if (ts_idx != paused_ts_idx) {
+      ASSERT_OK(cluster_->SetFlag(
+          cluster_->tablet_server(ts_idx), "enable_leader_failure_detection", "false"));
+    }
+  }
+
+  struct TabletLeaderInfo {
+    PeerId peer_id;
+    int64_t term;
+  };
+
+  auto get_leader_info = [&](const TabletId& tablet_id) -> Result<TabletLeaderInfo> {
+    const auto leader_idx = VERIFY_RESULT(cluster_->GetTabletLeaderIndex(tablet_id));
+    const auto leader_peer_id = cluster_->tablet_server(leader_idx)->uuid();
+    LOG(INFO) << "Tablet " << tablet_id << " leader: " << leader_peer_id << " idx: " << leader_idx;
+    consensus::ConsensusStatePB cstate;
+    RETURN_NOT_OK(itest::GetConsensusState(
+        ts_map[leader_peer_id].get(), tablet_id, consensus::CONSENSUS_CONFIG_ACTIVE, kRpcTimeout,
+        &cstate));
+    LOG(INFO) << "Tablet " << tablet_id << " cstate: " << cstate.DebugString();
+    return TabletLeaderInfo {
+        .peer_id = leader_peer_id,
+        .term = cstate.current_term(),
+    };
+  };
+
+  std::unordered_map<TabletId, TabletLeaderInfo> leader_info;
+  int64_t max_leader_term = 0;
+  for (auto& tablet_id : tablet_ids) {
+    auto info = ASSERT_RESULT(get_leader_info(tablet_id));
+    max_leader_term = std::max(max_leader_term, info.term);
+    leader_info[tablet_id] = info;
+  }
+  LOG(INFO) << "Max leader term: " << max_leader_term;
+
+  // Make source tablet to advance term to larger than max_leader_term, so resumed replica will
+  // apply split in later term than child leader replicas have.
+  while (leader_info[source_tablet_id].term <= max_leader_term) {
+    ASSERT_OK(itest::LeaderStepDown(
+        ts_map[leader_info[source_tablet_id].peer_id].get(), source_tablet_id, nullptr,
+        kRpcTimeout));
+
+    const auto source_leader_term = leader_info[source_tablet_id].term;
+    ASSERT_OK(LoggedWaitFor(
+        [&]() -> Result<bool> {
+          auto result = get_leader_info(source_tablet_id);
+          if (!result.ok()) {
+            return false;
+          }
+          leader_info[source_tablet_id] = *result;
+          return result->term > source_leader_term;
+        },
+        30s * kTimeMultiplier,
+        Format("Waiting for term >$0 on source tablet ...", source_leader_term)));
+  }
+
+  ASSERT_OK(paused_ts->Resume());
+  // To avoid term changes.
+  ASSERT_OK(cluster_->SetFlag(paused_ts, "enable_leader_failure_detection", "false"));
+
+  // Wait for all replicas to have only 2 child tablets (parent tablet will be deleted).
+  for (size_t ts_idx = 0; ts_idx < cluster_->num_tablet_servers(); ++ts_idx) {
+    ASSERT_OK(WaitForTablets(2, ts_idx));
+  }
+
+  ASSERT_OK(cluster_->WaitForTabletsRunning(paused_ts, 20s * kTimeMultiplier));
+
+  // Make sure resumed replicas are not ahead of leader.
+  const auto child_tablet_ids = ASSERT_RESULT(GetTestTableTabletIds());
+  for (auto& child_tablet_id : child_tablet_ids) {
+    consensus::ConsensusStatePB cstate;
+    ASSERT_OK(itest::GetConsensusState(
+        ts_map[paused_ts_id].get(), child_tablet_id, consensus::CONSENSUS_CONFIG_ACTIVE,
+        kRpcTimeout, &cstate));
+    LOG(INFO) << "Child tablet " << child_tablet_id
+              << " resumed replica cstate: " << cstate.DebugString();
+
+    ASSERT_LE(cstate.current_term(), leader_info[child_tablet_id].term);
+  }
 }
 
 namespace {
