@@ -41,7 +41,7 @@ showAsideToc: true
     </a>
   </li>
   <li >
-    <a href="../ysql-sdyb/" class="nav-link">
+    <a href="../ysql-sdyb/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - Spring Data YugabyteDB
     </a>
@@ -53,7 +53,7 @@ showAsideToc: true
     </a>
   </li>
    <li>
-    <a href="../ysql-ebeans/" class="nav-link active">
+    <a href="../ysql-ebeans/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - Ebeans
     </a>
@@ -82,17 +82,17 @@ This tutorial assumes that:
 
 ## Create the Spring Data YugabyteDB app using Spring Boot
 
-Spring Boot project provides [Spring Initializr](https://start.spring.io/) utility for generating dependencies for Spring Boot applications.
+The Spring Boot project provides the [Spring Initializr](https://start.spring.io/) utility for generating dependencies for Spring Boot applications.
 
 1. Navigate to [Spring Initializr](https://start.spring.io/). This service pulls in all the dependencies you need for an application and does most of the setup for you.
 
 1. Choose either Maven and Java programming language.
 
-1. Click Dependencies and select `Spring Web` and `PostgreSQL Driver`. Click Generate.
+1. Click **Dependencies** and select `Spring Web` and `PostgreSQL Driver`. Click **Generate**.
 
-1. Download the resulting ZIP file, which is an archive of Spring Boot application that is configured with your choices.
+1. Download the resulting ZIP file, which is an archive of a Spring Boot application that is configured with your choices.
 
-1. Add the following dependencies to `pom.xml` of the Spring Boot application
+1. Add the following dependencies to `pom.xml` of the Spring Boot application:
 
 ```xml
 <dependency>
@@ -221,7 +221,7 @@ public class YsqlConfig extends AbstractYugabyteJdbcConfiguration {
 }
 ```
 
-2. There are a number of options that can be customized in the properties file located at src/main/resources/application.properties. Given YSQL's compatibility with the PostgreSQL language, the spring.jpa.database property is set to POSTGRESQL and the spring.datasource.url is set to the YSQL JDBC URL: jdbc:postgresql://localhost:5433/yugabyte.
+2. A number of options can be customized in the properties file located at `src/main/resources/application.properties`. Given YSQL's compatibility with the PostgreSQL language, the `spring.jpa.database` property is set to POSTGRESQL and the `spring.datasource.url` is set to the YSQL JDBC URL: jdbc:postgresql://localhost:5433/yugabyte.
 
 ```java
 
@@ -250,7 +250,7 @@ spring.datasource.hikari.transactionIsolation=TRANSACTION_SERIALIZABLE
 
 ```
 
-3. Create Spring Boot Application runner for performing read and write against YugabyteDB Cluster.
+3. Create a Spring Boot Application runner to perform reads and writes against the YugabyteDB Cluster.
 
 ```java
 package com.yugabyte.sdyb.sample;
@@ -308,9 +308,9 @@ public class DemoApplication implements CommandLineRunner {
 $ ./mvnw spring-boot:run
 ```
 
-you should see the following as the output:
+You should see the following output:
 
-```text
+```output
 2022-04-07 20:25:01.210  INFO 12097 --- [           main] com.yugabyte.sdyb.demo.DemoApplication   : Started DemoApplication in 27.09 seconds (JVM running for 27.35)
 Connected to the YugabyteDB server successfully.
 Created table employee
