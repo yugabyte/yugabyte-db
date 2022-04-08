@@ -18,7 +18,7 @@ The following projects are recommended for implementing Python applications usin
 | Project | Type | Support Level |
 | :------ | :--- | :------------ |
 | [Yugabyte Psycopg2](yugabyte-psycopg2) (Recommended) | Python Driver | Full |
-| [Postgres Psycopg2](postgres-psycopg2) | Python Driver | Full |
+| [PostgreSQL Psycopg2](postgres-psycopg2) | Python Driver | Full |
 | [SQLAlchemy](sqlalchemy) | ORM |  Full |
 | [Django](django) | ORM |  Full |
 
@@ -26,9 +26,9 @@ The following projects are recommended for implementing Python applications usin
 
 Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps in [Build an Application](/preview/quick-start/build-apps/python/ysql-psycopg2) in the Quick Start section.
 
-## Pre-requisites for building a Python application
+## Pre-requisites for building Python applications
 
-### Install python
+### Install Python
 
 Make sure that your system has Python3 installed. To check the version of Python installed, use the following command.
 

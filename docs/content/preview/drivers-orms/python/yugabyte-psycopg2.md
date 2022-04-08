@@ -83,7 +83,9 @@ conn = psycopg2.connect(dbname='yugabyte',host='localhost',port='5433',user='yug
 | password | User password | yugabyte
 | load-balance | enables uniform load balancing | false
 
-Example URL for connecting to YugabyteDB cluster enabled with on the wire SSL encryption:
+#### Use SSL
+
+Use the following example URL for connecting to a YugabyteDB cluster with SSL enabled:
 
 ```python
 conn = psycopg2.connect("host=<hostname> port=5433 dbname=yugabyte user=<username> password=<password> load_balance=true sslmode=verify-full sslrootcert=/Users/my-user/Downloads/root.crt")

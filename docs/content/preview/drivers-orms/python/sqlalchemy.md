@@ -46,19 +46,19 @@ You can verify the installation as follows:
 
 1. Open the Python prompt by executing the following command:
 
-  ```shell
-  python3
-  ```
+    ```shell
+    python3
+    ```
 
 1. From the Python prompt, execute the following commands to check the SQLAlchemy version:
 
-  ```python prompt
-  import sqlalchemy
-  ```
+    ```python prompt
+    import sqlalchemy
+    ```
 
-  ```python prompt
-  sqlalchemy.__version__
-  ```
+    ```python prompt
+    sqlalchemy.__version__
+    ```
 
 ### Implement ORM mapping for YugabyteDB
 

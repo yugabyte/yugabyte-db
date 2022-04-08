@@ -16,7 +16,7 @@ The following projects are recommended for implementing Node applications using 
 
 | Project | Type | Support Level |
 | :------ | :--- | :------------ |
-| [Node Postgres](postgres-node-driver) | Node.JS Driver | Full |
+| [node-postgres](postgres-node-driver) | Node.JS Driver | Full |
 | [Sequelize](sequelize) | ORM | Full |
 
 ## Build a Hello World application
@@ -27,7 +27,7 @@ Learn how to establish a connection to YugabyteDB database and begin simple CRUD
 
 ### Install Node.JS
 
-Make sure that your system has Node.JS installed. To download and install, refer to the [nodejs official website](https://nodejs.org/en/download/).
+Make sure that your system has Node.JS installed. To download and install, refer to the [node.js official website](https://nodejs.org/en/download/).
 
 To check the version of installed node, use the following command:
 

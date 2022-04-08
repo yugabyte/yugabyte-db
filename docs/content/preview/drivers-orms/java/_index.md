@@ -32,15 +32,15 @@ Make sure that your system has JDK 8 or later installed. For more information on
 
 ### Create a Java project
 
-Java Projects can be created using Maven or Gradle Software project management tools. We recommend using an integrated develpoment environemnt (IDE) such as Intellij IDEA or Eclipse IDE for conveniently configuring Maven or Gradle to build and run your project.
+Java projects can be created using Maven or Gradle Software project management tools. We recommend using an integrated development environment (IDE) such as Intellij IDEA or Eclipse IDE for conveniently configuring Maven or Gradle to build and run your project.
 
 If you are not using an IDE, see [Building Maven](https://maven.apache.org/guides/development/guide-building-maven.html) or [Creating New Gradle Project](https://docs.gradle.org/current/samples/sample_building_java_applications.html) for more information on how to setup a Java project.
 
 ### Create a YugabyteDB cluster
 
-Create a free cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/). Refer to [Create a free cluster](../../yugabyte-cloud/cloud-basics/create-clusters-free/).
+Create a free cluster on Yugabyte Cloud. Refer to [Create a free cluster](../../yugabyte-cloud/cloud-basics/create-clusters-free/).
 
-Alternatively, You can also setup a standalone YugabyteDB cluster by following the [install YugabyteDB Steps](/preview/quick-start/install/macos).
+You can also set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/preview/quick-start/install/macos).
 
 ## Examples
 

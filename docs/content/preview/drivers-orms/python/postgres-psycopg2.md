@@ -109,6 +109,8 @@ Example URL for connecting to YugabyteDB cluster enabled with on the wire SSL en
 conn = psycopg2.connect("host=<hostname> port=5433 dbname=yugabyte user=<username> password=<password> sslmode=verify-full sslrootcert=/Users/my-user/Downloads/root.crt")
 ```
 
+#### Use SSL
+
 | Parameter | Description | Default |
 | :---------- | :---------- | :------ |
 | sslmode | SSL mode  | prefer
@@ -120,7 +122,7 @@ If you have created a cluster on [Yugabyte Cloud](https://www.yugabyte.com/cloud
 
 1. Create a new Python file called `QuickStartApp.py` in the base package directory of your project.
 
-1. Copy the sample following code to set up tables and query the table contents. Replace the connection string `yburl` with the cluster credentials and SSL certificate, if required.
+1. Copy the following sample code to set up tables and query the table contents. Replace the connection string `yburl` with the cluster credentials and SSL certificate, if required.
 
 ```python
 import psycopg2
