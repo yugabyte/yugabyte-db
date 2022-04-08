@@ -35,7 +35,7 @@ showAsideToc: true
     </a>
   </li>
   <li >
-    <a href="../ysql-hibernate/" class="nav-link">
+    <a href="../ysql-hibernate/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - Hibernate
     </a>
@@ -53,7 +53,7 @@ showAsideToc: true
     </a>
   </li>
    <li>
-    <a href="../ysql-ebeans/" class="nav-link active">
+    <a href="../ysql-ebeans/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - Ebeans
     </a>
