@@ -22,6 +22,7 @@ import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Schedule.State;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.filters.ScheduleFilter;
+import com.yugabyte.yw.models.paging.SchedulePagedApiResponse;
 import com.yugabyte.yw.models.paging.SchedulePagedQuery;
 import com.yugabyte.yw.models.paging.SchedulePagedResponse;
 import io.swagger.annotations.Api;
@@ -78,9 +79,7 @@ public class ScheduleController extends AuthenticatedController {
     ScheduleApiFilter apiFilter = apiQuery.getFilter();
     ScheduleFilter filter = apiFilter.toFilter().toBuilder().customerUUID(customerUUID).build();
     SchedulePagedQuery query = apiQuery.copyWithFilter(filter, SchedulePagedQuery.class);
-
-    SchedulePagedResponse schedules = Schedule.pagedList(query);
-
+    SchedulePagedApiResponse schedules = Schedule.pagedList(query);
     return PlatformResults.withData(schedules);
   }
 
