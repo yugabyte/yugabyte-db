@@ -539,6 +539,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
 
   HybridTime restoration_hybrid_time_ GUARDED_BY(data_mutex_) = HybridTime::kMin;
 
+  // SPLIT_OP ID designated for this tablet (so child tablets will have this unset until they've
+  // been split themselves).
   OpId split_op_id_ GUARDED_BY(data_mutex_);
   std::array<TabletId, kNumSplitParts> split_child_tablet_ids_ GUARDED_BY(data_mutex_);
 

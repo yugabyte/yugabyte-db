@@ -1042,6 +1042,7 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSubtabletMetadata(
   *metadata->partition_ = partition;
   metadata->state_ = kInitialized;
   metadata->tablet_data_state_ = TABLET_DATA_INIT_STARTED;
+  metadata->split_op_id_ = OpId();
   RETURN_NOT_OK(metadata->Flush());
   return metadata;
 }

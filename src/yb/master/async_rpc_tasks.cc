@@ -1354,7 +1354,8 @@ void AsyncGetTabletSplitKey::HandleResponse(int attempt) {
     LOG_WITH_PREFIX(WARNING) << "TS " << permanent_uuid() << ": GetSplitKey (attempt " << attempt
                              << ") failed for tablet " << tablet_id() << " with error code "
                              << TabletServerErrorPB::Code_Name(code) << ": " << s;
-    if (IsDefinitelyPermanentError(s) || s.IsIllegalState()) {
+    if (IsDefinitelyPermanentError(s) ||
+        (s.IsIllegalState() && code != tserver::TabletServerErrorPB::NOT_THE_LEADER)) {
       // It can happen that tablet leader has completed post-split compaction after previous split,
       // but followers have not yet completed post-split compaction.
       // Catalog manager decides to split again and sends GetTabletSplitKey RPC, but tablet leader
