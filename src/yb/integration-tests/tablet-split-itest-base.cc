@@ -777,8 +777,11 @@ Result<std::set<TabletId>> TabletSplitExternalMiniClusterITest::GetTestTableTabl
     int tserver_idx) {
   std::set<TabletId> tablet_ids;
   auto res = VERIFY_RESULT(cluster_->GetTablets(cluster_->tablet_server(tserver_idx)));
+
   for (const auto& tablet : res) {
-    if (tablet.table_name() == table_->name().table_name()) {
+    if (tablet.table_name() == table_->name().table_name() &&
+        // Skip deleted (tombstoned) tablets.
+        tablet.state() != tablet::RaftGroupStatePB::SHUTDOWN) {
       tablet_ids.insert(tablet.tablet_id());
     }
   }
@@ -846,7 +849,7 @@ Status TabletSplitExternalMiniClusterITest::WaitForTabletsExcept(
         }
         return count == num_tablets;
       },
-      20s * kTimeMultiplier,
+      30s * kTimeMultiplier,
       Format(
           "Waiting for tablet count: $0 at tserver: $1",
           num_tablets,
