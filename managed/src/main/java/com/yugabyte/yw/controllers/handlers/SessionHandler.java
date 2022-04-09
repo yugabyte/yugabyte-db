@@ -8,10 +8,6 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.Universe;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import java.io.File;
-import java.io.FileNotFoundException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -19,6 +15,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class SessionHandler {
 
@@ -101,6 +99,13 @@ public class SessionHandler {
     commandArgs.add(grepRegex);
     commandArgs.add(maxLines.toString());
     String description = String.join(" ", commandArgs);
-    return shellProcessHandler.run(commandArgs, null, description);
+    return shellProcessHandler.run(
+        commandArgs,
+        null /*envVars*/,
+        true /*logCmdOutput*/,
+        description,
+        null /*uuid*/,
+        null /*sensitiveData*/,
+        config.getInt("yb.logging.search_timeout_secs"));
   }
 }
