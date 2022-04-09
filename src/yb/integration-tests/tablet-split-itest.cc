@@ -97,6 +97,7 @@ DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_maintenance_manager);
 DECLARE_int32(load_balancer_max_concurrent_adds);
 DECLARE_int32(load_balancer_max_concurrent_removals);
+DECLARE_int32(load_balancer_max_concurrent_moves);
 DECLARE_int32(maintenance_manager_polling_interval_ms);
 DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
@@ -2231,6 +2232,7 @@ TEST_F(TabletSplitExternalMiniClusterITest, RemoteBootstrapsFromNodeWithUncommit
   server_to_kill->Shutdown();
 
   CHECK_OK(leader->Restart());
+  // Can leader apply SPLIT_OP after restart?
   CHECK_OK(server_to_bootstrap->Restart());
 
   ASSERT_OK(cluster_->WaitForTabletsRunning(leader, 20s * kTimeMultiplier));
@@ -2259,12 +2261,12 @@ class TabletSplitReplaceNodeITest : public TabletSplitExternalMiniClusterITest {
   void SetFlags() override {
     TabletSplitExternalMiniClusterITest::SetFlags();
 
-    for (const auto& tserver_flag : {
+    for (const auto& tserver_flag : std::initializer_list<std::string>{
         // We want to test behavior of the source tablet, so setting up to skip deleting it.
         "--TEST_skip_deleting_split_tablets=true",
         // Reduce follower_unavailable_considered_failed_sec, so offline tserver is evicted
         // from Raft group faster.
-        "--follower_unavailable_considered_failed_sec=5",
+        Format("--follower_unavailable_considered_failed_sec=$0", 5 * kTimeMultiplier)
       }) {
       mini_cluster_opt_.extra_tserver_flags.push_back(tserver_flag);
     }
@@ -2280,9 +2282,8 @@ class TabletSplitReplaceNodeITest : public TabletSplitExternalMiniClusterITest {
         // - Allow more over replicated tablets, so temporary child tablets over replication
         // doesn't block parent tablet move.
         "--load_balancer_max_over_replicated_tablets=5",
-        // TODO: should be default behaviour after
-        // https://github.com/yugabyte/yugabyte-db/issues/10301 is fixed.
-        "--TEST_load_balancer_skip_inactive_tablets=false",
+        // To speed up test in case of intermittent failures due to leader re-elections.
+        "--retrying_ts_rpc_max_delay_ms=1000",
       }) {
       mini_cluster_opt_.extra_master_flags.push_back(master_flag);
     }
@@ -2291,18 +2292,27 @@ class TabletSplitReplaceNodeITest : public TabletSplitExternalMiniClusterITest {
 
 TEST_F_EX(
     TabletSplitExternalMiniClusterITest, ReplaceNodeForParentTablet, TabletSplitReplaceNodeITest) {
+  constexpr auto kReplicationFactor = 3;
   constexpr auto kNumRows = kDefaultNumRows;
 
   CreateSingleTablet();
-  ASSERT_OK(WriteRowsAndFlush(kNumRows));
+  ASSERT_OK(WriteRows(kNumRows));
   const auto source_tablet_id = ASSERT_RESULT(GetOnlyTestTabletId());
   LOG(INFO) << "Source tablet ID: " << source_tablet_id;
 
-  auto* offline_ts = cluster_->tablet_server(0);
+  constexpr auto offline_ts_idx = 0;
+  auto* offline_ts = cluster_->tablet_server(offline_ts_idx);
   offline_ts->Shutdown();
   LOG(INFO) << "Shutdown completed for tserver: " << offline_ts->uuid();
   const auto offline_ts_id = offline_ts->uuid();
 
+  for (size_t ts_idx = 0; ts_idx < cluster_->num_tablet_servers(); ++ts_idx) {
+    auto* ts = cluster_->tablet_server(ts_idx);
+    if (ts->IsProcessAlive()) {
+      ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(
+          ts, {source_tablet_id}, /* is_compaction = */ false));
+    }
+  }
   ASSERT_OK(SplitTablet(source_tablet_id));
   ASSERT_OK(WaitForTablets(3));
 
@@ -2331,7 +2341,7 @@ TEST_F_EX(
         for (auto& replica : resp.replicas()) {
           source_tablet_replicas.insert(replica.ts_info().permanent_uuid());
         }
-        if (source_tablet_replicas.size() != 3) {
+        if (source_tablet_replicas.size() != kReplicationFactor) {
           return false;
         }
         if (source_tablet_replicas.count(offline_ts_id) > 0) {
@@ -2345,13 +2355,10 @@ TEST_F_EX(
 
   ASSERT_TRUE(s.ok()) << s << ". Source tablet replicas: " << AsString(source_tablet_replicas);
 
+  LOG(INFO) << "Waiting for parent + child tablets on all online tservers...";
+
   // Wait for the split to be completed on all online tservers.
   for (size_t ts_idx = 0; ts_idx < cluster_->num_tablet_servers(); ++ts_idx) {
-    if (ts_idx == 3) {
-      // Skip new TS, because of https://github.com/yugabyte/yugabyte-db/issues/10301.
-      // TODO(tsplit): remove after it is fixed.
-      continue;
-    }
     if (cluster_->tablet_server(ts_idx)->IsProcessAlive()) {
       ASSERT_OK(WaitForTablets(3, ts_idx));
     }
@@ -2359,9 +2366,92 @@ TEST_F_EX(
 
   // Restarting offline_ts, because ClusterVerifier requires all tservers to be online.
   ASSERT_OK(offline_ts->Start());
+  // Wait for tablet moves to be completed and have 1 parent + 2 child tablets with
+  // kReplicationFactor replicas each.
+  const auto expected_tablet_replicas = (1 + 2) * kReplicationFactor;
+  std::vector<std::set<TabletId>> test_tablets_by_tserver;
+  size_t num_test_tablet_replicas = 0;
+  auto status = LoggedWaitFor(
+      [&]() -> Result<bool> {
+        test_tablets_by_tserver.clear();
+        num_test_tablet_replicas = 0;
+        for (size_t ts_idx = 0; ts_idx < cluster_->num_tablet_servers(); ++ts_idx) {
+          auto tablets = VERIFY_RESULT(GetTestTableTabletIds(ts_idx));
+          num_test_tablet_replicas += tablets.size();
+          test_tablets_by_tserver.emplace_back(std::move(tablets));
+        }
+        return num_test_tablet_replicas == expected_tablet_replicas;
+      },
+      30s * kTimeMultiplier,
+      Format(
+          "Waiting for all tablet servers to have $0 total tablet replicas",
+          expected_tablet_replicas));
+  LOG(INFO) << "Test tablets replicas (" << num_test_tablet_replicas
+            << "): " << AsString(test_tablets_by_tserver);
+  ASSERT_OK(status);
+}
 
-  // TODO(tsplit): remove after https://github.com/yugabyte/yugabyte-db/issues/10301 is fixed.
-  DontVerifyClusterBeforeNextTearDown();
+// Make sure RBS of split parent and replay of SPLIT_OP don't delete child tablets data.
+TEST_F(TabletSplitITest, ParentRemoteBootstrapAfterWritesToChildren) {
+  constexpr auto kNumRows = kDefaultNumRows;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = true;
+  // Disable leader moves.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_max_concurrent_moves) = 0;
+
+  auto source_tablet_id = ASSERT_RESULT(CreateSingleTabletAndSplit(kNumRows));
+
+  LOG(INFO) << "Source tablet ID: " << source_tablet_id;
+
+  // Write more rows into child tablets.
+  ASSERT_OK(WriteRows(kNumRows, /* start_key = */ kNumRows + 1));
+  ASSERT_OK(CheckRowsCount(kNumRows * 2));
+
+  // Trigger and wait for RBS to complete on the followers of split parent tablet.
+  for (auto& ts : cluster_->mini_tablet_servers()) {
+    const auto* tablet_manager = ts->server()->tablet_manager();
+    const auto peer = ASSERT_RESULT(tablet_manager->LookupTablet(source_tablet_id));
+    if (peer->consensus()->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER) {
+      continue;
+    }
+    LOG(INFO) << Format(
+        "Triggering RBS for tablet $0 peer $1", peer->tablet_id(), peer->permanent_uuid());
+    peer->SetFailed(STATUS(InternalError, "Set to failed to initiate RBS for test"));
+
+    ASSERT_OK(LoggedWaitFor(
+        [&] { return peer->state() == tablet::RaftGroupStatePB::SHUTDOWN; }, 30s * kTimeMultiplier,
+        Format(
+            "Waiting for tablet $0 peer $1 shutdown", peer->tablet_id(), peer->permanent_uuid())));
+
+    ASSERT_OK(LoggedWaitFor(
+        [&] {
+          const auto result = tablet_manager->LookupTablet(source_tablet_id);
+          if (!result.ok()) {
+            return false;
+          }
+          if ((*result)->state() != tablet::RaftGroupStatePB::RUNNING) {
+            return false;
+          }
+          const auto shared_tablet = (*result)->shared_tablet();
+          if (!shared_tablet) {
+            return false;
+          }
+          return shared_tablet->metadata()->tablet_data_state() ==
+                 tablet::TabletDataState::TABLET_DATA_SPLIT_COMPLETED;
+        },
+        30s * kTimeMultiplier,
+        Format(
+            "Waiting for tablet $0 peer $1 remote bootstrap completed", peer->tablet_id(),
+            peer->permanent_uuid())));
+  }
+
+  // Make sure all child tablet replicas are not affected by split parent RBS that replayed
+  // SPLIT_OP (should be idempotent).
+  ASSERT_OK(CheckPostSplitTabletReplicasData(kNumRows * 2));
+
+  // Write more data and make sure it is there.
+  ASSERT_OK(WriteRows(kNumRows, /* start_key = */ kNumRows * 2 + 1));
+  ASSERT_OK(CheckRowsCount(kNumRows * 3));
 }
 
 class TabletSplitSystemRecordsITest :

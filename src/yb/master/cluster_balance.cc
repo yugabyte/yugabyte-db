@@ -135,11 +135,6 @@ DEFINE_bool(load_balancer_ignore_cloud_info_similarity, false,
             "If true, ignore the similarity between cloud infos when deciding which tablet "
             "to move.");
 
-// TODO(tsplit): make false by default or even remove flag after
-// https://github.com/yugabyte/yugabyte-db/issues/10301 is fixed.
-DEFINE_test_flag(
-    bool, load_balancer_skip_inactive_tablets, true, "Don't move inactive (hidden) tablets");
-
 namespace yb {
 namespace master {
 
@@ -1435,7 +1430,7 @@ Result<TabletInfos> ClusterLoadBalancer::GetTabletsForTable(const TableId& table
         table_uuid);
   }
 
-  return table_info->GetTablets(IncludeInactive(!FLAGS_TEST_load_balancer_skip_inactive_tablets));
+  return table_info->GetTablets(IncludeInactive::kTrue);
 }
 
 const TableInfoMap& ClusterLoadBalancer::GetTableMap() const {
