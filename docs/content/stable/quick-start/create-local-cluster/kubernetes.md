@@ -56,7 +56,8 @@ $ kubectl create namespace yb-demo
 $ helm install yb-demo yugabytedb/yugabyte \
 --set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
 resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi,\
-replicas.master=1,replicas.tserver=1 --namespace yb-demo
+replicas.master=1,replicas.tserver=1 --namespace yb-demo\
+--version {{<yb-version version="stable" format="short">}}
 ```
 
 Note that in Minikube, the LoadBalancers for `yb-master-ui` and `yb-tserver-service` will remain in pending state since load balancers are not available in a Minikube environment. If you would like to turn off these services then pass the `enableLoadBalancer=False` flag as shown below.
@@ -65,7 +66,8 @@ Note that in Minikube, the LoadBalancers for `yb-master-ui` and `yb-tserver-serv
 $ helm install yb-demo yugabytedb/yugabyte \
 --set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
 resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi,\
-replicas.master=1,replicas.tserver=1,enableLoadBalancer=False --namespace yb-demo
+replicas.master=1,replicas.tserver=1,enableLoadBalancer=False --namespace yb-demo\
+--version {{<yb-version version="stable" format="short">}}
 ```
 
 ## 2. Check cluster status with kubectl

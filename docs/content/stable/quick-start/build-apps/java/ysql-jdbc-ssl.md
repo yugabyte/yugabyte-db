@@ -78,7 +78,8 @@ This tutorial assumes that:
    $ helm install yb-demo yugabytedb/yugabyte \
    --set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
    resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi,\
-   replicas.master=1,replicas.tserver=1,tls.enabled=true --namespace yb-demo
+   replicas.master=1,replicas.tserver=1,tls.enabled=true --namespace yb-demo\
+   --version {{<yb-version version="stable" format="short">}}
    ```
 
 1. Verify that SSL is enabled using `ysqlsh`.

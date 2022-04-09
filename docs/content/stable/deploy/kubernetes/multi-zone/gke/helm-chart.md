@@ -156,7 +156,7 @@ $ helm repo update
 Validate that you have the updated Chart version.
 
 ```sh
-$ helm search repo yugabytedb/yugabyte
+$ helm search repo yugabytedb/yugabyte --version {{<yb-version version="stable" format="short">}}
 ```
 
 ```output
@@ -276,19 +276,25 @@ Now create the overall YugabyteDB cluster in such a way that one third of the no
 ```sh
 $ helm install yb-demo-us-central1-a yugabytedb/yugabyte \
  --namespace yb-demo-us-central1-a \
- -f overrides-us-central1-a.yaml --wait
+ -f overrides-us-central1-a.yaml \
+ --version {{<yb-version version="stable" format="short">}} \
+ --wait
 ```
 
 ```sh
 $ helm install yb-demo-us-central1-b yugabytedb/yugabyte \
  --namespace yb-demo-us-central1-b \
- -f overrides-us-central1-b.yaml --wait
+ -f overrides-us-central1-b.yaml \
+ --version {{<yb-version version="stable" format="short">}} \
+ --wait
 ```
 
 ```sh
 $ helm install yb-demo-us-central1-c yugabytedb/yugabyte \
  --namespace yb-demo-us-central1-c \
- -f overrides-us-central1-c.yaml --wait
+ -f overrides-us-central1-c.yaml \
+ --version {{<yb-version version="stable" format="short">}} \
+ --wait
 ```
 
 ## 3. Check the cluster status
