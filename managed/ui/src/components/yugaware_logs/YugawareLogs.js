@@ -17,7 +17,7 @@ import { useMount } from 'react-use';
 
 import './YugawareLogs.scss';
 
-const DEFAULT_MAX_LINES = 100;
+const DEFAULT_MAX_LINES = 1000;
 
 const UNIVERSE_SELECT_STYLES = {
   control: (styles) => ({
