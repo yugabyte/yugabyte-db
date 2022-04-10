@@ -139,5 +139,4 @@ For additional information and examples, see [ SDYB example](https://github.com/
 
 | **SDYB** | **YugabyteDB Smart Driver** | **Postgres JDBC Driver** |
 | -------- | --------------------------- | ------------------------ |
-| 2.3.0    | 42.2.7-yb-5.beta.1          | 42.2.7 or later          |
-
+| 2.3.0    | 42.3.4          | 42.2.7 or later
