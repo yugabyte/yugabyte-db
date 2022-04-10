@@ -80,7 +80,8 @@ Result<FilterDecision> DocDBCompactionFilter::DoFilter(
     // TODO: switch this to VLOG if it becomes too chatty.
     LOG(INFO) << "DocDB compaction filter is being used for a "
               << (is_major_compaction_ ? "major" : "minor") << " compaction"
-              << ", history_cutoff=" << history_cutoff;
+              << ", history_cutoff=" << history_cutoff
+              << ", deleted columns: " << AsString(*retention_.deleted_cols);
     filter_usage_logged_ = true;
   }
 
@@ -202,9 +203,11 @@ Result<FilterDecision> DocDBCompactionFilter::DoFilter(
   // TODO: could there be a case when there is still a read request running that uses an old schema,
   //       and we end up removing some data that the client expects to see?
   if (sub_key_ends_.size() > 1) {
+    // 0 - end of cotable id section.
+    // 1 - end of doc key section.
     // Column ID is the first subkey in every CQL row.
-    if (key[sub_key_ends_[0]]  == KeyEntryTypeAsChar::kColumnId) {
-      Slice column_id_slice(key.data() + sub_key_ends_[0] + 1, key.data() + sub_key_ends_[1]);
+    if (key[sub_key_ends_[1]] == KeyEntryTypeAsChar::kColumnId) {
+      Slice column_id_slice = key.WithoutPrefix(sub_key_ends_[1] + 1);
       auto column_id_as_int64 = VERIFY_RESULT(util::FastDecodeSignedVarIntUnsafe(&column_id_slice));
       ColumnId column_id;
       RETURN_NOT_OK(ColumnId::FromInt64(column_id_as_int64, &column_id));
