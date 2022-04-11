@@ -6,9 +6,10 @@ headcontent: Connect to your cluster using Cloud Shell, a client shell, and from
 image: /images/section_icons/index/quick_start.png
 section: YUGABYTE CLOUD
 aliases:
-  - /preview/deploy/yugabyte-cloud/connect-to-clusters/
-  - /preview/yugabyte-cloud/connect-to-clusters/
-  - /preview/yugabyte-cloud/cloud-basics/connect-to-clusters/
+  - /latest/yugabyte-cloud/cloud-connect/
+  - /latest/deploy/yugabyte-cloud/connect-to-clusters/
+  - /latest/yugabyte-cloud/connect-to-clusters/
+  - /latest/yugabyte-cloud/cloud-basics/connect-to-clusters/
 menu:
   preview:
     identifier: cloud-connect

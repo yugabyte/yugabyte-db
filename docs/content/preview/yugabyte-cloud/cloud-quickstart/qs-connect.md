@@ -4,6 +4,8 @@ linkTitle: Connect to the cluster
 description: Connect to your cluster using Cloud Shell.
 headcontent:
 image: /images/section_icons/index/quick_start.png
+aliases:
+  - /latest/yugabyte-cloud/cloud-quickstart/qs-connect/
 menu:
   preview:
     identifier: qs-connect

@@ -6,7 +6,8 @@ description: Build an application using your favorite programming language.
 headcontent: Use your favorite programming language to build an application that uses YSQL or YCQL APIs.
 image: /images/section_icons/develop/api-icon.png
 aliases:
-  - /preview/yugabyte-cloud/cloud-develop/
+  - /latest/yugabyte-cloud/cloud-develop/
+  - /latest/yugabyte-cloud/cloud-quickstart/cloud-build-apps/
 menu:
   preview:
     identifier: cloud-build-apps

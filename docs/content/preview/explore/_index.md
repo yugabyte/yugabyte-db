@@ -3,7 +3,7 @@ title: Explore YugabyteDB
 headerTitle: Explore YugabyteDB
 linkTitle: Explore
 description: Explore the features of YugabyteDB on macOS, Linux, Docker, and Kubernetes.
-headcontent:
+headcontent: Explore the features of YugabyteDB on macOS, Linux, Docker, and Kubernetes.
 image: /images/section_icons/index/explore.png
 aliases:
   - /preview/explore/cloud-native/
