@@ -3,6 +3,7 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Backup.StorageConfigType;
 import io.swagger.annotations.ApiModel;
@@ -38,6 +39,9 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "Action type")
   public ActionType actionType;
 
+  @ApiModelProperty(value = "Full Table type backup")
+  public boolean isFullBackup = false;
+
   @ApiModelProperty(value = "Backup type")
   public TableType backupType;
 
@@ -51,6 +55,9 @@ public class BackupTableParams extends TableManagerParams {
   // of backing up an entire universe transactionally
   @ApiModelProperty(value = "Backups")
   public List<BackupTableParams> backupList;
+
+  @ApiModelProperty(value = "Per region locations")
+  public List<BackupUtil.RegionLocations> regionLocations;
 
   // Specifies the frequency for running the backup in milliseconds.
   @ApiModelProperty(value = "Frequency to run the backup, in milliseconds")

@@ -27,6 +27,7 @@
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent_aware_iterator.h"
+#include "yb/docdb/packed_row.h"
 #include "yb/docdb/subdoc_reader.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/value.h"
@@ -61,14 +62,15 @@ Result<boost::optional<SubDocument>> TEST_GetSubDocument(
     const TransactionOperationContext& txn_op_context,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
-    const std::vector<PrimitiveValue>* projection) {
+    const std::vector<KeyEntryValue>* projection) {
   auto iter = CreateIntentAwareIterator(
       doc_db, BloomFilterMode::USE_BLOOM_FILTER, sub_doc_key, query_id,
       txn_op_context, deadline, read_time);
   DOCDB_DEBUG_LOG("GetSubDocument for key $0 @ $1", sub_doc_key.ToDebugHexString(),
                   iter->read_time().ToString());
   iter->SeekToLastDocKey();
-  DocDBTableReader doc_reader(iter.get(), deadline);
+  SchemaPackingStorage schema_packing_storage;
+  DocDBTableReader doc_reader(iter.get(), deadline, schema_packing_storage);
   RETURN_NOT_OK(doc_reader.UpdateTableTombstoneTime(sub_doc_key));
 
   SubDocument result;
@@ -78,10 +80,13 @@ Result<boost::optional<SubDocument>> TEST_GetSubDocument(
   return boost::none;
 }
 
-DocDBTableReader::DocDBTableReader(IntentAwareIterator* iter, CoarseTimePoint deadline)
+DocDBTableReader::DocDBTableReader(
+    IntentAwareIterator* iter, CoarseTimePoint deadline,
+    std::reference_wrapper<const SchemaPackingStorage> schema_packing_storage)
     : iter_(iter),
       deadline_info_(deadline),
-      subdoc_reader_builder_(iter_, &deadline_info_) {}
+      subdoc_reader_builder_(iter_, &deadline_info_, schema_packing_storage) {
+}
 
 void DocDBTableReader::SetTableTtl(const Schema& table_schema) {
   Expiration table_ttl(TableTTL(table_schema));
@@ -90,7 +95,7 @@ void DocDBTableReader::SetTableTtl(const Schema& table_schema) {
 }
 
 Status DocDBTableReader::UpdateTableTombstoneTime(const Slice& root_doc_key) {
-  if (root_doc_key[0] == ValueTypeAsChar::kColocationId) {
+  if (root_doc_key[0] == KeyEntryTypeAsChar::kColocationId) {
     // Update table_tombstone_time based on what is written to RocksDB if its not already set.
     // Otherwise, just accept its value.
     // TODO -- this is a bit of a hack to allow DocRowwiseIterator to pass along the table tombstone
@@ -126,7 +131,7 @@ CHECKED_STATUS DocDBTableReader::InitForKey(const Slice& sub_doc_key) {
 }
 
 Result<bool> DocDBTableReader::Get(
-    const Slice& root_doc_key, const vector<PrimitiveValue>* projection, SubDocument* result) {
+    const Slice& root_doc_key, const vector<KeyEntryValue>* projection, SubDocument* result) {
   RETURN_NOT_OK(InitForKey(root_doc_key));
   // Seed key_bytes with the subdocument key. For each subkey in the projection, build subdocument
   // and reuse key_bytes while appending the subkey.
@@ -137,7 +142,7 @@ Result<bool> DocDBTableReader::Get(
   if (projection != nullptr) {
     bool doc_found = false;
     const size_t subdocument_key_size = key_bytes.size();
-    for (const PrimitiveValue& subkey : *projection) {
+    for (const auto& subkey : *projection) {
       // Append subkey to subdocument key. Reserve extra kMaxBytesPerEncodedHybridTime + 1 bytes in
       // key_bytes to avoid the internal buffer from getting reallocated and moved by SeekForward()
       // appending the hybrid time, thereby invalidating the buffer pointer saved by prefix_scope.
@@ -146,11 +151,13 @@ Result<bool> DocDBTableReader::Get(
       // This seek is to initialize the iterator for BuildSubDocument call.
       iter_->SeekForward(&key_bytes);
       SubDocument descendant;
-      auto reader = VERIFY_RESULT(subdoc_reader_builder_.Build(key_bytes));
-      RETURN_NOT_OK(reader->Get(&descendant));
+      auto reader = subdoc_reader_builder_.Build(key_bytes);
+      auto packed_column = subkey.IsColumnId()
+          ? subdoc_reader_builder_.GetPackedColumn(subkey.GetColumnId()) : PackedColumnData();
+      RETURN_NOT_OK(reader.Get(&descendant, packed_column));
       doc_found = doc_found || (
-          descendant.value_type() != ValueType::kInvalid
-          && descendant.value_type() != ValueType::kTombstone);
+          descendant.value_type() != ValueEntryType::kInvalid
+          && descendant.value_type() != ValueEntryType::kTombstone);
       result->SetChild(subkey, std::move(descendant));
 
       // Restore subdocument key by truncating the appended subkey.
@@ -171,11 +178,17 @@ Result<bool> DocDBTableReader::Get(
   // (b) how often it's useful
   // Also maybe in debug mode add some every-n logging of the rocksdb values for which it is
   // useful
+  auto packed_column_data = subdoc_reader_builder_.GetPackedColumn(
+      KeyEntryValue::kLivenessColumn.GetColumnId());
+  if (packed_column_data) {
+    *result = SubDocument(ValueEntryType::kNullLow);
+    return true;
+  }
   iter_->Seek(key_bytes);
-  auto reader = VERIFY_RESULT(subdoc_reader_builder_.Build(key_bytes));
-  RETURN_NOT_OK(reader->Get(result));
-  return result->value_type() != ValueType::kInvalid
-      && result->value_type() != ValueType::kTombstone;
+  auto reader = subdoc_reader_builder_.Build(key_bytes);
+  RETURN_NOT_OK(reader.Get(result, PackedColumnData()));
+  return result->value_type() != ValueEntryType::kInvalid
+      && result->value_type() != ValueEntryType::kTombstone;
 }
 
 }  // namespace docdb

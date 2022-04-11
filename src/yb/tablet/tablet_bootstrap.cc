@@ -334,7 +334,7 @@ void ReplayState::AddEntriesToStrings(const OpIndexToEntryMap& entries,
           index + 1,
           OpId::FromPB(replicate.id()),
           replicate.hybrid_time(),
-          replicate.op_type(),
+          consensus::OperationType_Name(replicate.op_type()),
           OpId::FromPB(replicate.committed_op_id())));
     }
     if (overflow && index == half_limit - 1) {
@@ -463,7 +463,7 @@ bool WriteOpHasTransaction(const ReplicateMsg& replicate) {
     return true;
   }
   for (const auto& pair : write_batch.write_pairs()) {
-    if (!pair.key().empty() && pair.key()[0] == docdb::ValueTypeAsChar::kExternalTransactionId) {
+    if (!pair.key().empty() && pair.key()[0] == docdb::KeyEntryTypeAsChar::kExternalTransactionId) {
       return true;
     }
   }
@@ -840,7 +840,7 @@ class TabletBootstrap {
   //     encountering an entry with an index lower than or equal to the index of an operation that
   //     is already present in pending_replicates.
   //   - Ignores entries that have already been flushed into regular and intents RocksDBs.
-  //   - Updates committed OpId based on the comsmited OpId from the entry and calls
+  //   - Updates committed OpId based on the committed OpId from the entry and calls
   //     ApplyCommittedPendingReplicates.
   //   - Updates the "monotonic counter" used for assigning internal keys in YCQL arrays.
   CHECKED_STATUS HandleReplicateMessage(
@@ -961,6 +961,7 @@ class TabletBootstrap {
 
     SnapshotOperation operation(tablet_.get(), snapshot);
     operation.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
+    operation.set_op_id(OpId::FromPB(replicate_msg->id()));
 
     return operation.Replicated(/* leader_term= */ yb::OpId::kUnknownTerm);
   }
@@ -988,6 +989,7 @@ class TabletBootstrap {
     }
 
     SplitOperation operation(tablet_.get(), data_.tablet_init_data.tablet_splitter, split_request);
+    operation.set_op_id(OpId::FromPB(replicate_msg->id()));
     operation.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
     return data_.tablet_init_data.tablet_splitter->ApplyTabletSplit(&operation, log_.get());
 
@@ -1162,8 +1164,10 @@ class TabletBootstrap {
         test_hooks_->FirstOpIdOfSegment(segment_path, op_id);
       }
       const RestartSafeCoarseTimePoint first_op_time = first_op_metadata.entry_time;
+      const auto replay_from_this_or_earlier_time_was_initialized =
+          replay_from_this_or_earlier_time.is_initialized();
 
-      if (!replay_from_this_or_earlier_time.is_initialized()) {
+      if (!replay_from_this_or_earlier_time_was_initialized) {
         replay_from_this_or_earlier_time = first_op_time - min_seconds_to_retain_logs;
       }
 
@@ -1172,8 +1176,10 @@ class TabletBootstrap {
 
       const auto common_details_str = [&]() {
         std::ostringstream ss;
-        ss << EXPR_VALUE_FOR_LOG(first_op_time) << ", "
+        ss << EXPR_VALUE_FOR_LOG(op_id_replay_lowest) << ", "
+           << EXPR_VALUE_FOR_LOG(first_op_time) << ", "
            << EXPR_VALUE_FOR_LOG(min_seconds_to_retain_logs) << ", "
+           << EXPR_VALUE_FOR_LOG(replay_from_this_or_earlier_time_was_initialized) << ", "
            << EXPR_VALUE_FOR_LOG(*replay_from_this_or_earlier_time);
         return ss.str();
       };

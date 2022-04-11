@@ -1853,6 +1853,10 @@ const Schema& CatalogManager::schema() {
   return sys_catalog()->schema();
 }
 
+const docdb::DocReadContext& CatalogManager::doc_read_context() {
+  return sys_catalog()->doc_read_context();
+}
+
 TabletInfos CatalogManager::GetTabletInfos(const std::vector<TabletId>& ids) {
   TabletInfos result;
   result.reserve(ids.size());
@@ -1896,10 +1900,10 @@ Status CatalogManager::RestoreSysCatalog(
 
   // Load objects to restore and determine obsolete objects.
   RestoreSysCatalogState state(restoration);
-  RETURN_NOT_OK(state.LoadRestoringObjects(schema(), doc_db));
+  RETURN_NOT_OK(state.LoadRestoringObjects(doc_read_context(), doc_db));
   // Load existing objects from RocksDB because on followers they are NOT present in loaded sys
   // catalog state.
-  RETURN_NOT_OK(state.LoadExistingObjects(schema(), tablet->doc_db()));
+  RETURN_NOT_OK(state.LoadExistingObjects(doc_read_context(), tablet->doc_db()));
   RETURN_NOT_OK(state.Process());
 
   docdb::DocWriteBatch write_batch(
@@ -1909,9 +1913,19 @@ Status CatalogManager::RestoreSysCatalog(
     // Restore the pg_catalog tables.
     const auto* meta = tablet->metadata();
     const auto& pg_yb_catalog_version_schema =
-        *VERIFY_RESULT(meta->GetTableInfo(kPgYbCatalogVersionTableId))->schema;
-    RETURN_NOT_OK(state.ProcessPgCatalogRestores(
-        pg_yb_catalog_version_schema, doc_db, tablet->doc_db(), &write_batch));
+        VERIFY_RESULT(meta->GetTableInfo(kPgYbCatalogVersionTableId))->schema();
+    auto status = state.ProcessPgCatalogRestores(
+        pg_yb_catalog_version_schema, doc_db, tablet->doc_db(), &write_batch);
+
+    // As RestoreSysCatalog is synchronous on Master it should be ok to set the completion
+    // status in case of validation failures so that it gets propagated back to the client before
+    // doing any write operations.
+    if (status.IsNotSupported()) {
+      *complete_status = status;
+      return Status::OK();
+    }
+
+    RETURN_NOT_OK(status);
   }
 
   // Restore the other tables.
@@ -2547,7 +2561,8 @@ std::vector<scoped_refptr<CDCStreamInfo>> CatalogManager::FindCDCStreamsForTable
   for (const auto& entry : cdc_stream_map_) {
     auto ltm = entry.second->LockForRead();
     // for xCluster the first entry will be the table_id
-    if (ltm->table_id().Get(0) == table_id && !ltm->started_deleting()) {
+    if (!ltm->table_id().empty() && ltm->table_id().Get(0) == table_id &&
+        !ltm->started_deleting()) {
       streams.push_back(entry.second);
     }
   }
@@ -3025,7 +3040,8 @@ Status CatalogManager::ListCDCStreams(const ListCDCStreamsRequestPB* req,
       continue;
     }
 
-    if (filter_table && table->id() != entry.second->table_id().Get(0)) {
+    if (filter_table && !entry.second->table_id().empty() &&
+        table->id() != entry.second->table_id().Get(0)) {
       continue; // Skip deleting/deleted streams and streams from other tables.
     }
 

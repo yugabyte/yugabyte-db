@@ -171,16 +171,16 @@ inline std::ostream& operator<<(std::ostream& out, const GetRedisSubDocumentData
 // behavior.
 // The projection, if set, restricts the scan to a subset of keys in the first level.
 // The projection is used for QL selects to get only a subset of columns.
-yb::Status GetRedisSubDocument(
+CHECKED_STATUS GetRedisSubDocument(
     IntentAwareIterator *db_iter,
     const GetRedisSubDocumentData& data,
-    const std::vector<PrimitiveValue>* projection = nullptr,
+    const std::vector<KeyEntryValue>* projection = nullptr,
     SeekFwdSuffices seek_fwd_suffices = SeekFwdSuffices::kTrue);
 
 // This version of GetRedisSubDocument creates a new iterator every time. This is not recommended
 // for multiple calls to subdocs that are sequential or near each other, in e.g.
 // doc_rowwise_iterator.
-yb::Status GetRedisSubDocument(
+CHECKED_STATUS GetRedisSubDocument(
     const DocDB& doc_db,
     const GetRedisSubDocumentData& data,
     const rocksdb::QueryId query_id,

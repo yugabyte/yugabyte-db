@@ -10,7 +10,9 @@
 + nocsrf
 POST    /login                                                                 com.yugabyte.yw.controllers.SessionController.login()
 GET     /platform_config                                                       com.yugabyte.yw.controllers.SessionController.getPlatformConfig()
++ forceAudit
 GET     /third_party_login                                                     com.yugabyte.yw.controllers.SessionController.thirdPartyLogin()
++ forceAudit
 GET     /insecure_login                                                        com.yugabyte.yw.controllers.SessionController.insecure_login()
 PUT     /customers/:cUUID/security                                             com.yugabyte.yw.controllers.SessionController.set_security(cUUID: java.util.UUID)
 PUT     /customers/:cUUID/api_token                                            com.yugabyte.yw.controllers.SessionController.api_token(cUUID: java.util.UUID)
@@ -137,6 +139,7 @@ POST    /customers/:cUUID/certificates/create_self_signed_cert          com.yuga
 GET     /customers/:cUUID/certificates                                         com.yugabyte.yw.controllers.CertificateController.list(cUUID: java.util.UUID)
 DELETE  /customers/:cUUID/certificates/:rUUID                                  com.yugabyte.yw.controllers.CertificateController.delete(cUUID: java.util.UUID, rUUID: java.util.UUID)
 GET     /customers/:cUUID/certificates/:name                                   com.yugabyte.yw.controllers.CertificateController.get(cUUID: java.util.UUID, name: String)
++ forceAudit
 GET     /customers/:cUUID/certificates/:rUUID/download                         com.yugabyte.yw.controllers.CertificateController.getRootCert(cUUID: java.util.UUID, rUUID: java.util.UUID)
 POST    /customers/:cUUID/certificates/:rUUID                                  com.yugabyte.yw.controllers.CertificateController.getClientCert(cUUID: java.util.UUID, rUUID: java.util.UUID)
 POST    /customers/:cUUID/certificates/:rUUID/update_empty_cert                com.yugabyte.yw.controllers.CertificateController.updateEmptyCustomCert(cUUID: java.util.UUID, rUUID: java.util.UUID)
@@ -146,17 +149,23 @@ POST    /customers/:cUUID/certificates/:rUUID/edit                             c
 GET     /customers/:cUUID/alerts                                               com.yugabyte.yw.controllers.AlertController.list(cUUID: java.util.UUID)
 GET     /customers/:cUUID/alerts/active                                        com.yugabyte.yw.controllers.AlertController.listActive(cUUID: java.util.UUID)
 GET     /customers/:cUUID/alerts/:alertUUID                                    com.yugabyte.yw.controllers.AlertController.get(cUUID: java.util.UUID, alertUUID: java.util.UUID)
++ forceNoAudit
 POST    /customers/:cUUID/alerts/count                                         com.yugabyte.yw.controllers.AlertController.countAlerts(cUUID: java.util.UUID)
++ forceNoAudit
 POST    /customers/:cUUID/alerts/page                                          com.yugabyte.yw.controllers.AlertController.pageAlerts(cUUID: java.util.UUID)
 POST    /customers/:cUUID/alerts/acknowledge                                   com.yugabyte.yw.controllers.AlertController.acknowledgeByFilter(cUUID: java.util.UUID)
 POST    /customers/:cUUID/alerts/:alertUUID/acknowledge                        com.yugabyte.yw.controllers.AlertController.acknowledge(cUUID: java.util.UUID, alertUUID: java.util.UUID)
++ forceNoAudit
 POST    /customers/:cUUID/alert_templates                                      com.yugabyte.yw.controllers.AlertController.listAlertTemplates(cUUID: java.util.UUID)
 GET     /customers/:cUUID/alert_configurations/:configurationUUID              com.yugabyte.yw.controllers.AlertController.getAlertConfiguration(cUUID: java.util.UUID, configurationUUID: java.util.UUID)
++ forceNoAudit
 POST    /customers/:cUUID/alert_configurations/page                            com.yugabyte.yw.controllers.AlertController.pageAlertConfigurations(cUUID: java.util.UUID)
++ forceNoAudit
 POST    /customers/:cUUID/alert_configurations/list                            com.yugabyte.yw.controllers.AlertController.listAlertConfigurations(cUUID: java.util.UUID)
 POST    /customers/:cUUID/alert_configurations                                 com.yugabyte.yw.controllers.AlertController.createAlertConfiguration(cUUID: java.util.UUID)
 PUT     /customers/:cUUID/alert_configurations/:configurationUUID              com.yugabyte.yw.controllers.AlertController.updateAlertConfiguration(cUUID: java.util.UUID, configurationUUID: java.util.UUID)
 DELETE  /customers/:cUUID/alert_configurations/:configurationUUID              com.yugabyte.yw.controllers.AlertController.deleteAlertConfiguration(cUUID: java.util.UUID, configurationUUID: java.util.UUID)
++ forceNoAudit
 POST    /customers/:cUUID/alert_configurations/:configurationUUID/test_alert   com.yugabyte.yw.controllers.AlertController.sendTestAlert(cUUID: java.util.UUID, configurationUUID: java.util.UUID)
 
 POST    /customers/:cUUID/alert_channels                                       com.yugabyte.yw.controllers.AlertController.createAlertChannel(cUUID: java.util.UUID)
@@ -173,7 +182,9 @@ DELETE  /customers/:cUUID/alert_destinations/:adUUID                           c
 
 # Maintenance Window API
 GET     /customers/:cUUID/maintenance_windows/:windowUUID                      com.yugabyte.yw.controllers.MaintenanceController.get(cUUID: java.util.UUID, windowUUID: java.util.UUID)
++ forceNoAudit
 POST    /customers/:cUUID/maintenance_windows/page                             com.yugabyte.yw.controllers.MaintenanceController.page(cUUID: java.util.UUID)
++ forceNoAudit
 POST    /customers/:cUUID/maintenance_windows/list                             com.yugabyte.yw.controllers.MaintenanceController.list(cUUID: java.util.UUID)
 POST    /customers/:cUUID/maintenance_windows                                  com.yugabyte.yw.controllers.MaintenanceController.create(cUUID: java.util.UUID)
 PUT     /customers/:cUUID/maintenance_windows/:windowUUID                      com.yugabyte.yw.controllers.MaintenanceController.update(cUUID: java.util.UUID, windowUUID: java.util.UUID)
@@ -227,6 +238,7 @@ DELETE  /customers/:cUUID/universes/:uniUUID                                   c
 # Universe Info like status, cost, query stats, health, resource usage
 GET     /customers/:cUUID/universes/:uniUUID/status                            com.yugabyte.yw.controllers.UniverseInfoController.universeStatus(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/health_check                      com.yugabyte.yw.controllers.UniverseInfoController.healthCheck(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+GET     /customers/:cUUID/universes/:uniUUID/trigger_health_check              com.yugabyte.yw.controllers.UniverseInfoController.triggerHealthCheck(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/cost                                                 com.yugabyte.yw.controllers.UniverseInfoController.universeListCost(cUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/cost                              com.yugabyte.yw.controllers.UniverseInfoController.universeCost(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/universe_resources                com.yugabyte.yw.controllers.UniverseInfoController.getUniverseResources(cUUID: java.util.UUID, uniUUID: java.util.UUID)

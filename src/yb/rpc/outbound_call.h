@@ -168,8 +168,7 @@ class CallResponse {
     return serialized_response_;
   }
 
-  Result<const uint8_t*const*> GetSidecarPtr(size_t idx) const;
-
+  Result<Slice> GetSidecar(size_t idx) const;
   Result<SidecarHolder> GetSidecarHolder(size_t idx) const;
 
   size_t DynamicMemoryUsage() const {
@@ -338,8 +337,7 @@ class OutboundCall : public RpcCall {
  protected:
   friend class RpcController;
 
-  Result<Slice> GetSidecar(size_t idx) const;
-  virtual Result<const uint8_t*const*> GetSidecarPtr(size_t idx) const;
+  virtual Result<Slice> GetSidecar(size_t idx) const;
   virtual Result<SidecarHolder> GetSidecarHolder(size_t idx) const;
 
   ConnectionId conn_id_;
@@ -391,7 +389,7 @@ class OutboundCall : public RpcCall {
 
   Result<uint32_t> TimeoutMs() const;
 
-  int32_t call_id_;
+  const int32_t call_id_;
 
   // The remote method being called.
   const RemoteMethod* remote_method_;

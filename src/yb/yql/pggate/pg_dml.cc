@@ -81,7 +81,7 @@ Status PgDml::AppendTargetPB(PgExpr *target) {
   targets_.push_back(target);
 
   // Allocate associated protobuf.
-  PgsqlExpressionPB *expr_pb = AllocTargetPB();
+  auto* expr_pb = AllocTargetPB();
 
   // Prepare expression. Except for constants and place_holders, all other expressions can be
   // evaluate just one time during prepare.
@@ -101,7 +101,7 @@ Status PgDml::AppendQual(PgExpr *qual) {
   quals_.push_back(qual);
 
   // Allocate associated protobuf.
-  PgsqlExpressionPB *expr_pb = AllocQualPB();
+  auto* expr_pb = AllocQualPB();
 
   // Populate the expr_pb with data from the qual expression.
   // Side effect of PrepareForRead is to call PrepareColumnForRead on "this" being passed in
@@ -137,7 +137,7 @@ Status PgDml::AppendColumnRef(PgExpr *colref) {
   return Status::OK();
 }
 
-Result<const PgColumn&> PgDml::PrepareColumnForRead(int attr_num, PgsqlExpressionPB *target_pb) {
+Result<const PgColumn&> PgDml::PrepareColumnForRead(int attr_num, LWPgsqlExpressionPB *target_pb) {
   // Find column from targeted table.
   PgColumn& col = VERIFY_RESULT(target_.ColumnForAttr(attr_num));
 
@@ -154,7 +154,7 @@ Result<const PgColumn&> PgDml::PrepareColumnForRead(int attr_num, PgsqlExpressio
   return const_cast<const PgColumn&>(col);
 }
 
-Status PgDml::PrepareColumnForWrite(PgColumn *pg_col, PgsqlExpressionPB *assign_pb) {
+Status PgDml::PrepareColumnForWrite(PgColumn *pg_col, LWPgsqlExpressionPB *assign_pb) {
   // Prepare protobuf to send to DocDB.
   assign_pb->set_column_id(pg_col->id());
 
@@ -166,11 +166,11 @@ Status PgDml::PrepareColumnForWrite(PgColumn *pg_col, PgsqlExpressionPB *assign_
   return Status::OK();
 }
 
-void PgDml::ColumnRefsToPB(PgsqlColumnRefsPB *column_refs) {
+void PgDml::ColumnRefsToPB(LWPgsqlColumnRefsPB *column_refs) {
   column_refs->Clear();
   for (const PgColumn& col : target_.columns()) {
     if (col.read_requested() || col.write_requested()) {
-      column_refs->add_ids(col.id());
+      column_refs->mutable_ids()->push_back(col.id());
     }
   }
 }
@@ -182,7 +182,7 @@ void PgDml::ColRefsToPB() {
     // Only used columns are added to the request
     if (col.read_requested() || col.write_requested()) {
       // Allocate a protobuf entry
-      PgsqlColRefPB *col_ref = AllocColRefPB();
+      auto* col_ref = AllocColRefPB();
       // Add DocDB identifier
       col_ref->set_column_id(col.id());
       // Add Postgres identifier
@@ -215,11 +215,11 @@ Status PgDml::BindColumn(int attr_num, PgExpr *attr_value) {
   }
 
   // Alloc the protobuf.
-  PgsqlExpressionPB *bind_pb = column.bind_pb();
+  auto* bind_pb = column.bind_pb();
   if (bind_pb == nullptr) {
     bind_pb = AllocColumnBindPB(&column);
   } else {
-    if (expr_binds_.find(bind_pb) != expr_binds_.end()) {
+    if (expr_binds_.count(bind_pb)) {
       LOG(WARNING) << strings::Substitute("Column $0 is already bound to another value.", attr_num);
     }
   }
@@ -241,9 +241,9 @@ Status PgDml::BindColumn(int attr_num, PgExpr *attr_value) {
 
 Status PgDml::UpdateBindPBs() {
   for (const auto &entry : expr_binds_) {
-    PgsqlExpressionPB *expr_pb = entry.first;
+    auto* expr_pb = entry.first;
     PgExpr *attr_value = entry.second;
-    RETURN_NOT_OK(attr_value->Eval(expr_pb));
+    RETURN_NOT_OK(attr_value->EvalTo(expr_pb));
   }
 
   return Status::OK();
@@ -267,11 +267,11 @@ Status PgDml::AssignColumn(int attr_num, PgExpr *attr_value) {
             "Attribute value type does not match column type");
 
   // Alloc the protobuf.
-  PgsqlExpressionPB *assign_pb = column.assign_pb();
+  auto* assign_pb = column.assign_pb();
   if (assign_pb == nullptr) {
     assign_pb = AllocColumnAssignPB(&column);
   } else {
-    if (expr_assigns_.find(assign_pb) != expr_assigns_.end()) {
+    if (expr_assigns_.count(assign_pb)) {
       return STATUS_SUBSTITUTE(InvalidArgument,
                                "Column $0 is already assigned to another value", attr_num);
     }
@@ -297,9 +297,9 @@ Status PgDml::UpdateAssignPBs() {
   // Process the column binds for two cases.
   // For performance reasons, we might evaluate these expressions together with bind values in YB.
   for (const auto &entry : expr_assigns_) {
-    PgsqlExpressionPB *expr_pb = entry.first;
+    auto* expr_pb = entry.first;
     PgExpr *attr_value = entry.second;
-    RETURN_NOT_OK(attr_value->Eval(expr_pb));
+    RETURN_NOT_OK(attr_value->EvalTo(expr_pb));
   }
 
   return Status::OK();

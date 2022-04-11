@@ -25,7 +25,7 @@ description: SEO-Meta-Description
 image: Icon-For-Page-Title
 headcontent: Brief-description
 menu:
-  latest:
+  preview:
     identifier: page-identifier
     parent: parent-page-identifier
     weight: number-to-decide-display-order

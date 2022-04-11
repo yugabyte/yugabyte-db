@@ -1157,7 +1157,7 @@ public class AlertControllerTest extends FakeDBApplication {
           request.getBody().readString(Charset.defaultCharset()),
           equalTo(
               "{\"username\":\"Slack Bot\","
-                  + "\"text\":\"*Yugabyte Platform Alert - <[test@customer.com][tc]>*\\n"
+                  + "\"text\":\"*YugabyteDB Anywhere Alert - <[test@customer.com][tc]>*\\n"
                   + "alertConfiguration Alert for Test Universe is firing.\\n"
                   + "\\n[TEST ALERT!!!] Average memory usage for universe 'Test Universe' "
                   + "is above 1%. Current value is 2%\",\"icon_url\":null}"));

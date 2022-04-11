@@ -515,6 +515,9 @@ SELECT * FROM single_row_check_constraints2 ORDER BY k;
 -- Test table with decimal.
 --
 CREATE TABLE single_row_decimal (k int PRIMARY KEY, v1 decimal, v2 decimal(10,2), v3 int);
+CREATE FUNCTION next_v3(int) returns int language sql as $$
+  SELECT v3 + 1 FROM single_row_decimal WHERE k = $1;
+$$;
 
 -- Below statements should all USE single-row.
 EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v1 = 1.555 WHERE k = 1;
@@ -527,6 +530,8 @@ EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v3 = v3 + 4 * (null - 5) WHE
 EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v1 = v1 + 1.555 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v2 = v2 + 1.555 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v3 = v3 + 1 WHERE k = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v1 = v1 + 1.555, v2 = v2 + 1.555, v3 = 3 WHERE k = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v1 = v1 + 1.555, v2 = v2 + 1.555, v3 = next_v3(1) WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v1 = v1 + 1.555, v2 = v2 + 1.555, v3 = v3 + 1 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v1 = v2 + 1.555 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v2 = k + 1.555 WHERE k = 1;
@@ -537,6 +542,11 @@ INSERT INTO single_row_decimal(k, v1, v2, v3) values (1,1.5,1.5,1), (2,2.5,2.5,2
 SELECT * FROM single_row_decimal ORDER BY k;
 UPDATE single_row_decimal SET v1 = v1 + 1.555, v2 = v2 + 1.555, v3 = v3 + 1 WHERE k = 1;
 -- v2 should be rounded to 2 decimals.
+SELECT * FROM single_row_decimal ORDER BY k;
+
+UPDATE single_row_decimal SET v1 = v1 + 1.555, v2 = v2 + 1.555, v3 = 3 WHERE k = 1;
+SELECT * FROM single_row_decimal ORDER BY k;
+UPDATE single_row_decimal SET v1 = v1 + 1.555, v2 = v2 + 1.555, v3 = next_v3(1) WHERE k = 1;
 SELECT * FROM single_row_decimal ORDER BY k;
 
 -- Test null arguments, all expressions should evaluate to null.
@@ -875,6 +885,7 @@ DELETE FROM multi_row WHERE 2::MONEY <= 2::MONEY;
 SELECT * FROM multi_row;
 
 -- Cleanup.
+DROP FUNCTION next_v3;
 DROP FUNCTION assign_one_plus_param_to_v1;
 DROP FUNCTION assign_one_plus_param_to_v1_hard;
 DROP TABLE single_row;

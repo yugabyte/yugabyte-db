@@ -14,6 +14,7 @@ import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap.Params.PerRegionMetadata;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -58,6 +59,11 @@ public class Provider extends Model {
   @Constraints.Required()
   public String code;
 
+  @JsonIgnore
+  public CloudType getCloudCode() {
+    return CloudType.valueOf(this.code);
+  }
+
   @Column(nullable = false)
   @ApiModelProperty(value = "Provider name", accessMode = READ_WRITE)
   @Constraints.Required()
@@ -71,7 +77,6 @@ public class Provider extends Model {
   @ApiModelProperty(value = "Customer uuid", accessMode = READ_ONLY)
   public UUID customerUUID;
 
-  public static final Set<String> HostedZoneEnabledProviders = ImmutableSet.of("aws", "azu");
   public static final Set<Common.CloudType> InstanceTagsEnabledProviders =
       ImmutableSet.of(Common.CloudType.aws, Common.CloudType.azu, Common.CloudType.gcp);
   public static final Set<Common.CloudType> InstanceTagsModificationEnabledProviders =
@@ -162,6 +167,11 @@ public class Provider extends Model {
   @Transient
   @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
   public List<String> ntpServers = new ArrayList<>();
+
+  // Hosted Zone for the deployment
+  @Transient
+  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
+  public String hostedZoneId = null;
 
   // End Transient Properties
 

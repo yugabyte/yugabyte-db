@@ -16,7 +16,7 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/deploy/kubernetes/multi-zone/eks/helm-chart" class="nav-link active">
+    <a href="/preview/deploy/kubernetes/multi-zone/eks/helm-chart" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Helm chart
     </a>
@@ -153,12 +153,12 @@ $ helm repo update
 Validate that you have the updated chart version.
 
 ```sh
-$ helm search repo yugabytedb/yugabyte
+$ helm search repo yugabytedb/yugabyte --version {{<yb-version version="stable" format="short">}}
 ```
 
 ```output
 NAME                    CHART VERSION   APP VERSION     DESCRIPTION
-yugabytedb/yugabyte     2.12.1           2.12.1.0-b41    YugabyteDB is the high-performance distributed ...
+yugabytedb/yugabyte     2.12.2           2.12.2.0-b58    YugabyteDB is the high-performance distributed ...
 ```
 
 ### Create override files
@@ -273,19 +273,25 @@ Now create the overall YugabyteDB cluster in such a way that one third of the no
 ```sh
 $ helm install yb-demo-us-east-1a yugabytedb/yugabyte \
  --namespace yb-demo-us-east-1a \
- -f overrides-us-east-1a.yaml --wait
+ -f overrides-us-east-1a.yaml \
+ --version {{<yb-version version="stable" format="short">}} \
+ --wait
 ```
 
 ```sh
 $ helm install yb-demo-us-east-1b yugabytedb/yugabyte \
  --namespace yb-demo-us-east-1b \
- -f overrides-us-east-1b.yaml --wait
+ -f overrides-us-east-1b.yaml \
+ --version {{<yb-version version="stable" format="short">}} \
+ --wait
 ```
 
 ```sh
 $ helm install yb-demo-us-east-1c yugabytedb/yugabyte \
  --namespace yb-demo-us-east-1c \
- -f overrides-us-east-1c.yaml --wait
+ -f overrides-us-east-1c.yaml \
+ --version {{<yb-version version="stable" format="short">}} \
+ --wait
 ```
 
 ## 3. Check the cluster status

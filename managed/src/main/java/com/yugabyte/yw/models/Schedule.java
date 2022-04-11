@@ -36,11 +36,16 @@ import javax.persistence.Entity;
 import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
 import javax.persistence.Id;
+import javax.persistence.Table;
+import javax.persistence.UniqueConstraint;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
 
 @Entity
+@Table(
+    uniqueConstraints =
+        @UniqueConstraint(columnNames = {"schedule_name", "customer_uuid", "owner_uuid"}))
 @ApiModel(description = "Backup schedule")
 public class Schedule extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(Schedule.class);
@@ -147,6 +152,18 @@ public class Schedule extends Model {
   @ApiModelProperty(value = "Cron expression for the schedule")
   private String cronExpression;
 
+  @ApiModelProperty(value = "Name of the schedule", accessMode = READ_ONLY)
+  @Column(nullable = false)
+  private String scheduleName;
+
+  public String getScheduleName() {
+    return scheduleName;
+  }
+
+  @ApiModelProperty(value = "Owner UUID for the schedule", accessMode = READ_ONLY)
+  @Column(nullable = false)
+  private UUID ownerUUID;
+
   public String getCronExpression() {
     return cronExpression;
   }
@@ -208,6 +225,8 @@ public class Schedule extends Model {
 
   public static Schedule create(
       UUID customerUUID,
+      UUID ownerUUID,
+      String scheduleName,
       ITaskParams params,
       TaskType taskType,
       long frequency,
@@ -221,8 +240,25 @@ public class Schedule extends Model {
     schedule.frequency = frequency;
     schedule.status = State.Active;
     schedule.cronExpression = cronExpression;
+    schedule.ownerUUID = ownerUUID;
+    schedule.scheduleName =
+        scheduleName != null ? scheduleName : "schedule-" + schedule.scheduleUUID;
     schedule.save();
     return schedule;
+  }
+
+  public static Schedule create(
+      UUID customerUUID,
+      ITaskParams params,
+      TaskType taskType,
+      long frequency,
+      String cronExpression) {
+    UUID ownerUUID = customerUUID;
+    JsonNode scheduleParams = Json.toJson(params);
+    if (scheduleParams.has("universeUUID")) {
+      ownerUUID = UUID.fromString(scheduleParams.get("universeUUID").asText());
+    }
+    return create(customerUUID, ownerUUID, null, params, taskType, frequency, cronExpression);
   }
 
   /** DEPRECATED: use {@link #getOrBadRequest()} */
@@ -317,5 +353,15 @@ public class Schedule extends Model {
     appendInClause(query, "status", filter.getStatus());
     appendInClause(query, "task_type", filter.getTaskTypes());
     return query;
+  }
+
+  public static Schedule getScheduleByUniverseWithName(
+      String scheduleName, UUID universeUUID, UUID customerUUID) {
+    return find.query()
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .eq("owner_uuid", universeUUID)
+        .eq("schedule_name", scheduleName)
+        .findOne();
   }
 }

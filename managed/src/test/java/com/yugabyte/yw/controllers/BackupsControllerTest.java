@@ -211,8 +211,34 @@ public class BackupsControllerTest extends FakeDBApplication {
     bodyJson.put("universeUUID", defaultUniverse.universeUUID.toString());
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
     bodyJson.put("cronExpression", "0 */2 * * *");
+    bodyJson.put("scheduleName", "schedule-1");
     Result r = createBackupSchedule(bodyJson, null);
     assertEquals(OK, r.status());
+  }
+
+  @Test
+  public void testCreateScheduleBackupWithoutName() {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST22");
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("universeUUID", defaultUniverse.universeUUID.toString());
+    bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+    bodyJson.put("cronExpression", "0 */2 * * *");
+    Result result = assertPlatformException(() -> createBackupSchedule(bodyJson, null));
+    assertBadRequest(result, "Provide a name for the schedule");
+  }
+
+  @Test
+  public void testCreateScheduleBackupWithDuplicateName() {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST22");
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("universeUUID", defaultUniverse.universeUUID.toString());
+    bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+    bodyJson.put("cronExpression", "0 */2 * * *");
+    bodyJson.put("scheduleName", "schedule-1");
+    Result r = createBackupSchedule(bodyJson, null);
+    assertEquals(OK, r.status());
+    Result result = assertPlatformException(() -> createBackupSchedule(bodyJson, null));
+    assertBadRequest(result, "Schedule with name schedule-1 already exist");
   }
 
   @Test
@@ -223,6 +249,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("universeUUID", defaultUniverse.universeUUID.toString());
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+    bodyJson.put("scheduleName", "schedule-1");
     Result r = assertPlatformException(() -> createBackupSchedule(bodyJson, null));
     JsonNode resultJson = Json.parse(contentAsString(r));
     assertValue(resultJson, "error", "Provide Cron Expression or Scheduling frequency");
@@ -881,7 +908,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     backup.transitionState(BackupState.Completed);
     UUID invalidConfigUUID = UUID.randomUUID();
     backup.updateStorageConfigUUID(invalidConfigUUID);
-    when(mockBackupUtil.validateStorageConfigOnLocations(any(), any())).thenReturn(true);
+    // when(mockBackupUtil.validateStorageConfigOnLocations(any(), any())).thenReturn(true);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
     Result result = editBackup(defaultUser, bodyJson, backup.backupUUID);
@@ -1016,12 +1043,16 @@ public class BackupsControllerTest extends FakeDBApplication {
     backup.transitionState(BackupState.Completed);
     UUID invalidConfigUUID = UUID.randomUUID();
     backup.updateStorageConfigUUID(invalidConfigUUID);
-    when(mockBackupUtil.validateStorageConfigOnLocations(any(), any())).thenReturn(false);
+    doThrow(
+            new PlatformServiceException(
+                BAD_REQUEST, "Storage config TEST14 cannot access backup locations"))
+        .when(mockBackupUtil)
+        .validateStorageConfigOnLocations(any(), any());
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
     Result result =
         assertPlatformException(() -> editBackup(defaultUser, bodyJson, backup.backupUUID));
-    assertBadRequest(result, "Cannot assign storage config as it cannot access backup location");
+    assertBadRequest(result, "Storage config TEST14 cannot access backup locations");
     assertAuditEntry(0, defaultCustomer.uuid);
     backup.refresh();
     assertEquals(invalidConfigUUID, backup.storageConfigUUID);
@@ -1038,7 +1069,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     backup.transitionState(BackupState.Completed);
     UUID invalidConfigUUID = UUID.randomUUID();
     backup.updateStorageConfigUUID(invalidConfigUUID);
-    when(mockBackupUtil.validateStorageConfigOnLocations(any(), any())).thenReturn(false);
+    // when(mockBackupUtil.validateStorageConfigOnLocations(any(), any())).thenReturn(false);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("timeBeforeDeleteFromPresentInMillis", "0");
     Result result =

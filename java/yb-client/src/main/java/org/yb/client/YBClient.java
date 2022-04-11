@@ -1430,9 +1430,10 @@ public class YBClient implements AutoCloseable {
   public GetChangesResponse getChangesCDCSDK(YBTable table, String streamId,
                                              String tabletId, long term,
                                              long index, byte[] key,
-                                             int write_id, long time) throws Exception {
-    Deferred<GetChangesResponse> d = asyncClient
-      .getChangesCDCSDK(table, streamId, tabletId, term, index, key, write_id, time);
+                                             int write_id, long time,
+                                             boolean needSchemaInfo) throws Exception {
+    Deferred<GetChangesResponse> d = asyncClient.getChangesCDCSDK(
+      table, streamId, tabletId, term, index, key, write_id, time, needSchemaInfo);
     return d.join(2*getDefaultAdminOperationTimeoutMs());
   }
 

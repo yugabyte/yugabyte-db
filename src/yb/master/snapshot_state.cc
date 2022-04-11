@@ -144,7 +144,7 @@ Status SnapshotState::StoreToWriteBatch(docdb::KeyValueWriteBatchPB* out) {
   auto pair = out->add_write_pairs();
   pair->set_key(encoded_key.AsSlice().cdata(), encoded_key.size());
   faststring value;
-  value.push_back(docdb::ValueTypeAsChar::kString);
+  value.push_back(docdb::ValueEntryTypeAsChar::kString);
   SysSnapshotEntryPB entry;
   RETURN_NOT_OK(ToEntryPB(&entry, ForClient::kFalse));
   pb_util::AppendToString(entry, &value);

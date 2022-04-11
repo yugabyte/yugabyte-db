@@ -201,7 +201,7 @@ TAG_FLAG(disable_alter_vs_write_mutual_exclusion, advanced);
 TAG_FLAG(disable_alter_vs_write_mutual_exclusion, runtime);
 
 DEFINE_bool(cleanup_intents_sst_files, true,
-            "Cleanup intents files that are no more relevant to any running transaction.");
+    "Cleanup intents files that are no more relevant to any running transaction.");
 
 DEFINE_int32(ysql_transaction_abort_timeout_ms, 15 * 60 * 1000,  // 15 minutes
              "Max amount of time we can wait for active transactions to abort on a tablet "
@@ -445,7 +445,7 @@ Tablet::Tablet(const TabletInitData& data)
   if (table_info->index_info && table_info->index_info->is_unique()) {
     unique_index_key_schema_ = std::make_unique<Schema>();
     const auto ids = table_info->index_info->index_key_column_ids();
-    CHECK_OK(table_info->schema->CreateProjectionByIdsIgnoreMissing(
+    CHECK_OK(table_info->schema().CreateProjectionByIdsIgnoreMissing(
         ids, unique_index_key_schema_.get()));
   }
 
@@ -1093,7 +1093,7 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
 
   const std::shared_ptr<tablet::TableInfo> table_info =
       VERIFY_RESULT(metadata_->GetTableInfo(table_id));
-  const Schema& schema = *table_info->schema;
+  const Schema& schema = table_info->schema();
   auto mapped_projection = std::make_unique<Schema>();
   RETURN_NOT_OK(schema.GetMappedReadProjection(projection, mapped_projection.get()));
 
@@ -1104,8 +1104,8 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
       ? read_hybrid_time
       : ReadHybridTime::SingleTime(VERIFY_RESULT(SafeTime(RequireLease::kFalse)));
   auto result = std::make_unique<DocRowwiseIterator>(
-      std::move(mapped_projection), schema, txn_op_ctx, doc_db(),
-      deadline, read_time, &pending_non_abortable_op_counter_);
+      std::move(mapped_projection), *table_info->doc_read_context, txn_op_ctx,
+      doc_db(), deadline, read_time, &pending_non_abortable_op_counter_);
   RETURN_NOT_OK(result->Init(table_type_, sub_doc_key));
   return std::move(result);
 }
@@ -1114,7 +1114,7 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
     const TableId& table_id) const {
   const std::shared_ptr<tablet::TableInfo> table_info =
       VERIFY_RESULT(metadata_->GetTableInfo(table_id));
-  return NewRowIterator(*table_info->schema, {}, table_id);
+  return NewRowIterator(table_info->schema(), {}, table_id);
 }
 
 Status Tablet::ApplyRowOperations(
@@ -1446,12 +1446,12 @@ Status Tablet::HandlePgsqlReadRequest(
   Result<TransactionOperationContext> txn_op_ctx =
       CreateTransactionOperationContext(
           transaction_metadata,
-          table_info->schema->table_properties().is_ysql_catalog_table(),
+          table_info->schema().table_properties().is_ysql_catalog_table(),
           &subtransaction_metadata);
   RETURN_NOT_OK(txn_op_ctx);
-  return AbstractTablet::HandlePgsqlReadRequest(
+  return ProcessPgsqlReadRequest(
       deadline, read_time, is_explicit_request_read_time,
-      pgsql_read_request, *txn_op_ctx, result, num_rows_read);
+      pgsql_read_request, table_info, *txn_op_ctx, result, num_rows_read);
 }
 
 // Returns true if the query can be satisfied by rows present in current tablet.
@@ -1842,9 +1842,9 @@ Status Tablet::MarkBackfillDone(const TableId& table_id) {
   auto table_info = table_id.empty() ?
     metadata_->primary_table_info() : VERIFY_RESULT(metadata_->GetTableInfo(table_id));
   LOG_WITH_PREFIX(INFO) << "Setting backfill as done. Current schema  "
-                        << table_info->schema->ToString();
+                        << table_info->schema().ToString();
   const vector<DeletedColumn> empty_deleted_cols;
-  Schema new_schema = *table_info->schema;
+  Schema new_schema = table_info->schema();
   new_schema.SetRetainDeleteMarkers(false);
   metadata_->SetSchema(
       new_schema, *table_info->index_map, empty_deleted_cols, table_info->schema_version, table_id);
@@ -1855,7 +1855,7 @@ Status Tablet::AlterSchema(ChangeMetadataOperation *operation) {
   auto current_table_info = VERIFY_RESULT(metadata_->GetTableInfo(
         operation->request()->has_alter_table_id() ?
         operation->request()->alter_table_id() : ""));
-  auto key_schema = current_table_info->schema->CreateKeyProjection();
+  auto key_schema = current_table_info->schema().CreateKeyProjection();
 
   RSTATUS_DCHECK_NE(operation->schema(), static_cast<void*>(nullptr), InvalidArgument,
                     "Schema could not be null");
@@ -1875,14 +1875,14 @@ Status Tablet::AlterSchema(ChangeMetadataOperation *operation) {
     return Status::OK();
   }
 
-  LOG_WITH_PREFIX(INFO) << "Alter schema from " << current_table_info->schema->ToString()
+  LOG_WITH_PREFIX(INFO) << "Alter schema from " << current_table_info->schema().ToString()
                         << " version " << current_table_info->schema_version
                         << " to " << operation->schema()->ToString()
                         << " version " << operation->schema_version();
 
   // Find out which columns have been deleted in this schema change, and add them to metadata.
   vector<DeletedColumn> deleted_cols;
-  for (const auto& col : current_table_info->schema->column_ids()) {
+  for (const auto& col : current_table_info->schema().column_ids()) {
     if (operation->schema()->find_column_by_id(col) == Schema::kColumnNotFound) {
       deleted_cols.emplace_back(col, clock_->Now());
       LOG_WITH_PREFIX(INFO) << "Column " << col << " recorded as deleted.";
@@ -1908,7 +1908,7 @@ Status Tablet::AlterSchema(ChangeMetadataOperation *operation) {
 
   // Create transaction manager and index table metadata cache for secondary index update.
   if (!operation->index_map().empty()) {
-    if (current_table_info->schema->table_properties().is_transactional() &&
+    if (current_table_info->schema().table_properties().is_transactional() &&
         !transaction_manager_) {
       transaction_manager_ = std::make_unique<client::TransactionManager>(
           client_future_.get(), scoped_refptr<server::Clock>(clock_), local_tablet_filter_);
@@ -2888,8 +2888,9 @@ Status Tablet::Truncate(TruncateOperation* operation) {
   // We use the kUpdate mode here, because unlike the case of restoring a snapshot to a completely
   // different tablet in an arbitrary Raft group, here there is no possibility of the flushed
   // frontier needing to go backwards.
-  RETURN_NOT_OK(ModifyFlushedFrontier(frontier, rocksdb::FrontierModificationMode::kUpdate,
-                                      FlushFlags::kAllDbs | FlushFlags::kNoScopedOperation));
+  RETURN_NOT_OK(ModifyFlushedFrontier(
+      frontier, rocksdb::FrontierModificationMode::kUpdate,
+      FlushFlags::kAllDbs | FlushFlags::kNoScopedOperation));
 
   LOG_WITH_PREFIX(INFO) << "Created new db for truncated tablet";
   LOG_WITH_PREFIX(INFO) << "Sequence numbers: old=" << sequence_number
@@ -3348,14 +3349,18 @@ Status Tablet::CreateReadIntents(
       /* is_ysql_catalog_table */ pgsql_batch.size() > 0 && is_sys_catalog_,
       &subtransaction_metadata));
 
+  auto table_info = metadata_->primary_table_info();
   for (const auto& ql_read : ql_batch) {
     docdb::QLReadOperation doc_op(ql_read, txn_op_ctx);
-    RETURN_NOT_OK(doc_op.GetIntents(*GetSchema(), write_batch));
+    RETURN_NOT_OK(doc_op.GetIntents(table_info->schema(), write_batch));
   }
 
   for (const auto& pgsql_read : pgsql_batch) {
+    if (table_info == nullptr || table_info->table_id != pgsql_read.table_id()) {
+      table_info = VERIFY_RESULT(metadata_->GetTableInfo(pgsql_read.table_id()));
+    }
     docdb::PgsqlReadOperation doc_op(pgsql_read, txn_op_ctx);
-    RETURN_NOT_OK(doc_op.GetIntents(*GetSchema(pgsql_read.table_id()), write_batch));
+    RETURN_NOT_OK(doc_op.GetIntents(table_info->schema(), write_batch));
   }
 
   return Status::OK();
@@ -3484,7 +3489,7 @@ Result<std::string> Tablet::GetEncodedMiddleSplitKey() const {
   // to have two child tablets with alive user records after the splitting, but the split
   // by the internal record will lead to a case when one tablet will consist of internal records
   // only and these records will be compacted out at some point making an empty tablet.
-  if (PREDICT_FALSE(docdb::IsInternalRecordKeyType(docdb::DecodeValueType(middle_key[0])))) {
+  if (PREDICT_FALSE(docdb::IsInternalRecordKeyType(docdb::DecodeKeyEntryType(middle_key[0])))) {
     return STATUS_FORMAT(
         IllegalState, "$0: got internal record \"$1\"",
         error_prefix(), Slice(middle_key).ToDebugHexString());
@@ -3725,12 +3730,10 @@ void Tablet::UnregisterOperationFilterUnlocked(OperationFilter* filter) {
   operation_filters_.erase(operation_filters_.iterator_to(*filter));
 }
 
-SchemaPtr Tablet::GetSchema(const std::string& table_id) const {
-  if (table_id.empty()) {
-    return metadata_->schema();
-  }
-  auto table_info = CHECK_RESULT(metadata_->GetTableInfo(table_id));
-  return SchemaPtr(table_info, table_info->schema.get());
+docdb::DocReadContextPtr Tablet::GetDocReadContext(const std::string& table_id) const {
+  auto table_info = table_id.empty()
+      ? metadata_->primary_table_info() : CHECK_RESULT(metadata_->GetTableInfo(table_id));
+  return docdb::DocReadContextPtr(table_info, table_info->doc_read_context.get());
 }
 
 Schema Tablet::GetKeySchema(const std::string& table_id) const {
@@ -3738,7 +3741,7 @@ Schema Tablet::GetKeySchema(const std::string& table_id) const {
     return *key_schema_;
   }
   auto table_info = CHECK_RESULT(metadata_->GetTableInfo(table_id));
-  return table_info->schema->CreateKeyProjection();
+  return table_info->schema().CreateKeyProjection();
 }
 
 // ------------------------------------------------------------------------------------------------

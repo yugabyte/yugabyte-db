@@ -62,7 +62,7 @@ public class NodeDetails {
   public boolean disksAreMountedByUUID;
 
   @ApiModelProperty(value = "True if this a custom YB AMI")
-  public boolean ybPrebuiltAmi = false;
+  public boolean ybPrebuiltAmi;
 
   // Possible states in which this node can exist.
   public enum NodeState {

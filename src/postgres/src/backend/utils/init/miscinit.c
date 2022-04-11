@@ -12,6 +12,8 @@
  *
  *-------------------------------------------------------------------------
  */
+
+#include <pg_yb_utils.h>
 #include "postgres.h"
 
 #include <sys/param.h>

@@ -4,7 +4,7 @@ linkTitle: Free tier
 description: Free tier
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
-beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   v2.4:
     identifier: free-tier
@@ -16,7 +16,7 @@ showAsideToc: true
 
 You can use the Free Tier level to get started using YugabyteDB, explore core features, and develop applications.
 
-All new accounts start at the Free Tier level that includes enough resources to explore the core features and develop applications. 
+All new accounts start at the Free Tier level that includes enough resources to explore the core features and develop applications.
 
 The Free Tier level includes:
 
@@ -26,7 +26,7 @@ The Free Tier level includes:
 - **Client APIs:** [YSQL](../../api/ysql) and [YCQL](../../api/ycql)
 - **Administration**: Yugabyte Cloud Console
 - **Upgrades:** New releases automatically applied
-- **Support:** [Slack community (yugabyte-db)](https://www.yugabyte.com/slack)
+- **Support:** [Slack community (yugabyte-db)]({{<slack-invite>}})
 
 {{< note title="Note" >}}
 

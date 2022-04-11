@@ -40,10 +40,25 @@
 #include "access/tupdesc.h"
 #include "access/xact.h"
 #include "executor/ybcExpr.h"
+#include "catalog/indexing.h"
+#include "catalog/pg_am.h"
+#include "catalog/pg_amproc.h"
+#include "catalog/pg_attrdef.h"
+#include "catalog/pg_auth_members.h"
 #include "catalog/pg_authid.h"
-#include "catalog/pg_collation_d.h"
+#include "catalog/pg_cast.h"
+#include "catalog/pg_collation.h"
+#include "catalog/pg_constraint.h"
 #include "catalog/pg_database.h"
+#include "catalog/pg_db_role_setting.h"
+#include "catalog/pg_inherits.h"
+#include "catalog/pg_opclass.h"
+#include "catalog/pg_operator.h"
+#include "catalog/pg_partitioned_table.h"
+#include "catalog/pg_policy.h"
 #include "catalog/pg_proc.h"
+#include "catalog/pg_rewrite.h"
+#include "catalog/pg_trigger.h"
 #include "catalog/pg_type.h"
 #include "catalog/catalog.h"
 #include "catalog/yb_catalog_version.h"
@@ -1509,7 +1524,7 @@ yb_servers(PG_FUNCTION_ARGS)
     MemoryContextSwitchTo(oldcontext);
   }
   funcctx = SRF_PERCALL_SETUP();
-  while (funcctx->call_cntr < funcctx->max_calls)
+  if (funcctx->call_cntr < funcctx->max_calls)
   {
     Datum		values[8];
     bool		nulls[8];
@@ -1531,7 +1546,8 @@ yb_servers(PG_FUNCTION_ARGS)
     tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
     SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
   }
-  SRF_RETURN_DONE(funcctx);
+  else
+    SRF_RETURN_DONE(funcctx);
 }
 
 bool YBIsSupportedLibcLocale(const char *localebuf) {
@@ -2161,4 +2177,85 @@ void YbCheckUnsupportedSystemColumns(Var *var, const char *colname, RangeTblEntr
 		default:
 			break;
 	}
+}
+
+void YbRegisterSysTableForPrefetching(int sys_table_id) {
+	int db_id = MyDatabaseId;
+	int sys_table_index_id = InvalidOid;
+
+	switch(sys_table_id)
+	{
+		// TemplateDb tables
+		case AuthMemRelationId:                           // pg_auth_members
+			sys_table_index_id = AuthMemMemRoleIndexId;
+			db_id = TemplateDbOid;
+			break;
+		case AuthIdRelationId:                            // pg_authid
+			db_id = TemplateDbOid;
+			sys_table_index_id = AuthIdRolnameIndexId;
+			break;
+		case DatabaseRelationId:                          // pg_database
+			db_id = TemplateDbOid;
+			sys_table_index_id = DatabaseNameIndexId;
+			break;
+
+		case DbRoleSettingRelationId:                     // pg_db_role_setting
+			db_id = TemplateDbOid;
+			break;
+
+		// MyDb tables
+		case AccessMethodProcedureRelationId:             // pg_amproc
+			sys_table_index_id = AccessMethodProcedureIndexId;
+			break;
+		case AccessMethodRelationId:                      // pg_am AmNameIndexId
+			sys_table_index_id = AmNameIndexId;
+			break;
+		case AttrDefaultRelationId:                       // pg_attrdef
+			sys_table_index_id = AttrDefaultIndexId;
+			break;
+		case AttributeRelationId:                         // pg_attribute
+			sys_table_index_id = AttributeRelidNameIndexId;
+			break;
+		case ConstraintRelationId:                        // pg_constraint
+			sys_table_index_id = ConstraintRelidTypidNameIndexId;
+			break;
+		case InheritsRelationId:                          // pg_inherits
+			sys_table_index_id = InheritsParentIndexId;
+			break;
+		case OperatorClassRelationId:                     // pg_opclass
+			sys_table_index_id = OpclassAmNameNspIndexId;
+			break;
+		case OperatorRelationId:                          // pg_operator
+			sys_table_index_id = OperatorNameNspIndexId;
+			break;
+		case PolicyRelationId:                            // pg_policy
+			sys_table_index_id = PolicyPolrelidPolnameIndexId;
+			break;
+		case RelationRelationId:                          // pg_class
+			sys_table_index_id = ClassNameNspIndexId;
+			break;
+		case RewriteRelationId:                           // pg_rewrite
+			sys_table_index_id = RewriteRelRulenameIndexId;
+			break;
+		case TriggerRelationId:                           // pg_trigger
+			sys_table_index_id = TriggerRelidNameIndexId;
+			break;
+		case TypeRelationId:                              // pg_type
+			sys_table_index_id = TypeNameNspIndexId;
+			break;
+
+		case CastRelationId:        switch_fallthrough(); // pg_cast
+		case IndexRelationId:       switch_fallthrough(); // pg_index
+		case PartitionedRelationId: switch_fallthrough(); // pg_partitioned_table
+		case ProcedureRelationId:   break;                // pg_proc
+
+		default:
+		{
+			ereport(FATAL,
+                    (errcode(ERRCODE_INTERNAL_ERROR),
+                    errmsg("Sys table '%d' are not yet inteded for preloading", sys_table_id)));
+
+		}
+	}
+	YBCRegisterSysTableForPrefetching(db_id, sys_table_id, sys_table_index_id);
 }

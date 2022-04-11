@@ -17,23 +17,28 @@ Helps find the Linuxbrew installation.
 
 import os
 import sys
-from yb.command_util import run_program
-from yb.common_util import safe_path_join, YB_SRC_ROOT
+import subprocess
+
+from yb.common_util import safe_path_join, YB_SRC_ROOT, shlex_join
 
 from typing import Optional
 
 
-g_linuxbrew_dir: Optional[str] = None
 g_build_root: Optional[str] = None
+
+g_linuxbrew_home: Optional['LinuxbrewHome'] = None
+g_linuxbrew_home_initialized: bool = False
 
 
 class LinuxbrewHome:
+    linuxbrew_dir: Optional[str]
+    linuxbrew_link_target: Optional[str]
+    cellar_glibc_dir: Optional[str]
+    ldd_path: Optional[str]
+    ld_so_path: Optional[str]
+    patchelf_path: Optional[str]
+
     def __init__(self, build_root: Optional[str] = None) -> None:
-        old_build_root = os.environ.get('BUILD_ROOT')
-        if build_root is not None:
-            os.environ['BUILD_ROOT'] = build_root
-        else:
-            build_root = os.environ.get('BUILD_ROOT')
         self.linuxbrew_dir = None
         self.linuxbrew_link_target = None
         self.cellar_glibc_dir = None
@@ -41,33 +46,29 @@ class LinuxbrewHome:
         self.ld_so_path = None
         self.patchelf_path = None
 
-        try:
-            find_script_result = run_program(os.path.join(
-                YB_SRC_ROOT, 'build-support', 'find_linuxbrew.sh'))
-            linuxbrew_dir = find_script_result.stdout.strip()
-            if not linuxbrew_dir:
-                return
-            if not os.path.isdir(linuxbrew_dir) and os.path.exists('/etc/centos-release'):
-                raise RuntimeError(
-                        ("Directory returned by the '{}' script does not exist: '{}'. " +
-                         "This is only an error on CentOS. Details: {}").format(
-                                find_script_result.program_path,
-                                linuxbrew_dir,
-                                find_script_result))
-            self.linuxbrew_dir = os.path.realpath(linuxbrew_dir)
+        find_linuxbrew_cmd_line = [
+            os.path.join(YB_SRC_ROOT, 'build-support', 'find_linuxbrew.sh')
+        ]
+        if build_root:
+            find_linuxbrew_cmd_line.extend(['--build-root', build_root])
 
-            # Directories derived from the Linuxbrew top-level one.
-            self.linuxbrew_link_target = os.path.realpath(linuxbrew_dir)
-            self.cellar_glibc_dir = safe_path_join([self.linuxbrew_dir, 'Cellar', 'glibc'])
-            self.ldd_path = safe_path_join([self.linuxbrew_dir, 'bin', 'ldd'])
-            self.ld_so_path = safe_path_join([self.linuxbrew_dir, 'lib', 'ld.so'])
-            self.patchelf_path = safe_path_join([self.linuxbrew_dir, 'bin', 'patchelf'])
-        finally:
-            if old_build_root is None:
-                if 'BUILD_ROOT' in os.environ:
-                    del os.environ['BUILD_ROOT']
-            else:
-                os.environ['BUILD_ROOT'] = old_build_root
+        linuxbrew_dir = subprocess.check_output(find_linuxbrew_cmd_line).decode('utf-8').strip()
+        # If the find_linuxbrew.sh script returns nothing, Linuxbrew is not being used.
+        if not linuxbrew_dir:
+            return
+
+        if not os.path.isdir(linuxbrew_dir):
+            raise IOError(
+                f"Linuxbrew directory does not exist: {linuxbrew_dir}. "
+                f"Command used to find it: {find_linuxbrew_cmd_line}")
+        self.linuxbrew_dir = os.path.realpath(linuxbrew_dir)
+
+        # Directories derived from the Linuxbrew top-level one.
+        self.linuxbrew_link_target = os.path.realpath(linuxbrew_dir)
+        self.cellar_glibc_dir = safe_path_join([self.linuxbrew_dir, 'Cellar', 'glibc'])
+        self.ldd_path = safe_path_join([self.linuxbrew_dir, 'bin', 'ldd'])
+        self.ld_so_path = safe_path_join([self.linuxbrew_dir, 'lib', 'ld.so'])
+        self.patchelf_path = safe_path_join([self.linuxbrew_dir, 'bin', 'patchelf'])
 
     def path_is_in_linuxbrew_dir(self, path: str) -> bool:
         if not self.is_enabled():
@@ -93,11 +94,35 @@ def set_build_root(build_root: str) -> None:
     g_build_root = build_root
 
 
-def get_linuxbrew_dir() -> Optional[str]:
+def get_linuxbrew_home() -> Optional[LinuxbrewHome]:
+    global g_linuxbrew_home
+    global g_linuxbrew_home_initialized
+
+    if g_linuxbrew_home_initialized:
+        return g_linuxbrew_home
+
     if not sys.platform.startswith('linux'):
+        g_linuxbrew_home = None
+        g_linuxbrew_home_initialized = True
         return None
 
-    global g_linuxbrew_dir
-    if not g_linuxbrew_dir:
-        g_linuxbrew_dir = LinuxbrewHome(g_build_root).linuxbrew_dir
-    return g_linuxbrew_dir
+    linuxbrew_home = LinuxbrewHome(g_build_root)
+    if not linuxbrew_home.is_enabled():
+        g_linuxbrew_home = None
+        g_linuxbrew_home_initialized = True
+        return None
+
+    g_linuxbrew_home = linuxbrew_home
+    g_linuxbrew_home_initialized = True
+    return g_linuxbrew_home
+
+
+def get_linuxbrew_dir() -> Optional[str]:
+    linuxbrew_home = get_linuxbrew_home()
+    if linuxbrew_home is None:
+        return None
+    return linuxbrew_home.linuxbrew_dir
+
+
+def using_linuxbrew() -> bool:
+    return get_linuxbrew_home() is not None

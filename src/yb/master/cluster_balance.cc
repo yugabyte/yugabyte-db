@@ -135,11 +135,6 @@ DEFINE_bool(load_balancer_ignore_cloud_info_similarity, false,
             "If true, ignore the similarity between cloud infos when deciding which tablet "
             "to move.");
 
-// TODO(tsplit): make false by default or even remove flag after
-// https://github.com/yugabyte/yugabyte-db/issues/10301 is fixed.
-DEFINE_test_flag(
-    bool, load_balancer_skip_inactive_tablets, true, "Don't move inactive (hidden) tablets");
-
 namespace yb {
 namespace master {
 
@@ -490,6 +485,27 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
     TabletServerId out_from_ts;
     TabletServerId out_to_ts;
 
+    if (!PREDICT_FALSE(FLAGS_TEST_load_balancer_handle_under_replicated_tablets_only)) {
+      // Handle cleanup after over-replication.
+      for (; remaining_removals > 0; --remaining_removals) {
+        if (state_->allow_only_leader_balancing_) {
+          YB_LOG_EVERY_N_SECS(INFO, 30)
+              << "Skipping remove replicas. Only leader balancing table " << table.first;
+          break;
+        }
+        auto handle_remove = HandleRemoveReplicas(&out_tablet_id, &out_from_ts);
+        if (!handle_remove.ok()) {
+          LOG(WARNING) << "Skipping remove replicas for " << table.first << ": "
+                       << StatusToString(handle_remove);
+          master_errors++;
+          break;
+        }
+        if (!*handle_remove) {
+          break;
+        }
+      }
+    }
+
     // Handle adding and moving replicas.
     for ( ; remaining_adds > 0; --remaining_adds) {
       if (state_->allow_only_leader_balancing_) {
@@ -508,28 +524,10 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
         break;
       }
     }
+
     if (PREDICT_FALSE(FLAGS_TEST_load_balancer_handle_under_replicated_tablets_only)) {
       LOG(INFO) << "Skipping remove replicas and leader moves for " << table.first;
       continue;
-    }
-
-    // Handle cleanup after over-replication.
-    for ( ; remaining_removals > 0; --remaining_removals) {
-      if (state_->allow_only_leader_balancing_) {
-        YB_LOG_EVERY_N_SECS(INFO, 30) << "Skipping remove replicas. Only leader balancing table "
-                                      << table.first;
-        break;
-      }
-      auto handle_remove = HandleRemoveReplicas(&out_tablet_id, &out_from_ts);
-      if (!handle_remove.ok()) {
-        LOG(WARNING) << "Skipping remove replicas for " << table.first << ": "
-                     << StatusToString(handle_remove);
-        master_errors++;
-        break;
-      }
-      if (!*handle_remove) {
-        break;
-      }
     }
 
     // Handle tablet servers with too many leaders.
@@ -1432,7 +1430,7 @@ Result<TabletInfos> ClusterLoadBalancer::GetTabletsForTable(const TableId& table
         table_uuid);
   }
 
-  return table_info->GetTablets(IncludeInactive(!FLAGS_TEST_load_balancer_skip_inactive_tablets));
+  return table_info->GetTablets(IncludeInactive::kTrue);
 }
 
 const TableInfoMap& ClusterLoadBalancer::GetTableMap() const {

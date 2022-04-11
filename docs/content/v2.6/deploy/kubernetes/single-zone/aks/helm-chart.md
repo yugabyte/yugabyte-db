@@ -17,13 +17,13 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/deploy/kubernetes/single-zone/aks/helm-chart" class="nav-link active">
+    <a href="/preview/deploy/kubernetes/single-zone/aks/helm-chart" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Helm chart
     </a>
   </li>
   <li >
-    <a href="/latest/deploy/kubernetes/single-zone/aks/statefulset-yaml" class="nav-link">
+    <a href="/preview/deploy/kubernetes/single-zone/aks/statefulset-yaml" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       StatefulSet YAML
     </a>
@@ -116,7 +116,7 @@ You should now be able to view showing the “yugabytedbRG” resource group in 
 
 ### Step 3: Create the Kubernetes cluster
 
-You can now create a Kubernetes cluster by running the following command. 
+You can now create a Kubernetes cluster by running the following command.
 
 {{< note title="Note" >}}
 
@@ -280,7 +280,7 @@ $ helm install yb-demo -n yb-demo yugabytedb/yugabyte \
  --timeout=15m
 ```
 
-Depending on your resources, it may take some time to get everything installed, deployed, and configured. 
+Depending on your resources, it may take some time to get everything installed, deployed, and configured.
 
 After you see a `success` message, you can verify that the YugabyteDB pods are running by running the following command:
 

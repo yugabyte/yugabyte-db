@@ -54,7 +54,7 @@ public class ResizeNode extends UpgradeTaskBase {
           // Verify the request params and fail if invalid.
           taskParams().verifyParams(universe);
           Pair<List<NodeDetails>, List<NodeDetails>> nodes = fetchNodesForCluster();
-          // Create task sequence for VM Image upgrade.
+          // Create task sequence to resize nodes.
           final UniverseDefinitionTaskParams.UserIntent userIntent =
               taskParams().getPrimaryCluster().userIntent;
           String newInstanceType = userIntent.instanceType;
@@ -183,6 +183,7 @@ public class ResizeNode extends UpgradeTaskBase {
     updateNodeDetailsParams.azUuid = node.azUuid;
     updateNodeDetailsParams.nodeName = node.nodeName;
     updateNodeDetailsParams.details = node;
+    updateNodeDetailsParams.updateCustomImageUsage = false;
 
     UpdateNodeDetails updateNodeTask = createTask(UpdateNodeDetails.class);
     updateNodeTask.initialize(updateNodeDetailsParams);

@@ -15,6 +15,7 @@ import static com.yugabyte.yw.common.Util.areMastersUnderReplicated;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -109,7 +110,12 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
       List<NodeDetails> nodeAsList = Arrays.asList(currentNode);
 
       // Set gflags for master.
-      createGFlagsOverrideTasks(nodeAsList, ServerType.MASTER, true /* isShell */);
+      createGFlagsOverrideTasks(
+          nodeAsList,
+          ServerType.MASTER,
+          true /* isShell */,
+          VmUpgradeTaskType.None,
+          false /*ignoreUseCustomImageConfig*/);
 
       // Check that installed MASTER software version is consistent.
       createSoftwareInstallTasks(nodeAsList, ServerType.MASTER, null);

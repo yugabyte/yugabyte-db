@@ -77,7 +77,7 @@ class TcpStream : public Stream {
   void Shutdown(const Status& status) override;
   Result<size_t> Send(OutboundDataPtr data) override;
   CHECKED_STATUS TryWrite() override;
-  void Cancelled(size_t handle) override;
+  bool Cancelled(size_t handle) override;
 
   bool Idle(std::string* reason_not_idle) override;
   bool IsConnected() override { return connected_; }

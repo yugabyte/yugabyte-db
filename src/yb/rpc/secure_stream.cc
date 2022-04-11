@@ -243,6 +243,25 @@ int64_t ProtocolsOption() {
   return result;
 }
 
+
+class OpenSSLInitializer {
+ public:
+  OpenSSLInitializer() {
+    SSL_library_init();
+    SSL_load_error_strings();
+    OpenSSL_add_all_algorithms();
+    OpenSSL_add_all_ciphers();
+  }
+
+  ~OpenSSLInitializer() {
+    ERR_free_strings();
+    EVP_cleanup();
+    CRYPTO_cleanup_all_ex_data();
+    ERR_remove_thread_state(nullptr);
+    SSL_COMP_free_compression_methods();
+  }
+};
+
 } // namespace
 
 namespace detail {
@@ -254,8 +273,12 @@ YB_RPC_SSL_TYPE_DEFINE(X509)
 
 }
 
+void InitOpenSSL() {
+  static OpenSSLInitializer initializer;
+}
+
 SecureContext::SecureContext() {
-  encryption::InitOpenSSL();
+  InitOpenSSL();
 
   context_.reset(SSL_CTX_new(SSLv23_method()));
   DCHECK(context_);

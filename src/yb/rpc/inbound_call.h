@@ -35,6 +35,7 @@
 #include <string>
 #include <vector>
 
+#include <boost/optional/optional.hpp>
 #include <glog/logging.h>
 
 #include "yb/gutil/stl_util.h"
@@ -85,7 +86,7 @@ class InboundCallHandler {
 
   virtual void Failure(const InboundCallPtr& call, const Status& status) = 0;
 
-  virtual bool CallQueued() = 0;
+  virtual boost::optional<int64_t> CallQueued(int64_t rpc_queue_limit) = 0;
 
   virtual void CallDequeued() = 0;
 
@@ -96,10 +97,14 @@ class InboundCallHandler {
 // Inbound call on server
 class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
  public:
-  typedef std::function<void(InboundCall*)> CallProcessedListener;
+  class CallProcessedListener {
+   public:
+    virtual void CallProcessed(InboundCall* call) = 0;
+    virtual ~CallProcessedListener() = default;
+  };
 
   InboundCall(ConnectionPtr conn, RpcMetrics* rpc_metrics,
-              CallProcessedListener call_processed_listener);
+              CallProcessedListener* call_processed_listener);
   virtual ~InboundCall();
 
   void SetRpcMethodMetrics(std::reference_wrapper<const RpcMethodMetrics> value);
@@ -158,10 +163,12 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   // it gets handled.
   MonoDelta GetTimeInQueue() const;
 
-  ThreadPoolTask* BindTask(InboundCallHandler* handler);
+  virtual ThreadPoolTask* BindTask(InboundCallHandler* handler) {
+    return BindTask(handler, std::numeric_limits<int64_t>::max());
+  }
 
   void ResetCallProcessedListener() {
-    call_processed_listener_ = decltype(call_processed_listener_)();
+    call_processed_listener_ = nullptr;
   }
 
   virtual Slice serialized_remote_method() const = 0;
@@ -203,7 +210,11 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
 
   const CallData& request_data() const { return request_data_; }
 
+  int64_t GetRpcQueuePosition() const { return rpc_queue_position_; }
+
  protected:
+  ThreadPoolTask* BindTask(InboundCallHandler* handler, int64_t rpc_queue_limit);
+
   void NotifyTransferred(const Status& status, Connection* conn) override;
 
   virtual void Clear();
@@ -241,7 +252,7 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   // The connection on which this inbound call arrived. Can be null for LocalYBInboundCall.
   ConnectionPtr conn_ = nullptr;
   RpcMetrics* rpc_metrics_;
-  std::function<void(InboundCall*)> call_processed_listener_;
+  CallProcessedListener* call_processed_listener_;
 
   class InboundCallTask : public ThreadPoolTask {
    public:
@@ -265,6 +276,7 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   InboundCallHandler* tracker_ = nullptr;
 
   size_t method_index_ = 0;
+  int64_t rpc_queue_position_ = -1;
 
   DISALLOW_COPY_AND_ASSIGN(InboundCall);
 };
