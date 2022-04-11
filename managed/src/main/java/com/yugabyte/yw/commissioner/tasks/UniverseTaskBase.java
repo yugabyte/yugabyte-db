@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.google.common.base.Preconditions.checkNotNull;
 import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
 import static com.yugabyte.yw.forms.UniverseTaskParams.isFirstTryForTask;
 
@@ -1856,7 +1857,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
-  public void updateBackupState(boolean state) {
+  // Update the Universe's 'backupInProgress' flag to new state.
+  private void updateBackupState(boolean state) {
     UniverseUpdater updater =
         new UniverseUpdater() {
           @Override
@@ -1866,7 +1868,31 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             universe.setUniverseDetails(universeDetails);
           }
         };
-    saveUniverseDetails(updater);
+    if (state) {
+      // New state is to set backupInProgress to true.
+      // This method increments universe version if HA is enabled.
+      saveUniverseDetails(updater);
+    } else {
+      // New state is to set backupInProgress to false.
+      // This method simply updates the backupInProgress without changing the universe version.
+      // This is called at the end of backup to release the universe for other tasks.
+      Universe.saveDetails(taskParams().universeUUID, updater, false);
+    }
+  }
+
+  // Update the Universe's 'backupInProgress' flag to new state.
+  // It throws exception if the universe is already being locked by another task.
+  public void lockedUpdateBackupState(boolean newState) {
+    checkNotNull(taskParams().universeUUID, "Universe UUID must be set.");
+    if (Universe.getOrBadRequest(taskParams().universeUUID).getUniverseDetails().backupInProgress
+        == newState) {
+      if (newState) {
+        throw new IllegalStateException("A backup for this universe is already in progress.");
+      } else {
+        return;
+      }
+    }
+    updateBackupState(newState);
   }
 
   /**

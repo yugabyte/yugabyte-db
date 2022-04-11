@@ -597,20 +597,6 @@ public class Util {
     return formatter.format(new Date(unixTimestampMs));
   }
 
-  // Update the Universe's 'backupInProgress' flag to new state in synchronized manner to avoid
-  // race condition.
-  public static synchronized void lockedUpdateBackupState(
-      UUID universeUUID, UniverseTaskBase backupTask, boolean newState) {
-    if (Universe.getOrBadRequest(universeUUID).getUniverseDetails().backupInProgress == newState) {
-      if (newState) {
-        throw new RuntimeException("A backup for this universe is already in progress.");
-      } else {
-        return;
-      }
-    }
-    backupTask.updateBackupState(newState);
-  }
-
   public static String getHostname() {
     try {
       return InetAddress.getLocalHost().getHostName();
