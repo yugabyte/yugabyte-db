@@ -2,11 +2,11 @@
 title: Overview
 headerTitle: Overview
 linkTitle: Overview
-description: Overview of the Yugabyte Platform and its architecture.
+description: Overview of YugabyteDB Anywhere and its architecture.
 image: /images/section_icons/deploy/enterprise.png
-headcontent: Overview of the Yugabyte Platform and architecture.
+headcontent: Overview of YugabyteDB Anywhere and architecture.
 type: page
-section: YUGABYTE PLATFORM
+section: YUGABYTEDB ANYWHERE
 aliases:
   - /latest/yugabyte-platform/
 menu:
@@ -15,15 +15,17 @@ menu:
     weight: 10
 ---
 
-Yugabyte Platform is best fit for mission-critical deployments, such as production or pre-production testing. The Yugabyte Platform console is used in a highly-available mode and orchestrates and manages YugabyteDB universes, or clusters, on one or more regions (across public cloud and private on-premises data centers).
+YugabyteDB Anywhere is best fit for mission-critical deployments, such as production or pre-production testing. The YugabyteDB Anywhere UI is used in a highly-available mode, allowing you to create and manage YugabyteDB universes, or clusters, on one or more regions across public cloud and private on-premises data centers.
 
-Yugabyte Platform is a containerized application that is installed and managed using <a href="https://www.replicated.com/" target="_blank">Replicated</a> for mission-critical environments (for example, production, performance, or failure mode testing). Replicated is a purpose-built tool for on-premises deployments and life cycle management of containerized applications. For environments that are not mission-critical, such as those needed for local development or simple functional testing, you can also use <a href="../../quick-start/install">YugabyteDB</a>.
+YugabyteDB Anywhere is a containerized application that you can install using <a href="https://www.replicated.com/" target="_blank">Replicated</a> for production, performance, or failure mode testing. For local development or simple functional testing you can also use <a href="../../quick-start/install">YugabyteDB</a>.
 
-Yugabyte Platform can be accessed using any desktop internet browser that has been supported by its maker in the past 24 months and that has a market share of at least 0.2%. In addition, Yugabyte Platform may be accessed by most mobile browsers, except Opera Mini.
+You can access YugabyteDB Anywhere via an Internet browser that has been supported by its maker in the past 24 months and that has a market share of at least 0.2%. In addition, you can access YugabyteDB Anywhere via most mobile browsers, except Opera Mini.
 
-Yugabyte Platform offers three levels of user accounts: Super Admin, Admin, and Read-only, with the latter having rather limited access to functionality. Unless otherwise specified, the Yugabyte Platform documentation describes the functionality available to a Super Admin user.
+YugabyteDB Anywhere offers three levels of user accounts: Super Admin, Admin, and Read-only, with the latter having rather limited access to functionality. Unless otherwise specified, the YugabyteDB Anywhere documentation describes the functionality available to a Super Admin user.
 
-## Getting Started with Yugabyte Platform
+## Get started
+
+<br>
 
 <div class="row">
 
@@ -34,7 +36,7 @@ Yugabyte Platform offers three levels of user accounts: Super Admin, Admin, and 
         <div class="title">Install</div>
       </div>
       <div class="body">
-        Overview of installing Yugabyte Platform on any environment
+        Installing YugabyteDB Anywhere on any environment
       </div>
     </a>
   </div>
@@ -46,7 +48,7 @@ Yugabyte Platform offers three levels of user accounts: Super Admin, Admin, and 
         <div class="title">Configure</div>
       </div>
       <div class="body">
-        Configuring Yugabyte Platform to various providers
+        Configuring YugabyteDB Anywhere to various cloud providers
       </div>
     </a>
   </div>

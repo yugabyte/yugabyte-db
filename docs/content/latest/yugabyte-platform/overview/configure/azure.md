@@ -2,7 +2,7 @@
 title: Configure Azure
 headerTitle: Configure Azure
 linkTitle: Configure
-description: Configuring Yugabyte Platform on Azure
+description: Configuring YugabyteDB Anywhere on Azure
 image: /images/section_icons/deploy/enterprise.png
 menu:
   latest:
@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: false
 ---
 
-Select your cloud provider to see the steps for configuration of database nodes. Click on the elements to see detailed steps.
+For overview of how to configure database nodes, select one of the following cloud providers:
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
@@ -53,6 +53,10 @@ Select your cloud provider to see the steps for configuration of database nodes.
   </li>
 
 </ul>
+
+<br>
+
+Click elements of the following chart to access detailed steps:
 
 <img src="/images/ee/flowchart/yb-configure-azure.png" usemap="#image-map">
 
