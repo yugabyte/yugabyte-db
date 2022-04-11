@@ -17,7 +17,11 @@ menu:
 
 The quickest way to get started with YugabyteDB is to [sign up for Yugabyte Cloud](http://cloud.yugabyte.com) and create a free cluster. Although not suitable for production workloads, the free cluster includes enough resources to learn and develop applications with YugabyteDB.
 
-YugabyteDB is a distributed database optimized for deployment across a cluster of servers. The free cluster has a single node and limited resources, suitable for running tutorials, [Yugabyte University](https://university.yugabyte.com), and [building sample applications](../cloud-build-apps/). To evaluate Yugabyte Cloud for production use or conduct a proof-of-concept (POC), contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) for trial credits.
+{{< note title="Note" >}}
+
+YugabyteDB is a distributed database optimized for deployment across a cluster of servers. The free cluster has a single node and limited resources, suitable for running tutorials, [Yugabyte University](https://university.yugabyte.com), and [building sample applications](cloud-build-apps/). To evaluate Yugabyte Cloud for production use or conduct a proof-of-concept (POC), contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) for trial credits.
+
+{{< /note >}}
 
 ## Get started
 
