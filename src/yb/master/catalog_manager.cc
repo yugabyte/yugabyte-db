@@ -6459,7 +6459,7 @@ bool CatalogManager::ProcessCommittedConsensusState(
          GetCommittedConsensusStateOpIdIndex(report) < prev_cstate.config().opid_index())) {
     LOG(WARNING) << "Stale heartbeat for Tablet " << tablet->ToString()
                  << " on TS " << ts_desc->permanent_uuid()
-                 << "cstate=" << cstate.ShortDebugString()
+                 << " cstate=" << cstate.ShortDebugString()
                  << ", prev_cstate=" << prev_cstate.ShortDebugString();
     return false;
   }
@@ -6716,7 +6716,8 @@ Status CatalogManager::ProcessTabletReportBatch(
         Substitute("This master is no longer the leader, unable to handle report for tablet $0",
             tablet_id));
 
-    VLOG(3) << "tablet report: " << report.ShortDebugString();
+    VLOG(3) << "tablet report: " << report.ShortDebugString()
+            << " peer: " << ts_desc->permanent_uuid();
 
     // 3. Delete the tablet if it (or its table) have been deleted.
     if (tablet_lock->is_deleted() ||
