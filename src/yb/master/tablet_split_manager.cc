@@ -469,28 +469,25 @@ void TabletSplitManager::MaybeDoSplitting(const TableInfoMap& table_info_map) {
 }
 
 void TabletSplitManager::ProcessSplitTabletResult(
-    const Status& status,
     const TableId& split_table_id,
     const SplitTabletIds& split_tablet_ids) {
-  if (!status.ok()) {
-    LOG(WARNING) << "AsyncSplitTablet task failed with status: " << status;
-  } else {
-    // TODO(JHE) Handle failure cases here (github issue #11030).
-    // Update the xCluster tablet mapping.
-    Status s = xcluster_split_driver_->UpdateXClusterConsumerOnTabletSplit(
-        split_table_id, split_tablet_ids);
-    WARN_NOT_OK(s, Format(
-        "Encountered an error while updating the xCluster consumer tablet mapping. "
-        "Table id: $0, Split Tablets: $1",
-        split_table_id, split_tablet_ids.ToString()));
-    // Also process tablet splits for producer side splits.
-    s = xcluster_split_driver_->UpdateXClusterProducerOnTabletSplit(
-        split_table_id, split_tablet_ids);
-    WARN_NOT_OK(s, Format(
-        "Encountered an error while updating the xCluster producer tablet mapping. "
-        "Table id: $0, Split Tablets: $1",
-        split_table_id, split_tablet_ids.ToString()));
-  }
+  LOG(INFO) << "Processing split tablet result for table " << split_table_id
+            << ", split tablet ids: " << split_tablet_ids.ToString();
+  // TODO(JHE) Handle failure cases here (github issue #11030).
+  // Update the xCluster tablet mapping.
+  Status s = xcluster_split_driver_->UpdateXClusterConsumerOnTabletSplit(
+      split_table_id, split_tablet_ids);
+  WARN_NOT_OK(s, Format(
+      "Encountered an error while updating the xCluster consumer tablet mapping. "
+      "Table id: $0, Split Tablets: $1",
+      split_table_id, split_tablet_ids.ToString()));
+  // Also process tablet splits for producer side splits.
+  s = xcluster_split_driver_->UpdateXClusterProducerOnTabletSplit(
+      split_table_id, split_tablet_ids);
+  WARN_NOT_OK(s, Format(
+      "Encountered an error while updating the xCluster producer tablet mapping. "
+      "Table id: $0, Split Tablets: $1",
+      split_table_id, split_tablet_ids.ToString()));
 }
 
 }  // namespace master

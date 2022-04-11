@@ -27,8 +27,7 @@ namespace master {
 class TabletSplitCompleteHandlerIf {
  public:
   virtual ~TabletSplitCompleteHandlerIf() {}
-  virtual void ProcessSplitTabletResult(const Status& status,
-                                        const TableId& consumer_table_id,
+  virtual void ProcessSplitTabletResult(const TableId& consumer_table_id,
                                         const SplitTabletIds& split_tablet_ids) = 0;
 };
 

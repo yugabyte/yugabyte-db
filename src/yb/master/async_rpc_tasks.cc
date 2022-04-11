@@ -1447,13 +1447,17 @@ bool AsyncSplitTablet::SendRequest(int attempt) {
 }
 
 void AsyncSplitTablet::Finished(const Status& status) {
-  if (tablet_split_complete_handler_) {
+  // Also treat AlreadyPresent errors as an error, since we only want to run these post split
+  // operations once.
+  if (tablet_split_complete_handler_ && status.ok() && !resp_.has_error()) {
     SplitTabletIds split_tablet_ids {
       .source = req_.tablet_id(),
       .children = {req_.new_tablet1_id(), req_.new_tablet2_id()}
     };
-    tablet_split_complete_handler_->ProcessSplitTabletResult(
-        status, table_->id(), split_tablet_ids);
+    tablet_split_complete_handler_->ProcessSplitTabletResult(table_->id(), split_tablet_ids);
+  } else {
+    VLOG_WITH_PREFIX(1) << "Skipping processing of AsyncSplitTablet result for table "
+                        << table_->id() << ", tablet " << req_.tablet_id() << ".";
   }
 }
 

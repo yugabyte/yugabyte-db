@@ -1396,6 +1396,7 @@ class LookupFullTableRpc : public LookupRpc {
   void CallRemoteMethod() override {
     // Fill out the request.
     req_.mutable_table()->set_table_id(table()->id());
+    req_.set_max_returned_locations(std::numeric_limits<int32_t>::max());
     // The end partition key is left unset intentionally so that we'll prefetch
     // some additional tablets.
     master_client_proxy()->GetTableLocationsAsync(
@@ -2011,15 +2012,9 @@ void MetaCache::LookupTabletByKey(const std::shared_ptr<YBTable>& table,
                                   CoarseTimePoint deadline,
                                   LookupTabletCallback callback) {
   if (table->ArePartitionsStale()) {
-    table->RefreshPartitions(client_, [this, table, partition_key, deadline,
-                              callback = std::move(callback)](const Status& status) {
-      if (!status.ok()) {
-        callback(status);
-        return;
-      }
-      InvalidateTableCache(*table);
-      LookupTabletByKey(table, partition_key, deadline, std::move(callback));
-    });
+    RefreshTablePartitions(
+        std::bind(&MetaCache::LookupTabletByKey, this, table, partition_key, deadline, _1),
+        table, std::move(callback));
     return;
   }
 
@@ -2044,9 +2039,16 @@ void MetaCache::LookupTabletByKey(const std::shared_ptr<YBTable>& table,
       << ", partition_key: " << Slice(partition_key).ToDebugHexString();
 }
 
-void MetaCache::LookupAllTablets(const std::shared_ptr<const YBTable>& table,
+void MetaCache::LookupAllTablets(const std::shared_ptr<YBTable>& table,
                                  CoarseTimePoint deadline,
                                  LookupTabletRangeCallback callback) {
+  if (table->ArePartitionsStale()) {
+    RefreshTablePartitions(
+        std::bind(&MetaCache::LookupAllTablets, this, table, deadline, _1),
+        table, std::move(callback));
+    return;
+  }
+
   // We first want to check the cache in read-only mode, and only if we can't find anything
   // do a lookup in write mode.
   if (DoLookupAllTablets<SharedLock<std::shared_timed_mutex>>(table, deadline, &callback)) {
@@ -2146,6 +2148,21 @@ void MetaCache::LookupTabletById(const TabletId& tablet_id,
   auto result = DoLookupTabletById<std::lock_guard<decltype(mutex_)>>(
       tablet_id, table, include_inactive, deadline, use_cache, &callback);
   LOG_IF(DFATAL, !result) << "Lookup was not started for tablet " << tablet_id;
+}
+
+template <class Func, class Callback>
+void MetaCache::RefreshTablePartitions(
+    Func&& func, const std::shared_ptr<YBTable>& table, Callback&& callback) {
+  table->RefreshPartitions(client_,
+      [this, func = std::move(func), table, callback = std::move(callback)](const Status& status) {
+    if (!status.ok()) {
+      callback(status);
+      return;
+    }
+    InvalidateTableCache(*table);
+    func(callback);
+  });
+  return;
 }
 
 void MetaCache::MarkTSFailed(RemoteTabletServer* ts,
