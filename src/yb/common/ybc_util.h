@@ -55,6 +55,16 @@ extern bool yb_force_global_transaction;
 extern bool suppress_nonpg_logs;
 
 /*
+ * Guc variable to control the max session batch size before flushing.
+ */
+extern int ysql_session_max_batch_size;
+
+/*
+ * Guc variable to control the max number of in-flight operations from YSQL to tablet server.
+ */
+extern int ysql_max_in_flight_ops;
+
+/*
  * Guc variable to enable binary restore from a binary backup of YSQL tables. When doing binary
  * restore, we copy the docdb SST files of those tables from the source database and reuse them
  * for a newly created target database to restore those tables.

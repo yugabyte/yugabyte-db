@@ -163,6 +163,14 @@ bool Empty(const PgOperationBuffer& buffer) {
   return !buffer.Size();
 }
 
+void Update(BufferingSettings* buffering_settings) {
+  /* Use the gflag value if the session variable is unset for batch size. */
+  buffering_settings->max_batch_size = ysql_session_max_batch_size <= 0
+    ? FLAGS_ysql_session_max_batch_size
+    : static_cast<uint64_t>(ysql_session_max_batch_size);
+  buffering_settings->max_in_flight_operations = static_cast<uint64_t>(ysql_max_in_flight_ops);
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -294,9 +302,11 @@ PgSession::PgSession(
       pg_txn_manager_(std::move(pg_txn_manager)),
       clock_(std::move(clock)),
       buffer_(std::bind(
-          &PgSession::FlushOperations, this, std::placeholders::_1, std::placeholders::_2)),
+          &PgSession::FlushOperations, this, std::placeholders::_1, std::placeholders::_2),
+          buffering_settings_),
       tserver_shared_object_(tserver_shared_object),
       pg_callbacks_(pg_callbacks) {
+      Update(&buffering_settings_);
 }
 
 PgSession::~PgSession() = default;
@@ -453,6 +463,7 @@ Status PgSession::StartOperationsBuffering() {
                 << buffer_.Size()
                 << " buffered operations found";
   }
+  Update(&buffering_settings_);
   buffering_enabled_ = true;
   return Status::OK();
 }
@@ -568,16 +579,16 @@ Result<bool> PgSession::ForeignKeyReferenceExists(PgOid table_id,
 
   std::vector<TableYbctid> ybctids;
   ybctids.reserve(std::min<size_t>(
-      fk_reference_intent_.size(), FLAGS_ysql_session_max_batch_size));
+      fk_reference_intent_.size(), buffering_settings_.max_batch_size));
 
   // If the reader fails to get the result, we fail the whole operation (and transaction).
   // Hence it's ok to extract (erase) the keys from intent before calling reader.
   auto node = fk_reference_intent_.extract(it);
   ybctids.push_back({table_id, std::move(node.value().ybctid)});
 
-  // Read up to FLAGS_ysql_session_max_batch_size keys.
+  // Read up to session max batch size keys.
   for (auto it = fk_reference_intent_.begin();
-       it != fk_reference_intent_.end() && ybctids.size() < FLAGS_ysql_session_max_batch_size; ) {
+       it != fk_reference_intent_.end() && ybctids.size() < buffering_settings_.max_batch_size; ) {
     node = fk_reference_intent_.extract(it++);
     auto& key_ref = node.value();
     ybctids.push_back({key_ref.table_id, std::move(key_ref.ybctid)});

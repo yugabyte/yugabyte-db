@@ -3333,6 +3333,27 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"ysql_session_max_batch_size", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Sets the maximum batch size for writes that YSQL can buffer before flushing to tablet servers."),
+			gettext_noop("If this is 0, YSQL will use the gflag ysql_session_max_batch_size. If non-zero, this session variable will supersede the value of the gflag."),
+			0
+		},
+		&ysql_session_max_batch_size,
+		0, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"ysql_max_in_flight_ops", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Maximum number of in-flight operations allowed from YSQL to tablet servers"),
+			NULL,
+		},
+		&ysql_max_in_flight_ops,
+		10000, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_follower_read_staleness_ms", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Sets the staleness (in ms) to be used for performing follower reads."),
 			NULL,
