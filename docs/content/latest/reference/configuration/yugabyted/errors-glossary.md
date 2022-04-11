@@ -24,7 +24,7 @@ This page explains errors and warnings that you may see while running a Yugabyte
 
 ## Open files ulimits value set low
 
-YugabyteDB needs to create a large number of files which may not be enabled/allowed by the OS by default.
+YugabyteDB needs to create a large number of files for writing data, logs, and a variety of other information onto the disk. Operating Systems (OS) may not be configured to allow a user process to open a large number of files.
 
 We recommend setting the soft and hard limits to 1048576.
 
@@ -32,9 +32,9 @@ Refer to [Install YugabyteDB](../../../../quick-start/install/macos/) for more p
 
 ## Max user processes value set low
 
-YugabyteDB needs to create many different users while running benchmarks which requires high max\_user\_processes.
+YugabyteDB may create a large number of user processes to handle the user connections and app connections when running read and write workloads hence it's recommended to increase the max_user_processes of the Operating system.
 
-To address this warning, we recommend setting the soft and hard limits to 12000(For Linux) and 2500(For MacOS).
+To address this warning, set the soft and hard limits to at least 12000 (for Linux) and 2500 (for macOS).
 
 Refer to [Install YugabyteDB](../../../../quick-start/install/macos/) for more prerequisites.
 
