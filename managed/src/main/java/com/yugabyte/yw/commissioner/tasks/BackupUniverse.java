@@ -11,7 +11,6 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
-import static com.yugabyte.yw.common.Util.lockedUpdateBackupState;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -107,7 +106,7 @@ public class BackupUniverse extends UniverseTaskBase {
       // Update universe 'backupInProgress' flag to true or throw an exception if universe is
       // already having a backup in progress.
       if (taskParams().actionType == BackupTableParams.ActionType.CREATE) {
-        lockedUpdateBackupState(taskParams().universeUUID, this, true);
+        lockedUpdateBackupState(true);
       } else {
         // Check if the backup is in progress while other backup operations.
         if (universe.getUniverseDetails().backupInProgress) {
@@ -192,7 +191,7 @@ public class BackupUniverse extends UniverseTaskBase {
         throw t;
       } finally {
         if (taskParams().actionType == BackupTableParams.ActionType.CREATE) {
-          lockedUpdateBackupState(taskParams().universeUUID, this, false);
+          lockedUpdateBackupState(false);
         }
       }
     } catch (Throwable t) {
