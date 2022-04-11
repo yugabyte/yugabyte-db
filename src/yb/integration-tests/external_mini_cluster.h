@@ -574,6 +574,8 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   // even if we didn't explicitly call Shutdown().
   bool IsProcessAlive() const;
 
+  bool IsProcessPaused() const;
+
   virtual void Shutdown();
 
   std::vector<std::string> GetDataDirs() const { return data_dirs_; }
@@ -657,6 +659,7 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   std::vector<std::string> extra_flags_;
 
   std::unique_ptr<Subprocess> process_;
+  bool is_paused_ = false;
 
   std::unique_ptr<server::ServerStatusPB> status_;
 

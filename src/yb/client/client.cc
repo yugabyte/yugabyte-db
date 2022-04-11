@@ -497,9 +497,6 @@ Status YBClientBuilder::DoBuild(rpc::Messenger* messenger, std::unique_ptr<YBCli
 
   c->data_->meta_cache_.reset(new MetaCache(c.get()));
 
-  // Init local host names used for locality decisions.
-  RETURN_NOT_OK_PREPEND(c->data_->InitLocalHostNames(),
-                        "Could not determine local host names");
   c->data_->cloud_info_pb_ = data_->cloud_info_pb_;
   c->data_->uuid_ = data_->uuid_;
 

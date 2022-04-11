@@ -154,6 +154,28 @@ On CentOS, the correct path is `/usr/pgsql-11/bin/pg_config`.
 
 ## Using PostgreSQL extensions
 
+### file_fdw example
+
+First, install the extension:
+
+```sql
+CREATE EXTENSION file_fdw;
+```
+
+Create a foreign server:
+
+```sql
+CREATE SERVER my_server FOREIGN DATA WRAPPER file_fdw;
+```
+
+Now, you can create foreign tables that access data from files. For example:
+
+```sql
+CREATE FOREIGN TABLE employees (id int, employee_name varchar) SERVER myserver OPTIONS (filename 'employees.csv', format 'csv');
+```
+
+You can execute SELECT statements on the foreign tables to access the data in the corresponding files.
+
 ### fuzzystrmatch example
 
 ```sql
@@ -331,6 +353,35 @@ For another example that uses `normal_rand()`, refer to [Analyzing a normal dist
 The `connectby()` function displays a hierarchy of the kind that you see in an _"employees"_ table with a reflexive foreign key constraint where _"manager_id"_ refers to _"employee_id"_. Each next deeper level in the tree is indented from its parent following the well-known pattern.
 
 The `crosstab()`and  `crosstabN()` functions produce "pivot" displays. The _"N"_ in crosstabN() indicates the fact that a few, `crosstab1()`, `crosstab2()`, `crosstab3()`, are provided natively by the extension and that you can follow documented steps to create more.
+
+### postgres_fdw example
+
+First, install the extension:
+
+```sql
+CREATE EXTENSION postgres_fdw;
+```
+
+To connect to a remote YSQL or PostgreSQL database, create a foreign server object. Specify the connection information (except the username and password) using the `OPTIONS` clause:
+
+```sql
+CREATE SERVER my_server FOREIGN DATA WRAPPER postgres_fdw OPTIONS (host 'host_ip', dbname 'external_db', port 'port_number');
+```
+
+Specify the username and password using `CREATE USER MAPPING`:
+
+```sql
+CREATE USER MAPPING FOR mylocaluser SERVER myserver OPTIONS (user 'remote_user', password 'password');
+```
+
+You can now create foreign tables using `CREATE FOREIGN TABLE` and `IMPORT FOREIGN SCHEMA`.
+
+```sql
+CREATE FOREIGN TABLE table_name (colname1 int, colname2 int) SERVER myserver OPTIONS (schema_name 'schema', table_name 'table');
+IMPORT FOREIGN SCHEMA foreign_schema_name FROM SERVER my_server INTO local_schema_name;
+```
+
+You can execute SELECT statements on the foreign tables to access the data in the corresponding remote tables.
 
 ### postgresql-hll example
 
