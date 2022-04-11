@@ -67,19 +67,17 @@ CompactionIterator::CompactionIterator(
   } else {
     ignore_snapshots_ = false;
   }
+}
 
-  if (compaction_filter_) {
-    auto ranges = compaction_filter_->GetLiveRanges();
-    while (!ranges.empty()) {
-      auto range = ranges.back();
-      ranges.pop_back();
-      DCHECK(range.first.Less(range.second));
-      if (!live_key_ranges_stack_.empty()) {
-        DCHECK(live_key_ranges_stack_.back().first.GreaterOrEqual(range.second));
-      }
-      auto user_key_pair = std::make_pair(range.first, range.second);
-      live_key_ranges_stack_.push_back(user_key_pair);
+void CompactionIterator::AddLiveRanges(const std::vector<std::pair<Slice, Slice>>& ranges) {
+  for (auto it = ranges.rbegin(); it != ranges.rend(); ++it) {
+    const auto& range = *it;
+    DCHECK(range.first.Less(range.second));
+    if (!live_key_ranges_stack_.empty()) {
+      DCHECK(live_key_ranges_stack_.back().first.GreaterOrEqual(range.second));
     }
+    auto user_key_pair = std::make_pair(range.first, range.second);
+    live_key_ranges_stack_.push_back(user_key_pair);
   }
 }
 
