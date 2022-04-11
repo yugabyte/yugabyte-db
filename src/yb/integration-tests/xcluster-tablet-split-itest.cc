@@ -13,24 +13,37 @@
 
 #include "yb/cdc/cdc_service.proxy.h"
 
+#include "yb/client/client_fwd.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
 
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/tablet-split-itest-base.h"
+#include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_defaults.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tools/admin-test-base.h"
+#include "yb/tserver/cdc_consumer.h"
 #include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tablet_server.h"
+#include "yb/util/logging.h"
+#include "yb/util/test_util.h"
 #include "yb/util/thread.h"
+#include "yb/util/tsan_util.h"
 
 DECLARE_int32(cdc_state_table_num_tablets);
 DECLARE_bool(enable_tablet_split_of_xcluster_replicated_tables);
 DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_bool(TEST_validate_all_tablet_candidates);
 DECLARE_bool(TEST_xcluster_consumer_fail_after_process_split_op);
+
+DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
+DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
+DECLARE_int64(tablet_force_split_threshold_bytes);
+DECLARE_int64(db_write_buffer_size);
 
 namespace yb {
 
@@ -165,12 +178,29 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
     ASSERT_OK(tools::RunAdminToolCommand(
         cluster_->GetMasterAddresses(), "delete_universe_replication", kProducerClusterId));
 
-    // Shutdown producer cluster here, CdcTabletSplitITest will shutdown cluster_ (consumer).
-    producer_cluster_->Shutdown();
+    // Since delete_universe_replication is async, wait until consumers are empty before shutdown.
+    // TODO: remove this once #12068 is fixed.
+    ASSERT_OK(WaitFor([&]() {
+      for (const auto& mini_tserver : cluster_->mini_tablet_servers()) {
+        auto* tserver = dynamic_cast<tserver::enterprise::TabletServer*>(mini_tserver->server());
+        tserver::enterprise::CDCConsumer* cdc_consumer;
+        if (tserver && (cdc_consumer = tserver->GetCDCConsumer())) {
+          auto tablets_running = cdc_consumer->TEST_producer_tablets_running();
+          if (!tablets_running.empty()) {
+            return false;
+          }
+        }
+      }
+      return true;
+    }, 10s * kTimeMultiplier, "Wait for CDCConsumers to shutdown."));
+
+    cluster_->Shutdown();
+
+    SwitchToProducer();
     CdcTabletSplitITest::DoBeforeTearDown();
   }
 
-  void SwitchToProducer() {
+  virtual void SwitchToProducer() {
     if (!producer_cluster_) {
       return;
     }
@@ -184,7 +214,7 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
     LOG(INFO) << "Swapped to the producer cluster.";
   }
 
-  void SwitchToConsumer() {
+  virtual void SwitchToConsumer() {
     if (!consumer_cluster_) {
       return;
     }
@@ -199,16 +229,22 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
   }
 
   CHECKED_STATUS CheckForNumRowsOnConsumer(size_t expected_num_rows) {
+    const auto timeout = MonoDelta::FromSeconds(60 * kTimeMultiplier);
     client::YBClient* consumer_client(consumer_cluster_ ? consumer_client_.get() : client_.get());
     client::TableHandle* consumer_table(consumer_cluster_ ? &consumer_table_ : &table_);
 
     client::YBSessionPtr consumer_session = consumer_client->NewSession();
-    consumer_session->SetTimeout(60s);
+    consumer_session->SetTimeout(timeout);
     size_t num_rows = 0;
     Status s = WaitFor([&]() -> Result<bool> {
-      num_rows = VERIFY_RESULT(SelectRowsCount(consumer_session, *consumer_table));
+      auto num_rows_result = SelectRowsCount(consumer_session, *consumer_table);
+      if (!num_rows_result.ok()) {
+        LOG(WARNING) << "Encountered error during SelectRowsCount " << num_rows_result;
+        return false;
+      }
+      num_rows = num_rows_result.get();
       return num_rows == expected_num_rows;
-    }, MonoDelta::FromSeconds(60), "Wait for data to be replicated");
+    }, timeout, "Wait for data to be replicated");
 
     LOG(INFO) << "Found " << num_rows << " rows on consumer, expected " << expected_num_rows;
 
@@ -419,6 +455,74 @@ TEST_F(XClusterTabletSplitITest, ConsumerClusterFailureWhenProcessingSplitOp) {
   ASSERT_OK(CheckForNumRowsOnConsumer(3 * kDefaultNumRows));
 }
 
+class XClusterAutomaticTabletSplitITest : public XClusterTabletSplitITest {
+ public:
+  void SetUp() override {
+    XClusterTabletSplitITest::SetUp();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_validate_all_tablet_candidates) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 16;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_force_split_threshold_bytes) = 10_KB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) =
+        FLAGS_tablet_force_split_threshold_bytes;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) =
+        FLAGS_tablet_force_split_threshold_bytes;
+  }
+
+ protected:
+  Result<size_t> GetNumActiveTablets(master::CatalogManagerIf* catalog_mgr) {
+    master::GetTableLocationsResponsePB resp;
+    master::GetTableLocationsRequestPB req;
+    table_->name().SetIntoTableIdentifierPB(req.mutable_table());
+    req.set_max_returned_locations(std::numeric_limits<int32_t>::max());
+    RETURN_NOT_OK(catalog_mgr->GetTableLocations(&req, &resp));
+    return resp.tablet_locations_size();
+  }
+};
+
+// This test is very flaky in TSAN as we spend a long time waiting for children tablets to be
+// ready, and will often then time out.
+TEST_F(XClusterAutomaticTabletSplitITest, YB_DISABLE_TEST_IN_TSAN(AutomaticTabletSplitting)) {
+  constexpr auto num_active_tablets = 6;
+
+  // Setup a new thread for continuous writing to producer.
+  std::atomic<bool> stop(false);
+  int32_t rows_written = 0;
+  std::thread write_thread([this, &stop, &rows_written] {
+    CDSAttacher attacher;
+    client::TableHandle producer_table;
+    ASSERT_OK(producer_table.Open(table_->name(), client_.get()));
+    auto producer_session = client_->NewSession();
+    producer_session->SetTimeout(60s);
+    while (!stop) {
+      rows_written = (rows_written + 1);
+      ASSERT_RESULT(client::kv_table_test::WriteRow(
+          &producer_table, producer_session, rows_written, rows_written,
+          client::WriteOpType::INSERT, client::Flush::kTrue));
+    }
+  });
+
+  auto* catalog_mgr = ASSERT_RESULT(catalog_manager());
+  ASSERT_OK(WaitFor([&]() {
+    auto res = GetNumActiveTablets(catalog_mgr);
+    if (!res.ok()) {
+      LOG(WARNING) << "Found error fetching active tablets: " << res;
+      return false;
+    }
+    YB_LOG_EVERY_N_SECS(INFO, 3) << "Number of active tablets: " << res.get();
+    return res.get() >= num_active_tablets;
+  }, 300s * kTimeMultiplier, "Wait for enough tablets to split"));
+
+  // Stop writes.
+  stop.store(true, std::memory_order_release);
+  write_thread.join();
+
+  LOG(INFO) << "Wrote " << rows_written << " rows to the producer cluster.";
+
+  // Verify that both sides have the same number of rows.
+  ASSERT_OK(CheckForNumRowsOnConsumer(rows_written));
+}
+
 class XClusterBootstrapTabletSplitITest : public XClusterTabletSplitITest {
  public:
   void SetUp() override {
@@ -427,6 +531,9 @@ class XClusterBootstrapTabletSplitITest : public XClusterTabletSplitITest {
     // Create the consumer cluster, but don't setup the universe replication yet.
     consumer_cluster_ = ASSERT_RESULT(CreateNewUniverseAndTable("consumer", &consumer_table_));
     consumer_client_ = ASSERT_RESULT(consumer_cluster_->CreateClient());
+    // Since we write transactionally to the consumer, also need to create a txn manager too.
+    consumer_transaction_manager_.emplace(
+        consumer_client_.get(), clock_, client::LocalTabletFilter());
   }
 
  protected:
@@ -445,6 +552,27 @@ class XClusterBootstrapTabletSplitITest : public XClusterTabletSplitITest {
         cluster_->GetMasterAddresses(), table_->id(), bootstrap_id));
     return Status::OK();
   }
+
+  void SwitchToProducer() override {
+    if (!producer_cluster_) {
+      return;
+    }
+    consumer_transaction_manager_ = std::move(transaction_manager_);
+    transaction_manager_ = std::move(producer_transaction_manager_);
+    XClusterTabletSplitITest::SwitchToProducer();
+  }
+
+  void SwitchToConsumer() override {
+    if (!consumer_cluster_) {
+      return;
+    }
+    producer_transaction_manager_ = std::move(transaction_manager_);
+    transaction_manager_ = std::move(consumer_transaction_manager_);
+    XClusterTabletSplitITest::SwitchToConsumer();
+  }
+
+  boost::optional<client::TransactionManager> consumer_transaction_manager_;
+  boost::optional<client::TransactionManager> producer_transaction_manager_;
 };
 
 TEST_F(XClusterBootstrapTabletSplitITest, BootstrapWithSplits) {
@@ -457,6 +585,7 @@ TEST_F(XClusterBootstrapTabletSplitITest, BootstrapWithSplits) {
   SwitchToConsumer();
   ASSERT_RESULT(WriteRowsAndFlush(kDefaultNumRows));
   SwitchToProducer();
+  ASSERT_OK(CheckForNumRowsOnConsumer(kDefaultNumRows));
 
   // Now before setting up replication, lets perform some splits and write some more rows.
   ASSERT_OK(SplitAllTablets(/* cur_num_tablets */ 1));
