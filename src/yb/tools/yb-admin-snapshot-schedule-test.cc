@@ -2105,7 +2105,6 @@ class YbAdminSnapshotScheduleTestWithLB : public YbAdminSnapshotScheduleTest {
     std::vector<std::string> flags;
     flags = YbAdminSnapshotScheduleTest::ExtraMasterFlags();
     flags.push_back("--enable_load_balancing=true");
-    flags.push_back("--TEST_load_balancer_skip_inactive_tablets=false");
 
     return flags;
   }
