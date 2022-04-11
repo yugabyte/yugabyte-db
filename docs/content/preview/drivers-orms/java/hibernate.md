@@ -6,12 +6,32 @@ headcontent: Hibernate ORM support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
+    name: Java ORMs
     identifier: hibernate-orm
     parent: java-drivers
     weight: 600
 isTocNested: true
 showAsideToc: true
 ---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="/preview/drivers-orms/java/hibernate" class="nav-link active">
+      <i class="icon-java-bold" aria-hidden="true"></i>
+      Hibernate ORM
+    </a>
+  </li>
+
+  <li >
+    <a href="/preview/drivers-orms/java/ebean/" class="nav-link">
+      <i class="icon-java-bold" aria-hidden="true"></i>
+      Ebean ORM
+    </a>
+  </li>
+
+</ul>
+
 
 [Hibernate ORM](https://hibernate.org/orm/) is an Object/Relational Mapping (ORM) framework for Java applications. Hibernate ORM is concerned with data persistence of relational databases, and enables developers to easily write applications whose data outlives the application lifetime.
 
