@@ -2,7 +2,7 @@
 title: Create a KMS configuration using HashiCorp Vault
 headerTitle: Create a KMS configuration using HashiCorp Vault
 linkTitle: Create a KMS configuration
-description: Use Yugabyte Platform to create a KMS configuration for HashiCorp Vault.
+description: Use YugabyteDB Anywhere to create a KMS configuration for HashiCorp Vault.
 aliases:
   - /latest/yugabyte-platform/security/create-kms-config
 menu:
@@ -31,7 +31,7 @@ showAsideToc: true
 
 </ul>
 
-Encryption at rest uses universe keys to encrypt and decrypt universe data keys. You can use the Yugabyte Platform UI to create key management service (KMS) configurations for generating the required universe keys for one or more YugabyteDB universes. Encryption at rest in Yugabyte Platform supports the use of [HashiCorp Vault](https://www.vaultproject.io/) as a KMS.
+Encryption at rest uses universe keys to encrypt and decrypt universe data keys. You can use the YugabyteDB Anywhere UI to create key management service (KMS) configurations for generating the required universe keys for one or more YugabyteDB universes. Encryption at rest in YugabyteDB Anywhere supports the use of [HashiCorp Vault](https://www.vaultproject.io/) as a KMS.
 
 ## Configure HashiCorp Vault
 
@@ -41,7 +41,7 @@ Before you can start configuring HashiCorp Vault, install it on a virtual machin
 - Its seal and unseal mechanism is secure and repeatable.
 - Its token creation mechanism is repeatable.
 
-You need to configure HashiCorp Vault in order to use it with Yugabyte Platform, as follows: 
+You need to configure HashiCorp Vault in order to use it with YugabyteDB Anywhere, as follows: 
 
 - Create a vault configuration file that references your nodes and specifies the address, as follows:
 
@@ -120,7 +120,7 @@ You need to configure HashiCorp Vault in order to use it with Yugabyte Platform,
 
 You can create a new KMS configuration that uses HashiCorp Vault as follows:
 
-1. Using the Yugabyte Platform UI, navigate to **Configs > Security > Encryption At Rest** to open a list of existing configurations.
+1. Using the YugabyteDB Anywhere UI, navigate to **Configs > Security > Encryption At Rest** to open a list of existing configurations.
 
 2. Click **Create New Config**.
 
@@ -143,7 +143,7 @@ You can create a new KMS configuration that uses HashiCorp Vault as follows:
 
 You can modify an existing KMS configuration as follows:
 
-1. Using the Yugabyte Platform UI, navigate to **Configs > Security > Encryption At Rest** to open a list of existing configurations.
+1. Using the YugabyteDB Anywhere UI, navigate to **Configs > Security > Encryption At Rest** to open a list of existing configurations.
 
 2. Find the configuration you want to modify and click its corresponding **Actions > Edit Configuration**.
 
