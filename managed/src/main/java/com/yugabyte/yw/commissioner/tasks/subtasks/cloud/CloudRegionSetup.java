@@ -12,6 +12,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.cloud;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
@@ -26,10 +27,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 import play.api.Play;
 import play.libs.Json;
 
+@Slf4j
 public class CloudRegionSetup extends CloudTaskBase {
+
   @Inject
   protected CloudRegionSetup(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
@@ -62,7 +66,7 @@ public class CloudRegionSetup extends CloudTaskBase {
     String customImageId = taskParams().metadata.customImageId;
     if (customImageId != null && !customImageId.isEmpty()) {
       region.ybImage = customImageId;
-      region.save();
+      region.update();
     } else {
       switch (Common.CloudType.valueOf(provider.code)) {
           // Intentional fallthrough as both AWS and GCP should be covered the same way.
@@ -75,24 +79,30 @@ public class CloudRegionSetup extends CloudTaskBase {
             throw new RuntimeException("Could not get default image for region: " + regionCode);
           }
           region.ybImage = defaultImage;
-          region.save();
+          region.update();
           break;
       }
     }
     String customSecurityGroupId = taskParams().metadata.customSecurityGroupId;
     if (customSecurityGroupId != null && !customSecurityGroupId.isEmpty()) {
       region.setSecurityGroupId(customSecurityGroupId);
-      region.save();
+      region.update();
     }
 
-    // need architecture for AWS providers
+    // Attempt to find architecture for AWS providers.
     if (provider.code.equals(Common.CloudType.aws.toString())) {
       String arch = queryHelper.getImageArchitecture(region);
       if (arch == null || arch.isEmpty()) {
-        throw new RuntimeException("Could not get architecture for image: " + region.ybImage);
+        log.warn(
+            "Could not get architecture for image {} in region {}.", region.ybImage, region.code);
+
+      } else {
+        try {
+          region.setArchitecture(Architecture.valueOf(arch));
+        } catch (IllegalArgumentException e) {
+          log.warn("{} not a valid architecture. Skipping for region {}.", arch, region.code);
+        }
       }
-      region.setArchitecture(arch);
-      region.save();
     }
 
     JsonNode zoneInfo;
@@ -102,8 +112,8 @@ public class CloudRegionSetup extends CloudTaskBase {
         Map<String, String> zoneSubnets = taskParams().metadata.azToSubnetIds;
         // If no custom mapping, then query from devops.
         if (zoneSubnets == null || zoneSubnets.size() == 0) {
-          // TODO(bogdan): move from destVpcId to metadata.vpcId ?
-          zoneInfo = queryHelper.getZones(region.uuid, taskParams().destVpcId);
+          // Since it is AWS, we will only have a VPC per region, and not a global destVpcId.
+          zoneInfo = queryHelper.getZones(region.uuid, taskParams().metadata.vpcId);
           if (zoneInfo.has("error") || !zoneInfo.has(regionCode)) {
             region.delete();
             String errMsg = "Region Bootstrap failed. Unable to fetch zones for " + regionCode;
@@ -142,7 +152,7 @@ public class CloudRegionSetup extends CloudTaskBase {
           vnet = queryHelper.getVnetOrFail(region);
         }
         region.setVnetName(vnet);
-        region.save();
+        region.update();
         if (zoneNets == null || zoneNets.size() == 0) {
           zoneInfo = queryHelper.getZones(region.uuid, vnet);
           if (zoneInfo.has("error") || !zoneInfo.has(regionCode)) {
@@ -160,8 +170,8 @@ public class CloudRegionSetup extends CloudTaskBase {
       case gcp:
         ObjectNode customPayload = Json.newObject();
         ObjectNode perRegionMetadata = Json.newObject();
-        perRegionMetadata.put(regionCode, Json.toJson(taskParams().metadata));
-        customPayload.put("perRegionMetadata", perRegionMetadata);
+        perRegionMetadata.set(regionCode, Json.toJson(taskParams().metadata));
+        customPayload.set("perRegionMetadata", perRegionMetadata);
         zoneInfo =
             queryHelper.getZones(
                 region.uuid, taskParams().destVpcId, Json.stringify(customPayload));

@@ -48,7 +48,7 @@ Status ReviewResponsePagingState(const PgTableDesc& table, PgsqlReadOp* op) {
   // of already scanned tablet. Partition start key of the preceding tablet must be used instead.
   // Also lower bound is checked here because DocDB can check upper bound only.
   const auto& current_next_partition_key = response->paging_state().next_partition_key();
-  std::vector<docdb::PrimitiveValue> lower_bound, upper_bound;
+  std::vector<docdb::KeyEntryValue> lower_bound, upper_bound;
   RETURN_NOT_OK(client::GetRangePartitionBounds(
       table.schema(), op->read_request(), &lower_bound, &upper_bound));
   if (!lower_bound.empty()) {
@@ -72,6 +72,42 @@ Status ReviewResponsePagingState(const PgTableDesc& table, PgsqlReadOp* op) {
   const auto& next_partition_key = partitions[idx - 1];
   response->mutable_paging_state()->dup_next_partition_key(next_partition_key);
   return Status::OK();
+}
+
+bool PrepareNextRequest(PgsqlReadOp* read_op) {
+  // Set up paging state for next request.
+  // A query request can be nested, and paging state belong to the innermost query which is
+  // the read operator that is operated first and feeds data to other queries.
+  // Recursive Proto Message:
+  //     PgsqlReadRequestPB { PgsqlReadRequestPB index_request; }
+  auto& res = *read_op->response();
+  if (!res.has_paging_state()) {
+    return false;
+  }
+  auto* req = &read_op->read_request();
+  while (req->has_index_request()) {
+    req = req->mutable_index_request();
+  }
+
+  // Parse/Analysis/Rewrite catalog version has already been checked on the first request.
+  // The docdb layer will check the target table's schema version is compatible.
+  // This allows long-running queries to continue in the presence of other DDL statements
+  // as long as they do not affect the table(s) being queried.
+  req->clear_ysql_catalog_version();
+  req->clear_paging_state();
+  req->clear_backfill_spec();
+
+  *req->mutable_paging_state() = std::move(*res.mutable_paging_state());
+  const auto& paging_state = req->paging_state();
+  if (paging_state.has_read_time()) {
+    read_op->set_read_time(ReadHybridTime::FromPB(paging_state.read_time()));
+  }
+
+  // Setup backfill_spec for the next request.
+  if (res.has_backfill_spec()) {
+    *req->mutable_backfill_spec() = std::move(*res.mutable_backfill_spec());
+  }
+  return true;
 }
 
 std::string PgsqlOp::ToString() const {

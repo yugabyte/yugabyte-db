@@ -28,7 +28,7 @@ class TabletSplitDriverIf {
  public:
   virtual ~TabletSplitDriverIf() {}
   virtual CHECKED_STATUS SplitTablet(
-      const TabletId& tablet_id, bool select_all_tablets_for_split) = 0;
+      const TabletId& tablet_id, bool is_manual_split) = 0;
 };
 
 }  // namespace master

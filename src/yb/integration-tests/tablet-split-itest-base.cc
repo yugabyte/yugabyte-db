@@ -133,7 +133,7 @@ Status SplitTablet(master::CatalogManagerIf* catalog_mgr, const tablet::Tablet& 
   tablet.TEST_db()->GetProperty(rocksdb::DB::Properties::kAggregatedTableProperties, &properties);
   LOG(INFO) << "DB properties: " << properties;
 
-  return catalog_mgr->SplitTablet(tablet_id, true /* select_all_tablets_for_split */);
+  return catalog_mgr->SplitTablet(tablet_id, true /* is_manual_split */);
 }
 
 Status DoSplitTablet(master::CatalogManagerIf* catalog_mgr, const tablet::Tablet& tablet) {
@@ -763,8 +763,11 @@ Result<std::set<TabletId>> TabletSplitExternalMiniClusterITest::GetTestTableTabl
     size_t tserver_idx) {
   std::set<TabletId> tablet_ids;
   auto res = VERIFY_RESULT(cluster_->GetTablets(cluster_->tablet_server(tserver_idx)));
+
   for (const auto& tablet : res) {
-    if (tablet.table_name() == table_->name().table_name()) {
+    if (tablet.table_name() == table_->name().table_name() &&
+        // Skip deleted (tombstoned) tablets.
+        tablet.state() != tablet::RaftGroupStatePB::SHUTDOWN) {
       tablet_ids.insert(tablet.tablet_id());
     }
   }
@@ -774,7 +777,7 @@ Result<std::set<TabletId>> TabletSplitExternalMiniClusterITest::GetTestTableTabl
 Result<std::set<TabletId>> TabletSplitExternalMiniClusterITest::GetTestTableTabletIds() {
   std::set<TabletId> tablet_ids;
   for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
-    if (cluster_->tablet_server(i)->IsShutdown()) {
+    if (cluster_->tablet_server(i)->IsShutdown() || cluster_->tablet_server(i)->IsProcessPaused()) {
       continue;
     }
     auto res = VERIFY_RESULT(GetTestTableTabletIds(i));
@@ -821,7 +824,7 @@ Result<vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB>>
 Status TabletSplitExternalMiniClusterITest::WaitForTabletsExcept(
     size_t num_tablets, size_t tserver_idx, const TabletId& exclude_tablet) {
   std::set<TabletId> tablets;
-  auto status = WaitFor(
+  auto status = LoggedWaitFor(
       [&]() -> Result<bool> {
         tablets = VERIFY_RESULT(GetTestTableTabletIds(tserver_idx));
         size_t count = 0;
@@ -832,7 +835,7 @@ Status TabletSplitExternalMiniClusterITest::WaitForTabletsExcept(
         }
         return count == num_tablets;
       },
-      20s * kTimeMultiplier,
+      30s * kTimeMultiplier,
       Format(
           "Waiting for tablet count: $0 at tserver: $1",
           num_tablets,

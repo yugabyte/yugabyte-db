@@ -63,6 +63,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     // create default universe
     UserIntent userIntent = new UserIntent();
     userIntent.numNodes = numNodes;
+    userIntent.provider = defaultProvider.uuid.toString();
     userIntent.ybSoftwareVersion = "yb-version";
     userIntent.accessKeyCode = "demo-access";
     userIntent.replicationFactor = replicationFactor;

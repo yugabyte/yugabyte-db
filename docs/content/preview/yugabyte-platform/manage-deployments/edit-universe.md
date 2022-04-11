@@ -4,9 +4,9 @@ headerTitle: Edit a universe
 linkTitle: Edit a universe
 description: Use Yugabyte Platform to edit a universe.
 aliases:
-  - /latest/manage/enterprise-edition/edit-universe/
+  - /preview/manage/enterprise-edition/edit-universe/
 menu:
-  latest:
+  preview:
     identifier: edit-universe
     parent: manage-deployments
     weight: 60
@@ -26,8 +26,6 @@ Yugabyte Platform applies changes via the YB-Masters powering the universe. The 
 
 Expansion of universes created with an on-premise cloud provider and secured with third-party certificates obtained from external certification authorities follows a different workflow. For details, see [How to Expand the Universe](../../security/enable-encryption-in-transit#how-to-expand-the-universe).
 
-
-
 For universes that use Google Cloud Provider (GCP) or Amazon Web Services (AWS), Yugabyte Platform allows you to change the virtual machine image and increasing the volume size without moving the data from the old nodes to the new nodes. This is known as smart resize and it is subject to the following:
 
 - Smart resize cannot be applied to instances with ephemeral disks due to a potential loss of data, but smart resize to ephemeral disks is supported.
@@ -41,9 +39,3 @@ For universes that use Google Cloud Provider (GCP) or Amazon Web Services (AWS),
   ![Full or smart resize](/images/ee/edit-univ-2.png)<br><br>
 
 - If you only modify the value in the size portion of the **Volume Info** field and click **Save**, smart resize will be performed.
-
-
-
-
-
-

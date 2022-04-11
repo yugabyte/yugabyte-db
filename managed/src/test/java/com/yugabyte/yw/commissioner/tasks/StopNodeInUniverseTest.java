@@ -60,6 +60,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     // create default universe
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
+    userIntent.provider = defaultProvider.uuid.toString();
     userIntent.numNodes = 3;
     userIntent.ybSoftwareVersion = "yb-version";
     userIntent.accessKeyCode = "demo-access";
@@ -221,6 +222,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.numNodes = 5;
+    userIntent.provider = defaultProvider.uuid.toString();
     userIntent.replicationFactor = 3;
     universe =
         Universe.saveDetails(

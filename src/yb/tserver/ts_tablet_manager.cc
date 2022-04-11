@@ -827,6 +827,10 @@ Status TSTabletManager::ApplyTabletSplit(tablet::SplitOperation* operation, log:
     return STATUS_FORMAT(IllegalState, "Manager is not running: $0", state());
   }
 
+  const auto& split_op_id = operation->op_id();
+  SCHECK_FORMAT(
+      split_op_id.valid() && !split_op_id.empty(), InvalidArgument,
+      "Incorrect ID for SPLIT_OP: $0", operation->ToString());
   auto* tablet = CHECK_NOTNULL(operation->tablet());
   const auto tablet_id = tablet->tablet_id();
   const auto* request = operation->request();
@@ -834,19 +838,21 @@ Status TSTabletManager::ApplyTabletSplit(tablet::SplitOperation* operation, log:
       request->tablet_id(), tablet_id, IllegalState,
       Format(
           "Unexpected SPLIT_OP $0 designated for tablet $1 to be applied to tablet $2",
-          operation->op_id(), request->tablet_id(), tablet_id));
+          split_op_id, request->tablet_id(), tablet_id));
   SCHECK(
       tablet_id != request->new_tablet1_id() && tablet_id != request->new_tablet2_id(),
       IllegalState,
       Format(
           "One of SPLIT_OP $0 destination tablet IDs ($1, $2) is the same as source tablet ID $3",
-          operation->op_id(), request->new_tablet1_id(), request->new_tablet2_id(), tablet_id));
+          split_op_id, request->new_tablet1_id(), request->new_tablet2_id(), tablet_id));
 
-  LOG_WITH_PREFIX(INFO) << "Tablet " << tablet_id << " split operation apply started";
+  LOG_WITH_PREFIX(INFO) << "Tablet " << tablet_id << " split operation " << split_op_id
+                        << " apply started";
 
+  auto tablet_peer = VERIFY_RESULT(LookupTablet(tablet_id));
+  auto* raft_consensus = tablet_peer->raft_consensus();
   if (raft_log == nullptr) {
-    auto tablet_peer = VERIFY_RESULT(LookupTablet(tablet_id));
-    raft_log = tablet_peer->raft_consensus()->log().get();
+    raft_log = raft_consensus->log().get();
   }
 
   MAYBE_FAULT(FLAGS_TEST_fault_crash_in_split_before_log_flushed);
@@ -889,28 +895,38 @@ Status TSTabletManager::ApplyTabletSplit(tablet::SplitOperation* operation, log:
   });
 
   std::unique_ptr<ConsensusMetadata> cmeta;
-  RETURN_NOT_OK(ConsensusMetadata::Load(fs_manager_, tablet_id, fs_manager_->uuid(), &cmeta));
+  RETURN_NOT_OK(ConsensusMetadata::Create(
+      fs_manager_, tablet_id, fs_manager_->uuid(), raft_consensus->CommittedConfigUnlocked(),
+      split_op_id.term, &cmeta));
+  if (request->has_split_parent_leader_uuid()) {
+    cmeta->set_leader_uuid(request->split_parent_leader_uuid());
+    LOG_WITH_PREFIX(INFO) << "Using consensus state: "
+                          << cmeta
+                                 ->ToConsensusStatePB(
+                                     consensus::ConsensusConfigType::CONSENSUS_CONFIG_COMMITTED)
+                                 .ShortDebugString();
+  }
+  cmeta->set_split_parent_tablet_id(tablet_id);
 
   for (auto& tcmeta : tcmetas) {
     const auto& new_tablet_id = tcmeta.tablet_id;
 
     // Copy raft group metadata.
     tcmeta.raft_group_metadata = VERIFY_RESULT(tablet->CreateSubtablet(
-        new_tablet_id, tcmeta.partition, tcmeta.key_bounds, operation->op_id(),
+        new_tablet_id, tcmeta.partition, tcmeta.key_bounds, split_op_id,
         operation->hybrid_time()));
     LOG_WITH_PREFIX(INFO) << "Created raft group metadata for table: " << table_id
                           << " tablet: " << new_tablet_id;
 
-    // Copy consensus metadata.
+    // Store consensus metadata.
     // Here we reuse the same cmeta instance for both new tablets. This is safe, because:
     // 1) Their consensus metadata only differ by tablet id.
-    // 2) Flush() will save it into a new path corresponding to tablet id we set before flushing.
+    // 2) Flush() will save it into a new path corresponding to tablet ID we set before flushing.
     cmeta->set_tablet_id(new_tablet_id);
-    cmeta->set_split_parent_tablet_id(tablet_id);
     RETURN_NOT_OK(cmeta->Flush());
 
     const auto& dest_wal_dir = tcmeta.raft_group_metadata->wal_dir();
-    RETURN_NOT_OK(raft_log->CopyTo(dest_wal_dir));
+    RETURN_NOT_OK(raft_log->CopyTo(dest_wal_dir, split_op_id));
 
     MAYBE_FAULT(FLAGS_TEST_fault_crash_in_split_after_log_copied);
 
@@ -918,7 +934,7 @@ Status TSTabletManager::ApplyTabletSplit(tablet::SplitOperation* operation, log:
     RETURN_NOT_OK(tcmeta.raft_group_metadata->Flush());
   }
 
-  meta.SetSplitDone(operation->op_id(), request->new_tablet1_id(), request->new_tablet2_id());
+  meta.SetSplitDone(split_op_id, request->new_tablet1_id(), request->new_tablet2_id());
   RETURN_NOT_OK(meta.Flush());
 
   tablet->SplitDone();

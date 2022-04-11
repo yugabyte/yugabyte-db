@@ -684,12 +684,14 @@ public class CloudProviderControllerTest extends FakeDBApplication {
 
     ObjectNode bodyJson = Json.newObject();
     config.put("KUBECONFIG_STORAGE_CLASSES", "slow");
-    bodyJson.put("config", Json.toJson(config));
+    bodyJson.set("config", Json.toJson(config));
+    bodyJson.put("name", "kubernetes");
+    bodyJson.put("code", "kubernetes");
 
     Result result = editProvider(bodyJson, p.uuid);
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
-    assertEquals(p.uuid, UUID.fromString(json.get("uuid").asText()));
+    assertEquals(p.uuid, UUID.fromString(json.get("resourceUUID").asText()));
     p.refresh();
     assertEquals("slow", p.getUnmaskedConfig().get("KUBECONFIG_STORAGE_CLASSES"));
     assertAuditEntry(1, customer.uuid);
@@ -707,13 +709,15 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     ObjectNode bodyJson = Json.newObject();
     config.put("KUBECONFIG_NAME", "test2.conf");
     config.put("KUBECONFIG_CONTENT", "test5678");
-    bodyJson.put("config", Json.toJson(config));
+    bodyJson.set("config", Json.toJson(config));
+    bodyJson.put("name", "kubernetes");
+    bodyJson.put("code", "kubernetes");
 
     Result result = editProvider(bodyJson, p.uuid);
     assertOk(result);
     assertAuditEntry(1, customer.uuid);
     JsonNode json = Json.parse(contentAsString(result));
-    assertEquals(p.uuid, UUID.fromString(json.get("uuid").asText()));
+    assertEquals(p.uuid, UUID.fromString(json.get("resourceUUID").asText()));
     p.refresh();
     assertTrue(p.getUnmaskedConfig().get("KUBECONFIG").contains("test2.conf"));
     Path path = Paths.get(p.getUnmaskedConfig().get("KUBECONFIG"));
@@ -730,12 +734,14 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     Provider p = ModelFactory.newProvider(customer, Common.CloudType.aws);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("hostedZoneId", "1234");
+    bodyJson.put("name", "aws");
+    bodyJson.put("code", "aws");
     mockDnsManagerListSuccess();
     Result result = editProvider(bodyJson, p.uuid);
     verify(mockDnsManager, times(1)).listDnsRecord(any(), any());
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
-    assertEquals(p.uuid, UUID.fromString(json.get("uuid").asText()));
+    assertEquals(p.uuid, UUID.fromString(json.get("resourceUUID").asText()));
     p.refresh();
     assertEquals("1234", p.getUnmaskedConfig().get("HOSTED_ZONE_ID"));
     assertAuditEntry(1, customer.uuid);
@@ -746,9 +752,11 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     Provider p = ModelFactory.newProvider(customer, Common.CloudType.onprem);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("hostedZoneId", "1234");
+    bodyJson.put("name", "aws");
+    bodyJson.put("code", "aws");
     Result result = assertPlatformException(() -> editProvider(bodyJson, p.uuid));
     verify(mockDnsManager, times(0)).listDnsRecord(any(), any());
-    assertBadRequest(result, "Expected aws/k8s, but found providers with code: onprem");
+    assertBadRequest(result, "No changes to be made for provider type: onprem");
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -757,6 +765,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     Provider p = ModelFactory.newProvider(customer, Common.CloudType.aws);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("hostedZoneId", "");
+    bodyJson.put("name", "aws");
+    bodyJson.put("code", "aws");
     Result result = assertPlatformException(() -> editProvider(bodyJson, p.uuid));
     verify(mockDnsManager, times(0)).listDnsRecord(any(), any());
     assertBadRequest(result, "Required field hosted zone id");

@@ -14,19 +14,19 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/deploy/public-clouds/azure/azure-arm" class="nav-link">
+    <a href="/preview/deploy/public-clouds/azure/azure-arm" class="nav-link">
       <i class="icon-shell"></i>
       Azure ARM template
     </a>
   </li>
   <li >
-    <a href="/latest/deploy/public-clouds/azure/aks" class="nav-link">
+    <a href="/preview/deploy/public-clouds/azure/aks" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Azure Kubernetes Service (AKS)
     </a>
   </li>
   <li>
-    <a href="/latest/deploy/public-clouds/azure/terraform" class="nav-link active">
+    <a href="/preview/deploy/public-clouds/azure/terraform" class="nav-link active">
       <i class="icon-shell"></i>
       Terraform
     </a>
@@ -42,7 +42,7 @@ showAsideToc: true
     ```sh
     $ terraform
     ```
-    
+
     ```
     Usage: terraform [--version] [--help] <command> [args]
     ...
@@ -93,7 +93,7 @@ module "yugabyte-db-cluster" {
   # The region name where the nodes should be spawned.
   region_name = "YOUR VPC REGION"
 
-  # The name of resource group in which all Azure resource will be created. 
+  # The name of resource group in which all Azure resource will be created.
   resource_group = "test-yugabyte"
 
   # Replication factor.
@@ -150,7 +150,7 @@ For a cluster named `test-cluster`, this security group will be named `yugabyte-
 
 - `module.azure-yugabyte.null_resource.create_yugabyte_universe` A local script that configures the newly created instances to form a new YugabyteDB universe.
 - `module.azure-yugabyte.azurerm_network_interface.Yugabyte-NIC` The Azure network interface for VM instance.
-  
+
 For cluster named `test-cluster`, the network interface will be named `yugabyte-test-cluster-NIC-1`, `yugabyte-test-cluster-NIC-2`, `yugabyte-test-cluster-NIC-3`.
 
 ## 5. Destroy the cluster [optional]

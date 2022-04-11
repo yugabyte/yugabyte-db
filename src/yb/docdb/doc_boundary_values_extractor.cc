@@ -28,9 +28,9 @@ namespace docdb {
 
 Status GetDocHybridTime(const rocksdb::UserBoundaryValues& values, DocHybridTime* out);
 
-Status GetPrimitiveValue(const rocksdb::UserBoundaryValues& values,
-                         size_t index,
-                         PrimitiveValue* out);
+Status GetKeyEntryValue(const rocksdb::UserBoundaryValues& values,
+                        size_t index,
+                        KeyEntryValue* out);
 
 namespace {
 
@@ -115,9 +115,9 @@ class PrimitiveBoundaryValue : public rocksdb::UserBoundaryValue {
     return Slice(buffer_.data(), buffer_.size());
   }
 
-  CHECKED_STATUS value(PrimitiveValue* out) const {
+  CHECKED_STATUS Value(KeyEntryValue* out) const {
     CHECK_NOTNULL(out);
-    PrimitiveValue result;
+    KeyEntryValue result;
     Slice temp = Encode();
     RETURN_NOT_OK(result.DecodeFromKey(&temp));
     if (!temp.empty()) {
@@ -158,7 +158,7 @@ class DocBoundaryValuesExtractor : public rocksdb::BoundaryValuesExtractor {
   }
 
   Status Extract(Slice user_key, Slice value, rocksdb::UserBoundaryValues* values) override {
-    if (docdb::IsInternalRecordKeyType(docdb::DecodeValueType(user_key))) {
+    if (docdb::IsInternalRecordKeyType(docdb::DecodeKeyEntryType(user_key))) {
       // Skipping internal DocDB records.
       return Status::OK();
     }
@@ -211,13 +211,13 @@ class DocBoundaryValuesExtractor : public rocksdb::BoundaryValuesExtractor {
     CHECK_EQ(range_group.size(), slices.size() - 1);
 
     for (size_t i = 0; i != range_group.size(); ++i) {
-      PrimitiveValue primitive_value, primitive_value2;
+      KeyEntryValue primitive_value, primitive_value2;
       temp_slice = slices[i];
       CHECK_OK(primitive_value.DecodeFromKey(&temp_slice));
       CHECK(temp_slice.empty());
-      CHECK_EQ(range_group[i], primitive_value);
-      CHECK_OK(GetPrimitiveValue(values, i, &primitive_value2));
-      CHECK_EQ(range_group[i], primitive_value2);
+      CHECK(range_group[i] == primitive_value);
+      CHECK_OK(GetKeyEntryValue(values, i, &primitive_value2));
+      CHECK(range_group[i] == primitive_value2);
     }
 #endif
     return true;
@@ -233,15 +233,15 @@ std::shared_ptr<rocksdb::BoundaryValuesExtractor> DocBoundaryValuesExtractorInst
 }
 
 // Used in tests
-Status GetPrimitiveValue(const rocksdb::UserBoundaryValues& values,
-                         size_t index,
-                         PrimitiveValue* out) {
+Status GetKeyEntryValue(const rocksdb::UserBoundaryValues& values,
+                        size_t index,
+                        KeyEntryValue* out) {
   auto value = rocksdb::UserValueWithTag(values, PrimitiveBoundaryValue::TagForIndex(index));
   if (!value) {
     return STATUS_SUBSTITUTE(NotFound, "Not found value for index $0", index);
   }
   const auto* primitive_value = down_cast<PrimitiveBoundaryValue*>(value.get());
-  return primitive_value->value(out);
+  return primitive_value->Value(out);
 }
 
 Status GetDocHybridTime(const rocksdb::UserBoundaryValues& values, DocHybridTime* out) {

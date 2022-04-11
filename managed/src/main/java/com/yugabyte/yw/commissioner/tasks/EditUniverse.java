@@ -12,6 +12,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.forms.UniverseTaskParams.isFirstTryForTask;
 
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
@@ -23,6 +24,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
@@ -157,7 +159,19 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     } finally {
       // Mark the update of the universe as done. This will allow future edits/updates to the
       // universe to happen.
-      unlockUniverseForUpdate(errorString);
+      Universe universe = unlockUniverseForUpdate(errorString);
+
+      if (universe.getConfig().getOrDefault(Universe.USE_CUSTOM_IMAGE, "false").equals("true")) {
+        universe.updateConfig(
+            ImmutableMap.of(
+                Universe.USE_CUSTOM_IMAGE,
+                Boolean.toString(
+                    universe
+                        .getUniverseDetails()
+                        .nodeDetailsSet
+                        .stream()
+                        .allMatch(n -> n.ybPrebuiltAmi))));
+      }
     }
     log.info("Finished {} task.", getName());
   }
@@ -210,6 +224,9 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
               existingCluster.userIntent.instanceTags, cluster.userIntent.instanceTags));
     }
 
+    boolean ignoreUseCustomImageConfig =
+        !taskParams().nodeDetailsSet.stream().allMatch(n -> n.ybPrebuiltAmi);
+
     if (!nodesToProvision.isEmpty()) {
       Map<UUID, List<NodeDetails>> nodesPerAZ =
           nodes
@@ -248,7 +265,11 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // Provision the nodes.
       // State checking is enabled because the subtasks are not idempotent.
       createProvisionNodeTasks(
-          universe, nodesToProvision, true /* isShell */, false /* ignore node status check */);
+          universe,
+          nodesToProvision,
+          true /* isShell */,
+          false /* ignore node status check */,
+          ignoreUseCustomImageConfig);
     }
 
     Set<NodeDetails> removeMasters = PlacementInfoUtil.getMastersToBeRemoved(nodes);
@@ -289,7 +310,8 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
             universe,
             existingNodesToStartMaster,
             true /* shell mode */,
-            false /* ignore node status check */);
+            false /* ignore node status check */,
+            ignoreUseCustomImageConfig);
       }
       // Start masters. If it is already started, it has no effect.
       createStartMasterProcessTasks(newMasters);
@@ -365,7 +387,14 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       Set<NodeDetails> allTservers = new HashSet<>(newTservers);
       allTservers.addAll(liveNodes);
 
-      createConfigureServerTasks(allTservers, false /* isShell */, true /* updateMasterAddrs */);
+      createConfigureServerTasks(
+          allTservers,
+          false /* isShell */,
+          true /* updateMasterAddrs */,
+          false /*isMaster*/,
+          false /* isSystemdUpgrade */,
+          VmUpgradeTaskType.None,
+          ignoreUseCustomImageConfig);
       createSetFlagInMemoryTasks(
               allTservers,
               ServerType.TSERVER,
@@ -390,7 +419,13 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // Change the master addresses in the conf file for the new masters.
       // Update the same set of master addresses.
       createConfigureServerTasks(
-          allMasters, false /* isShell */, true /* updateMasterAddrs */, true /* isMaster */);
+          allMasters,
+          false /* isShell */,
+          true /* updateMasterAddrs */,
+          true /* isMaster */,
+          false /* isSystemdUpgrade */,
+          VmUpgradeTaskType.None,
+          ignoreUseCustomImageConfig);
       createSetFlagInMemoryTasks(
               allMasters,
               ServerType.MASTER,

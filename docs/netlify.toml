@@ -5,17 +5,17 @@
 # https://docs.netlify.com/configure-builds/file-based-configuration/#deploy-contexts
 
 [context.deploy-preview.environment]
-  HUGO_VERSION = "0.93.3"
+  HUGO_VERSION = "0.96.0"
   NODE_VERSION = "16"
   CXXFLAGS = "-std=c++17"
 
 [context.branch-deploy.environment]
-  HUGO_VERSION = "0.93.3"
+  HUGO_VERSION = "0.96.0"
   NODE_VERSION = "16"
   CXXFLAGS = "-std=c++17"
 
 [context.production.environment]
-  HUGO_VERSION = "0.89.2"
+  HUGO_VERSION = "0.96.0"
   NODE_VERSION = "16"
   CXXFLAGS = "-std=c++17"
 
@@ -37,71 +37,108 @@
 
 # Bypass the landing page
 
+# [[redirects]]
+#   from = "/"
+#   to = "/preview/"
+#   force = true
+
+# Redirect EOL docs to the archive site
+
 [[redirects]]
-  from = "/"
-  to = "/latest/"
+  from = "/v1.0/*"
+  to = "https://docs-archive.yugabyte.com/"
+  force = true
+
+[[redirects]]
+  from = "/v1.1/*"
+  to = "https://docs-archive.yugabyte.com/"
+  force = true
+
+[[redirects]]
+  from = "/v1.2/*"
+  to = "https://docs-archive.yugabyte.com/"
+  force = true
+
+[[redirects]]
+  from = "/v1.3/*"
+  to = "https://docs-archive.yugabyte.com/"
+  force = true
+
+[[redirects]]
+  from = "/v2.0/*"
+  to = "https://docs-archive.yugabyte.com/"
+  force = true
+
+[[redirects]]
+  from = "/v2.1/*"
+  to = "https://docs-archive.yugabyte.com/"
+  force = true
+
+[[redirects]]
+  from = "/v2.2/*"
+  to = "https://docs-archive.yugabyte.com/"
   force = true
 
 # Redirect older versions of specific sections
 
 [[redirects]]
   from = "/:version/comparisons/*"
-  to = "/latest/comparisons/:splat"
+  to = "/preview/comparisons/:splat"
   force = true
 
 [[redirects]]
   from = "/:version/contribute/*"
-  to = "/latest/contribute/:splat"
+  to = "/preview/contribute/:splat"
   force = true
 
 [[redirects]]
   from = "/:version/faq/*"
-  to = "/latest/faq/:splat"
+  to = "/preview/faq/:splat"
   force = true
 
 [[redirects]]
   from = "/:version/integrations/smart-driver/"
-  to = "/latest/integrations/jdbc-driver/"
+  to = "/preview/integrations/jdbc-driver/"
   force = true
 
 [[redirects]]
   from = "/:version/integrations/*"
-  to = "/latest/integrations/"
+  to = "/preview/integrations/"
   force = true
 
 # (this is the old version of integrations)
 [[redirects]]
   from = "/:version/develop/ecosystem-integrations/*"
-  to = "/latest/integrations/"
+  to = "/preview/integrations/"
   force = true
 
 [[redirects]]
   from = "/:version/legal/*"
-  to = "/latest/legal/:splat"
+  to = "/preview/legal/:splat"
   force = true
 
 [[redirects]]
   from = "/:version/releases/*"
-  to = "/latest/releases/:splat"
+  to = "/preview/releases/:splat"
   force = true
 
 [[redirects]]
   from = "/:version/troubleshoot/*"
-  to = "/latest/troubleshoot/:splat"
+  to = "/preview/troubleshoot/:splat"
   force = true
 
 [[redirects]]
   from = "/:version/yedis/*"
-  to = "/latest/yedis/"
+  to = "/preview/yedis/"
   force = true
 
 [[redirects]]
   from = "/:version/yugabyte-cloud/*"
-  to = "/latest/yugabyte-cloud/"
+  to = "/preview/yugabyte-cloud/"
   force = true
 
 # Stable quick-starts need defaults,
-# since archiving from /latest removes aliases
+# since archiving from /preview removes aliases
 
 [[redirects]]
   from = "/stable/quick-start/install/"
@@ -121,26 +158,15 @@
 # Yugabyte Extensions top hit
 
 [[redirects]]
-  from = "/latest/api/ysql/extensions/"
-  to = "/latest/explore/ysql-language-features/pg-extensions/"
+  from = "/preview/api/ysql/extensions/"
+  to = "/preview/explore/ysql-language-features/pg-extensions/"
   force = true
 
-# Docs prior to v1.3 are not online
-
-[[redirects]]
-  from = "/v1.0/*"
-  to = "/latest/:splat"
-  force = true
+# Catch-all for old links to /latest (now called /preview)
 
 [[redirects]]
-  from = "/v1.1/*"
-  to = "/latest/:splat"
-  force = true
-
-[[redirects]]
-  from = "/v1.2/*"
-  to = "/latest/:splat"
-  force = true
+  from = "/latest/*"
+  to = "/preview/:splat"
 
 # Hugo resource caching plugin configuration
 # https://github.com/cdeleeuwe/netlify-plugin-hugo-cache-resources#readme

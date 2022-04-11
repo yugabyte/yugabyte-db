@@ -43,6 +43,7 @@
 #include "yb/util/enums.h"
 #include "yb/util/slice.h"
 #include "yb/util/stack_trace.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -111,7 +112,7 @@ constexpr bool IsDebug() {
 #endif
 }
 
-class ScopeLogger {
+class NODISCARD_CLASS ScopeLogger {
  public:
   ScopeLogger(const std::string& msg, std::function<void()> on_scope_bounds);
 

@@ -177,6 +177,8 @@ class PgsqlWriteOp : public PgsqlOp {
 
 CHECKED_STATUS ReviewResponsePagingState(const PgTableDesc& table, PgsqlReadOp* op);
 
+bool PrepareNextRequest(PgsqlReadOp* read_op);
+
 }  // namespace pggate
 }  // namespace yb
 

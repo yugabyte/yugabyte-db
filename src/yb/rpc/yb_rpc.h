@@ -110,7 +110,7 @@ class YBInboundConnectionContext : public YBConnectionContext {
 
 class YBInboundCall : public InboundCall {
  public:
-  YBInboundCall(ConnectionPtr conn, CallProcessedListener call_processed_listener);
+  YBInboundCall(ConnectionPtr conn, CallProcessedListener* call_processed_listener);
   explicit YBInboundCall(RpcMetrics* rpc_metrics, const RemoteMethod& remote_method);
   virtual ~YBInboundCall();
 
