@@ -46,6 +46,7 @@ struct ValueControlFields {
   // The timestamp provided by the user as part of a 'USING TIMESTAMP' clause in CQL.
   UserTimeMicros user_timestamp = kInvalidUserTimestamp;
 
+  void AppendEncoded(ValueBuffer* out) const;
   void AppendEncoded(std::string* out) const;
   std::string ToString() const;
 

@@ -66,7 +66,7 @@ class BlockBasedTableFactory : public TableFactory {
 
   // base_file should be not nullptr, data_file should either point to different file writer
   // or be nullptr in order to produce single SST file containing both data and metadata.
-  TableBuilder* NewTableBuilder(
+  std::unique_ptr<TableBuilder> NewTableBuilder(
       const TableBuilderOptions& table_builder_options,
       uint32_t column_family_id, WritableFileWriter* base_file,
       WritableFileWriter* data_file = nullptr) const override;

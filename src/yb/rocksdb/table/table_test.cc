@@ -300,9 +300,8 @@ class TableConstructor: public Constructor {
     Reset();
     soptions.use_mmap_reads = ioptions.allow_mmap_reads;
     file_writer_.reset(test::GetWritableFileWriter(new test::StringSink()));
-    unique_ptr<TableBuilder> builder;
     IntTblPropCollectorFactories int_tbl_prop_collector_factories;
-    builder.reset(ioptions.table_factory->NewTableBuilder(
+    auto builder = ioptions.table_factory->NewTableBuilder(
         TableBuilderOptions(ioptions,
                             internal_comparator,
                             int_tbl_prop_collector_factories,
@@ -310,7 +309,7 @@ class TableConstructor: public Constructor {
                             CompressionOptions(),
                             /* skip_filters */ false),
         TablePropertiesCollectorFactory::Context::kUnknownColumnFamily,
-        file_writer_.get()));
+        file_writer_.get());
     if (TEST_skip_writing_key_value_encoding_format) {
       dynamic_cast<BlockBasedTableBuilder*>(builder.get())
           ->TEST_skip_writing_key_value_encoding_format();

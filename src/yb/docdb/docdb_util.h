@@ -23,7 +23,7 @@
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/shared_lock_manager_fwd.h"
 #include "yb/docdb/doc_write_batch.h"
-#include "yb/docdb/docdb_compaction_filter.h"
+#include "yb/docdb/docdb_compaction_context.h"
 #include "yb/rocksdb/compaction_filter.h"
 
 namespace yb {

@@ -32,10 +32,12 @@
 #include <limits>
 #include <unordered_map>
 
+#include "yb/rocksdb/rocksdb_fwd.h"
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/listener.h"
-#include "yb/util/slice.h"
 #include "yb/rocksdb/universal_compaction.h"
+
+#include "yb/util/slice.h"
 
 #ifdef max
 #undef max
@@ -831,6 +833,9 @@ typedef std::function<yb::Result<bool>(const MemTable&)> MemTableFilter;
 using IteratorReplacer =
     std::function<InternalIterator*(InternalIterator*, Arena*, const Slice&)>;
 
+using CompactionContextFactory = std::function<CompactionContextPtr(
+    CompactionFeed* feed, const CompactionContextOptions& options)>;
+
 struct DBOptions {
   // Some functions that make it easier to optimize RocksDB
 
@@ -1332,6 +1337,8 @@ struct DBOptions {
   // Boundary extractor is used to retrieve user defined values for record.
   // Also it decodes those values during load of metafile.
   std::shared_ptr<BoundaryValuesExtractor> boundary_extractor;
+
+  std::shared_ptr<CompactionContextFactory> compaction_context_factory;
 
   // Function that returns max file size for compaction.
   // Supported only for level0 of universal style compactions.

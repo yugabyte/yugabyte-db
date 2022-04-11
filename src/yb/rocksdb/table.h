@@ -389,7 +389,7 @@ class TableFactory {
   // It is the caller's responsibility to keep the file open and close the file
   // after closing the table builder. compression_type is the compression type
   // to use in this table.
-  virtual TableBuilder* NewTableBuilder(
+  virtual std::unique_ptr<TableBuilder> NewTableBuilder(
       const TableBuilderOptions& table_builder_options,
       uint32_t column_family_id, WritableFileWriter* base_file,
       WritableFileWriter* data_file = nullptr) const = 0;

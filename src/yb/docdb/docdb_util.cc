@@ -457,9 +457,8 @@ Status DocDBRocksDBUtil::ReinitDBOptions() {
   docdb::InitRocksDBOptions(
       &intents_db_options_, "[I] " /* log_prefix */, intents_db_options_.statistics,
       tablet_options);
-  regular_db_options_.compaction_filter_factory =
-      std::make_shared<docdb::DocDBCompactionFilterFactory>(
-          retention_policy_, &KeyBounds::kNoBounds);
+  regular_db_options_.compaction_context_factory = CreateCompactionContextFactory(
+      retention_policy_, &KeyBounds::kNoBounds);
   regular_db_options_.compaction_file_filter_factory =
       compaction_file_filter_factory_;
   regular_db_options_.max_file_size_for_compaction =

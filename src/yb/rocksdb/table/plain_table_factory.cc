@@ -42,7 +42,8 @@ Status PlainTableFactory::NewTableReader(
       table_options_.full_scan_mode);
 }
 
-TableBuilder* PlainTableFactory::NewTableBuilder(const TableBuilderOptions &table_builder_options,
+std::unique_ptr<TableBuilder> PlainTableFactory::NewTableBuilder(
+    const TableBuilderOptions &table_builder_options,
     uint32_t column_family_id, WritableFileWriter *base_file, WritableFileWriter *data_file) const {
   // This table factory doesn't support separate files for metadata and data.
   assert(data_file == nullptr);
@@ -50,7 +51,7 @@ TableBuilder* PlainTableFactory::NewTableBuilder(const TableBuilderOptions &tabl
   // in-memory dbs. The skip_filters optimization is not useful for plain
   // tables
   //
-  return new PlainTableBuilder(
+  return std::make_unique<PlainTableBuilder>(
       table_builder_options.ioptions,
       *table_builder_options.int_tbl_prop_collector_factories,
       column_family_id,

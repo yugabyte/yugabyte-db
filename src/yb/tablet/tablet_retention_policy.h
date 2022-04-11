@@ -14,7 +14,8 @@
 #ifndef YB_TABLET_TABLET_RETENTION_POLICY_H_
 #define YB_TABLET_TABLET_RETENTION_POLICY_H_
 
-#include "yb/docdb/docdb_compaction_filter.h"
+#include "yb/docdb/docdb_compaction_context.h"
+
 #include "yb/server/clock.h"
 
 #include "yb/tablet/tablet_fwd.h"

@@ -93,7 +93,7 @@ Status MockTableFactory::NewTableReader(
   return Status::OK();
 }
 
-TableBuilder* MockTableFactory::NewTableBuilder(
+std::unique_ptr<TableBuilder> MockTableFactory::NewTableBuilder(
     const TableBuilderOptions& table_builder_options, uint32_t column_family_id,
     WritableFileWriter* base_file, WritableFileWriter* data_file) const {
   // This table factory doesn't support separate files for metadata and data, because tests using
@@ -103,7 +103,7 @@ TableBuilder* MockTableFactory::NewTableBuilder(
 
   uint32_t id = GetAndWriteNextID(base_file);
 
-  return new MockTableBuilder(id, &file_system_);
+  return std::make_unique<MockTableBuilder>(id, &file_system_);
 }
 
 Status MockTableFactory::CreateMockTable(Env* env, const std::string& fname,

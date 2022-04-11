@@ -173,7 +173,7 @@ class MockTableFactory : public TableFactory {
 
   bool IsSplitSstForWriteSupported() const override { return false; }
 
-  TableBuilder* NewTableBuilder(
+  std::unique_ptr<TableBuilder> NewTableBuilder(
       const TableBuilderOptions& table_builder_options, uint32_t column_familly_id,
       WritableFileWriter* base_file, WritableFileWriter* data_file = nullptr) const override;
 

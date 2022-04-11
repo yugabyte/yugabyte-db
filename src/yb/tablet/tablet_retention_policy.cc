@@ -26,7 +26,6 @@
 #include "yb/common/transaction_error.h"
 
 #include "yb/docdb/doc_ttl_util.h"
-#include "yb/docdb/docdb_compaction_filter.h"
 
 #include "yb/gutil/ref_counted.h"
 
