@@ -18,7 +18,6 @@ import static com.yugabyte.yw.commissioner.tasks.BackupUniverse.SCHEDULED_BACKUP
 import static com.yugabyte.yw.commissioner.tasks.BackupUniverse.SCHEDULED_BACKUP_SUCCESS_COUNTER;
 import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
 import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
-import static com.yugabyte.yw.common.Util.lockedUpdateBackupState;
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -96,7 +95,7 @@ public class MultiTableBackup extends UniverseTaskBase {
 
       // Update universe 'backupInProgress' flag to true or throw an exception if universe is
       // already having a backup in progress.
-      lockedUpdateBackupState(params().universeUUID, this, true);
+      lockedUpdateBackupState(true);
       try {
         String masterAddresses = universe.getMasterAddresses(true);
         String certificate = universe.getCertificateNodetoNode();
@@ -330,7 +329,7 @@ public class MultiTableBackup extends UniverseTaskBase {
         }
         throw t;
       } finally {
-        lockedUpdateBackupState(params().universeUUID, this, false);
+        lockedUpdateBackupState(false);
       }
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
