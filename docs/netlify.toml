@@ -37,10 +37,10 @@
 
 # Bypass the landing page
 
-[[redirects]]
-  from = "/"
-  to = "/preview/"
-  force = true
+# [[redirects]]
+#   from = "/"
+#   to = "/preview/"
+#   force = true
 
 # Redirect EOL docs to the archive site
 
