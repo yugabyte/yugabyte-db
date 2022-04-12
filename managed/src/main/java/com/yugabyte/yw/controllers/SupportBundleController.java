@@ -19,6 +19,7 @@ import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.SupportBundleFormData;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.SupportBundle;
 import com.yugabyte.yw.models.SupportBundle.SupportBundleStatusType;
 import com.yugabyte.yw.models.Universe;
@@ -91,6 +92,23 @@ public class SupportBundleController extends AuthenticatedController {
     SupportBundleTaskParams taskParams =
         new SupportBundleTaskParams(supportBundle, bundleData, customer, universe);
     UUID taskUUID = commissioner.submit(TaskType.CreateSupportBundle, taskParams);
+
+    // Add this task uuid to the user universe.
+    CustomerTask.create(
+        customer,
+        universeUUID,
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.CreateSupportBundle,
+        universe.name);
+    log.info(
+        "Saved task uuid "
+            + taskUUID.toString()
+            + " in customer tasks table for customer: "
+            + customerUUID.toString()
+            + " and universe: "
+            + universeUUID.toString());
+
     auditService()
         .createAuditEntryWithReqBody(
             ctx(),
