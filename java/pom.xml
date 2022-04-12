@@ -96,7 +96,7 @@
     <guava.version>30.1.1-jre</guava.version>
     <hadoop.version>2.7.7</hadoop.version>
     <jedis.version>2.9.0-yb-16</jedis.version>
-    <joda-time.version>2.9.3</joda-time.version>
+    <joda-time.version>2.10.14</joda-time.version>
     <jsr305.version>3.0.1</jsr305.version>
 
     <junit.groupId>junit</junit.groupId>
