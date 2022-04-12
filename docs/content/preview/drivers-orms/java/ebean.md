@@ -216,7 +216,7 @@ Do the following:
 1. Create an employee using a POST request:
 
     ```shell
-    $ curl --data '{ "firstName" : "John", "lastName" : "Smith", "email":"jsmith@xyz.com" }'
+    $ curl --data '{ "firstName" : "John", "lastName" : "Smith", "email":"jsmith@xyz.com" }' \
     -v -X POST -H 'Content-Type:application/json' http://localhost:8080/employees
     ```
 
@@ -228,7 +228,7 @@ Do the following:
 
 The output should look like the following:
 
-  ```shell
+  ```output.json
   ["{'empId' = '1', firstName ='John', 'lastName' ='Smith', 'email' ='jsmith@xyz.com' }"]
   ```
 
