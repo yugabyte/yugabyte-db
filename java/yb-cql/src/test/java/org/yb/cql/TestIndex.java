@@ -2514,7 +2514,17 @@ public class TestIndex extends BaseCQLTest {
     // Index table: Hash key column.
     assertQuery(tp, "SELECT * FROM test_in2 WHERE v1 IN ()", "");
     // Index table: Range key column.
+    RocksDBMetrics tableMetrics = getRocksDBMetric("test_in2");
+    RocksDBMetrics indexMetrics = getRocksDBMetric("i2");
+    LOG.info("Initial: table {}, index {}", tableMetrics, indexMetrics);
     assertQuery(tp, "SELECT * FROM test_in2 WHERE v1 = 'v1' AND r IN ()", "");
+    tableMetrics = getRocksDBMetric("test_in2").subtract(tableMetrics);
+    indexMetrics = getRocksDBMetric("i2").subtract(indexMetrics);
+    LOG.info("Difference: table {}, index {}", tableMetrics, indexMetrics);
+    assertTrue(tableMetrics.nextCount == 0);
+    assertTrue(tableMetrics.seekCount == 0);
+    assertTrue(indexMetrics.nextCount == 0);
+    assertTrue(indexMetrics.seekCount == 0);
     // Index table: Non-key column.
     assertQuery(tp, "SELECT * FROM test_in2 WHERE v1 = 'v1' AND r = 'bar' AND v2 IN ()", "");
   }
