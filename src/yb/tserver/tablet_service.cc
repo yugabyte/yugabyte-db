@@ -2058,16 +2058,25 @@ void ConsensusServiceImpl::StartRemoteBootstrap(const StartRemoteBootstrapReques
     // split_parent_tablet_id. However, our local tablet manager should only know about the parent
     // if it was part of the raft group which committed the split to the parent, and if the parent
     // tablet has yet to be deleted across the cluster.
-    TabletPeerTablet result;
-    if (tablet_manager_->GetTabletPeer(req->split_parent_tablet_id(), &result.tablet_peer).ok()) {
-      YB_LOG_EVERY_N_SECS(WARNING, 30)
-          << "Start remote bootstrap rejected: parent tablet not yet split.";
-      SetupErrorAndRespond(
-          resp->mutable_error(),
-          STATUS(Incomplete, "Rejecting bootstrap request while parent tablet is present."),
-          TabletServerErrorPB::TABLET_SPLIT_PARENT_STILL_LIVE,
-          &context);
-      return;
+    TabletPeerPtr tablet_peer;
+    if (tablet_manager_->GetTabletPeer(req->split_parent_tablet_id(), &tablet_peer).ok()) {
+      auto tablet = tablet_peer->shared_tablet();
+      // If local parent tablet replica has been already split or remote bootstrapped from remote
+      // replica that has been already split - allow RBS of child tablets.
+      // In this case we can't rely on local parent tablet replica split to create child tablet
+      // replicas on the current node, because local bootstrap is not replaying already applied
+      // SPLIT_OP (it has op_id <= flushed_op_id).
+      if (!tablet || tablet->metadata()->tablet_data_state() !=
+                         tablet::TabletDataState::TABLET_DATA_SPLIT_COMPLETED) {
+        YB_LOG_EVERY_N_SECS(WARNING, 30)
+            << "Start remote bootstrap rejected: parent tablet not yet split.";
+        SetupErrorAndRespond(
+            resp->mutable_error(),
+            STATUS(Incomplete, "Rejecting bootstrap request while parent tablet is present."),
+            TabletServerErrorPB::TABLET_SPLIT_PARENT_STILL_LIVE,
+            &context);
+        return;
+      }
     }
   }
 
