@@ -123,15 +123,21 @@ import play.libs.Json;
 @Slf4j
 public abstract class UniverseTaskBase extends AbstractTaskBase {
 
+  enum VersionCheckMode {
+    NEVER,
+    ALWAYS,
+    HA_ONLY
+  }
+
   // Flag to indicate if we have locked the universe.
   private boolean universeLocked = false;
 
   // This is a map from task classes names to the task types.
-  private static Map<String, TaskType> taskClassnameToTaskTypeMap;
+  private static final Map<String, TaskType> taskClassnameToTaskTypeMap;
 
   static {
     // Initialize the map which holds task class names to their task types.
-    Map<String, TaskType> typeMap = new HashMap<String, TaskType>();
+    Map<String, TaskType> typeMap = new HashMap<>();
 
     for (TaskType taskType : TaskType.filteredValues()) {
       String className = "com.yugabyte.yw.commissioner.tasks." + taskType.toString();
@@ -817,7 +823,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *
    * @param nodes set of nodes to be updated.
    * @param nodeState State into which these nodes will be transitioned.
-   * @return
    */
   public SubTaskGroup createSetNodeStateTasks(
       Collection<NodeDetails> nodes, NodeDetails.NodeState nodeState) {
@@ -1375,7 +1380,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * Creates a task list to stop the masters of the cluster and adds it to the task queue.
    *
    * @param nodes set of nodes to be stopped as master
-   * @return
    */
   public SubTaskGroup createStopMasterTasks(Collection<NodeDetails> nodes) {
     return createStopServerTasks(nodes, "master", false);
@@ -1385,7 +1389,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * Creates a task list to stop the tservers of the cluster and adds it to the task queue.
    *
    * @param nodes set of nodes to be stopped as master
-   * @return
    */
   public SubTaskGroup createStopServerTasks(
       Collection<NodeDetails> nodes, String serverType, boolean isForceDelete) {
@@ -1530,7 +1533,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.universeUUID = taskParams().universeUUID;
     // Set the blacklist nodes if any are passed in.
     if (blacklistNodes != null && !blacklistNodes.isEmpty()) {
-      Set<String> blacklistNodeNames = new HashSet<String>();
+      Set<String> blacklistNodeNames = new HashSet<>();
       for (NodeDetails node : blacklistNodes) {
         blacklistNodeNames.add(node.nodeName);
       }
@@ -1642,7 +1645,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param addNodes The nodes that have to be added to the blacklist.
    * @param removeNodes The nodes that have to be removed from the blacklist.
    * @param isLeaderBlacklist true if we are leader blacklisting the node
-   * @return
    */
   public SubTaskGroup createModifyBlackListTask(
       Collection<NodeDetails> addNodes,
@@ -1876,7 +1878,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    */
   protected boolean shouldIncrementVersion() {
 
-    if (!HighAvailabilityConfig.get().isPresent()) {
+    final VersionCheckMode mode =
+        runtimeConfigFactory
+            .forUniverse(getUniverse())
+            .getEnum(VersionCheckMode.class, "yb.universe_version_check_mode");
+    if (mode == VersionCheckMode.NEVER) {
+      return false;
+    }
+
+    if (mode == VersionCheckMode.HA_ONLY && !HighAvailabilityConfig.get().isPresent()) {
       return false;
     }
 
@@ -1956,9 +1966,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *     this case for now. When we get to a point where manual yb-admin operations are never
    *     needed, we can consider flagging this case. For now, we will let the universe version on
    *     Platform and the cluster config version on the master diverge.
+   * @param mode
    */
-  private static void checkUniverseVersion(UUID universeUUID) {
-    if (!HighAvailabilityConfig.get().isPresent()) {
+  private static void checkUniverseVersion(UUID universeUUID, VersionCheckMode mode) {
+    if (mode == VersionCheckMode.NEVER) {
+      return;
+    }
+
+    if (mode == VersionCheckMode.HA_ONLY && !HighAvailabilityConfig.get().isPresent()) {
       log.debug("Skipping cluster config version check for universe {}", universeUUID);
       return;
     }
@@ -1969,7 +1984,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   protected void checkUniverseVersion() {
-    UniverseTaskBase.checkUniverseVersion(taskParams().universeUUID);
+    UniverseTaskBase.checkUniverseVersion(
+        taskParams().universeUUID,
+        runtimeConfigFactory
+            .forUniverse(getUniverse())
+            .getEnum(VersionCheckMode.class, "yb.universe_version_check_mode"));
   }
 
   /** Increment the cluster config version */
