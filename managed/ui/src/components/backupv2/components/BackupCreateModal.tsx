@@ -13,26 +13,47 @@ import { YBModalForm } from '../../common/forms';
 import * as Yup from 'yup';
 import { Col, Row } from 'react-bootstrap';
 import { Field } from 'formik';
-import { YBButton, YBCheckBox, YBFormSelect, YBNumericInput } from '../../common/forms/fields';
+import {
+  YBButton,
+  YBCheckBox,
+  YBFormInput,
+  YBFormSelect,
+  YBNumericInput
+} from '../../common/forms/fields';
 import { BACKUP_API_TYPES, Backup_Options_Type, IStorageConfig, ITable } from '../common/IBackup';
 import { useSelector } from 'react-redux';
 import { find, groupBy, uniqBy } from 'lodash';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
 import { YBLoading } from '../../common/indicators';
-import './BackupCreateModal.scss';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
 import Bulb from '../../universes/images/bulb.svg';
 import { toast } from 'react-toastify';
 import { createBackup } from '../common/BackupAPI';
 import { Badge_Types, StatusBadge } from '../../common/badge/StatusBadge';
+import { createBackupSchedule } from '../common/BackupScheduleAPI';
+
+import './BackupCreateModal.scss';
+
 interface BackupCreateModalProps {
   onHide: Function;
   visible: boolean;
   currentUniverseUUID: string | undefined;
+  isScheduledBackup?: boolean;
+  isEditMode?: boolean;
+  editValues?: Record<string, any>;
 }
 
-const DURATION_OPTIONS = ['Days', 'Months', 'Weeks', 'Years'].map((t: string) => {
+const DURATIONS = ['Days', 'Weeks', 'Months', 'Years'];
+
+const DURATION_OPTIONS = DURATIONS.map((t: string) => {
+  return {
+    value: t,
+    label: t
+  };
+});
+
+const SCHEDULE_DURATION_OPTIONS = ['Mins', 'Hours', ...DURATIONS].map((t: string) => {
   return {
     value: t,
     label: t
@@ -43,10 +64,12 @@ const TABLE_BACKUP_OPTIONS = [
   { label: 'Select all tables in this Keyspace', value: Backup_Options_Type.ALL },
   { label: 'Select a subset of tables', value: Backup_Options_Type.CUSTOM }
 ];
+
 const STEPS = [
   {
-    title: 'Backup Now',
-    submitLabel: 'Backup',
+    title: (isScheduledBackup: boolean) =>
+      isScheduledBackup ? 'Create scheduled backup policy' : 'Backup Now',
+    submitLabel: (isScheduledBackup: boolean) => (isScheduledBackup ? 'Create' : 'Backup'),
     component: BackupConfigurationForm,
     footer: () => null
   }
@@ -55,16 +78,22 @@ const STEPS = [
 const validationSchema = Yup.object().shape({
   storage_config: Yup.object().required('Required'),
   db_to_backup: Yup.object().nullable().required('Required'),
-  duration_period: Yup.number().when('keep_indefinitely', {
+  retention_interval: Yup.number().when('keep_indefinitely', {
     is: (keep_indefinitely) => !keep_indefinitely,
     then: Yup.number().min(1, 'Duration must be greater than or equal to one')
   })
 });
+
 const initialValues = {
+  policy_name: '',
+  policy_interval: 1,
+  policy_interval_type: SCHEDULE_DURATION_OPTIONS[2], //default to days
+  use_cron_expression: false,
+  cron_expression: '',
   api_type: { value: BACKUP_API_TYPES.YSQL, label: 'YSQL' },
   backup_tables: Backup_Options_Type.ALL,
-  duration_period: 1,
-  duration_type: DURATION_OPTIONS[0],
+  retention_interval: 1,
+  retention_interval_type: DURATION_OPTIONS[0],
   selected_ycql_tables: [],
   keep_indefinitely: false,
   search_text: '',
@@ -74,16 +103,24 @@ const initialValues = {
 export const BackupCreateModal: FC<BackupCreateModalProps> = ({
   onHide,
   visible,
-  currentUniverseUUID
+  currentUniverseUUID,
+  isScheduledBackup = false,
+  isEditMode = false,
+  editValues = {}
 }) => {
   const [currentStep, setCurrentStep] = useState(0);
 
   const { data: tablesInUniverse, isLoading: isTableListLoading } = useQuery(
     [currentUniverseUUID, 'tables'],
-    () => fetchTablesInUniverse(currentUniverseUUID!)
+    () => fetchTablesInUniverse(currentUniverseUUID!),
+    {
+      enabled: visible
+    }
   );
+
   const queryClient = useQueryClient();
   const storageConfigs = useSelector((reduxState: any) => reduxState.customer.configs);
+
   const doCreateBackup = useMutation((values: any) => createBackup(values), {
     onSuccess: (resp) => {
       toast.success(
@@ -102,10 +139,24 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
       toast.error(err.response.data.error);
     }
   });
+
+  const doCreateBackupSchedule = useMutation((values: any) => createBackupSchedule(values), {
+    onSuccess: () => {
+      toast.success('Schedule policy created');
+      queryClient.invalidateQueries(['scheduled_backup_list']);
+      onHide();
+    },
+    onError: (err: any) => {
+      toast.error(err.data.error);
+    }
+  });
+
   const groupedStorageConfigs = useMemo(() => {
-    const configs = storageConfigs.data.map((c: IStorageConfig) => {
-      return { value: c.configUUID, label: c.configName, name: c.name };
-    });
+    const configs = storageConfigs.data
+      .filter((c: IStorageConfig) => c.type === 'STORAGE')
+      .map((c: IStorageConfig) => {
+        return { value: c.configUUID, label: c.configName, name: c.name };
+      });
 
     return Object.entries(groupBy(configs, (c: IStorageConfig) => c.name)).map(
       ([label, options]) => {
@@ -114,26 +165,40 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
     );
   }, [storageConfigs]);
 
+  if (!visible) return null;
+
   return (
     <YBModalForm
       size="large"
-      title={STEPS[currentStep].title}
+      title={STEPS[currentStep].title(isScheduledBackup)}
       className="backup-create-modal"
       visible={visible}
       validationSchema={validationSchema}
+      showCancelButton={isScheduledBackup}
       onFormSubmit={async (
         values: any,
         { setSubmitting }: { setSubmitting: any; setFieldError: any }
       ) => {
         setSubmitting(false);
-        doCreateBackup.mutateAsync({
-          ...values,
-          universeUUID: currentUniverseUUID,
-          tablesList: tablesInUniverse?.data
-        });
+        if (isScheduledBackup) {
+          doCreateBackupSchedule.mutateAsync({
+            ...values,
+            universeUUID: currentUniverseUUID,
+            tablesList: tablesInUniverse?.data
+          });
+        } else {
+          doCreateBackup.mutateAsync({
+            ...values,
+            universeUUID: currentUniverseUUID,
+            tablesList: tablesInUniverse?.data
+          });
+        }
       }}
-      initialValues={initialValues}
-      submitLabel={STEPS[currentStep].submitLabel}
+      initialValues={{
+        ...initialValues,
+        ...editValues
+      }}
+      submitLabel={STEPS[currentStep].submitLabel(isScheduledBackup)}
       onHide={() => {
         setCurrentStep(0);
         onHide();
@@ -146,8 +211,10 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
           <>
             {STEPS[currentStep].component({
               ...values,
+              isScheduledBackup,
               storageConfigs: groupedStorageConfigs,
-              tablesInUniverse: tablesInUniverse?.data
+              tablesInUniverse: tablesInUniverse?.data,
+              isEditMode
             })}
           </>
         )
@@ -162,7 +229,9 @@ function BackupConfigurationForm({
   values,
   storageConfigs,
   tablesInUniverse,
-  errors
+  errors,
+  isScheduledBackup,
+  isEditMode
 }: {
   kmsConfigList: any;
   setFieldValue: Function;
@@ -176,13 +245,81 @@ function BackupConfigurationForm({
     };
   };
   errors: Record<string, string>;
+  isScheduledBackup: boolean;
+  isEditMode: boolean;
 }) {
   const ALL_DB_OPTION = {
     label: `All ${values['api_type'].value === BACKUP_API_TYPES.YSQL ? 'Databases' : 'Keyspaces'}`,
     value: null
   };
+
   return (
     <div className="backup-configuration-form">
+      {isScheduledBackup && (
+        <Row>
+          <Col lg={8} className="no-padding">
+            <Field
+              name="policy_name"
+              component={YBFormInput}
+              label="Policy Name"
+              disabled={isEditMode}
+            />
+          </Col>
+        </Row>
+      )}
+
+      {isScheduledBackup && (
+        <Row>
+          <div>Set backup intervals</div>
+          <Col lg={12} className="no-padding">
+            <Row className="duration-options">
+              {values['use_cron_expression'] ? (
+                <Col lg={4} className="no-padding">
+                  <Field name="cron_expression" component={YBFormInput} />
+                </Col>
+              ) : (
+                <>
+                  <Col lg={1} className="no-padding">
+                    <Field
+                      name="policy_interval"
+                      component={YBNumericInput}
+                      input={{
+                        onChange: (val: number) => setFieldValue('policy_interval', val),
+                        value: values['policy_interval']
+                      }}
+                      minVal={0}
+                      readOnly={values['use_cron_expression']}
+                    />
+                  </Col>
+                  <Col lg={3}>
+                    <Field
+                      name="policy_interval_type"
+                      component={YBFormSelect}
+                      options={SCHEDULE_DURATION_OPTIONS}
+                      isDisabled={values['use_cron_expression']}
+                    />
+                  </Col>
+                </>
+              )}
+
+              <Col lg={4}>
+                <Field
+                  name="use_cron_expression"
+                  component={YBCheckBox}
+                  checkState={values['use_cron_expression']}
+                />
+                Use cron expression (UTC)
+              </Col>
+            </Row>
+          </Col>
+          {errors['retention_interval'] && (
+            <Col lg={12} className="no-padding help-block standard-error">
+              {errors['retention_interval']}
+            </Col>
+          )}
+        </Row>
+      )}
+
       <Row>
         <Col lg={2} className="no-padding">
           <Field
@@ -196,6 +333,7 @@ function BackupConfigurationForm({
               setFieldValue('api_type', val);
               setFieldValue('db_to_backup', null);
             }}
+            isDisabled={isEditMode}
           />
         </Col>
       </Row>
@@ -219,6 +357,7 @@ function BackupConfigurationForm({
                 return { ...props, display: 'flex' };
               }
             }}
+            isDisabled={isEditMode}
           />
         </Col>
       </Row>
@@ -249,6 +388,7 @@ function BackupConfigurationForm({
                 }
               }
             }}
+            isDisabled={isEditMode}
           />
         </Col>
       </Row>
@@ -262,7 +402,7 @@ function BackupConfigurationForm({
                     name="backup_tables"
                     component="input"
                     defaultChecked={values['backup_tables'] === target.value}
-                    disabled={values['db_to_backup']?.value === null}
+                    disabled={values['db_to_backup']?.value === null || isEditMode}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                       setFieldValue('backup_tables', e.target.value, false);
                       if (
@@ -305,33 +445,38 @@ function BackupConfigurationForm({
           <Row className="duration-options">
             <Col lg={1} className="no-padding">
               <Field
-                name="duration_period"
+                name="retention_interval"
                 component={YBNumericInput}
                 input={{
-                  onChange: (val: number) => setFieldValue('duration_period', val),
-                  value: values['duration_period']
+                  onChange: (val: number) => setFieldValue('retention_interval', val),
+                  value: values['retention_interval']
                 }}
                 minVal={0}
-                readOnly={values['keep_indefinitely']}
+                readOnly={values['keep_indefinitely'] || isEditMode}
               />
             </Col>
             <Col lg={3}>
               <Field
-                name="duration_type"
+                name="retention_interval_type"
                 component={YBFormSelect}
                 options={DURATION_OPTIONS}
-                isDisabled={values['keep_indefinitely']}
+                isDisabled={values['keep_indefinitely'] || isEditMode}
               />
             </Col>
             <Col lg={4}>
-              <Field name="keep_indefinitely" component={YBCheckBox} />
+              <Field
+                name="keep_indefinitely"
+                component={YBCheckBox}
+                disabled={isEditMode}
+                checkState={values['keep_indefinitely']}
+              />
               Keep indefinitely
             </Col>
           </Row>
         </Col>
-        {errors['duration_period'] && (
+        {errors['retention_interval'] && (
           <Col lg={12} className="no-padding help-block standard-error">
-            {errors['duration_period']}
+            {errors['retention_interval']}
           </Col>
         )}
       </Row>
@@ -345,7 +490,8 @@ function BackupConfigurationForm({
               value: values['parallel_threads']
             }}
             minVal={initialValues['parallel_threads']}
-            label="Parallele threads (Optional)"
+            label="Parallel threads (Optional)"
+            readOnly={isEditMode}
           />
         </Col>
       </Row>
@@ -393,6 +539,7 @@ export const SelectYCQLTablesModal: FC<SelectYCQLTablesModalProps> = ({
     .filter(
       (t) => values['db_to_backup']?.value === null || t.keySpace === values['db_to_backup']?.value
     );
+
   return (
     <YBModalForm
       formName="alertDestinationForm"

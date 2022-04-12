@@ -22,6 +22,7 @@ import {
 import { YCQLTableList, YSQLTableList } from './BackupTableList';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
 import { TABLE_TYPE_MAP } from '../common/IBackup';
+import { isFunction } from 'lodash';
 interface BackupDetailsProps {
   backup_details: IBackup | null;
   onHide: () => void;
@@ -32,6 +33,7 @@ interface BackupDetailsProps {
     data?: any[];
   };
   hideRestore?: boolean;
+  onAssignStorageConfig?: () => void;
 }
 const SOURCE_UNIVERSE_DELETED_MSG = (
   <span className="alert-message warning">
@@ -51,7 +53,8 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
   onRestore,
   onDelete,
   storageConfigs,
-  hideRestore = false
+  hideRestore = false,
+  onAssignStorageConfig
 }) => {
   const [searchKeyspaceText, setSearchKeyspaceText] = useState('');
 
@@ -82,14 +85,18 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
               disabled={
                 backup_details.state === Backup_States.DELETED ||
                 backup_details.state === Backup_States.DELETE_IN_PROGRESS ||
-                backup_details.state === Backup_States.QUEUED_FOR_DELETION
+                backup_details.state === Backup_States.QUEUED_FOR_DELETION ||
+                !backup_details.isStorageConfigPresent
               }
             />
             {!hideRestore && (
               <YBButton
                 btnText="Restore Entire Backup"
                 onClick={() => onRestore()}
-                disabled={backup_details.state !== Backup_States.COMPLETED}
+                disabled={
+                  backup_details.state !== Backup_States.COMPLETED ||
+                  !backup_details.isStorageConfigPresent
+                }
               />
             )}
           </Row>
@@ -143,7 +150,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                 <div className="header-text">Duration</div>
                 <div>{calculateDuration(backup_details.createTime, backup_details.updateTime)}</div>
               </div>
-              <div>
+              <div className="details-storage-config">
                 <div className="header-text">Storage Config</div>
                 <div className="universeLink">
                   <Link
@@ -154,6 +161,22 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                   </Link>
                 </div>
                 {!storageConfigName && STORAGE_CONFIG_DELETED_MSG}
+                {!storageConfigName && (
+                  <span className="assign-config-msg">
+                    <span>
+                      In order to <b>Delete</b> or <b>Restore</b> this backup you must first assign
+                      a new storage config to this backup.
+                    </span>
+                    <YBButton
+                      btnText="Assign storage config"
+                      onClick={() => {
+                        if (isFunction(onAssignStorageConfig)) {
+                          onAssignStorageConfig();
+                        }
+                      }}
+                    />
+                  </span>
+                )}
               </div>
             </div>
           </Row>

@@ -12,7 +12,7 @@ import { Dictionary, groupBy } from 'lodash';
 import moment from 'moment';
 import { IBackup, Keyspace_Table, RESTORE_ACTION_TYPE, TIME_RANGE_STATE } from '..';
 import { ROOT_URL } from '../../../config';
-import { BACKUP_API_TYPES, Backup_Options_Type, ITable } from './IBackup';
+import { BACKUP_API_TYPES, Backup_Options_Type, IStorageConfig, ITable } from './IBackup';
 
 export function getBackupsList(
   page = 0,
@@ -117,6 +117,12 @@ export function createBackup(values: Record<string, any>) {
   const cUUID = localStorage.getItem('customerId');
   const requestUrl = `${ROOT_URL}/customers/${cUUID}/backups`;
 
+  const payload = prepareBackupCreationPayload(values, cUUID);
+
+  return axios.post(requestUrl, payload);
+}
+
+export const prepareBackupCreationPayload = (values: Record<string, any>, cUUID: string | null) => {
   const backup_type = values['api_type'].value;
 
   const payload = {
@@ -125,7 +131,6 @@ export function createBackup(values: Record<string, any>) {
     parallelism: values['parallel_threads'],
     sse: values['storage_config'].name === 'S3',
     storageConfigUUID: values['storage_config'].value,
-    timeBeforeDelete: 0,
     universeUUID: values['universeUUID']
   };
 
@@ -169,9 +174,16 @@ export function createBackup(values: Record<string, any>) {
     payload['timeBeforeDelete'] = 0;
   } else {
     payload['timeBeforeDelete'] = moment()
-      .add(values['duration_period'], values['duration_type'].value)
+      .add(values['retention_interval'], values['retention_interval_type'].value)
       .diff(moment(), 'second');
   }
+  return payload;
+};
 
-  return axios.post(requestUrl, payload);
-}
+export const assignStorageConfig = (backup: IBackup, storageConfig: IStorageConfig) => {
+  const cUUID = localStorage.getItem('customerId');
+  const requestUrl = `${ROOT_URL}/customers/${cUUID}/backups/${backup.backupUUID}`;
+  return axios.put(requestUrl, {
+    storageConfigUUID: storageConfig.configUUID
+  });
+};
