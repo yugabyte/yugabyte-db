@@ -48,7 +48,7 @@ Before you begin, ensure you have installed Java Development Kit (JDK) 1.8.0 or 
     $ sbt new playframework/play-java-seed.g8
     ```
 
-1. Specifiy the following information for the project:
+1. Specify the following information for the project:
 
     ```shell
     This template generates a Play Java project 
