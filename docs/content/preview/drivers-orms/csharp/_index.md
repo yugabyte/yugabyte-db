@@ -22,7 +22,9 @@ The following projects are recommended for implementing C# applications using th
 
 Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the **Hello World** examples.
 
-For fully-runnable code snippets and explanations of common operations, see the **CRUD** examples. Before running CRUD examples, make sure you have installed the following prerequisites.
+For fully-runnable code snippets and explanations of common operations, see the project page **CRUD** example. Before running CRUD examples, make sure you have installed the prerequisites.
+
+For reference documentation, including using projects with SSL, refer to the [drivers and ORMs reference](../../reference/drivers/csharp/postgres-npgsql-reference/) pages.
 
 ### Prerequisites
 
