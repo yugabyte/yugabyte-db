@@ -213,7 +213,10 @@ public class CustomerTask extends Model {
     PrecheckNode,
 
     @EnumValue("Abort")
-    Abort;
+    Abort,
+
+    @EnumValue("CreateSupportBundle")
+    CreateSupportBundle;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -304,6 +307,8 @@ public class CustomerTask extends Model {
           return completed ? "Performed preflight check on " : "Performing preflight check on ";
         case Abort:
           return completed ? "Task aborted " : "Aborting task ";
+        case CreateSupportBundle:
+          return completed ? "Created Support Bundle in " : "Creating Support Bundle in ";
         default:
           return null;
       }
