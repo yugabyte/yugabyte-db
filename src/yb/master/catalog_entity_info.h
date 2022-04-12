@@ -799,21 +799,16 @@ struct PersistentClusterConfigInfo : public Persistent<SysClusterConfigEntryPB,
 
 // This is the in memory representation of the cluster config information serialized proto data,
 // using metadata() for CowObject access.
-class ClusterConfigInfo : public RefCountedThreadSafe<ClusterConfigInfo>,
-                          public MetadataCowWrapper<PersistentClusterConfigInfo> {
+class ClusterConfigInfo : public MetadataCowWrapper<PersistentClusterConfigInfo> {
  public:
   ClusterConfigInfo() {}
+  ~ClusterConfigInfo() = default;
 
   virtual const std::string& id() const override { return fake_id_; }
 
  private:
-  friend class RefCountedThreadSafe<ClusterConfigInfo>;
-  ~ClusterConfigInfo() = default;
-
   // We do not use the ID field in the sys_catalog table.
   const std::string fake_id_;
-
-  DISALLOW_COPY_AND_ASSIGN(ClusterConfigInfo);
 };
 
 struct PersistentRedisConfigInfo

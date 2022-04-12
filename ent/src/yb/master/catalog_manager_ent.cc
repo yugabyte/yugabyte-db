@@ -1104,14 +1104,15 @@ Status CatalogManager::ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req
 
 Status CatalogManager::ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
                                             ChangeEncryptionInfoResponsePB* resp) {
-  auto l = cluster_config_->LockForWrite();
+  auto cluster_config = ClusterConfig();
+  auto l = cluster_config->LockForWrite();
   auto encryption_info = l.mutable_data()->pb.mutable_encryption_info();
 
   RETURN_NOT_OK(encryption_manager_->ChangeEncryptionInfo(req, encryption_info));
 
   l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
   RETURN_NOT_OK(CheckStatus(
-      sys_catalog_->Upsert(leader_ready_term(), cluster_config_),
+      sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()),
       "updating cluster config in sys-catalog"));
   l.Commit();
 
@@ -1126,7 +1127,7 @@ Status CatalogManager::ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB*
 Status CatalogManager::IsEncryptionEnabled(const IsEncryptionEnabledRequestPB* req,
                                            IsEncryptionEnabledResponsePB* resp) {
   return encryption_manager_->IsEncryptionEnabled(
-      cluster_config_->LockForRead()->pb.encryption_info(), resp);
+      ClusterConfig()->LockForRead()->pb.encryption_info(), resp);
 }
 
 Status CatalogManager::ImportNamespaceEntry(const SysRowEntry& entry,
@@ -3196,7 +3197,7 @@ Status CatalogManager::SetupUniverseReplication(const SetupUniverseReplicationRe
   }
 
   {
-    auto l = cluster_config_->LockForRead();
+    auto l = ClusterConfig()->LockForRead();
     if (l->pb.cluster_uuid() == req->producer_id()) {
       return STATUS(InvalidArgument, "The request UUID and cluster UUID are identical.",
                     req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
@@ -3792,7 +3793,8 @@ Status CatalogManager::UpdateCDCConsumerOnTabletSplit(
   XClusterConsumerTableStreamInfoMap stream_infos =
       GetXClusterStreamInfoForConsumerTable(consumer_table_id);
 
-  auto l = cluster_config_->LockForWrite();
+  auto cluster_config = ClusterConfig();
+  auto l = cluster_config->LockForWrite();
   for (const auto& stream_info : stream_infos) {
     std::string universe_id = stream_info.first;
     CDCStreamId stream_id = stream_info.second;
@@ -3821,7 +3823,7 @@ Status CatalogManager::UpdateCDCConsumerOnTabletSplit(
   // Also bump the cluster_config_ version so that changes are propagated to tservers.
   l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
 
-  RETURN_NOT_OK(CheckStatus(sys_catalog_->Upsert(leader_ready_term(), cluster_config_),
+  RETURN_NOT_OK(CheckStatus(sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()),
                             "Updating cluster config in sys-catalog"));
   l.Commit();
 
@@ -3865,7 +3867,8 @@ Status CatalogManager::InitCDCConsumer(
     HostPortToPB(addr, producer_entry.add_tserver_addrs());
   }
 
-  auto l = cluster_config_->LockForWrite();
+  auto cluster_config = ClusterConfig();
+  auto l = cluster_config->LockForWrite();
   auto producer_map = l.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
   auto it = producer_map->find(producer_universe_uuid);
   if (it != producer_map->end()) {
@@ -3876,7 +3879,7 @@ Status CatalogManager::InitCDCConsumer(
   (*producer_map)[producer_universe_uuid] = std::move(producer_entry);
   l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
   RETURN_NOT_OK(CheckStatus(
-      sys_catalog_->Upsert(leader_ready_term(), cluster_config_),
+      sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()),
       "updating cluster config in sys-catalog"));
   l.Commit();
 
@@ -3906,7 +3909,8 @@ void CatalogManager::MergeUniverseReplication(scoped_refptr<UniverseReplicationI
   }
   // Merge Cluster Config for TServers.
   {
-    auto cl = cluster_config_->LockForWrite();
+    auto cluster_config = ClusterConfig();
+    auto cl = cluster_config->LockForWrite();
     auto pm = cl.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
     auto original_producer_entry = pm->find(original_universe->id());
     auto alter_producer_entry = pm->find(universe->id());
@@ -3920,7 +3924,7 @@ void CatalogManager::MergeUniverseReplication(scoped_refptr<UniverseReplicationI
       LOG(WARNING) << "Could not find both universes in Cluster Config: " << universe->id();
     }
     cl.mutable_data()->pb.set_version(cl.mutable_data()->pb.version() + 1);
-    const Status s = sys_catalog_->Upsert(leader_ready_term(), cluster_config_);
+    const Status s = sys_catalog_->Upsert(leader_ready_term(), cluster_config.get());
     cl.CommitOrWarn(s, "updating cluster config in sys-catalog");
   }
   // Merge Master Config on Consumer. (no need for Producer changes, since it uses stream_id)
@@ -3995,14 +3999,15 @@ Status CatalogManager::DeleteUniverseReplication(const DeleteUniverseReplication
   // Delete subscribers on the Consumer Registry (removes from TServers).
   LOG(INFO) << "Deleting subscribers for producer " << req->producer_id();
   {
-    auto cl = cluster_config_->LockForWrite();
+    auto cluster_config = ClusterConfig();
+    auto cl = cluster_config->LockForWrite();
     auto producer_map = cl.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
     auto it = producer_map->find(req->producer_id());
     if (it != producer_map->end()) {
       producer_map->erase(it);
       cl.mutable_data()->pb.set_version(cl.mutable_data()->pb.version() + 1);
       RETURN_NOT_OK(CheckStatus(
-          sys_catalog_->Upsert(leader_ready_term(), cluster_config_),
+          sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()),
           "updating cluster config in sys-catalog"));
       cl.Commit();
     }
@@ -4141,7 +4146,8 @@ Status CatalogManager::SetUniverseReplicationEnabled(
 
   // Modify the Consumer Registry, which will fan out this info to all TServers on heartbeat.
   {
-    auto l = cluster_config_->LockForWrite();
+    auto cluster_config = ClusterConfig();
+    auto l = cluster_config->LockForWrite();
     auto producer_map = l.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
     auto it = producer_map->find(req->producer_id());
     if (it == producer_map->end()) {
@@ -4152,7 +4158,7 @@ Status CatalogManager::SetUniverseReplicationEnabled(
     (*it).second.set_disable_stream(!req->is_enabled());
     l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
     RETURN_NOT_OK(CheckStatus(
-        sys_catalog_->Upsert(leader_ready_term(), cluster_config_),
+        sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()),
         "updating cluster config in sys-catalog"));
     l.Commit();
   }
@@ -4211,7 +4217,8 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
     }
     // 1b. Persistent Config: Update the Consumer Registry (updates TServers)
     {
-      auto l = cluster_config_->LockForWrite();
+      auto cluster_config = ClusterConfig();
+      auto l = cluster_config->LockForWrite();
       auto producer_map = l.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
       auto it = producer_map->find(req->producer_id());
       if (it == producer_map->end()) {
@@ -4222,7 +4229,7 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
       (*it).second.mutable_master_addrs()->CopyFrom(req->producer_master_addresses());
       l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
       RETURN_NOT_OK(CheckStatus(
-          sys_catalog_->Upsert(leader_ready_term(), cluster_config_),
+          sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()),
           "updating cluster config in sys-catalog"));
       l.Commit();
     }
@@ -4251,7 +4258,8 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
     vector<CDCStreamId> streams_to_remove;
     // 1. Update the Consumer Registry (removes from TServers).
     {
-      auto cl = cluster_config_->LockForWrite();
+      auto cluster_config = ClusterConfig();
+      auto cl = cluster_config->LockForWrite();
       auto pm = cl.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
       auto producer_entry = pm->find(req->producer_id());
       if (producer_entry != pm->end()) {
@@ -4280,7 +4288,7 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
       }
       cl.mutable_data()->pb.set_version(cl.mutable_data()->pb.version() + 1);
       RETURN_NOT_OK(CheckStatus(
-          sys_catalog_->Upsert(leader_ready_term(), cluster_config_),
+          sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()),
           "updating cluster config in sys-catalog"));
       cl.Commit();
     }
@@ -4464,7 +4472,8 @@ Status CatalogManager::RenameUniverseReplication(
     metadata->set_producer_id(new_producer_universe_id);
 
     // Also need to update internal maps.
-    auto cl = cluster_config_->LockForWrite();
+    auto cluster_config = ClusterConfig();
+    auto cl = cluster_config->LockForWrite();
     auto producer_map = cl.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
     (*producer_map)[new_producer_universe_id] =
         std::move((*producer_map)[old_universe_replication_id]);
@@ -4476,7 +4485,7 @@ Status CatalogManager::RenameUniverseReplication(
       RETURN_NOT_OK(w->Mutate(QLWriteRequestPB::QL_STMT_DELETE, universe.get()));
       RETURN_NOT_OK(w->Mutate(QLWriteRequestPB::QL_STMT_UPDATE,
                               new_ri.get(),
-                              cluster_config_.get()));
+                              cluster_config.get()));
       RETURN_NOT_OK(CheckStatus(
           sys_catalog_->SyncWrite(w.get()),
           "Updating universe replication info and cluster config in sys-catalog"));
@@ -4650,10 +4659,11 @@ void CatalogManager::SysCatalogLoaded(int64_t term) {
   return snapshot_coordinator_.SysCatalogLoaded(term);
 }
 
-size_t CatalogManager::GetNumLiveTServersForActiveCluster() {
-  BlacklistSet blacklist = BlacklistSetFromPB();
+Result<size_t> CatalogManager::GetNumLiveTServersForActiveCluster() {
+  BlacklistSet blacklist = VERIFY_RESULT(BlacklistSetFromPB());
   TSDescriptorVector ts_descs;
-  master_->ts_manager()->GetAllLiveDescriptorsInCluster(&ts_descs, placement_uuid(), blacklist);
+  auto uuid = VERIFY_RESULT(placement_uuid());
+  master_->ts_manager()->GetAllLiveDescriptorsInCluster(&ts_descs, uuid, blacklist);
   return ts_descs.size();
 }
 

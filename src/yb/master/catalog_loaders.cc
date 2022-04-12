@@ -36,12 +36,17 @@
 #include "yb/master/master_util.h"
 #include "yb/master/ysql_transaction_ddl.h"
 
+#include "yb/util/flag_tags.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
 DEFINE_bool(master_ignore_deleted_on_load, true,
   "Whether the Master should ignore deleted tables & tablets on restart.  "
   "This reduces failover time at the expense of garbage data." );
+
+DEFINE_test_flag(uint64, slow_cluster_config_load_secs, 0,
+                 "When set, it pauses load of cluster config during sys catalog load.");
+TAG_FLAG(TEST_slow_cluster_config_load_secs, runtime);
 
 namespace yb {
 namespace master {
@@ -458,17 +463,20 @@ Status UDTypeLoader::Visit(const UDTypeId& udtype_id, const SysUDTypeEntryPB& me
 
 Status ClusterConfigLoader::Visit(
     const std::string& unused_id, const SysClusterConfigEntryPB& metadata) {
+  if (FLAGS_TEST_slow_cluster_config_load_secs > 0) {
+    SleepFor(MonoDelta::FromSeconds(FLAGS_TEST_slow_cluster_config_load_secs));
+  }
   // Debug confirm that there is no cluster_config_ set. This also ensures that this does not
   // visit multiple rows. Should update this, if we decide to have multiple IDs set as well.
+  std::lock_guard<decltype(catalog_manager_->config_mutex_)> config_lock(
+      catalog_manager_->config_mutex_);
   DCHECK(!catalog_manager_->cluster_config_) << "Already have config data!";
 
   // Prepare the config object.
-  ClusterConfigInfo* config = new ClusterConfigInfo();
+  std::shared_ptr<ClusterConfigInfo> config = std::make_shared<ClusterConfigInfo>();
   {
     auto l = config->LockForWrite();
     l.mutable_data()->pb.CopyFrom(metadata);
-
-
 
     // Update in memory state.
     catalog_manager_->cluster_config_ = config;

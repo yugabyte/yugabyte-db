@@ -149,7 +149,7 @@ class CatalogManagerIf {
 
   virtual bool IsUserCreatedTable(const TableInfo& table) const = 0;
 
-  virtual BlacklistSet BlacklistSetFromPB() const = 0;
+  virtual Result<BlacklistSet> BlacklistSetFromPB() const = 0;
 
   virtual void GetAllUDTypes(std::vector<scoped_refptr<UDTypeInfo>>* types) = 0;
 

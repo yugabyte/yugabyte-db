@@ -1436,12 +1436,11 @@ const TableInfoMap& ClusterLoadBalancer::GetTableMap() const {
 }
 
 const ReplicationInfoPB& ClusterLoadBalancer::GetClusterReplicationInfo() const {
-  return catalog_manager_->cluster_config_->LockForRead()->pb.replication_info();
+  return catalog_manager_->ClusterConfig()->LockForRead()->pb.replication_info();
 }
 
 const PlacementInfoPB& ClusterLoadBalancer::GetClusterPlacementInfo() const {
-  auto l = down_cast<enterprise::CatalogManager*>
-                      (catalog_manager_)->GetClusterConfigInfo()->LockForRead();
+  auto l = catalog_manager_->ClusterConfig()->LockForRead();
   if (state_->options_->type == LIVE) {
     return l->pb.replication_info().live_replicas();
   } else {
@@ -1450,11 +1449,11 @@ const PlacementInfoPB& ClusterLoadBalancer::GetClusterPlacementInfo() const {
 }
 
 const BlacklistPB& ClusterLoadBalancer::GetServerBlacklist() const {
-  return catalog_manager_->cluster_config_->LockForRead()->pb.server_blacklist();
+  return catalog_manager_->ClusterConfig()->LockForRead()->pb.server_blacklist();
 }
 
 const BlacklistPB& ClusterLoadBalancer::GetLeaderBlacklist() const {
-  return catalog_manager_->cluster_config_->LockForRead()->pb.leader_blacklist();
+  return catalog_manager_->ClusterConfig()->LockForRead()->pb.leader_blacklist();
 }
 
 bool ClusterLoadBalancer::SkipLoadBalancing(const TableInfo& table) const {
@@ -1566,8 +1565,7 @@ const PlacementInfoPB& ClusterLoadBalancer::GetReadOnlyPlacementFromUuid(
 }
 
 const PlacementInfoPB& ClusterLoadBalancer::GetLiveClusterPlacementInfo() const {
-  auto l = down_cast<enterprise::CatalogManager*>
-                    (catalog_manager_)->GetClusterConfigInfo()->LockForRead();
+  auto l = catalog_manager_->ClusterConfig()->LockForRead();
   return l->pb.replication_info().live_replicas();
 }
 

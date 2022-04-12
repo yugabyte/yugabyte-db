@@ -48,9 +48,11 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
     if (!req->primary_only()) {
       server_->ts_manager()->GetAllDescriptors(&descs);
     } else {
-      server_->ts_manager()->GetAllLiveDescriptorsInCluster(
-          &descs,
-          server_->catalog_manager_impl()->placement_uuid());
+      auto uuid_result = server_->catalog_manager_impl()->placement_uuid();
+      if (!uuid_result.ok()) {
+        return;
+      }
+      server_->ts_manager()->GetAllLiveDescriptorsInCluster(&descs, *uuid_result);
     }
 
     for (const std::shared_ptr<TSDescriptor>& desc : descs) {
@@ -72,7 +74,11 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
     if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
       return;
     }
-    string placement_uuid = server_->catalog_manager_impl()->placement_uuid();
+    auto placement_uuid_result = server_->catalog_manager_impl()->placement_uuid();
+    if (!placement_uuid_result.ok()) {
+      return;
+    }
+    string placement_uuid = *placement_uuid_result;
 
     vector<std::shared_ptr<TSDescriptor> > descs;
     server_->ts_manager()->GetAllLiveDescriptors(&descs);

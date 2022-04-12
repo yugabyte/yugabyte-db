@@ -693,7 +693,7 @@ class CatalogManager :
                                            AreLeadersOnPreferredOnlyResponsePB* resp);
 
   // Return the placement uuid of the primary cluster containing this master.
-  string placement_uuid() const;
+  Result<string> placement_uuid() const;
 
   // Clears out the existing metadata ('table_names_map_', 'table_ids_map_',
   // and 'tablet_map_'), loads tables metadata into memory and if successful
@@ -845,7 +845,7 @@ class CatalogManager :
   bool ShouldSplitValidCandidate(
       const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const override;
 
-  BlacklistSet BlacklistSetFromPB() const override;
+  Result<BlacklistSet> BlacklistSetFromPB() const override;
 
   std::vector<std::string> GetMasterAddresses();
 
@@ -1353,6 +1353,8 @@ class CatalogManager :
                            DeleteNamespaceResponsePB* resp,
                            rpc::RpcContext* rpc);
 
+  std::shared_ptr<ClusterConfigInfo> ClusterConfig() const;
+
   // TODO: the maps are a little wasteful of RAM, since the TableInfo/TabletInfo
   // objects have a copy of the string key. But STL doesn't make it
   // easy to make a "gettable set".
@@ -1393,7 +1395,8 @@ class CatalogManager :
   RedisConfigInfoMap redis_config_map_ GUARDED_BY(mutex_);
 
   // Config information.
-  scoped_refptr<ClusterConfigInfo> cluster_config_ = nullptr; // No GUARD, only write on Load.
+  mutable rw_spinlock config_mutex_;
+  std::shared_ptr<ClusterConfigInfo> cluster_config_ GUARDED_BY(config_mutex_) = nullptr;
 
   // YSQL Catalog information.
   scoped_refptr<SysConfigInfo> ysql_catalog_config_ = nullptr; // No GUARD, only write on Load.
