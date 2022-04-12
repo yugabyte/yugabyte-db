@@ -34,6 +34,7 @@ import { BackupRestoreModal } from './BackupRestoreModal';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
 import { BackupCreateModal } from './BackupCreateModal';
 import { useSearchParam } from 'react-use';
+import { AssignBackupStorageConfig } from './AssignBackupStorageConfig';
 
 const reactWidgets = require('react-widgets');
 const momentLocalizer = require('react-widgets-moment');
@@ -106,6 +107,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [showBackupCreateModal, setShowBackupCreateModal] = useState(false);
+  const [showAssignConfigModal, setShowAssignConfigModal] = useState(false);
   const [selectedBackups, setSelectedBackups] = useState<IBackup[]>([]);
   const [status, setStatus] = useState<any[]>([]);
 
@@ -194,10 +196,10 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
         onClick={(e) => e.stopPropagation()}
       >
         <MenuItem
-          disabled={row.state !== Backup_States.COMPLETED}
+          disabled={row.state !== Backup_States.COMPLETED || !row.isStorageConfigPresent}
           onClick={(e) => {
             e.stopPropagation();
-            if (row.state !== Backup_States.COMPLETED) {
+            if (row.state !== Backup_States.COMPLETED || !row.isStorageConfigPresent) {
               return;
             }
             setRestoreDetails(row);
@@ -209,9 +211,11 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
         <MenuItem
           onClick={(e) => {
             e.stopPropagation();
+            if (!row.isStorageConfigPresent) return;
             setSelectedBackups([row]);
             setShowDeleteModal(true);
           }}
+          disabled={!row.isStorageConfigPresent}
           className="action-danger"
         >
           Delete Backup
@@ -448,6 +452,9 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
           setShowRestoreModal(true);
         }}
         storageConfigs={storageConfigs}
+        onAssignStorageConfig={() => {
+          setShowAssignConfigModal(true);
+        }}
       />
       <BackupDeleteModal
         backupsList={selectedBackups}
@@ -472,6 +479,13 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
           setShowBackupCreateModal(false);
         }}
         currentUniverseUUID={universeUUID}
+      />
+      <AssignBackupStorageConfig
+        visible={showAssignConfigModal}
+        backup={showDetails}
+        onHide={() => {
+          setShowAssignConfigModal(false);
+        }}
       />
     </Row>
   );
