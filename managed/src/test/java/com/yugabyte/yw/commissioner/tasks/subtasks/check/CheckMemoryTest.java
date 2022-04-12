@@ -28,6 +28,7 @@ public class CheckMemoryTest extends CommissionerBaseTest {
 
   private Universe defaultUniverse;
   private NodeDetails node;
+  private long AVAILABLE_MEMORY_LIMIT_KB = 716800L;
 
   @Override
   @Before
@@ -45,8 +46,8 @@ public class CheckMemoryTest extends CommissionerBaseTest {
   @Test
   public void testEnoughFreeMemory() {
     CheckMemory.Params params = new CheckMemory.Params();
-    params.memoryLimitKB = Util.AVAILABLE_MEMORY_LIMIT_KB;
-    params.memoryType = Util.AVAILABLE_MEMORY_CHECK;
+    params.memoryLimitKB = AVAILABLE_MEMORY_LIMIT_KB;
+    params.memoryType = Util.AVAILABLE_MEMORY;
     params.universeUUID = defaultUniverse.universeUUID;
     params.nodeIpList =
         defaultUniverse
@@ -68,8 +69,8 @@ public class CheckMemoryTest extends CommissionerBaseTest {
   @Test
   public void testFailedShellReponse() {
     CheckMemory.Params params = new CheckMemory.Params();
-    params.memoryLimitKB = Util.AVAILABLE_MEMORY_LIMIT_KB;
-    params.memoryType = Util.AVAILABLE_MEMORY_CHECK;
+    params.memoryLimitKB = AVAILABLE_MEMORY_LIMIT_KB;
+    params.memoryType = Util.AVAILABLE_MEMORY;
     params.universeUUID = defaultUniverse.universeUUID;
     params.nodeIpList =
         defaultUniverse
@@ -93,8 +94,8 @@ public class CheckMemoryTest extends CommissionerBaseTest {
   @Test
   public void testInSufficientMemory() {
     CheckMemory.Params params = new CheckMemory.Params();
-    params.memoryLimitKB = Util.AVAILABLE_MEMORY_LIMIT_KB;
-    params.memoryType = Util.AVAILABLE_MEMORY_CHECK;
+    params.memoryLimitKB = AVAILABLE_MEMORY_LIMIT_KB;
+    params.memoryType = Util.AVAILABLE_MEMORY;
     params.universeUUID = defaultUniverse.universeUUID;
     params.nodeIpList =
         defaultUniverse
@@ -104,8 +105,7 @@ public class CheckMemoryTest extends CommissionerBaseTest {
             .map(node -> node.cloudInfo.private_ip)
             .collect(Collectors.toList());
     ShellResponse shellResponse = new ShellResponse();
-    shellResponse.message =
-        "COMMAND OUTPUT: \n" + String.valueOf(Util.AVAILABLE_MEMORY_LIMIT_KB - 1);
+    shellResponse.message = "COMMAND OUTPUT: \n" + String.valueOf(AVAILABLE_MEMORY_LIMIT_KB - 1);
     shellResponse.code = 0;
     when(mockNodeUniverseManager.runCommand(any(), any(), any())).thenReturn(shellResponse);
     CheckMemory checkMemoryTask = AbstractTaskBase.createTask(CheckMemory.class);
@@ -115,9 +115,9 @@ public class CheckMemoryTest extends CommissionerBaseTest {
         "Insufficient memory available on node "
             + node.cloudInfo.private_ip
             + " as "
-            + String.valueOf(Util.AVAILABLE_MEMORY_LIMIT_KB)
+            + String.valueOf(AVAILABLE_MEMORY_LIMIT_KB)
             + " is required but found "
-            + String.valueOf(Util.AVAILABLE_MEMORY_LIMIT_KB - 1),
+            + String.valueOf(AVAILABLE_MEMORY_LIMIT_KB - 1),
         re.getMessage());
     verify(mockNodeUniverseManager, times(1)).runCommand(any(), any(), any());
   }
