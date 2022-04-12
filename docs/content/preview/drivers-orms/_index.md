@@ -31,6 +31,7 @@ Along with the smart drivers, YugabyteDB also supports upstream [PostgreSQL driv
 | [YugabyteDB JDBC Smart Driver](java/yugabyte-jdbc)  [Recommended] | Full | [CRUD Example](java/yugabyte-jdbc) |
 | [Postgres JDBC Driver](java/postgres-jdbc) | Full | [CRUD Example](java/postgres-jdbc)  |
 | [Hibernate](java/hibernate) | Full | [CRUD Example](java/hibernate/#step-1-add-the-hibernate-orm-dependency) |
+| [Ebean](java/ebean)| Full | [CRUD Example](java/ebean)|
 <!-- | MyBatis | Full |  | -->
 
 | App Framework | Support Level | Example apps |

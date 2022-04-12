@@ -19,6 +19,7 @@ The following projects are recommended for implementing Java applications using 
 | [YugabyteDB JDBC Driver](yugabyte-jdbc) | JDBC Driver | Full |
 | [Hibernate](hibernate) | ORM |  Full |
 | [Spring Data YugabyteDB](/preview/integrations/spring-framework/sdyb/) | Framework |  Full |
+| [Ebean](ebean) | ORM | Full |
 
 ## Build a Hello World App
 
@@ -51,6 +52,7 @@ For fully runnable code snippets and explanations for common operations, see the
 | [YugabyteDB JDBC Driver](/preview/reference/drivers/java/yugabyte-jdbc-reference/) | JDBC Driver | [Hello World](/preview/quick-start/build-apps/java/ysql-yb-jdbc) <br />[CRUD App](yugabyte-jdbc)
 | [PostgreSQL JDBC Driver](/preview/reference/drivers/java/postgres-jdbc-reference/) | JDBC Driver | [Hello World](/preview/quick-start/build-apps/java/ysql-jdbc) <br />[CRUD App](postgres-jdbc)
 | [Hibernate](hibernate) | ORM |  [Hello World](/preview/quick-start/build-apps/java/ysql-hibernate) <br />[CRUD App](hibernate/#working-with-domain-objects) |
+| [Ebean](ebean)| ORM | [HelloWorld](/preview/quick-start/build-apps/java/ysql-ebeans) <br /> [CRUD App](ebean) |
 
 <!-- ## Learn More
 
