@@ -8,15 +8,14 @@ weight: 1
 
 <div class="meaning-section">
   <div class="container-cs">
-    <h1>YugabyteDB Documentation </h1>
+    <h1>YugabyteDB Documentation</h1>
     <div class="sub-text">The Scalable Distributed SQL Database</div>
     <div class="panel">
       <div class="left-panel">
         <div class="meaning-area">
-          <div class="title">Distributed SQL</div>
           <div class="meaning-audio">
             <div class="audio-area">
-              <div class="icon player1" onclick="play()">
+              <div class="icon player1" onclick="dictLeftSide()">
                 <div class="border"></div>
                 <div class="pr-icon speaker-bg"></div>
                 <div class="pr-icon low-vol"></div>
@@ -25,47 +24,67 @@ weight: 1
               <audio id="audio" src="/images/homepage/distributed-sql.mp3"></audio>
             </div>
             <div class="meaning-text">
+              <div class="title">Distributed SQL</div>
               <div class="latin-pronouce">
                 /dəˈstribyo͞odəd ˈsēkwəl/
               </div>
             </div>
           </div>
           <div class="adjective-text">
-            <div class="title"><i>noun:</i> <b>distributed SQL database</b></div>
-            <ol>
-              <li>
-                A distributed SQL database is a single relational database which replicates data across multiple
-                servers.
-                <ul>
-                  <li>YugabyteDB is a Distributed SQL database that is strongly consistent and supports consistency
-                    across racks, data centers, and wide area networks including cloud availability zones and cloud
-                    geographic zones.
-                  </li>
-                </ul>
-              </li>
-            </ol>
-            <br>
-            <div class="title"><i>verb:</i> <b>distributed SQL </b></div>
-            <ol>
-              <li><span class="bg-gray">Distributing Data Storage</span> <br>
-                Data including indexes are automatically distributed (aka sharded) across multiple nodes of the cluster,
-                so that no single node becomes a bottleneck for ensuring high performance and high availability.
-              </li>
-              <li><span class="bg-gray">Distributing Query Execution</span> <br>
-                Queries are automatically distributed across multiple nodes of the cluster so that no single node
-                becomes a bottleneck for query processing. Incoming queries are accepted by any node in the cluster.
-              </li>
-            </ol>
+            <div class="title">noun: <b>distributed SQL database</b></div>
+            <div class="less-defination">
+              <ol>
+                <li>
+                  A distributed SQL database is a single relational database which replicates data across multiple
+                  servers.
+                </li>
+              </ol>
+            </div>
+            <div class="more-defination" style="display: none;">
+              <ol>
+                <li>
+                  A distributed SQL database is a single relational database which replicates data across multiple
+                  servers.
+                  <ul>
+                    <li>YugabyteDB is a Distributed SQL database that is strongly consistent and supports consistency
+                      across racks, data centers, and wide area networks including cloud availability zones and cloud
+                      geographic zones.
+                    </li>
+                  </ul>
+                </li>
+              </ol>
+              <br>
+              <div class="title">verb: <b>distributed SQL </b></div>
+              <ol>
+                <li><span class="bg-gray">Distributing Data Storage</span> <br>
+                  Data including indexes are automatically distributed (aka sharded) across multiple nodes of the
+                  cluster, so that no single node becomes a bottleneck for ensuring high performance and high
+                  availability.
+                </li>
+                <li><span class="bg-gray">Distributing Query Execution</span> <br>
+                  Queries are automatically distributed across multiple nodes of the cluster so that no single node
+                  becomes a bottleneck for query processing. Incoming queries are accepted by any node in the cluster.
+                </li>
+              </ol>
+            </div>
           </div>
         </div>
       </div>
-      <div class="center-line"></div>
+      <div class="center-line">
+        <div class="btn-area">
+          <button class="more-def-btn btn">
+            <svg focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+              <path d="M16.59 8.59L12 13.17 7.41 8.59 6 10l6 6 6-6z"></path>
+            </svg>
+            <!--<span class="text">More</span>-->
+          </button>
+        </div>
+      </div>
       <div class="right-panel">
         <div class="meaning-area">
-          <div class="title">Yugabyte DB</div>
           <div class="meaning-audio">
             <div class="audio-area">
-              <div class="icon player2" onclick="play2()">
+              <div class="icon player2" onclick="dictRightSide()">
                 <div class="border"></div>
                 <div class="pr-icon speaker-bg"></div>
                 <div class="pr-icon low-vol"></div>
@@ -74,25 +93,35 @@ weight: 1
               <audio id="audio2" src="/images/homepage/yugabyte-db.mp3"></audio>
             </div>
             <div class="meaning-text">
+              <div class="title">Yugabyte DB</div>
               <div class="latin-pronouce">
                 /yô,ge,bīt dē bē/
               </div>
             </div>
           </div>
           <div class="adjective-text">
-            <div class="title"><i>noun:</i> <b>Yugabyte DB</b></div>
-            <ol>
-              <li>The most popular distributed SQL database that is open-sourced under Apache v2.0 license
-                <ul>
-                  <li>A high-performance distributed SQL database for powering global, internet-scale applications.</li>
-                  <li>Built using a unique combination of high-performance document store, per-shard distributed
-                    consensus replication and multi-shard ACID transactions, YugabyteDB serves both scale-out RDBMS and
-                    internet-scale OLTP workloads with low query latency, extreme resilience against failures and global
-                    data distribution. </li>
-                </ul>
-              </li>
-            </ol>
-            <img src="/images/homepage/yugabyte-db-structure.png" alt="DB Structure">
+            <div class="title">noun: <b>Yugabyte DB</b></div>
+            <div class="less-defination">
+              <ol>
+                <li>The most popular distributed SQL database that is open-sourced under Apache v2.0 license</li>
+              </ol>
+            </div>
+            <div class="more-defination" style="display: none;">
+              <ol>
+                <li>The most popular distributed SQL database that is open-sourced under Apache v2.0 license
+                  <ul>
+                    <li>A high-performance distributed SQL database for powering global, internet-scale applications.
+                    </li>
+                    <li>Built using a unique combination of high-performance document store, per-shard distributed
+                      consensus replication and multi-shard ACID transactions, YugabyteDB serves both scale-out RDBMS
+                      and internet-scale OLTP workloads with low query latency, extreme
+                      resilience against failures and global data distribution.
+                    </li>
+                  </ul>
+                </li>
+              </ol>
+              <img src="/images/homepage/yugabyte-db-structure.png" alt="DB Structure">
+            </div>
           </div>
         </div>
       </div>
@@ -109,31 +138,31 @@ weight: 1
         </div>
         <div class="content-area">
           <a href="#" class="box-inner">
-            <span class="icon">
+            <div class="icon">
               <img src="/images/homepage/backup-icon.svg" alt="Icon">
-            </span>
-            <span class="content">
-              <span class="title">Some text here</span>
-              <span class="desc">Some text will come here soon</span>
-            </span>
+            </div>
+            <div class="content">
+              <div class="title">Some text here</div>
+              <div class="desc">Some text will come here soon</div>
+            </div>
           </a>
           <a href="#" class="box-inner">
-            <span class="icon">
+            <div class="icon">
               <img src="/images/homepage/backup-icon.svg" alt="Icon">
-            </span>
-            <span class="content">
-              <span class="title">Some text here</span>
-              <span class="desc">Some text will come here soon</span>
-            </span>
+            </div>
+            <div class="content">
+              <div class="title">Some text here</div>
+              <div class="desc">Some text will come here soon</div>
+            </div>
           </a>
           <a href="#" class="box-inner">
-            <span class="icon">
+            <div class="icon">
               <img src="/images/homepage/backup-icon.svg" alt="Icon">
-            </span>
-            <span class="content">
-              <span class="title">Some text here</span>
-              <span class="desc">Some text will come here soon</span>
-            </span>
+            </div>
+            <div class="content">
+              <div class="title">Some text here</div>
+              <div class="desc">Some text will come here soon</div>
+            </div>
           </a>
         </div>
       </div>
@@ -144,38 +173,38 @@ weight: 1
         </div>
         <div class="content-area">
           <a href="#" class="box-inner">
-            <span class="icon">
+            <div class="icon">
               <img src="/images/homepage/backup-icon.svg" alt="Icon">
-            </span>
-            <span class="content">
-              <span class="title">Some text here</span>
-              <span class="desc">Some text will come here soon</span>
-            </span>
+            </div>
+            <div class="content">
+              <div class="title">Some text here</div>
+              <div class="desc">Some text will come here soon</div>
+            </div>
           </a>
           <a href="#" class="box-inner">
-            <span class="icon">
+            <div class="icon">
               <img src="/images/homepage/backup-icon.svg" alt="Icon">
-            </span>
-            <span class="content">
-              <span class="title">Some text here</span>
-              <span class="desc">Some text will come here soon</span>
-            </span>
+            </div>
+            <div class="content">
+              <div class="title">Some text here</div>
+              <div class="desc">Some text will come here soon</div>
+            </div>
           </a>
           <a href="#" class="box-inner">
-            <span class="icon">
+            <div class="icon">
               <img src="/images/homepage/backup-icon.svg" alt="Icon">
-            </span>
-            <span class="content">
-              <span class="title">Some text here</span>
-              <span class="desc">Some text will come here soon</span>
-            </span>
+            </div>
+            <div class="content">
+              <div class="title">Some text here</div>
+              <div class="desc">Some text will come here soon</div>
+            </div>
           </a>
         </div>
       </div>
       <div class="user-col">
         <div class="avatar-area">
           <img src="/images/homepage/avatar-3.png" alt="Girl avatar">
-          <div class="urer-info">Give me the Cloud!</div>
+          <div class="urer-info">I'm an App Dev</div>
         </div>
         <div class="content-area">
           <a href="#" class="box-inner">
@@ -211,22 +240,30 @@ weight: 1
   </div>
 </div>
 <script>
-  function play() {
-    var audio = document.getElementById("audio");
-    document.querySelector(".player1").classList.add('animate');
+  function dictLeftSide() {
+    var audio = document.getElementById('audio');
+    document.querySelector('.player1').classList.add('animate');
     setTimeout(function() {
-      document.querySelector(".player1").classList.remove('animate');
+      document.querySelector('.player1').classList.remove('animate');
     }, 2000);
     audio.play();
-
   }
 
-  function play2() {
-    var audio2 = document.getElementById("audio2");
-    document.querySelector(".player2").classList.add('animate');
+  function dictRightSide() {
+    var audio2 = document.getElementById('audio2');
+    document.querySelector('.player2').classList.add('animate');
     setTimeout(function() {
-      document.querySelector(".player2").classList.remove('animate');
+      document.querySelector('.player2').classList.remove('animate');
     }, 2000);
     audio2.play();
   }
+
+  document.querySelector('body').classList.add('js-load');
+  jQuery('.more-defination').slideUp();
+  jQuery(document).on('click', '.btn-area .more-def-btn', function() {
+    jQuery('.meaning-section').toggleClass('show-more');
+    jQuery('.more-defination').slideToggle('slow');
+    jQuery('.less-defination').slideToggle('slow');
+  });
+
 </script>
