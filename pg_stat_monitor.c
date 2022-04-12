@@ -989,9 +989,9 @@ static void pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 		instr_time	duration;
 		uint64		rows;
 		BufferUsage bufusage;
-		WalUsage    walusage;
 		BufferUsage bufusage_start = pgBufferUsage;
 #if PG_VERSION_NUM >= 130000
+		WalUsage    walusage;
 		WalUsage    walusage_start = pgWalUsage;
 #endif
 		INSTR_TIME_SET_CURRENT(start);
@@ -1083,7 +1083,11 @@ static void pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 			INSTR_TIME_GET_MILLISEC(duration), /* total_time */
 			rows,							   /* rows */
 			&bufusage,						   /* bufusage */
+#if PG_VERSION_NUM >= 130000
 			&walusage,						   /* walusage */
+#else
+			NULL,							   /* walusage, NULL for PG <= 12 */
+#endif
 			NULL,							   /* JumbleState */
 			PGSS_FINISHED);					   /* pgssStoreKind */
 	}
