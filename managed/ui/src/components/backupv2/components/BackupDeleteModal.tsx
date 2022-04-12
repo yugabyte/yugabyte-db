@@ -31,7 +31,7 @@ export const BackupDeleteModal: FC<BackupDeleteProps> = ({ backupsList, visible,
       onHide();
     }
   });
-
+  if (!visible) return null;
   return (
     <YBModalForm
       visible={visible}
