@@ -56,7 +56,9 @@ export const YSQLTableList: FC<YSQLTableProps> = ({
                 <YBButton
                   btnText="Restore"
                   className="restore-detail-button"
-                  disabled={backup.state !== Backup_States.COMPLETED}
+                  disabled={
+                    backup.state !== Backup_States.COMPLETED || !backup.isStorageConfigPresent
+                  }
                   onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
                     e.stopPropagation();
                     onRestore([row]);
@@ -137,7 +139,9 @@ export const YCQLTableList: FC<YSQLTableProps> = ({
               {!hideRestore && (
                 <YBButton
                   btnText="Restore"
-                  disabled={backup.state !== Backup_States.COMPLETED}
+                  disabled={
+                    backup.state !== Backup_States.COMPLETED || !backup.isStorageConfigPresent
+                  }
                   className="restore-detail-button"
                   onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
                     e.stopPropagation();
