@@ -71,15 +71,16 @@ preflight_provision_check() {
   check_filepath "PAM Limits" $ulimit_filepath true
 
   # Check NTP synchronization
-  if [[ ! $skip_ntp_check ]]; then
+  if [[ "$skip_ntp_check" = false ]]; then
     ntp_status=$(timedatectl status)
     ntp_check=true
     enabled_regex='(NTP enabled: |NTP service: |Network time on: )([^'$'\n'']*)'
     if [[ $ntp_status =~ $enabled_regex ]]; then
-      enabled_status="${BASH_REMATCH[2]}"
+      enabled_status="${BASH_REMATCH[2]// /}"
       if [[ "$enabled_status" != "yes" ]] && [[ "$enabled_status" != "active" ]]; then
         # Oracle8 has the line NTP service: n/a instead. Don't fail if this line exists
-        if [[ ! ("${BASH_REMATCH[1]}" == "NTP service: " && "${BASH_REMATCH[2]}" == "n/a") ]]; then
+        if [[ ! ("${BASH_REMATCH[1]}" == "NTP service: " \
+              && "${BASH_REMATCH[2]// /}" == "n/a") ]]; then
           ntp_check=false
         fi
       fi
@@ -91,7 +92,7 @@ preflight_provision_check() {
     fi
     synchro_regex='(NTP synchronized: |System clock synchronized: )([^'$'\n'']*)'
     if [[ $ntp_status =~ $synchro_regex ]]; then
-      synchro_status="${BASH_REMATCH[2]}"
+      synchro_status="${BASH_REMATCH[2]// /}"
       if [[ "$synchro_status" != "yes" ]]; then
         ntp_check=false
       fi
@@ -229,6 +230,8 @@ Options:
     Skip internet access check.
   --install_node_exporter
     Check if node exporter files are accessible.
+  --skip_ntp_check
+    Skip check for time synchronization.
   --mount_points MOUNT_POINTS
     Commas separated list of mount paths to check permissions of.
   --yb_home_dir HOME_DIR
