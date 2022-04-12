@@ -34,10 +34,10 @@ C# development for YugabyteDB has the following prerequisites:
   Install .NET SDK 3.1 or later. To download it for your supported OS, visit [Download .NET](https://dotnet.microsoft.com/en-us/download).
 
 - **Visual Studio (optional)**\
-  For ease-of-use, use an integrated development environment (IDE) such as Visual Studio for your specific OS. To download and install Visual Studio, visit the [Visual Studio Downloads](https://visualstudio.microsoft.com/downloads/) page.
+  For ease-of-use, use an integrated development environment (IDE) such as Visual Studio. To download and install Visual Studio, visit the [Visual Studio Downloads](https://visualstudio.microsoft.com/downloads/) page.
 
 - **Create a C# project**
-  - To create a C# project in Visual Studio, select **Console Application** as template when creating a new project.\
+  - To create a C# project in Visual Studio, select **Console Application** as template when creating a new project.
   - If you are not using an IDE, use the dotnet command:
 
     ```csharp

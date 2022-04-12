@@ -13,35 +13,32 @@ menu:
 isTocNested: true
 showAsideToc: true
 ---
-The following projects can be used to implement Golang applications using the YugabyteDB YSQL API. For fully runnable code snippets and explanations for common operations, see the specific Java driver and ORM section. The following table provides links to driver-specific documentation and examples.
+The following projects can be used to implement Golang applications using the YugabyteDB YSQL API.
 
 | Project (* Recommended) | Type | Support | Examples |
 | :------ | :--- | :------ | :------- |
-| [PGX Driver*](pgx) | Driver | Full | [Hello World](../../quick-start/build-apps/go/ysql-pgx) <br />[CRUD App](pgx) |
-| [PQ Driver](pq) | Go Driver | Full | [Hello World](../../quick-start/build-apps/go/ysql-pq) <br />[CRUD App](pq) |
-| [GORM*](gorm) | ORM |  Full | [Hello World](../../quick-start/build-apps/go/ysql-gorm) <br />[CRUD App](gorm) |
-| [GO-PG](pg) | ORM | Full | [Hello World](../../quick-start/build-apps/go/ysql-pg) <br />[CRUD App](pg) |
+| [PGX Driver*](pgx) | Driver | Full | [Hello World](../../quick-start/build-apps/go/ysql-pgx) <br />[CRUD](pgx) |
+| [PQ Driver](pq) | Go Driver | Full | [Hello World](../../quick-start/build-apps/go/ysql-pq) <br />[CRUD](pq) |
+| [GORM*](gorm) | ORM |  Full | [Hello World](../../quick-start/build-apps/go/ysql-gorm) <br />[CRUD](gorm) |
+| [GO-PG](pg) | ORM | Full | [Hello World](../../quick-start/build-apps/go/ysql-pg) <br />[CRUD](pg) |
 
-## Build a Hello World application
+Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the **Hello World** examples.
 
-Learn how to establish a connection to your YugabyteDB database and begin basic CRUD operations
-using the steps in [Build an Application](../../quick-start/build-apps/go/ysql-pgx) in the Quick Start section.
+For fully-runnable code snippets and explanations of common operations, see the project page **CRUD** example. Before running CRUD examples, make sure you have installed the prerequisites.
 
-## Prerequisites
+For reference documentation, including using projects with SSL, refer to the [drivers and ORMs reference](../../reference/drivers/go/pgx-reference/) pages.
 
-### Install Go
+### Prerequisites
 
-Install the latest Go (1.16 or later) on your system.
+To develop Golang applications for YugabyteDB, you need the following:
 
-Run `go --version` in a terminal to check your version of Go. To install Go, visit [Go Downloads](https://golang.org/dl/).
+- **Go**\
+  Install the latest Go (1.16 or later) on your system.\
+  Run `go --version` in a terminal to check your version of Go. To install Go, visit [Go Downloads](https://golang.org/dl/).
 
-### Create a Go project
+- **Create a Go project**\
+  For ease-of-use, use an integrated development environment (IDE), such as IntelliJ IDEA or Visual Studio Code, to develop your Go project.
 
-We recommend using an integrated development environment (IDE) such as IntelliJ IDEA or
-Visual Studio Code for developing your Go project.
-
-### Create a YugabyteDB cluster
-
-Create a free cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/). Refer to [Create a free cluster](../../yugabyte-cloud/cloud-basics/create-clusters-free/).
-
-Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/preview/quick-start/install/macos).
+- **YugabyteDB cluster**
+  - Create a free cluster on [Yugabyte Cloud](https://www.yugabyte.com/cloud/). Refer to [Create a free cluster](../../yugabyte-cloud/cloud-basics/create-clusters-free/). Note that Yugabyte Cloud requires SSL.
+  - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/preview/quick-start/install/macos).
