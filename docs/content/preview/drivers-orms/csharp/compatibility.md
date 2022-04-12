@@ -1,8 +1,8 @@
 ---
-title: Supported Versions
-linkTitle: Supported Versions
-description: Supported Versions for C# Drivers, ORMs and AppDev Frameworks
-headcontent: Supported Versions for C# Drivers, ORMs and AppDev Frameworks
+title: Supported versions
+linkTitle: Supported versions
+description: Supported versions for C# drivers, ORMs and AppDev frameworks
+headcontent: Supported versions for C# drivers, ORMs and AppDev frameworks
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-## Npgsql Driver Compatibility Matrix
+## Npgsql driver compatibility matrix
 
 | Driver Version | YugabyteDB Version | Support |
 | :------------- | :----------------- | :------ |

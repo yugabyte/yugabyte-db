@@ -1,8 +1,8 @@
 ---
-title: Supported Versions
-linkTitle: Supported Versions
-description: Supported Versions for Go Drivers and ORMs
-headcontent: Supported Versions for Go Drivers and ORMs
+title: Supported versions
+linkTitle: Supported versions
+description: Supported versions for Go drivers and ORMs
+headcontent: Supported versions for Go drivers and ORMs
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-## PGX Driver Compatibility Matrix
+## PGX driver compatibility matrix
 
 | Driver Version | YugabyteDB Version | Support |
 | :------------- | :----------------- | :------ |
@@ -24,7 +24,7 @@ showAsideToc: true
 
 [comment]: <> (| v4 | 2.6 | Not Supported)
 
-## PQ Driver Compatibility Matrix
+## PQ driver compatibility matrix
 
 | Driver Version | YugabyteDB Version | Support |
 | :------------- | :----------------- | :------ |

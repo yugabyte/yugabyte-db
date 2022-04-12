@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-## Postgres Node Driver  Compatibility Matrix 
+## node-postres driver compatibility matrix
 
 | Driver Version | YugabyteDB Version | Support |
 | :------------- | :----------------- | :------ |
@@ -22,7 +22,7 @@ showAsideToc: true
 | 8.7.3 | 2.8  | full
 | 8.7.3 | 2.6 | full
 
-## Sequelize ORM Compatibility Matrix
+## Sequelize ORM compatibility matrix
 
 - `sequelize` core package
 

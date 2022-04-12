@@ -1,8 +1,8 @@
 ---
-title: Supported Versions
-linkTitle: Supported Versions
-description: Supported Versions for Java Drivers, ORMs and AppDev Frameworks
-headcontent: Supported Versions for Java Drivers, ORMs and AppDev Frameworks
+title: Supported versions
+linkTitle: Supported versions
+description: Supported versions for Java drivers, ORMs and AppDev frameworks
+headcontent: Supported versions for Java drivers, ORMs and AppDev frameworks
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-## Yugabyte JDBC Driver Compatibility Matrix
+## Yugabyte JDBC driver compatibility matrix
 
 | Driver Version | YugabyteDB Version | Support |
 | :------------- | :----------------- | :------ |
@@ -22,7 +22,7 @@ showAsideToc: true
 | 42.3.4 | 2.8 | full
 | 42.3.4 | 2.6 | Not Supported
 
-## Postgres JDBC Driver Compatibility Matrix
+## PostgreSQL JDBC driver compatibility matrix
 
 | Driver Version | YugabyteDB Version | Support |
 | :------------- | :----------------- | :------ |
