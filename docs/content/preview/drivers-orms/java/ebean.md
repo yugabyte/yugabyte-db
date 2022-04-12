@@ -48,26 +48,16 @@ Before you begin, ensure you have installed Java Development Kit (JDK) 1.8.0 or 
     $ sbt new playframework/play-java-seed.g8
     ```
 
-1. Specify the following information for the project:
+2. Specify the information about the project when asked while creating the project such as name: `demo-ebean`, organization: `com.demo-ebean`, play_version: `2.8.11`   and scala_version: `2.12.8`.
 
-    ```shell
-    This template generates a Play Java project 
 
-    name [play-java-seed]: demo-ebean
-    organization [com.example]: com.demo-ebean
-    play_version [maven(com.typesafe.play, play-exceptions, stable)]: 2.8.11
-    scala_version [maven(org.scala-lang, scala-library, stable)]: 2.12.8
-
-    Template applied in ./demo-ebean
-    ```
-
-1. Go to the project directory:
+1. Once the project is created, Go to the project directory:
 
     ```shell
     $ cd demo-ebean
     ```
 
-1. Change the version in `build.properties` under the `project` directory to the following:
+1. Change the SBT version in `build.properties` under the `project` directory to the following:
 
     ```code
     sbt.version=1.2.8
@@ -97,7 +87,7 @@ Do the following:
     lazy val root = (project in file(".")).enablePlugins(PlayJava,PlayEbean)
     ```
 
-1. If your default port is already in use or you want to change the port, change the settings by adding `.settings(PlayKeys.playDefaultPort := 8080)` to the `build.sbt` file:
+1. If your default port is already in use or you want to change the port, change the settings by adding `.settings(PlayKeys.playDefaultPort := 8080)` to the `build.sbt` file as shown below:
 
     ```sbt
     lazy val root = (project in file(".")).enablePlugins(PlayJava,PlayEbean).settings(PlayKeys.playDefaultPort := 8080)
@@ -234,9 +224,9 @@ Do the following:
 
 The output should look like the following:
 
-```output.json
-["{'empId' = '1', firstName ='John', 'lastName' ='Smith', 'email' ='jsmith@xyz.com' }"]
-```
+  ```shell
+  ["{'empId' = '1', firstName ='John', 'lastName' ='Smith', 'email' ='jsmith@xyz.com' }"]
+  ```
 
 ## Next steps
 
