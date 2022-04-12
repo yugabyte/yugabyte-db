@@ -67,7 +67,7 @@ set(DOCDB_SRCS
         docdb_pgapi.cc
         docdb_util.cc
         doc_ttl_util.cc
-        docdb_compaction_filter.cc
+        docdb_compaction_context.cc
         docdb_compaction_filter_intents.cc
         docdb-internal.cc
         doc_reader.cc

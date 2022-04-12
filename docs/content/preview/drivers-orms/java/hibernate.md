@@ -41,9 +41,7 @@ YugabyteDB YSQL API has full compatibility with Hibernate ORM for Data persisten
 
 This section describes how to use the Java objects (domain objects) to store and retrieve data from YugabyteDB databases.
 
-Java developers are often required to store the domain objects of a Java application into the database tables. An Object Relational Mapping (ORM) tool is used by developers to handle database access, and to map their object-oriented domain classes into the database tables. It simplifies the CRUD operations on your domain objects and allows the evolution of domain objects to be applied to the database tables.
-
-[Hibernate](https://hibernate.org/orm/) is a popular ORM provider for Java applications, and is widely used by Java developers for database access. YugabyteDB provides full support for Hibernate ORM and also can be easily used in any environment supporting Java Persistence API (JPA), including Java SE applications, and Java EE application servers connecting to YugabyteDB clusters.
+Java developers are often required to store the domain objects of a Java application into the database tables. An ORM tool is used by developers to handle database access, and to map their object-oriented domain classes into the database tables. It simplifies the CRUD operations on your domain objects and allows the evolution of domain objects to be applied to the database tables.
 
 ### Step 1: Add the Hibernate ORM dependency
 
@@ -124,7 +122,7 @@ public class EmployeeDAO {
 }
 ```
 
-### Step 4: Configure Hibernate properites
+### Step 4: Configure Hibernate properties
 
 Add the hibernate configurations file `hibernate.cfg.xml` to the resources directory, and copy the following contents into the file.
 
@@ -153,7 +151,7 @@ Add the hibernate configurations file `hibernate.cfg.xml` to the resources direc
 
 The Hibernate configuration file provides the generic set of properties that are required for configuring the Hibernate ORM for YugabyteDB.
 
-| Hibernate Params | Description | Default |
+| Hibernate Parameter | Description | Default |
 | :---------- | :---------- | :------ |
 | hibernate.dialect  | Dialect to use to generate SQL optimized for a particular database | org.hibernate.dialect.PostgreSQLDialect
 | hibernate.connection.driver_class | JDBC Driver name  | com.yugabytedb.Driver

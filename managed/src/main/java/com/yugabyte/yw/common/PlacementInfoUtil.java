@@ -60,6 +60,7 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.annotation.Nullable;
+import org.apache.commons.lang3.StringUtils;
 import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -2332,8 +2333,15 @@ public class PlacementInfoUtil {
    */
   public static String getKubernetesNamespace(
       boolean isMultiAZ, String nodePrefix, String azName, Map<String, String> azConfig) {
-    String defaultNamespace = isMultiAZ ? String.format("%s-%s", nodePrefix, azName) : nodePrefix;
-    return azConfig.getOrDefault("KUBENAMESPACE", defaultNamespace);
+    String namespace = azConfig.get("KUBENAMESPACE");
+    if (StringUtils.isBlank(namespace)) {
+      int suffixLen = isMultiAZ ? azName.length() + 1 : 0;
+      namespace = Util.sanitizeKubernetesNamespace(nodePrefix, suffixLen);
+      if (isMultiAZ) {
+        namespace = String.format("%s-%s", namespace, azName);
+      }
+    }
+    return namespace;
   }
 
   // TODO(bhavin192): what if the same namespace is being used for

@@ -36,7 +36,7 @@ showAsideToc: true
 
 ## CRUD operations with GORM
 
-Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps on the [Build an application](../../../quick-start/build-apps/go/ysql-gorm) page under the Quick start section.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps on the [Build an application](../../../quick-start/build-apps/go/ysql-gorm) page under the Quick start section.
 
 The following sections break down the quick start example to demonstrate how to perform common tasks required for Go application development using GORM.
 
@@ -104,7 +104,6 @@ db.Create(&Employee{Id: 1, Name: "John", Age: 35, Language: "Golang-GORM"})
 db.Create(&Employee{Id: 2, Name: "Smith", Age: 24, Language: "Golang-GORM"})
 ```
 
-
 To query data from YugabyteDB tables, use the `db.Find()` function.
 
 ```go
@@ -117,7 +116,7 @@ for _, employee := range employees {
 }
 ```
 
-## Next Steps
+## Next steps
 
 - Explore [Scaling Go Applications](/preview/explore/linear-scalability) with YugabyteDB.
 - Learn how to [develop Go applications with Yugabyte Cloud](/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-go/).

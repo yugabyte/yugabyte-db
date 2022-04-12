@@ -196,10 +196,10 @@ class RocksDBHelper {
       rocksdb::WritableFileWriter* base_file_writer,
       rocksdb::WritableFileWriter* data_file_writer) {
       rocksdb::ImmutableCFOptions immutable_cf_options(options_);
-     return std::unique_ptr<rocksdb::TableBuilder>(rocksdb::NewTableBuilder(
+     return rocksdb::NewTableBuilder(
         immutable_cf_options, internal_key_comparator_, int_tbl_prop_collector_factories_,
         /* column_family_id= */ 0, base_file_writer, data_file_writer,
-        rocksdb::CompressionType::kSnappyCompression, rocksdb::CompressionOptions()));
+        rocksdb::CompressionType::kSnappyCompression, rocksdb::CompressionOptions());
   }
 
   Result<std::unique_ptr<rocksdb::RandomAccessFileReader>> NewFileReader(
