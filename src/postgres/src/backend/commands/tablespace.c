@@ -322,13 +322,13 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	Oid			ownerId;
 	Datum		newOptions;
 
-	/* Must be super user */
-	if (!superuser())
+	/* Must be super user or yb_db_admin role */
+	if (!superuser() && !IsYbDbAdminUser(GetUserId()))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied to create tablespace \"%s\"",
 						stmt->tablespacename),
-				 errhint("Must be superuser to create a tablespace.")));
+				 errhint("Must be superuser or yb_db_admin role to create a tablespace.")));
 
 	/* However, the eventual owner of the tablespace need not be */
 	if (stmt->owner)
