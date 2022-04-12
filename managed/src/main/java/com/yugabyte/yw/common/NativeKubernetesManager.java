@@ -12,8 +12,10 @@ import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.Map;
 import javax.annotation.Nullable;
@@ -22,7 +24,7 @@ import javax.inject.Singleton;
 @Singleton
 public class NativeKubernetesManager extends KubernetesManager {
   private KubernetesClient getClient(Map<String, String> config) {
-    if (config.containsKey("KUBECONFIG")) {
+    if (config.containsKey("KUBECONFIG") && !config.get("KUBECONFIG").isEmpty()) {
       try {
         String kubeConfigContents =
             new String(Files.readAllBytes(Paths.get(config.get("KUBECONFIG"))));
@@ -47,11 +49,12 @@ public class NativeKubernetesManager extends KubernetesManager {
 
   @Override
   public void applySecret(Map<String, String> config, String namespace, String pullSecret) {
-    try (KubernetesClient client = getClient(config)) {
-      client
-          .load(NativeKubernetesManager.class.getResourceAsStream(pullSecret))
-          .inNamespace(namespace)
-          .createOrReplace();
+    try (KubernetesClient client = getClient(config);
+        InputStream pullSecretStream =
+            Files.newInputStream(Paths.get(pullSecret), StandardOpenOption.READ); ) {
+      client.load(pullSecretStream).inNamespace(namespace).createOrReplace();
+    } catch (IOException e) {
+      throw new RuntimeException("Unable to get the pullSecret ", e);
     }
   }
 
