@@ -114,7 +114,7 @@
 
     <postgresql.jdbc.driver.version>42.2.23</postgresql.jdbc.driver.version>
 
-    <bouncycastle.version>1.69</bouncycastle.version>
+    <bouncycastle.version>1.70</bouncycastle.version>
 
     <!-- Test configuration -->
     <testdata.dir>target/testdata</testdata.dir>
