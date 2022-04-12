@@ -45,6 +45,12 @@ After you complete the wizard, Yugabyte Cloud bootstraps and provisions the clus
 
 When the cluster is ready, the cluster [Overview](../../cloud-monitor/overview/) is displayed. You now have a fully configured YugabyteDB cluster provisioned in Yugabyte Cloud.
 
+{{< note title="Note" >}}
+
+YugabyteDB is a distributed database optimized for deployment across a cluster of servers. The free cluster has a single node and limited resources, suitable for running tutorials, [Yugabyte University](https://university.yugabyte.com), and [building sample applications](../cloud-build-apps/). To evaluate Yugabyte Cloud for production use or conduct a proof-of-concept (POC), contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) for trial credits.
+
+{{< /note >}}
+
 ### Learn more
 
 [Differences between free and standard clusters](../../cloud-faq/#what-are-the-differences-between-free-and-standard-clusters)
