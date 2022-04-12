@@ -402,7 +402,8 @@ class ClusterLoadBalancer {
   bool can_perform_global_operations_ = false;
 
   // Record load balancer activity for tables and tservers.
-  void RecordActivity(uint32_t master_errors) REQUIRES_SHARED(catalog_manager_->mutex_);
+  void RecordActivity(bool tasks_added_in_this_run, uint32_t master_errors)
+      REQUIRES_SHARED(catalog_manager_->mutex_);
 
   typedef rw_spinlock LockType;
   mutable LockType mutex_;
