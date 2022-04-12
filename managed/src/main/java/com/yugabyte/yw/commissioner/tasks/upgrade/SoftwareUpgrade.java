@@ -9,6 +9,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.List;
@@ -49,12 +50,15 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
     runUpgrade(
         () -> {
           Pair<List<NodeDetails>, List<NodeDetails>> nodes = fetchNodes(taskParams().upgradeOption);
+          Universe universe = getUniverse();
           // Verify the request params and fail if invalid.
-          taskParams().verifyParams(getUniverse());
-
+          taskParams().verifyParams(universe);
           // Precheck for Available Memory on tserver nodes.
-          createAvailabeMemoryCheck(
-                  nodes.getRight(), Util.AVAILABLE_MEMORY_CHECK, Util.AVAILABLE_MEMORY_LIMIT_KB)
+          long memAvailableLimit =
+              runtimeConfigFactory
+                  .forUniverse(universe)
+                  .getLong("yb.dbmem.checks.mem_available_limit_kb");
+          createAvailabeMemoryCheck(nodes.getRight(), Util.AVAILABLE_MEMORY, memAvailableLimit)
               .setSubTaskGroupType(getTaskSubGroupType());
 
           String newVersion = taskParams().ybSoftwareVersion;
