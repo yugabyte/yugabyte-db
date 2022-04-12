@@ -81,6 +81,12 @@ Along with the smart drivers, YugabyteDB also supports upstream [PostgreSQL driv
 | [Django](python/django) | Full | [CRUD Example](python/django) |
 | [SQLAlchemy](python/sqlalchemy) | Full | [CRUD Example](python/sqlalchemy) |
 
+## [Rust](rust/)
+
+| Driver/ORM | Support Level | Example apps |
+| :--------- | :------------ | :----------- |
+| [Diesel](rust/diesel) | Full | [Diesel](rust/diesel)  |
+
 <!--
 ## [Ruby](ruby/)
 
