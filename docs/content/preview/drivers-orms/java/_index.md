@@ -15,14 +15,13 @@ showAsideToc: true
 ---
 The following projects can be used to implement Java applications using the YugabyteDB YSQL API.
 
-
 | Project (* Recommended) | Type | Support | Examples |
 | :------ | :--- | :------ | :------- |
 | [YugabyteDB JDBC Driver*](yugabyte-jdbc) | JDBC Driver | Full | [Hello World](/preview/quick-start/build-apps/java/ysql-yb-jdbc) <br />[CRUD](yugabyte-jdbc) |
 | [PostgreSQL JDBC Driver](/preview/reference/drivers/java/postgres-jdbc-reference/) | JDBC Driver | Full | [Hello World](/preview/quick-start/build-apps/java/ysql-jdbc) <br />[CRUD](postgres-jdbc)|
 | [Hibernate*](hibernate) | ORM |  Full | [Hello World](/preview/quick-start/build-apps/java/ysql-hibernate) <br />[CRUD](hibernate/#working-with-domain-objects) |
 | [Spring Data YugabyteDB*](/preview/integrations/spring-framework/sdyb/) | Framework |  Full | [Hello World](/preview/quick-start/build-apps/java/ysql-sdyb) |
-| [Ebean](ebean) | ORM | Full |
+| [Ebean](ebean) | ORM | Full | [Hello World](/preview/quick-start/build-apps/java/ysql-ebeans) <br /> [CRUD](ebean) |
 
 Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the **Hello World** examples.
 
@@ -41,32 +40,6 @@ To develop Java applications for YugabyteDB, you need the following:
   You can create Java projects using Maven or Gradle software project management tools. For ease-of-use, use an integrated development environment (IDE) such as IntelliJ IDEA or Eclipse IDE to configure Maven or Gradle to build and run your project.\
   If you are not using an IDE, see [Building Maven](https://maven.apache.org/guides/development/guide-building-maven.html) or [Creating New Gradle Projects](https://docs.gradle.org/current/samples/sample_building_java_applications.html) for more information on how to set up a Java project.
 
-
-If you are not using an IDE, see [Building Maven](https://maven.apache.org/guides/development/guide-building-maven.html) or [Creating New Gradle Project](https://docs.gradle.org/current/samples/sample_building_java_applications.html) for more information on how to setup a Java project.
-
-### Create a YugabyteDB Cluster
-
-Create a free cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/). Refer to [Create a free cluster](../../yugabyte-cloud/cloud-basics/create-clusters-free/). 
-
-Alternatively, You can also setup a standalone YugabyteDB cluster by following the [install YugabyteDB Steps](/preview/quick-start/install/macos).
-
-## Usage Examples
-
-For fully runnable code snippets and explanations for common operations, see the specific Java driver and ORM section. The following table provides links to driver-specific documentation and examples.
-
-| Project | Type | Usage Examples |
-| :------ | :--- | :------------- |
-| [YugabyteDB JDBC Driver](/preview/reference/drivers/java/yugabyte-jdbc-reference/) | JDBC Driver | [Hello World](/preview/quick-start/build-apps/java/ysql-yb-jdbc) <br />[CRUD App](yugabyte-jdbc)
-| [PostgreSQL JDBC Driver](/preview/reference/drivers/java/postgres-jdbc-reference/) | JDBC Driver | [Hello World](/preview/quick-start/build-apps/java/ysql-jdbc) <br />[CRUD App](postgres-jdbc)
-| [Hibernate](hibernate) | ORM |  [Hello World](/preview/quick-start/build-apps/java/ysql-hibernate) <br />[CRUD App](hibernate/#working-with-domain-objects) |
-| [Ebean](ebean)| ORM | [HelloWorld](/preview/quick-start/build-apps/java/ysql-ebeans) <br /> [CRUD App](ebean) |
-
 - **YugabyteDB cluster**
   - Create a free cluster on [Yugabyte Cloud](https://www.yugabyte.com/cloud/). Refer to [Create a free cluster](../../yugabyte-cloud/cloud-basics/create-clusters-free/). Note that Yugabyte Cloud requires SSL.
   - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/preview/quick-start/install/macos).
-
-
-<!-- ## Learn More
-
-- Learn about configuring load balancing options present in YugabyteDB JDBC Driver in [YugabyteDB JDBC reference section](/preview/reference/drivers/java/yugabyte-jdbc-reference/#load-balancing).
-- Learn how to [develop Spring Boot Applications using Spring Data YugabyteDB project](/preview/integrations/spring-framework/sdyb/). -->
