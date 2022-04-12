@@ -7,7 +7,7 @@ image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
     name: Go Drivers
-    identifier: ref-postgres-pq-driver
+    identifier: ref-pq-go-driver
     parent: drivers
     weight: 600
 isTocNested: true
@@ -223,23 +223,23 @@ Another function `conn.BeginEx()` can create a transaction with a specified isol
 ```go
 tx, err := db.Begin()
 if err != nil {
-	log.Fatal(err)
+  log.Fatal(err)
 }
 
 ...
 
 _, err = stmt.Exec()
 if err != nil {
-	log.Fatal(err)
+  log.Fatal(err)
 }
 
 err = stmt.Close()
 if err != nil {
-	log.Fatal(err)
+  log.Fatal(err)
 }
 
 err = txn.Commit()
 if err != nil {
-	log.Fatal(err)
+  log.Fatal(err)
 }
 ```

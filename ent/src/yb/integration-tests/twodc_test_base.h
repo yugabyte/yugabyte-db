@@ -114,6 +114,8 @@ class TwoDCTestBase : public YBTest {
 
   CHECKED_STATUS CorrectlyPollingAllTablets(MiniCluster* cluster, uint32_t num_producer_tablets);
 
+  CHECKED_STATUS WaitForSetupUniverseReplicationCleanUp(string producer_uuid);
+
   YBClient* producer_client() {
     return producer_cluster_.client_.get();
   }

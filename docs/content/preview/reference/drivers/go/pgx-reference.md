@@ -7,7 +7,7 @@ image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
     name: Go Drivers
-    identifier: ref-postgres-pgx-driver
+    identifier: ref-pgx-go-driver
     parent: drivers
     weight: 600
 isTocNested: true
@@ -186,7 +186,7 @@ The PGX driver also provides pool APIs via its `pgxpool` package. One can import
 
 ```go
 import (
-	"github.com/jackc/pgx/v4/pgxpool"
+  "github.com/jackc/pgx/v4/pgxpool"
 )
 ```
 
