@@ -2,6 +2,46 @@
 
 Below is the complete list of release notes for every version of ``pg_stat_monitor``.
 
+## 1.0.0-rc.2
+
+### Improvements
+
+[PG-331](https://jira.percona.com/browse/PG-331): Changed the default value for the `pg_stat_monitor.pgsm_query_max_len` parameter from 1024 to 2048 for better data presentation in PMM 
+
+[PG-355](https://jira.percona.com/browse/PG-355): Changed the collection of `sys_time` and `user_time` metrics so that they are now presented as an accumulative value 
+
+[PG-286](https://jira.percona.com/browse/PG-286): Improved pg_stat_monitor performance by decreasing the overhead by more than 50%.
+
+[PG-267](https://jira.percona.com/browse/PG-267): Added test case to verify histogram feature
+
+[PG-359](https://jira.percona.com/browse/PG-359): Documentation: updated the `pg_stat_monitor_settings` view reference. 
+
+[PG-344](https://jira.percona.com/browse/PG-344): Documentation: Updated the extensions order and behavior with data collection for PostgreSQL 14.
+
+[PG-358](https://jira.percona.com/browse/PG-358): Documentation: data display of `** blk **` and `** wal **` columns when both `pg_stat_monitor` and `pg_stat_statements` are loaded together.
+
+### Bugs Fixed 
+
+[PG-350](https://jira.percona.com/browse/PG-350): Fixed bucket time overflow
+
+[PG-338](https://jira.percona.com/browse/PG-338): Fixed query calls count by setting the default value for `pg_stat_monitor.pgsm_track` to `top`.
+
+[PG-291](https://jira.percona.com/browse/PG-338): Fixed calls count.
+
+[PG-325](https://jira.percona.com/browse/PG-325): Fixed deadlock that occurred when the query length exceeded the `pgsm_query_max_len` value. 
+
+[PG-326](https://jira.percona.com/browse/PG-326): Added validation for `pgsm_histogram_min` and `pgsm_histogram_max` ranges
+
+[PG-329](https://jira.percona.com/browse/PG-329): Fixed creation of `pg_stat_monitor_errors` view on SQL files.
+
+[PG-296](https://jira.percona.com/browse/PG-296): Fixed issue with the application name not displaying in the view when changed.
+
+[PG-290](https://jira.percona.com/browse/PG-290): Fixed issue with PostgreSQL crashing after enabling debug log level and when `pg_stat_monitor` is enabled.
+
+[PG-166](https://jira.percona.com/browse/PG-166): Fixed issue with displaying the actual system time values instead of `NULL`
+
+
+
 ## REL0_9_0_STABLE
 
 ### Improvements
