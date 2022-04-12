@@ -48,7 +48,7 @@
     "react-dev-utils": "11.0.4",
     "run-p": "0.0.0",
     "webpack": "4.44.2",
-    "webpack-cli": "4.7.2",
+    "webpack-cli": "4.9.2",
     "webpack-dev-server": "3.11.2"
   }
 }
