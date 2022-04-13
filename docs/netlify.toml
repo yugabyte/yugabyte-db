@@ -47,6 +47,7 @@
 [[redirects]]
   from = "/latest/*"
   to = "/preview/:splat"
+  force = true
 
 # Redirect old cloud docs to root of current
 
