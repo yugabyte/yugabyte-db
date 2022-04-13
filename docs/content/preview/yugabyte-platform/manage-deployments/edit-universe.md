@@ -14,7 +14,6 @@ isTocNested: true
 showAsideToc: true
 ---
 
-
 Yugabyte Platform allows you to expand a universe to add more nodes and shrink the universe to reduce the number of nodes. Typically, you do this by navigating to **Universes > Edit Universe**, as shown in the following illustration.
 
 ![Edit universe](/images/ee/edit-univ.png)

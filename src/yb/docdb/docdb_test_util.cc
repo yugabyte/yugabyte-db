@@ -24,7 +24,6 @@
 #include "yb/docdb/doc_reader.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb.h"
-#include "yb/docdb/docdb_compaction_filter.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/in_mem_docdb.h"
 

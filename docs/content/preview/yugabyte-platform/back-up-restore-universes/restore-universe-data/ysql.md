@@ -2,7 +2,7 @@
 title: Restore universe YSQL data
 headerTitle: Restore universe YSQL data
 linkTitle: Restore universe data
-description: Use Yugabyte Platform to restore data in YSQL tables.
+description: Use YugabyteDB Anywhere to restore data in YSQL tables.
 aliases:
   - /preview/yugabyte-platform/back-up-restore-databases/
   - /preview/yugabyte-platform/back-up-restore-universes/restore-universe-data/
@@ -33,27 +33,29 @@ showAsideToc: true
 
 </ul>
 
-To restore YugabyteDB universe YSQL data from a backup:
+You can restore YugabyteDB universe YSQL data from a backup as follows:
 
-1. Open the **Universe Overview** and then click the **Backups** tab. The **Backups** page appears.
-2. Click **Restore Backup** to open the **Restore data to** dialog.
+1. Open your universe and select **Backups**.
+
+2. Click **Restore Backup** to open the **Restore data to** dialog shown in the following illustration:
 
     <br/><br/>
     ![Restore backup - YSQL](/images/yp/restore-universe-data-ysql.png)
 
 3. Complete the following fields:
 
-    - **Storage** Select the storage configuration type: `GCS Storage`, `S3 Storage`, or `NFS Storage`.
+    - **Storage**: Select the storage configuration type: `GCS Storage`, `S3 Storage`, or `NFS Storage`.
     - **Storage Location**: Specify the storage location.
     - **Universe**: Select the universe to restore.
     - **Keyspace**: Leave blank. This is used for YCQL data only.
     - **Table**: Leave blank. Backup and restore of YSQL data is for full universe data only.
     - **Parallel Threads**: Default is `8`. This value can be changed to a value between `1` and `100`.
-    - **KMS Configuration**: (optional) If the backup was from a universe that has [encryption at rest enabled](../../../security/enable-encryption-at-rest), then select the KMS configuration to use.
+    - **KMS Configuration**: Optional, if the backup was from a universe that has [encryption at rest enabled](../../../security/enable-encryption-at-rest), then select the KMS configuration to use.
 
-4. Click **OK**. The restore begins immediately. When the restore is completed, a completed **Restore Backup** task will appear in the **Tasks** tab.
-5. To confirm the restore succeeded, go to the **Tables** tab to compare the original table with the table you
-restored to.
+4. Click **OK**.
 
-   <br/><br/>
-   ![Tables View](/images/yp/tables-view-ysql.png)
+    <br/>The restore begins immediately. When finished, a completed **Restore Backup** task appears in the **Tasks** tab.
+
+5. To confirm the restore succeeded, select **Tables** to compare the original table with the table to which you restored, as per the following illustration:
+
+  ![Tables View](/images/yp/tables-view-ysql.png)

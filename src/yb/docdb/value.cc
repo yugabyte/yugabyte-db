@@ -122,23 +122,32 @@ Result<ValueControlFields> ValueControlFields::Decode(Slice* slice) {
   return result;
 }
 
-void ValueControlFields::AppendEncoded(std::string* out) const {
-  if (merge_flags) {
+template <class Out>
+void DoAppendEncoded(const ValueControlFields& fields, Out* out) {
+  if (fields.merge_flags) {
     out->push_back(KeyEntryTypeAsChar::kMergeFlags);
-    util::FastAppendUnsignedVarIntToStr(merge_flags, out);
+    util::FastAppendUnsignedVarInt(fields.merge_flags, out);
   }
-  if (intent_doc_ht.is_valid()) {
+  if (fields.intent_doc_ht.is_valid()) {
     out->push_back(KeyEntryTypeAsChar::kHybridTime);
-    intent_doc_ht.AppendEncodedInDocDbFormat(out);
+    fields.intent_doc_ht.AppendEncodedInDocDbFormat(out);
   }
-  if (!ttl.Equals(kMaxTtl)) {
+  if (!fields.ttl.Equals(ValueControlFields::kMaxTtl)) {
     out->push_back(KeyEntryTypeAsChar::kTtl);
-    util::FastAppendSignedVarIntToBuffer(ttl.ToMilliseconds(), out);
+    util::FastAppendSignedVarIntToBuffer(fields.ttl.ToMilliseconds(), out);
   }
-  if (user_timestamp != kInvalidUserTimestamp) {
+  if (fields.user_timestamp != ValueControlFields::kInvalidUserTimestamp) {
     out->push_back(KeyEntryTypeAsChar::kUserTimestamp);
-    util::AppendBigEndianUInt64(user_timestamp, out);
+    util::AppendBigEndianUInt64(fields.user_timestamp, out);
   }
+}
+
+void ValueControlFields::AppendEncoded(std::string* out) const {
+  DoAppendEncoded(*this, out);
+}
+
+void ValueControlFields::AppendEncoded(ValueBuffer* out) const {
+  DoAppendEncoded(*this, out);
 }
 
 std::string ValueControlFields::ToString() const {

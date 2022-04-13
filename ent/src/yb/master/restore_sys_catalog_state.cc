@@ -140,6 +140,17 @@ Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
   if (pb->version() != it->second.version()) {
     // Force schema update after restoration, if schema has changes.
     pb->set_version(it->second.version() + 1);
+    LOG(INFO) << "PITR: Patching the schema version for table " << id
+              << ". Existing version " << it->second.version()
+              << ", restoring version " << pb->version();
+  }
+
+  // Patch the partition version if changed.
+  if (pb->partition_list_version() != it->second.partition_list_version()) {
+    LOG(INFO) << "PITR: Patching the partition list version for table " << id
+              << ". Existing version " << it->second.partition_list_version()
+              << ", restoring version " << pb->partition_list_version();
+    pb->set_partition_list_version(it->second.partition_list_version() + 1);
   }
 
   return true;
