@@ -285,11 +285,11 @@ Starting with [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-
 
 Please follow the steps in the [vulnerability disclosure policy](/preview/secure/vulnerability-disclosure-policy) to report a vulnerability to our security team. The policy outlines our commitments to you when you disclose a potential vulnerability, the reporting process, and how we will respond.
 
-## How do YugabyteDB, Yugabyte Platform and Yugabyte Cloud differ from each other?
+## How do YugabyteDB, YugabyteDB Anywhere and Yugabyte Cloud differ from each other?
 
 [YugabyteDB](../../quick-start/) is the 100% open source core database. It is the best choice for the startup organizations with strong technical operations expertise looking to deploy to production with traditional DevOps tools.
 
-[Yugabyte Platform](../../yugabyte-platform/overview/) is commercial software for running a self-managed YugabyteDB-as-a-Service. It has built-in cloud native operations, enterprise-grade deployment options and world-class support. It is the simplest way to run YugabyteDB in mission-critical production environments with one or more regions (across both public cloud and on-premises data centers).
+[YugabyteDB Anywhere](../../yugabyte-platform/overview/) is commercial software for running a self-managed YugabyteDB-as-a-Service. It has built-in cloud native operations, enterprise-grade deployment options and world-class support. It is the simplest way to run YugabyteDB in mission-critical production environments with one or more regions (across both public cloud and on-premises data centers).
 
 [Yugabyte Cloud](../../yugabyte-cloud/cloud-quickstart/) is Yugabyte's fully-managed cloud service on Amazon Web Services (AWS) and Google Cloud Platform (GCP). [Sign up](https://www.yugabyte.com/cloud/) to get started.
 
@@ -311,7 +311,7 @@ A YugabyteDB universe packs a lot more functionality than what people think of w
 
 - A YugabyteDB universe can move into new machines, availability zones (AZs), regions, and data centers in an online fashion, while these primitives are not associated with a traditional cluster.
 
-- It is very easy to set up multiple asynchronous replicas with just a few clicks (in the Yugabyte Platform). This is built into the universe as a first-class operation with bootstrapping of the remote replica and all the operational aspects of running async replicas being supported natively. In the case of traditional clusters, the source and the async replicas are independent clusters. The user is responsible for maintaining these separate clusters as well as operating the replication logic.
+- It is very easy to set up multiple asynchronous replicas with just a few clicks (in the YugabyteDB Anywhere). This is built into the universe as a first-class operation with bootstrapping of the remote replica and all the operational aspects of running async replicas being supported natively. In the case of traditional clusters, the source and the async replicas are independent clusters. The user is responsible for maintaining these separate clusters as well as operating the replication logic.
 
 - Failover to asynchronous replicas as the primary data and failback once the original is up and running are both natively supported within a universe.
 
