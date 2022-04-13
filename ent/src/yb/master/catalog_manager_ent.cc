@@ -132,6 +132,9 @@ TAG_FLAG(allow_consecutive_restore, runtime);
 DEFINE_bool(check_bootstrap_required, false,
             "Is it necessary to check whether bootstrap is required for Universe Replication.");
 
+DEFINE_test_flag(bool, exit_unfinished_deleting, false,
+                 "Whether to exit part way through the deleting universe process.");
+
 namespace yb {
 
 using rpc::RpcContext;
@@ -346,7 +349,8 @@ class UniverseReplicationLoader : public Visitor<PersistentUniverseReplicationIn
       catalog_manager_->universe_replication_map_[ri->id()] = ri;
 
       // Add any failed universes to be cleared
-      if (l->pb.state() == SysUniverseReplicationEntryPB::FAILED) {
+      if (l->pb.state() == SysUniverseReplicationEntryPB::FAILED ||
+          l->pb.state() == SysUniverseReplicationEntryPB::DELETING) {
         catalog_manager_->universes_to_clear_.push_back(ri->id());
       }
 
@@ -4280,6 +4284,18 @@ Status CatalogManager::DeleteUniverseReplication(const DeleteUniverseReplication
     }
   }
 
+  {
+    auto l = ri->LockForWrite();
+    l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::DELETING);
+
+    RETURN_NOT_OK(CheckLeaderStatusAndSetupError(
+      sys_catalog_->Upsert(leader_ready_term(), ri),
+      "Updating delete universe replication info into sys-catalog", resp));
+    TRACE("Wrote universe replication info to sys-catalog");
+
+    l.Commit();
+  }
+
   auto l = ri->LockForWrite();
   l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::DELETED);
 
@@ -4343,6 +4359,11 @@ Status CatalogManager::DeleteUniverseReplication(const DeleteUniverseReplication
 
       RETURN_NOT_OK(ReturnErrorOrAddWarning(s, req, resp));
     }
+  }
+
+  if (PREDICT_FALSE(FLAGS_TEST_exit_unfinished_deleting)) {
+      // Exit for texting services
+      return Status::OK();
   }
 
   // Delete universe in the Universe Config.
@@ -5080,13 +5101,11 @@ Status CatalogManager::ClearFailedUniverse() {
   universe_req.set_producer_id(universe_id);
 
   RETURN_NOT_OK(GetUniverseReplication(&universe_req, &universe_resp, /* RpcContext */ nullptr));
-  if (universe_resp.entry().state() != SysUniverseReplicationEntryPB::FAILED) {
-    return STATUS(IllegalState, "Universe is not Failed, and cannot be cleared.");
-  }
 
   DeleteUniverseReplicationRequestPB req;
   DeleteUniverseReplicationResponsePB resp;
   req.set_producer_id(universe_id);
+  req.set_ignore_errors(true);
 
   RETURN_NOT_OK(DeleteUniverseReplication(&req, &resp, /* RpcContext */ nullptr));
 

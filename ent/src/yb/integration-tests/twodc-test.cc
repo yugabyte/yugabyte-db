@@ -87,6 +87,7 @@ DECLARE_uint64(TEST_yb_inbound_big_calls_parse_delay_ms);
 DECLARE_int64(rpc_throttle_threshold_bytes);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(check_bootstrap_required);
+DECLARE_bool(TEST_exit_unfinished_deleting);
 
 namespace yb {
 
@@ -1962,6 +1963,63 @@ TEST_P(TwoDCTest, TestFailedUniverseDeletionOnRestart) {
   // Should delete on restart
   ASSERT_OK(WaitForSetupUniverseReplicationCleanUp(kUniverseId));
   rpc.Reset();
+  Status s = master_proxy->GetUniverseReplication(new_req, &new_resp, &rpc);
+  ASSERT_OK(s);
+  ASSERT_TRUE(new_resp.has_error());
+}
+
+TEST_P(TwoDCTest, TestFailedDeleteOnRestart) {
+  // Setup the consumer and producer cluster.
+  auto tables = ASSERT_RESULT(SetUpWithParams({8, 4}, {6, 6}, 3));
+
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  // tables contains both producer and consumer universe tables (alternately).
+  // Pick out just the producer tables from the list.
+  producer_tables.reserve(tables.size() / 2);
+  for (size_t i = 0; i < tables.size(); i += 2) {
+    producer_tables.push_back(tables[i]);
+  }
+
+  ASSERT_OK(SetupUniverseReplication(producer_cluster(), consumer_cluster(), consumer_client(),
+      kUniverseId, {producer_tables[0]}));
+
+  // Verify everything is setup correctly.
+  master::GetUniverseReplicationResponsePB resp;
+  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, &resp));
+
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+    &consumer_client()->proxy_cache(),
+    ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+
+  // Delete The Table
+  master::DeleteUniverseReplicationRequestPB alter_req;
+  master::DeleteUniverseReplicationResponsePB alter_resp;
+  alter_req.set_producer_id(kUniverseId);
+  rpc::RpcController rpc;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_exit_unfinished_deleting) = true;
+  ASSERT_OK(master_proxy->DeleteUniverseReplication(alter_req, &alter_resp, &rpc));
+
+  // Check that deletion was incomplete
+  master::GetUniverseReplicationRequestPB new_req;
+  new_req.set_producer_id(kUniverseId);
+  master::GetUniverseReplicationResponsePB new_resp;
+  rpc.Reset();
+  rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+  ASSERT_OK(master_proxy->GetUniverseReplication(new_req, &new_resp, &rpc));
+  ASSERT_EQ(new_resp.entry().state(), master::SysUniverseReplicationEntryPB::DELETING);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_exit_unfinished_deleting) = false;
+
+  // Restart the ENTIRE Consumer cluster.
+  ASSERT_OK(consumer_cluster()->RestartSync());
+
+  // Wait for incomplete delete universe to be deleted on start up
+  ASSERT_OK(WaitForSetupUniverseReplicationCleanUp(kUniverseId));
+
+  // Check that the unfinished alter universe was deleted on start up
+  rpc.Reset();
+  new_req.set_producer_id(kUniverseId);
   Status s = master_proxy->GetUniverseReplication(new_req, &new_resp, &rpc);
   ASSERT_OK(s);
   ASSERT_TRUE(new_resp.has_error());
