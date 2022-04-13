@@ -6,6 +6,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Backup.StorageConfigType;
+import com.yugabyte.yw.models.helpers.TimeUnit;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.HashSet;
@@ -121,6 +122,9 @@ public class BackupTableParams extends TableManagerParams {
 
   @ApiModelProperty(value = "Type of backup storage config")
   public StorageConfigType storageConfigType = null;
+
+  @ApiModelProperty(value = "Time unit for backup expiry time")
+  public TimeUnit expiryTimeUnit = TimeUnit.DAYS;
 
   @JsonIgnore
   public Set<String> getTableNames() {
