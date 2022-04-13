@@ -13,6 +13,7 @@ import com.yugabyte.yw.forms.NodeActionFormData;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
 import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
@@ -181,7 +182,7 @@ public class NodeInstanceController extends AuthenticatedController {
     return Results.status(OK);
   }
 
-  @ApiOperation(value = "Delete a node instance")
+  @ApiOperation(value = "Delete a node instance", response = YBPSuccess.class)
   public Result deleteInstance(UUID customerUUID, UUID providerUUID, String instanceIP) {
     // Validate customer UUID and universe UUID and AWS provider.
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -192,7 +193,7 @@ public class NodeInstanceController extends AuthenticatedController {
     }
     nodeToBeFound.delete();
     auditService().createAuditEntry(ctx(), request());
-    return Results.status(OK);
+    return YBPSuccess.empty();
   }
 
   @ApiOperation(value = "Update a node", response = YBPTask.class)

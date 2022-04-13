@@ -7033,8 +7033,11 @@
           "type" : "string"
         } ],
         "responses" : {
-          "default" : {
-            "description" : "successful operation"
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
           }
         },
         "security" : [ {
@@ -7321,7 +7324,7 @@
           "name" : "Config",
           "required" : true,
           "schema" : {
-            "type" : "object"
+            "$ref" : "#/definitions/CustomerConfig"
           }
         } ],
         "responses" : {
@@ -7372,7 +7375,7 @@
       },
       "put" : {
         "description" : "",
-        "operationId" : "getCustomerConfig",
+        "operationId" : "editCustomerConfig",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -7391,7 +7394,7 @@
           "name" : "Config",
           "required" : true,
           "schema" : {
-            "type" : "object"
+            "$ref" : "#/definitions/CustomerConfig"
           }
         } ],
         "responses" : {
@@ -7713,24 +7716,6 @@
         } ],
         "summary" : "Get a node instance",
         "tags" : [ "Node instances" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/password_policy" : {
-      "get" : {
-        "operationId" : "getPasswordPolicy",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "tags" : [ "Session management" ]
       }
     },
     "/api/v1/customers/{cUUID}/providers" : {
@@ -8154,8 +8139,11 @@
           "type" : "string"
         } ],
         "responses" : {
-          "default" : {
-            "description" : "successful operation"
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
           }
         },
         "security" : [ {
@@ -8253,8 +8241,11 @@
           "type" : "string"
         } ],
         "responses" : {
-          "default" : {
-            "description" : "successful operation"
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
           }
         },
         "security" : [ {
@@ -8759,8 +8750,11 @@
           "type" : "string"
         } ],
         "responses" : {
-          "default" : {
-            "description" : "successful operation"
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
           }
         },
         "security" : [ {
@@ -8792,8 +8786,11 @@
         } ],
         "produces" : [ "text/plain" ],
         "responses" : {
-          "default" : {
-            "description" : "successful operation"
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "string"
+            }
           }
         },
         "security" : [ {
@@ -8833,8 +8830,11 @@
           }
         } ],
         "responses" : {
-          "default" : {
-            "description" : "successful operation"
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
           }
         },
         "security" : [ {
@@ -10152,33 +10152,6 @@
         "tags" : [ "Universe database management" ]
       }
     },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/schedule_script" : {
-      "post" : {
-        "operationId" : "externalScriptSchedule",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "tags" : [ "ScheduleExternalScript" ]
-      }
-    },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/set_key" : {
       "post" : {
         "description" : "",
@@ -10338,33 +10311,6 @@
         } ],
         "summary" : "Get a universe's status",
         "tags" : [ "Universe information" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/stop_scheduled_script" : {
-      "put" : {
-        "operationId" : "stopScheduledScript",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "tags" : [ "ScheduleExternalScript" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/tables" : {
@@ -10782,33 +10728,6 @@
         "tags" : [ "Universe database management" ]
       }
     },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/update_scheduled_script" : {
-      "put" : {
-        "operationId" : "updateScheduledScript",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "tags" : [ "ScheduleExternalScript" ]
-      }
-    },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/upgrade/certs" : {
       "post" : {
         "description" : "Queues a task to perform certificate rotation and rolling restart in a universe.",
@@ -11177,8 +11096,11 @@
         } ],
         "produces" : [ "application/x-compressed" ],
         "responses" : {
-          "default" : {
-            "description" : "successful operation"
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "string"
+            }
           }
         },
         "security" : [ {
@@ -11800,11 +11722,12 @@
           "required" : false,
           "type" : "string"
         } ],
+        "produces" : [ "text/plain" ],
         "responses" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/LogData"
+              "type" : "string"
             }
           }
         },
@@ -12072,8 +11995,6 @@
     "name" : "Release management"
   }, {
     "name" : "Runtime configuration"
-  }, {
-    "name" : "ScheduleExternalScript"
   }, {
     "name" : "Session management"
   }, {

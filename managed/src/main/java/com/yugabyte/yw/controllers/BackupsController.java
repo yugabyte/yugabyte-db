@@ -269,7 +269,8 @@ public class BackupsController extends AuthenticatedController {
   @ApiOperation(
       value = "Stop a backup",
       notes = "Stop an in-progress backup",
-      nickname = "stopBackup")
+      nickname = "stopBackup",
+      response = YBPSuccess.class)
   public Result stop(UUID customerUUID, UUID backupUUID) {
     Customer.getOrBadRequest(customerUUID);
     Process process = Util.getProcessOrBadRequest(backupUUID);

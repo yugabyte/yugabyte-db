@@ -24,6 +24,7 @@ import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HealthCheck.Details;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
@@ -209,6 +210,7 @@ public class UniverseInfoController extends AuthenticatedController {
       value = "Download a node's logs",
       notes = "Downloads the log files from a given node.",
       nickname = "downloadNodeLogs",
+      response = String.class,
       produces = "application/x-compressed")
   public CompletionStage<Result> downloadNodeLogs(
       UUID customerUUID, UUID universeUUID, String nodeName) {
