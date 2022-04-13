@@ -16,7 +16,7 @@ showAsideToc: true
 
 ## What is YugabyteDB Anywhere?
 
-YugabyteDB Anywhere (previously known as YugaWare) is a private database-as-a-service, used to create and manage YugabyteDB universes and clusters. YugabyteDB Anywhere can be used to deploy YugabyteDB in any public or private cloud.
+YugabyteDB Anywhere (previously known as Yugabyte Platform and Yugaware) is a private database-as-a-service, used to create and manage YugabyteDB universes and clusters. YugabyteDB Anywhere can be used to deploy YugabyteDB in any public or private cloud.
 
 You deploy and manage your YugabyteDB universes using the YugabyteDB Anywhere UI.
 
@@ -75,7 +75,7 @@ Yes, you have access to all machines spawned. The machines are spawned by Yugaby
 
 ## How many machines do I need to try out YugabyteDB Anywhere against my load?
 
-You need:
+You need the following:
 
 - One server to install YugabyteDB Anywhere on.
 - A minimum number of servers for the data nodes as determined by the replication factor (RF). For example, one server for RF=1, and 3 servers in case of RF=3.
@@ -83,7 +83,7 @@ You need:
 
 Typically, you can saturate a database server (or three in case of RF=3) with just one large enough test machine running a synthetic load tester that has a light usage pattern. YugabyteDB ships with some synthetic load-testers, which can simulate a few different workloads. For example, one load tester simulates a time series or IoT-style workload and another does a stock-ticker like workload. But if you have a load tester that emulates your planned usage pattern, you can use that.
 
-## Can I control the properties (such as VPC, IOPS, tenancy etc.) of the machines YugabyteDB Anywhere spins up?
+## Can I control the properties (such as VPC, IOPS, tenancy, and so on) of the machines YugabyteDB Anywhere spins up?
 
 Yes, you can control what YugabyteDB Anywhere is spinning up. For example:
 
@@ -91,8 +91,8 @@ Yes, you can control what YugabyteDB Anywhere is spinning up. For example:
 
 - You can choose dedicated IOPs EBS drives on AWS and specify the number of dedicated IOPS you need.
 
-YugabyteDB Anywhere also allows creating these machines out of band and importing these as an "on-premises" install.
+YugabyteDB Anywhere also allows creating these machines out of band and importing these as an on-premises install.
 
 ## How do I report a security vulnerability?
 
-Follow the steps in the [vulnerability disclosure policy](/preview/secure/vulnerability-disclosure-policy) to report a vulnerability to our security team. The policy outlines our commitments to you when you disclose a potential vulnerability, the reporting process, and how we will respond.
+Follow the steps in the [vulnerability disclosure policy](/preview/secure/vulnerability-disclosure-policy) to report a vulnerability to our security team. The policy outlines our commitments to you when you disclose a potential vulnerability, the reporting process, and how Yugabyte will respond.
