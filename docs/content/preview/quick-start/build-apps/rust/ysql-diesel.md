@@ -57,11 +57,21 @@ If you encounter a build failure, install [libpq](../../../../reference/drivers/
 
 ## Database configuration
 
-Set the database connection URL as an environment variable by running the following command:
+The database connection settings are managed using the `DATABASE_URL` in the `.env` file, which is in the following format:
 
 ```sh
-$ export DATABASE_URL=postgres://yugabyte@127.0.0.1:5433/ysql_diesel
+DATABASE_URL=postgres://<user>:<password>@<host>:<port>/<database>
 ```
+
+| Properties | Description | Default |
+| :--- | :--- | :--- |
+| Host | Database server IP address or DNS name. | localhost |
+| Port | Database port where it accepts YSQL connections. | 5433 |
+| Username | Database username. | yugabyte |
+| Password | User password. | yugabyte |
+| Database | Database instance. | ysql_diesel |
+
+The default values are valid for a local YugabyteDB installation. If you are using a different configuration, change these values as required.
 
 From your local YugabyteDB installation directory, connect to the [YSQL](../../../../admin/ysqlsh/) shell using:
 
@@ -90,7 +100,7 @@ yugabyte=# \c ysql_diesel;
 
 ## Start the REST API server
 
-Start REST server at port 8080.
+In the `diesel` directory, start REST server at port 8080.
 
 ```sh
 $ ./target/release/yugadiesel
@@ -175,17 +185,22 @@ ysql_diesel=#  \d
 ```
 
 ```output
-List of relations
- Schema |          Name           |   Type   |  Owner
---------+-------------------------+----------+----------
- public | orderline               | table    | yugabyte
- public | orders                  | table    | yugabyte
- public | orders_user_id_seq      | sequence | yugabyte
- public | products                | table    | yugabyte
- public | products_product_id_seq | sequence | yugabyte
- public | users                   | table    | yugabyte
- public | users_user_id_seq       | sequence | yugabyte
-(7 rows)
+                      List of relations
+ Schema |             Name              |   Type   |  Owner   
+--------+-------------------------------+----------+----------
+ public | __diesel_schema_migrations    | table    | yugabyte
+ public | order_lines                   | table    | yugabyte
+ public | order_lines_order_id_seq      | sequence | yugabyte
+ public | order_lines_order_line_id_seq | sequence | yugabyte
+ public | order_lines_product_id_seq    | sequence | yugabyte
+ public | orders                        | table    | yugabyte
+ public | orders_order_id_seq           | sequence | yugabyte
+ public | orders_user_id_seq            | sequence | yugabyte
+ public | products                      | table    | yugabyte
+ public | products_product_id_seq       | sequence | yugabyte
+ public | users                         | table    | yugabyte
+ public | users_user_id_seq             | sequence | yugabyte
+(12 rows)
 ```
 
 Note the 4 tables and 3 sequences in the list above.
@@ -303,7 +318,7 @@ $ curl http://localhost:8080/orders
     {
       "orderId": 2,
       "orderTotal": "25.00",
-      "userId": 2
+      "userId": 1
     }
   ]
 }
