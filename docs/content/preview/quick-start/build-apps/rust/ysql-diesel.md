@@ -8,7 +8,7 @@ menu:
     parent: build-apps
     name: Rust
     identifier: rust-1
-    weight: 550
+    weight: 950
 type: page
 isTocNested: true
 showAsideToc: true
@@ -25,7 +25,7 @@ showAsideToc: true
 
 </ul>
 
-The following tutorial implements a REST API server using the Rust [Diesel](https://ebean.io/docs/) ORM. The scenario is that of an e-commerce application where database access is managed using the [EntityFrameworkCore](https://www.playframework.com/documentation/2.8.x/api/java/index.html). It includes the following tables:
+The following tutorial implements a REST API server using the Rust [Diesel](https://diesel.rs) ORM. The scenario is that of an e-commerce application where database access is managed using the [EntityFrameworkCore](https://www.playframework.com/documentation/2.8.x/api/java/index.html). It includes the following tables:
 
 - `users` — the users of the e-commerce site
 - `products` — the products being sold
@@ -39,7 +39,7 @@ The source for the above application can be found in the [Using ORMs with Yugaby
 This tutorial assumes that you have:
 
 - YugabyteDB up and running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../../quick-start/) to have YugabyteDB up and running in minutes.
-- [Rust](https://www.rust-lang.org/tools/install) development environment.
+- [Rust](https://www.rust-lang.org/tools/install) 1.31 or later.
 
 ## Clone the "orm-examples" repository
 
@@ -53,82 +53,47 @@ Build the REST API server (written using Diesel and Rocket) as follows:
 $ cargo build --release
 ```
 
-If you encounter abuild failure, install libpq and try again.
+If you encounter a build failure, install libpq and try again.
 
 ## Database configuration
 
-- Modify the database configuration section of the `conf/application.conf` file to include the YugabyteDB JDBC driver settings as follows:
-
-  ```sh
-  #Default database configuration using PostgreSQL database engine
-  default.username=yugabyte
-  default.password=""
-  default.driver=com.yugabyte.Driver
-  default.url="jdbc:yugabytedb://127.0.0.1:5433/ysql_ebeans?load-balance=true"
-  ```
-
-- Add a dependency in `build.sbt` for the YugabyteDB JDBC driver.
-
-  ```sh
-  libraryDependencies += "com.yugabyte" % "jdbc-yugabytedb" % "42.3.0"
-  ```
-
-- From your local YugabyteDB installation directory, connect to the [YSQL](../../../../admin/ysqlsh/) shell using:
-
-  ```sh
-  $ ./bin/ysqlsh
-  ```
-
-  ```output
-  ysqlsh (11.2)
-  Type "help" for help.
-
-  yugabyte=#
-  ```
-
-- Create the `ysql_diesel` database using:
-
-  ```sql
-  yugabyte=# CREATE DATABASE ysql_diesel;
-  ```
-
-- Connect to the database using:
-
-  ```sql
-  yugabyte=# \c ysql_diesel;
-  ```
-
-## Build the application
-
-Create a `build.properties` file under the `project` directory and add the sbt version.
+Set the database connection URL as an environment variable by running the following command:
 
 ```sh
-sbt.version=1.2.8
+$ export DATABASE_URL=postgres://postgres@localhost:5433/ysql_diesel
 ```
 
-Build the REST API server from the `ebeans` directory using:
+From your local YugabyteDB installation directory, connect to the [YSQL](../../../../admin/ysqlsh/) shell using:
 
 ```sh
-$ sbt compile
+$ ./bin/ysqlsh
 ```
 
-{{< note title="Note" >}}
+```output
+ysqlsh (11.2)
+Type "help" for help.
 
-- Some subversions of JDK 1.8 require the `nashorn` package. If you get a compile error due to a missing `jdk.nashorn` package, add the dependency to the `build.sbt` file.
-
-```sh
-libraryDependencies += "com.xenoamess" % "nashorn" % "jdk8u265-b01-x3"
+yugabyte=#
 ```
 
-- To change the default port (8080) for the REST API Server, set the `PlayKeys.playDefaultPort` value in the `build.sbt` file.
-{{< /note >}}
+Create the `ysql_diesel` database using:
 
-## Run the application
+```sql
+yugabyte=# CREATE DATABASE ysql_diesel;
+```
 
-Run the application from the `ebeans` directory using:
+Connect to the database using:
+
+```sql
+yugabyte=# \c ysql_diesel;
+```
+
+## Start the REST API server
+
+Start REST server at port 8080.
 
 ```sh
-$ sbt run
+$ ./target/release/yugadiesel
 ```
 
 ## Send requests to the application
@@ -159,10 +124,10 @@ $ curl \
   -v -X POST -H 'Content-Type:application/json' http://localhost:8080/products
 ```
 
-In your YSQL shell, verify the `userId` and `productId` from the `ysql_ebeans` database using the following YSQL commands.
+In your YSQL shell, verify the `userId` and `productId` from the `ysql_diesel` database using the following YSQL commands.
 
 ```sql
-ysql_ebeans=# select * from users;
+ysql_diesel=# select * from users;
 ```
 
 ```output
@@ -174,7 +139,7 @@ ysql_ebeans=# select * from users;
 ```
 
 ```sql
-ysql_ebeans=# select * from products;
+ysql_diesel=# select * from products;
 ```
 
 ```output
@@ -206,7 +171,7 @@ $ curl \
 In your YSQL shell, list the tables created by the application.
 
 ```sql
-ysql_ebeans=#  \d
+ysql_diesel=#  \d
 ```
 
 ```output
@@ -226,7 +191,7 @@ List of relations
 Note the 4 tables and 3 sequences in the list above.
 
 ```sql
-ysql_ebeans=# SELECT count(*) FROM users;
+ysql_diesel=# SELECT count(*) FROM users;
 ```
 
 ```output
@@ -237,7 +202,7 @@ ysql_ebeans=# SELECT count(*) FROM users;
 ```
 
 ```sql
-ysql_ebeans=# SELECT count(*) FROM products;
+ysql_diesel=# SELECT count(*) FROM products;
 ```
 
 ```output
@@ -248,7 +213,7 @@ ysql_ebeans=# SELECT count(*) FROM products;
 ```
 
 ```sql
-ysql_ebeans=# SELECT count(*) FROM orders;
+ysql_diesel=# SELECT count(*) FROM orders;
 ```
 
 ```output
@@ -259,7 +224,7 @@ ysql_ebeans=# SELECT count(*) FROM orders;
 ```
 
 ```sql
-ysql_ebeans=# SELECT * FROM orderline;
+ysql_diesel=# SELECT * FROM orderline;
 ```
 
 ```output
@@ -275,7 +240,7 @@ ysql_ebeans=# SELECT * FROM orderline;
 
 ### Using the REST API
 
-To use the REST API server to verify that the users, products, and orders were created in the `ysql_ebeans` database, enter the following commands. The results are output in JSON format.
+To use the REST API server to verify that the users, products, and orders were created in the `ysql_diesel` database, enter the following commands. The results are output in JSON format.
 
 ```sh
 $ curl http://localhost:8080/users
@@ -365,4 +330,4 @@ $ curl http://localhost:8080/orders
 
 ## Explore the source
 
-The application source is available in the [orm-examples](https://github.com/yugabyte/orm-examples/tree/master/java/ebeans) repository.
+The application source is available in the [orm-examples](https://github.com/yugabyte/orm-examples/tree/master/rust/diesel) repository.
