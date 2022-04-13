@@ -291,7 +291,7 @@ Please follow the steps in the [vulnerability disclosure policy](/preview/secure
 
 [YugabyteDB Anywhere](../../yugabyte-platform/overview/) is commercial software for running a self-managed YugabyteDB-as-a-Service. It has built-in cloud native operations, enterprise-grade deployment options and world-class support. It is the simplest way to run YugabyteDB in mission-critical production environments with one or more regions (across both public cloud and on-premises data centers).
 
-[Yugabyte Cloud](../../yugabyte-cloud/cloud-quickstart/) is Yugabyte's fully-managed cloud service on Amazon Web Services (AWS) and Google Cloud Platform (GCP). [Sign up](https://www.yugabyte.com/cloud/) to get started.
+[YugabyteDB Managed](../../yugabyte-cloud/cloud-quickstart/) is Yugabyte's fully-managed cloud service on Amazon Web Services (AWS) and Google Cloud Platform (GCP). [Sign up](https://www.yugabyte.com/cloud/) to get started.
 
 For a more detailed comparison between the above, see [Adopt YugabyteDB Your Way
 ](https://www.yugabyte.com/platform/#compare-editions).
