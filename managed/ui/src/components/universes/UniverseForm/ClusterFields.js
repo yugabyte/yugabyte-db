@@ -684,6 +684,7 @@ export default class ClusterFields extends Component {
       updateFormField(`${clusterType}.provider`, providerUUID);
       this.providerChanged(providerUUID);
     }
+    this.props.fetchRunTimeConfigs();
   }
 
   componentDidUpdate(prevProps, prevState) {
@@ -1454,6 +1455,13 @@ export default class ClusterFields extends Component {
         isReadOnlyExists:
           providerUUID && this.props.type === 'Create' && this.props.clusterType === 'async'
       });
+
+      if(currentProviderData.code === 'aws' && getPromiseState(this.props.runtimeConfigs).isSuccess()){
+        const default_aws_instance = this.props.runtimeConfigs.data.configEntries.find( c => c.key === 'yb.internal.default_aws_instance_type')
+        if(default_aws_instance?.value){
+          updateFormField(`${clusterType}.instanceType`, default_aws_instance.value);
+        }
+      }
 
       this.props.getRegionListItems(providerUUID, true);
       this.props.getInstanceTypeListItems(providerUUID);

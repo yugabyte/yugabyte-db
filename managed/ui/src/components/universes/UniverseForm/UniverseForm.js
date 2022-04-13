@@ -827,7 +827,9 @@ class UniverseForm extends Component {
       getExistingUniverseConfiguration: this.props.getExistingUniverseConfiguration,
       fetchCurrentUniverse: this.props.fetchCurrentUniverse,
       location: this.props.location,
-      featureFlags: this.props.featureFlags
+      featureFlags: this.props.featureFlags,
+      fetchRunTimeConfigs: this.props.fetchRunTimeConfigs,
+      runtimeConfigs: this.props.runtimeConfigs
     };
 
     if (this.state.currentView === 'Primary') {
