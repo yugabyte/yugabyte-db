@@ -4,7 +4,7 @@ headerTitle: jsonb_set() and jsonb_insert()
 linkTitle: jsonb_set() and jsonb_insert()
 description: Change a JSON value using jsonb_set() and insert a value using jsonb_insert().
 menu:
-  latest:
+  preview:
     identifier: jsonb-set-jsonb-insert
     parent: json-functions-operators
     weight: 210
@@ -112,7 +112,7 @@ $body$;
 ```
 ## Semantics when "jsonb&#95;in" is an JSON array
 
-A JSON _array_ is a list of index-addressable values—in other words, the order is defined and significant. Again, the functionality is sufficiently illustrated by a `json_in` value that has just primitive values. Now the result of `jsonb_set()` differs from that of `jsonb_insert()`. 
+A JSON _array_ is a list of index-addressable values—in other words, the order is defined and significant. Again, the functionality is sufficiently illustrated by a `json_in` value that has just primitive values. Now the result of `jsonb_set()` differs from that of `jsonb_insert()`.
 
 ```plpgsql
 do $body$
@@ -219,6 +219,6 @@ end;
 $body$;
 ```
 
-The path, for `jsonb_set()`, is taken to mean a new first value (implying that the existing values all move along one place). So, again, with _"create_if_missing"_ set to `FALSE`, `jsonb_set()` has no effect. 
+The path, for `jsonb_set()`, is taken to mean a new first value (implying that the existing values all move along one place). So, again, with _"create_if_missing"_ set to `FALSE`, `jsonb_set()` has no effect.
 
 The path, for `jsonb_insert()`, is also taken to mean a new first value. So again, the choice of `TRUE` or `FALSE` for _"insert_after"_ makes no difference because before or after, a nonexistent element is taken to mean insert it.

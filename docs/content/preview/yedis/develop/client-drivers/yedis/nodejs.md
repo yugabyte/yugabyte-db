@@ -4,9 +4,9 @@ headerTitle: Build an application using NodeJS
 linkTitle: NodeJS
 description: Use NodeJS to build a YugabyteDB application that interacts with YEDIS
 aliases:
-  - /latest/yedis/develop/client-drivers/nodejs
+  - /preview/yedis/develop/client-drivers/nodejs
 menu:
-  latest:
+  preview:
     identifier: client-drivers-yedis-nodejs
     parent: develop-yedis
 isTocNested: true

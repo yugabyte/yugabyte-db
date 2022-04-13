@@ -4,7 +4,7 @@ headerTitle: Read IO path
 linkTitle: Read IO path
 description: Learn how YugabyteDB manages single-row read operations.
 menu:
-  latest:
+  preview:
     identifier: read-path
     parent: core-functions
     weight: 1188

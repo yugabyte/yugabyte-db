@@ -4,7 +4,7 @@ headerTitle: Create a multi-cloud universe
 linkTitle: Multi-cloud universe
 description: Use YugabyteDB Anywhere to create a YugabyteDB universe that spans multiple cloud providers.
 menu:
-  latest:
+  preview:
     identifier: create-multi-cloud-universe
     parent: create-deployments
     weight: 35
@@ -126,10 +126,10 @@ You can create a multi-region universe as follows:
 1. Add the following flags for Master and T-Server:
 
     * `leader_failure_max_missed_heartbeat_periods=10` - Since the data is globally replicated, RPC latencies are higher. This flag increases the failure-detection interval to compensate.
-    
+
     * `use_cassandra_authentication=true` - Deployments on public clouds require security.
     * `ysql_enable_auth=true` - Deployments on public clouds require security.
-    
+
 1. Click **Create**.
 
 At this point, YugabyteDB Anywhere begins to provision your new universe across multiple cloud providers. When the universe is provisioned, it appears on the **Dashboard** and **Universes**. You can click the universe name to open its **Overview**.
@@ -162,4 +162,3 @@ To run the TPC-C benchmark on your universe, use commands similar to the followi
 ```
 
 Refer to [Running TPC-C on Yugabyte](../../../benchmark/tpcc-ysql/) for details.
-

@@ -4,9 +4,9 @@ headerTitle: Configure the on-premises cloud provider
 linkTitle: Configure the cloud provider
 description: Configure the on-premises cloud provider.
 aliases:
-  - /latest/deploy/enterprise-edition/configure-cloud-providers/onprem
+  - /preview/deploy/enterprise-edition/configure-cloud-providers/onprem
 menu:
-  latest:
+  preview:
     identifier: set-up-cloud-provider-6-on-premises
     parent: configure-yugabyte-platform
     weight: 20
@@ -248,7 +248,7 @@ Database servers need incoming TCP/IP access enabled to the following ports, for
 | TCP | 12000 | YCQL HTTP (for DB statistics gathering) |
 | TCP | 13000 | YSQL HTTP (for DB statistics gathering) |
 
-The preceding table is based on the information on the [default ports page](/latest/reference/configuration/default-ports/).
+The preceding table is based on the information on the [default ports page](/preview/reference/configuration/default-ports/).
 
 ##### Pre-provision nodes manually
 
@@ -463,7 +463,7 @@ On each node, perform the following as a user with sudo access:
 
 ##### Install backup utilities
 
-YugabyteDB Anywhere supports backing up YugabyteDB to AWS S3, Azure Storage, Google Cloud Storage, and NFS. 
+YugabyteDB Anywhere supports backing up YugabyteDB to AWS S3, Azure Storage, Google Cloud Storage, and NFS.
 
 You can install the backup utility for the backup storage you plan to use as follows:
 
@@ -547,13 +547,13 @@ As described in [Eliminate an unresponsive node](../../../create-deployments/rem
 
 You can manually remove Yugabyte components from existing server images. Before attempting this, you have to determine whether or not YugabyteDB Anywhere is operational. If it is, you either need to delete the universe or delete the nodes from the universe.
 
-In order to completely eliminate all traces of YugabyteDB Anywhere and configuration, you should consider reinstalling the operating system image (or rolling back to a previous image, if available).  
+In order to completely eliminate all traces of YugabyteDB Anywhere and configuration, you should consider reinstalling the operating system image (or rolling back to a previous image, if available).
 
 ### Delete database server nodes
 
-You can remove YugabyteDB components and configuration from the database server nodes as follows: 
+You can remove YugabyteDB components and configuration from the database server nodes as follows:
 
-- Login to the server node as the `yugabyte` user. 
+- Login to the server node as the `yugabyte` user.
 
 - Navigate to the `/home/yugabyte/bin` directory that contains a number of scripts including `yb-server-ctl.sh`. The arguments set in this script allow you to perform various functions on the YugabyteDB processes running on the node.
 
@@ -594,7 +594,7 @@ sudo userdel -r yugabyte
 If there is a requirement to remove the `prometheus` user, execute the following command:
 
 ```sh
-sudo rm -rf /opt/prometheus 
+sudo rm -rf /opt/prometheus
 ```
 
 You may now choose to reverse the system settings that you configured in [Provision nodes manually](#provision-nodes-manually).
@@ -638,4 +638,3 @@ yum remove docker-ce
 rpm -qa | grep -i docker
 yum remove docker-ce-cli
 ```
-

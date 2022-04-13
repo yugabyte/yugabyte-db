@@ -4,13 +4,13 @@ headerTitle: Google Kubernetes Engine (GKE)
 linkTitle: Google Kubernetes Engine (GKE)
 description: Deploy a single-zone YugabyteDB cluster on Google Kubernetes Engine (GKE) using YAML (remote disk).
 menu:
-  latest:
+  preview:
     parent: deploy-kubernetes-sz
     name: Google Kubernetes Engine
     identifier: k8s-gke-2
     weight: 623
 aliases:
-  - /latest/deploy/kubernetes/gke/statefulset-yaml
+  - /preview/deploy/kubernetes/gke/statefulset-yaml
 type: page
 isTocNested: true
 showAsideToc: true

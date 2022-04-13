@@ -4,7 +4,7 @@ headerTitle: Explicit locking
 linkTitle: Explicit locking
 description: Learn about support for explicit locks in YugabyteDB.
 menu:
-  latest:
+  preview:
     identifier: architecture-transactions-explicit-locking
     parent: architecture-acid-transactions
     weight: 1153
@@ -41,7 +41,7 @@ YugabyteDB opts for optimistic concurrency in the case of simple transactions. T
 YugabyteDB currently supports optimistic concurrency control, with pessimistic concurrency control being worked on actively.
 {{</note >}}
 
-Pessimistic locking is good when there are longer running operations that would increase the probability of transaction conflicts. For example, if there are multiple concurrent transactions that update many rows in the database and conflict with one another, these transactions could continuously get aborted because they conflict with one another. Pessimistic locking allows these transaction to make progress and complete by avoiding these conflicts. 
+Pessimistic locking is good when there are longer running operations that would increase the probability of transaction conflicts. For example, if there are multiple concurrent transactions that update many rows in the database and conflict with one another, these transactions could continuously get aborted because they conflict with one another. Pessimistic locking allows these transaction to make progress and complete by avoiding these conflicts.
 
 Here is another way to understand *optimistic* versus *pessimistic* concurrency control. Optimistic concurrency control incurs an overhead only if there are conflicts. Most OLTP applications typically have short-lived transactions that would not conflict. Pessimistic concurrency control decreases the overhead incurred when conflicts occur.
 
@@ -50,7 +50,7 @@ Here is another way to understand *optimistic* versus *pessimistic* concurrency 
 
 When using pessimistic locks, there could be a possibility of introducing [deadlocks](https://en.wikipedia.org/wiki/Record_locking) into the execution of the system.
 
-> The introduction of granular (subset) locks creates the possibility for a situation called deadlock. Deadlock is possible when incremental locking (locking one entity, then locking one or more additional entities) is used. To illustrate, if two bank customers asked two clerks to obtain their account information so they could transfer some money into other accounts, the two accounts would essentially be locked. Then, if the customers told their clerks that the money was to be transferred into each other's accounts, the clerks would search for the other accounts but find them to be "in use" and wait for them to be returned. Unknowingly, the two clerks are waiting for each other, and neither of them can complete their transaction until the other gives up and returns the account. 
+> The introduction of granular (subset) locks creates the possibility for a situation called deadlock. Deadlock is possible when incremental locking (locking one entity, then locking one or more additional entities) is used. To illustrate, if two bank customers asked two clerks to obtain their account information so they could transfer some money into other accounts, the two accounts would essentially be locked. Then, if the customers told their clerks that the money was to be transferred into each other's accounts, the clerks would search for the other accounts but find them to be "in use" and wait for them to be returned. Unknowingly, the two clerks are waiting for each other, and neither of them can complete their transaction until the other gives up and returns the account.
 
 YugabyteDB currently avoids deadlocks because of its transaction conflict handling semantics, where the transaction with the lower priority is completely aborted.
 

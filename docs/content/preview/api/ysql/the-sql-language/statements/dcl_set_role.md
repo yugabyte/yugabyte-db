@@ -4,11 +4,11 @@ headerTitle: SET ROLE
 linkTitle: SET ROLE
 description: Use the SET ROLE statement to set the current user of the current session to be the specified user.
 menu:
-  latest:
+  preview:
     identifier: dcl_set_role
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/dcl_set_role/
+  - /preview/api/ysql/commands/dcl_set_role/
 isTocNested: true
 showAsideToc: true
 ---

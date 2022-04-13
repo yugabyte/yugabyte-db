@@ -1,10 +1,10 @@
 ---
 title: Set up a VPC network
-headerTitle: 
+headerTitle:
 linkTitle: Set up a VPC network
 description: How to set up and VPC network in Yugabyte Cloud.
 menu:
-  latest:
+  preview:
     identifier: cloud-vpc-setup
     parent: cloud-vpcs
     weight: 20

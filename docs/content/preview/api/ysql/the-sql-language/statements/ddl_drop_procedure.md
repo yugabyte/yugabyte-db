@@ -4,11 +4,11 @@ headerTitle: DROP PROCEDURE
 linkTitle: DROP PROCEDURE
 description: Use the DROP PROCEDURE statement to remove a procedure from a database.
 menu:
-  latest:
+  preview:
     identifier: ddl_drop_procedure
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/ddl_drop_procedure/
+  - /preview/api/ysql/commands/ddl_drop_procedure/
 isTocNested: true
 showAsideToc: true
 ---

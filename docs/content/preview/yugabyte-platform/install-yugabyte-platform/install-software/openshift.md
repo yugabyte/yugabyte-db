@@ -4,7 +4,7 @@ headerTitle: Install YugabyteDB Anywhere software - OpenShift
 linkTitle: Install software
 description: Install YugabyteDB Anywhere software in your OpenShift environment
 menu:
-  latest:
+  preview:
     parent: install-yugabyte-platform
     identifier: install-software-2-openshift
     weight: 77

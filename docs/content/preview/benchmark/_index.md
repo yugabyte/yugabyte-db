@@ -1,5 +1,5 @@
 ---
-title: Benchmark YugabyteDB 
+title: Benchmark YugabyteDB
 headerTitle: Benchmark YugabyteDB
 linkTitle: Benchmark
 description: Benchmark YugabyteDB using TPC-C, sysbench, YCSB and more.
@@ -7,11 +7,11 @@ image: /images/section_icons/explore/high_performance.png
 headcontent:
 section: YUGABYTEDB CORE
 menu:
-  latest:
+  preview:
     identifier: benchmark
     weight: 685
 aliases:
-  - /latest/benchmark/performance/
+  - /preview/benchmark/performance/
 
 ---
 
@@ -40,7 +40,7 @@ aliases:
       </div>
     </a>
   </div>
- 
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="sysbench-ysql/">
       <div class="head">
@@ -52,7 +52,7 @@ aliases:
       </div>
     </a>
   </div>
-  
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="key-value-workload-ycql/">
       <div class="head">

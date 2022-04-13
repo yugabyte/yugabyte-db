@@ -6,10 +6,10 @@ description: Configure VPC networking.
 image: /images/section_icons/secure/tls-encryption/connect-to-cluster.png
 headcontent: Set up VPC networking so that your clusters can communicate privately with applications.
 aliases:
-  - /latest/yugabyte-cloud/cloud-network/vpc-peers/
-  - /latest/yugabyte-cloud/cloud-secure-clusters/cloud-vpcs/
+  - /preview/yugabyte-cloud/cloud-network/vpc-peers/
+  - /preview/yugabyte-cloud/cloud-secure-clusters/cloud-vpcs/
 menu:
-  latest:
+  preview:
     identifier: cloud-vpcs
     parent: cloud-basics
     weight: 200

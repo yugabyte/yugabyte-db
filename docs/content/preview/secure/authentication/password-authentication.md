@@ -4,7 +4,7 @@ headerTitle: Password Authentication
 linkTitle: Password Authentication
 description: Use SCRAM-SHA-256 password authentication to strengthen your YugyabyteDB security.
 menu:
-  latest:
+  preview:
     identifier: password-authentication
     parent: authentication
     weight: 731

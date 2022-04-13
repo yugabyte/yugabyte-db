@@ -7,7 +7,7 @@ image: /images/section_icons/index/secure.png
 headcontent: Review Yugabyte Cloud's security architecture and shared responsibility model.
 section: YUGABYTE CLOUD
 menu:
-  latest:
+  preview:
     identifier: cloud-security
 weight: 800
 ---

@@ -9,7 +9,7 @@ aliases:
   - /comparisons/
 section: FAQ
 menu:
-  latest:
+  preview:
     identifier: comparisons
     weight: 2710
 ---

@@ -4,7 +4,7 @@ linkTitle: Expressions and Operators
 description: Expressions and Operators in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
-  latest:
+  preview:
     identifier: explore-ysql-language-features-expressions-operators
     parent: explore-ysql-language-features
     weight: 215

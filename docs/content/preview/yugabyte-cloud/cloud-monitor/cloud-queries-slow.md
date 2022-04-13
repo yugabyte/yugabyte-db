@@ -5,7 +5,7 @@ description: View slow running queries that have run on your Yugabyte Cloud clus
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  latest:
+  preview:
     identifier: cloud-queries-slow
     parent: cloud-monitor
     weight: 300

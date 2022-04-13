@@ -5,11 +5,11 @@ linkTitle: Spring Framework
 description: Using Spring Framework with YugabyteDB
 headcontent: Using Spring Framework with YugabyteDB
 aliases:
-  - /latest/reference/drivers/spring-data-yugabytedb
+  - /preview/reference/drivers/spring-data-yugabytedb
 image: /images/section_icons/develop/ecosystem/spring.png
 section: INTEGRATIONS
 menu:
-  latest:
+  preview:
     identifier: spring-framework
     weight: 571
 ---

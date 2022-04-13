@@ -5,7 +5,7 @@ linkTitle: Distributed Transactions
 description: Distributed Transactions in YugabyteDB.
 headcontent: Distributed Transactions in YugabyteDB.
 menu:
-  latest:
+  preview:
     name: Distributed Transactions
     identifier: explore-transactions-distributed-transactions-2-ycql
     parent: explore-transactions

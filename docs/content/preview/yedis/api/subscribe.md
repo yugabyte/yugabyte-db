@@ -3,12 +3,12 @@ title: SUBSCRIBE
 linkTitle: SUBSCRIBE
 description: SUBSCRIBE
 menu:
-  latest:
+  preview:
     parent: api-yedis
     weight: 2552
 aliases:
-  - /latest/api/redis/subscribe
-  - /latest/api/yedis/subscribe
+  - /preview/api/redis/subscribe
+  - /preview/api/yedis/subscribe
 isTocNested: true
 showAsideToc: true
 ---
@@ -22,9 +22,9 @@ publisher sends a message to any of the channels that it has subscribed to.
 
 ## See also
 
-[`pubsub`](../pubsub/), 
-[`publish`](../publish/), 
-[`subscribe`](../subscribe/), 
-[`unsubscribe`](../unsubscribe/), 
-[`psubscribe`](../psubscribe/), 
+[`pubsub`](../pubsub/),
+[`publish`](../publish/),
+[`subscribe`](../subscribe/),
+[`unsubscribe`](../unsubscribe/),
+[`psubscribe`](../psubscribe/),
 [`punsubscribe`](../punsubscribe/)

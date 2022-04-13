@@ -8,7 +8,7 @@ headcontent: Secure YugabyteDB Anywhere and your YugabyteDB universes.
 type: page
 section: YUGABYTEDB ANYWHERE
 menu:
-  latest:
+  preview:
     identifier: security
 weight: 645
 ---

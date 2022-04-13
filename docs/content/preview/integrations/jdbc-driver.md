@@ -4,16 +4,16 @@ linkTitle: YugabyteDB JDBC driver
 description: YugabyteDB JDBC driver for YSQL
 section: INTEGRATIONS
 aliases:
-  - /latest/integrations/smart-driver/
+  - /preview/integrations/smart-driver/
 menu:
-  latest:
+  preview:
     identifier: jdbc-driver
     weight: 571
 isTocNested: true
 showAsideToc: true
 ---
 
-[Yugabyte JDBC driver](https://github.com/yugabyte/pgjdbc) is a distributed JDBC driver for [YSQL](/latest/api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc).
+[Yugabyte JDBC driver](https://github.com/yugabyte/pgjdbc) is a distributed JDBC driver for [YSQL](/preview/api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc).
 Although the upstream PostgreSQL JDBC driver works with YugabyteDB, the Yugabyte driver enhances YugabyteDB by eliminating the need for external load balancers.
 The driver has the following features:
 
@@ -178,7 +178,7 @@ To use the driver, do the following:
 
 ## Try it out
 
-This tutorial shows how to use the Yugabyte JDBC Driver with YugabyteDB. You’ll start by creating a three-node cluster with a replication factor of 3. This tutorial uses the [yb-ctl](/latest/admin/yb-ctl/#root) utility.
+This tutorial shows how to use the Yugabyte JDBC Driver with YugabyteDB. You’ll start by creating a three-node cluster with a replication factor of 3. This tutorial uses the [yb-ctl](/preview/admin/yb-ctl/#root) utility.
 Next, you’ll use [yb-sample-apps](https://github.com/yugabyte/yb-sample-apps/tree/master) to demonstrate the driver's load balancing features and create a Maven project to learn how to use the driver in an application.
 
 {{< note title="Note">}}
@@ -245,7 +245,7 @@ To access sample applications that use the Yugabyte JDBC driver, visit [Yugabyte
 
 To use the samples, complete the following steps:
 
-- Install YugabyteDB by following instructions provided in [Quick Start Guide](/latest/quick-start/install/).
+- Install YugabyteDB by following instructions provided in [Quick Start Guide](/preview/quick-start/install/).
 
 - Build the examples by running `mvn package`.
 

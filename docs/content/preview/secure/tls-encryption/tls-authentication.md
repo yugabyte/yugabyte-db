@@ -6,7 +6,7 @@ description: Use authentication in conjunction with TLS encryption.
 headcontent: Use authentication in conjunction with TLS encryption
 image: /images/section_icons/secure/authentication.png
 menu:
-  latest:
+  preview:
     identifier: tls-authentication
     parent: tls-encryption
     weight: 800

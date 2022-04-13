@@ -5,11 +5,11 @@ linkTitle: Java
 description: Build a sample Java application with the Yugabyte JDBC Driver and use the YSQL API to connect to and interact with YugabyteDB.
 aliases:
   - /develop/client-drivers/java/
-  - /latest/develop/client-drivers/java/
-  - /latest/develop/build-apps/java/
-  - /latest/quick-start/build-apps/java/
+  - /preview/develop/client-drivers/java/
+  - /preview/develop/build-apps/java/
+  - /preview/quick-start/build-apps/java/
 menu:
-  latest:
+  preview:
     parent: build-apps
     name: Java
     identifier: java-1
@@ -37,6 +37,18 @@ showAsideToc: true
     <a href="../ysql-jdbc-ssl/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - JDBC SSL/TLS
+    </a>
+  </li>
+  <li >
+    <a href="../ysql-hibernate/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - Hibernate
+    </a>
+  </li>
+  <li >
+    <a href="../ysql-sdyb/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - Spring Data YugabyteDB
     </a>
   </li>
   <li >
@@ -69,7 +81,7 @@ showAsideToc: true
 
 This tutorial assumes that:
 
-- YugabyteDB is up and running. Using the [yb-ctl](/latest/admin/yb-ctl/#root) utility, create a universe with a 3-node RF-3 cluster with some fictitious geo-locations assigned.
+- YugabyteDB is up and running. Using the [yb-ctl](/preview/admin/yb-ctl/#root) utility, create a universe with a 3-node RF-3 cluster with some fictitious geo-locations assigned.
 
   ```sh
   $ cd <path-to-yugabytedb-installation>

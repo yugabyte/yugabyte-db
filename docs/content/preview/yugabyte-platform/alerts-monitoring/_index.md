@@ -8,7 +8,7 @@ headcontent: Use YugabyteDB Anywhere for alerts and monitoring of YugabyteDB uni
 type: page
 section: YUGABYTEDB ANYWHERE
 menu:
-  latest:
+  preview:
     identifier: alerts-monitoring
 weight: 647
 ---

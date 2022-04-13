@@ -4,12 +4,12 @@ headerTitle: GRANT PERMISSION
 linkTitle: GRANT PERMISSION
 description: Use the GRANT PERMISSION statement to grant a permission (or all the available permissions) to a role.
 menu:
-  latest:
+  preview:
     parent: api-cassandra
     weight: 1281
 aliases:
-  - /latest/api/cassandra/ddl_grant_permission
-  - /latest/api/ycql/ddl_grant_permission
+  - /preview/api/cassandra/ddl_grant_permission
+  - /preview/api/ycql/ddl_grant_permission
 isTocNested: true
 showAsideToc: true
 ---

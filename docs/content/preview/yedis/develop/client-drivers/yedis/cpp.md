@@ -4,9 +4,9 @@ headerTitle: Build an application using C++
 linkTitle: C++
 description: Use C++ to build a YugabyteDB application that interacts with YEDIS
 aliases:
-  - /latest/yedis/develop/client-drivers/cpp
+  - /preview/yedis/develop/client-drivers/cpp
 menu:
-  latest:
+  preview:
     identifier: client-drivers-yedis-cpp
     parent: develop-yedis
 isTocNested: true
@@ -26,7 +26,7 @@ The tutorial assumes that you have:
 We use the [`cpp_redis`](https://redis.io/clients#c--) driver. To install the library do the following:
 
 - Clone the `cpp_redis` repository
-  
+
 ```sh
 $ git clone https://github.com/Cylix/cpp_redis.git
 ```

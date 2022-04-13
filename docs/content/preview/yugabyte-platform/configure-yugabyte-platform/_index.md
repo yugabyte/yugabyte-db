@@ -8,7 +8,7 @@ headcontent: Configure YugabyteDB Anywhere.
 type: page
 section: YUGABYTEDB ANYWHERE
 menu:
-  latest:
+  preview:
     identifier: configure-yugabyte-platform
     weight: 642
 ---

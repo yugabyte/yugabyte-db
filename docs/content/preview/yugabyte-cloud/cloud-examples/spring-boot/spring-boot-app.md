@@ -5,7 +5,7 @@ description: Connect a Spring application to Yugabyte Cloud and containerize it 
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  latest:
+  preview:
     identifier: spring-boot-app
     parent: spring-boot
     weight: 10
@@ -15,7 +15,7 @@ showAsideToc: true
 
 [Spring Boot](https://spring.io/projects/spring-boot) is a popular framework for building cloud native applications. Each Spring Boot application is stand-alone and self-contained, which makes them easy to deploy in a distributed fashion – whether to containers or on Kubernetes.
 
-The example on this page shows how you can connect a Spring Boot application to Yugabyte Cloud, using a version of the Spring Boot PetClinic sample application that has been updated with a profile making it compatible with YugabyteDB. 
+The example on this page shows how you can connect a Spring Boot application to Yugabyte Cloud, using a version of the Spring Boot PetClinic sample application that has been updated with a profile making it compatible with YugabyteDB.
 
 The repository for the application is at <https://github.com/yugabyte/spring-petclinic>. Instructions for connecting this application to YugabyteDB are also provided in the `petclinic_db_setup_yugabytedb.md` file in this repository.
 
@@ -34,7 +34,7 @@ In this walkthrough, you will:
 
 ## Download and connect the PetClinic application
 
-1. On your computer, clone the Spring Boot PetClinic sample application: 
+1. On your computer, clone the Spring Boot PetClinic sample application:
 
     ```sh
     $ git clone https://github.com/yugabyte/spring-petclinic.git
@@ -94,11 +94,11 @@ In this walkthrough, you will:
 
     ```output
     [INFO] Scanning for projects...
-    [INFO] 
+    [INFO]
     [INFO] ------------< org.springframework.samples:spring-petclinic >------------
     [INFO] Building petclinic 2.4.5
     [INFO] --------------------------------[ jar ]---------------------------------
-    [INFO] 
+    [INFO]
     [INFO] >>> spring-boot-maven-plugin:2.4.5:run (default-cli) > test-compile @ spring-petclinic >>>
     ```
 
@@ -125,21 +125,21 @@ The PetClinic application is now running locally and is connected to your Yugaby
 
 1. Start Docker on your computer.
 
-1. Containerize the PetClinic application: 
+1. Containerize the PetClinic application:
 
     ```sh
     $ ./mvnw spring-boot:build-image
     ```
 
-1. Tag your image: 
+1. Tag your image:
 
     ```sh
     $ docker tag [image_id] spring-petclinic
     ```
-    
+
     You can find the image id by running `docker image ls`.
 
-1. Run the image as a container in Docker to make sure it’s working correctly: 
+1. Run the image as a container in Docker to make sure it’s working correctly:
 
     ```sh
     $ docker run -d --name=spring-petclinic -p 8080:8080 -e \

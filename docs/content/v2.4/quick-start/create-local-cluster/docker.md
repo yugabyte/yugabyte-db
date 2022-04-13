@@ -18,28 +18,28 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/quick-start/create-local-cluster/macos" class="nav-link">
+    <a href="/preview/quick-start/create-local-cluster/macos" class="nav-link">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/latest/quick-start/create-local-cluster/linux" class="nav-link">
+    <a href="/preview/quick-start/create-local-cluster/linux" class="nav-link">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
     </a>
   </li>
 
   <li >
-    <a href="/latest/quick-start/create-local-cluster/docker" class="nav-link active">
+    <a href="/preview/quick-start/create-local-cluster/docker" class="nav-link active">
       <i class="fab fa-docker" aria-hidden="true"></i>
       Docker
     </a>
   </li>
 
   <li >
-    <a href="/latest/quick-start/create-local-cluster/kubernetes" class="nav-link">
+    <a href="/preview/quick-start/create-local-cluster/kubernetes" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
@@ -51,7 +51,7 @@ showAsideToc: true
 
 This Docker Quick Start is based on the new [`yugabyted`](../../../reference/configuration/yugabyted/) server. You can refer to the older [`yb-docker-ctl`](../../../admin/yb-docker-ctl/) based instructions in the [v2.0 docs](/v2.0/quick-start/install/docker/).
 
-Note that yugabyted currently supports creating a single-node cluster only. Ability to create multi-node clusters is under [active development](https://github.com/yugabyte/yugabyte-db/issues/2057). 
+Note that yugabyted currently supports creating a single-node cluster only. Ability to create multi-node clusters is under [active development](https://github.com/yugabyte/yugabyte-db/issues/2057).
 
 {{< /note >}}
 
@@ -71,7 +71,7 @@ As per the above docker run command, the data stored in YugabyteDB is not persis
 docker run -d --name yugabyte  -p7000:7000 -p9000:9000 -p5433:5433 -p9042:9042\
  -v ~/yb_data:/home/yugabyte/var\
  yugabytedb/yugabyte:latest bin/yugabyted start\
- --daemon=false 
+ --daemon=false
 ```
 
 Clients can now connect to the YSQL and YCQL APIs at `localhost:5433` and `localhost:9042` respectively.
@@ -101,7 +101,7 @@ The Masters section highlights the cloud, region and zone placement for the yb-m
 
 ### YB-TServer status
 
-Clicking on the `See all nodes` takes us to the Tablet Servers page where you can observe the 1 tserver along with the time since it last connected to this master via regular heartbeats. 
+Clicking on the `See all nodes` takes us to the Tablet Servers page where you can observe the 1 tserver along with the time since it last connected to this master via regular heartbeats.
 
 ![master-home](/images/admin/master-tservers-list-docker-rf1.png)
 

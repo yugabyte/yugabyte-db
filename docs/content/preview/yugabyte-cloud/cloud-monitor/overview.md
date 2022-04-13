@@ -5,7 +5,7 @@ description: View time series charts of cluster metrics.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  latest:
+  preview:
     identifier: overview-clusters
     parent: cloud-monitor
     weight: 100

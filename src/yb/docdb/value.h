@@ -46,6 +46,7 @@ struct ValueControlFields {
   // The timestamp provided by the user as part of a 'USING TIMESTAMP' clause in CQL.
   UserTimeMicros user_timestamp = kInvalidUserTimestamp;
 
+  void AppendEncoded(ValueBuffer* out) const;
   void AppendEncoded(std::string* out) const;
   std::string ToString() const;
 
@@ -104,6 +105,7 @@ class Value {
 
   // Decode the entire value
   CHECKED_STATUS Decode(const Slice& rocksdb_value);
+  CHECKED_STATUS Decode(const Slice& rocksdb_value, const ValueControlFields& control_fields);
 
   std::string ToString() const;
 

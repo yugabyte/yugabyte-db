@@ -8,7 +8,7 @@ headcontent: Use YugabyteDB Anywhere to back up and restore YugabyteDB universes
 type: page
 section: YUGABYTEDB ANYWHERE
 menu:
-  latest:
+  preview:
     identifier: back-up-restore-universes
 weight: 645
 ---

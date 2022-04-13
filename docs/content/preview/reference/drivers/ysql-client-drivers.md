@@ -4,7 +4,7 @@ headerTitle: Client drivers for YSQL
 linkTitle: Client drivers for YSQL
 description: Lists the client drivers that you can use to connect to and interact with the YSQL API.
 menu:
-  latest:
+  preview:
     identifier: ysql-client-libraries
     parent: drivers
     weight: 2940
@@ -18,7 +18,7 @@ For details on PostgreSQL feature support in YSQL, see [What Features Does YSQL 
 
 Yugabyte and third party client drivers listed below are supported for developing applications that connect to and interact with the YSQL API. Most of the drivers use [libpq](#libpq) and support the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For help using these drivers with YSQL, ask your questions in the [Slack community](https://www.yugabyte.com/slack).
+For help using these drivers with YSQL, ask your questions in the [Slack community]({{<slack-invite>}}).
 
 If you encounter an issue or have an enhancement request, [file a GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/new/choose).
 

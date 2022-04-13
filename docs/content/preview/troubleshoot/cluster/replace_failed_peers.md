@@ -3,7 +3,7 @@ title: Manual remote bootstrap when a majority of peers fail
 linkTitle: Manual remote bootstrap when a majority of peers fail
 description: Manual remote bootstrap when a majority of peers fail
 menu:
-  latest:
+  preview:
     parent: troubleshoot-cluster
     weight: 835
 isTocNested: true
@@ -12,7 +12,7 @@ showAsideToc: true
 
 When a RAFT peer fails, YugabyteDB executes an automatic remote bootstrap to create a new peer from the remaining ones.
 If a majority of RAFT peers fail for a given tablet, we have to manually execute the equivalent of a remote bootstrap. We
- can get a list of tablets in `yb-master-ip:7000/tablet-replication` yb-admin gui. 
+ can get a list of tablets in `yb-master-ip:7000/tablet-replication` yb-admin gui.
 
 
 Assuming we have a cluster where:
@@ -42,7 +42,7 @@ At this point, `NODE_BAD2` should be automatically fixed and removed from its qu
 
 {{< note title="Note" >}}
 
-Normally when we try to find tablet data, we use a `find` command across the `--fs_data_dir` paths. 
+Normally when we try to find tablet data, we use a `find` command across the `--fs_data_dir` paths.
 
 In this example, assume that's set to `/mnt/d0` and our tablet UUID is `c08596d5820a4683a96893e092088c39`:
 
@@ -58,22 +58,22 @@ $ find /mnt/d0/ -name '*c08596d5820a4683a96893e092088c39*'
 
 The data we are interested in here is:
 
-For the raft wals: 
+For the raft wals:
 ```bash
 /mnt/d0/yb-data/tserver/wals/table-2fa481734909462385e005ba23664537/tablet-c08596d5820a4683a96893e092088c39
 ```
 
-For the rocksdb regular DB: 
+For the rocksdb regular DB:
 ```bash
 /mnt/d0/yb-data/tserver/data/rocksdb/table-2fa481734909462385e005ba23664537/tablet-c08596d5820a4683a96893e092088c39
 ```
 
-For the intents files: 
+For the intents files:
 ```bash
 /mnt/d0/yb-data/tserver/data/rocksdb/table-2fa481734909462385e005ba23664537/tablet-c08596d5820a4683a96893e092088c39.intents
 ```
 
-For the snapshot files: 
+For the snapshot files:
 ```bash
 /mnt/d0/yb-data/tserver/data/rocksdb/table-2fa481734909462385e005ba23664537/tablet-c08596d5820a4683a96893e092088c39.snapshots
 ```

@@ -5,7 +5,7 @@ linkTitle: Configure
 description: Configuring Yugabyte Platform on Google Cloud Platform
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  latest:
+  preview:
     identifier: configure-2-gcp
     parent: overview-yp
     weight: 40
@@ -61,9 +61,9 @@ Click elements of the following chart to access detailed steps:
 <img src="/images/ee/flowchart/yb-configure-gcp.png" usemap="#image-map">
 
 <map name="image-map">
-    <area target="_blank" alt="Configure cloud provider" title="Configure cloud provider" href="/latest/yugabyte-platform/configure-yugabyte-platform/" coords="379,63,523,199" shape="rect">
-    <area target="_blank" alt="Create admin user" title="Create admin user" href="/latest/yugabyte-platform/configure-yugabyte-platform/create-admin-user/" coords="284,257,617,317" shape="rect">
-    <area target="_blank" alt="Configure GCP provider" title="Configure GCP provider" href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp/" coords="249,369,647,423" shape="rect">
-    <area target="_blank" alt="GCP provider pre reqs" title="GCP provider pre reqs" href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp/#prerequisites" coords="223,476,675,653" shape="rect">
-    <area target="_blank" alt="configure GCP" title="configure GCP" href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp/#configure-gcp" coords="305,703,601,791" shape="rect">
+    <area target="_blank" alt="Configure cloud provider" title="Configure cloud provider" href="/preview/yugabyte-platform/configure-yugabyte-platform/" coords="379,63,523,199" shape="rect">
+    <area target="_blank" alt="Create admin user" title="Create admin user" href="/preview/yugabyte-platform/configure-yugabyte-platform/create-admin-user/" coords="284,257,617,317" shape="rect">
+    <area target="_blank" alt="Configure GCP provider" title="Configure GCP provider" href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp/" coords="249,369,647,423" shape="rect">
+    <area target="_blank" alt="GCP provider pre reqs" title="GCP provider pre reqs" href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp/#prerequisites" coords="223,476,675,653" shape="rect">
+    <area target="_blank" alt="configure GCP" title="configure GCP" href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp/#configure-gcp" coords="305,703,601,791" shape="rect">
 </map>

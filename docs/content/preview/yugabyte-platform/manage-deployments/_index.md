@@ -7,7 +7,7 @@ image: /images/section_icons/quick_start/sample_apps.png
 type: page
 section: YUGABYTEDB ANYWHERE
 menu:
-  latest:
+  preview:
     identifier: manage-deployments
     weight: 644
 isTocNested: true

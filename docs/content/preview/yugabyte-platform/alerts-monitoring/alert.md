@@ -3,7 +3,7 @@ headerTitle: Alerts
 linkTitle: Alerts
 description: Use alerts
 menu:
-  latest:
+  preview:
     identifier: alert
     parent: alerts-monitoring
     weight: 10
@@ -25,7 +25,7 @@ The alert status and timeframe provide information on when the threshold was exc
 
 To summarize, the alert status can be active, acknowledged, or resolved. You change the status by taking an appropriate action, such as, for example, **Acknowledge** for an active alert. Note that if you are using a read-only account for YugabyteDB Anywhere, you cannot perform actions.
 
-For additional information, see the following: 
+For additional information, see the following:
 
 - [Alerts and Notifications in YugabyteDB Anywhere](https://blog.yugabyte.com/yugabytedb-2-8-alerts-and-notifications/)
 - [Metrics in YugabyteDB Anywhere](../../troubleshoot/universe-issues/#use-metrics)

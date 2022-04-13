@@ -4,7 +4,7 @@ linkTitle: Data Types
 description: Data Types in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
-  latest:
+  preview:
     identifier: explore-ysql-language-features-data-types
     parent: explore-ysql-language-features
     weight: 150
@@ -466,4 +466,4 @@ CREATE TYPE textrange
 SELECT '( " a " " a ", " z " " z " )'::textrange;
 ```
 
-For more information on range types, see [Range Data Types](/latest/api/ysql/datatypes/type_range/).
+For more information on range types, see [Range Data Types](/preview/api/ysql/datatypes/type_range/).

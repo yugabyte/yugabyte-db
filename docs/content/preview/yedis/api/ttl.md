@@ -3,12 +3,12 @@ title: TTL
 linkTitle: TTL
 description: TTL
 menu:
-  latest:
+  preview:
     parent: api-yedis
     weight: 2470
 aliases:
-  - /latest/api/redis/ttl
-  - /latest/api/yedis/ttl
+  - /preview/api/redis/ttl
+  - /preview/api/yedis/ttl
 isTocNested: true
 showAsideToc: true
 ---

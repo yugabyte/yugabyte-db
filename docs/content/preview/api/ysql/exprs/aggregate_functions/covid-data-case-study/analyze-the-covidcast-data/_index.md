@@ -5,7 +5,7 @@ headerTitle: Using the YSQL linear regression analysis functions on the COVIDcas
 description: Using regr_r2(), regr_slope(), regr_intercept() on the COVIDcast data—introduction
 image: /images/section_icons/api/ysql.png
 menu:
-  latest:
+  preview:
     identifier: analyze-the-covidcast-data
     parent: covid-data-case-study
     weight: 30

@@ -7,13 +7,13 @@ summary: Reference for the YCQL API
 image: /images/section_icons/api/ycql.png
 headcontent:
 menu:
-  latest:
+  preview:
     identifier: api-cassandra
     parent: api
     weight: 3000
 aliases:
-  - /latest/api/ycql/
-  - /latest/api/cassandra/
+  - /preview/api/ycql/
+  - /preview/api/cassandra/
 isTocNested: false
 showAsideToc: true
 ---

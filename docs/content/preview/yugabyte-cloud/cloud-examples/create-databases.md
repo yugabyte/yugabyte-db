@@ -5,10 +5,10 @@ description: Create and explore a database using YSQL.
 headcontent:
 image: /images/section_icons/quick_start/explore_ysql.png
 aliases:
-  - /latest/deploy/yugabyte-cloud/create-databases/
-  - /latest/yugabyte-cloud/create-databases/
+  - /preview/deploy/yugabyte-cloud/create-databases/
+  - /preview/yugabyte-cloud/create-databases/
 menu:
-  latest:
+  preview:
     parent: cloud-develop
     name: Create a database
     identifier: create-databases-1-ysql
@@ -93,17 +93,17 @@ To look at the schema of the `products` table, enter the following command:
 
 ```output
                                         Table "public.products"
-   Column   |            Type             | Collation | Nullable |               Default                
+   Column   |            Type             | Collation | Nullable |               Default
 ------------+-----------------------------+-----------+----------+--------------------------------------
  id         | bigint                      |           | not null | nextval('products_id_seq'::regclass)
- created_at | timestamp without time zone |           |          | 
- category   | text                        |           |          | 
- ean        | text                        |           |          | 
- price      | double precision            |           |          | 
+ created_at | timestamp without time zone |           |          |
+ category   | text                        |           |          |
+ ean        | text                        |           |          |
+ price      | double precision            |           |          |
  quantity   | integer                     |           |          | 5000
- rating     | double precision            |           |          | 
- title      | text                        |           |          | 
- vendor     | text                        |           |          | 
+ rating     | double precision            |           |          |
+ title      | text                        |           |          |
+ vendor     | text                        |           |          |
 Indexes:
     "products_pkey" PRIMARY KEY, lsm (id HASH)
 ```
@@ -117,7 +117,7 @@ SELECT id, title, category, price, rating
 ```
 
 ```output
- id  |           title            | category |      price       | rating 
+ id  |           title            | category |      price       | rating
 -----+----------------------------+----------+------------------+--------
   22 | Enormous Marble Shoes      | Gizmo    | 21.4245199604423 |    4.2
   38 | Lightweight Leather Gloves | Gadget   | 44.0462485589292 |    3.8

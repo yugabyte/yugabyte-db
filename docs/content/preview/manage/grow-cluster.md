@@ -4,7 +4,7 @@ headerTitle: Grow cluster
 linkTitle: Grow cluster
 description: Grow a cluster by adding new nodes.
 menu:
-  latest:
+  preview:
     identifier: grow-cluster
     parent: manage
     weight: 709

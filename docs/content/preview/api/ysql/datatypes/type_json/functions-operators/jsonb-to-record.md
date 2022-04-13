@@ -4,7 +4,7 @@ headerTitle: jsonb_to_record() and json_to_record()
 linkTitle: jsonb_to_record()
 description: Convert a JSON object into the equivalent SQL record. Offers no practical advantage over the jsonb_populate_record() variant.
 menu:
-  latest:
+  preview:
     identifier: jsonb-to-record
     parent: json-functions-operators
     weight: 230
@@ -45,7 +45,7 @@ begin
   as on_the_fly(a int, b text);
 
   assert
-    (result_1 = expected_result) and 
+    (result_1 = expected_result) and
     (result_2 = expected_result),
   'unexpected';
 end;
@@ -77,7 +77,7 @@ begin
   as on_the_fly(a int, b text[], c t1);
 
   assert
-    (result_1 = expected_result) and 
+    (result_1 = expected_result) and
     (result_2 = expected_result),
   'unexpected';
 end;

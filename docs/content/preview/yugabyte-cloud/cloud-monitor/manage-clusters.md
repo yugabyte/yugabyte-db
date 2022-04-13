@@ -5,7 +5,7 @@ description: View Yugabyte Cloud cluster nodes.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  latest:
+  preview:
     identifier: manage-clusters
     parent: cloud-monitor
     weight: 500

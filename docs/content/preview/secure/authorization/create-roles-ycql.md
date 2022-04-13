@@ -6,7 +6,7 @@ description: Manage Users and Roles in YCQL
 headcontent: Manage Users and Roles
 image: /images/section_icons/secure/create-roles.png
 menu:
-  latest:
+  preview:
     identifier: create-roles-ycql
     parent: authorization
     weight: 717

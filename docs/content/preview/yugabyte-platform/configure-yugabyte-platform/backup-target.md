@@ -4,7 +4,7 @@ headerTitle: Configure the backup target
 linkTitle: Configure the backup target
 description: Configure the backup target.
 menu:
-  latest:
+  preview:
     identifier: backup-target
     parent: configure-yugabyte-platform
     weight: 30
@@ -18,7 +18,7 @@ You can configure a variety of backup targets for your YugabyteDB universe data.
 
 If your YugabyteDB universe has one node, you can create a local directory on a T-Server to which to back up, as follows:
 
-1. Navigate to **Universes**, select your universe, and then select **Nodes**. 
+1. Navigate to **Universes**, select your universe, and then select **Nodes**.
 
 2. Click **Connect**.
 
@@ -42,7 +42,7 @@ You can configure Amazon S3 as a backup target as follows:
 
    ![AWS Backup](/images/yp/cloud-provider-config-backup-aws1.png)<br><br>
 
-2. Click **Create S3 Backup**. 
+2. Click **Create S3 Backup**.
 
 3. Complete the form shown in the following illustration:<br><br>
 

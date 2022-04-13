@@ -4,12 +4,12 @@ linkTitle: Cursors
 description: Using Cursors in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
-  latest:
+  preview:
     identifier: advanced-features-cursor
     parent: advanced-features
     weight: 220
 aliases:
-  - /latest/explore/ysql-language-features/cursor/
+  - /preview/explore/ysql-language-features/cursor/
 isTocNested: true
 showAsideToc: true
 ---

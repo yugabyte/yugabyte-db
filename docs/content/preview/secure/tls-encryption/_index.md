@@ -8,7 +8,7 @@ image: /images/section_icons/secure/tls-encryption.png
 aliases:
   - /secure/tls-encryption/
 menu:
-  latest:
+  preview:
     identifier: tls-encryption
     parent: secure
     weight: 725

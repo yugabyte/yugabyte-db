@@ -8,7 +8,7 @@ image: /images/section_icons/secure/tls-encryption/client-to-server.png
 aliases:
   - /secure/tls-encryption/client-to-server
 menu:
-  latest:
+  preview:
     identifier: client-to-server
     parent: tls-encryption
     weight: 30

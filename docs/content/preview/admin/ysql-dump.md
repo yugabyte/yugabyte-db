@@ -5,7 +5,7 @@ linkTitle: ysql_dump
 description: Back up a specified YSQL database into plain-text, SQL script file.
 headcontent: Extract a YugabyteDB database into a SQL script file.
 menu:
-  latest:
+  preview:
     identifier: ysql-dump
     parent: admin
     weight: 2467

@@ -4,11 +4,11 @@ headerTitle: DROP POLICY
 linkTitle: DROP POLICY
 description: Use the DROP POLICY statement to remove the specified row level security policy from the table.
 menu:
-  latest:
+  preview:
     identifier: dcl_drop_policy
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/dcl_drop_policy/
+  - /preview/api/ysql/commands/dcl_drop_policy/
 isTocNested: true
 showAsideToc: true
 ---

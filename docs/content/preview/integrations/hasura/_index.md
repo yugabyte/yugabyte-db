@@ -7,7 +7,7 @@ headcontent: Using Hasura with YugabyteDB
 image: /images/develop/graphql/hasura/hasura.png
 section: INTEGRATIONS
 menu:
-  latest:
+  preview:
     identifier: hasura
     weight: 571
 ---

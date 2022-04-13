@@ -8,7 +8,7 @@ image: /images/section_icons/deploy/public-clouds.png
 aliases:
   - /deploy/public-clouds/
 menu:
-  latest:
+  preview:
     identifier: public-clouds
     parent: deploy
     weight: 630

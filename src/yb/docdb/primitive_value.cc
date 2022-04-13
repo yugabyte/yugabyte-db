@@ -65,6 +65,7 @@ using yb::util::DecodeDoubleFromKey;
     case ValueEntryType::kInvalid: FALLTHROUGH_INTENDED; \
     case ValueEntryType::kJsonb: FALLTHROUGH_INTENDED; \
     case ValueEntryType::kObject: FALLTHROUGH_INTENDED; \
+    case ValueEntryType::kPackedRow: FALLTHROUGH_INTENDED; \
     case ValueEntryType::kRedisList: FALLTHROUGH_INTENDED; \
     case ValueEntryType::kRedisSet: FALLTHROUGH_INTENDED; \
     case ValueEntryType::kRedisSortedSet: FALLTHROUGH_INTENDED;  \
@@ -265,6 +266,8 @@ std::string PrimitiveValue::ToString() const {
       return uuid_val_.ToString();
     case ValueEntryType::kArrayIndex:
       return Substitute("ArrayIndex($0)", int64_val_);
+    case ValueEntryType::kPackedRow:
+      return "<PACKED ROW>";
     case ValueEntryType::kObject:
       return "{}";
     case ValueEntryType::kRedisSet:
@@ -1043,7 +1046,7 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
       ToShortDebugStr(input_slice));
 }
 
-Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
+Status PrimitiveValue::DecodeFromValue(const Slice& rocksdb_slice) {
   if (rocksdb_slice.empty()) {
     return STATUS(Corruption, "Cannot decode a value from an empty slice");
   }
@@ -1220,6 +1223,7 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
     }
 
     case ValueEntryType::kInvalid: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kPackedRow: FALLTHROUGH_INTENDED;
     case ValueEntryType::kMaxByte:
       return STATUS_FORMAT(Corruption, "$0 is not allowed in a RocksDB PrimitiveValue", value_type);
   }

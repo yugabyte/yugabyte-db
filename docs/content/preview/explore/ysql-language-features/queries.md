@@ -4,7 +4,7 @@ linkTitle: Queries and Joins
 description: Queries and Joins in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
-  latest:
+  preview:
     identifier: explore-ysql-language-features-queries-joins
     parent: explore-ysql-language-features
     weight: 210
@@ -959,4 +959,4 @@ employee_no | name            | manager_id  | department
 1225        | Walter Marx     | 1222        | Sales
 ```
 
-Another way to execute complex hierarchical queries is to use a `tablefunc` extension. This extension provides several table functions, such as, for example, `normal_rand()` that creates values picked using a pseudorandom generator from an ideal normal distribution. For more information and examples, see [tablefunc](/latest/explore/ysql-language-features/pg-extensions/#tablefunc-example).
+Another way to execute complex hierarchical queries is to use a `tablefunc` extension. This extension provides several table functions, such as, for example, `normal_rand()` that creates values picked using a pseudorandom generator from an ideal normal distribution. For more information and examples, see [tablefunc](/preview/explore/ysql-language-features/pg-extensions/#tablefunc-example).

@@ -7,7 +7,7 @@ headcontent: Diagnostics and solutions for typical YugabyteDB cluster issues.
 aliases:
   - /troubleshoot/cluster/
 menu:
-  latest:
+  preview:
     identifier: troubleshoot-cluster
     parent: troubleshoot
     weight: 820

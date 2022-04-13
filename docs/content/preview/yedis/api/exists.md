@@ -3,12 +3,12 @@ title: EXISTS
 linkTitle: EXISTS
 description: EXISTS
 menu:
-  latest:
+  preview:
     parent: api-yedis
     weight: 2060
 aliases:
-  - /latest/api/redis/exist
-  - /latest/api/yedis/exist
+  - /preview/api/redis/exist
+  - /preview/api/yedis/exist
 isTocNested: true
 showAsideToc: true
 ---

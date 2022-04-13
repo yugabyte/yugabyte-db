@@ -5,9 +5,9 @@ linkTitle: Replace a failed YB-Master
 description: Steps to replace a failed YB-Master in a YugabyteDB cluster.
 aliases:
   - /troubleshoot/cluster/replace-master/
-  - /latest/troubleshoot/cluster/replace-master/
+  - /preview/troubleshoot/cluster/replace-master/
 menu:
-  latest:
+  preview:
     identifier: replace-failed-master
     parent: troubleshoot-cluster
     weight: 831
@@ -70,10 +70,10 @@ Validate that your set of masters is now `M2`, `M3` and `M4` using:
 yb-admin -master_addresses M2:7100,M3:7100,M4:7100 list_all_masters
 ```
 
-Until [#1542](https://github.com/yugabyte/yugabyte-db/issues/1542) is implemented, the TS will by default only know of 
-whatever masters are encoded in the `--tserver_master_addrs` flag that they are started with. 
+Until [#1542](https://github.com/yugabyte/yugabyte-db/issues/1542) is implemented, the TS will by default only know of
+whatever masters are encoded in the `--tserver_master_addrs` flag that they are started with.
 
-If any one of those masters is still part of the active quorum, then they will propagate the new master quorum over via heartbeats. 
-If, however, none of the current masters are present in the TS flag, then the TS will not be able to join the cluster! 
+If any one of those masters is still part of the active quorum, then they will propagate the new master quorum over via heartbeats.
+If, however, none of the current masters are present in the TS flag, then the TS will not be able to join the cluster!
 
 So it is important to make sure to update `--tserver_master_addrs` on every TS to the new set of master addresses, `M2:7100,M3:7100,M4:7100`!

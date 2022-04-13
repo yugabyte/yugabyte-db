@@ -4,11 +4,11 @@ headerTitle: Replication
 linkTitle: Replication
 description: Learn how YugabyteDB uses the Raft consensus in DocDB to replicate data across multiple independent fault domains like nodes, zones, regions and clouds.
 aliases:
-  - /latest/architecture/docdb/replication/
-  - /latest/architecture/concepts/replication/
-  - /latest/architecture/concepts/docdb/replication/
+  - /preview/architecture/docdb/replication/
+  - /preview/architecture/concepts/replication/
+  - /preview/architecture/concepts/docdb/replication/
 menu:
-  latest:
+  preview:
     identifier: architecture-docdb-replication-default
     parent: architecture-docdb-replication
     weight: 1144
@@ -53,7 +53,7 @@ The figure below illustrates three tablet-peers that belong to a tablet (tablet 
 
 ### Raft replication
 
-The first thing that happens when a tablet starts up is to elect one of the tablet-peers as the **tablet leader** using the [Raft](https://raft.github.io/) protocol. This tablet leader now becomes responsible for processing user-facing write requests. It translates the user-issued writes into the document storage layer of DocDB and also replicates among the tablet-peers using Raft to achieve strong consistency. Setting aside the tablet leader, the remaining tablet-peers of the Raft group are called **tablet followers**. 
+The first thing that happens when a tablet starts up is to elect one of the tablet-peers as the **tablet leader** using the [Raft](https://raft.github.io/) protocol. This tablet leader now becomes responsible for processing user-facing write requests. It translates the user-issued writes into the document storage layer of DocDB and also replicates among the tablet-peers using Raft to achieve strong consistency. Setting aside the tablet leader, the remaining tablet-peers of the Raft group are called **tablet followers**.
 
 The set of DocDB updates depends on the user-issued write, and involves locking a set of keys to establish a strict update order, and optionally reading the older value to modify and update in case of a read-modify-write operation. The Raft log is used to ensure that the database state-machine of a tablet is replicated amongst the tablet-peers with strict ordering and correctness guarantees even in the face of failures or membership changes. This is essential to achieving strong consistency.
 

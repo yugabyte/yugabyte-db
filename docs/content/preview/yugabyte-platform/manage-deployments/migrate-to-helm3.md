@@ -4,9 +4,9 @@ headerTitle: Migrate from Helm 2 to Helm 3
 linkTitle: Migrate to Helm 3
 description: Migrate your YugabyteDB universes and YugabyteDB Anywhere from Helm 2 to Helm 3.
 aliases:
-  - /latest/manage/enterprise-edition/migrate-to-helm3/
+  - /preview/manage/enterprise-edition/migrate-to-helm3/
 menu:
-  latest:
+  preview:
     identifier: migrate-to-helm3
     parent: manage-deployments
     weight: 90
@@ -30,7 +30,7 @@ You can perform migration as follows:
 
    ```output
    NAME   	REVISION	UPDATED                 STATUS  	CHART         	APP VERSION	NAMESPACE
-   yw-test	1       	Tue May 12 22:21:16 2020	DEPLOYED	yugaware-2.2.0 2.2.0.0-76 	yw-test  
+   yw-test	1       	Tue May 12 22:21:16 2020	DEPLOYED	yugaware-2.2.0 2.2.0.0-76 	yw-test
    ```
 
 2. Execute the following command to migrate the chart to Helm 3 using the `2to3` plugin:
@@ -64,7 +64,7 @@ You can perform migration as follows:
 
    ```output
    NAME   	NAMESPACE	REVISION	UPDATED                               	STATUS  	CHART         	APP VERSION
-   yw-test	yw-test  	1       	2020-06-16 16:51:16.44463488 +0000 UTC	deployed	yugaware-2.2.0	2.2.0.0-b80 
+   yw-test	yw-test  	1       	2020-06-16 16:51:16.44463488 +0000 UTC	deployed	yugaware-2.2.0	2.2.0.0-b80
    ```
 
 ## Upgrade YugabyteDB Anywhere and YugabyteDB using Helm 3
@@ -100,7 +100,7 @@ REVISION: 2
 TEST SUITE: None
 ```
 
-If the chart was not migrated from Helm 2, you should omit the `helm2Legacy` field.
+If the chart was not migrated from Helm 2, omit the `helm2Legacy` field.
 
 For YugabyteDB, create an overrides file, as follows:
 
@@ -125,7 +125,7 @@ serviceEndpoints:
 # If the original deployment was done using helm2
 helm2Legacy: true
 
-# Any other fields need to be modified/updated
+# Any other fields that need to be modified/updated
 ```
 
 When done, execute the following command:
@@ -134,7 +134,7 @@ When done, execute the following command:
 helm upgrade yb-test yugabyte/ -f ~/Desktop/test.yaml -n yb-test
 ```
 
-You should see the following message:
+You should see a message similar to the following:
 
 ```output
 Release "yb-test" has been upgraded. Happy Helming!
@@ -167,7 +167,7 @@ NOTES:
 
 ## Migrate a YugabyteDB universe deployed using YugabyteDB Anywhere
 
-All YugabyteDB clusters deployed on Kubernetes with YugabyteDB Anywhere prior to version 2.1.8 were deployed using Helm 2. Starting with YubabyteDB version 2.1.8, YugabyteDB Anywhere only supports Helm 3, so you need to manually migrate the older YugabyteDB deployments using the `2to3` plugin. By default, any older YugabyteDB on Kubernetes is not modifiable using YugabyteDB Anywhere unless it is ported to Helm 3. 
+All YugabyteDB clusters deployed on Kubernetes with YugabyteDB Anywhere prior to version 2.1.8 were deployed using Helm 2. Starting with YubabyteDB version 2.1.8, YugabyteDB Anywhere only supports Helm 3, so you need to manually migrate the older YugabyteDB deployments using the `2to3` plugin. By default, any older YugabyteDB on Kubernetes is not modifiable using YugabyteDB Anywhere unless it is ported to Helm 3.
 
 You can perform the migration as follows:
 
@@ -181,7 +181,7 @@ You can perform the migration as follows:
 
    ```output
    helm2 ls
-   NAME              REVISION  UPDATED                 	       STATUS  	CHART                  APP VERSION	NAMESPACE      
+   NAME              REVISION  UPDATED                 	       STATUS  	CHART                  APP VERSION	NAMESPACE
    yb-admin-test-a	1       Tue May 12 23:08:30 2020    DEPLOYED	yugabyte-2.1.2       2.1.2.0-b10	yb-admin-test-a
    yb-admin-test-b	1       Tue May 12 23:08:30 2020    DEPLOYED	yugabyte-2.1.2       2.1.2.0-b10	yb-admin-test-b
    yb-admin-test-c	1       Tue May 12 23:08:30 2020    DEPLOYED	yugabyte-2.1.2       2.1.2.0-b10	yb-admin-test-c
@@ -246,6 +246,6 @@ When the migration is completed, the YugabyteDB universe operations can be perfo
 
 ## Delete old YugabyteDB universes from YugabyteDB Anywhere
 
-YugabyteDB Anywhere allows you to delete older YugabyteDB universes, but you cannot delete the Helm 2 release. 
+YugabyteDB Anywhere allows you to delete older YugabyteDB universes, but you cannot delete the Helm 2 release.
 
 YugabyteDB Anywhere can also delete the namespaces and associated resources.

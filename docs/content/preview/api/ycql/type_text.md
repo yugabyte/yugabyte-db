@@ -4,12 +4,12 @@ headerTitle: TEXT type
 linkTitle: TEXT
 description: Use the TEXT data type to specify data of a string of Unicode characters.
 menu:
-  latest:
+  preview:
     parent: api-cassandra
     weight: 1440
 aliases:
-  - /latest/api/cassandra/type_text
-  - /latest/api/ycql/type_text
+  - /preview/api/cassandra/type_text
+  - /preview/api/ycql/type_text
 isTocNested: true
 showAsideToc: true
 ---
@@ -26,7 +26,7 @@ type_specification ::= TEXT | VARCHAR
 text_literal ::= "'" [ letter ...] "'"
 ```
 
-Where 
+Where
 
 - `TEXT` and `VARCHAR` are aliases.
 - `letter` is any character except for single quote (`[^']`)

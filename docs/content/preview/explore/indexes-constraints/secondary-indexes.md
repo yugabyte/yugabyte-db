@@ -4,13 +4,13 @@ linkTitle: Secondary indexes
 description: Overview of Secondary indexes in YSQL and YCQL
 image: /images/section_icons/secure/create-roles.png
 menu:
-  latest:
+  preview:
     identifier: secondary-indexes
     parent: explore-indexes-constraints
     weight: 220
 aliases:
-   - /latest/explore/ysql-language-features/indexes-1/
-   - /latest/explore/indexes-constraints/indexes-1/
+   - /preview/explore/ysql-language-features/indexes-1/
+   - /preview/explore/indexes-constraints/indexes-1/
 isTocNested: true
 showAsideToc: true
 
@@ -44,7 +44,7 @@ SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'your_table_name';
 
 For details, see [pg_indexes](https://www.postgresql.org/docs/12/view-pg-indexes.html) in the PostgreSQL documentation.
 
-For YCQL, you can use the [DESCRIBE INDEX](/latest/admin/ycqlsh/#describe) command to check the indexes as follows:
+For YCQL, you can use the [DESCRIBE INDEX](/preview/admin/ycqlsh/#describe) command to check the indexes as follows:
 
 ```cql
 DESCRIBE INDEX <index name>

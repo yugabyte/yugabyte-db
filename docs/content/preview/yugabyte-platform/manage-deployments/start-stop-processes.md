@@ -4,7 +4,7 @@ headerTitle: Start and stop processes
 linkTitle: Start and stop processes
 description: Use YugabyteDB Anywhere to start and stop processes.
 menu:
-  latest:
+  preview:
     identifier: start-stop-processes
     parent: manage-deployments
     weight: 10
@@ -25,4 +25,3 @@ If a node needs the intervention, you can click its associated **Actions > Stop 
 Once the TServer and, possibly, Master server are stopped, the node status is updated and the instance is ready for the planned system changes.
 
 It is recommended not to stop more than (RF - 1)/2 processes at any given time. For example, on an RF=3 cluster with three nodes, there can only be one node with stopped processes to allow the majority of the nodes to perform Raft consensus operations.
-

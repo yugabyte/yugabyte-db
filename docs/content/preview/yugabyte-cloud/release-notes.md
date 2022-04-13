@@ -6,7 +6,7 @@ headcontent:
 image: /images/section_icons/index/quick_start.png
 section: YUGABYTE CLOUD
 menu:
-  latest:
+  preview:
     identifier: cloud-release
     weight: 950
 isTocNested: true

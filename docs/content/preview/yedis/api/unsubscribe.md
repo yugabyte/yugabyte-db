@@ -3,12 +3,12 @@ title: UNSUBSCRIBE
 linkTitle: UNSUBSCRIBE
 description: UNSUBSCRIBE
 menu:
-  latest:
+  preview:
     parent: api-yedis
     weight: 2553
 aliases:
-  - /latest/api/redis/unsubscribe
-  - /latest/api/yedis/unsubscribe
+  - /preview/api/redis/unsubscribe
+  - /preview/api/yedis/unsubscribe
 isTocNested: true
 showAsideToc: true
 ---
@@ -21,9 +21,9 @@ This command unsubscribes the client from the specified channel(s).
 
 ## See also
 
-[`pubsub`](../pubsub/), 
-[`publish`](../publish/), 
-[`subscribe`](../subscribe/), 
-[`unsubscribe`](../unsubscribe/), 
-[`psubscribe`](../psubscribe/), 
+[`pubsub`](../pubsub/),
+[`publish`](../publish/),
+[`subscribe`](../subscribe/),
+[`unsubscribe`](../unsubscribe/),
+[`psubscribe`](../psubscribe/),
 [`punsubscribe`](../punsubscribe/)

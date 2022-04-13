@@ -4,7 +4,7 @@ headerTitle: Build a Python application
 linkTitle: Python
 description: Build a sample Python application with aiopg that uses YSQL.
 menu:
-  latest:
+  preview:
     parent: build-apps
     name: Python
     identifier: python-aiopg

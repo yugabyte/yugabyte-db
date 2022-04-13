@@ -5,7 +5,7 @@ description: View the activity on your cluster.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  latest:
+  preview:
     identifier: queries-slow
     parent: cloud-monitor
     weight: 600

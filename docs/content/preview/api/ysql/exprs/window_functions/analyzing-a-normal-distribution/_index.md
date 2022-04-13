@@ -5,7 +5,7 @@ headerTitle: Case study—analyzing a normal distribution with percent_rank(), c
 description: Case study to compare and contrast the window functions percent_rank(), cume_dist(), and ntile() on large sets of normally distributed values.
 image: /images/section_icons/api/ysql.png
 menu:
-  latest:
+  preview:
     identifier: analyzing-a-normal-distribution
     parent: window-functions
     weight: 40

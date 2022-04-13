@@ -4,7 +4,7 @@ linkTitle: table t2
 headerTitle: Create and populate table t2
 description: Creates and populate table t2 with data that allows the demonstration of the YSQL window functions.
 menu:
-  latest:
+  preview:
     identifier: table-t2
     parent: data-sets
     weight: 30
@@ -101,7 +101,7 @@ order by class, k;
 ```
 Here is the result of the second `SELECT`. To make it easier to see the pattern, several blank lines have been manually inserted here between each successive set of rows with the same value for _"class"_. And in the second set, which has ties, one blank line has been inserted between each tie group.
 ```
- class | k  | score 
+ class | k  | score
 -------+----+-------
      1 |  1 |     1
      1 |  2 |     2

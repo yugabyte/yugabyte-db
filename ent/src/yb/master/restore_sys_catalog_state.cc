@@ -22,9 +22,11 @@
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb.h"
+#include "yb/docdb/packed_row.h"
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/rocksdb_writer.h"
 
@@ -52,11 +54,11 @@ namespace {
 CHECKED_STATUS ApplyWriteRequest(
     const Schema& schema, const QLWriteRequestPB& write_request,
     docdb::DocWriteBatch* write_batch) {
-  std::shared_ptr<const Schema> schema_ptr(&schema, [](const Schema* schema){});
+  auto doc_read_context = std::make_shared<docdb::DocReadContext>(schema, kSysCatalogSchemaVersion);
   docdb::DocOperationApplyData apply_data{.doc_write_batch = write_batch};
   IndexMap index_map;
   docdb::QLWriteOperation operation(
-      write_request, schema_ptr, index_map, nullptr, TransactionOperationContext());
+      write_request, doc_read_context, index_map, nullptr, TransactionOperationContext());
   QLResponsePB response;
   RETURN_NOT_OK(operation.Init(&response));
   return operation.Apply(apply_data);
@@ -138,6 +140,17 @@ Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
   if (pb->version() != it->second.version()) {
     // Force schema update after restoration, if schema has changes.
     pb->set_version(it->second.version() + 1);
+    LOG(INFO) << "PITR: Patching the schema version for table " << id
+              << ". Existing version " << it->second.version()
+              << ", restoring version " << pb->version();
+  }
+
+  // Patch the partition version if changed.
+  if (pb->partition_list_version() != it->second.partition_list_version()) {
+    LOG(INFO) << "PITR: Patching the partition list version for table " << id
+              << ". Existing version " << it->second.partition_list_version()
+              << ", restoring version " << pb->partition_list_version();
+    pb->set_partition_list_version(it->second.partition_list_version() + 1);
   }
 
   return true;
@@ -351,12 +364,12 @@ std::string RestoreSysCatalogState::Objects::SizesToString() const {
 
 template <class PB>
 Status RestoreSysCatalogState::IterateSysCatalog(
-    const Schema& schema, const docdb::DocDB& doc_db, HybridTime read_time,
+    const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db, HybridTime read_time,
     std::unordered_map<std::string, PB>* map) {
   auto iter = std::make_unique<docdb::DocRowwiseIterator>(
-      schema, schema, TransactionOperationContext(), doc_db, CoarseTimePoint::max(),
-      ReadHybridTime::SingleTime(read_time), nullptr);
-  return EnumerateSysCatalog(iter.get(), schema, GetEntryType<PB>::value, [map](
+      doc_read_context.schema, doc_read_context, TransactionOperationContext(), doc_db,
+      CoarseTimePoint::max(), ReadHybridTime::SingleTime(read_time), nullptr);
+  return EnumerateSysCatalog(iter.get(), doc_read_context.schema, GetEntryType<PB>::value, [map](
           const Slice& id, const Slice& data) -> Status {
     auto pb = VERIFY_RESULT(pb_util::ParseFromSlice<PB>(data));
     if (!ShouldLoadObject(pb)) {
@@ -371,21 +384,22 @@ Status RestoreSysCatalogState::IterateSysCatalog(
 }
 
 Status RestoreSysCatalogState::LoadObjects(
-    const Schema& schema, const docdb::DocDB& doc_db, HybridTime read_time, Objects* objects) {
-  RETURN_NOT_OK(IterateSysCatalog(schema, doc_db, read_time, &objects->namespaces));
-  RETURN_NOT_OK(IterateSysCatalog(schema, doc_db, read_time, &objects->tables));
-  RETURN_NOT_OK(IterateSysCatalog(schema, doc_db, read_time, &objects->tablets));
+    const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db, HybridTime read_time,
+    Objects* objects) {
+  RETURN_NOT_OK(IterateSysCatalog(doc_read_context, doc_db, read_time, &objects->namespaces));
+  RETURN_NOT_OK(IterateSysCatalog(doc_read_context, doc_db, read_time, &objects->tables));
+  RETURN_NOT_OK(IterateSysCatalog(doc_read_context, doc_db, read_time, &objects->tablets));
   return Status::OK();
 }
 
 Status RestoreSysCatalogState::LoadRestoringObjects(
-    const Schema& schema, const docdb::DocDB& doc_db) {
-  return LoadObjects(schema, doc_db, restoration_.restore_at, &restoring_objects_);
+    const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db) {
+  return LoadObjects(doc_read_context, doc_db, restoration_.restore_at, &restoring_objects_);
 }
 
 Status RestoreSysCatalogState::LoadExistingObjects(
-    const Schema& schema, const docdb::DocDB& doc_db) {
-  return LoadObjects(schema, doc_db, HybridTime::kMax, &existing_objects_);
+    const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db) {
+  return LoadObjects(doc_read_context, doc_db, HybridTime::kMax, &existing_objects_);
 }
 
 Status RestoreSysCatalogState::CheckExistingEntry(

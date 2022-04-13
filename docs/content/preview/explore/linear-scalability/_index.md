@@ -6,21 +6,21 @@ description: Horizontal Scalability in YugabyteDB.
 headcontent: Horizontal Scalability in YugabyteDB.
 aliases:
   - /explore/linear-scalability/
-  - /latest/explore/linear-scalability/
-  - /latest/explore/cloud-native/linear-scalability/
-  - /latest/explore/postgresql/linear-scalability/
-  - /latest/explore/linear-scalability-macos/
-  - /latest/explore/linear-scalability/macos/
-  - /latest/explore/linear-scalability/linux/
-  - /latest/explore/linear-scalability/docker/
-  - /latest/explore/linear-scalability/kubernetes/
-  - /latest/explore/auto-sharding/macos/
-  - /latest/explore/auto-sharding/linux/
-  - /latest/explore/auto-sharding/docker/
-  - /latest/explore/auto-sharding/kubernetes/
+  - /preview/explore/linear-scalability/
+  - /preview/explore/cloud-native/linear-scalability/
+  - /preview/explore/postgresql/linear-scalability/
+  - /preview/explore/linear-scalability-macos/
+  - /preview/explore/linear-scalability/macos/
+  - /preview/explore/linear-scalability/linux/
+  - /preview/explore/linear-scalability/docker/
+  - /preview/explore/linear-scalability/kubernetes/
+  - /preview/explore/auto-sharding/macos/
+  - /preview/explore/auto-sharding/linux/
+  - /preview/explore/auto-sharding/docker/
+  - /preview/explore/auto-sharding/kubernetes/
 image: /images/section_icons/explore/linear_scalability.png
 menu:
-  latest:
+  preview:
     identifier: explore-scalability
     parent: explore
     weight: 220

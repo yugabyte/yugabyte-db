@@ -4,7 +4,7 @@ linkTitle: Metabase
 description: Metabase
 section: INTEGRATIONS
 menu:
-  latest:
+  preview:
     identifier: metabase
     weight: 571
 isTocNested: true

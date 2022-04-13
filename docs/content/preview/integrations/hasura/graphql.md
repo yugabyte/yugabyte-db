@@ -4,7 +4,7 @@ linkTitle: Benchmarking
 description: Using the benchmark tool with Hasura
 aliases:
 menu:
-  latest:
+  preview:
     identifier: graphql
     parent: hasura
     weight: 580
@@ -131,7 +131,7 @@ Deploying the benchmark setup is a multi-step process that involves deployment o
 
 ### How to Deploy a YugabyteYB Cluster
 
-- Follow instructions provided in [Deploy on Kubernetes](/latest/deploy/kubernetes/) to deploy a YugabyteYB cluster using Helm charts on Kubernetes.
+- Follow instructions provided in [Deploy on Kubernetes](/preview/deploy/kubernetes/) to deploy a YugabyteYB cluster using Helm charts on Kubernetes.
 
 - Ensure that your YugabyteDB cluster resources are 3 pods * 16 vcpu, 32GB RAM, 2 * 100 GB SSD.
 

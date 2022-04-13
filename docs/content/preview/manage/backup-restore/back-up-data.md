@@ -4,7 +4,7 @@ headerTitle: Back up data
 linkTitle: Back up data
 description: Back up data in YugabyteDB for YSQL.
 menu:
-  latest:
+  preview:
     identifier: back-up-data
     parent: backup-restore
     weight: 703

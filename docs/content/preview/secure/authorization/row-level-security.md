@@ -4,7 +4,7 @@ headerTitle: Row-Level Security (RLS)
 linkTitle: Row-Level Security (RLS)
 description: Row-Level Security (RLS) in YugabyteDB
 menu:
-  latest:
+  preview:
     name: Row-Level Security (RLS)
     identifier: ysql-row-level-security
     parent: authorization

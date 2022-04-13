@@ -4,9 +4,9 @@ headerTitle: Connect a YCQL Java application
 linkTitle: Connect a YCQL Java application
 description: Build a sample Java application for Yugabyte Cloud with the Yugabyte Java Driver for YCQL v4.6.
 aliases:
-  - /latest/yugabyte-cloud/cloud-develop/connect-ycql-application/
+  - /preview/yugabyte-cloud/cloud-develop/connect-ycql-application/
 menu:
-  latest:
+  preview:
     parent: cloud-examples
     identifier: connect-ycql-application
     weight: 200
@@ -192,7 +192,7 @@ public class YBCqlHelloWorld {
             session.execute(createKeyspace);
             System.out.println("Created keyspace ybdemo");
             // Create table 'employee', if it does not exist.
-            String createTable = "CREATE TABLE IF NOT EXISTS ybdemo.employee (id int PRIMARY KEY, " + 
+            String createTable = "CREATE TABLE IF NOT EXISTS ybdemo.employee (id int PRIMARY KEY, " +
                 "name varchar, " + "age int, " + "language varchar);";
             session.execute(createTable);
             System.out.println("Created table employee");

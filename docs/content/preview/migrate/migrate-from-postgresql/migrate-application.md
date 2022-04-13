@@ -4,7 +4,7 @@ headerTitle: Migrate a PostgreSQL application
 linkTitle: Migrate a PostgreSQL application
 description: How to migrate an application written for PostgreSQL to YugabyteDB.
 menu:
-  latest:
+  preview:
     identifier: migrate-postgresql-app
     parent: migrate-from-postgresql
     weight: 740
@@ -43,7 +43,7 @@ There are many applications where handling a large number of client connections 
 
 ## Use PREPARED statements
 
-Prepared statements are critical to achieve good performance in YugabyteDB because they avoid re-parsing (and typically re-planning) on every query. Most SQL drivers will auto-prepare statements, in these cases, it may not be necessary to explicitly prepare statements. 
+Prepared statements are critical to achieve good performance in YugabyteDB because they avoid re-parsing (and typically re-planning) on every query. Most SQL drivers will auto-prepare statements, in these cases, it may not be necessary to explicitly prepare statements.
 
 In cases when the driver does not auto-prepare, use an explicit prepared statement where possible. This can be done programmatically in the case of many drivers. In scenarios where the driver does not have support for preparing statements (for example, the Python psycopg2 driver), the queries can be optimized on each server by using the PREPARE <plan> AS <plan name> feature.
 
@@ -59,7 +59,7 @@ Now, consider the following code snippet which repeatedly makes SELECT queries t
 
 ```
 for idx in range(num_rows):
-  cur.execute("SELECT * from t1, t2 " + 
+  cur.execute("SELECT * from t1, t2 " +
               "  WHERE t1.k = t2.k AND t1.v = %s LIMIT 1"
               , ("k1"))
 ```
@@ -67,7 +67,7 @@ for idx in range(num_rows):
 Since the Python psycopg2 driver does not support prepared bind statements (using a cursor.prepare() API), the explicit PREPARE statement is used. The above code snippet can be optimized by changing the above query to the following equivalent query.
 
 ```
-cur.execute("PREPARE myplan as " + 
+cur.execute("PREPARE myplan as " +
             "  SELECT * from t1, t2 " +
             "  WHERE t1.k = t2.k AND t1.v = $1 LIMIT 1")
   for idx in range(num_rows):

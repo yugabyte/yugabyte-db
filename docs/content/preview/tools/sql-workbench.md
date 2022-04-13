@@ -4,7 +4,7 @@ headerTitle: SQL Workbench/J
 linkTitle: SQL Workbench/J
 description: Query distributed SQL databases using SQL Workbench/J.
 menu:
-  latest:
+  preview:
     identifier: sql-workbench
     parent: tools
     weight: 2740
@@ -73,7 +73,7 @@ YugabyteDB is PostgreSQL-compatible, so when working with SQL Workbench/J, use t
 
     - **Classname**: `org.postgresql.Driver`
     - **Sample URL**: `jdbc:postgresql:127.0.0.1:5433/name_of_database` (based on YugabyteDB default values). When opening the driver configuration initially, this field displays
-  
+
         ```
        jdbc:postgresql://host:port/name_of_database
         ```

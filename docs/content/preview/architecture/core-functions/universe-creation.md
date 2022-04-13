@@ -6,7 +6,7 @@ description: Learn how YugabyteDB creates a universe with YB-TServer and YB-Mast
 aliases:
   - /architecture/core-functions/universe-creation/
 menu:
-  latest:
+  preview:
     identifier: universe-creation
     parent: core-functions
     weight: 1182

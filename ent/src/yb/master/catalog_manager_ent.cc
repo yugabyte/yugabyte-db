@@ -339,6 +339,11 @@ class UniverseReplicationLoader : public Visitor<PersistentUniverseReplicationIn
       // Add universe replication info to the universe replication map.
       catalog_manager_->universe_replication_map_[ri->id()] = ri;
 
+      // Add any failed universes to be cleared
+      if (l->pb.state() == SysUniverseReplicationEntryPB::FAILED) {
+        catalog_manager_->universes_to_clear_.push_back(ri->id());
+      }
+
       l.Commit();
     }
 
@@ -1853,6 +1858,10 @@ const Schema& CatalogManager::schema() {
   return sys_catalog()->schema();
 }
 
+const docdb::DocReadContext& CatalogManager::doc_read_context() {
+  return sys_catalog()->doc_read_context();
+}
+
 TabletInfos CatalogManager::GetTabletInfos(const std::vector<TabletId>& ids) {
   TabletInfos result;
   result.reserve(ids.size());
@@ -1896,10 +1905,10 @@ Status CatalogManager::RestoreSysCatalog(
 
   // Load objects to restore and determine obsolete objects.
   RestoreSysCatalogState state(restoration);
-  RETURN_NOT_OK(state.LoadRestoringObjects(schema(), doc_db));
+  RETURN_NOT_OK(state.LoadRestoringObjects(doc_read_context(), doc_db));
   // Load existing objects from RocksDB because on followers they are NOT present in loaded sys
   // catalog state.
-  RETURN_NOT_OK(state.LoadExistingObjects(schema(), tablet->doc_db()));
+  RETURN_NOT_OK(state.LoadExistingObjects(doc_read_context(), tablet->doc_db()));
   RETURN_NOT_OK(state.Process());
 
   docdb::DocWriteBatch write_batch(
@@ -1909,7 +1918,7 @@ Status CatalogManager::RestoreSysCatalog(
     // Restore the pg_catalog tables.
     const auto* meta = tablet->metadata();
     const auto& pg_yb_catalog_version_schema =
-        *VERIFY_RESULT(meta->GetTableInfo(kPgYbCatalogVersionTableId))->schema;
+        VERIFY_RESULT(meta->GetTableInfo(kPgYbCatalogVersionTableId))->schema();
     auto status = state.ProcessPgCatalogRestores(
         pg_yb_catalog_version_schema, doc_db, tablet->doc_db(), &write_batch);
 
@@ -4737,6 +4746,13 @@ Status CatalogManager::IsSetupUniverseReplicationDone(
       LOG(WARNING) << "Did not find setup universe replication error status.";
       StatusToPB(STATUS(InternalError, "unknown error"), resp->mutable_replication_error());
     }
+
+    // Add universe to universes_to_clear_
+    {
+      SharedLock lock(mutex_);
+      universes_to_clear_.push_back(universe->id());
+    }
+
     return Status::OK();
   }
 
@@ -4911,6 +4927,38 @@ Result<size_t> CatalogManager::GetNumLiveTServersForActiveCluster() {
   auto uuid = VERIFY_RESULT(placement_uuid());
   master_->ts_manager()->GetAllLiveDescriptorsInCluster(&ts_descs, uuid, blacklist);
   return ts_descs.size();
+}
+
+Status CatalogManager::ClearFailedUniverse() {
+  // Delete a single failed universe from universes_to_clear_.
+  std::string universe_id;
+  {
+    SharedLock lock(mutex_);
+
+    if (universes_to_clear_.empty()) {
+      return Status::OK();
+    }
+    // Get the first universe.  Only try once to avoid failure loops.
+    universe_id = universes_to_clear_.front();
+    universes_to_clear_.pop_front();
+  }
+
+  GetUniverseReplicationRequestPB universe_req;
+  GetUniverseReplicationResponsePB universe_resp;
+  universe_req.set_producer_id(universe_id);
+
+  RETURN_NOT_OK(GetUniverseReplication(&universe_req, &universe_resp, /* RpcContext */ nullptr));
+  if (universe_resp.entry().state() != SysUniverseReplicationEntryPB::FAILED) {
+    return STATUS(IllegalState, "Universe is not Failed, and cannot be cleared.");
+  }
+
+  DeleteUniverseReplicationRequestPB req;
+  DeleteUniverseReplicationResponsePB resp;
+  req.set_producer_id(universe_id);
+
+  RETURN_NOT_OK(DeleteUniverseReplication(&req, &resp, /* RpcContext */ nullptr));
+
+  return Status::OK();
 }
 
 }  // namespace enterprise

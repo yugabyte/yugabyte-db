@@ -4,13 +4,13 @@ headerTitle: Google Kubernetes Engine (GKE)
 linkTitle: Google Kubernetes Engine (GKE)
 description: Use Helm Chart to deploy a multi-region YugabyteDB cluster that spans 3 GKE clusters across 3 regions.
 menu:
-  latest:
+  preview:
     parent: deploy-kubernetes-mc
     name: Google Kubernetes Engine
     identifier: k8s-mc-gke-1
     weight: 628
 aliases:
-  - /latest/deploy/kubernetes/multi-cluster/gke
+  - /preview/deploy/kubernetes/multi-cluster/gke
 type: page
 isTocNested: true
 showAsideToc: true
@@ -286,7 +286,7 @@ $ helm repo update
 Validate that you have the updated chart version.
 
 ```sh
-$ helm search repo yugabytedb/yugabyte
+$ helm search repo yugabytedb/yugabyte --version {{<yb-version version="preview" format="short">}}
 ```
 
 ```output

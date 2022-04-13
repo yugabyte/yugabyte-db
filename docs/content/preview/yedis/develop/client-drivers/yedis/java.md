@@ -4,9 +4,9 @@ headerTitle: Build an application using Java
 linkTitle: Java
 description: Use Java to build a YugabyteDB application that interacts with YEDIS
 aliases:
-  - /latest/yedis/develop/client-drivers/java
+  - /preview/yedis/develop/client-drivers/java
 menu:
-  latest:
+  preview:
     identifier: client-drivers-yedis-java
     parent: develop-yedis
 isTocNested: true

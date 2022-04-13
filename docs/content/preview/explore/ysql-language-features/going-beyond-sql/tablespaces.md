@@ -5,12 +5,12 @@ description: Tablespaces in YSQL
 headcontent: Tablespaces in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
-  latest:
+  preview:
     identifier: going-beyond-sql-tablespaces
     parent: going-beyond-sql
     weight: 320
 aliases:
-  - /latest/explore/ysql-language-features/tablespaces/
+  - /preview/explore/ysql-language-features/tablespaces/
 isTocNested: true
 showAsideToc: true
 ---

@@ -4,9 +4,9 @@ headerTitle: Configure the Kubernetes cloud provider
 linkTitle: Configure the cloud provider
 description: Configure the Kubernetes cloud provider
 aliases:
-  - /latest/deploy/enterprise-edition/configure-cloud-providers/kubernetes
+  - /preview/deploy/enterprise-edition/configure-cloud-providers/kubernetes
 menu:
-  latest:
+  preview:
     identifier: set-up-cloud-provider-5-kubernetes
     parent: configure-yugabyte-platform
     weight: 20
@@ -92,7 +92,7 @@ Expect the following output:
 serviceaccount/yugabyte-platform-universe-management created
 ```
 
-The next step is to grant access to this service account using ClusterRoles and Roles, as well as ClusterRoleBindings and RoleBindings, thus allowing it to manage the YugabyteDB universe's resources for you. 
+The next step is to grant access to this service account using ClusterRoles and Roles, as well as ClusterRoleBindings and RoleBindings, thus allowing it to manage the YugabyteDB universe's resources for you.
 
 The namespace in the following commands needs to be replaced with the correct namespace of the previously created service account.
 

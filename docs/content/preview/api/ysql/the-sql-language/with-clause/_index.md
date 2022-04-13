@@ -5,7 +5,7 @@ linkTitle: WITH clause
 description: How to use the WITH clause and common table expressions—a/k/a/ CTEs
 image: /images/section_icons/api/ysql.png
 menu:
-  latest:
+  preview:
     identifier: with-clause
     parent: the-sql-language
     weight: 200
@@ -50,7 +50,7 @@ Notice the (optional) parenthesised parameter list that follows the name, just a
 This is the result:
 
 ```
- k  | v  
+ k  | v
 ----+----
  11 | 22
  12 | 24
@@ -89,7 +89,7 @@ order by table_name, k;
 This is the result:
 
 ```
- table_name | k  | v  
+ table_name | k  | v
 ------------+----+----
  t1         | 11 | 22
  t1         | 12 | 24
@@ -108,7 +108,7 @@ The central notion is that each CTE that you name in a `WITH` clause can then be
 Finally, the use of a _recursive_ CTE in a `WITH` clause enables advanced functionality, like graph analysis. For example, an _"employees"_ table often has a self-referential foreign key like _"manager_id"_ that points to the table's primary key, _"employee_id"_. `SELECT` statements that use a recursive CTE allow the reporting structure to be presented in various ways. This result shows the reporting paths of employees, in an organization with a strict hierarchical reporting scheme, in depth-first order. See the section [Pretty-printing the top-down depth-first report of paths](./emps-hierarchy/#pretty-printing-the-top-down-depth-first-report-of-paths).
 
 ```
- emps hierarchy 
+ emps hierarchy
 ----------------
  mary
    fred

@@ -4,9 +4,9 @@ headerTitle: Install YugabyteDB Anywhere
 linkTitle: Install software
 description: Install the YugabyteDB Anywhere software.
 aliases:
-  - /latest/yugabyte-platform/install-yugabyte-platform/install-software/
+  - /preview/yugabyte-platform/install-yugabyte-platform/install-software/
 menu:
-  latest:
+  preview:
     parent: install-yugabyte-platform
     identifier: install-software-1-default
     weight: 77
@@ -57,7 +57,8 @@ curl -x http://<proxy_address>:<proxy_port> https://get.replicated.com/docker | 
 After the Replicated installation completes, verify that it is running by executing the following command:
 
 ```sh
-sudo docker ps
+sudo docker ps --format "{{.ID}}: {{.Image}}: {{.Command}}: {{.Ports}}"
+
 ```
 
 You should see an output similar to the following:
@@ -86,6 +87,8 @@ When prompted, upload the Yugabyte license file that you received from Yugabyte,
 
 If you are prompted to choose an installation type, choose **Online**.
 
+If you are offered a choice of software versions, select the one that meets your requirements.
+
 ## Secure Replicated
 
 Add a password to protect the Replicated Admin Console, which is different from the Admin Console for YugabyteDB used by YugabyteDB Anywhere, as per the following illustration:
@@ -102,9 +105,9 @@ Click **Continue** to configure YugabyteDB Anywhere.
 
 If the preflight check fails, review the [Troubleshoot YugabyteDB Anywhere](../../../troubleshoot/) to resolve the issue.
 
-## Set the TLS version for Nginx frontend 
+## Set the TLS version for Nginx frontend
 
-Specify TLS versions via **Application config**, as shown in the following illustration: 
+Specify TLS versions via **Application config**, as shown in the following illustration:
 
 ![Application Config](/images/replicated/application-config.png)
 

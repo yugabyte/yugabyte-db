@@ -4,7 +4,7 @@ headerTitle: Build a Ruby application
 linkTitle: Ruby
 description: Build a Ruby application that uses Rails ActiveRecord and the YSQL API
 menu:
-  latest:
+  preview:
     parent: build-apps
     name: Ruby
     identifier: ruby-2

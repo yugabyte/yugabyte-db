@@ -4,11 +4,11 @@ headerTitle: Asynchronous replication (2+ regions) in YCQL
 linkTitle: Async replication (2+ regions)
 description: Multi-region deployment using asynchronous replication across two or more data centers in YCQL.
 aliases:
-  - /latest/explore/two-data-centers-linux/
-  - /latest/explore/two-data-centers/linux/
-  - /latest/explore/two-data-centers/macos/
+  - /preview/explore/two-data-centers-linux/
+  - /preview/explore/two-data-centers/linux/
+  - /preview/explore/two-data-centers/macos/
 menu:
-  latest:
+  preview:
     name: Async Replication (2+ regions)
     identifier: explore-multi-region-deployments-async-replication-2-ycql
     parent: explore-multi-region-deployments

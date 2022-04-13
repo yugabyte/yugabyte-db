@@ -3,7 +3,7 @@ headerTitle: Configure backup storage
 linkTitle: Configure backup storage
 description: Configure backup storage
 menu:
-  latest:
+  preview:
     parent: back-up-restore-universes
     identifier: configure-backup-storage
     weight: 10
@@ -19,7 +19,7 @@ You can configure Amazon S3 as your backup target as follows:
 
 1. Navigate to **Configs** > **Backup** > **amazon S3**.
 
-2. Enter values for **Access Key** and **Access Secret** fields. 
+2. Enter values for **Access Key** and **Access Secret** fields.
 
    You may use Identity Access Management (IAM).
 
@@ -31,7 +31,7 @@ You can configure Amazon S3 as your backup target as follows:
 
 ![AWS Backup](/images/yp/cloud-provider-configuration-backup-aws.png)
 
-You can configure access control for the S3 bucket as follows: 
+You can configure access control for the S3 bucket as follows:
 
 - Provide the required access control list (ACL), and then define **List, Write** permissions to access **Objects**, as well as **Read, Write** permissions for the bucket, as shown in the following illustration: <br><br>
   ![img](/images/yp/backup-aws-access-control.png)
@@ -61,7 +61,7 @@ You can configure Google Cloud Storage (GCS) as your backup target as follows:
 
 ![GCS Backup](/images/yp/cloud-provider-configuration-backup-gcs.png)
 
-You can configure access control for the S3 bucket as follows: 
+You can configure access control for the S3 bucket as follows:
 
 - Provide the required access control list (ACL) and set it as either uniform or fine-grained (for object-level access).
 - Add permissions, such as roles and members.
@@ -116,5 +116,5 @@ You can configure Azure as your backup target as follows:
 
     * Navigate to **Configs** > **Backup** > **Azure**.
     * Enter values for the **Container URL** and **SAS Token** fields, as shown in the following illustration, and then click **Save**.<br><br>
-    
+
     ![Azure Backup](/images/yp/cloud-provider-configuration-backup-azure.png)

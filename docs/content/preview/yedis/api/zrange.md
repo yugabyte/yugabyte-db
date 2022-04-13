@@ -3,12 +3,12 @@ title: ZRANGE
 linkTitle: ZRANGE
 description: ZRANGE
 menu:
-  latest:
+  preview:
     parent: api-yedis
     weight: 2385
 aliases:
-  - /latest/api/redis/zrange
-  - /latest/api/yedis/zrange
+  - /preview/api/redis/zrange
+  - /preview/api/yedis/zrange
 isTocNested: true
 showAsideToc: true
 ---
@@ -17,8 +17,8 @@ showAsideToc: true
 
 <b>`ZRANGE key start stop [WITHSCORES]`</b><br>
 This command returns `members` ordered from lowest to highest score in the specified range at sorted set `key`.
-`start` and `stop` represent the low and high index bounds respectively and are zero-indexed. They can also be negative 
-numbers indicating offsets from the end of the sorted set, with -1 being the last element of the sorted set, -2 the penultimate element, and so on. 
+`start` and `stop` represent the low and high index bounds respectively and are zero-indexed. They can also be negative
+numbers indicating offsets from the end of the sorted set, with -1 being the last element of the sorted set, -2 the penultimate element, and so on.
 If `key` does not exist, an empty list is returned. If `key` is associated with non sorted-set data, an error is returned.
 
 ## Return Value
@@ -59,7 +59,7 @@ $ ZRANGE z_key -2 -1
 
 ```
 1) "v2"
-2) "v3" 
+2) "v3"
 ```
 
 Both positive and negative indices.

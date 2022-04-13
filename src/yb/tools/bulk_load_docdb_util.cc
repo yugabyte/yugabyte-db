@@ -11,13 +11,11 @@
 // under the License.
 //
 
-#include "yb/rocksdb/env.h"
-#include "yb/rocksdb/statistics.h"
-#include "yb/docdb/docdb_compaction_filter.h"
 #include "yb/docdb/doc_write_batch.h"
 
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/memtablerep.h"
-
 
 #include "yb/tools/bulk_load_docdb_util.h"
 #include "yb/util/env.h"

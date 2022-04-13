@@ -5,9 +5,9 @@ linkTitle: 1. Install YugabyteDB
 description: Download and install YugabyteDB on macOS in less than five minutes.
 aliases:
   - /quick-start/install/
-  - /latest/quick-start/install/
+  - /preview/quick-start/install/
 menu:
-  latest:
+  preview:
     parent: quick-start
     name: 1. Install YugabyteDB
     identifier: install-1-macos
@@ -128,13 +128,13 @@ showAsideToc: true
 1. Download the YugabyteDB `tar.gz` file using the following `wget` command.
 
     ```sh
-    $ wget https://downloads.yugabyte.com/releases/{{< yb-version version="latest">}}/yugabyte-{{< yb-version version="latest" format="build">}}-darwin-x86_64.tar.gz
+    $ wget https://downloads.yugabyte.com/releases/{{< yb-version version="preview">}}/yugabyte-{{< yb-version version="preview" format="build">}}-darwin-x86_64.tar.gz
     ```
 
 1. Extract the package and then change directories to the YugabyteDB home.
 
     ```sh
-    $ tar xvfz yugabyte-{{< yb-version version="latest" format="build">}}-darwin-x86_64.tar.gz && cd yugabyte-{{< yb-version version="latest">}}/
+    $ tar xvfz yugabyte-{{< yb-version version="preview" format="build">}}-darwin-x86_64.tar.gz && cd yugabyte-{{< yb-version version="preview">}}/
     ```
 
 ## Configure loopback addresses

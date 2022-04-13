@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.TriggerHealthCheckResult;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HealthCheck.Details;
@@ -35,6 +36,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -207,7 +209,7 @@ public class UniverseInfoController extends AuthenticatedController {
   @ApiOperation(
       value = "Trigger a universe health check",
       notes = "Trigger a universe health check and return the trigger time.",
-      response = Object.class)
+      response = TriggerHealthCheckResult.class)
   public Result triggerHealthCheck(UUID customerUUID, UUID universeUUID) {
     if (!runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.cloud.enabled")) {
       throw new PlatformServiceException(
@@ -220,7 +222,10 @@ public class UniverseInfoController extends AuthenticatedController {
     OffsetDateTime dt = OffsetDateTime.now(ZoneOffset.UTC);
     universeInfoHandler.triggerHealthCheck(customer, universe);
 
-    return PlatformResults.withData(dt);
+    TriggerHealthCheckResult res = new TriggerHealthCheckResult();
+    res.timestamp = new Date(dt.toInstant().toEpochMilli());
+
+    return PlatformResults.withData(res);
   }
 
   /**

@@ -3,7 +3,7 @@ title: Deploy a Spring application on Amazon EKS
 linkTitle: Deploy on Amazon EKS
 description: Deploy a Spring application connected to Yugabyte Cloud on Amazon Elastic Kubernetes Service (EKS).
 menu:
-  latest:
+  preview:
     parent: spring-boot
     identifier: spring-boot-eks
     weight: 20
@@ -77,9 +77,9 @@ On your computer, do the following:
     Replace `[aws_acct_id]` with your AWS account ID, and `[aws_region]` with the region you selected in AWS.
 
     ```output
-    1dc94a70dbaa: Pushed 
-    0d29ec96785e: Pushed 
-    888ed16fa8d4: Pushed 
+    1dc94a70dbaa: Pushed
+    0d29ec96785e: Pushed
+    888ed16fa8d4: Pushed
     ...
     ```
 
@@ -89,16 +89,16 @@ Go to your repo in ECR to view the image you just pushed.
 
 In AWS, do the following:
 
-1. Type “cloudformation” in the search bar and select **CloudFormation**.
+1. Type "cloudformation" in the search bar and select **CloudFormation**.
 
 1. Click **Create Stack** and select **With new resources (standard)** to start the **Create Stack** wizard.
 
 1. On the **Create Stack** page, fill out the following details:
 
-    - Under **Prepare template**, select **Template is Ready**. 
-    - Under **Template Source**, select Amazon S3 URL. 
-    - For **Amazon S3 URL**, enter “https://s3.us-west-2.amazonaws.com/amazon-eks/cloudformation/2020-10-29/amazon-eks-vpc-private-subnets.yaml”. 
-    
+    - Under **Prepare template**, select **Template is Ready**.
+    - Under **Template Source**, select Amazon S3 URL.
+    - For **Amazon S3 URL**, enter `https://s3.us-west-2.amazonaws.com/amazon-eks/cloudformation/2020-10-29/amazon-eks-vpc-private-subnets.yaml`.
+
 1. Click **Next**.
 
 1. On the **Specify stack details** page, enter a Stack name, and click **Next**.
@@ -119,10 +119,10 @@ After your stack is created, in AWS, do the following:
 
 1. On the **Specify networking** page, enter the following:
 
-    - Choose the VPC you just created. This automatically chooses the appropriate subnets. 
-    - Select the two security groups that are available. 
-    - Under **Cluster Endpoint Access**, choose **Public and private**. 
-    
+    - Choose the VPC you just created. This automatically chooses the appropriate subnets.
+    - Select the two security groups that are available.
+    - Under **Cluster Endpoint Access**, choose **Public and private**.
+
 1. Click **Next** to display the **Configure logging** page.
 
 1. Click **Next** to display the **Review and create** page.
@@ -135,7 +135,7 @@ Once the cluster is created, the cluster configuration settings are displayed.
 
 After your cluster has been created, do the following:
 
-1. Under Cluster configuration, select the **Compute** tab. 
+1. Under Cluster configuration, select the **Compute** tab.
 
 1. Click **Add Node Group** to start the **Add Node Group** wizard.
 
@@ -205,7 +205,7 @@ After your cluster has been created, do the following:
               value: "-Dspring.profiles.active=yugabytedb -Dspring.datasource.url=jdbc:postgresql://[host]:[port]/petclinic?load-balance=true -Dspring.datasource.initialization-mode=never"
     ```
 
-    Replace `[aws_acct_id]` with your AWS account ID, and `[aws_region]` with the region you selected in AWS. 
+    Replace `[aws_acct_id]` with your AWS account ID, and `[aws_region]` with the region you selected in AWS.
     \
     Replace `[host]` and `[port]` with the host and port number of your Yugabyte Cloud cluster. To obtain your cluster connection parameters, sign in to Yugabyte Cloud, select your cluster and navigate to [Settings](../../../cloud-clusters/configure-clusters).
 

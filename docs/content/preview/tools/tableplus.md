@@ -5,9 +5,9 @@ linkTitle: TablePlus
 description: Learn how to connect TablePlus to YugabyteDB and query using YSQL, YCQL, and YEDIS.
 aliases:
   - /develop/tools/tableplus/
-  - /latest/develop/tools/tableplus/
+  - /preview/develop/tools/tableplus/
 menu:
-  latest:
+  preview:
     identifier: tableplus
     parent: tools
     weight: 2750

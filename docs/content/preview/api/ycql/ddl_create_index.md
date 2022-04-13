@@ -5,12 +5,12 @@ linkTitle: CREATE INDEX
 summary: Create a new index on a table
 description: Use the CREATE INDEX statement to create a new index on a table.
 menu:
-  latest:
+  preview:
     parent: api-cassandra
     weight: 1225
 aliases:
-  - /latest/api/cassandra/ddl_create_index
-  - /latest/api/ycql/ddl_create_index
+  - /preview/api/cassandra/ddl_create_index
+  - /preview/api/ycql/ddl_create_index
 isTocNested: true
 showAsideToc: true
 ---
@@ -59,7 +59,7 @@ Use the `CREATE INDEX` statement to create a new index on a table. It defines th
 
 ```ebnf
 create_index ::= CREATE INDEX [ IF NOT EXISTS ] index_name
-                     ON table_name ( partition_key_columns [ clustering_key_columns ] )  
+                     ON table_name ( partition_key_columns [ clustering_key_columns ] )
                      [ clustering_key_column_ordering ] [ covering_columns ] [ 'WHERE' index_predicate ]
 
 partition_key_columns ::= index_column | ( index_column [ , ... ] )

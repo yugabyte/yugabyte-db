@@ -5,12 +5,12 @@ linkTitle: SQL statements
 description: List of PostgreSQL-compatible SQL statements supported by Yugabyte SQL (YSQL)
 image: /images/section_icons/api/ysql.png
 menu:
-  latest:
+  preview:
     identifier: statements
     parent: the-sql-language
     weight: 100
 aliases:
-  - /latest/api/ysql/commands/
+  - /preview/api/ysql/commands/
 isTocNested: true
 showAsideToc: true
 ---
@@ -23,7 +23,10 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | :-------- | :---------- |
 | [`ALTER DATABASE`](ddl_alter_db) | Change database definition |
 | [`ALTER DOMAIN`](ddl_alter_domain) | Change domain definition |
+| [`ALTER FOREIGN DATA WRAPPER`](alter_foreign_data_wrapper) | Change foreign data wrapper definition |
+| [`ALTER FOREIGN TABLE`](alter_foreign_table) | Change foreign table definition |
 | [`ALTER SEQUENCE`](ddl_alter_sequence) | Change sequence definition |
+| [`ALTER SERVER`](ddl_alter_server) | Change foreign server definition |
 | [`ALTER TABLE`](ddl_alter_table) | Change table definition |
 | [`COMMENT`](ddl_comment) | Set, update, or remove a comment on a database object |
 | [`CREATE AGGREGATE`](ddl_create_aggregate) | Create an aggregate |
@@ -31,6 +34,8 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | [`CREATE DATABASE`](ddl_create_database) | Create a database |
 | [`CREATE DOMAIN`](ddl_create_domain) | Create a user-defined data type with optional constraints |
 | [`CREATE EXTENSION`](ddl_create_extension) | Load an extension |
+| [`CREATE FOREIGN DATA WRAPPER](ddl_create_foreign_data_wrapper) | Create a foreign-data wrapper |
+| [`CREATE FOREIGN TABLE`](ddl_create_foreign_table) | Create a foreign table |
 | [`CREATE FUNCTION`](ddl_create_function) | Create a function |
 | [`CREATE INDEX`](ddl_create_index/) | Create an index |
 | [`CREATE MATERIALIZED VIEW`](ddl_create_matview) | Create a materialized view |
@@ -40,16 +45,20 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | [`CREATE RULE`](ddl_create_rule) | Create a rule |
 | [`CREATE SCHEMA`](ddl_create_schema) | Create a schema (namespace) |
 | [`CREATE SEQUENCE`](ddl_create_sequence) | Create a sequence generator |
+| [`CREATE SERVER`](ddl_create_server) | Create a foreign server |
 | [`CREATE TABLE`](ddl_create_table) | Create an empty table |
 | [`CREATE TABLE AS`](ddl_create_table_as) | Create a table from the results of a executing a `SELECT` |
 | [`CREATE TRIGGER`](ddl_create_trigger) | Create a trigger |
 | [`CREATE TYPE`](ddl_create_type) | Create a type |
+| [`CREATE USER MAPPING`](ddl_create_user_mapping) | Create a user mapping |
 | [`CREATE VIEW`](ddl_create_view) | Create a view |
 | [`DROP AGGREGATE`](ddl_drop_aggregate) | Delete an aggregate |
 | [`DROP CAST`](ddl_drop_cast) | Delete a cast |
 | [`DROP DATABASE`](ddl_drop_database) | Delete a database from the system |
 | [`DROP DOMAIN`](ddl_drop_domain) | Delete a domain |
 | [`DROP EXTENSION`](ddl_drop_extension) | Delete an extension |
+| [`DROP FOREIGN DATA WRAPPER`](ddl_drop_foreign_data_wrapper) | Drop a foreign-data wrapper |
+| [`DROP FOREIGN TABLE`](ddl_drop_foreign_table) | Drop a foreign table |
 | [`DROP FUNCTION`](ddl_drop_function) | Delete a function |
 | [`DROP MATERIALIZED VIEW`](ddl_drop_matview) | Drop a materialized view |
 | [`DROP OPERATOR`](ddl_drop_operator) | Delete an operator |
@@ -57,9 +66,11 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | [`DROP PROCEDURE`](ddl_drop_procedure) | Delete a procedure |
 | [`DROP RULE`](ddl_drop_rule) | Delete a rule |
 | [`DROP SEQUENCE`](ddl_drop_sequence) | Delete a sequence generator |
+| [`DROP SERVER`](ddl_drop_server) | Drop a foreign server |
 | [`DROP TABLE`](ddl_drop_table) | Delete a table from a database |
 | [`DROP TYPE`](ddl_drop_type) | Delete a user-defined type |
 | [`DROP TRIGGER`](ddl_drop_trigger) | Delete a trigger |
+| [`IMPORT FOREIGN SCHEMA`](ddl_import_foreign_schema) Import a foreign schema |
 | [`REFRESH MATERIALIZED VIEW`](ddl_refresh_matview) | Refresh a materialized view |
 | [`TRUNCATE`](ddl_truncate) | Clear all rows from a table |
 

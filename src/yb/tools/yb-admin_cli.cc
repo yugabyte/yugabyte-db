@@ -185,7 +185,7 @@ YB_DEFINE_ENUM(ListTabletsFlags, (JSON)(INCLUDE_FOLLOWERS));
 
 Status ClusterAdminCli::Run(int argc, char** argv) {
   const string prog_name = argv[0];
-  FLAGS_logtostderr = 1;
+  FLAGS_logtostderr = true;
   FLAGS_minloglevel = 2;
   ParseCommandLineFlags(&argc, &argv, true);
   InitGoogleLoggingSafe(prog_name.c_str());

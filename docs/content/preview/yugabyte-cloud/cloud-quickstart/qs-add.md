@@ -5,7 +5,7 @@ description: Create a Free cluster to get started using Yugabyte Cloud.
 headcontent:
 image: /images/section_icons/index/quick_start.png
 menu:
-  latest:
+  preview:
     identifier: qs-add
     parent: cloud-quickstart
     weight: 100
@@ -44,6 +44,12 @@ To create your free cluster:
 After you complete the wizard, Yugabyte Cloud bootstraps and provisions the cluster, and configures YugabyteDB. The process takes up to 15 minutes.
 
 When the cluster is ready, the cluster [Overview](../../cloud-monitor/overview/) is displayed. You now have a fully configured YugabyteDB cluster provisioned in Yugabyte Cloud.
+
+{{< note title="Note" >}}
+
+YugabyteDB is a distributed database optimized for deployment across a cluster of servers. The free cluster has a single node and limited resources, suitable for running tutorials, [Yugabyte University](https://university.yugabyte.com), and [building sample applications](../cloud-build-apps/). To evaluate Yugabyte Cloud for production use or conduct a proof-of-concept (POC), contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) for trial credits.
+
+{{< /note >}}
 
 ### Learn more
 

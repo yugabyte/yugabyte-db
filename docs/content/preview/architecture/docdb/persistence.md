@@ -4,11 +4,11 @@ headerTitle: Persistence
 linkTitle: Persistence
 description: Learn how DocDB manages persistence using a RocksDB-based storage layer.
 aliases:
-  - /latest/architecture/docdb/persistence/
-  - /latest/architecture/concepts/persistence/
-  - /latest/architecture/concepts/docdb/persistence/
+  - /preview/architecture/docdb/persistence/
+  - /preview/architecture/concepts/persistence/
+  - /preview/architecture/concepts/docdb/persistence/
 menu:
-  latest:
+  preview:
     identifier: docdb-persistence
     parent: docdb
     weight: 1146
@@ -188,7 +188,7 @@ The entries in DocDB at this point will look like the following:
 Delete a single column from a row.
 
 ```sql
-T4: DELETE msg_props       
+T4: DELETE msg_props
       FROM msgs
      WHERE user_id = 'user1'
        AND msg_id = 10;

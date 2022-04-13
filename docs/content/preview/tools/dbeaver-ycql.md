@@ -4,7 +4,7 @@ headerTitle: Using DBeaver with YugabyteDB YCQL
 linkTitle: DBeaver
 description: Use the DBeaver multi-platform database tool to explore and query YugabyteDB.
 menu:
-  latest:
+  preview:
     identifier: dbeaver-ycql
     parent: tools
     weight: 2711
@@ -77,4 +77,4 @@ You can expand the list to see all keyspaces available in YugabyteDB cluster, as
 
 ![img](/images/develop/tools/dbeaver/dbeaver-ycql-system.png)
 
-For sample databases to explore YugabyteDB CQL using DBeaver, see [Sample data](/latest/explore/json-support/jsonb-ycql/#root).
+For sample databases to explore YugabyteDB CQL using DBeaver, see [Sample data](/preview/explore/json-support/jsonb-ycql/#root).

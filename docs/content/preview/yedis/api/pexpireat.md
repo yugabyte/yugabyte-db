@@ -3,12 +3,12 @@ title: PEXPIREAT
 linkTitle: PEXPIREAT
 description: PEXPIREAT
 menu:
-  latest:
+  preview:
     parent: api-yedis
     weight: 2234
 aliases:
-  - /latest/api/redis/pexpireat
-  - /latest/api/yedis/pexpireat
+  - /preview/api/redis/pexpireat
+  - /preview/api/yedis/pexpireat
 isTocNested: true
 showAsideToc: true
 ---
@@ -50,4 +50,4 @@ $ PTTL yugakey
 
 ## See also
 
-[`expireat`](../expireat/), [`ttl`](../ttl/), [`pttl`](../pttl/), [`set`](../set/) 
+[`expireat`](../expireat/), [`ttl`](../ttl/), [`pttl`](../pttl/), [`set`](../set/)

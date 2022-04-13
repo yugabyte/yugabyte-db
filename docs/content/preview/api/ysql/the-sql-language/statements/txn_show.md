@@ -5,11 +5,11 @@ linkTitle: SHOW TRANSACTION
 description: Use the SHOW TRANSACTION statement to show the current transaction isolation level.
 summary: SHOW TRANSACTION
 menu:
-  latest:
+  preview:
     identifier: txn_show
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/txn_show/
+  - /preview/api/ysql/commands/txn_show/
 isTocNested: true
 showAsideToc: true
 ---

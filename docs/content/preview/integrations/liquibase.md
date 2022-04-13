@@ -4,7 +4,7 @@ linkTitle: Liquibase
 description: Using Liquibase with YugabyteDB
 section: INTEGRATIONS
 menu:
-  latest:
+  preview:
     identifier: liquibase
     weight: 571
 isTocNested: true
@@ -19,9 +19,9 @@ Before you can start using Liquibase, ensure that you have the following install
 
 - JDK version 8 or later.
 
-- YugabyteDB version 2.6 (see [YugabyteDB Quick Start Guide](/latest/quick-start/)).
+- YugabyteDB version 2.6 (see [YugabyteDB Quick Start Guide](/preview/quick-start/)).
 
-- Yugabyte cluster (see [Create a local cluster](/latest/quick-start/create-local-cluster/macos/)). To check status, execute the following command:
+- Yugabyte cluster (see [Create a local cluster](/preview/quick-start/create-local-cluster/macos/)). To check status, execute the following command:
 
   ```sh
   ./bin/yugabyted status

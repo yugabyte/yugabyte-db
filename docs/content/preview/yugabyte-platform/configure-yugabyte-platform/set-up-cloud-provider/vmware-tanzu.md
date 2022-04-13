@@ -5,9 +5,9 @@ linkTitle: Configure the cloud provider
 description: Configure the VMware Tanzu provider
 aliases:
   - /deploy/pivotal-cloud-foundry/
-  - /latest/deploy/pivotal-cloud-foundry/
+  - /preview/deploy/pivotal-cloud-foundry/
 menu:
-  latest:
+  preview:
     identifier: set-up-cloud-provider-4-vmware-tanzu
     parent: configure-yugabyte-platform
     weight: 20
@@ -70,7 +70,7 @@ This document explains how to configure VMware Tanzu Kubernetes Grid (TKG) for a
 
 ## Configuring the VMware Tanzu Provider
 
-Before you start, ensure that you have the `kubeconfig` file generated during [YugabyteDB Anywhere Installation](/latest/yugabyte-platform/install-yugabyte-platform/install-software/kubernetes/#create-a-kubeconfig-file-for-a-kubernetes-cluster) so YugabyteDB Anywhere can use the provided credentials to automatically provision and deprovision Kubernetes pods that run the YugabyteDB universe.
+Before you start, ensure that you have the `kubeconfig` file generated during [YugabyteDB Anywhere Installation](/preview/yugabyte-platform/install-yugabyte-platform/install-software/kubernetes/#create-a-kubeconfig-file-for-a-kubernetes-cluster) so YugabyteDB Anywhere can use the provided credentials to automatically provision and deprovision Kubernetes pods that run the YugabyteDB universe.
 
 To start configuring any TKG edition (that is, either TKG-Integrated, TKG-Service, or TKG-Multicloud), open the **Yugabyte Admin Console** and click **Configure a Provider**, as shown in the following illustration:
 
@@ -84,7 +84,7 @@ To start configuring any TKG edition (that is, either TKG-Integrated, TKG-Servic
 
   - At the **provider level**, in which case this configuration file will be used for all availability zones in all regions. You use the **Cloud Provider Configuration** window for this setting.
   - At the **zone level**, which is important for multi-zone or multi-region deployments. You use the **Add new region** dialog for this setting.
-- Use the **Service Account** field to provide the name of the service account that has the necessary access to manage the cluster, as described in [Create Cluster](/latest/deploy/kubernetes/single-zone/oss/helm-chart/#create-cluster).
+- Use the **Service Account** field to provide the name of the service account that has the necessary access to manage the cluster, as described in [Create Cluster](/preview/deploy/kubernetes/single-zone/oss/helm-chart/#create-cluster).
 
 - Use the **Image Registry** field to specify the location of the YugabyteDB image. You should accept the default setting, unless you are hosting your own registry.
 - The **Pull Secret** field indicates that the Enterprise YugabyteDB image is in a private repository. Use this field to upload the pull secret for downloading the images. The secret should be supplied by your organization's sales team.

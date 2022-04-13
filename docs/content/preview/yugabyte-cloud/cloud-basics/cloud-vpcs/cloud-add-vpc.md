@@ -1,10 +1,10 @@
 ---
 title: Create VPCs
-headerTitle: 
+headerTitle:
 linkTitle: VPCs
 description: Create and manage your cloud VPCs.
 menu:
-  latest:
+  preview:
     identifier: cloud-add-vpc
     parent: cloud-vpcs
     weight: 30

@@ -7,7 +7,7 @@ image: /images/section_icons/index/api.png
 headcontent: YugabyteDB API reference
 section: REFERENCE
 menu:
-  latest:
+  preview:
     identifier: api
     weight: 1100
 ---

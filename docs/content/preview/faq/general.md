@@ -5,15 +5,15 @@ linkTitle: General FAQ
 description: Answers to common questions about YugabyteDB.
 section: FAQ
 aliases:
-  - /latest/faq/product/
-  - /latest/introduction/overview/
-  - /latest/introduction/benefits/
-  - /latest/introduction/core-features/
-  - /latest/introduction/
-  - /latest/faq/architecture/
-  - /latest/faq
+  - /preview/faq/product/
+  - /preview/introduction/overview/
+  - /preview/introduction/benefits/
+  - /preview/introduction/core-features/
+  - /preview/introduction/
+  - /preview/faq/architecture/
+  - /preview/faq
 menu:
-  latest:
+  preview:
     identifier: faq-general
     weight: 2720
 isTocNested: false
@@ -104,7 +104,7 @@ You should pick YCQL over YSQL if your application:
 - Needs TTL-driven automatic data expiration.
 - Needs to integrate with stream processors, such as Apache Spark and KSQL.
 
-If you have a specific use case in mind, share it in our [Slack community](https://www.yugabyte.com/slack) and the community can help you decide the best approach.
+If you have a specific use case in mind, share it in our [Slack community]({{<slack-invite>}}) and the community can help you decide the best approach.
 
 ## How does YugabyteDB's common document store work?
 
@@ -243,7 +243,7 @@ YugabyteDB has had the following major releases:
 - [v1.0](https://blog.yugabyte.com/announcing-yugabyte-db-1-0-%F0%9F%8D%BE-%F0%9F%8E%89/) in May 2018.
 - [v0.9 Beta](https://blog.yugabyte.com/yugabyte-has-arrived/) in November 2017.
 
-Releases, including upcoming releases, are outlined on the [Releases Overview](/latest/releases/) page. The roadmap for this release can be found on [GitHub](https://github.com/yugabyte/yugabyte-db#whats-being-worked-on).
+Releases, including upcoming releases, are outlined on the [Releases Overview](/preview/releases/) page. The roadmap for this release can be found on [GitHub](https://github.com/yugabyte/yugabyte-db#whats-being-worked-on).
 
 ## Can I deploy YugabyteDB to production?
 
@@ -263,7 +263,7 @@ Some features are marked Beta in every release. Following are the points to cons
 
 - Recommended only for non-production use.
 
-Please do try our beta features and give feedback on them on our [Slack community](https://www.yugabyte.com/slack) or by filing a [GitHub issue](https://github.com/yugabyte/yugabyte-db/issues).
+Please do try our beta features and give feedback on them on our [Slack community]({{<slack-invite>}}) or by filing a [GitHub issue](https://github.com/yugabyte/yugabyte-db/issues).
 
 ## Any performance benchmarks available?
 
@@ -283,7 +283,7 @@ Starting with [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-
 
 ## How do I report a security vulnerability?
 
-Please follow the steps in the [vulnerability disclosure policy](/latest/secure/vulnerability-disclosure-policy) to report a vulnerability to our security team. The policy outlines our commitments to you when you disclose a potential vulnerability, the reporting process, and how we will respond.
+Please follow the steps in the [vulnerability disclosure policy](/preview/secure/vulnerability-disclosure-policy) to report a vulnerability to our security team. The policy outlines our commitments to you when you disclose a potential vulnerability, the reporting process, and how we will respond.
 
 ## How do YugabyteDB, Yugabyte Platform and Yugabyte Cloud differ from each other?
 

@@ -5,7 +5,7 @@ linkTitle: Miscellaneous
 description: The semantics of the miscellaneous date-time functions. [YSQL]
 image: /images/section_icons/api/subsection.png
 menu:
-  latest:
+  preview:
     identifier: miscellaneous
     parent: date-time-functions
     weight: 60
@@ -154,7 +154,7 @@ select
 This is the result (when the _select_ is executed in October 2021):
 
 ```output
- age one day before birthday | age on birthday | age one day after birthday | age right now 
+ age one day before birthday | age on birthday | age one day after birthday | age right now
 -----------------------------+-----------------+----------------------------+---------------
  22 years                    | 23 years        | 23 years                   | 37 years
 ```
@@ -228,7 +228,7 @@ from c2;
 This is the result:
 
 ```output
-          age(ts2,  ts1)          |   justify_interval(ts2 - ts1)   | age() = justify_interval() using native equals 
+          age(ts2,  ts1)          |   justify_interval(ts2 - ts1)   | age() = justify_interval() using native equals
 ----------------------------------+---------------------------------+------------------------------------------------
  20 years 9 mons 29 days 02:24:06 | 21 years 1 mon 17 days 02:24:06 | false
 ```
@@ -300,7 +300,7 @@ from c;
 This is the result:
 
 ```output
- with timezone given as text | with timezone given as interval 
+ with timezone given as text | with timezone given as interval
 -----------------------------+---------------------------------
  true                        | true
 ```
@@ -388,7 +388,7 @@ select (
 This is the result:
 
 ```output
- time durations overlap 
+ time durations overlap
 ------------------------
  true
 ```
@@ -462,7 +462,7 @@ select (
 This is the result:
 
 ```output
- date durations overlap 
+ date durations overlap
 ------------------------
  true
 ```
@@ -495,7 +495,7 @@ duration == [start-moment, finish-moment)
 
 However, even when a duration collapses to an instant, it is considered to be non-empty. (When the end-points of a `'[)'` _range_ value are identical, this value _is_ considered to be empty and cannot overlap with any other range value.)
 
-Because the _start-moment_ is included in the duration but the _finish-moment_ is not, this leads to the requirement to state the following edge case rules. (These rules were established by the SQL Standard.) 
+Because the _start-moment_ is included in the duration but the _finish-moment_ is not, this leads to the requirement to state the following edge case rules. (These rules were established by the SQL Standard.)
 
 - If the left duration is not collapsed to an instant, and the _left-duration-finish-moment_ is identical to the _right-duration-start-moment_, then the two durations _do not_ overlap. This holds both when the right duration is not collapsed to an instant and when it is so collapsed.
 - If the left duration is collapsed to an instant, and the _left-duration-start-and-finish-moment_ is identical to the _right-duration-start-moment_, then the two durations _do_ overlap. This holds both when the right duration is not collapsed to an instant and when it is so collapsed. In other words, when two instants coincide, they _do_ overlap.
@@ -508,7 +508,7 @@ with
     select '2000-01-01 12:00:00'::timestamp as the_instant),
   c2 as (
     select
-      the_instant, 
+      the_instant,
       tsrange(the_instant, the_instant, '[)') as instant_range -- notice '[)'
   from c1)
 select
@@ -522,7 +522,7 @@ from c2;
 This is the result:
 
 ```output
-     the_instant     | is empty | overlaps |  &&   
+     the_instant     | is empty | overlaps |  &&
 ---------------------+----------+----------+-------
  2000-01-01 12:00:00 | true     | true     | false
 ```
@@ -535,7 +535,7 @@ with
     select '2000-01-01 12:00:00'::timestamp as the_instant),
   c2 as (
     select
-      the_instant, 
+      the_instant,
       tsrange(the_instant, the_instant, '[]') as instant_range -- notice '[]'
   from c1)
 select
@@ -549,14 +549,14 @@ from c2;
 This is the new result:
 
 ```output
-     the_instant     | is empty | overlaps |  &&  
+     the_instant     | is empty | overlaps |  &&
 ---------------------+----------+----------+------
  2000-01-01 12:00:00 | false    | true     | true
 ```
 
 It doesn't help to ask why the rules are different for the _overlaps_ operator acting between two explicitly specified durations and the `&&` acting between two _range_ values. It simply is what it is—and the rules won't change.
 
-Notice that you _can_ make the outcomes of the _overlaps_ operator and the `&&` operator agree for all tests. But to get this outcome, you must surround the use of `&&` with some if-then-else logic to choose when to use `'[)'` and when to use `'[]'`. Code that does this is presented on this [dedicated child page](./overlaps/). 
+Notice that you _can_ make the outcomes of the _overlaps_ operator and the `&&` operator agree for all tests. But to get this outcome, you must surround the use of `&&` with some if-then-else logic to choose when to use `'[)'` and when to use `'[]'`. Code that does this is presented on this [dedicated child page](./overlaps/).
 
 ### 'overlaps' semantics in pictures
 
@@ -571,7 +571,7 @@ These are presented and explained on this [dedicated child page](./overlaps/). T
 ```output
  TWO FINITE DURATIONS
  --------------------
- 
+
   1. Durations do not overlap               2000-01-15 00:00:00,         2000-05-15 00:00:00         |   2000-08-15 00:00:00,         2000-12-15 00:00:00           false
   2. Right start = left end                 2000-01-15 00:00:00,         2000-05-15 00:00:00         |   2000-05-15 00:00:00,         2000-12-15 00:00:00           false
   3. Durations overlap                      2000-01-15 00:00:00,         2000-08-15 00:00:00         |   2000-05-15 00:00:00,         2000-12-15 00:00:00           true
@@ -581,19 +581,19 @@ These are presented and explained on this [dedicated child page](./overlaps/). T
   4. Contained, co-inciding at left         2000-01-15 00:00:00,         2000-06-15 00:00:00         |   2000-01-15 00:00:00,         2000-08-15 00:00:00           true
   4. Contained, co-inciding at right        2000-01-15 00:00:00,         2000-06-15 00:00:00         |   2000-02-15 00:00:00,         2000-06-15 00:00:00           true
   4. Durations coincide                     2000-01-15 00:00:00,         2000-06-15 00:00:00         |   2000-01-15 00:00:00,         2000-06-15 00:00:00           true
- 
+
  ONE INSTANT, ONE FINITE DURATION
  --------------------------------
- 
+
   5. Instant before duration                2000-02-15 00:00:00,         2000-02-15 00:00:00         |   2000-03-15 00:00:00,         2000-04-15 00:00:00           false
   6. Instant coincides with duration start  2000-02-15 00:00:00,         2000-02-15 00:00:00         |   2000-02-15 00:00:00,         2000-03-15 00:00:00           true
   7. Instant within duration                2000-02-15 00:00:00,         2000-02-15 00:00:00         |   2000-01-15 00:00:00,         2000-03-15 00:00:00           true
   8. Instant coincides with duration end    2000-02-15 00:00:00,         2000-02-15 00:00:00         |   2000-01-15 00:00:00,         2000-02-15 00:00:00           false
   9. Instant after duration                 2000-05-15 00:00:00,         2000-05-15 00:00:00         |   2000-03-15 00:00:00,         2000-04-15 00:00:00           false
- 
+
  TWO INSTANTS
  ------------
- 
+
  10. Instants differ                        2000-01-15 00:00:00,         2000-01-15 00:00:00         |   2000-06-15 00:00:00,         2000-06-15 00:00:00           false
  11. Instants coincide                      2000-01-15 00:00:00,         2000-01-15 00:00:00         |   2000-01-15 00:00:00,         2000-01-15 00:00:00           true
 ```

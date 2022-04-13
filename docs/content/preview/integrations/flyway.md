@@ -5,7 +5,7 @@ description: Using Flyway with YugabyteDB
 aliases:
 section: INTEGRATIONS
 menu:
-  latest:
+  preview:
     identifier: flyway
     weight: 571
 isTocNested: true
@@ -20,9 +20,9 @@ The YugabyteDB-specific implementation of the Flyway APIs has been added to the 
 
 Before you can start using Flyway, ensure that you have the following installed and configured:
 
-- YugabyteDB version 2.4 or later (see [YugabyteDB Quick Start Guide](/latest/quick-start/)).
+- YugabyteDB version 2.4 or later (see [YugabyteDB Quick Start Guide](/preview/quick-start/)).
 
-- Yugabyte cluster (see [Create a local cluster](/latest/quick-start/create-local-cluster/macos/)).
+- Yugabyte cluster (see [Create a local cluster](/preview/quick-start/create-local-cluster/macos/)).
 
 - Flyway community edition version 7.11.2 or later (see [Download Flyway](https://flywaydb.org/download)).
 

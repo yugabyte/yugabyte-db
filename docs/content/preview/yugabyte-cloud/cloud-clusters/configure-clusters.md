@@ -5,7 +5,7 @@ description: Scale Yugabyte Cloud clusters and configure IP allow lists for the 
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  latest:
+  preview:
     identifier: configure-clusters
     parent: cloud-clusters
     weight: 100

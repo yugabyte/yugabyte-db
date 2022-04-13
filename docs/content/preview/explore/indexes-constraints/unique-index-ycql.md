@@ -4,13 +4,13 @@ linkTitle: Unique indexes
 description: Using Unique indexes in YCQL
 image: /images/section_icons/secure/create-roles.png
 menu:
-  latest:
+  preview:
     identifier: unique-index-ycql
     parent: explore-indexes-constraints
     weight: 231
 aliases:
-   - /latest/explore/ysql-language-features/indexes-1/
-   - /latest/explore/indexes-constraints/indexes-1/
+   - /preview/explore/ysql-language-features/indexes-1/
+   - /preview/explore/indexes-constraints/indexes-1/
 isTocNested: true
 showAsideToc: true
 ---
@@ -46,9 +46,9 @@ CREATE INDEX index_name ON table_name(column_list);
 
 ## Example
 
-- Follow the steps to create a cluster [locally](/latest/quick-start/) or in [Yugabyte Cloud](/latest/yugabyte-cloud/cloud-connect/).
+- Follow the steps to create a cluster [locally](/preview/quick-start/) or in [Yugabyte Cloud](/preview/yugabyte-cloud/cloud-connect/).
 
-- Use the [YCQL shell](/latest/admin/ycqlsh/) for local clusters, or [Connect using Cloud shell](/latest/yugabyte-cloud/cloud-connect/connect-cloud-shell/) for Yugabyte Cloud, to create a keyspace and a table.
+- Use the [YCQL shell](/preview/admin/ycqlsh/) for local clusters, or [Connect using Cloud shell](/preview/yugabyte-cloud/cloud-connect/connect-cloud-shell/) for Yugabyte Cloud, to create a keyspace and a table.
 
 ```cql
 ycqlsh> CREATE KEYSPACE yb_demo;
@@ -62,7 +62,7 @@ ycqlsh> CREATE TABLE employees(employee_no integer,name text,department text, PR
 CREATE UNIQUE INDEX index_employee_no ON employees(employee_no);
 ```
 
-- Use the [DESCRIBE INDEX](/latest/admin/ycqlsh/#describe) command to verify the index creation.
+- Use the [DESCRIBE INDEX](/preview/admin/ycqlsh/#describe) command to verify the index creation.
 
 ```cql
 ycqlsh:yb_demo> DESCRIBE INDEX index_name;

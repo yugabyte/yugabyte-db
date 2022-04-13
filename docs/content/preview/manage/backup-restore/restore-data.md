@@ -4,7 +4,7 @@ headerTitle: Restore data
 linkTitle: Restore data
 description: Restore data in YugabyteDB for YSQL
 menu:
-  latest:
+  preview:
     identifier: restore-data
     parent: backup-restore
     weight: 703

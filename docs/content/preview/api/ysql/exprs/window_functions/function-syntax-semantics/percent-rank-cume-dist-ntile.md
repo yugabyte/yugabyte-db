@@ -4,7 +4,7 @@ linkTitle: percent_rank(), cume_dist() and ntile()
 headerTitle: percent_rank(), cume_dist() and ntile()
 description: Describes the functionality of the YSQL window functions percent_rank(), cume_dist() and ntile().
 menu:
-  latest:
+  preview:
     identifier: percent-rank-cume-dist-ntile
     parent: window-function-syntax-semantics
     weight: 20
@@ -113,7 +113,7 @@ return value:      int
 If you haven't yet installed the tables that the code examples use, then go to the section [The data sets used by the code examples](../data-sets/).
 {{< /note >}}
 
-The query that this section presents shows that the results produced by `percent_rank()` and `cume_dist()` are consistent with the formulas for these values that are given in the accounts, above, of these two functions. 
+The query that this section presents shows that the results produced by `percent_rank()` and `cume_dist()` are consistent with the formulas for these values that are given in the accounts, above, of these two functions.
 
 Create a data set using the `ysqlsh` script that [table t2](../data-sets/table-t2/) presents. This has been designed:
 
@@ -171,7 +171,7 @@ order by class, "rank()", k;
 ```
 This is the result. To make it easier to see the pattern, several blank lines have been manually inserted here between each successive set of rows with the same value for _"class"_. And in the second set, which has ties, one blank line has been inserted between each tie group.
 ```
- class | k  | score | n_tot | n_thru_curr | pr check | cd check | rank() | percent_rank() | cume_dist | ntile() 
+ class | k  | score | n_tot | n_thru_curr | pr check | cd check | rank() | percent_rank() | cume_dist | ntile()
 -------+----+-------+-------+-------------+----------+----------+--------+----------------+-----------+---------
      1 |  1 |     1 |     9 |           1 | true     | true     |      1 |    0.0         |   11.1    |       1
      1 |  2 |     2 |     9 |           2 | true     | true     |      2 |   12.5         |   22.2    |       1

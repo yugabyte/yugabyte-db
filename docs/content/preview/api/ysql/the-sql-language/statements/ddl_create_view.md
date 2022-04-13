@@ -4,11 +4,11 @@ headerTitle: CREATE VIEW
 linkTitle: CREATE VIEW
 description: Use the CREATE VIEW statement to create a view in a database.
 menu:
-  latest:
+  preview:
     identifier: ddl_create_view
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/ddl_create_view/
+  - /preview/api/ysql/commands/ddl_create_view/
 isTocNested: true
 showAsideToc: true
 ---

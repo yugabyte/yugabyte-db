@@ -5,7 +5,7 @@ description: Planning a cluster in Yugabyte Cloud.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  latest:
+  preview:
     identifier: create-clusters-overview
     parent: cloud-basics
     weight: 10
@@ -80,7 +80,7 @@ For production clusters, a minimum of 3 nodes with 4 to 8 vCPUs per node is reco
 
 By default, clusters are created using a stable release, taken from the [stable release series](../../../releases/versioning/#stable-releases) of YugabyteDB.
 
-You can choose to deploy your cluster using an edge release for development and testing. Edge releases are typically taken from the [latest release series](../../../releases/versioning/#latest-releases) of YugabyteDB, though they can also include a recently released stable release.
+You can choose to deploy your cluster using an edge release for development and testing. Edge releases are typically taken from the [preview release series](../../../releases/versioning/#preview-releases) of YugabyteDB, though they can also include a recently released stable release.
 
 If you need a feature from an edge release (that isn't yet available in a stable release) for a production deployment, contact {{<support-cloud>}} before you create your cluster.
 

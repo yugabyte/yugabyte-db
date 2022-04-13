@@ -8,7 +8,7 @@ headcontent: Install YugabyteDB Anywhere to begin creating and managing deployme
 type: page
 section: YUGABYTEDB ANYWHERE
 menu:
-  latest:
+  preview:
     identifier: install-yugabyte-platform
 weight: 641
 isTocNested: true

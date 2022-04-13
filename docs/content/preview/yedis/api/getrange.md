@@ -3,12 +3,12 @@ title: GETRANGE
 linkTitle: GETRANGE
 description: GETRANGE
 menu:
-  latest:
+  preview:
     parent: api-yedis
     weight: 2080
 aliases:
-  - /latest/api/redis/getrange
-  - /latest/api/yedis/getrange
+  - /preview/api/redis/getrange
+  - /preview/api/yedis/getrange
 isTocNested: true
 showAsideToc: true
 ---

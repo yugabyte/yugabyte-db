@@ -4,7 +4,7 @@ headerTitle: Prepare the Amazon Web Services (AWS) cloud environment
 linkTitle: Prepare the environment
 description: Prepare the Amazon Web Services (AWS) environment for YugabyteDB Anywhere.
 menu:
-  latest:
+  preview:
     identifier: prepare-environment-1-aws
     parent: install-yugabyte-platform
     weight: 55
@@ -213,7 +213,7 @@ aws ec2 modify-instance-metadata-options --instance-id i-NNNNNNN --http-put-resp
 
 For more information, see [Configure the instance metadata service](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-service.html).
 
-When you create an AWS cloud provider, as described in [Configure the AWS cloud provider](../../../configure-yugabyte-platform/set-up-cloud-provider/aws/), you need to  complete the following fields in the **Configs > Cloud Provider Configuration > AWS** page of of YugabyteDB Anywhere UI :
+When you create an AWS cloud provider, as described in [Configure the AWS cloud provider](../../../configure-yugabyte-platform/set-up-cloud-provider/aws/), you need to complete the following fields in the **Configs > Cloud Provider Configuration > AWS** page of the YugabyteDB Anywhere UI:
 
 - Set the **Credential Type** field to Use IAM Role on instance.
 - Set the **VPC Setup** field to Create a new VPC.

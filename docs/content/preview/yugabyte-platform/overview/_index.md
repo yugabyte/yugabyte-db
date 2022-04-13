@@ -8,9 +8,9 @@ headcontent: Overview of YugabyteDB Anywhere and architecture.
 type: page
 section: YUGABYTEDB ANYWHERE
 aliases:
-  - /latest/yugabyte-platform/
+  - /preview/yugabyte-platform/
 menu:
-  latest:
+  preview:
     identifier: overview-yp
     weight: 10
 ---
@@ -36,7 +36,7 @@ YugabyteDB Anywhere offers three levels of user accounts: Super Admin, Admin, an
         <div class="title">Install</div>
       </div>
       <div class="body">
-        Installing YugabyteDB Anywhere on any environment
+        Installing YugabyteDB Anywhere in any environment
       </div>
     </a>
   </div>
@@ -48,7 +48,7 @@ YugabyteDB Anywhere offers three levels of user accounts: Super Admin, Admin, an
         <div class="title">Configure</div>
       </div>
       <div class="body">
-        Configuring YugabyteDB Anywhere to various cloud providers
+        Configuring YugabyteDB Anywhere for various cloud providers
       </div>
     </a>
   </div>

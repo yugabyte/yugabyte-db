@@ -6,7 +6,7 @@ description: The Yugabyte Query Layer (YQL) is the upper layer of YugabyteDB. Ap
 aliases:
   - /architecture/concepts/yql/
 menu:
-  latest:
+  preview:
     identifier: architecture-query-layer-yql
     parent: architecture-query-layer
     weight: 1172

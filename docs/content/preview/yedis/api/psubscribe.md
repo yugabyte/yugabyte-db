@@ -3,12 +3,12 @@ title: PSUBSCRIBE
 linkTitle: PSUBSCRIBE
 description: PSUBSCRIBE
 menu:
-  latest:
+  preview:
     parent: api-yedis
     weight: 2554
 aliases:
-  - /latest/api/redis/psubscribe
-  - /latest/api/yedis/psubscribe
+  - /preview/api/redis/psubscribe
+  - /preview/api/yedis/psubscribe
 isTocNested: true
 showAsideToc: true
 ---
@@ -20,10 +20,10 @@ This command subscribes the client to the specified pattern(s). The client will 
 
 ## See also
 
-[`keys`](../keys/), 
-[`pubsub`](../pubsub/), 
-[`publish`](../publish/), 
-[`subscribe`](../subscribe/), 
-[`unsubscribe`](../unsubscribe/), 
-[`psubscribe`](../psubscribe/), 
+[`keys`](../keys/),
+[`pubsub`](../pubsub/),
+[`publish`](../publish/),
+[`subscribe`](../subscribe/),
+[`unsubscribe`](../unsubscribe/),
+[`psubscribe`](../psubscribe/),
 [`punsubscribe`](../punsubscribe/)

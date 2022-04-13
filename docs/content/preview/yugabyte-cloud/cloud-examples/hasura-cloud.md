@@ -4,9 +4,9 @@ headerTitle: Connect Hasura Cloud to Yugabyte Cloud
 linkTitle: Hasura Cloud
 description: Connect Hasura Cloud to Yugabyte Cloud.
 aliases:
-  - /latest/yugabyte-cloud/hasura-cloud/
+  - /preview/yugabyte-cloud/hasura-cloud/
 menu:
-  latest:
+  preview:
     identifier: hasura-cloud
     parent: cloud-examples
     weight: 400

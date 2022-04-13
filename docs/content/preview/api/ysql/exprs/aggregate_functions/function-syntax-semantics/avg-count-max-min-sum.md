@@ -4,7 +4,7 @@ linkTitle: avg(), count(), max(), min(), sum()
 headerTitle: avg(), count(), max(), min(), sum()
 description: Describes the functionality of the avg(), count(), max(), min(), sum() YSQL aggregate functions
 menu:
-  latest:
+  preview:
     identifier: avg-count-max-min-sum
     parent: aggregate-function-syntax-semantics
     weight: 10
@@ -20,7 +20,7 @@ Each of the aggregate functions [`avg()`](./#avg), [`count()`](./#count), [`max(
 
 ```
 input value:       smallint, int, bigint, numeric, real, double precision, interval
-                   
+
 return value:      numeric, double precision, interval
 ```
 
@@ -46,7 +46,7 @@ interval          interval
 
 ```
 input value:       "any"
-                   
+
 return value:      bigint
 ```
 
@@ -62,7 +62,7 @@ input value:       smallint, int, bigint, numeric, real, double precision, money
                    date, abstime, time with time zone, time without time zone,
                    timestamp with time zone, timestamp without time zone, tid,
                    interval, oid, inet, anyenum, anyarray
-                   
+
 return value:      < Same as the input value's data type except when the input is "varchar".
                      When the input is "varchar", the return is "text" >
 ```
@@ -129,7 +129,7 @@ select k, class, n, t from t order by k;
 This is the result:
 
 ```
- k  | class |   n    | t 
+ k  | class |   n    | t
 ----+-------+--------+---
   1 |     1 |    100 | a
   2 |     1 |    101 | b
@@ -169,7 +169,7 @@ order by class;
 It produces this result:
 
 ```
- class | avg(n)  | count(n) | min(n) | max(n) | sum(n) | count(expr) | min(t) | max(t) 
+ class | avg(n)  | count(n) | min(n) | max(n) | sum(n) | count(expr) | min(t) | max(t)
 -------+---------+----------+--------+--------+--------+-------------+--------+--------
      1 |  101.50 |        4 |    100 |    103 |    406 |           4 | a      | e
      2 |  107.00 |        5 |    105 |    109 |    535 |           5 | f      | j
@@ -202,7 +202,7 @@ select k, n from t2 order by k;
 This is the result:
 
 ```plpgsql
- k |   n    
+ k |   n
 ---+--------
  1 |      1
  2 |      1
@@ -224,7 +224,7 @@ select count(distinct n) from t2;
 Here, the `count()` expression uses the `distinct` keyword. This is the result:
 
 ```
- count 
+ count
 -------
      2
 ```
@@ -262,7 +262,7 @@ The `GROUP BY` clause has been removed; and the [`WINDOW` definition clause](../
 Here is the result. Whitespace has been added manually around each of the rows that the `FILTER` clause identifies.
 
 ```
- class |   n    | avg(n)  | count(n) | min(n) | max(n) | sum(n) | t | count(expr) | min(t) | max(t) 
+ class |   n    | avg(n)  | count(n) | min(n) | max(n) | sum(n) | t | count(expr) | min(t) | max(t)
 -------+--------+---------+----------+--------+--------+--------+---+-------------+--------+--------
      1 |    100 |  100.00 |        1 |    100 |    100 |    100 | a |           1 | a      | a
      1 |    101 |  100.50 |        2 |    100 |    101 |    201 | b |           2 | a      | b

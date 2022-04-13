@@ -3,7 +3,7 @@ title: Gitpod
 linkTitle: Gitpod
 description: Gitpod integrated development environment
 menu:
-  latest:
+  preview:
     identifier: gitpod
     parent: gitdev
     weight: 592
@@ -23,7 +23,7 @@ Gitpod doesn't require anything on your local computer other than a code editor 
 
 ## Get started with a boot app
 
-You can find the source at [Spring Boot todo on GitHub](https://github.com/yugabyte/yb-todo-app.git). 
+You can find the source at [Spring Boot todo on GitHub](https://github.com/yugabyte/yb-todo-app.git).
 
 **The easy way to get started** with Gitpod is to simply fork this [source repository](https://github.com/yugabyte/yb-todo-app.git) and initialize the Gitpod workspace environment by invoking `https://gitpod.io/#[REPO_URL]` in a browser window. Replace `[REPO_URL]` with your forked repository URL and you should already have been connected to the Gitpod account before launching the browser URL.
 
@@ -152,7 +152,7 @@ ports:
   - port: 9042
     onOpen: ignore
   - port: 12000
-    onOpen: ignore    
+    onOpen: ignore
 ```
 
 Commit `Dockerfile` and `.gitpod.yml` to your GitHub repository.

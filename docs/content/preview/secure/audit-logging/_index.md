@@ -6,7 +6,7 @@ description: Audit Logging in YugabyteDB.
 headcontent: Audit Logging in YugabyteDB.
 image: /images/section_icons/secure/authorization.png
 menu:
-  latest:
+  preview:
     identifier: audit-logging
     parent: secure
     weight: 750

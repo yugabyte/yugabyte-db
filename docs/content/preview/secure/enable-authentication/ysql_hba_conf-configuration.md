@@ -4,7 +4,7 @@ headerTitle: Configure ysql_hba_conf_csv
 linkTitle: Configure ysql_hba_conf_csv
 description: Use the ysql_hba_conf_csv flag to configure client authentication in YSQL.
 menu:
-  latest:
+  preview:
     identifier: ysql_hba_conf-configuration
     parent: enable-authentication
     weight: 730

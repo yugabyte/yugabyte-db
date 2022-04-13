@@ -3,9 +3,9 @@ title: Java console client for CDC
 headerTitle: Use the Java CDC console client
 linkTitle: Java CDC console
 description: Use the CDC console client to learn how CDC works.
-beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
-  latest:
+  preview:
     parent: change-data-capture
     identifier: cdc-java-console-client
     weight: 580

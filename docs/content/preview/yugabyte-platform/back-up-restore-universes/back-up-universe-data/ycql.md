@@ -4,7 +4,7 @@ headerTitle: Back up universe YCQL data
 linkTitle: Back up universe data
 description: Use YugabyteDB Anywhere to back up data in YCQL tables.
 menu:
-  latest:
+  preview:
     parent: back-up-restore-universes
     identifier: back-up-universe-data-2-ycql
     weight: 20
@@ -30,7 +30,7 @@ showAsideToc: true
 
 </ul>
 
-You can use YugabyteDB Anywhere to back up your YugabyteDB universe YCQL data. 
+You can use YugabyteDB Anywhere to back up your YugabyteDB universe YCQL data.
 
 To schedule backups for a later time or as a recurring task, see [Schedule universe YCQL data backups](../../schedule-data-backups/ycql).
 

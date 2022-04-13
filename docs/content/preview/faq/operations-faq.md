@@ -5,7 +5,7 @@ linkTitle: Operations FAQ
 description: Answers to common questions about operating YugabyteDB clusters
 section: FAQ
 menu:
-  latest:
+  preview:
     identifier: faq-operations
     weight: 2720
 isTocNested: false

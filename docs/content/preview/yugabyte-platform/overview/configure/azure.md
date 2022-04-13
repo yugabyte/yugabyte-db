@@ -5,7 +5,7 @@ linkTitle: Configure
 description: Configuring YugabyteDB Anywhere on Azure
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  latest:
+  preview:
     identifier: configure-3-azure
     parent: overview-yp
     weight: 40
@@ -61,12 +61,7 @@ Click elements of the following chart to access detailed steps:
 <img src="/images/ee/flowchart/yb-configure-azure.png" usemap="#image-map">
 
 <map name="image-map">
-    <area target="_blank" alt="Configure Azure" title="Configure Azure" href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure/" coords="264,368,624,423" shape="rect">
-    <area target="_blank" alt="Create admin user" title="Create admin user" href="/latest/yugabyte-platform/configure-yugabyte-platform/create-admin-user/" coords="289,259,611,316" shape="rect">
-    <area target="_blank" alt="configure cloud provider" title="configure cloud provider" href="/latest/yugabyte-platform/configure-yugabyte-platform/" coords="382,68,521,197" shape="rect">
+    <area target="_blank" alt="Configure Azure" title="Configure Azure" href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure/" coords="264,368,624,423" shape="rect">
+    <area target="_blank" alt="Create admin user" title="Create admin user" href="/preview/yugabyte-platform/configure-yugabyte-platform/create-admin-user/" coords="289,259,611,316" shape="rect">
+    <area target="_blank" alt="configure cloud provider" title="configure cloud provider" href="/preview/yugabyte-platform/configure-yugabyte-platform/" coords="382,68,521,197" shape="rect">
 </map>
-
-
-
-
-

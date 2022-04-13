@@ -4,7 +4,7 @@ headerTitle: Authorization
 linkTitle: Authorization
 description: Use the role-based access control (RBAC) model in YugabyteDB Anywhere to manage users and roles.
 menu:
-  latest:
+  preview:
     parent: security
     identifier: authorization-platform
     weight: 27
@@ -23,14 +23,14 @@ A user can interact with a YugabyteDB Anywhere through the UI or REST API.
 A role is a set of predefined permissions within YugabyteDB Anywhere. The following roles are available:
 
 * **Super Admin** is the first user that is created during the tenant registration. This role has the highest level of privilege that allows all read and write actions on all YugabyteDB Anywhere resources. There can be only one Super Admin in a tenant. This Super Admin can perform the following:
-  
-  * Manage all resources, including universes, nodes, backup and restore, cloud providers.
+
+  * Manage all resources, including universes, nodes, backup and restore, and cloud providers.
   * Manage user access control by creating and managing users.
-  
+
   For more information, see [admin user](../../configure-yugabyte-platform/create-admin-user/).
 * **Admin** has the same privilege as the Super Admin.
 * **Backup Admin** has access the backup related tasks, such as the following:
-  
+
   * Manage database backups and restore operations.
   * Create new backups.
   * Delete any existing backup or backup schedule.
@@ -44,10 +44,10 @@ As a Super Admin or Admin, you can invite new users and manage existing users fo
 
 You can invite new users to your tenant as follows:
 
-- Navigate to **Admin > User Management > Users** and click **Add User**.
+* Navigate to **Admin > User Management > Users** and click **Add User**.
 
-- Complete the fields of the **Add User** dialog shown in the following illustration, and then click **Submit**:
+* Complete the fields of the **Add User** dialog shown in the following illustration, and then click **Submit**:
 
   ![Add User](/images/yp/authorization-platform/add-user.png)
 
-To modify a user role or delete the user, navigate to **Admin > User Management > Users**, click **Actions** that corresponds to the specific user, and then select either **Edit User Role** or **Delete User**.
+To modify a user role or delete the user, navigate to **Admin > User Management > Users**. Click **Actions** that corresponds to the specific user, and then select either **Edit User Role** or **Delete User**.

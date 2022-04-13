@@ -6,7 +6,7 @@ description: Deployment checklist for multi-node YugabyteDB clusters used for pr
 aliases:
   - /deploy/checklist/
 menu:
-  latest:
+  preview:
     identifier: checklist
     parent: deploy
     weight: 605

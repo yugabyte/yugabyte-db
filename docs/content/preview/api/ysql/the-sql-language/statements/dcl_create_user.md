@@ -4,11 +4,11 @@ headerTitle: CREATE USER
 linkTitle: CREATE USER
 description: Use the CREATE USER statement to create a user. The CREATE USER statement is an alias for CREATE ROLE, but creates a role that has LOGIN privileges by default.
 menu:
-  latest:
+  preview:
     identifier: dcl_create_user
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/dcl_create_user/
+  - /preview/api/ysql/commands/dcl_create_user/
 isTocNested: true
 showAsideToc: true
 ---

@@ -3,12 +3,12 @@ title: TSREM
 linkTitle: TSREM
 description: TSREM
 menu:
-  latest:
+  preview:
     parent: api-yedis
     weight: 2450
 aliases:
-  - /latest/api/redis/tsrem
-  - /latest/api/yedis/tsrem
+  - /preview/api/redis/tsrem
+  - /preview/api/yedis/tsrem
 isTocNested: true
 showAsideToc: true
 ---

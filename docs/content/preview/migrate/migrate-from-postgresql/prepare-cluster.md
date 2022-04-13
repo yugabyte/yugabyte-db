@@ -4,7 +4,7 @@ headerTitle: Prepare a cluster
 linkTitle: Prepare a cluster
 description: Prepare a YugabyteDB cluster for importing PostgreSQL data.
 menu:
-  latest:
+  preview:
     identifier: migrate-postgresql-prepare-cluster
     parent: migrate-from-postgresql
     weight: 760

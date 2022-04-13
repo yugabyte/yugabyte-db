@@ -5,9 +5,9 @@ linkTitle: Universe issues
 description: Troubleshoot universe issues
 aliases:
   - /troubleshoot/enterprise-edition/universes/
-  - /latest/troubleshoot/enterprise-edition/universes/
+  - /preview/troubleshoot/enterprise-edition/universes/
 menu:
-  latest:
+  preview:
     identifier: universe-issues
     parent: troubleshoot-yp
     weight: 20
@@ -31,7 +31,7 @@ You should do the following on a regular basis:
 - Monitor the NTP server to ensure that it is running. You can access this information via your computer's operating system.
 - Monitor clock skew so you can see when the clock is off by more than 500 milliseconds. You can access this metric via **Node > Clock Skew**.
 - Monitor your disk usage. The default is 80% used, but you should consider this metric in the context of your environment. For example, the usage percentage can be higher on larger disks; some file systems issue an alert at 75% usage due to performance degradation. You can access this metric via your computer's operating system.
-- Monitor YSQL and YCQL operations latency and tune it according to your application service level agreement. You can access this metric via **YSQL Ops and Latency**, **YCQL Ops and Latency**, **YSQL Advanced**, and **YCQL Advanced**. 
+- Monitor YSQL and YCQL operations latency and tune it according to your application service level agreement. You can access this metric via **YSQL Ops and Latency**, **YCQL Ops and Latency**, **YSQL Advanced**, and **YCQL Advanced**.
 - Monitor average read and write latency so you know when latency starts to degrade, at which point you should tune it according to averages. You can access this metric via **Tablet Server > Average Latency**.
 - Monitor reactor delays to measure bottleneck of incoming requests. You can access this metric via **Tablet Server > Reactor Delays**.
 - Monitor log statistics per node to measure churn in the log cache size to determine high rate of evictions. You can access this metric via **Tablet Server > WAL Stats / Node**.
@@ -163,7 +163,7 @@ YugabyteDB Anywhere allows you to access all metrics via the command-line interf
 
 You can view T-Server and master server metrics in [Prometheus](https://prometheus.io/) and JSON formats in the browser or via the CLI using curl commands.
 
-The following is the Prometheus command for the T-Server: 
+The following is the Prometheus command for the T-Server:
 
 ```output
 curl <node_IP>:9000/prometheus-metrics
@@ -173,13 +173,13 @@ Expect an output similar to the following:
 
 ![Prometheus](/images/yp/metrics-prometheus.png)
 
-The following is the Prometheus command for the master server: 
+The following is the Prometheus command for the master server:
 
 ```output
 curl <node_IP>:7000/prometheus-metrics
 ```
 
-The following is the JSON command for the T-Server: 
+The following is the JSON command for the T-Server:
 
 ```output
 curl <node_IP>:9000/metrics
@@ -189,7 +189,7 @@ Expect an output similar to the following:
 
 ![JSON](/images/yp/metrics-json.png)
 
-The following is the JSON command for the master server: 
+The following is the JSON command for the master server:
 
 ```output
 curl <node_IP>:7000/metrics

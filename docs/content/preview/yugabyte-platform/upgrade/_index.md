@@ -8,7 +8,7 @@ type: page
 section: YUGABYTEDB ANYWHERE
 aliases:
 menu:
-  latest:
+  preview:
     identifier: upgrade
     weight: 649
 ---
@@ -24,10 +24,9 @@ You can upgrade YugabyteDB Anywhere to a newer version.
         <div class="title">Upgrade YugabyteDB Anywhere using Replicated</div>
       </div>
       <div class="body">
-        Use Replicated to upgrade YugabyteDB Anywhere.
+        Use Replicated to upgrade YugabyteDB Anywhere
       </div>
     </a>
   </div>
 
 </div>
-

@@ -3,9 +3,9 @@ title: ANALYZE statement [YSQL]
 headerTitle: ANALYZE
 linkTitle: ANALYZE
 description: Collect statistics about database tables with the ANALYZE statement.
-beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
-  latest:
+  preview:
     identifier: cmd_analyze
     parent: statements
 isTocNested: true

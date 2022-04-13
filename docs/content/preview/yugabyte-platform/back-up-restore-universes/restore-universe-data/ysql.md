@@ -4,10 +4,10 @@ headerTitle: Restore universe YSQL data
 linkTitle: Restore universe data
 description: Use YugabyteDB Anywhere to restore data in YSQL tables.
 aliases:
-  - /latest/yugabyte-platform/back-up-restore-databases/
-  - /latest/yugabyte-platform/back-up-restore-universes/restore-universe-data/
+  - /preview/yugabyte-platform/back-up-restore-databases/
+  - /preview/yugabyte-platform/back-up-restore-universes/restore-universe-data/
 menu:
-  latest:
+  preview:
     parent: back-up-restore-universes
     identifier: restore-universe-data-1-ysql
     weight: 30
@@ -52,11 +52,10 @@ You can restore YugabyteDB universe YSQL data from a backup as follows:
     - **Parallel Threads**: Default is `8`. This value can be changed to a value between `1` and `100`.
     - **KMS Configuration**: Optional, if the backup was from a universe that has [encryption at rest enabled](../../../security/enable-encryption-at-rest), then select the KMS configuration to use.
 
-4. Click **OK**. 
+4. Click **OK**.
 
-    <br>The restore begins immediately. When finished, a completed **Restore Backup** task appears in the **Tasks** tab.
+    <br/>The restore begins immediately. When finished, a completed **Restore Backup** task appears in the **Tasks** tab.
 
 5. To confirm the restore succeeded, select **Tables** to compare the original table with the table to which you restored, as per the following illustration:
 
-  
   ![Tables View](/images/yp/tables-view-ysql.png)

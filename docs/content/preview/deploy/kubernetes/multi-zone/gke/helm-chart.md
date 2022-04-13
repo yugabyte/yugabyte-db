@@ -4,13 +4,13 @@ headerTitle: Google Kubernetes Engine (GKE)
 linkTitle: Google Kubernetes Engine (GKE)
 description: Deploy a multi-zonal or regional Google Kubernetes Engine (GKE) using Helm Chart.
 menu:
-  latest:
+  preview:
     parent: deploy-kubernetes-mz
     name: Google Kubernetes Engine
     identifier: k8s-mz-gke-1
     weight: 628
 aliases:
-  - /latest/deploy/kubernetes/multi-zone/gke
+  - /preview/deploy/kubernetes/multi-zone/gke
 type: page
 isTocNested: true
 showAsideToc: true
@@ -158,7 +158,7 @@ $ helm repo update
 Validate that you have the updated Chart version.
 
 ```sh
-$ helm search repo yugabytedb/yugabyte
+$ helm search repo yugabytedb/yugabyte --version {{<yb-version version="preview" format="short">}}
 ```
 
 ```output

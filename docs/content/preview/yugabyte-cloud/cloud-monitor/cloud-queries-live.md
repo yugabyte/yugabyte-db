@@ -5,7 +5,7 @@ description: View live queries running on your cluster.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  latest:
+  preview:
     identifier: cloud-queries-live
     parent: cloud-monitor
     weight: 200

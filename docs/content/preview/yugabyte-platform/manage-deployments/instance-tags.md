@@ -4,9 +4,9 @@ headerTitle: Create and edit instance tags
 linkTitle: Configure instance tags
 description: Use YugabyteDB Anywhere to create and edit instance tags.
 aliases:
-  - /latest/manage/enterprise-edition/instance-tags/
+  - /preview/manage/enterprise-edition/instance-tags/
 menu:
-  latest:
+  preview:
     identifier: instance-tags
     parent: manage-deployments
     weight: 80
@@ -14,14 +14,12 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The instances created on a cloud provider can be assigned special metadata to help manage, bill, or audit the resources. 
+The instances created on a cloud provider can be assigned special metadata to help manage, bill, or audit the resources.
 
 On Amazon Web Services (AWS), they are referred to as
 [instance tags](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html). In the context of YugabyteDB Anywhere, these tags are known as user tags.
 
 You can define instance tags when you create a new universe, as well as modify or delete tags of an existing universe. These tags are represented by key-value pairs under Instance **Configuration > User Tags** on the **Create Universe** or **Edit Universe** page, as per the following illustration:
-
-
 
 ![Create instance tags](/images/ee/inst-tags-1.png)
 

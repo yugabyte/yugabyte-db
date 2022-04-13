@@ -4,11 +4,11 @@ headerTitle: ALTER TABLE
 linkTitle: ALTER TABLE
 description: Use the `ALTER TABLE` statement to change the definition of a table.
 menu:
-  latest:
+  preview:
     identifier: ddl_alter_table
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/ddl_alter_table/
+  - /preview/api/ysql/commands/ddl_alter_table/
 isTocNested: true
 showAsideToc: true
 ---

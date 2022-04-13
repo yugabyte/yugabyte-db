@@ -4,7 +4,7 @@ linkTitle: string_to_array()
 headerTitle: string_to_array()
 description: string_to_array()
 menu:
-  latest:
+  preview:
     identifier: string-to-array
     parent: array-functions-operators
 isTocNested: true
@@ -12,7 +12,7 @@ showAsideToc: true
 ---
 **Purpose:** Return a one-dimensional `text[]` array by splitting the input `text` value into subvalues using the specified `text` value as the _"delimiter"_. Optionally, allows a specified `text` value to be interpreted as `NULL`.
 
-**Signature:** 
+**Signature:**
 
 ```
 input value:       text, text [, text]
@@ -31,7 +31,7 @@ select string_to_array(
 It produces thus result:
 
 ```
- string_to_array result 
+ string_to_array result
 ------------------------
  {a,b,NULL,c}
 ```
@@ -84,7 +84,7 @@ declare
       delim_text, good_delim_text),
       null_text,  good_null_text);
 
-  null_first_text constant text := 
+  null_first_text constant text :=
     replace(replace(
       input_text,
       null_text,  good_null_text),
@@ -98,7 +98,7 @@ declare
 
   -- Notice that one of the special characters, "!", remains in
   -- both expected_result and unexpected_result.
-  -- If 
+  -- If
   expected_result constant text[] :=
     '{"dog house",NULL,"x! ~"," cat flap"," ",""}';
   unexpected_result constant text[] :=

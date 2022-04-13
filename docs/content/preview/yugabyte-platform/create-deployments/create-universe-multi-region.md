@@ -4,7 +4,7 @@ headerTitle: Create a multi-region universe
 linkTitle: Multi-region universe
 description: Create a YugabyteDB universe that spans multiple geographic regions.
 menu:
-  latest:
+  preview:
     identifier: create-universe-multi-region
     parent: create-deployments
     weight: 30
@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-YugabyteDB Anywhere allows you to create a universe spanning multiple geographic regions. 
+YugabyteDB Anywhere allows you to create a universe spanning multiple geographic regions.
 
 For example, you can deploy a universe across Oregon (US-West) and South Carolina (US-East). Once deployed, you can connect to each node and perform a variety of tasks.
 
@@ -42,7 +42,7 @@ When the universe is created, you can access it via **Universes** or **Dashboard
 
 To see a list of nodes that belong to this universe, select **Nodes**. Notice that the nodes are distributed across geographic regions.
 
-You can also verify that the instances were created in the appropriate regions by clicking on the node name to access the cloud provider's instances page. For GCP, you navigate to **Compute Engine > VM Instances** and search for instances that contain `helloworld2` in their name. 
+You can also verify that the instances were created in the appropriate regions by clicking on the node name to access the cloud provider's instances page. For GCP, you navigate to **Compute Engine > VM Instances** and search for instances that contain `helloworld2` in their name.
 
 ## Run a global application
 
@@ -101,7 +101,7 @@ $ java -jar /home/yugabyte/tserver/java/yb-sample-apps.jar \
             --with_local_dc <REGION>
 ```
 
-You can find the region code of each node by navigating to **Nodes** and looking under the **CLOUD INFO** column: the first part before the slash indicates the region. For example, `us-west1`. 
+You can find the region code of each node by navigating to **Nodes** and looking under the **CLOUD INFO** column: the first part before the slash indicates the region. For example, `us-west1`.
 
 ## Check the performance
 
@@ -110,4 +110,4 @@ The application is expected to have the following characteristics based on its d
 - Global consistency on writes, which would cause higher latencies in order to replicate data across multiple geographic regions.
 - Low latency reads from the nearest data center, which offers timeline consistency (similar to asynchronous replication).
 
-You can verify this by navigating to **Metrics** and checking the overall performance of the application. 
+You can verify this by navigating to **Metrics** and checking the overall performance of the application.

@@ -5,11 +5,11 @@ linkTitle: Python
 description: Build a sample Python application with psycopg2 that use YSQL.
 aliases:
   - /develop/client-drivers/python/
-  - /latest/develop/client-drivers/python/
-  - /latest/develop/build-apps/python/
-  - /latest/quick-start/build-apps/python/
+  - /preview/develop/client-drivers/python/
+  - /preview/develop/build-apps/python/
+  - /preview/quick-start/build-apps/python/
 menu:
-  latest:
+  preview:
     parent: build-apps
     name: Python
     identifier: python-1

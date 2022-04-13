@@ -5,7 +5,7 @@ linkTitle: Interval arithmetic
 description: Explains the semantics of timestamp-interval arithmetic and interval-only arithmetic. [YSQL]
 image: /images/section_icons/api/subsection.png
 menu:
-  latest:
+  preview:
     identifier: interval-arithmetic
     parent: type-interval
     weight: 40
@@ -63,7 +63,7 @@ Empirical tests show the following:
 
 - The `+` operator and the `-` operator are overloaded to allow the addition and subtraction of two _interval_ values. Here, the outcome _can_ be understood in terms of pairwise field-by-field addition or subtraction of the two _[mm, dd, ss]_ tuples.
 
-- The `*` operator and the `/` operator are overloaded to allow multiplication or division of an _interval_ value by a real or integer number. Here, the outcome can be _mainly_ understood in terms of multiplying, or dividing, the _[mm, dd, ss]_ tuple, field-by-field, using the same factor. Notice the caveat _mainly_. In some rare corner cases, the model holds only when the forgiving built-in _interval-interval_ `=` operator is used to compare the outcome of the model with that of the actual functionality. When the [user-defined _strict equality_ _interval-interval_ `==`operator](../interval-utilities#the-user-defined-strict-equals-interval-interval-operator) is used, the tests show that, in these corner cases, the outcome of the model does _not_ agree with that of the actual functionality. 
+- The `*` operator and the `/` operator are overloaded to allow multiplication or division of an _interval_ value by a real or integer number. Here, the outcome can be _mainly_ understood in terms of multiplying, or dividing, the _[mm, dd, ss]_ tuple, field-by-field, using the same factor. Notice the caveat _mainly_. In some rare corner cases, the model holds only when the forgiving built-in _interval-interval_ `=` operator is used to compare the outcome of the model with that of the actual functionality. When the [user-defined _strict equality_ _interval-interval_ `==`operator](../interval-utilities#the-user-defined-strict-equals-interval-interval-operator) is used, the tests show that, in these corner cases, the outcome of the model does _not_ agree with that of the actual functionality.
 
 In all cases of addition/subtraction and multiplication/division, the model assumes that a new intermediate _[mm, dd, ss]_ tuple is produced and that each of the _mm_ or _dd_ fields might well be real numbers. It must be assumed that this intermediate value is then coerced into the required _[integer, integer, real number]_ format using the same algorithm (see the section [Modeling the internal representation and comparing the model with the actual implementation](../interval-representation/internal-representation-model/)) that is used when such a tuple is provided in the _::interval_ typecast approach.
 
@@ -87,7 +87,7 @@ This is the result:
  2 mons 2 days
 ```
 
-This is consistent with the assumed model. And it shows that a practice that the user might adopt to use only _interval_ values that have just a single non-zero internal representation field can easily be thwarted by _interval-interval_ addition or subtraction. 
+This is consistent with the assumed model. And it shows that a practice that the user might adopt to use only _interval_ values that have just a single non-zero internal representation field can easily be thwarted by _interval-interval_ addition or subtraction.
 
 ### The interval-number overloads of the "*" and "/" operators
 
@@ -108,7 +108,7 @@ select
 This is the result:
 
 ```output
-        result 1        |        result 2        
+        result 1        |        result 2
 ------------------------+------------------------
  1 mon 25 days 19:12:00 | 1 mon 25 days 19:12:00
 ```
@@ -126,7 +126,7 @@ select
 This is the result:
 
 ```output
-        result 1        |        result 1        
+        result 1        |        result 1
 ------------------------+------------------------
  1 mon 30 days 03:21:36 | 1 mon 29 days 27:21:36
 ```
@@ -151,7 +151,7 @@ Yugabyte recommends that you avoid performing operations whose results can easil
 
 ## Moment-interval arithmetic
 
-The `-` operator has a set of moment-moment overloads and a set of moment-_interval_ overloads. The `+` operator has a set of -_interval_-moment overloads. The `+` operator has no moment-moment overloads. (This operation would make no sense.) 
+The `-` operator has a set of moment-moment overloads and a set of moment-_interval_ overloads. The `+` operator has a set of -_interval_-moment overloads. The `+` operator has no moment-moment overloads. (This operation would make no sense.)
 
 ### The moment-moment overloads of the "-" operator
 
@@ -228,7 +228,7 @@ update t set
   "t0 + 720 hours" = t0 + '720 hours' ::interval,
   "t0 + 30 days"   = t0 + '30 days'   ::interval,
   "t0 + 1 month"   = t0 + '1 month'   ::interval;
-  
+
 select
   t0,
   "t0 + 720 hours",
@@ -240,7 +240,7 @@ from t;
 This is the result:
 
 ```output
-           t0           |     t0 + 720 hours     |      t0 + 30 days      |      t0 + 1 month      
+           t0           |     t0 + 720 hours     |      t0 + 30 days      |      t0 + 1 month
 ------------------------+------------------------+------------------------+------------------------
  2021-02-19 12:00:00-08 | 2021-03-21 13:00:00-07 | 2021-03-21 12:00:00-07 | 2021-03-19 12:00:00-07
 ```

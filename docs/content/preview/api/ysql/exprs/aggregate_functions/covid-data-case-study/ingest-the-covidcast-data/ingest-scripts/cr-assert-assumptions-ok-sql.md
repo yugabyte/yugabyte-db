@@ -4,7 +4,7 @@ linkTitle: Create assert_assumptions_ok()
 headerTitle: Create the procedure assert_assumptions_ok()
 description: Creates a procedure checks that all of the assumptions made about the data imported from the .csv files holds
 menu:
-  latest:
+  preview:
     identifier: cr-assert-assumptions-ok-sql
     parent: ingest-scripts
     weight: 30
@@ -175,7 +175,7 @@ begin
 
     select count(*) from r$$;
   begin
-    execute replace(replace(replace(chk_code_and_geo_values, 
+    execute replace(replace(replace(chk_code_and_geo_values,
     '?1', names[1].staging_table),
     '?2', names[2].staging_table),
     '?3', names[3].staging_table

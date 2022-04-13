@@ -4,7 +4,7 @@ headerTitle: Back up and restore YugabyteDB Anywhere on Kubernetes
 description: Use a script file to back up and restore YugabyteDB Anywhere on Kubernetes.
 linkTitle: Back up YugabyteDB Anywhere
 menu:
-  latest:
+  preview:
     identifier: back-up-restore-k8s
     parent: administer-yugabyte-platform
     weight: 20
@@ -26,7 +26,6 @@ showAsideToc: true
       Kubernetes
     </a>
   </li>
-
 </ul>
 
 YugabyteDB Anywhere installations include configuration settings, certificates and keys, and other components required for creating and managing YugabyteDB universes.
@@ -39,7 +38,7 @@ You cannot back up and restore Prometheus metrics data.
 
 {{< /note >}}
 
-The YugabyteDB Anywhere UI is used for creating and managing YugabyteDB universes, or clusters, on one or more regions (across public cloud and private on-premises data centers). For details, see [YugabyteDB Anywhere overview](/latest/yugabyte-platform/overview/).
+The YugabyteDB Anywhere UI is used for creating and managing YugabyteDB universes, or clusters, on one or more regions (across public cloud and private on-premises data centers). For details, see [YugabyteDB Anywhere overview](/preview/yugabyte-platform/overview/).
 
 ## Back up a YugabyteDB Anywhere server
 
@@ -65,6 +64,7 @@ You can back up the YugabyteDB Anywhere server as follows:
   ```sh
   ./yb_platform_backup.sh create --output <output_path> --k8s_namespace <k8s_namespace> --k8s_pod <k8s_pod> [--exclude_releases --verbose]
   ```
+
   *backup* is the command to run the backup of the YugabyteDB Anywhere server.<br>
 
   *output_path* specifies the location for the output backup archive.<br>

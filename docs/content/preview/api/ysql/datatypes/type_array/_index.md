@@ -5,11 +5,11 @@ headerTitle: Array data types and functionality
 description: YSQL lets you construct an array data type, of any dimensionality, of any built-in or user-defined data type. You can use this constructed data type for a table column and for a variable or formal parameter in a PL/pgSQL procedure.
 image: /images/section_icons/api/ysql.png
 menu:
-  latest:
+  preview:
     identifier: api-ysql-datatypes-array
     parent: api-ysql-datatypes
 aliases:
-  - /latest/api/ysql/datatypes/type_array
+  - /preview/api/ysql/datatypes/type_array
 isTocNested: true
 showAsideToc: true
 ---

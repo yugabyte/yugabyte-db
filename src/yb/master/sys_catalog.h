@@ -41,6 +41,8 @@
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/metadata.pb.h"
 
+#include "yb/docdb/docdb_fwd.h"
+
 #include "yb/gutil/callback.h"
 
 #include "yb/master/master_fwd.h"
@@ -190,6 +192,8 @@ class SysCatalogTable {
 
   const Schema& schema();
 
+  const docdb::DocReadContext& doc_read_context();
+
   const scoped_refptr<MetricEntity>& GetMetricEntity() const { return metric_entity_; }
 
   CHECKED_STATUS FetchDdlLog(google::protobuf::RepeatedPtrField<DdlLogEntryPB>* entries);
@@ -243,7 +247,7 @@ class SysCatalogTable {
   void InitLocalRaftPeerPB();
 
   // Table schema, with IDs, used for the YQL write path.
-  std::unique_ptr<Schema> schema_;
+  std::unique_ptr<docdb::DocReadContext> doc_read_context_;
 
   MetricRegistry* metric_registry_;
 

@@ -70,8 +70,6 @@ enum TabletDataState {
   // bootstrap source for some time (follower_unavailable_considered_failed_sec) and then will be
   // shutdown.
   // TODO(tsplit): After https://github.com/yugabyte/yugabyte-db/issues/1461:
-  // - implement deleting tablet in state TABLET_DATA_SPLIT_COMPLETED after
-  //   follower_unavailable_considered_failed_sec.
   // - add integration test for remote bootstrap from source split tablet before/after
   // follower_unavailable_considered_failed_sec.
   TABLET_DATA_SPLIT_COMPLETED = 4;

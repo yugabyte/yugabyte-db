@@ -4,12 +4,12 @@ headerTitle: Best practices
 linkTitle: Best practices
 description: Learn best practices for developing YCQL applications.
 menu:
-  latest:
+  preview:
     identifier: best-practices-ycql
     parent: develop
     weight: 582
 aliases:
-  - /latest/develop/best-practices/
+  - /preview/develop/best-practices/
 isTocNested: true
 showAsideToc: true
 ---

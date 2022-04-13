@@ -6,7 +6,7 @@ description: Enable Authentication.
 headcontent: Enable authentication to have clients provide valid credentials before they can connect to a YugabyteDB cluster.
 image: /images/section_icons/secure/authentication.png
 menu:
-  latest:
+  preview:
     name: Enable Authentication
     identifier: enable-authentication
     parent: secure

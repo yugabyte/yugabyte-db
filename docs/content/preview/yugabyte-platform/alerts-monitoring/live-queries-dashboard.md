@@ -3,7 +3,7 @@ headerTitle: Live Queries dashboard
 linkTitle: Live Queries dashboard
 description: Live Queries dashboard
 menu:
-  latest:
+  preview:
     parent: alerts-monitoring
     identifier: live-queries-dashboard
     weight: 10
@@ -11,11 +11,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Use the Live Queries dashboard to monitor and display current running queries on your YugabyteDB universes. You can use this data for the following:
+Use the Live Queries dashboard to monitor and display current running queries on your YugabyteDB universes. You can use this data to:
 
-- Visually identifying relevant database operations.
-- Evaluating query execution times.
-- Discovering potential queries for performance optimization.
+- Visually identify relevant database operations
+- Evaluate query execution times
+- Discover potential queries for performance optimization
 
 All user roles — `Super Admin`, `Admin`, and `Read-only` — are granted access to use the Live Queries dashboard.
 

@@ -4,7 +4,7 @@ headerTitle: Create a multi-zone universe with Kubernetes
 linkTitle: Multi-zone universe
 description: Use YugabyteDB Anywhere and Kubernetes to create a YugabyteDB universe that spans multiple availability zones.
 menu:
-  latest:
+  preview:
     identifier: create-multi-zone-universe-kubernetes
     parent: create-deployments
     weight: 20
@@ -32,7 +32,7 @@ This section describes how to create a YugabyteDB universe in one geographic reg
 
 ## Prerequisites
 
-Before you start creating a universe, ensure that you performed steps described in [Configure the Kubernetes cloud provider](/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes/). The following illustration shows the **Managed Kubernetes Service configs** page that you should be able to see if you use YugabyteDB Anywhere to navigate to **Configs > Cloud Provider Configuration > Infrastructure > Managed Kubernetes Service**:
+Before you start creating a universe, ensure that you performed steps described in [Configure the Kubernetes cloud provider](/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes/). The following illustration shows the **Managed Kubernetes Service configs** page that you should be able to see if you use YugabyteDB Anywhere to navigate to **Configs > Cloud Provider Configuration > Infrastructure > Managed Kubernetes Service**:
 
 ![img](/images/yb-platform/kubernetes-config1.png)
 
@@ -64,7 +64,7 @@ Complete the rest of the **Cloud Configuration** section as follows:
 
 Complete the **Instance Configuration** section as follows:
 
-- Use the **Instance Type** field to select the CPU and memory combination, as per needs to allocate the YB-TServer pods. The default is Small (4 Cores & 7.5GB RAM). You can override this setting when you configure the Kubernetes cloud provider (see [Configuring the region and zones](/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes/#configure-the-region-and-zones)).
+- Use the **Instance Type** field to select the CPU and memory combination, as per needs to allocate the YB-TServer pods. The default is Small (4 Cores & 7.5GB RAM). You can override this setting when you configure the Kubernetes cloud provider (see [Configuring the region and zones](/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes/#configure-the-region-and-zones)).
 
 - In the **Volume Info** field, specify the number of volumes multiplied by size. The default is 1*100GB.
 
@@ -92,9 +92,9 @@ Complete the **Advanced** section as follows:
 
 Complete the **G-Flags** section as follows:
 
-- Use the **Master** fields to specify YugabyteDB Masters parameters, one parameter per field (see [YB Master Configuration Flags](/latest/reference/configuration/yb-master/#configuration-flags) for details).
+- Use the **Master** fields to specify YugabyteDB Masters parameters, one parameter per field (see [YB Master Configuration Flags](/preview/reference/configuration/yb-master/#configuration-flags) for details).
 
-- Use the **T-Server** fields to specify the YugabyteDB T-Servers parameters, one parameter per field (see [YB T-Server Configuration Flags](/latest/reference/configuration/yb-tserver/#configuration-flags) for details).
+- Use the **T-Server** fields to specify the YugabyteDB T-Servers parameters, one parameter per field (see [YB T-Server Configuration Flags](/preview/reference/configuration/yb-tserver/#configuration-flags) for details).
 
   ![img](/images/yb-platform/kubernetes-config8.png)
 
@@ -138,4 +138,4 @@ You can create a connection to a pod as follows:
 
 ## Connect to the universe
 
-For information on how to connect to the universe from the Kubernetes cluster as well as remotely, see [Connecting YugabyteDB Clusters](/latest/deploy/kubernetes/clients/#connecting-tls-secured-yugabytedb-cluster-deployed-by-helm-charts).
+For information on how to connect to the universe from the Kubernetes cluster as well as remotely, see [Connecting YugabyteDB Clusters](/preview/deploy/kubernetes/clients/#connecting-tls-secured-yugabytedb-cluster-deployed-by-helm-charts).

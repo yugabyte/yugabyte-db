@@ -7,7 +7,7 @@ headcontent: Secure your deployment of YugabyteDB.
 image: /images/section_icons/index/secure.png
 section: YUGABYTEDB CORE
 menu:
-  latest:
+  preview:
     identifier: secure
     weight: 700
 ---

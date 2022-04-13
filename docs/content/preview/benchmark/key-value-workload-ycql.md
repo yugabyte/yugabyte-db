@@ -6,10 +6,10 @@ description: Benchmark YCQL performance with key-value workloads.
 image: /images/section_icons/explore/high_performance.png
 headcontent: Test YugabyteDB performance with a key-value workload.
 aliases:
-  - /latest/benchmark/performance/
-  - /latest/benchmark/key-value-workload
+  - /preview/benchmark/performance/
+  - /preview/benchmark/key-value-workload
 menu:
-  latest:
+  preview:
     identifier: key-value-workload-1-ycql
     parent: benchmark
     weight: 6
@@ -63,7 +63,7 @@ For this benchmark, you will set up a three-node YugabyteDB cluster with a repli
 
 ### Benchmark tool
 
-We will use the [YugabyteDB Workload Generator](https://github.com/yugabyte/yb-sample-apps) to perform this benchmark. 
+We will use the [YugabyteDB Workload Generator](https://github.com/yugabyte/yb-sample-apps) to perform this benchmark.
 
 To get the tool (``yb-sample-apps.jar`), run the following command.
 
@@ -76,13 +76,13 @@ To run the workload generator tool, you must have:
 - Java runtime or JDK installed.
 - Set the environment variable  $ENDPOINTS to the IP addresses (including hosts and ports) for the nodes of the cluster.
 
-```
+```output
 ENDPOINTS="X.X.X.X:9042,X.X.X.X:9042,X.X.X.X:9042"
 ```
 
 ## Run the write-heavy key-value workload
 
-Run the key-value workload with higher number of write threads (representing write-heavy workload).  
+Run the key-value workload with higher number of write threads (representing write-heavy workload).
 
 Load 1B keys of 256 bytes each across 256 writer threads
 
@@ -124,15 +124,15 @@ $ java -jar ./yb-sample-apps.jar  \
 
 ### Expected results
 
-Name    | Observation
---------|------
-(Read) Ops/sec | ~150k
-(Read) Latency | ~1.66 ms/op
-CPU (User + Sys) | 60%
+| Name | Observation |
+| :--- | :---------- |
+| (Read) Ops/sec | ~150k |
+| (Read) Latency | ~1.66 ms/op |
+| CPU (User + Sys) | 60% |
 
 ## Batch write-heavy KV workload
 
-Run the key-value workload in batch mode and higher number of write threads (representing batched, write-heavy workload).  
+Run the key-value workload in batch mode and higher number of write threads (representing batched, write-heavy workload).
 
 Load 1B keys of 256 bytes each across 64 writer threads in batches of 25 each.
 
@@ -150,8 +150,8 @@ $ java -jar ./yb-sample-apps.jar      \
 
 ### Expected results
 
-Name    | Observation
---------|------
-(Batch Write) Ops/sec | ~140k
-(Batch Write) Latency | ~9.0 ms/op
-CPU (User + Sys) | 80%
+| Name | Observation |
+| :--- | :---------- |
+| (Batch Write) Ops/sec | ~140k |
+| (Batch Write) Latency | ~9.0 ms/op |
+| CPU (User + Sys) | 80% |

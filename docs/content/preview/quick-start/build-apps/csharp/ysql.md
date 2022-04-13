@@ -5,7 +5,7 @@ linkTitle: C#
 description: Use C# to build a YugabyteDB application that uses YSQL
 aliases:
 menu:
-  latest:
+  preview:
     identifier: build-apps-csharp-1-ysql
     parent: build-apps
     weight: 554

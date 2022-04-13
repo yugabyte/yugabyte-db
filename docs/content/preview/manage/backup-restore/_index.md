@@ -8,7 +8,7 @@ headcontent: Create backups and restore your data.
 aliases:
   - /manage/backup-restore/
 menu:
-  latest:
+  preview:
     identifier: backup-restore
     parent: manage
     weight: 702

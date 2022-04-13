@@ -5,7 +5,7 @@ description: Use distributed CQL to explore core features of YugabyteDB.
 headcontent:
 image: /images/section_icons/quick_start/explore_ycql.png
 menu:
-  latest:
+  preview:
     parent: cloud-develop
     name: Create a database
     identifier: create-databases-2-ycql

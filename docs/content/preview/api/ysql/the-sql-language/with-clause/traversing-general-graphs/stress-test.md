@@ -4,7 +4,7 @@ headerTitle: Stress testing different find_paths() implementations on maximally 
 linkTitle: Stress testing find_paths()
 description: This section stress-tests different find_paths() implementations on maximally connected graphs to show the critical importance of early pruning.
 menu:
-  latest:
+  preview:
     identifier: stress-test
     parent: traversing-general-graphs
     weight: 80
@@ -75,38 +75,38 @@ select node_1, node_2 from edges order by node_1, node_2;
 This is the result:
 
 ```plpgsql
- node_1 | node_2 
+ node_1 | node_2
 --------+--------
  n001   | n002
  n001   | n003
  n001   | n004
  n001   | n005
  n001   | n006
- 
+
  n002   | n001
  n002   | n003
  n002   | n004
  n002   | n005
  n002   | n006
- 
+
  n003   | n001
  n003   | n002
  n003   | n004
  n003   | n005
  n003   | n006
- 
+
  n004   | n001
  n004   | n002
  n004   | n003
  n004   | n005
  n004   | n006
- 
+
  n005   | n001
  n005   | n002
  n005   | n003
  n005   | n004
  n005   | n006
- 
+
  n006   | n001
  n006   | n002
  n006   | n003
@@ -148,7 +148,7 @@ Repeat number    Number of paths Found
             3            5*4*3*2 = 120  -- 3rd recursive term
             4          5*4*3*2*1 = 120  -- 4th recursive term
                                    ---
-Final total number of paths:       325            
+Final total number of paths:       325
 ```
 
 You can see this in action by re-creating the _"find_paths()"_ implementation shown in [`cr-find-paths-with-pruning.sql`](../undirected-cyclic-graph/#cr-find-paths-with-pruning-sql) and invoking it like this:
@@ -169,7 +169,7 @@ order by 1;
 This is the result:
 
 ```
- repeat_nr |  n  
+ repeat_nr |  n
 -----------+-----
          0 |   5
          1 |  20
@@ -208,7 +208,7 @@ begin
 
       t := case total < 10000000
              when true then
-                lpad(to_char(j, '9999'), 12)||lpad(to_char(total, '9,999,999'), 15) 
+                lpad(to_char(j, '9999'), 12)||lpad(to_char(total, '9,999,999'), 15)
              else
                 lpad(to_char(j, '9999'), 12)||lpad(to_char(total, '9.9EEEE'), 15)
            end;
@@ -381,7 +381,7 @@ This will produce the `7-nodes--prune-false.txt` spool file. It will look like t
 
 Of course, the reported elapsed time that you see will doubtless differ from _"40 ms"_.
 
-### Implement scripts to execute the stress-test kernel for each method for each of the numbers of nodes in the range of interest. 
+### Implement scripts to execute the stress-test kernel for each method for each of the numbers of nodes in the range of interest.
 
 First, implement a script to invoke each of the three methods for a particular, pre-set, value of `:nr_nodes`. Get a clean slate for the "paths" tables before each timing test by dropping and re-creating each of them.
 
@@ -478,4 +478,4 @@ The introduction to the section [Using a recursive CTE to compute Bacon Numbers 
 
 - [imdb.small.txt](http://cs.oberlin.edu/~gr151/imdb/imdb.small.txt): a... file with just a handful of performers (161), fully connected
 
-It seems very likely that a fully connected undirected cyclic graph with 161 nodes, even if it isn't _maximally_ connected will be highly connected—very many of the nodes will have edges to very many of the other nodes. It's therefore likely that the implementation of the computation of Bacon Numbers will have to use the _"prune-true"_ approach. 
+It seems very likely that a fully connected undirected cyclic graph with 161 nodes, even if it isn't _maximally_ connected will be highly connected—very many of the nodes will have edges to very many of the other nodes. It's therefore likely that the implementation of the computation of Bacon Numbers will have to use the _"prune-true"_ approach.

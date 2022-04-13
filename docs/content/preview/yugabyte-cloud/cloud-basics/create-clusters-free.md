@@ -5,7 +5,7 @@ description: Create free clusters in Yugabyte Cloud.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  latest:
+  preview:
     identifier: create-clusters-free
     parent: cloud-basics
     weight: 40
@@ -20,11 +20,11 @@ Use a free cluster to get started with YugabyteDB. Although not suitable for pro
 Your free cluster includes the following:
 
 - Single node.
-- Up to 2 vCPUs and 10 GB of storage, depending on the cloud provider.
+- Up to 2 vCPUs, 4 GB RAM, and 10 GB of storage, depending on the cloud provider.
 - An [edge release](../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) of YugabyteDB, which provides early access to new features.
 - Available in all [regions](../../release-notes#cloud-provider-regions).
 
-Share your feedback, questions, and suggestions with other users on the [YugabyteDB Community Slack](https://www.yugabyte.com/slack).
+Share your feedback, questions, and suggestions with other users on the [YugabyteDB Community Slack]({{<slack-invite>}}).
 
 ## Creating a free cluster
 
@@ -106,6 +106,11 @@ To keep your cluster from being paused, you (or, where applicable, an applicatio
 - No backups.
 - You can't change the maintenance window schedule, set exclusion periods, or delay cluster maintenance for free clusters.
 - You can't pause free clusters.
+- Free clusters have the following resource limitations:
+  - Up to 10 simultaneous connections; more than that will result in increased latencies and dropped connections.
+  - Maximum 500 tables and 12.5 million rows.
+
+YugabyteDB is a distributed database optimized for deployment across multiple nodes. Because free clusters are single node, they are not suitable for proof-of-concept (POC) or performance testing. To evaluate Yugabyte Cloud for production use or conduct a POC, contact {{<support-cloud>}}.
 
 ## Next steps
 

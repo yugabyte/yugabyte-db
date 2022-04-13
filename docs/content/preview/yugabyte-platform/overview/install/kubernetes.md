@@ -6,7 +6,7 @@ description: Installing YugabyteDB Anywhere on Kubernetes
 image: /images/section_icons/deploy/enterprise.png
 headcontent: Installing YugabyteDB Anywhere on Kubernetes
 menu:
-  latest:
+  preview:
     identifier: install-2-k8s
     parent: overview-yp
     weight: 20
@@ -46,9 +46,9 @@ Click elements of the following chart to access detailed steps:
 <img src="/images/ee/flowchart/yb-install-k8s.png" usemap="#image-map">
 
 <map name="image-map">
-    <area target="_blank" alt="Install platform" title="Install platform" href="/latest/yugabyte-platform/install-yugabyte-platform/" coords="523,209,379,53" shape="rect">
-    <area target="_blank" alt="K8s pre-reqs" title="K8s pre-reqs" href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/kubernetes/" coords="323,257,576,496" shape="rect">
-    <area target="_blank" alt="Install K8s" title="Install K8s" href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/kubernetes/#install-yugabyte-platform-on-a-kubernetes-cluster" coords="346,1032,551,1166" shape="rect">
+    <area target="_blank" alt="Install platform" title="Install platform" href="/preview/yugabyte-platform/install-yugabyte-platform/" coords="523,209,379,53" shape="rect">
+    <area target="_blank" alt="K8s pre-reqs" title="K8s pre-reqs" href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/kubernetes/" coords="323,257,576,496" shape="rect">
+    <area target="_blank" alt="Install K8s" title="Install K8s" href="/preview/yugabyte-platform/install-yugabyte-platform/install-software/kubernetes/#install-yugabyte-platform-on-a-kubernetes-cluster" coords="346,1032,551,1166" shape="rect">
 </map>
 
 

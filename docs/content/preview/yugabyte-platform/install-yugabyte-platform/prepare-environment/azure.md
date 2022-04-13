@@ -4,7 +4,7 @@ headerTitle: Prepare the Azure cloud environment
 linkTitle: Prepare the environment
 description: Prepare the Azure environment for YugabyteDB Anywhere.
 menu:
-  latest:
+  preview:
     identifier: prepare-environment-3-azure
     parent: install-yugabyte-platform
     weight: 55
@@ -96,7 +96,7 @@ To create a security group that enables these artifacts, navigate to **Network S
 
 ## Create a service principal
 
-For the YugabyteDB Anywhere to manage YugabyteDB nodes, it requires limited access to your Azure infrastructure. This can be accomplished by [registering an application](https://docs.microsoft.com/en-us/azure/active-directory/develop/quickstart-register-app) in the Azure portal so the Microsoft identity platform can provide authentication and authorization services for your application. Registering your application establishes a trust relationship between your application and the Microsoft identity platform.
+For YugabyteDB Anywhere to manage YugabyteDB nodes, it requires limited access to your Azure infrastructure. This can be accomplished by [registering an application](https://docs.microsoft.com/en-us/azure/active-directory/develop/quickstart-register-app) in the Azure portal so the Microsoft identity platform can provide authentication and authorization services for your application. Registering your application establishes a trust relationship between your application and the Microsoft identity platform.
 
 Follow these steps to create the application registration:
 
@@ -134,7 +134,7 @@ Proceed by performing the following:
 
 * Select your application created in the previous step.
 
-* Click Save. 
+* Click Save.
 
   You should be able to see your application in the list of users with a role for that scope.
 

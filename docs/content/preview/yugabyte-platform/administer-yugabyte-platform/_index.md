@@ -8,9 +8,9 @@ headcontent: Administer YugabyteDB Anywhere
 type: page
 section: YUGABYTEDB ANYWHERE
 aliases:
-  - /latest/yugabyte-platform/administer-yp
+  - /preview/yugabyte-platform/administer-yp
 menu:
-  latest:
+  preview:
     identifier: administer-yugabyte-platform
     weight: 649
 ---

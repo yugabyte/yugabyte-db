@@ -6,7 +6,7 @@ description: Review security measures for your YugabyteDB installation.
 aliases:
   - /secure/security-checklist/
 menu:
-  latest:
+  preview:
     identifier: security-checklist
     parent: secure
     weight: 710

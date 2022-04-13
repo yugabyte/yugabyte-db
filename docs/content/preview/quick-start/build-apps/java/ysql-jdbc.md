@@ -4,7 +4,7 @@ headerTitle: Build a Java application
 linkTitle: Java
 description: Build a sample Java application with the PostgreSQL JDBC Driver and use the YSQL API to connect to and interact with YugabyteDB.
 menu:
-  latest:
+  preview:
     parent: build-apps
     name: Java
     identifier: java-6
@@ -31,6 +31,18 @@ showAsideToc: true
     <a href="../ysql-jdbc-ssl/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - JDBC SSL/TLS
+    </a>
+  </li>
+  <li >
+    <a href="../ysql-hibernate/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - Hibernate
+    </a>
+  </li>
+  <li >
+    <a href="../ysql-sdyb/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - Spring Data YugabyteDB
     </a>
   </li>
   <li >

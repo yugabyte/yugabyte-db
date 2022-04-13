@@ -4,9 +4,9 @@ headerTitle: Eliminate an unresponsive node
 linkTitle: Eliminate an unresponsive node
 description: Use YugabyteDB Anywhere to eliminate an unresponsive node.
 aliases:
-  - /latest/manage/enterprise-edition/create-universe-multi-region
+  - /preview/manage/enterprise-edition/create-universe-multi-region
 menu:
-  latest:
+  preview:
     identifier: remove-nodes
     parent: manage-deployments
     weight: 20

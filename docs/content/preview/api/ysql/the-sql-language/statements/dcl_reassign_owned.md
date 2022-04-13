@@ -4,11 +4,11 @@ headerTitle: REASSIGN OWNED
 linkTitle: REASSIGN OWNED
 description: Use the REASSIGN OWNED statement to change the ownership of database objects owned by any of the "old_roles" to "new_role".
 menu:
-  latest:
+  preview:
     identifier: dcl_reassign_owned
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/dcl_reassign_owned/
+  - /preview/api/ysql/commands/dcl_reassign_owned/
 isTocNested: true
 showAsideToc: true
 ---

@@ -4,12 +4,12 @@ linkTitle: GIN indexes
 description: Generalized inverted indexes in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
-  latest:
+  preview:
     identifier: indexes-constraints-gin
     parent: explore-indexes-constraints
     weight: 260
 aliases:
-   - /latest/explore/ysql-language-features/gin/
+   - /preview/explore/ysql-language-features/gin/
 isTocNested: true
 showAsideToc: true
 ---

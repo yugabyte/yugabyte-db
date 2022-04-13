@@ -4,7 +4,7 @@ linkTitle: array of DOMAINs
 headerTitle: Using an array of DOMAIN values
 description: Using an array of DOMAIN values
 menu:
-  latest:
+  preview:
     identifier: array-of-domains
     parent: api-ysql-datatypes-array
     weight: 40
@@ -54,7 +54,7 @@ begin
   ...
   v := array_fill(42, '{2, 2, 2}');
 ```
-See [`array_fill()`](../functions-operators/array-fill/). 
+See [`array_fill()`](../functions-operators/array-fill/).
 
 The property of the declaration of an array variable that it cannot fix the dimensionality of a value that is subsequently assigned to the variable was pointed out in [Array data types and functionality](../../type_array/). A column in a table with an array data type shares this property so that the column  can hold arrays of different dimensionality in different rows. This goes hand-in-hand with the fact that the following declarations of _"v1"_ and "_v2"_, though apparently different, define identical semantics.
 
@@ -112,7 +112,7 @@ select typecast from t where k = 1;
 This is the result:
 
 ```
-      typecast       
+      typecast
 ---------------------
  {"{1,2}","{3,4,5}"}
 ```
@@ -133,7 +133,7 @@ select (v1 = v2)::text as "v1 = v2" from t where k = 1;
 This is the result:
 
 ```
- v1 = v2 
+ v1 = v2
 ---------
  true
 ```
@@ -148,13 +148,13 @@ with v as (
   select  '{{1,2},{3,4}}'::int[] as two_d_arr)
 select
   two_d_arr[2][1] as "[2][1] -- meaningful",
-  two_d_arr[2]    as    "[2] -- meaningless"     
+  two_d_arr[2]    as    "[2] -- meaningless"
 from v;
 ```
 This is the result:
 
 ```
- [2][1] -- meaningful | [2] -- meaningless 
+ [2][1] -- meaningful | [2] -- meaningless
 ----------------------+--------------------
                     3 |          <IS NULL>
 ```
@@ -174,7 +174,7 @@ select v1[2][1] as "v1[2][1]" from t where k = 1;
 ```
 Sure enough, it shows this:
 ```
- v1[2][1]  
+ v1[2][1]
 -----------
  <IS NULL>
 ```
@@ -184,7 +184,7 @@ select v1[2] as "v1[2]" from t where k = 1;
 ```
 This is the result:
 ```
-  v1[2]  
+  v1[2]
 ---------
  {3,4,5}
 ```
@@ -194,7 +194,7 @@ select (v1[2])[1] as "(v1[2])[1]" from t where k = 1;
 ```
 This is the result:
 ```
- (v1[2])[1] 
+ (v1[2])[1]
 ------------
           3
 ```
@@ -209,7 +209,7 @@ from t where k = 1;
 ```
 This is the result:
 ```
- v1_lb | v1_ub | v2_lb | v2_ub 
+ v1_lb | v1_ub | v2_lb | v2_ub
 -------+-------+-------+-------
      1 |     2 |     1 |     3
 ```
@@ -344,7 +344,7 @@ select v from t order by k;
 It shows the raggedness thus:
 
 ```
-     v     
+     v
 -----------
  {2,6}
  {1,4,5,6}
@@ -399,7 +399,7 @@ select array_agg_v();
 This is the result:
 
 ```
-                       array_agg_v                       
+                       array_agg_v
 ---------------------------------------------------------
  {"{2,6}","{1,4,5,6}","{4,5}","{2,3}","{4,5}","{3,5,7}"}
 ```
@@ -566,7 +566,7 @@ where k = 1;
 
 with a as (
   select k, t1.v as v1, t2.v as v2
-  from 
+  from
   block_matrices_1 as t1
   inner join
   block_matrices_2 as t2
@@ -578,7 +578,7 @@ where k = 1;
 ```
 This is the result:
 ```
- v1 = v2 
+ v1 = v2
 ---------
  true
 ```
@@ -603,7 +603,7 @@ The term _"row-major order"_ is explained in [Joint semantics](../functions-oper
 This is the result:
 
 ```
- r |                 m                  
+ r |                 m
 ---+------------------------------------
  1 | {{01,02,03},{04,05,06},{07,08,09}}
  2 | {{10,11,12},{13,14,15},{16,17,18}}
@@ -619,7 +619,7 @@ order by val;
 ```
 This is the result:
 ```
- val 
+ val
 -----
  19
  20
@@ -645,7 +645,7 @@ order by 1;
 ```
 This is the result:
 ```
- r  | val 
+ r  | val
 ----+-----
   1 | 01
   2 | 02

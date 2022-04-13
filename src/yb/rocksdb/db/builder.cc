@@ -55,14 +55,15 @@ namespace rocksdb {
 
 class TableFactory;
 
-TableBuilder* NewTableBuilder(const ImmutableCFOptions& ioptions,
-                              const InternalKeyComparatorPtr& internal_comparator,
-                              const IntTblPropCollectorFactories& int_tbl_prop_collector_factories,
-                              uint32_t column_family_id,
-                              WritableFileWriter* file,
-                              const CompressionType compression_type,
-                              const CompressionOptions& compression_opts,
-                              const bool skip_filters) {
+std::unique_ptr<TableBuilder> NewTableBuilder(
+    const ImmutableCFOptions& ioptions,
+    const InternalKeyComparatorPtr& internal_comparator,
+    const IntTblPropCollectorFactories& int_tbl_prop_collector_factories,
+    uint32_t column_family_id,
+    WritableFileWriter* file,
+    const CompressionType compression_type,
+    const CompressionOptions& compression_opts,
+    const bool skip_filters) {
   return ioptions.table_factory->NewTableBuilder(
       TableBuilderOptions(ioptions, internal_comparator,
                           int_tbl_prop_collector_factories, compression_type,
@@ -70,15 +71,16 @@ TableBuilder* NewTableBuilder(const ImmutableCFOptions& ioptions,
       column_family_id, file);
 }
 
-TableBuilder* NewTableBuilder(const ImmutableCFOptions& ioptions,
-                              const InternalKeyComparatorPtr& internal_comparator,
-                              const IntTblPropCollectorFactories& int_tbl_prop_collector_factories,
-                              uint32_t column_family_id,
-                              WritableFileWriter* metadata_file,
-                              WritableFileWriter* data_file,
-                              const CompressionType compression_type,
-                              const CompressionOptions& compression_opts,
-                              const bool skip_filters) {
+std::unique_ptr<TableBuilder> NewTableBuilder(
+    const ImmutableCFOptions& ioptions,
+    const InternalKeyComparatorPtr& internal_comparator,
+    const IntTblPropCollectorFactories& int_tbl_prop_collector_factories,
+    uint32_t column_family_id,
+    WritableFileWriter* metadata_file,
+    WritableFileWriter* data_file,
+    const CompressionType compression_type,
+    const CompressionOptions& compression_opts,
+    const bool skip_filters) {
   return ioptions.table_factory->NewTableBuilder(
       TableBuilderOptions(ioptions, internal_comparator,
           int_tbl_prop_collector_factories, compression_type,

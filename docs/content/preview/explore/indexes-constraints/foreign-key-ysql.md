@@ -4,15 +4,15 @@ linkTitle: Foreign keys
 description: Defining Foreign key constraint in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
-  latest:
+  preview:
     identifier: foreign-key-ysql
     parent: explore-indexes-constraints
     weight: 210
 isTocNested: true
 showAsideToc: true
 aliases:
-   - /latest/explore/ysql-language-features/constraints/
-   - /latest/explore/indexes-constraints/constraints/
+   - /preview/explore/ysql-language-features/constraints/
+   - /preview/explore/indexes-constraints/constraints/
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -55,9 +55,9 @@ Defining the `CONSTRAINT` clause and naming the foreign key is optional. If you 
 
 ## Examples
 
-- To run the examples below, follow these steps to create a local [cluster](/latest/quick-start/) or in [Yugabyte Cloud](/latest/yugabyte-cloud/cloud-connect/).
+- To run the examples below, follow these steps to create a local [cluster](/preview/quick-start/) or in [Yugabyte Cloud](/preview/yugabyte-cloud/cloud-connect/).
 
-- Use the [YSQL shell](/latest/admin/ysqlsh/) for local clusters, or [Connect using Cloud shell](/latest/yugabyte-cloud/cloud-connect/connect-cloud-shell/) for Yugabyte Cloud, to create a database.
+- Use the [YSQL shell](/preview/admin/ysqlsh/) for local clusters, or [Connect using Cloud shell](/preview/yugabyte-cloud/cloud-connect/connect-cloud-shell/) for Yugabyte Cloud, to create a database.
 
 The following example creates two tables:
 

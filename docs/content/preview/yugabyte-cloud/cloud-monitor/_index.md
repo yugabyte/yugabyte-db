@@ -7,7 +7,7 @@ image: /images/section_icons/explore/monitoring.png
 headcontent: Set alerts and monitor cluster performance and activity.
 section: YUGABYTE CLOUD
 menu:
-  latest:
+  preview:
     identifier: cloud-monitor
     weight: 100
 ---

@@ -6,7 +6,7 @@ description: Compare PostgreSQL with YugabyteDB.
 aliases:
   - /comparisons/postgresql/
 menu:
-  latest:
+  preview:
     parent: comparisons
     weight: 1128
 isTocNested: false

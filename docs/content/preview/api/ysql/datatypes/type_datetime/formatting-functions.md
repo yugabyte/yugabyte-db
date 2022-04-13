@@ -5,7 +5,7 @@ linkTitle: Formatting functions
 description: Describes the date and time formatting functions. [YSQL]
 image: /images/section_icons/api/subsection.png
 menu:
-  latest:
+  preview:
     identifier: date-time-formatting-functions
     parent: api-ysql-datatypes-datetime
     weight: 100
@@ -28,7 +28,7 @@ select
 This is the result:
 
 ```output
-  timestamp to text   |    text to timestamptz    | text to date 
+  timestamp to text   |    text to timestamptz    | text to date
 ----------------------+---------------------------+--------------
  15:00 on 17-May-2021 | 2021-05-17 15:00:00+05:45 | 2021-05-17
 ```
@@ -159,7 +159,7 @@ from c;
 This is the result:
 
 ```output
- implicit cast to timestamptz | explicit cast to timestamptz | explicit cast to plain timestamp 
+ implicit cast to timestamptz | explicit cast to timestamptz | explicit cast to plain timestamp
 ------------------------------+------------------------------+----------------------------------
  15-Jun-2021                  | 15-Jun-2021                  | 15-Jun-2021
 ```
@@ -180,7 +180,7 @@ from c;
 This is the result:
 
 ```output
- implicit cast to interval | explicit cast to interval 
+ implicit cast to interval | explicit cast to interval
 ---------------------------+---------------------------
  03-00-00 PM               | 03-00-00 PM
 ```
@@ -250,7 +250,7 @@ from c;
 This is the result:
 
 ```output
-          pg_typeof          |          t          
+          pg_typeof          |          t
 -----------------------------+---------------------
  timestamp without time zone | 2021-05-17 15:00:00
 ```
@@ -272,7 +272,7 @@ The _FM_ modifier is explained in the subsection [Date-time template pattern mod
 This is the result:
 
 ```output
-                  d1                  |                     d2                     
+                  d1                  |                     d2
 --------------------------------------+--------------------------------------------
  The date is:Tuesday, 15, June, 2,021 | The date is:Saturday, 18, September, 2,021
 ```
@@ -299,7 +299,7 @@ select
 This is the result:
 
 ```output
-     d1     |     d2     
+     d1     |     d2
 ------------+------------
  2021-06-15 | 2021-09-18
 ```
@@ -357,11 +357,11 @@ This is the result:
 ```output
  »   1234567890abTuesday   ,   15   ,   June   ,   2,021   «...... OK
  »   1           Tuesday   ,   15   ,   June   ,   2,021   «...... OK
- 
+
  Too long.
  »   1234567890abcTuesday   ,   15   ,   June   ,   2,021   «..... failed
  »   1           cTuesday   ,   15   ,   June   ,   2,021   «..... failed
- 
+
  Too short.
  »   1234567890aTuesday   ,   15   ,   June   ,   2,021   «....... failed
  »   1          Tuesday   ,   15   ,   June   ,   2,021   «....... failed
@@ -384,11 +384,11 @@ This is the new result:
 ```outout
  »   1234567890ab Tuesday   ,   15   ,   June   ,   2,021   «..... OK
  »   1            Tuesday   ,   15   ,   June   ,   2,021   «..... OK
- 
+
  Too long.
  »   1234567890abc Tuesday   ,   15   ,   June   ,   2,021   «.... failed
  »   1           c Tuesday   ,   15   ,   June   ,   2,021   «.... failed
- 
+
  Too short.
  »   1234567890a Tuesday   ,   15   ,   June   ,   2,021   «...... OK
  »   1           Tuesday   ,   15   ,   June   ,   2,021   «...... OK
@@ -430,7 +430,7 @@ Notice that the difference between the first two expressions (that produce the v
 ```outout
 a1 | 2022-06-15 BC
 a2 | 2022-06-15 BC
--  | 
+-  |
 b1 | 2021-06-15
 b2 | 2021-06-15 BC
 ```
@@ -684,7 +684,7 @@ from c;
 This is the result:
 
 ```output
-              plain                   |            using FM             
+              plain                   |            using FM
 -------------------------------------------+---------------------------------
 05th month (May      ), 03rd day, 0020 BC | 5th month (May), 3rd day, 20 BC
 ```
@@ -770,7 +770,7 @@ from c;
 This is the result:
 
 ```output
- t1 using YYYY | t2 using YYYY | t1 using YYY | t2 using YYY 
+ t1 using YYYY | t2 using YYYY | t1 using YYY | t2 using YYY
 ---------------+---------------+--------------+--------------
  0100-06-15    | 0999-06-15    | 2100-06-15   | 1999-06-15
 ```
@@ -791,7 +791,7 @@ select
 This is the result:
 
 ```output
-  1st try   |  2nd try   | workaround 
+  1st try   |  2nd try   | workaround
 ------------+------------+------------
  6781-12-03 | 1678-11-23 | 0678-11-23
 ```
@@ -811,12 +811,12 @@ select
 This is the result:
 
 ```output
-      d1      |     d2     
+      d1      |     d2
 -------------+------------
   21234-11-23 | 2123-11-23
 ```
 
-But you simply _cannot_ write a template that lets 
+But you simply _cannot_ write a template that lets
 
 you use _to_date()_ and _to_timestamp()_ to convert a _text_ value like _'212341123'_ . Try this:
 
@@ -855,7 +855,7 @@ select
 This is the result:
 
 ```output
-  result 1  |  result 2  |  result 3  
+  result 1  |  result 2  |  result 3
 ------------+------------+------------
  2021-01-01 | 1821-01-01 | 1801-01-01
 ```
@@ -886,7 +886,7 @@ from c2;
 This is the result:
 
 ```output
-Monday, 20-May-2019     result date     | d1 = d2 
+Monday, 20-May-2019     result date     | d1 = d2
 ---------------------+---------
  Monday, 20-May-2019 | true
 ```
@@ -906,7 +906,7 @@ from c;
 This is the result:
 
 ```output
-     d1     |     d2     
+     d1     |     d2
 ------------+------------
  2021-05-27 | 2021-09-18
 ```
@@ -1067,7 +1067,7 @@ This is the result:
  2021-06-15 13:17:47.123456
 ```
 
-The input _text_ value has been exactly recreated in the output. 
+The input _text_ value has been exactly recreated in the output.
 
 {{< tip title="Always use 'SS.US' in to_timestamp()." >}}
 Yugabyte recommends that you Always use _SS.US_ in to _timestamp()_ when your input _text_ value has a "seconds" substring. The demonstration above shows that specifying _US_ (for microseconds) has no harmful effect over all range of possible trailing digits after the decimal point, from _zero_ through the maximum supported precision of _six_.
@@ -1133,7 +1133,7 @@ from c;
 This is the result:
 
 ```output
- 'D' value | 'dow' value | 'ID' value | 'isodow' value 
+ 'D' value | 'dow' value | 'ID' value | 'isodow' value
 -----------+-------------+------------+----------------
  5         | 4           | 4          | 4
 ```
@@ -1160,7 +1160,7 @@ from c;
 This is the result:
 
 ```output
- Natural use of HH24 | Strange use of HH12 | Natural use of HH24 | Strange use of HH12 
+ Natural use of HH24 | Strange use of HH12 | Natural use of HH24 | Strange use of HH12
 ---------------------+---------------------+---------------------+---------------------
  10000:00:00         | 04:00:00            | -15:00:00           | -03:00:00
 ```

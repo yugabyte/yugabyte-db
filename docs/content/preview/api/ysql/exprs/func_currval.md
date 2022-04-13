@@ -4,11 +4,11 @@ headerTitle: currval()
 linkTitle: currval()
 description: Returns the last value returned by the nextval() function for the specified sequence in the current session.
 menu:
-  latest:
+  preview:
     identifier: api-ysql-exprs-currval
     parent: api-ysql-exprs
 aliases:
-  - /latest/api/ysql/exprs/func_currval
+  - /preview/api/ysql/exprs/func_currval
 isTocNested: true
 showAsideToc: true
 ---

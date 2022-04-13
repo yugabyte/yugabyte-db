@@ -6,7 +6,7 @@ description: Enable Users in YCQL.
 headcontent: Enable Users in YCQL.
 image: /images/section_icons/secure/authentication.png
 menu:
-  latest:
+  preview:
     name: Enable User Authentication
     identifier: enable-authentication-2-ycql
     parent: enable-authentication

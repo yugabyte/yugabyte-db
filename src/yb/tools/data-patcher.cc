@@ -53,6 +53,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
@@ -195,10 +196,10 @@ class RocksDBHelper {
       rocksdb::WritableFileWriter* base_file_writer,
       rocksdb::WritableFileWriter* data_file_writer) {
       rocksdb::ImmutableCFOptions immutable_cf_options(options_);
-     return std::unique_ptr<rocksdb::TableBuilder>(rocksdb::NewTableBuilder(
+     return rocksdb::NewTableBuilder(
         immutable_cf_options, internal_key_comparator_, int_tbl_prop_collector_factories_,
         /* column_family_id= */ 0, base_file_writer, data_file_writer,
-        rocksdb::CompressionType::kSnappyCompression, rocksdb::CompressionOptions()));
+        rocksdb::CompressionType::kSnappyCompression, rocksdb::CompressionOptions());
   }
 
   Result<std::unique_ptr<rocksdb::RandomAccessFileReader>> NewFileReader(
@@ -563,7 +564,7 @@ CHECKED_STATUS ChangeTimeInDataFiles(
   for (const auto& dir : dirs) {
     RETURN_NOT_OK(env->Walk(dir, Env::DirectoryOrder::POST_ORDER, callback));
   }
-  std::random_shuffle(files_to_process.begin(), files_to_process.end());
+  std::shuffle(files_to_process.begin(), files_to_process.end(), ThreadLocalRandom());
   for (const auto& fname : files_to_process) {
     runner->Submit([fname, delta, bound_time, max_num_old_wal_entries, debug]() {
       RocksDBHelper helper;
@@ -738,7 +739,7 @@ CHECKED_STATUS ChangeTimeInWalDirs(
   for (const auto& dir : dirs) {
     RETURN_NOT_OK(env->Walk(dir, Env::DirectoryOrder::POST_ORDER, callback));
   }
-  std::random_shuffle(wal_dirs.begin(), wal_dirs.end());
+  std::shuffle(wal_dirs.begin(), wal_dirs.end(), ThreadLocalRandom());
   for (const auto& dir : wal_dirs) {
     runner->Submit([delta, bound_time, max_num_old_wal_entries, dir] {
       return ChangeTimeInWalDir(delta, bound_time, max_num_old_wal_entries, dir);

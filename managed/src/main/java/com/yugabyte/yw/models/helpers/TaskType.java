@@ -308,7 +308,9 @@ public enum TaskType {
 
   CheckMemory("subtasks.check.CheckMemory"),
 
-  UpdateMountedDisks("subtasks.UpdateMountedDisks");
+  UpdateMountedDisks("subtasks.UpdateMountedDisks"),
+
+  TransferXClusterCerts("subtasks.TransferXClusterCerts");
 
   private String relativeClassPath;
 

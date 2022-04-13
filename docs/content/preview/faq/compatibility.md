@@ -6,9 +6,9 @@ description: Answers to common questions about YugabyteDB API compatibility.
 section: FAQ
 aliases:
   - /faq/cassandra/
-  - /latest/faq/cassandra/
+  - /preview/faq/cassandra/
 menu:
-  latest:
+  preview:
     identifier: faq-api-compatibility
     weight: 2730
 isTocNested: true

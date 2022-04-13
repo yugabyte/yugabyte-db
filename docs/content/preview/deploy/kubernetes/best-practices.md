@@ -3,7 +3,7 @@ title: Best practices
 linkTitle: Best practices
 description: Best practices
 menu:
-  latest:
+  preview:
     identifier: best-practices
     parent: deploy-kubernetes
     weight: 626

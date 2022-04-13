@@ -4,11 +4,11 @@ headerTitle: Synchronous replication (3+ regions) in YCQL
 linkTitle: Sync replication (3+ regions)
 description: Global data distributed using synchronous replication across regions in YCQL.
 aliases:
-  - /latest/explore/global-distribution-linux/
-  - /latest/explore/global-distribution/macos
-  - /latest/explore/global-distribution/linux
+  - /preview/explore/global-distribution-linux/
+  - /preview/explore/global-distribution/macos
+  - /preview/explore/global-distribution/linux
 menu:
-  latest:
+  preview:
     name: Sync replication (3+ regions)
     identifier: explore-multi-region-deployments-sync-replication-2-ycql
     parent: explore-multi-region-deployments

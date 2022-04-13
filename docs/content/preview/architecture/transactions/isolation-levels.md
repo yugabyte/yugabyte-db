@@ -6,7 +6,7 @@ description: Learn how YugabyteDB supports two transaction isolation levels, Sna
 aliases:
   - /architecture/transactions/isolation-levels/
 menu:
-  latest:
+  preview:
     identifier: architecture-isolation-levels
     parent: architecture-acid-transactions
     weight: 1152

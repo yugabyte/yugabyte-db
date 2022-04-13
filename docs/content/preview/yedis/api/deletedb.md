@@ -3,12 +3,12 @@ title: DELETEDB
 linkTitle: DELETEDB
 description: DELETEDB
 menu:
-  latest:
+  preview:
     parent: api-yedis
     weight: 2034
 aliases:
-  - /latest/api/redis/deletedb
-  - /latest/api/yedis/deletedb
+  - /preview/api/redis/deletedb
+  - /preview/api/yedis/deletedb
 isTocNested: true
 showAsideToc: true
 ---

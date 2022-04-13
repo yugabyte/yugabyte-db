@@ -4,9 +4,9 @@ headerTitle: Configure the Microsoft Azure cloud provider
 linkTitle: Configure the cloud provider
 description: Configure the Microsoft Azure cloud provider
 aliases:
-  - /latest/deploy/enterprise-edition/configure-cloud-providers/azure
+  - /preview/deploy/enterprise-edition/configure-cloud-providers/azure
 menu:
-  latest:
+  preview:
     identifier: set-up-cloud-provider-3-azure
     parent: configure-yugabyte-platform
     weight: 20

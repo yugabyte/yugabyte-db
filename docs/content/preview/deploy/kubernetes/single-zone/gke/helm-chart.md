@@ -4,15 +4,15 @@ headerTitle: Google Kubernetes Engine (GKE)
 linkTitle: Google Kubernetes Engine (GKE)
 description: Use Helm Chart to deploy a single-zone YugabyteDB cluster on Google Kubernetes Engine (GKE).
 menu:
-  latest:
+  preview:
     parent: deploy-kubernetes-sz
     name: Google Kubernetes Engine
     identifier: k8s-gke-1
     weight: 623
 aliases:
-  - /latest/deploy/kubernetes/gke/
-  - /latest/deploy/kubernetes/gke/helm-chart/
-  - /latest/deploy/kubernetes/single-zone/gke/
+  - /preview/deploy/kubernetes/gke/
+  - /preview/deploy/kubernetes/gke/helm-chart/
+  - /preview/deploy/kubernetes/single-zone/gke/
 type: page
 isTocNested: true
 showAsideToc: true

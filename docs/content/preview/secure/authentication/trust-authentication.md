@@ -6,7 +6,7 @@ description: Allow client to connect using a database user name.
 headcontent: Configure trust authentication YSQL clients
 image: /images/section_icons/secure/authentication.png
 menu:
-  latest:
+  preview:
     identifier: trust-authentication
     parent: authentication
     weight: 734
@@ -30,7 +30,7 @@ showAsideToc: true
 When `trust` authentication is specified, YugabyteDB assumes that any user trying to connect with the YB-TServer can access the database with the database user name they specify. This method is appropriate and very convenient for local connections to the YugabyteDB cluster.
 
 By default, YugabyteDB cluster uses `trust `authentication. One can explicitly specify `trust` authentication by
-setting with the following [`--ysql_hba_conf_csv`](/latest/reference/configuration/yb-tserver/#ysql-hba-conf-csv) flag.
+setting with the following [`--ysql_hba_conf_csv`](/preview/reference/configuration/yb-tserver/#ysql-hba-conf-csv) flag.
 
 ```sh
 --ysql_hba_conf_csv='host all all 0.0.0.0/0 trust, host all all ::0/0 trust'

@@ -2,14 +2,14 @@
 title: Releases overview
 headerTitle: Releases overview
 linkTitle: Releases overview
-description: An overview of the latest and current stable releases, and upcoming releases.
+description: An overview of the preview and current stable releases, and upcoming releases.
 image: /images/section_icons/index/quick_start.png
 aliases:
-  - /latest/releases/releases-overview/
-  - /latest/releases/whats-new/
+  - /preview/releases/releases-overview/
+  - /preview/releases/whats-new/
 section: RELEASES
 menu:
-  latest:
+  preview:
     identifier: releases
     weight: 1060
 isTocNested: true
@@ -32,9 +32,9 @@ As of v2.2, Yugabyte follows a new release versioning convention for YugabyteDB 
 The supported release series include:
 
 * [Stable](versioning/#stable-releases): Supported for production deployments.
-* [Latest](versioning/#latest-releases): Supported for development and testing only.
+* [Preview](versioning/#preview-releases): Supported for development and testing only.
 
-For details about the differences between the stable and latest release series, see [Release versioning](versioning/).
+For details about the differences between the stable and preview release series, see [Release versioning](versioning/).
 
 ### Release support policy
 
@@ -53,7 +53,7 @@ For details, see the [Yugabyte Support Services Agreement](https://www.yugabyte.
 
 | Release series | Released | End of maintenance support | End of Life (EOL) |
 | :------------- | :------- | :------------------------- | :---------------- |
-| [v2.13](release-notes/v2.13/) ![LATEST](/images/releases/latest.png) | March 7, 2022 | n/a | n/a |
+| [v2.13](release-notes/v2.13/) ![PREVIEW](/images/releases/preview.png) | March 7, 2022 | n/a | n/a |
 | [v2.12](release-notes/v2.12/) ![CURRENT STABLE](/images/releases/current-stable.png) | February 22, 2022 | February 22, 2023 | August 22, 2023 |
 | [v2.8](release-notes/v2.8/) | November 15, 2021 | November 15, 2022 | June 15, 2023 |
 | [v2.6](release-notes/v2.6/) | July 5, 2021 | July 5, 2022 | January 5, 2023 |
@@ -95,7 +95,7 @@ To ensure that your production go-live uses the most up-to-date stable release, 
 
 | Production go-live | Recommended release series |
 | :----------------- | :------------------------- |
-| Less than 3 months | v2.12 (current stable)     |
-| More than 3 months | v2.13 (latest)             |
+| Less than 3 months | [{{<yb-version version="stable" format="displayName">}}](release-notes/{{<yb-version version="stable" format="series">}}/) |
+| More than 3 months | [{{<yb-version version="preview" format="displayName">}}](release-notes/{{<yb-version version="preview" format="series">}}/) |
 
-If your production go-live is more than three months from now, start your development and testing with the latest release series. By the time your production is ready to go live, the current stable release series (which is based on the latest release series you used for development and testing) will be available. By following this guideline, you ensure that your application is developed with the latest available features, enhancements, and fixes.
+If your production go-live is more than three months from now, start your development and testing with the preview release series. By the time your production is ready to go live, the current stable release series (which is based on the preview release series you used for development and testing) will be available. By following this guideline, you ensure that your application is developed with the latest available features, enhancements, and fixes.

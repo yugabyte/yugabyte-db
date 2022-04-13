@@ -4,13 +4,13 @@ headerTitle: Amazon Elastic Kubernetes Service (EKS)
 linkTitle: Amazon Elastic Kubernetes Service (EKS)
 description: Deploy a multi-zone YugabyteDB cluster on Amazon Elastic Kubernetes Service (EKS) using Helm Chart.
 menu:
-  latest:
+  preview:
     parent: deploy-kubernetes-mz
     name: Amazon EKS
     identifier: k8s-mz-eks-1
     weight: 627
 aliases:
-  - /latest/deploy/kubernetes/multi-zone/eks
+  - /preview/deploy/kubernetes/multi-zone/eks
 type: page
 isTocNested: true
 showAsideToc: true
@@ -155,7 +155,7 @@ $ helm repo update
 Validate that you have the updated chart version.
 
 ```sh
-$ helm search repo yugabytedb/yugabyte
+$ helm search repo yugabytedb/yugabyte --version {{<yb-version version="preview" format="short">}}
 ```
 
 ```output

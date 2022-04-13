@@ -5,9 +5,9 @@ linkTitle: Yugabyte Platform FAQ
 description: Answers to common questions about Yugabyte Platform.
 section: FAQ
 aliases:
-  - /latest/faq/enterprise-edition/
+  - /preview/faq/enterprise-edition/
 menu:
-  latest:
+  preview:
     identifier: faq-yugabyte-platform
     weight: 2750
 isTocNested: false
@@ -95,4 +95,4 @@ Yugabyte Platform also allows creating these machines out of band and importing 
 
 ## How do I report a security vulnerability?
 
-Follow the steps in the [vulnerability disclosure policy](/latest/secure/vulnerability-disclosure-policy) to report a vulnerability to our security team. The policy outlines our commitments to you when you disclose a potential vulnerability, the reporting process, and how we will respond.
+Follow the steps in the [vulnerability disclosure policy](/preview/secure/vulnerability-disclosure-policy) to report a vulnerability to our security team. The policy outlines our commitments to you when you disclose a potential vulnerability, the reporting process, and how we will respond.

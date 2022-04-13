@@ -5,12 +5,12 @@ linkTitle: UUID and TIMEUUID
 summary: UUID types
 description: Use the UUID data type to specify columns for data of universally unique ids. TIMEUUID is a universal unique identifier variant that includes time information.
 menu:
-  latest:
+  preview:
     parent: api-cassandra
     weight: 1460
 aliases:
-  - /latest/api/cassandra/type_uuid
-  - /latest/api/ycql/type_uuid
+  - /preview/api/cassandra/type_uuid
+  - /preview/api/ycql/type_uuid
 isTocNested: true
 showAsideToc: true
 ---
@@ -50,18 +50,18 @@ ycqlsh:example> CREATE TABLE devices(id UUID PRIMARY KEY, ordered_id TIMEUUID);
 ```
 
 ```sql
-ycqlsh:example> INSERT INTO devices (id, ordered_id) 
+ycqlsh:example> INSERT INTO devices (id, ordered_id)
                VALUES (123e4567-e89b-12d3-a456-426655440000, 123e4567-e89b-12d3-a456-426655440000);
 ```
 
 ```sql
-ycqlsh:example> INSERT INTO devices (id, ordered_id) 
+ycqlsh:example> INSERT INTO devices (id, ordered_id)
                VALUES (123e4567-e89b-42d3-a456-426655440000, 123e4567-e89b-12d3-a456-426655440000);
 ```
 
 ```sql
 ycqlsh:example> UPDATE devices SET ordered_id = 00000000-0000-1000-0000-000000000000
-               WHERE id = 123e4567-e89b-42d3-a456-426655440000; 
+               WHERE id = 123e4567-e89b-42d3-a456-426655440000;
 ```
 
 ```sql

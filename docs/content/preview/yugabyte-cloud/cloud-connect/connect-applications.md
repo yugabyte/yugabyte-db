@@ -5,7 +5,7 @@ description: Connect applications to Yugabyte Cloud clusters
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  latest:
+  preview:
     identifier: connect-applications
     parent: cloud-connect
     weight: 30

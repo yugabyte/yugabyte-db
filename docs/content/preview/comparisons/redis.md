@@ -5,7 +5,7 @@ description: Compare Redis in-memory store with YugabyteDB.
 aliases:
   - /comparisons/redis/
 menu:
-  latest:
+  preview:
     parent: comparisons
     weight: 1129
 isTocNested: false

@@ -5,7 +5,7 @@ description: Connect to your cluster using Cloud Shell.
 headcontent:
 image: /images/section_icons/index/quick_start.png
 menu:
-  latest:
+  preview:
     identifier: qs-connect
     parent: cloud-quickstart
     weight: 200
@@ -22,6 +22,8 @@ The shell has a one hour connection limit. If your session is idle for more than
 ## Connect to your cluster using Cloud Shell
 
 To connect to your cluster, do the following:
+
+![Connect using cloud shell](/images/yb-cloud/cloud-connect-shell.gif)
 
 1. On the **Clusters** page, ensure your cluster is selected.
 

@@ -1,10 +1,10 @@
 ---
 title: Manage peering connections
-headerTitle: 
+headerTitle:
 linkTitle: Peering Connections
 description: Manage peering connections to your cloud VPCs.
 menu:
-  latest:
+  preview:
     identifier: cloud-add-peering
     parent: cloud-vpcs
     weight: 40

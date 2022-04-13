@@ -6,7 +6,7 @@ description: Client drivers
 headcontent: Use your favorite programming language to build a YugabyteDB application that interacts using YEDIS.
 image: /images/section_icons/develop/api-icon.png
 menu:
-  latest:
+  preview:
     identifier: client-drivers-yedis
     parent: develop-yedis
     weight: 2900

@@ -3,9 +3,8 @@ title: Enable High Availability features
 headerTitle: Enable high availability
 linkTitle: Enable high availability
 description: Enable YugabyteDB Anywhere's high-availability features
-aliases:
 menu:
-  latest:
+  preview:
     identifier: platform-high-availability
     parent: manage-deployments
     weight: 40
@@ -74,22 +73,17 @@ Your active instance is now configured.
 
 Once the active instance has been configured, you can configure one or more standby instances by repeating the following steps for each standby instance you wish to add to the high-availability cluster:
 
-1. Navigate to **Admin > High Availability > Replication Configuration** and selecct **Standby**, as per the following illustration:
+1. Navigate to **Admin > High Availability > Replication Configuration** and select **Standby**, as per the following illustration:
 
-    <br/>
+    ![Standby instance type](/images/yp/high-availability/standby-configuration.png)
 
-    <br/>
-
-    ![Standby instance type](/images/yp/high-availability/standby-configuration.png)<br><br>
-
-1. Enter the instance’s IP address or hostname, including the HTTP or HTTPS protocol prefix and port if you are not using the default of 80 or 443.
+1. Enter the instance's IP address or hostname, including the HTTP or HTTPS protocol prefix and port if you are not using the default of 80 or 443.
 
 1. Paste the shared authentication key from the active instance into the **Shared Authentication Key** field.
 
 1. Switch to the active instance and then switch to **Instance Configuration**. Click **Add Instance**, enter the new standby instance's IP address or hostname, including the HTTP or HTTPS protocol prefix and port if you are not using the default of 80 or 443, and then click **Continue** on the **Add Standby Instance** dialog.
 
 1. Switch back to the new standby instance, wait for a replication interval to pass, and then refresh the page. The other instances in the high-availability cluster should now appear in the list of instances.
-
 
 Your standby instances are now configured.
 
@@ -101,13 +95,12 @@ You can make a standby instance active as follows:
 
 1. Use the **Make Active** dialog to select the backup from which you want to restore (in most cases, you should choose the most recent backup in the vast majority of cases) and enable **Confirm promotion**.
 
-1. Click **Continue**.<br>
+1. Click **Continue**.
 
+    \
     The restore take a few seconds, after which expect to be logged out.
 
-1. Login useing credentials that you had configured on the previously active instance.
-
-    
+1. Login using credentials that you had configured on the previously active instance.
 
 You should be able to see that all of the data has been restored into the instance, including universes, users, metrics, alerts, task history, cloud providers, and so on.
 
@@ -118,7 +111,6 @@ To remove a standby instance from a high-availability cluster, you need to remov
 1. On the active instance's list, click **Delete Instance** for the standby instance to be removed.
 
 1. On the standby instance you wish to remove from the high-availability cluster, click **Delete Configuration** on the **Admin** tab.
-
 
 The standby instance is now a standalone instance again.
 

@@ -4,7 +4,7 @@ headerTitle: Build a C# application
 linkTitle: C#
 description: Build a C# application that uses Entity Framework and the YSQL API.
 menu:
-  latest:
+  preview:
     identifier: build-apps-csharp-3-ysql
     parent: build-apps
     weight: 556

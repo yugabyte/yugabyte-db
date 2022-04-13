@@ -8,7 +8,7 @@ headcontent: How to contribute code to the core database
 type: page
 section: CONTRIBUTOR GUIDES
 menu:
-  latest:
+  preview:
     identifier: core-database
     parent: contribute
     weight: 2910

@@ -4,11 +4,11 @@ headerTitle: DROP TYPE
 linkTitle: DROP TYPE
 description: Use the DROP TYPE statement to remove a user-defined type from the database.
 menu:
-  latest:
+  preview:
     identifier: ddl_drop_type
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/ddl_drop_type/
+  - /preview/api/ysql/commands/ddl_drop_type/
 isTocNested: true
 showAsideToc: true
 ---

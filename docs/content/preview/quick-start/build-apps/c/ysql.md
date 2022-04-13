@@ -5,10 +5,10 @@ linkTitle: C
 description: Build a sample C application with libpq.
 aliases:
   - /develop/client-drivers/c/
-  - /latest/develop/client-drivers/c/
-  - /latest/quick-start/build-apps/c/
+  - /preview/develop/client-drivers/c/
+  - /preview/quick-start/build-apps/c/
 menu:
-  latest:
+  preview:
     identifier: build-apps-c-1-ysql
     parent: build-apps
     weight: 557
@@ -158,5 +158,5 @@ You should see the following output:
 ```output
 Created table employee
 Inserted data (1, 'John', 35, 'C')
-Query returned: John 35 C 
+Query returned: John 35 C
 ```

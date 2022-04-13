@@ -7,7 +7,7 @@ image: /images/section_icons/index/troubleshoot.png
 headcontent:
 section: YUGABYTEDB CORE
 menu:
-  latest:
+  preview:
     identifier: troubleshoot
     weight: 1000
 ---

@@ -3,7 +3,7 @@ title: Build a PHP application that uses YSQL
 headerTitle: Build a PHP application
 description: Build a small PHP application using the php-pgsql driver and using the YSQL API to connect to and interact with a Yugabyte Cloud cluster.
 menu:
-  latest:
+  preview:
     parent: cloud-build-apps
     name: PHP
     identifier: cloud-php

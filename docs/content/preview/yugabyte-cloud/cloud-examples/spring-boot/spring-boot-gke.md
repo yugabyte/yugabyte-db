@@ -4,7 +4,7 @@ headerTitle: Deploy a Spring application on GKE
 linkTitle: Deploy on GKE
 description: Deploy a Spring application connected to Yugabyte Cloud on Google Kubernetes Engine (GKE).
 menu:
-  latest:
+  preview:
     parent: spring-boot
     identifier: spring-boot-gke
     weight: 30
@@ -49,7 +49,7 @@ Before starting, you need to verify that the following are installed and configu
 
 On your computer, do the following:
 
-1. Configure Docker to use `gcloud` for authentication. 
+1. Configure Docker to use `gcloud` for authentication.
 
     ```sh
     $ gcloud auth configure-docker [region]-docker.pkg.dev
@@ -89,9 +89,9 @@ On your computer, do the following:
     Replace [repo_url] with the URL of your repository.
 
     ```output
-    1dc94a70dbaa: Pushed 
-    0d29ec96785e: Pushed 
-    888ed16fa8d4: Pushed 
+    1dc94a70dbaa: Pushed
+    0d29ec96785e: Pushed
+    888ed16fa8d4: Pushed
     ...
     ```
 

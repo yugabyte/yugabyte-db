@@ -4,7 +4,7 @@ headerTitle: Interval value limits
 linkTitle: Interval value limits
 description: Explains how the upper and lower limits for interval values must be understood and specified in terms of the three fields of the internal representation. [YSQL]
 menu:
-  latest:
+  preview:
     identifier: interval-limits
     parent: type-interval
     weight: 20
@@ -121,7 +121,7 @@ This is the result:
  max_mm_interval:                    298988 years 11 mons  (3587867,0,0)
  t0 + max_mm_interval:               294276-12-01 00:00:00+00
  t0 + (max_mm_interval + one_month): causes 22008 error
- 
+
  max_dd_interval:                    109203489 days        (0,109203489,0)
  t0 + max_dd_interval:               294276-12-31 00:00:00+00
  t0 + (max_dd_interval + one_day):   causes 22008 error
@@ -143,7 +143,7 @@ create function max_seconds()
 as $body$
 declare
   secs constant double precision not null :=
-    extract(epoch from '294276-12-31 23:59:59 UTC AD'::timestamptz) - 
+    extract(epoch from '294276-12-31 23:59:59 UTC AD'::timestamptz) -
     extract(epoch from   '4713-01-01 00:00:00 UTC BC'::timestamptz);
 begin
   z := to_char(secs, '9,999,999,999,999');                return next;
@@ -197,7 +197,7 @@ select
 This is the result:
 
 ```output
-     lower limit      |     upper limit     
+     lower limit      |     upper limit
 ----------------------+---------------------
  (0,0,-7730941136399) | (0,0,7730941132799)
 ```
@@ -229,7 +229,7 @@ select
 This is the result:
 
 ```output
-        lower limit        |       upper limit       
+        lower limit        |       upper limit
 ---------------------------+-------------------------
  --2147483648:59:58.999552 | 2147483647:59:58.999552
 ```
@@ -247,7 +247,7 @@ select
 This is the result:
 
 ```output
- one below practical lower limit |  practical lower limit   
+ one below practical lower limit |  practical lower limit
 ---------------------------------+--------------------------
  --2147483648:00:00              | -2147483647:59:58.999552
 ```
@@ -270,7 +270,7 @@ select
 This is the result:
 
 ```output
-  practical lower limit   |       upper limit       
+  practical lower limit   |       upper limit
 --------------------------+-------------------------
  -2147483647:59:58.999552 | 2147483647:59:58.999552
 ```

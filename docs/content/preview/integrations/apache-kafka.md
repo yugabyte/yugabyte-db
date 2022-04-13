@@ -3,10 +3,10 @@ title: Apache Kafka
 linkTitle: Apache Kafka
 description: Apache Kafka
 aliases:
-  - /latest/integrations
+  - /preview/integrations
 section: INTEGRATIONS
 menu:
-  latest:
+  preview:
     identifier: apache-kafka
     weight: 571
 isTocNested: true
@@ -25,7 +25,7 @@ Before you can start using Kafka Connect Sink, ensure that you have the followin
 
 - YugabyteDB cluster.
 
-  For more information and instructions, see [YugabyteDB Quick Start Guide](/latest/quick-start/).
+  For more information and instructions, see [YugabyteDB Quick Start Guide](/preview/quick-start/).
 
 ## Configuring Kafka
 

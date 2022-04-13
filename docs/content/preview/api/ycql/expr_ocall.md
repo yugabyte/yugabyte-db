@@ -4,12 +4,12 @@ headerTitle: YCQL operators
 linkTitle: Operators
 description: Combine multiple expressions using YCQL operators supported in YugabyteDB.
 menu:
-  latest:
+  preview:
     parent: api-cassandra
     weight: 1360
 aliases:
-  - /latest/api/cassandra/expr_ocall
-  - /latest/api/ycql/expr_ocall
+  - /preview/api/cassandra/expr_ocall
+  - /preview/api/ycql/expr_ocall
 isTocNested: true
 showAsideToc: true
 ---

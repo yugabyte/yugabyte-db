@@ -6,7 +6,7 @@ description: Deploy a Spring application connected to Yugabyte Cloud on Kubernet
 headcontent: Deploy a Spring application connected to Yugabyte Cloud on Kubernetes
 image: /images/section_icons/deploy/kubernetes.png
 menu:
-  latest:
+  preview:
     identifier: spring-boot
     parent: cloud-develop
     weight: 621

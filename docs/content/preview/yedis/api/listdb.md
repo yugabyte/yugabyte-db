@@ -3,12 +3,12 @@ title: LISTDB
 linkTitle: LISTDB
 description: LISTDB
 menu:
-  latest:
+  preview:
     parent: api-yedis
     weight: 2036
 aliases:
-  - /latest/api/redis/listdb
-  - /latest/api/yedis/listdb
+  - /preview/api/redis/listdb
+  - /preview/api/yedis/listdb
 isTocNested: true
 showAsideToc: true
 ---
@@ -21,7 +21,7 @@ A client can issue the `LISTDB` command through the redis-cli.
 
 ## Return value
 
-Returns an array of string values, with the yedis database names. 
+Returns an array of string values, with the yedis database names.
 
 ## Examples
 

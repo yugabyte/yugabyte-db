@@ -1,10 +1,10 @@
 ---
 title: Download date-time-utilities.zip [YSQL]
 headerTitle: Download and install the date-time utilities code
-linkTitle: Download & install the date-time utilities 
+linkTitle: Download & install the date-time utilities
 description: Explains how to download and install the code corpus on which many of the code-examples in the dare-time major section depend. [YSQL]
 menu:
-  latest:
+  preview:
     identifier: download-date-time-utilities
     parent: api-ysql-datatypes-datetime
     weight: 140

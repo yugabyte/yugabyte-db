@@ -5,7 +5,7 @@ description: JanusGraph
 aliases:
 section: INTEGRATIONS
 menu:
-  latest:
+  preview:
     identifier: janusgraph
     weight: 571
 isTocNested: true

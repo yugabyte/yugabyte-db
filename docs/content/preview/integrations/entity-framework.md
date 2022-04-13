@@ -4,7 +4,7 @@ linkTitle: Entity Framework
 description: Entity Framework
 section: INTEGRATIONS
 menu:
-  latest:
+  preview:
     identifier: entity-framework
     weight: 571
 isTocNested: true
@@ -17,7 +17,7 @@ This document describes how to use [Entity Framework Core](https://docs.microsof
 
 Before you start using Entity framework:
 
-- Install YugabyteDB 2.6 or later and start a single node local cluster. Refer [YugabyteDB Quick Start Guide](/latest/quick-start/) to install and start a local cluster.
+- Install YugabyteDB 2.6 or later and start a single node local cluster. Refer [YugabyteDB Quick Start Guide](/preview/quick-start/) to install and start a local cluster.
 
 - Install [.NET Core SDK](https://dotnet.microsoft.com/en-us/download) 6.0 or later.
 

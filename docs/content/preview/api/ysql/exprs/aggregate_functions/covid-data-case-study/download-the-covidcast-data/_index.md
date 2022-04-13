@@ -5,7 +5,7 @@ headerTitle: Finding and downloading the COVIDcast data
 description: How to download data from Carnegie Mellon's COVIDcast project for linear regression analysis using YSQL
 image: /images/section_icons/api/ysql.png
 menu:
-  latest:
+  preview:
     identifier: download-the-covidcast-data
     parent: covid-data-case-study
     weight: 10
@@ -40,5 +40,5 @@ Simply follow these step-by-step instructions:
    ```
 
    The naming convention is obvious. The names will reflect your choice of date range.
-   
+
 - Create a directory called _"csv-files_" on your  _"covid-data-case-study"_ directory and move the `.csv` files to this from your _"downloads"_ directory. Because you will not edit these files, you might like to make them all read-only to be sure that you don't make any accidental changes when you use a text editor or a spreadsheet app to inspect them.

@@ -16,19 +16,19 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/deploy/kubernetes/single-zone/gke/helm-chart" class="nav-link active">
+    <a href="/preview/deploy/kubernetes/single-zone/gke/helm-chart" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Helm chart
     </a>
   </li>
   <li >
-    <a href="/latest/deploy/kubernetes/single-zone/gke/statefulset-yaml" class="nav-link">
+    <a href="/preview/deploy/kubernetes/single-zone/gke/statefulset-yaml" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       YAML (remote disk)
     </a>
   </li>
    <li >
-    <a href="/latest/deploy/kubernetes/single-zone/gke/statefulset-yaml-local-ssd" class="nav-link">
+    <a href="/preview/deploy/kubernetes/single-zone/gke/statefulset-yaml-local-ssd" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       YAML (local disk)
     </a>
@@ -116,7 +116,7 @@ $ helm repo update
 ### Validate the Chart version
 
 ```sh
-$ helm search repo yugabytedb/yugabyte
+$ helm search repo yugabytedb/yugabyte --version {{<yb-version version="stable" format="short">}}
 ```
 
 **Output:**
@@ -132,7 +132,7 @@ Run the following commands to create a namespace and then install Yugabyte.
 
 ```sh
 $ kubectl create namespace yb-demo
-$ helm install yb-demo yugabytedb/yugabyte --namespace yb-demo --wait
+$ helm install yb-demo yugabytedb/yugabyte --namespace yb-demo --version {{<yb-version version="stable" format="short">}} --wait
 ```
 
 ## Check the cluster status
@@ -256,12 +256,14 @@ You can configure the cluster using the same commands and options as [Open Sourc
 By default, the YugabyteDB Helm Chart will expose the client API endpoints as well as master UI endpoint using two LoadBalancers. If you want to expose the client APIs using independent LoadBalancers, you can do the following.
 
 ```sh
-helm install yb-demo yugabytedb/yugabyte -f https://raw.githubusercontent.com/yugabyte/charts/master/stable/yugabyte/expose-all.yaml --namespace yb-demo --wait
+$ helm install yb-demo yugabytedb/yugabyte -f https://raw.githubusercontent.com/yugabyte/charts/master/stable/yugabyte/expose-all.yaml --namespace yb-demo --version {{<yb-version version="stable" format="short">}} --wait
 ```
 
 You can also bring up an internal LoadBalancer (for either YB-Master or YB-TServer services), if required. Just specify the [annotation](https://kubernetes.io/docs/concepts/services-networking/service/#internal-load-balancer) required for your cloud provider. The following command brings up an internal LoadBalancer for the YB-TServer service in Google Cloud Platform.
 
 ```sh
 $ helm install yugabyte -f https://raw.githubusercontent.com/yugabyte/charts/master/stable/yugabyte/expose-all.yaml --namespace yb-demo --name yb-demo \
-  --set annotations.tserver.loadbalancer."cloud\.google\.com/load-balancer-type"=Internal --wait
+  --set annotations.tserver.loadbalancer."cloud\.google\.com/load-balancer-type"=Internal \
+  --version {{<yb-version version="stable" format="short">}} \
+  --wait
 ```

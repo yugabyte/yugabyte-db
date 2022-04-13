@@ -6,7 +6,7 @@ description: Benchmark YSQL performance with large datasets
 image: /images/section_icons/architecture/concepts.png
 headcontent: Testing YugabyteDB with large data sets.
 menu:
-  latest:
+  preview:
     identifier: large-datasets-2-ysql
     parent: benchmark
     weight: 7

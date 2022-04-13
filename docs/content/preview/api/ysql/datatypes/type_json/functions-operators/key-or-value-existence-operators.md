@@ -4,7 +4,7 @@ headerTitle: "? and ?| and ?& (key or value existence operators)"
 linkTitle: "? and ?| and ?& (key or value existence)"
 description: Test if JSONB values exist as keys in an object or as string value(s) in array.
 menu:
-  latest:
+  preview:
     identifier: key-or-value-existence-operators
     parent: json-functions-operators
     weight: 17
@@ -74,7 +74,7 @@ end;
 $body$;
 ````
 
-**Input is an _array_:** 
+**Input is an _array_:**
 
 ```plpgsql
 do $body$

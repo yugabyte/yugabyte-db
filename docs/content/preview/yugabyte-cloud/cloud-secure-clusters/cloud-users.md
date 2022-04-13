@@ -5,7 +5,7 @@ description: The default YugabyteDB users and roles available in Yugabyte Cloud 
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  latest:
+  preview:
     identifier: cloud-users
     parent: cloud-secure-clusters
     weight: 300

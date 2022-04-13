@@ -4,7 +4,7 @@ headerTitle: LDAP authentication
 linkTitle: LDAP authentication
 description: Configuring YugabyteDB Anywhere to use an external LDAP authentication service.
 menu:
-  latest:
+  preview:
     identifier: ldap-authentication-platform
     parent: security
     weight: 25
@@ -14,7 +14,7 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/yugabyte-platform/security/ldap-authentication-platform/" class="nav-link active">
+    <a href="/preview/yugabyte-platform/security/ldap-authentication-platform/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>

@@ -4,7 +4,7 @@ headerTitle: The date data type
 linkTitle: Date data type
 description: The semantics of the date data type. [YSQL]
 menu:
-  latest:
+  preview:
     identifier: type-date
     parent: date-time-data-types-semantics
     weight: 10
@@ -23,7 +23,7 @@ select pg_typeof('2019-02-14'::date - '2018-02-14'::date)::text as "data type of
 This is the result:
 
 ```output
- data type of difference between dates 
+ data type of difference between dates
 ---------------------------------------
  integer
 ```
@@ -41,7 +41,7 @@ select
 This is the result:
 
 ```output
- not spanning a leap year | spanning a leap year 
+ not spanning a leap year | spanning a leap year
 --------------------------+----------------------
                       730 |                  731
 ```

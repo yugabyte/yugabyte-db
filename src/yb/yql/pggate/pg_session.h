@@ -309,6 +309,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   // Should write operations be buffered?
   bool buffering_enabled_ = false;
+  BufferingSettings buffering_settings_;
   PgOperationBuffer buffer_;
 
   HybridTime in_txn_limit_;

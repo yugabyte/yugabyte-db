@@ -4,11 +4,11 @@ headerTitle: INSERT
 linkTitle: INSERT
 description: Use the INSERT statement to add one or more rows to the specified table.
 menu:
-  latest:
+  preview:
     identifier: dml_insert
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/dml_insert/
+  - /preview/api/ysql/commands/dml_insert/
 isTocNested: true
 showAsideToc: true
 ---

@@ -4,11 +4,11 @@ headerTitle: CREATE FUNCTION
 linkTitle: CREATE FUNCTION
 description: Use the CREATE FUNCTION statement to create a function in a database.
 menu:
-  latest:
+  preview:
     identifier: ddl_create_function
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/ddl_create_function/
+  - /preview/api/ysql/commands/ddl_create_function/
 isTocNested: true
 showAsideToc: true
 ---
@@ -49,14 +49,14 @@ Use the `CREATE FUNCTION` statement to create a function in a database.
 
 - The languages supported by default are `sql`, `plpgsql` and `C`.
 
-- `VOLATILE`, `STABLE` and `IMMUTABLE` inform the query optimizer about the behavior the function. 
+- `VOLATILE`, `STABLE` and `IMMUTABLE` inform the query optimizer about the behavior the function.
     - `VOLATILE` is the default and indicates that the function result could be different for every call. For instance `random()` or `now()`.
     - `STABLE` indicates that the function cannot modify the database so that within a single scan it will return the same result given the same arguments.
     - `IMMUTABLE` indicates that the function cannot modify the database _and_ always returns the same results given the same arguments.
 
 - `CALLED ON NULL INPUT`, `RETURNS NULL ON NULL INPUT` and `STRICT` define the function's behavior with respect to 'null's.
     - `CALLED ON NULL INPUT` indicates that input arguments may be `null`.
-    - `RETURNS NULL ON NULL INPUT` or `STRICT` indicate that the function always returns `null` if any of its arguments are `null`. 
+    - `RETURNS NULL ON NULL INPUT` or `STRICT` indicate that the function always returns `null` if any of its arguments are `null`.
 
 ## Examples
 

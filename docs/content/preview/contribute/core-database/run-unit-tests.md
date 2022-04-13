@@ -7,7 +7,7 @@ image: /images/section_icons/index/quick_start.png
 headcontent: Run the tests.
 type: page
 menu:
-  latest:
+  preview:
     identifier: run-unit-tests
     parent: core-database
     weight: 2913
@@ -94,14 +94,14 @@ YSQL java tests are in `java/yb-pgsql/src/test/java/org/yb/pgsql/`.  They can be
 ```bash
 ./yb_build.sh --java-test org.yb.pgsql.TestPgTruncate
 ```
-Some of those tests, `TestPgRegress*`, use the PostgreSQL regress test framework: `src/postgres/src/test/regress`.  
-They should each correspond to a schedule (e.g. `java/yb-pgsql/src/test/java/org/yb/pgsql/TestPgRegressArrays.java` references `src/postgres/src/test/regress/yb_arrays_schedule`) 
+Some of those tests, `TestPgRegress*`, use the PostgreSQL regress test framework: `src/postgres/src/test/regress`.
+They should each correspond to a schedule (e.g. `java/yb-pgsql/src/test/java/org/yb/pgsql/TestPgRegressArrays.java` references `src/postgres/src/test/regress/yb_arrays_schedule`)
 that is run by our modified version of `pg_regress`.
 
-Each schedule has a serial order of files to run.  For example, the `yb_arrays_schedule` will first run `build/latest/postgres_build/src/test/regress/sql/yb_pg_int8.sql` 
-and output to `build/latest/postgres_build/src/test/regress/results/yb_pg_int8.out` because the first `test:` line in `yb_arrays_schedule` is `test: yb_pg_int8`.  
-This will be compared with `build/latest/postgres_build/src/test/regress/expected/yb_pg_int8.out` for pass/fail.  
-Note the `build/latest/postgres_build` prefix.  The source files (`src/postgres/src/test/regress/sql/foo.sql`) get copied there (`build/latest/postgres_build/src/test/regress/src/foo.sql`).  
+Each schedule has a serial order of files to run.  For example, the `yb_arrays_schedule` will first run `build/latest/postgres_build/src/test/regress/sql/yb_pg_int8.sql`
+and output to `build/latest/postgres_build/src/test/regress/results/yb_pg_int8.out` because the first `test:` line in `yb_arrays_schedule` is `test: yb_pg_int8`.
+This will be compared with `build/latest/postgres_build/src/test/regress/expected/yb_pg_int8.out` for pass/fail.
+Note the `build/latest/postgres_build` prefix.  The source files (`src/postgres/src/test/regress/sql/foo.sql`) get copied there (`build/latest/postgres_build/src/test/regress/src/foo.sql`).
 If a build fails to pick up the changes and fails to copy them, you can remove `build/latest/postgres_build` to force a recopy or copy them yourself manually.
 
 
@@ -111,9 +111,9 @@ If a build fails to pick up the changes and fails to copy them, you can remove `
    - Use the naming convention (some older files haven't adopted it yet, but should):
      - `src/postgres/src/test/regress/sql/foo.sql`: unchanged from original PostgreSQL code
      - `src/postgres/src/test/regress/sql/yb_foo.sql`: completely new file (for example, with new features)
-     - `src/postgres/src/test/regress/sql/yb_pg_foo.sql`: modified version of original PostgreSQL foo.sql (e.g. for compatibility edits) 
+     - `src/postgres/src/test/regress/sql/yb_pg_foo.sql`: modified version of original PostgreSQL foo.sql (e.g. for compatibility edits)
      - The goal here is to reduce the difference between `foo.sql` and `yb_pg_foo.sql`, when possible.
-   - When creating new `yb_pg_foo.{out,sql}` files and adding them to one of our schedules, sort them into the schedule using `src/postgres/src/test/regress/serial_schedule` as reference. 
+   - When creating new `yb_pg_foo.{out,sql}` files and adding them to one of our schedules, sort them into the schedule using `src/postgres/src/test/regress/serial_schedule` as reference.
      Schedules `parallel_schedule` and `serial_schedule` should be untouched as they are from original PostgreSQL code.
 
 {{< /tip >}}

@@ -4,13 +4,13 @@ headerTitle: yb-tserver
 linkTitle: yb-tserver
 description: YugabyteDB Tablet Server (yb-tserver/) binary and configuration flags to store and manage data for client applications.
 menu:
-  latest:
+  preview:
     identifier: yb-tserver
     parent: configuration
     weight: 2440
 aliases:
-  - /latest/admin/yb-tserver
-  - /latest/deploy/reference/configuration/yb-tserver
+  - /preview/admin/yb-tserver
+  - /preview/deploy/reference/configuration/yb-tserver
 isTocNested: true
 showAsideToc: true
 ---
@@ -678,6 +678,23 @@ Default: `256MB`
 
 ### Network compression
 
+Use the following flag to select the compression type.
+
+##### --compression_type
+
+The valid compression types are `Snappy`, `Zlib`, `LZ4`, and `NoCompression`.
+
+Default: `Snappy`
+
+{{< note title="Notes" >}}
+
+- If you select an invalid option, the cluster will not come up.
+- If you change this flag, the change takes effect after you restart the cluster nodes.
+
+{{< /note >}}
+
+Changing this flag on an existing database is supported; a tablet can validly have SSTs with different compression types. Eventually, compaction will remove the old compression type files.
+
 Use the following two gflags to configure RPC compression:
 
 ##### --enable_stream_compression
@@ -704,7 +721,7 @@ To upgrade from an older version that doesn't support RPC compression (such as 2
 1. Rolling restart to enable compression, on both master and tserver, by setting `enable_stream_compression=true`.
 
     \
-    **Note** You can omit this step if the version you're upgrading to already has compression enabled by default. For the stable release series, versions from 2.6.3.0 and above (including all 2.8 releases) have `enable_stream_compression` set to true by default. For the latest release series, this is all releases beyond 2.9.0.
+    **Note** You can omit this step if the version you're upgrading to already has compression enabled by default. For the stable release series, versions from 2.6.3.0 and above (including all 2.8 releases) have `enable_stream_compression` set to true by default. For the preview release series, this is all releases beyond 2.9.0.
 
 1. Rolling restart to set the compression algorithm to use, on both master and tserver, such as by setting `stream_compression_algo=3`.
 
@@ -808,7 +825,7 @@ Maximum number of intent records allowed in a single CDC batch.
 
 Default: `1000`
 
-##### --cdc_snapshot_batch_size 
+##### --cdc_snapshot_batch_size
 
 Number of records fetched in a single batch of snapshot operation of CDC.
 
@@ -870,11 +887,11 @@ Default: `false`
 
 For tables with a `default_time_to_live` table property, sets a size threshold at which files will no longer be considered for compaction. Files over this threshold will still be considered for expiration. Disabled if value is `0`.
 
-Ideally, rocksdb_max_file_size_for_compaction needs to be chosen as a balance between expiring data at a reasonable frequency while also not creating too many SST files (as this can impact read performance). For instance, if 90 days worth of data is stored, perhaps this flag should be set to roughly the size of one day’s worth of data. 
+Ideally, rocksdb_max_file_size_for_compaction needs to be chosen as a balance between expiring data at a reasonable frequency while also not creating too many SST files (as this can impact read performance). For instance, if 90 days worth of data is stored, perhaps this flag should be set to roughly the size of one day’s worth of data.
 
 Default: `0`
 
-##### --sst_files_soft_limit 
+##### --sst_files_soft_limit
 
 Threshold for number of SST files per tablet. When exceeded, writes to a tablet will be throttled until the number of files is reduced.
 
@@ -898,7 +915,7 @@ Default: `false`
 
 ##### --file_expiration_value_ttl_overrides_table_ttl
 
-When set to true, allows files to expire purely based on their value-level TTL expiration time (even if it is lower than the table TTL). This is useful for times where a file needs to expire earlier than its table-level TTL would allow. If no value-level TTL metadata is available, then table-level TTL will still be used. 
+When set to true, allows files to expire purely based on their value-level TTL expiration time (even if it is lower than the table TTL). This is useful for times where a file needs to expire earlier than its table-level TTL would allow. If no value-level TTL metadata is available, then table-level TTL will still be used.
 
 {{< warning title="Warning">}}
 Use of this flag can potentially result in expiration of live data - use at your discretion.

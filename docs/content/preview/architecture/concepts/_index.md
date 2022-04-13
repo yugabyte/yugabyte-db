@@ -8,7 +8,7 @@ headcontent: Learn about the YugabyteDB query, transaction, sharding, replicatio
 aliases:
   - /architecture/concepts/
 menu:
-  latest:
+  preview:
     identifier: key-concepts
     parent: architecture
     weight: 1106
@@ -52,4 +52,4 @@ menu:
     </a>
   </div>
 
-</div>  
+</div>

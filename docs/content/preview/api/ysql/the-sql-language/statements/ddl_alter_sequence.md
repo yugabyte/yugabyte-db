@@ -4,11 +4,11 @@ headerTitle: ALTER SEQUENCE
 linkTitle: ALTER SEQUENCE
 description: Use the ALTER SEQUENCE statement to change the definition of a sequence in the current schema.
 menu:
-  latest:
+  preview:
     identifier: ddl_alter_sequence
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/ddl_alter_sequence/
+  - /preview/api/ysql/commands/ddl_alter_sequence/
 isTocNested: true
 showAsideToc: true
 ---
