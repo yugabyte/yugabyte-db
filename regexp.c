@@ -415,6 +415,10 @@ orafce_replace_text_regexp(text *src_text, text *pattern_text,
 	/* Check whether replace_text has escapes, especially regexp submatches. */
 	escape_status = check_replace_text_has_escape(replace_text);
 
+#if PG_VERSION_NUM >=  150000
+
+	/* REG_NOSUB doesn't work well in pre PostgreSQL 15 */
+
 	/* If no regexp submatches, we can use REG_NOSUB. */
 	if (escape_status < 2)
 	{
@@ -422,6 +426,8 @@ orafce_replace_text_regexp(text *src_text, text *pattern_text,
 		/* Also tell pg_regexec we only want the whole-match location. */
 		nmatch = 1;
 	}
+
+#endif
 
 	/* Prepare the regexp. */
 	re = RE_compile_and_cache(pattern_text, cflags, collation);
@@ -629,7 +635,6 @@ setup_regexp_matches(text *orig_str, text *pattern, pg_re_flags *re_flags,
 	int			orig_len;
 	pg_wchar   *wide_str;
 	int			wide_len;
-	int			cflags;
 	regex_t    *cpattern;
 	regmatch_t *pmatch;
 	int			pmatch_len;
@@ -638,6 +643,7 @@ setup_regexp_matches(text *orig_str, text *pattern, pg_re_flags *re_flags,
 	int			prev_match_end;
 	int			prev_valid_match_end;
 	int			maxlen = 0;		/* largest fetch length in characters */
+	int			cflags;
 
 	/* save original string --- we'll extract result substrings from it */
 	matchctx->orig_str = orig_str;
@@ -649,8 +655,16 @@ setup_regexp_matches(text *orig_str, text *pattern, pg_re_flags *re_flags,
 
 	/* set up the compiled pattern */
 	cflags = re_flags->cflags;
+
+#if PG_VERSION_NUM >=  150000
+
+	/* REG_NOSUB doesn't work well in pre PostgreSQL 15 */
+
 	if (!use_subpatterns)
 		cflags |= REG_NOSUB;
+
+#endif
+
 	cpattern = RE_compile_and_cache(pattern, cflags, collation);
 
 	/* do we want to remember subpatterns? */
