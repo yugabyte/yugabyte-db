@@ -1,7 +1,7 @@
 ---
-title: Manage cloud access
-linkTitle: Manage cloud users
-description: Manage access to YugabyteDB Managed and your clusters.
+title: Manage account access
+linkTitle: Manage account access
+description: Manage access to your YugabyteDB Managed account and your clusters.
 headcontent:
 image: /images/section_icons/secure/create-roles.png
 menu:
@@ -13,11 +13,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Invite team members to your cloud so that they can create, manage, and connect to clusters.
+Invite team members to your account so that they can create, manage, and connect to clusters.
 
 You must be signed in as an Admin user to invite other users.
 
-The **Users** tab displays a list of users that are either active or have been invited to the cloud, including their email, display name, role, and status.
+The **Users** tab displays a list of users that are either active or have been invited, including their email, display name, role, and status.
 
 ![Admin Users page](/images/yb-cloud/cloud-admin-users.png)
 
@@ -27,21 +27,21 @@ A YugabyteDB Managed user is either an Admin or a Developer.
 
 ### Admin
 
-Admin users have full access to all cloud features. There must always be at least one Admin account. The primary account user (the user who created the YugabyteDB Managed account) is automatically assigned an Admin role.
+Admin users have full access to all features. There must always be at least one Admin user. The primary account user (the user who created the YugabyteDB Managed account) is automatically assigned an Admin role.
 
 ### Developer
 
-Developer users have access to all cloud features, with the exception of administrative tasks, including the following:
+Developer users have access to all features, with the exception of administrative tasks, including the following:
 
-- invite users to the cloud.
+- invite users.
 - delete or change the role of other users.
 - create a billing profile.
 
-To access a cluster database, you need to ask an Admin for the username and password of a database user created on your behalf.
+To access a cluster database, you need to ask an Admin for the username and password of a [database user created on your behalf](../../cloud-secure-clusters/add-users/).
 
 ## Invite users
 
-You add users to your cloud by sending them an invitation. Only an Admin user can invite users.
+You add users by sending them an invitation. Only an Admin user can invite users.
 
 To invite a user:
 
