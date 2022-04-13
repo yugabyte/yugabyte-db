@@ -125,7 +125,7 @@ The above deployment uses the various default ports listed [here](../../referenc
 
 {{< note title="Note" >}}
 
-For Yugabyte Platform, the SSH port is changed for added security.
+For YugabyteDB Anywhere, the SSH port is changed for added security.
 
 {{< /note >}}
 

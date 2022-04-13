@@ -18,7 +18,7 @@ Use this page for general guidance and steps you can take when troubleshooting t
 
 ## Location of various files on a YB cluster
 
-Note that these locations refer to the default for clusters installed via Yugabyte Platform.
+Note that these locations refer to the default for clusters installed via YugabyteDB Anywhere.
 
 ### YB Software/Binaries on the cluster
 
