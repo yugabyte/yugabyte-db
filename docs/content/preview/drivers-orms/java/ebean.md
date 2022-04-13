@@ -38,7 +38,13 @@ YugabyteDB YSQL API has full compatibility with Ebean ORM for data persistence i
 
 Ebean ORM can be used with the [YugabyteDB JDBC driver](../yugabyte-jdbc) and the [PostgreSQL JDBC Driver](../postgres-jdbc).
 
-## Create a new Java-based Play Framework project
+## CRUD operations with Ebean ORM
+
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](/preview/quick-start/build-apps/java/ysql-ebeans/) page under the Quick start section.
+
+The following sections demonstrate how to perform common tasks required for Java application development using the Ebean ORM.
+
+### Create a new Java-based Play Framework project
 
 Before you begin, ensure you have installed Java Development Kit (JDK) 1.8.0 or later and sbt 1.2.8 or later.
 
@@ -75,7 +81,7 @@ Before you begin, ensure you have installed Java Development Kit (JDK) 1.8.0 or 
 
 Your new Java-Play project's folder structure is now ready to work on.
 
-## Add the dependencies
+### Add the dependencies
 
 Do the following:
 
@@ -119,7 +125,7 @@ Do the following:
     libraryDependencies += "com.yugabyte" % "jdbc-yugabytedb" % "42.3.3"
     ```
 
-## Build the REST API using Ebean ORM with YugabyteDB
+### Build the REST API using Ebean ORM with YugabyteDB
 
 The example application has an Employee model that retrieves employee information, such as first name, last name, and email. An `EmployeeController` stores and retrieves the new employee information in the database using a Rest API.
 
@@ -209,7 +215,7 @@ Do the following:
     POST     /employees            controllers.EmployeeController.AddEmployee(request: Request)
     ```
 
-## Compile and run the project
+### Compile and run the project
 
 1. Compile and run the server using `$ sbt compile` and `$ sbt run` in the `project` directory.
 
