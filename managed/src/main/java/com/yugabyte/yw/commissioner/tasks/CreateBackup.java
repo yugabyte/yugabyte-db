@@ -88,6 +88,7 @@ public class CreateBackup extends UniverseTaskBase {
     tableBackupParams.sse = params().sse;
     tableBackupParams.parallelism = params().parallelism;
     tableBackupParams.timeBeforeDelete = params().timeBeforeDelete;
+    tableBackupParams.expiryTimeUnit = params().expiryTimeUnit;
     tableBackupParams.backupType = params().backupType;
     tableBackupParams.isFullBackup = CollectionUtils.isEmpty(params().keyspaceTableList);
     Set<String> tablesToBackup = new HashSet<>();

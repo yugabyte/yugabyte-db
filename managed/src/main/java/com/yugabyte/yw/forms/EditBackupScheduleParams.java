@@ -1,6 +1,7 @@
 package com.yugabyte.yw.forms;
 
 import com.yugabyte.yw.models.Schedule.State;
+import com.yugabyte.yw.models.helpers.TimeUnit;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 
@@ -15,4 +16,7 @@ public class EditBackupScheduleParams {
 
   @ApiModelProperty(value = "Cron expression for scheduling")
   public String cronExpression;
+
+  @ApiModelProperty(value = "Time Unit for frequency")
+  public TimeUnit frequencyTimeUnit;
 }

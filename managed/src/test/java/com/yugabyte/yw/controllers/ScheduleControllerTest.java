@@ -25,6 +25,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Schedule.State;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.TimeUnit;
 import java.util.List;
 import java.util.UUID;
 import org.junit.Before;
@@ -150,6 +151,7 @@ public class ScheduleControllerTest extends FakeDBApplication {
     EditBackupScheduleParams params = new EditBackupScheduleParams();
     params.frequency = 2 * 86400L * 1000L;
     params.status = State.Active;
+    params.frequencyTimeUnit = TimeUnit.DAYS;
     JsonNode requestJson = Json.toJson(params);
     Result result = editSchedule(defaultSchedule.scheduleUUID, defaultCustomer.uuid, requestJson);
     assertOk(result);
@@ -160,6 +162,18 @@ public class ScheduleControllerTest extends FakeDBApplication {
     assertTrue(resultJson.get(0).get("frequency").asLong() == params.frequency);
     assertTrue(resultJson.get(0).get("status").asText().equals(params.status.name()));
     assertAuditEntry(1, defaultCustomer.uuid);
+  }
+
+  @Test
+  public void testEditScheduleUpdateFrequencyWithoutTimeUnit() {
+    EditBackupScheduleParams params = new EditBackupScheduleParams();
+    params.frequency = 2 * 86400L * 1000L;
+    params.status = State.Active;
+    JsonNode requestJson = Json.toJson(params);
+    Result result =
+        assertPlatformException(
+            () -> editSchedule(defaultSchedule.scheduleUUID, defaultCustomer.uuid, requestJson));
+    assertBadRequest(result, "Please provide time unit for frequency");
   }
 
   @Test

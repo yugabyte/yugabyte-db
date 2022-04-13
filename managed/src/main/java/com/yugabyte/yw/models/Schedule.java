@@ -13,6 +13,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.filters.ScheduleFilter;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.TimeUnit;
 import com.yugabyte.yw.models.paging.PagedQuery;
 import com.yugabyte.yw.models.paging.SchedulePagedQuery;
 import com.yugabyte.yw.models.paging.SchedulePagedResponse;
@@ -108,7 +109,7 @@ public class Schedule extends Model {
     return failureCount;
   }
 
-  @ApiModelProperty(value = "Frequency of the schedule, in minutes", accessMode = READ_WRITE)
+  @ApiModelProperty(value = "Frequency of the schedule, in milli seconds", accessMode = READ_WRITE)
   @Column(nullable = false)
   private long frequency;
 
@@ -164,6 +165,17 @@ public class Schedule extends Model {
   @Column(nullable = false)
   private UUID ownerUUID;
 
+  @ApiModelProperty(value = "Time unit of frequency", accessMode = READ_WRITE)
+  private TimeUnit frequencyTimeUnit;
+
+  public TimeUnit getFrequencyTimeUnit() {
+    return this.frequencyTimeUnit;
+  }
+
+  public void setFrequencyTimeunit(TimeUnit frequencyTimeUnit) {
+    this.frequencyTimeUnit = frequencyTimeUnit;
+  }
+
   public String getCronExpression() {
     return cronExpression;
   }
@@ -208,6 +220,11 @@ public class Schedule extends Model {
     resetSchedule();
   }
 
+  public void updateFrequencyTimeUnit(TimeUnit frequencyTimeUnit) {
+    setFrequencyTimeunit(frequencyTimeUnit);
+    save();
+  }
+
   @Column(nullable = false)
   @ApiModelProperty(value = "Running state of the schedule")
   private boolean runningState = false;
@@ -226,11 +243,12 @@ public class Schedule extends Model {
   public static Schedule create(
       UUID customerUUID,
       UUID ownerUUID,
-      String scheduleName,
       ITaskParams params,
       TaskType taskType,
       long frequency,
-      String cronExpression) {
+      String cronExpression,
+      TimeUnit frequencyTimeUnit,
+      String scheduleName) {
     Schedule schedule = new Schedule();
     schedule.scheduleUUID = UUID.randomUUID();
     schedule.customerUUID = customerUUID;
@@ -241,6 +259,7 @@ public class Schedule extends Model {
     schedule.status = State.Active;
     schedule.cronExpression = cronExpression;
     schedule.ownerUUID = ownerUUID;
+    schedule.frequencyTimeUnit = frequencyTimeUnit;
     schedule.scheduleName =
         scheduleName != null ? scheduleName : "schedule-" + schedule.scheduleUUID;
     schedule.save();
@@ -252,13 +271,31 @@ public class Schedule extends Model {
       ITaskParams params,
       TaskType taskType,
       long frequency,
-      String cronExpression) {
+      String cronExpression,
+      TimeUnit frequencyTimeUnit) {
     UUID ownerUUID = customerUUID;
     JsonNode scheduleParams = Json.toJson(params);
     if (scheduleParams.has("universeUUID")) {
       ownerUUID = UUID.fromString(scheduleParams.get("universeUUID").asText());
     }
-    return create(customerUUID, ownerUUID, null, params, taskType, frequency, cronExpression);
+    return create(
+        customerUUID,
+        ownerUUID,
+        params,
+        taskType,
+        frequency,
+        cronExpression,
+        frequencyTimeUnit,
+        null);
+  }
+
+  public static Schedule create(
+      UUID customerUUID,
+      ITaskParams params,
+      TaskType taskType,
+      long frequency,
+      String cronExpression) {
+    return create(customerUUID, params, taskType, frequency, cronExpression, TimeUnit.MINUTES);
   }
 
   /** DEPRECATED: use {@link #getOrBadRequest()} */
