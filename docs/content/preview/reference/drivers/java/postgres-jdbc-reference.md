@@ -32,7 +32,7 @@ showAsideToc: true
 
 </ul>
 
-The [PostgreSQL JDBC driver](https://jdbc.postgresql.org/) is the official JDBC driver for PostgreSQL which can used for connecting to YugabyteDB YSQL. YugabyteDB YSQL has full compatiblity with PostgreSQL JDBC Driver, allows Java programmers to connect to YugabyteDB database to execute DMLs and DDLs using the JDBC APIs.
+The [PostgreSQL JDBC driver](https://jdbc.postgresql.org/) is the official JDBC driver for PostgreSQL which can used for connecting to YugabyteDB YSQL. YugabyteDB YSQL has full compatibility with PostgreSQL JDBC Driver, allows Java programmers to connect to YugabyteDB database to execute DMLs and DDLs using the JDBC APIs.
 
 ## Quick Start
 
@@ -107,7 +107,7 @@ CREATE TABLE IF NOT EXISTS employee (id int primary key, name varchar, age int, 
 
 ```java
 Connection conn = DriverManager.getConnection("jdbc:postgresql://localhost:5433/yugabyte","yugabyte", "yugabyte");
-Statment stmt = conn.createStatement();
+Statement stmt = conn.createStatement();
 try {
   stm.execute("CREATE TABLE IF NOT EXISTS employee" +
                     "  (id int primary key, name varchar, age int, language text)");
@@ -133,7 +133,7 @@ INSERT INTO employee VALUES (1, 'John', 35, 'Java')
 
 ```java
 Connection conn = DriverManager.getConnection("jdbc:postgresql://localhost:5433/yugabyte","yugabyte", "yugabyte");
-Statment stmt = conn.createStatement();
+Statement stmt = conn.createStatement();
 try {
   String insertStr = "INSERT INTO employee VALUES (1, 'John', 35, 'Java')";
   stmt.execute(insertStr);
@@ -143,14 +143,14 @@ try {
 }
 ```
 
-When inserting data using JDBC clients, it is good practice to use `java.sql.PreparedStatemet` for executing `INSERT` statements.
+When inserting data using JDBC clients, it is good practice to use `java.sql.PreparedStatement` for executing `INSERT` statements.
 
 ```java
 Connection conn = DriverManager.getConnection("jdbc:postgresql://localhost:5433/yugabyte","yugabyte", "yugabyte");
-Statment stmt = conn.createStatement();
+Statement stmt = conn.createStatement();
 try {
 
-  PreparedStatement pstmt = connection.prepareStatement("INSERT INTO employees (id, name, age, langugage) VALUES (?, ?, ?, ?)");
+  PreparedStatement pstmt = connection.prepareStatement("INSERT INTO employees (id, name, age, language) VALUES (?, ?, ?, ?)");
   pstmt.setInt(1, 1);
   pstmt.setString(2, "John");
   pstmt.setInt(3, 35);
@@ -174,7 +174,7 @@ SELECT * from employee;
 
 ```java
 Connection conn = DriverManager.getConnection("jdbc:postgresql://localhost:5433/yugabyte","yugabyte", "yugabyte");
-Statment stmt = conn.createStatement();
+Statement stmt = conn.createStatement();
 try {
 
   ResultSet rs = stmt.executeQuery("SELECT * FROM employee");
@@ -214,7 +214,7 @@ Connection conn = DriverManager.getConnection(jdbc:postgresql://localhost:5433/y
 | prefer | SSL enabled only if server requires SSL connection | Not supported
 | require | SSL enabled for data encryption and Server identity is not verified | supported
 | verify-ca | SSL enabled for data encryption and Server CA is verified | Supported
-| verifiy-full | SSL enabled for data encryption. Both CA and hostname of the certificate are verified | Supported
+| verify-full | SSL enabled for data encryption. Both CA and hostname of the certificate are verified | Supported
 
 #### JDBC Client Identity Authentication
 
@@ -248,7 +248,7 @@ Steps for Configuring the JDBC Client for Server authentication,
     $ openssl pkcs8 -topk8 -inform PEM -in yugabytedb.key -outform DER -nocrypt -out yugabytedb.key.pk8
     ```
 
-Create an `ssl` resource directory in your java application and copy over all the certificates. Update the connection string used by `DriverManager.getConnection` to include the ssl ceritifcates.
+Create an `ssl` resource directory in your java application and copy over all the certificates. Update the connection string used by `DriverManager.getConnection` to include the ssl certificates.
 
 Example JDBC URL for connecting to Secure YugabyteDB cluster can be seen below.
 
@@ -265,7 +265,7 @@ Connection conn = DriverManager.getConnection(jdbc:postgresql://localhost:5433/y
 
 ### Transaction and Isolation Levels
 
-YugabyteDB supports transactions for inserting and querying data from the tables. YugabyteDB supports different [isolation levels](../../../../architecture/transactions/isolation-levels/) for maintaing strong consistency for concurrent data access.
+YugabyteDB supports transactions for inserting and querying data from the tables. YugabyteDB supports different [isolation levels](../../../../architecture/transactions/isolation-levels/) for maintaining strong consistency for concurrent data access.
 
 JDBC Driver `java.sql.Connection` interface provides `connection.setAutoCommit()`, `connection.commit()` and `connection.rollback()` methods for enabling transactional access to YugabyteDB Database.
 
@@ -274,10 +274,10 @@ For example
 ```Java
 Connection conn = DriverManager.getConnection("jdbc:postgresql://localhost:5433/yugabyte","yugabyte", "yugabyte");
 conn.setAutoCommit(false);
-Statment stmt = conn.createStatement();
+Statement stmt = conn.createStatement();
 try {
   
-  PreparedStatement pstmt = connection.prepareStatement("INSERT INTO employees (id, name, age, langugage) VALUES (?, ?, ?, ?)");
+  PreparedStatement pstmt = connection.prepareStatement("INSERT INTO employees (id, name, age, language) VALUES (?, ?, ?, ?)");
   pstmt.setInt(1, 1);
   pstmt.setString(2, "John");
   pstmt.setInt(3, 35);
