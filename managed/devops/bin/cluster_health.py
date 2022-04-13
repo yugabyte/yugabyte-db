@@ -295,14 +295,23 @@ class NodeChecker():
         if len(lines) < 2:
             return e.fill_and_return_entry([output], True)
 
-        msgs.append(lines[0])
-        for line in lines[1:]:
+        found_header = False
+        for line in lines:
             msgs.append(line)
             if not line:
+                continue
+            if line.startswith("Filesystem"):
+                found_header = True
+                continue
+            if not found_header:
                 continue
             percentage = line.split()[4][:-1]
             if int(percentage) > DISK_UTILIZATION_THRESHOLD_PCT:
                 found_error = True
+
+        if not found_header:
+            return e.fill_and_return_entry([output], True)
+
         return e.fill_and_return_entry(msgs, found_error)
 
     def get_certificate_expiration_date(self, cert_path):
