@@ -18,9 +18,9 @@ export const HAReplication: FC = () => {
   if (isLoading) {
     return <YBLoading />;
   }
-
+  
   if (error) {
-    return <HAErrorPlaceholder error={error} />;
+    return <HAErrorPlaceholder error={error} configUUID={config?.uuid!} />;
   }
 
   if (isNoHAConfigExists) {
