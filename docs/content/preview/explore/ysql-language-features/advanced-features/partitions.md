@@ -99,7 +99,41 @@ To create a new partition that contains only the rows that don't match the speci
 CREATE TABLE order_changes_default PARTITION OF order_changes DEFAULT;
 ```
 
-Optionally, you can create an index on the key columns and other indexes for every partition, as follows:
+Optionally, you can create indexes on a partitioned table as follows:
+
+```sql
+yugabyte=# CREATE INDEX ON order_changes (change_date);
+```
+
+This automatically creates indexes on each partition, as demonstrated by the following output:
+
+```output
+yugabyte=# \d order_changes_2019_02
+        Table "public.order_changes_2019_02"
+   Column    | Type | Collation | Nullable | Default
+-------------+------+-----------+----------+---------
+ change_date | date |           |          |
+ type        | text |           |          |
+ description | text |           |          |
+Partition of: order_changes FOR VALUES FROM ('2019-02-01') TO ('2019-03-01')
+Indexes:
+    "order_changes_2019_02_change_date_idx" lsm (change_date HASH)
+
+...
+
+yugabyte=# \d order_changes_2021_01
+        Table "public.order_changes_2021_01"
+   Column    | Type | Collation | Nullable | Default
+-------------+------+-----------+----------+---------
+ change_date | date |           |          |
+ type        | text |           |          |
+ description | text |           |          |
+Partition of: order_changes FOR VALUES FROM ('2021-01-01') TO ('2021-02-01')
+Indexes:
+    "order_changes_2021_01_change_date_idx" lsm (change_date HASH)
+```
+
+Otherwise, you can create an index on the key columns and other indexes for every partition, as follows:
 
 ```sql
 CREATE INDEX ON order_changes_2019_02 (change_date);
@@ -109,6 +143,8 @@ CREATE INDEX ON order_changes_2020_11 (change_date);
 CREATE INDEX ON order_changes_2020_12 (change_date);
 CREATE INDEX ON order_changes_2021_01 (change_date);
 ```
+
+For the implications of creating an index on a partitioned table as opposed to creating indexes separately on each partition, see [CREATE INDEX](../../../../api/ysql/the-sql-language/statements/ddl_create_index/).
 
 Partitioning is a flexible technique that allows you to remove old partitions and add new partitions for new data when required. You do this by changing the partition structure instead of the actual data.
 
@@ -127,13 +163,14 @@ CREATE TABLE order_changes_2021_02 PARTITION OF order_changes
 
 Note the following:
 
-- The primary key for a partitioned table should always contain the partition key. In the current release of YugabyteDB, it is recommended to set the primary key directly on partitions.
+- The primary key for a partitioned table should always contain the partition key.
 - If you choose to define row triggers, you do so on individual partitions instead of the partitioned table.
-- A partition table does not inherit tablespaces from its parent. A partition table by default is placed according to cluster configuration.
+- Creating a foreign key reference on a partitioned table is not supported.
+- A partition table inherits tablespaces from its parent.
 - You cannot mix temporary and permanent relations in the same partition hierarchy.
 - If you have a default partition in the partitioning hierarchy, you can add new partitions only if there is no data in the default partition that matches the partition constraint of the new partition.
 
-## Partition Pruning and Constraint Exclusion
+## Partition pruning and constraint exclusion
 
 Partition pruning and constraint exclusion are optimization techniques that allow the query planner to exclude unnecessary partitions from the execution. For example, consider the following query:
 
