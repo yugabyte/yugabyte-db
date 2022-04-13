@@ -149,9 +149,12 @@ def check_output(cmd, env):
         output = subprocess.check_output(
             cmd, stderr=subprocess.STDOUT, env=env, timeout=CMD_TIMEOUT_SEC)
         return str(output.decode('utf-8').encode("ascii", "ignore").decode("ascii"))
-    except subprocess.CalledProcessError as e:
+    except subprocess.CalledProcessError as ex:
         return 'Error executing command {}: {}'.format(
-            cmd, e.output.decode("utf-8").encode("ascii", "ignore"))
+            cmd, ex.output.decode("utf-8").encode("ascii", "ignore"))
+    except subprocess.TimeoutExpired:
+        return 'Error: timed out executing command {} for {} seconds'.format(
+            cmd, CMD_TIMEOUT_SEC)
 
 
 def safe_pipe(command_str):
