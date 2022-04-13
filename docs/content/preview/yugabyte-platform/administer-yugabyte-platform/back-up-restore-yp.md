@@ -1,7 +1,7 @@
 ---
 title: Back up and restore YugabyteDB Anywhere
 headerTitle: Back up and restore YugabyteDB Anywhere
-linkTitle: Back up Yugabyte Platform
+linkTitle: Back up YugabyteDB Anywhere
 description: Use a script file to back up and restore YugabyteDB Anywhere.
 menu:
   preview:
