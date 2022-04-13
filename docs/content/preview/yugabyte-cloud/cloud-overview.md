@@ -1,10 +1,10 @@
 ---
-title: Yugabyte Cloud
+title: YugabyteDB Managed
 linkTitle: Overview
 description: Fully managed YugabyteDB-as-a-Service.
 headcontent: Fully managed YugabyteDB-as-a-Service
 image: /images/section_icons/index/quick_start.png
-section: YUGABYTE CLOUD
+section: YUGABYTEDB MANAGED
 aliases:
   - /preview/yugabyte-cloud/
   - /preview/deploy/yugabyte-cloud/
@@ -16,11 +16,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Yugabyte Cloud is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on <a href="https://cloud.google.com/">Google Cloud Platform (GCP)</a> and <a href="https://aws.amazon.com/">Amazon Web Services (AWS)</a> (as of September 2021; Azure coming soon, for information contact {{<support-cloud>}}).
+YugabyteDB Managed is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on <a href="https://cloud.google.com/">Google Cloud Platform (GCP)</a> and <a href="https://aws.amazon.com/">Amazon Web Services (AWS)</a> (as of September 2021; Azure coming soon, for information contact {{<support-cloud>}}).
 
 ### Start here
 
-To begin using Yugabyte Cloud, go to [Quick start](../cloud-quickstart/).
+To begin using YugabyteDB Managed, go to [Quick start](../cloud-quickstart/).
 
 ### In depth
 
@@ -36,8 +36,8 @@ To begin using Yugabyte Cloud, go to [Quick start](../cloud-quickstart/).
 | [Add cloud users](../cloud-admin/manage-access/) | Invite team members to your cloud. |
 | [Manage billing](../cloud-admin/cloud-billing-profile/) | Create your billing profile, manage your payment methods, and review invoices. |
 | **Reference** | |
-| [What's new](../release-notes/) | See what's new in Yugabyte Cloud, what regions are supported, and known issues. |
+| [What's new](../release-notes/) | See what's new in YugabyteDB Managed, what regions are supported, and known issues. |
 | [Troubleshooting](../cloud-troubleshoot/) | Get solutions to common problems. To check cloud status, go to [cloud status](https://status.yugabyte.cloud/). |
 | [FAQ](../cloud-faq/) | Get answers to frequently asked questions. |
-| [Security architecture](../cloud-security/) | Review Yugabyte Cloud's security architecture and shared responsibility model. |
-| [Cluster costs](../cloud-admin/cloud-billing-costs/) | Review how Yugabyte Cloud charges for clusters. |
+| [Security architecture](../cloud-security/) | Review YugabyteDB Managed's security architecture and shared responsibility model. |
+| [Cluster costs](../cloud-admin/cloud-billing-costs/) | Review how YugabyteDB Managed charges for clusters. |

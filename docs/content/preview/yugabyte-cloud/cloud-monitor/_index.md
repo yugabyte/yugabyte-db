@@ -2,20 +2,20 @@
 title: Alerts and monitoring
 headerTitle: Alerts and monitoring
 linkTitle: Alerts and monitoring
-description: Set alerts and monitor your Yugabyte Cloud clusters.
+description: Set alerts and monitor your YugabyteDB Managed clusters.
 image: /images/section_icons/explore/monitoring.png
 headcontent: Set alerts and monitor cluster performance and activity.
-section: YUGABYTE CLOUD
+section: YUGABYTEDB MANAGED
 menu:
   preview:
     identifier: cloud-monitor
     weight: 100
 ---
 
-Use Yugabyte Cloud alerts and monitoring to monitor cluster performance and be notified of potential problems.
+Use YugabyteDB Managed alerts and monitoring to monitor cluster performance and be notified of potential problems.
 
 - **Alerts**. To be automatically notified of potential problems, enable alerts for cluster, database, and billing criteria. Configure alerts from the [Alerts](cloud-alerts/) page.
-- **Performance monitoring**. Monitor database and cluster performance in real time. Yugabyte Cloud provides the following tools to monitor your clusters:
+- **Performance monitoring**. Monitor database and cluster performance in real time. YugabyteDB Managed provides the following tools to monitor your clusters:
 
   - [Performance metrics](overview/). The cluster **Overview** and **Performance Metrics** tabs show a variety of performance metrics charted over time. Use cluster performance metrics to ensure the cluster configuration matches its performance requirements, and [scale the cluster vertically or horizontally](../cloud-clusters/configure-clusters/) as your requirements change.
   - [Live queries](cloud-queries-live/). The cluster **Live Queries** tab shows the queries that are currently "in-flight" on your cluster.

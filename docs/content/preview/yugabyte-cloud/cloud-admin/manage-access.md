@@ -1,7 +1,7 @@
 ---
 title: Manage cloud access
 linkTitle: Manage cloud users
-description: Manage access to Yugabyte Cloud and your clusters.
+description: Manage access to YugabyteDB Managed and your clusters.
 headcontent:
 image: /images/section_icons/secure/create-roles.png
 menu:
@@ -23,11 +23,11 @@ The **Users** tab displays a list of users that are either active or have been i
 
 ## User roles
 
-A Yugabyte Cloud user is either an Admin or a Developer.
+A YugabyteDB Managed user is either an Admin or a Developer.
 
 ### Admin
 
-Admin users have full access to all cloud features. There must always be at least one Admin account. The primary account user (the user who created the Yugabyte Cloud account) is automatically assigned an Admin role.
+Admin users have full access to all cloud features. There must always be at least one Admin account. The primary account user (the user who created the YugabyteDB Managed account) is automatically assigned an Admin role.
 
 ### Developer
 
@@ -82,4 +82,4 @@ If you request a password reset for a non-existent user, the request fails silen
 
 To change your password or display name, click the Profile icon in the top right corner and choose **Profile** to display the **User Profile** page.
 
-You can edit your first and last name. Click **Change Password** to change your Yugabyte Cloud password.
+You can edit your first and last name. Click **Change Password** to change your YugabyteDB Managed password.

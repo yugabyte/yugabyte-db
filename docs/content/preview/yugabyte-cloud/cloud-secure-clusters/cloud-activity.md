@@ -1,7 +1,7 @@
 ---
 title: Audit cloud activity
 linkTitle: Audit cloud activity
-description: Monitor activity on your Yugabyte Cloud.
+description: Monitor activity in YugabyteDB Managed.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:

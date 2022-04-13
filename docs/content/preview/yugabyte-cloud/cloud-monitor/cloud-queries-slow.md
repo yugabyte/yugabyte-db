@@ -1,7 +1,7 @@
 ---
 title: View slow YSQL queries
 linkTitle: Slow YSQL queries
-description: View slow running queries that have run on your Yugabyte Cloud cluster.
+description: View slow running queries that have run on your YugabyteDB Managed cluster.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:

@@ -1,7 +1,7 @@
 ---
 title: Maintenance windows
 linkTitle: Maintenance windows
-description: Manage maintenance windows for clusters in Yugabyte Cloud.
+description: Manage maintenance windows for clusters in YugabyteDB Managed.
 headcontent:
 image: /images/section_icons/manage/backup.png
 menu:

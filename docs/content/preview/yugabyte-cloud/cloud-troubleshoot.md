@@ -1,10 +1,10 @@
 ---
-title: Troubleshoot Yugabyte Cloud
+title: Troubleshoot YugabyteDB Managed
 linkTitle: Troubleshoot
-description: Troubleshoot issues in Yugabyte Cloud.
+description: Troubleshoot issues in YugabyteDB Managed.
 headcontent:
 image: /images/section_icons/index/quick_start.png
-section: YUGABYTE CLOUD
+section: YUGABYTEDB MANAGED
 menu:
   preview:
     identifier: cloud-troubleshoot
@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-If you are unable to reach Yugabyte Cloud or having issues, first check the [cloud status](https://status.yugabyte.cloud/).
+If you are unable to reach YugabyteDB Managed or having issues, first check the [cloud status](https://status.yugabyte.cloud/).
 
 ## Connectivity
 
@@ -45,7 +45,7 @@ If you are connecting to a cluster using YSQL and see the following error:
 ysqlsh: FATAL:  no pg_hba.conf entry for host "144.244.44.44", user "admin", database "yugabyte", SSL off
 ```
 
-Yugabyte Cloud clusters require an SSL connection. If you set `sslmode` to `disable`, your connection will fail. Refer to [SSL modes in YSQL](../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql).
+YugabyteDB Managed clusters require an SSL connection. If you set `sslmode` to `disable`, your connection will fail. Refer to [SSL modes in YSQL](../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql).
 
 If you are connecting to a cluster using YCQL and see the following error:
 
@@ -67,7 +67,7 @@ Be sure to encode any special characters in your connection string.
 
 Ensure that you have entered the correct password for the cluster database you are trying to access; refer to the cluster database admin credentials file you downloaded when you created the cluster. The file is named `<cluster name> credentials.txt`.
 
-The database admin credentials are separate from your Yugabyte Cloud credentials, which are used exclusively to log in to Yugabyte Cloud.
+The database admin credentials are separate from your YugabyteDB Managed credentials, which are used exclusively to log in to YugabyteDB Managed.
 
 If you are a database user who was added to the database by an administrator, ask your administrator to either re-send your credentials or [change your database password](../cloud-secure-clusters/add-users/).
 
@@ -108,7 +108,7 @@ ERROR:  permission denied to [...]
 HINT:  Must be superuser to [...].
 ```
 
-For security reasons, the database admin user is not a superuser. The admin user is a member of yb_superuser, which does allow most operations. For more information on database roles and privileges in Yugabyte Cloud, refer to [Database authorization in Yugabyte Cloud clusters](../cloud-secure-clusters/cloud-users/). If you need to perform an operation that requires superuser privileges, contact {{<support-cloud>}}.
+For security reasons, the database admin user is not a superuser. The admin user is a member of yb_superuser, which does allow most operations. For more information on database roles and privileges in YugabyteDB Managed, refer to [Database authorization in YugabyteDB Managed clusters](../cloud-secure-clusters/cloud-users/). If you need to perform an operation that requires superuser privileges, contact {{<support-cloud>}}.
 
 ### I need to change my database admin password
 

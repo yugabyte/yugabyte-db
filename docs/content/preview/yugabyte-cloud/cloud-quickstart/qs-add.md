@@ -1,7 +1,7 @@
 ---
 title: Create a free cluster
 linkTitle: Create a free cluster
-description: Create a Free cluster to get started using Yugabyte Cloud.
+description: Create a Free cluster to get started using YugabyteDB Managed.
 headcontent:
 image: /images/section_icons/index/quick_start.png
 menu:
@@ -15,7 +15,7 @@ showAsideToc: true
 
 The free cluster provides a fully functioning single node YugabyteDB cluster deployed to the region of your choice. The cluster is free forever and includes enough resources to explore the core features available for developing applications with YugabyteDB. No credit card information is required. You can only have one free cluster.
 
-After setting up your Yugabyte Cloud account, [log in](https://cloud.yugabyte.com/login) to access Yugabyte Cloud. Yugabyte Cloud has the following main sections, accessed via the left menu:
+After setting up your YugabyteDB Managed account, [log in](https://cloud.yugabyte.com/login) to access YugabyteDB Managed. YugabyteDB Managed has the following main sections, accessed via the left menu:
 
 - **Getting Started** - Create your free cluster and access documentation.
 
@@ -33,7 +33,7 @@ To create your free cluster:
 
 1. On the **Getting Started** page, click **Create a free cluster** to open the **Create Cluster** wizard.
 
-1. Select **Yugabyte Cloud Free** and click **Next**.
+1. Select **YugabyteDB Managed Free** and click **Next**.
 
 1. Choose the cloud provider (AWS or GCP), enter a name for the cluster, and choose the region in which to deploy the cluster, then click **Next**.
 
@@ -41,13 +41,13 @@ To create your free cluster:
 
 1. Click **Create Cluster**.
 
-After you complete the wizard, Yugabyte Cloud bootstraps and provisions the cluster, and configures YugabyteDB. The process takes up to 15 minutes.
+After you complete the wizard, YugabyteDB Managed bootstraps and provisions the cluster, and configures YugabyteDB. The process takes up to 15 minutes.
 
-When the cluster is ready, the cluster [Overview](../../cloud-monitor/overview/) is displayed. You now have a fully configured YugabyteDB cluster provisioned in Yugabyte Cloud.
+When the cluster is ready, the cluster [Overview](../../cloud-monitor/overview/) is displayed. You now have a fully configured YugabyteDB cluster provisioned in YugabyteDB Managed.
 
 {{< note title="Note" >}}
 
-YugabyteDB is a distributed database optimized for deployment across a cluster of servers. The free cluster has a single node and limited resources, suitable for running tutorials, [Yugabyte University](https://university.yugabyte.com), and [building sample applications](../cloud-build-apps/). To evaluate Yugabyte Cloud for production use or conduct a proof-of-concept (POC), contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) for trial credits.
+YugabyteDB is a distributed database optimized for deployment across a cluster of servers. The free cluster has a single node and limited resources, suitable for running tutorials, [Yugabyte University](https://university.yugabyte.com), and [building sample applications](../cloud-build-apps/). To evaluate YugabyteDB Managed for production use or conduct a proof-of-concept (POC), contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) for trial credits.
 
 {{< /note >}}
 

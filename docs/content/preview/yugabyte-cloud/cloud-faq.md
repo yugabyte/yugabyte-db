@@ -1,10 +1,10 @@
 ---
-title: Yugabyte Cloud FAQ
-linkTitle: Yugabyte Cloud FAQ
-description: Yugabyte Cloud frequently asked questions.
+title: YugabyteDB Managed FAQ
+linkTitle: YugabyteDB Managed FAQ
+description: YugabyteDB Managed frequently asked questions.
 headcontent:
 image: /images/section_icons/index/quick_start.png
-section: YUGABYTE CLOUD
+section: YUGABYTEDB MANAGED
 menu:
   preview:
     identifier: cloud-faq
@@ -13,33 +13,33 @@ isTocNested: true
 showAsideToc: true
 ---
 
-## Yugabyte Cloud
+## YugabyteDB Managed
 
-### What is Yugabyte Cloud?
+### What is YugabyteDB Managed?
 
-Yugabyte Cloud is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on Google Cloud Platform (GCP), Amazon Web Services (AWS), and Microsoft Azure (coming soon).
+YugabyteDB Managed is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on Google Cloud Platform (GCP), Amazon Web Services (AWS), and Microsoft Azure (coming soon).
 
-You access your Yugabyte Cloud clusters via [YSQL](../../api/ysql/) and [YCQL](../../api/ycql/) client APIs, and administer your clusters using [Yugabyte Cloud](https://cloud.yugabyte.com/login).
+You access your YugabyteDB Managed clusters via [YSQL](../../api/ysql/) and [YCQL](../../api/ycql/) client APIs, and administer your clusters using [YugabyteDB Managed](https://cloud.yugabyte.com/login).
 
-See also [Yugabyte Cloud](https://www.yugabyte.com/cloud/) at yugabyte.com.
+See also [YugabyteDB Managed](https://www.yugabyte.com/cloud/) at yugabyte.com.
 
-Yugabyte Cloud runs on top of [YugabyteDB Anywhere](../../yugabyte-platform/overview/).
+YugabyteDB Managed runs on top of [YugabyteDB Anywhere](../../yugabyte-platform/overview/).
 
-### How is Yugabyte Cloud priced?
+### How is YugabyteDB Managed priced?
 
 Yugabyte bills for its services as follows:
 
-- Charges by the minute for your Yugabyte Cloud clusters.
+- Charges by the minute for your YugabyteDB Managed clusters.
 - Tabulates costs daily.
 - Displays your current monthly costs under **Invoices** on the **Billing** tab.
 
-For information on Yugabyte Cloud pricing, refer to the [Yugabyte Cloud Standard Price List](https://www.yugabyte.com/yugabyte-cloud-standard-price-list/). For a description of how cluster configurations are costed, refer to [Cluster costs](../cloud-admin/cloud-billing-costs/).
+For information on YugabyteDB Managed pricing, refer to the [YugabyteDB Managed Standard Price List](https://www.yugabyte.com/yugabyte-cloud-standard-price-list/). For a description of how cluster configurations are costed, refer to [Cluster costs](../cloud-admin/cloud-billing-costs/).
 
 ### What regions in AWS and GCP are available?
 
 Refer to [Cloud provider regions](../release-notes/#cloud-provider-regions) for a list currently supported regions.
 
-Yugabyte Cloud supports all the regions that have robust infrastructure and sufficient demand from customers. We are continuously improving region coverage, so if there are any regions you would like us to support, reach out to {{<support-cloud>}}.
+YugabyteDB Managed supports all the regions that have robust infrastructure and sufficient demand from customers. We are continuously improving region coverage, so if there are any regions you would like us to support, reach out to {{<support-cloud>}}.
 
 ## Clusters
 
@@ -49,7 +49,7 @@ Use the free cluster to get started with YugabyteDB. The free cluster is limited
 
 Standard clusters can have unlimited nodes and storage and are suitable for production workloads. They also support horizontal and vertical scaling - nodes and storage can be added or removed to suit your production loads. Standard clusters also support VPC peering, and scheduled and manual backups. By default, standard clusters are provisioned using a [stable release](#what-version-of-yugabytedb-does-my-cluster-run-on).
 
-A Yugabyte Cloud account is limited to a single free cluster; you can add as many standard clusters as you need.
+A YugabyteDB Managed account is limited to a single free cluster; you can add as many standard clusters as you need.
 
 | Feature | Free | Standard |
 | :----------- | :---------- | :---------- |
@@ -71,7 +71,7 @@ If you want to continue testing YugabyteDB with more resource-intensive scenario
 - Download and run YugabyteDB on a local machine. For instructions, refer to [Quick Start](../../quick-start/).
 - Upgrade to a [standard cluster](../cloud-basics/create-clusters/) to access bigger clusters with more resources.
 
-To evaluate Yugabyte Cloud for production use or conduct a proof-of-concept (POC), contact {{<support-cloud>}} for trial credits.
+To evaluate YugabyteDB Managed for production use or conduct a proof-of-concept (POC), contact {{<support-cloud>}} for trial credits.
 
 ### Can I migrate my free cluster to a standard cluster?
 
@@ -81,15 +81,15 @@ Currently self-service migration is not supported. Contact {{<support-cloud>}} f
 
 Upgrades are automatically handled by Yugabyte. There are two types of upgrades:
 
-#### Yugabyte Cloud
+#### YugabyteDB Managed
 
-During a [maintenance window](../cloud-clusters/cloud-maintenance/), Yugabyte Cloud may be in read-only mode and not allow any edit changes. The upgrade has no impact on running clusters. Yugabyte will notify you in advance of the maintenance schedule.
+During a [maintenance window](../cloud-clusters/cloud-maintenance/), YugabyteDB Managed may be in read-only mode and not allow any edit changes. The upgrade has no impact on running clusters. Yugabyte will notify you in advance of the maintenance schedule.
 
 #### Cluster (YugabyteDB) version upgrade
 
 To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte upgrades your cluster database to the [latest version](#what-version-of-yugabytedb-does-my-cluster-run-on).
 
-Yugabyte only upgrades clusters during scheduled maintenance windows. Yugabyte notifies you in advance of any upcoming upgrade via email. The email includes the date and time of the maintenance window. An Upcoming Maintenance badge is also displayed on the cluster. You can start the upgrade any time by signing in to Yugabyte Cloud, selecting the cluster, clicking the **Upcoming Maintenance** badge, and clicking **Upgrade Now**. To delay the maintenance, click **Delay to next available window**. To manage maintenance windows, select the cluster [Maintenance tab](../cloud-clusters/cloud-maintenance/).
+Yugabyte only upgrades clusters during scheduled maintenance windows. Yugabyte notifies you in advance of any upcoming upgrade via email. The email includes the date and time of the maintenance window. An Upcoming Maintenance badge is also displayed on the cluster. You can start the upgrade any time by signing in to YugabyteDB Managed, selecting the cluster, clicking the **Upcoming Maintenance** badge, and clicking **Upgrade Now**. To delay the maintenance, click **Delay to next available window**. To manage maintenance windows, select the cluster [Maintenance tab](../cloud-clusters/cloud-maintenance/).
 
 The database is upgraded to the latest release in the [release track](#what-version-of-yugabytedb-does-my-cluster-run-on) that was selected when the cluster was created (either edge or stable). Free clusters are always in the edge track.
 
@@ -109,23 +109,23 @@ To view the database version running on a particular cluster, navigate to the **
 
 ### Can I test YugabyteDB locally?
 
-To test locally, [download](https://download.yugabyte.com) and install YugabyteDB on a local machine. Refer to [Quick Start](../../quick-start/). For accurate comparison with cloud, be sure to download the version that is running on Yugabyte Cloud.
+To test locally, [download](https://download.yugabyte.com) and install YugabyteDB on a local machine. Refer to [Quick Start](../../quick-start/). For accurate comparison with cloud, be sure to download the version that is running on YugabyteDB Managed.
 
 ## Support
 
 ### Is support included in the base price?
 
-Enterprise Support is included in the base price for standard clusters. Refer to the [Yugabyte Cloud Support Services Terms and Conditions](https://www.yugabyte.com/yugabyte-cloud-support-services-terms-and-conditions/).
+Enterprise Support is included in the base price for standard clusters. Refer to the [YugabyteDB Managed Support Services Terms and Conditions](https://www.yugabyte.com/yugabyte-cloud-support-services-terms-and-conditions/).
 
 Free and standard cluster customers can also use the [YugabyteDB Slack community]({{<slack-invite>}}).
 
-### Where can I find the support policy and Service Level Agreement (SLA) for Yugabyte Cloud?
+### Where can I find the support policy and Service Level Agreement (SLA) for YugabyteDB Managed?
 
-The Yugabyte Cloud SLA, terms of service, acceptable use policy, and more can be found on the [Yugabyte Legal](https://www.yugabyte.com/legal/) page.
+The YugabyteDB Managed SLA, terms of service, acceptable use policy, and more can be found on the [Yugabyte Legal](https://www.yugabyte.com/legal/) page.
 
-### How do I check the status of Yugabyte Cloud?
+### How do I check the status of YugabyteDB Managed?
 
-The [Yugabyte Cloud Status](https://status.yugabyte.cloud/) page displays the current uptime status of Yugabyte Cloud, customer clusters, and the [Yugabyte Support Portal](https://support.yugabyte.com/).
+The [YugabyteDB Managed Status](https://status.yugabyte.cloud/) page displays the current uptime status of YugabyteDB Managed, customer clusters, and the [Yugabyte Support Portal](https://support.yugabyte.com/).
 
 The status page also provides notices of scheduled maintenance, current incidents and incident history, and historical uptime.
 
@@ -135,19 +135,19 @@ Subscribe to the status page by clicking **Subscribe to Updates**. Email notific
 
 ### How secure is my cluster?
 
-Your data is processed at the Yugabyte Cloud account level, and each cloud account is a single tenant, meaning it runs its components for only one customer. Clusters in your cloud are isolated from each other in a separate VPC, and access is limited to the IP addresses you specify in allow lists assigned to each cluster. Resources are not shared between clusters.
+Your data is processed at the YugabyteDB Managed account level, and each cloud account is a single tenant, meaning it runs its components for only one customer. Clusters in your cloud are isolated from each other in a separate VPC, and access is limited to the IP addresses you specify in allow lists assigned to each cluster. Resources are not shared between clusters.
 
-Yugabyte Cloud uses both encryption in transit and encryption at rest to protect clusters and cloud infrastructure. Yugabyte Cloud also provides DDoS and application layer protection, and automatically blocks network protocol and volumetric DDoS attacks.
+YugabyteDB Managed uses both encryption in transit and encryption at rest to protect clusters and cloud infrastructure. YugabyteDB Managed also provides DDoS and application layer protection, and automatically blocks network protocol and volumetric DDoS attacks.
 
-Yugabyte Cloud uses a shared responsibility model for cloud security. For more information on Yugabyte Cloud security, refer to [Security architecture](../cloud-security/).
+YugabyteDB Managed uses a shared responsibility model for cloud security. For more information on YugabyteDB Managed security, refer to [Security architecture](../cloud-security/).
 
 ## Cluster configuration and management
 
 ### What cluster configurations can I create?
 
-Using Yugabyte Cloud, you can create single region clusters that can be deployed across multiple and single availability zones.
+Using YugabyteDB Managed, you can create single region clusters that can be deployed across multiple and single availability zones.
 
-The Fault Tolerance of a cluster determines how resilient the cluster is to node and cloud zone failures and, by extension, the cluster configuration. You can configure clusters with the following fault tolerances in Yugabyte Cloud:
+The Fault Tolerance of a cluster determines how resilient the cluster is to node and cloud zone failures and, by extension, the cluster configuration. You can configure clusters with the following fault tolerances in YugabyteDB Managed:
 
 - **Availability Zone Level** - a minimum of 3 nodes spread across multiple availability zones with a RF of 3. YugabyteDB can continue to do reads and writes even in case of a cloud availability zone failure. This configuration provides the maximum protection for a data center failure. Recommended for production deployments. For horizontal scaling, nodes are scaled in increments of 3.
 - **Node Level** - a minimum of 3 nodes deployed in a single availability zone with a [replication factor](../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to cloud availability zone outages. For horizontal scaling, you can scale nodes in increments of 1.
@@ -200,7 +200,7 @@ For detailed steps for configuring other popular third party tools, see [Third p
 
 Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). Before you can connect an application, you need to install the correct driver. Clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters. To build sample applications using popular drivers, refer to [Build an application](../cloud-quickstart/cloud-build-apps/).
 
-Before you can connect, your application has to be able to reach your Yugabyte Cloud. To add inbound network access from your application environment to Yugabyte Cloud, add the public IP addresses to the [cluster IP access list](../cloud-secure-clusters/add-connections/), or use [VPC peering](../cloud-basics/cloud-vpcs/) to add private IP addresses.
+Before you can connect, your application has to be able to reach your YugabyteDB Managed. To add inbound network access from your application environment to YugabyteDB Managed, add the public IP addresses to the [cluster IP access list](../cloud-secure-clusters/add-connections/), or use [VPC peering](../cloud-basics/cloud-vpcs/) to add private IP addresses.
 
 For more details, refer to [Connect to clusters](../cloud-connect/).
 
@@ -214,7 +214,7 @@ For more details, refer to [Inactive free clusters](../cloud-basics/create-clust
 
 Free clusters are paused after 21 days of inactivity. To keep a cluster from being paused, perform an action as described in [What qualifies as activity on a cluster?](#what-qualifies-as-activity-on-a-cluster)
 
-To keep a paused cluster from being deleted, sign in to Yugabyte Cloud, select the cluster on the **Clusters** page, and click **Resume**.
+To keep a paused cluster from being deleted, sign in to YugabyteDB Managed, select the cluster on the **Clusters** page, and click **Resume**.
 
 ### What qualifies as activity on a cluster?
 
@@ -226,7 +226,7 @@ Free clusters are paused after 21 days of inactivity. To keep your cluster from 
 
 - Add or remove IP allow lists.
 
-- If the cluster is already paused, resume the cluster by signing in to Yugabyte Cloud, selecting the cluster on the **Clusters** page, and clicking **Resume**.
+- If the cluster is already paused, resume the cluster by signing in to YugabyteDB Managed, selecting the cluster on the **Clusters** page, and clicking **Resume**.
 
 ## Backups
 
@@ -234,14 +234,14 @@ Free clusters are paused after 21 days of inactivity. To keep your cluster from 
 
 By default, every cluster is backed up automatically every 24 hours, and these automatic backups are retained for 8 days. The first automatic backup is triggered 24 hours after creating a table, and is scheduled every 24 hours thereafter. You can change the default backup intervals by adjusting the backup policy settings.
 
-Yugabyte Cloud runs full backups, not incremental.
+YugabyteDB Managed runs full backups, not incremental.
 
 Backups are retained in the same region as the cluster.
 
 Backups for AWS clusters are encrypted using AWS S3 server-side encryption. Backups for GCP clusters are encrypted using Google-managed server-side encryption keys.
 
-Currently, Yugabyte Cloud does not support backups of free clusters.
+Currently, YugabyteDB Managed does not support backups of free clusters.
 
 ### Can I download backups?
 
-Currently, Yugabyte Cloud does not support self-service backup downloads. Contact {{<support-cloud>}} for assistance.
+Currently, YugabyteDB Managed does not support self-service backup downloads. Contact {{<support-cloud>}} for assistance.

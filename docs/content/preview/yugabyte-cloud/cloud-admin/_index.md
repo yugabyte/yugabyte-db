@@ -1,11 +1,11 @@
 ---
-title: Administer Yugabyte Cloud
-headerTitle: Administer Yugabyte Cloud
-linkTitle: Administer Yugabyte Cloud
-description: Administer Yugabyte Cloud.
+title: Administer YugabyteDB Managed
+headerTitle: Administer YugabyteDB Managed
+linkTitle: Administer YugabyteDB Managed
+description: Administer YugabyteDB Managed.
 image: /images/section_icons/explore/administer.png
 headcontent: Manage your cloud users and billing and payment methods.
-section: YUGABYTE CLOUD
+section: YUGABYTEDB MANAGED
 menu:
   preview:
     identifier: cloud-admin
