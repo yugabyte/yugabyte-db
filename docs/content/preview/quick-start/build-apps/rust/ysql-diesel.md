@@ -25,7 +25,7 @@ showAsideToc: true
 
 </ul>
 
-The following tutorial implements a REST API server using the Rust [Diesel](https://diesel.rs) ORM. The scenario is that of an e-commerce application where database access is managed using the [EntityFrameworkCore](https://www.playframework.com/documentation/2.8.x/api/java/index.html). It includes the following tables:
+The following tutorial implements a REST API server using the Rust [Diesel](https://diesel.rs) ORM. The scenario is that of an e-commerce application where database access is managed using the [Entity Framework Core](https://docs.microsoft.com/en-us/ef/core/). The e-commerce database (ysql_diesel) includes the following tables:
 
 - `users` — the users of the e-commerce site
 - `products` — the products being sold
@@ -53,14 +53,14 @@ Build the REST API server (written using Diesel and Rocket) as follows:
 $ cargo build --release
 ```
 
-If you encounter a build failure, install libpq and try again.
+If you encounter a build failure, install [libpq](../../../../reference/drivers/ysql-client-drivers/#libpq) and try again.
 
 ## Database configuration
 
 Set the database connection URL as an environment variable by running the following command:
 
 ```sh
-$ export DATABASE_URL=postgres://postgres@localhost:5433/ysql_diesel
+$ export DATABASE_URL=postgres://yugabyte@127.0.0.1:5433/ysql_diesel
 ```
 
 From your local YugabyteDB installation directory, connect to the [YSQL](../../../../admin/ysqlsh/) shell using:
@@ -154,13 +154,13 @@ Create 2 orders using the `userId` for John.
 
 ```sh
 $ curl \
-  --data '{ "userId": "1", "products": [ { "productId": 1, "units": 2 } ] }' \
+  --data '{ "userId": 1, "products": [ { "productId": 1, "units": 2 } ] }' \
   -v -X POST -H 'Content-Type:application/json' http://localhost:8080/orders
 ```
 
 ```sh
 $ curl \
-  --data '{ "userId": "1", "products": [ { "productId": 1, "units": 2 }, { "productId": 2, "units": 4 } ] }' \
+  --data '{ "userId": 1, "products": [ { "productId": 1, "units": 2 }, { "productId": 2, "units": 4 } ] }' \
   -v -X POST -H 'Content-Type:application/json' http://localhost:8080/orders
 ```
 
@@ -224,19 +224,19 @@ ysql_diesel=# SELECT count(*) FROM orders;
 ```
 
 ```sql
-ysql_diesel=# SELECT * FROM orderline;
+ysql_diesel=# SELECT * FROM order_lines;
 ```
 
 ```output
- order_id                             | product_id | units
---------------------------------------+------------+-------
- 45659918-bbfd-4a75-a202-6feff13e186b |          1 |     2
- f19b64ec-359a-47c2-9014-3c324510c52c |          1 |     2
- f19b64ec-359a-47c2-9014-3c324510c52c |          2 |     4
+ order_line_id | order_id | product_id | units 
+---------------+----------+------------+-------
+             1 |        1 |          1 |     2
+             2 |        2 |          1 |     2
+             3 |        2 |          2 |     4
 (3 rows)
 ```
 
-`orderline` is a child table of the parent `orders` table, and is connected using a foreign key constraint. The `users` table is connected with `orders` using a foreign key constraint so that no order can be placed with an invalid user, and that user has to be present in the users table.
+`order_lines` is a child table of the parent `orders` table, and is connected using a foreign key constraint. The `users` table is connected with `orders` using a foreign key constraint so that no order can be placed with an invalid user, and that user has to be present in the users table.
 
 ### Using the REST API
 
