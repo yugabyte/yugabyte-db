@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Review your cloud charges and manage your billing profile and payment methods using the **Billing** tab.
+Review your charges and manage your billing profile and payment methods using the **Billing** tab.
 
 You must be signed in as the Admin user (the user who created the YugabyteDB Managed account) to perform Admin tasks. Developer (invited) users cannot view the billing profile.
 
@@ -74,7 +74,7 @@ The **Credits** section displays any credits applied to your account, including 
 
 At the end of each month, your invoice is generated, the amount is charged automatically to the default credit card, and the invoice and receipt are emailed to the address on the billing profile. If you are using a payment method other than credit card, the invoice will be settled out of band.
 
-**Invoices** lists your active and past invoices, along with a running total of cloud usage for the current billing period. To review a specific invoice, select it in **Invoice History**.
+**Invoices** lists your active and past invoices, along with a running total of usage for the current billing period. To review a specific invoice, select it in **Invoice History**.
 
 ### Active Invoice
 

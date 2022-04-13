@@ -15,9 +15,9 @@ showAsideToc: true
 
 There are no set-up charges or commitments to begin using YugabyteDB Managed. At the end of the month, you are automatically charged for that month's usage. You can view your charges for the current billing period at any time by selecting **Invoices** on the **Billing** tab of the **Admin** page. Refer to [Manage your billing profile and payment method](../cloud-billing-profile/).
 
-Only the cloud account Admin user (the user who created the YugabyteDB Managed account) can access the billing and payment details.
+Only an Admin user (the user who created the YugabyteDB Managed account) can access the billing and payment details.
 
-Your bill is calculated based on your usage of the following cloud dimensions:
+Your bill is calculated based on your usage of the following dimensions:
 
 - Instance vCPU capacity
 - Disk storage
@@ -29,7 +29,7 @@ Instance vCPU capacity makes up the majority of your bill, and is the easiest to
 | Dimension | Allowance/vCPU per month |
 |---|---|
 | Disk storage | 50 GB |
-| Cloud backup storage | 100 GB |
+| Backup storage | 100 GB |
 | Data transfer – Same Region | 1000 GB |
 | Data transfer – Cross Region (APAC) | 10 GB |
 | Data transfer – Cross Region (Other regions) | 10 GB |
@@ -41,7 +41,7 @@ You can see the approximate cost for your vCPUs when [creating](../../cloud-basi
 
 ## Instance vCPU capacity costs
 
-Instance vCPU capacity cost is the cost for the use of the total number of vCPUs in your cloud account.
+Instance vCPU capacity cost is the cost for the use of the total number of vCPUs in your account.
 
 {{< tip title="Rate card" >}}
 

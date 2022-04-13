@@ -12,7 +12,7 @@ menu:
     weight: 621
 -->
 
-[Spring Boot](https://spring.io/projects/spring-boot) is a popular framework for building cloud native applications. Each Spring Boot application is stand-alone and self-contained, which makes them easy to deploy in a distributed fashion – whether to containers or on Kubernetes.
+[Spring Boot](https://spring.io/projects/spring-boot) is a popular framework for building cloud-native applications. Each Spring Boot application is stand-alone and self-contained, which makes them easy to deploy in a distributed fashion – whether to containers or on Kubernetes.
 
 The following examples show how you can connect a Spring application to YugabyteDB Managed and containerize it, then deploy the containerized application to Kubernetes.
 

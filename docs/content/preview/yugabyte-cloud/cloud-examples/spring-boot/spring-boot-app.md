@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 -->
 
-[Spring Boot](https://spring.io/projects/spring-boot) is a popular framework for building cloud native applications. Each Spring Boot application is stand-alone and self-contained, which makes them easy to deploy in a distributed fashion – whether to containers or on Kubernetes.
+[Spring Boot](https://spring.io/projects/spring-boot) is a popular framework for building cloud-native applications. Each Spring Boot application is stand-alone and self-contained, which makes them easy to deploy in a distributed fashion – whether to containers or on Kubernetes.
 
 The example on this page shows how you can connect a Spring Boot application to YugabyteDB Managed, using a version of the Spring Boot PetClinic sample application that has been updated with a profile making it compatible with YugabyteDB.
 

@@ -50,7 +50,7 @@ showAsideToc: true
 
 #### New features
 
-- Support for [alerts](../cloud-monitor/cloud-alerts/) to notify you and your team members when cluster and database resource usage exceeds predefined limits, or of potential billing issues. Configure alerts and view notifications on the **Alerts** page. When an alert triggers, YugabyteDB Managed sends an email notification and displays a notification on the **Notifications** tab. When the alert condition resolves, the notification dismisses automatically. Alerts are enabled for all clusters in your cloud.
+- Support for [alerts](../cloud-monitor/cloud-alerts/) to notify you and your team members when cluster and database resource usage exceeds predefined limits, or of potential billing issues. Configure alerts and view notifications on the **Alerts** page. When an alert triggers, YugabyteDB Managed sends an email notification and displays a notification on the **Notifications** tab. When the alert condition resolves, the notification dismisses automatically. Alerts are enabled for all clusters in your account.
 - Free clusters are now [paused](../cloud-faq/#why-is-my-free-cluster-paused) after 21 days of inactivity. YugabyteDB Managed sends a notification when your cluster is paused. To keep a cluster from being paused, perform an action as described in [What qualifies as activity on a cluster?](../cloud-faq/#what-qualifies-as-activity-on-a-cluster) Free clusters are deleted after 30 days of inactivity.
 - Ability to see the [version](../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) of YugabyteDB that your cluster is running on.
 
@@ -82,16 +82,16 @@ showAsideToc: true
 
 #### New features
 
-- Support for auditing cloud activity using the new **Activity** tab on the **Admin** page. The tab provides a running audit of cloud activity, including:
+- Support for auditing account activity using the new **Activity** tab on the **Admin** page. The tab provides a running audit of activity, including:
 
   - backups
   - cluster creation and modification
-  - changes to cloud users and their roles
+  - changes to account users and their roles
   - billing changes
   - allow list changes
 
-- Support for multiple Admin users on your cloud account, and Admin users can now change the role of existing users. You can also invite multiple users to your cloud at once, and assign them a role (Developer or Admin) when you invite them. You manage cloud users using the **Users** tab on the **Admin** page.
-- Additional charts on the **Invoices** on the **Billing** tab, which break costs down by cluster and infrastructure (instance costs, storage, and data transfer) so that you can quickly evaluate your cloud costs.
+- Support for multiple Admin users on your account, and Admin users can now change the role of existing users. You can also invite multiple users at once, and assign them a role (Developer or Admin) when you invite them. You manage users using the **Users** tab on the **Admin** page.
+- Additional charts on the **Invoices** on the **Billing** tab, which break costs down by cluster and infrastructure (instance costs, storage, and data transfer) so that you can quickly evaluate your costs.
 
 #### Fixes
 
@@ -120,7 +120,7 @@ This release includes the following features:
 - IP allow lists for network security
 - Cloud Shell for running SQL queries from your browser
 - YSQL and YCQL API support
-- Multiple cloud users - invite additional users to your cloud
+- Multiple users - invite additional users
 - Encryption at rest and in transit
 
 ## Cloud provider regions

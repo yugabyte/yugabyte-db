@@ -62,4 +62,4 @@ To scale a cluster:
 
 1. Click **Save** when you are done.
 
-Depending on the number of nodes, the scaling operation can take several minutes or more, during which time some cloud operations will not be available.
+Depending on the number of nodes, the scaling operation can take several minutes or more, during which time some cluster operations will not be available.

@@ -43,10 +43,10 @@ The following table describes the default YSQL roles and users in YugabyteDB Man
 | Role | Description |
 | --- | --- |
 | [admin](#admin-and-yb-superuser) | The default user for your cluster. If you added your own credentials during cluster creation, the user name will be the one you entered. Although not a superuser, this role is a member of yb_superuser, and you can use it to perform database operations, create other yb_superuser users, create extensions, and manage your cluster. |
-| postgres | Superuser role created during database creation. Not available to cloud users. |
+| postgres | Superuser role created during database creation. Not available to YugabyteDB Managed users. |
 | [yb_extension](#yb-extension) | Role that allows non-superuser users to create PostgreSQL extensions. |
 | [yb_superuser](#admin-and-yb-superuser) | YugabyteDB Managed only role. This role is assigned to the default cluster user (that is, admin) to perform all the required operations on the database, including creating other yb_superuser users. For security reasons, yb_superuser doesn't have YugabyteDB superuser privileges. |
-| yugabyte | Superuser role used during database creation, by Yugabyte support to perform maintenance operations, and for backups (ysql_dumps). Not available to cloud users. |
+| yugabyte | Superuser role used during database creation, by Yugabyte support to perform maintenance operations, and for backups (ysql_dumps). Not available to YugabyteDB Managed users. |
 
 ### Admin and yb_superuser
 

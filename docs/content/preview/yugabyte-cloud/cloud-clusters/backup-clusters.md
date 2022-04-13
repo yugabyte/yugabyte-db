@@ -25,7 +25,7 @@ You can also perform backups [on demand](#on-demand-backups) and manually [resto
 
 Backups are not supported for Free clusters.
 
-![Cloud Cluster Backups page](/images/yb-cloud/cloud-clusters-backups.png)
+![Cluster Backups page](/images/yb-cloud/cloud-clusters-backups.png)
 
 To delete a backup, click the **Delete** icon.
 

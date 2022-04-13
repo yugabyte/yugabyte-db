@@ -75,10 +75,10 @@ YugabyteDB Managed clusters include the following security features:
     <a class="section-link icon-offset" href="cloud-activity/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
-        <div class="title">Audit cloud activity</div>
+        <div class="title">Audit account activity</div>
       </div>
       <div class="body">
-        Audit cloud activity, including changes to clusters, billing, allow lists, and more.
+        Audit account activity, including changes to clusters, billing, allow lists, and more.
       </div>
     </a>
   </div>

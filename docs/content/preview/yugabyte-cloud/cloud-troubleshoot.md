@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-If you are unable to reach YugabyteDB Managed or having issues, first check the [cloud status](https://status.yugabyte.cloud/).
+If you are unable to reach YugabyteDB Managed or having issues, first check the [status](https://status.yugabyte.cloud/).
 
 ## Connectivity
 

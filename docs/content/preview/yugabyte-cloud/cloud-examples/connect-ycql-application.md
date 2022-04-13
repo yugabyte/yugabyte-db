@@ -136,7 +136,7 @@ import com.datastax.oss.driver.api.core.cql.ResultSet;
 import com.datastax.oss.driver.api.core.cql.Row;
 
 public class YBCqlHelloWorld {
-    // Load the Yugabyte cloud root certificate
+    // Load the cluster root certificate
     private static SSLContext createSSLHandler(String certfile) {
         try {
             CertificateFactory cf = CertificateFactory.getInstance("X.509");

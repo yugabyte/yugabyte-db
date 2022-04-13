@@ -1,7 +1,7 @@
 ---
-title: Cloud alerts
+title: Alerts
 linkTitle: Alerts
-description: Set alerts for activity in your cloud.
+description: Set alerts for activity in your account.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
@@ -21,23 +21,23 @@ To monitor clusters in real time, use the performance metrics on the cluster [Ov
 
 ## Features
 
-- YugabyteDB Managed sends email notifications to all cloud account members.
+- YugabyteDB Managed sends email notifications to all account members.
 
 - When an alert triggers, YugabyteDB Managed sends an email notification once, regardless of how long the condition lasts.
 
 - When an alert triggers, a notification displays on the **Notifications** page. Once the alert condition resolves, the notification dismisses automatically.
 
-- Alerts are enabled for all clusters in your cloud.
+- Alerts are enabled for all clusters in your account.
 
 - Alerts can have two severity levels: Warning or Severe.
 
 ## Configure alerts
 
-Enable alerts for your cloud using the **Configurations** tab on the **Alerts** page.
+Enable alerts using the **Configurations** tab on the **Alerts** page.
 
-Only cloud admin users can configure billing alerts.
+Only Admin users can configure billing alerts.
 
-![Cloud Alerts Configurations](/images/yb-cloud/cloud-alerts-configurations.png)
+![Alert Configurations](/images/yb-cloud/cloud-alerts-configurations.png)
 
 <!-- To view alert details, select the alert to display the **Alert Policy Settings** sheet.-->
 
@@ -49,7 +49,7 @@ To test that you can receive email from the Yugabyte server, click **Send Test E
 
 Open notifications are listed on the **Notifications** tab on the **Alerts** page.
 
-![Cloud Alerts Notifications](/images/yb-cloud/cloud-alerts-notifications.png)
+![Alert Notifications](/images/yb-cloud/cloud-alerts-notifications.png)
 
 When the condition that caused the alert resolves, the notification dismisses automatically.
 

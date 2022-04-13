@@ -45,6 +45,6 @@ For information on data privacy and compliance, refer to the [Yugabyte DPA](http
 
 ## Auditing
 
-Yugabyte supports audit logging at the cloud account and database level.
+Yugabyte supports audit logging at the account and database level.
 
 For information on database audit logging, refer to [Configure Audit Logging](../../../secure/audit-logging/audit-logging-ysql/).

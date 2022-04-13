@@ -38,7 +38,7 @@ Use YugabyteDB Managed alerts and monitoring to monitor cluster performance and 
         <div class="title">Alerts</div>
       </div>
       <div class="body">
-        Enable alerts for cluster performance metrics and cloud billing.
+        Enable alerts for cluster performance metrics and billing.
       </div>
     </a>
   </div>

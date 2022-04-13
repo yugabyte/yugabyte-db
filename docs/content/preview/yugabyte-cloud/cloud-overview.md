@@ -32,12 +32,12 @@ To begin using YugabyteDB Managed, go to [Quick start](../cloud-quickstart/).
 | [Connect](../cloud-connect/) | Connect to clusters from a browser using Cloud Shell, from your desktop using a shell, and from applications. |
 | [Monitor](../cloud-monitor/) | Monitor cluster performance and get notified of potential problems. |
 | [Manage](../cloud-clusters/) | Scale vertically and horizontally to match your performance requirements.<br>Back up and restore clusters.<br>Create PostgreSQL extensions.<br>Set maintenance windows for cluster maintenance and database upgrades.<br>Pause, resume, and delete clusters. |
-| **Cloud basics** | |
-| [Add cloud users](../cloud-admin/manage-access/) | Invite team members to your cloud. |
+| **Account and billing** | |
+| [Add users](../cloud-admin/manage-access/) | Invite team members to your YugabyteDB Managed account. |
 | [Manage billing](../cloud-admin/cloud-billing-profile/) | Create your billing profile, manage your payment methods, and review invoices. |
 | **Reference** | |
 | [What's new](../release-notes/) | See what's new in YugabyteDB Managed, what regions are supported, and known issues. |
-| [Troubleshooting](../cloud-troubleshoot/) | Get solutions to common problems. To check cloud status, go to [cloud status](https://status.yugabyte.cloud/). |
+| [Troubleshooting](../cloud-troubleshoot/) | Get solutions to common problems. To check YugabyteDB Managed status, go to [status](https://status.yugabyte.cloud/). |
 | [FAQ](../cloud-faq/) | Get answers to frequently asked questions. |
 | [Security architecture](../cloud-security/) | Review YugabyteDB Managed's security architecture and shared responsibility model. |
 | [Cluster costs](../cloud-admin/cloud-billing-costs/) | Review how YugabyteDB Managed charges for clusters. |

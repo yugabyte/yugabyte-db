@@ -25,7 +25,7 @@ After setting up your YugabyteDB Managed account, [log in](https://cloud.yugabyt
 
 - **Network Access** - Set up VPC networks and authorize access to your clusters using IP allow lists.
 
-- **Admin** - Manage billing and payment methods, add cloud users, and review cloud activity.
+- **Admin** - Manage billing and payment methods, add users, and review account activity.
 
 ## Create your free cluster
 
@@ -37,7 +37,7 @@ To create your free cluster:
 
 1. Choose the cloud provider (AWS or GCP), enter a name for the cluster, and choose the region in which to deploy the cluster, then click **Next**.
 
-1. Click **Download credentials**. The default credentials are for a database user named "admin". You'll use these credentials when connecting to your YugabyteDB database in the cloud.
+1. Click **Download credentials**. The default credentials are for a database user named "admin". You'll use these credentials when connecting to your YugabyteDB database.
 
 1. Click **Create Cluster**.
 

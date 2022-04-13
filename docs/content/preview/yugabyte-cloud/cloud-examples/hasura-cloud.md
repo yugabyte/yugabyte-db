@@ -22,7 +22,7 @@ For an example of how to deploy a GraphQL application for a Hasura Cloud project
 
 ## Obtain your Yugabyte cluster connection info
 
-Sign up for YugabyteDB Managed and create a Free Tier cluster by following the steps in the cloud [Quick Start](../../cloud-quickstart/).
+Sign up for YugabyteDB Managed and create a Free Tier cluster by following the steps in the [Quick Start](../../cloud-quickstart/).
 
 The cluster has a default database called `yugabyte`. You'll use this along with your database credentials (username and password) in your connection with the Hasura project. To connect, you'll also need the connection string with the cluster's host address and port number.
 
