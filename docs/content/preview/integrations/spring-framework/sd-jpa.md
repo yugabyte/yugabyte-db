@@ -12,13 +12,13 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This document describes fundamentals of using Spring Data JPA project with YugabyteDB Database for creating Spring Boot applications.
 
-## Spring Data JPA
 
-[Spring Data JPA](https://spring.io/projects/spring-data-jpa) is one of the popular Spring Framework projects. Spring Data JPA makes it easy to implement JPA based repositories by reducing the boilerplate code required for implementing the data access layers. It provides enhanced support for JPA based data access using Spring annotation driven programming.
+[Spring Data JPA](https://spring.io/projects/spring-data-jpa) is a popular Spring Framework projects, and simplifies creating JPA-based repositories by reducing the boilerplate code required to implement data access layers. It provides enhanced support for JPA-based data access using Spring annotation driven programming.
 
-Spring Data JPA provides out of the box support for PostgreSQL complaint databases including auto-reconfiguration support for automatically creating the data source objects based on the Database driver on the classpath. YugabyteDB provides complete support for Spring Data JPA using the Postgres Dialect. Spring Data JPA repositories can be used for reading and writing data into YugabyteDB cluster.
+Spring Data JPA provides out-of-the-box support for PostgreSQL-compliant databases. This includes auto-reconfiguration support for creating the data source objects based on the database driver in the classpath. YugabyteDB provides complete support for Spring Data JPA using the PostgreSQL dialect. Spring Data JPA repositories can be used to read and write data to YugabyteDB clusters.
+
+This document describes the fundamentals of using Spring Data JPA with YugabyteDB to create Spring Boot applications.
 
 ### Quick Start
 
@@ -47,7 +47,7 @@ Add the following dependencies for Spring Data JPA with [YugabyteDB JDBC Driver]
 <dependencies>
 ```
 
-If you're planning to use [PostgreSQL JDBC driver](/preview/drivers-orms/java/postgres-jdbc/), use the following dependencies
+If you're planning to use the [PostgreSQL JDBC driver](/preview/drivers-orms/java/postgres-jdbc/), use the following dependencies:
 
 ```xml
 <dependencies>
@@ -66,15 +66,15 @@ If you're planning to use [PostgreSQL JDBC driver](/preview/drivers-orms/java/po
 
 ## Fundamentals
 
-Learn how to perform the common tasks required for developing Spring Boot applications using Spring Data JPA with YugabyteDB YSQL API.
+Learn how to perform common tasks required for developing Spring Boot applications using Spring Data JPA with YugabyteDB YSQL API.
 
 ### Connect to YugabyteDB Database using Spring Data JPA
 
-Spring Data JPA project provides number of `spring.datasource.*` properties that can be customized to configure the data source and transaction behavior of the Spring Boot applications.
+The Spring Data JPA project provides number of `spring.datasource.*` properties that can be customized to configure the data source and transaction behavior of Spring Boot applications.
 
-Configure the Spring boot application to connect to YugabyteDB Cluster using the following properties in the application.properties file
+Configure the Spring Boot application to connect to a YugabyteDB Cluster using the following properties in the `application.properties` file:
 
-#### For YugabyteDB JDBC Driver
+#### YugabyteDB JDBC driver
 
 | spring property | Description | Value |
 | :---------- | :---------- | :------ |
@@ -86,7 +86,7 @@ Configure the Spring boot application to connect to YugabyteDB Cluster using the
 | spring.datasource.hikari.maximum-pool-size | Maximum number of DB connections in the Pool | 20
 | spring.datasource.hikari.auto-commit | Transaction commit behavior | false
 
-#### For PostgreSQL JDBC Driver
+#### PostgreSQL JDBC driver
 
 | spring property | Description | Value |
 | :---------- | :---------- | :------ |
@@ -99,9 +99,9 @@ Configure the Spring boot application to connect to YugabyteDB Cluster using the
 
 ### Create table
 
-Spring Data JPA uses [Hibernate ORM](/preview/drivers-orms/java/hibernate/) for handling creation of the database tables based on the domain objects configured in the Spring Boot application. Java POJOs annotated with `@Table` and `@Entity` annotation will be mapped to corresponding YugabyteDB table.
+Spring Data JPA uses [Hibernate ORM](/preview/drivers-orms/java/hibernate/) for handling creation of the database tables based on the domain objects configured in the Spring Boot application. Java POJOs annotated with `@Table` and `@Entity` are mapped to the corresponding YugabyteDB table.
 
-For Example
+For example:
 
 ```java
 @Entity
@@ -116,22 +116,22 @@ public class User {
 ...
 ```
 
-Above domain object maps to `users` table on the database which has `userId` as primary key with auto incrementing type.
+This domain object maps to the `users` table on the database, which has `userId` as the primary key and an auto incrementing type.
 
-Also, Spring Boot application can configured to determine the behavior of table creation, whether the tables should be created on app startup or not. Add the following property in `application.properties` for configuring the database table creation behavior,
+Spring Boot applications can be configured to determine whether tables should be created on application startup or not. Add the following property in `application.properties` to configure the database table creation behavior,
 
 ```xml
 # Hibernate ddl auto (create, create-drop, validate, update, none).
 spring.jpa.hibernate.ddl-auto=create
 ```
 
-For production environment, its a good practice to disable the database table creation on application start up. For production deployments, it is recommended to configure the property to `none` to prevent the table creation on startup.
+For production environments, it's good practice to disable database table creation on startup. To prevent table creation on startup, set the property to `none`.
 
 ### Read and Write Data
 
 #### Enable JPA Repositories
 
-Spring Data JPA repositories provides support for `CRUDRepository`, `JPARepository`, and `PagingAndSortingRepository`. By enabling these repositories, Spring boot applications get access to data access methods out of the box. For more information refer to the [Spring Data JPA reference](https://docs.spring.io/spring-data/jpa/docs/current/reference/html/#jpa.query-methods.query-creation) documentation.
+Spring Data JPA repositories provide support for `CRUDRepository`, `JPARepository`, and `PagingAndSortingRepository`. By enabling these repositories, Spring Boot applications get access to data access methods out of the box. For more information, refer to the [Spring Data JPA reference](https://docs.spring.io/spring-data/jpa/docs/current/reference/html/#jpa.query-methods.query-creation) documentation.
 
 ```java
 public interface CrudRepository<T, ID> extends Repository<T, ID> {
@@ -152,7 +152,7 @@ public interface CrudRepository<T, ID> extends Repository<T, ID> {
 }
 ```
 
-Spring boot application can be configured to enable these repositories by using the following Java configuration class.
+Spring Boot applications can be configured to enable these repositories by using the following Java configuration class.
 
 ```java
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
@@ -163,9 +163,9 @@ class Config { … }
 
 #### Insert Data
 
-To write data in to YugabyteDB, implement the repository for each domain object.
+To write data to YugabyteDB, implement the repository for each domain object.
 
-For example
+For example:
 
 ```java
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -176,7 +176,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
 }
 ```
 
-This repository can then be used for inserting data in to `Users` table.
+This repository can then be used to insert data into the `Users` table.
 
 ```java
 
@@ -193,9 +193,9 @@ public User createUser(@Valid @RequestBody User user) {
 
 #### Query Data
 
-To write data in to YugabyteDB, use the out of the box query methods exposed by the repositories.
+To read data in YugabyteDB, use the out-of-the-box query methods exposed by the repositories.
 
-For Example
+For example:
 
 ```java
 @Autowired
@@ -214,9 +214,9 @@ public User updateUser(@PathVariable Long userId,
 }
 ```
 
-Spring Data JPA repositories provides [named queries](https://docs.spring.io/spring-data/jpa/docs/current/reference/html/#jpa.query-methods.at-query) for adding custom queries to repositories and to update the behavior of in built queries by using `@Query` annotation in the repository implementation.
+Spring Data JPA repositories provide [named queries](https://docs.spring.io/spring-data/jpa/docs/current/reference/html/#jpa.query-methods.at-query) for adding custom queries to repositories and to update the behavior of built-in queries by using the `@Query` annotation in the repository implementation.
 
-For Example
+For example:
 
 ```java
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -233,9 +233,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
 YugabyteDB supports transactions for inserting and querying data from the tables. YugabyteDB supports different [isolation levels](../../../../architecture/transactions/isolation-levels/) for maintaining strong consistency for concurrent data access.
 
-By default, CRUD methods on JPA repository are transactional. For read operations, the transaction configuration `readOnly` flag is set to true. All others are configured with a plain `@Transactional` so that default transaction configuration applies.
+By default, CRUD methods on a JPA repository are transactional. For read operations, the transaction configuration `readOnly` flag is set to true. All others are configured with a plain `@Transactional` so that the default transaction configuration applies.
 
-The transaction and isolation level of the Spring Boot applications can be configured by setting the following properties in `application.properties` file
+The transaction and isolation level of Spring Boot applications can be configured by setting the following properties in the `application.properties` file.
 
 ```java
 spring.datasource.hikari.transactionIsolation=TRANSACTION_SERIALIZABLE

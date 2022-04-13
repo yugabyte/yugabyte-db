@@ -137,6 +137,6 @@ For additional information and examples, see [ SDYB example](https://github.com/
 
 ## Compatibility Matrix
 
-| **SDYB** | **YugabyteDB Smart Driver** | **Postgres JDBC Driver** |
+| **SDYB** | **YugabyteDB Smart Driver** | **PostgreSQL JDBC Driver** |
 | -------- | --------------------------- | ------------------------ |
 | 2.3.0    | 42.3.4          | 42.2.7 or later
