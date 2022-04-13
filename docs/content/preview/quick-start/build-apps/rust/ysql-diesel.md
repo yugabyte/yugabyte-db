@@ -60,18 +60,18 @@ If you encounter a build failure, install [libpq](../../../../reference/drivers/
 The database connection settings are managed using the `DATABASE_URL` in the `.env` file, which is in the following format:
 
 ```sh
-DATABASE_URL=postgres://<user>:<password>@<host>:<port>/<database>
+DATABASE_URL=postgres://<username>:<password>@<host>:<port>/<database>
 ```
 
-| Properties | Description | Default |
+| Property | Description | Default |
 | :--- | :--- | :--- |
-| Host | Database server IP address or DNS name. | localhost |
-| Port | Database port where it accepts YSQL connections. | 5433 |
-| Username | Database username. | yugabyte |
-| Password | User password. | yugabyte |
-| Database | Database instance. | ysql_diesel |
+| host | Database server IP address or DNS name. | localhost |
+| port | Database port where it accepts YSQL connections. | 5433 |
+| username | Database username. | yugabyte |
+| password | User password. | yugabyte |
+| database | Database instance. | ysql_diesel |
 
-The default values are valid for a local YugabyteDB installation. If you are using a different configuration, change these values as required.
+The default values are valid for a local YugabyteDB installation. If you are using a different configuration, change these values in the URL as required.
 
 From your local YugabyteDB installation directory, connect to the [YSQL](../../../../admin/ysqlsh/) shell using:
 
