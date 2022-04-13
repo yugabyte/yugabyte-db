@@ -662,7 +662,7 @@ class NodeChecker():
         logging.info("Checking redis cli works for node {}".format(self.node))
         e = self._new_entry("Connectivity with redis-cli")
         redis_cli = '{}/bin/redis-cli'.format(YB_TSERVER_DIR)
-        remote_cmd = 'echo "ping" | {} -h {} -p {}'.format(redis_cli, self.node, self.redis_port)
+        remote_cmd = '{} -h {} -p {} ping'.format(redis_cli, self.node, self.redis_port)
 
         output = self._remote_check_output(remote_cmd).strip()
 
