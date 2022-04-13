@@ -8,6 +8,13 @@
 #include "utils/builtins.h"
 #include "utils/memutils.h"
 
+#if PG_VERSION_NUM >= 150000
+
+#include "utils/varlena.h"
+
+#endif
+
+
 /* all the options of interest for regex functions */
 typedef struct pg_re_flags
 {
@@ -43,6 +50,11 @@ PG_FUNCTION_INFO_V1(orafce_regexp_instr_no_n);
 PG_FUNCTION_INFO_V1(orafce_regexp_instr_no_endoption);
 PG_FUNCTION_INFO_V1(orafce_regexp_instr_no_flags);
 PG_FUNCTION_INFO_V1(orafce_regexp_instr_no_subexpr);
+PG_FUNCTION_INFO_V1(orafce_textregexreplace_noopt);
+PG_FUNCTION_INFO_V1(orafce_textregexreplace);
+PG_FUNCTION_INFO_V1(orafce_textregexreplace_extended);
+PG_FUNCTION_INFO_V1(orafce_textregexreplace_extended_no_n);
+PG_FUNCTION_INFO_V1(orafce_textregexreplace_extended_no_flags);
 
 #if PG_VERSION_NUM <  120000
 
@@ -195,6 +207,349 @@ RE_compile_and_cache(text *text_re, int cflags, Oid collation)
 
 #endif
 
+#if PG_VERSION_NUM <  150000
+
+/*
+ * check_replace_text_has_escape
+ *
+ * Returns 0 if text contains no backslashes that need processing.
+ * Returns 1 if text contains backslashes, but not regexp submatch specifiers.
+ * Returns 2 if text contains regexp submatch specifiers (\1 .. \9).
+ */
+static int
+check_replace_text_has_escape(const text *replace_text)
+{
+	int			result = 0;
+	const char *p = VARDATA_ANY(replace_text);
+	const char *p_end = p + VARSIZE_ANY_EXHDR(replace_text);
+
+	while (p < p_end)
+	{
+		/* Find next escape char, if any. */
+		p = memchr(p, '\\', p_end - p);
+		if (p == NULL)
+			break;
+		p++;
+		/* Note: a backslash at the end doesn't require extra processing. */
+		if (p < p_end)
+		{
+			if (*p >= '1' && *p <= '9')
+				return 2;		/* Found a submatch specifier, so done */
+			result = 1;			/* Found some other sequence, keep looking */
+			p++;
+		}
+	}
+	return result;
+}
+
+/*
+ * charlen_to_bytelen()
+ *	Compute the number of bytes occupied by n characters starting at *p
+ *
+ * It is caller's responsibility that there actually are n characters;
+ * the string need not be null-terminated.
+ */
+static int
+charlen_to_bytelen(const char *p, int n)
+{
+	if (pg_database_encoding_max_length() == 1)
+	{
+		/* Optimization for single-byte encodings */
+		return n;
+	}
+	else
+	{
+		const char *s;
+
+		for (s = p; n > 0; n--)
+			s += pg_mblen(s);
+
+		return s - p;
+	}
+}
+
+/*
+ * appendStringInfoText
+ *
+ * Append a text to str.
+ * Like appendStringInfoString(str, text_to_cstring(t)) but faster.
+ */
+static void
+appendStringInfoText(StringInfo str, const text *t)
+{
+	appendBinaryStringInfo(str, VARDATA_ANY(t), VARSIZE_ANY_EXHDR(t));
+}
+
+/*
+ * appendStringInfoRegexpSubstr
+ *
+ * Append replace_text to str, substituting regexp back references for
+ * \n escapes.  start_ptr is the start of the match in the source string,
+ * at logical character position data_pos.
+ */
+static void
+appendStringInfoRegexpSubstr(StringInfo str, text *replace_text,
+							 regmatch_t *pmatch,
+							 char *start_ptr, int data_pos)
+{
+	const char *p = VARDATA_ANY(replace_text);
+	const char *p_end = p + VARSIZE_ANY_EXHDR(replace_text);
+
+	while (p < p_end)
+	{
+		const char *chunk_start = p;
+		int			so;
+		int			eo;
+
+		/* Find next escape char, if any. */
+		p = memchr(p, '\\', p_end - p);
+		if (p == NULL)
+			p = p_end;
+
+		/* Copy the text we just scanned over, if any. */
+		if (p > chunk_start)
+			appendBinaryStringInfo(str, chunk_start, p - chunk_start);
+
+		/* Done if at end of string, else advance over escape char. */
+		if (p >= p_end)
+			break;
+		p++;
+
+		if (p >= p_end)
+		{
+			/* Escape at very end of input.  Treat same as unexpected char */
+			appendStringInfoChar(str, '\\');
+			break;
+		}
+
+		if (*p >= '1' && *p <= '9')
+		{
+			/* Use the back reference of regexp. */
+			int			idx = *p - '0';
+
+			so = pmatch[idx].rm_so;
+			eo = pmatch[idx].rm_eo;
+			p++;
+		}
+		else if (*p == '&')
+		{
+			/* Use the entire matched string. */
+			so = pmatch[0].rm_so;
+			eo = pmatch[0].rm_eo;
+			p++;
+		}
+		else if (*p == '\\')
+		{
+			/* \\ means transfer one \ to output. */
+			appendStringInfoChar(str, '\\');
+			p++;
+			continue;
+		}
+		else
+		{
+			/*
+			 * If escape char is not followed by any expected char, just treat
+			 * it as ordinary data to copy.  (XXX would it be better to throw
+			 * an error?)
+			 */
+			appendStringInfoChar(str, '\\');
+			continue;
+		}
+
+		if (so >= 0 && eo >= 0)
+		{
+			/*
+			 * Copy the text that is back reference of regexp.  Note so and eo
+			 * are counted in characters not bytes.
+			 */
+			char	   *chunk_start;
+			int			chunk_len;
+
+			Assert(so >= data_pos);
+			chunk_start = start_ptr;
+			chunk_start += charlen_to_bytelen(chunk_start, so - data_pos);
+			chunk_len = charlen_to_bytelen(chunk_start, eo - so);
+			appendBinaryStringInfo(str, chunk_start, chunk_len);
+		}
+	}
+}
+
+/*
+ * replace_text_regexp
+ *
+ * replace substring(s) in src_text that match pattern with replace_text.
+ * The replace_text can contain backslash markers to substitute
+ * (parts of) the matched text.
+ *
+ * cflags: regexp compile flags.
+ * collation: collation to use.
+ * search_start: the character (not byte) offset in src_text at which to
+ * begin searching.
+ * n: if 0, replace all matches; if > 0, replace only the N'th match.
+ */
+static text *
+orafce_replace_text_regexp(text *src_text, text *pattern_text,
+					text *replace_text,
+					int cflags, Oid collation,
+					int search_start, int n)
+{
+	text	   *ret_text;
+	regex_t    *re;
+	int			src_text_len = VARSIZE_ANY_EXHDR(src_text);
+	int			nmatches = 0;
+	StringInfoData buf;
+	regmatch_t	pmatch[10];		/* main match, plus \1 to \9 */
+	int			nmatch = lengthof(pmatch);
+	pg_wchar   *data;
+	size_t		data_len;
+	int			data_pos;
+	char	   *start_ptr;
+	int			escape_status;
+
+	initStringInfo(&buf);
+
+	/* Convert data string to wide characters. */
+	data = (pg_wchar *) palloc((src_text_len + 1) * sizeof(pg_wchar));
+	data_len = pg_mb2wchar_with_len(VARDATA_ANY(src_text), data, src_text_len);
+
+	/* Check whether replace_text has escapes, especially regexp submatches. */
+	escape_status = check_replace_text_has_escape(replace_text);
+
+	/* If no regexp submatches, we can use REG_NOSUB. */
+	if (escape_status < 2)
+	{
+		cflags |= REG_NOSUB;
+		/* Also tell pg_regexec we only want the whole-match location. */
+		nmatch = 1;
+	}
+
+	/* Prepare the regexp. */
+	re = RE_compile_and_cache(pattern_text, cflags, collation);
+
+	/* start_ptr points to the data_pos'th character of src_text */
+	start_ptr = (char *) VARDATA_ANY(src_text);
+	data_pos = 0;
+
+	while (search_start <= data_len)
+	{
+		int			regexec_result;
+
+		CHECK_FOR_INTERRUPTS();
+
+		regexec_result = pg_regexec(re,
+									data,
+									data_len,
+									search_start,
+									NULL,	/* no details */
+									nmatch,
+									pmatch,
+									0);
+
+		if (regexec_result == REG_NOMATCH)
+			break;
+
+		if (regexec_result != REG_OKAY)
+		{
+			char		errMsg[100];
+
+			CHECK_FOR_INTERRUPTS();
+			pg_regerror(regexec_result, re, errMsg, sizeof(errMsg));
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_REGULAR_EXPRESSION),
+					 errmsg("regular expression failed: %s", errMsg)));
+		}
+
+		/*
+		 * Count matches, and decide whether to replace this match.
+		 */
+		nmatches++;
+		if (n > 0 && nmatches != n)
+		{
+			/*
+			 * No, so advance search_start, but not start_ptr/data_pos. (Thus,
+			 * we treat the matched text as if it weren't matched, and copy it
+			 * to the output later.)
+			 */
+			search_start = pmatch[0].rm_eo;
+			if (pmatch[0].rm_so == pmatch[0].rm_eo)
+				search_start++;
+			continue;
+		}
+
+		/*
+		 * Copy the text to the left of the match position.  Note we are given
+		 * character not byte indexes.
+		 */
+		if (pmatch[0].rm_so - data_pos > 0)
+		{
+			int			chunk_len;
+
+			chunk_len = charlen_to_bytelen(start_ptr,
+										   pmatch[0].rm_so - data_pos);
+			appendBinaryStringInfo(&buf, start_ptr, chunk_len);
+
+			/*
+			 * Advance start_ptr over that text, to avoid multiple rescans of
+			 * it if the replace_text contains multiple back-references.
+			 */
+			start_ptr += chunk_len;
+			data_pos = pmatch[0].rm_so;
+		}
+
+		/*
+		 * Copy the replace_text, processing escapes if any are present.
+		 */
+		if (escape_status > 0)
+			appendStringInfoRegexpSubstr(&buf, replace_text, pmatch,
+										 start_ptr, data_pos);
+		else
+			appendStringInfoText(&buf, replace_text);
+
+		/* Advance start_ptr and data_pos over the matched text. */
+		start_ptr += charlen_to_bytelen(start_ptr,
+										pmatch[0].rm_eo - data_pos);
+		data_pos = pmatch[0].rm_eo;
+
+		/*
+		 * If we only want to replace one occurrence, we're done.
+		 */
+		if (n > 0)
+			break;
+
+		/*
+		 * Advance search position.  Normally we start the next search at the
+		 * end of the previous match; but if the match was of zero length, we
+		 * have to advance by one character, or we'd just find the same match
+		 * again.
+		 */
+		search_start = data_pos;
+		if (pmatch[0].rm_so == pmatch[0].rm_eo)
+			search_start++;
+	}
+
+	/*
+	 * Copy the text to the right of the last match.
+	 */
+	if (data_pos < data_len)
+	{
+		int			chunk_len;
+
+		chunk_len = ((char *) src_text + VARSIZE_ANY(src_text)) - start_ptr;
+		appendBinaryStringInfo(&buf, start_ptr, chunk_len);
+	}
+
+	ret_text = cstring_to_text_with_len(buf.data, buf.len);
+	pfree(buf.data);
+	pfree(data);
+
+	return ret_text;
+}
+
+#else
+
+#define orafce_replace_text_regexp replace_text_regexp
+
+#endif
 
 /*
  * RE_wchar_execute - execute a RE on pg_wchar data
@@ -682,4 +1037,168 @@ Datum
 orafce_regexp_instr_no_subexpr(PG_FUNCTION_ARGS)
 {
 	return orafce_regexp_instr(fcinfo);
+}
+
+/*
+ * textregexreplace_noopt()
+ *		Return a string matched by a regular expression, with replacement.
+ *
+ * This version doesn't have an option argument: we default to case
+ * sensitive match, replace the first instance only.
+ */
+Datum
+orafce_textregexreplace_noopt(PG_FUNCTION_ARGS)
+{
+	text	   *s;
+	text	   *p;
+	text	   *r;
+
+	if (PG_ARGISNULL(1) && !PG_ARGISNULL(0))
+		PG_RETURN_TEXT_P(PG_GETARG_TEXT_PP(0));
+
+	if (PG_ARGISNULL(0) || PG_ARGISNULL(1) || PG_ARGISNULL(2))
+		PG_RETURN_NULL();
+
+	s = PG_GETARG_TEXT_PP(0);
+	p = PG_GETARG_TEXT_PP(1);
+	r = PG_GETARG_TEXT_PP(2);
+
+	PG_RETURN_TEXT_P(orafce_replace_text_regexp(s, p, r,
+										 REG_ADVANCED, PG_GET_COLLATION(),
+										 0, 1));
+}
+
+/*
+ * textregexreplace()
+ *		Return a string matched by a regular expression, with replacement.
+ */
+Datum
+orafce_textregexreplace(PG_FUNCTION_ARGS)
+{
+	text	   *s;
+	text	   *p;
+	text	   *r;
+	text	   *opt = NULL;
+	pg_re_flags flags;
+
+	if (PG_ARGISNULL(1) && !PG_ARGISNULL(0))
+		PG_RETURN_TEXT_P(PG_GETARG_TEXT_PP(0));
+
+	if (PG_ARGISNULL(0) || PG_ARGISNULL(1) || PG_ARGISNULL(2))
+		PG_RETURN_NULL();
+
+	s = PG_GETARG_TEXT_PP(0);
+	p = PG_GETARG_TEXT_PP(1);
+	r = PG_GETARG_TEXT_PP(2);
+
+	if (!PG_ARGISNULL(3))
+		opt = PG_GETARG_TEXT_PP(3);
+
+	/*
+	 * regexp_replace() with four arguments will be preferentially resolved as
+	 * this form when the fourth argument is of type UNKNOWN.  However, the
+	 * user might have intended to call textregexreplace_extended_no_n.  If we
+	 * see flags that look like an integer, emit the same error that
+	 * parse_re_flags would, but add a HINT about how to fix it.
+	 */
+	if (opt && VARSIZE_ANY_EXHDR(opt) > 0)
+	{
+		char	   *opt_p = VARDATA_ANY(opt);
+
+		if (*opt_p >= '0' && *opt_p <= '9')
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("invalid regular expression option: \"%.*s\"",
+							pg_mblen(opt_p), opt_p),
+					 errhint("If you meant to use regexp_replace() with a start parameter, cast the fourth argument to integer explicitly.")));
+	}
+
+	parse_re_flags(&flags, opt);
+
+	PG_RETURN_TEXT_P(orafce_replace_text_regexp(s, p, r,
+										 flags.cflags, PG_GET_COLLATION(),
+										 0, flags.glob ? 0 : 1));
+}
+
+/*
+ * textregexreplace_extended()
+ *		Return a string matched by a regular expression, with replacement.
+ *		Extends textregexreplace by allowing a start position and the
+ *		choice of the occurrence to replace (0 means all occurrences).
+ */
+Datum
+orafce_textregexreplace_extended(PG_FUNCTION_ARGS)
+{
+	text	   *s;
+	text	   *p;
+	text	   *r;
+	int			start = 1;
+	int			n = 1;
+	text	   *flags = NULL;
+	pg_re_flags re_flags;
+
+	if (PG_ARGISNULL(1) && !PG_ARGISNULL(0))
+		PG_RETURN_TEXT_P(PG_GETARG_TEXT_PP(0));
+
+	if (PG_ARGISNULL(0) || PG_ARGISNULL(1) || PG_ARGISNULL(2))
+		PG_RETURN_NULL();
+
+	s = PG_GETARG_TEXT_PP(0);
+	p = PG_GETARG_TEXT_PP(1);
+	r = PG_GETARG_TEXT_PP(2);
+
+	/* Collect optional parameters */
+	if (PG_NARGS() > 3)
+	{
+		if (PG_ARGISNULL(3))
+			PG_RETURN_NULL();
+
+		start = PG_GETARG_INT32(3);
+		if (start <= 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("argument 'position' must be a number greater than 0")));
+	}
+	if (PG_NARGS() > 4)
+	{
+		if (PG_ARGISNULL(4))
+			PG_RETURN_NULL();
+
+		n = PG_GETARG_INT32(4);
+		if (n < 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("argument 'occurrence' must be a positive number")));
+	}
+	if (PG_NARGS() > 5)
+	{
+		if (!PG_ARGISNULL(5))
+			flags = PG_GETARG_TEXT_PP(5);
+	}
+
+	/* Determine options */
+	parse_re_flags(&re_flags, flags);
+
+	/* If N was not specified, deduce it from the 'g' flag */
+	if (PG_NARGS() <= 4)
+		n = re_flags.glob ? 0 : 1;
+
+	/* Do the replacement(s) */
+	PG_RETURN_TEXT_P(orafce_replace_text_regexp(s, p, r,
+										 re_flags.cflags, PG_GET_COLLATION(),
+										 start - 1, n));
+}
+
+/* This is separate to keep the opr_sanity regression test from complaining */
+Datum
+orafce_textregexreplace_extended_no_n(PG_FUNCTION_ARGS)
+{
+	return orafce_textregexreplace_extended(fcinfo);
+}
+
+/* This is separate to keep the opr_sanity regression test from complaining */
+Datum
+orafce_textregexreplace_extended_no_flags(PG_FUNCTION_ARGS)
+{
+	return orafce_textregexreplace_extended(fcinfo);
 }
