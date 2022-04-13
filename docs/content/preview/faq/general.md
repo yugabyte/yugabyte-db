@@ -285,7 +285,7 @@ Starting with [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-
 
 Please follow the steps in the [vulnerability disclosure policy](/preview/secure/vulnerability-disclosure-policy) to report a vulnerability to our security team. The policy outlines our commitments to you when you disclose a potential vulnerability, the reporting process, and how we will respond.
 
-## How do YugabyteDB, YugabyteDB Anywhere and Yugabyte Cloud differ from each other?
+## How do YugabyteDB, YugabyteDB Anywhere, and YugabyteDB Managed differ from each other?
 
 [YugabyteDB](../../quick-start/) is the 100% open source core database. It is the best choice for the startup organizations with strong technical operations expertise looking to deploy to production with traditional DevOps tools.
 
