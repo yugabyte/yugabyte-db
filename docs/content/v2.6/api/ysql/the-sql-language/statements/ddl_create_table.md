@@ -92,6 +92,10 @@ Constraints marked as `INITIALLY DEFERRED` will be checked at the end of the tra
 
 Using this qualifier will create a temporary table. Temporary tables are only visible in the current client session or transaction in which they are created and are automatically dropped at the end of the session or transaction. Any indexes created on temporary tables are temporary as well.
 
+### TABLESPACE
+
+Specify the name of the [tablespace](../../../../../explore/ysql-language-features/tablespaces/) that describes the placement configuration for this index. By default, indexes are placed in the `pg_default` tablespace, which spreads the tablets of the index evenly across the cluster.
+
 ### SPLIT INTO
 
 For hash-sharded tables, you can use the `SPLIT INTO` clause to specify the number of tablets to be created for the table. The hash range is then evenly split across those tablets.
