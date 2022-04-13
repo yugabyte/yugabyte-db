@@ -9,6 +9,7 @@
   width      :1190px;
   margin     :0 auto;
   margin-top :100px;
+  max-width :100%;
 }
 .meaning-section h1{
   margin         :0 0 10px 0;
@@ -40,27 +41,34 @@
   justify-content :center;
 }
 .meaning-area .meaning-text > .title{
-  color       :#202124;
-  font-size   :28px;
-  font-weight :400;
-  line-height :36px;
-  //margin-left :50px;
+  color: #202124;
+  font-size: 28px;
+  font-weight: 400;
+  line-height: 36px;
+  border-bottom: 1px solid #d1d1d1;
+  width: 100%;
+  padding-bottom: 6px;
+  margin-bottom: 10px;
+}
+.meaning-area .meaning-text{
+  width :100%;
 }
 .meaning-section .meaning-area{
   width :500px;
 }
 .meaning-section .icon{
-  height   :35px;
-  width    :35px;
-  position :relative;
-  margin   :0 15px 0 0;
-  cursor   :pointer;
+  height: 35px;
+  width: 35px;
+  position: relative;
+  margin: 3px 15px 0 0;
+  cursor: pointer;
 }
 .icon .pr-icon{
-  height   :22px;
-  margin   :7px;
-  width    :22px;
-  position :absolute;
+  height: 22px;
+  margin: 5px;
+  width: 22px;
+  position: absolute;
+  top: 0px;
 }
 .icon .border{
   position      :absolute;
@@ -104,10 +112,13 @@
 }
 .meaning-audio{
   display        :flex;
-  margin-bottom  :20px;
-  align-items    :center;
-  border-bottom  :1px solid #bcbcbc;
-  padding-bottom :20px;
+  margin-bottom  :5px;
+  align-items    :flex-start;
+  border-bottom  :0px solid #bcbcbc;
+  padding-bottom :10px;
+  /* justify-content: flex-start; */
+  //padding: 10px 20px;
+  border-radius  :8px;
 }
 .meaning-audio .latin-pronouce{
   font-family :arial, sans-serif;
@@ -141,9 +152,9 @@
   /* border: 1px solid #dadce0; */
   cursor          :pointer;
   font-size       :14px;
-  width           :100px;
+  width: 55px;
   padding         :7px 12px;
-  height          :36px;
+  height: 30px;
   border-radius   :18px;
   color           :#202124;
   line-height     :17px;
@@ -151,12 +162,12 @@
   outline         :none;
   transition      :300ms linear;
   position        :relative;
-  top             :57px;
+  top             :55px;
   box-shadow      :none !important;
 }
 .btn-area .btn svg{
-  width        :36px;
-  height       :36px;
+  width        :20px;
+  height       :20px;
   fill         :#fff;
   margin-right :0px;
 }
@@ -252,7 +263,7 @@ body.js-load .meaning-section.show-more .less-defination{
   content    :'';
   height     :100%;
   width      :1px;
-  background :#202951;
+  background :#d1d1d1;
   position   :absolute;
   top        :0;
   right      :0;
@@ -276,10 +287,10 @@ body.js-load .meaning-section.show-more .less-defination{
   border-radius :4px;
 }
 .avatar-area{
-  padding       :20px 0;
-  background    :#f5f6f8;
+  padding       :20px 0 50px;
+  //background    :#f5f6f8;
   background    :transparent;
-  margin-bottom :40px;
+  margin-bottom :-30px;
   position      :relative;
 }
 .user-panel .user-col:not(:last-child) .avatar-area::before{
@@ -287,7 +298,7 @@ body.js-load .meaning-section.show-more .less-defination{
   height     :calc(100%);
   width      :1px;
   background :#fff;
-  background :#202951;
+  background :#d1d1d1;
   position   :absolute;
   top        :0;
   right      :0;
@@ -337,4 +348,3 @@ body.js-load .meaning-section.show-more .less-defination{
   color       :rgba(32, 41, 81, 0.7);
   font-weight :400;
 }
-
