@@ -78,7 +78,7 @@ export const HAInstances: FC = () => {
   }
 
   if (error) {
-    return <HAErrorPlaceholder error={error} />;
+    return <HAErrorPlaceholder error={error} configUUID={config?.uuid!}/>;
   }
 
   if (isNoHAConfigExists) {
