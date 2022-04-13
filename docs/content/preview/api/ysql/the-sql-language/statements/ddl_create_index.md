@@ -45,7 +45,7 @@ Use the `CREATE INDEX` statement to create an index on the specified columns of 
 
 ## Semantics
 
-`CONCURRENTLY`, `COLLATE`, and `TABLESPACE` options are not yet supported.
+`CONCURRENTLY` option is not yet supported.
 
 When an index is created on a populated table, YugabyteDB automatically backfills the existing data into the index.
 In most cases, this uses an online schema migration.
@@ -68,6 +68,13 @@ For details on how online index backfill works, refer to [Online Index Backfill]
 
 Regarding colocation, indexes follow their table. If the table is colocated, its index is also colocated; if the table is not colocated, its index is also not colocated.
 
+### Partitioned Indexes
+
+Creating an index on a partitioned table automatically creates a corresponding index for every partition in the default tablespace. It's also possible to create an index on each partition individually, which you should do in the following cases:
+
+* Parallel writes are expected while creating the index, because concurrent builds for indexes on partitioned tables aren't supported. In this case, it's better to use concurrent builds to create indexes on each partition individually.
+* [Row-level geo-partitioning](../../../../../explore/multi-region-deployments/row-level-geo-partitioning/) is being used. In this case, create the index separately on each partition to customize the tablespace in which each index is created.
+
 ### UNIQUE
 
 Enforce that duplicate values in a table are not allowed.
@@ -78,6 +85,10 @@ Disable online schema migration (see [Semantics](#semantics) for details).
 
 Concurrent is the default, but the grammar does not yet support `CONCURRENTLY`.
 
+### ONLY
+
+Indicates not to recurse creating indexes on partitions, if the table is partitioned. The default is to recurse.
+
 ### *access_method_name*
 
 The name of the index access method.
@@ -87,6 +98,10 @@ By default, `lsm` is used for YugabyteDB tables and `btree` is used otherwise (f
 ### INCLUDE clause
 
 Specify a list of columns which will be included in the index as non-key columns.
+
+### TABLESPACE clause
+
+Specify the name of the [tablespace](../../../../../explore/ysql-language-features/going-beyond-sql/tablespaces/) that describes the placement configuration for this index. By default, indexes are placed in the `pg_default` tablespace, which spreads the tablets of the index evenly across the cluster.
 
 ### WHERE clause
 
