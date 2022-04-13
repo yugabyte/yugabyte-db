@@ -1,4 +1,4 @@
-```
+```ebnf
 set_transaction ::= SET TRANSACTION transaction_mode [ ... ]
 
 transaction_mode ::= isolation_level

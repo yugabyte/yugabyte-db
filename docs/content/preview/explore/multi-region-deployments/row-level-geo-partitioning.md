@@ -106,7 +106,7 @@ Next, we create the parent table that contains a `geo_partition` column which is
     ) PARTITION BY LIST (geo_partition);
     ```
 
-1. Next, create one partition per desired geography under the parent table, and assign each to the  applicable tablespace. Here, you create three table partitions: one for the EU region called `bank_transactions_eu`, another for the India region called `bank_transactions_india,` and a third partition for US region called `bank_transactions_us`.
+1. Next, create one partition per desired geography under the parent table, and assign each to the  applicable tablespace. Here, you create three table partitions: one for the EU region called `bank_transactions_eu`, another for the India region called `bank_transactions_india,` and a third partition for US region called `bank_transactions_us`. Create any required indexes for each partition, making sure to associate each index with the same tablespace as that of the partition table.
 
     ```sql
     CREATE TABLE bank_transactions_eu
@@ -116,6 +116,8 @@ Next, we create the parent table that contains a `geo_partition` column which is
           PRIMARY KEY (user_id HASH, account_id, geo_partition))
         FOR VALUES IN ('EU') TABLESPACE eu_central_1_tablespace;
 
+    CREATE INDEX ON bank_transactions_eu(account_id) TABLESPACE eu_central_1_tablespace;
+
     CREATE TABLE bank_transactions_india
         PARTITION OF bank_transactions
           (user_id, account_id, geo_partition, account_type,
@@ -123,12 +125,16 @@ Next, we create the parent table that contains a `geo_partition` column which is
           PRIMARY KEY (user_id HASH, account_id, geo_partition))
         FOR VALUES IN ('India') TABLESPACE ap_south_1_tablespace;
 
+    CREATE INDEX ON bank_transactions_india(account_id) TABLESPACE ap_south_1_tablespace;
+
     CREATE TABLE bank_transactions_us
         PARTITION OF bank_transactions
           (user_id, account_id, geo_partition, account_type,
           amount, txn_type, created_at,
           PRIMARY KEY (user_id HASH, account_id, geo_partition))
         FOR VALUES IN ('US') TABLESPACE us_west_2_tablespace;
+
+    CREATE INDEX ON bank_transactions_us(account_id) TABLESPACE us_west_2_tablespace;
     ```
 
 1. Use the `\d` command to view the table and partitions you've created so far.

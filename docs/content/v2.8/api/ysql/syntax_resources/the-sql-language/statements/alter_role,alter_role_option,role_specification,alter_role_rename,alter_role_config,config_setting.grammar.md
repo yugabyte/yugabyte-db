@@ -1,4 +1,4 @@
-```
+```ebnf
 alter_role ::= ALTER ROLE role_specification 
                [ [ WITH ] alter_role_option [ , ... ] ]
 

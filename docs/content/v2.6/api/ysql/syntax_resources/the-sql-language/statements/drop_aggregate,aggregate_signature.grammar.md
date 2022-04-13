@@ -1,4 +1,4 @@
-```
+```ebnf
 drop_aggregate ::= DROP AGGREGATE [ IF EXISTS ] 
                    { aggregate_name ( aggregate_signature ) } 
                    [ , ... ] [ CASCADE | RESTRICT ]

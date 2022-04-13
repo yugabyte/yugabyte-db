@@ -174,14 +174,14 @@ The following diagram is a graphical representation of a table spread across mul
 ![Multi Region Table](/images/explore/tablespaces/multi_region_table.png)
 
 ```sql
-CREATE TABLESPACE us_multi_region_tablespace
+CREATE TABLESPACE multi_region_tablespace
   WITH (replica_placement='{"num_replicas": 3, "placement_blocks": [
     {"cloud":"aws","region":"us-east-1","zone":"us-east-1b","min_num_replicas":1},
     {"cloud":"aws","region":"ap-south-1","zone":"ap-south-1a","min_num_replicas":1},
     {"cloud":"aws","region":"eu-west-2","zone":"eu-west-2c","min_num_replicas":1}]}');
 
 CREATE TABLE multi_region_table (id INTEGER, field text)
-  TABLESPACE us_multi_region_tablespace SPLIT INTO 1 TABLETS;
+  TABLESPACE multi_region_tablespace SPLIT INTO 1 TABLETS;
 ```
 
 The following demonstrates how to measure the latencies incurred for INSERTs and SELECTs on this table, where the client is in us-east-1a zone:
@@ -216,6 +216,64 @@ based on how far the leader is from the client node. However, controlling leader
 is not supported via tablespaces yet. This feature is tracked [here](https://github.com/yugabyte/yugabyte-db/issues/8100).
 
 {{< /tip >}}
+
+## Indexes
+
+Like tables, indexes can be associated with a tablespace. If a table has more than one index, YugabyteDB picks the closest index to serve the query. The following example creates three indexes for each region occupied by the `multi_region_table` from above:
+
+```sql
+CREATE TABLESPACE us_east_tablespace
+  WITH (replica_placement='{"num_replicas": 1, "placement_blocks": [
+    {"cloud":"aws","region":"us-east-1","zone":"us-east-1b","min_num_replicas":1}]}');
+
+CREATE TABLESPACE ap_south_tablespace
+  WITH (replica_placement='{"num_replicas": 1, "placement_blocks": [
+    {"cloud":"aws","region":"ap-south-1","zone":"ap-south-1a","min_num_replicas":1}]}');
+
+CREATE TABLESPACE eu_west_tablespace
+  WITH (replica_placement='{"num_replicas": 1, "placement_blocks": [
+    {"cloud":"aws","region":"eu-west-2","zone":"eu-west-2c","min_num_replicas":1}]}');
+
+CREATE INDEX us_east_idx ON multi_region_table(id) INCLUDE (field) TABLESPACE us_east_tablespace;
+CREATE INDEX ap_south_idx ON multi_region_table(id) INCLUDE (field) TABLESPACE ap_south_tablespace;
+CREATE INDEX eu_west_idx ON multi_region_table(id) INCLUDE (field) TABLESPACE eu_west_tablespace;
+```
+
+Now run the following EXPLAIN command by connecting to each region:
+
+```sql
+EXPLAIN SELECT * FROM multi_region_table WHERE id=3;
+```
+
+EXPLAIN output for querying the table from `us-east-1`:
+
+```output
+                                         QUERY PLAN
+---------------------------------------------------------------------------------------------
+ Index Only Scan using us_east_idx on multi_region_table  (cost=0.00..5.06 rows=10 width=36)
+   Index Cond: (id = 3)
+(2 rows)
+```
+
+EXPLAIN output for querying the table from `ap-south-1`:
+
+```output
+                                          QUERY PLAN
+----------------------------------------------------------------------------------------------
+ Index Only Scan using ap_south_idx on multi_region_table  (cost=0.00..5.06 rows=10 width=36)
+   Index Cond: (id = 3)
+(2 rows)
+```
+
+EXPLAIN output for querying the table from `eu-west-2`:
+
+```output
+                                         QUERY PLAN
+---------------------------------------------------------------------------------------------
+ Index Only Scan using eu_west_idx on multi_region_table  (cost=0.00..5.06 rows=10 width=36)
+   Index Cond: (id = 3)
+(2 rows)
+```
 
 ## What's Next?
 

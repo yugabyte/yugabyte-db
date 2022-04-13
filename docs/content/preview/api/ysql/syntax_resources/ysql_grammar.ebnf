@@ -491,6 +491,7 @@ create_index = 'CREATE' [ 'UNIQUE' ] 'INDEX' [ 'NONCONCURRENTLY' ] \
                [ 'USING' access_method_name ]
                '(' index_elem { ',' index_elem } ')' \
                [ 'INCLUDE' '(' column_name { ',' column_name } ')' ] \
+               [ 'TABLESPACE' tablespace_name ] \
                [ 'WHERE' boolean_expression ] ;
 
 index_elem = ( column_name | '(' expression ')' ) [ operator_class_name ]
@@ -629,7 +630,8 @@ create_server = 'CREATE' 'SERVER' [ 'IF' 'NOT' 'EXISTS' ] server_name [ 'TYPE' s
 create_table = 'CREATE' [ 'TEMPORARY' | 'TEMP' ] 'TABLE' [ 'IF' 'NOT' 'EXISTS' ] table_name
                  '(' [ table_elem { ',' table_elem } ] ')'
                  [ 'WITH' '(' ( 'COLOCATED' '=' ('true' | 'false') | storage_parameters ) ')'
-                      | 'WITHOUT' 'OIDS' ]
+                      | 'WITHOUT' 'OIDS' ] \
+                 [ TABLESPACE tablespace_name ]
                  [ 'SPLIT' ( 'INTO' integer 'TABLETS'
                       | 'AT' 'VALUES' '(' split_row { ',' split_row } ')' ) ] ;
 
@@ -673,7 +675,8 @@ storage_parameters = storage_parameter { ',' storage_parameter } ;
 storage_parameter = param_name [ '=' param_value] ;
 
 index_parameters = [ 'INCLUDE' '(' column_names ')' ]
-                     [ 'WITH' '(' storage_parameters ')' ] ;
+                     [ 'WITH' '(' storage_parameters ')' ]
+                     [ USING INDEX TABLESPACE tablespace_name ] ;
 
 (* 'CREATE' 'TABLE' 'AS' *)
 create_table_as = 'CREATE' 'TABLE' [ 'IF' 'NOT' 'EXISTS' ] \
