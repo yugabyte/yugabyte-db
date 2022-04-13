@@ -128,7 +128,7 @@ Proceed by performing the following:
 * In the Azure portal, navigate to the resource group and select **Access control (IAM)**.
 * Select **Add > Add role assignment**, as per the following illustration:
 
-![Prepare Azure cloud to install Yugabyte Platform](/images/yb-platform/install/azure/platform-azure-prepare-cloud-env-3.png)
+![Prepare Azure cloud to install YugabyteDB Anywhere](/images/yb-platform/install/azure/platform-azure-prepare-cloud-env-3.png)
 
 * Select  Network Contributor and Virtual Machine Contributor roles.
 

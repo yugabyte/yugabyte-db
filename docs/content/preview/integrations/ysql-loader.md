@@ -150,7 +150,7 @@ You can tail the log file specified in the docker command, as follows:
 [centos@ip-172-161-27-195 ~]$ tail -f pgloader.log
 ```
 
-If you have access to Yugabyte Platform, you can check the status of YSQL Loader. To do this, you open Yugabyte Platform and navigate to its **Tables** section shown in the following illustration to see if the tables have started to load.
+If you have access to YugabyteDB Anywhere, you can check the status of YSQL Loader. To do this, you open YugabyteDB Anywhere and navigate to its **Tables** section shown in the following illustration to see if the tables have started to load.
 
 ![Migrating MySQL Blog Image 2](/images/ee/migrating-mysql-2.png)
 
@@ -227,7 +227,7 @@ When YSQL Loader finishes the migration, you can see a summary of the migration 
 
 ![Migrating MySQL Blog Image 3](/images/ee/migrating-mysql-3.png)
 
-Alternatively, if you have access to Yugabyte Platform, you can check it to see if all tables are present. To do this, you open Yugabyte Platform and navigate to its **Tables** section shown in the following illustration:
+Alternatively, if you have access to YugabyteDB Anywhere, you can check it to see if all tables are present. To do this, you open YugabyteDB Anywhere and navigate to its **Tables** section shown in the following illustration:
 
 ![Migrating MySQL Blog Image 4](/images/ee/migrating-mysql-4.png)
 

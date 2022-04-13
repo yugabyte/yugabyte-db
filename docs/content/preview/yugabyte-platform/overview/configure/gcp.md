@@ -2,7 +2,7 @@
 title: Configure GCP
 headerTitle: Configure GCP
 linkTitle: Configure
-description: Configuring Yugabyte Platform on Google Cloud Platform
+description: Configuring YugabyteDB Anywhere on Google Cloud Platform
 image: /images/section_icons/deploy/enterprise.png
 menu:
   preview:

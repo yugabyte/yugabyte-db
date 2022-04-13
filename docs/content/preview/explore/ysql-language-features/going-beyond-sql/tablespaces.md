@@ -64,7 +64,7 @@ The differences between single-zone, multi-zone and multi-region configuration b
   <li>
     <a href="#platform" class="nav-link" id="platform-tab" data-toggle="tab" role="tab" aria-controls="platform" aria-selected="false">
       <i class="fas fa-cloud" aria-hidden="true"></i>
-      Yugabyte Platform
+      YugabyteDB Anywhere
     </a>
   </li>
 </ul>
