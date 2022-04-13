@@ -19,7 +19,7 @@ The logs for each node are written to a subdirectory of the YugabyteDB `yugabyte
 For a 3-node cluster, the `yb-ctl` utility creates three directories: `node-1`, `node-2` and `node-3`.
 - For a multi-node cluster deployment to multiple hosts, the location where YugabyteDB disks are set up can vary (for example, `/home/centos/`, `/mnt/`, or another directory) on each node (host).
 - When using the `--fs_data_dirs` flag with multiple directories, logs will be saved in the first directory in the list.
-- When using Yugabyte Platform, logs are located in `/home/yugabyte/{master,tserver}/logs`. This is a symlink to the first directory in `--fs_data_dirs` list.
+- When using YugabyteDB Anywhere, logs are located in `/home/yugabyte/{master,tserver}/logs`. This is a symlink to the first directory in `--fs_data_dirs` list.
 - When using the docker container, logs are located in `/root/var/logs` inside the container.
 - When using the `yugabyted` cli to create the local YugabyteDB cluster, logs are located in `~/var/logs`.
 

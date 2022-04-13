@@ -64,9 +64,9 @@ showAsideToc: true
 
 </ul>
 
-This document describes how to configure OpenShift for YugabyteDB universes using YugabyteDB Anywhere. If no cloud providers are configured via YugabyteDB Anywhere, the main **Dashboard** page requests to configure at least one provider.
+You can configure OpenShift for YugabyteDB universes using YugabyteDB Anywhere. If no cloud providers are configured via YugabyteDB Anywhere, the main **Dashboard** page requests to configure at least one provider.
 
-To create a YugabyteDB universe using the deployed platform, you start by creating the required Role-based access control (RBAC) and adding the provider in the platform.
+To create a YugabyteDB universe using the deployed YugabyteDB Anywhere, you start by creating the required Role-based access control (RBAC) and adding the provider in the YugabyteDB Anywhere.
 
 ## Creating RBAC and kubeconfig
 
