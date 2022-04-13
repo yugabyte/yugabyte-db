@@ -32,13 +32,13 @@ The following tutorial implements a REST API server using the Rust [Diesel](http
 - `orders` — the orders placed by the users
 - `orderline` — each line item of an order
 
-The source for the above application can be found in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master/rust/diesel) repository.
+The source for the application can be found in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master/rust/diesel) repository.
 
 ## Prerequisites
 
 This tutorial assumes that you have:
 
-- YugabyteDB up and running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../../quick-start/) to have YugabyteDB up and running in minutes.
+- YugabyteDB running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../../quick-start/).
 - [Rust](https://www.rust-lang.org/tools/install) 1.31 or later.
 
 ## Clone the "orm-examples" repository
@@ -55,7 +55,7 @@ $ cargo build --release
 
 If you encounter a build failure, install [libpq](../../../../reference/drivers/ysql-client-drivers/#libpq) and try again.
 
-## Database configuration
+## Configure the database
 
 The database connection settings are managed using the `DATABASE_URL` in the `.env` file, which is in the following format:
 
@@ -108,7 +108,7 @@ $ ./target/release/yugadiesel
 
 ## Send requests to the application
 
-Create 2 users.
+Create two users.
 
 ```sh
 $ curl --data '{ "firstName" : "John", "lastName" : "Smith", "email" : "jsmith@example.com" }' \
@@ -120,7 +120,7 @@ $ curl --data '{ "firstName" : "Tom", "lastName" : "Stewart", "email" : "tstewar
    -v -X POST -H 'Content-Type:application/json' http://localhost:8080/users
 ```
 
-Create 2 products.
+Create two products.
 
 ```sh
 $ curl \
@@ -134,7 +134,7 @@ $ curl \
   -v -X POST -H 'Content-Type:application/json' http://localhost:8080/products
 ```
 
-In your YSQL shell, verify the `userId` and `productId` from the `ysql_diesel` database using the following YSQL commands.
+In your YSQL shell, verify the `userId` and `productId` from the `ysql_diesel` database using the following YSQL commands:
 
 ```sql
 ysql_diesel=# select * from users;
@@ -160,7 +160,7 @@ ysql_diesel=# select * from products;
 (2 rows)
 ```
 
-Create 2 orders using the `userId` for John.
+Create two orders using the `userId` for John.
 
 ```sh
 $ curl \
@@ -258,7 +258,7 @@ ysql_diesel=# SELECT * FROM order_lines;
 To use the REST API server to verify that the users, products, and orders were created in the `ysql_diesel` database, enter the following commands. The results are output in JSON format.
 
 ```sh
-$ curl http://localhost:8080/users
+curl http://localhost:8080/users
 ```
 
 ```output.json
@@ -282,7 +282,7 @@ $ curl http://localhost:8080/users
 ```
 
 ```sh
-$ curl http://localhost:8080/products
+curl http://localhost:8080/products
 ```
 
 ```output.json
@@ -304,7 +304,7 @@ $ curl http://localhost:8080/products
 ```
 
 ```sh
-$ curl http://localhost:8080/orders
+curl http://localhost:8080/orders
 ```
 
 ```output.json
