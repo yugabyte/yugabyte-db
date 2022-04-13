@@ -41,7 +41,8 @@ export default class NodeDetailsTable extends Component {
         row.privateIP,
         isMaster ? row.masterPort : row.tserverPort
       );
-      if (row.nodeAlive) {
+      const isAlive = isMaster ? row.isMasterAlive : row.isTserverAlive
+      if (isAlive) {
         return (
           <div>
             {successIcon}&nbsp;
