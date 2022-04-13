@@ -48,7 +48,7 @@ To demonstrate YugabyteDB's snapshot functionality, the following example steps 
 
 {{< tip title="Automation" >}}
 
-This guide explains how to snapshot and restore data on YugabyteDB. YugabyteDB Anywhere and Yugabyte Cloud automate all of these manual steps.
+This guide explains how to snapshot and restore data on YugabyteDB. YugabyteDB Anywhere and YugabyteDB Managed automate all of these manual steps.
 
 {{< /tip >}}
 
