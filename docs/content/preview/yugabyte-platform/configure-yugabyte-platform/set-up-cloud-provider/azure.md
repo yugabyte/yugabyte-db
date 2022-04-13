@@ -65,11 +65,11 @@ showAsideToc: true
 
 </ul>
 
-You can configure an Azure cloud provider for YugabyteDB clusters using the Yugabyte Platform console.
+You can configure an Azure cloud provider for YugabyteDB clusters using YugabyteDB Anywhere.
 
 ## Prerequisites
 
-You need to add the following cloud provider credentials via the Yugabyte Platform console:
+You need to add the following cloud provider credentials via YugabyteDB Anywhere:
 
 * Subscription ID
 * Tenant ID
@@ -77,18 +77,18 @@ You need to add the following cloud provider credentials via the Yugabyte Platfo
 * Application client ID and secret
 * Resource group
 
-Yugabyte Platform uses the credentials to automatically provision and deprovision YugabyteDB instances.
+YugabyteDB Anywhere uses the credentials to automatically provision and deprovision YugabyteDB instances.
 
-When the configuration is completed, you can see all the resources managed by Yugabyte Platform in your resource group, including virtual machines, network interface, network security groups, public IP addresses, and disks.
+When the configuration is completed, you can see all the resources managed by YugabyteDB Anywhere in your resource group, including virtual machines, network interface, network security groups, public IP addresses, and disks.
 
 ## Configure Azure
 
 You configure the Microsoft Azure cloud provider by completing the fields of the configuration page shown in the following illustration:
 
-![Prepare Azure cloud to install Yugabyte Platform](/images/yb-platform/install/azure/platform-azure-prepare-cloud-env-4.png)
+![Prepare Azure cloud to install YugabyteDB Anywhere](/images/yb-platform/install/azure/platform-azure-prepare-cloud-env-4.png)
 
-- **Provider Name** translates to an internal Yugabyte Platform tag used for organizing cloud providers.
-- **Subscription ID** is required for cost management. The virtual machine resources managed by Yugabyte Platform are tagged with this subscription.
+- **Provider Name** translates to an internal YugabyteDB Anywhere tag used for organizing cloud providers.
+- **Subscription ID** is required for cost management. The virtual machine resources managed by YugabyteDB Anywhere are tagged with this subscription.
 - **Resource Group** represents the group in which YugabyteDB nodes compute and network resources are created. Your Azure Active Directory application (client ID and client secret) needs to have `Network Contributor` and `Virtual Machine Contributor` roles assigned for this resource group.
 - **Tenant ID** represents the Azure Active Directory tenant ID which belongs to an active subscription. To find your tenant ID, follow instructions provided in [Microsoft Azure: Tenant and application ID values for signing in](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#get-tenant-and-app-id-values-for-signing-in).
 - **SSH Port** allows you to specify the connection port number if you use custom images. The default port is 54422.
@@ -112,7 +112,7 @@ Azure resource IDs typically have the following format:
 
 ### How to define a private DNS zone
 
-You may choose to define a private DNS zone to instruct Yugabyte Platform to register the universe name to all of the IP addresses in the universe within that DNS zone. For more information, see [What is a private Azure DNS zone](https://docs.microsoft.com/en-us/azure/dns/private-dns-privatednszone).
+You may choose to define a private DNS zone to instruct YugabyteDB Anywhere to register the universe name to all of the IP addresses in the universe within that DNS zone. For more information, see [What is a private Azure DNS zone](https://docs.microsoft.com/en-us/azure/dns/private-dns-privatednszone).
 
 You can set a private DNS zone as follows:
 
@@ -126,9 +126,9 @@ You can set a private DNS zone as follows:
 
 1. Add a link to the virtual network to which you want it to be connected. For more information, see [Create an Azure private DNS zone using the Azure portal](https://docs.microsoft.com/en-us/azure/dns/private-dns-getstarted-portal).
 
-1. To use the private DNS zone in Yugabyte Platform, add either the resource ID or the name of the DNS zone to the **Private DNS Zone** field of the **Cloud Provider Configuration** page in the Yugabyte Platform UI.<br>
+1. To use the private DNS zone in YugabyteDB Anywhere, add either the resource ID or the name of the DNS zone to the **Private DNS Zone** field of the **Cloud Provider Configuration** page in the YugabyteDB Anywhere UI.<br>
 
-    If the private DNS zone is defined by an ID, Yugabyte Platform will use it together with the default subscription ID and the resource group. If the private DNS zone is defined by a full URL that contains both the subscription ID and resource group, then these two values will be used instead of default values.
+    If the private DNS zone is defined by an ID, YugabyteDB Anywhere will use it together with the default subscription ID and the resource group. If the private DNS zone is defined by a full URL that contains both the subscription ID and resource group, then these two values will be used instead of default values.
 
 In the setup example shown in the following illustration, the private DNS zone is specified as `dns.example.com`, and the resource group is explicitly specified as `myRG`:
 
@@ -152,13 +152,13 @@ You can specify a region as follows:
 
 1. Use the **Specify Region Info** dialog to select a region and provide a virtual network name from your Azure portal.
 
-1. Optionally, specify the security group, if the database VM is in a different network than the platform.
+1. Optionally, specify the security group, if the database VM is in a different network than YugabyteDB Anywhere.
 
 1. Provide a URN to a marketplace image or a shared gallery image by following instructions provided in [How to use a shared image gallery](#how-to-use-a-shared-image-gallery). If you are using custom images, you need to specify the SSH port and user, as described in [Configure Azure](#configure-azure).
 
-1. Provide a mapping of subnet IDs to use for each availability zone you wish to deploy. This is required for ensuring that Yugabyte Platform can deploy nodes in the correct network isolation that you need in your environment.
+1. Provide a mapping of subnet IDs to use for each availability zone you wish to deploy. This is required for ensuring that YugabyteDB Anywhere can deploy nodes in the correct network isolation that you need in your environment.
 
-   ![Prepare Azure cloud to install Yugabyte Platform](/images/yb-platform/install/azure/platform-azure-prepare-cloud-env-5.png)
+   ![Prepare Azure cloud to install YugabyteDB Anywhere](/images/yb-platform/install/azure/platform-azure-prepare-cloud-env-5.png)
 
 1. Click **Add Region** on the **Specify Region Info** dialog.
 
@@ -188,7 +188,7 @@ You set up a shared gallery image on Azure as follows:
 
     ![description](/images/yb-platform/install/azure/shared-gallery-replication.png)
 
-1. To use the image in Yugabyte Platform, enter the image version's resource ID into the **Marketplace Image URN / Shared Gallery Image ID** field of the **Specify Region Info** dialog.
+1. To use the image in YugabyteDB Anywhere, enter the image version's resource ID into the **Marketplace Image URN / Shared Gallery Image ID** field of the **Specify Region Info** dialog.
 
-   <br>The gallery image ID could be defined by a full URL containing a subscription ID, a resource group name, and the resource name itself. If the subscription ID or the resource group is different from the default values, Yugabyte Platform will use them instead.
+   <br>The gallery image ID could be defined by a full URL containing a subscription ID, a resource group name, and the resource name itself. If the subscription ID or the resource group is different from the default values, YugabyteDB Anywhere will use them instead.
 

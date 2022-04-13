@@ -42,7 +42,7 @@ You can configure access control for the S3 bucket as follows:
 You can configure Network File Share (NFS) as your backup target as follows:
 
 1. Navigate to **Configs** > **Backup** > **NFS**.
-3. Complete the **NFS Storage Path** field by entering `/backup` or another directory that provides read, write, and access permissions to the SSH user of the Yugabyte Platform instance.
+3. Complete the **NFS Storage Path** field by entering `/backup` or another directory that provides read, write, and access permissions to the SSH user of the YugabyteDB Anywhere instance.
 3. Click **Save**.
 
 ![NFS Cloud Provider Configuration](/images/yp/cloud-provider-configuration-backup-nfs.png)
@@ -110,7 +110,7 @@ You can configure Azure as your backup target as follows:
 
     ![Azure Shared Access Signature page](/images/yp/cloud-provider-configuration-backup-azure-generate-token.png)
 
-1. On your Yugabyte Platform instance, provide the container URL and SAS token for creating a backup, as follows:
+1. On your YugabyteDB Anywhere instance, provide the container URL and SAS token for creating a backup, as follows:
 
     <br/>
 

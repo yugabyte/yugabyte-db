@@ -65,9 +65,7 @@ showAsideToc: true
 
 </ul>
 
-You can configure the on-premises cloud provider for YugabyteDB using the Yugabyte Platform console. If no cloud providers are configured, the main Dashboard prompts you to configure at least one cloud provider, as per the following illustration:
-
-![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-0.png)
+You can configure the on-premises cloud provider for YugabyteDB using YugabyteDB Anywhere. If no cloud providers are configured, the main **Dashboard** prompts you to configure at least one cloud provider.
 
 ## Configure the on-premises provider
 
@@ -83,7 +81,7 @@ Supply the provider name, which is an internal tag that helps with organizing yo
 
 #### SSH User
 
-To provision on-premises nodes with YugabyteDB, Yugabyte Platform requires SSH access to these nodes. Unless you plan to provision the database nodes manually, the user needs to have password-free sudo permissions to complete a few tasks.
+To provision on-premises nodes with YugabyteDB, YugabyteDB Anywhere requires SSH access to these nodes. Unless you plan to provision the database nodes manually, the user needs to have password-free sudo permissions to complete a few tasks.
 
 If the SSH user requires a password for sudo access or the SSH user does not have sudo access, follow the steps described in [Manually Provision Nodes](#manually-provision-nodes).
 
@@ -93,7 +91,7 @@ Provide the port number of SSH client connections.
 
 #### Manually Provision Nodes
 
-Enable this option if you choose to manually set up your database nodes. Otherwise, Yugabyte Platform will use the sudo user to set up YugabyteDB nodes. For manual provisioning, you would be prompted to run a Python script at a later stage or to run a set of commands on the database nodes.
+Enable this option if you choose to manually set up your database nodes. Otherwise, YugabyteDB Anywhere will use the sudo user to set up YugabyteDB nodes. For manual provisioning, you would be prompted to run a Python script at a later stage or to run a set of commands on the database nodes.
 
 If any of the following statements are applicable to your use case, you need to [provision the nodes manually](#provision-nodes-manually):
 
@@ -153,7 +151,7 @@ Define a mount point with enough space to contain your node density. Use `/data`
 
 ### Define regions and zones
 
-Complete the **Regions and Zones** fields, as per in the following illustration, to provide the location of YugabyteDB nodes. Yugabyte Platform will use these values during the universe creation:
+Complete the **Regions and Zones** fields, as per in the following illustration, to provide the location of YugabyteDB nodes. YugabyteDB Anywhere will use these values during the universe creation:
 
 ![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-3.png)
 
@@ -182,7 +180,7 @@ This step is only required if you set **Manually Provision Nodes** to true and t
 
 You can manually provision each node using the pre-provisioning Python script, as follows:
 
-1. Login to Yugabyte Platform virtual machine via SSH.
+1. Login to YugabyteDB Anywhere virtual machine via SSH.
 
 1. Access the docker `yugaware` container, as follows:
 
@@ -233,7 +231,7 @@ Ensure an NTP-compatible time service client is installed in the node OS (chrony
 
 ##### Open incoming TCP/IP ports
 
-Database servers need incoming TCP/IP access enabled to the following ports, for communications between themselves and Yugabyte Platform:
+Database servers need incoming TCP/IP access enabled to the following ports, for communications between themselves and YugabyteDB Anywhere:
 
 | Protocol | Port | Description |
 | :------- | :--- | :---------- |
@@ -254,7 +252,7 @@ The preceding table is based on the information on the [default ports page](/pre
 
 ##### Pre-provision nodes manually
 
-This process carries out all provisioning tasks on the database nodes which require elevated privileges. Once the database nodes have been prepared in this way, the universe creation process from Yugabyte Platform will connect with the nodes only via the `yugabyte` user, and not require any elevation of privileges to deploy and operate the YugabyteDB universe.
+This process carries out all provisioning tasks on the database nodes which require elevated privileges. Once the database nodes have been prepared in this way, the universe creation process from YugabyteDB Anywhere will connect with the nodes only via the `yugabyte` user, and not require any elevation of privileges to deploy and operate the YugabyteDB universe.
 
 Physical nodes (or cloud instances) are installed with a standard Centos 7 server image. The following steps are to be performed on each physical node, prior to universe creation:
 
@@ -285,7 +283,7 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
 1. Copy the SSH public key to each DB node.
 
     \
-    This public key should correspond to the private key entered into the Yugabyte Platform provider.
+    This public key should correspond to the private key entered into the YugabyteDB Anywhere provider.
 
 1. Run the following commands as the `yugabyte` user, after copying the SSH public key file to the user home directory:
 
@@ -373,13 +371,13 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
 
 ##### Install Prometheus node exporter
 
-For Yugabyte Platform versions 2.8 and later, download the 1.3.1 version of the Prometheus node exporter, as follows:
+For YugabyteDB Anywhere versions 2.8 and later, download the 1.3.1 version of the Prometheus node exporter, as follows:
 
 ```sh
 wget https://github.com/prometheus/node_exporter/releases/download/v1.3.1/node_exporter-1.3.1.linux-amd64.tar.gz
 ```
 
-For Yugabyte Platform versions prior to 2.8, download the 0.13.0 version of the exporter, as follows:
+For YugabyteDB Anywhere versions prior to 2.8, download the 0.13.0 version of the exporter, as follows:
 
 ```sh
 $ wget https://github.com/prometheus/node_exporter/releases/download/v0.13.0/node_exporter-0.13.0.linux-amd64.tar.gz
@@ -465,20 +463,20 @@ On each node, perform the following as a user with sudo access:
 
 ##### Install backup utilities
 
-Yugabyte Platform supports backing up YugabyteDB to AWS S3, Azure Storage, Google Cloud Storage, and NFS.
+YugabyteDB Anywhere supports backing up YugabyteDB to AWS S3, Azure Storage, Google Cloud Storage, and NFS.
 
 You can install the backup utility for the backup storage you plan to use as follows:
 
-- NFS - Install rsync. Yugabyte Platform uses rsync to do NFS backups which you installed in an earlier step.
+- NFS - Install rsync. YugabyteDB Anywhere uses rsync to do NFS backups which you installed in an earlier step.
 
-- AWS S3 - Install s3cmd. Yugabyte Platform relies on s3cmd to support copying backups to AWS S3. You have the following installation options:
+- AWS S3 - Install s3cmd. YugabyteDB Anywhere relies on s3cmd to support copying backups to AWS S3. You have the following installation options:
   - For a regular installation, execute the following:
 
       ```sh
       sudo yum install s3cmd
       ```
 
-  - For an airgapped installation, copy `/opt/third-party/s3cmd-2.0.1.tar.gz` from the Yugabyte Platform node to the database node, and then extract it into the `/usr/local` directory on the database node, as follows:
+  - For an airgapped installation, copy `/opt/third-party/s3cmd-2.0.1.tar.gz` from the YugabyteDB Anywhere node to the database node, and then extract it into the `/usr/local` directory on the database node, as follows:
 
       ```sh
       cd /usr/local
@@ -493,7 +491,7 @@ You can install the backup utility for the backup storage you plan to use as fol
       wget https://azcopyvnext.azureedge.net/release20200410/azcopy_linux_amd64_10.13.0.tar.gz
       ```
 
-  - For airgapped installations, copy `/opt/third-party/azcopy_linux_amd64_10.13.0.tar.gz` from the Yugabyte Platform node, as follows:
+  - For airgapped installations, copy `/opt/third-party/azcopy_linux_amd64_10.13.0.tar.gz` from the YugabyteDB Anywhere node, as follows:
 
       ```sh
       cd /usr/local
@@ -507,7 +505,7 @@ You can install the backup utility for the backup storage you plan to use as fol
       wget https://storage.googleapis.com/pub/gsutil_4.60.tar.gz
       ```
 
-  - For airgapped installs, copy `/opt/third-party/gsutil_4.60.tar.gz` from the Yugabyte Platform node, as follows:
+  - For airgapped installs, copy `/opt/third-party/gsutil_4.60.tar.gz` from the YugabyteDB Anywhere node, as follows:
 
       ```sh
       cd /usr/local
@@ -517,11 +515,11 @@ You can install the backup utility for the backup storage you plan to use as fol
 
 ##### Set crontab permissions
 
-Yugabyte Platform supports performing YugabyteDB liveness checks, log file management, and core file management using cron jobs.
+YugabyteDB Anywhere supports performing YugabyteDB liveness checks, log file management, and core file management using cron jobs.
 
 Note that sudo is required to set up this service.
 
-If Yugabyte Platform will be using cron jobs, ensure that the `yugabyte` user is allowed to run crontab:
+If YugabyteDB Anywhere will be using cron jobs, ensure that the `yugabyte` user is allowed to run crontab:
 
 * If you are using the `cron.allow` file to manage crontab access, add the `yugabyte` user to this file.
 * If you are using the `cron.deny` file, remove the `yugabyte` user from this file.
@@ -532,24 +530,24 @@ If you are not using either file, no changes are required.
 
 ##### Manage liveness checks, logs, and cores
 
-Yugabyte Platform supports performing YugabyteDB liveness checks, log file management, and core file management using cron jobs or systemd services.
+YugabyteDB Anywhere supports performing YugabyteDB liveness checks, log file management, and core file management using cron jobs or systemd services.
 
 **Sudo is required to set up these services!**
 
-If Platform will be using **cron jobs**, make sure the yugabyte user is allowed to run crontab. If you're using the cron.allow file to manage crontab access, add the yugabyte user to this file. If you're using the cron.deny file, remove the yugabyte user from this file.
+If YugabyteDB Anywhere will be using **cron jobs**, make sure the yugabyte user is allowed to run crontab. If you're using the cron.allow file to manage crontab access, add the yugabyte user to this file. If you're using the cron.deny file, remove the yugabyte user from this file.
 
-If you plan to have Platform use **systemd services** to perform the monitoring operations mentioned above, then make sure ...
+YugabyteDB Anywhere **systemd services** to perform the monitoring operations mentioned above, then make sure ...
 -->
 
 You have finished configuring your on-premises cloud provider. Proceed to [Configure the backup target](../../backup-target/), or [Create deployments](../../../create-deployments/).
 
 ## Remove YugabyteDB components from the server
 
-As described in [Eliminate an unresponsive node](../../../manage-deployments/remove-nodes/), when a node enters an undesirable state, you can delete such node, with Yugabyte Platform clearing up all the remaining artifacts except the `prometheus` and `yugabyte` user.
+As described in [Eliminate an unresponsive node](../../../create-deployments/remove-nodes/), when a node enters an undesirable state, you can delete such node, with YugabyteDB Anywhere clearing up all the remaining artifacts except the `prometheus` and `yugabyte` user.
 
-You can manually remove Yugabyte components from existing server images. Before attempting this, you have to determine whether or not Yugaware Platform is operational. If it is, you either need to delete the universe or delete the nodes from the universe.
+You can manually remove Yugabyte components from existing server images. Before attempting this, you have to determine whether or not YugabyteDB Anywhere is operational. If it is, you either need to delete the universe or delete the nodes from the universe.
 
-In order to completely eliminate all traces of Yugabyte Platform and configuration, you should consider reinstalling the operating system image (or rolling back to a previous image, if available).
+In order to completely eliminate all traces of YugabyteDB Anywhere and configuration, you should consider reinstalling the operating system image (or rolling back to a previous image, if available).
 
 ### Delete database server nodes
 
@@ -569,7 +567,7 @@ You can remove YugabyteDB components and configuration from the database server 
 
 {{< note title="Note" >}}
 
-If you cannot find the `bin` directory, it means Yugabyte Platform already cleared it during a successful deletion of the universe.
+If you cannot find the `bin` directory, it means YugabyteDB Anywhere already cleared it during a successful deletion of the universe.
 
 {{< /note >}}
 
@@ -601,9 +599,9 @@ sudo rm -rf /opt/prometheus
 
 You may now choose to reverse the system settings that you configured in [Provision nodes manually](#provision-nodes-manually).
 
-### Delete Yugabyte Platform from the server
+### Delete YugabyteDB Anywhere from the server
 
-To remove Yugabyte Platform and Replicated components from the host server, execute the following commands as the `root` user (or prepend `sudo` to each command) :
+To remove YugabyteDB Anywhere and Replicated components from the host server, execute the following commands as the `root` user (or prepend `sudo` to each command) :
 
 ```sh
 systemctl stop replicated replicated-ui replicated-operator
@@ -640,4 +638,3 @@ yum remove docker-ce
 rpm -qa | grep -i docker
 yum remove docker-ce-cli
 ```
-

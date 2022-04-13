@@ -1,8 +1,8 @@
 ---
-title: Install Yugabyte Platform software - Airgapped
-headerTitle: Install Yugabyte Platform software - Airgapped
+title: Install YugabyteDB Anywhere software - Airgapped
+headerTitle: Install YugabyteDB Anywhere software - Airgapped
 linkTitle: Install software
-description: Install Yugabyte Platform software in your on-premises, airgapped environment.
+description: Install YugabyteDB Anywhere software in your on-premises, airgapped environment.
 menu:
   preview:
     parent: install-yugabyte-platform
@@ -99,7 +99,7 @@ You should see an output similar to the following:
 
 ![Replicated successfully installed](/images/replicated/replicated-success.png)
 
-The next step is to install Yugabyte Platform.
+The next step is to install YugabyteDB Anywhere.
 
 ## Set Up HTTPS (optional)
 
@@ -121,7 +121,7 @@ Upload the Yugabyte license file that you received from [Yugabyte](https://www.y
 
 ![Replicated License Upload](/images/replicated/replicated-license-upload.png)
 
-Two options to install Yugabyte Platform are presentedas, shown in the following illustrations:
+Two options to install YugabyteDB Anywhere are presentedas, shown in the following illustrations:
 
 ![Replicated License Air-gapped Install](/images/replicated/replicated-license-airgapped-install-option.png)
 
@@ -131,19 +131,19 @@ Two options to install Yugabyte Platform are presentedas, shown in the following
 
 ## Secure Replicated
 
-Add a password to protect the Replicated Admin Console, which is different from the Admin Console for YugabyteDB used by Yugabyte Platform, as shown in the following illustration:
+Add a password to protect the Replicated Admin Console, which is different from the Admin Console for YugabyteDB used by YugabyteDB Anywhere, as shown in the following illustration:
 
 ![Replicated Password](/images/replicated/replicated-password.png)
 
 ## Preflight checks
 
-Replicated performs a set of preflight checks to ensure that the host is set up correctly for Yugabyte Platform, as shown in the following illustration:
+Replicated performs a set of preflight checks to ensure that the host is set up correctly for YugabyteDB Anywhere, as shown in the following illustration:
 
 ![Replicated Checks](/images/replicated/replicated-checks.png)
 
-Click **Continue** to configure Yugabyte Platform.
+Click **Continue** to configure YugabyteDB Anywhere.
 
-If the preflight check fails, review the [Troubleshoot Yugabyte Platform](../../../troubleshoot/) to resolve the issue.
+If the preflight check fails, review the [Troubleshoot YugabyteDB Anywhere](../../../troubleshoot/) to resolve the issue.
 
 ## Set the TLS Version for Nginx Frontend
 

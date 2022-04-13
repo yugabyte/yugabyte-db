@@ -11,11 +11,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Use the Slow Queries dashboard to analyze statistics of past queries on your YugabyteDB universes. You can use this data to:
+Use the Slow Queries dashboard to analyze statistics of past queries on your YugabyteDB universes. You can use this data for the following:
 
-- Visually identify slower running database operations
-- Evaluate query execution times over time
-- Discover potential queries for memory optimization
+- Visually identifying slower running database operations.
+- Evaluating query execution times over time.
+- Discovering potential queries for memory optimization.
 
 All user roles — `Super Admin`, `Admin`, and `Read-only` — are granted access to use the Slow Queries dashboard.
 
@@ -25,52 +25,44 @@ Note that slow queries are not available for YCQL.
 
 {{< /note >}}
 
-## Columns description
+The following table describes the column values.
 
-| Column                     | Description                                                  |
-| -------------------------- | ------------------------------------------------------------ |
-| Query                      | The query command. Example: `select * from my_keyspace.my_table` |
-| Database                   | The YSQL database used by the query         |
-| User                       | The name of role used to access YSQL database         |
-| Count                      | Total number of times this type of query has executed         |
-| Total time                 | Total duration (in milliseconds) of all iterations of this query has taken         |
-| Rows                       | The total number of database table rows returned across all iterations of this query  |
-| Avg Exec Time              | Average or mean execution time (in milliseconds) for this query    |
-| Min Exec Time              | Minimum execution time (in milliseconds) for this query    |
-| Max Exec Time              | Maximum execution time (in milliseconds) for this query    |
-| Std Dev Time               | Standard deviation of execution times for this query    |
-| Temp Tables RAM            | Memory used by temporary tables generated from query    |
+| Column          | Description                                                  |
+| --------------- | ------------------------------------------------------------ |
+| Query           | The query command.<br>Example: <br>`select * from my_keyspace.my_table` |
+| Database        | The YSQL database used by the query.                         |
+| User            | The name of role used to access YSQL database.               |
+| Count           | The total number of times this type of query has executed.   |
+| Total time      | The total duration (in milliseconds) of all iterations of this query has taken. |
+| Rows            | The total number of database table rows returned across all iterations of this query |
+| Avg Exec Time   | Average or mean execution time (in milliseconds) for this query. |
+| Min Exec Time   | Minimum execution time (in milliseconds) for this query.     |
+| Max Exec Time   | Maximum execution time (in milliseconds) for this query.     |
+| Std Dev Time    | Standard deviation of execution times for this query.        |
+| Temp Tables RAM | Memory used by temporary tables generated from query.        |
 
-## Use the **Slow Queries** dashboard
+You can use the **Slow Queries** dashboard as follows:
 
-1. Go to the **Universe Details** page and from the **Queries** tab, select **Slow Queries**.
+- Navigate to the **Universes**, select your universe, then select **Queries > Slow Queries**, as per the following illustration:<br><br><br>
 
-![Initial layout](/images/yp/alerts-monitoring/slow-queries/initial-table-view.png)
+  ![Initial layout](/images/yp/alerts-monitoring/slow-queries/initial-table-view.png)<br><br>
 
-2. Clicking the 'x' will close the alert that slow queries are not available on YCQL. The Column Display allows for dynamically displaying specific fields.
+  Note that you might need to enable query monitoring for your universe. If enabled, using **Column Display** allows you to dynamically display specific fields, as per the following illustration:<br><br>
 
-![Changing column selection](/images/yp/alerts-monitoring/slow-queries/selecting-columns.png)
+  ![Changing column selection](/images/yp/alerts-monitoring/slow-queries/selecting-columns.png)<br><br>
 
-3. Clicking the minimize icon will hide away the Column Display, allowing for more space to examine the query rows.
+- Click the filter field to be able to use a query language for filtering data based on certain fields, as per the following illustration:<br><br>
 
-![Minimized columns panel](/images/yp/alerts-monitoring/slow-queries/minimized-columns-panel.png)
+  ![Search dropdown options](/images/yp/alerts-monitoring/slow-queries/search-dropdown-options.png)<br><br>
 
-4. Click the search bar and the column filter drop-down list appears. The column filter drop-down list lets you use a query language for filtering data based on certain fields.
+  Use filtering for comparisons on numbers columns (`Avg Time`) using `>`, `>=`, `<`, and `<=` to search for values that are greater than, greater than or equal to, less than, and less than or equal to another value (`Avg Time: < 30`). You can also use the range syntax `n..m` to search for values within a range, where the first number `n` is the lowest value and the second number `m` is the highest value. The range syntax supports tokens like the following: `n..*` which is equivalent to `>= n`. Or `*..n` which is the same as `<= n`.
 
-![Search dropdown options](/images/yp/alerts-monitoring/slow-queries/search-dropdown-options.png)
+- Select a row to open a sidebar with a full view of the query statement, along with all the column data, as per the following illustration:<br><br>
 
-Use filtering for comparisons on numbers columns (`Avg Time`) using `>`, `>=`, `<`, and `<=` to search for values that are greater than, greater than or equal to, less than, and less than or equal to another value (`Avg Time: < 30`). You can also use the range syntax `n..m` to search for values within a range, where the first number `n` is the lowest value and the second number `m` is the highest value. The range syntax supports tokens like the following: `n..*` which is equivalent to `>= n`. Or `*..n` which is the same as `<= n`.
+  ![View query statement](/images/yp/alerts-monitoring/slow-queries/query-info-panel.png)<br><br>
 
-5. Click on a row to open a sidebar with a full view of the query statement, along with all the column data.
+  You can find additional prefiltered navigation links from different pages to the **Slow Queries** page. For example, from the **Overview** page to the **Queries** page, when you click the link to Top SQL Statements, as per the folloiwng illustration:<br><br>
 
-![View query statement](/images/yp/alerts-monitoring/slow-queries/query-info-panel.png)
+  ![Overview page showing slow queries](/images/yp/alerts-monitoring/slow-queries/overview-showing-link.png)<br><br>
 
-You can also find additional prefiltered navigation links from different pages to the **Slow Queries** page.
-
-* Example: From the **Overview** tab to the **Queries** tab, when the user clicks the link to "Top SQL Statements".
-
-![Overview page showing slow queries](/images/yp/alerts-monitoring/slow-queries/overview-showing-link.png)
-
-* Example: The **Nodes** page each node's Actions contains a link to the **Slow Queries** page.
-
-![Nodes page showing link](/images/yp/alerts-monitoring/live-queries/nodes-page-show-link.png)
+  Or, for example, the **Nodes** page's each node **Actions** contains a link to the **Slow Queries** page.

@@ -1,10 +1,10 @@
 ---
-title: Install Yugabyte Platform
-headerTitle: Select Installation Type
+title: Install YugabyteDB Anywhere
+headerTitle: Select installation type
 linkTitle: Install
-description: Installing Yugabyte Platform on Public Cloud
+description: Installing YugabyteDB Anywhere on public cloud
 image: /images/section_icons/deploy/enterprise.png
-headcontent: Installing Yugabyte Platform on Public Cloud
+headcontent: Installing YugabyteDB Anywhere on public cloud
 aliases:
   - /preview/yugabyte-platform/overview/install/
 menu:
@@ -16,7 +16,7 @@ isTocNested: true
 showAsideToc: false
 ---
 
-Select your installation type to see the installation flow. Click on the elements to see detailed steps.
+For installation overview, select one of the following installation types:
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
@@ -40,6 +40,10 @@ Select your installation type to see the installation flow. Click on the element
     </a>
   </li>
 </ul>
+
+<br>
+
+Click elements of the following chart to access detailed steps:
 
 <img src="/images/ee/flowchart/yb-install-public-cloud.png" usemap="#image-map">
 
