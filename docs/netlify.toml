@@ -42,7 +42,22 @@
   to = "/preview/"
   force = true
 
+# Catch-all for old links to /latest (now called /preview)
+
+[[redirects]]
+  from = "/latest/*"
+  to = "/preview/:splat"
+  force = true
+
+# Redirect old cloud docs to root of current
+
+[[redirects]]
+  from = "/:version/yugabyte-cloud/*"
+  to = "/preview/yugabyte-cloud/"
+  force = true
+
 # Redirect EOL docs to the archive site
+# (And note that v1.0-1.2 don't exist)
 
 [[redirects]]
   from = "/v1.0/*"
@@ -61,22 +76,22 @@
 
 [[redirects]]
   from = "/v1.3/*"
-  to = "https://docs-archive.yugabyte.com/"
+  to = "https://docs-archive.yugabyte.com/v1.3/"
   force = true
 
 [[redirects]]
   from = "/v2.0/*"
-  to = "https://docs-archive.yugabyte.com/"
+  to = "https://docs-archive.yugabyte.com/v2.0/"
   force = true
 
 [[redirects]]
   from = "/v2.1/*"
-  to = "https://docs-archive.yugabyte.com/"
+  to = "https://docs-archive.yugabyte.com/v2.1/"
   force = true
 
 [[redirects]]
   from = "/v2.2/*"
-  to = "https://docs-archive.yugabyte.com/"
+  to = "https://docs-archive.yugabyte.com/v2.2/"
   force = true
 
 # Redirect older versions of specific sections
@@ -132,11 +147,6 @@
   to = "/preview/yedis/"
   force = true
 
-[[redirects]]
-  from = "/:version/yugabyte-cloud/*"
-  to = "/preview/yugabyte-cloud/"
-  force = true
-
 # Stable quick-starts need defaults,
 # since archiving from /preview removes aliases
 
@@ -161,12 +171,6 @@
   from = "/preview/api/ysql/extensions/"
   to = "/preview/explore/ysql-language-features/pg-extensions/"
   force = true
-
-# Catch-all for old links to /latest (now called /preview)
-
-[[redirects]]
-  from = "/latest/*"
-  to = "/preview/:splat"
 
 # Hugo resource caching plugin configuration
 # https://github.com/cdeleeuwe/netlify-plugin-hugo-cache-resources#readme
