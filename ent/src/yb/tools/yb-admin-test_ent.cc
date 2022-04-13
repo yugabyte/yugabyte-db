@@ -1371,7 +1371,7 @@ TEST_F(XClusterAdminCliTest_Large, TestBootstrapProducerPerformance) {
   }
 
   std::string table_ids = tables.at(0)->id();
-  for (int i = 1; i < tables.size(); ++i) {
+  for (size_t i = 1; i < tables.size(); ++i) {
     table_ids += "," + tables.at(i)->id();
   }
 
