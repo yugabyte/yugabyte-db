@@ -18,6 +18,7 @@ import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.filters.BackupFilter;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.TimeUnit;
 import com.yugabyte.yw.models.paging.BackupPagedApiResponse;
 import com.yugabyte.yw.models.paging.BackupPagedQuery;
 import com.yugabyte.yw.models.paging.BackupPagedResponse;
@@ -210,6 +211,23 @@ public class Backup extends Model {
     save();
   }
 
+  @ApiModelProperty(value = "Time unit for backup expiry time", accessMode = READ_WRITE)
+  @Column
+  private TimeUnit expiryTimeUnit;
+
+  public TimeUnit getExpiryTimeUnit() {
+    return this.expiryTimeUnit;
+  }
+
+  public void setExpiryTimeUnit(TimeUnit expiryTimeUnit) {
+    this.expiryTimeUnit = expiryTimeUnit;
+  }
+
+  public void updateExpiryTimeUnit(TimeUnit expiryTimeUnit) {
+    setExpiryTimeUnit(expiryTimeUnit);
+    save();
+  }
+
   public void updateStorageConfigUUID(UUID storageConfigUUID) {
     this.storageConfigUUID = storageConfigUUID;
     this.backupInfo.storageConfigUUID = storageConfigUUID;
@@ -277,6 +295,7 @@ public class Backup extends Model {
     }
     if (params.timeBeforeDelete != 0L) {
       backup.expiry = new Date(System.currentTimeMillis() + params.timeBeforeDelete);
+      backup.setExpiryTimeUnit(params.expiryTimeUnit);
     }
     if (params.backupList != null) {
       params.backupUuid = backup.backupUUID;

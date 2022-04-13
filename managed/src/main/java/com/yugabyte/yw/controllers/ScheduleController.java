@@ -139,8 +139,12 @@ public class ScheduleController extends AuthenticatedController {
       } else if (schedule.getStatus().equals(State.Active) && schedule.getRunningState()) {
         throw new PlatformServiceException(CONFLICT, "Cannot edit schedule as it is running.");
       } else if (params.frequency != null) {
+        if (params.frequencyTimeUnit == null) {
+          throw new PlatformServiceException(BAD_REQUEST, "Please provide time unit for frequency");
+        }
         BackupUtil.validateBackupFrequency(params.frequency);
         schedule.updateFrequency(params.frequency);
+        schedule.updateFrequencyTimeUnit(params.frequencyTimeUnit);
       } else if (params.cronExpression != null) {
         BackupUtil.validateBackupCronExpression(params.cronExpression);
         schedule.updateCronExpression(params.cronExpression);

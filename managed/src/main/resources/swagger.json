@@ -1119,6 +1119,11 @@
           "format" : "date-time",
           "type" : "string"
         },
+        "expiryTimeUnit" : {
+          "description" : "Time unit for backup expiry time",
+          "enum" : [ "NANOSECONDS", "MICROSECONDS", "MILLISECONDS", "SECONDS", "MINUTES", "HOURS", "DAYS", "MONTHS", "YEARS" ],
+          "type" : "string"
+        },
         "scheduleUUID" : {
           "description" : "Schedule UUID, if this backup is part of a schedule",
           "format" : "uuid",
@@ -1324,6 +1329,11 @@
           "format" : "int32",
           "type" : "integer"
         },
+        "expiryTimeUnit" : {
+          "description" : "Time unit for backup expiry time",
+          "enum" : [ "NANOSECONDS", "MICROSECONDS", "MILLISECONDS", "SECONDS", "MINUTES", "HOURS", "DAYS", "MONTHS", "YEARS" ],
+          "type" : "string"
+        },
         "extraDependencies" : {
           "$ref" : "#/definitions/ExtraDependencies",
           "description" : "Extra dependencies"
@@ -1331,6 +1341,11 @@
         "firstTry" : {
           "description" : "Whether this task has been tried before",
           "type" : "boolean"
+        },
+        "frequencyTimeUnit" : {
+          "description" : "Time unit for user input schedule frequency",
+          "enum" : [ "NANOSECONDS", "MICROSECONDS", "MILLISECONDS", "SECONDS", "MINUTES", "HOURS", "DAYS", "MONTHS", "YEARS" ],
+          "type" : "string"
         },
         "ignoreErrors" : {
           "description" : "Should table backup errors be ignored",
@@ -1626,6 +1641,11 @@
           "description" : "Expected universe version",
           "format" : "int32",
           "type" : "integer"
+        },
+        "expiryTimeUnit" : {
+          "description" : "Time unit for backup expiry time",
+          "enum" : [ "NANOSECONDS", "MICROSECONDS", "MILLISECONDS", "SECONDS", "MINUTES", "HOURS", "DAYS", "MONTHS", "YEARS" ],
+          "type" : "string"
         },
         "extraDependencies" : {
           "$ref" : "#/definitions/ExtraDependencies",
@@ -2904,6 +2924,11 @@
     "EditBackupParams" : {
       "description" : "Edit backup parameters",
       "properties" : {
+        "expiryTimeUnit" : {
+          "description" : "Time unit for backup expiry",
+          "enum" : [ "NANOSECONDS", "MICROSECONDS", "MILLISECONDS", "SECONDS", "MINUTES", "HOURS", "DAYS", "MONTHS", "YEARS" ],
+          "type" : "string"
+        },
         "storageConfigUUID" : {
           "description" : "New backup Storage config",
           "format" : "uuid",
@@ -2928,6 +2953,11 @@
           "description" : "Frequency of the schedule",
           "format" : "int64",
           "type" : "integer"
+        },
+        "frequencyTimeUnit" : {
+          "description" : "Time Unit for frequency",
+          "enum" : [ "NANOSECONDS", "MICROSECONDS", "MILLISECONDS", "SECONDS", "MINUTES", "HOURS", "DAYS", "MONTHS", "YEARS" ],
+          "type" : "string"
         },
         "status" : {
           "description" : "State of the schedule",
@@ -3721,6 +3751,11 @@
           "description" : "Expected universe version",
           "format" : "int32",
           "type" : "integer"
+        },
+        "expiryTimeUnit" : {
+          "description" : "Time unit for backup expiry time",
+          "enum" : [ "NANOSECONDS", "MICROSECONDS", "MILLISECONDS", "SECONDS", "MINUTES", "HOURS", "DAYS", "MONTHS", "YEARS" ],
+          "type" : "string"
         },
         "extraDependencies" : {
           "$ref" : "#/definitions/ExtraDependencies",
@@ -5089,9 +5124,14 @@
           "type" : "integer"
         },
         "frequency" : {
-          "description" : "Frequency of the schedule, in minutes",
+          "description" : "Frequency of the schedule, in milli seconds",
           "format" : "int64",
           "type" : "integer"
+        },
+        "frequencyTimeUnit" : {
+          "description" : "Time unit of frequency",
+          "enum" : [ "NANOSECONDS", "MICROSECONDS", "MILLISECONDS", "SECONDS", "MINUTES", "HOURS", "DAYS", "MONTHS", "YEARS" ],
+          "type" : "string"
         },
         "runningState" : {
           "description" : "Running state of the schedule",
