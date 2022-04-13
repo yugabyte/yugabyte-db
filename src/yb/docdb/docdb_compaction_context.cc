@@ -11,7 +11,7 @@
 // under the License.
 //
 
-#include "yb/docdb/docdb_compaction_filter.h"
+#include "yb/docdb/docdb_compaction_context.h"
 
 #include <memory>
 
@@ -34,56 +34,110 @@
 using std::shared_ptr;
 using std::unique_ptr;
 using std::unordered_set;
-using rocksdb::CompactionFilter;
 using rocksdb::VectorToString;
-using rocksdb::FilterDecision;
 
 namespace yb {
 namespace docdb {
 
+namespace {
+
+class DocDBCompactionFeed : public rocksdb::CompactionFeed {
+ public:
+  DocDBCompactionFeed(
+      rocksdb::CompactionFeed* next_feed,
+      HistoryRetentionDirective retention,
+      IsMajorCompaction is_major_compaction,
+      const KeyBounds* key_bounds)
+      : next_feed_(*next_feed), retention_(std::move(retention)), key_bounds_(key_bounds),
+        is_major_compaction_(is_major_compaction) {
+  }
+
+  Status Feed(const Slice& full_key, const Slice& value) override;
+
+  Status Flush() override {
+    return next_feed_.Flush();
+  }
+
+ private:
+  // Assigns prev_subdoc_key_ from memory addressed by data. The length of key is taken from
+  // sub_key_ends_ and same_bytes are reused.
+  void AssignPrevSubDocKey(const char* data, size_t same_bytes);
+
+  rocksdb::CompactionFeed& next_feed_;
+  const HistoryRetentionDirective retention_;
+  const KeyBounds* key_bounds_;
+  const IsMajorCompaction is_major_compaction_;
+  ValueBuffer new_value_buffer_;
+
+  std::vector<char> prev_subdoc_key_;
+
+  // Result of DecodeDocKeyAndSubKeyEnds for prev_subdoc_key_.
+  boost::container::small_vector<size_t, 16> sub_key_ends_;
+
+  // A stack of highest hybrid_times lower than or equal to history_cutoff_ at which parent
+  // subdocuments of the key that has just been processed, or the subdocument / primitive value
+  // itself stored at that key itself, were fully overwritten or deleted. A full overwrite of a
+  // parent document is considered a full overwrite of all its subdocuments at every level for the
+  // purpose of this definition. Therefore, the following inequalities hold:
+  //
+  // overwrite_ht_[0] <= ... <= overwrite_ht_[N - 1] <= history_cutoff_
+  //
+  // The following example shows contents of RocksDB being compacted, as well as the state of the
+  // overwrite_ht_ stack and how it is being updated at each step. history_cutoff_ is 25 in this
+  // example.
+  //
+  // RocksDB key/value                    | overwrite_ht_ | Feed logic
+  // ----------------------------------------------------------------------------------------------
+  // doc_key1 HT(30) -> {}                | [MinHT]       | Always keeping the first entry
+  // doc_key1 HT(20) -> DEL               | [20]          | 20 >= MinHT, keeping the entry
+  //                                      |               | ^^    ^^^^^
+  //                                      | Note: we're comparing the hybrid_time in this key with
+  //                                      | the previous stack top of overwrite_ht_.
+  //                                      |               |
+  // doc_key1 HT(10) -> {}                | [20]          | 10 < 20, deleting the entry
+  // doc_key1 subkey1 HT(35) -> "value4"  | [20, 20]      | 35 >= 20, keeping the entry
+  //                     ^^               |      ^^       |
+  //                      \----------------------/ HT(35) is higher than history_cutoff_, so we're
+  //                                      |        just duplicating the top value on the stack
+  //                                      |        HT(20) this step.
+  //                                      |               |
+  // doc_key1 subkey1 HT(23) -> "value3"  | [20, 23]      | 23 >= 20, keeping the entry
+  //                                      |      ^^       |
+  //                                      |      Now we have actually found a hybrid_time that is
+  //                                      |      <= history_cutoff_, so we're replacing the stack
+  //                                      |      top with that hybrid_time.
+  //                                      |               |
+  // doc_key1 subkey1 HT(21) -> "value2"  | [20, 23]      | 21 < 23, deleting the entry
+  // doc_key1 subkey1 HT(15) -> "value1"  | [20, 23]      | 15 < 23, deleting the entry
+
+  struct OverwriteData {
+    DocHybridTime doc_ht;
+    Expiration expiration;
+  };
+
+  std::vector<OverwriteData> overwrite_;
+
+  // We use this to only log a message that the feed is being used once on the first call to
+  // the Filter function.
+  bool feed_usage_logged_ = false;
+  bool within_merge_block_ = false;
+};
+
 // ------------------------------------------------------------------------------------------------
 
-DocDBCompactionFilter::DocDBCompactionFilter(
-    HistoryRetentionDirective retention,
-    IsMajorCompaction is_major_compaction,
-    const KeyBounds* key_bounds)
-    : retention_(std::move(retention)),
-      key_bounds_(key_bounds),
-      is_major_compaction_(is_major_compaction) {
-}
-
-DocDBCompactionFilter::~DocDBCompactionFilter() {
-}
-
-FilterDecision DocDBCompactionFilter::Filter(
-    int level, const Slice& key, const Slice& existing_value, std::string* new_value,
-    bool* value_changed) {
-  auto result = const_cast<DocDBCompactionFilter*>(this)->DoFilter(
-      level, key, existing_value, new_value, value_changed);
-  if (!result.ok()) {
-    LOG(FATAL) << "Error filtering " << key.ToDebugString() << ": " << result.status();
-  }
-  if (*result != FilterDecision::kKeep) {
-    VLOG(3) << "Discarding key: " << BestEffortDocDBKeyToStr(key);
-  } else {
-    VLOG(4) << "Keeping key: " << BestEffortDocDBKeyToStr(key);
-  }
-  return *result;
-}
-
-Result<FilterDecision> DocDBCompactionFilter::DoFilter(
-    int level, const Slice& key, const Slice& existing_value, std::string* new_value,
-    bool* value_changed) {
+Status DocDBCompactionFeed::Feed(const Slice& full_key, const Slice& value) {
   const HybridTime history_cutoff = retention_.history_cutoff;
 
-  if (!filter_usage_logged_) {
+  if (!feed_usage_logged_) {
     // TODO: switch this to VLOG if it becomes too chatty.
-    LOG(INFO) << "DocDB compaction filter is being used for a "
+    LOG(INFO) << "DocDB compaction feed is being used for a "
               << (is_major_compaction_ ? "major" : "minor") << " compaction"
-              << ", history_cutoff=" << history_cutoff;
-    filter_usage_logged_ = true;
+              << ", history_cutoff=" << history_cutoff
+              << ", deleted columns: " << AsString(*retention_.deleted_cols);
+    feed_usage_logged_ = true;
   }
 
+  auto key = full_key.WithoutSuffix(rocksdb::kLastInternalComponentSize);
   if (!IsWithinBounds(key_bounds_, key) &&
       DecodeKeyEntryType(key) != KeyEntryType::kTransactionApplyState) {
     // If we reach this point, then we're processing a record which should have been excluded by
@@ -92,13 +146,13 @@ Result<FilterDecision> DocDBCompactionFilter::DoFilter(
     LOG(DFATAL) << "Unexpectedly filtered out-of-bounds key during compaction: "
         << SubDocKey::DebugSliceToString(key)
         << " with bounds: " << key_bounds_->ToString();
-    return FilterDecision::kDiscard;
+    return Status::OK();
   }
 
   // Just remove intent records from regular DB, because it was beta feature.
   // Currently intents are stored in separate DB.
   if (DecodeKeyEntryType(key) == KeyEntryType::kObsoleteIntentPrefix) {
-    return FilterDecision::kDiscard;
+    return Status::OK();
   }
 
   auto same_bytes = strings::MemoryDifferencePos(
@@ -161,9 +215,9 @@ Result<FilterDecision> DocDBCompactionFilter::DoFilter(
   // does not get cleaned up the same way as this one.
   //
   // TODO: When more merge records are supported, isTtlRow should be redefined appropriately.
-  bool is_ttl_row = IsMergeRecord(existing_value);
+  bool is_ttl_row = IsMergeRecord(value);
   if (ht < prev_overwrite_ht && !is_ttl_row) {
-    return FilterDecision::kDiscard;
+    return Status::OK();
   }
 
   // Every subdocument was fully overwritten at least at the time any of its parents was fully
@@ -193,7 +247,7 @@ Result<FilterDecision> DocDBCompactionFilter::DoFilter(
   if (ht.hybrid_time() > history_cutoff) {
     AssignPrevSubDocKey(key.cdata(), same_bytes);
     overwrite_.push_back({prev_overwrite_ht, prev_exp});
-    return FilterDecision::kKeep;
+    return next_feed_.Feed(full_key, value);
   }
 
   // Check for CQL columns deleted from the schema. This is done regardless of whether this is a
@@ -202,24 +256,27 @@ Result<FilterDecision> DocDBCompactionFilter::DoFilter(
   // TODO: could there be a case when there is still a read request running that uses an old schema,
   //       and we end up removing some data that the client expects to see?
   if (sub_key_ends_.size() > 1) {
+    // 0 - end of cotable id section.
+    // 1 - end of doc key section.
     // Column ID is the first subkey in every CQL row.
-    if (key[sub_key_ends_[0]]  == KeyEntryTypeAsChar::kColumnId) {
-      Slice column_id_slice(key.data() + sub_key_ends_[0] + 1, key.data() + sub_key_ends_[1]);
+    if (key[sub_key_ends_[1]] == KeyEntryTypeAsChar::kColumnId) {
+      Slice column_id_slice = key.WithoutPrefix(sub_key_ends_[1] + 1);
       auto column_id_as_int64 = VERIFY_RESULT(util::FastDecodeSignedVarIntUnsafe(&column_id_slice));
       ColumnId column_id;
       RETURN_NOT_OK(ColumnId::FromInt64(column_id_as_int64, &column_id));
       if (retention_.deleted_cols->count(column_id) != 0) {
-        return FilterDecision::kDiscard;
+        return Status::OK();
       }
     }
   }
 
   auto overwrite_ht = is_ttl_row ? prev_overwrite_ht : std::max(prev_overwrite_ht, ht);
 
-  Slice value_slice = existing_value;
+  Slice value_slice = value;
   ValueControlFields control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value_slice));
   const auto value_type = static_cast<ValueEntryType>(
       value_slice.FirstByteOr(ValueEntryTypeAsChar::kInvalid));
+
   const Expiration curr_exp(ht.hybrid_time(), control_fields.ttl);
 
   // If within the merge block.
@@ -247,10 +304,25 @@ Result<FilterDecision> DocDBCompactionFilter::DoFilter(
   }
   AssignPrevSubDocKey(key.cdata(), same_bytes);
 
+  // If we are backfilling an index table, we want to preserve the delete markers in the table
+  // until the backfill process is completed. For other normal use cases, delete markers/tombstones
+  // can be cleaned up on a major compaction.
+  // retention_.retain_delete_markers_in_major_compaction will be set to true until the index
+  // backfill is complete.
+  //
+  // Tombstones at or below the history cutoff hybrid_time can always be cleaned up on full (major)
+  // compactions. However, we do need to update the overwrite hybrid time stack in this case (as we
+  // just did), because this deletion (tombstone) entry might be the only reason for cleaning up
+  // more entries appearing at earlier hybrid times.
+  if (value_type == ValueEntryType::kTombstone && is_major_compaction_ &&
+      !retention_.retain_delete_markers_in_major_compaction) {
+    return Status::OK();
+  }
+
   // If the entry has the TTL flag, delete the entry.
   if (is_ttl_row) {
     within_merge_block_ = true;
-    return FilterDecision::kDiscard;
+    return Status::OK();
   }
 
   // Only check for expiration if the current hybrid time is at or below history cutoff.
@@ -264,20 +336,18 @@ Result<FilterDecision> DocDBCompactionFilter::DoFilter(
   // compact away each column if it has expired, including the liveness system column. The init
   // markers in Redis wouldn't be affected since they don't have any TTL associated with them and
   // the TTL would default to kMaxTtl which would make has_expired false.
+  Slice new_value = value;
   if (has_expired) {
     // This is consistent with the condition we're testing for deletes at the bottom of the function
     // because ht_at_or_below_cutoff is implied by has_expired.
     if (is_major_compaction_ && !retention_.retain_delete_markers_in_major_compaction) {
-      return FilterDecision::kDiscard;
+      return Status::OK();
     }
 
     // During minor compactions, expired values are written back as tombstones because removing the
     // record might expose earlier values which would be incorrect.
-    *value_changed = true;
-    *new_value = Value::EncodedTombstone();
+    new_value = Value::EncodedTombstone();
   } else if (within_merge_block_) {
-    *value_changed = true;
-
     if (expiration.ttl != ValueControlFields::kMaxTtl) {
       expiration.ttl += MonoDelta::FromMicroseconds(
           overwrite_.back().expiration.write_ht.PhysicalDiff(ht.hybrid_time()));
@@ -285,59 +355,56 @@ Result<FilterDecision> DocDBCompactionFilter::DoFilter(
     }
 
     control_fields.ttl = expiration.ttl;
-    new_value->clear();
+    new_value_buffer_.Clear();
 
     // We are reusing the existing encoded value without decoding/encoding it.
-    control_fields.AppendEncoded(new_value);
-    new_value->append(value_slice.cdata(), value_slice.size());
+    control_fields.AppendEncoded(&new_value_buffer_);
+    new_value_buffer_.Append(value_slice);
+    new_value = new_value_buffer_.AsSlice();
     within_merge_block_ = false;
   } else if (control_fields.intent_doc_ht.is_valid() && ht.hybrid_time() < history_cutoff) {
     // Cleanup intent doc hybrid time when we don't need it anymore.
     // See https://github.com/yugabyte/yugabyte-db/issues/4535 for details.
     control_fields.intent_doc_ht = DocHybridTime::kInvalid;
 
-    new_value->clear();
+    new_value_buffer_.Clear();
 
     // We are reusing the existing encoded value without decoding/encoding it.
-    control_fields.AppendEncoded(new_value);
-    new_value->append(value_slice.cdata(), value_slice.size());
+    control_fields.AppendEncoded(&new_value_buffer_);
+    new_value_buffer_.Append(value_slice);
+    new_value = new_value_buffer_.AsSlice();
   }
 
-  // If we are backfilling an index table, we want to preserve the delete markers in the table
-  // until the backfill process is completed. For other normal use cases, delete markers/tombstones
-  // can be cleaned up on a major compaction.
-  // retention_.retain_delete_markers_in_major_compaction will be set to true until the index
-  // backfill is complete.
-  //
-  // Tombstones at or below the history cutoff hybrid_time can always be cleaned up on full (major)
-  // compactions. However, we do need to update the overwrite hybrid time stack in this case (as we
-  // just did), because this deletion (tombstone) entry might be the only reason for cleaning up
-  // more entries appearing at earlier hybrid times.
-  return value_type == ValueEntryType::kTombstone && is_major_compaction_ &&
-                 !retention_.retain_delete_markers_in_major_compaction
-             ? FilterDecision::kDiscard
-             : FilterDecision::kKeep;
+  return next_feed_.Feed(full_key, new_value);
 }
 
-void DocDBCompactionFilter::AssignPrevSubDocKey(
+void DocDBCompactionFeed::AssignPrevSubDocKey(
     const char* data, size_t same_bytes) {
   size_t size = sub_key_ends_.back();
   prev_subdoc_key_.resize(size);
   memcpy(prev_subdoc_key_.data() + same_bytes, data + same_bytes, size - same_bytes);
 }
 
+} // namespace
 
-rocksdb::UserFrontierPtr DocDBCompactionFilter::GetLargestUserFrontier() const {
+DocDBCompactionContext::DocDBCompactionContext(
+    rocksdb::CompactionFeed* next_feed,
+    HistoryRetentionDirective retention,
+    IsMajorCompaction is_major_compaction,
+    const KeyBounds* key_bounds)
+    : history_cutoff_(retention.history_cutoff),
+      key_bounds_(key_bounds),
+      feed_(std::make_unique<DocDBCompactionFeed>(
+          next_feed, std::move(retention), is_major_compaction, key_bounds)) {
+}
+
+rocksdb::UserFrontierPtr DocDBCompactionContext::GetLargestUserFrontier() const {
   auto* consensus_frontier = new ConsensusFrontier();
-  consensus_frontier->set_history_cutoff(retention_.history_cutoff);
+  consensus_frontier->set_history_cutoff(history_cutoff_);
   return rocksdb::UserFrontierPtr(consensus_frontier);
 }
 
-const char* DocDBCompactionFilter::Name() const {
-  return "DocDBCompactionFilter";
-}
-
-std::vector<std::pair<Slice, Slice>> DocDBCompactionFilter::GetLiveRanges() const {
+std::vector<std::pair<Slice, Slice>> DocDBCompactionContext::GetLiveRanges() const {
   static constexpr char kApplyStateEndChar = KeyEntryTypeAsChar::kTransactionApplyState + 1;
   if (!key_bounds_ || (key_bounds_->lower.empty() && key_bounds_->upper.empty())) {
     return {};
@@ -355,24 +422,17 @@ std::vector<std::pair<Slice, Slice>> DocDBCompactionFilter::GetLiveRanges() cons
 
 // ------------------------------------------------------------------------------------------------
 
-DocDBCompactionFilterFactory::DocDBCompactionFilterFactory(
-    std::shared_ptr<HistoryRetentionPolicy> retention_policy, const KeyBounds* key_bounds)
-    : retention_policy_(std::move(retention_policy)), key_bounds_(key_bounds) {
-}
-
-DocDBCompactionFilterFactory::~DocDBCompactionFilterFactory() {
-}
-
-unique_ptr<CompactionFilter> DocDBCompactionFilterFactory::CreateCompactionFilter(
-    const CompactionFilter::Context& context) {
-  return std::make_unique<DocDBCompactionFilter>(
-      retention_policy_->GetRetentionDirective(),
-      IsMajorCompaction(context.is_full_compaction),
-      key_bounds_);
-}
-
-const char* DocDBCompactionFilterFactory::Name() const {
-  return "DocDBCompactionFilterFactory";
+std::shared_ptr<rocksdb::CompactionContextFactory> CreateCompactionContextFactory(
+    std::shared_ptr<HistoryRetentionPolicy> retention_policy,
+    const KeyBounds* key_bounds) {
+  return std::make_shared<rocksdb::CompactionContextFactory>([retention_policy, key_bounds](
+      rocksdb::CompactionFeed* next_feed, const rocksdb::CompactionContextOptions& options) {
+    return std::make_unique<DocDBCompactionContext>(
+        next_feed,
+        retention_policy->GetRetentionDirective(),
+        IsMajorCompaction(options.is_full_compaction),
+        key_bounds);
+  });
 }
 
 // ------------------------------------------------------------------------------------------------

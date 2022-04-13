@@ -846,7 +846,8 @@ Status TSTabletManager::ApplyTabletSplit(tablet::SplitOperation* operation, log:
           "One of SPLIT_OP $0 destination tablet IDs ($1, $2) is the same as source tablet ID $3",
           split_op_id, request->new_tablet1_id(), request->new_tablet2_id(), tablet_id));
 
-  LOG_WITH_PREFIX(INFO) << "Tablet " << tablet_id << " split operation apply started";
+  LOG_WITH_PREFIX(INFO) << "Tablet " << tablet_id << " split operation " << split_op_id
+                        << " apply started";
 
   auto tablet_peer = VERIFY_RESULT(LookupTablet(tablet_id));
   auto* raft_consensus = tablet_peer->raft_consensus();

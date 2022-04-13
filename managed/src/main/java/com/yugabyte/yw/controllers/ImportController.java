@@ -231,7 +231,7 @@ public class ImportController extends AuthenticatedController {
     }
 
     if (!Util.isValidUniverseNameFormat(universeName)) {
-      throw new PlatformServiceException(BAD_REQUEST, Util.UNIV_NAME_ERROR_MESG);
+      throw new PlatformServiceException(BAD_REQUEST, Util.UNIVERSE_NAME_ERROR_MESG);
     }
 
     if (masterAddresses == null || masterAddresses.isEmpty()) {
