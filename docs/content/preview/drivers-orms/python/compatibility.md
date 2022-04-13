@@ -1,8 +1,7 @@
 ---
-title: Supported Versions
-linkTitle: Supported Versions
-description: Supported Versions for Python Drivers, ORMs and AppDev Frameworks
-headcontent: Supported Versions for Python Drivers, ORMs and AppDev Frameworks
+title: Supported versions
+linkTitle: Supported versions
+description: Supported versions of Python drivers, ORMs and AppDev frameworks
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
@@ -13,16 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-## Psycopg2 Compatibility Matrix
-
-| Driver Version | YugabyteDB Version | Support |
-| :------------- | :----------------- | :------ |
-| 2.9.3 | 2.13 (latest) | full |
-| 2.9.3 | 2.12 (stable) | full |
-| 2.9.3 | 2.8 | full |
-| 2.9.3 | 2.6 | full |
-
-## Yugabyte Psycopg2 Compatibility Matrix
+## Yugabyte Psycopg2 compatibility matrix
 
 | Driver Version | YugabyteDB Version | Support |
 | :------------- | :----------------- | :------ |
@@ -30,3 +20,12 @@ showAsideToc: true
 | 2.9.3 | 2.12 (stable) | full |
 | 2.9.3 | 2.8  | full |
 | 2.9.3 | 2.6 | Not supported |
+
+## Psycopg2 compatibility matrix
+
+| Driver Version | YugabyteDB Version | Support |
+| :------------- | :----------------- | :------ |
+| 2.9.3 | 2.13 (latest) | full |
+| 2.9.3 | 2.12 (stable) | full |
+| 2.9.3 | 2.8 | full |
+| 2.9.3 | 2.6 | full |
