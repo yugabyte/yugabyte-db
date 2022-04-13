@@ -33,15 +33,9 @@ typedef struct regexp_matches_ctx
 	int			conv_bufsiz;	/* size thereof */
 } regexp_matches_ctx;
 
-
-
 /*
  * Backport code from PostgreSQL 15
  */
-
-#define PG_GETARG_TEXT_PP_IF_EXISTS(_n) \
-	(PG_NARGS() > (_n) ? PG_GETARG_TEXT_PP(_n) : NULL)
-
 
 PG_FUNCTION_INFO_V1(orafce_regexp_instr);
 PG_FUNCTION_INFO_V1(orafce_regexp_instr_no_start);
@@ -468,7 +462,6 @@ setup_regexp_matches(text *orig_str, text *pattern, pg_re_flags *re_flags,
 	return matchctx;
 }
 
-
 /*
  * parse_re_flags - parse the options argument of regexp_match and friends
  *
@@ -547,7 +540,6 @@ parse_re_flags(pg_re_flags *flags, text *opts)
 	}
 }
 
-
 /*
  * regexp_instr()
  *		Return the match's position within the string
@@ -555,64 +547,77 @@ parse_re_flags(pg_re_flags *flags, text *opts)
 Datum
 orafce_regexp_instr(PG_FUNCTION_ARGS)
 {
-	text	   *str = PG_GETARG_TEXT_PP(0);
-	text	   *pattern = PG_GETARG_TEXT_PP(1);
+	text	   *str = NULL;
+	text	   *pattern = NULL;
 	int			start = 1;
 	int			n = 1;
 	int			endoption = 0;
-	text	   *flags = PG_GETARG_TEXT_PP_IF_EXISTS(5);
+	text	   *flags = NULL;
 	int			subexpr = 0;
 	int			pos;
 	pg_re_flags re_flags;
 	regexp_matches_ctx *matchctx;
 
+	if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
+		PG_RETURN_NULL();
+
+	str = PG_GETARG_TEXT_PP(0);
+	pattern = PG_GETARG_TEXT_PP(1);
+
 	/* Collect optional parameters */
 	if (PG_NARGS() > 2)
 	{
+		if (PG_ARGISNULL(2))
+			PG_RETURN_NULL();
+
 		start = PG_GETARG_INT32(2);
 		if (start <= 0)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("invalid value for parameter \"%s\": %d",
-							"start", start)));
+					 errmsg("argument 'position' must be a number greater than 0")));
 	}
 	if (PG_NARGS() > 3)
 	{
+		if (PG_ARGISNULL(3))
+			PG_RETURN_NULL();
+
 		n = PG_GETARG_INT32(3);
 		if (n <= 0)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("invalid value for parameter \"%s\": %d",
-							"n", n)));
+					 errmsg("argument 'occurence' must be a number greater than 0")));
 	}
 	if (PG_NARGS() > 4)
 	{
+		if (PG_ARGISNULL(4))
+			PG_RETURN_NULL();
+
 		endoption = PG_GETARG_INT32(4);
 		if (endoption != 0 && endoption != 1)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("invalid value for parameter \"%s\": %d",
-							"endoption", endoption)));
+					 errmsg("argument 'return_opt' must be 0 or 1")));
+	}
+	if (PG_NARGS() > 5)
+	{
+		if (!PG_ARGISNULL(5))
+			flags = PG_GETARG_TEXT_PP(5);
 	}
 	if (PG_NARGS() > 6)
 	{
+		if (PG_ARGISNULL(6))
+			PG_RETURN_NULL();
+
 		subexpr = PG_GETARG_INT32(6);
 		if (subexpr < 0)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("invalid value for parameter \"%s\": %d",
-							"subexpr", subexpr)));
+					 errmsg("argument 'group' must be a positive number")));
 	}
 
 	/* Determine options */
 	parse_re_flags(&re_flags, flags);
-	/* User mustn't specify 'g' */
-	if (re_flags.glob)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-		/* translator: %s is a SQL function name */
-				 errmsg("%s does not support the \"global\" option",
-						"regexp_instr()")));
+
 	/* But we find all the matches anyway */
 	re_flags.glob = true;
 
