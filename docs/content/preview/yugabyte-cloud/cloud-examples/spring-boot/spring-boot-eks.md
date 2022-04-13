@@ -89,7 +89,7 @@ Go to your repo in ECR to view the image you just pushed.
 
 In AWS, do the following:
 
-1. Type “cloudformation” in the search bar and select **CloudFormation**.
+1. Type "cloudformation" in the search bar and select **CloudFormation**.
 
 1. Click **Create Stack** and select **With new resources (standard)** to start the **Create Stack** wizard.
 
@@ -97,7 +97,7 @@ In AWS, do the following:
 
     - Under **Prepare template**, select **Template is Ready**.
     - Under **Template Source**, select Amazon S3 URL.
-    - For **Amazon S3 URL**, enter “https://s3.us-west-2.amazonaws.com/amazon-eks/cloudformation/2020-10-29/amazon-eks-vpc-private-subnets.yaml”.
+    - For **Amazon S3 URL**, enter `https://s3.us-west-2.amazonaws.com/amazon-eks/cloudformation/2020-10-29/amazon-eks-vpc-private-subnets.yaml`.
 
 1. Click **Next**.
 
