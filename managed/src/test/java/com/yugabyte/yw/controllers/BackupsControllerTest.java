@@ -217,6 +217,19 @@ public class BackupsControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateBackupScheduleWithTimeUnit() {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST25");
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("universeUUID", defaultUniverse.universeUUID.toString());
+    bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+    bodyJson.put("schedulingFrequency", 10000000L);
+    bodyJson.put("scheduleName", "schedule-1");
+    bodyJson.put("frequencyTimeUnit", "HOURS");
+    Result r = createBackupSchedule(bodyJson, null);
+    assertEquals(OK, r.status());
+  }
+
+  @Test
   public void testCreateScheduleBackupWithoutName() {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST22");
     ObjectNode bodyJson = Json.newObject();
@@ -225,6 +238,18 @@ public class BackupsControllerTest extends FakeDBApplication {
     bodyJson.put("cronExpression", "0 */2 * * *");
     Result result = assertPlatformException(() -> createBackupSchedule(bodyJson, null));
     assertBadRequest(result, "Provide a name for the schedule");
+  }
+
+  @Test
+  public void testCreateScheduleBackupWithoutTimeUnit() {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST25");
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("universeUUID", defaultUniverse.universeUUID.toString());
+    bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+    bodyJson.put("schedulingFrequency", 10000000L);
+    bodyJson.put("scheduleName", "schedule-1");
+    Result r = assertPlatformException(() -> createBackupSchedule(bodyJson, null));
+    assertBadRequest(r, "Please provide time unit for scheduler frequency");
   }
 
   @Test
@@ -272,6 +297,20 @@ public class BackupsControllerTest extends FakeDBApplication {
     JsonNode resultJson = Json.parse(contentAsString(r));
     assertValue(resultJson, "error", "error");
     assertEquals(BAD_REQUEST, r.status());
+    verify(mockCommissioner, times(0)).submit(any(), any());
+  }
+
+  @Test
+  public void testCreateBackupWithoutTimeUnit() {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST26");
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("universeUUID", defaultUniverse.universeUUID.toString());
+    bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+    bodyJson.put("timeBeforeDelete", 100000L);
+    Result r = assertPlatformException(() -> createBackupYb(bodyJson, null));
+    assertBadRequest(r, "Please provide time unit for backup expiry");
     verify(mockCommissioner, times(0)).submit(any(), any());
   }
 
@@ -887,7 +926,7 @@ public class BackupsControllerTest extends FakeDBApplication {
 
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("timeBeforeDeleteFromPresentInMillis", 86400000L);
-
+    bodyJson.put("expiryTimeUnit", "DAYS");
     Result result = editBackup(defaultUser, bodyJson, defaultBackup.backupUUID);
     backup = Backup.getOrBadRequest(defaultCustomer.uuid, defaultBackup.backupUUID);
     long afterTimeInMillis = System.currentTimeMillis() + 86400000L;
@@ -896,6 +935,21 @@ public class BackupsControllerTest extends FakeDBApplication {
     long expiryTimeInMillis = backup.getExpiry().getTime();
     assertTrue(expiryTimeInMillis > beforeTimeInMillis);
     assertTrue(afterTimeInMillis > expiryTimeInMillis);
+  }
+
+  @Test
+  public void testEditBackupWithoutTimeUnit() {
+
+    defaultBackup.state = BackupState.Completed;
+    defaultBackup.update();
+    Backup backup = Backup.getOrBadRequest(defaultCustomer.uuid, defaultBackup.backupUUID);
+    // assertTrue(backup.state.equals(BackupState.Completed));
+
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("timeBeforeDeleteFromPresentInMillis", 86400000L);
+    Result result =
+        assertPlatformException(() -> editBackup(defaultUser, bodyJson, defaultBackup.backupUUID));
+    assertBadRequest(result, "Please provide a time unit for backup expiry");
   }
 
   @Test
