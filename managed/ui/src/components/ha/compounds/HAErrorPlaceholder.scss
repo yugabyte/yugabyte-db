@@ -4,9 +4,12 @@
   flex-direction: column;
   align-items: center;
   font-size: 14px;
-
+  clear: both;
   &__icon {
     font-size: 64px;
     margin-bottom: 20px;
   }
+}
+.delete-err-ha-button{
+  float: right;
 }
