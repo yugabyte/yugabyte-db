@@ -276,13 +276,11 @@ $ curl http://localhost:8080/products
     {
       "productId": 1,
       "productName": "Notebook",
-      "description": "200 page notebook",
       "price": 7.5
     },
     {
       "productId": 2,
       "productName": "Pencil",
-      "description": "Mechanical pencil",
       "price": 2.5
     }
   ],
@@ -298,33 +296,16 @@ $ curl http://localhost:8080/orders
 {
   "content": [
     {
-      "orderTime": "2019-05-10T04:26:54.590+0000",
-      "orderId": "999ae272-f2f4-46a1-bede-5ab765bb27fe",
-      "orderOwner": {
-        "userId": 1,
-        "firstName": "John",
-        "lastName": "Smith",
-        "email": "jsmith@example.com"
-      },
-      "userId": null,
-      "orderTotal": 25.0,
-      "products": null
+      "orderId": 1,
+      "orderTotal": "15.00",
+      "userId": 1
     },
     {
-      "orderTime": "2019-05-10T04:26:48.074+0000",
-      "orderId": "1598c8d4-1857-4725-a9ab-14deb089ab4e",
-      "orderOwner": {
-        "userId": 1,
-        "firstName": "John",
-        "lastName": "Smith",
-        "email": "jsmith@example.com"
-      },
-      "userId": null,
-      "orderTotal": 15.0,
-      "products": null
+      "orderId": 2,
+      "orderTotal": "25.00",
+      "userId": 2
     }
-  ],
-  ...
+  ]
 }
 ```
 
