@@ -304,6 +304,16 @@ bool Erase(Container* container, PgOid table_id, const Slice& ybctid) {
   return false;
 }
 
+RowMarkType GetRowMarkType(const client::YBPgsqlOp& op) {
+  return op.type() == YBOperation::Type::PGSQL_READ
+      ? GetRowMarkTypeFromPB(down_cast<const client::YBPgsqlReadOp&>(op).request())
+      : RowMarkType::ROW_MARK_ABSENT;
+}
+
+bool IsReadOnly(const client::YBPgsqlOp& op) {
+  return op.type() == YBOperation::Type::PGSQL_READ && !IsValidRowMarkType(GetRowMarkType(op));
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -355,6 +365,9 @@ PgSession::RunHelper::RunHelper(const PgObjectId& relation_id,
 Status PgSession::RunHelper::Apply(std::shared_ptr<client::YBPgsqlOp> op,
                                    uint64_t* read_time,
                                    bool force_non_bufferable) {
+  pg_session_.has_write_ops_in_ddl_mode_ =
+      pg_session_.has_write_ops_in_ddl_mode_ ||
+      (pg_session_.pg_txn_manager_->IsDdlMode() && !IsReadOnly(*op));
   auto& buffered_keys = pg_session_.buffered_keys_;
   // Try buffering this operation if it is a write operation, buffering is enabled and no
   // operations have been already applied to current session (yb session does not exist).
@@ -413,10 +426,9 @@ Status PgSession::RunHelper::Apply(std::shared_ptr<client::YBPgsqlOp> op,
 
   TxnPriorityRequirement txn_priority_requirement = kLowerPriorityRange;
   if (op->type() == YBOperation::Type::PGSQL_READ) {
-    const PgsqlReadRequestPB& read_req = down_cast<client::YBPgsqlReadOp*>(op.get())->request();
-    auto row_mark_type = GetRowMarkTypeFromPB(read_req);
+    const auto row_mark_type = GetRowMarkType(*op);
     read_only = read_only && !IsValidRowMarkType(row_mark_type);
-    if (RowMarkNeedsHigherPriority((RowMarkType) row_mark_type)) {
+    if (RowMarkNeedsHigherPriority(row_mark_type)) {
       txn_priority_requirement = kHigherPriorityRange;
     }
   }
@@ -1141,6 +1153,14 @@ Result<client::TabletServersInfo> PgSession::ListTabletServers() {
 
 bool PgSession::ShouldUseFollowerReads() const {
   return pg_txn_manager_->ShouldUseFollowerReads();
+}
+
+void PgSession::ResetHasWriteOperationsInDdlMode() {
+  has_write_ops_in_ddl_mode_ = false;
+}
+
+bool PgSession::HasWriteOperationsInDdlMode() const {
+  return has_write_ops_in_ddl_mode_ && pg_txn_manager_->IsDdlMode();
 }
 
 void PgSession::SetTimeout(const int timeout_ms) {

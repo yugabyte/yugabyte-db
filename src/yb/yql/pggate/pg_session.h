@@ -342,6 +342,9 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   bool ShouldUseFollowerReads() const;
 
+  void ResetHasWriteOperationsInDdlMode();
+  bool HasWriteOperationsInDdlMode() const;
+
  private:
   friend PgSessionAsyncRunResult;
   CHECKED_STATUS HandleResponse(
@@ -434,6 +437,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   const tserver::TServerSharedObject* const tserver_shared_object_;
   const YBCPgCallbacks& pg_callbacks_;
+  bool has_write_ops_in_ddl_mode_ = false;
 };
 
 }  // namespace pggate
