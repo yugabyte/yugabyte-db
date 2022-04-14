@@ -25,6 +25,7 @@
 #include "yb/common/hybrid_time.h"
 
 #include "yb/docdb/expiration.h"
+#include "yb/docdb/packed_row.h"
 
 #include "yb/gutil/thread_annotations.h"
 
@@ -63,6 +64,14 @@ struct HistoryRetentionDirective {
   ShouldRetainDeleteMarkersInMajorCompaction retain_delete_markers_in_major_compaction{false};
 };
 
+struct CompactionSchemaPacking {
+  uint32_t schema_version = std::numeric_limits<uint32_t>::max();
+  std::shared_ptr<const docdb::SchemaPacking> schema_packing;
+};
+
+using SchemaPackingProvider = std::function<
+    Result<CompactionSchemaPacking>(const Uuid& table_id, uint32_t schema_version)>;
+
 // DocDB compaction feed. A new instance of this class is created for every compaction.
 class DocDBCompactionContext : public rocksdb::CompactionContext {
  public:
@@ -70,7 +79,8 @@ class DocDBCompactionContext : public rocksdb::CompactionContext {
       rocksdb::CompactionFeed* next_feed,
       HistoryRetentionDirective retention,
       IsMajorCompaction is_major_compaction,
-      const KeyBounds* key_bounds);
+      const KeyBounds* key_bounds,
+      const SchemaPackingProvider& schema_packing_provider);
 
   ~DocDBCompactionContext() = default;
 
@@ -112,7 +122,8 @@ class HistoryRetentionPolicy {
 
 std::shared_ptr<rocksdb::CompactionContextFactory> CreateCompactionContextFactory(
     std::shared_ptr<HistoryRetentionPolicy> retention_policy,
-    const KeyBounds* key_bounds);
+    const KeyBounds* key_bounds,
+    const SchemaPackingProvider& schema_packing_provider);
 
 // A history retention policy that can be configured manually. Useful in tests. This class is
 // useful for testing and is thread-safe.

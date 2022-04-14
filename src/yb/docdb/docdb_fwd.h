@@ -36,7 +36,6 @@ class IntentAwareIterator;
 class KeyBytes;
 class KeyEntryValue;
 class ManualHistoryRetentionPolicy;
-class PackedRow;
 class PgsqlWriteOperation;
 class PrimitiveValue;
 class QLWriteOperation;
@@ -49,9 +48,10 @@ class YQLRowwiseIteratorIf;
 class YQLStorageIf;
 
 struct ApplyTransactionState;
-struct IntentKeyValueForCDC;
+struct CompactionSchemaPacking;
 struct DocDB;
 struct DocReadContext;
+struct IntentKeyValueForCDC;
 struct KeyBounds;
 struct LockBatchEntry;
 
