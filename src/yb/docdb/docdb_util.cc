@@ -282,8 +282,9 @@ void DocDBRocksDBUtil::SetTableTTL(uint64_t ttl_msec) {
 }
 
 string DocDBRocksDBUtil::DocDBDebugDumpToStr() {
-  return yb::docdb::DocDBDebugDumpToStr(rocksdb()) +
-         yb::docdb::DocDBDebugDumpToStr(intents_db(), StorageDbType::kIntents);
+  return docdb::DocDBDebugDumpToStr(rocksdb(), SchemaPackingStorage()) +
+         docdb::DocDBDebugDumpToStr(
+             intents_db(), SchemaPackingStorage(), StorageDbType::kIntents);
 }
 
 Status DocDBRocksDBUtil::SetPrimitive(
@@ -439,7 +440,8 @@ Status DocDBRocksDBUtil::DeleteSubDoc(
 }
 
 void DocDBRocksDBUtil::DocDBDebugDumpToConsole() {
-  DocDBDebugDump(regular_db_.get(), std::cerr, StorageDbType::kRegular);
+  DocDBDebugDump(
+      regular_db_.get(), std::cerr, SchemaPackingStorage(), StorageDbType::kRegular);
 }
 
 Status DocDBRocksDBUtil::FlushRocksDbAndWait() {
@@ -458,7 +460,7 @@ Status DocDBRocksDBUtil::ReinitDBOptions() {
       &intents_db_options_, "[I] " /* log_prefix */, intents_db_options_.statistics,
       tablet_options);
   regular_db_options_.compaction_context_factory = CreateCompactionContextFactory(
-      retention_policy_, &KeyBounds::kNoBounds);
+      retention_policy_, &KeyBounds::kNoBounds, /* schema_packing_provider= */ {});
   regular_db_options_.compaction_file_filter_factory =
       compaction_file_filter_factory_;
   regular_db_options_.max_file_size_for_compaction =
