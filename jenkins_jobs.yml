@@ -22,13 +22,13 @@ jobs:
     release_artifact: true
 
   - os: alma8
-    compiler: clang11
+    compiler: clang12
     build_type: release
     architecture: aarch64
     release_artifact: true
 
   - os: alma8
-    compiler: clang11
+    compiler: clang12
     build_type: debug
     architecture: aarch64
     release_artifact: false
