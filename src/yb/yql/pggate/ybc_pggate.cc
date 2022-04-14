@@ -975,6 +975,10 @@ YBCStatus YBCPgEnterSeparateDdlTxnMode() {
   return ToYBCStatus(pgapi->EnterSeparateDdlTxnMode());
 }
 
+bool YBCPgHasWriteOperationsInDdlTxnMode() {
+  return pgapi->HasWriteOperationsInDdlTxnMode();
+}
+
 YBCStatus YBCPgExitSeparateDdlTxnMode() {
   return ToYBCStatus(pgapi->ExitSeparateDdlTxnMode());
 }

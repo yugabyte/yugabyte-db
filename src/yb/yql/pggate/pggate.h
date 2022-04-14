@@ -499,6 +499,7 @@ class PgApiImpl {
   CHECKED_STATUS SetTransactionDeferrable(bool deferrable);
   CHECKED_STATUS EnableFollowerReads(bool enable_follower_reads, int32_t staleness_ms);
   CHECKED_STATUS EnterSeparateDdlTxnMode();
+  bool HasWriteOperationsInDdlTxnMode() const;
   CHECKED_STATUS ExitSeparateDdlTxnMode();
   void ClearSeparateDdlTxnMode();
   CHECKED_STATUS SetActiveSubTransaction(SubTransactionId id);

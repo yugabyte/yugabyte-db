@@ -138,6 +138,16 @@ std::string RowMarkTypeToPgsqlString(const RowMarkType row_mark_type) {
 
 YB_DEFINE_ENUM(TestStatement, (kInsert)(kDelete));
 
+Result<int64_t> GetCatalogVersion(PGConn* conn) {
+  return conn->FetchValue<int64_t>("SELECT current_version FROM pg_yb_catalog_version");
+}
+
+Result<bool> IsCatalogVersionChangedDuringDdl(PGConn* conn, const std::string& ddl_query) {
+  const auto initial_version = VERIFY_RESULT(GetCatalogVersion(conn));
+  RETURN_NOT_OK(conn->Execute(ddl_query));
+  return initial_version != VERIFY_RESULT(GetCatalogVersion(conn));
+}
+
 } // namespace
 
 class PgMiniTest : public PgMiniTestBase {
@@ -2139,6 +2149,26 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentDeleteRowAndUpdateColumn)) 
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentDeleteRowAndUpdateColumnWithSelect)) {
   TestConcurrentDeleteRowAndUpdateColumn(/* select_before_update= */ true);
+}
+
+// The test checks catalog version is updated only in case of changes in sys catalog.
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(CatalogVersionUpdateIfNeeded)) {
+  auto conn = ASSERT_RESULT(Connect());
+  const auto schema_ddl = "CREATE SCHEMA IF NOT EXISTS test";
+  const auto first_create_schema = ASSERT_RESULT(
+      IsCatalogVersionChangedDuringDdl(&conn, schema_ddl));
+  ASSERT_TRUE(first_create_schema);
+  const auto second_create_schema = ASSERT_RESULT(
+      IsCatalogVersionChangedDuringDdl(&conn, schema_ddl));
+  ASSERT_FALSE(second_create_schema);
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
+  const auto add_column_ddl = "ALTER TABLE t ADD COLUMN IF NOT EXISTS v INT";
+  const auto first_add_column = ASSERT_RESULT(
+      IsCatalogVersionChangedDuringDdl(&conn, add_column_ddl));
+  ASSERT_TRUE(first_add_column);
+  const auto second_add_column = ASSERT_RESULT(
+      IsCatalogVersionChangedDuringDdl(&conn, add_column_ddl));
+  ASSERT_FALSE(second_add_column);
 }
 
 // Test that we don't sequential restart read on the same table if intents were written

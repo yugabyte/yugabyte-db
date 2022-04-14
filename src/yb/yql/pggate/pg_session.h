@@ -274,6 +274,9 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   CHECKED_STATUS SetActiveSubTransaction(SubTransactionId id);
   CHECKED_STATUS RollbackSubTransaction(SubTransactionId id);
 
+  void ResetHasWriteOperationsInDdlMode();
+  bool HasWriteOperationsInDdlMode() const;
+
  private:
   Result<PerformFuture> FlushOperations(
       BufferableOperations ops, bool transactional);
@@ -316,6 +319,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   const tserver::TServerSharedObject* const tserver_shared_object_;
   const YBCPgCallbacks& pg_callbacks_;
+  bool has_write_ops_in_ddl_mode_ = false;
 };
 
 }  // namespace pggate
