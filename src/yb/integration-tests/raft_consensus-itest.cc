@@ -314,7 +314,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
 
       int inserted = last_row_in_batch - first_row_in_batch;
 
-      const auto flush_status = session->FlushAndGetOpsErrors();
+      const auto flush_status = session->TEST_FlushAndGetOpsErrors();
       const auto& s = flush_status.status;
       if (PREDICT_FALSE(!s.ok())) {
         for (const auto& e : flush_status.errors) {

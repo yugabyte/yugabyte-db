@@ -801,7 +801,8 @@ Status PgClientSession::InsertSequenceTuple(
 
   auto& session = EnsureSession(PgClientSessionKind::kSequence);
   session->SetDeadline(context->GetClientDeadline());
-  return session->ApplyAndFlush(std::move(psql_write));
+  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+  return session->TEST_ApplyAndFlush(std::move(psql_write));
 }
 
 Status PgClientSession::UpdateSequenceTuple(
@@ -858,7 +859,8 @@ Status PgClientSession::UpdateSequenceTuple(
 
   auto& session = EnsureSession(PgClientSessionKind::kSequence);
   session->SetDeadline(context->GetClientDeadline());
-  RETURN_NOT_OK(session->ApplyAndFlush(psql_write));
+  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+  RETURN_NOT_OK(session->TEST_ApplyAndFlush(psql_write));
   resp->set_skipped(psql_write->response().skipped());
   return Status::OK();
 }
@@ -898,7 +900,8 @@ Status PgClientSession::ReadSequenceTuple(
 
   auto& session = EnsureSession(PgClientSessionKind::kSequence);
   session->SetDeadline(context->GetClientDeadline());
-  RETURN_NOT_OK(session->ReadSync(psql_read));
+  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+  RETURN_NOT_OK(session->TEST_ReadSync(psql_read));
 
   Slice cursor;
   int64_t row_count = 0;
@@ -940,7 +943,8 @@ Status PgClientSession::DeleteSequenceTuple(
 
   auto& session = EnsureSession(PgClientSessionKind::kSequence);
   session->SetDeadline(context->GetClientDeadline());
-  return session->ApplyAndFlush(std::move(psql_delete));
+  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+  return session->TEST_ApplyAndFlush(std::move(psql_delete));
 }
 
 Status PgClientSession::DeleteDBSequences(
@@ -965,7 +969,8 @@ Status PgClientSession::DeleteDBSequences(
 
   auto& session = EnsureSession(PgClientSessionKind::kSequence);
   session->SetDeadline(context->GetClientDeadline());
-  return session->ApplyAndFlush(std::move(psql_delete));
+  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+  return session->TEST_ApplyAndFlush(std::move(psql_delete));
 }
 
 client::YBSessionPtr& PgClientSession::EnsureSession(PgClientSessionKind kind) {

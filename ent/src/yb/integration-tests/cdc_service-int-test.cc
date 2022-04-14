@@ -238,7 +238,7 @@ void VerifyCdcStateMatches(client::YBClient* client,
   table.AddColumns({master::kCdcCheckpoint}, req);
 
   auto session = client->NewSession();
-  ASSERT_OK(session->ApplyAndFlush(op));
+  ASSERT_OK(session->TEST_ApplyAndFlush(op));
 
   LOG(INFO) << strings::Substitute("Verifying tablet: $0, stream: $1, op_id: $2",
       tablet_id, stream_id, OpId(term, index).ToString());
@@ -279,7 +279,7 @@ void VerifyStreamDeletedFromCdcState(client::YBClient* client,
   // The deletion of cdc_state rows for the specified stream happen in an asynchronous thread,
   // so even if the request has returned, it doesn't mean that the rows have been deleted yet.
   ASSERT_OK(WaitFor([&](){
-    EXPECT_OK(session->ApplyAndFlush(op));
+    EXPECT_OK(session->TEST_ApplyAndFlush(op));
     auto row_block = ql::RowsResult(op.get()).GetRowBlock();
     if (row_block->row_count() == 0) {
       return true;
@@ -446,7 +446,7 @@ TEST_P(CDCServiceTest, TestCompoundKey) {
     table.AddInt32ColumnValue(req, "val", i);
     session->Apply(op);
   }
-  ASSERT_OK(session->Flush());
+  ASSERT_OK(session->TEST_Flush());
 
   // Get CDC changes.
   GetChangesRequestPB change_req;
@@ -1921,7 +1921,7 @@ TEST_P(CDCLogAndMetaIndexReset, TestLogAndMetaCdcIndexAreReset) {
     QLAddStringRangeValue(delete_req, stream_id[i]);
     session->Apply(delete_op);
   }
-  ASSERT_OK(session->Flush());
+  ASSERT_OK(session->TEST_Flush());
   LOG(INFO) << "Successfully deleted all streams from cdc_state";
 
   SleepFor(MonoDelta::FromSeconds(FLAGS_cdc_min_replicated_index_considered_stale_secs + 1));
