@@ -148,6 +148,33 @@ SHOW plpgsql.extra_foo_warnings;  -- but the parameter is set
  false
 (1 row)
 
+-- test `yb_db_admin` role can set and reset yb_db_admin-allowed PGC_SUSET variables
+SET SESSION AUTHORIZATION yb_db_admin;
+SHOW session_replication_role;
+ session_replication_role 
+--------------------------
+ origin
+(1 row)
+
+SET session_replication_role TO replica;
+SHOW session_replication_role;
+ session_replication_role 
+--------------------------
+ replica
+(1 row)
+
+RESET session_replication_role;
+SHOW session_replication_role;
+ session_replication_role 
+--------------------------
+ origin
+(1 row)
+
+-- test `yb_db_admin` role cannot set and reset other PGC_SUSET variables
+SET track_functions TO TRACK_FUNC_PL;
+ERROR:  permission denied to set parameter "track_functions"
+RESET track_functions;
+ERROR:  permission denied to set parameter "track_functions"
 -- cleanup
 RESET foo;
 ERROR:  unrecognized configuration parameter "foo"
