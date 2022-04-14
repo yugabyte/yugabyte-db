@@ -45,5 +45,6 @@ jobs:
       - name: Deploy docs
         run: |
           mike deploy REL1_0_STABLE -p
+          mike set-default REL1_0_STABLE -p
           mike retitle REL1_0_STABLE  "1.0.x (stable)" -p
 
