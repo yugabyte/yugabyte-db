@@ -37,7 +37,7 @@ export default class MetricsPanel extends Component {
     const { metricKey, metric, currentUser } = this.props;
     if (isNonEmptyObject(metric)) {
       metric.data.forEach((dataItem, i) => {
-        if (dataItem['instanceName'] && dataItem['name'] != dataItem['instanceName']) {
+        if (dataItem['instanceName'] && dataItem['name'] !== dataItem['instanceName']) {
           dataItem['fullname'] = dataItem['name'] + ' (' + dataItem['instanceName'] + ')';
         } else {
           dataItem['fullname'] = dataItem['name'];

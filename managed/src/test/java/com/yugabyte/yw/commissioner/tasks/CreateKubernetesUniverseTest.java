@@ -16,6 +16,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
@@ -233,7 +234,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     try {
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(ccr);
       when(mockClient.listTabletServers()).thenReturn(mockResponse);
-      when(mockClient.createRedisTable(any())).thenReturn(mockTable);
+      when(mockClient.createRedisTable(any(), anyBoolean())).thenReturn(mockTable);
     } catch (Exception e) {
     }
     // WaitForServer mock.
