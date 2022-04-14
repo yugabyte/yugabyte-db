@@ -40,6 +40,7 @@ Below is the complete list of release notes for every version of ``pg_stat_monit
 
 [PG-166](https://jira.percona.com/browse/PG-166): Fixed issue with displaying the actual system time values instead of `NULL`
 
+[PG-369](https://jira.percona.com/browse/PG-358): Fixed issue with incorrect `wal_bytes` values for PostgreSQL 11 and 12 that caused Query Analytics failure in PMM by ignoring the `WalUsage` variable value for these versions.
 
 
 ## REL0_9_0_STABLE
