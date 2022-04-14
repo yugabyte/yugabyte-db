@@ -50,5 +50,10 @@
     "webpack": "4.44.2",
     "webpack-cli": "4.7.2",
     "webpack-dev-server": "3.11.2"
+  },
+  "devDependencies": {
+    "autoprefixer": "10.4.4",
+    "postcss": "8.4.12",
+    "postcss-cli": "9.1.0"
   }
 }

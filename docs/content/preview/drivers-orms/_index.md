@@ -8,10 +8,7 @@ image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 aliases:
   - /drivers-orms/
 section: YUGABYTEDB CORE
-menu:
-  preview:
-    identifier: drivers-orms
-    weight: 570
+weight: 3
 ---
 
 Connect applications to YugabyteDB databases using Yugabyte-supported drivers, ORMs, and application development frameworks.

@@ -12,10 +12,7 @@ aliases:
   - /preview/explore/planet-scale/
   - /preview/explore/cloud-native/orchestration-readiness/
 section: YUGABYTEDB CORE
-menu:
-  preview:
-    identifier: explore
-    weight: 540
+weight: 2
 ---
 
 {{< tip title="Tip" >}}
