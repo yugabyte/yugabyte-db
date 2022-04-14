@@ -506,7 +506,7 @@ Result<PagingReadCounts> SingleTabletSnapshotTxnTest::TestPaging() {
             session->SetForceConsistentRead(ForceConsistentRead::kTrue);
             *req->mutable_paging_state() = std::move(paging_state);
           }
-          auto flush_status = session->ApplyAndFlush(op);
+          auto flush_status = session->TEST_ApplyAndFlush(op);
 
           if (!flush_status.ok() || !op->succeeded()) {
             if (flush_status.IsTimedOut()) {
@@ -634,7 +634,7 @@ TEST_F(SnapshotTxnTest, HotRow) {
     session->SetTransaction(txn);
 
     ASSERT_OK(kv_table_test::Increment(&table_, session, kKey));
-    ASSERT_OK(session->Flush());
+    ASSERT_OK(session->TEST_Flush());
     ASSERT_OK(txn->CommitFuture().get());
     if (i % kBlockSize == 0) {
       auto now = MonoTime::Now();
@@ -774,7 +774,7 @@ void SnapshotTxnTest::TestMultiWriteWithRestart() {
       YBqlReadOpPtr op;
       for (;;) {
         op = ReadRow(session, key->value);
-        auto flush_result = session->Flush();
+        auto flush_result = session->TEST_Flush();
         if (flush_result.ok()) {
           if (op->succeeded()) {
             break;
