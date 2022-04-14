@@ -59,7 +59,7 @@ Any IP allow list that you create is also added to your cloud's **Network Access
 
 The **IP Allow List** tab displays a list of IP allow lists configured for your account.
 
-![Cloud Network IP Allow List page](/images/yb-cloud/cloud-networking-ip.png)
+![IP Allow List tab](/images/yb-cloud/cloud-networking-ip.png)
 
 To view an existing IP allow list, select it in the list.
 

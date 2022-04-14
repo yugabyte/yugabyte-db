@@ -17,7 +17,7 @@ YugabyteDB Managed performs full cluster (all namespaces) level backups, and the
 
 By default, clusters are backed up automatically every 24 hours, and these automatic backups are retained for 8 days. The first automatic backup is triggered after 24 hours of creating a table, and is scheduled every 24 hours thereafter.
 
-You back up and restore your clusters, configure the automatic backup policy, and review previous backups and restores using the cluster **Backups** tab.
+Back up and restore clusters, configure the automatic backup policy, and review previous backups and restores using the cluster **Backups** tab.
 
 To change the backup schedule, [create your own schedule](#schedule-backups). To enable or disable scheduled backups, click the **Scheduled backup** option.
 

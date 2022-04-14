@@ -37,7 +37,7 @@ Instance vCPU capacity makes up the majority of your bill, and is the easiest to
 
 You can see the approximate cost for your vCPUs when [creating](../../cloud-basics/create-clusters/) and [scaling](../../cloud-clusters/configure-clusters/) clusters, as shown in the following illustration. **+ Usage** in this context refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer.
 
-![Cloud Cluster Settings Edit Infrastructure](/images/yb-cloud/cloud-clusters-settings-edit.png)
+![Cluster Settings Edit Infrastructure](/images/yb-cloud/cloud-clusters-settings-edit.png)
 
 ## Instance vCPU capacity costs
 
