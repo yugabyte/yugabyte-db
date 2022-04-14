@@ -63,7 +63,22 @@ Learn how to establish a connection to YugabyteDB database and begin simple CRUD
 
 ## Download the Driver Dependency
 
-<!-- TODO: Add this after package publish -->
+Building Psycopg requires a few prerequisites (a C compiler, some development packages): please check the [install](https://www.psycopg.org/docs/install.html#build-prerequisites) and the [faq](https://www.psycopg.org/docs/faq.html#faq-compile) documents in the doc dir or online for the details.
+
+If prerequisites are met, you can install psycopg2-yugabytedb like any other Python package, using pip to download it from [PyPI](https://pypi.org/project/psycopg2-yugabytedb/):
+
+```
+$ pip install psycopg2-yugabytedb
+```
+
+or using setup.py if you have downloaded the source package locally:
+
+```
+$ python setup.py build
+$ sudo python setup.py install
+```
+
+Note - The YugabyteDB Psycopg2 requires Postgresql version 11 or above (preferrably 14). 
 
 ## Fundamentals
 
