@@ -59,8 +59,9 @@ class ReleaseUtil(object):
         :param force: whether to skip the prompt in case there are local uncommitted changes.
         :param commit: the Git commit SHA1 to use. If not specified, it is autodetected.
         :param build_root: the build root directory corresponding to the build type.
-        :param package_name: the name of the top-level section of yb_release_manifest.json, such as
-                             "yugabyte" or "yugabyte-client", specifying the set of files to include.
+        :param package_name: the name of the top-level section of yb_release_manifest.json, such
+                             as "yugabyte" or "yugabyte-client", specifying the set of files to
+                             include.
         """
         self.repo = repository
         self.build_type = build_type
