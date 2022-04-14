@@ -41,7 +41,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
@@ -58,7 +57,6 @@ import org.yb.Schema;
 import org.yb.Type;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
-import org.yb.consensus.Metadata;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.tserver.TserverTypes;
 import org.yb.util.Pair;
@@ -125,18 +123,54 @@ public class YBClient implements AutoCloseable {
     return cto;
   }
 
+  /**
+   * Creates the redis namespace "system_redis".
+   *
+   * @throws Exception if the namespace already exists or creation fails.
+   */
   public void createRedisNamespace() throws Exception {
-    CreateKeyspaceResponse resp = this.createKeyspace(REDIS_KEYSPACE_NAME,
-                                                      YQLDatabase.YQL_DATABASE_REDIS);
-    if (resp.hasError()) {
-      throw new RuntimeException("Could not create keyspace " + REDIS_KEYSPACE_NAME +
-                                 ". Error :" + resp.errorMessage());
+    createRedisNamespace(false);
+  }
+
+  /**
+   * Creates the redis namespace "system_redis".
+   *
+   * @param ifNotExist if true, error is ignored if the namespace already exists.
+   * @return true if created, false if already exists.
+   * @throws Exception throws exception on creation failure.
+   */
+  public boolean createRedisNamespace(boolean ifNotExist) throws Exception {
+    Exception exception = null;
+    try {
+      // TODO As there is no way to get an existing namespace or create if it does not exist,
+      // the RPC call is made first that may fail.
+      // Change this when we have better support for namespace.
+      CreateKeyspaceResponse resp = this.createKeyspace(REDIS_KEYSPACE_NAME,
+          YQLDatabase.YQL_DATABASE_REDIS);
+      if (resp.hasError()) {
+        exception = new RuntimeException("Could not create keyspace " + REDIS_KEYSPACE_NAME +
+            ". Error: " + resp.errorMessage());
+      }
+    } catch (YBServerException e) {
+      // The RPC call also throws exception on conflict.
+      exception = e;
     }
+    if (exception != null) {
+      String errMsg = exception.getMessage();
+      if (ifNotExist && errMsg != null && errMsg.contains("ALREADY_PRESENT")) {
+        LOG.info("Redis namespace {} already exists.", REDIS_KEYSPACE_NAME);
+        return false;
+      }
+      throw exception;
+    }
+    return true;
   }
 
   /**
    * Create a redis table on the cluster with the specified name and tablet count.
-   * @param name Tables name
+   * It also creates the redis namespace 'system_redis'.
+   *
+   * @param name the table name
    * @param numTablets number of pre-split tablets
    * @return an object to communicate with the created table.
    */
@@ -148,17 +182,62 @@ public class YBClient implements AutoCloseable {
 
   /**
    * Create a redis table on the cluster with the specified name.
-   * @param name Table name
+   * It also creates the redis namespace 'system_redis'.
+   *
+   * @param name the table name
    * @return an object to communicate with the created table.
    */
   public YBTable createRedisTable(String name) throws Exception {
-    createRedisNamespace();
-    return createRedisTableOnly(name);
+    return createRedisTable(name, false);
   }
 
+  /**
+   * Create a redis table on the cluster with the specified name.
+   * It also creates the redis namespace 'system_redis'.
+   *
+   * @param name the table name.
+   * @param ifNotExist if true, table is not created if it already exists.
+   * @return an object to communicate with the created table if it is created.
+   * @throws Exception throws exception on creation failure.
+   */
+  public YBTable createRedisTable(String name, boolean ifNotExist) throws Exception {
+    if (createRedisNamespace(ifNotExist)) {
+      // Namespace is just created, so there is no redis table.
+      return createRedisTableOnly(name, false);
+    }
+    return createRedisTableOnly(name, ifNotExist);
+  }
+
+  /**
+   * Create a redis table on the cluster with the specified name.
+   * The redis namespace 'system_redis' must already be existing.
+   *
+   * @param name the table name.
+   * @return an object to communicate with the created table if it is created.
+   * @throws Exception throws exception on creation failure.
+   */
   public YBTable createRedisTableOnly(String name) throws Exception {
+    return createRedisTableOnly(name, false);
+  }
+
+  /**
+   * Create a redis table on the cluster with the specified name.
+   * The redis namespace 'system_redis' must already be existing.
+   *
+   * @param name the table name.
+   * @param ifNotExist if true, table is not created if it already exists.
+   * @return an object to communicate with the created table if it is created.
+   * @throws Exception throws exception on creation failure.
+   */
+  public YBTable createRedisTableOnly(String name, boolean ifNotExist) throws Exception {
+    if (ifNotExist) {
+      ListTablesResponse response = getTablesList(name);
+      if (response.getTablesList().stream().anyMatch(n -> n.equals(name))) {
+        return openTable(REDIS_KEYSPACE_NAME, name);
+      }
+    }
     return createTable(REDIS_KEYSPACE_NAME, name, getRedisSchema(),
-                       new CreateTableOptions().setTableType(TableType.REDIS_TABLE_TYPE));
+        new CreateTableOptions().setTableType(TableType.REDIS_TABLE_TYPE));
   }
 
   /**

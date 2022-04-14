@@ -180,7 +180,7 @@ public class CreateTable extends AbstractTaskBase {
       if (StringUtils.isEmpty(taskParams().tableName)) {
         taskParams().tableName = YBClient.REDIS_DEFAULT_TABLE_NAME;
       }
-      YBTable table = client.createRedisTable(taskParams().tableName);
+      YBTable table = client.createRedisTable(taskParams().tableName, taskParams().ifNotExist);
       log.info("Created table '{}' of type {}.", table.getName(), table.getTableType());
     } finally {
       ybService.closeClient(client, masterAddresses);

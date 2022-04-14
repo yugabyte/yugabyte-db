@@ -208,7 +208,11 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
 
       if (primaryCluster.userIntent.enableYEDIS) {
         // Create a simple redis table.
-        createTableTask(TableType.REDIS_TABLE_TYPE, YBClient.REDIS_DEFAULT_TABLE_NAME, null)
+        createTableTask(
+                TableType.REDIS_TABLE_TYPE,
+                YBClient.REDIS_DEFAULT_TABLE_NAME,
+                null /* table details */,
+                true /* ifNotExist */)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 

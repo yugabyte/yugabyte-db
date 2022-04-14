@@ -42,7 +42,8 @@ public class CreateCassandraTable extends UniverseTaskBase {
       createTableTask(
               TableType.YQL_TABLE_TYPE,
               taskParams().tableDetails.tableName,
-              taskParams().tableDetails)
+              taskParams().tableDetails,
+              false /* ifNotExist */)
           .setSubTaskGroupType(SubTaskGroupType.CreatingTable);
 
       // TODO: wait for table creation
