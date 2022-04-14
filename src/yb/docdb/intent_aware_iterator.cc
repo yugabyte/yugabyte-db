@@ -145,7 +145,6 @@ std::ostream& operator<<(std::ostream& out, const DecodeStrongWriteIntentResult&
 // For current transaction returns intent record hybrid time as value_time.
 // Consumes intent from value_slice leaving only value itself.
 Result<DecodeStrongWriteIntentResult> DecodeStrongWriteIntent(
-    HybridTime global_limit,
     const TransactionOperationContext& txn_op_context,
     rocksdb::Iterator* intent_iter,
     TransactionStatusCache* transaction_status_cache) {
@@ -178,9 +177,6 @@ Result<DecodeStrongWriteIntentResult> DecodeStrongWriteIntent(
       } else {
         result.value_time = decoded_intent_key.doc_ht;
       }
-    } else if (result.intent_time.hybrid_time() > global_limit) {
-      VTRACE(1, "Ignoring intent from a different txn written after read.global_limit");
-      result.value_time = DocHybridTime::kMin;
     } else {
       auto commit_data = VERIFY_RESULT(transaction_status_cache->GetCommitData(decoded_txn_id));
       auto commit_ht = commit_data.commit_ht;
@@ -648,7 +644,7 @@ bool IntentAwareIterator::SatisfyBounds(const Slice& slice) {
 
 void IntentAwareIterator::ProcessIntent() {
   auto decode_result = DecodeStrongWriteIntent(
-      read_time_.global_limit, txn_op_context_.get(), &intent_iter_, &transaction_status_cache_);
+      txn_op_context_.get(), &intent_iter_, &transaction_status_cache_);
   if (!decode_result.ok()) {
     status_ = decode_result.status();
     return;
