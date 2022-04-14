@@ -30,6 +30,13 @@
 DEFINE_bool(use_node_hostname_for_local_tserver, false,
     "Connect to local t-server by using host name instead of local IP");
 
+DEFINE_bool(force_preset_read_time_on_client,
+            false,
+            "Preset postgres's process current time as read time for each newly created "
+            "transaction. This flag should be enabled only in case inconsistency problem is "
+            "observed and this problem is caused by selecting of read time on tserver's side. "
+            "Enabling this flag will make latencies of single-shard reads higher.");
+
 // A macro for logging the function name and the state of the current transaction.
 // This macro is not enclosed in do { ... } while (true) because we want to be able to write
 // additional information into the same log message.
@@ -174,7 +181,11 @@ Status PgTxnManager::SetDeferrable(bool deferrable) {
 
 void PgTxnManager::StartNewSession() {
   session_ = BuildSession(async_client_init_->client(), clock_);
-  session_->SetReadPoint(client::Restart::kFalse);
+  if (PREDICT_FALSE(FLAGS_force_preset_read_time_on_client)) {
+    session_->SetReadPoint(client::Restart::kFalse);
+  } else {
+    session_->SetReadPoint(ReadHybridTime());
+  }
 }
 
 uint64_t PgTxnManager::GetPriority(const NeedsPessimisticLocking needs_pessimistic_locking) {

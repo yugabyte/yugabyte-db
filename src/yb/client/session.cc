@@ -82,6 +82,10 @@ void YBSession::SetTransaction(YBTransactionPtr transaction) {
   }
 }
 
+bool YBSession::HasTransaction() const {
+  return static_cast<bool>(batcher_config_.transaction);
+}
+
 void YBSession::SetRejectionScoreSource(RejectionScoreSourcePtr rejection_score_source) {
   if (batcher_) {
     batcher_->SetRejectionScoreSource(rejection_score_source);

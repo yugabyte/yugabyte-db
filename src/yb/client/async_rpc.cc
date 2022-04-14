@@ -757,6 +757,7 @@ void ReadRpc::SwapRequestsAndResponses(bool skip_responses) {
   redis_idx = 0;
   ql_idx = 0;
   pgsql_idx = 0;
+  bool used_read_time_set = false;
   for (auto& op : ops_) {
     YBOperation* yb_op = op->yb_op.get();
     switch (yb_op->type()) {
@@ -795,8 +796,9 @@ void ReadRpc::SwapRequestsAndResponses(bool skip_responses) {
         }
         // Restore PGSQL read request PB and extract response.
         auto* pgsql_op = down_cast<YBPgsqlReadOp*>(yb_op);
-        if (resp_.has_used_read_time()) {
+        if (!used_read_time_set && resp_.has_used_read_time()) {
           pgsql_op->SetUsedReadTime(ReadHybridTime::FromPB(resp_.used_read_time()));
+          used_read_time_set = true;
         }
         pgsql_op->mutable_response()->Swap(resp_.mutable_pgsql_batch(pgsql_idx));
         const auto& pgsql_response = pgsql_op->response();
