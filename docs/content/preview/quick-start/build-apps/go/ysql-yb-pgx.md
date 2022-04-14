@@ -64,7 +64,7 @@ The first example demonstrates connection load balancing using the `pgx.Connect(
 
 This tutorial assumes that:
 
-- YugabyteDB is up and running. If you're new to YugabyteDB, you can download, install, and have YugabyteDB up and running within minutes by following the steps in [Quick start](../../../../quick-start/). Alternatively, you can use [Yugabyte Cloud](http://cloud.yugabyte.com/) to get a fully managed database-as-a-service (DBaaS) for YugabyteDB.
+- YugabyteDB is up and running. If you're new to YugabyteDB, you can download, install, and have YugabyteDB up and running within minutes by following the steps in [Quick start](../../../../quick-start/). Alternatively, you can use [YugabyteDB Managed](http://cloud.yugabyte.com/) to get a fully managed database-as-a-service (DBaaS) for YugabyteDB.
 
 - [Go version 1.15](https://golang.org/dl/) or later is installed.
 
@@ -274,10 +274,10 @@ func printAZInfo() {
 }
 ```
 
-The **const** values are set to the defaults for a local installation of YugabyteDB. If you're using Yugabyte Cloud, replace the values as follows:
+The **const** values are set to the defaults for a local installation of YugabyteDB. If you're using YugabyteDB Managed, replace the values as follows:
 
 - **host** - The host address of your cluster. The host address is displayed on the cluster Settings tab.
-- **user** - Your Yugabyte database username. In Yugabyte Cloud, the default user is **admin**.
+- **user** - Your Yugabyte database username. In YugabyteDB Managed, the default user is **admin**.
 - **password** - Your Yugabyte database password.
 - **dbname** - The name of the Yugabyte database. The default Yugabyte database name is **yugabyte**.
 
@@ -285,7 +285,7 @@ The **const** values are set to the defaults for a local installation of Yugabyt
 
 ### Enable SSL/TLS
 
-For a Yugabyte Cloud cluster or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as below.
+For a YugabyteDB Managed cluster or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as below.
 
 ```sh
 export PGSSLMODE=verify-ca
@@ -525,11 +525,11 @@ func printAZInfo() {
 }
 ```
 
-The **const** values are set to the defaults for a local installation of YugabyteDB. If you are using Yugabyte Cloud, replace the **const** values in the file as [explained earlier](#pgx-connect-sample).
+The **const** values are set to the defaults for a local installation of YugabyteDB. If you are using YugabyteDB Managed, replace the **const** values in the file as [explained earlier](#pgx-connect-sample).
 
 ### Enable SSL/TLS
 
-For a Yugabyte Cloud cluster or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as follows.
+For a YugabyteDB Managed cluster or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as follows.
 
 ```sh
 export PGSSLMODE=verify-ca

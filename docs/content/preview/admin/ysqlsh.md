@@ -289,9 +289,9 @@ Show help about `ysqlsh` and exit. The optional *topic* parameter (defaulting to
 
 ### Connect to a database
 
-{{< note title="Yugabyte Cloud" >}}
+{{< note title="YugabyteDB Managed" >}}
 
-For information on connecting to a Yugabyte Cloud cluster using ysqlsh, refer to [Connect via client shells](../../yugabyte-cloud/cloud-connect/connect-client-shell/).
+For information on connecting to a YugabyteDB Managed cluster using ysqlsh, refer to [Connect via client shells](../../yugabyte-cloud/cloud-connect/connect-client-shell/).
 
 {{< /note >}}
 
@@ -364,7 +364,7 @@ Anything you enter in `ysqlsh` that begins with an unquoted backslash is a meta-
 
 {{< note title="Cloud shell" >}}
 
-For security reasons, the Yugabyte Cloud cloud shell only has access to a subset of meta-commands. With the exception of read-only access to the `/share` directory to load the sample datasets, commands that access the filesystem don't work in cloud shell.
+For security reasons, the YugabyteDB Managed cloud shell only has access to a subset of meta-commands. With the exception of read-only access to the `/share` directory to load the sample datasets, commands that access the filesystem don't work in cloud shell.
 
 {{< /note >}}
 

@@ -1,7 +1,7 @@
 ---
 title: Planning a cluster
 linkTitle: Planning a cluster
-description: Planning a cluster in Yugabyte Cloud.
+description: Planning a cluster in YugabyteDB Managed.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
@@ -21,12 +21,12 @@ The following best practices are recommended for production clusters.
 
 | Feature | Recommendation |
 | :--- | :--- |
-| [Provider and region](#provider-and-region) | Deploy your cluster in a virtual private cloud (VPC), with the same provider and in the same region as your application VPC. Yugabyte Cloud supports AWS and GCP.<br>You need to create the VPC before you deploy the cluster. Refer to [VPC network](../cloud-vpcs/). |
+| [Provider and region](#provider-and-region) | Deploy your cluster in a virtual private cloud (VPC), with the same provider and in the same region as your application VPC. YugabyteDB Managed supports AWS and GCP.<br>You need to create the VPC before you deploy the cluster. Refer to [VPC network](../cloud-vpcs/). |
 | [Fault tolerance](#fault-tolerance) | Availability zone (AZ) level - minimum of three nodes across multiple AZs, with a replication factor of 3. |
 | [Sizing](#sizing) | For most production applications, at least 3 nodes with 4 to 8 vCPUs per node.<br>When scaling your cluster, for best results increase node size up to 16 vCPUs before adding more nodes. For example, for a 3-node cluster with 4 vCPUs per node, scale up to 8 or 16 vCPUs before adding a fourth node. |
 | [YugabyteDB version](#yugabytedb-version) | Use the **Stable** release track. |
 | [Backups](#backups) | Use the default backup schedule (daily, with 8 day retention). |
-| [Security and authorization](#security) | Yugabyte Cloud clusters are secure by default. After deploying, set up IP allow lists and add database users to allow clients, applications, and application VPCs to connect. Refer to [IP allow lists](../../cloud-secure-clusters/add-connections/). |
+| [Security and authorization](#security) | YugabyteDB Managed clusters are secure by default. After deploying, set up IP allow lists and add database users to allow clients, applications, and application VPCs to connect. Refer to [IP allow lists](../../cloud-secure-clusters/add-connections/). |
 
 ## In depth
 
@@ -34,7 +34,7 @@ The following best practices are recommended for production clusters.
 
 #### Provider
 
-Yugabyte Cloud supports AWS and GCP. Your choice of provider will depend primarily on where your existing applications are hosted. Yugabyte Cloud pricing is the same for both.
+YugabyteDB Managed supports AWS and GCP. Your choice of provider will depend primarily on where your existing applications are hosted. YugabyteDB Managed pricing is the same for both.
 
 #### Region
 
@@ -49,7 +49,7 @@ For a list of supported regions, refer to [Cloud provider regions](../../release
 
 ### Fault tolerance
 
-The _fault tolerance_ determines how resilient the cluster is to node and cloud zone failures. Yugabyte Cloud provides the following options for providing replication and redundancy:
+The _fault tolerance_ determines how resilient the cluster is to node and cloud zone failures. YugabyteDB Managed provides the following options for providing replication and redundancy:
 
 - **Availability zone level**. Includes a minimum of 3 nodes spread across multiple availability zones with a [replication factor](../../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of a cloud availability zone failure. This configuration provides the maximum protection for a data center failure.
 
@@ -68,11 +68,11 @@ For application development and testing, you can set fault tolerance to **None**
 
 ### Sizing
 
-The size of the cluster is based on the number of vCPUs. The basic configuration for Yugabyte Cloud clusters includes 2 vCPUs per node. Each vCPU comes with 50GB of storage. A node has a minimum of 2 vCPUs, and 2GB of RAM per vCPU. For the cluster to be [fault tolerant](#fault-tolerance), you need a minimum of 3 nodes.
+The size of the cluster is based on the number of vCPUs. The basic configuration for YugabyteDB Managed clusters includes 2 vCPUs per node. Each vCPU comes with 50GB of storage. A node has a minimum of 2 vCPUs, and 2GB of RAM per vCPU. For the cluster to be [fault tolerant](#fault-tolerance), you need a minimum of 3 nodes.
 
 Depending on your performance requirements, you can increase the number of vCPUs per node, as well as the total number of nodes. You can also increase the disk size per node. However, once increased, you can't lower the disk size per node.
 
-Yugabyte Cloud supports both vertical and horizontal scaling. If your configuration doesn't match your performance requirements, you can change these values after the cluster is created (increasing or decreasing vCPUs and increasing storage, and adding or removing nodes). Refer to [Scaling clusters](../../cloud-clusters/configure-clusters/).
+YugabyteDB Managed supports both vertical and horizontal scaling. If your configuration doesn't match your performance requirements, you can change these values after the cluster is created (increasing or decreasing vCPUs and increasing storage, and adding or removing nodes). Refer to [Scaling clusters](../../cloud-clusters/configure-clusters/).
 
 For production clusters, a minimum of 3 nodes with 4 to 8 vCPUs per node is recommended.
 
@@ -88,19 +88,19 @@ Yugabyte manages upgrades for you. After you choose a track, database upgrades c
 
 ### Backups
 
-Yugabyte Cloud provides a default recommended backup schedule (daily, with 8 day retention), and manages backups for you. You can [change the default schedule](../../cloud-clusters/backup-clusters/#schedule-backups), as well as perform [on-demand backups](../../cloud-clusters/backup-clusters/#on-demand-backups).
+YugabyteDB Managed provides a default recommended backup schedule (daily, with 8 day retention), and manages backups for you. You can [change the default schedule](../../cloud-clusters/backup-clusters/#schedule-backups), as well as perform [on-demand backups](../../cloud-clusters/backup-clusters/#on-demand-backups).
 
-Yugabyte Cloud performs full cluster (all namespaces) level backups, and the backups are stored in the same region as your cluster. 100GB/month of basic backup storage is provided for every vCPU; more than that and overage charges apply. Refer to [Backup storage costs](../../cloud-admin/cloud-billing-costs/#backup-storage-costs).
+YugabyteDB Managed performs full cluster (all namespaces) level backups, and the backups are stored in the same region as your cluster. 100GB/month of basic backup storage is provided for every vCPU; more than that and overage charges apply. Refer to [Backup storage costs](../../cloud-admin/cloud-billing-costs/#backup-storage-costs).
 
 ### Security
 
 Clusters are secure by default. You need to explicitly allow access to clusters by adding IP addresses of clients connecting to the cluster to the cluster IP allow list. Refer to [IP allow lists](../../cloud-secure-clusters/add-connections/).
 
-If your applications are running in a VPC, deploy your cluster in a VPC to improve security and lower network latency. You also need to add the CIDR ranges of any application VPCs to your cluster IP allow list. You need to create the VPC before you deploy the cluster. Yugabyte Cloud supports AWS and GCP for VPCs. Refer to [VPC network](../../cloud-basics/cloud-vpcs/).
+If your applications are running in a VPC, deploy your cluster in a VPC to improve security and lower network latency. You also need to add the CIDR ranges of any application VPCs to your cluster IP allow list. You need to create the VPC before you deploy the cluster. YugabyteDB Managed supports AWS and GCP for VPCs. Refer to [VPC network](../../cloud-basics/cloud-vpcs/).
 
 #### User authorization
 
-YugabyteDB uses role-based access control to manage database access. When you create a cluster, Yugabyte Cloud adds a default admin user (the credentials for this user are configurable).
+YugabyteDB uses role-based access control to manage database access. When you create a cluster, YugabyteDB Managed adds a default admin user (the credentials for this user are configurable).
 
 After the cluster is provisioned, create a new database and [add users](../../cloud-secure-clusters/add-users/). You can create users specific to each connecting application, and restrict their access accordingly.
 
@@ -108,7 +108,7 @@ After the cluster is provisioned, create a new database and [add users](../../cl
 In YSQL, the admin user is not a full superuser. For security reasons, you do not have access to the Yugabyte or Postgres superusers, nor can you create users with superuser privileges.
 {{< /note >}}
 
-For more information on users and roles in Yugabyte Cloud, refer to [Database authorization in Yugabyte Cloud clusters](../../cloud-secure-clusters/cloud-users/).
+For more information on users and roles in YugabyteDB Managed, refer to [Database authorization in YugabyteDB Managed clusters](../../cloud-secure-clusters/cloud-users/).
 
 ## Pricing
 
@@ -118,7 +118,7 @@ Cluster charges are based on the total number of vCPUs used and how long they ha
 
 Before creating a cluster, you need to create your billing profile and add a payment method. Refer to [Manage your billing profile and payment method](../../cloud-admin/cloud-billing-profile/).
 
-If you're interested in evaluating Yugabyte Cloud for production use and would like trial credits to conduct a proof-of-concept (POC), contact {{<support-cloud>}}.
+If you're interested in evaluating YugabyteDB Managed for production use and would like trial credits to conduct a proof-of-concept (POC), contact {{<support-cloud>}}.
 
 ## Next steps
 

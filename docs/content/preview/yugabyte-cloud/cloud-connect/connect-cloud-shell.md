@@ -1,7 +1,7 @@
 ---
 title: Connect using Cloud Shell
 linkTitle: Cloud Shell
-description: Connect to Yugabyte Cloud clusters from any browser using Cloud Shell
+description: Connect to YugabyteDB Managed clusters from any browser using Cloud Shell
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Use any browser to connect to Yugabyte Cloud by using Cloud Shell. Cloud Shell doesn't require a CA certificate or any special network access configured.
+Use any browser to connect to YugabyteDB Managed by using Cloud Shell. Cloud Shell doesn't require a CA certificate or any special network access configured.
 
 When you connect to your cluster using Cloud Shell with the YSQL API, the shell window also incorporates a [Quick Start Guide](../../cloud-quickstart/qs-explore/), with a series of pre-built queries for you to run.
 
