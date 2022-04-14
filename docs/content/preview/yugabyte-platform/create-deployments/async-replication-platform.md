@@ -10,7 +10,7 @@ menu:
     identifier: async-replication-platform
     weight: 633
 aliases:
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

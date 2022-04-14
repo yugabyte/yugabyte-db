@@ -9,7 +9,7 @@ menu:
     name: Azure Kubernetes Service
     identifier: k8s-aks-1
     weight: 624
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

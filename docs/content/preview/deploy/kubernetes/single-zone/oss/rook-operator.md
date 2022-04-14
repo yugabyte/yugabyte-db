@@ -12,7 +12,7 @@ menu:
 aliases:
   - /preview/deploy/kubernetes/rook-operator/
   - /preview/deploy/kubernetes/oss/rook-operator/
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

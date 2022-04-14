@@ -9,7 +9,7 @@ menu:
     name: NodeJS
     identifier: nodejs-3
     weight: 551
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

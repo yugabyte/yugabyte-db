@@ -5,7 +5,7 @@ linkTitle: Run the tests
 description: Run the tests
 image: /images/section_icons/index/quick_start.png
 headcontent: Run the tests.
-type: page
+type: docs
 menu:
   preview:
     identifier: run-unit-tests

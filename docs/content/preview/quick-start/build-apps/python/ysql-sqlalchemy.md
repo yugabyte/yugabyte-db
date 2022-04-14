@@ -9,7 +9,7 @@ menu:
     name: Python
     identifier: python-2
     weight: 553
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

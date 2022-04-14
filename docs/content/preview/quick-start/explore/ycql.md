@@ -15,7 +15,7 @@ menu:
     name: 3. Explore distributed SQL
     identifier: explore-dsql-2-ycql
     weight: 130
-type: page
+type: docs
 isTocNested: false
 showAsideToc: true
 ---

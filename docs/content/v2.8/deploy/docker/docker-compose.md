@@ -9,7 +9,7 @@ menu:
     name: Docker
     identifier: docker-1-compose
     weight: 625
-type: page
+type: docs
 isTocNested: false
 showAsideToc: true
 ---
@@ -33,7 +33,7 @@ Use [docker-compose](https://docs.docker.com/compose/overview/) utility to creat
 
 ## Prerequisites
 
-Make sure to have [Docker](https://docs.docker.com/get-docker/) installed on your machine. 
+Make sure to have [Docker](https://docs.docker.com/get-docker/) installed on your machine.
 
 ## 1. Create a single node cluster
 

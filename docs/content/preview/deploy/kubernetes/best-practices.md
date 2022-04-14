@@ -7,7 +7,7 @@ menu:
     identifier: best-practices
     parent: deploy-kubernetes
     weight: 626
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

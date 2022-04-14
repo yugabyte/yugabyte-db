@@ -9,7 +9,7 @@ menu:
     parent: create-deployments
     identifier: async-replication-platform
     weight: 633
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

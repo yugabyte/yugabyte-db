@@ -9,7 +9,7 @@ menu:
     name: Scala
     identifier: scala-1
     weight: 558
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

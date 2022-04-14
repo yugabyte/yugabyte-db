@@ -5,7 +5,7 @@ linkTitle: Configure YugabyteDB Anywhere
 description: Configure YugabyteDB Anywhere.
 image: /images/section_icons/deploy/manual-deployment.png
 headcontent: Configure YugabyteDB Anywhere.
-type: page
+type: docs
 section: YUGABYTEDB ANYWHERE
 menu:
   preview:

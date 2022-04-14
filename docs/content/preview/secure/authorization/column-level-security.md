@@ -9,7 +9,7 @@ menu:
     identifier: ysql-column-level-security
     parent: authorization
     weight: 755
-type: page
+type: docs
 isTocNested: false
 showAsideToc: true
 ---

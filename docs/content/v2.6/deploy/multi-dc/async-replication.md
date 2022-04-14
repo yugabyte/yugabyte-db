@@ -8,7 +8,7 @@ menu:
     parent: multi-dc
     identifier: async-replication
     weight: 633
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---
@@ -62,7 +62,7 @@ After you created the required tables, you can set up asynchronous replication a
     ```
 
 
-The preceding command contains three table IDs: the first two are YSQL for the base table and index, and the third is the YCQL table. 
+The preceding command contains three table IDs: the first two are YSQL for the base table and index, and the third is the YCQL table.
 
 Also, be sure to specify all master addresses for producer and consumer universes in the command.
 

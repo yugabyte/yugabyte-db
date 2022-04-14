@@ -3,9 +3,9 @@ title: YEDIS
 linkTitle: YEDIS
 headerTitle: Yugabyte Dictionary Service (YEDIS)
 description: The YEDIS API allows YugabyteDB to function as a clustered, auto-sharded, globally distributed and persistent key-value database that is compatible with the Redis commands library.
-headcontent: 
+headcontent:
 image: /images/section_icons/api/yedis.png
-type: page
+type: docs
 section: MISC
 menu:
   v2.4:
@@ -28,7 +28,7 @@ While YEDIS supports many Redis data types (such as string, hash, set, sorted se
 
 * YugabyteDB is a full-featured disk-based database and does not have an in-memory only architecture like Redis.
 
-The above means that YEDIS is not a drop-in replacement to an existing Redis app. For key-value workloads that need persistence, elasticity and fault tolerance, YCQL (with features like keyspaces, tables, role-based access control and more) is often a great fit, especially if the application is new rather than an existing one already written in Redis. The YCQL drivers are also more clustering aware in terms of routing the request directly to the node which hosts the row/key, and hence YCQL even performs marginally better than YEDIS for equivalent scenarios. In general, our new feature development (support for data types, built-ins, TLS, backups and more), correctness testing (using e.g., Jepsen) and performance work is in the YSQL and YCQL areas.  
+The above means that YEDIS is not a drop-in replacement to an existing Redis app. For key-value workloads that need persistence, elasticity and fault tolerance, YCQL (with features like keyspaces, tables, role-based access control and more) is often a great fit, especially if the application is new rather than an existing one already written in Redis. The YCQL drivers are also more clustering aware in terms of routing the request directly to the node which hosts the row/key, and hence YCQL even performs marginally better than YEDIS for equivalent scenarios. In general, our new feature development (support for data types, built-ins, TLS, backups and more), correctness testing (using e.g., Jepsen) and performance work is in the YSQL and YCQL areas.
 {{< /note >}}
 
 

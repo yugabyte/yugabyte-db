@@ -8,7 +8,7 @@ menu:
     name: Before you begin
     identifier: cloud-add-ip
     weight: 20
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

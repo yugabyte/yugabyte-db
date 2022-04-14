@@ -12,7 +12,7 @@ menu:
     name: Docker
     identifier: docker-1-compose
     weight: 625
-type: page
+type: docs
 isTocNested: false
 showAsideToc: true
 ---

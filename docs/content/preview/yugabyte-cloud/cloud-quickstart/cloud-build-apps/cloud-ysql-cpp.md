@@ -8,7 +8,7 @@ menu:
     name: C++
     identifier: cloud-cpp
     weight: 500
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

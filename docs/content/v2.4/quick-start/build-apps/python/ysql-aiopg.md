@@ -9,7 +9,7 @@ menu:
     name: Python
     identifier: python-aiopg
     weight: 553
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

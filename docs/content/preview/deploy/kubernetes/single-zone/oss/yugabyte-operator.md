@@ -12,7 +12,7 @@ menu:
 aliases:
   - /preview/deploy/kubernetes/yugabyte-operator/
   - /preview/deploy/kubernetes/oss/yugabyte-operator/
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

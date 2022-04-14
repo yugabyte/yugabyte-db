@@ -9,7 +9,7 @@ menu:
     parent: cdc
     identifier: cdc-to-kafka
     weight: 692
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

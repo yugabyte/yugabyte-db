@@ -5,7 +5,7 @@ linkTitle: Back up universes
 description: Use Yugabyte Platform to back up and restore YugabyteDB universe data.
 image: /images/section_icons/manage/backup.png
 headcontent: Use Yugabyte Platform to back up and restore YugabyteDB universes and data.
-type: page
+type: docs
 section: YUGABYTE PLATFORM
 menu:
   stable:

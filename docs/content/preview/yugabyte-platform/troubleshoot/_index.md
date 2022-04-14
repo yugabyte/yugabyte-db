@@ -4,7 +4,7 @@ linkTitle: Troubleshoot
 description: Troubleshoot
 image: /images/section_icons/troubleshoot/troubleshoot.png
 headcontent: Diagnose and troubleshoot issues that arise from YugabyteDB universes and YugabyteDB Anywhere.
-type: page
+type: docs
 section: YUGABYTEDB ANYWHERE
 aliases:
   - /troubleshoot/enterprise-edition/

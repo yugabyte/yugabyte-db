@@ -4,7 +4,7 @@ headerTitle: Manage YugabyteDB universe deployments
 linkTitle: Manage deployments
 description: Manage YugabyteDB universe deployments
 image: /images/section_icons/quick_start/sample_apps.png
-type: page
+type: docs
 section: YUGABYTEDB ANYWHERE
 menu:
   preview:

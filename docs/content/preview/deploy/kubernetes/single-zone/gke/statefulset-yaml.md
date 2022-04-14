@@ -11,7 +11,7 @@ menu:
     weight: 623
 aliases:
   - /preview/deploy/kubernetes/gke/statefulset-yaml
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

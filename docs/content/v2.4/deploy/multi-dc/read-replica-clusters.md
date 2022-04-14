@@ -8,7 +8,7 @@ menu:
     parent: multi-dc
     identifier: read-replica-clusters
     weight: 634
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

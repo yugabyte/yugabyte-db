@@ -9,7 +9,7 @@ menu:
     name: Google Kubernetes Engine
     identifier: k8s-mz-gke-1
     weight: 628
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

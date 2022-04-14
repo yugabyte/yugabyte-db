@@ -11,7 +11,7 @@ menu:
     identifier: enable-authentication
     parent: secure
     weight: 715
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

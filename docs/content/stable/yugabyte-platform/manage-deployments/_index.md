@@ -4,7 +4,7 @@ headerTitle: Manage YugabyteDB universe deployments
 linkTitle: Manage deployments
 description: Manage YugabyteDB universe deployments
 image: /images/section_icons/quick_start/sample_apps.png
-type: page
+type: docs
 section: YUGABYTE PLATFORM
 menu:
   stable:
@@ -151,7 +151,7 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
       </div>
     </a>
   </div>
-  
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="migrate-to-helm3/">
       <div class="head">

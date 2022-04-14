@@ -12,7 +12,7 @@ aliases:
   - /preview/deploy/kubernetes/eks/
   - /preview/deploy/kubernetes/eks/helm-chart/
   - /preview/deploy/kubernetes/single-zone/eks/
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

@@ -9,7 +9,7 @@ menu:
     identifier: qs-explore-1-ysql
     parent: cloud-quickstart
     weight: 400
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

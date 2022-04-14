@@ -14,7 +14,7 @@ menu:
     name: Ruby
     identifier: ruby-1
     weight: 553
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

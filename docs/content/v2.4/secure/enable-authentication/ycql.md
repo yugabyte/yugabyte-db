@@ -11,7 +11,7 @@ menu:
     identifier: enable-authentication-2-ycql
     parent: enable-authentication
     weight: 715
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

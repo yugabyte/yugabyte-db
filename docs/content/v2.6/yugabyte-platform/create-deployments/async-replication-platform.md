@@ -8,7 +8,7 @@ menu:
     parent: create-deployments
     identifier: async-replication-platform
     weight: 633
-type: page
+type: docs
 isTocNested: true
 showAsideToc: false
 ---
@@ -57,4 +57,3 @@ You can find your customer UUID in Yugabyte Platform as follows:
   ```
 
   To find a universe's UUID in Yugabyte Platform, click **Universes** in the left column, then click the name of the universe. The URL of the universe's **Overview** page ends with the universe's UUID. For example, `http://myPlatformServer/universes/d73833fc-0812-4a01-98f8-f4f24db76dbe`
-

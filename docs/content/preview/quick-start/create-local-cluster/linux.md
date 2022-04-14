@@ -9,7 +9,7 @@ menu:
     name: 2. Create a local cluster
     identifier: create-local-cluster-2-linux
     weight: 120
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

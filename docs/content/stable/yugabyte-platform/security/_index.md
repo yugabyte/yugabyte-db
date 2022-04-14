@@ -5,7 +5,7 @@ linkTitle: Security
 description: Secure Yugabyte Platform and YugabyteDB universes.
 image: /images/section_icons/index/secure.png
 headcontent: Secure Yugabyte Platform and your YugabyteDB universes.
-type: page
+type: docs
 section: YUGABYTE PLATFORM
 menu:
   stable:

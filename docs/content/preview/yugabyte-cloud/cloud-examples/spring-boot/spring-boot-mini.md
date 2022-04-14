@@ -8,7 +8,7 @@ menu:
     parent: spring-boot
     identifier: spring-boot-mini
     weight: 40
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 -->

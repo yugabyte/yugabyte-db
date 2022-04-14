@@ -9,7 +9,7 @@ menu:
     name: Amazon EKS
     identifier: k8s-mz-eks-1
     weight: 627
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

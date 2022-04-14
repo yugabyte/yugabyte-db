@@ -9,7 +9,7 @@ menu:
     name: Open Source
     identifier: k8s-oss-1
     weight: 621
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

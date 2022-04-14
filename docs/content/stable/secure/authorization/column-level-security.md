@@ -9,7 +9,7 @@ menu:
     identifier: ysql-column-level-security
     parent: authorization
     weight: 755
-type: page
+type: docs
 isTocNested: false
 showAsideToc: true
 ---
@@ -230,4 +230,3 @@ yugabyte=> select empno, ename, address from employees;
 yugabyte=> select empno, ename, address, salary from employees;
 ERROR:  permission denied for table employees
 ```
-

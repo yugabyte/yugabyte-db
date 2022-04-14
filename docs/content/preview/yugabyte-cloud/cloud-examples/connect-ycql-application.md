@@ -10,7 +10,7 @@ menu:
     parent: cloud-examples
     identifier: connect-ycql-application
     weight: 200
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

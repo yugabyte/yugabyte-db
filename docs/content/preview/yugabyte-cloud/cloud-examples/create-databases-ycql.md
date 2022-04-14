@@ -10,7 +10,7 @@ menu:
     name: Create a database
     identifier: create-databases-2-ycql
     weight: 600
-type: page
+type: docs
 isTocNested: false
 showAsideToc: true
 --->

@@ -8,7 +8,7 @@ menu:
     name: Ruby
     identifier: cloud-ruby
     weight: 700
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

@@ -8,7 +8,7 @@ image: /images/section_icons/api/yedis.png
 aliases:
   - /preview/api/redis
   - /preview/api/yedis
-type: page
+type: docs
 section: MISC
 menu:
   preview:

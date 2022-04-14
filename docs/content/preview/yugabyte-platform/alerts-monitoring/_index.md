@@ -5,7 +5,7 @@ linkTitle: Alerts and monitoring
 description: Use YugabyteDB Anywhere for alerts and monitoring of YugabyteDB universe data.
 image: /images/section_icons/manage/backup.png
 headcontent: Use YugabyteDB Anywhere for alerts and monitoring of YugabyteDB universe data.
-type: page
+type: docs
 section: YUGABYTEDB ANYWHERE
 menu:
   preview:

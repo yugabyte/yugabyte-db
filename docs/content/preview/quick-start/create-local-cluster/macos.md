@@ -12,7 +12,7 @@ menu:
     name: 2. Create a local cluster
     identifier: create-local-cluster-1-macos
     weight: 120
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

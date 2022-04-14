@@ -5,7 +5,7 @@ linkTitle: Build the source
 description: Build YugabyteDB from source code on Ubuntu.
 image: /images/section_icons/index/quick_start.png
 headcontent: Build the source code.
-type: page
+type: docs
 menu:
   preview:
     identifier: build-from-src-3-ubuntu

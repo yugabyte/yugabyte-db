@@ -8,7 +8,7 @@ menu:
     name: Amazon EKS
     identifier: k8s-eks-1
     weight: 622
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---
@@ -31,6 +31,3 @@ Amazon EKS runs multi-zone Kubernetes clusters by default and has no support for
 Refer to the [Multi-zone Amazon EKS](../../../multi-zone/eks/helm-chart/) instructions for getting started with YugabyteDB on Amazon EKS.
 
 {{< /tip >}}
-
-
-

@@ -5,7 +5,7 @@ linkTitle: Administer YugabyteDB Anywhere
 description: Administer YugabyteDB Anywhere
 image: /images/section_icons/manage/enterprise.png
 headcontent: Administer YugabyteDB Anywhere
-type: page
+type: docs
 section: YUGABYTEDB ANYWHERE
 aliases:
   - /preview/yugabyte-platform/administer-yp

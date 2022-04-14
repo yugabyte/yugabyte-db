@@ -5,7 +5,7 @@ linkTitle: Overview
 description: Overview of YugabyteDB Anywhere and its architecture.
 image: /images/section_icons/deploy/enterprise.png
 headcontent: Overview of YugabyteDB Anywhere and architecture.
-type: page
+type: docs
 section: YUGABYTEDB ANYWHERE
 aliases:
   - /preview/yugabyte-platform/

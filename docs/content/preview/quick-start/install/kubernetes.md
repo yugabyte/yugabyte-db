@@ -11,7 +11,7 @@ menu:
     name: 1. Install YugabyteDB
     identifier: install-4-kubernetes
     weight: 110
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

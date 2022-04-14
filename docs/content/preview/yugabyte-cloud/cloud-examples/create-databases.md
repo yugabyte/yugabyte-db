@@ -13,7 +13,7 @@ menu:
     name: Create a database
     identifier: create-databases-1-ysql
     weight: 600
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 --->

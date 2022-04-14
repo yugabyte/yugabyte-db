@@ -1,10 +1,10 @@
 ---
-title: Troubleshoot 
+title: Troubleshoot
 linkTitle: Troubleshoot
 description: Troubleshoot
 image: /images/section_icons/troubleshoot/troubleshoot.png
 headcontent: Diagnose and troubleshoot universe and Yugabyte Platform issues.
-type: page
+type: docs
 section: YUGABYTE PLATFORM
 menu:
   stable:

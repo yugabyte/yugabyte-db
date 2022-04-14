@@ -5,7 +5,7 @@ linkTitle: Overview
 description: Overview of the Yugabyte Platform and its architecture.
 image: /images/section_icons/deploy/enterprise.png
 headcontent: Overview of the Yugabyte Platform and architecture.
-type: page
+type: docs
 section: YUGABYTE PLATFORM
 menu:
   stable:
@@ -19,7 +19,7 @@ Yugabyte Platform is a containerized application that is installed and managed u
 
 Yugabyte Platform can be accessed using any desktop internet browser that has been supported by its maker in the past 24 months and that has a market share of at least 0.2%. In addition, Yugabyte Platform may be accessed by most mobile browsers, except Opera Mini.
 
-Yugabyte Platform offers three levels of user accounts: Super Admin, Admin, and Read-only, with the latter having rather limited access to functionality. Unless otherwise specified, the Yugabyte Platform documentation describes the funtionality available to a Super Admin user. 
+Yugabyte Platform offers three levels of user accounts: Super Admin, Admin, and Read-only, with the latter having rather limited access to functionality. Unless otherwise specified, the Yugabyte Platform documentation describes the funtionality available to a Super Admin user.
 
 ## Getting Started with Yugabyte Platform
 

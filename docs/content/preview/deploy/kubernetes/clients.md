@@ -8,7 +8,7 @@ menu:
     identifier: clients-kubernetes
     parent: deploy-kubernetes
     weight: 626
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

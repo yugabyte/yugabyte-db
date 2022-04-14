@@ -5,7 +5,7 @@ linkTitle: Build the source
 description: Build YugabyteDB from source code on macOS.
 image: /images/section_icons/index/quick_start.png
 headcontent: Build the source code on macOS, CentOS, and Ubuntu.
-type: page
+type: docs
 aliases:
   - /preview/contribute/core-database/build-from-src
 menu:

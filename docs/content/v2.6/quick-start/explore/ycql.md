@@ -10,7 +10,7 @@ menu:
     name: 3. Explore distributed SQL
     identifier: explore-dsql-2-ycql
     weight: 130
-type: page
+type: docs
 isTocNested: false
 showAsideToc: true
 ---
@@ -30,7 +30,7 @@ showAsideToc: true
       YCQL
     </a>
   </li>
-  
+
 </ul>
 
 After [creating a local cluster](../../create-local-cluster/macos/), follow the instructions below to explore YugabyteDB's semi-relational [Yugabyte Cloud QL](../../../api/ycql/) API.
@@ -72,7 +72,7 @@ After [creating a local cluster](../../create-local-cluster/macos/), follow the 
   </div>
   <div id="linux" class="tab-pane fade" role="tabpanel" aria-labelledby="linux-tab">
     {{% includeMarkdown "binary/explore-ycql.md" /%}}
-  </div> 
+  </div>
   <div id="docker" class="tab-pane fade" role="tabpanel" aria-labelledby="docker-tab">
     {{% includeMarkdown "docker/explore-ycql.md" /%}}
   </div>

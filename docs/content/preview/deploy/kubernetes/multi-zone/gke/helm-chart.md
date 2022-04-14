@@ -11,7 +11,7 @@ menu:
     weight: 628
 aliases:
   - /preview/deploy/kubernetes/multi-zone/gke
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

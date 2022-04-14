@@ -5,7 +5,7 @@ linkTitle: Configure Yugabyte Platform
 description: Configure Yugabyte Platform.
 image: /images/section_icons/deploy/manual-deployment.png
 headcontent: Configure Yugabyte Platform.
-type: page
+type: docs
 section: YUGABYTE PLATFORM
 menu:
   stable:

@@ -9,7 +9,7 @@ menu:
     name: NodeJS
     identifier: nodejs-2
     weight: 551
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---
@@ -55,7 +55,7 @@ This repository has a node.js example that implements a simple REST API server. 
 - The `products` table contains a list of products the e-commerce site sells.
 - The orders placed by the users are populated in the `orders` table. An order can consist of multiple line items, each of these are inserted in the `orderline` table.
 
-The source for the above application can be found in the [repo](https://github.com/yugabyte/orm-examples/tree/master/node/sequelize). There are a number of options that can be customized in the properties file located at `config/config.json`. 
+The source for the above application can be found in the [repo](https://github.com/yugabyte/orm-examples/tree/master/node/sequelize). There are a number of options that can be customized in the properties file located at `config/config.json`.
 
 ## Build the application
 
@@ -121,7 +121,7 @@ $ curl \
 ### Using the YSQL shell
 
 ```sh
-$ ./bin/ysqlsh 
+$ ./bin/ysqlsh
 ```
 
 ```
@@ -136,7 +136,7 @@ yugabyte=# SELECT count(*) FROM users;
 ```
 
 ```
- count 
+ count
 -------
      2
 (1 row)
@@ -147,7 +147,7 @@ yugabyte=# SELECT count(*) FROM products;
 ```
 
 ```
- count 
+ count
 -------
      2
 (1 row)
@@ -158,7 +158,7 @@ yugabyte=# SELECT count(*) FROM orders;
 ```
 
 ```
- count 
+ count
 -------
      2
 (1 row)
@@ -187,7 +187,7 @@ $ curl http://localhost:8080/users
     }
   ],
   ...
-}  
+}
 ```
 
 ```sh
@@ -210,7 +210,7 @@ $ curl http://localhost:8080/products
     }
   ],
   ...
-}  
+}
 ```
 
 ```sh
@@ -248,7 +248,7 @@ $ curl http://localhost:8080/orders
     }
   ],
   ...
-}  
+}
 ```
 
 ## Explore the source

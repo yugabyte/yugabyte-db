@@ -5,7 +5,7 @@ linkTitle: Coding style
 description: YugabyteDB coding style
 image: /images/section_icons/index/quick_start.png
 headcontent: YugabyteDB coding style
-type: page
+type: docs
 menu:
   preview:
     identifier: coding-style

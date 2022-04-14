@@ -8,7 +8,7 @@ menu:
     parent: multi-dc
     identifier: async-replication
     weight: 633
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

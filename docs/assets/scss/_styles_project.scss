@@ -1,0 +1,26 @@
+.td-navbar {
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 1px 2px rgba(32, 41, 81, 0.16);
+}
+
+.navbar-dark .navbar-nav .nav-link {
+  border: 1px solid #cbcdd0;
+  color: #332864;
+  text-decoration: none;
+  padding: 10px 15px;
+  height: 42px;
+  border-radius: 7px;
+  margin-right: 15px;
+  font-size: 15px;
+  align-items: center;
+  display: flex;
+}
+
+.navbar-dark .navbar-nav .nav-link i {
+  margin-left: 7px;
+}
+
+.navbar-dark .navbar-nav .nav-link:hover {
+  background-color: #cbcbcb78;
+  color: #000;
+}

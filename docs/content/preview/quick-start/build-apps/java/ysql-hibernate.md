@@ -9,7 +9,7 @@ menu:
     name: Java
     identifier: java-8
     weight: 550
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

@@ -12,7 +12,7 @@ menu:
 aliases:
   - /preview/deploy/kubernetes/operator-hub/
   - /preview/deploy/kubernetes/oss/operator-hub/
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

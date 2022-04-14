@@ -8,7 +8,7 @@ menu:
     name: PHP
     identifier: cloud-php
     weight: 900
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

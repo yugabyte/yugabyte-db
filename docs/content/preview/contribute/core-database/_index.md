@@ -5,7 +5,7 @@ linkTitle: Core database
 description: Contribute to the core database
 image: /images/section_icons/index/quick_start.png
 headcontent: How to contribute code to the core database
-type: page
+type: docs
 section: CONTRIBUTOR GUIDES
 menu:
   preview:

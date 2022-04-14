@@ -9,7 +9,7 @@ menu:
     name: Docker
     identifier: docker-2-swarm
     weight: 625
-type: page
+type: docs
 isTocNested: false
 showAsideToc: true
 ---

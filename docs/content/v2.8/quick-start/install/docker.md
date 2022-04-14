@@ -9,7 +9,7 @@ menu:
     name: 1. Install YugabyteDB
     identifier: install-3-docker
     weight: 110
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

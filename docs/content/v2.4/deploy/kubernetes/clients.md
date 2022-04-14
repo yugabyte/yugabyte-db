@@ -8,7 +8,7 @@ menu:
     identifier: clients-kubernetes
     parent: deploy-kubernetes
     weight: 626
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---
@@ -210,4 +210,3 @@ Use HELP for help.
 cqlsh> SHOW HOST
 Connected to local cluster at 35.200.205.208:9042.
 ```
-

@@ -5,7 +5,7 @@ linkTitle: Install YugabyteDB Anywhere
 description: Install YugabyteDB Anywhere and prepare universe nodes.
 image: /images/section_icons/quick_start/install.png
 headcontent: Install YugabyteDB Anywhere to begin creating and managing deployments.
-type: page
+type: docs
 section: YUGABYTEDB ANYWHERE
 menu:
   preview:

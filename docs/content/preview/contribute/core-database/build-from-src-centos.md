@@ -5,7 +5,7 @@ linkTitle: Build the source
 description: Build YugabyteDB from source code on CentOS.
 image: /images/section_icons/index/quick_start.png
 headcontent: Build the source code.
-type: page
+type: docs
 menu:
   preview:
     identifier: build-from-src-2-centos

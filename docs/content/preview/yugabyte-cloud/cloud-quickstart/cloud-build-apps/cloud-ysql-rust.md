@@ -8,7 +8,7 @@ menu:
     name: Rust
     identifier: cloud-rust
     weight: 800
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

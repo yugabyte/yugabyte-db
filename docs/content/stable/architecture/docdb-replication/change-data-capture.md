@@ -9,7 +9,7 @@ menu:
     parent: architecture-docdb-replication
     identifier: architecture-docdb-replication-cdc
     weight: 1160
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

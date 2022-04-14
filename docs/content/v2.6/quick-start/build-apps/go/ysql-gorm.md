@@ -9,7 +9,7 @@ menu:
     name: Go
     identifier: go-2
     weight: 552
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

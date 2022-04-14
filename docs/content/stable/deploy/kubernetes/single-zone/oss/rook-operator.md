@@ -9,7 +9,7 @@ menu:
     name: Open Source
     identifier: k8s-oss-4
     weight: 621
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---
@@ -82,7 +82,7 @@ To deploy the YugabyteDB operator:
 
 ## Create the YugabyteDB Cluster CRD
 
-When using the Rook YugabyteDB operator, your YugabyteDB clusters are controlled using the custom resource object (`ybclusters.yugabytedb.rook.io`). The Custom Resource Definition (CRD), used to create this object, is specified in the `cluster.yaml` file.  
+When using the Rook YugabyteDB operator, your YugabyteDB clusters are controlled using the custom resource object (`ybclusters.yugabytedb.rook.io`). The Custom Resource Definition (CRD), used to create this object, is specified in the `cluster.yaml` file.
 
 A sample Custom Resource Definition (CRD) file, called `cluster.yaml`, is located in the following Rook directory:
 
@@ -123,7 +123,7 @@ kubectl exec -it yb-tserver-rook-yugabytedb-0 -- ysqlsh  -h yb-tserver-rook-yuga
 For details on the YSQL API, see:
 
 - [Explore YSQL](../../../../../quick-start/explore/ysql/)
-- [YSQL Reference](../../../../../api/ysql/) 
+- [YSQL Reference](../../../../../api/ysql/)
 
 ## Cleanup
 

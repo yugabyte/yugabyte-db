@@ -9,7 +9,7 @@ menu:
     identifier: ysql-grant-permissions
     parent: authorization
     weight: 735
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

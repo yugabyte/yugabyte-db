@@ -9,7 +9,7 @@ menu:
     name: Python
     identifier: cloud-python
     weight: 300
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

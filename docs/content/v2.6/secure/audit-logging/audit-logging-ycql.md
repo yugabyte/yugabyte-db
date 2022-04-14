@@ -11,7 +11,7 @@ menu:
     identifier: enable-audit-logging-2-ycql
     parent: audit-logging
     weight: 755
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

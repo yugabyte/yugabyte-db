@@ -5,7 +5,7 @@ linkTitle: Administer Yugabyte Platform
 description: Administer Yugabyte Platform.
 image: /images/section_icons/manage/enterprise.png
 headcontent: Administer Yugabyte Platform.
-type: page
+type: docs
 section: YUGABYTE PLATFORM
 menu:
   stable:

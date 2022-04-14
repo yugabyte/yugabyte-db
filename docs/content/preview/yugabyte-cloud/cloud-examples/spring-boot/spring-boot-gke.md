@@ -8,7 +8,7 @@ menu:
     parent: spring-boot
     identifier: spring-boot-gke
     weight: 30
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 -->

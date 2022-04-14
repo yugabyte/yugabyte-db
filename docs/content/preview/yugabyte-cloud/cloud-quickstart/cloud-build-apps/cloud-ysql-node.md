@@ -8,7 +8,7 @@ menu:
     name: Node.js
     identifier: cloud-node
     weight: 400
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

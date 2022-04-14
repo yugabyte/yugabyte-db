@@ -1,0 +1,56 @@
+{{/*
+  Outputs the contents of a file, contained in a highlighted code block.
+
+  The logic attempts to infer the code language based on the file
+  extension. You can override this by specifying a language when
+  you call the shortcode.
+
+  The base path is /docs/static.
+
+  Basic call:
+
+    {{< includeFile file="code-samples/include.sql" >}}
+
+  Specify a language (default is "output" otherwise):
+
+    {{< includeFile file="code-samples/include.sql" lang="sql" >}}
+
+  Specify a language and some highlighting options:
+
+    {{< includeFile file="code-samples/include.sql" lang="sql" hl_options="hl_lines=2 5-7" >}}
+  
+  CAREFUL! hl_lines takes a different form here than when you're specifying it
+  on a fenced block: no comma, no quotes: `hl_options="hl_lines=1 7-10"`
+
+  https://gohugo.io/content-management/syntax-highlighting/#highlight-shortcode
+
+*/}}
+
+{{/*
+  Modified from this:
+
+  https://github.com/MunifTanjim/minimo/blob/e61d1498fdcd22712c9afdaa81d742f92d2f2b3f/layouts/shortcodes/file.html
+*/}}
+
+{{- $includePath := (.Get "file") | printf "static/%s" -}}
+{{- $file := readFile $includePath | chomp -}}
+
+{{- $language := "" -}}
+{{- $highlightFormat := "" -}}
+{{- $content := "" -}}
+
+{{- with .Get "lang" -}}
+  {{- $language = . | printf "%s" -}}
+{{- else -}}
+  {{- $format := $includePath | path.Ext -}}
+  {{- $language = strings.TrimPrefix "." $format -}}
+  {{- if eq $language "" -}}
+    {{- $language = "output" -}}
+  {{- end -}}
+{{- end -}}
+
+{{- with .Get "hl_options" -}}
+  {{- $highlightFormat = . | printf "%s" -}}
+{{- end -}}
+
+{{- highlight $file $language $highlightFormat | safeHTML -}}

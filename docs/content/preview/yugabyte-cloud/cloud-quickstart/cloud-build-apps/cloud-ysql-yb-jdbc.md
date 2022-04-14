@@ -9,7 +9,7 @@ menu:
     name: Java
     identifier: cloud-java
     weight: 100
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

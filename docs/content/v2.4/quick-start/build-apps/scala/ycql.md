@@ -9,7 +9,7 @@ menu:
     name: Scala
     identifier: scala-1
     weight: 558
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---
@@ -156,4 +156,3 @@ Created table employee
 Inserted data: INSERT INTO ybdemo.employee (id, name, age, language) VALUES (1, 'John', 35, 'Scala');
 Query returned 1 row: name=John, age=35, language=Scala
 ```
-

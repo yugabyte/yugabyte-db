@@ -5,33 +5,25 @@ title: YugabyteDB Docs
 metadataformat: yaml
 googleAnalytics: UA-104956980-3
 pygmentsCodefences: true
-pygmentsStyle: "pygments"
+pygmentsStyle: pygments
 enableGitInfo: true
 resourceDir: docs/resources
-
 frontmatter:
   date:
-    - :git
-    - :default
-
+    - ":git"
+    - ":default"
 params:
   author: Team Yugabyte
-  description: 'YugabyteDB, the transactional, high-performance database for building internet-scale, globally-distributed apps.'
-  copyright: 'Yugabyte, Inc.'
+  description: "YugabyteDB, the transactional, high-performance database for building internet-scale, globally-distributed apps."
+  copyright: "Yugabyte, Inc."
   block_indexing: false
   version: Beta
   logo: /images/og-image.jpg
   favicon: /images/favicon.ico
-  permalink: '#'
+  permalink: "#"
   custom_css: []
   custom_js: []
-  highlight_css: css/highlight/hemisu.css
-  palette:
-    primary: orange
-    accent: amber
-  font:
-    text: Source Sans Pro
-    code: Inconsolata
+  # highlight_css: css/highlight/hemisu.css
   algolia:
     index: yugabyte
     appID: UMBCUJCBE8
@@ -41,11 +33,51 @@ params:
   ui:
     # https://github.com/gohugoio/hugo/issues/8918#issuecomment-903314696
     sidebar_cache_limit: 1
+    navbar_logo: true
+    sidebar_menu_compact: true
+    ul_show: 1
+    sidebar_menu_foldable: true
+  github_repo: https://github.com/yugabyte/yugabyte-db
+  github_subdir: docs
+  github_project_repo: https://github.com/yugabyte/yugabyte-db
+  github_branch: master
+  path_base_for_github_subdir:
+    from: content/en/(.*?)/
+    to: content/$1/
+  # Release versions
+  version_menu: Releases
+  versions:
+    - version: "v2.13 (Preview)"
+      url: /preview/quick-start/
+    - version: "v2.12 (Stable)"
+      url: /stable/quick-start/
+    - version: "v2.8"
+      url: /v2.8/quick-start/
+    - version: "v2.6"
+      url: /v2.6/quick-start/
+    - version: "v2.4"
+      url: /v2.4/quick-start/
+    - version: "Unsupported versions"
+      url: https://docs-archive.yugabyte.com
+  links:
+    user:
+      - name: User mailing list
+        url: https://example.org/mail
+        icon: fa fa-github
 social: {}
 menu:
   main:
-    - name: Introduction
-      identifier: intro
+    - name: Join us on
+      url: https://communityinviter.com/apps/yugabyte-db/register
+      post: '<i class="fab fa-slack"></i>'
+      weight: 1
+    - name: Star us on
+      url: https://github.com/yugabyte/yugabyte-db
+      post: '<i class="fab fa-github"></i>'
+      weight: 2
+    - name: Get Started
+      url: https://download.yugabyte.com
+      weight: 3
 markup:
   goldmark:
     extensions:
@@ -58,4 +90,14 @@ markup:
     startLevel: 2
     endLevel: 3
     ordered: false
+# hugo module configuration
+module:
+  hugoVersion:
+    extended: true
+    min: 0.73.0
+  imports:
+    - path: github.com/google/docsy
+      disable: false
+    - path: github.com/google/docsy/dependencies
+      disable: false
 ---

@@ -8,7 +8,7 @@ menu:
   v2.6:
     parent: yedis
     weight: 2800
-type: page
+type: docs
 ---
 
 After [creating a local cluster](../../quick-start/create-local-cluster/), follow the instructions below to test YugabyteDB's Redis-compatible [YEDIS](../api/) API.

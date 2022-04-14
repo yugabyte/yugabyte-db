@@ -20,7 +20,7 @@ menu:
     name: 3. Explore distributed SQL
     identifier: explore-dsql-1-ysql
     weight: 130
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

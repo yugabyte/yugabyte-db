@@ -11,7 +11,7 @@ menu:
     identifier: enable-audit-logging-1-ysql
     parent: audit-logging
     weight: 755
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---
@@ -247,4 +247,3 @@ CREATE TABLE
 ```
 
 Notice that audit logs are generated for DDL statements.
-

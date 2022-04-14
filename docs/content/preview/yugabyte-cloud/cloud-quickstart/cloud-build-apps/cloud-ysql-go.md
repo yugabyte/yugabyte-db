@@ -9,7 +9,7 @@ menu:
     name: Go
     identifier: cloud-go
     weight: 200
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---

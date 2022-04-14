@@ -1,0 +1,37 @@
+{{ with .Site.GoogleAnalytics }}
+  <script async src="https://www.googletagmanager.com/gtag/js?id={{ . }}"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', '{{ . }}', {
+      'anonymize_ip': true
+    });
+    /* Track outbound links */
+    var buttons = document.querySelectorAll('a');
+      Array.prototype.map.call(buttons, function(item) {
+        if (item.host != document.location.host) {
+          item.addEventListener('click', function() {
+            var action = item.getAttribute('data-action') || 'follow';
+            gtag('event', 'outbound', {
+              'event_category': action,
+              'value': item.href
+            });
+          });
+        }
+      });
+      /* Register handler to log search on blur */
+      var query = document.querySelector('.query');
+      if (query) {
+        query.addEventListener('blur', function() {
+          if (this.value) {
+            var path = document.location.pathname;
+            gtag('event', 'search', {
+              search_term: path + '?q=' + this.value
+            });
+          }
+        });
+      }
+  </script>
+{{ end }}

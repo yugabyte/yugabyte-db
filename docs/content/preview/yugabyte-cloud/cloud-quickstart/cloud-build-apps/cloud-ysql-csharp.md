@@ -8,7 +8,7 @@ menu:
     name: C#
     identifier: cloud-csharp
     weight: 600
-type: page
+type: docs
 isTocNested: true
 showAsideToc: true
 ---
