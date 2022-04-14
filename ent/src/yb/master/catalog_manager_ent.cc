@@ -2693,7 +2693,8 @@ Status CatalogManager::CreateCDCStream(const CreateCDCStreamRequestPB* req,
             req, master::kCdcLastReplicationTime, GetCurrentTimeMicros());
         session->Apply(op);
       }
-      RETURN_NOT_OK(session->Flush());
+      // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+      RETURN_NOT_OK(session->TEST_Flush());
     }
   } else {
     // Update and add table_id.
@@ -2882,7 +2883,8 @@ Status CatalogManager::CleanUpDeletedCDCStreams(
     }
   }
   // Flush all the delete operations.
-  s = session->Flush();
+  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+  s = session->TEST_Flush();
   if (!s.ok()) {
     LOG(ERROR) << "Unable to flush operations to delete cdc streams: " << s;
     return s.CloneAndPrepend("Error deleting cdc stream rows from cdc_state table");
@@ -3978,7 +3980,8 @@ Status CatalogManager::UpdateXClusterProducerOnTabletSplit(
       read_req->mutable_column_refs()->add_ids(Schema::first_column_id() + master::kCdcStreamIdIdx);
       cdc_table.AddColumns({master::kCdcCheckpoint}, read_req);
 
-      RETURN_NOT_OK(session->ReadSync(read_op));
+      // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+      RETURN_NOT_OK(session->TEST_ReadSync(read_op));
       auto row_block = ql::RowsResult(read_op.get()).GetRowBlock();
       if (row_block->row_count() == 1) {
         parent_op_id = row_block->row(0).column(0).string_value();
@@ -4001,7 +4004,8 @@ Status CatalogManager::UpdateXClusterProducerOnTabletSplit(
         session->Apply(insert_op);
       }
     }
-    RETURN_NOT_OK(session->Flush());
+    // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+    RETURN_NOT_OK(session->TEST_Flush());
   }
 
   return Status::OK();

@@ -178,7 +178,7 @@ Result<YBqlWriteOpPtr> Increment(
 
   session->Apply(op);
   if (flush) {
-    RETURN_NOT_OK(session->Flush());
+    RETURN_NOT_OK(session->TEST_Flush());
     RETURN_NOT_OK(CheckOp(op.get()));
   }
 
@@ -372,7 +372,7 @@ Result<YBqlWriteOpPtr> WriteRow(
   }
   session->Apply(op);
   if (flush) {
-    RETURN_NOT_OK(session->Flush());
+    RETURN_NOT_OK(session->TEST_Flush());
     RETURN_NOT_OK(CheckOp(op.get()));
   }
   return op;
@@ -395,7 +395,7 @@ Result<int32_t> SelectRow(
   QLAddInt32HashValue(req, key);
   table->AddColumns({column}, req);
   session->Apply(op);
-  auto flush_status = session->FlushAndGetOpsErrors();
+  auto flush_status = session->TEST_FlushAndGetOpsErrors();
   if (flush_status.status.IsIOError()) {
     for (const auto& error : flush_status.errors) {
       LOG(WARNING) << "Error: " << error->status() << ", op: " << error->failed_op().ToString();
@@ -437,7 +437,7 @@ Result<std::map<int32_t, int32_t>> SelectAllRows(
     session->Apply(op);
   }
 
-  RETURN_NOT_OK(session->Flush());
+  RETURN_NOT_OK(session->TEST_Flush());
 
   std::map<int32_t, int32_t> result;
   for (const auto& op : ops) {

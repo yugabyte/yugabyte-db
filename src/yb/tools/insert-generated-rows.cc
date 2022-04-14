@@ -123,7 +123,7 @@ static int WriteRandomDataToTable(int argc, char** argv) {
 
     LOG(INFO) << "Inserting record: " << req->ShortDebugString();
     session->Apply(insert);
-    auto flush_status = session->FlushAndGetOpsErrors();
+    auto flush_status = session->TEST_FlushAndGetOpsErrors();
     const auto& s = flush_status.status;
     if (PREDICT_FALSE(!s.ok())) {
       for (const auto& e : flush_status.errors) {

@@ -242,7 +242,7 @@ void TransactionTestBase<MiniClusterType>::VerifyRows(
   for (size_t r = 0; r != kNumRows; ++r) {
     ops.push_back(ReadRow(session, KeyForTransactionAndIndex(transaction, r), column));
   }
-  ASSERT_OK(session->Flush());
+  ASSERT_OK(session->TEST_Flush());
   for (size_t r = 0; r != kNumRows; ++r) {
     SCOPED_TRACE(Format("Row: $0, key: $1", r, KeyForTransactionAndIndex(transaction, r)));
     auto& op = ops[r];

@@ -232,7 +232,7 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDC
       int32_t key = i;
       auto req = op->mutable_request();
       QLAddInt32HashValue(req, key);
-      ASSERT_OK(session->ApplyAndFlush(op));
+      ASSERT_OK(session->TEST_ApplyAndFlush(op));
     }
   }
 
@@ -287,7 +287,7 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDC
       int32_t key = i;
       auto req = op->mutable_request();
       QLAddInt32HashValue(req, key);
-      ASSERT_OK(session->ApplyAndFlush(op));
+      ASSERT_OK(session->TEST_ApplyAndFlush(op));
     }
   }
 
@@ -1157,7 +1157,7 @@ TEST_P(TwoDCTestWithEnableIntentsReplication, UpdateWithinTransaction) {
   auto op = table_handle.NewInsertOp();
   auto req = op->mutable_request();
   QLAddInt32HashValue(req, 0);
-  ASSERT_OK(txn.first->ApplyAndFlush(op));
+  ASSERT_OK(txn.first->TEST_ApplyAndFlush(op));
 
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
 

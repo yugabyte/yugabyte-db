@@ -158,7 +158,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
 
   void SetValue(const YBSessionPtr& session, int32_t key, int32_t value, const TableHandle& table) {
     auto op = CreateSetValueOp(key, value, table);
-    ASSERT_OK(session->ApplyAndFlush(op));
+    ASSERT_OK(session->TEST_ApplyAndFlush(op));
     ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status())
         << op->response().error_message();
   }
@@ -166,7 +166,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
   boost::optional<int32_t> GetValue(
       const YBSessionPtr& session, int32_t key, const TableHandle& table) {
     const auto op = CreateReadOp(key, table);
-    EXPECT_OK(session->ApplyAndFlush(op));
+    EXPECT_OK(session->TEST_ApplyAndFlush(op));
     auto rowblock = RowsResult(op.get()).GetRowBlock();
     if (rowblock->row_count() == 0) {
       return boost::none;
@@ -224,7 +224,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
         auto op = CreateSetValueOp(i, ValueForKey(i), table);
         ++i;
         if ((i - begin) % batch_size == 0 || i == end) {
-          RETURN_NOT_OK(session->ApplyAndFlush(op));
+          RETURN_NOT_OK(session->TEST_ApplyAndFlush(op));
         } else {
           session->Apply(op);
         }
@@ -700,7 +700,7 @@ TEST_F(QLTabletTest, LeaderLease) {
   auto* const req = op->mutable_request();
   QLAddInt32HashValue(req, 1);
   table.AddInt32ColumnValue(req, kValueColumn, 1);
-  auto status = session->ApplyAndFlush(op);
+  auto status = session->TEST_ApplyAndFlush(op);
   ASSERT_TRUE(status.IsIOError()) << "Status: " << status;
 }
 
@@ -875,7 +875,7 @@ TEST_F(QLTabletTest, SkewedClocks) {
     rscol_desc->set_name(kValueColumn);
     table.ColumnType(kValueColumn)->ToQLTypePB(rscol_desc->mutable_ql_type());
     op->set_yb_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
-    ASSERT_OK(session->ApplyAndFlush(op));
+    ASSERT_OK(session->TEST_ApplyAndFlush(op));
     ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status());
   }
 
@@ -998,7 +998,7 @@ void QLTabletTest::TestDeletePartialKey(int num_range_keys_in_delete) {
       QLAddInt32RangeValue(req, key);
       QLAddInt32RangeValue(req, key);
       table.AddInt32ColumnValue(req, kValueColumn, kValue1);
-      ASSERT_OK(session1->ApplyAndFlush(op));
+      ASSERT_OK(session1->TEST_ApplyAndFlush(op));
       ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status());
     }
 
@@ -1717,7 +1717,7 @@ TEST_F_EX(QLTabletTest, CompactDeletedColumn, QLTabletRf1Test) {
     table.AddStringColumnValue(req, kStringColumn, RandomHumanReadableString(1_KB));
     session->Apply(op);
   }
-  ASSERT_OK(session->Flush());
+  ASSERT_OK(session->TEST_Flush());
   ASSERT_OK(cluster_->FlushTablets());
   uint64_t files_size = 0;
   for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {

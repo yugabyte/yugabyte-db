@@ -91,7 +91,7 @@ Result<size_t> SelectRowsCount(
       session->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
       *req->mutable_paging_state() = std::move(paging_state);
     }
-    RETURN_NOT_OK(session->ApplyAndFlush(op));
+    RETURN_NOT_OK(session->TEST_ApplyAndFlush(op));
     auto rowblock = ql::RowsResult(op.get()).GetRowBlock();
     row_count += rowblock->row_count();
     if (!op->response().has_paging_state()) {
@@ -252,7 +252,7 @@ Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>>
     max_hash_code = std::max(max_hash_code, hash_code);
     YB_LOG_EVERY_N_SECS(INFO, 10) << "Rows written: " << start_key << "..." << i;
   }
-  RETURN_NOT_OK(session->Flush());
+  RETURN_NOT_OK(session->TEST_Flush());
   if (txn) {
     RETURN_NOT_OK(txn->CommitFuture().get());
     LOG(INFO) << "Committed: " << txn->id();

@@ -63,7 +63,7 @@ CHECKED_STATUS RedisGet(std::shared_ptr<client::YBSession> session,
                         const string& value) {
   auto get_op = std::make_shared<client::YBRedisReadOp>(table);
   RETURN_NOT_OK(redisserver::ParseGet(get_op.get(), redisserver::RedisClientCommand({"get", key})));
-  RETURN_NOT_OK(session->ReadSync(get_op));
+  RETURN_NOT_OK(session->TEST_ReadSync(get_op));
   if (get_op->response().code() != RedisResponsePB_RedisStatusCode_OK) {
     return STATUS_FORMAT(RuntimeError,
                          "Redis get returned bad response code: $0",
@@ -84,7 +84,7 @@ CHECKED_STATUS RedisSet(std::shared_ptr<client::YBSession> session,
   auto set_op = std::make_shared<client::YBRedisWriteOp>(table);
   RETURN_NOT_OK(redisserver::ParseSet(set_op.get(),
                                       redisserver::RedisClientCommand({"set", key, value})));
-  RETURN_NOT_OK(session->ApplyAndFlush(set_op));
+  RETURN_NOT_OK(session->TEST_ApplyAndFlush(set_op));
   return Status::OK();
 }
 } // namespace helpers

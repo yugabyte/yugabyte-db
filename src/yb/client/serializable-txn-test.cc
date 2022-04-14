@@ -106,7 +106,7 @@ TEST_F(SerializableTxnTest, ReadWriteConflict) {
     auto read_txn = CreateTransaction();
     auto read_session = CreateSession(read_txn);
     auto read = ReadRow(read_session, i);
-    ASSERT_OK(read_session->Flush());
+    ASSERT_OK(read_session->TEST_Flush());
 
     auto write_txn = CreateTransaction();
     auto write_session = CreateSession(write_txn);
@@ -297,7 +297,7 @@ void SerializableTxnTest::TestColoring() {
             Flush::kFalse)));
       }
 
-      ASSERT_OK(session->Flush());
+      ASSERT_OK(session->TEST_Flush());
 
       for (const auto& op : ops) {
         ASSERT_OK(CheckOp(op.get()));
@@ -336,7 +336,7 @@ void SerializableTxnTest::TestColoring() {
             break;
           }
 
-          auto flush_status = session->Flush();
+          auto flush_status = session->TEST_Flush();
           if (!flush_status.ok()) {
             ASSERT_TRUE(flush_status.IsTryAgain()) << flush_status;
             break;

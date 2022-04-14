@@ -2499,7 +2499,8 @@ Status Tablet::FlushWithRetries(
   std::unordered_map<string, int32_t> error_msg_cnts;
   do {
     std::vector<std::shared_ptr<SomeYBqlOp>> failed_ops;
-    RETURN_NOT_OK_PREPEND(session->Flush(), "Flush failed.");
+    // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+    RETURN_NOT_OK_PREPEND(session->TEST_Flush(), "Flush failed.");
     VLOG(3) << "Done flushing ops to the index";
     for (auto index_op : pending_ops) {
       if (index_op->response().status() == QLResponsePB::YQL_STATUS_OK) {

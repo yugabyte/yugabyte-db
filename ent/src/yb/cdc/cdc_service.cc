@@ -809,8 +809,9 @@ Status CDCServiceImpl::CreateCDCStreamForNamespace(
 
   session->SetDeadline(deadline);
 
+  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
   RETURN_NOT_OK_SET_CODE(
-      RefreshCacheOnFail(session->ApplyAndFlush(ops)), CDCError(CDCErrorPB::INTERNAL_ERROR));
+      RefreshCacheOnFail(session->TEST_ApplyAndFlush(ops)), CDCError(CDCErrorPB::INTERNAL_ERROR));
 
   resp->set_db_stream_id(db_stream_id);
 
@@ -1950,7 +1951,8 @@ void CDCServiceImpl::BootstrapProducer(const BootstrapProducerRequestPB* req,
 
   // On a success, apply cdc state table ops.
   session->SetDeadline(GetDeadline(context, client()));
-  s = RefreshCacheOnFail(session->ApplyAndFlush(ops));
+  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+  s = RefreshCacheOnFail(session->TEST_ApplyAndFlush(ops));
   RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
 
   // Clear these vectors so no changes are reversed by scope_exit since we succeeded.
@@ -2352,7 +2354,8 @@ Result<OpId> CDCServiceImpl::GetLastCheckpoint(
   req->mutable_column_refs()->add_ids(Schema::first_column_id() + master::kCdcStreamIdIdx);
   (*cdc_state_table_result)->AddColumns({master::kCdcCheckpoint}, req);
 
-  RETURN_NOT_OK(RefreshCacheOnFail(session->ReadSync(op)));
+  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+  RETURN_NOT_OK(RefreshCacheOnFail(session->TEST_ReadSync(op)));
   auto row_block = ql::RowsResult(op.get()).GetRowBlock();
   if (row_block->row_count() == 0) {
     return OpId(0, 0);
@@ -2434,7 +2437,8 @@ Status CDCServiceImpl::UpdateCheckpoint(const ProducerTabletInfo& producer_table
     // stream.
     auto* condition = req->mutable_if_expr()->mutable_condition();
     condition->set_op(QL_OP_EXISTS);
-    RETURN_NOT_OK(RefreshCacheOnFail(session->ApplyAndFlush(op)));
+    // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+    RETURN_NOT_OK(RefreshCacheOnFail(session->TEST_ApplyAndFlush(op)));
   }
 
   return Status::OK();

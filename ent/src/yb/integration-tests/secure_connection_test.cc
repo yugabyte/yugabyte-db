@@ -161,7 +161,7 @@ TEST_F(SecureConnectionTest, BigWrite) {
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, kKey);
     table_.AddStringColumnValue(req, kValueColumn, kValue);
-    ASSERT_OK(session->ApplyAndFlush(op));
+    ASSERT_OK(session->TEST_ApplyAndFlush(op));
     ASSERT_OK(CheckOp(op.get()));
   }
 
@@ -170,7 +170,7 @@ TEST_F(SecureConnectionTest, BigWrite) {
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, kKey);
     table_.AddColumns({kValueColumn}, req);
-    ASSERT_OK(session->ApplyAndFlush(op));
+    ASSERT_OK(session->TEST_ApplyAndFlush(op));
     ASSERT_OK(CheckOp(op.get()));
     auto rowblock = yb::ql::RowsResult(op.get()).GetRowBlock();
     ASSERT_EQ(rowblock->row_count(), 1);
