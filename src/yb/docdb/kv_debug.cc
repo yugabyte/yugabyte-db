@@ -21,6 +21,7 @@
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/intent.h"
+#include "yb/docdb/packed_row.h"
 #include "yb/docdb/value.h"
 #include "yb/docdb/value_type.h"
 
@@ -83,7 +84,9 @@ Result<std::string> DocDBKeyToDebugStr(Slice key_slice, StorageDbType db_type) {
 
 namespace {
 
-Result<std::string> DocDBValueToDebugStrInternal(Slice value_slice, KeyType key_type) {
+Result<std::string> DocDBValueToDebugStrInternal(
+    Slice value_slice, KeyType key_type,
+    const SchemaPackingStorage& schema_packing_storage) {
   std::string prefix;
   if (key_type == KeyType::kIntentKey) {
     auto txn_id_res = VERIFY_RESULT(DecodeTransactionIdFromIntentValue(&value_slice));
@@ -102,10 +105,36 @@ Result<std::string> DocDBValueToDebugStrInternal(Slice value_slice, KeyType key_
   // Empty values are allowed for weak intents.
   if (!value_slice.empty() || key_type != KeyType::kIntentKey) {
     Value v;
-    RETURN_NOT_OK_PREPEND(
-        v.Decode(value_slice),
-        Format("Error: failed to decode value $0", prefix));
-    return prefix + v.ToString();
+    auto control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value_slice));
+    if (!value_slice.TryConsumeByte(ValueEntryTypeAsChar::kPackedRow)) {
+      RETURN_NOT_OK_PREPEND(
+          v.Decode(value_slice, control_fields),
+          Format("Error: failed to decode value $0", prefix));
+      return prefix + v.ToString();
+    } else {
+      const SchemaPacking& packing = VERIFY_RESULT(schema_packing_storage.GetPacking(&value_slice));
+      prefix += "{";
+      for (size_t i = 0; i != packing.columns(); ++i) {
+        auto slice = packing.GetValue(i, value_slice);
+        const auto& column_data = packing.column_packing_data(i);
+        prefix += " ";
+        prefix += column_data.id.ToString();
+        prefix += ": ";
+        if (slice.empty()) {
+          prefix += "NULL";
+        } else {
+          PrimitiveValue pv;
+          auto status = pv.DecodeFromValue(slice);
+          if (!status.ok()) {
+            prefix += status.ToString();
+          } else {
+            prefix += pv.ToString();
+          }
+        }
+      }
+      prefix += " }";
+      return prefix;
+    }
   } else {
     return prefix + "none";
   }
@@ -113,7 +142,8 @@ Result<std::string> DocDBValueToDebugStrInternal(Slice value_slice, KeyType key_
 
 }  // namespace
 
-Result<std::string> DocDBValueToDebugStr(KeyType key_type, Slice key, Slice value) {
+Result<std::string> DocDBValueToDebugStr(
+    KeyType key_type, Slice key, Slice value, const SchemaPackingStorage& schema_packing_storage) {
   switch (key_type) {
     case KeyType::kTransactionMetadata: {
       TransactionMetadataPB metadata_pb;
@@ -128,7 +158,7 @@ Result<std::string> DocDBValueToDebugStr(KeyType key_type, Slice key, Slice valu
     case KeyType::kEmpty: FALLTHROUGH_INTENDED;
     case KeyType::kIntentKey: FALLTHROUGH_INTENDED;
     case KeyType::kPlainSubDocKey:
-      return DocDBValueToDebugStrInternal(value, key_type);
+      return DocDBValueToDebugStrInternal(value, key_type, schema_packing_storage);
 
     case KeyType::kExternalIntents: {
       std::vector<std::string> intents;
@@ -150,7 +180,7 @@ Result<std::string> DocDBValueToDebugStr(KeyType key_type, Slice key, Slice valu
             "$0 -> $1",
             sub_doc_key,
             VERIFY_RESULT(DocDBValueToDebugStrInternal(
-                value.Prefix(len), KeyType::kPlainSubDocKey))));
+                value.Prefix(len), KeyType::kPlainSubDocKey, schema_packing_storage))));
         value.remove_prefix(len);
       }
       DCHECK(value.empty());

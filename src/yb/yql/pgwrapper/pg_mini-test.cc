@@ -67,7 +67,6 @@ DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_int32(TEST_txn_participant_inject_latency_on_apply_update_txn_ms);
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
-DECLARE_int32(max_packed_row_columns);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(txn_max_apply_batch_records);
@@ -2601,29 +2600,6 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(NonRespondingMaster),
       pg_host_port(), cluster_->GetMasterAddresses(), cluster_->GetTserverHTTPAddresses(),
       *tmp_dir, {"--backup_location", tmp_dir / "backup", "--no_upload", "--keyspace", "ysql.test",
        "create"}));
-}
-
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(PackedRow)) {
-  FLAGS_max_packed_row_columns = 10;
-
-  auto conn = ASSERT_RESULT(Connect());
-
-  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, v1 TEXT, v2 TEXT)"));
-  ASSERT_OK(conn.Execute("INSERT INTO t (key, v1, v2) VALUES (1, 'one', 'two')"));
-
-  auto value = ASSERT_RESULT(conn.FetchRowAsString("SELECT v1, v2 FROM t WHERE key = 1"));
-  ASSERT_EQ(value, "one, two");
-
-  ASSERT_OK(conn.Execute("UPDATE t SET v2 = 'three' where key = 1"));
-  value = ASSERT_RESULT(conn.FetchRowAsString("SELECT v1, v2 FROM t WHERE key = 1"));
-  ASSERT_EQ(value, "one, three");
-
-  ASSERT_OK(conn.Execute("DELETE FROM t WHERE key = 1"));
-  ASSERT_OK(conn.FetchMatrix("SELECT * FROM t", 0, 3));
-
-  ASSERT_OK(conn.Execute("INSERT INTO t (key, v1, v2) VALUES (1, 'four', 'five')"));
-  value = ASSERT_RESULT(conn.FetchRowAsString("SELECT v1, v2 FROM t WHERE key = 1"));
-  ASSERT_EQ(value, "four, five");
 }
 
 } // namespace pgwrapper

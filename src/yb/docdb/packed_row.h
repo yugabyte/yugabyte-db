@@ -130,7 +130,8 @@ class SchemaPackingStorage {
  public:
   SchemaPackingStorage();
 
-  const SchemaPacking* Get(uint32_t version) const;
+  Result<const SchemaPacking&> GetPacking(uint32_t schema_version) const;
+  Result<const SchemaPacking&> GetPacking(Slice* packed_row) const;
 
   void AddSchema(uint32_t version, const Schema& schema);
 
@@ -144,12 +145,32 @@ class SchemaPackingStorage {
 class RowPacker {
  public:
   RowPacker(uint32_t version, std::reference_wrapper<const SchemaPacking> packing);
+  explicit RowPacker(const std::pair<uint32_t, const SchemaPacking&>& pair)
+      : RowPacker(pair.first, pair.second) {
+  }
 
-  CHECKED_STATUS AddValue(ColumnId column, const QLValuePB& value);
+  bool Empty() const {
+    return idx_ == 0;
+  }
+
+  bool Finished() const {
+    return idx_ == packing_.columns();
+  }
+
+  void Restart();
+
+  ColumnId NextColumnId() const;
+  Result<const ColumnPackingData&> NextColumnData() const;
+
+  Status AddValue(ColumnId column, const QLValuePB& value);
+  Status AddValue(ColumnId column, const Slice& value);
 
   Result<Slice> Complete();
 
  private:
+  template <class Value>
+  Status DoAddValue(ColumnId column, const Value& value);
+
   const SchemaPacking& packing_;
   size_t idx_ = 0;
   size_t prefix_end_;

@@ -23,6 +23,7 @@
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_types.h"
+#include "yb/docdb/packed_row.h"
 #include "yb/docdb/value_type.h"
 #include "yb/docdb/kv_debug.h"
 #include "yb/docdb/docdb-internal.h"
@@ -371,6 +372,7 @@ CHECKED_STATUS AddDeltaToSstFile(
     auto builder = helper->NewTableBuilder(base_file_writer.get(), data_file_writer.get());
     const auto add_kv = [&builder, debug, storage_db_type](const Slice& k, const Slice& v) {
       if (debug) {
+        static docdb::SchemaPackingStorage schema_packing_storage;
         const Slice user_key(k.data(), k.size() - kKeySuffixLen);
         auto key_type = docdb::GetKeyType(user_key, storage_db_type);
         auto rocksdb_value_type = static_cast<rocksdb::ValueType>(*(k.end() - kKeySuffixLen));
@@ -381,7 +383,7 @@ CHECKED_STATUS AddDeltaToSstFile(
                   << "): "
                   << docdb::DocDBKeyToDebugStr(user_key, storage_db_type)
                   << " => "
-                  << docdb::DocDBValueToDebugStr(key_type, user_key, v);
+                  << docdb::DocDBValueToDebugStr(key_type, user_key, v, schema_packing_storage);
       }
       builder->Add(k, v);
     };
@@ -501,7 +503,8 @@ CHECKED_STATUS AddDeltaToSstFile(
                 << "key " << key.ToDebugHexString() << " (" << FormatSliceAsStr(key) << "), "
                 << "value " << value.ToDebugHexString() << " (" << FormatSliceAsStr(value) << "), "
                 << "decoded value " << DocDBValueToDebugStr(
-                    docdb::KeyType::kReverseTxnKey, iterator->key(), iterator->value());
+                    docdb::KeyType::kReverseTxnKey, iterator->key(), iterator->value(),
+                    docdb::SchemaPackingStorage());
             return doc_ht_result.status();
           }
           delta_data.AddEarlyTime(doc_ht_result->hybrid_time());
