@@ -19,7 +19,7 @@
 
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_ttl_util.h"
-#include "yb/docdb/docdb_compaction_filter.h"
+#include "yb/docdb/docdb_compaction_context.h"
 
 #include "yb/gutil/casts.h"
 

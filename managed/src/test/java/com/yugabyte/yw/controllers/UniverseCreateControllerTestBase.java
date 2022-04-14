@@ -145,7 +145,10 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
         Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
     bodyJson.set("clusters", clustersJsonArray);
     Result result = assertPlatformException(() -> sendCreateRequest(bodyJson));
-    assertBadRequest(result, "Invalid universe name format, valid characters [a-zA-Z0-9-].");
+    assertBadRequest(
+        result,
+        "Invalid universe name format, regex used for validation is "
+            + "^[a-zA-Z0-9]([-a-zA-Z0-9]*[a-zA-Z0-9])?$.");
     assertAuditEntry(0, customer.uuid);
   }
 

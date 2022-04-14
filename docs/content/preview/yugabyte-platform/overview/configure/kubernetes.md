@@ -2,9 +2,9 @@
 title: Configure Kubernetes
 headerTitle: Configure Kubernetes
 linkTitle: Configure
-description: Configuring Yugabyte Platform on Kubernetes
+description: Configuring YugabyteDB Anywhere on Kubernetes
 image: /images/section_icons/deploy/enterprise.png
-headcontent: Configuring Yugabyte Platform on Kubernetes
+headcontent: Configuring YugabyteDB Anywhere on Kubernetes
 menu:
   preview:
     identifier: configure-4-k8s
@@ -14,12 +14,9 @@ isTocNested: true
 showAsideToc: false
 ---
 
-Select your cloud provider to see the steps for configuration of database nodes. Click on the elements to see detailed steps.
-
-## Configure Yugabyte Platform
+For overview of how to configure database nodes, select one of the following cloud providers:
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-
   <li>
     <a href="../aws/" class="nav-link">
       <i class="fab fa-aws"></i>
@@ -56,6 +53,8 @@ Select your cloud provider to see the steps for configuration of database nodes.
   </li>
 
 </ul>
+
+<br>Click elements of the following chart to access detailed steps:
 
 <img src="/images/ee/flowchart/yb-configure-k8s.png" usemap="#image-map">
 

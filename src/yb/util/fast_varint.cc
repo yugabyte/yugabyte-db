@@ -277,13 +277,6 @@ size_t UnsignedVarIntLength(uint64_t v) {
   return result;
 }
 
-void FastAppendUnsignedVarIntToStr(uint64_t v, std::string* dest) {
-  char buf[kMaxVarIntBufferSize];
-  size_t len = FastEncodeUnsignedVarInt(v, to_uchar_ptr(buf));
-  DCHECK_LE(len, 10);
-  dest->append(buf, len);
-}
-
 size_t FastEncodeUnsignedVarInt(uint64_t v, uint8_t *dest) {
   const size_t n = UnsignedVarIntLength(v);
   size_t i;
